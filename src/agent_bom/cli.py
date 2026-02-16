@@ -60,6 +60,8 @@ def main():
 @click.option("--no-tree", is_flag=True, help="Skip dependency tree output")
 @click.option("--transitive", is_flag=True, help="Resolve transitive dependencies for npx/uvx packages")
 @click.option("--max-depth", type=int, default=3, help="Maximum depth for transitive dependency resolution (default: 3)")
+@click.option("--enrich", is_flag=True, help="Enrich vulnerabilities with NVD, EPSS, and CISA KEV data")
+@click.option("--nvd-api-key", envvar="NVD_API_KEY", help="NVD API key for higher rate limits (or set NVD_API_KEY env var)")
 def scan(
     project: Optional[str],
     output: Optional[str],
@@ -68,6 +70,8 @@ def scan(
     no_tree: bool,
     transitive: bool,
     max_depth: int,
+    enrich: bool,
+    nvd_api_key: Optional[str],
 ):
     """Discover agents, extract dependencies, scan for vulnerabilities."""
     console.print(BANNER, style="bold blue")
@@ -119,7 +123,7 @@ def scan(
     # Step 4: Vulnerability scan
     blast_radii = []
     if not no_scan and total_packages > 0:
-        blast_radii = scan_agents_sync(agents)
+        blast_radii = scan_agents_sync(agents, enable_enrichment=enrich, nvd_api_key=nvd_api_key)
     # Build report
     report = AIBOMReport(
         agents=agents,

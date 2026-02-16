@@ -142,13 +142,24 @@ def print_blast_radius(report: AIBOMReport) -> None:
         risk_bar = "█" * int(br.risk_score) + "░" * (10 - int(br.risk_score))
         fix = br.vulnerability.fixed_version or "—"
 
+        # EPSS score display
+        epss_display = "—"
+        if br.vulnerability.epss_score is not None:
+            epss_pct = int(br.vulnerability.epss_score * 100)
+            epss_style = "red bold" if epss_pct >= 70 else "yellow" if epss_pct >= 30 else "dim"
+            epss_display = f"[{epss_style}]{epss_pct}%[/{epss_style}]"
+
+        # KEV indicator
+        kev_display = "[red bold]🔥[/red bold]" if br.vulnerability.is_kev else "—"
+
         table.add_row(
             f"[{sev_style}]{br.risk_score:.1f}[/{sev_style}]",
             br.vulnerability.id,
             f"{br.package.name}@{br.package.version}",
             f"[{sev_style}]{br.vulnerability.severity.value}[/{sev_style}]",
+            epss_display,
+            kev_display,
             str(len(br.affected_agents)),
-            str(len(br.affected_servers)),
             str(len(br.exposed_credentials)),
             fix,
         )

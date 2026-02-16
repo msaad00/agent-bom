@@ -44,6 +44,39 @@ class Vulnerability:
     fixed_version: Optional[str] = None
     references: list[str] = field(default_factory=list)
 
+    # Enhanced metadata
+    epss_score: Optional[float] = None  # EPSS probability (0.0-1.0)
+    epss_percentile: Optional[float] = None  # EPSS percentile (0.0-100.0)
+    is_kev: bool = False  # CISA Known Exploited Vulnerability
+    kev_date_added: Optional[str] = None  # Date added to KEV catalog
+    kev_due_date: Optional[str] = None  # Remediation due date
+    nvd_published: Optional[str] = None  # NVD publish date
+    nvd_modified: Optional[str] = None  # NVD last modified date
+    cwe_ids: list[str] = field(default_factory=list)  # CWE weakness types
+    exploitability: Optional[str] = None  # "HIGH", "MEDIUM", "LOW" based on EPSS
+
+    @property
+    def is_actively_exploited(self) -> bool:
+        """Check if vulnerability is being actively exploited."""
+        return self.is_kev or (self.epss_score is not None and self.epss_score > 0.5)
+
+    @property
+    def risk_level(self) -> str:
+        """Calculate overall risk level."""
+        if self.is_kev:
+            return "CRITICAL - Active Exploitation"
+        if self.epss_score and self.epss_score > 0.7:
+            return "CRITICAL - High Exploit Probability"
+        if self.severity == Severity.CRITICAL:
+            return "CRITICAL"
+        if self.severity == Severity.HIGH and self.epss_score and self.epss_score > 0.3:
+            return "HIGH - Likely Exploitable"
+        if self.severity == Severity.HIGH:
+            return "HIGH"
+        if self.severity == Severity.MEDIUM:
+            return "MEDIUM"
+        return "LOW"
+
 
 @dataclass
 class Package:

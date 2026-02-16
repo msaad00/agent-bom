@@ -294,6 +294,47 @@ async def scan_agents(agents: list[Agent]) -> list[BlastRadius]:
     return blast_radii
 
 
-def scan_agents_sync(agents: list[Agent]) -> list[BlastRadius]:
+async def scan_agents_with_enrichment(
+    agents: list[Agent],
+    nvd_api_key: Optional[str] = None,
+    enable_enrichment: bool = True,
+) -> list[BlastRadius]:
+    """Scan agents and enrich vulnerabilities with NVD/EPSS/KEV data."""
+    # First, do normal OSV scan
+    blast_radii = await scan_agents(agents)
+
+    # Then enrich with external data
+    if enable_enrichment and blast_radii:
+        from agent_bom.enrichment import enrich_vulnerabilities
+
+        # Collect all vulnerabilities
+        all_vulns = []
+        for agent in agents:
+            for server in agent.mcp_servers:
+                for pkg in server.packages:
+                    all_vulns.extend(pkg.vulnerabilities)
+
+        if all_vulns:
+            await enrich_vulnerabilities(
+                all_vulns,
+                nvd_api_key=nvd_api_key,
+                enable_nvd=True,
+                enable_epss=True,
+                enable_kev=True,
+            )
+
+            # Recalculate blast radius with enriched data
+            for br in blast_radii:
+                br.calculate_risk_score()
+
+            # Re-sort by updated risk scores
+            blast_radii.sort(key=lambda br: br.risk_score, reverse=True)
+
+    return blast_radii
+
+
+def scan_agents_sync(agents: list[Agent], enable_enrichment: bool = False, nvd_api_key: Optional[str] = None) -> list[BlastRadius]:
     """Synchronous wrapper for scan_agents."""
+    if enable_enrichment:
+        return asyncio.run(scan_agents_with_enrichment(agents, nvd_api_key, enable_enrichment))
     return asyncio.run(scan_agents(agents))

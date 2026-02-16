@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-bom"
+version = "0.1.0"
+description = "Generate AI Bill of Materials (AI-BOM) for AI agents, MCP servers, and their dependencies. Map the full trust chain from agent to vulnerability."
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Wagdy Saad", email = "andwgdysaad@gmail.com"}
+]
+keywords = ["ai-bom", "sbom", "mcp", "security", "ai-agents", "vulnerability", "supply-chain"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = [
+    "click>=8.0",
+    "rich>=13.0",
+    "httpx>=0.25",
+    "pydantic>=2.0",
+    "cyclonedx-python-lib>=7.0",
+    "packageurl-python>=0.15",
+    "toml>=0.10",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "ruff>=0.4",
+    "mypy>=1.0",
+]
+
+[project.scripts]
+agent-bom = "agent_bom.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/agent-bom/agent-bom"
+Repository = "https://github.com/agent-bom/agent-bom"
+Issues = "https://github.com/agent-bom/agent-bom/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]

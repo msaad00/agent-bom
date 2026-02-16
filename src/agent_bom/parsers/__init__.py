@@ -1,0 +1,352 @@
+"""Parse package dependencies from MCP server directories."""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+from pathlib import Path
+from typing import Optional
+
+from rich.console import Console
+
+from agent_bom.models import MCPServer, Package
+
+console = Console()
+
+
+def find_server_directory(server: MCPServer) -> Optional[Path]:
+    """Attempt to find the MCP server's source directory."""
+    # Check working_dir first
+    if server.working_dir and os.path.isdir(server.working_dir):
+        return Path(server.working_dir)
+
+    # Check args for paths
+    for arg in server.args:
+        if os.path.isdir(arg):
+            return Path(arg)
+        # Check if arg is a file, use its parent
+        if os.path.isfile(arg):
+            return Path(arg).parent
+
+    # For npx/npm commands, check if there's a package reference
+    if server.command in ("npx", "npm"):
+        # npx packages are in node_modules or global cache
+        for arg in server.args:
+            if not arg.startswith("-"):
+                # This is likely the package name
+                return None  # Can't resolve npx packages to local dirs
+
+    # For uvx/uv commands
+    if server.command in ("uvx", "uv"):
+        return None  # Virtual env packages
+
+    # For direct python/node commands, check the script path
+    if server.command in ("python", "python3", "node"):
+        for arg in server.args:
+            if not arg.startswith("-") and os.path.isfile(arg):
+                return Path(arg).parent
+
+    return None
+
+
+def parse_npm_packages(directory: Path) -> list[Package]:
+    """Parse packages from package-lock.json or node_modules."""
+    packages = []
+
+    # Try package-lock.json first (most accurate)
+    lock_file = directory / "package-lock.json"
+    if lock_file.exists():
+        try:
+            lock_data = json.loads(lock_file.read_text())
+            lock_packages = lock_data.get("packages", lock_data.get("dependencies", {}))
+
+            # Get direct dependencies from package.json
+            pkg_json = directory / "package.json"
+            direct_deps = set()
+            if pkg_json.exists():
+                pkg_data = json.loads(pkg_json.read_text())
+                direct_deps = set(pkg_data.get("dependencies", {}).keys())
+                direct_deps.update(pkg_data.get("devDependencies", {}).keys())
+
+            for name, info in lock_packages.items():
+                if not isinstance(info, dict):
+                    continue
+                # Clean package name (remove node_modules/ prefix)
+                clean_name = name.replace("node_modules/", "").lstrip("/")
+                if not clean_name:
+                    continue
+
+                version = info.get("version", "unknown")
+                packages.append(Package(
+                    name=clean_name,
+                    version=version,
+                    ecosystem="npm",
+                    purl=f"pkg:npm/{clean_name}@{version}",
+                    is_direct=clean_name in direct_deps,
+                ))
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+    # Fallback to package.json only
+    elif (directory / "package.json").exists():
+        try:
+            pkg_data = json.loads((directory / "package.json").read_text())
+            for dep_type in ("dependencies", "devDependencies"):
+                for name, version_spec in pkg_data.get(dep_type, {}).items():
+                    version = version_spec.lstrip("^~>=<")
+                    packages.append(Package(
+                        name=name,
+                        version=version,
+                        ecosystem="npm",
+                        purl=f"pkg:npm/{name}@{version}",
+                        is_direct=True,
+                    ))
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+    return packages
+
+
+def parse_pip_packages(directory: Path) -> list[Package]:
+    """Parse packages from requirements.txt, Pipfile.lock, or pyproject.toml."""
+    packages = []
+
+    # Try requirements.txt
+    req_file = directory / "requirements.txt"
+    if req_file.exists():
+        for line in req_file.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or line.startswith("-"):
+                continue
+            # Parse name==version, name>=version, etc.
+            match = re.match(r'^([a-zA-Z0-9_.-]+)\s*([=<>!~]+)\s*([a-zA-Z0-9_.*+-]+)', line)
+            if match:
+                name, _, version = match.groups()
+                packages.append(Package(
+                    name=name,
+                    version=version,
+                    ecosystem="pypi",
+                    purl=f"pkg:pypi/{name}@{version}",
+                    is_direct=True,
+                ))
+            else:
+                # Just a name, no version
+                name_match = re.match(r'^([a-zA-Z0-9_.-]+)', line)
+                if name_match:
+                    packages.append(Package(
+                        name=name_match.group(1),
+                        version="unknown",
+                        ecosystem="pypi",
+                        is_direct=True,
+                    ))
+
+    # Try Pipfile.lock
+    pipfile_lock = directory / "Pipfile.lock"
+    if pipfile_lock.exists() and not packages:
+        try:
+            lock_data = json.loads(pipfile_lock.read_text())
+            for section in ("default", "develop"):
+                for name, info in lock_data.get(section, {}).items():
+                    if isinstance(info, dict):
+                        version = info.get("version", "").lstrip("=")
+                        packages.append(Package(
+                            name=name,
+                            version=version or "unknown",
+                            ecosystem="pypi",
+                            purl=f"pkg:pypi/{name}@{version}" if version else None,
+                            is_direct=section == "default",
+                        ))
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+    # Try pyproject.toml
+    pyproject = directory / "pyproject.toml"
+    if pyproject.exists() and not packages:
+        try:
+            import toml
+            proj_data = toml.loads(pyproject.read_text())
+            deps = proj_data.get("project", {}).get("dependencies", [])
+            for dep in deps:
+                match = re.match(r'^([a-zA-Z0-9_.-]+)\s*([=<>!~]+)\s*([a-zA-Z0-9_.*+-]+)', dep)
+                if match:
+                    name, _, version = match.groups()
+                    packages.append(Package(
+                        name=name,
+                        version=version,
+                        ecosystem="pypi",
+                        purl=f"pkg:pypi/{name}@{version}",
+                        is_direct=True,
+                    ))
+        except Exception:
+            pass
+
+    return packages
+
+
+def parse_go_packages(directory: Path) -> list[Package]:
+    """Parse packages from go.sum."""
+    packages = []
+    go_sum = directory / "go.sum"
+
+    if go_sum.exists():
+        seen = set()
+        for line in go_sum.read_text().splitlines():
+            parts = line.strip().split()
+            if len(parts) >= 2:
+                name = parts[0]
+                version = parts[1].split("/")[0].lstrip("v")
+                key = (name, version)
+                if key not in seen:
+                    seen.add(key)
+                    packages.append(Package(
+                        name=name,
+                        version=version,
+                        ecosystem="go",
+                        purl=f"pkg:golang/{name}@{version}",
+                        is_direct=True,
+                    ))
+
+    return packages
+
+
+def parse_cargo_packages(directory: Path) -> list[Package]:
+    """Parse packages from Cargo.lock."""
+    packages = []
+    cargo_lock = directory / "Cargo.lock"
+
+    if cargo_lock.exists():
+        current_name = None
+        current_version = None
+        for line in cargo_lock.read_text().splitlines():
+            line = line.strip()
+            if line.startswith('name = "'):
+                current_name = line.split('"')[1]
+            elif line.startswith('version = "') and current_name:
+                current_version = line.split('"')[1]
+                packages.append(Package(
+                    name=current_name,
+                    version=current_version,
+                    ecosystem="cargo",
+                    purl=f"pkg:cargo/{current_name}@{current_version}",
+                    is_direct=True,
+                ))
+                current_name = None
+                current_version = None
+
+    return packages
+
+
+def detect_npx_package(server: MCPServer) -> list[Package]:
+    """Extract package info from npx/npm commands."""
+    packages = []
+    if server.command not in ("npx", "npm"):
+        return packages
+
+    for arg in server.args:
+        if arg.startswith("-"):
+            continue
+        # Parse @scope/package@version or package@version
+        match = re.match(r'^(@?[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)?)(?:@(.+))?$', arg)
+        if match:
+            name = match.group(1)
+            version = match.group(2) or "latest"
+            packages.append(Package(
+                name=name,
+                version=version,
+                ecosystem="npm",
+                purl=f"pkg:npm/{name}@{version}",
+                is_direct=True,
+            ))
+            break  # First non-flag arg is the package
+
+    return packages
+
+
+def detect_uvx_package(server: MCPServer) -> list[Package]:
+    """Extract package info from uvx/uv commands."""
+    packages = []
+    if server.command not in ("uvx", "uv"):
+        return packages
+
+    args = server.args
+    for i, arg in enumerate(args):
+        if arg in ("run", "tool") and i + 1 < len(args):
+            pkg_arg = args[i + 1]
+            match = re.match(r'^([a-zA-Z0-9_.-]+)(?:==(.+))?$', pkg_arg)
+            if match:
+                name = match.group(1)
+                version = match.group(2) or "latest"
+                packages.append(Package(
+                    name=name,
+                    version=version,
+                    ecosystem="pypi",
+                    purl=f"pkg:pypi/{name}@{version}",
+                    is_direct=True,
+                ))
+            break
+        elif not arg.startswith("-") and arg not in ("run", "tool"):
+            match = re.match(r'^([a-zA-Z0-9_.-]+)(?:==(.+))?$', arg)
+            if match:
+                name = match.group(1)
+                version = match.group(2) or "latest"
+                packages.append(Package(
+                    name=name,
+                    version=version,
+                    ecosystem="pypi",
+                    purl=f"pkg:pypi/{name}@{version}",
+                    is_direct=True,
+                ))
+            break
+
+    return packages
+
+
+def extract_packages(server: MCPServer, resolve_transitive: bool = False, max_depth: int = 3) -> list[Package]:
+    """Extract all packages for an MCP server.
+
+    Args:
+        server: The MCP server to extract packages from
+        resolve_transitive: If True, resolve transitive dependencies for npx/uvx packages
+        max_depth: Maximum depth for transitive dependency resolution
+    """
+    packages = []
+
+    # Try npx/uvx command extraction first
+    npx_packages = detect_npx_package(server)
+    uvx_packages = detect_uvx_package(server)
+    packages.extend(npx_packages)
+    packages.extend(uvx_packages)
+
+    # Try to find local directory and parse manifests
+    server_dir = find_server_directory(server)
+    if server_dir:
+        packages.extend(parse_npm_packages(server_dir))
+        packages.extend(parse_pip_packages(server_dir))
+        packages.extend(parse_go_packages(server_dir))
+        packages.extend(parse_cargo_packages(server_dir))
+
+    # If we only got npx/uvx packages (no local directory), resolve transitive deps
+    if resolve_transitive and (npx_packages or uvx_packages) and not server_dir:
+        console.print(f"  [cyan]→[/cyan] Resolving transitive dependencies for {server.name} (depth={max_depth})...")
+        from agent_bom.transitive import resolve_transitive_dependencies_sync
+
+        # Resolve transitive deps for npx/uvx packages only
+        remote_packages = npx_packages + uvx_packages
+        transitive_deps = resolve_transitive_dependencies_sync(remote_packages, max_depth)
+        packages.extend(transitive_deps)
+
+        if transitive_deps:
+            console.print(f"  [green]✓[/green] Found {len(transitive_deps)} transitive dependencies")
+
+    # Deduplicate
+    seen = set()
+    unique = []
+    for pkg in packages:
+        key = (pkg.name, pkg.version, pkg.ecosystem)
+        if key not in seen:
+            seen.add(key)
+            unique.append(pkg)
+
+    return unique

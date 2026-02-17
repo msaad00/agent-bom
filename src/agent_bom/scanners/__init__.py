@@ -168,7 +168,7 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
         ][:5]  # Limit to 5 references
 
         # Also check for aliases (CVE IDs)
-        aliases = vuln_data.get("aliases", [])
+        vuln_data.get("aliases", [])
         summary = vuln_data.get("summary", vuln_data.get("details", "No description available"))[:200]
 
         vulns.append(Vulnerability(
@@ -289,7 +289,7 @@ async def scan_agents(agents: list[Agent]) -> list[BlastRadius]:
     if total_vulns:
         console.print(f"  [red]⚠ Found {total_vulns} vulnerabilities across {len(blast_radii)} findings[/red]")
     else:
-        console.print(f"  [green]✓ No known vulnerabilities found[/green]")
+        console.print("  [green]✓ No known vulnerabilities found[/green]")
 
     return blast_radii
 

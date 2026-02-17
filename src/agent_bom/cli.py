@@ -21,8 +21,8 @@ from agent_bom.output import (
     print_summary,
 )
 from agent_bom.parsers import extract_packages
-from agent_bom.scanners import scan_agents_sync
 from agent_bom.resolver import resolve_all_versions_sync
+from agent_bom.scanners import scan_agents_sync
 
 console = Console()
 
@@ -219,7 +219,7 @@ def where():
             style = "green" if expanded.exists() else "dim"
             console.print(f"    [{style}]{exists} {expanded}[/{style}]")
 
-    console.print(f"\n  [bold cyan]Project-level configs[/bold cyan]")
+    console.print("\n  [bold cyan]Project-level configs[/bold cyan]")
     for config_name in PROJECT_CONFIG_FILES:
         console.print(f"    [dim]  ./{config_name}[/dim]")
 

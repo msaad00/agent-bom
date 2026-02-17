@@ -68,3 +68,32 @@ demo:  ## Run demo scan
 	@echo "JSON output:"
 	agent-bom scan --enrich --format json --output demo.json
 	@cat demo.json | python -m json.tool | head -50
+
+# Git workflow commands
+git-feature:  ## Create new feature branch (usage: make git-feature name=my-feature)
+	@if [ -z "$(name)" ]; then \
+		echo "Error: Please provide branch name: make git-feature name=my-feature"; \
+		exit 1; \
+	fi
+	git checkout main
+	git pull origin main
+	git checkout -b feature/$(name)
+	@echo "✓ Created and switched to feature/$(name)"
+
+git-pr:  ## Create pull request for current branch
+	gh pr create --fill --base main
+
+git-sync:  ## Sync main branch with remote
+	git checkout main
+	git pull origin main
+	@echo "✓ main branch updated"
+
+git-cleanup:  ## Delete merged feature branches
+	git branch --merged main | grep -v "^\* main" | xargs -n 1 git branch -d || true
+	@echo "✓ Cleaned up merged branches"
+
+git-status:  ## Show git status and current branch
+	@echo "Current branch:"
+	@git branch --show-current
+	@echo ""
+	@git status

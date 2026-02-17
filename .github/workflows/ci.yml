@@ -39,6 +39,15 @@ jobs:
           safety check --json || true
           safety check
 
+      - name: Scan filesystem with Trivy (Python packages)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          severity: HIGH,CRITICAL
+          exit-code: '0'
+
       - name: Upload Security Reports
         uses: actions/upload-artifact@v4
         if: always()

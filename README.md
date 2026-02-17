@@ -116,7 +116,7 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for CI/CD, Kubernetes, and remote scanning se
 
 ## Contributing
 
-Contributions welcome. See [GIT_WORKFLOW.md](GIT_WORKFLOW.md) for branching conventions.
+Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ```bash
 git clone https://github.com/agent-bom/agent-bom.git

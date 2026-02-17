@@ -16,11 +16,13 @@ from agent_bom.models import AIBOMReport
 from agent_bom.output import (
     export_cyclonedx,
     export_json,
+    export_sarif,
     print_agent_tree,
     print_blast_radius,
     print_summary,
     to_cyclonedx,
     to_json,
+    to_sarif,
 )
 from agent_bom.parsers import extract_packages
 from agent_bom.resolver import resolve_all_versions_sync
@@ -70,7 +72,7 @@ def main():
 @click.option("--output", "-o", type=str, help="Output file path (use '-' for stdout)")
 @click.option(
     "--format", "-f", "output_format",
-    type=click.Choice(["console", "json", "cyclonedx", "text"]),
+    type=click.Choice(["console", "json", "cyclonedx", "sarif", "text"]),
     default="console",
     help="Output format",
 )
@@ -101,7 +103,13 @@ def scan(
     quiet: bool,
     fail_on_severity: Optional[str],
 ):
-    """Discover agents, extract dependencies, scan for vulnerabilities."""
+    """Discover agents, extract dependencies, scan for vulnerabilities.
+
+    \b
+    Exit codes:
+      0  Clean — no vulnerabilities at or above threshold
+      1  Fail — vulnerabilities found at or above --fail-on-severity
+    """
     # Route console output based on flags
     is_stdout = output == "-"
     con = _make_console(quiet=quiet or is_stdout, output_format=output_format)
@@ -197,13 +205,14 @@ def scan(
 
     # Step 5: Output
     if is_stdout:
-        # Pipe mode: write clean JSON/CycloneDX to stdout
+        # Pipe mode: write clean output to stdout
         if output_format == "cyclonedx":
             sys.stdout.write(json.dumps(to_cyclonedx(report), indent=2))
-            sys.stdout.write("\n")
+        elif output_format == "sarif":
+            sys.stdout.write(json.dumps(to_sarif(report), indent=2))
         else:
             sys.stdout.write(json.dumps(to_json(report), indent=2))
-            sys.stdout.write("\n")
+        sys.stdout.write("\n")
     elif output_format == "console" and not output:
         print_summary(report)
         if not no_tree:
@@ -219,12 +228,18 @@ def scan(
         out_path = output or "agent-bom.cdx.json"
         export_cyclonedx(report, out_path)
         con.print(f"\n  [green]✓[/green] CycloneDX BOM: {out_path}")
+    elif output_format == "sarif":
+        out_path = output or "agent-bom.sarif"
+        export_sarif(report, out_path)
+        con.print(f"\n  [green]✓[/green] SARIF report: {out_path}")
     elif output_format == "text" and output:
         Path(output).write_text(_format_text(report, blast_radii))
         con.print(f"\n  [green]✓[/green] Text report: {output}")
     elif output:
         if output.endswith(".cdx.json"):
             export_cyclonedx(report, output)
+        elif output.endswith(".sarif"):
+            export_sarif(report, output)
         else:
             export_json(report, output)
         con.print(f"\n  [green]✓[/green] Report: {output}")

@@ -1,5 +1,10 @@
 # agent-bom
 
+[![CI](https://github.com/agent-bom/agent-bom/actions/workflows/ci.yml/badge.svg)](https://github.com/agent-bom/agent-bom/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/agent-bom)](https://pypi.org/project/agent-bom/)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Docker Pulls](https://img.shields.io/docker/pulls/agentbom/agent-bom)](https://hub.docker.com/r/agentbom/agent-bom)
+
 **AI Bill of Materials (AI-BOM) generator for AI agents and MCP servers.**
 
 `agent-bom` maps the full trust chain from AI agent → MCP server → packages → known vulnerabilities, with **blast radius analysis**: *"If this package is compromised, which agents are affected, what credentials are exposed, and what tools can an attacker reach?"*
@@ -56,6 +61,9 @@ pip install -e .
 | `agent-bom scan --inventory agents.json` | Load agents from a manual inventory file |
 | `agent-bom scan -f cyclonedx -o bom.json` | Export CycloneDX 1.6 BOM |
 | `agent-bom scan -f json -o report.json` | Export JSON report |
+| `agent-bom scan -f sarif -o bom.sarif` | Export SARIF for GitHub Security tab |
+| `agent-bom scan -f json -o - \| jq .` | Pipe clean JSON to stdout |
+| `agent-bom scan -q --fail-on-severity high` | CI gate — exit 1 if high+ vulns found |
 | `agent-bom inventory` | List discovered agents (no vuln scan) |
 | `agent-bom where` | Show where configs are looked up |
 
@@ -71,7 +79,8 @@ pip install -e .
 - **Enrichment** — NVD metadata, EPSS exploit probability, CISA KEV flags (`--enrich`)
 - **Blast radius scoring** — contextual risk score based on agents, credentials, and tools in reach
 - **Credential detection** — flags MCP servers exposing API keys, tokens, and secrets in env vars
-- **Output formats** — rich console, JSON, CycloneDX 1.6
+- **Output formats** — rich console, JSON, CycloneDX 1.6, SARIF 2.1, plain text
+- **CI/CD ready** — `--fail-on-severity`, `--quiet`, stdout piping (`-o -`)
 
 ---
 
@@ -141,9 +150,27 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for CI/CD, Kubernetes, and remote scanning se
 - [ ] MCP registry scanning before installation
 
 **Output & policy:**
+- [x] SARIF 2.1 output for GitHub Security tab
 - [ ] SPDX 3.0 output (AI-BOM profile)
 - [ ] Policy engine ("no DB-credential server may have critical vulns")
 - [ ] MITRE ATLAS mapping for AI/ML threats
+
+---
+
+## CI Integration
+
+```yaml
+# .github/workflows/ai-bom.yml
+- name: Generate AI-BOM
+  run: |
+    pip install agent-bom
+    agent-bom scan --inventory agents.json --fail-on-severity high -f sarif -o results.sarif
+
+- name: Upload to GitHub Security
+  uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: results.sarif
+```
 
 ---
 

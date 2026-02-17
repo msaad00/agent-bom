@@ -177,7 +177,7 @@ def print_blast_radius(report: AIBOMReport) -> None:
 def to_json(report: AIBOMReport) -> dict:
     """Convert report to JSON-serializable dict."""
     return {
-        "ai_bom_version": "0.1.0",
+        "ai_bom_version": report.tool_version,
         "generated_at": report.generated_at.isoformat(),
         "summary": {
             "total_agents": report.total_agents,
@@ -400,3 +400,90 @@ def export_cyclonedx(report: AIBOMReport, output_path: str) -> None:
     """Export report as CycloneDX 1.6 JSON file."""
     cdx = to_cyclonedx(report)
     Path(output_path).write_text(json.dumps(cdx, indent=2))
+
+
+# ─── SARIF Output ──────────────────────────────────────────────────────────
+
+_SARIF_SEVERITY_MAP = {
+    Severity.CRITICAL: "error",
+    Severity.HIGH: "error",
+    Severity.MEDIUM: "warning",
+    Severity.LOW: "note",
+    Severity.NONE: "none",
+}
+
+
+def to_sarif(report: AIBOMReport) -> dict:
+    """Convert report to SARIF 2.1.0 dict for GitHub Security tab."""
+    rules = []
+    results = []
+    seen_rule_ids: set[str] = set()
+
+    for br in report.blast_radii:
+        vuln = br.vulnerability
+        rule_id = vuln.id
+        level = _SARIF_SEVERITY_MAP.get(vuln.severity, "warning")
+
+        if rule_id not in seen_rule_ids:
+            seen_rule_ids.add(rule_id)
+            rule: dict = {
+                "id": rule_id,
+                "shortDescription": {"text": f"{vuln.severity.value.upper()}: {vuln.id} in {br.package.name}@{br.package.version}"},
+                "fullDescription": {"text": vuln.summary or f"Vulnerability {vuln.id}"},
+                "helpUri": f"https://osv.dev/vulnerability/{vuln.id}",
+                "defaultConfiguration": {"level": level},
+            }
+            if vuln.cwe_ids:
+                rule["properties"] = {"tags": vuln.cwe_ids}
+            rules.append(rule)
+
+        affected = ", ".join(a.name for a in br.affected_agents)
+        message_text = (
+            f"{vuln.id} ({vuln.severity.value}) in {br.package.name}@{br.package.version}. "
+            f"Affects agents: {affected}."
+        )
+        if vuln.fixed_version:
+            message_text += f" Fix: upgrade to {vuln.fixed_version}."
+
+        config_path = br.affected_agents[0].config_path if br.affected_agents else "unknown"
+
+        result = {
+            "ruleId": rule_id,
+            "level": level,
+            "message": {"text": message_text},
+            "locations": [
+                {
+                    "physicalLocation": {
+                        "artifactLocation": {
+                            "uri": config_path,
+                            "uriBaseId": "%SRCROOT%",
+                        },
+                    },
+                }
+            ],
+        }
+        results.append(result)
+
+    return {
+        "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "agent-bom",
+                        "version": report.tool_version,
+                        "informationUri": "https://github.com/agent-bom/agent-bom",
+                        "rules": rules,
+                    }
+                },
+                "results": results,
+            }
+        ],
+    }
+
+
+def export_sarif(report: AIBOMReport, output_path: str) -> None:
+    """Export report as SARIF 2.1.0 JSON file."""
+    data = to_sarif(report)
+    Path(output_path).write_text(json.dumps(data, indent=2))

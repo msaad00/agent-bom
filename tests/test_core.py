@@ -4,10 +4,15 @@ import json
 import tempfile
 from pathlib import Path
 
+import pytest
+from click.testing import CliRunner
+
+from agent_bom.cli import main
 from agent_bom.discovery import parse_mcp_config
 from agent_bom.models import (
     Agent,
     AgentType,
+    AIBOMReport,
     BlastRadius,
     MCPServer,
     Package,
@@ -15,8 +20,8 @@ from agent_bom.models import (
     TransportType,
     Vulnerability,
 )
-from agent_bom.parsers import extract_packages, parse_npm_packages, parse_pip_packages
-
+from agent_bom.output import export_sarif, to_cyclonedx, to_json, to_sarif
+from agent_bom.parsers import parse_npm_packages, parse_pip_packages
 
 # ─── Model Tests ────────────────────────────────────────────────────────────
 
@@ -192,3 +197,154 @@ def test_uvx_package_detection():
     assert len(packages) == 1
     assert packages[0].name == "mcp-server-fetch"
     assert packages[0].ecosystem == "pypi"
+
+
+# ─── Fixtures ────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def sample_report():
+    """Build a minimal AIBOMReport with one vulnerability."""
+    vuln = Vulnerability(
+        id="CVE-2024-1234",
+        summary="Test RCE vulnerability",
+        severity=Severity.HIGH,
+        cvss_score=8.5,
+        fixed_version="1.2.3",
+        cwe_ids=["CWE-79"],
+    )
+    pkg = Package(
+        name="test-pkg",
+        version="1.0.0",
+        ecosystem="npm",
+        vulnerabilities=[vuln],
+    )
+    server = MCPServer(
+        name="test-server",
+        command="npx",
+        args=["-y", "test-pkg"],
+        env={"API_KEY": "secret"},
+        packages=[pkg],
+    )
+    agent = Agent(
+        name="test-agent",
+        agent_type=AgentType.CLAUDE_DESKTOP,
+        config_path="/tmp/test-config.json",
+        mcp_servers=[server],
+    )
+    br = BlastRadius(
+        vulnerability=vuln,
+        package=pkg,
+        affected_servers=[server],
+        affected_agents=[agent],
+        exposed_credentials=["API_KEY"],
+        exposed_tools=[],
+    )
+    br.calculate_risk_score()
+    return AIBOMReport(agents=[agent], blast_radii=[br])
+
+
+@pytest.fixture
+def empty_report():
+    """Report with no agents or vulnerabilities."""
+    return AIBOMReport(agents=[], blast_radii=[])
+
+
+# ─── Version Tests ───────────────────────────────────────────────────────────
+
+
+def test_version_sync():
+    from agent_bom import __version__
+    assert __version__ == "0.3.0"
+
+
+def test_report_version_matches():
+    report = AIBOMReport()
+    from agent_bom import __version__
+    assert report.tool_version == __version__
+
+
+# ─── SARIF Output Tests ──────────────────────────────────────────────────────
+
+
+def test_sarif_schema_structure(sample_report):
+    sarif = to_sarif(sample_report)
+    assert sarif["version"] == "2.1.0"
+    assert "$schema" in sarif
+    assert len(sarif["runs"]) == 1
+    run = sarif["runs"][0]
+    assert run["tool"]["driver"]["name"] == "agent-bom"
+    assert len(run["tool"]["driver"]["rules"]) == 1
+    assert len(run["results"]) == 1
+
+
+def test_sarif_rule_ids_match_results(sample_report):
+    sarif = to_sarif(sample_report)
+    run = sarif["runs"][0]
+    rule_ids = {r["id"] for r in run["tool"]["driver"]["rules"]}
+    result_rule_ids = {r["ruleId"] for r in run["results"]}
+    assert result_rule_ids.issubset(rule_ids)
+
+
+def test_sarif_severity_mapping(sample_report):
+    sarif = to_sarif(sample_report)
+    result = sarif["runs"][0]["results"][0]
+    assert result["level"] == "error"  # HIGH maps to error
+
+
+def test_sarif_empty_report(empty_report):
+    sarif = to_sarif(empty_report)
+    assert sarif["runs"][0]["results"] == []
+    assert sarif["runs"][0]["tool"]["driver"]["rules"] == []
+
+
+def test_sarif_export_file(sample_report, tmp_path):
+    out = tmp_path / "test.sarif"
+    export_sarif(sample_report, str(out))
+    data = json.loads(out.read_text())
+    assert data["version"] == "2.1.0"
+    assert len(data["runs"][0]["results"]) == 1
+
+
+# ─── JSON / CycloneDX Output Tests ───────────────────────────────────────────
+
+
+def test_json_output_structure(sample_report):
+    data = to_json(sample_report)
+    assert "agents" in data
+    assert "blast_radius" in data
+    assert data["summary"]["total_vulnerabilities"] == 1
+    assert data["ai_bom_version"] == sample_report.tool_version
+
+
+def test_cyclonedx_output_structure(sample_report):
+    data = to_cyclonedx(sample_report)
+    assert data["bomFormat"] == "CycloneDX"
+    assert data["specVersion"] == "1.6"
+    assert len(data["components"]) > 0
+    assert "vulnerabilities" in data
+
+
+# ─── CLI Tests ───────────────────────────────────────────────────────────────
+
+
+def test_cli_version():
+    runner = CliRunner()
+    result = runner.invoke(main, ["--version"])
+    assert result.exit_code == 0
+    assert "agent-bom" in result.output
+
+
+def test_cli_scan_empty_dir_exits_0():
+    runner = CliRunner()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = runner.invoke(main, ["scan", "--project", tmpdir])
+        assert result.exit_code == 0
+
+
+def test_cli_help_shows_exit_codes():
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", "--help"])
+    assert "Exit codes" in result.output
+    assert "0" in result.output
+    assert "1" in result.output

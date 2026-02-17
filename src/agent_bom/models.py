@@ -245,7 +245,12 @@ class AIBOMReport:
     agents: list[Agent] = field(default_factory=list)
     blast_radii: list[BlastRadius] = field(default_factory=list)
     generated_at: datetime = field(default_factory=datetime.utcnow)
-    tool_version: str = "0.1.0"
+    tool_version: str = ""
+
+    def __post_init__(self):
+        if not self.tool_version:
+            from agent_bom import __version__
+            self.tool_version = __version__
 
     @property
     def total_agents(self) -> int:

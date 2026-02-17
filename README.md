@@ -75,7 +75,9 @@ pip install -e .
 
 ---
 
-## Supported Clients
+## Supported Platforms
+
+### Auto-discovered (local MCP clients)
 
 | Client | macOS | Linux | Windows |
 |--------|:-----:|:-----:|:-------:|
@@ -84,9 +86,30 @@ pip install -e .
 | Cursor | ✅ | ✅ | ✅ |
 | Windsurf | ✅ | ✅ | ✅ |
 | Cline | ✅ | ✅ | ✅ |
-| Custom / any agent | ✅ | ✅ | ✅ |
 
-Use `--config-dir` or `--inventory` to scan any agent not on this list.
+### Manual scan (any MCP config)
+
+Use `--config-dir` or `--inventory` to scan any agent not listed above — including custom agents, OpenAI-based tools, LangChain apps, or anything that uses MCP servers.
+
+### Cloud platforms (planned)
+
+| Platform | Status | How it would work |
+|----------|:------:|-------------------|
+| Snowflake Cortex | Planned | Query `ACCOUNT_USAGE.QUERY_HISTORY` for `CREATE MCP SERVER` / `CREATE OR REPLACE AGENT` |
+| AWS Bedrock Agents | Planned | List agents via Bedrock API, extract action group configs |
+| Google Vertex AI | Planned | Discover agents + extensions via Vertex API |
+| OpenAI Assistants | Planned | List assistants + tool definitions via OpenAI API |
+
+### Package ecosystems scanned
+
+| Ecosystem | Lock files | AI frameworks covered |
+|-----------|-----------|----------------------|
+| npm | `package-lock.json`, `package.json` | LangChain.js, Vercel AI SDK, etc. |
+| pip | `requirements.txt`, `Pipfile.lock`, `pyproject.toml` | LangChain, LlamaIndex, transformers, openai, mistralai, etc. |
+| Go | `go.sum` | — |
+| Cargo | `Cargo.lock` | — |
+
+AI framework packages (LangChain, transformers, openai, mistralai, etc.) are already scanned for CVEs like any other package. Future releases will add AI-specific risk analysis.
 
 ---
 
@@ -105,18 +128,28 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for CI/CD, Kubernetes, and remote scanning se
 
 ## Roadmap
 
-- [ ] Live MCP server introspection (enumerate tools dynamically)
+**Cloud agent discovery:**
+- [ ] Snowflake Cortex — scan `CREATE MCP SERVER` / `CREATE OR REPLACE AGENT` from query history
+- [ ] AWS Bedrock — discover agents and action group configurations
+- [ ] Google Vertex AI — discover agents and extensions
+- [ ] OpenAI — scan assistant tool definitions
+
+**Scanner capabilities:**
+- [ ] Live MCP server introspection (enumerate tools/resources dynamically)
 - [ ] Docker/container image scanning for MCP servers
+- [ ] AI framework risk tagging (flag LangChain, transformers, etc. with AI-specific context)
+- [ ] MCP registry scanning before installation
+
+**Output & policy:**
 - [ ] SPDX 3.0 output (AI-BOM profile)
 - [ ] Policy engine ("no DB-credential server may have critical vulns")
 - [ ] MITRE ATLAS mapping for AI/ML threats
-- [ ] MCP registry scanning before installation
 
 ---
 
 ## Contributing
 
-Contributions welcome. See [GIT_WORKFLOW.md](GIT_WORKFLOW.md) for branching conventions.
+Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ```bash
 git clone https://github.com/agent-bom/agent-bom.git

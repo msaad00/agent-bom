@@ -39,6 +39,15 @@ jobs:
           safety check --json || true
           safety check
 
+      - name: Scan filesystem with Trivy (Python packages)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          severity: HIGH,CRITICAL
+          exit-code: '0'
+
       - name: Upload Security Reports
         uses: actions/upload-artifact@v4
         if: always()
@@ -193,6 +202,14 @@ jobs:
 
       - name: Smoke test Docker image
         run: docker run --rm agent-bom:test --version
+
+      - name: Scan Docker image for vulnerabilities (Trivy)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: agent-bom:test
+          format: table
+          severity: HIGH,CRITICAL
+          exit-code: '0'
 
   # 6. Build & Package
   build:

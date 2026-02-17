@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-LABEL maintainer="Wagdy Saad <andwgdysaad@gmail.com>"
+LABEL maintainer="Wagdy Saad <crewnycgiving@gmail.com>"
 LABEL description="agent-bom: AI Bill of Materials generator and vulnerability scanner for AI agents and MCP servers"
 LABEL version="0.3.0"
 

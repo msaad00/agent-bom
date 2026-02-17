@@ -784,7 +784,7 @@ rm -rf ~/.cache/agent-bom/nvd/
 ## 📞 Security Contact
 
 **Report security vulnerabilities:**
-- Email: andwgdysaad@gmail.com
+- Email: crewnycgiving@gmail.com
 - GitHub Security Advisory: https://github.com/agent-bom/agent-bom/security/advisories/new
 
 **Please do not open public issues for security vulnerabilities.**

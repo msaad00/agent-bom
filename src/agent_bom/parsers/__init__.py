@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import subprocess
@@ -14,6 +15,7 @@ from rich.console import Console
 from agent_bom.models import MCPServer, Package
 
 console = Console()
+logger = logging.getLogger(__name__)
 
 
 def find_server_directory(server: MCPServer) -> Optional[Path]:
@@ -179,8 +181,8 @@ def parse_pip_packages(directory: Path) -> list[Package]:
                         purl=f"pkg:pypi/{name}@{version}",
                         is_direct=True,
                     ))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Failed to parse pyproject.toml at {pyproject}: {e}")
 
     return packages
 

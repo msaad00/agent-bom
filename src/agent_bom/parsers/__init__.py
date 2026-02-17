@@ -14,7 +14,7 @@ from rich.console import Console
 
 from agent_bom.models import MCPServer, Package
 
-console = Console()
+console = Console(stderr=True)
 logger = logging.getLogger(__name__)
 
 

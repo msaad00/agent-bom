@@ -11,7 +11,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from agent_bom.models import Agent, BlastRadius, MCPServer, Package, Severity, Vulnerability
 
-console = Console()
+console = Console(stderr=True)
 
 OSV_API_URL = "https://api.osv.dev/v1"
 OSV_BATCH_URL = f"{OSV_API_URL}/querybatch"

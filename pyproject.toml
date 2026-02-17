@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agent-bom"
-version = "0.1.0"
+version = "0.3.0"
 description = "Generate AI Bill of Materials (AI-BOM) for AI agents, MCP servers, and their dependencies. Map the full trust chain from agent to vulnerability."
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.10"
 authors = [
-    {name = "Wagdy Saad", email = "andwgdysaad@gmail.com"}
+    {name = "Wagdy Saad", email = "crewnycgiving@gmail.com"}
 ]
 keywords = ["ai-bom", "sbom", "mcp", "security", "ai-agents", "vulnerability", "supply-chain"]
 classifiers = [

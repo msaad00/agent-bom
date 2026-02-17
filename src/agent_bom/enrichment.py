@@ -11,7 +11,7 @@ from rich.console import Console
 
 from agent_bom.models import Vulnerability
 
-console = Console()
+console = Console(stderr=True)
 
 # API Endpoints
 NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"

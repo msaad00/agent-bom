@@ -20,7 +20,7 @@ from agent_bom.security import (
     validate_path,
 )
 
-console = Console()
+console = Console(stderr=True)
 logger = logging.getLogger(__name__)
 
 # Config file locations per platform

@@ -10,7 +10,7 @@ from rich.console import Console
 
 from agent_bom.models import Package
 
-console = Console()
+console = Console(stderr=True)
 
 NPM_REGISTRY = "https://registry.npmjs.org"
 PYPI_API = "https://pypi.org/pypi"

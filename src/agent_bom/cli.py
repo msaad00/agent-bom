@@ -12,15 +12,15 @@ from rich.console import Console
 
 from agent_bom import __version__
 from agent_bom.discovery import discover_all
-from agent_bom.models import AIBOMReport, Severity
+from agent_bom.models import AIBOMReport
 from agent_bom.output import (
     export_cyclonedx,
     export_json,
     print_agent_tree,
     print_blast_radius,
     print_summary,
-    to_json,
     to_cyclonedx,
+    to_json,
 )
 from agent_bom.parsers import extract_packages
 from agent_bom.resolver import resolve_all_versions_sync

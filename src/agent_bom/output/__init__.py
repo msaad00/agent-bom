@@ -253,17 +253,16 @@ def to_json(report: AIBOMReport) -> dict:
 
 
 def export_json(report: AIBOMReport, output_path: str) -> None:
-    """Export report as JSON."""
+    """Export report as JSON file."""
     data = to_json(report)
     Path(output_path).write_text(json.dumps(data, indent=2))
-    console.print(f"\n  [green]✓[/green] JSON report saved to {output_path}")
 
 
 # ─── CycloneDX Output ──────────────────────────────────────────────────────
 
 
-def export_cyclonedx(report: AIBOMReport, output_path: str) -> None:
-    """Export report in CycloneDX 1.6 JSON format."""
+def to_cyclonedx(report: AIBOMReport) -> dict:
+    """Build CycloneDX 1.6 dict from report."""
     components = []
     vulnerabilities_cdx = []
     dependencies = []
@@ -394,5 +393,10 @@ def export_cyclonedx(report: AIBOMReport, output_path: str) -> None:
     if vulnerabilities_cdx:
         cdx["vulnerabilities"] = vulnerabilities_cdx
 
+    return cdx
+
+
+def export_cyclonedx(report: AIBOMReport, output_path: str) -> None:
+    """Export report as CycloneDX 1.6 JSON file."""
+    cdx = to_cyclonedx(report)
     Path(output_path).write_text(json.dumps(cdx, indent=2))
-    console.print(f"\n  [green]✓[/green] CycloneDX BOM saved to {output_path}")

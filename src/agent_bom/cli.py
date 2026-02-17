@@ -19,12 +19,12 @@ from agent_bom.output import (
     print_agent_tree,
     print_blast_radius,
     print_summary,
+    to_cyclonedx,
+    to_json,
 )
 from agent_bom.parsers import extract_packages
 from agent_bom.resolver import resolve_all_versions_sync
 from agent_bom.scanners import scan_agents_sync
-
-console = Console()
 
 BANNER = r"""
    ___                    __     ____  ____  __  ___
@@ -34,6 +34,22 @@ BANNER = r"""
       /___/
   AI Bill of Materials for Agents & MCP Servers
 """
+
+SEVERITY_ORDER = {"critical": 4, "high": 3, "medium": 2, "low": 1, "none": 0}
+
+
+def _make_console(quiet: bool = False, output_format: str = "console") -> Console:
+    """Create a Console that routes output correctly.
+
+    - quiet mode: suppress all output
+    - json/cyclonedx format: route to stderr (keep stdout clean for piping)
+    - console format: normal stdout
+    """
+    if quiet:
+        return Console(stderr=True, quiet=True)
+    if output_format != "console":
+        return Console(stderr=True)
+    return Console()
 
 
 @click.group()
@@ -51,19 +67,25 @@ def main():
 @click.option("--project", "-p", type=click.Path(exists=True), help="Project directory to scan")
 @click.option("--config-dir", type=click.Path(exists=True), help="Custom agent config directory to scan")
 @click.option("--inventory", type=click.Path(exists=True), help="Manual inventory JSON file")
-@click.option("--output", "-o", type=click.Path(), help="Output file path")
+@click.option("--output", "-o", type=str, help="Output file path (use '-' for stdout)")
 @click.option(
     "--format", "-f", "output_format",
-    type=click.Choice(["console", "json", "cyclonedx"]),
+    type=click.Choice(["console", "json", "cyclonedx", "text"]),
     default="console",
-    help="Output format (default: console)",
+    help="Output format",
 )
 @click.option("--no-scan", is_flag=True, help="Skip vulnerability scanning (inventory only)")
 @click.option("--no-tree", is_flag=True, help="Skip dependency tree output")
 @click.option("--transitive", is_flag=True, help="Resolve transitive dependencies for npx/uvx packages")
-@click.option("--max-depth", type=int, default=3, help="Maximum depth for transitive dependency resolution (default: 3)")
+@click.option("--max-depth", type=int, default=3, help="Maximum depth for transitive dependency resolution")
 @click.option("--enrich", is_flag=True, help="Enrich vulnerabilities with NVD, EPSS, and CISA KEV data")
-@click.option("--nvd-api-key", envvar="NVD_API_KEY", help="NVD API key for higher rate limits (or set NVD_API_KEY env var)")
+@click.option("--nvd-api-key", envvar="NVD_API_KEY", help="NVD API key for higher rate limits")
+@click.option("--quiet", "-q", is_flag=True, help="Suppress all output except results (for scripting)")
+@click.option(
+    "--fail-on-severity",
+    type=click.Choice(["critical", "high", "medium", "low"]),
+    help="Exit 1 if vulnerabilities of this severity or higher are found",
+)
 def scan(
     project: Optional[str],
     config_dir: Optional[str],
@@ -76,22 +98,29 @@ def scan(
     max_depth: int,
     enrich: bool,
     nvd_api_key: Optional[str],
+    quiet: bool,
+    fail_on_severity: Optional[str],
 ):
     """Discover agents, extract dependencies, scan for vulnerabilities."""
-    console.print(BANNER, style="bold blue")
+    # Route console output based on flags
+    is_stdout = output == "-"
+    con = _make_console(quiet=quiet or is_stdout, output_format=output_format)
+
+    # Also set the output module's console so print_summary etc. route correctly
+    import agent_bom.output as _out
+    _out.console = con
+
+    con.print(BANNER, style="bold blue")
 
     # Step 1: Discovery
     if inventory:
-        # Load from manual inventory JSON
-        console.print(f"\n[bold blue]📋 Loading inventory from {inventory}...[/bold blue]\n")
+        con.print(f"\n[bold blue]Loading inventory from {inventory}...[/bold blue]\n")
         from agent_bom.models import Agent, AgentType, MCPServer, TransportType
         with open(inventory) as f:
             inventory_data = json.load(f)
 
-        # Parse agents from inventory JSON
         agents = []
         for agent_data in inventory_data.get("agents", []):
-            # Parse MCP servers
             mcp_servers = []
             for server_data in agent_data.get("mcp_servers", []):
                 server = MCPServer(
@@ -106,7 +135,6 @@ def scan(
                 )
                 mcp_servers.append(server)
 
-            # Create agent with proper field names
             agent = Agent(
                 name=agent_data.get("name", "unknown"),
                 agent_type=AgentType(agent_data.get("agent_type", agent_data.get("type", "custom"))),
@@ -116,28 +144,22 @@ def scan(
             )
             agents.append(agent)
 
-        console.print(f"  [green]✓[/green] Loaded {len(agents)} agent(s) from inventory")
+        con.print(f"  [green]✓[/green] Loaded {len(agents)} agent(s) from inventory")
     elif config_dir:
-        # Scan custom config directory
-        console.print(f"\n[bold blue]🔍 Scanning custom config directory: {config_dir}...[/bold blue]\n")
+        con.print(f"\n[bold blue]Scanning config directory: {config_dir}...[/bold blue]\n")
         agents = discover_all(project_dir=config_dir)
     else:
-        # Auto-discovery + optional project
         agents = discover_all(project_dir=project)
 
     if not agents:
-        console.print("\n[yellow]No MCP configurations found. Nothing to scan.[/yellow]")
-        console.print("\nTips:")
-        console.print("  • Make sure you have Claude Desktop, Cursor, or another MCP client configured")
-        console.print("  • Use --project to scan a specific project directory")
-        console.print("  • Use --config-dir to scan a custom agent config directory")
-        console.print("  • Use --inventory to load a manual inventory JSON file")
+        con.print("\n[yellow]No MCP configurations found.[/yellow]")
+        con.print("  Use --project, --config-dir, or --inventory to specify a target.")
         sys.exit(0)
 
     # Step 2: Extract packages
-    console.print("\n[bold blue]📦 Extracting package dependencies...[/bold blue]\n")
+    con.print("\n[bold blue]Extracting package dependencies...[/bold blue]\n")
     if transitive:
-        console.print(f"  [cyan]Transitive dependency resolution enabled (max depth: {max_depth})[/cyan]\n")
+        con.print(f"  [cyan]Transitive resolution enabled (max depth: {max_depth})[/cyan]\n")
 
     total_packages = 0
     for agent in agents:
@@ -145,71 +167,129 @@ def scan(
             server.packages = extract_packages(server, resolve_transitive=transitive, max_depth=max_depth)
             total_packages += len(server.packages)
             if server.packages:
-                # Count direct vs transitive
                 direct_count = sum(1 for p in server.packages if p.is_direct)
                 transitive_count = len(server.packages) - direct_count
                 transitive_str = f" ({transitive_count} transitive)" if transitive_count > 0 else ""
-                console.print(
+                con.print(
                     f"  [green]✓[/green] {server.name}: {len(server.packages)} package(s) "
                     f"({server.packages[0].ecosystem}){transitive_str}"
                 )
             else:
-                console.print(f"  [dim]  {server.name}: no local packages found (may be remote/npx)[/dim]")
+                con.print(f"  [dim]  {server.name}: no local packages found[/dim]")
 
-    console.print(f"\n  [bold]Extracted {total_packages} total packages.[/bold]")
+    con.print(f"\n  [bold]{total_packages} total packages.[/bold]")
 
-    # Step 3: Resolve 'latest' and 'unknown' versions
+    # Step 3: Resolve unknown versions
     all_packages = [p for a in agents for s in a.mcp_servers for p in s.packages]
     unresolved = [p for p in all_packages if p.version in ("latest", "unknown", "")]
     if unresolved:
-        console.print(f"\n[bold blue]🔄 Resolving {len(unresolved)} package version(s) from registries...[/bold blue]\n")
+        con.print(f"\n[bold blue]Resolving {len(unresolved)} package version(s)...[/bold blue]\n")
         resolved = resolve_all_versions_sync(all_packages)
-        console.print(f"\n  [bold]Resolved {resolved}/{len(unresolved)} package version(s).[/bold]")
-
+        con.print(f"\n  [bold]Resolved {resolved}/{len(unresolved)} version(s).[/bold]")
 
     # Step 4: Vulnerability scan
     blast_radii = []
     if not no_scan and total_packages > 0:
         blast_radii = scan_agents_sync(agents, enable_enrichment=enrich, nvd_api_key=nvd_api_key)
+
     # Build report
-    report = AIBOMReport(
-        agents=agents,
-        blast_radii=blast_radii,
-    )
+    report = AIBOMReport(agents=agents, blast_radii=blast_radii)
+
     # Step 5: Output
-    if output_format == "console" and not output:
+    if is_stdout:
+        # Pipe mode: write clean JSON/CycloneDX to stdout
+        if output_format == "cyclonedx":
+            sys.stdout.write(json.dumps(to_cyclonedx(report), indent=2))
+            sys.stdout.write("\n")
+        else:
+            sys.stdout.write(json.dumps(to_json(report), indent=2))
+            sys.stdout.write("\n")
+    elif output_format == "console" and not output:
         print_summary(report)
         if not no_tree:
             print_agent_tree(report)
         print_blast_radius(report)
+    elif output_format == "text" and not output:
+        _print_text(report, blast_radii)
     elif output_format == "json":
         out_path = output or "agent-bom-report.json"
         export_json(report, out_path)
-        print_summary(report)
+        con.print(f"\n  [green]✓[/green] JSON report: {out_path}")
     elif output_format == "cyclonedx":
         out_path = output or "agent-bom.cdx.json"
         export_cyclonedx(report, out_path)
-        print_summary(report)
+        con.print(f"\n  [green]✓[/green] CycloneDX BOM: {out_path}")
+    elif output_format == "text" and output:
+        Path(output).write_text(_format_text(report, blast_radii))
+        con.print(f"\n  [green]✓[/green] Text report: {output}")
     elif output:
-        # Console format but with file output
         if output.endswith(".cdx.json"):
             export_cyclonedx(report, output)
         else:
             export_json(report, output)
-        print_summary(report)
+        con.print(f"\n  [green]✓[/green] Report: {output}")
+
+    # Step 6: Exit code based on severity
+    if fail_on_severity and blast_radii:
+        threshold = SEVERITY_ORDER.get(fail_on_severity, 0)
+        for br in blast_radii:
+            sev = br.vulnerability.severity.value.lower()
+            if SEVERITY_ORDER.get(sev, 0) >= threshold:
+                if not quiet:
+                    con.print(
+                        f"\n  [red]Exiting with code 1: found {sev} vulnerability "
+                        f"({br.vulnerability.id})[/red]"
+                    )
+                sys.exit(1)
+
+
+def _format_text(report: AIBOMReport, blast_radii: list) -> str:
+    """Plain text output for piping to grep/awk."""
+    lines = []
+    lines.append(f"agent-bom {report.tool_version}")
+    lines.append(f"agents={report.total_agents} servers={report.total_servers} "
+                 f"packages={report.total_packages} vulnerabilities={report.total_vulnerabilities}")
+    lines.append("")
+
+    for agent in report.agents:
+        for server in agent.mcp_servers:
+            for pkg in server.packages:
+                lines.append(f"{agent.name}\t{server.name}\t{pkg.ecosystem}\t{pkg.name}\t{pkg.version}")
+
+    if blast_radii:
+        lines.append("")
+        lines.append("VULN_ID\tSEVERITY\tPACKAGE\tFIX\tAGENTS\tCREDENTIALS")
+        for br in blast_radii:
+            v = br.vulnerability
+            lines.append(
+                f"{v.id}\t{v.severity.value}\t{br.package.name}@{br.package.version}\t"
+                f"{v.fixed_version or '-'}\t{len(br.affected_agents)}\t{len(br.exposed_credentials)}"
+            )
+
+    return "\n".join(lines) + "\n"
+
+
+def _print_text(report: AIBOMReport, blast_radii: list) -> None:
+    """Print plain text to stdout."""
+    sys.stdout.write(_format_text(report, blast_radii))
 
 
 @main.command()
 @click.option("--config", "-c", type=click.Path(exists=True), help="Path to specific MCP config file")
 @click.option("--project", "-p", type=click.Path(exists=True), help="Project directory to scan")
 @click.option("--transitive", is_flag=True, help="Resolve transitive dependencies for npx/uvx packages")
-@click.option("--max-depth", type=int, default=3, help="Maximum depth for transitive dependency resolution (default: 3)")
-def inventory(config: Optional[str], project: Optional[str], transitive: bool, max_depth: int):
+@click.option("--max-depth", type=int, default=3, help="Maximum depth for transitive dependency resolution")
+@click.option("--quiet", "-q", is_flag=True, help="Suppress all output except results")
+def inventory(config: Optional[str], project: Optional[str], transitive: bool, max_depth: int, quiet: bool):
     """Show discovered agents and MCP servers (no vulnerability scan)."""
-    console.print(BANNER, style="bold blue")
+    con = _make_console(quiet=quiet)
+
+    import agent_bom.output as _out
+    _out.console = con
+
+    con.print(BANNER, style="bold blue")
 
     if config:
-        # Parse specific config file
         config_path = Path(config)
         try:
             config_data = json.loads(config_path.read_text())
@@ -224,19 +304,18 @@ def inventory(config: Optional[str], project: Optional[str], transitive: bool, m
                 mcp_servers=servers,
             )] if servers else []
         except Exception as e:
-            console.print(f"[red]Error parsing config: {e}[/red]")
+            con.print(f"[red]Error parsing config: {e}[/red]")
             sys.exit(1)
     else:
         agents = discover_all(project_dir=project)
 
     if not agents:
-        console.print("\n[yellow]No MCP configurations found.[/yellow]")
+        con.print("\n[yellow]No MCP configurations found.[/yellow]")
         sys.exit(0)
 
-    # Extract packages
-    console.print("\n[bold blue]📦 Extracting package dependencies...[/bold blue]\n")
+    con.print("\n[bold blue]Extracting package dependencies...[/bold blue]\n")
     if transitive:
-        console.print(f"  [cyan]Transitive dependency resolution enabled (max depth: {max_depth})[/cyan]\n")
+        con.print(f"  [cyan]Transitive resolution enabled (max depth: {max_depth})[/cyan]\n")
 
     for agent in agents:
         for server in agent.mcp_servers:
@@ -250,6 +329,7 @@ def inventory(config: Optional[str], project: Optional[str], transitive: bool, m
 @main.command()
 def where():
     """Show where agent-bom looks for MCP configurations."""
+    console = Console()
     console.print(BANNER, style="bold blue")
     console.print("\n[bold]MCP Client Configuration Locations[/bold]\n")
 

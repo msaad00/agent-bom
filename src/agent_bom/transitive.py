@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Optional
 import re
+from typing import Optional
 
 import httpx
 from rich.console import Console

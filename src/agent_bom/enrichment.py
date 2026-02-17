@@ -227,7 +227,7 @@ async def enrich_vulnerabilities(
             if kev_count:
                 console.print(f"  [red]⚠[/red] Found {kev_count} actively exploited CVE(s) in CISA KEV!")
             else:
-                console.print(f"  [green]✓[/green] No CVEs in CISA KEV catalog")
+                console.print("  [green]✓[/green] No CVEs in CISA KEV catalog")
 
         # Fetch NVD data (one by one, rate limited)
         nvd_tasks = []

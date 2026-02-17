@@ -13,7 +13,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.tree import Tree
 
-from agent_bom.models import AIBOMReport, Agent, BlastRadius, Severity
+from agent_bom.models import Agent, AIBOMReport, BlastRadius, Severity
 
 console = Console()
 
@@ -139,7 +139,7 @@ def print_blast_radius(report: AIBOMReport) -> None:
 
     for br in report.blast_radii[:25]:  # Top 25
         sev_style = severity_colors.get(br.vulnerability.severity, "white")
-        risk_bar = "█" * int(br.risk_score) + "░" * (10 - int(br.risk_score))
+        "█" * int(br.risk_score) + "░" * (10 - int(br.risk_score))
         fix = br.vulnerability.fixed_version or "—"
 
         # EPSS score display

@@ -49,6 +49,8 @@ def main():
 
 @main.command()
 @click.option("--project", "-p", type=click.Path(exists=True), help="Project directory to scan")
+@click.option("--config-dir", type=click.Path(exists=True), help="Custom agent config directory to scan")
+@click.option("--inventory", type=click.Path(exists=True), help="Manual inventory JSON file")
 @click.option("--output", "-o", type=click.Path(), help="Output file path")
 @click.option(
     "--format", "-f", "output_format",
@@ -64,6 +66,8 @@ def main():
 @click.option("--nvd-api-key", envvar="NVD_API_KEY", help="NVD API key for higher rate limits (or set NVD_API_KEY env var)")
 def scan(
     project: Optional[str],
+    config_dir: Optional[str],
+    inventory: Optional[str],
     output: Optional[str],
     output_format: str,
     no_scan: bool,
@@ -77,14 +81,57 @@ def scan(
     console.print(BANNER, style="bold blue")
 
     # Step 1: Discovery
-    agents = discover_all(project_dir=project)
+    if inventory:
+        # Load from manual inventory JSON
+        console.print(f"\n[bold blue]📋 Loading inventory from {inventory}...[/bold blue]\n")
+        from agent_bom.models import Agent, AgentType, MCPServer, TransportType
+        with open(inventory) as f:
+            inventory_data = json.load(f)
+
+        # Parse agents from inventory JSON
+        agents = []
+        for agent_data in inventory_data.get("agents", []):
+            # Parse MCP servers
+            mcp_servers = []
+            for server_data in agent_data.get("mcp_servers", []):
+                server = MCPServer(
+                    name=server_data.get("name", ""),
+                    command=server_data.get("command", ""),
+                    args=server_data.get("args", []),
+                    env=server_data.get("env", {}),
+                    transport=TransportType(server_data.get("transport", "stdio")),
+                    url=server_data.get("url"),
+                    config_path=agent_data.get("config_path"),
+                    working_dir=server_data.get("working_dir"),
+                )
+                mcp_servers.append(server)
+
+            # Create agent with proper field names
+            agent = Agent(
+                name=agent_data.get("name", "unknown"),
+                agent_type=AgentType(agent_data.get("agent_type", agent_data.get("type", "custom"))),
+                config_path=agent_data.get("config_path", inventory),
+                mcp_servers=mcp_servers,
+                version=agent_data.get("version"),
+            )
+            agents.append(agent)
+
+        console.print(f"  [green]✓[/green] Loaded {len(agents)} agent(s) from inventory")
+    elif config_dir:
+        # Scan custom config directory
+        console.print(f"\n[bold blue]🔍 Scanning custom config directory: {config_dir}...[/bold blue]\n")
+        agents = discover_all(project_dir=config_dir)
+    else:
+        # Auto-discovery + optional project
+        agents = discover_all(project_dir=project)
 
     if not agents:
         console.print("\n[yellow]No MCP configurations found. Nothing to scan.[/yellow]")
         console.print("\nTips:")
         console.print("  • Make sure you have Claude Desktop, Cursor, or another MCP client configured")
         console.print("  • Use --project to scan a specific project directory")
-        console.print("  • Use 'agent-bom inventory --config <path>' to scan a specific config file")
+        console.print("  • Use --config-dir to scan a custom agent config directory")
+        console.print("  • Use --inventory to load a manual inventory JSON file")
         sys.exit(0)
 
     # Step 2: Extract packages

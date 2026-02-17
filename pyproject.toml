@@ -29,10 +29,10 @@ classifiers = [
 dependencies = [
     "click>=8.0",
     "rich>=13.0",
-    "httpx>=0.25",
+    "httpx>=0.28.1",  # Requires urllib3>=2.6.3 (CVE-2025-66418, CVE-2025-66471, CVE-2026-21441)
     "pydantic>=2.0",
-    "cyclonedx-python-lib>=7.0",
-    "packageurl-python>=0.15",
+    "cyclonedx-python-lib>=11.6",  # Updated for better CycloneDX 1.6 support
+    "packageurl-python>=0.17",
     "toml>=0.10",
     "pyyaml>=6.0",
 ]
@@ -43,6 +43,9 @@ dev = [
     "pytest-asyncio>=0.21",
     "ruff>=0.4",
     "mypy>=1.0",
+    "pip-audit>=2.10",  # Security dependency scanning
+    "bandit>=1.9",      # Static security analysis
+    "safety>=3.7",      # Vulnerability checking
 ]
 
 [project.scripts]

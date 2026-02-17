@@ -284,16 +284,53 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for complete deployment architectures, scalab
 
 ---
 
-## Supported MCP Clients
+## Supported Configurations
 
-| Client | macOS | Linux | Windows |
-|--------|-------|-------|---------|
-| Claude Desktop | ✅ | ✅ | ✅ |
-| Claude Code | ✅ | ✅ | ✅ |
-| Cursor | ✅ | ✅ | ✅ |
-| Windsurf | ✅ | ✅ | ✅ |
-| Cline | ✅ | ✅ | ✅ |
-| Project configs (.mcp.json) | ✅ | ✅ | ✅ |
+### ✅ We Support ANY MCP Configuration!
+
+**agent-bom is NOT limited to specific clients** - we can scan:
+
+1. **Auto-discovered known clients** (we know their config locations):
+
+   | Client | macOS | Linux | Windows |
+   |--------|-------|-------|---------|
+   | Claude Desktop | ✅ | ✅ | ✅ |
+   | Claude Code | ✅ | ✅ | ✅ |
+   | Cursor | ✅ | ✅ | ✅ |
+   | Windsurf | ✅ | ✅ | ✅ |
+   | Cline | ✅ | ✅ | ✅ |
+
+2. **ANY custom AI agent** (specify config directory):
+   ```bash
+   agent-bom scan --config-dir /path/to/your/agent/config --transitive
+   ```
+
+3. **Project-level configs** (`.mcp.json` files):
+   ```bash
+   agent-bom scan --project /path/to/project --transitive
+   ```
+
+4. **Manual inventory** (define ANY configuration in JSON):
+   ```bash
+   agent-bom scan --inventory custom-agents.json --transitive
+   ```
+
+**Example custom agent:**
+```json
+{
+  "agents": [{
+    "name": "my-custom-agent",
+    "type": "custom",
+    "mcp_servers": [{
+      "name": "my-server",
+      "command": "npx",
+      "args": ["-y", "@my-org/mcp-server"]
+    }]
+  }]
+}
+```
+
+**We scan ANY MCP server configuration, regardless of which AI agent uses it!**
 
 ---
 

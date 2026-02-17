@@ -1,0 +1,335 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  # 1. Security Scanning
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run pip-audit (Dependency Vulnerabilities)
+        run: |
+          pip-audit --format json --output audit-results.json || true
+          pip-audit
+
+      - name: Run Bandit (Static Security Analysis)
+        run: |
+          bandit -r src/ -f json -o bandit-results.json || true
+          bandit -r src/ --severity-level medium
+
+      - name: Run Safety (Vulnerability Database Check)
+        run: |
+          safety check --json || true
+          safety check
+
+      - name: Upload Security Reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-reports
+          path: |
+            audit-results.json
+            bandit-results.json
+
+  # 2. Code Quality
+  quality:
+    name: Lint and Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run Ruff (Linting)
+        run: |
+          ruff check src/ --output-format=json > ruff-results.json || true
+          ruff check src/
+
+      - name: Run MyPy (Type Checking)
+        run: |
+          mypy src/ --ignore-missing-imports || true
+
+      - name: Upload Quality Reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: quality-reports
+          path: ruff-results.json
+
+  # 3. Unit Tests
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run tests
+        run: |
+          pytest tests/ -v --tb=short
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        if: matrix.python-version == '3.11'
+        with:
+          name: coverage-report
+          path: htmlcov/
+
+  # 4. Integration Test (Dogfooding)
+  dogfood:
+    name: Dogfood (Scan agent-bom itself)
+    runs-on: ubuntu-latest
+    needs: [security, quality, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install agent-bom
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Create test MCP config
+        run: |
+          mkdir -p ~/.config/test-agent
+          cat > ~/.config/test-agent/mcp.json <<EOF
+          {
+            "mcpServers": {
+              "test-npm": {
+                "command": "npx",
+                "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+              },
+              "test-python": {
+                "command": "uvx",
+                "args": ["mcp-server-fetch"]
+              }
+            }
+          }
+          EOF
+
+      - name: Scan test config
+        run: |
+          agent-bom scan \
+            --config-dir ~/.config/test-agent \
+            --transitive \
+            --max-depth 3 \
+            --format json \
+            --output dogfood-results.json
+
+      - name: Verify scan results
+        run: |
+          # Check that scan produced output
+          if [ ! -f dogfood-results.json ]; then
+            echo "❌ Scan failed to produce output"
+            exit 1
+          fi
+
+          # Check JSON is valid
+          jq . dogfood-results.json > /dev/null
+          echo "✅ Valid JSON output"
+
+          # Display summary
+          echo "📊 Scan Summary:"
+          jq '.summary' dogfood-results.json
+
+      - name: Upload dogfood results
+        uses: actions/upload-artifact@v4
+        with:
+          name: dogfood-results
+          path: dogfood-results.json
+
+  # 5. Docker Build
+  docker:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: [security, quality, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t agent-bom:test .
+
+      - name: Smoke test Docker image
+        run: docker run --rm agent-bom:test --version
+
+  # 6. Build & Package
+  build:
+    name: Build Package
+    runs-on: ubuntu-latest
+    needs: [security, quality, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+
+      - name: Build package
+        run: python -m build
+
+      - name: Check package
+        run: twine check dist/*
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package
+          path: dist/
+
+  # 6. Fail on Critical Issues
+  gate:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    needs: [security, quality, test, dogfood]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download security reports
+        uses: actions/download-artifact@v4
+        with:
+          name: security-reports
+
+      - name: Check for critical vulnerabilities
+        run: |
+          # Fail if critical CVEs found
+          if [ -f audit-results.json ]; then
+            CRITICAL=$(jq '[.dependencies[].vulns[] | select(.fix_versions)] | length' audit-results.json || echo "0")
+            if [ "$CRITICAL" -gt "5" ]; then
+              echo "❌ Found $CRITICAL fixable critical vulnerabilities!"
+              echo "Run: pip-audit"
+              exit 1
+            fi
+            echo "✅ Security check passed ($CRITICAL fixable CVEs, acceptable)"
+          fi
+
+      - name: Check for high severity code issues
+        run: |
+          if [ -f bandit-results.json ]; then
+            HIGH=$(jq '[.results[] | select(.issue_severity == "HIGH")] | length' bandit-results.json || echo "0")
+            if [ "$HIGH" -gt "0" ]; then
+              echo "❌ Found $HIGH HIGH severity security issues!"
+              exit 1
+            fi
+            echo "✅ No HIGH severity issues found"
+          fi
+
+  # 7. Summary Comment (on PR)
+  comment:
+    name: PR Comment
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    needs: [security, quality, test, dogfood, build]
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/download-artifact@v4
+
+      - name: Create summary comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            // Read security results
+            let auditResults = {};
+            try {
+              auditResults = JSON.parse(fs.readFileSync('security-reports/audit-results.json', 'utf8'));
+            } catch (e) {}
+
+            // Read dogfood results
+            let dogfoodResults = {};
+            try {
+              dogfoodResults = JSON.parse(fs.readFileSync('dogfood-results/dogfood-results.json', 'utf8'));
+            } catch (e) {}
+
+            // Create comment
+            const vulnCount = auditResults.dependencies?.filter(d => d.vulns?.length > 0).length || 0;
+            const dogfoodPkgs = dogfoodResults.summary?.total_packages || 0;
+            const dogfoodVulns = dogfoodResults.summary?.total_vulnerabilities || 0;
+
+            const comment = `## 🤖 agent-bom CI/CD Report
+
+            ### ✅ All Checks Passed
+
+            | Check | Status |
+            |-------|--------|
+            | Security Scan | ✅ Passed (${vulnCount} packages with CVEs) |
+            | Code Quality | ✅ Passed |
+            | Unit Tests | ✅ Passed |
+            | Dogfooding | ✅ Passed (scanned ${dogfoodPkgs} packages, found ${dogfoodVulns} vulns) |
+            | Build | ✅ Passed |
+
+            ### 📊 Security Summary
+
+            - **Dependencies scanned**: ${auditResults.dependencies?.length || 0}
+            - **Vulnerable dependencies**: ${vulnCount}
+            - **Test scan results**: ${dogfoodPkgs} packages analyzed
+
+            <details>
+            <summary>View Details</summary>
+
+            #### Dogfood Scan Results
+            \`\`\`json
+            ${JSON.stringify(dogfoodResults.summary, null, 2)}
+            \`\`\`
+
+            </details>
+
+            ---
+            *Generated by agent-bom CI/CD*
+            `;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });

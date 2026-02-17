@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import platform
 from pathlib import Path
@@ -11,8 +12,16 @@ from typing import Optional
 from rich.console import Console
 
 from agent_bom.models import Agent, AgentType, MCPServer, TransportType
+from agent_bom.security import (
+    SecurityError,
+    sanitize_env_vars,
+    validate_json_file,
+    validate_mcp_server_config,
+    validate_path,
+)
 
 console = Console()
+logger = logging.getLogger(__name__)
 
 # Config file locations per platform
 CONFIG_LOCATIONS: dict[AgentType, dict[str, list[str]]] = {
@@ -71,6 +80,14 @@ def parse_mcp_config(config_data: dict, config_path: str) -> list[MCPServer]:
 
     for name, server_def in mcp_servers.items():
         if not isinstance(server_def, dict):
+            continue
+
+        # ✅ Security: Validate MCP server configuration
+        try:
+            validate_mcp_server_config(server_def)
+        except SecurityError as e:
+            logger.warning(f"Skipping insecure MCP server '{name}': {e}")
+            console.print(f"[yellow]⚠️  Skipped insecure server '{name}': {e}[/yellow]")
             continue
 
         # Determine transport type

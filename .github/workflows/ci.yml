@@ -50,7 +50,7 @@ jobs:
 
   # 2. Code Quality
   quality:
-    name: Code Quality
+    name: Lint and Type Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -104,7 +104,7 @@ jobs:
 
       - name: Run tests
         run: |
-          pytest tests/ -v --tb=short || echo "No tests found (will add later)"
+          pytest tests/ -v --tb=short
 
       - name: Upload coverage
         uses: actions/upload-artifact@v4
@@ -180,7 +180,21 @@ jobs:
           name: dogfood-results
           path: dogfood-results.json
 
-  # 5. Build & Package
+  # 5. Docker Build
+  docker:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: [security, quality, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t agent-bom:test .
+
+      - name: Smoke test Docker image
+        run: docker run --rm agent-bom:test --version
+
+  # 6. Build & Package
   build:
     name: Build Package
     runs-on: ubuntu-latest

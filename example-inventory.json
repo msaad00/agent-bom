@@ -1,0 +1,43 @@
+{
+  "agents": [
+    {
+      "name": "my-custom-agent",
+      "agent_type": "custom",
+      "config_path": "/opt/my-agent/config.json",
+      "mcp_servers": [
+        {
+          "name": "database-server",
+          "command": "npx",
+          "args": ["-y", "@my-org/mcp-database-server"],
+          "env": {
+            "DATABASE_URL": "postgresql://..."
+          },
+          "transport": "stdio"
+        },
+        {
+          "name": "api-server",
+          "command": "uvx",
+          "args": ["my-api-mcp-server"],
+          "env": {
+            "API_KEY": "sk-..."
+          },
+          "transport": "stdio"
+        }
+      ]
+    },
+    {
+      "name": "experimental-agent",
+      "agent_type": "custom",
+      "config_path": "/home/dev/my-agent/config.json",
+      "mcp_servers": [
+        {
+          "name": "test-server",
+          "command": "python",
+          "args": ["-m", "my_test_server"],
+          "env": {},
+          "transport": "stdio"
+        }
+      ]
+    }
+  ]
+}

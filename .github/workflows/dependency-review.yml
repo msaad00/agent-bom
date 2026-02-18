@@ -20,4 +20,3 @@ jobs:
         with:
           fail-on-severity: high
           comment-summary-in-pr: always
-          config-file: .github/dependency-review-config.yml

@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-bom.github.io/schemas/inventory/v1",
+  "title": "agent-bom Inventory Schema v1",
+  "description": "Standard format for submitting AI agent and MCP server inventory to agent-bom for vulnerability scanning, blast radius analysis, and supply chain reporting.",
+
+  "$defs": {
+
+    "Tool": {
+      "title": "MCP Tool",
+      "description": "A tool exposed by an MCP server. Needed for blast radius: maps a vulnerability to the attacker capabilities it unlocks.",
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "description": "Tool name shorthand"
+        },
+        {
+          "type": "object",
+          "required": ["name"],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Tool name as advertised by the MCP server"
+            },
+            "description": {
+              "type": "string",
+              "description": "What this tool does"
+            },
+            "input_schema": {
+              "type": "object",
+              "description": "JSON Schema describing the tool's parameters"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+
+    "Package": {
+      "title": "Package",
+      "description": "A software package. name + version + ecosystem are the minimum needed for OSV.dev vulnerability lookup.",
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^.+@.+$",
+          "description": "Shorthand: 'name@version' (ecosystem inferred from server command)"
+        },
+        {
+          "type": "object",
+          "required": ["name", "version"],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Package name as it appears in the registry"
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Exact version string (e.g. '4.18.2'). Use 'unknown' only if version is truly unavailable — scanning will be skipped."
+            },
+            "ecosystem": {
+              "type": "string",
+              "enum": ["npm", "pypi", "go", "cargo", "maven", "nuget", "hex", "pub", "unknown"],
+              "description": "Package registry. If omitted, agent-bom infers from server command (npx→npm, uvx→pypi, etc.)"
+            },
+            "purl": {
+              "type": "string",
+              "description": "Package URL (purl) for unambiguous identification. If provided, overrides name/version/ecosystem for scanning."
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+
+    "MCPServer": {
+      "title": "MCP Server",
+      "description": "An MCP server definition. The packages[] array drives vulnerability scanning. env drives credential detection. tools drives blast radius.",
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Server identifier (matches 'name' in mcpServers config blocks)"
+        },
+
+        "command": {
+          "type": "string",
+          "description": "Local: executable command (npx, uvx, python, node, docker). Not needed for cloud/API-managed servers."
+        },
+        "args": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Arguments to the command. For npx/uvx, first arg is typically the package name agent-bom extracts automatically."
+        },
+        "transport": {
+          "type": "string",
+          "enum": ["stdio", "sse", "streamable-http"],
+          "default": "stdio",
+          "description": "Connection transport. 'stdio' for local process, 'sse'/'streamable-http' for remote."
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Server endpoint URL (for SSE or streamable-http transport)"
+        },
+        "working_dir": {
+          "type": "string",
+          "description": "Working directory for the server process. Used to locate lock files (package-lock.json, requirements.txt, go.sum, Cargo.lock) when packages[] is not provided."
+        },
+
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Environment variables passed to the server. Keys matching credential patterns (API_KEY, TOKEN, PASSWORD, SECRET, etc.) are flagged as exposed credentials in blast radius analysis. Values are never logged or transmitted — only key names are used."
+        },
+
+        "tools": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Tool" },
+          "description": "Tools this server exposes. Used for blast radius: 'if this package is compromised, what tools can an attacker reach?' If empty, blast radius reports tool count as unknown."
+        },
+
+        "packages": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Package" },
+          "description": "Software packages this server depends on. These are what get scanned for CVEs. If empty and command/working_dir are set, agent-bom discovers packages from local lock files automatically."
+        },
+
+        "config_path": {
+          "type": "string",
+          "description": "Where this server's config lives. Can be a file path, Snowflake object path, AWS ARN, etc. Used in SARIF output to point findings to the right location."
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "Agent": {
+      "title": "Agent",
+      "description": "An AI agent that connects to MCP servers. All vulnerability findings are traced back to the agent level for blast radius reporting.",
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Agent identifier (human-readable, used in reports)"
+        },
+
+        "agent_type": {
+          "type": "string",
+          "enum": [
+            "claude-desktop",
+            "claude-code",
+            "cursor",
+            "windsurf",
+            "cline",
+            "custom"
+          ],
+          "default": "custom",
+          "description": "Which AI client this agent runs in. 'custom' for anything not listed."
+        },
+
+        "version": {
+          "type": "string",
+          "description": "Agent version string (e.g. '2.0', 'v1.3.1')"
+        },
+
+        "config_path": {
+          "type": "string",
+          "description": "Where this agent's config lives. File path for local agents, ARN/URI/DB path for cloud. Used in SARIF output for finding locations."
+        },
+
+        "source": {
+          "type": "string",
+          "description": "Where this inventory entry came from (e.g. 'local', 'snowflake', 'aws-bedrock', 'gcp-vertex', 'openai'). Used for traceability in reports."
+        },
+
+        "mcp_servers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/MCPServer" },
+          "description": "MCP servers this agent connects to. Each server's packages are scanned independently, then correlated back to this agent for blast radius."
+        }
+      },
+      "additionalProperties": false
+    }
+
+  },
+
+  "type": "object",
+  "required": ["agents"],
+  "properties": {
+
+    "schema_version": {
+      "type": "string",
+      "const": "1",
+      "description": "agent-bom inventory schema version. Always '1' for this schema."
+    },
+
+    "source": {
+      "type": "string",
+      "description": "Where this entire inventory file came from (e.g. 'snowflake-cortex', 'aws-bedrock', 'gcp-vertex'). Applied as default to all agents; overridden by per-agent source."
+    },
+
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when this inventory was generated"
+    },
+
+    "agents": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/Agent" },
+      "description": "List of agents to scan"
+    }
+  },
+  "additionalProperties": false
+}

@@ -123,7 +123,7 @@ def scan(
     # Step 1: Discovery
     if inventory:
         con.print(f"\n[bold blue]Loading inventory from {inventory}...[/bold blue]\n")
-        from agent_bom.models import Agent, AgentType, MCPServer, TransportType
+        from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
         with open(inventory) as f:
             inventory_data = json.load(f)
 
@@ -131,6 +131,36 @@ def scan(
         for agent_data in inventory_data.get("agents", []):
             mcp_servers = []
             for server_data in agent_data.get("mcp_servers", []):
+                # Parse pre-populated tools (e.g. from Snowflake/cloud inventory)
+                tools = []
+                for tool_data in server_data.get("tools", []):
+                    if isinstance(tool_data, str):
+                        tools.append(MCPTool(name=tool_data, description=""))
+                    elif isinstance(tool_data, dict):
+                        tools.append(MCPTool(
+                            name=tool_data.get("name", ""),
+                            description=tool_data.get("description", ""),
+                            input_schema=tool_data.get("input_schema"),
+                        ))
+
+                # Parse pre-known packages (e.g. from cloud asset scan)
+                packages = []
+                for pkg_data in server_data.get("packages", []):
+                    if isinstance(pkg_data, str):
+                        # Accept "name@version" shorthand
+                        if "@" in pkg_data:
+                            name, version = pkg_data.rsplit("@", 1)
+                        else:
+                            name, version = pkg_data, "unknown"
+                        packages.append(Package(name=name, version=version, ecosystem="unknown"))
+                    elif isinstance(pkg_data, dict):
+                        packages.append(Package(
+                            name=pkg_data.get("name", ""),
+                            version=pkg_data.get("version", "unknown"),
+                            ecosystem=pkg_data.get("ecosystem", "unknown"),
+                            purl=pkg_data.get("purl"),
+                        ))
+
                 server = MCPServer(
                     name=server_data.get("name", ""),
                     command=server_data.get("command", ""),
@@ -140,6 +170,8 @@ def scan(
                     url=server_data.get("url"),
                     config_path=agent_data.get("config_path"),
                     working_dir=server_data.get("working_dir"),
+                    tools=tools,
+                    packages=packages,
                 )
                 mcp_servers.append(server)
 
@@ -149,6 +181,7 @@ def scan(
                 config_path=agent_data.get("config_path", inventory),
                 mcp_servers=mcp_servers,
                 version=agent_data.get("version"),
+                source=agent_data.get("source", inventory_data.get("source")),
             )
             agents.append(agent)
 
@@ -172,15 +205,24 @@ def scan(
     total_packages = 0
     for agent in agents:
         for server in agent.mcp_servers:
-            server.packages = extract_packages(server, resolve_transitive=transitive, max_depth=max_depth)
+            # Keep pre-populated packages from inventory, merge with discovered ones
+            pre_populated = list(server.packages)
+            discovered = extract_packages(server, resolve_transitive=transitive, max_depth=max_depth)
+
+            # Merge: discovered packages + any pre-populated that weren't already found
+            discovered_names = {(p.name, p.ecosystem) for p in discovered}
+            merged = discovered + [p for p in pre_populated if (p.name, p.ecosystem) not in discovered_names]
+            server.packages = merged
+
             total_packages += len(server.packages)
             if server.packages:
                 direct_count = sum(1 for p in server.packages if p.is_direct)
                 transitive_count = len(server.packages) - direct_count
                 transitive_str = f" ({transitive_count} transitive)" if transitive_count > 0 else ""
+                pre_str = f" ({len(pre_populated)} from inventory)" if pre_populated else ""
                 con.print(
                     f"  [green]✓[/green] {server.name}: {len(server.packages)} package(s) "
-                    f"({server.packages[0].ecosystem}){transitive_str}"
+                    f"({server.packages[0].ecosystem}){transitive_str}{pre_str}"
                 )
             else:
                 con.print(f"  [dim]  {server.name}: no local packages found[/dim]")
@@ -339,6 +381,70 @@ def inventory(config: Optional[str], project: Optional[str], transitive: bool, m
     report = AIBOMReport(agents=agents)
     print_summary(report)
     print_agent_tree(report)
+
+
+@main.command()
+@click.argument("inventory_file", type=click.Path(exists=True))
+def validate(inventory_file: str):
+    """Validate an inventory file against the agent-bom schema.
+
+    \b
+    Exit codes:
+      0  Valid — inventory matches the schema
+      1  Invalid — schema violations found
+    """
+    console = Console()
+    console.print(BANNER, style="bold blue")
+
+    try:
+        import jsonschema
+    except ImportError:
+        console.print("[red]jsonschema not installed. Run: pip install jsonschema[/red]")
+        sys.exit(1)
+
+    schema_path = Path(__file__).parent.parent.parent / "schemas" / "inventory.schema.json"
+    if not schema_path.exists():
+        # Fallback: look relative to installed package
+        import importlib.resources
+        try:
+            schema_path = Path(str(importlib.resources.files("agent_bom"))) / ".." / ".." / "schemas" / "inventory.schema.json"
+        except Exception:
+            schema_path = None
+
+    if not schema_path or not schema_path.exists():
+        console.print("[red]Schema file not found. Run from the agent-bom repo root.[/red]")
+        sys.exit(1)
+
+    with open(schema_path) as f:
+        schema = json.load(f)
+
+    with open(inventory_file) as f:
+        try:
+            data = json.load(f)
+        except json.JSONDecodeError as e:
+            console.print(f"[red]JSON parse error: {e}[/red]")
+            sys.exit(1)
+
+    validator = jsonschema.Draft202012Validator(schema)
+    errors = sorted(validator.iter_errors(data), key=lambda e: list(e.path))
+
+    if not errors:
+        agents = data.get("agents", [])
+        total_servers = sum(len(a.get("mcp_servers", [])) for a in agents)
+        total_packages = sum(
+            len(s.get("packages", []))
+            for a in agents
+            for s in a.get("mcp_servers", [])
+        )
+        console.print(f"\n  [green]✓ Valid[/green] — {len(agents)} agent(s), {total_servers} server(s), {total_packages} package(s)")
+        console.print(f"\n  [dim]Scan with:[/dim] agent-bom scan --inventory {inventory_file}")
+    else:
+        console.print(f"\n  [red]✗ Invalid — {len(errors)} error(s):[/red]\n")
+        for err in errors:
+            path = " → ".join(str(p) for p in err.path) or "(root)"
+            console.print(f"  [red]•[/red] [bold]{path}[/bold]: {err.message}")
+        console.print()
+        sys.exit(1)
 
 
 @main.command()

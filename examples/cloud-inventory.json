@@ -1,0 +1,55 @@
+{
+  "agents": [
+    {
+      "name": "bedrock-agent-prod",
+      "agent_type": "custom",
+      "config_path": "arn:aws:bedrock:us-east-1:123456789:agent/ABC123",
+      "version": "2.0",
+      "mcp_servers": [
+        {
+          "name": "knowledge-base-server",
+          "command": "node",
+          "args": ["dist/kb-server.js"],
+          "env": {
+            "AWS_REGION": "us-east-1",
+            "KB_ID": "KB-XYZ",
+            "AWS_SECRET_ACCESS_KEY": "***"
+          },
+          "transport": "stdio",
+          "working_dir": "/opt/mcp-servers/kb-server",
+          "tools": [
+            {"name": "retrieve_documents", "description": "Query knowledge base for relevant documents"},
+            {"name": "summarize", "description": "Summarize retrieved content"}
+          ],
+          "packages": [
+            {"name": "@aws-sdk/client-bedrock-runtime", "version": "3.500.0", "ecosystem": "npm"},
+            {"name": "express", "version": "4.18.2", "ecosystem": "npm"},
+            {"name": "langchain", "version": "0.1.0", "ecosystem": "npm"}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ec2-ml-pipeline",
+      "agent_type": "custom",
+      "config_path": "i-0abc123def456 (us-east-1)",
+      "mcp_servers": [
+        {
+          "name": "model-server",
+          "command": "uvx",
+          "args": ["ml-model-mcp"],
+          "env": {
+            "MODEL_API_KEY": "***",
+            "S3_BUCKET": "ml-artifacts"
+          },
+          "transport": "stdio",
+          "packages": [
+            "transformers@4.36.0",
+            "torch@2.1.2",
+            "fastapi@0.109.0"
+          ]
+        }
+      ]
+    }
+  ]
+}

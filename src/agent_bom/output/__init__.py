@@ -125,9 +125,10 @@ def print_blast_radius(report: AIBOMReport) -> None:
     table.add_column("Vuln ID", width=20)
     table.add_column("Package", width=25)
     table.add_column("Severity", width=10)
-    table.add_column("Agents", width=8, justify="center")
-    table.add_column("Servers", width=8, justify="center")
-    table.add_column("Creds", width=8, justify="center")
+    table.add_column("EPSS", width=6, justify="center")
+    table.add_column("KEV", width=4, justify="center")
+    table.add_column("Agents", width=7, justify="center")
+    table.add_column("Creds", width=6, justify="center")
     table.add_column("Fix", width=15)
 
     severity_colors = {
@@ -139,7 +140,6 @@ def print_blast_radius(report: AIBOMReport) -> None:
 
     for br in report.blast_radii[:25]:  # Top 25
         sev_style = severity_colors.get(br.vulnerability.severity, "white")
-        "█" * int(br.risk_score) + "░" * (10 - int(br.risk_score))
         fix = br.vulnerability.fixed_version or "—"
 
         # EPSS score display

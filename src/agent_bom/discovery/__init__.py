@@ -54,6 +54,33 @@ CONFIG_LOCATIONS: dict[AgentType, dict[str, list[str]]] = {
         "Linux": ["~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json"],
         "Windows": ["~/AppData/Roaming/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json"],
     },
+    AgentType.VSCODE_COPILOT: {
+        # VS Code Copilot Agent mode global MCP config (in addition to workspace .vscode/mcp.json)
+        "Darwin": ["~/Library/Application Support/Code/User/mcp.json"],
+        "Linux": ["~/.config/Code/User/mcp.json"],
+        "Windows": ["~/AppData/Roaming/Code/User/mcp.json"],
+    },
+    AgentType.CORTEX_CODE: {
+        # Snowflake Cortex Code CLI — cortex mcp add writes to this file
+        "Darwin": ["~/.snowflake/cortex/mcp.json"],
+        "Linux": ["~/.snowflake/cortex/mcp.json"],
+        "Windows": ["~/.snowflake/cortex/mcp.json"],
+    },
+    AgentType.CONTINUE: {
+        # Continue.dev VS Code extension
+        "Darwin": ["~/.continue/config.json",
+                   "~/Library/Application Support/Code/User/globalStorage/continue.continue/config.json"],
+        "Linux": ["~/.continue/config.json",
+                  "~/.config/Code/User/globalStorage/continue.continue/config.json"],
+        "Windows": ["~/.continue/config.json",
+                    "~/AppData/Roaming/Code/User/globalStorage/continue.continue/config.json"],
+    },
+    AgentType.ZED: {
+        # Zed editor MCP config
+        "Darwin": ["~/.config/zed/settings.json"],
+        "Linux": ["~/.config/zed/settings.json"],
+        "Windows": ["~/AppData/Roaming/Zed/settings.json"],
+    },
 }
 
 # Project-level config files to search for
@@ -74,9 +101,36 @@ def expand_path(path_str: str) -> Path:
 
 
 def parse_mcp_config(config_data: dict, config_path: str) -> list[MCPServer]:
-    """Parse MCP server definitions from a config file."""
+    """Parse MCP server definitions from a config file.
+
+    Supports multiple config formats:
+    - Standard (Claude Desktop, Cursor, Windsurf, Cortex Code):
+        {"mcpServers": {"name": {"command": ..., "args": [...]}}}
+    - Continue.dev (array format):
+        {"mcpServers": [{"name": "...", "command": ..., "args": [...]}]}
+    - Zed editor:
+        {"context_servers": {"name": {"command": {"path": ..., "args": [...]}}}}
+    """
     servers = []
-    mcp_servers = config_data.get("mcpServers", config_data.get("servers", {}))
+    raw = config_data.get("mcpServers", config_data.get("servers", {}))
+
+    # Normalize: Continue.dev uses an array instead of an object
+    if isinstance(raw, list):
+        mcp_servers = {item["name"]: item for item in raw if isinstance(item, dict) and "name" in item}
+    else:
+        mcp_servers = raw
+
+    # Zed uses "context_servers" with a nested "command" object
+    if not mcp_servers and "context_servers" in config_data:
+        for name, ctx in config_data["context_servers"].items():
+            if isinstance(ctx, dict) and "command" in ctx:
+                cmd_obj = ctx["command"]
+                if isinstance(cmd_obj, dict):
+                    mcp_servers[name] = {
+                        "command": cmd_obj.get("path", ""),
+                        "args": cmd_obj.get("args", []),
+                        "env": ctx.get("env", {}),
+                    }
 
     for name, server_def in mcp_servers.items():
         if not isinstance(server_def, dict):

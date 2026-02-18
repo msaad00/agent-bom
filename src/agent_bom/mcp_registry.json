@@ -1,0 +1,175 @@
+{
+  "_comment": "Known MCP server → package mappings. Updated weekly by .github/workflows/mcp-registry-sync.yml",
+  "_updated": "2026-02-18",
+  "_source": "https://github.com/modelcontextprotocol/servers",
+  "servers": {
+    "@modelcontextprotocol/server-filesystem": {
+      "ecosystem": "npm",
+      "package": "@modelcontextprotocol/server-filesystem",
+      "description": "Filesystem operations (read, write, list)",
+      "command_patterns": ["server-filesystem"],
+      "category": "filesystem"
+    },
+    "@modelcontextprotocol/server-postgres": {
+      "ecosystem": "npm",
+      "package": "@modelcontextprotocol/server-postgres",
+      "description": "PostgreSQL database access",
+      "command_patterns": ["server-postgres"],
+      "category": "database"
+    },
+    "@modelcontextprotocol/server-sqlite": {
+      "ecosystem": "npm",
+      "package": "@modelcontextprotocol/server-sqlite",
+      "description": "SQLite database access",
+      "command_patterns": ["server-sqlite"],
+      "category": "database"
+    },
+    "@modelcontextprotocol/server-github": {
+      "ecosystem": "npm",
+      "package": "@modelcontextprotocol/server-github",
+      "description": "GitHub repository and issue management",
+      "command_patterns": ["server-github"],
+      "category": "developer-tools"
+    },
+    "@modelcontextprotocol/server-gitlab": {
+      "ecosystem": "npm",
+      "package": "@modelcontextprotocol/server-gitlab",
+      "description": "GitLab repository management",
+      "command_patterns": ["server-gitlab"],
+      "category": "developer-tools"
+    },
+    "@modelcontextprotocol/server-slack": {
+      "ecosystem": "npm",
+      "package": "@modelcontextprotocol/server-slack",
+      "description": "Slack messaging and channel management",
+      "command_patterns": ["server-slack"],
+      "category": "communication"
+    },
+    "@modelcontextprotocol/server-brave-search": {
+      "ecosystem": "npm",
+      "package": "@modelcontextprotocol/server-brave-search",
+      "description": "Brave Search API integration",
+      "command_patterns": ["server-brave-search"],
+      "category": "search"
+    },
+    "@modelcontextprotocol/server-fetch": {
+      "ecosystem": "npm",
+      "package": "@modelcontextprotocol/server-fetch",
+      "description": "HTTP fetch for web content retrieval",
+      "command_patterns": ["server-fetch"],
+      "category": "web"
+    },
+    "@modelcontextprotocol/server-puppeteer": {
+      "ecosystem": "npm",
+      "package": "@modelcontextprotocol/server-puppeteer",
+      "description": "Browser automation via Puppeteer",
+      "command_patterns": ["server-puppeteer"],
+      "category": "browser"
+    },
+    "@modelcontextprotocol/server-memory": {
+      "ecosystem": "npm",
+      "package": "@modelcontextprotocol/server-memory",
+      "description": "Persistent memory / knowledge graph",
+      "command_patterns": ["server-memory"],
+      "category": "memory"
+    },
+    "@modelcontextprotocol/server-sequential-thinking": {
+      "ecosystem": "npm",
+      "package": "@modelcontextprotocol/server-sequential-thinking",
+      "description": "Sequential reasoning tool",
+      "command_patterns": ["server-sequential-thinking"],
+      "category": "reasoning"
+    },
+    "@modelcontextprotocol/server-gdrive": {
+      "ecosystem": "npm",
+      "package": "@modelcontextprotocol/server-gdrive",
+      "description": "Google Drive file access",
+      "command_patterns": ["server-gdrive"],
+      "category": "cloud-storage"
+    },
+    "@modelcontextprotocol/server-google-maps": {
+      "ecosystem": "npm",
+      "package": "@modelcontextprotocol/server-google-maps",
+      "description": "Google Maps geocoding and directions",
+      "command_patterns": ["server-google-maps"],
+      "category": "location"
+    },
+    "@modelcontextprotocol/server-aws-kb-retrieval": {
+      "ecosystem": "npm",
+      "package": "@modelcontextprotocol/server-aws-kb-retrieval",
+      "description": "AWS Knowledge Base retrieval (Bedrock)",
+      "command_patterns": ["server-aws-kb-retrieval"],
+      "category": "cloud-ai"
+    },
+    "@modelcontextprotocol/server-sentry": {
+      "ecosystem": "npm",
+      "package": "@modelcontextprotocol/server-sentry",
+      "description": "Sentry error tracking integration",
+      "command_patterns": ["server-sentry"],
+      "category": "observability"
+    },
+    "@modelcontextprotocol/server-everything": {
+      "ecosystem": "npm",
+      "package": "@modelcontextprotocol/server-everything",
+      "description": "Reference/test MCP server with all features",
+      "command_patterns": ["server-everything"],
+      "category": "testing"
+    },
+    "mcp-server-git": {
+      "ecosystem": "pypi",
+      "package": "mcp-server-git",
+      "description": "Git operations via Python MCP server",
+      "command_patterns": ["mcp-server-git"],
+      "category": "developer-tools"
+    },
+    "mcp-server-time": {
+      "ecosystem": "pypi",
+      "package": "mcp-server-time",
+      "description": "Time and timezone utilities",
+      "command_patterns": ["mcp-server-time"],
+      "category": "utilities"
+    },
+    "mcp-server-fetch": {
+      "ecosystem": "pypi",
+      "package": "mcp-server-fetch",
+      "description": "HTTP fetch (Python implementation)",
+      "command_patterns": ["mcp-server-fetch"],
+      "category": "web"
+    },
+    "mcp-server-kubernetes": {
+      "ecosystem": "npm",
+      "package": "mcp-server-kubernetes",
+      "description": "Kubernetes cluster management",
+      "command_patterns": ["mcp-server-kubernetes", "kubernetes"],
+      "category": "infrastructure"
+    },
+    "mcp-server-docker": {
+      "ecosystem": "npm",
+      "package": "mcp-server-docker",
+      "description": "Docker container management",
+      "command_patterns": ["mcp-server-docker", "docker"],
+      "category": "infrastructure"
+    },
+    "@anthropic-ai/mcp-server-filesystem": {
+      "ecosystem": "npm",
+      "package": "@anthropic-ai/mcp-server-filesystem",
+      "description": "Anthropic filesystem MCP server",
+      "command_patterns": ["anthropic-ai/mcp-server-filesystem"],
+      "category": "filesystem"
+    },
+    "mcp-atlassian": {
+      "ecosystem": "pypi",
+      "package": "mcp-atlassian",
+      "description": "Atlassian Jira and Confluence integration",
+      "command_patterns": ["mcp-atlassian"],
+      "category": "project-management"
+    },
+    "mcp-server-linear": {
+      "ecosystem": "npm",
+      "package": "mcp-server-linear",
+      "description": "Linear issue tracking integration",
+      "command_patterns": ["mcp-server-linear", "linear"],
+      "category": "project-management"
+    }
+  }
+}

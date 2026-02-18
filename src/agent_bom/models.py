@@ -23,6 +23,9 @@ class AgentType(str, Enum):
     WINDSURF = "windsurf"
     CLINE = "cline"
     VSCODE_COPILOT = "vscode-copilot"
+    CORTEX_CODE = "cortex-code"       # Snowflake Cortex Code CLI
+    CONTINUE = "continue"             # Continue.dev
+    ZED = "zed"                       # Zed editor
     CUSTOM = "custom"
 
 

@@ -14,6 +14,51 @@ from rich.console import Console
 
 from agent_bom.models import MCPServer, Package
 
+# Path to bundled MCP registry (parsers/ is a subdir of agent_bom/)
+_REGISTRY_PATH = Path(__file__).parent.parent / "mcp_registry.json"
+_registry_cache: Optional[dict] = None
+
+
+def _load_registry() -> dict:
+    """Load the bundled MCP server registry (cached)."""
+    global _registry_cache
+    if _registry_cache is None:
+        try:
+            _registry_cache = json.loads(_REGISTRY_PATH.read_text()).get("servers", {})
+        except Exception:
+            _registry_cache = {}
+    return _registry_cache
+
+
+def lookup_mcp_registry(server: MCPServer) -> list[Package]:
+    """Look up an MCP server's packages using the bundled registry.
+
+    Matches on:
+    1. Exact npm package name in args (e.g. @modelcontextprotocol/server-filesystem)
+    2. command_patterns substring match against server name or args
+    """
+    registry = _load_registry()
+    if not registry:
+        return []
+
+    candidates: list[str] = [server.name] + server.args
+
+    for pkg_name, entry in registry.items():
+        patterns = entry.get("command_patterns", [pkg_name])
+        for candidate in candidates:
+            for pattern in patterns:
+                if pattern in candidate or candidate in pkg_name:
+                    ecosystem = entry.get("ecosystem", "npm")
+                    return [Package(
+                        name=entry["package"],
+                        version="latest",
+                        ecosystem=ecosystem,
+                        purl=f"pkg:{ecosystem}/{entry['package']}@latest",
+                        is_direct=True,
+                        resolved_from_registry=True,
+                    )]
+    return []
+
 console = Console(stderr=True)
 logger = logging.getLogger(__name__)
 
@@ -341,6 +386,16 @@ def extract_packages(server: MCPServer, resolve_transitive: bool = False, max_de
 
         if transitive_deps:
             console.print(f"  [green]✓[/green] Found {len(transitive_deps)} transitive dependencies")
+
+    # Registry fallback: if we still have no packages, look up by server name/args
+    if not packages:
+        registry_packages = lookup_mcp_registry(server)
+        if registry_packages:
+            console.print(
+                f"  [dim cyan]→ {server.name}: resolved from MCP registry "
+                f"({registry_packages[0].name})[/dim cyan]"
+            )
+        packages.extend(registry_packages)
 
     # Deduplicate
     seen = set()

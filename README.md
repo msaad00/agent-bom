@@ -205,10 +205,11 @@ agent-bom validate agents.json   # exits 0 if valid, 1 with clear errors if not
 
 ## Features
 
-- **Auto-discovery** — Claude Desktop, Claude Code, Cursor, Windsurf, Cline, and project-level `.mcp.json`
+- **Auto-discovery** — Claude Desktop, Claude Code, Cursor, Windsurf, Cline, VS Code Copilot, Snowflake Cortex Code, Continue.dev, Zed, and project-level `.mcp.json`
 - **Manual inventory** — scan any agent platform via `--inventory` JSON; validate with `agent-bom validate`
 - **Multi-ecosystem** — npm, pip, Go, Cargo (lock files + manifest files)
 - **npx / uvx detection** — extracts package names from MCP server command definitions
+- **MCP registry lookup** — resolves packages for 25+ known MCP servers by name when no lock file is present (e.g. `@modelcontextprotocol/server-filesystem`, `mcp-server-git`); updated weekly via automated workflow
 - **Transitive resolution** — recursively resolves nested deps via npm and PyPI registries with proper semver/PEP 440 range handling (`^`, `~`, `>=`, specifier sets)
 - **Vulnerability scanning** — queries [OSV.dev](https://osv.dev) across all ecosystems; GHSA/RUSTSEC aliases automatically mapped to CVE IDs for enrichment
 - **CVSS scoring** — computes numeric CVSS 3.x base scores from vector strings (e.g. `CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H → 9.8`), not just labels
@@ -237,6 +238,10 @@ agent-bom validate agents.json   # exits 0 if valid, 1 with clear errors if not
 | Cursor | ✅ | ✅ | ✅ |
 | Windsurf | ✅ | ✅ | ✅ |
 | Cline | ✅ | ✅ | ✅ |
+| VS Code Copilot (Agent mode) | ✅ | ✅ | ✅ |
+| Snowflake Cortex Code CLI | ✅ | ✅ | ✅ |
+| Continue.dev | ✅ | ✅ | ✅ |
+| Zed | ✅ | ✅ | ✅ |
 
 ### Manual scan (any platform)
 
@@ -291,9 +296,11 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for CI/CD, Kubernetes, and remote scanning se
 - [x] Proper semver / PEP 440 range resolution for transitive dependency scanning
 - [x] All CVEs enriched via NVD with proper rate limiting (not capped at 10)
 - [x] Prioritized remediation plan grouped by blast radius impact
+- [x] MCP registry lookup — 25+ known MCP servers resolved to packages by name; weekly automated sync
+- [ ] SBOM ingestion — accept Syft/Grype CycloneDX output as input (`--sbom`)
+- [ ] Docker/container image scanning (`--image`)
+- [ ] Kubernetes pod discovery (`--k8s`)
 - [ ] Live MCP server introspection (enumerate tools/resources dynamically)
-- [ ] Docker/container image scanning for MCP servers
-- [ ] MCP registry scanning before installation
 
 **Output & policy:**
 - [x] SARIF 2.1 output for GitHub Security tab

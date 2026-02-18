@@ -631,3 +631,99 @@ def test_osv_empty_response_yields_no_blast_radii(monkeypatch):
 
     blast_radii = scan_agents_sync([agent])
     assert blast_radii == []
+
+
+# ─── Cortex Code + Registry Tests ────────────────────────────────────────────
+
+
+def test_cortex_code_agent_type_exists():
+    from agent_bom.models import AgentType
+    assert AgentType.CORTEX_CODE == "cortex-code"
+    assert AgentType.ZED == "zed"
+    assert AgentType.CONTINUE == "continue"
+
+
+def test_cortex_code_in_discovery_locations():
+    from agent_bom.discovery import CONFIG_LOCATIONS
+    from agent_bom.models import AgentType
+    assert AgentType.CORTEX_CODE in CONFIG_LOCATIONS
+    paths = CONFIG_LOCATIONS[AgentType.CORTEX_CODE]
+    # All platforms should point to ~/.snowflake/cortex/mcp.json
+    for platform_paths in paths.values():
+        assert any("snowflake/cortex/mcp.json" in p for p in platform_paths)
+
+
+def test_vscode_copilot_in_discovery_locations():
+    from agent_bom.discovery import CONFIG_LOCATIONS
+    from agent_bom.models import AgentType
+    assert AgentType.VSCODE_COPILOT in CONFIG_LOCATIONS
+
+
+def test_mcp_registry_loads():
+    from agent_bom.parsers import _load_registry
+    registry = _load_registry()
+    assert len(registry) > 0
+    assert "@modelcontextprotocol/server-filesystem" in registry
+    assert "@modelcontextprotocol/server-github" in registry
+
+
+def test_mcp_registry_lookup_by_arg(tmp_path):
+    from agent_bom.models import MCPServer
+    from agent_bom.parsers import lookup_mcp_registry
+
+    server = MCPServer(
+        name="filesystem",
+        command="npx",
+        args=["-y", "@modelcontextprotocol/server-filesystem"],
+        env={},
+    )
+    packages = lookup_mcp_registry(server)
+    assert len(packages) == 1
+    assert packages[0].name == "@modelcontextprotocol/server-filesystem"
+    assert packages[0].ecosystem == "npm"
+    assert packages[0].resolved_from_registry is True
+
+
+def test_mcp_registry_lookup_unknown_server():
+    from agent_bom.models import MCPServer
+    from agent_bom.parsers import lookup_mcp_registry
+
+    server = MCPServer(name="totally-unknown-server-xyz", command="node", env={})
+    packages = lookup_mcp_registry(server)
+    assert packages == []
+
+
+def test_continue_format_parsed(tmp_path):
+    """Continue.dev uses array format for mcpServers."""
+    from agent_bom.discovery import parse_mcp_config
+
+    config = {
+        "mcpServers": [
+            {"name": "filesystem", "command": "npx",
+             "args": ["-y", "@modelcontextprotocol/server-filesystem"]}
+        ]
+    }
+    servers = parse_mcp_config(config, str(tmp_path))
+    assert len(servers) == 1
+    assert servers[0].name == "filesystem"
+    assert servers[0].command == "npx"
+
+
+def test_zed_format_parsed(tmp_path):
+    """Zed uses context_servers with nested command object."""
+    from agent_bom.discovery import parse_mcp_config
+
+    config = {
+        "context_servers": {
+            "postgres": {
+                "command": {
+                    "path": "npx",
+                    "args": ["-y", "@modelcontextprotocol/server-postgres"]
+                }
+            }
+        }
+    }
+    servers = parse_mcp_config(config, str(tmp_path))
+    assert len(servers) == 1
+    assert servers[0].name == "postgres"
+    assert servers[0].command == "npx"

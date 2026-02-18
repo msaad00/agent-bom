@@ -131,7 +131,7 @@ class MCPServer:
     """An MCP server with its tools, resources, and dependencies."""
 
     name: str
-    command: str
+    command: str = ""
     args: list[str] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
     transport: TransportType = TransportType.STDIO
@@ -141,6 +141,7 @@ class MCPServer:
     packages: list[Package] = field(default_factory=list)
     config_path: Optional[str] = None  # Where this server was discovered
     working_dir: Optional[str] = None  # Server's working directory
+    mcp_version: Optional[str] = None  # MCP protocol version (e.g. "2024-11-05")
 
     @property
     def vulnerable_packages(self) -> list[Package]:
@@ -216,11 +217,10 @@ class BlastRadius:
     exposed_credentials: list[str]  # Credential env var names at risk
     exposed_tools: list[MCPTool]  # Tools accessible through compromised path
     risk_score: float = 0.0  # 0-10
+    ai_risk_context: Optional[str] = None  # AI-native risk explanation when relevant
 
     def calculate_risk_score(self) -> float:
         """Calculate contextual risk score based on blast radius."""
-        base = 0.0
-
         # Severity base score
         severity_scores = {
             Severity.CRITICAL: 8.0,
@@ -230,12 +230,19 @@ class BlastRadius:
         }
         base = severity_scores.get(self.vulnerability.severity, 0.0)
 
-        # Multiply by reach
+        # Reach factors
         agent_factor = min(len(self.affected_agents) * 0.5, 2.0)
         cred_factor = min(len(self.exposed_credentials) * 0.3, 1.5)
         tool_factor = min(len(self.exposed_tools) * 0.1, 1.0)
 
-        self.risk_score = min(base + agent_factor + cred_factor + tool_factor, 10.0)
+        # Boost for AI framework packages with full attack surface
+        ai_boost = 0.5 if self.ai_risk_context and self.exposed_credentials and self.exposed_tools else 0.0
+
+        # Boost for actively exploited (KEV) or high EPSS
+        kev_boost = 1.0 if self.vulnerability.is_kev else 0.0
+        epss_boost = 0.5 if (self.vulnerability.epss_score or 0) >= 0.7 else 0.0
+
+        self.risk_score = min(base + agent_factor + cred_factor + tool_factor + ai_boost + kev_boost + epss_boost, 10.0)
         return self.risk_score
 
 

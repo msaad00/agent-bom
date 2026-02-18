@@ -21,45 +21,127 @@ _npm_cache: dict[str, dict] = {}
 _pypi_cache: dict[str, dict] = {}
 
 
+def _resolve_npm_version(version_range: str, pkg_data: dict) -> str:
+    """Pick the best npm version satisfying a semver range.
+
+    Uses a simplified semver matcher sufficient for most ^X.Y.Z / ~X.Y.Z / >=X patterns.
+    Falls back to dist-tags.latest if no match found.
+    """
+    latest = pkg_data.get("dist-tags", {}).get("latest", "")
+
+    if version_range in ("latest", "", "*"):
+        return latest
+
+    available = list(pkg_data.get("versions", {}).keys())
+    if not available:
+        return latest
+
+    # Strip leading ^, ~, =, >, < to get the minimum version
+    stripped = version_range.lstrip("^~>=<").split(" ")[0]
+    try:
+        # Parse minimum as tuple of ints for comparison
+        min_parts = tuple(int(x) for x in stripped.split(".") if x.isdigit())
+    except ValueError:
+        return latest
+
+    # Parse operator
+    if version_range.startswith("^"):
+        # Compatible: same major, >= minor.patch
+        major = min_parts[0] if min_parts else 0
+        candidates = []
+        for v in available:
+            try:
+                parts = tuple(int(x) for x in v.split(".") if x.isdigit())
+                if parts[0] == major and parts >= min_parts:
+                    candidates.append((parts, v))
+            except (ValueError, IndexError):
+                continue
+        return max(candidates)[1] if candidates else latest
+
+    elif version_range.startswith("~"):
+        # Approximately: same major.minor, >= patch
+        major = min_parts[0] if len(min_parts) > 0 else 0
+        minor = min_parts[1] if len(min_parts) > 1 else 0
+        candidates = []
+        for v in available:
+            try:
+                parts = tuple(int(x) for x in v.split(".") if x.isdigit())
+                if len(parts) >= 2 and parts[0] == major and parts[1] == minor and parts >= min_parts:
+                    candidates.append((parts, v))
+            except (ValueError, IndexError):
+                continue
+        return max(candidates)[1] if candidates else latest
+
+    elif ">=" in version_range:
+        candidates = []
+        for v in available:
+            try:
+                parts = tuple(int(x) for x in v.split(".") if x.isdigit())
+                if parts >= min_parts:
+                    candidates.append((parts, v))
+            except (ValueError, IndexError):
+                continue
+        return max(candidates)[1] if candidates else latest
+
+    return latest
+
+
+def _resolve_pip_version(version_spec: str, releases: dict) -> str:
+    """Pick the best PyPI version satisfying a PEP 440 specifier.
+
+    Uses the `packaging` library when available, else strips operators.
+    """
+    if not version_spec or version_spec in ("latest", "unknown"):
+        return max(releases.keys(), default="unknown") if releases else "unknown"
+
+    try:
+        from packaging.specifiers import SpecifierSet
+        from packaging.version import Version
+
+        spec = SpecifierSet(version_spec, prereleases=False)
+        candidates = []
+        for v in releases:
+            try:
+                pv = Version(v)
+                if not pv.is_prerelease and spec.contains(pv):
+                    candidates.append(pv)
+            except Exception:
+                continue
+        if candidates:
+            return str(max(candidates))
+    except ImportError:
+        pass
+
+    # Fallback: strip operators, use the bare version
+    return re.sub(r"[^0-9.]", "", version_spec.split(",")[0]) or "unknown"
+
+
 async def fetch_npm_metadata(
     package_name: str,
     version: str,
     client: httpx.AsyncClient
 ) -> Optional[dict]:
-    """Fetch package metadata from npm registry."""
+    """Fetch package metadata from npm registry, resolving ranges to exact versions."""
     cache_key = f"{package_name}@{version}"
     if cache_key in _npm_cache:
         return _npm_cache[cache_key]
 
     try:
         encoded_name = package_name.replace("/", "%2F")
+        is_range = version in ("latest", "") or any(c in version for c in "^~>=<*")
 
-        # If version is 'latest' or version range, fetch the package info first
-        if version in ("latest", "") or any(c in version for c in "^~>=<*"):
-            response = await client.get(
-                f"{NPM_REGISTRY}/{encoded_name}",
-                follow_redirects=True
-            )
+        if is_range:
+            # Fetch full package document to resolve the range
+            response = await client.get(f"{NPM_REGISTRY}/{encoded_name}", follow_redirects=True)
             if response.status_code == 200:
                 pkg_data = response.json()
-
-                # Get the latest version or resolve the range
-                if version == "latest" or version == "":
-                    version = pkg_data.get("dist-tags", {}).get("latest", "")
-                else:
-                    # For version ranges, use latest (simplified - in production use semver)
-                    version = pkg_data.get("dist-tags", {}).get("latest", "")
-
-                metadata = pkg_data.get("versions", {}).get(version)
+                resolved = _resolve_npm_version(version, pkg_data)
+                metadata = pkg_data.get("versions", {}).get(resolved)
                 if metadata:
                     _npm_cache[cache_key] = metadata
                     return metadata
         else:
-            # Fetch specific version
-            response = await client.get(
-                f"{NPM_REGISTRY}/{encoded_name}/{version}",
-                follow_redirects=True
-            )
+            response = await client.get(f"{NPM_REGISTRY}/{encoded_name}/{version}", follow_redirects=True)
             if response.status_code == 200:
                 metadata = response.json()
                 _npm_cache[cache_key] = metadata
@@ -76,28 +158,32 @@ async def fetch_pypi_metadata(
     version: str,
     client: httpx.AsyncClient
 ) -> Optional[dict]:
-    """Fetch package metadata from PyPI."""
+    """Fetch package metadata from PyPI, resolving version specifiers to exact versions."""
     cache_key = f"{package_name}@{version}"
     if cache_key in _pypi_cache:
         return _pypi_cache[cache_key]
 
     try:
-        if version in ("latest", ""):
-            # Fetch latest version
-            response = await client.get(
-                f"{PYPI_API}/{package_name}/json",
-                follow_redirects=True
-            )
+        is_range = version in ("latest", "unknown", "") or any(c in version for c in "^~>=<*,!")
+
+        if is_range:
+            # Fetch all releases to resolve the specifier
+            response = await client.get(f"{PYPI_API}/{package_name}/json", follow_redirects=True)
             if response.status_code == 200:
-                data = response.json()
-                _pypi_cache[cache_key] = data
-                return data
+                pkg_data = response.json()
+                releases = pkg_data.get("releases", {})
+                resolved = _resolve_pip_version(version if version not in ("latest", "unknown", "") else "", releases)
+                if resolved and resolved != "unknown":
+                    version_data = await client.get(f"{PYPI_API}/{package_name}/{resolved}/json", follow_redirects=True)
+                    if version_data.status_code == 200:
+                        data = version_data.json()
+                        _pypi_cache[cache_key] = data
+                        return data
+                # Fallback: return the root package data (latest)
+                _pypi_cache[cache_key] = pkg_data
+                return pkg_data
         else:
-            # Fetch specific version
-            response = await client.get(
-                f"{PYPI_API}/{package_name}/{version}/json",
-                follow_redirects=True
-            )
+            response = await client.get(f"{PYPI_API}/{package_name}/{version}/json", follow_redirects=True)
             if response.status_code == 200:
                 data = response.json()
                 _pypi_cache[cache_key] = data

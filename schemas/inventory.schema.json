@@ -109,6 +109,10 @@
           "format": "uri",
           "description": "Server endpoint URL (for SSE or streamable-http transport)"
         },
+        "mcp_version": {
+          "type": "string",
+          "description": "MCP protocol version the server implements (e.g. '2024-11-05', '1.0'). Used for protocol compatibility tracking."
+        },
         "working_dir": {
           "type": "string",
           "description": "Working directory for the server process. Used to locate lock files (package-lock.json, requirements.txt, go.sum, Cargo.lock) when packages[] is not provided."

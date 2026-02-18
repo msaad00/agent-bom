@@ -143,14 +143,16 @@ agent-bom scan --inventory agents.json
 | `agents[].config_path` | no | Where the agent config lives — can be a file path, ARN, Snowflake URI, etc. |
 | `agents[].version` | no | Agent version string |
 | `agents[].mcp_servers[].name` | yes | MCP server identifier |
-| `agents[].mcp_servers[].command` | yes | Server command (`npx`, `uvx`, `python`, `node`, etc.) |
+| `agents[].mcp_servers[].command` | no | Server command (`npx`, `uvx`, `python`, `node`, etc.). Omit for cloud/API-managed servers. |
 | `agents[].mcp_servers[].args` | no | Command arguments (array of strings) |
 | `agents[].mcp_servers[].env` | no | Environment variables (object). Credential-like keys are flagged automatically |
 | `agents[].mcp_servers[].transport` | no | `stdio` (default), `sse`, or `streamable-http` |
 | `agents[].mcp_servers[].url` | no | Server URL (for SSE/HTTP transports) |
+| `agents[].mcp_servers[].mcp_version` | no | MCP protocol version (e.g. `"2024-11-05"`). Tracked in output for compatibility auditing. |
 | `agents[].mcp_servers[].working_dir` | no | Server working directory (for lock file resolution) |
 | `agents[].mcp_servers[].tools` | no | Pre-populated tool list — array of objects (`{"name", "description"}`) or strings |
 | `agents[].mcp_servers[].packages` | no | Pre-known packages — array of objects (`{"name", "version", "ecosystem"}`) or `"name@version"` strings |
+| `agents[].source` | no | Where this inventory entry came from (e.g. `"snowflake"`, `"aws-bedrock"`, `"local"`) |
 
 The inventory format mirrors what auto-discovery finds. Pre-populated packages are merged with any packages agent-bom discovers from lock files, so you can provide what you know and agent-bom fills in the rest.
 
@@ -192,13 +194,16 @@ agent-bom validate agents.json   # exits 0 if valid, 1 with clear errors if not
 ## Features
 
 - **Auto-discovery** — Claude Desktop, Claude Code, Cursor, Windsurf, Cline, and project-level `.mcp.json`
-- **Manual inventory** — scan any agent platform via `--inventory` JSON
+- **Manual inventory** — scan any agent platform via `--inventory` JSON; validate with `agent-bom validate`
 - **Multi-ecosystem** — npm, pip, Go, Cargo (lock files + manifest files)
 - **npx / uvx detection** — extracts package names from MCP server command definitions
-- **Transitive resolution** — recursively resolves nested deps via npm and PyPI registries
-- **Vulnerability scanning** — queries [OSV.dev](https://osv.dev) across all ecosystems
-- **Enrichment** — NVD metadata, EPSS exploit probability, CISA KEV flags (`--enrich`)
-- **Blast radius scoring** — contextual risk score based on agents, credentials, and tools in reach
+- **Transitive resolution** — recursively resolves nested deps via npm and PyPI registries with proper semver/PEP 440 range handling (`^`, `~`, `>=`, specifier sets)
+- **Vulnerability scanning** — queries [OSV.dev](https://osv.dev) across all ecosystems; GHSA/RUSTSEC aliases automatically mapped to CVE IDs for enrichment
+- **CVSS scoring** — computes numeric CVSS 3.x base scores from vector strings (e.g. `CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H → 9.8`), not just labels
+- **Enrichment** — NVD metadata (CWE IDs, dates), EPSS exploit probability, CISA KEV flags (`--enrich`); all CVEs enriched with proper rate limiting (not capped)
+- **Blast radius scoring** — risk score boosted by KEV membership (+1.0), high EPSS (+0.5), and AI framework context (+0.5)
+- **AI framework risk tagging** — LangChain, OpenAI, transformers, MCP, and 25+ other AI packages flagged with context: *"AI framework runs inside an agent with 3 exposed credentials and 7 reachable tools"*
+- **Remediation plan** — grouped upgrade actions ordered by blast radius impact (agents protected × credentials freed × vulns cleared × KEV/AI flags)
 - **Credential detection** — flags MCP servers exposing API keys, tokens, and secrets in env vars
 - **Output formats** — rich console, JSON, CycloneDX 1.6, SARIF 2.1, plain text
 - **CI/CD ready** — `--fail-on-severity`, `--quiet`, stdout piping (`-o -`), exit codes
@@ -239,7 +244,7 @@ Use `--inventory` to scan any agent not listed above — including custom agents
 | Go | `go.sum` | — |
 | Cargo | `Cargo.lock` | — |
 
-AI framework packages (LangChain, transformers, openai, mistralai, etc.) are already scanned for CVEs like any other package. Future releases will add AI-specific risk analysis.
+AI framework packages (LangChain, transformers, openai, mistralai, etc.) are scanned for CVEs and flagged with AI-specific blast radius context when they run inside an agent with credentials and tools exposed.
 
 ---
 
@@ -265,9 +270,13 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for CI/CD, Kubernetes, and remote scanning se
 - [ ] OpenAI — scan assistant tool definitions
 
 **Scanner capabilities:**
+- [x] AI framework risk tagging — LangChain, OpenAI, transformers, MCP, and 25+ packages with AI-specific blast radius context
+- [x] Full CVSS 3.x base score computation from vector strings
+- [x] Proper semver / PEP 440 range resolution for transitive dependency scanning
+- [x] All CVEs enriched via NVD with proper rate limiting (not capped at 10)
+- [x] Prioritized remediation plan grouped by blast radius impact
 - [ ] Live MCP server introspection (enumerate tools/resources dynamically)
 - [ ] Docker/container image scanning for MCP servers
-- [ ] AI framework risk tagging (flag LangChain, transformers, etc. with AI-specific context)
 - [ ] MCP registry scanning before installation
 
 **Output & policy:**

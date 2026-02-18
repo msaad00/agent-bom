@@ -11,6 +11,27 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from agent_bom.models import Agent, BlastRadius, MCPServer, Package, Severity, Vulnerability
 
+# Known AI/ML framework packages — vulnerabilities in these carry elevated risk
+# because they run inside AI agents that have credentials and tool access
+_AI_FRAMEWORK_PACKAGES = frozenset({
+    # LLM orchestration
+    "langchain", "langchain-core", "langchain-community", "langchain-openai",
+    "langgraph", "llama-index", "llama_index", "llama-hub",
+    "autogen", "pyautogen", "crewai", "agency-swarm",
+    "haystack-ai", "semantic-kernel",
+    # LLM clients
+    "openai", "anthropic", "mistralai", "cohere", "together",
+    "google-generativeai", "google-cloud-aiplatform", "boto3",
+    # Model inference
+    "transformers", "huggingface-hub", "diffusers", "accelerate",
+    "sentence-transformers", "optimum",
+    # Vector stores and RAG
+    "chromadb", "pinecone-client", "weaviate-client", "qdrant-client",
+    "faiss-cpu", "faiss-gpu",
+    # MCP and agent infrastructure
+    "mcp", "fastmcp", "modelcontextprotocol",
+})
+
 console = Console(stderr=True)
 
 OSV_API_URL = "https://api.osv.dev/v1"
@@ -43,24 +64,82 @@ def cvss_to_severity(score: Optional[float]) -> Severity:
     return Severity.NONE
 
 
+# CVSS 3.x metric weights
+_CVSS3_AV = {"N": 0.85, "A": 0.62, "L": 0.55, "P": 0.20}
+_CVSS3_AC = {"L": 0.77, "H": 0.44}
+_CVSS3_PR_U = {"N": 0.85, "L": 0.62, "H": 0.27}  # Scope Unchanged
+_CVSS3_PR_C = {"N": 0.85, "L": 0.68, "H": 0.50}  # Scope Changed
+_CVSS3_UI = {"N": 0.85, "R": 0.62}
+_CVSS3_CIA = {"N": 0.00, "L": 0.22, "H": 0.56}
+
+
+def parse_cvss_vector(vector: str) -> Optional[float]:
+    """Compute CVSS 3.x base score from a vector string.
+
+    Example: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H' → 9.8
+    """
+    try:
+        if not vector.startswith("CVSS:3"):
+            return None
+        # Strip prefix
+        parts = vector.split("/")[1:]
+        metrics = dict(p.split(":") for p in parts)
+
+        av = _CVSS3_AV.get(metrics.get("AV", ""), None)
+        ac = _CVSS3_AC.get(metrics.get("AC", ""), None)
+        scope = metrics.get("S", "U")
+        pr_map = _CVSS3_PR_C if scope == "C" else _CVSS3_PR_U
+        pr = pr_map.get(metrics.get("PR", ""), None)
+        ui = _CVSS3_UI.get(metrics.get("UI", ""), None)
+        c = _CVSS3_CIA.get(metrics.get("C", ""), None)
+        i = _CVSS3_CIA.get(metrics.get("I", ""), None)
+        a = _CVSS3_CIA.get(metrics.get("A", ""), None)
+
+        if any(v is None for v in (av, ac, pr, ui, c, i, a)):
+            return None
+
+        isc_base = 1.0 - (1.0 - c) * (1.0 - i) * (1.0 - a)
+        if scope == "C":
+            isc = 7.52 * (isc_base - 0.029) - 3.25 * ((isc_base - 0.02) ** 15)
+        else:
+            isc = 6.42 * isc_base
+
+        if isc <= 0:
+            return 0.0
+
+        exploitability = 8.22 * av * ac * pr * ui
+
+        if scope == "C":
+            raw = min(1.08 * (isc + exploitability), 10.0)
+        else:
+            raw = min(isc + exploitability, 10.0)
+
+        # Roundup to one decimal (CVSS spec: ceiling to 1 decimal)
+        import math
+        return math.ceil(raw * 10) / 10.0
+
+    except Exception:
+        return None
+
+
 def parse_osv_severity(vuln_data: dict) -> tuple[Severity, Optional[float]]:
     """Extract severity and CVSS score from OSV vulnerability data."""
     cvss_score = None
     severity = Severity.MEDIUM  # Default
 
-    # Check severity array
+    # Check severity array — may be numeric score or CVSS vector string
     for sev in vuln_data.get("severity", []):
-        if sev.get("type") == "CVSS_V3":
+        if sev.get("type") in ("CVSS_V3", "CVSS_V3_1"):
             score_str = sev.get("score", "")
-            # Try to extract numeric score from CVSS vector
             try:
-                # Sometimes it's just a number
                 cvss_score = float(score_str)
             except ValueError:
-                # It's a CVSS vector string, estimate from it
-                pass
+                # It's a CVSS vector string — compute the base score
+                computed = parse_cvss_vector(score_str)
+                if computed is not None:
+                    cvss_score = computed
 
-    # Check database_specific for severity
+    # Check database_specific for severity label (reliable fallback)
     db_specific = vuln_data.get("database_specific", {})
     if "severity" in db_specific:
         sev_str = db_specific["severity"].upper()
@@ -73,7 +152,8 @@ def parse_osv_severity(vuln_data: dict) -> tuple[Severity, Optional[float]]:
         }
         severity = severity_map.get(sev_str, Severity.MEDIUM)
 
-    if cvss_score:
+    # CVSS score overrides label-based severity
+    if cvss_score is not None:
         severity = cvss_to_severity(cvss_score)
 
     return severity, cvss_score
@@ -167,12 +247,16 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
             if ref.get("url")
         ][:5]  # Limit to 5 references
 
-        # Also check for aliases (CVE IDs)
-        vuln_data.get("aliases", [])
+        # Use aliases to surface CVE ID when primary ID is GHSA/OSV/RUSTSEC
+        aliases = vuln_data.get("aliases", [])
+        cve_alias = next((a for a in aliases if a.startswith("CVE-")), None)
+        # Use CVE alias as the canonical ID so EPSS/NVD enrichment picks it up
+        canonical_id = cve_alias if cve_alias and not vuln_id.startswith("CVE-") else vuln_id
+
         summary = vuln_data.get("summary", vuln_data.get("details", "No description available"))[:200]
 
         vulns.append(Vulnerability(
-            id=vuln_id,
+            id=canonical_id,
             summary=summary,
             severity=severity,
             cvss_score=cvss_score,
@@ -271,6 +355,28 @@ async def scan_agents(agents: list[Agent]) -> list[BlastRadius]:
             exposed_creds.extend(server.credential_names)
             exposed_tools.extend(server.tools)
 
+        # AI-native risk context: elevated when an AI framework has creds + tools
+        is_ai_framework = pkg.name.lower().replace("-", "_") in {
+            n.replace("-", "_") for n in _AI_FRAMEWORK_PACKAGES
+        } or pkg.name.lower() in _AI_FRAMEWORK_PACKAGES
+        has_creds = bool(exposed_creds)
+        has_tools = bool(exposed_tools)
+        if is_ai_framework and has_creds and has_tools:
+            ai_risk_context = (
+                f"AI framework '{pkg.name}' runs inside an agent with {len(exposed_creds)} "
+                f"exposed credential(s) and {len(exposed_tools)} reachable tool(s). "
+                f"A compromise here gives an attacker both identity and capability."
+            )
+        elif is_ai_framework and has_creds:
+            ai_risk_context = (
+                f"AI framework '{pkg.name}' has access to {len(exposed_creds)} "
+                f"credential(s). Exploitation could exfiltrate secrets via LLM output."
+            )
+        elif is_ai_framework:
+            ai_risk_context = "AI framework package — vulnerability affects LLM inference/orchestration pipeline."
+        else:
+            ai_risk_context = None
+
         for vuln in pkg.vulnerabilities:
             br = BlastRadius(
                 vulnerability=vuln,
@@ -279,6 +385,7 @@ async def scan_agents(agents: list[Agent]) -> list[BlastRadius]:
                 affected_agents=affected_agents,
                 exposed_credentials=list(set(exposed_creds)),
                 exposed_tools=exposed_tools,
+                ai_risk_context=ai_risk_context,
             )
             br.calculate_risk_score()
             blast_radii.append(br)

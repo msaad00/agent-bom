@@ -19,6 +19,7 @@ from agent_bom.output import (
     export_sarif,
     print_agent_tree,
     print_blast_radius,
+    print_remediation_plan,
     print_summary,
     to_cyclonedx,
     to_json,
@@ -170,6 +171,7 @@ def scan(
                     url=server_data.get("url"),
                     config_path=agent_data.get("config_path"),
                     working_dir=server_data.get("working_dir"),
+                    mcp_version=server_data.get("mcp_version"),
                     tools=tools,
                     packages=packages,
                 )
@@ -260,6 +262,7 @@ def scan(
         if not no_tree:
             print_agent_tree(report)
         print_blast_radius(report)
+        print_remediation_plan(blast_radii)
     elif output_format == "text" and not output:
         _print_text(report, blast_radii)
     elif output_format == "json":

@@ -229,27 +229,26 @@ async def enrich_vulnerabilities(
             else:
                 console.print("  [green]✓[/green] No CVEs in CISA KEV catalog")
 
-        # Fetch NVD data (one by one, rate limited)
-        nvd_tasks = []
-        if enable_nvd:
-            console.print("  [cyan]→[/cyan] Fetching NVD metadata...")
-            for cve_id in cve_ids[:10]:  # Limit to avoid rate limiting
-                nvd_tasks.append(fetch_nvd_data(cve_id, client, nvd_api_key))
+        # Fetch NVD data — all CVEs with proper rate limiting
+        # Limits: 5 req/30s without API key, 50 req/30s with API key
+        nvd_data: dict[str, dict] = {}
+        if enable_nvd and cve_ids:
+            console.print(f"  [cyan]→[/cyan] Fetching NVD metadata for {len(cve_ids)} CVE(s)...")
+            batch_size = 50 if nvd_api_key else 5
+            sleep_secs = 1.0 if nvd_api_key else 6.0
 
-            # Add delay between requests if no API key (rate limit: 5 requests per 30 seconds)
-            if not nvd_api_key and nvd_tasks:
-                nvd_results = []
-                for i, task in enumerate(nvd_tasks):
-                    if i > 0 and i % 5 == 0:
-                        await asyncio.sleep(6)  # Wait 6 seconds every 5 requests
-                    result = await task
-                    nvd_results.append(result)
-            else:
-                nvd_results = await asyncio.gather(*nvd_tasks, return_exceptions=True)
+            for batch_start in range(0, len(cve_ids), batch_size):
+                batch = cve_ids[batch_start:batch_start + batch_size]
+                tasks = [fetch_nvd_data(cve_id, client, nvd_api_key) for cve_id in batch]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                for cve_id, result in zip(batch, results):
+                    if result and not isinstance(result, Exception):
+                        nvd_data[cve_id] = result
+                if batch_start + batch_size < len(cve_ids):
+                    await asyncio.sleep(sleep_secs)
 
-            nvd_data = {cve_ids[i]: result for i, result in enumerate(nvd_results) if result and not isinstance(result, Exception)}
             if nvd_data:
-                console.print(f"  [green]✓[/green] Retrieved NVD data for {len(nvd_data)} CVE(s)")
+                console.print(f"  [green]✓[/green] Retrieved NVD data for {len(nvd_data)}/{len(cve_ids)} CVE(s)")
 
         # Enrich each vulnerability
         for vuln in vulnerabilities:

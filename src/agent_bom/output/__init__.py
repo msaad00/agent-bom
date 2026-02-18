@@ -171,6 +171,101 @@ def print_blast_radius(report: AIBOMReport) -> None:
                        f"Use --output to export full report.[/dim]")
 
 
+# ─── Remediation Plan ───────────────────────────────────────────────────────
+
+
+def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
+    """Group blast radii into a prioritized remediation plan.
+
+    Returns items sorted by impact: each item = one upgrade action that clears
+    N vulns across M agents and frees exposed credentials.
+    """
+    from collections import defaultdict
+
+    groups: dict[tuple, dict] = defaultdict(lambda: {
+        "package": "", "ecosystem": "", "current": "", "fix": None,
+        "vulns": [], "agents": set(), "creds": set(), "tools": set(),
+        "max_severity": Severity.NONE, "has_kev": False, "ai_risk": False,
+    })
+    severity_order = {Severity.CRITICAL: 4, Severity.HIGH: 3, Severity.MEDIUM: 2, Severity.LOW: 1, Severity.NONE: 0}
+
+    for br in blast_radii:
+        key = (br.package.name, br.package.ecosystem, br.package.version, br.vulnerability.fixed_version)
+        g = groups[key]
+        g["package"] = br.package.name
+        g["ecosystem"] = br.package.ecosystem
+        g["current"] = br.package.version
+        g["fix"] = br.vulnerability.fixed_version
+        g["vulns"].append(br.vulnerability.id)
+        for a in br.affected_agents:
+            g["agents"].add(a.name)
+        g["creds"].update(br.exposed_credentials)
+        g["tools"].update(t.name for t in br.exposed_tools)
+        if severity_order.get(br.vulnerability.severity, 0) > severity_order.get(g["max_severity"], 0):
+            g["max_severity"] = br.vulnerability.severity
+        if br.vulnerability.is_kev:
+            g["has_kev"] = True
+        if br.ai_risk_context:
+            g["ai_risk"] = True
+
+    plan = []
+    for g in groups.values():
+        g["vulns"] = list(set(g["vulns"]))
+        g["agents"] = list(g["agents"])
+        g["creds"] = list(g["creds"])
+        g["tools"] = list(g["tools"])
+        g["impact"] = (
+            len(g["agents"]) * 10 + len(g["creds"]) * 3 + len(g["vulns"])
+            + (5 if g["has_kev"] else 0) + (3 if g["ai_risk"] else 0)
+        )
+        plan.append(g)
+
+    plan.sort(key=lambda x: x["impact"], reverse=True)
+    return plan
+
+
+def print_remediation_plan(blast_radii: list[BlastRadius]) -> None:
+    """Print a prioritized remediation plan to the console."""
+    if not blast_radii:
+        return
+
+    plan = build_remediation_plan(blast_radii)
+    fixable = [p for p in plan if p["fix"]]
+    unfixable = [p for p in plan if not p["fix"]]
+
+    console.print("\n[bold green]🔧 Remediation Plan[/bold green]\n")
+
+    sev_style = {
+        Severity.CRITICAL: "red bold", Severity.HIGH: "red",
+        Severity.MEDIUM: "yellow", Severity.LOW: "dim", Severity.NONE: "white",
+    }
+
+    if fixable:
+        console.print(f"  [bold]{len(fixable)} fixable upgrade(s) — ordered by blast radius impact:[/bold]\n")
+        for i, item in enumerate(fixable, 1):
+            sev = item["max_severity"]
+            style = sev_style.get(sev, "white")
+            kev_flag = " [red bold][KEV][/red bold]" if item["has_kev"] else ""
+            ai_flag = " [magenta][AI-RISK][/magenta]" if item["ai_risk"] else ""
+            console.print(
+                f"  [{style}]{i}. upgrade {item['package']}[/{style}]  "
+                f"[dim]{item['current']}[/dim] → [green bold]{item['fix']}[/green bold]"
+                f"{kev_flag}{ai_flag}"
+            )
+            impact_parts = [f"clears {len(item['vulns'])} vuln(s)", f"{len(item['agents'])} agent(s) protected"]
+            if item["creds"]:
+                impact_parts.append(f"frees {len(item['creds'])} credential(s): {', '.join(item['creds'][:3])}")
+            if item["tools"]:
+                impact_parts.append(f"removes attacker access to {len(item['tools'])} tool(s)")
+            console.print(f"     [dim]{'  •  '.join(impact_parts)}[/dim]\n")
+
+    if unfixable:
+        console.print(f"  [dim yellow]⚠ {len(unfixable)} package(s) have no fix yet — monitor upstream for patches:[/dim yellow]")
+        for item in unfixable[:10]:
+            console.print(f"    [dim]• {item['package']}@{item['current']} ({', '.join(item['vulns'][:3])})[/dim]")
+        console.print()
+
+
 # ─── JSON Output ────────────────────────────────────────────────────────────
 
 
@@ -191,6 +286,7 @@ def to_json(report: AIBOMReport) -> dict:
                 "name": agent.name,
                 "type": agent.agent_type.value,
                 "config_path": agent.config_path,
+                "source": agent.source,
                 "mcp_servers": [
                     {
                         "name": server.name,
@@ -198,6 +294,7 @@ def to_json(report: AIBOMReport) -> dict:
                         "args": server.args,
                         "transport": server.transport.value,
                         "url": server.url,
+                        "mcp_version": server.mcp_version,
                         "has_credentials": server.has_credentials,
                         "credential_env_vars": server.credential_names,
                         "tools": [
@@ -220,8 +317,15 @@ def to_json(report: AIBOMReport) -> dict:
                                         "summary": v.summary,
                                         "severity": v.severity.value,
                                         "cvss_score": v.cvss_score,
+                                        "epss_score": v.epss_score,
+                                        "epss_percentile": v.epss_percentile,
+                                        "is_kev": v.is_kev,
+                                        "kev_date_added": v.kev_date_added,
+                                        "cwe_ids": v.cwe_ids,
                                         "fixed_version": v.fixed_version,
                                         "references": v.references,
+                                        "nvd_published": v.nvd_published,
+                                        "nvd_modified": v.nvd_modified,
                                     }
                                     for v in pkg.vulnerabilities
                                 ],
@@ -239,6 +343,9 @@ def to_json(report: AIBOMReport) -> dict:
                 "risk_score": br.risk_score,
                 "vulnerability_id": br.vulnerability.id,
                 "severity": br.vulnerability.severity.value,
+                "cvss_score": br.vulnerability.cvss_score,
+                "epss_score": br.vulnerability.epss_score,
+                "is_kev": br.vulnerability.is_kev,
                 "package": f"{br.package.name}@{br.package.version}",
                 "ecosystem": br.package.ecosystem,
                 "affected_agents": [a.name for a in br.affected_agents],
@@ -246,6 +353,7 @@ def to_json(report: AIBOMReport) -> dict:
                 "exposed_credentials": br.exposed_credentials,
                 "exposed_tools": [t.name for t in br.exposed_tools],
                 "fixed_version": br.vulnerability.fixed_version,
+                "ai_risk_context": br.ai_risk_context,
             }
             for br in report.blast_radii
         ],

@@ -10,9 +10,14 @@
           "command": "npx",
           "args": ["-y", "@my-org/mcp-database-server"],
           "env": {
-            "DATABASE_URL": "postgresql://..."
+            "DATABASE_URL": "postgresql://...",
+            "DB_PASSWORD": "***"
           },
-          "transport": "stdio"
+          "transport": "stdio",
+          "tools": [
+            {"name": "query_database", "description": "Execute SQL queries"},
+            {"name": "list_tables", "description": "List available tables"}
+          ]
         },
         {
           "name": "api-server",
@@ -21,7 +26,11 @@
           "env": {
             "API_KEY": "sk-..."
           },
-          "transport": "stdio"
+          "transport": "stdio",
+          "packages": [
+            {"name": "fastapi", "version": "0.109.0", "ecosystem": "pypi"},
+            "httpx@0.27.0"
+          ]
         }
       ]
     },

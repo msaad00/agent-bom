@@ -1,0 +1,45 @@
+{
+  "agents": [
+    {
+      "name": "cortex-analyst",
+      "agent_type": "custom",
+      "config_path": "snowflake://myorg.us-east-1/cortex/analyst",
+      "version": "1.0",
+      "mcp_servers": [
+        {
+          "name": "data-access-server",
+          "command": "npx",
+          "args": ["-y", "@snowflake/mcp-data-server"],
+          "env": {
+            "SNOWFLAKE_ACCOUNT": "myorg.us-east-1",
+            "SNOWFLAKE_TOKEN": "***"
+          },
+          "transport": "stdio",
+          "tools": [
+            {"name": "query_warehouse", "description": "Execute SQL queries against Snowflake warehouse"},
+            {"name": "list_tables", "description": "List tables in a schema"},
+            {"name": "describe_table", "description": "Get table schema and metadata"}
+          ]
+        },
+        {
+          "name": "cortex-search-server",
+          "command": "python",
+          "args": ["-m", "cortex_search_mcp"],
+          "env": {
+            "CORTEX_API_KEY": "***"
+          },
+          "transport": "sse",
+          "url": "https://myorg.snowflakecomputing.com/cortex/search",
+          "tools": [
+            "semantic_search",
+            "document_retrieve"
+          ],
+          "packages": [
+            {"name": "snowflake-connector-python", "version": "3.6.0", "ecosystem": "pypi"},
+            {"name": "cortex-search-sdk", "version": "0.2.1", "ecosystem": "pypi"}
+          ]
+        }
+      ]
+    }
+  ]
+}

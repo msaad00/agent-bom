@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
@@ -252,7 +252,7 @@ class AIBOMReport:
 
     agents: list[Agent] = field(default_factory=list)
     blast_radii: list[BlastRadius] = field(default_factory=list)
-    generated_at: datetime = field(default_factory=datetime.utcnow)
+    generated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     tool_version: str = ""
 
     def __post_init__(self):

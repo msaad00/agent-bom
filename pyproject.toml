@@ -35,6 +35,7 @@ dependencies = [
     "packageurl-python>=0.17",
     "toml>=0.10",
     "pyyaml>=6.0",
+    "jsonschema>=4.0",
 ]
 
 [project.optional-dependencies]

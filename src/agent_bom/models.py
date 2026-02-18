@@ -186,6 +186,7 @@ class Agent:
     config_path: str
     mcp_servers: list[MCPServer] = field(default_factory=list)
     version: Optional[str] = None
+    source: Optional[str] = None  # Inventory source (e.g. "snowflake", "aws", "local")
 
     @property
     def total_packages(self) -> int:

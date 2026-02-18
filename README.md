@@ -53,25 +53,146 @@ pip install -e .
 
 | Command | What it does |
 |---------|-------------|
-| `agent-bom scan` | Discover agents + extract deps + scan for CVEs |
-| `agent-bom scan --transitive` | Include transitive dependencies |
-| `agent-bom scan --enrich` | Add NVD / EPSS / CISA KEV data |
+| `agent-bom scan` | Auto-discover agents + extract deps + scan for CVEs |
+| `agent-bom scan --inventory agents.json` | Scan agents from a manual inventory file |
 | `agent-bom scan --project /path` | Scan a specific project directory |
 | `agent-bom scan --config-dir /path` | Scan a custom agent config directory |
-| `agent-bom scan --inventory agents.json` | Load agents from a manual inventory file |
-| `agent-bom scan -f cyclonedx -o bom.json` | Export CycloneDX 1.6 BOM |
+| `agent-bom scan --transitive` | Include transitive dependencies |
+| `agent-bom scan --transitive --max-depth 5` | Transitive resolution with custom depth |
+| `agent-bom scan --enrich` | Add NVD / EPSS / CISA KEV data |
+| `agent-bom scan --enrich --nvd-api-key KEY` | Enrich with higher NVD rate limits |
+| `agent-bom scan --no-scan` | Inventory only — skip vulnerability scanning |
+| `agent-bom scan --no-tree` | Skip dependency tree in console output |
 | `agent-bom scan -f json -o report.json` | Export JSON report |
+| `agent-bom scan -f cyclonedx -o bom.cdx.json` | Export CycloneDX 1.6 BOM |
 | `agent-bom scan -f sarif -o bom.sarif` | Export SARIF for GitHub Security tab |
+| `agent-bom scan -f text` | Plain text output (for grep/awk) |
 | `agent-bom scan -f json -o - \| jq .` | Pipe clean JSON to stdout |
 | `agent-bom scan -q --fail-on-severity high` | CI gate — exit 1 if high+ vulns found |
 | `agent-bom inventory` | List discovered agents (no vuln scan) |
+| `agent-bom inventory -c config.json` | Inventory a specific config file |
+| `agent-bom validate agents.json` | Validate an inventory file against the schema |
 | `agent-bom where` | Show where configs are looked up |
+
+---
+
+## How It Works
+
+agent-bom operates in two modes: **auto-discovery** and **manual inventory**. Both are agentless — you bring the data, agent-bom scans and generates the BOM.
+
+### Mode 1: Auto-discovery
+
+When you run `agent-bom scan` with no arguments, it scans your machine for known MCP client configurations:
+
+```bash
+# Discover all local agents automatically
+agent-bom scan
+
+# Discover from a specific project directory
+agent-bom scan --project /path/to/my-project
+```
+
+agent-bom looks for config files at known paths for each supported client (see `agent-bom where` for locations). It parses the `mcpServers` block in each config to find MCP server definitions.
+
+### Mode 2: Manual inventory
+
+For agents not auto-discovered — custom agents, production deployments, cloud platforms — provide a JSON inventory file:
+
+```bash
+agent-bom scan --inventory agents.json
+```
+
+**Inventory format** (`agents.json`):
+
+```json
+{
+  "agents": [
+    {
+      "name": "my-production-agent",
+      "agent_type": "custom",
+      "config_path": "/opt/my-agent/config.json",
+      "mcp_servers": [
+        {
+          "name": "database-server",
+          "command": "npx",
+          "args": ["-y", "@my-org/mcp-database-server"],
+          "env": {
+            "DATABASE_URL": "postgresql://...",
+            "API_KEY": "sk-..."
+          },
+          "transport": "stdio",
+          "tools": [
+            {"name": "query_database", "description": "Execute SQL queries"},
+            "list_tables"
+          ],
+          "packages": [
+            {"name": "express", "version": "4.18.2", "ecosystem": "npm"},
+            "axios@1.6.0"
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+| Field | Required | Description |
+|-------|:--------:|-------------|
+| `agents[].name` | yes | Agent identifier |
+| `agents[].agent_type` | no | `claude-desktop`, `claude-code`, `cursor`, `windsurf`, `cline`, or `custom` (default: `custom`) |
+| `agents[].config_path` | no | Where the agent config lives — can be a file path, ARN, Snowflake URI, etc. |
+| `agents[].version` | no | Agent version string |
+| `agents[].mcp_servers[].name` | yes | MCP server identifier |
+| `agents[].mcp_servers[].command` | yes | Server command (`npx`, `uvx`, `python`, `node`, etc.) |
+| `agents[].mcp_servers[].args` | no | Command arguments (array of strings) |
+| `agents[].mcp_servers[].env` | no | Environment variables (object). Credential-like keys are flagged automatically |
+| `agents[].mcp_servers[].transport` | no | `stdio` (default), `sse`, or `streamable-http` |
+| `agents[].mcp_servers[].url` | no | Server URL (for SSE/HTTP transports) |
+| `agents[].mcp_servers[].working_dir` | no | Server working directory (for lock file resolution) |
+| `agents[].mcp_servers[].tools` | no | Pre-populated tool list — array of objects (`{"name", "description"}`) or strings |
+| `agents[].mcp_servers[].packages` | no | Pre-known packages — array of objects (`{"name", "version", "ecosystem"}`) or `"name@version"` strings |
+
+The inventory format mirrors what auto-discovery finds. Pre-populated packages are merged with any packages agent-bom discovers from lock files, so you can provide what you know and agent-bom fills in the rest.
+
+**Validate before scanning:**
+
+```bash
+agent-bom validate agents.json   # exits 0 if valid, 1 with clear errors if not
+```
+
+**What you need for each scanning capability:**
+
+| Capability | Required fields |
+|-----------|----------------|
+| Vulnerability scan | `mcp_servers[].packages[].name` + `.version` + `.ecosystem` |
+| Credential detection | `mcp_servers[].env` (key names only — values never logged) |
+| Blast radius analysis | Both packages and env above, plus `mcp_servers[].tools[]` |
+| SARIF output (finding location) | `config_path` on agent or server |
+| Supply chain traceability | `source` on agent or at file root |
+
+**Mapping from platform-specific formats:**
+
+| Your platform | Maps to |
+|--------------|---------|
+| Claude Desktop `mcpServers.X.command/args/env` | `mcp_servers[].command/args/env` |
+| Cursor / VS Code `mcpServers.X` | Same — auto-discovered by `agent-bom scan` |
+| Snowflake `CREATE MCP SERVER` tools YAML | `mcp_servers[].tools[]` + `mcp_servers[].packages[]` |
+| AWS Bedrock `actionGroupName` / Lambda ARN | Agent name = group name, `config_path` = ARN, packages from Lambda deps |
+| EC2 / VM with AI packages installed | `mcp_servers[].packages[]` with ecosystem = pypi/npm |
+| OpenAI Assistant function tools | `mcp_servers[].tools[]` with name + description |
+
+**Example inventories for different sources:**
+
+- [examples/snowflake-inventory.json](examples/snowflake-inventory.json) — Snowflake Cortex agents with MCP servers and tools from query history
+- [examples/cloud-inventory.json](examples/cloud-inventory.json) — AWS Bedrock agents and EC2-hosted ML pipelines with pre-known packages
+- [schemas/inventory.schema.json](schemas/inventory.schema.json) — Full JSON Schema with field documentation
 
 ---
 
 ## Features
 
 - **Auto-discovery** — Claude Desktop, Claude Code, Cursor, Windsurf, Cline, and project-level `.mcp.json`
+- **Manual inventory** — scan any agent platform via `--inventory` JSON
 - **Multi-ecosystem** — npm, pip, Go, Cargo (lock files + manifest files)
 - **npx / uvx detection** — extracts package names from MCP server command definitions
 - **Transitive resolution** — recursively resolves nested deps via npm and PyPI registries
@@ -80,7 +201,7 @@ pip install -e .
 - **Blast radius scoring** — contextual risk score based on agents, credentials, and tools in reach
 - **Credential detection** — flags MCP servers exposing API keys, tokens, and secrets in env vars
 - **Output formats** — rich console, JSON, CycloneDX 1.6, SARIF 2.1, plain text
-- **CI/CD ready** — `--fail-on-severity`, `--quiet`, stdout piping (`-o -`)
+- **CI/CD ready** — `--fail-on-severity`, `--quiet`, stdout piping (`-o -`), exit codes
 
 ---
 
@@ -96,9 +217,9 @@ pip install -e .
 | Windsurf | ✅ | ✅ | ✅ |
 | Cline | ✅ | ✅ | ✅ |
 
-### Manual scan (any MCP config)
+### Manual scan (any platform)
 
-Use `--config-dir` or `--inventory` to scan any agent not listed above — including custom agents, OpenAI-based tools, LangChain apps, or anything that uses MCP servers.
+Use `--inventory` to scan any agent not listed above — including custom agents, OpenAI-based tools, LangChain apps, or anything that uses MCP servers. See [Inventory format](#mode-2-manual-inventory) above.
 
 ### Cloud platforms (planned)
 
@@ -128,7 +249,7 @@ AI framework packages (LangChain, transformers, openai, mistralai, etc.) are alr
 docker run --rm \
   -v ~/.config:/root/.config:ro \
   -v $(pwd)/reports:/workspace/reports \
-  ghcr.io/agent-bom/agent-bom:latest scan --enrich -o /workspace/reports/ai-bom.json
+  agentbom/agent-bom:latest scan --enrich -o /workspace/reports/ai-bom.json
 ```
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for CI/CD, Kubernetes, and remote scanning setups.

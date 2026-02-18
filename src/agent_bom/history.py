@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -21,7 +21,7 @@ def save_report(report_json: dict, label: Optional[str] = None) -> Path:
 
     Returns the path written to.
     """
-    ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     stem = f"{ts}-{label}" if label else ts
     path = history_dir() / f"{stem}.json"
     path.write_text(json.dumps(report_json, indent=2))

@@ -354,7 +354,7 @@ def test_cli_help_shows_exit_codes():
 
 
 def test_history_save_and_load(tmp_path, monkeypatch):
-    from agent_bom.history import save_report, load_report, HISTORY_DIR
+    from agent_bom.history import load_report, save_report
     monkeypatch.setattr("agent_bom.history.HISTORY_DIR", tmp_path)
 
     data = {"ai_bom_version": "0.3.0", "generated_at": "2025-01-01T00:00:00", "summary": {}, "agents": [], "blast_radius": []}
@@ -535,7 +535,13 @@ def test_policy_template_command():
 
 def test_policy_has_credentials_filter():
     from agent_bom.models import (
-        Agent, AgentType, BlastRadius, MCPServer, MCPTool, Package, Severity, Vulnerability,
+        Agent,
+        AgentType,
+        BlastRadius,
+        MCPServer,
+        Package,
+        Severity,
+        Vulnerability,
     )
     from agent_bom.policy import evaluate_policy
 
@@ -603,3 +609,25 @@ def test_cli_scan_has_policy_flag():
     runner = CliRunner()
     result = runner.invoke(main, ["scan", "--help"])
     assert "--policy" in result.output
+
+
+# ─── Scanner Mock Test ───────────────────────────────────────────────────────
+
+
+def test_osv_empty_response_yields_no_blast_radii(monkeypatch):
+    """OSV query returning empty results should produce zero blast radii."""
+
+    from agent_bom.models import Agent, AgentType, MCPServer, Package
+    from agent_bom.scanners import scan_agents_sync
+
+    async def _empty_osv(packages):
+        return {}
+
+    monkeypatch.setattr("agent_bom.scanners.query_osv_batch", _empty_osv)
+
+    pkg = Package(name="express", version="4.18.2", ecosystem="npm")
+    server = MCPServer(name="srv", command="node", env={}, packages=[pkg])
+    agent = Agent(name="agt", agent_type=AgentType.CUSTOM, config_path="/tmp", mcp_servers=[server])
+
+    blast_radii = scan_agents_sync([agent])
+    assert blast_radii == []

@@ -130,6 +130,7 @@ def print_blast_radius(report: AIBOMReport) -> None:
     table.add_column("Agents", width=7, justify="center")
     table.add_column("Creds", width=6, justify="center")
     table.add_column("OWASP", width=18)
+    table.add_column("ATLAS", width=22)
     table.add_column("Fix", width=15)
 
     severity_colors = {
@@ -154,6 +155,7 @@ def print_blast_radius(report: AIBOMReport) -> None:
         kev_display = "[red bold]🔥[/red bold]" if br.vulnerability.is_kev else "—"
 
         owasp_display = "[dim]" + " ".join(br.owasp_tags) + "[/dim]" if br.owasp_tags else "—"
+        atlas_display = "[dim]" + " ".join(br.atlas_tags) + "[/dim]" if br.atlas_tags else "—"
 
         table.add_row(
             f"[{sev_style}]{br.risk_score:.1f}[/{sev_style}]",
@@ -165,6 +167,7 @@ def print_blast_radius(report: AIBOMReport) -> None:
             str(len(br.affected_agents)),
             str(len(br.exposed_credentials)),
             owasp_display,
+            atlas_display,
             fix,
         )
 
@@ -359,6 +362,7 @@ def to_json(report: AIBOMReport) -> dict:
                 "fixed_version": br.vulnerability.fixed_version,
                 "ai_risk_context": br.ai_risk_context,
                 "owasp_tags": br.owasp_tags,
+                "atlas_tags": br.atlas_tags,
             }
             for br in report.blast_radii
         ],
@@ -575,9 +579,10 @@ def to_sarif(report: AIBOMReport) -> dict:
                 }
             ],
         }
-        if br.owasp_tags:
+        if br.owasp_tags or br.atlas_tags:
             result["properties"] = {
                 "owasp_tags": br.owasp_tags,
+                "atlas_tags": br.atlas_tags,
                 "blast_score": br.risk_score,
                 "exposed_credentials": br.exposed_credentials,
             }

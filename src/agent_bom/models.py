@@ -224,6 +224,7 @@ class BlastRadius:
     risk_score: float = 0.0  # 0-10
     ai_risk_context: Optional[str] = None  # AI-native risk explanation when relevant
     owasp_tags: list[str] = field(default_factory=list)  # OWASP LLM Top 10 codes, e.g. ["LLM05", "LLM06"]
+    atlas_tags: list[str] = field(default_factory=list)  # MITRE ATLAS technique IDs, e.g. ["AML.T0010"]
 
     def calculate_risk_score(self) -> float:
         """Calculate contextual risk score based on blast radius."""

@@ -4,62 +4,88 @@
 [![PyPI version](https://img.shields.io/pypi/v/agent-bom)](https://pypi.org/project/agent-bom/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/agent-bom/agent-bom/blob/main/LICENSE)
 [![Docker Pulls](https://img.shields.io/docker/pulls/agentbom/agent-bom)](https://hub.docker.com/r/agentbom/agent-bom)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/agent-bom/agent-bom/badge)](https://securityscorecards.dev/viewer/?uri=github.com/agent-bom/agent-bom)
 
-**AI Bill of Materials (AI-BOM) for AI agents, MCP servers, containers, and IaC.**
+**AI Bill of Materials (AI-BOM) — CVE scanning, blast radius, and OWASP LLM Top 10 tagging for AI agents and MCP servers.**
 
-`agent-bom` maps the full trust chain from every source of AI workloads — local configs, Docker images, Kubernetes pods, Terraform, GitHub Actions, and Python agent frameworks — through MCP servers and packages to known CVEs, answering the question traditional SBOMs can't:
+`agent-bom` answers the question no traditional SBOM can:
 
-> *"If this package is compromised, which agents are affected, what credentials are exposed, and what tools can an attacker reach?"*
+> *"If this CVE is exploited, which AI agents are compromised, which credentials are exposed, and which tools can an attacker reach?"*
 
 ---
 
-## The AI Supply Chain — Full Picture
+## Why agent-bom?
+
+Traditional SBOMs list packages. AI supply chains need more.
+
+| Capability | Traditional SBOM | agent-bom |
+|---|---|---|
+| Package inventory | ✓ | ✓ |
+| Known CVEs | ✓ | ✓ |
+| CVSS + EPSS + CISA KEV enrichment | some | ✓ |
+| **Blast radius** — which agents are affected | ✗ | ✓ |
+| **Credential exposure** — which secrets are reachable | ✗ | ✓ |
+| **Tool reachability** — which MCP tools can attackers invoke | ✗ | ✓ |
+| **OWASP LLM Top 10 tagging** per finding | ✗ | ✓ |
+| MCP server registry (55+ known servers) | ✗ | ✓ |
+| AI framework scanning (10 Python frameworks) | ✗ | ✓ |
+| Kubernetes pod image scanning | ✗ | ✓ |
+| Terraform / IaC AI resource scanning | ✗ | ✓ |
+| GitHub Actions workflow scanning | ✗ | ✓ |
+| Container image scanning (Grype → Syft → Docker) | ✗ | ✓ |
+| SARIF output → GitHub Security tab | ✗ | ✓ |
+| CycloneDX 1.6 + SPDX 3.0 AI-BOM output | ✗ | ✓ |
+| Prometheus / OTLP observability | ✗ | ✓ |
+| REST API + SSE streaming | ✗ | ✓ |
+| Read-only, no credentials stored | ✓ | ✓ |
+
+---
+
+## Architecture
 
 ```
-  SOURCES                 AGENTS                MCP SERVERS            PACKAGES → VULNS
-  ───────                 ──────                ───────────            ────────────────
-
-  agent-bom scan     ──▶  Claude Desktop   ──▶  filesystem-server ──▶  @modelcontextprotocol/
-  (local configs)         Cursor                  tools: [read,          server-filesystem
-                          Windsurf                        write]         0.6.2  ──▶ CVE HIGH
-                          Cline                   creds: [API_KEY]
-                          VS Code Copilot                           ──▶  express@4.18.2
-                          Continue / Zed    ──▶  database-server         ──▶ CVE CRITICAL
-                                                  tools: [query,
-  --inventory        ──▶  custom-agent             execute]        ──▶  axios@1.6.0
-  agents.json             openai-app              creds: [DB_PASS]       ──▶ CVE HIGH
-                          langchain-app
-                                                                   ──▶  langchain@0.2.0
-  --image nginx:1.25 ──▶  img:nginx        ──▶  (image packages)        ──▶ CVE MEDIUM
-  --image redis:7    ──▶  img:redis               extracted from
-  (Grype→Syft→Docker)                             all layers       ──▶  transformers@4.x
-                                                                         ──▶ CVE HIGH
-  --k8s              ──▶  k8s:prod/api-pod ──▶  (pod image pkgs)
-  --all-namespaces        k8s:prod/worker        via kubectl
-                          k8s:staging/...        get pods -o json
-
-  --tf-dir infra/    ──▶  tf:bedrock       ──▶  terraform:aws     ──▶  github.com/hashicorp/
-  (HCL parser)            tf:vertex-ai            provider              terraform-provider-aws
-                          tf:azure-openai         Go module              5.31.0 ──▶ CVE HIGH
-                          [+ hardcoded            (OSV Go scan)
-                           secret detection]
-
-  --gha /repo        ──▶  gha:ci.yml       ──▶  (AI SDK pkgs)    ──▶  openai@1.x
-  (workflow YAML)         gha:deploy.yml        openai, anthropic       ──▶ CVE MEDIUM
-                          [+ credential          langchain in
-                           exposure flags]       run: steps
-
-  --agent-project .  ──▶  langchain:agent  ──▶  (framework pkgs) ──▶  langchain@0.2.0
-  (Python scanner)        openai:my-bot         tools, model,           ──▶ CVE HIGH
-  10 frameworks           crewai:pipeline        cred refs              pydantic-ai@0.x
-                                                                         ──▶ CVE MEDIUM
-
-  --sbom sbom.json   ──▶  (ingest existing CycloneDX / SPDX from Syft, Grype, Trivy)
-  ─────────────────────────────────────────────────────────────────────────────────────
-  BLAST RADIUS  CVE-2024-XXXX (critical, CVSS 9.8, KEV, EPSS 0.94)
-    ├─ 4 agents affected    (Claude Desktop, cursor-ai, k8s:prod/api, gha:ci.yml)
-    ├─ 3 credentials exposed  (OPENAI_API_KEY, DB_PASSWORD, AWS_SECRET_KEY)
-    └─ 7 tools reachable    (query_database, write_file, execute_code, ...)
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                        SOURCES (what you scan)                          │
+  │                                                                         │
+  │  Local configs   Docker images   Kubernetes pods   Terraform / IaC      │
+  │  Python projects GitHub Actions  Existing SBOMs    JSON inventory        │
+  └───────────────────────────────┬─────────────────────────────────────────┘
+                                  │  agent-bom scan
+                                  ▼
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                        DISCOVERY ENGINE                                 │
+  │                                                                         │
+  │  MCP Config     Grype/Syft      kubectl          HCL parser             │
+  │  auto-detect    image layers    pod specs        .tf files              │
+  │  (8 clients)    (all ecosys.)   (all ns)         AI resource detection  │
+  └───────────────────────────────┬─────────────────────────────────────────┘
+                                  │  packages + agents
+                                  ▼
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                     INTELLIGENCE LAYER                                  │
+  │                                                                         │
+  │  OSV.dev batch CVE scan   NVD CVSS v4   EPSS exploit probability        │
+  │  CISA KEV catalog         MCP Registry  OWASP LLM Top 10 tagging        │
+  └───────────────────────────────┬─────────────────────────────────────────┘
+                                  │  enriched vulnerabilities
+                                  ▼
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                      BLAST RADIUS ENGINE                                │
+  │                                                                         │
+  │  CVE-2024-XXXX (CRITICAL, CVSS 9.8, KEV, EPSS 0.94)                    │
+  │    ├─ 4 agents affected    (Claude Desktop, Cursor, k8s:prod, ci.yml)   │
+  │    ├─ 3 credentials exposed  (OPENAI_API_KEY, DB_PASS, AWS_SECRET)      │
+  │    ├─ 7 tools reachable    (query_db, write_file, execute_code…)        │
+  │    └─ OWASP tags          [LLM05 LLM06 LLM08]                          │
+  └───────────────────────────────┬─────────────────────────────────────────┘
+                                  │  structured findings
+                                  ▼
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                          OUTPUTS                                        │
+  │                                                                         │
+  │  Console (rich)   HTML dashboard   JSON          CycloneDX 1.6          │
+  │  SPDX 3.0 AI-BOM  SARIF (GitHub)   Prometheus    OTLP (Grafana)         │
+  └─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -85,18 +111,40 @@ No config needed. Auto-discovers agent configs on macOS, Linux, and Windows.
 
 ## Install
 
-```bash
-pip install agent-bom                  # core CLI + scanner
-pip install agent-bom[api]             # + REST API server (agent-bom api)
-pip install agent-bom[ui]              # + Streamlit dashboard (agent-bom serve)
-pip install agent-bom[otel]            # + OpenTelemetry OTLP export
-```
+| Mode | Command |
+|------|---------|
+| Core CLI + scanner | `pip install agent-bom` |
+| REST API server | `pip install agent-bom[api]` |
+| Streamlit dashboard | `pip install agent-bom[ui]` |
+| OpenTelemetry export | `pip install agent-bom[otel]` |
+| All extras | `pip install agent-bom[api,ui,otel]` |
 
-Docker:
+**Docker:**
 
 ```bash
 docker run --rm -v ~/.config:/root/.config:ro agentbom/agent-bom:latest scan
 ```
+
+**Kubernetes:**
+
+```bash
+helm repo add agent-bom https://agent-bom.github.io/charts
+helm install agent-bom agent-bom/agent-bom
+```
+
+---
+
+## Deployment Models
+
+| Mode | How to run | Use case |
+|------|-----------|----------|
+| **CLI** | `pip install agent-bom && agent-bom scan` | Local scanning, developer workflow |
+| **CI/CD gate** | `agent-bom scan --fail-on-severity high -q` | Block PRs with critical CVEs |
+| **Docker** | `docker run agentbom/agent-bom scan` | Isolated, reproducible scans |
+| **REST API** | `agent-bom api` → port 8422 | Dashboards, integrations, scripting |
+| **Kubernetes** | Helm chart + CronJob | Continuous cluster monitoring |
+| **Streamlit dashboard** | `agent-bom serve` | Team-visible security dashboard |
+| **Prometheus / Grafana** | `--push-gateway` or `--otel-endpoint` | Observability stack integration |
 
 ---
 
@@ -143,6 +191,76 @@ agent-bom serve                                  # interactive Streamlit dashboa
 
 ---
 
+## OWASP LLM Top 10 Tagging
+
+Every finding in the blast radius analysis is automatically tagged with applicable
+[OWASP Top 10 for LLM Applications](https://owasp.org/www-project-top-10-for-large-language-model-applications/) codes:
+
+| Code | Name | Triggered by |
+|------|------|-------------|
+| **LLM05** | Supply Chain Vulnerabilities | Any package CVE — always tagged |
+| **LLM06** | Sensitive Information Disclosure | Credential env vars exposed alongside vulnerable package |
+| **LLM08** | Excessive Agency | Server with >5 tools + CRITICAL/HIGH severity CVE |
+| **LLM02** | Insecure Output Handling | Tool with shell/exec semantics + any CVE |
+| **LLM07** | System Prompt Leakage | Tool that reads files/prompts + any CVE |
+| **LLM04** | Data and Model Poisoning | AI framework package (torch, transformers, langchain…) + HIGH+ CVE |
+
+Tags appear in the blast radius table (`--format console`), in JSON output (`owasp_tags` field), and in SARIF result properties for GitHub Advanced Security.
+
+---
+
+## MCP Server Registry
+
+agent-bom ships with a registry of **55+ known MCP servers** with provenance, risk levels, and package metadata.
+
+| Category | Servers included |
+|----------|-----------------|
+| Official (modelcontextprotocol) | filesystem, github, gitlab, slack, postgres, sqlite, fetch, memory, puppeteer, google-maps, gdrive, git, sentry, sequential-thinking + more |
+| Cloud providers | AWS (core, Bedrock), Cloudflare, Vercel |
+| Databases | MongoDB, Supabase, Redis, Elasticsearch, Qdrant, Neo4j |
+| Developer tools | Stripe, Linear, Jira, Confluence, GitHub Copilot, JetBrains |
+| AI / ML | HuggingFace Hub, LangSmith, Weights & Biases, OpenAI |
+| Productivity | Notion, Zapier, Twilio, SendGrid |
+| Search & data | Exa, Tavily, Firecrawl, DuckDuckGo, Apify |
+| Observability | Grafana, Datadog |
+
+The registry powers risk-level warnings when an unverified MCP server is detected in your agent configs.
+
+View the full registry: [`data/mcp-registry.yaml`](https://github.com/agent-bom/agent-bom/blob/main/data/mcp-registry.yaml)
+
+---
+
+## Observability & Monitoring
+
+```bash
+# Prometheus Pushgateway
+agent-bom scan --push-gateway http://localhost:9091
+
+# node_exporter textfile collector
+agent-bom scan -f prometheus -o /var/lib/node_exporter/textfile/agent-bom.prom
+
+# OpenTelemetry OTLP (Grafana, Jaeger, Honeycomb...)
+pip install agent-bom[otel]
+agent-bom scan --otel-endpoint http://localhost:4318
+```
+
+**One-command monitoring stack** (Prometheus + Pushgateway + Grafana):
+
+```bash
+docker compose -f docker-compose-monitoring.yml up -d
+agent-bom scan --push-gateway http://localhost:9091
+open http://localhost:3000   # import grafana-dashboard.json
+```
+
+**Metrics exported:**
+- `agent_bom_vulnerabilities_total` — by severity
+- `agent_bom_agents_total` — total agents scanned
+- `agent_bom_blast_radius_credentials` — exposed credential count
+- `agent_bom_blast_radius_tools` — reachable tool count
+- `agent_bom_kev_findings_total` — CISA KEV hit count
+
+---
+
 ## Key Commands
 
 ```bash
@@ -177,6 +295,7 @@ agent-bom scan --dry-run --inventory agents.json --enrich  # full access preview
 
 # Dashboard & utilities
 agent-bom serve                                         # Streamlit dashboard (pip install agent-bom[ui])
+agent-bom api                                           # REST API (pip install agent-bom[api])
 agent-bom check express@4.18.2 -e npm                  # pre-install CVE check
 agent-bom diff baseline.json                            # diff vs saved baseline
 agent-bom inventory                                     # list agents, no CVE scan
@@ -193,7 +312,14 @@ and never stores credential values. See [PERMISSIONS.md](https://github.com/agen
 
 Use `--dry-run` to preview exactly which files and APIs would be accessed before any scan runs.
 
+**Three layers of evidence:**
+1. `--dry-run` — shows every file path and API call upfront
+2. `PERMISSIONS.md` — auditable read-only contract
+3. API trust headers — `X-Agent-Bom-Read-Only: true` on every HTTP response
+4. Open-source code — all scanning logic is auditable in `src/agent_bom/`
+
 Releases v0.7.0+ are signed via [Sigstore/cosign](https://www.sigstore.dev/). Download the `.bundle` file from the GitHub Release and verify:
+
 ```bash
 cosign verify-blob agent_bom-0.7.0-py3-none-any.whl \
   --bundle agent_bom-0.7.0-py3-none-any.whl.bundle \
@@ -203,21 +329,35 @@ cosign verify-blob agent_bom-0.7.0-py3-none-any.whl \
 
 ---
 
-## OWASP LLM Top 10 Tagging
+## CI Integration
 
-Every finding in the blast radius analysis is automatically tagged with applicable
-[OWASP Top 10 for LLM Applications](https://owasp.org/www-project-top-10-for-large-language-model-applications/) codes:
+```yaml
+# Option A — standalone AI-BOM scan
+- name: Generate AI-BOM
+  run: |
+    pip install agent-bom
+    agent-bom scan --inventory agents.json --enrich --fail-on-severity high \
+      -f sarif -o results.sarif
 
-| Code | Name | Triggered by |
-|------|------|-------------|
-| **LLM05** | Supply Chain Vulnerabilities | Any package CVE — always tagged |
-| **LLM06** | Sensitive Information Disclosure | Credential env vars exposed alongside vulnerable package |
-| **LLM08** | Excessive Agency | Server with >5 tools + CRITICAL/HIGH severity CVE |
-| **LLM02** | Insecure Output Handling | Tool with shell/exec semantics + any CVE |
-| **LLM07** | System Prompt Leakage | Tool that reads files/prompts + any CVE |
-| **LLM04** | Data and Model Poisoning | AI framework package (torch, transformers, langchain…) + HIGH+ CVE |
+- name: Upload to GitHub Security tab
+  uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: results.sarif
 
-Tags appear in the blast radius table (`--format console`), in JSON output (`owasp_tags` field), and in SARIF result properties for GitHub Advanced Security.
+# Option B — pipe Syft/Grype SBOM into agent-bom
+- name: Generate SBOM with Syft
+  uses: anchore/sbom-action@v0
+  with:
+    image: myapp:latest
+    format: cyclonedx-json
+    output-file: sbom.cdx.json
+
+- name: Blast radius analysis
+  run: |
+    pip install agent-bom
+    agent-bom scan --sbom sbom.cdx.json --inventory agents.json \
+      --enrich --fail-on-kev -f sarif -o results.sarif
+```
 
 ---
 
@@ -254,59 +394,24 @@ See [example-inventory.json](https://github.com/agent-bom/agent-bom/blob/main/ex
 
 ---
 
-## CI Integration
-
-```yaml
-# Option A — standalone AI-BOM scan
-- name: Generate AI-BOM
-  run: |
-    pip install agent-bom
-    agent-bom scan --inventory agents.json --enrich --fail-on-severity high \
-      -f sarif -o results.sarif
-
-- name: Upload to GitHub Security tab
-  uses: github/codeql-action/upload-sarif@v3
-  with:
-    sarif_file: results.sarif
-
-# Option B — pipe Syft/Grype SBOM into agent-bom
-- name: Generate SBOM with Syft
-  uses: anchore/sbom-action@v0
-  with:
-    image: myapp:latest
-    format: cyclonedx-json
-    output-file: sbom.cdx.json
-
-- name: Blast radius analysis
-  run: |
-    pip install agent-bom
-    agent-bom scan --sbom sbom.cdx.json --inventory agents.json \
-      --enrich --fail-on-kev -f sarif -o results.sarif
-```
-
----
-
-## Observability
+## REST API
 
 ```bash
-# Prometheus Pushgateway
-agent-bom scan --push-gateway http://localhost:9091
-
-# node_exporter textfile collector
-agent-bom scan -f prometheus -o /var/lib/node_exporter/textfile/agent-bom.prom
-
-# OpenTelemetry OTLP
-pip install agent-bom[otel]
-agent-bom scan --otel-endpoint http://localhost:4318
+pip install agent-bom[api]
+agent-bom api          # http://127.0.0.1:8422  |  docs at /docs
 ```
 
-One-command monitoring stack (Prometheus + Pushgateway + Grafana):
-
-```bash
-docker compose -f docker-compose-monitoring.yml up -d
-agent-bom scan --push-gateway http://localhost:9091
-open http://localhost:3000   # import grafana-dashboard.json
-```
+| Endpoint | Description |
+|----------|-------------|
+| `GET /health` | Liveness probe — returns `X-Agent-Bom-Read-Only: true` |
+| `GET /version` | Version info |
+| `POST /v1/scan` | Start an async scan (returns `job_id`) |
+| `GET /v1/scan/{job_id}` | Poll scan status + results |
+| `GET /v1/scan/{job_id}/stream` | SSE — real-time scan progress |
+| `GET /v1/agents` | Agent discovery without CVE scan |
+| `GET /v1/registry` | Full MCP server registry (55+ entries) |
+| `GET /v1/registry/{id}` | Single registry entry |
+| `GET /v1/jobs` | List all scan jobs |
 
 ---
 
@@ -318,6 +423,7 @@ open http://localhost:3000   # import grafana-dashboard.json
 - [ ] Jupyter notebook scanning — detect AI library usage in `.ipynb` files
 - [ ] Live MCP server introspection — enumerate tools/resources dynamically
 - [ ] MITRE ATLAS mapping for AI/ML threats
+- [ ] MCP registry growth — continuous expansion toward 100+ entries
 
 ---
 

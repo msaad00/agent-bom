@@ -162,6 +162,84 @@ servers:
     sigstore_bundle: null
     description: "Query AWS Bedrock Knowledge Bases. Requires AWS credentials."
 
+  - id: "modelcontextprotocol/google-maps"
+    name: "Google Maps"
+    publisher: "modelcontextprotocol"
+    verified: true
+    transport: stdio
+    risk_level: low
+    packages:
+      - name: "@modelcontextprotocol/server-google-maps"
+        ecosystem: npm
+    source_url: "https://github.com/modelcontextprotocol/servers"
+    sigstore_bundle: null
+    description: "Geocoding, directions, and places via Google Maps API. Requires GOOGLE_MAPS_API_KEY."
+
+  - id: "modelcontextprotocol/gdrive"
+    name: "Google Drive"
+    publisher: "modelcontextprotocol"
+    verified: true
+    transport: stdio
+    risk_level: medium
+    packages:
+      - name: "@modelcontextprotocol/server-gdrive"
+        ecosystem: npm
+    source_url: "https://github.com/modelcontextprotocol/servers"
+    sigstore_bundle: null
+    description: "Browse and read Google Drive files. Requires OAuth credentials."
+
+  - id: "modelcontextprotocol/git"
+    name: "Git"
+    publisher: "modelcontextprotocol"
+    verified: true
+    transport: stdio
+    risk_level: medium
+    packages:
+      - name: "mcp-server-git"
+        ecosystem: pypi
+    source_url: "https://github.com/modelcontextprotocol/servers"
+    sigstore_bundle: null
+    description: "Read git history, diffs, and branches from local repositories."
+
+  - id: "modelcontextprotocol/sentry"
+    name: "Sentry"
+    publisher: "modelcontextprotocol"
+    verified: true
+    transport: stdio
+    risk_level: low
+    packages:
+      - name: "@modelcontextprotocol/server-sentry"
+        ecosystem: npm
+    source_url: "https://github.com/modelcontextprotocol/servers"
+    sigstore_bundle: null
+    description: "Query Sentry issues and errors. Requires SENTRY_AUTH_TOKEN."
+
+  - id: "modelcontextprotocol/sequentialthinking"
+    name: "Sequential Thinking"
+    publisher: "modelcontextprotocol"
+    verified: true
+    transport: stdio
+    risk_level: low
+    packages:
+      - name: "@modelcontextprotocol/server-sequential-thinking"
+        ecosystem: npm
+    source_url: "https://github.com/modelcontextprotocol/servers"
+    sigstore_bundle: null
+    description: "Structured reasoning tool to break complex tasks into sequential steps."
+
+  - id: "modelcontextprotocol/everything"
+    name: "Everything (Demo)"
+    publisher: "modelcontextprotocol"
+    verified: true
+    transport: stdio
+    risk_level: low
+    packages:
+      - name: "@modelcontextprotocol/server-everything"
+        ecosystem: npm
+    source_url: "https://github.com/modelcontextprotocol/servers"
+    sigstore_bundle: null
+    description: "Demo server exposing every MCP primitive for testing."
+
   # ── Anthropic servers ─────────────────────────────────────────────────────
 
   - id: "anthropic/computer-use"
@@ -177,33 +255,48 @@ servers:
     sigstore_bundle: null
     description: "Control mouse, keyboard, and screen. Extremely high risk — full OS access."
 
-  # ── Community / popular servers ───────────────────────────────────────────
+  # ── AWS / Cloud providers ─────────────────────────────────────────────────
 
-  - id: "punkpeye/mcp-server-firecrawl"
-    name: "Firecrawl"
-    publisher: "punkpeye"
-    verified: false
+  - id: "awslabs/mcp-server-aws"
+    name: "AWS MCP Server"
+    publisher: "awslabs"
+    verified: true
+    transport: stdio
+    risk_level: high
+    packages:
+      - name: "awslabs.core-mcp-server"
+        ecosystem: pypi
+    source_url: "https://github.com/awslabs/mcp"
+    sigstore_bundle: null
+    description: "Access AWS services (S3, Lambda, DynamoDB, Bedrock) via AWS SDK. Requires IAM credentials."
+
+  - id: "awslabs/mcp-server-bedrock"
+    name: "AWS Bedrock"
+    publisher: "awslabs"
+    verified: true
     transport: stdio
     risk_level: medium
     packages:
-      - name: "mcp-server-firecrawl"
-        ecosystem: npm
-    source_url: "https://github.com/punkpeye/mcp-server-firecrawl"
+      - name: "awslabs.bedrock-kb-retrieval-mcp-server"
+        ecosystem: pypi
+    source_url: "https://github.com/awslabs/mcp"
     sigstore_bundle: null
-    description: "Web scraping and crawling via Firecrawl API."
+    description: "Query AWS Bedrock Knowledge Bases and invoke foundation models."
 
-  - id: "pierrebrunelle/mcp-server-youtube"
-    name: "YouTube"
-    publisher: "pierrebrunelle"
-    verified: false
+  - id: "cloudflare/mcp-server-cloudflare"
+    name: "Cloudflare"
+    publisher: "cloudflare"
+    verified: true
     transport: stdio
-    risk_level: low
+    risk_level: medium
     packages:
-      - name: "@pierrebrunelle/mcp-server-youtube"
+      - name: "@cloudflare/mcp-server-cloudflare"
         ecosystem: npm
-    source_url: "https://github.com/pierrebrunelle/mcp-server-youtube"
+    source_url: "https://github.com/cloudflare/mcp-server-cloudflare"
     sigstore_bundle: null
-    description: "Search and retrieve YouTube video metadata and transcripts."
+    description: "Manage Cloudflare Workers, KV, R2, and DNS settings. Requires API token."
+
+  # ── Database & storage ────────────────────────────────────────────────────
 
   - id: "qdrant/mcp-server-qdrant"
     name: "Qdrant"
@@ -231,6 +324,60 @@ servers:
     sigstore_bundle: null
     description: "Query and write Neo4j graph database. Requires DB credentials."
 
+  - id: "mongodb/mcp-mongodb"
+    name: "MongoDB"
+    publisher: "mongodb"
+    verified: true
+    transport: stdio
+    risk_level: high
+    packages:
+      - name: "mongodb-mcp-server"
+        ecosystem: npm
+    source_url: "https://github.com/mongodb-js/mongodb-mcp-server"
+    sigstore_bundle: null
+    description: "Query and modify MongoDB collections. High risk — full DB write access."
+
+  - id: "supabase/mcp-server-supabase"
+    name: "Supabase"
+    publisher: "supabase"
+    verified: true
+    transport: stdio
+    risk_level: high
+    packages:
+      - name: "@supabase/mcp-server-supabase"
+        ecosystem: npm
+    source_url: "https://github.com/supabase-community/supabase-mcp"
+    sigstore_bundle: null
+    description: "Read and write Supabase tables, storage, and Edge Functions. Requires service role key."
+
+  - id: "redis/mcp-server-redis"
+    name: "Redis"
+    publisher: "redis"
+    verified: false
+    transport: stdio
+    risk_level: medium
+    packages:
+      - name: "mcp-server-redis"
+        ecosystem: npm
+    source_url: "https://github.com/redis/mcp-redis"
+    sigstore_bundle: null
+    description: "Read and write Redis keys. Medium risk — cache/session data exposure."
+
+  - id: "elastic/mcp-server-elasticsearch"
+    name: "Elasticsearch"
+    publisher: "elastic"
+    verified: false
+    transport: stdio
+    risk_level: medium
+    packages:
+      - name: "mcp-server-elasticsearch"
+        ecosystem: npm
+    source_url: "https://github.com/elastic/mcp-server-elasticsearch"
+    sigstore_bundle: null
+    description: "Query Elasticsearch indices. Requires cluster credentials."
+
+  # ── Developer tools ────────────────────────────────────────────────────────
+
   - id: "stripe/agent-toolkit"
     name: "Stripe"
     publisher: "stripe"
@@ -243,6 +390,177 @@ servers:
     source_url: "https://github.com/stripe/agent-toolkit"
     sigstore_bundle: null
     description: "Stripe payment operations. High risk — financial transaction capability."
+
+  - id: "linear/mcp-server-linear"
+    name: "Linear"
+    publisher: "linear"
+    verified: true
+    transport: stdio
+    risk_level: medium
+    packages:
+      - name: "linear-mcp-server"
+        ecosystem: npm
+    source_url: "https://github.com/linear/linear-mcp"
+    sigstore_bundle: null
+    description: "Read and create Linear issues, projects, and cycles. Requires API key."
+
+  - id: "atlassian/mcp-server-jira"
+    name: "Jira"
+    publisher: "atlassian"
+    verified: false
+    transport: stdio
+    risk_level: medium
+    packages:
+      - name: "mcp-server-jira"
+        ecosystem: npm
+    source_url: "https://github.com/atlassian/mcp-atlassian"
+    sigstore_bundle: null
+    description: "Read and create Jira issues and sprints. Requires Atlassian API token."
+
+  - id: "atlassian/mcp-server-confluence"
+    name: "Confluence"
+    publisher: "atlassian"
+    verified: false
+    transport: stdio
+    risk_level: medium
+    packages:
+      - name: "mcp-server-confluence"
+        ecosystem: npm
+    source_url: "https://github.com/atlassian/mcp-atlassian"
+    sigstore_bundle: null
+    description: "Search and read Confluence pages. Requires Atlassian API token."
+
+  - id: "github/mcp-server-github-copilot"
+    name: "GitHub Copilot"
+    publisher: "github"
+    verified: false
+    transport: sse
+    risk_level: medium
+    packages: []
+    source_url: "https://github.com/github/github-mcp-server"
+    sigstore_bundle: null
+    description: "GitHub's official MCP server for code search, PR review, and Copilot integration."
+
+  - id: "vercel/mcp-server-vercel"
+    name: "Vercel"
+    publisher: "vercel"
+    verified: false
+    transport: stdio
+    risk_level: medium
+    packages:
+      - name: "@vercel/mcp-adapter"
+        ecosystem: npm
+    source_url: "https://github.com/vercel/mcp"
+    sigstore_bundle: null
+    description: "Deploy and manage Vercel projects. Requires Vercel API token."
+
+  - id: "jetbrains/mcp-proxy"
+    name: "JetBrains IDE"
+    publisher: "jetbrains"
+    verified: true
+    transport: stdio
+    risk_level: medium
+    packages:
+      - name: "@jetbrains/mcp-proxy"
+        ecosystem: npm
+    source_url: "https://github.com/JetBrains/mcp-jetbrains"
+    sigstore_bundle: null
+    description: "Control JetBrains IDEs — code navigation, refactoring, run configurations."
+
+  # ── AI & ML platforms ─────────────────────────────────────────────────────
+
+  - id: "huggingface/mcp-server-huggingface"
+    name: "HuggingFace Hub"
+    publisher: "huggingface"
+    verified: false
+    transport: stdio
+    risk_level: low
+    packages:
+      - name: "mcp-server-huggingface-hub"
+        ecosystem: pypi
+    source_url: "https://github.com/evalstate/mcp-hfspace"
+    sigstore_bundle: null
+    description: "Search models, datasets, and Spaces on HuggingFace Hub."
+
+  - id: "langchain/mcp-langsmith"
+    name: "LangSmith"
+    publisher: "langchain"
+    verified: false
+    transport: stdio
+    risk_level: low
+    packages:
+      - name: "langsmith-mcp-server"
+        ecosystem: pypi
+    source_url: "https://github.com/langchain-ai/langsmith-mcp"
+    sigstore_bundle: null
+    description: "Query LangSmith traces, datasets, and evaluation results."
+
+  - id: "wandb/mcp-server-wandb"
+    name: "Weights & Biases"
+    publisher: "wandb"
+    verified: false
+    transport: stdio
+    risk_level: low
+    packages:
+      - name: "wandb-mcp-server"
+        ecosystem: pypi
+    source_url: "https://github.com/wandb/wandb-mcp-server"
+    sigstore_bundle: null
+    description: "Query W&B runs, artifacts, and experiments. Requires WANDB_API_KEY."
+
+  # ── Productivity & communication ──────────────────────────────────────────
+
+  - id: "notion/mcp-server-notion"
+    name: "Notion"
+    publisher: "notion"
+    verified: true
+    transport: stdio
+    risk_level: medium
+    packages:
+      - name: "@notionhq/notion-mcp-server"
+        ecosystem: npm
+    source_url: "https://github.com/makenotion/notion-mcp-server"
+    sigstore_bundle: null
+    description: "Read and write Notion pages, databases, and blocks. Requires API token."
+
+  - id: "zapier/mcp-server-zapier"
+    name: "Zapier"
+    publisher: "zapier"
+    verified: false
+    transport: streamable-http
+    risk_level: high
+    packages: []
+    source_url: "https://zapier.com/mcp"
+    sigstore_bundle: null
+    description: "Trigger 7000+ app automations via Zapier. High risk — broad action scope."
+
+  - id: "twilio/mcp-server-twilio"
+    name: "Twilio"
+    publisher: "twilio"
+    verified: false
+    transport: stdio
+    risk_level: high
+    packages:
+      - name: "mcp-server-twilio"
+        ecosystem: pypi
+    source_url: "https://github.com/twilio-labs/mcp"
+    sigstore_bundle: null
+    description: "Send SMS/voice calls via Twilio. High risk — messaging capability + credentials."
+
+  - id: "sendgrid/mcp-server-sendgrid"
+    name: "SendGrid"
+    publisher: "sendgrid"
+    verified: false
+    transport: stdio
+    risk_level: high
+    packages:
+      - name: "mcp-server-sendgrid"
+        ecosystem: npm
+    source_url: "https://github.com/sendgrid/mcp-sendgrid"
+    sigstore_bundle: null
+    description: "Send transactional emails via SendGrid API. High risk — email send capability."
+
+  # ── Search & data ─────────────────────────────────────────────────────────
 
   - id: "exa-labs/exa-mcp-server"
     name: "Exa Search"
@@ -270,15 +588,160 @@ servers:
     sigstore_bundle: null
     description: "Real-time web search optimized for AI agents."
 
-  - id: "modelcontextprotocol/everything"
-    name: "Everything (Demo)"
-    publisher: "modelcontextprotocol"
-    verified: true
+  - id: "punkpeye/mcp-server-firecrawl"
+    name: "Firecrawl"
+    publisher: "punkpeye"
+    verified: false
+    transport: stdio
+    risk_level: medium
+    packages:
+      - name: "mcp-server-firecrawl"
+        ecosystem: npm
+    source_url: "https://github.com/punkpeye/mcp-server-firecrawl"
+    sigstore_bundle: null
+    description: "Web scraping and crawling via Firecrawl API."
+
+  - id: "pierrebrunelle/mcp-server-youtube"
+    name: "YouTube"
+    publisher: "pierrebrunelle"
+    verified: false
     transport: stdio
     risk_level: low
     packages:
-      - name: "@modelcontextprotocol/server-everything"
+      - name: "@pierrebrunelle/mcp-server-youtube"
         ecosystem: npm
-    source_url: "https://github.com/modelcontextprotocol/servers"
+    source_url: "https://github.com/pierrebrunelle/mcp-server-youtube"
     sigstore_bundle: null
-    description: "Demo server exposing every MCP primitive for testing."
+    description: "Search and retrieve YouTube video metadata and transcripts."
+
+  - id: "apify/mcp-server-apify"
+    name: "Apify"
+    publisher: "apify"
+    verified: false
+    transport: stdio
+    risk_level: medium
+    packages:
+      - name: "apify-mcp-server"
+        ecosystem: npm
+    source_url: "https://github.com/apify/actors-mcp-server"
+    sigstore_bundle: null
+    description: "Run Apify Actors for web scraping and automation. Requires APIFY_TOKEN."
+
+  # ── Observability ─────────────────────────────────────────────────────────
+
+  - id: "grafana/mcp-server-grafana"
+    name: "Grafana"
+    publisher: "grafana"
+    verified: true
+    transport: stdio
+    risk_level: medium
+    packages:
+      - name: "mcp-grafana"
+        ecosystem: pypi
+    source_url: "https://github.com/grafana/mcp-grafana"
+    sigstore_bundle: null
+    description: "Query Grafana dashboards, datasources, and alerts. Requires API key."
+
+  - id: "datadog/mcp-server-datadog"
+    name: "Datadog"
+    publisher: "datadog"
+    verified: false
+    transport: stdio
+    risk_level: medium
+    packages:
+      - name: "mcp-server-datadog"
+        ecosystem: pypi
+    source_url: "https://github.com/DataDog/datadog-mcp-server"
+    sigstore_bundle: null
+    description: "Query Datadog metrics, logs, and dashboards. Requires DD_API_KEY + DD_APP_KEY."
+
+  # ── Local tools ───────────────────────────────────────────────────────────
+
+  - id: "punkpeye/mcp-server-filesystem-secure"
+    name: "Filesystem (Secure)"
+    publisher: "punkpeye"
+    verified: false
+    transport: stdio
+    risk_level: medium
+    packages:
+      - name: "@punkpeye/mcp-server-filesystem"
+        ecosystem: npm
+    source_url: "https://github.com/punkpeye/mcp-filesystem"
+    sigstore_bundle: null
+    description: "Sandboxed read/write filesystem access (allowlist-only paths)."
+
+  - id: "nickclyde/duckduckgo-mcp-server"
+    name: "DuckDuckGo Search"
+    publisher: "nickclyde"
+    verified: false
+    transport: stdio
+    risk_level: low
+    packages:
+      - name: "duckduckgo-mcp-server"
+        ecosystem: pypi
+    source_url: "https://github.com/nickclyde/duckduckgo-mcp-server"
+    sigstore_bundle: null
+    description: "Privacy-first web search via DuckDuckGo. No API key required."
+
+  - id: "anaisbetts/mcp-youtube"
+    name: "YouTube Transcript"
+    publisher: "anaisbetts"
+    verified: false
+    transport: stdio
+    risk_level: low
+    packages:
+      - name: "mcp-youtube"
+        ecosystem: npm
+    source_url: "https://github.com/anaisbetts/mcp-youtube"
+    sigstore_bundle: null
+    description: "Download and search YouTube video transcripts."
+
+  - id: "mzxrai/mcp-openai"
+    name: "OpenAI"
+    publisher: "mzxrai"
+    verified: false
+    transport: stdio
+    risk_level: medium
+    packages:
+      - name: "mcp-openai"
+        ecosystem: npm
+    source_url: "https://github.com/mzxrai/mcp-openai"
+    sigstore_bundle: null
+    description: "Call OpenAI models (GPT-4, DALL-E, Whisper) from within an MCP session. Requires OPENAI_API_KEY."
+
+  - id: "tokencost/mcp-server-llm-costs"
+    name: "LLM Cost Tracker"
+    publisher: "tokencost"
+    verified: false
+    transport: stdio
+    risk_level: low
+    packages:
+      - name: "mcp-server-llm-costs"
+        ecosystem: pypi
+    source_url: "https://github.com/AgentOps-AI/tokencost"
+    sigstore_bundle: null
+    description: "Track and estimate LLM API costs across providers."
+
+  - id: "home-assistant/mcp-server-hass"
+    name: "Home Assistant"
+    publisher: "home-assistant"
+    verified: false
+    transport: stdio
+    risk_level: high
+    packages:
+      - name: "mcp-hass"
+        ecosystem: pypi
+    source_url: "https://github.com/home-assistant/core"
+    sigstore_bundle: null
+    description: "Control Home Assistant devices and automations. High risk — physical device control."
+
+  - id: "pomerium/mcp-server-pomerium"
+    name: "Pomerium"
+    publisher: "pomerium"
+    verified: false
+    transport: stdio
+    risk_level: medium
+    packages: []
+    source_url: "https://github.com/pomerium/mcp"
+    sigstore_bundle: null
+    description: "Forward auth via Pomerium identity-aware proxy. Requires OAuth2 credentials."

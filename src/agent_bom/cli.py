@@ -17,6 +17,7 @@ from agent_bom.output import (
     export_cyclonedx,
     export_html,
     export_json,
+    export_prometheus,
     export_sarif,
     export_spdx,
     print_agent_tree,
@@ -26,8 +27,11 @@ from agent_bom.output import (
     print_remediation_plan,
     print_severity_chart,
     print_summary,
+    push_otlp,
+    push_to_gateway,
     to_cyclonedx,
     to_json,
+    to_prometheus,
     to_sarif,
     to_spdx,
 )
@@ -79,10 +83,14 @@ def main():
 @click.option("--output", "-o", type=str, help="Output file path (use '-' for stdout)")
 @click.option(
     "--format", "-f", "output_format",
-    type=click.Choice(["console", "json", "cyclonedx", "sarif", "spdx", "text", "html"]),
+    type=click.Choice(["console", "json", "cyclonedx", "sarif", "spdx", "text", "html", "prometheus"]),
     default="console",
     help="Output format",
 )
+@click.option("--push-gateway", "push_gateway", default=None, metavar="URL",
+              help="Prometheus Pushgateway URL to push metrics after scan (e.g. http://localhost:9091)")
+@click.option("--otel-endpoint", "otel_endpoint", default=None, metavar="URL",
+              help="OpenTelemetry OTLP/HTTP collector endpoint (e.g. http://localhost:4318). Requires pip install agent-bom[otel]")
 @click.option("--no-scan", is_flag=True, help="Skip vulnerability scanning (inventory only)")
 @click.option("--no-tree", is_flag=True, help="Skip dependency tree output")
 @click.option("--transitive", is_flag=True, help="Resolve transitive dependencies for npx/uvx packages")
@@ -131,6 +139,8 @@ def scan(
     namespace: str,
     all_namespaces: bool,
     k8s_context: Optional[str],
+    push_gateway: Optional[str],
+    otel_endpoint: Optional[str],
 ):
     """Discover agents, extract dependencies, scan for vulnerabilities.
 
@@ -358,6 +368,8 @@ def scan(
         elif output_format == "html":
             from agent_bom.output import to_html
             sys.stdout.write(to_html(report, blast_radii))
+        elif output_format == "prometheus":
+            sys.stdout.write(to_prometheus(report, blast_radii))
         else:
             sys.stdout.write(json.dumps(to_json(report), indent=2))
         sys.stdout.write("\n")
@@ -391,6 +403,11 @@ def scan(
         export_html(report, out_path, blast_radii)
         con.print(f"\n  [green]✓[/green] HTML report: {out_path}")
         con.print(f"  [dim]Open with:[/dim] open {out_path}")
+    elif output_format == "prometheus":
+        out_path = output or "agent-bom-metrics.prom"
+        export_prometheus(report, out_path, blast_radii)
+        con.print(f"\n  [green]✓[/green] Prometheus metrics: {out_path}")
+        con.print("  [dim]Scrape with node_exporter textfile or push via --push-gateway[/dim]")
     elif output_format == "text" and output:
         Path(output).write_text(_format_text(report, blast_radii))
         con.print(f"\n  [green]✓[/green] Text report: {output}")
@@ -406,6 +423,25 @@ def scan(
         else:
             export_json(report, output)
         con.print(f"\n  [green]✓[/green] Report: {output}")
+
+    # Step 5b: Push to Prometheus Pushgateway (if requested)
+    if push_gateway:
+        from agent_bom.output.prometheus import PushgatewayError
+        try:
+            push_to_gateway(push_gateway, report, blast_radii)
+            con.print(f"\n  [green]✓[/green] Metrics pushed to Pushgateway: {push_gateway}")
+        except PushgatewayError as e:
+            con.print(f"\n  [yellow]⚠[/yellow] Pushgateway push failed: {e}")
+
+    # Step 5c: OpenTelemetry OTLP export (if requested)
+    if otel_endpoint:
+        try:
+            push_otlp(otel_endpoint, report, blast_radii)
+            con.print(f"\n  [green]✓[/green] Metrics exported via OTLP: {otel_endpoint}")
+        except ImportError as e:
+            con.print(f"\n  [yellow]⚠[/yellow] OTel export skipped: {e}")
+        except Exception as e:  # noqa: BLE001
+            con.print(f"\n  [yellow]⚠[/yellow] OTLP export failed: {e}")
 
     # Step 6: Save report to history
     current_report_json = to_json(report)

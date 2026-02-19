@@ -75,7 +75,10 @@ pip install -e .
 | `agent-bom scan -f cyclonedx -o bom.cdx.json` | Export CycloneDX 1.6 BOM |
 | `agent-bom scan -f sarif -o bom.sarif` | Export SARIF for GitHub Security tab |
 | `agent-bom scan -f spdx -o bom.spdx.json` | Export SPDX 3.0 AI-BOM JSON-LD |
-| `agent-bom scan -f html -o report.html` | Self-contained HTML report — interactive Mermaid graph, vuln table, blast radius, remediation (opens in browser) |
+| `agent-bom scan -f html -o report.html` | Self-contained HTML report — interactive Cytoscape.js graph, dark theme, blast radius score bars (opens in browser) |
+| `agent-bom scan -f prometheus -o metrics.prom` | Prometheus text exposition format — drop into node_exporter textfile dir |
+| `agent-bom scan --push-gateway http://localhost:9091` | Push scan metrics directly to Prometheus Pushgateway |
+| `agent-bom scan --otel-endpoint http://localhost:4318` | Export via OpenTelemetry OTLP/HTTP (requires `pip install agent-bom[otel]`) |
 | `agent-bom scan -f text` | Plain text output (for grep/awk) |
 | `agent-bom scan -f json -o - \| jq .` | Pipe clean JSON to stdout |
 | `agent-bom scan -q --fail-on-severity high` | CI gate — exit 1 if high+ vulns found |
@@ -356,9 +359,65 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for CI/CD, Kubernetes, and remote scanning se
 - [x] Policy-as-code: declarative rules with `--policy policy.json` + `agent-bom policy-template`
 - [x] Scan history and baseline diffing (`--save`, `--baseline`, `agent-bom diff`)
 - [x] Severity distribution chart in console output
-- [x] HTML report — self-contained browser report with interactive Mermaid dependency graph, sortable vuln table, blast radius, remediation (`-f html`)
+- [x] HTML report — self-contained browser report with interactive Cytoscape.js dependency graph, dark theme, blast radius score bars, enrichment hint (`-f html`)
+- [x] Prometheus metrics output — text exposition format + Pushgateway push + OTel OTLP (`-f prometheus`, `--push-gateway`, `--otel-endpoint`)
+- [x] Grafana dashboard — importable JSON in `examples/grafana-dashboard.json`; one-command monitoring stack (`examples/docker-compose-monitoring.yml`)
+- [x] Jenkins pipeline — `examples/Jenkinsfile` with scan → SARIF upload → Prometheus push → security gate
 - [ ] MITRE ATLAS mapping for AI/ML threats
-- [ ] Prometheus metrics output (`--format prometheus`) + Grafana dashboard
+
+---
+
+## Observability — Prometheus & Grafana
+
+agent-bom emits Prometheus-format metrics so scan results appear as live Grafana dashboards.
+
+### Option 1 — Push to Prometheus Pushgateway
+
+```bash
+# Start the monitoring stack (Prometheus + Pushgateway + Grafana + OTel Collector)
+docker compose -f examples/docker-compose-monitoring.yml up -d
+
+# Push metrics after each scan
+agent-bom scan --push-gateway http://localhost:9091
+
+# Open Grafana, import examples/grafana-dashboard.json
+open http://localhost:3000   # admin / admin
+```
+
+### Option 2 — node_exporter textfile collector
+
+```bash
+# Write a .prom file — node_exporter scrapes it automatically
+agent-bom scan -f prometheus -o /var/lib/node_exporter/textfile/agent-bom.prom
+```
+
+### Option 3 — OpenTelemetry OTLP
+
+```bash
+pip install agent-bom[otel]   # installs opentelemetry packages
+
+agent-bom scan --otel-endpoint http://localhost:4318   # OTLP/HTTP collector
+```
+
+### Metrics emitted
+
+| Metric | Labels | Description |
+|--------|--------|-------------|
+| `agent_bom_agents_total` | — | Agents discovered |
+| `agent_bom_mcp_servers_total` | — | MCP servers |
+| `agent_bom_packages_total` | — | Packages scanned |
+| `agent_bom_vulnerabilities_total` | `severity` | Vulns by severity |
+| `agent_bom_kev_findings_total` | — | CISA KEV count |
+| `agent_bom_fixable_vulnerabilities_total` | — | Vulns with a fix |
+| `agent_bom_blast_radius_score` | `vuln_id, package, version, severity, ecosystem, kev, fixable` | Risk score 0–10 |
+| `agent_bom_vulnerability_cvss_score` | `vuln_id, package, severity` | CVSS base score (with `--enrich`) |
+| `agent_bom_vulnerability_epss_score` | `vuln_id, package, severity` | EPSS probability (with `--enrich`) |
+| `agent_bom_agent_vulnerabilities_total` | `agent, severity` | Per-agent vuln breakdown |
+| `agent_bom_credentials_exposed_total` | `agent` | Credentials exposed per agent |
+
+### Jenkins pipeline
+
+See `examples/Jenkinsfile` for a complete pipeline: scan → SARIF upload → Prometheus push → security gate.
 
 ---
 

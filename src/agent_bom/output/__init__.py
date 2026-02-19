@@ -933,3 +933,42 @@ def export_html(report: AIBOMReport, output_path: str, blast_radii: list | None 
     """Export report as a self-contained HTML file."""
     from agent_bom.output.html import export_html as _export_html
     _export_html(report, output_path, blast_radii or [])
+
+
+# ─── Prometheus Output ───────────────────────────────────────────────────────
+
+
+def to_prometheus(report: AIBOMReport, blast_radii: list | None = None) -> str:
+    """Generate Prometheus text exposition format string."""
+    from agent_bom.output.prometheus import to_prometheus as _to_prometheus
+    return _to_prometheus(report, blast_radii or [])
+
+
+def export_prometheus(
+    report: AIBOMReport, output_path: str, blast_radii: list | None = None
+) -> None:
+    """Write Prometheus metrics to a .prom file."""
+    from agent_bom.output.prometheus import export_prometheus as _export_prometheus
+    _export_prometheus(report, output_path, blast_radii or [])
+
+
+def push_to_gateway(
+    gateway_url: str,
+    report: AIBOMReport,
+    blast_radii: list | None = None,
+    job: str = "agent-bom",
+    instance: str | None = None,
+) -> None:
+    """Push scan metrics to a Prometheus Pushgateway."""
+    from agent_bom.output.prometheus import push_to_gateway as _push
+    _push(gateway_url, report, blast_radii or [], job=job, instance=instance)
+
+
+def push_otlp(
+    endpoint: str,
+    report: AIBOMReport,
+    blast_radii: list | None = None,
+) -> None:
+    """Export metrics via OpenTelemetry OTLP/HTTP (requires agent-bom[otel])."""
+    from agent_bom.output.prometheus import push_otlp as _push_otlp
+    _push_otlp(endpoint, report, blast_radii or [])

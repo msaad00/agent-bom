@@ -1,0 +1,133 @@
+// agent-bom Jenkins Pipeline
+//
+// Scans AI agents and MCP servers, fails the build on high/critical vulns,
+// uploads SARIF to GitHub Security tab, and pushes metrics to Prometheus.
+//
+// Required Jenkins plugins:
+//   - Pipeline: Basic Steps
+//   - Credentials Binding
+//   - GitHub Branch Source (for SARIF upload via gh CLI)
+//
+// Required credentials in Jenkins:
+//   - GITHUB_TOKEN  : GitHub PAT with security_events:write scope
+//   - NVD_API_KEY   : (optional) NVD API key for higher rate limits
+//   - PUSHGATEWAY   : Prometheus Pushgateway URL (e.g. http://prom-gw:9091)
+
+pipeline {
+    agent {
+        docker {
+            image 'python:3.12-slim'
+            args '--user root'
+        }
+    }
+
+    environment {
+        GITHUB_TOKEN   = credentials('GITHUB_TOKEN')
+        NVD_API_KEY    = credentials('NVD_API_KEY')
+        PUSH_GATEWAY   = credentials('PUSHGATEWAY')
+        SCAN_REPORT    = 'agent-bom-report'
+    }
+
+    options {
+        timeout(time: 15, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '30'))
+    }
+
+    stages {
+
+        stage('Install agent-bom') {
+            steps {
+                sh '''
+                    pip install --quiet agent-bom
+                    agent-bom --version
+                '''
+            }
+        }
+
+        stage('Discover & Scan') {
+            steps {
+                sh '''
+                    agent-bom scan \
+                        --enrich \
+                        --nvd-api-key "${NVD_API_KEY}" \
+                        --format json \
+                        --output "${SCAN_REPORT}.json" \
+                        --quiet
+                '''
+            }
+        }
+
+        stage('Export SARIF') {
+            steps {
+                sh '''
+                    agent-bom scan \
+                        --enrich \
+                        --nvd-api-key "${NVD_API_KEY}" \
+                        --format sarif \
+                        --output "${SCAN_REPORT}.sarif" \
+                        --quiet
+                '''
+                // Upload to GitHub Security tab
+                sh '''
+                    gh api \
+                        --method POST \
+                        -H "Accept: application/vnd.github+json" \
+                        /repos/${GITHUB_REPOSITORY}/code-scanning/sarifs \
+                        -f commit_sha="$(git rev-parse HEAD)" \
+                        -f ref="$(git symbolic-ref HEAD)" \
+                        -f sarif="$(gzip -c ${SCAN_REPORT}.sarif | base64 -w0)"
+                ''' // optional — only if gh CLI is available
+            }
+        }
+
+        stage('Push Prometheus Metrics') {
+            when {
+                expression { env.PUSH_GATEWAY != null && env.PUSH_GATEWAY != '' }
+            }
+            steps {
+                sh '''
+                    agent-bom scan \
+                        --format prometheus \
+                        --push-gateway "${PUSH_GATEWAY}" \
+                        --quiet
+                    echo "Metrics pushed to ${PUSH_GATEWAY}/metrics/job/agent-bom"
+                '''
+            }
+        }
+
+        stage('Security Gate') {
+            steps {
+                sh '''
+                    agent-bom scan \
+                        --enrich \
+                        --nvd-api-key "${NVD_API_KEY}" \
+                        --fail-on-severity high \
+                        --fail-on-kev \
+                        --quiet
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts artifacts: "${SCAN_REPORT}.json, ${SCAN_REPORT}.sarif", allowEmptyArchive: true
+
+            // Publish HTML report in Jenkins build
+            publishHTML([
+                allowMissing: false,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: '.',
+                reportFiles: "${SCAN_REPORT}.html",
+                reportName: 'agent-bom Security Report'
+            ])
+        }
+        failure {
+            echo "Security gate failed — check ${SCAN_REPORT}.json for details"
+        }
+        success {
+            echo "Security gate passed — no high/critical/KEV vulnerabilities found"
+        }
+    }
+}

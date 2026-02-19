@@ -1141,3 +1141,103 @@ def test_cli_scan_has_html_format():
     runner = CliRunner()
     result = runner.invoke(main, ["scan", "--help"])
     assert "html" in result.output
+
+
+# ─── Prometheus output tests ──────────────────────────────────────────────────
+
+
+def test_prometheus_output_has_required_metrics():
+    from agent_bom.output.prometheus import to_prometheus
+
+    report, blast_radii = _make_report_with_vuln()
+    prom = to_prometheus(report, blast_radii)
+
+    # Core metrics must be present
+    assert "agent_bom_agents_total" in prom
+    assert "agent_bom_mcp_servers_total" in prom
+    assert "agent_bom_packages_total" in prom
+    assert "agent_bom_vulnerabilities_total" in prom
+    assert "agent_bom_kev_findings_total" in prom
+    assert "agent_bom_fixable_vulnerabilities_total" in prom
+    assert "agent_bom_blast_radius_score" in prom
+    assert "agent_bom_credentials_exposed_total" in prom
+    assert "agent_bom_agent_vulnerabilities_total" in prom
+    assert "agent_bom_scan_timestamp_seconds" in prom
+    assert "agent_bom_info" in prom
+
+
+def test_prometheus_output_has_help_and_type_lines():
+    from agent_bom.output.prometheus import to_prometheus
+
+    report, blast_radii = _make_report_with_vuln()
+    prom = to_prometheus(report, blast_radii)
+
+    assert "# HELP agent_bom_agents_total" in prom
+    assert "# TYPE agent_bom_agents_total gauge" in prom
+    assert "# HELP agent_bom_blast_radius_score" in prom
+    assert "# TYPE agent_bom_blast_radius_score gauge" in prom
+
+
+def test_prometheus_severity_labels():
+    from agent_bom.output.prometheus import to_prometheus
+
+    report, blast_radii = _make_report_with_vuln()
+    prom = to_prometheus(report, blast_radii)
+
+    # All four severity labels should appear
+    assert 'severity="critical"' in prom
+    assert 'severity="high"' in prom
+    assert 'severity="medium"' in prom
+    assert 'severity="low"' in prom
+
+
+def test_prometheus_blast_radius_labels():
+    from agent_bom.output.prometheus import to_prometheus
+
+    report, blast_radii = _make_report_with_vuln()
+    prom = to_prometheus(report, blast_radii)
+
+    # Check that blast_radius_score has required labels
+    assert 'vuln_id="CVE-2024-9999"' in prom
+    assert 'package="testpkg"' in prom
+    assert 'severity="high"' in prom
+    # fixable should be "1" since there is a fixed_version
+    assert 'fixable="1"' in prom
+
+
+def test_prometheus_export_writes_file(tmp_path):
+    from agent_bom.output.prometheus import export_prometheus
+
+    report, blast_radii = _make_report_with_vuln()
+    out = tmp_path / "metrics.prom"
+    export_prometheus(report, str(out), blast_radii)
+    assert out.exists()
+    content = out.read_text(encoding="utf-8")
+    assert "agent_bom_agents_total" in content
+    assert len(content) > 200
+
+
+def test_prometheus_clean_report_zero_vulns():
+    from agent_bom.output.prometheus import to_prometheus
+
+    pkg = Package(name="safe-pkg", version="1.0.0", ecosystem="npm")
+    server = MCPServer(name="safe-server", command="npx", args=["safe-pkg"], packages=[pkg])
+    agent = Agent(
+        name="safe-agent", agent_type=AgentType.CLAUDE_DESKTOP,
+        config_path="/tmp/config.json", mcp_servers=[server],
+    )
+    report = AIBOMReport(agents=[agent])
+    prom = to_prometheus(report, [])
+
+    assert 'agent_bom_vulnerabilities_total{severity="critical"} 0' in prom
+    assert 'agent_bom_vulnerabilities_total{severity="high"} 0' in prom
+    assert "agent_bom_kev_findings_total 0" in prom
+    assert "agent_bom_agents_total 1" in prom
+
+
+def test_cli_scan_has_prometheus_format():
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", "--help"])
+    assert "prometheus" in result.output
+    assert "--push-gateway" in result.output
+    assert "--otel-endpoint" in result.output

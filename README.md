@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/agent-bom/agent-bom/actions/workflows/ci.yml/badge.svg)](https://github.com/agent-bom/agent-bom/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/agent-bom)](https://pypi.org/project/agent-bom/)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/agent-bom/agent-bom/blob/main/LICENSE)
 [![Docker Pulls](https://img.shields.io/docker/pulls/agentbom/agent-bom)](https://hub.docker.com/r/agentbom/agent-bom)
 
 **AI Bill of Materials (AI-BOM) for AI agents, MCP servers, containers, and IaC.**
@@ -210,7 +210,7 @@ agent-bom validate agents.json   # validate before scanning
 agent-bom scan --inventory agents.json --enrich -f html -o report.html
 ```
 
-See [example-inventory.json](example-inventory.json) and [examples/inventory.schema.json](examples/inventory.schema.json) for full schema.
+See [example-inventory.json](https://github.com/agent-bom/agent-bom/blob/main/example-inventory.json) and [examples/inventory.schema.json](https://github.com/agent-bom/agent-bom/blob/main/examples/inventory.schema.json) for full schema.
 
 ---
 
@@ -289,10 +289,10 @@ pip install -e ".[dev]"
 pytest && ruff check src/
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines. To report a vulnerability, see [SECURITY.md](SECURITY.md).
+See [CONTRIBUTING.md](https://github.com/agent-bom/agent-bom/blob/main/CONTRIBUTING.md) for guidelines. To report a vulnerability, see [SECURITY.md](https://github.com/agent-bom/agent-bom/blob/main/SECURITY.md).
 
 ---
 
-Apache 2.0 — see [LICENSE](LICENSE).
+Apache 2.0 — see [LICENSE](https://github.com/agent-bom/agent-bom/blob/main/LICENSE).
 
 *Not affiliated with Anthropic, Cursor, or any MCP client vendor.*

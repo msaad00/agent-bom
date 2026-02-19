@@ -1,0 +1,73 @@
+# agent-bom observability stack
+#
+# Starts Prometheus + Pushgateway + Grafana locally so you can visualise
+# scan results in real time.
+#
+# Quick start:
+#   docker compose -f examples/docker-compose-monitoring.yml up -d
+#   agent-bom scan --push-gateway http://localhost:9091
+#   open http://localhost:3000   (admin / admin)
+#   → Import examples/grafana-dashboard.json
+
+version: "3.8"
+
+services:
+
+  # ── Prometheus ────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: agent-bom-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    restart: unless-stopped
+
+  # ── Prometheus Pushgateway ────────────────────────────────────────────────
+  pushgateway:
+    image: prom/pushgateway:v1.8.0
+    container_name: agent-bom-pushgateway
+    ports:
+      - "9091:9091"
+    restart: unless-stopped
+
+  # ── Grafana ────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: agent-bom-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/agent-bom.json
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana-provisioning:/etc/grafana/provisioning:ro
+      - ./grafana-dashboard.json:/var/lib/grafana/dashboards/agent-bom.json:ro
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  # ── OpenTelemetry Collector (optional — for --otel-endpoint) ─────────────
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.99.0
+    container_name: agent-bom-otel
+    command: ["--config=/etc/otel-collector-config.yml"]
+    volumes:
+      - ./otel-collector-config.yml:/etc/otel-collector-config.yml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP  ← use with --otel-endpoint http://localhost:4318
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  prometheus_data:
+  grafana_data:

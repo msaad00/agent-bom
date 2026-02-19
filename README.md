@@ -25,6 +25,13 @@
   </picture>
 </p>
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/blast-radius-dark.svg">
+    <img src="docs/images/blast-radius-light.svg" alt="Blast radius attack surface" width="800" style="padding: 20px 0" />
+  </picture>
+</p>
+
 ---
 
 ## Why agent-bom?

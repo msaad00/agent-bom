@@ -12,7 +12,7 @@
   </g>
   <!-- Text -->
   <text x="78" y="42" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="36" font-weight="800" fill="#1f2937">agent</text>
-  <text x="223" y="42" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="36" font-weight="800" fill="url(#logoGrad)">-bom</text>
+  <text x="190" y="42" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="36" font-weight="800" fill="url(#logoGrad)">-bom</text>
   <!-- Tagline -->
   <text x="78" y="64" font-family="system-ui, -apple-system, sans-serif" font-size="14" fill="#6b7280" font-weight="500">AI supply chain security scanner</text>
 </svg>

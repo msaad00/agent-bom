@@ -9,7 +9,6 @@ import httpx
 from rich.console import Console
 
 from agent_bom.http_client import create_client, request_with_retry
-
 from agent_bom.models import Package
 
 console = Console(stderr=True)

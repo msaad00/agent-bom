@@ -481,8 +481,9 @@ def scan(
     # Step 4b: Integrity + provenance verification (optional)
     if verify_integrity:
         import asyncio as _asyncio
-        from agent_bom.integrity import check_package_provenance, verify_package_integrity
+
         from agent_bom.http_client import create_client as _create_client
+        from agent_bom.integrity import check_package_provenance, verify_package_integrity
 
         all_pkgs = [pkg for agent in agents for srv in agent.mcp_servers for pkg in srv.packages]
         unique_pkgs = {f"{p.ecosystem}:{p.name}@{p.version}": p for p in all_pkgs if p.version not in ("latest", "unknown", "")}

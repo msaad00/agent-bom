@@ -1,0 +1,226 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 560" fill="none">
+  <defs>
+    <linearGradient id="agentG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1e3a5f"/>
+      <stop offset="100%" stop-color="#1e3a5f"/>
+    </linearGradient>
+    <linearGradient id="serverG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#312e81"/>
+      <stop offset="100%" stop-color="#312e81"/>
+    </linearGradient>
+    <linearGradient id="toolG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#451a03"/>
+      <stop offset="100%" stop-color="#451a03"/>
+    </linearGradient>
+    <linearGradient id="pkgG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#064e3b"/>
+      <stop offset="100%" stop-color="#064e3b"/>
+    </linearGradient>
+    <linearGradient id="vulnG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#450a0a"/>
+      <stop offset="100%" stop-color="#450a0a"/>
+    </linearGradient>
+    <linearGradient id="owaspG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#4a1942"/>
+      <stop offset="100%" stop-color="#4a1942"/>
+    </linearGradient>
+    <filter id="sh" x="-4%" y="-4%" width="108%" height="108%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.3"/>
+    </filter>
+    <marker id="arrowGray" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#ef4444"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="560" rx="16" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+
+  <!-- Title -->
+  <text x="450" y="32" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="15" font-weight="700" fill="#e6edf3">Blast Radius — How one CVE exposes your entire AI stack</text>
+  <text x="450" y="50" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" fill="#8b949e">Example: CVE-2024-XXXX in an MCP server dependency grants access to tools, credentials, and data</text>
+
+  <!-- ═══ Row labels (left) ═══ -->
+  <text x="12" y="112" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#8b949e" transform="rotate(-90, 12, 112)">AGENT</text>
+  <text x="12" y="242" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#8b949e" transform="rotate(-90, 12, 242)">MCP SERVER</text>
+  <text x="12" y="360" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#8b949e" transform="rotate(-90, 12, 360)">TOOLS</text>
+  <text x="12" y="478" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#8b949e" transform="rotate(-90, 12, 478)">VULNS</text>
+
+  <!-- ═══ Layer 1: AI Agents ═══ -->
+  <g filter="url(#sh)">
+    <rect x="40" y="68" width="200" height="70" rx="10" fill="url(#agentG)" stroke="#3b82f6" stroke-width="1.5"/>
+  </g>
+  <text x="140" y="92" text-anchor="middle" font-family="system-ui, sans-serif" font-size="13" font-weight="700" fill="#93c5fd">Claude Desktop</text>
+  <text x="140" y="108" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#60a5fa">claude_desktop_config.json</text>
+  <text x="140" y="126" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">env: OPENAI_API_KEY=sk-***</text>
+
+  <g filter="url(#sh)">
+    <rect x="280" y="68" width="200" height="70" rx="10" fill="url(#agentG)" stroke="#3b82f6" stroke-width="1.5"/>
+  </g>
+  <text x="380" y="92" text-anchor="middle" font-family="system-ui, sans-serif" font-size="13" font-weight="700" fill="#93c5fd">Cursor IDE</text>
+  <text x="380" y="108" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#60a5fa">~/.cursor/mcp.json</text>
+  <text x="380" y="126" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">env: ANTHROPIC_KEY=ant-***</text>
+
+  <g filter="url(#sh)">
+    <rect x="520" y="68" width="200" height="70" rx="10" fill="url(#agentG)" stroke="#3b82f6" stroke-width="1.5"/>
+  </g>
+  <text x="620" y="92" text-anchor="middle" font-family="system-ui, sans-serif" font-size="13" font-weight="700" fill="#93c5fd">Windsurf</text>
+  <text x="620" y="108" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#60a5fa">~/.codeium/mcp_config.json</text>
+  <text x="620" y="126" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">env: AWS_SECRET=AKIA***</text>
+
+  <!-- ═══ Arrows: Agents → Servers ═══ -->
+  <line x1="140" y1="138" x2="140" y2="193" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+  <line x1="380" y1="138" x2="330" y2="193" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+  <line x1="380" y1="138" x2="560" y2="193" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+  <line x1="620" y1="138" x2="560" y2="193" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+  <line x1="620" y1="138" x2="770" y2="193" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+
+  <!-- ═══ Layer 2: MCP Servers ═══ -->
+  <g filter="url(#sh)">
+    <rect x="50" y="198" width="180" height="68" rx="10" fill="url(#serverG)" stroke="#818cf8" stroke-width="1.5"/>
+  </g>
+  <text x="140" y="220" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#c7d2fe">filesystem-server</text>
+  <text x="140" y="236" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#a5b4fc">@modelcontextprotocol/</text>
+  <text x="140" y="254" text-anchor="middle" font-family="monospace" font-size="9" fill="#4ade80">✓ Verified</text>
+
+  <g filter="url(#sh)">
+    <rect x="250" y="198" width="180" height="68" rx="10" fill="url(#serverG)" stroke="#818cf8" stroke-width="1.5"/>
+  </g>
+  <text x="340" y="220" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#c7d2fe">sqlite-mcp</text>
+  <text x="340" y="236" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#a5b4fc">community/sqlite-mcp</text>
+  <text x="340" y="254" text-anchor="middle" font-family="monospace" font-size="9" fill="#f87171">⚠ Unverified</text>
+
+  <g filter="url(#sh)">
+    <rect x="470" y="198" width="180" height="68" rx="10" fill="url(#serverG)" stroke="#818cf8" stroke-width="1.5"/>
+  </g>
+  <text x="560" y="220" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#c7d2fe">puppeteer-server</text>
+  <text x="560" y="236" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#a5b4fc">@anthropic/puppeteer</text>
+  <text x="560" y="254" text-anchor="middle" font-family="monospace" font-size="9" fill="#4ade80">✓ Verified</text>
+
+  <g filter="url(#sh)">
+    <rect x="680" y="198" width="180" height="68" rx="10" fill="url(#serverG)" stroke="#818cf8" stroke-width="1.5"/>
+  </g>
+  <text x="770" y="220" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#c7d2fe">custom-deploy</text>
+  <text x="770" y="236" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#a5b4fc">internal/deploy-bot</text>
+  <text x="770" y="254" text-anchor="middle" font-family="monospace" font-size="9" fill="#f87171">⚠ Unverified</text>
+
+  <!-- ═══ Arrows: Servers → Tools ═══ -->
+  <line x1="140" y1="266" x2="100" y2="310" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+  <line x1="140" y1="266" x2="210" y2="310" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+  <line x1="340" y1="266" x2="320" y2="310" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+  <line x1="560" y1="266" x2="450" y2="310" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+  <line x1="560" y1="266" x2="560" y2="310" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+  <line x1="770" y1="266" x2="680" y2="310" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+  <line x1="770" y1="266" x2="800" y2="310" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+
+  <!-- ═══ Layer 3: Tools ═══ -->
+  <g filter="url(#sh)">
+    <rect x="50" y="314" width="100" height="48" rx="8" fill="url(#toolG)" stroke="#f59e0b" stroke-width="1.5"/>
+  </g>
+  <text x="100" y="335" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#fcd34d">read_file</text>
+  <text x="100" y="352" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" fill="#fbbf24">LLM07</text>
+
+  <g filter="url(#sh)">
+    <rect x="160" y="314" width="100" height="48" rx="8" fill="url(#toolG)" stroke="#f59e0b" stroke-width="1.5"/>
+  </g>
+  <text x="210" y="335" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#fcd34d">write_file</text>
+  <text x="210" y="352" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" fill="#fbbf24">LLM02</text>
+
+  <g filter="url(#sh)">
+    <rect x="270" y="314" width="100" height="48" rx="8" fill="url(#toolG)" stroke="#f59e0b" stroke-width="1.5"/>
+  </g>
+  <text x="320" y="335" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#fcd34d">query_db</text>
+  <text x="320" y="352" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" fill="#fbbf24">LLM06</text>
+
+  <g filter="url(#sh)">
+    <rect x="400" y="314" width="100" height="48" rx="8" fill="url(#toolG)" stroke="#f59e0b" stroke-width="1.5"/>
+  </g>
+  <text x="450" y="335" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#fcd34d">navigate</text>
+  <text x="450" y="352" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" fill="#fbbf24">LLM02</text>
+
+  <g filter="url(#sh)">
+    <rect x="510" y="314" width="100" height="48" rx="8" fill="url(#toolG)" stroke="#f59e0b" stroke-width="1.5"/>
+  </g>
+  <text x="560" y="335" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#fcd34d">screenshot</text>
+  <text x="560" y="352" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" fill="#fbbf24">LLM06</text>
+
+  <g filter="url(#sh)">
+    <rect x="630" y="314" width="110" height="48" rx="8" fill="url(#toolG)" stroke="#f59e0b" stroke-width="1.5"/>
+  </g>
+  <text x="685" y="335" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#fcd34d">run_shell</text>
+  <text x="685" y="352" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" fill="#f87171" font-weight="700">LLM08 !</text>
+
+  <g filter="url(#sh)">
+    <rect x="750" y="314" width="110" height="48" rx="8" fill="url(#toolG)" stroke="#f59e0b" stroke-width="1.5"/>
+  </g>
+  <text x="805" y="335" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#fcd34d">deploy</text>
+  <text x="805" y="352" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" fill="#f87171" font-weight="700">LLM08 !</text>
+
+  <!-- ═══ Layer 4: Packages + Vulns (bottom) ═══ -->
+  <g filter="url(#sh)">
+    <rect x="50" y="400" width="160" height="44" rx="8" fill="url(#pkgG)" stroke="#34d399" stroke-width="1.5"/>
+  </g>
+  <text x="130" y="418" text-anchor="middle" font-family="monospace" font-size="10" font-weight="600" fill="#6ee7b7">glob@7.1.6</text>
+  <text x="130" y="434" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#34d399">npm • SHA512 ✓</text>
+
+  <g filter="url(#sh)">
+    <rect x="230" y="400" width="160" height="44" rx="8" fill="url(#pkgG)" stroke="#34d399" stroke-width="1.5"/>
+  </g>
+  <text x="310" y="418" text-anchor="middle" font-family="monospace" font-size="10" font-weight="600" fill="#6ee7b7">better-sqlite3@9.0</text>
+  <text x="310" y="434" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#34d399">npm • SHA512 ✓</text>
+
+  <g filter="url(#sh)">
+    <rect x="410" y="400" width="160" height="44" rx="8" fill="url(#pkgG)" stroke="#34d399" stroke-width="1.5"/>
+  </g>
+  <text x="490" y="418" text-anchor="middle" font-family="monospace" font-size="10" font-weight="600" fill="#6ee7b7">puppeteer@21.6.0</text>
+  <text x="490" y="434" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#34d399">npm • SLSA ✓</text>
+
+  <g filter="url(#sh)">
+    <rect x="590" y="400" width="160" height="44" rx="8" fill="url(#pkgG)" stroke="#34d399" stroke-width="1.5"/>
+  </g>
+  <text x="670" y="418" text-anchor="middle" font-family="monospace" font-size="10" font-weight="600" fill="#6ee7b7">langchain@0.1.5</text>
+  <text x="670" y="434" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#34d399">pypi • SHA256 ✓</text>
+
+  <!-- Arrows: Tools → Packages -->
+  <line x1="100" y1="362" x2="130" y2="396" stroke="#64748b" stroke-width="1.2" marker-end="url(#arrowGray)"/>
+  <line x1="320" y1="362" x2="310" y2="396" stroke="#64748b" stroke-width="1.2" marker-end="url(#arrowGray)"/>
+  <line x1="450" y1="362" x2="490" y2="396" stroke="#64748b" stroke-width="1.2" marker-end="url(#arrowGray)"/>
+  <line x1="560" y1="362" x2="490" y2="396" stroke="#64748b" stroke-width="1.2" marker-end="url(#arrowGray)"/>
+  <line x1="685" y1="362" x2="670" y2="396" stroke="#64748b" stroke-width="1.2" marker-end="url(#arrowGray)"/>
+  <line x1="805" y1="362" x2="670" y2="396" stroke="#64748b" stroke-width="1.2" marker-end="url(#arrowGray)"/>
+
+  <!-- ═══ Vulnerability callouts ═══ -->
+  <g filter="url(#sh)">
+    <rect x="220" y="462" width="180" height="50" rx="8" fill="url(#vulnG)" stroke="#ef4444" stroke-width="2"/>
+  </g>
+  <text x="310" y="480" text-anchor="middle" font-family="monospace" font-size="10" font-weight="700" fill="#fca5a5">CVE-2024-XXXX</text>
+  <text x="310" y="500" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#f87171">CRITICAL 9.8 • EPSS 87% • KEV</text>
+  <line x1="310" y1="444" x2="310" y2="458" stroke="#ef4444" stroke-width="2" marker-end="url(#arrowRed)"/>
+
+  <g filter="url(#sh)">
+    <rect x="420" y="462" width="180" height="50" rx="8" fill="url(#vulnG)" stroke="#ef4444" stroke-width="2"/>
+  </g>
+  <text x="510" y="480" text-anchor="middle" font-family="monospace" font-size="10" font-weight="700" fill="#fca5a5">GHSA-abc-123</text>
+  <text x="510" y="500" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#f87171">HIGH 7.5 • EPSS 12%</text>
+  <line x1="490" y1="444" x2="500" y2="458" stroke="#ef4444" stroke-width="2" marker-end="url(#arrowRed)"/>
+
+  <!-- OWASP tag legend -->
+  <g filter="url(#sh)">
+    <rect x="640" y="462" width="240" height="84" rx="8" fill="url(#owaspG)" stroke="#f472b6" stroke-width="1.5"/>
+  </g>
+  <text x="760" y="480" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#f9a8d4">OWASP LLM Top 10 Tags</text>
+  <text x="654" y="496" font-family="monospace" font-size="9" fill="#c084fc">LLM02</text>
+  <text x="700" y="496" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">Insecure Output</text>
+  <text x="654" y="510" font-family="monospace" font-size="9" fill="#c084fc">LLM05</text>
+  <text x="700" y="510" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">Supply Chain Vulns</text>
+  <text x="654" y="524" font-family="monospace" font-size="9" fill="#c084fc">LLM06</text>
+  <text x="700" y="524" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">Info Disclosure</text>
+  <text x="654" y="538" font-family="monospace" font-size="9" fill="#f87171">LLM08</text>
+  <text x="700" y="538" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">Excessive Agency</text>
+
+  <!-- Red blast radius highlight zone -->
+  <rect x="218" y="194" width="216" height="328" rx="12" fill="none" stroke="#ef4444" stroke-width="2" stroke-dasharray="6 3" opacity="0.5"/>
+  <text x="326" y="540" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#f87171">BLAST RADIUS</text>
+</svg>

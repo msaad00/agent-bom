@@ -38,6 +38,7 @@ from agent_bom.output import (
 from agent_bom.parsers import extract_packages
 from agent_bom.resolver import resolve_all_versions_sync
 from agent_bom.scanners import scan_agents_sync
+from agent_bom.security import sanitize_env_vars
 
 BANNER = r"""
    ___                    __     ____  ____  __  ___
@@ -268,7 +269,7 @@ def scan(
                     name=server_data.get("name", ""),
                     command=server_data.get("command", ""),
                     args=server_data.get("args", []),
-                    env=server_data.get("env", {}),
+                    env=sanitize_env_vars(server_data.get("env", {})),
                     transport=TransportType(server_data.get("transport", "stdio")),
                     url=server_data.get("url"),
                     config_path=agent_data.get("config_path"),

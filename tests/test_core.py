@@ -1100,13 +1100,13 @@ def test_html_contains_credential_warning():
     assert "API_KEY" in html
 
 
-def test_html_contains_mermaid_graph():
+def test_html_contains_cytoscape_graph():
     from agent_bom.output.html import to_html
 
     report, blast_radii = _make_report_with_vuln()
     html = to_html(report, blast_radii)
-    assert "mermaid" in html
-    assert "flowchart LR" in html
+    assert "cytoscape" in html.lower()
+    assert "cy.nodes" in html or "cytoscape(" in html
 
 
 def test_html_clean_report_shows_clean_status():

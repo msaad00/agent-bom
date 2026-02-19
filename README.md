@@ -11,6 +11,26 @@
 
 ---
 
+## Get Started in 30 Seconds
+
+```bash
+# Install
+pip install agent-bom
+
+# Scan your local AI agents (Claude Desktop, Cursor, Windsurf, etc.)
+agent-bom scan
+
+# Generate a Grafana-style HTML dashboard — open in any browser
+agent-bom scan -f html -o report.html && open report.html
+
+# CI gate — fail if any high+ severity vulnerability is found
+agent-bom scan --fail-on-severity high -q
+```
+
+> **No config needed.** agent-bom auto-discovers Claude Desktop, Cursor, Windsurf, Cline, Zed, VS Code Copilot, and more from your local machine.
+
+---
+
 ## Why agent-bom?
 
 Existing tools scan for prompt injection or inventory AI models. **Nobody maps the full dependency chain from agent to vulnerability.**
@@ -39,6 +59,21 @@ A vulnerable package means every agent connected to that MCP server inherits the
 pip install agent-bom
 ```
 
+Optional extras:
+
+```bash
+pip install agent-bom[otel]   # OpenTelemetry OTLP export
+pip install agent-bom[ui]     # Streamlit interactive dashboard (agent-bom serve)
+```
+
+Docker:
+
+```bash
+docker run --rm \
+  -v ~/.config:/root/.config:ro \
+  agentbom/agent-bom:latest scan
+```
+
 From source:
 
 ```bash
@@ -61,6 +96,11 @@ pip install -e .
 | `agent-bom scan --k8s` | Discover container images from a Kubernetes cluster (default namespace) |
 | `agent-bom scan --k8s --all-namespaces` | Scan all K8s namespaces |
 | `agent-bom scan --k8s --namespace prod --context my-cluster` | Scan a specific namespace and context |
+| `agent-bom scan --tf-dir /path/to/terraform` | Scan Terraform dir for AI resources (Bedrock, Vertex AI, Azure OpenAI), provider CVEs, and hardcoded secrets |
+| `agent-bom scan --tf-dir infra/prod --tf-dir infra/staging` | Scan multiple Terraform workspaces |
+| `agent-bom scan --gha /path/to/repo` | Scan GitHub Actions workflows for AI API usage and exposed credentials |
+| `agent-bom serve` | Launch interactive Streamlit dashboard (requires `pip install agent-bom[ui]`) |
+| `agent-bom serve --port 8502 --inventory agents.json` | Serve dashboard on custom port with pre-loaded inventory |
 | `agent-bom scan --project /path` | Scan a specific project directory |
 | `agent-bom scan --config-dir /path` | Scan a custom agent config directory |
 | `agent-bom scan --transitive` | Include transitive dependencies |
@@ -75,7 +115,7 @@ pip install -e .
 | `agent-bom scan -f cyclonedx -o bom.cdx.json` | Export CycloneDX 1.6 BOM |
 | `agent-bom scan -f sarif -o bom.sarif` | Export SARIF for GitHub Security tab |
 | `agent-bom scan -f spdx -o bom.spdx.json` | Export SPDX 3.0 AI-BOM JSON-LD |
-| `agent-bom scan -f html -o report.html` | Self-contained HTML report — interactive Cytoscape.js graph, dark theme, blast radius score bars (opens in browser) |
+| `agent-bom scan -f html -o report.html` | Grafana-style HTML dashboard — severity donut, blast radius chart, smart risk map (only vulnerable packages shown), collapsible agent panels (opens in browser, no server needed) |
 | `agent-bom scan -f prometheus -o metrics.prom` | Prometheus text exposition format — drop into node_exporter textfile dir |
 | `agent-bom scan --push-gateway http://localhost:9091` | Push scan metrics directly to Prometheus Pushgateway |
 | `agent-bom scan --otel-endpoint http://localhost:4318` | Export via OpenTelemetry OTLP/HTTP (requires `pip install agent-bom[otel]`) |
@@ -272,7 +312,7 @@ agent-bom validate agents.json   # exits 0 if valid, 1 with clear errors if not
 - **Policy-as-code** — `--policy policy.json` with declarative rules (severity thresholds, KEV, AI risk, credentials, ecosystem filters); `agent-bom policy-template` generates a starter file
 - **Policy CI gates** — `--fail-on-severity`, `--fail-on-kev`, `--fail-if-ai-risk` for quick inline enforcement
 - **Credential detection** — flags MCP servers exposing API keys, tokens, and secrets in env vars
-- **Output formats** — rich console (with severity chart), HTML (interactive browser report with Mermaid dependency graph), JSON, CycloneDX 1.6, SARIF 2.1, SPDX 3.0, plain text
+- **Output formats** — rich console (with severity chart), HTML (Grafana-style dashboard: severity donut, blast radius bar chart, smart risk map graph, collapsible agent inventory), JSON, CycloneDX 1.6, SARIF 2.1, SPDX 3.0, plain text
 - **CI/CD ready** — `--quiet`, stdout piping (`-o -`), multiple exit code policies
 
 ---
@@ -322,10 +362,16 @@ AI framework packages (LangChain, transformers, openai, mistralai, etc.) are sca
 ## Docker
 
 ```bash
+# Basic scan — auto-discover local agents
+docker run --rm \
+  -v ~/.config:/root/.config:ro \
+  agentbom/agent-bom:latest scan
+
+# Full scan with enrichment + JSON output
 docker run --rm \
   -v ~/.config:/root/.config:ro \
   -v $(pwd)/reports:/workspace/reports \
-  agentbom/agent-bom:latest scan --enrich -o /workspace/reports/ai-bom.json
+  agentbom/agent-bom:latest scan --enrich -f json -o /workspace/reports/ai-bom.json
 ```
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for CI/CD, Kubernetes, and remote scanning setups.
@@ -350,6 +396,10 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for CI/CD, Kubernetes, and remote scanning se
 - [x] SBOM ingestion — accept Syft/Grype/Trivy CycloneDX or SPDX output as input (`--sbom`)
 - [x] Docker image scanning — extract packages from container images via Syft or Docker CLI (`--image`)
 - [x] Kubernetes pod discovery — enumerate running container images via kubectl and scan each (`--k8s`)
+- [x] Terraform / IaC scanning — `--tf-dir` detects AWS Bedrock, Vertex AI, Azure OpenAI resources; provider CVEs (Go ecosystem); hardcoded API keys in variable defaults
+- [x] GitHub Actions scanning — `--gha` finds AI API credentials exposed in workflow env vars; detects openai/anthropic/langchain SDK usage in `run:` steps
+- [ ] Jupyter notebook scanning — detect AI libraries used in `.ipynb` files
+- [ ] AWS Bedrock — discover agents + action groups via boto3
 - [ ] Live MCP server introspection (enumerate tools/resources dynamically)
 
 **Output & policy:**
@@ -359,10 +409,11 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for CI/CD, Kubernetes, and remote scanning se
 - [x] Policy-as-code: declarative rules with `--policy policy.json` + `agent-bom policy-template`
 - [x] Scan history and baseline diffing (`--save`, `--baseline`, `agent-bom diff`)
 - [x] Severity distribution chart in console output
-- [x] HTML report — self-contained browser report with interactive Cytoscape.js dependency graph, dark theme, blast radius score bars, enrichment hint (`-f html`)
+- [x] HTML report — Grafana-style dashboard with severity donut, blast radius bar chart, smart risk map (vulnerable packages only), collapsible agent inventory (`-f html`)
 - [x] Prometheus metrics output — text exposition format + Pushgateway push + OTel OTLP (`-f prometheus`, `--push-gateway`, `--otel-endpoint`)
 - [x] Grafana dashboard — importable JSON in `examples/grafana-dashboard.json`; one-command monitoring stack (`examples/docker-compose-monitoring.yml`)
 - [x] Jenkins pipeline — `examples/Jenkinsfile` with scan → SARIF upload → Prometheus push → security gate
+- [x] Interactive Streamlit dashboard — `agent-bom serve` with DFS dependency tree, expanders, Plotly charts, sidebar filters, remediation checklist (`pip install agent-bom[ui]`)
 - [ ] MITRE ATLAS mapping for AI/ML threats
 
 ---

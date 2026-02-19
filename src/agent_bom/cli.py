@@ -114,6 +114,10 @@ def main():
 @click.option("--namespace", default="default", show_default=True, help="Kubernetes namespace (used with --k8s)")
 @click.option("--all-namespaces", "-A", is_flag=True, help="Scan all Kubernetes namespaces (used with --k8s)")
 @click.option("--context", "k8s_context", default=None, help="kubectl context to use (used with --k8s)")
+@click.option("--tf-dir", "tf_dirs", multiple=True, type=click.Path(exists=True), metavar="DIR",
+              help="Terraform directory to scan for AI resources, providers, and hardcoded secrets. Repeatable.")
+@click.option("--gha", "gha_path", type=click.Path(exists=True), metavar="REPO",
+              help="Repository root to scan GitHub Actions workflows for AI usage and credential exposure.")
 def scan(
     project: Optional[str],
     config_dir: Optional[str],
@@ -141,6 +145,8 @@ def scan(
     k8s_context: Optional[str],
     push_gateway: Optional[str],
     otel_endpoint: Optional[str],
+    tf_dirs: tuple,
+    gha_path: Optional[str],
 ):
     """Discover agents, extract dependencies, scan for vulnerabilities.
 
@@ -233,9 +239,12 @@ def scan(
     else:
         agents = discover_all(project_dir=project)
 
-    if not agents and not images and not k8s:
+    if not agents and not images and not k8s and not tf_dirs and not gha_path:
         con.print("\n[yellow]No MCP configurations found.[/yellow]")
-        con.print("  Use --project, --config-dir, --inventory, --image, or --k8s to specify a target.")
+        con.print(
+            "  Use --project, --config-dir, --inventory, --image, --k8s, "
+            "--tf-dir, or --gha to specify a target."
+        )
         sys.exit(0)
 
     # Step 1b: Load SBOM packages if provided
@@ -303,6 +312,43 @@ def scan(
                 agents.append(image_agent)
             except ImageScanError as e:
                 con.print(f"  [yellow]⚠[/yellow] {image_ref}: {e}")
+
+    # Step 1e: Terraform scan (--tf-dir)
+    if tf_dirs:
+        from agent_bom.terraform import scan_terraform_dir
+        con.print(f"\n[bold blue]Scanning {len(tf_dirs)} Terraform director{'ies' if len(tf_dirs) > 1 else 'y'}...[/bold blue]\n")
+        for tf_dir in tf_dirs:
+            tf_agents, tf_warnings = scan_terraform_dir(tf_dir)
+            for w in tf_warnings:
+                con.print(f"  [yellow]⚠[/yellow] {w}")
+            if tf_agents:
+                ai_resource_count = sum(len(a.mcp_servers) for a in tf_agents)
+                pkg_count = sum(a.total_packages for a in tf_agents)
+                con.print(
+                    f"  [green]✓[/green] {tf_dir}: "
+                    f"{len(tf_agents)} AI service(s), {ai_resource_count} server(s), "
+                    f"{pkg_count} provider package(s)"
+                )
+                agents.extend(tf_agents)
+            else:
+                con.print(f"  [dim]  {tf_dir}: no AI resources or providers found[/dim]")
+
+    # Step 1f: GitHub Actions scan (--gha)
+    if gha_path:
+        from agent_bom.github_actions import scan_github_actions
+        con.print(f"\n[bold blue]Scanning GitHub Actions workflows in {gha_path}...[/bold blue]\n")
+        gha_agents, gha_warnings = scan_github_actions(gha_path)
+        for w in gha_warnings:
+            con.print(f"  [yellow]⚠[/yellow] {w}")
+        if gha_agents:
+            cred_count = sum(len(s.credential_names) for a in gha_agents for s in a.mcp_servers)
+            con.print(
+                f"  [green]✓[/green] {len(gha_agents)} workflow(s) with AI usage, "
+                f"{cred_count} credential(s) detected"
+            )
+            agents.extend(gha_agents)
+        else:
+            con.print("  [dim]  No AI-using workflows found[/dim]")
 
     # Step 2: Extract packages
     con.print("\n[bold blue]Extracting package dependencies...[/bold blue]\n")
@@ -895,6 +941,61 @@ def policy_template(output: str):
     console.print(f"\n  [green]✓[/green] Policy template written to {out_path}")
     console.print("  [dim]Edit the rules, then run:[/dim]")
     console.print(f"  [bold]agent-bom scan --policy {out_path}[/bold]\n")
+
+
+@main.command("serve")
+@click.option("--port", default=8501, show_default=True, help="Streamlit server port")
+@click.option("--host", default="localhost", show_default=True, help="Streamlit server host")
+@click.option("--inventory", default=None, type=click.Path(exists=True),
+              help="Pre-load an inventory JSON file in the dashboard")
+def serve_cmd(port: int, host: str, inventory: Optional[str]):
+    """Launch the interactive Streamlit dashboard.
+
+    \b
+    Requires:  pip install agent-bom[ui]
+
+    \b
+    Usage:
+      agent-bom serve
+      agent-bom serve --port 8502
+      agent-bom serve --inventory agents.json
+    """
+    try:
+        import streamlit  # noqa: F401
+    except ImportError:
+        click.echo(
+            "ERROR: Streamlit is required for `agent-bom serve`.\n"
+            "Install it with:  pip install agent-bom[ui]",
+            err=True,
+        )
+        sys.exit(1)
+
+    import subprocess
+    app_path = Path(__file__).parent / "serve_app.py"
+
+    env: dict = {}
+    if inventory:
+        import os as _os
+        env = {**_os.environ, "AGENT_BOM_INVENTORY": str(Path(inventory).resolve())}
+    else:
+        import os as _os
+        env = dict(_os.environ)
+
+    click.echo(f"🛡️  agent-bom dashboard → http://{host}:{port}")
+    click.echo("   Press Ctrl+C to stop.")
+
+    cmd = [
+        sys.executable, "-m", "streamlit", "run",
+        str(app_path),
+        "--server.port", str(port),
+        "--server.address", host,
+        "--server.headless", "true",
+        "--browser.gatherUsageStats", "false",
+    ]
+    try:
+        subprocess.run(cmd, env=env, check=False)
+    except KeyboardInterrupt:
+        pass
 
 
 if __name__ == "__main__":

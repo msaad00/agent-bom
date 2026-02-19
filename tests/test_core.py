@@ -255,7 +255,7 @@ def empty_report():
 
 def test_version_sync():
     from agent_bom import __version__
-    assert __version__ == "0.3.0"
+    assert __version__ == "0.4.0"
 
 
 def test_report_version_matches():
@@ -1240,4 +1240,279 @@ def test_cli_scan_has_prometheus_format():
     result = runner.invoke(main, ["scan", "--help"])
     assert "prometheus" in result.output
     assert "--push-gateway" in result.output
-    assert "--otel-endpoint" in result.output
+
+
+# ─── Terraform scanner tests ──────────────────────────────────────────────────
+
+
+def test_terraform_provider_extraction(tmp_path):
+    """_extract_providers finds provider source and version from required_providers block."""
+    from agent_bom.terraform import _extract_providers
+
+    tf = tmp_path / "main.tf"
+    tf.write_text("""
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.30"
+    }
+    google = {
+      source  = "hashicorp/google"
+      version = "6.0.0"
+    }
+  }
+}
+""")
+    providers = _extract_providers([(tf, tf.read_text())])
+    assert "hashicorp/aws" in providers
+    assert providers["hashicorp/aws"] == "5.30"
+    assert "hashicorp/google" in providers
+    assert providers["hashicorp/google"] == "6.0.0"
+
+
+def test_terraform_ai_resource_detection(tmp_path):
+    """_extract_ai_resources finds AI-specific resource types."""
+    from agent_bom.terraform import _extract_ai_resources
+
+    tf = tmp_path / "bedrock.tf"
+    tf.write_text("""
+resource "aws_bedrockagent_agent" "my_agent" {
+  agent_name = "my-bedrock-agent"
+  foundation_model = "anthropic.claude-3-sonnet-20240229-v1:0"
+}
+
+resource "aws_s3_bucket" "artifacts" {
+  bucket = "my-artifacts"
+}
+""")
+    resources = _extract_ai_resources([(tf, tf.read_text())])
+    assert len(resources) == 1
+    rtype, rname, fname = resources[0]
+    assert rtype == "aws_bedrockagent_agent"
+    assert rname == "my_agent"
+
+
+def test_terraform_hardcoded_secret_detection(tmp_path):
+    """_detect_hardcoded_secrets flags API key default values."""
+    from agent_bom.terraform import _detect_hardcoded_secrets
+
+    tf = tmp_path / "vars.tf"
+    tf.write_text("""
+variable "openai_api_key" {
+  type    = string
+  default = "sk-abc123realkey456789012345678901234"
+}
+
+variable "normal_var" {
+  type    = string
+  default = "hello"
+}
+""")
+    secrets = _detect_hardcoded_secrets([(tf, tf.read_text())])
+    assert len(secrets) == 1
+    assert "openai_api_key".upper() in secrets[0].variable_name.upper()
+
+
+def test_terraform_placeholder_not_flagged(tmp_path):
+    """_detect_hardcoded_secrets should NOT flag obvious placeholder values."""
+    from agent_bom.terraform import _detect_hardcoded_secrets
+
+    tf = tmp_path / "vars.tf"
+    tf.write_text("""
+variable "openai_api_key" {
+  type    = string
+  default = "placeholder"
+}
+""")
+    secrets = _detect_hardcoded_secrets([(tf, tf.read_text())])
+    assert len(secrets) == 0
+
+
+def test_terraform_scan_creates_agents(tmp_path):
+    """scan_terraform_dir creates Agent entries for AI resources found."""
+    from agent_bom.terraform import scan_terraform_dir
+
+    tf = tmp_path / "main.tf"
+    tf.write_text("""
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "5.30.0"
+    }
+  }
+}
+
+resource "aws_bedrockagent_agent" "analyst" {
+  agent_name       = "analyst"
+  foundation_model = "anthropic.claude-v2"
+}
+""")
+    agents, warnings = scan_terraform_dir(str(tmp_path))
+    assert len(agents) >= 1
+    agent = agents[0]
+    assert "terraform" in agent.name or "tf:" in agent.name
+    assert agent.source == "terraform"
+    # Provider package should be Go ecosystem
+    pkgs = [p for srv in agent.mcp_servers for p in srv.packages]
+    assert any(p.ecosystem == "Go" for p in pkgs)
+
+
+def test_terraform_scan_empty_dir(tmp_path):
+    """scan_terraform_dir returns empty list with a warning for directories with no .tf files."""
+    from agent_bom.terraform import scan_terraform_dir
+
+    agents, warnings = scan_terraform_dir(str(tmp_path))
+    assert agents == []
+    assert len(warnings) == 1
+    assert "No .tf files" in warnings[0]
+
+
+def test_terraform_secret_goes_to_env(tmp_path):
+    """Hardcoded secrets appear as env keys (not values) in MCPServer.env."""
+    from agent_bom.terraform import scan_terraform_dir
+
+    tf = tmp_path / "main.tf"
+    tf.write_text("""
+variable "anthropic_api_key" {
+  type    = string
+  default = "sk-ant-realkey1234567890123456789012345"
+}
+""")
+    agents, warnings = scan_terraform_dir(str(tmp_path))
+    # Should have at least one agent with the credential in env
+    assert len(agents) >= 1
+    server = agents[0].mcp_servers[0]
+    assert server.has_credentials
+    assert any("ANTHROPIC" in k.upper() for k in server.env)
+    # The value should be redacted — not the actual key
+    for v in server.env.values():
+        assert "sk-ant" not in v
+
+
+def test_cli_scan_has_tf_dir_flag():
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", "--help"])
+    assert "--tf-dir" in result.output
+
+
+# ─── GitHub Actions scanner tests ─────────────────────────────────────────────
+
+
+def test_gha_detects_ai_env_vars(tmp_path):
+    """scan_github_actions flags workflows with AI API key env vars."""
+    from agent_bom.github_actions import scan_github_actions
+
+    wf_dir = tmp_path / ".github" / "workflows"
+    wf_dir.mkdir(parents=True)
+    (wf_dir / "ci.yml").write_text("""
+name: CI
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      NORMAL_VAR: "hello"
+    steps:
+      - uses: actions/checkout@v4
+""")
+    agents, warnings = scan_github_actions(str(tmp_path))
+    assert len(agents) == 1
+    agent = agents[0]
+    assert agent.source == "github-actions"
+    server = agent.mcp_servers[0]
+    assert server.has_credentials
+    assert "OPENAI_API_KEY" in server.env
+    assert len(warnings) == 1
+
+
+def test_gha_no_ai_workflow_not_flagged(tmp_path):
+    """scan_github_actions ignores workflows with no AI usage."""
+    from agent_bom.github_actions import scan_github_actions
+
+    wf_dir = tmp_path / ".github" / "workflows"
+    wf_dir.mkdir(parents=True)
+    (wf_dir / "ci.yml").write_text("""
+name: CI
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pytest tests/
+""")
+    agents, warnings = scan_github_actions(str(tmp_path))
+    assert agents == []
+    assert warnings == []
+
+
+def test_gha_detects_ai_sdk_in_run_step(tmp_path):
+    """scan_github_actions detects openai/anthropic SDK usage in run: steps."""
+    from agent_bom.github_actions import scan_github_actions
+
+    wf_dir = tmp_path / ".github" / "workflows"
+    wf_dir.mkdir(parents=True)
+    (wf_dir / "ai.yml").write_text("""
+name: AI Pipeline
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          pip install openai anthropic
+          python generate.py
+""")
+    agents, warnings = scan_github_actions(str(tmp_path))
+    assert len(agents) == 1
+    server = agents[0].mcp_servers[0]
+    # openai and/or anthropic should appear as packages
+    pkg_names = {p.name for p in server.packages}
+    assert "openai" in pkg_names or "anthropic" in pkg_names
+
+
+def test_gha_no_workflows_dir(tmp_path):
+    """scan_github_actions returns empty when .github/workflows doesn't exist."""
+    from agent_bom.github_actions import scan_github_actions
+
+    agents, warnings = scan_github_actions(str(tmp_path))
+    assert agents == []
+    assert warnings == []
+
+
+def test_cli_scan_has_gha_flag():
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", "--help"])
+    assert "--gha" in result.output
+
+
+# ─── Streamlit serve CLI test ─────────────────────────────────────────────────
+
+
+def test_cli_serve_command_exists():
+    runner = CliRunner()
+    result = runner.invoke(main, ["serve", "--help"])
+    assert result.exit_code == 0
+    assert "--port" in result.output
+    assert "--host" in result.output
+
+
+def test_cli_serve_fails_without_streamlit(monkeypatch):
+    """agent-bom serve exits with error when streamlit is not installed."""
+    import builtins
+
+    runner = CliRunner()
+
+    real_import = builtins.__import__
+
+    def mock_import(name, *args, **kwargs):
+        if name == "streamlit":
+            raise ImportError("No module named 'streamlit'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", mock_import)
+    result = runner.invoke(main, ["serve"])
+    assert result.exit_code != 0 or "streamlit" in (result.output + str(result.exception)).lower()

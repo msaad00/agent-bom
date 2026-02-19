@@ -36,6 +36,8 @@ def lookup_mcp_registry(server: MCPServer) -> list[Package]:
     Matches on:
     1. Exact npm package name in args (e.g. @modelcontextprotocol/server-filesystem)
     2. command_patterns substring match against server name or args
+
+    Returns packages with pinned versions (not "latest") when the registry has them.
     """
     registry = _load_registry()
     if not registry:
@@ -49,15 +51,48 @@ def lookup_mcp_registry(server: MCPServer) -> list[Package]:
             for pattern in patterns:
                 if pattern in candidate or candidate in pkg_name:
                     ecosystem = entry.get("ecosystem", "npm")
+                    version = entry.get("latest_version", "latest")
+                    risk_level = entry.get("risk_level")
+                    verified = entry.get("verified", False)
+
+                    # Log warnings for unverified or high-risk servers
+                    if not verified:
+                        logger.info(
+                            "Registry: %s is UNVERIFIED — review source before trusting",
+                            entry["package"],
+                        )
+                    if risk_level == "high":
+                        logger.info(
+                            "Registry: %s has HIGH risk level — has privileged tool access",
+                            entry["package"],
+                        )
+
                     return [Package(
                         name=entry["package"],
-                        version="latest",
+                        version=version,
                         ecosystem=ecosystem,
-                        purl=f"pkg:{ecosystem}/{entry['package']}@latest",
+                        purl=f"pkg:{ecosystem}/{entry['package']}@{version}",
                         is_direct=True,
                         resolved_from_registry=True,
                     )]
     return []
+
+
+def get_registry_entry(server: MCPServer) -> dict | None:
+    """Return the full registry entry for an MCP server, or None."""
+    registry = _load_registry()
+    if not registry:
+        return None
+
+    candidates: list[str] = [server.name] + server.args
+
+    for pkg_name, entry in registry.items():
+        patterns = entry.get("command_patterns", [pkg_name])
+        for candidate in candidates:
+            for pattern in patterns:
+                if pattern in candidate or candidate in pkg_name:
+                    return entry
+    return None
 
 console = Console(stderr=True)
 logger = logging.getLogger(__name__)

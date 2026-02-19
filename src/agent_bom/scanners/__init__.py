@@ -349,12 +349,28 @@ async def scan_agents(agents: list[Agent]) -> list[BlastRadius]:
         affected_servers = pkg_to_servers.get(key, [])
         affected_agents = pkg_to_agents.get(key, [])
 
-        # Collect exposed credentials and tools
+        # Collect exposed credentials and tools — enrich from registry when server
+        # config doesn't have explicit tool/credential data
+        from agent_bom.parsers import get_registry_entry
+
         exposed_creds = []
         exposed_tools = []
         for server in affected_servers:
-            exposed_creds.extend(server.credential_names)
-            exposed_tools.extend(server.tools)
+            server_creds = server.credential_names
+            server_tools = server.tools
+
+            # Registry enrichment: if no tools/creds known from config, use registry
+            if not server_tools or not server_creds:
+                reg = get_registry_entry(server)
+                if reg:
+                    if not server_tools and reg.get("tools"):
+                        from agent_bom.models import MCPTool
+                        server_tools = [MCPTool(name=t, description="") for t in reg["tools"]]
+                    if not server_creds and reg.get("credential_env_vars"):
+                        server_creds = reg["credential_env_vars"]
+
+            exposed_creds.extend(server_creds)
+            exposed_tools.extend(server_tools)
 
         # AI-native risk context: elevated when an AI framework has creds + tools
         is_ai_framework = pkg.name.lower().replace("-", "_") in {

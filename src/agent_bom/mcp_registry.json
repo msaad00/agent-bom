@@ -1,175 +1,2490 @@
 {
-  "_comment": "Known MCP server → package mappings. Updated weekly by .github/workflows/mcp-registry-sync.yml",
-  "_updated": "2026-02-18",
-  "_source": "https://github.com/modelcontextprotocol/servers",
+  "_comment": "agent-bom MCP Server Registry \u2014 threat intelligence database for known MCP servers",
+  "_schema_version": "2.0",
+  "_updated": "2026-02-19",
+  "_total_servers": 100,
+  "_differentiator": "Threat intelligence database \u2014 not just a catalog. Each entry has risk_level, tools, credential_env_vars for blast radius pre-computation.",
+  "_source": "https://github.com/agent-bom/agent-bom/blob/main/data/mcp-registry.yaml",
   "servers": {
     "@modelcontextprotocol/server-filesystem": {
-      "ecosystem": "npm",
       "package": "@modelcontextprotocol/server-filesystem",
-      "description": "Filesystem operations (read, write, list)",
-      "command_patterns": ["server-filesystem"],
-      "category": "filesystem"
-    },
-    "@modelcontextprotocol/server-postgres": {
       "ecosystem": "npm",
-      "package": "@modelcontextprotocol/server-postgres",
-      "description": "PostgreSQL database access",
-      "command_patterns": ["server-postgres"],
-      "category": "database"
-    },
-    "@modelcontextprotocol/server-sqlite": {
-      "ecosystem": "npm",
-      "package": "@modelcontextprotocol/server-sqlite",
-      "description": "SQLite database access",
-      "command_patterns": ["server-sqlite"],
-      "category": "database"
+      "latest_version": "2025.1.14",
+      "description": "Read and write local filesystem files",
+      "command_patterns": [
+        "server-filesystem"
+      ],
+      "category": "filesystem",
+      "risk_level": "high",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "read_file",
+        "write_file",
+        "list_directory",
+        "create_directory",
+        "move_file",
+        "search_files",
+        "get_file_info",
+        "read_multiple_files",
+        "list_allowed_directories"
+      ],
+      "credential_env_vars": [],
+      "source_url": "https://github.com/modelcontextprotocol/servers"
     },
     "@modelcontextprotocol/server-github": {
-      "ecosystem": "npm",
       "package": "@modelcontextprotocol/server-github",
-      "description": "GitHub repository and issue management",
-      "command_patterns": ["server-github"],
-      "category": "developer-tools"
+      "ecosystem": "npm",
+      "latest_version": "2025.1.14",
+      "description": "Read GitHub repos, issues, and PRs via GitHub API",
+      "command_patterns": [
+        "server-github"
+      ],
+      "category": "developer-tools",
+      "risk_level": "medium",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "create_or_update_file",
+        "search_repositories",
+        "create_repository",
+        "get_file_contents",
+        "push_files",
+        "create_issue",
+        "create_pull_request",
+        "fork_repository",
+        "create_branch",
+        "list_commits",
+        "list_issues",
+        "update_issue",
+        "add_issue_comment",
+        "search_code",
+        "search_issues",
+        "search_users"
+      ],
+      "credential_env_vars": [
+        "GITHUB_PERSONAL_ACCESS_TOKEN"
+      ],
+      "source_url": "https://github.com/modelcontextprotocol/servers"
     },
     "@modelcontextprotocol/server-gitlab": {
-      "ecosystem": "npm",
       "package": "@modelcontextprotocol/server-gitlab",
-      "description": "GitLab repository management",
-      "command_patterns": ["server-gitlab"],
-      "category": "developer-tools"
+      "ecosystem": "npm",
+      "latest_version": "2025.1.14",
+      "description": "Read GitLab repos, issues, and MRs",
+      "command_patterns": [
+        "server-gitlab"
+      ],
+      "category": "developer-tools",
+      "risk_level": "medium",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "create_or_update_file",
+        "search_repositories",
+        "create_repository",
+        "get_file_contents",
+        "push_files",
+        "create_issue",
+        "create_merge_request",
+        "fork_repository",
+        "create_branch"
+      ],
+      "credential_env_vars": [
+        "GITLAB_PERSONAL_ACCESS_TOKEN",
+        "GITLAB_API_URL"
+      ],
+      "source_url": "https://github.com/modelcontextprotocol/servers"
     },
     "@modelcontextprotocol/server-slack": {
-      "ecosystem": "npm",
       "package": "@modelcontextprotocol/server-slack",
-      "description": "Slack messaging and channel management",
-      "command_patterns": ["server-slack"],
-      "category": "communication"
+      "ecosystem": "npm",
+      "latest_version": "2025.1.14",
+      "description": "Read and post Slack messages",
+      "command_patterns": [
+        "server-slack"
+      ],
+      "category": "communication",
+      "risk_level": "medium",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "list_channels",
+        "post_message",
+        "reply_to_thread",
+        "add_reaction",
+        "get_channel_history",
+        "get_thread_replies",
+        "search_messages",
+        "get_users",
+        "get_user_profile"
+      ],
+      "credential_env_vars": [
+        "SLACK_BOT_TOKEN",
+        "SLACK_TEAM_ID"
+      ],
+      "source_url": "https://github.com/modelcontextprotocol/servers"
+    },
+    "@modelcontextprotocol/server-postgres": {
+      "package": "@modelcontextprotocol/server-postgres",
+      "ecosystem": "npm",
+      "latest_version": "2025.1.14",
+      "description": "Execute SQL queries against PostgreSQL",
+      "command_patterns": [
+        "server-postgres"
+      ],
+      "category": "database",
+      "risk_level": "high",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "query"
+      ],
+      "credential_env_vars": [
+        "POSTGRES_CONNECTION_STRING"
+      ],
+      "source_url": "https://github.com/modelcontextprotocol/servers"
+    },
+    "@modelcontextprotocol/server-sqlite": {
+      "package": "@modelcontextprotocol/server-sqlite",
+      "ecosystem": "npm",
+      "latest_version": "2025.1.14",
+      "description": "Execute SQL queries against local SQLite",
+      "command_patterns": [
+        "server-sqlite"
+      ],
+      "category": "database",
+      "risk_level": "medium",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "read_query",
+        "write_query",
+        "create_table",
+        "list_tables",
+        "describe_table",
+        "append_insight"
+      ],
+      "credential_env_vars": [],
+      "source_url": "https://github.com/modelcontextprotocol/servers"
     },
     "@modelcontextprotocol/server-brave-search": {
-      "ecosystem": "npm",
       "package": "@modelcontextprotocol/server-brave-search",
-      "description": "Brave Search API integration",
-      "command_patterns": ["server-brave-search"],
-      "category": "search"
+      "ecosystem": "npm",
+      "latest_version": "2025.1.14",
+      "description": "Web search via Brave Search API",
+      "command_patterns": [
+        "server-brave-search"
+      ],
+      "category": "search",
+      "risk_level": "low",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "brave_web_search",
+        "brave_local_search"
+      ],
+      "credential_env_vars": [
+        "BRAVE_API_KEY"
+      ],
+      "source_url": "https://github.com/modelcontextprotocol/servers"
     },
     "@modelcontextprotocol/server-fetch": {
-      "ecosystem": "npm",
       "package": "@modelcontextprotocol/server-fetch",
-      "description": "HTTP fetch for web content retrieval",
-      "command_patterns": ["server-fetch"],
-      "category": "web"
-    },
-    "@modelcontextprotocol/server-puppeteer": {
       "ecosystem": "npm",
-      "package": "@modelcontextprotocol/server-puppeteer",
-      "description": "Browser automation via Puppeteer",
-      "command_patterns": ["server-puppeteer"],
-      "category": "browser"
+      "latest_version": "2025.1.14",
+      "description": "Fetch arbitrary HTTP URLs",
+      "command_patterns": [
+        "server-fetch"
+      ],
+      "category": "web",
+      "risk_level": "medium",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "fetch"
+      ],
+      "credential_env_vars": [],
+      "source_url": "https://github.com/modelcontextprotocol/servers"
     },
     "@modelcontextprotocol/server-memory": {
-      "ecosystem": "npm",
       "package": "@modelcontextprotocol/server-memory",
-      "description": "Persistent memory / knowledge graph",
-      "command_patterns": ["server-memory"],
-      "category": "memory"
-    },
-    "@modelcontextprotocol/server-sequential-thinking": {
       "ecosystem": "npm",
-      "package": "@modelcontextprotocol/server-sequential-thinking",
-      "description": "Sequential reasoning tool",
-      "command_patterns": ["server-sequential-thinking"],
-      "category": "reasoning"
+      "latest_version": "2025.1.14",
+      "description": "Persistent key-value store / knowledge graph",
+      "command_patterns": [
+        "server-memory"
+      ],
+      "category": "memory",
+      "risk_level": "low",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "create_entities",
+        "create_relations",
+        "add_observations",
+        "delete_entities",
+        "delete_observations",
+        "delete_relations",
+        "read_graph",
+        "search_nodes",
+        "open_nodes"
+      ],
+      "credential_env_vars": [],
+      "source_url": "https://github.com/modelcontextprotocol/servers"
     },
-    "@modelcontextprotocol/server-gdrive": {
+    "@modelcontextprotocol/server-puppeteer": {
+      "package": "@modelcontextprotocol/server-puppeteer",
       "ecosystem": "npm",
-      "package": "@modelcontextprotocol/server-gdrive",
-      "description": "Google Drive file access",
-      "command_patterns": ["server-gdrive"],
-      "category": "cloud-storage"
-    },
-    "@modelcontextprotocol/server-google-maps": {
-      "ecosystem": "npm",
-      "package": "@modelcontextprotocol/server-google-maps",
-      "description": "Google Maps geocoding and directions",
-      "command_patterns": ["server-google-maps"],
-      "category": "location"
+      "latest_version": "2025.1.14",
+      "description": "Control headless Chromium browser",
+      "command_patterns": [
+        "server-puppeteer"
+      ],
+      "category": "browser",
+      "risk_level": "high",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "puppeteer_navigate",
+        "puppeteer_screenshot",
+        "puppeteer_click",
+        "puppeteer_fill",
+        "puppeteer_select",
+        "puppeteer_hover",
+        "puppeteer_evaluate"
+      ],
+      "credential_env_vars": [],
+      "source_url": "https://github.com/modelcontextprotocol/servers"
     },
     "@modelcontextprotocol/server-aws-kb-retrieval": {
-      "ecosystem": "npm",
       "package": "@modelcontextprotocol/server-aws-kb-retrieval",
-      "description": "AWS Knowledge Base retrieval (Bedrock)",
-      "command_patterns": ["server-aws-kb-retrieval"],
-      "category": "cloud-ai"
+      "ecosystem": "npm",
+      "latest_version": "2025.1.14",
+      "description": "Query AWS Bedrock Knowledge Bases",
+      "command_patterns": [
+        "server-aws-kb-retrieval"
+      ],
+      "category": "cloud-ai",
+      "risk_level": "medium",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "retrieve_from_knowledge_base"
+      ],
+      "credential_env_vars": [
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_REGION"
+      ],
+      "source_url": "https://github.com/modelcontextprotocol/servers"
+    },
+    "@modelcontextprotocol/server-google-maps": {
+      "package": "@modelcontextprotocol/server-google-maps",
+      "ecosystem": "npm",
+      "latest_version": "2025.1.14",
+      "description": "Geocoding, directions, places via Google Maps",
+      "command_patterns": [
+        "server-google-maps"
+      ],
+      "category": "location",
+      "risk_level": "low",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "maps_geocode",
+        "maps_reverse_geocode",
+        "maps_search_places",
+        "maps_place_details",
+        "maps_distance_matrix",
+        "maps_elevation",
+        "maps_directions"
+      ],
+      "credential_env_vars": [
+        "GOOGLE_MAPS_API_KEY"
+      ],
+      "source_url": "https://github.com/modelcontextprotocol/servers"
+    },
+    "@modelcontextprotocol/server-gdrive": {
+      "package": "@modelcontextprotocol/server-gdrive",
+      "ecosystem": "npm",
+      "latest_version": "2025.1.14",
+      "description": "Browse and read Google Drive files",
+      "command_patterns": [
+        "server-gdrive"
+      ],
+      "category": "cloud-storage",
+      "risk_level": "medium",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "search_drive",
+        "read_file",
+        "list_files"
+      ],
+      "credential_env_vars": [
+        "GDRIVE_CLIENT_ID",
+        "GDRIVE_CLIENT_SECRET"
+      ],
+      "source_url": "https://github.com/modelcontextprotocol/servers"
     },
     "@modelcontextprotocol/server-sentry": {
-      "ecosystem": "npm",
       "package": "@modelcontextprotocol/server-sentry",
-      "description": "Sentry error tracking integration",
-      "command_patterns": ["server-sentry"],
-      "category": "observability"
+      "ecosystem": "npm",
+      "latest_version": "2025.1.14",
+      "description": "Query Sentry issues and errors",
+      "command_patterns": [
+        "server-sentry"
+      ],
+      "category": "observability",
+      "risk_level": "low",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "list_projects",
+        "get_issue",
+        "list_issues",
+        "get_event"
+      ],
+      "credential_env_vars": [
+        "SENTRY_AUTH_TOKEN",
+        "SENTRY_ORG"
+      ],
+      "source_url": "https://github.com/modelcontextprotocol/servers"
+    },
+    "@modelcontextprotocol/server-sequential-thinking": {
+      "package": "@modelcontextprotocol/server-sequential-thinking",
+      "ecosystem": "npm",
+      "latest_version": "2025.1.14",
+      "description": "Structured sequential reasoning",
+      "command_patterns": [
+        "server-sequential-thinking"
+      ],
+      "category": "reasoning",
+      "risk_level": "low",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "sequentialthinking"
+      ],
+      "credential_env_vars": [],
+      "source_url": "https://github.com/modelcontextprotocol/servers"
     },
     "@modelcontextprotocol/server-everything": {
-      "ecosystem": "npm",
       "package": "@modelcontextprotocol/server-everything",
-      "description": "Reference/test MCP server with all features",
-      "command_patterns": ["server-everything"],
-      "category": "testing"
+      "ecosystem": "npm",
+      "latest_version": "2025.1.14",
+      "description": "Demo server with all MCP primitives",
+      "command_patterns": [
+        "server-everything"
+      ],
+      "category": "testing",
+      "risk_level": "low",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "echo",
+        "add",
+        "longRunningOperation",
+        "sampleLLM",
+        "getTinyImage",
+        "printEnv",
+        "annotatedMessage"
+      ],
+      "credential_env_vars": [],
+      "source_url": "https://github.com/modelcontextprotocol/servers"
     },
     "mcp-server-git": {
-      "ecosystem": "pypi",
       "package": "mcp-server-git",
-      "description": "Git operations via Python MCP server",
-      "command_patterns": ["mcp-server-git"],
-      "category": "developer-tools"
+      "ecosystem": "pypi",
+      "latest_version": "2025.1.14",
+      "description": "Git operations on local repositories",
+      "command_patterns": [
+        "mcp-server-git"
+      ],
+      "category": "developer-tools",
+      "risk_level": "medium",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "git_status",
+        "git_diff",
+        "git_commit",
+        "git_log",
+        "git_push",
+        "git_pull",
+        "git_branch",
+        "git_checkout"
+      ],
+      "credential_env_vars": [],
+      "source_url": "https://github.com/modelcontextprotocol/servers"
     },
     "mcp-server-time": {
-      "ecosystem": "pypi",
       "package": "mcp-server-time",
+      "ecosystem": "pypi",
+      "latest_version": "2025.1.14",
       "description": "Time and timezone utilities",
-      "command_patterns": ["mcp-server-time"],
-      "category": "utilities"
+      "command_patterns": [
+        "mcp-server-time"
+      ],
+      "category": "utilities",
+      "risk_level": "low",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "get_current_time",
+        "convert_timezone"
+      ],
+      "credential_env_vars": [],
+      "source_url": "https://github.com/modelcontextprotocol/servers"
     },
     "mcp-server-fetch": {
-      "ecosystem": "pypi",
       "package": "mcp-server-fetch",
+      "ecosystem": "pypi",
+      "latest_version": "2025.1.14",
       "description": "HTTP fetch (Python implementation)",
-      "command_patterns": ["mcp-server-fetch"],
-      "category": "web"
-    },
-    "mcp-server-kubernetes": {
-      "ecosystem": "npm",
-      "package": "mcp-server-kubernetes",
-      "description": "Kubernetes cluster management",
-      "command_patterns": ["mcp-server-kubernetes", "kubernetes"],
-      "category": "infrastructure"
-    },
-    "mcp-server-docker": {
-      "ecosystem": "npm",
-      "package": "mcp-server-docker",
-      "description": "Docker container management",
-      "command_patterns": ["mcp-server-docker", "docker"],
-      "category": "infrastructure"
+      "command_patterns": [
+        "mcp-server-fetch"
+      ],
+      "category": "web",
+      "risk_level": "medium",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "fetch"
+      ],
+      "credential_env_vars": [],
+      "source_url": "https://github.com/modelcontextprotocol/servers"
     },
     "@anthropic-ai/mcp-server-filesystem": {
-      "ecosystem": "npm",
       "package": "@anthropic-ai/mcp-server-filesystem",
-      "description": "Anthropic filesystem MCP server",
-      "command_patterns": ["anthropic-ai/mcp-server-filesystem"],
-      "category": "filesystem"
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Anthropic filesystem MCP server (older)",
+      "command_patterns": [
+        "anthropic-ai/mcp-server-filesystem"
+      ],
+      "category": "filesystem",
+      "risk_level": "high",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "read_file",
+        "write_file",
+        "list_directory"
+      ],
+      "credential_env_vars": [],
+      "source_url": "https://github.com/anthropics/anthropic-quickstarts"
+    },
+    "@stripe/agent-toolkit": {
+      "package": "@stripe/agent-toolkit",
+      "ecosystem": "npm",
+      "latest_version": "0.3.0",
+      "description": "Stripe payment operations",
+      "command_patterns": [
+        "stripe/agent-toolkit",
+        "stripe-mcp"
+      ],
+      "category": "payments",
+      "risk_level": "high",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "create_payment_intent",
+        "list_customers",
+        "create_customer",
+        "create_invoice",
+        "list_products",
+        "create_product",
+        "list_subscriptions"
+      ],
+      "credential_env_vars": [
+        "STRIPE_SECRET_KEY"
+      ],
+      "source_url": "https://github.com/stripe/agent-toolkit"
+    },
+    "linear-mcp-server": {
+      "package": "linear-mcp-server",
+      "ecosystem": "npm",
+      "latest_version": "0.5.0",
+      "description": "Linear issue tracking",
+      "command_patterns": [
+        "mcp-server-linear",
+        "linear-mcp"
+      ],
+      "category": "project-management",
+      "risk_level": "medium",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "create_issue",
+        "list_issues",
+        "update_issue",
+        "list_projects",
+        "list_teams",
+        "create_comment"
+      ],
+      "credential_env_vars": [
+        "LINEAR_API_KEY"
+      ],
+      "source_url": "https://github.com/linear/linear-mcp"
     },
     "mcp-atlassian": {
-      "ecosystem": "pypi",
       "package": "mcp-atlassian",
-      "description": "Atlassian Jira and Confluence integration",
-      "command_patterns": ["mcp-atlassian"],
-      "category": "project-management"
+      "ecosystem": "pypi",
+      "latest_version": "0.10.0",
+      "description": "Jira and Confluence integration",
+      "command_patterns": [
+        "mcp-atlassian",
+        "mcp-server-jira",
+        "mcp-server-confluence"
+      ],
+      "category": "project-management",
+      "risk_level": "medium",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "jira_search",
+        "jira_create_issue",
+        "jira_update_issue",
+        "confluence_search",
+        "confluence_get_page",
+        "confluence_create_page"
+      ],
+      "credential_env_vars": [
+        "ATLASSIAN_API_TOKEN",
+        "ATLASSIAN_EMAIL",
+        "ATLASSIAN_DOMAIN"
+      ],
+      "source_url": "https://github.com/atlassian/mcp-atlassian"
     },
-    "mcp-server-linear": {
+    "mcp-server-computer-use": {
+      "package": "mcp-server-computer-use",
+      "ecosystem": "pypi",
+      "latest_version": "0.1.0",
+      "description": "Control mouse, keyboard, and screen",
+      "command_patterns": [
+        "mcp-server-computer-use",
+        "computer-use"
+      ],
+      "category": "system",
+      "risk_level": "high",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "computer",
+        "screenshot",
+        "click",
+        "type_text",
+        "key_press",
+        "mouse_move",
+        "scroll"
+      ],
+      "credential_env_vars": [],
+      "source_url": "https://github.com/anthropics/anthropic-quickstarts"
+    },
+    "@cloudflare/mcp-server-cloudflare": {
+      "package": "@cloudflare/mcp-server-cloudflare",
       "ecosystem": "npm",
-      "package": "mcp-server-linear",
-      "description": "Linear issue tracking integration",
-      "command_patterns": ["mcp-server-linear", "linear"],
-      "category": "project-management"
+      "latest_version": "0.6.0",
+      "description": "Manage Cloudflare Workers, KV, R2, DNS",
+      "command_patterns": [
+        "mcp-server-cloudflare"
+      ],
+      "category": "cloud",
+      "risk_level": "medium",
+      "verified": true,
+      "license": "Apache-2.0",
+      "tools": [
+        "create_worker",
+        "deploy_worker",
+        "list_kv_namespaces",
+        "put_kv_value",
+        "get_kv_value",
+        "list_r2_buckets",
+        "manage_dns"
+      ],
+      "credential_env_vars": [
+        "CLOUDFLARE_API_TOKEN",
+        "CLOUDFLARE_ACCOUNT_ID"
+      ],
+      "source_url": "https://github.com/cloudflare/mcp-server-cloudflare"
+    },
+    "@vercel/mcp-adapter": {
+      "package": "@vercel/mcp-adapter",
+      "ecosystem": "npm",
+      "latest_version": "0.3.0",
+      "description": "Deploy and manage Vercel projects",
+      "command_patterns": [
+        "vercel/mcp-adapter",
+        "vercel-mcp"
+      ],
+      "category": "cloud",
+      "risk_level": "medium",
+      "verified": false,
+      "license": "Apache-2.0",
+      "tools": [
+        "deploy_project",
+        "list_deployments",
+        "get_deployment_status",
+        "list_projects"
+      ],
+      "credential_env_vars": [
+        "VERCEL_TOKEN"
+      ],
+      "source_url": "https://github.com/vercel/mcp"
+    },
+    "awslabs.core-mcp-server": {
+      "package": "awslabs.core-mcp-server",
+      "ecosystem": "pypi",
+      "latest_version": "0.4.0",
+      "description": "AWS services (S3, Lambda, DynamoDB, Bedrock)",
+      "command_patterns": [
+        "awslabs",
+        "mcp-server-aws"
+      ],
+      "category": "cloud",
+      "risk_level": "high",
+      "verified": true,
+      "license": "Apache-2.0",
+      "tools": [
+        "s3_list_buckets",
+        "s3_get_object",
+        "s3_put_object",
+        "lambda_invoke",
+        "dynamodb_query",
+        "dynamodb_put_item",
+        "bedrock_invoke_model"
+      ],
+      "credential_env_vars": [
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_REGION"
+      ],
+      "source_url": "https://github.com/awslabs/mcp"
+    },
+    "awslabs.bedrock-kb-retrieval-mcp-server": {
+      "package": "awslabs.bedrock-kb-retrieval-mcp-server",
+      "ecosystem": "pypi",
+      "latest_version": "0.2.0",
+      "description": "AWS Bedrock Knowledge Base queries",
+      "command_patterns": [
+        "bedrock-kb",
+        "mcp-server-bedrock"
+      ],
+      "category": "cloud-ai",
+      "risk_level": "medium",
+      "verified": true,
+      "license": "Apache-2.0",
+      "tools": [
+        "retrieve_from_knowledge_base",
+        "list_knowledge_bases"
+      ],
+      "credential_env_vars": [
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_REGION"
+      ],
+      "source_url": "https://github.com/awslabs/mcp"
+    },
+    "mcp-server-qdrant": {
+      "package": "mcp-server-qdrant",
+      "ecosystem": "pypi",
+      "latest_version": "0.3.1",
+      "description": "Qdrant vector database search and storage",
+      "command_patterns": [
+        "mcp-server-qdrant",
+        "qdrant"
+      ],
+      "category": "vector-db",
+      "risk_level": "medium",
+      "verified": true,
+      "license": "Apache-2.0",
+      "tools": [
+        "qdrant_store",
+        "qdrant_find"
+      ],
+      "credential_env_vars": [
+        "QDRANT_URL",
+        "QDRANT_API_KEY"
+      ],
+      "source_url": "https://github.com/qdrant/mcp-server-qdrant"
+    },
+    "mongodb-mcp-server": {
+      "package": "mongodb-mcp-server",
+      "ecosystem": "npm",
+      "latest_version": "0.1.3",
+      "description": "Query and modify MongoDB collections",
+      "command_patterns": [
+        "mongodb-mcp-server",
+        "mcp-server-mongodb"
+      ],
+      "category": "database",
+      "risk_level": "high",
+      "verified": true,
+      "license": "Apache-2.0",
+      "tools": [
+        "find",
+        "aggregate",
+        "count",
+        "insert_one",
+        "update_one",
+        "delete_one",
+        "create_index",
+        "list_databases",
+        "list_collections"
+      ],
+      "credential_env_vars": [
+        "MONGODB_URI"
+      ],
+      "source_url": "https://github.com/mongodb-js/mongodb-mcp-server"
+    },
+    "@supabase/mcp-server-supabase": {
+      "package": "@supabase/mcp-server-supabase",
+      "ecosystem": "npm",
+      "latest_version": "0.2.0",
+      "description": "Read/write Supabase tables, storage, Edge Functions",
+      "command_patterns": [
+        "mcp-server-supabase",
+        "supabase-mcp"
+      ],
+      "category": "database",
+      "risk_level": "high",
+      "verified": true,
+      "license": "Apache-2.0",
+      "tools": [
+        "list_tables",
+        "execute_sql",
+        "get_schemas",
+        "list_extensions",
+        "list_edge_functions",
+        "invoke_edge_function",
+        "upload_file"
+      ],
+      "credential_env_vars": [
+        "SUPABASE_URL",
+        "SUPABASE_SERVICE_ROLE_KEY"
+      ],
+      "source_url": "https://github.com/supabase-community/supabase-mcp"
+    },
+    "mcp-neo4j": {
+      "package": "mcp-neo4j",
+      "ecosystem": "npm",
+      "latest_version": "0.2.0",
+      "description": "Query Neo4j graph database",
+      "command_patterns": [
+        "mcp-neo4j",
+        "mcp-server-neo4j"
+      ],
+      "category": "database",
+      "risk_level": "high",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "cypher_query",
+        "get_schema",
+        "list_databases"
+      ],
+      "credential_env_vars": [
+        "NEO4J_URI",
+        "NEO4J_USERNAME",
+        "NEO4J_PASSWORD"
+      ],
+      "source_url": "https://github.com/neo4j-contrib/mcp-neo4j"
+    },
+    "mcp-server-redis": {
+      "package": "mcp-server-redis",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Read and write Redis keys",
+      "command_patterns": [
+        "mcp-server-redis",
+        "redis-mcp"
+      ],
+      "category": "database",
+      "risk_level": "medium",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "get",
+        "set",
+        "delete",
+        "keys",
+        "hget",
+        "hset",
+        "lpush",
+        "rpush",
+        "lrange"
+      ],
+      "credential_env_vars": [
+        "REDIS_URL"
+      ],
+      "source_url": "https://github.com/redis/mcp-redis"
+    },
+    "mcp-server-elasticsearch": {
+      "package": "mcp-server-elasticsearch",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Query Elasticsearch indices",
+      "command_patterns": [
+        "mcp-server-elasticsearch",
+        "elasticsearch-mcp"
+      ],
+      "category": "database",
+      "risk_level": "medium",
+      "verified": true,
+      "license": "Apache-2.0",
+      "tools": [
+        "search",
+        "index_document",
+        "get_document",
+        "list_indices",
+        "create_index"
+      ],
+      "credential_env_vars": [
+        "ELASTICSEARCH_URL",
+        "ELASTICSEARCH_API_KEY"
+      ],
+      "source_url": "https://github.com/elastic/mcp-server-elasticsearch"
+    },
+    "mcp-server-kubernetes": {
+      "package": "mcp-server-kubernetes",
+      "ecosystem": "npm",
+      "latest_version": "0.3.0",
+      "description": "Kubernetes cluster management",
+      "command_patterns": [
+        "mcp-server-kubernetes",
+        "kubernetes-mcp"
+      ],
+      "category": "infrastructure",
+      "risk_level": "high",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "list_pods",
+        "get_pod",
+        "list_deployments",
+        "scale_deployment",
+        "get_logs",
+        "list_services",
+        "list_namespaces",
+        "apply_manifest",
+        "delete_resource"
+      ],
+      "credential_env_vars": [
+        "KUBECONFIG"
+      ],
+      "source_url": "https://github.com/Flux159/mcp-server-kubernetes"
+    },
+    "mcp-server-docker": {
+      "package": "mcp-server-docker",
+      "ecosystem": "npm",
+      "latest_version": "0.2.0",
+      "description": "Docker container management",
+      "command_patterns": [
+        "mcp-server-docker",
+        "docker-mcp"
+      ],
+      "category": "infrastructure",
+      "risk_level": "high",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "list_containers",
+        "run_container",
+        "stop_container",
+        "remove_container",
+        "list_images",
+        "pull_image",
+        "build_image",
+        "exec_command"
+      ],
+      "credential_env_vars": [
+        "DOCKER_HOST"
+      ],
+      "source_url": "https://github.com/ckreiling/mcp-server-docker"
+    },
+    "@notionhq/notion-mcp-server": {
+      "package": "@notionhq/notion-mcp-server",
+      "ecosystem": "npm",
+      "latest_version": "1.6.1",
+      "description": "Read and write Notion pages, databases, blocks",
+      "command_patterns": [
+        "notion-mcp-server",
+        "notion-mcp"
+      ],
+      "category": "productivity",
+      "risk_level": "medium",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "search",
+        "get_page",
+        "create_page",
+        "update_page",
+        "get_database",
+        "query_database",
+        "create_database",
+        "get_block",
+        "get_block_children",
+        "append_block_children",
+        "delete_block",
+        "get_user",
+        "list_users",
+        "create_comment",
+        "list_comments"
+      ],
+      "credential_env_vars": [
+        "NOTION_API_KEY"
+      ],
+      "source_url": "https://github.com/makenotion/notion-mcp-server"
+    },
+    "exa-mcp-server": {
+      "package": "exa-mcp-server",
+      "ecosystem": "npm",
+      "latest_version": "1.1.2",
+      "description": "AI-native web search via Exa",
+      "command_patterns": [
+        "exa-mcp-server",
+        "exa-mcp"
+      ],
+      "category": "search",
+      "risk_level": "low",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "web_search",
+        "find_similar",
+        "get_contents"
+      ],
+      "credential_env_vars": [
+        "EXA_API_KEY"
+      ],
+      "source_url": "https://github.com/exa-labs/exa-mcp-server"
+    },
+    "tavily-mcp": {
+      "package": "tavily-mcp",
+      "ecosystem": "npm",
+      "latest_version": "0.2.0",
+      "description": "Real-time web search for AI agents",
+      "command_patterns": [
+        "tavily-mcp",
+        "mcp-server-tavily"
+      ],
+      "category": "search",
+      "risk_level": "low",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "search",
+        "extract"
+      ],
+      "credential_env_vars": [
+        "TAVILY_API_KEY"
+      ],
+      "source_url": "https://github.com/tavily-ai/tavily-mcp"
+    },
+    "duckduckgo-mcp-server": {
+      "package": "duckduckgo-mcp-server",
+      "ecosystem": "pypi",
+      "latest_version": "0.2.0",
+      "description": "Privacy-first web search via DuckDuckGo",
+      "command_patterns": [
+        "duckduckgo-mcp-server",
+        "duckduckgo-mcp"
+      ],
+      "category": "search",
+      "risk_level": "low",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "search"
+      ],
+      "credential_env_vars": [],
+      "source_url": "https://github.com/nickclyde/duckduckgo-mcp-server"
+    },
+    "mcp-server-firecrawl": {
+      "package": "mcp-server-firecrawl",
+      "ecosystem": "npm",
+      "latest_version": "1.5.0",
+      "description": "Web scraping and crawling via Firecrawl",
+      "command_patterns": [
+        "mcp-server-firecrawl",
+        "firecrawl-mcp"
+      ],
+      "category": "scraping",
+      "risk_level": "medium",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "scrape_url",
+        "crawl_url",
+        "search_google",
+        "extract_data"
+      ],
+      "credential_env_vars": [
+        "FIRECRAWL_API_KEY"
+      ],
+      "source_url": "https://github.com/punkpeye/mcp-server-firecrawl"
+    },
+    "mcp-grafana": {
+      "package": "mcp-grafana",
+      "ecosystem": "pypi",
+      "latest_version": "0.3.0",
+      "description": "Query Grafana dashboards and alerts",
+      "command_patterns": [
+        "mcp-grafana",
+        "mcp-server-grafana"
+      ],
+      "category": "observability",
+      "risk_level": "medium",
+      "verified": true,
+      "license": "Apache-2.0",
+      "tools": [
+        "search_dashboards",
+        "get_dashboard",
+        "list_datasources",
+        "query_prometheus",
+        "list_alerts",
+        "get_alert_rules"
+      ],
+      "credential_env_vars": [
+        "GRAFANA_URL",
+        "GRAFANA_API_KEY"
+      ],
+      "source_url": "https://github.com/grafana/mcp-grafana"
+    },
+    "mcp-server-datadog": {
+      "package": "mcp-server-datadog",
+      "ecosystem": "pypi",
+      "latest_version": "0.1.0",
+      "description": "Query Datadog metrics, logs, dashboards",
+      "command_patterns": [
+        "mcp-server-datadog",
+        "datadog-mcp"
+      ],
+      "category": "observability",
+      "risk_level": "medium",
+      "verified": true,
+      "license": "Apache-2.0",
+      "tools": [
+        "query_metrics",
+        "search_logs",
+        "list_dashboards",
+        "get_dashboard"
+      ],
+      "credential_env_vars": [
+        "DD_API_KEY",
+        "DD_APP_KEY"
+      ],
+      "source_url": "https://github.com/DataDog/datadog-mcp-server"
+    },
+    "mcp-server-playwright": {
+      "package": "@playwright/mcp",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Browser automation via Playwright",
+      "command_patterns": [
+        "playwright/mcp",
+        "mcp-server-playwright"
+      ],
+      "category": "browser",
+      "risk_level": "high",
+      "verified": true,
+      "license": "Apache-2.0",
+      "tools": [
+        "navigate",
+        "screenshot",
+        "click",
+        "fill",
+        "select",
+        "evaluate",
+        "pdf",
+        "wait_for_selector"
+      ],
+      "credential_env_vars": [],
+      "source_url": "https://github.com/microsoft/playwright-mcp"
+    },
+    "@jetbrains/mcp-proxy": {
+      "package": "@jetbrains/mcp-proxy",
+      "ecosystem": "npm",
+      "latest_version": "0.2.0",
+      "description": "Control JetBrains IDEs",
+      "command_patterns": [
+        "jetbrains/mcp-proxy",
+        "jetbrains-mcp"
+      ],
+      "category": "developer-tools",
+      "risk_level": "medium",
+      "verified": true,
+      "license": "Apache-2.0",
+      "tools": [
+        "navigate_to_file",
+        "search_code",
+        "refactor",
+        "run_configuration",
+        "get_file_contents"
+      ],
+      "credential_env_vars": [],
+      "source_url": "https://github.com/JetBrains/mcp-jetbrains"
+    },
+    "mcp-server-semgrep": {
+      "package": "mcp-server-semgrep",
+      "ecosystem": "pypi",
+      "latest_version": "0.1.0",
+      "description": "Static analysis via Semgrep",
+      "command_patterns": [
+        "mcp-server-semgrep",
+        "semgrep-mcp"
+      ],
+      "category": "security",
+      "risk_level": "medium",
+      "verified": true,
+      "license": "Apache-2.0",
+      "tools": [
+        "scan_code",
+        "list_rules",
+        "get_findings"
+      ],
+      "credential_env_vars": [
+        "SEMGREP_APP_TOKEN"
+      ],
+      "source_url": "https://github.com/semgrep/mcp-server-semgrep"
+    },
+    "mcp-server-snyk": {
+      "package": "mcp-server-snyk",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Security scanning via Snyk",
+      "command_patterns": [
+        "mcp-server-snyk",
+        "snyk-mcp"
+      ],
+      "category": "security",
+      "risk_level": "medium",
+      "verified": true,
+      "license": "Apache-2.0",
+      "tools": [
+        "test_package",
+        "list_vulnerabilities",
+        "list_projects"
+      ],
+      "credential_env_vars": [
+        "SNYK_TOKEN"
+      ],
+      "source_url": "https://github.com/snyk/mcp-snyk"
+    },
+    "mcp-server-huggingface-hub": {
+      "package": "mcp-server-huggingface-hub",
+      "ecosystem": "pypi",
+      "latest_version": "0.1.0",
+      "description": "Search HuggingFace models, datasets, Spaces",
+      "command_patterns": [
+        "mcp-server-huggingface",
+        "huggingface-mcp"
+      ],
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "search_models",
+        "get_model_info",
+        "search_datasets",
+        "search_spaces"
+      ],
+      "credential_env_vars": [
+        "HF_TOKEN"
+      ],
+      "source_url": "https://github.com/evalstate/mcp-hfspace"
+    },
+    "langsmith-mcp-server": {
+      "package": "langsmith-mcp-server",
+      "ecosystem": "pypi",
+      "latest_version": "0.1.0",
+      "description": "Query LangSmith traces and evaluations",
+      "command_patterns": [
+        "langsmith-mcp",
+        "mcp-server-langsmith"
+      ],
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "list_runs",
+        "get_run",
+        "list_datasets",
+        "get_eval_results"
+      ],
+      "credential_env_vars": [
+        "LANGSMITH_API_KEY"
+      ],
+      "source_url": "https://github.com/langchain-ai/langsmith-mcp"
+    },
+    "wandb-mcp-server": {
+      "package": "wandb-mcp-server",
+      "ecosystem": "pypi",
+      "latest_version": "0.1.0",
+      "description": "Query W&B runs, artifacts, experiments",
+      "command_patterns": [
+        "wandb-mcp-server",
+        "wandb-mcp"
+      ],
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "license": "Apache-2.0",
+      "tools": [
+        "list_runs",
+        "get_run",
+        "list_artifacts",
+        "get_artifact"
+      ],
+      "credential_env_vars": [
+        "WANDB_API_KEY"
+      ],
+      "source_url": "https://github.com/wandb/wandb-mcp-server"
+    },
+    "mcp-openai": {
+      "package": "mcp-openai",
+      "ecosystem": "npm",
+      "latest_version": "0.3.0",
+      "description": "Call OpenAI models from MCP session",
+      "command_patterns": [
+        "mcp-openai",
+        "openai-mcp"
+      ],
+      "category": "ai-ml",
+      "risk_level": "medium",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "chat_completion",
+        "create_image",
+        "create_embedding",
+        "create_transcription"
+      ],
+      "credential_env_vars": [
+        "OPENAI_API_KEY"
+      ],
+      "source_url": "https://github.com/mzxrai/mcp-openai"
+    },
+    "mcp-server-twilio": {
+      "package": "mcp-server-twilio",
+      "ecosystem": "pypi",
+      "latest_version": "0.1.0",
+      "description": "Send SMS/voice calls via Twilio",
+      "command_patterns": [
+        "mcp-server-twilio",
+        "twilio-mcp"
+      ],
+      "category": "communication",
+      "risk_level": "high",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "send_sms",
+        "make_call",
+        "list_messages",
+        "list_calls"
+      ],
+      "credential_env_vars": [
+        "TWILIO_ACCOUNT_SID",
+        "TWILIO_AUTH_TOKEN",
+        "TWILIO_FROM_NUMBER"
+      ],
+      "source_url": "https://github.com/twilio-labs/mcp"
+    },
+    "mcp-server-sendgrid": {
+      "package": "mcp-server-sendgrid",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Send transactional emails via SendGrid",
+      "command_patterns": [
+        "mcp-server-sendgrid",
+        "sendgrid-mcp"
+      ],
+      "category": "communication",
+      "risk_level": "high",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "send_email",
+        "list_templates",
+        "get_stats"
+      ],
+      "credential_env_vars": [
+        "SENDGRID_API_KEY"
+      ],
+      "source_url": "https://github.com/sendgrid/mcp-sendgrid"
+    },
+    "mcp-server-terraform": {
+      "package": "mcp-server-terraform",
+      "ecosystem": "npm",
+      "latest_version": "0.2.0",
+      "description": "Terraform plan, apply, state management",
+      "command_patterns": [
+        "mcp-server-terraform",
+        "terraform-mcp"
+      ],
+      "category": "infrastructure",
+      "risk_level": "high",
+      "verified": true,
+      "license": "MPL-2.0",
+      "tools": [
+        "plan",
+        "apply",
+        "show_state",
+        "list_resources",
+        "destroy",
+        "output"
+      ],
+      "credential_env_vars": [
+        "TF_VAR_*",
+        "AWS_ACCESS_KEY_ID"
+      ],
+      "source_url": "https://github.com/hashicorp/mcp-server-terraform"
+    },
+    "mcp-server-prometheus": {
+      "package": "mcp-server-prometheus",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Query Prometheus metrics",
+      "command_patterns": [
+        "mcp-server-prometheus",
+        "prometheus-mcp"
+      ],
+      "category": "observability",
+      "risk_level": "low",
+      "verified": false,
+      "license": "Apache-2.0",
+      "tools": [
+        "query",
+        "query_range",
+        "list_metrics",
+        "list_targets"
+      ],
+      "credential_env_vars": [
+        "PROMETHEUS_URL"
+      ],
+      "source_url": "https://github.com/punkpeye/mcp-server-prometheus"
+    },
+    "mcp-server-shopify": {
+      "package": "mcp-server-shopify",
+      "ecosystem": "npm",
+      "latest_version": "0.2.0",
+      "description": "Shopify store management",
+      "command_patterns": [
+        "mcp-server-shopify",
+        "shopify-mcp"
+      ],
+      "category": "commerce",
+      "risk_level": "high",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "list_products",
+        "create_product",
+        "update_product",
+        "list_orders",
+        "get_order",
+        "list_customers"
+      ],
+      "credential_env_vars": [
+        "SHOPIFY_ACCESS_TOKEN",
+        "SHOPIFY_STORE_DOMAIN"
+      ],
+      "source_url": "https://github.com/Shopify/mcp-shopify"
+    },
+    "mcp-server-salesforce": {
+      "package": "mcp-server-salesforce",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Salesforce CRM operations",
+      "command_patterns": [
+        "mcp-server-salesforce",
+        "salesforce-mcp"
+      ],
+      "category": "crm",
+      "risk_level": "high",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "soql_query",
+        "create_record",
+        "update_record",
+        "delete_record",
+        "describe_object",
+        "list_objects"
+      ],
+      "credential_env_vars": [
+        "SALESFORCE_ACCESS_TOKEN",
+        "SALESFORCE_INSTANCE_URL"
+      ],
+      "source_url": "https://github.com/salesforce/mcp-salesforce"
+    },
+    "mcp-server-hubspot": {
+      "package": "mcp-server-hubspot",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "HubSpot CRM and marketing",
+      "command_patterns": [
+        "mcp-server-hubspot",
+        "hubspot-mcp"
+      ],
+      "category": "crm",
+      "risk_level": "medium",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "list_contacts",
+        "create_contact",
+        "update_contact",
+        "list_deals",
+        "create_deal",
+        "search_companies"
+      ],
+      "credential_env_vars": [
+        "HUBSPOT_ACCESS_TOKEN"
+      ],
+      "source_url": "https://github.com/hubspot/mcp-hubspot"
+    },
+    "mcp-server-bigquery": {
+      "package": "mcp-server-bigquery",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Google BigQuery SQL queries",
+      "command_patterns": [
+        "mcp-server-bigquery",
+        "bigquery-mcp"
+      ],
+      "category": "database",
+      "risk_level": "high",
+      "verified": false,
+      "license": "Apache-2.0",
+      "tools": [
+        "query",
+        "list_datasets",
+        "list_tables",
+        "get_schema"
+      ],
+      "credential_env_vars": [
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        "GCP_PROJECT_ID"
+      ],
+      "source_url": "https://github.com/LucasHild/mcp-server-bigquery"
+    },
+    "mcp-server-snowflake": {
+      "package": "mcp-server-snowflake",
+      "ecosystem": "pypi",
+      "latest_version": "0.1.0",
+      "description": "Snowflake data warehouse queries",
+      "command_patterns": [
+        "mcp-server-snowflake",
+        "snowflake-mcp"
+      ],
+      "category": "database",
+      "risk_level": "high",
+      "verified": false,
+      "license": "Apache-2.0",
+      "tools": [
+        "query",
+        "list_databases",
+        "list_schemas",
+        "list_tables",
+        "describe_table"
+      ],
+      "credential_env_vars": [
+        "SNOWFLAKE_ACCOUNT",
+        "SNOWFLAKE_USER",
+        "SNOWFLAKE_PASSWORD",
+        "SNOWFLAKE_WAREHOUSE"
+      ],
+      "source_url": "https://github.com/datawiz168/mcp-snowflake-service"
+    },
+    "mcp-server-databricks": {
+      "package": "mcp-server-databricks",
+      "ecosystem": "pypi",
+      "latest_version": "0.1.0",
+      "description": "Databricks SQL and notebook execution",
+      "command_patterns": [
+        "mcp-server-databricks",
+        "databricks-mcp"
+      ],
+      "category": "database",
+      "risk_level": "high",
+      "verified": true,
+      "license": "Apache-2.0",
+      "tools": [
+        "execute_sql",
+        "list_catalogs",
+        "list_schemas",
+        "list_tables",
+        "run_notebook"
+      ],
+      "credential_env_vars": [
+        "DATABRICKS_HOST",
+        "DATABRICKS_TOKEN"
+      ],
+      "source_url": "https://github.com/databricks/mcp-server-databricks"
+    },
+    "mcp-server-pinecone": {
+      "package": "mcp-server-pinecone",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Pinecone vector database",
+      "command_patterns": [
+        "mcp-server-pinecone",
+        "pinecone-mcp"
+      ],
+      "category": "vector-db",
+      "risk_level": "medium",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "upsert_vectors",
+        "query_vectors",
+        "delete_vectors",
+        "list_indexes",
+        "describe_index"
+      ],
+      "credential_env_vars": [
+        "PINECONE_API_KEY",
+        "PINECONE_ENVIRONMENT"
+      ],
+      "source_url": "https://github.com/pinecone-io/pinecone-mcp"
+    },
+    "mcp-server-weaviate": {
+      "package": "mcp-server-weaviate",
+      "ecosystem": "pypi",
+      "latest_version": "0.1.0",
+      "description": "Weaviate vector database",
+      "command_patterns": [
+        "mcp-server-weaviate",
+        "weaviate-mcp"
+      ],
+      "category": "vector-db",
+      "risk_level": "medium",
+      "verified": true,
+      "license": "BSD-3-Clause",
+      "tools": [
+        "create_collection",
+        "add_objects",
+        "query_objects",
+        "list_collections"
+      ],
+      "credential_env_vars": [
+        "WEAVIATE_URL",
+        "WEAVIATE_API_KEY"
+      ],
+      "source_url": "https://github.com/weaviate/mcp-weaviate"
+    },
+    "mcp-server-chromadb": {
+      "package": "mcp-server-chromadb",
+      "ecosystem": "pypi",
+      "latest_version": "0.1.0",
+      "description": "ChromaDB vector database",
+      "command_patterns": [
+        "mcp-server-chromadb",
+        "chromadb-mcp"
+      ],
+      "category": "vector-db",
+      "risk_level": "medium",
+      "verified": true,
+      "license": "Apache-2.0",
+      "tools": [
+        "create_collection",
+        "add_documents",
+        "query_collection",
+        "list_collections",
+        "delete_collection"
+      ],
+      "credential_env_vars": [
+        "CHROMA_SERVER_URL"
+      ],
+      "source_url": "https://github.com/chroma-core/mcp-chroma"
+    },
+    "mcp-server-discord": {
+      "package": "mcp-server-discord",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Discord bot operations",
+      "command_patterns": [
+        "mcp-server-discord",
+        "discord-mcp"
+      ],
+      "category": "communication",
+      "risk_level": "medium",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "send_message",
+        "list_channels",
+        "list_guilds",
+        "get_messages",
+        "create_channel"
+      ],
+      "credential_env_vars": [
+        "DISCORD_BOT_TOKEN"
+      ],
+      "source_url": "https://github.com/v3xlabs/mcp-discord"
+    },
+    "mcp-server-telegram": {
+      "package": "mcp-server-telegram",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Send Telegram messages",
+      "command_patterns": [
+        "mcp-server-telegram",
+        "telegram-mcp"
+      ],
+      "category": "communication",
+      "risk_level": "medium",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "send_message",
+        "get_updates",
+        "get_chat",
+        "send_photo"
+      ],
+      "credential_env_vars": [
+        "TELEGRAM_BOT_TOKEN"
+      ],
+      "source_url": "https://github.com/nicobailey/mcp-server-telegram"
+    },
+    "mcp-server-asana": {
+      "package": "mcp-server-asana",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Asana project management",
+      "command_patterns": [
+        "mcp-server-asana",
+        "asana-mcp"
+      ],
+      "category": "project-management",
+      "risk_level": "medium",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "list_workspaces",
+        "list_projects",
+        "create_task",
+        "update_task",
+        "list_tasks",
+        "get_task"
+      ],
+      "credential_env_vars": [
+        "ASANA_ACCESS_TOKEN"
+      ],
+      "source_url": "https://github.com/roychri/mcp-server-asana"
+    },
+    "mcp-server-trello": {
+      "package": "mcp-server-trello",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Trello board management",
+      "command_patterns": [
+        "mcp-server-trello",
+        "trello-mcp"
+      ],
+      "category": "project-management",
+      "risk_level": "medium",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "list_boards",
+        "list_cards",
+        "create_card",
+        "update_card",
+        "move_card",
+        "add_comment"
+      ],
+      "credential_env_vars": [
+        "TRELLO_API_KEY",
+        "TRELLO_TOKEN"
+      ],
+      "source_url": "https://github.com/deepakb/mcp-server-trello"
+    },
+    "mcp-server-google-workspace": {
+      "package": "mcp-server-google-workspace",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Google Workspace (Docs, Sheets, Calendar)",
+      "command_patterns": [
+        "mcp-server-google-workspace",
+        "google-workspace-mcp"
+      ],
+      "category": "productivity",
+      "risk_level": "medium",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "create_document",
+        "read_document",
+        "create_spreadsheet",
+        "read_spreadsheet",
+        "list_events",
+        "create_event"
+      ],
+      "credential_env_vars": [
+        "GOOGLE_CLIENT_ID",
+        "GOOGLE_CLIENT_SECRET"
+      ],
+      "source_url": "https://github.com/nicobailey/mcp-google-workspace"
+    },
+    "mcp-server-replicate": {
+      "package": "mcp-server-replicate",
+      "ecosystem": "pypi",
+      "latest_version": "0.1.0",
+      "description": "Run ML models on Replicate",
+      "command_patterns": [
+        "mcp-server-replicate",
+        "replicate-mcp"
+      ],
+      "category": "ai-ml",
+      "risk_level": "medium",
+      "verified": false,
+      "license": "Apache-2.0",
+      "tools": [
+        "run_model",
+        "list_models",
+        "get_prediction",
+        "list_predictions"
+      ],
+      "credential_env_vars": [
+        "REPLICATE_API_TOKEN"
+      ],
+      "source_url": "https://github.com/deepfates/mcp-replicate"
+    },
+    "mcp-server-ollama": {
+      "package": "mcp-server-ollama",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Run local LLMs via Ollama",
+      "command_patterns": [
+        "mcp-server-ollama",
+        "ollama-mcp"
+      ],
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "chat",
+        "generate",
+        "list_models",
+        "pull_model"
+      ],
+      "credential_env_vars": [
+        "OLLAMA_HOST"
+      ],
+      "source_url": "https://github.com/gauravgahlot/mcp-ollama"
+    },
+    "mcp-server-crowdstrike": {
+      "package": "mcp-server-crowdstrike",
+      "ecosystem": "pypi",
+      "latest_version": "0.1.0",
+      "description": "CrowdStrike Falcon threat intelligence",
+      "command_patterns": [
+        "mcp-server-crowdstrike",
+        "crowdstrike-mcp"
+      ],
+      "category": "security",
+      "risk_level": "medium",
+      "verified": true,
+      "license": "Apache-2.0",
+      "tools": [
+        "search_detections",
+        "get_device",
+        "list_indicators",
+        "search_iocs"
+      ],
+      "credential_env_vars": [
+        "CROWDSTRIKE_CLIENT_ID",
+        "CROWDSTRIKE_CLIENT_SECRET"
+      ],
+      "source_url": "https://github.com/CrowdStrike/mcp-server-crowdstrike"
+    },
+    "mcp-server-aws-s3": {
+      "package": "mcp-server-aws-s3",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "AWS S3 bucket operations",
+      "command_patterns": [
+        "mcp-server-aws-s3",
+        "s3-mcp"
+      ],
+      "category": "cloud-storage",
+      "risk_level": "high",
+      "verified": true,
+      "license": "Apache-2.0",
+      "tools": [
+        "list_buckets",
+        "list_objects",
+        "get_object",
+        "put_object",
+        "delete_object",
+        "create_bucket"
+      ],
+      "credential_env_vars": [
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_REGION"
+      ],
+      "source_url": "https://github.com/awslabs/mcp"
+    },
+    "mcp-server-gcp-storage": {
+      "package": "mcp-server-gcp-storage",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Google Cloud Storage operations",
+      "command_patterns": [
+        "mcp-server-gcp-storage",
+        "gcs-mcp"
+      ],
+      "category": "cloud-storage",
+      "risk_level": "high",
+      "verified": false,
+      "license": "Apache-2.0",
+      "tools": [
+        "list_buckets",
+        "list_objects",
+        "get_object",
+        "upload_object",
+        "delete_object"
+      ],
+      "credential_env_vars": [
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        "GCP_PROJECT_ID"
+      ],
+      "source_url": "https://github.com/nicobailey/mcp-gcs"
+    },
+    "mcp-server-azure-blob": {
+      "package": "mcp-server-azure-blob",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Azure Blob Storage operations",
+      "command_patterns": [
+        "mcp-server-azure-blob",
+        "azure-blob-mcp"
+      ],
+      "category": "cloud-storage",
+      "risk_level": "high",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "list_containers",
+        "list_blobs",
+        "get_blob",
+        "upload_blob",
+        "delete_blob"
+      ],
+      "credential_env_vars": [
+        "AZURE_STORAGE_CONNECTION_STRING"
+      ],
+      "source_url": "https://github.com/azure/mcp-server-azure-blob"
+    },
+    "mcp-server-azure-devops": {
+      "package": "mcp-server-azure-devops",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Azure DevOps repos, pipelines, work items",
+      "command_patterns": [
+        "mcp-server-azure-devops",
+        "azdo-mcp"
+      ],
+      "category": "developer-tools",
+      "risk_level": "medium",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "list_repos",
+        "get_pull_requests",
+        "create_work_item",
+        "list_pipelines",
+        "get_build"
+      ],
+      "credential_env_vars": [
+        "AZURE_DEVOPS_PAT",
+        "AZURE_DEVOPS_ORG"
+      ],
+      "source_url": "https://github.com/nicobailey/mcp-azure-devops"
+    },
+    "apify-mcp-server": {
+      "package": "apify-mcp-server",
+      "ecosystem": "npm",
+      "latest_version": "0.2.0",
+      "description": "Web scraping and automation via Apify Actors",
+      "command_patterns": [
+        "apify-mcp-server",
+        "apify-mcp"
+      ],
+      "category": "scraping",
+      "risk_level": "medium",
+      "verified": true,
+      "license": "Apache-2.0",
+      "tools": [
+        "run_actor",
+        "list_actors",
+        "get_dataset",
+        "list_datasets"
+      ],
+      "credential_env_vars": [
+        "APIFY_TOKEN"
+      ],
+      "source_url": "https://github.com/apify/actors-mcp-server"
+    },
+    "@pierrebrunelle/mcp-server-youtube": {
+      "package": "@pierrebrunelle/mcp-server-youtube",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "YouTube video metadata and transcripts",
+      "command_patterns": [
+        "mcp-server-youtube",
+        "youtube-mcp"
+      ],
+      "category": "media",
+      "risk_level": "low",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "search_videos",
+        "get_video_info",
+        "get_transcript"
+      ],
+      "credential_env_vars": [
+        "YOUTUBE_API_KEY"
+      ],
+      "source_url": "https://github.com/pierrebrunelle/mcp-server-youtube"
+    },
+    "mcp-youtube": {
+      "package": "mcp-youtube",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "YouTube transcript download and search",
+      "command_patterns": [
+        "mcp-youtube"
+      ],
+      "category": "media",
+      "risk_level": "low",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "get_transcript"
+      ],
+      "credential_env_vars": [],
+      "source_url": "https://github.com/anaisbetts/mcp-youtube"
+    },
+    "mcp-server-llm-costs": {
+      "package": "mcp-server-llm-costs",
+      "ecosystem": "pypi",
+      "latest_version": "0.1.0",
+      "description": "Track and estimate LLM API costs",
+      "command_patterns": [
+        "mcp-server-llm-costs",
+        "llm-costs-mcp"
+      ],
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": false,
+      "license": "Apache-2.0",
+      "tools": [
+        "estimate_cost",
+        "list_models",
+        "get_pricing"
+      ],
+      "credential_env_vars": [],
+      "source_url": "https://github.com/AgentOps-AI/tokencost"
+    },
+    "mcp-hass": {
+      "package": "mcp-hass",
+      "ecosystem": "pypi",
+      "latest_version": "0.1.0",
+      "description": "Control Home Assistant devices and automations",
+      "command_patterns": [
+        "mcp-hass",
+        "home-assistant-mcp"
+      ],
+      "category": "iot",
+      "risk_level": "high",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "call_service",
+        "get_states",
+        "list_entities",
+        "turn_on",
+        "turn_off",
+        "set_temperature"
+      ],
+      "credential_env_vars": [
+        "HASS_URL",
+        "HASS_TOKEN"
+      ],
+      "source_url": "https://github.com/home-assistant/core"
+    },
+    "@punkpeye/mcp-server-filesystem": {
+      "package": "@punkpeye/mcp-server-filesystem",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Sandboxed filesystem (allowlist-only paths)",
+      "command_patterns": [
+        "punkpeye/mcp-server-filesystem"
+      ],
+      "category": "filesystem",
+      "risk_level": "medium",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "read_file",
+        "write_file",
+        "list_directory"
+      ],
+      "credential_env_vars": [],
+      "source_url": "https://github.com/punkpeye/mcp-filesystem"
+    },
+    "mcp-server-kyverno": {
+      "package": "mcp-server-kyverno",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Kubernetes policy management via Kyverno",
+      "command_patterns": [
+        "mcp-server-kyverno",
+        "kyverno-mcp"
+      ],
+      "category": "security",
+      "risk_level": "high",
+      "verified": false,
+      "license": "Apache-2.0",
+      "tools": [
+        "list_policies",
+        "apply_policy",
+        "validate_resource",
+        "get_policy_report"
+      ],
+      "credential_env_vars": [
+        "KUBECONFIG"
+      ],
+      "source_url": "https://github.com/kyverno/mcp-kyverno"
+    },
+    "mcp-server-github-copilot": {
+      "package": "@github/mcp-server",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "GitHub Copilot MCP integration",
+      "command_patterns": [
+        "github-mcp-server",
+        "github-copilot-mcp"
+      ],
+      "category": "developer-tools",
+      "risk_level": "medium",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "search_code",
+        "get_file_contents",
+        "list_pull_requests",
+        "review_pull_request",
+        "list_issues"
+      ],
+      "credential_env_vars": [
+        "GITHUB_TOKEN"
+      ],
+      "source_url": "https://github.com/github/github-mcp-server"
+    },
+    "mcp-server-osv": {
+      "package": "mcp-server-osv",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Query OSV.dev vulnerability database",
+      "command_patterns": [
+        "mcp-server-osv",
+        "osv-mcp"
+      ],
+      "category": "security",
+      "risk_level": "low",
+      "verified": false,
+      "license": "Apache-2.0",
+      "tools": [
+        "query_vulnerability",
+        "list_vulnerabilities",
+        "get_vulnerability"
+      ],
+      "credential_env_vars": [],
+      "source_url": "https://github.com/nicobailey/mcp-server-osv"
+    },
+    "mcp-server-neon": {
+      "package": "mcp-server-neon",
+      "ecosystem": "npm",
+      "latest_version": "0.3.0",
+      "description": "Neon serverless Postgres management",
+      "command_patterns": [
+        "mcp-server-neon",
+        "neon-mcp"
+      ],
+      "category": "database",
+      "risk_level": "high",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "list_projects",
+        "create_project",
+        "create_branch",
+        "run_sql",
+        "list_databases"
+      ],
+      "credential_env_vars": [
+        "NEON_API_KEY"
+      ],
+      "source_url": "https://github.com/neondatabase/mcp-server-neon"
+    },
+    "mcp-server-planetscale": {
+      "package": "mcp-server-planetscale",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "PlanetScale MySQL management",
+      "command_patterns": [
+        "mcp-server-planetscale",
+        "planetscale-mcp"
+      ],
+      "category": "database",
+      "risk_level": "high",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "list_databases",
+        "execute_query",
+        "create_branch",
+        "list_branches"
+      ],
+      "credential_env_vars": [
+        "PLANETSCALE_TOKEN",
+        "PLANETSCALE_ORG"
+      ],
+      "source_url": "https://github.com/planetscale/mcp-planetscale"
+    },
+    "mcp-server-turso": {
+      "package": "mcp-server-turso",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Turso/libSQL edge database",
+      "command_patterns": [
+        "mcp-server-turso",
+        "turso-mcp"
+      ],
+      "category": "database",
+      "risk_level": "medium",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "query",
+        "list_databases",
+        "create_database",
+        "list_groups"
+      ],
+      "credential_env_vars": [
+        "TURSO_AUTH_TOKEN",
+        "TURSO_DATABASE_URL"
+      ],
+      "source_url": "https://github.com/turso-extended/mcp-turso"
+    },
+    "mcp-server-aws-lambda": {
+      "package": "mcp-server-aws-lambda",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Invoke and manage AWS Lambda functions",
+      "command_patterns": [
+        "mcp-server-aws-lambda",
+        "lambda-mcp"
+      ],
+      "category": "cloud",
+      "risk_level": "high",
+      "verified": true,
+      "license": "Apache-2.0",
+      "tools": [
+        "invoke_function",
+        "list_functions",
+        "get_function",
+        "create_function",
+        "update_function"
+      ],
+      "credential_env_vars": [
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_REGION"
+      ],
+      "source_url": "https://github.com/awslabs/mcp"
+    },
+    "mcp-server-obsidian": {
+      "package": "mcp-server-obsidian",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Read and write Obsidian vault notes",
+      "command_patterns": [
+        "mcp-server-obsidian",
+        "obsidian-mcp"
+      ],
+      "category": "productivity",
+      "risk_level": "medium",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "read_note",
+        "write_note",
+        "search_notes",
+        "list_notes",
+        "get_tags"
+      ],
+      "credential_env_vars": [
+        "OBSIDIAN_VAULT_PATH"
+      ],
+      "source_url": "https://github.com/MarkusPfworlds/mcp-obsidian"
+    },
+    "mcp-server-github-actions": {
+      "package": "mcp-server-github-actions",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "GitHub Actions workflow management",
+      "command_patterns": [
+        "mcp-server-github-actions",
+        "github-actions-mcp"
+      ],
+      "category": "developer-tools",
+      "risk_level": "high",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "list_workflows",
+        "trigger_workflow",
+        "get_workflow_run",
+        "list_workflow_runs",
+        "cancel_workflow_run"
+      ],
+      "credential_env_vars": [
+        "GITHUB_TOKEN"
+      ],
+      "source_url": "https://github.com/nicobailey/mcp-github-actions"
+    },
+    "mcp-server-groq": {
+      "package": "mcp-server-groq",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Fast inference via Groq API",
+      "command_patterns": [
+        "mcp-server-groq",
+        "groq-mcp"
+      ],
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "chat_completion",
+        "list_models"
+      ],
+      "credential_env_vars": [
+        "GROQ_API_KEY"
+      ],
+      "source_url": "https://github.com/nicobailey/mcp-groq"
+    },
+    "mcp-server-together": {
+      "package": "mcp-server-together",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Together AI inference",
+      "command_patterns": [
+        "mcp-server-together",
+        "together-mcp"
+      ],
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": false,
+      "license": "Apache-2.0",
+      "tools": [
+        "chat_completion",
+        "list_models",
+        "create_embedding"
+      ],
+      "credential_env_vars": [
+        "TOGETHER_API_KEY"
+      ],
+      "source_url": "https://github.com/nicobailey/mcp-together"
+    },
+    "mcp-server-github-pr-review": {
+      "package": "mcp-server-github-pr-review",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Automated GitHub PR review",
+      "command_patterns": [
+        "mcp-server-github-pr-review",
+        "pr-review-mcp"
+      ],
+      "category": "developer-tools",
+      "risk_level": "medium",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "review_pr",
+        "list_pr_files",
+        "add_pr_comment",
+        "approve_pr",
+        "request_changes"
+      ],
+      "credential_env_vars": [
+        "GITHUB_TOKEN"
+      ],
+      "source_url": "https://github.com/nicobailey/mcp-pr-review"
+    },
+    "mcp-server-circleci": {
+      "package": "mcp-server-circleci",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "CircleCI pipeline management",
+      "command_patterns": [
+        "mcp-server-circleci",
+        "circleci-mcp"
+      ],
+      "category": "developer-tools",
+      "risk_level": "medium",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "list_pipelines",
+        "trigger_pipeline",
+        "get_job",
+        "list_artifacts"
+      ],
+      "credential_env_vars": [
+        "CIRCLECI_TOKEN"
+      ],
+      "source_url": "https://github.com/nicobailey/mcp-circleci"
+    },
+    "mcp-server-zendesk": {
+      "package": "mcp-server-zendesk",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Zendesk ticket and customer support",
+      "command_patterns": [
+        "mcp-server-zendesk",
+        "zendesk-mcp"
+      ],
+      "category": "support",
+      "risk_level": "medium",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "list_tickets",
+        "create_ticket",
+        "update_ticket",
+        "search_tickets",
+        "get_user"
+      ],
+      "credential_env_vars": [
+        "ZENDESK_SUBDOMAIN",
+        "ZENDESK_EMAIL",
+        "ZENDESK_API_TOKEN"
+      ],
+      "source_url": "https://github.com/remzh/mcp-server-zendesk"
+    },
+    "mcp-server-pagerduty": {
+      "package": "mcp-server-pagerduty",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "PagerDuty incident management",
+      "command_patterns": [
+        "mcp-server-pagerduty",
+        "pagerduty-mcp"
+      ],
+      "category": "observability",
+      "risk_level": "high",
+      "verified": false,
+      "license": "Apache-2.0",
+      "tools": [
+        "list_incidents",
+        "create_incident",
+        "acknowledge_incident",
+        "resolve_incident",
+        "list_services",
+        "list_oncalls"
+      ],
+      "credential_env_vars": [
+        "PAGERDUTY_API_KEY"
+      ],
+      "source_url": "https://github.com/nicobailey/mcp-pagerduty"
+    },
+    "mcp-server-zapier": {
+      "package": "mcp-server-zapier",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Trigger 7000+ app automations via Zapier",
+      "command_patterns": [
+        "mcp-server-zapier",
+        "zapier-mcp"
+      ],
+      "category": "automation",
+      "risk_level": "high",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "list_zaps",
+        "trigger_zap",
+        "list_actions",
+        "run_action"
+      ],
+      "credential_env_vars": [
+        "ZAPIER_API_KEY"
+      ],
+      "source_url": "https://zapier.com/mcp"
+    },
+    "mcp-server-raycast": {
+      "package": "mcp-server-raycast",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Raycast launcher and extensions",
+      "command_patterns": [
+        "mcp-server-raycast",
+        "raycast-mcp"
+      ],
+      "category": "productivity",
+      "risk_level": "medium",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "search_extensions",
+        "run_command",
+        "create_snippet",
+        "list_clipboard_history"
+      ],
+      "credential_env_vars": [],
+      "source_url": "https://github.com/nicobailey/mcp-raycast"
+    },
+    "mcp-server-airtable": {
+      "package": "mcp-server-airtable",
+      "ecosystem": "npm",
+      "latest_version": "0.1.0",
+      "description": "Airtable base and record management",
+      "command_patterns": [
+        "mcp-server-airtable",
+        "airtable-mcp"
+      ],
+      "category": "productivity",
+      "risk_level": "medium",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "list_bases",
+        "list_records",
+        "create_record",
+        "update_record",
+        "delete_record",
+        "list_tables"
+      ],
+      "credential_env_vars": [
+        "AIRTABLE_API_KEY"
+      ],
+      "source_url": "https://github.com/nicobailey/mcp-airtable"
     }
   }
 }

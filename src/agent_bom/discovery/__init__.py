@@ -156,13 +156,17 @@ def parse_mcp_config(config_data: dict, config_path: str) -> list[MCPServer]:
 
         command = server_def.get("command", "")
         args = server_def.get("args", [])
-        env = server_def.get("env", {})
+        raw_env = server_def.get("env", {})
+
+        # ✅ Security: redact credential values before storing in MCPServer
+        # Only env var NAMES appear in reports — values are replaced with ***REDACTED***
+        env = sanitize_env_vars(raw_env) if isinstance(raw_env, dict) else {}
 
         server = MCPServer(
             name=name,
             command=command,
             args=args if isinstance(args, list) else [args],
-            env=env if isinstance(env, dict) else {},
+            env=env,
             transport=transport,
             url=url,
             config_path=config_path,

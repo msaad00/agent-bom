@@ -46,6 +46,7 @@ import json
 from pathlib import Path
 
 SEVERITY_ORDER = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1, "NONE": 0}
+RISK_LEVEL_ORDER = {"high": 3, "medium": 2, "low": 1}
 
 POLICY_TEMPLATE = {
     "version": "1",
@@ -83,6 +84,26 @@ POLICY_TEMPLATE = {
             "description": "Medium vulnerabilities generate advisory warnings",
             "severity_gte": "MEDIUM",
             "action": "warn",
+        },
+        {
+            "id": "no-unverified-high",
+            "description": "Unverified MCP servers with high+ vulnerabilities are blocked",
+            "unverified_server": True,
+            "severity_gte": "HIGH",
+            "action": "fail",
+        },
+        {
+            "id": "warn-excessive-agency",
+            "description": "Servers with >5 tools and any CVE trigger excessive agency warning",
+            "min_tools": 6,
+            "action": "warn",
+        },
+        {
+            "id": "no-high-risk-server-cve",
+            "description": "High-risk registry servers must not have critical CVEs",
+            "registry_risk_gte": "high",
+            "severity_gte": "CRITICAL",
+            "action": "fail",
         },
     ],
 }
@@ -170,6 +191,44 @@ def _rule_matches(rule: dict, br) -> bool:
     # min_agents: finding must affect at least N agents
     if "min_agents" in rule:
         if len(br.affected_agents) < rule["min_agents"]:
+            return False
+
+    # min_tools: server must expose at least N tools (excessive agency)
+    if "min_tools" in rule:
+        if len(br.exposed_tools) < rule["min_tools"]:
+            return False
+
+    # unverified_server: package must come from an unverified registry entry
+    if rule.get("unverified_server"):
+        from agent_bom.parsers import get_registry_entry
+        is_unverified = False
+        for server in br.affected_servers:
+            reg = get_registry_entry(server)
+            if reg and not reg.get("verified", False):
+                is_unverified = True
+                break
+        if not is_unverified:
+            return False
+
+    # registry_risk_gte: registry risk level must be >= threshold (low < medium < high)
+    if "registry_risk_gte" in rule:
+        from agent_bom.parsers import get_registry_entry
+        threshold = RISK_LEVEL_ORDER.get(rule["registry_risk_gte"].lower(), 0)
+        any_match = False
+        for server in br.affected_servers:
+            reg = get_registry_entry(server)
+            if reg:
+                actual = RISK_LEVEL_ORDER.get(reg.get("risk_level", "low"), 0)
+                if actual >= threshold:
+                    any_match = True
+                    break
+        if not any_match:
+            return False
+
+    # owasp_tag: finding must have this OWASP LLM Top 10 tag
+    if "owasp_tag" in rule:
+        tags = getattr(br, "owasp_tags", [])
+        if rule["owasp_tag"] not in tags:
             return False
 
     return True

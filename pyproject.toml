@@ -5,14 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "agent-bom"
 version = "0.7.0"
-description = "AI Bill of Materials — map the full trust chain from AI agents and MCP servers to CVEs, credentials, and blast radius."
+description = "AI Bill of Materials — CVE scanning, blast radius, OWASP LLM Top 10 tagging, and MCP registry for AI agents."
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.10"
 authors = [
     {name = "agent-bom", email = "security@agent-bom.dev"}
 ]
-keywords = ["ai-bom", "sbom", "mcp", "security", "ai-agents", "vulnerability", "supply-chain"]
+keywords = ["ai-bom", "sbom", "mcp", "mcp-server", "security", "ai-agents", "vulnerability", "supply-chain", "owasp", "grype", "syft", "blast-radius", "cve", "llm-security"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -72,6 +72,9 @@ Homepage = "https://github.com/agent-bom/agent-bom"
 Repository = "https://github.com/agent-bom/agent-bom"
 Issues = "https://github.com/agent-bom/agent-bom/issues"
 Changelog = "https://github.com/agent-bom/agent-bom/releases"
+Documentation = "https://github.com/agent-bom/agent-bom#readme"
+"Security Policy" = "https://github.com/agent-bom/agent-bom/blob/main/SECURITY.md"
+"Trust & Permissions" = "https://github.com/agent-bom/agent-bom/blob/main/PERMISSIONS.md"
 
 [tool.setuptools.packages.find]
 where = ["src"]

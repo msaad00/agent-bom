@@ -83,16 +83,20 @@ jobs:
         with:
           context: .
           push: true
+          build-args: VERSION=${{ steps.meta.outputs.version }}
           tags: |
             agentbom/agent-bom:${{ steps.meta.outputs.version }}
             agentbom/agent-bom:latest
           labels: |
             org.opencontainers.image.version=${{ steps.meta.outputs.version }}
             org.opencontainers.image.source=https://github.com/agent-bom/agent-bom
+            org.opencontainers.image.title=agent-bom
+            org.opencontainers.image.description=AI Bill of Materials generator for AI agents and MCP servers
 
   github-release:
     name: Create GitHub Release
-    needs: [pypi-publish, docker-publish]
+    # Only requires PyPI publish — Docker Hub is best-effort (needs external secrets)
+    needs: [pypi-publish]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -111,5 +115,5 @@ jobs:
         run: >-
           gh release create "${{ github.ref_name }}"
           dist/*
-          --title "${{ github.ref_name }}"
+          --title "agent-bom ${{ github.ref_name }}"
           --generate-notes

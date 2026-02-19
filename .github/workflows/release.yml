@@ -93,10 +93,38 @@ jobs:
             org.opencontainers.image.title=agent-bom
             org.opencontainers.image.description=AI Bill of Materials generator for AI agents and MCP servers
 
+  sign:
+    name: Sign distribution with Sigstore
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # required for Sigstore OIDC
+    steps:
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign wheels and sdist
+        run: |
+          for f in dist/*.whl dist/*.tar.gz; do
+            cosign sign-blob "$f" --yes --bundle "${f}.bundle"
+          done
+
+      - name: Upload signed bundles
+        uses: actions/upload-artifact@v6
+        with:
+          name: python-package-signatures
+          path: dist/*.bundle
+
   github-release:
     name: Create GitHub Release
     # Only requires PyPI publish — Docker Hub is best-effort (needs external secrets)
-    needs: [pypi-publish]
+    needs: [pypi-publish, sign]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -107,6 +135,12 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           name: python-package-distributions
+          path: dist/
+
+      - name: Download signatures
+        uses: actions/download-artifact@v7
+        with:
+          name: python-package-signatures
           path: dist/
 
       - name: Create GitHub Release

@@ -32,7 +32,7 @@
                                                                    ──▶  langchain@0.2.0
   --image nginx:1.25 ──▶  img:nginx        ──▶  (image packages)        ──▶ CVE MEDIUM
   --image redis:7    ──▶  img:redis               extracted from
-  (Syft or Docker CLI)                            all layers       ──▶  transformers@4.x
+  (Grype→Syft→Docker)                             all layers       ──▶  transformers@4.x
                                                                          ──▶ CVE HIGH
   --k8s              ──▶  k8s:prod/api-pod ──▶  (pod image pkgs)
   --all-namespaces        k8s:prod/worker        via kubectl
@@ -86,7 +86,8 @@ No config needed. Auto-discovers agent configs on macOS, Linux, and Windows.
 ## Install
 
 ```bash
-pip install agent-bom                  # core
+pip install agent-bom                  # core CLI + scanner
+pip install agent-bom[api]             # + REST API server (agent-bom api)
 pip install agent-bom[ui]              # + Streamlit dashboard (agent-bom serve)
 pip install agent-bom[otel]            # + OpenTelemetry OTLP export
 ```
@@ -106,7 +107,7 @@ docker run --rm -v ~/.config:/root/.config:ro agentbom/agent-bom:latest scan
 | Local MCP configs | *(auto)* | Claude Desktop, Cursor, Windsurf, Cline, VS Code, Continue, Zed, Snowflake Cortex Code |
 | Manual inventory | `--inventory agents.json` | Any agent/MCP server you describe in JSON |
 | Existing SBOM | `--sbom sbom.json` | Ingest CycloneDX / SPDX from Syft, Grype, Trivy, cdxgen |
-| Docker image | `--image nginx:1.25` | Packages from all layers (Syft preferred, Docker CLI fallback) |
+| Docker image | `--image nginx:1.25` | Packages + CVEs from all layers (Grype preferred, Syft fallback, Docker CLI) |
 | Kubernetes pods | `--k8s` | Running container images via `kubectl get pods` — all packages |
 | Terraform / IaC | `--tf-dir infra/` | Bedrock, Vertex AI, Azure OpenAI resources; provider CVEs; hardcoded API keys |
 | GitHub Actions | `--gha /repo` | AI credentials in `env:`, openai/anthropic/langchain SDK in `run:` steps |
@@ -192,7 +193,7 @@ and never stores credential values. See [PERMISSIONS.md](https://github.com/agen
 
 Use `--dry-run` to preview exactly which files and APIs would be accessed before any scan runs.
 
-Releases are signed via [Sigstore](https://www.sigstore.dev/) — verify with:
+Releases v0.7.0+ are signed via [Sigstore/cosign](https://www.sigstore.dev/). Download the `.bundle` file from the GitHub Release and verify:
 ```bash
 cosign verify-blob agent_bom-0.7.0-py3-none-any.whl \
   --bundle agent_bom-0.7.0-py3-none-any.whl.bundle \

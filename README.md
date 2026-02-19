@@ -84,7 +84,33 @@ pip install -e .
 
 ---
 
-## Quick Start
+## Start Here — Pick Your Use Case
+
+| I want to scan... | Command | What you get |
+|-------------------|---------|--------------|
+| My local AI tools (Claude Desktop, Cursor, Windsurf, Cline, VS Code...) | `agent-bom scan` | Auto-discovered MCP servers, packages, CVEs |
+| A Python project using LangChain / OpenAI Agents / CrewAI / AutoGen... | `agent-bom scan --agent-project .` | Agent defs, tools, credential refs, CVEs from requirements |
+| A Docker image | `agent-bom scan --image myapp:latest` | All packages in image layers → CVE scan |
+| All containers running in a Kubernetes cluster | `agent-bom scan --k8s --all-namespaces` | Package inventory of every pod image → CVE scan |
+| Terraform infrastructure (Bedrock, Vertex AI, Azure OpenAI...) | `agent-bom scan --tf-dir infra/` | AI resource inventory, provider CVEs, hardcoded secrets |
+| GitHub Actions workflows | `agent-bom scan --gha .` | AI credentials in `env:`, SDK usage in `run:` steps |
+| An existing Syft / Grype / Trivy SBOM | `agent-bom scan --sbom sbom.cdx.json` | Blast radius on top of existing SBOM |
+| A JSON inventory of custom/cloud agents | `agent-bom scan --inventory agents.json` | CVE scan + blast radius for any agent you describe |
+| Everything at once | `agent-bom scan --k8s --tf-dir infra/ --gha . --agent-project .` | Full AI supply chain snapshot |
+
+**Common next steps after scanning:**
+
+```bash
+agent-bom scan --enrich                          # add NVD CVSS + EPSS + CISA KEV data
+agent-bom scan -f html -o report.html            # open dashboard in browser
+agent-bom scan -f sarif -o results.sarif         # upload to GitHub Security tab
+agent-bom scan --fail-on-severity high -q        # CI gate — exit 1 on high+ CVEs
+agent-bom serve                                  # interactive Streamlit dashboard
+```
+
+---
+
+## Full Command Reference
 
 | Command | What it does |
 |---------|-------------|

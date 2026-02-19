@@ -921,3 +921,15 @@ def export_spdx(report: AIBOMReport, output_path: str) -> None:
     """Export report as SPDX 3.0 JSON-LD file."""
     data = to_spdx(report)
     Path(output_path).write_text(json.dumps(data, indent=2))
+
+
+def to_html(report: AIBOMReport, blast_radii: list | None = None) -> str:
+    """Generate a self-contained HTML report string."""
+    from agent_bom.output.html import to_html as _to_html
+    return _to_html(report, blast_radii or [])
+
+
+def export_html(report: AIBOMReport, output_path: str, blast_radii: list | None = None) -> None:
+    """Export report as a self-contained HTML file."""
+    from agent_bom.output.html import export_html as _export_html
+    _export_html(report, output_path, blast_radii or [])

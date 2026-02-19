@@ -75,6 +75,7 @@ pip install -e .
 | `agent-bom scan -f cyclonedx -o bom.cdx.json` | Export CycloneDX 1.6 BOM |
 | `agent-bom scan -f sarif -o bom.sarif` | Export SARIF for GitHub Security tab |
 | `agent-bom scan -f spdx -o bom.spdx.json` | Export SPDX 3.0 AI-BOM JSON-LD |
+| `agent-bom scan -f html -o report.html` | Self-contained HTML report — interactive Mermaid graph, vuln table, blast radius, remediation (opens in browser) |
 | `agent-bom scan -f text` | Plain text output (for grep/awk) |
 | `agent-bom scan -f json -o - \| jq .` | Pipe clean JSON to stdout |
 | `agent-bom scan -q --fail-on-severity high` | CI gate — exit 1 if high+ vulns found |
@@ -268,7 +269,7 @@ agent-bom validate agents.json   # exits 0 if valid, 1 with clear errors if not
 - **Policy-as-code** — `--policy policy.json` with declarative rules (severity thresholds, KEV, AI risk, credentials, ecosystem filters); `agent-bom policy-template` generates a starter file
 - **Policy CI gates** — `--fail-on-severity`, `--fail-on-kev`, `--fail-if-ai-risk` for quick inline enforcement
 - **Credential detection** — flags MCP servers exposing API keys, tokens, and secrets in env vars
-- **Output formats** — rich console (with severity chart), JSON, CycloneDX 1.6, SARIF 2.1, SPDX 3.0, plain text
+- **Output formats** — rich console (with severity chart), HTML (interactive browser report with Mermaid dependency graph), JSON, CycloneDX 1.6, SARIF 2.1, SPDX 3.0, plain text
 - **CI/CD ready** — `--quiet`, stdout piping (`-o -`), multiple exit code policies
 
 ---
@@ -355,7 +356,9 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for CI/CD, Kubernetes, and remote scanning se
 - [x] Policy-as-code: declarative rules with `--policy policy.json` + `agent-bom policy-template`
 - [x] Scan history and baseline diffing (`--save`, `--baseline`, `agent-bom diff`)
 - [x] Severity distribution chart in console output
+- [x] HTML report — self-contained browser report with interactive Mermaid dependency graph, sortable vuln table, blast radius, remediation (`-f html`)
 - [ ] MITRE ATLAS mapping for AI/ML threats
+- [ ] Prometheus metrics output (`--format prometheus`) + Grafana dashboard
 
 ---
 

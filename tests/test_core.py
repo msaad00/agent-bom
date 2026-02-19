@@ -1021,3 +1021,123 @@ def test_k8s_all_namespaces_flag(monkeypatch):
     records = discover_images(all_namespaces=True)
     assert "-A" in captured_cmd
     assert records[0][1] == "prod/my-pod"  # qualified pod name includes namespace
+
+
+# ─── HTML report tests ───────────────────────────────────────────────────────
+
+
+def _make_report_with_vuln() -> tuple:
+    """Build a minimal AIBOMReport with one vulnerability for HTML tests."""
+    vuln = Vulnerability(
+        id="CVE-2024-9999",
+        summary="Test vuln",
+        severity=Severity.HIGH,
+        cvss_score=7.5,
+        fixed_version="2.0.0",
+    )
+    pkg = Package(
+        name="testpkg", version="1.0.0", ecosystem="npm",
+        vulnerabilities=[vuln],
+    )
+    server = MCPServer(
+        name="test-server", command="npx",
+        args=["testpkg"],
+        env={"API_KEY": "secret"},
+        packages=[pkg],
+    )
+    agent = Agent(
+        name="test-agent", agent_type=AgentType.CLAUDE_DESKTOP,
+        config_path="/tmp/config.json", mcp_servers=[server],
+    )
+    report = AIBOMReport(agents=[agent])
+    br = BlastRadius(
+        vulnerability=vuln,
+        package=pkg,
+        affected_agents=[agent],
+        affected_servers=[server],
+        exposed_credentials=["API_KEY"],
+        exposed_tools=[],
+    )
+    return report, [br]
+
+
+def test_html_output_is_valid_html():
+    from agent_bom.output.html import to_html
+
+    report, blast_radii = _make_report_with_vuln()
+    html = to_html(report, blast_radii)
+    assert "<!DOCTYPE html>" in html
+    assert "<title>" in html
+    assert "agent-bom" in html
+
+
+def test_html_contains_summary_data():
+    from agent_bom.output.html import to_html
+
+    report, blast_radii = _make_report_with_vuln()
+    html = to_html(report, blast_radii)
+    assert "test-agent" in html
+    assert "test-server" in html
+    assert "testpkg" in html
+    assert "1.0.0" in html
+
+
+def test_html_contains_vuln_table():
+    from agent_bom.output.html import to_html
+
+    report, blast_radii = _make_report_with_vuln()
+    html = to_html(report, blast_radii)
+    assert "CVE-2024-9999" in html
+    assert "HIGH" in html
+    assert "2.0.0" in html  # fix version
+
+
+def test_html_contains_credential_warning():
+    from agent_bom.output.html import to_html
+
+    report, blast_radii = _make_report_with_vuln()
+    html = to_html(report, blast_radii)
+    assert "API_KEY" in html
+
+
+def test_html_contains_mermaid_graph():
+    from agent_bom.output.html import to_html
+
+    report, blast_radii = _make_report_with_vuln()
+    html = to_html(report, blast_radii)
+    assert "mermaid" in html
+    assert "flowchart LR" in html
+
+
+def test_html_clean_report_shows_clean_status():
+    from agent_bom.output.html import to_html
+
+    pkg = Package(name="safe-pkg", version="1.0.0", ecosystem="npm")
+    server = MCPServer(name="safe-server", command="npx", args=["safe-pkg"], packages=[pkg])
+    agent = Agent(
+        name="safe-agent", agent_type=AgentType.CLAUDE_DESKTOP,
+        config_path="/tmp/config.json", mcp_servers=[server],
+    )
+    report = AIBOMReport(agents=[agent])
+    html = to_html(report, [])
+    assert "CLEAN" in html
+    # Vuln section should be absent when no blast_radii passed
+    assert "CVE-" not in html
+
+
+def test_html_export_writes_file(tmp_path):
+    from agent_bom.output.html import export_html
+
+    report, blast_radii = _make_report_with_vuln()
+    out = tmp_path / "report.html"
+    export_html(report, str(out), blast_radii)
+    assert out.exists()
+    content = out.read_text(encoding="utf-8")
+    assert "<!DOCTYPE html>" in content
+    assert len(content) > 5000  # sanity check — should be a real file
+
+
+def test_cli_scan_has_html_format():
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", "--help"])
+    assert "html" in result.output

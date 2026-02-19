@@ -15,6 +15,7 @@ from agent_bom.discovery import discover_all
 from agent_bom.models import AIBOMReport
 from agent_bom.output import (
     export_cyclonedx,
+    export_html,
     export_json,
     export_sarif,
     export_spdx,
@@ -78,7 +79,7 @@ def main():
 @click.option("--output", "-o", type=str, help="Output file path (use '-' for stdout)")
 @click.option(
     "--format", "-f", "output_format",
-    type=click.Choice(["console", "json", "cyclonedx", "sarif", "spdx", "text"]),
+    type=click.Choice(["console", "json", "cyclonedx", "sarif", "spdx", "text", "html"]),
     default="console",
     help="Output format",
 )
@@ -354,6 +355,9 @@ def scan(
             sys.stdout.write(json.dumps(to_sarif(report), indent=2))
         elif output_format == "spdx":
             sys.stdout.write(json.dumps(to_spdx(report), indent=2))
+        elif output_format == "html":
+            from agent_bom.output import to_html
+            sys.stdout.write(to_html(report, blast_radii))
         else:
             sys.stdout.write(json.dumps(to_json(report), indent=2))
         sys.stdout.write("\n")
@@ -382,6 +386,11 @@ def scan(
         out_path = output or "agent-bom.spdx.json"
         export_spdx(report, out_path)
         con.print(f"\n  [green]✓[/green] SPDX 3.0 BOM: {out_path}")
+    elif output_format == "html":
+        out_path = output or "agent-bom-report.html"
+        export_html(report, out_path, blast_radii)
+        con.print(f"\n  [green]✓[/green] HTML report: {out_path}")
+        con.print(f"  [dim]Open with:[/dim] open {out_path}")
     elif output_format == "text" and output:
         Path(output).write_text(_format_text(report, blast_radii))
         con.print(f"\n  [green]✓[/green] Text report: {output}")
@@ -392,6 +401,8 @@ def scan(
             export_sarif(report, output)
         elif output.endswith(".spdx.json"):
             export_spdx(report, output)
+        elif output.endswith(".html"):
+            export_html(report, output, blast_radii)
         else:
             export_json(report, output)
         con.print(f"\n  [green]✓[/green] Report: {output}")

@@ -665,6 +665,18 @@ def scan(
         resolved = resolve_all_versions_sync(all_packages)
         con.print(f"\n  [bold]Resolved {resolved}/{len(unresolved)} version(s).[/bold]")
 
+    # Step 3b: Version drift detection
+    registry_pkgs = [p for p in all_packages if p.resolved_from_registry]
+    if registry_pkgs and not quiet:
+        from agent_bom.registry import detect_version_drift
+
+        drift = detect_version_drift(registry_pkgs)
+        outdated = [d for d in drift if d.status == "outdated"]
+        if outdated:
+            con.print(f"\n[bold yellow]  {len(outdated)} outdated package(s):[/bold yellow]")
+            for d in outdated:
+                con.print(f"    {d.package}: {d.installed} → {d.latest}")
+
     # Step 4: Vulnerability scan
     blast_radii = []
     if not no_scan and total_packages > 0:
@@ -1415,6 +1427,130 @@ def completions_cmd(shell: str):
             click.echo('eval "$(_AGENT_BOM_COMPLETE=zsh_source agent-bom)"')
         elif shell == "fish":
             click.echo('eval (env _AGENT_BOM_COMPLETE=fish_source agent-bom)')
+
+
+@main.group()
+def registry():
+    """Manage the MCP server registry."""
+
+
+@registry.command("list")
+@click.option("--category", "-c", default=None, help="Filter by category (e.g. database, filesystem).")
+@click.option("--risk-level", "-r", type=click.Choice(["low", "medium", "high"]), default=None, help="Filter by risk level.")
+@click.option("--ecosystem", "-e", type=click.Choice(["npm", "pypi"]), default=None, help="Filter by ecosystem.")
+@click.option("--format", "-f", "fmt", type=click.Choice(["table", "json"]), default="table", help="Output format.")
+def registry_list(category, risk_level, ecosystem, fmt):
+    """List all known MCP servers in the registry."""
+    from agent_bom.registry import list_registry
+
+    entries = list_registry(ecosystem=ecosystem, category=category, risk_level=risk_level)
+
+    if fmt == "json":
+        click.echo(json.dumps(entries, indent=2))
+        return
+
+    from rich.console import Console
+    from rich.table import Table
+
+    con = Console()
+    table = Table(title=f"MCP Server Registry ({len(entries)} servers)")
+    table.add_column("Name", style="cyan", no_wrap=True)
+    table.add_column("Version", style="green")
+    table.add_column("Ecosystem")
+    table.add_column("Category")
+    table.add_column("Risk", style="bold")
+    table.add_column("Verified")
+
+    risk_colors = {"high": "red", "medium": "yellow", "low": "green"}
+    for entry in entries:
+        rl = entry.get("risk_level", "")
+        color = risk_colors.get(rl, "white")
+        table.add_row(
+            entry.get("package", entry.get("name", "")),
+            entry.get("latest_version", "?"),
+            entry.get("ecosystem", ""),
+            entry.get("category", ""),
+            f"[{color}]{rl}[/{color}]",
+            "Yes" if entry.get("verified") else "No",
+        )
+    con.print(table)
+
+
+@registry.command("search")
+@click.argument("query")
+@click.option("--category", "-c", default=None, help="Also filter by category.")
+def registry_search(query, category):
+    """Search the MCP registry by name or description."""
+    from agent_bom.registry import search_registry
+
+    results = search_registry(query, category=category)
+
+    if not results:
+        click.echo(f"No results for '{query}'.")
+        return
+
+    from rich.console import Console
+    from rich.table import Table
+
+    con = Console()
+    table = Table(title=f"Search results for '{query}' ({len(results)} matches)")
+    table.add_column("Name", style="cyan", no_wrap=True)
+    table.add_column("Version", style="green")
+    table.add_column("Ecosystem")
+    table.add_column("Category")
+    table.add_column("Risk")
+    table.add_column("Description", max_width=50)
+
+    risk_colors = {"high": "red", "medium": "yellow", "low": "green"}
+    for entry in results:
+        rl = entry.get("risk_level", "")
+        color = risk_colors.get(rl, "white")
+        table.add_row(
+            entry.get("package", entry.get("name", "")),
+            entry.get("latest_version", "?"),
+            entry.get("ecosystem", ""),
+            entry.get("category", ""),
+            f"[{color}]{rl}[/{color}]",
+            (entry.get("description", "")[:50] + "...") if len(entry.get("description", "")) > 50 else entry.get("description", ""),
+        )
+    con.print(table)
+
+
+@registry.command("update")
+@click.option("--concurrency", default=5, type=int, help="Max concurrent API requests.")
+@click.option("--dry-run", is_flag=True, help="Show what would be updated without writing.")
+def registry_update(concurrency, dry_run):
+    """Fetch latest package versions from npm/PyPI for all registry servers."""
+    from rich.console import Console
+
+    from agent_bom.registry import update_registry_versions_sync
+
+    con = Console(stderr=True)
+    con.print("[bold]Updating MCP registry versions...[/bold]")
+    if dry_run:
+        con.print("[dim](dry run — no files will be modified)[/dim]")
+
+    result = update_registry_versions_sync(concurrency=concurrency, dry_run=dry_run)
+
+    # Show updated packages
+    updated = [d for d in result.details if d["status"] == "updated"]
+    if updated:
+        con.print(f"\n[bold green]Updated {len(updated)} package(s):[/bold green]")
+        for d in updated:
+            con.print(f"  {d['package']}: {d['old']} → {d['new']}")
+
+    # Show failures
+    failed = [d for d in result.details if d["status"] == "failed"]
+    if failed:
+        con.print(f"\n[yellow]Failed to resolve {len(failed)} package(s):[/yellow]")
+        for d in failed[:5]:
+            con.print(f"  {d['package']}")
+        if len(failed) > 5:
+            con.print(f"  ... and {len(failed) - 5} more")
+
+    con.print(f"\n[bold]Summary:[/bold] {result.updated} updated, {result.unchanged} unchanged, {result.failed} failed (of {result.total} total)")
+    if not dry_run and result.updated > 0:
+        con.print("[green]Registry file updated.[/green]")
 
 
 if __name__ == "__main__":

@@ -90,6 +90,7 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
 - **[Cloud UI](#cloud-ui)** — enterprise aggregate dashboard
 - **[CI integration](#ci-integration)** — GitHub Actions + SARIF upload
 - **[REST API](#rest-api)** — FastAPI on port 8422
+- **[Skills](skills/)** — downloadable workflow playbooks (AI-BOM, cloud audit, OWASP, incident response)
 - **[MCP Registry](data/mcp-registry.yaml)** — 100 known servers with metadata
 - **[PERMISSIONS.md](PERMISSIONS.md)** — auditable trust contract
 - **[Roadmap](#roadmap)** — what's coming next
@@ -401,6 +402,40 @@ Requires the REST API backend running on port 8422.
 
 ---
 
+## Skills
+
+Downloadable workflow playbooks in [`skills/`](skills/) — structured instructions for common security workflows. Each skill is a self-contained markdown document with goals, steps, decision points, and output artifacts.
+
+| Skill | What it does |
+|-------|-------------|
+| [**AI-BOM Generator**](skills/ai-bom-generator.md) | Full asset discovery + scan + enrich + AI Bill of Materials generation across all sources |
+| [**Cloud Security Audit**](skills/cloud-security-audit.md) | Multi-cloud AI asset discovery and vulnerability assessment (AWS, Azure, GCP, Snowflake, Databricks, Nebius, CoreWeave) |
+| [**OWASP LLM Assessment**](skills/owasp-llm-assessment.md) | Systematic OWASP LLM Top 10 + MITRE ATLAS threat assessment with per-category remediation |
+| [**Incident Response**](skills/incident-response.md) | Given a CVE, find all affected agents, map blast radius, triage, and remediate |
+| [**Pre-Deploy Gate**](skills/pre-deploy-gate.md) | CI/CD security gate — block deployments with critical CVEs or policy violations |
+| [**MCP Server Review**](skills/mcp-server-review.md) | Evaluate an MCP server before adopting — registry lookup, CVE scan, tool risk analysis |
+| [**Compliance Export**](skills/compliance-export.md) | Generate audit-ready CycloneDX, SPDX, SARIF with threat framework coverage reports |
+
+---
+
+## AI supply chain coverage
+
+agent-bom covers the AI infrastructure landscape through multiple scanning strategies:
+
+| Layer | How agent-bom covers it | Examples |
+|-------|------------------------|----------|
+| **GPU clouds** | `--k8s --context=<cluster>` | CoreWeave, Lambda Labs, Paperspace, DGX Cloud |
+| **AI platforms** | Cloud provider modules | AWS Bedrock/SageMaker, Azure AI Foundry, GCP Vertex AI, Databricks, Snowflake Cortex |
+| **Container workloads** | `--image` via Grype/Syft | NVIDIA Triton, NIM, vLLM, TGI, Ollama, any OCI image |
+| **K8s-native inference** | `--k8s` discovers pods | KServe, Seldon Core, Kubeflow, Ray Serve, BentoML |
+| **AI frameworks** | Dependency scanning (PyPI/npm) | LangChain, LlamaIndex, AutoGen, CrewAI, PyTorch, Transformers, NeMo |
+| **Vector databases** | `--image` for self-hosted | Weaviate, Qdrant, Milvus, ChromaDB, pgvector |
+| **LLM providers** | API key detection + SDK scanning | OpenAI, Anthropic, Cohere, Mistral, Gemini |
+| **MCP ecosystem** | Auto-discovery (8 clients) + registry (100 servers) | Claude Desktop, Cursor, Windsurf, Cline, VS Code |
+| **IaC + CI/CD** | `--tf-dir` and `--gha` | Terraform AI resources, GitHub Actions AI workflows |
+
+---
+
 ## agent-bom vs ToolHive
 
 These tools solve different problems and are **complementary**.
@@ -440,6 +475,8 @@ These tools solve different problems and are **complementary**.
 - [x] Cloud provider discovery (AWS, Azure, GCP, Databricks, Snowflake, Nebius, CoreWeave)
 - [x] Deep cloud scanning — Snowflake Cortex Agents/MCP Servers, AWS Lambda/EKS/Step Functions/EC2
 - [x] Graph visualization (provider → agent → server → package → CVE)
+- [x] Security skills — downloadable workflow playbooks for AI-BOM, cloud audit, OWASP, incident response
+- [ ] Hugging Face Hub discovery (models, spaces, inference endpoints)
 - [ ] Jupyter notebook AI library scanning
 - [ ] Live MCP server introspection (tool enumeration without execution)
 - [ ] ToolHive integration (`--toolhive` flag for managed server scanning)

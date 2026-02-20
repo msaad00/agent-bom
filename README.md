@@ -94,7 +94,7 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
 - **[CI integration](#ci-integration)** — GitHub Actions + SARIF upload
 - **[REST API](#rest-api)** — FastAPI on port 8422
 - **[Skills](skills/)** — downloadable workflow playbooks (AI-BOM, cloud audit, OWASP, incident response)
-- **[MCP Registry](data/mcp-registry.yaml)** — 100 known servers with metadata
+- **[MCP Registry](data/mcp-registry.yaml)** — 103 known servers with metadata
 - **[PERMISSIONS.md](PERMISSIONS.md)** — auditable trust contract
 - **[Roadmap](#roadmap)** — what's coming next
 
@@ -115,7 +115,7 @@ agent-bom scan -f html -o report.html && open report.html
 agent-bom scan --fail-on-severity high -q
 ```
 
-No config needed. Auto-discovers Claude Desktop, Cursor, Windsurf, Cline, VS Code Copilot, Continue, Zed, and Cortex Code on macOS, Linux, and Windows.
+No config needed. Auto-discovers Claude Desktop, Claude Code, Cursor, Windsurf, Cline, VS Code Copilot, Continue, Zed, Cortex Code, and OpenClaw on macOS, Linux, and Windows.
 
 ---
 
@@ -507,7 +507,7 @@ agent-bom covers the AI infrastructure landscape through multiple scanning strat
 | **AI frameworks** | Dependency scanning (PyPI/npm) | LangChain, LlamaIndex, AutoGen, CrewAI, PyTorch, Transformers, NeMo |
 | **Vector databases** | `--image` for self-hosted | Weaviate, Qdrant, Milvus, ChromaDB, pgvector |
 | **LLM providers** | API key detection + SDK scanning | OpenAI, Anthropic, Cohere, Mistral, Gemini |
-| **MCP ecosystem** | Auto-discovery (8 clients) + registry (100 servers) | Claude Desktop, Cursor, Windsurf, Cline, VS Code |
+| **MCP ecosystem** | Auto-discovery (10 clients) + registry (103 servers) | Claude Desktop, Cursor, Windsurf, Cline, OpenClaw |
 | **IaC + CI/CD** | `--tf-dir` and `--gha` | Terraform AI resources, GitHub Actions AI workflows |
 
 ---
@@ -555,6 +555,8 @@ These tools solve different problems and are **complementary**.
 - [x] AI platform discovery — HuggingFace Hub, Weights & Biases, MLflow, OpenAI
 - [x] NIST AI RMF compliance mapping (Govern, Map, Measure, Manage)
 - [x] MCP runtime introspection — connect to live servers for tool/resource discovery + drift detection
+- [x] OpenClaw discovery — auto-scan OpenClaw configs, 7+ known CVEs, ClawHub malicious skill detection
+- [x] AI-powered enrichment — LLM-generated risk narratives, executive summaries, and threat chains via litellm
 - [ ] Jupyter notebook AI library scanning
 - [ ] ToolHive integration (`--toolhive` flag for managed server scanning)
 - [ ] License compliance engine (SPDX license detection + copyleft chain analysis)

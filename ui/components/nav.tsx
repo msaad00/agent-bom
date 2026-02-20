@@ -2,14 +2,26 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ShieldAlert, Scan, Server, Bug, Settings, Activity } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  ShieldAlert,
+  Scan,
+  Server,
+  Bug,
+  Activity,
+  GitBranch,
+  Library,
+} from "lucide-react";
+import { api } from "@/lib/api";
 
 const links = [
-  { href: "/",        label: "Dashboard",  icon: Activity },
-  { href: "/scan",    label: "New Scan",   icon: Scan },
-  { href: "/agents",  label: "Agents",     icon: Server },
-  { href: "/vulns",   label: "Vulns",      icon: Bug },
-  { href: "/jobs",    label: "Jobs",       icon: ShieldAlert },
+  { href: "/",          label: "Dashboard",  icon: Activity },
+  { href: "/scan",      label: "New Scan",   icon: Scan },
+  { href: "/agents",    label: "Agents",     icon: Server },
+  { href: "/vulns",     label: "Vulns",      icon: Bug },
+  { href: "/graph",     label: "Graph",      icon: GitBranch },
+  { href: "/registry",  label: "Registry",   icon: Library },
+  { href: "/jobs",      label: "Jobs",       icon: ShieldAlert },
 ];
 
 export function Nav() {
@@ -56,11 +68,49 @@ export function Nav() {
 }
 
 function ApiStatus() {
-  // Simple ping — rendered client-side
+  const [status, setStatus] = useState<"checking" | "online" | "offline">("checking");
+  const [version, setVersion] = useState<string>("");
+
+  useEffect(() => {
+    let mounted = true;
+    const check = () => {
+      api
+        .health()
+        .then((res) => {
+          if (mounted) {
+            setStatus("online");
+            setVersion(res.version || "");
+          }
+        })
+        .catch(() => {
+          if (mounted) setStatus("offline");
+        });
+    };
+    check();
+    const interval = setInterval(check, 30_000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const dotColor =
+    status === "online"
+      ? "bg-emerald-500"
+      : status === "offline"
+      ? "bg-red-500"
+      : "bg-zinc-500 animate-pulse";
+
   return (
     <div className="flex items-center gap-1.5 text-xs text-zinc-500">
-      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-      <span className="hidden sm:inline">API</span>
+      <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
+      <span className="hidden sm:inline">
+        {status === "online"
+          ? `API ${version}`
+          : status === "offline"
+          ? "Offline"
+          : "API"}
+      </span>
     </div>
   );
 }

@@ -50,7 +50,8 @@ agent-bom answers the question security teams actually need:
 - **Blast radius analysis** — maps CVEs to agents, credentials, and MCP tools
 - **Enterprise remediation** — named assets, impact percentages, risk narratives per fix
 - **OWASP LLM Top 10 + MITRE ATLAS + NIST AI RMF** — triple threat framework tagging on every finding
-- **100-server MCP registry** — risk levels, provenance, tool inventories
+- **AI-powered enrichment** — LLM-generated risk narratives, executive summaries, and threat chains via `--ai-enrich`
+- **103-server MCP registry** — risk levels, provenance, tool inventories (incl. OpenClaw)
 - **Policy-as-code** — block unverified servers, enforce risk thresholds in CI
 - **Read-only** — never writes configs, never runs servers, never stores secrets
 - **Works everywhere** — CLI, Docker, REST API, Cloud UI, CI/CD, Prometheus, Kubernetes
@@ -62,7 +63,7 @@ agent-bom answers the question security teams actually need:
 
 | Source | How |
 |--------|-----|
-| MCP configs | Auto-discover (8 clients) |
+| MCP configs | Auto-discover (9 clients incl. OpenClaw) |
 | Docker images | Grype / Syft / Docker CLI |
 | Kubernetes | kubectl across namespaces |
 | Terraform | Bedrock, Vertex AI, Azure |
@@ -365,9 +366,43 @@ Export the raw graph for use in Cytoscape, Sigma.js, or other tools:
 agent-bom scan --aws -f graph -o agent-graph.json
 ```
 
-### MCP Server Registry (100 servers)
+### OpenClaw scanning
 
-Ships with a curated registry of 100 known MCP servers — 58 verified. Each entry includes: package name + version pin, ecosystem, risk level, tool names, credential env vars, license, and source URL.
+[OpenClaw](https://github.com/openclaw/openclaw) (213k+ stars) is the fastest-growing open-source AI agent. agent-bom auto-discovers OpenClaw configs and scans them for vulnerabilities — including 7+ known CVEs (RCE, SSRF, secret leakage) and 800+ malicious skills in ClawHub.
+
+```bash
+# Auto-discovers ~/.openclaw/config.json and project-level .openclaw/openclaw.json
+agent-bom scan
+
+# Combine with live introspection
+agent-bom scan --introspect
+```
+
+### AI-powered enrichment
+
+Use LLMs to generate contextual risk analysis beyond template-based output. Supports 100+ LLM providers via [litellm](https://github.com/BerriAI/litellm) — OpenAI, Anthropic, Ollama (local), and more.
+
+```bash
+pip install 'agent-bom[ai-enrich]'
+
+# Enrich with GPT-4o-mini (default)
+agent-bom scan --ai-enrich
+
+# Use a different model
+agent-bom scan --ai-enrich --ai-model anthropic/claude-3-haiku-20240307
+
+# Use local Ollama
+agent-bom scan --ai-enrich --ai-model ollama/llama3
+```
+
+What `--ai-enrich` generates:
+- **Risk narratives** — contextual 2-3 sentence analysis per finding (why this CVE matters in your agent's tool chain)
+- **Executive summary** — one-paragraph CISO brief with risk rating and actions
+- **Threat chains** — red-team-style attack chain analysis through MCP tools
+
+### MCP Server Registry (103 servers)
+
+Ships with a curated registry of 103 known MCP servers — including OpenClaw and its ecosystem. Each entry includes: package name + version pin, ecosystem, risk level, tool names, credential env vars, license, and source URL.
 
 Unverified servers in your configs trigger a warning. Policy rules can block them in CI.
 

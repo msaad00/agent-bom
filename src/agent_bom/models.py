@@ -26,6 +26,7 @@ class AgentType(str, Enum):
     CORTEX_CODE = "cortex-code"       # Snowflake Cortex Code CLI
     CONTINUE = "continue"             # Continue.dev
     ZED = "zed"                       # Zed editor
+    OPENCLAW = "openclaw"             # OpenClaw AI agent
     CUSTOM = "custom"
 
 
@@ -226,6 +227,7 @@ class BlastRadius:
     owasp_tags: list[str] = field(default_factory=list)  # OWASP LLM Top 10 codes, e.g. ["LLM05", "LLM06"]
     atlas_tags: list[str] = field(default_factory=list)  # MITRE ATLAS technique IDs, e.g. ["AML.T0010"]
     nist_ai_rmf_tags: list[str] = field(default_factory=list)  # NIST AI RMF subcategories, e.g. ["MAP-3.5"]
+    ai_summary: Optional[str] = None  # LLM-generated contextual risk narrative
 
     def calculate_risk_score(self) -> float:
         """Calculate contextual risk score based on blast radius."""
@@ -262,6 +264,8 @@ class AIBOMReport:
     blast_radii: list[BlastRadius] = field(default_factory=list)
     generated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     tool_version: str = ""
+    executive_summary: Optional[str] = None  # LLM-generated executive summary
+    ai_threat_chains: list[str] = field(default_factory=list)  # LLM-generated threat chain analyses
 
     def __post_init__(self):
         if not self.tool_version:

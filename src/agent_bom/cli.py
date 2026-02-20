@@ -139,6 +139,9 @@ def main():
 @click.option("--introspect", is_flag=True, help="Connect to live MCP servers to discover runtime tools/resources (read-only, requires mcp SDK)")
 @click.option("--introspect-timeout", type=float, default=10.0, show_default=True, help="Timeout per MCP server for --introspect (seconds)")
 @click.option("--verify-integrity", is_flag=True, help="Verify package integrity (SHA256/SRI) and SLSA provenance against registries")
+@click.option("--ai-enrich", is_flag=True, help="Enrich findings with LLM-generated risk narratives, executive summary, and threat chains (requires pip install agent-bom[ai-enrich])")
+@click.option("--ai-model", default="openai/gpt-4o-mini", show_default=True, metavar="MODEL",
+              help="LLM model for --ai-enrich (e.g. openai/gpt-4o, anthropic/claude-3-haiku-20240307, ollama/llama3)")
 @click.option("--aws", is_flag=True, help="Discover AI agents from AWS Bedrock, Lambda, and ECS")
 @click.option("--aws-region", default=None, metavar="REGION", help="AWS region (default: AWS_DEFAULT_REGION)")
 @click.option("--aws-profile", default=None, metavar="PROFILE", help="AWS credential profile")
@@ -203,6 +206,8 @@ def scan(
     introspect: bool,
     introspect_timeout: float,
     verify_integrity: bool,
+    ai_enrich: bool,
+    ai_model: str,
     aws: bool,
     aws_region: Optional[str],
     aws_profile: Optional[str],
@@ -697,6 +702,11 @@ def scan(
     # Build report
     report = AIBOMReport(agents=agents, blast_radii=blast_radii)
 
+    # Step 4c: AI-powered enrichment (optional)
+    if ai_enrich and blast_radii:
+        from agent_bom.ai_enrich import run_ai_enrichment_sync
+        run_ai_enrichment_sync(report, model=ai_model)
+
     # Step 5: Output
     if is_stdout:
         # Pipe mode: write clean output to stdout
@@ -725,6 +735,16 @@ def scan(
         print_severity_chart(report)
         print_blast_radius(report)
         print_threat_frameworks(report)
+        # AI enrichment output (if enriched)
+        if report.executive_summary:
+            from rich.panel import Panel
+            con.print("\n[bold]Executive Summary (AI-Generated)[/bold]")
+            con.print(Panel.fit(report.executive_summary, border_style="cyan"))
+        if report.ai_threat_chains:
+            from rich.panel import Panel
+            con.print("\n[bold]Threat Chain Analysis (AI-Generated)[/bold]")
+            for chain in report.ai_threat_chains:
+                con.print(Panel(chain, border_style="red dim"))
         print_remediation_plan(report)
         print_export_hint(report)
     elif output_format == "text" and not output:

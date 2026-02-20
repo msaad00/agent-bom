@@ -81,6 +81,21 @@ CONFIG_LOCATIONS: dict[AgentType, dict[str, list[str]]] = {
         "Linux": ["~/.config/zed/settings.json"],
         "Windows": ["~/AppData/Roaming/Zed/settings.json"],
     },
+    AgentType.OPENCLAW: {
+        # OpenClaw AI agent — https://github.com/openclaw/openclaw
+        "Darwin": [
+            "~/.openclaw/config.json",
+            "~/Library/Application Support/OpenClaw/openclaw.json",
+        ],
+        "Linux": [
+            "~/.openclaw/config.json",
+            "~/.config/openclaw/openclaw.json",
+        ],
+        "Windows": [
+            "~/.openclaw/config.json",
+            "~/AppData/Roaming/OpenClaw/openclaw.json",
+        ],
+    },
 }
 
 # Project-level config files to search for
@@ -89,6 +104,7 @@ PROJECT_CONFIG_FILES = [
     "mcp.json",
     ".cursor/mcp.json",
     ".vscode/mcp.json",
+    ".openclaw/openclaw.json",
 ]
 
 
@@ -104,7 +120,7 @@ def parse_mcp_config(config_data: dict, config_path: str) -> list[MCPServer]:
     """Parse MCP server definitions from a config file.
 
     Supports multiple config formats:
-    - Standard (Claude Desktop, Cursor, Windsurf, Cortex Code):
+    - Standard (Claude Desktop, Cursor, Windsurf, Cortex Code, OpenClaw):
         {"mcpServers": {"name": {"command": ..., "args": [...]}}}
     - Continue.dev (array format):
         {"mcpServers": [{"name": "...", "command": ..., "args": [...]}]}

@@ -596,7 +596,7 @@ def _build_framework_summary(blast_radii: list[BlastRadius]) -> dict:
 
 def to_json(report: AIBOMReport) -> dict:
     """Convert report to JSON-serializable dict."""
-    return {
+    result = {
         "document_type": "AI-BOM",
         "spec_version": "1.0",
         "ai_bom_version": report.tool_version,
@@ -681,6 +681,7 @@ def to_json(report: AIBOMReport) -> dict:
                 "exposed_tools": [t.name for t in br.exposed_tools],
                 "fixed_version": br.vulnerability.fixed_version,
                 "ai_risk_context": br.ai_risk_context,
+                "ai_summary": br.ai_summary,
                 "owasp_tags": br.owasp_tags,
                 "atlas_tags": br.atlas_tags,
                 "nist_ai_rmf_tags": br.nist_ai_rmf_tags,
@@ -690,6 +691,14 @@ def to_json(report: AIBOMReport) -> dict:
         "threat_framework_summary": _build_framework_summary(report.blast_radii),
         "remediation_plan": _build_remediation_json(report),
     }
+
+    # AI enrichment fields (only when present)
+    if report.executive_summary:
+        result["executive_summary"] = report.executive_summary
+    if report.ai_threat_chains:
+        result["ai_threat_chains"] = report.ai_threat_chains
+
+    return result
 
 
 def export_json(report: AIBOMReport, output_path: str) -> None:

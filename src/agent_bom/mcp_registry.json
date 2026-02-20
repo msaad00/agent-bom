@@ -2,7 +2,7 @@
   "_comment": "agent-bom MCP Server Registry \u2014 threat intelligence database for known MCP servers",
   "_schema_version": "2.0",
   "_updated": "2026-02-19",
-  "_total_servers": 100,
+  "_total_servers": 103,
   "_differentiator": "Threat intelligence database \u2014 not just a catalog. Each entry has risk_level, tools, credential_env_vars for blast radius pre-computation.",
   "_source": "https://github.com/agent-bom/agent-bom/blob/main/data/mcp-registry.yaml",
   "servers": {
@@ -2485,6 +2485,93 @@
         "AIRTABLE_API_KEY"
       ],
       "source_url": "https://github.com/nicobailey/mcp-airtable"
+    },
+    "openclaw": {
+      "package": "openclaw",
+      "ecosystem": "npm",
+      "latest_version": "2.1.0",
+      "description": "OpenClaw AI agent core runtime — autonomous personal AI with MCP support",
+      "command_patterns": [
+        "openclaw",
+        "openclaw-server",
+        "openclaw-mcp"
+      ],
+      "category": "ai-agent",
+      "risk_level": "high",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "chat",
+        "generate",
+        "code_execute",
+        "web_search",
+        "file_read",
+        "file_write",
+        "shell_exec",
+        "browser_navigate"
+      ],
+      "credential_env_vars": [
+        "OPENCLAW_API_KEY",
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY"
+      ],
+      "source_url": "https://github.com/openclaw/openclaw",
+      "known_cves": [
+        "CVE-2026-25253",
+        "CVE-2026-24764",
+        "CVE-2026-26322",
+        "CVE-2026-26324",
+        "CVE-2026-26326",
+        "CVE-2026-26327",
+        "CVE-2026-27008"
+      ]
+    },
+    "openclaw-mcp-filesystem": {
+      "package": "openclaw-mcp-filesystem",
+      "ecosystem": "npm",
+      "latest_version": "1.3.0",
+      "description": "OpenClaw filesystem access MCP server",
+      "command_patterns": [
+        "openclaw-mcp-filesystem",
+        "openclaw-fs"
+      ],
+      "category": "filesystem",
+      "risk_level": "high",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "read_file",
+        "write_file",
+        "list_directory",
+        "search_files",
+        "move_file",
+        "delete_file"
+      ],
+      "credential_env_vars": [],
+      "source_url": "https://github.com/openclaw/openclaw-mcp-servers"
+    },
+    "openclaw-mcp-browser": {
+      "package": "openclaw-mcp-browser",
+      "ecosystem": "npm",
+      "latest_version": "1.1.0",
+      "description": "OpenClaw headless browser automation MCP server",
+      "command_patterns": [
+        "openclaw-mcp-browser",
+        "openclaw-browser"
+      ],
+      "category": "browser",
+      "risk_level": "high",
+      "verified": true,
+      "license": "MIT",
+      "tools": [
+        "navigate",
+        "screenshot",
+        "click",
+        "fill",
+        "evaluate_js"
+      ],
+      "credential_env_vars": [],
+      "source_url": "https://github.com/openclaw/openclaw-mcp-servers"
     }
   }
 }

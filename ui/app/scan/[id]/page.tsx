@@ -260,6 +260,22 @@ function BlastRadiusCard({ blast }: { blast: BlastRadius }) {
         <ImpactPill icon={Key} label="Credentials exposed" items={blast.exposed_credentials} accent="orange" />
         <ImpactPill icon={Wrench} label="Tools reachable" items={blast.reachable_tools} />
       </div>
+
+      {/* OWASP + ATLAS threat tags */}
+      {((blast.owasp_tags && blast.owasp_tags.length > 0) || (blast.atlas_tags && blast.atlas_tags.length > 0)) && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {blast.owasp_tags?.map((tag) => (
+            <span key={tag} className="text-xs font-mono bg-purple-950 border border-purple-800 text-purple-400 rounded px-1.5 py-0.5">
+              {tag}
+            </span>
+          ))}
+          {blast.atlas_tags?.map((tag) => (
+            <span key={tag} className="text-xs font-mono bg-cyan-950 border border-cyan-800 text-cyan-400 rounded px-1.5 py-0.5">
+              {tag}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

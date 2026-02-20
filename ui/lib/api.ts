@@ -90,6 +90,13 @@ export interface BlastRadius {
   cvss_score?: number;
   epss_score?: number;
   cisa_kev?: boolean;
+  owasp_tags?: string[];
+  atlas_tags?: string[];
+}
+
+export interface Tool {
+  name: string;
+  description?: string;
 }
 
 export interface Summary {

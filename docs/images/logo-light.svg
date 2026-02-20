@@ -1,18 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 80" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 80" fill="none">
   <defs>
-    <linearGradient id="logoGrad" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#2563eb"/>
       <stop offset="100%" stop-color="#7c3aed"/>
     </linearGradient>
   </defs>
-  <!-- Shield icon -->
   <g transform="translate(8, 8)">
-    <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" fill="url(#logoGrad)" opacity="0.15" stroke="url(#logoGrad)" stroke-width="2.5"/>
-    <path d="M26 32l6 6 12-12" stroke="url(#logoGrad)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" fill="url(#g)" opacity="0.12" stroke="url(#g)" stroke-width="2"/>
+    <path d="M26 32l6 6 12-12" stroke="url(#g)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
   </g>
-  <!-- Text -->
-  <text x="78" y="42" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="36" font-weight="800" fill="#1f2937">agent</text>
-  <text x="190" y="42" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="36" font-weight="800" fill="url(#logoGrad)">-bom</text>
-  <!-- Tagline -->
-  <text x="78" y="64" font-family="system-ui, -apple-system, sans-serif" font-size="14" fill="#6b7280" font-weight="500">AI supply chain security scanner</text>
+  <text x="76" y="44" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="36" font-weight="800" fill="#1f2937">agent<tspan fill="url(#g)">-bom</tspan></text>
+  <text x="76" y="66" font-family="system-ui, -apple-system, sans-serif" font-size="13" fill="#6b7280" font-weight="500">AI supply chain security scanner</text>
 </svg>

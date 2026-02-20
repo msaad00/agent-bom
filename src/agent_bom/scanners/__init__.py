@@ -10,6 +10,7 @@ import httpx
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
+from agent_bom.atlas import tag_blast_radius as tag_atlas_techniques
 from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.models import Agent, BlastRadius, MCPServer, Package, Severity, Vulnerability
 from agent_bom.owasp import tag_blast_radius
@@ -422,6 +423,7 @@ async def scan_agents(agents: list[Agent]) -> list[BlastRadius]:
             )
             br.calculate_risk_score()
             br.owasp_tags = tag_blast_radius(br)
+            br.atlas_tags = tag_atlas_techniques(br)
             blast_radii.append(br)
 
     # Sort by risk score descending

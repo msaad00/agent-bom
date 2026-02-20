@@ -193,6 +193,16 @@ function BlastCard({ blast }: { blast: NonNullable<ScanResult["blast_radius"]>[0
             <span>CVSS {blast.cvss_score.toFixed(1)}</span>
           )}
         </div>
+        {((blast.owasp_tags && blast.owasp_tags.length > 0) || (blast.atlas_tags && blast.atlas_tags.length > 0)) && (
+          <div className="flex flex-wrap gap-1 mt-1.5">
+            {blast.owasp_tags?.map((tag) => (
+              <span key={tag} className="text-xs font-mono bg-purple-950 border border-purple-800 text-purple-400 rounded px-1 py-0.5">{tag}</span>
+            ))}
+            {blast.atlas_tags?.map((tag) => (
+              <span key={tag} className="text-xs font-mono bg-cyan-950 border border-cyan-800 text-cyan-400 rounded px-1 py-0.5">{tag}</span>
+            ))}
+          </div>
+        )}
       </div>
       {blast.blast_score > 0 && (
         <div className="text-right">

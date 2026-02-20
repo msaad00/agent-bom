@@ -47,7 +47,7 @@ agent-bom answers the question security teams actually need:
 > *If this CVE is exploited, which AI agents are compromised, which credentials leak, and which tools can an attacker reach?*
 
 - **Blast radius analysis** — maps CVEs to agents, credentials, and MCP tools
-- **OWASP LLM Top 10** — auto-tags LLM05, LLM06, LLM08 on every finding
+- **OWASP LLM Top 10 + MITRE ATLAS** — dual threat framework tagging on every finding
 - **100-server MCP registry** — risk levels, provenance, tool inventories
 - **Policy-as-code** — block unverified servers, enforce risk thresholds in CI
 - **Read-only** — never writes configs, never runs servers, never stores secrets
@@ -145,6 +145,21 @@ Every vulnerability is mapped to: **which agents** are affected, **which credent
 | **LLM02** | Tool with shell/exec semantics |
 | **LLM07** | Tool that reads files or prompts |
 | **LLM04** | AI framework + HIGH+ CVE |
+
+### MITRE ATLAS threat mapping
+
+Every finding is also mapped to [MITRE ATLAS](https://atlas.mitre.org/) adversarial ML techniques:
+
+| Technique | Triggered when |
+|-----------|---------------|
+| **AML.T0010** | Any package CVE (always — supply chain compromise) |
+| **AML.T0062** | Credentials exposed alongside vulnerability |
+| **AML.T0061** | >3 tools reachable through compromised path |
+| **AML.T0051** | Tools can access prompts/context (injection surface) |
+| **AML.T0056** | Tools can read files (meta prompt extraction) |
+| **AML.T0043** | Tools with shell/exec capability (adversarial data) |
+| **AML.T0020** | AI framework + HIGH+ CVE (training data poisoning) |
+| **AML.T0058** | AI framework + creds + HIGH+ (agent context poisoning) |
 
 ### Policy-as-code
 
@@ -250,13 +265,14 @@ These tools solve different problems and are **complementary**.
 
 ## Roadmap
 
+- [x] MITRE ATLAS adversarial ML threat mapping
+- [x] SLSA provenance + SHA256 integrity verification
 - [ ] AWS Bedrock live agent + action group discovery
 - [ ] Snowflake Cortex `CREATE MCP SERVER` scanning
 - [ ] Google Vertex AI agent discovery
 - [ ] Jupyter notebook AI library scanning
 - [ ] Live MCP server introspection (tool enumeration without execution)
-- [ ] MITRE ATLAS mapping for AI/ML threats
-- [ ] SLSA provenance verification for registry packages
+- [ ] ToolHive integration (`--toolhive` flag for managed server scanning)
 
 ---
 

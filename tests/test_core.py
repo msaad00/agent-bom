@@ -255,7 +255,7 @@ def empty_report():
 
 def test_version_sync():
     from agent_bom import __version__
-    assert __version__ == "0.7.0"
+    assert __version__ == "0.9.0"
 
 
 def test_report_version_matches():
@@ -1660,6 +1660,7 @@ def test_api_health_endpoint():
     """GET /health returns {status: ok}."""
     pytest.importorskip("fastapi", reason="fastapi not installed")
     from fastapi.testclient import TestClient
+
     from agent_bom.api.server import app
     client = TestClient(app)
     resp = client.get("/health")
@@ -1671,9 +1672,9 @@ def test_api_version_endpoint():
     """GET /version returns current version string."""
     pytest.importorskip("fastapi", reason="fastapi not installed")
     from fastapi.testclient import TestClient
-    from agent_bom.api import server as _srv
-    from agent_bom.api.server import app
+
     from agent_bom import __version__
+    from agent_bom.api.server import app
     client = TestClient(app)
     resp = client.get("/version")
     assert resp.status_code == 200
@@ -1684,6 +1685,7 @@ def test_api_scan_submit_and_poll():
     """POST /v1/scan returns 202 with job_id; GET /v1/scan/{id} returns the job."""
     pytest.importorskip("fastapi", reason="fastapi not installed")
     from fastapi.testclient import TestClient
+
     from agent_bom.api.server import app
     client = TestClient(app)
     # Submit a scan with no targets — completes quickly (done or failed: no agents on CI)
@@ -1705,6 +1707,7 @@ def test_api_scan_not_found():
     """GET /v1/scan/{id} with unknown id returns 404."""
     pytest.importorskip("fastapi", reason="fastapi not installed")
     from fastapi.testclient import TestClient
+
     from agent_bom.api.server import app
     client = TestClient(app)
     resp = client.get("/v1/scan/does-not-exist-12345")
@@ -1715,6 +1718,7 @@ def test_api_jobs_list():
     """GET /v1/jobs returns a jobs list."""
     pytest.importorskip("fastapi", reason="fastapi not installed")
     from fastapi.testclient import TestClient
+
     from agent_bom.api.server import app
     client = TestClient(app)
     resp = client.get("/v1/jobs")
@@ -1735,7 +1739,10 @@ def test_cli_main_help_has_api_in_listing():
 
 def test_grype_scan_mock(monkeypatch, tmp_path):
     """Grype scanner parses JSON output into Package objects with pre-populated vulns."""
-    import json, subprocess, shutil
+    import json
+    import shutil
+    import subprocess
+
     from agent_bom.image import _scan_with_grype
 
     grype_output = {
@@ -1793,8 +1800,8 @@ def test_owasp_lm06_credential_exposure(sample_report):
 
 def test_owasp_lm08_excessive_agency(sample_report):
     """More than 5 exposed tools + HIGH/CRITICAL severity triggers LLM08."""
-    from agent_bom.owasp import tag_blast_radius
     from agent_bom.models import MCPTool, Severity
+    from agent_bom.owasp import tag_blast_radius
     br = sample_report.blast_radii[0]
     br.vulnerability.severity = Severity.CRITICAL
     br.exposed_tools = [MCPTool(name=f"tool_{i}", description="") for i in range(6)]
@@ -1804,8 +1811,8 @@ def test_owasp_lm08_excessive_agency(sample_report):
 
 def test_owasp_tags_in_json_output(sample_report):
     """to_json() includes 'owasp_tags' field in each blast radius entry."""
-    from agent_bom.owasp import tag_blast_radius
     from agent_bom.output import to_json
+    from agent_bom.owasp import tag_blast_radius
     # Populate tags first (normally done by scanner)
     for br in sample_report.blast_radii:
         br.owasp_tags = tag_blast_radius(br)
@@ -1830,6 +1837,7 @@ def test_api_trust_headers():
     """Every API response includes X-Agent-Bom-Read-Only trust header."""
     pytest.importorskip("fastapi", reason="fastapi not installed")
     from fastapi.testclient import TestClient
+
     from agent_bom.api.server import app
     client = TestClient(app)
     response = client.get("/health")
@@ -1842,7 +1850,8 @@ def test_registry_endpoint():
     """GET /v1/registry returns a non-empty list of MCP servers."""
     pytest.importorskip("fastapi", reason="fastapi not installed")
     from fastapi.testclient import TestClient
-    from agent_bom.api.server import app, _load_registry
+
+    from agent_bom.api.server import _load_registry, app
     _load_registry.cache_clear()  # clear cache so fresh load from disk
     client = TestClient(app)
     response = client.get("/v1/registry")
@@ -1859,8 +1868,9 @@ def test_registry_endpoint():
 
 def test_http_client_create():
     """create_client returns an httpx.AsyncClient with retry transport."""
-    from agent_bom.http_client import create_client
     import httpx
+
+    from agent_bom.http_client import create_client
     client = create_client(timeout=10.0)
     assert isinstance(client, httpx.AsyncClient)
     # Cleanup
@@ -1870,7 +1880,7 @@ def test_http_client_create():
 
 def test_http_client_retry_constants():
     """Retry configuration constants are sensible."""
-    from agent_bom.http_client import MAX_RETRIES, INITIAL_BACKOFF, RETRYABLE_STATUS_CODES
+    from agent_bom.http_client import INITIAL_BACKOFF, MAX_RETRIES, RETRYABLE_STATUS_CODES
     assert MAX_RETRIES >= 2
     assert INITIAL_BACKOFF >= 0.5
     assert 429 in RETRYABLE_STATUS_CODES
@@ -1881,16 +1891,13 @@ def test_http_client_retry_constants():
 
 def test_integrity_module_imports():
     """integrity.py module imports without error and exposes expected API."""
-    from agent_bom.integrity import (
-        verify_package_integrity,
-        verify_npm_integrity,
-        verify_pypi_integrity,
-        check_package_provenance,
-        check_npm_provenance,
-        check_pypi_provenance,
-    )
     # All should be async functions
     import asyncio
+
+    from agent_bom.integrity import (
+        check_package_provenance,
+        verify_package_integrity,
+    )
     assert asyncio.iscoroutinefunction(verify_package_integrity)
     assert asyncio.iscoroutinefunction(check_package_provenance)
 
@@ -1925,3 +1932,485 @@ def test_credential_redaction_in_discovery():
     assert env["API_KEY"] == "***REDACTED***"
     assert env["OPENAI_API_TOKEN"] == "***REDACTED***"
     assert env["NORMAL_VAR"] == "not-a-secret"
+
+
+# ─── MITRE ATLAS Tests ──────────────────────────────────────────────────────
+
+
+def test_atlas_module_imports():
+    """ATLAS module can be imported and has the expected catalog."""
+    from agent_bom.atlas import ATLAS_TECHNIQUES
+    assert "AML.T0010" in ATLAS_TECHNIQUES
+    assert "AML.T0051" in ATLAS_TECHNIQUES
+    assert "AML.T0062" in ATLAS_TECHNIQUES
+    assert len(ATLAS_TECHNIQUES) >= 10
+
+
+def test_atlas_supply_chain_always_present():
+    """AML.T0010 (ML Supply Chain Compromise) is always tagged on every blast radius."""
+    from agent_bom.atlas import tag_blast_radius as tag_atlas
+    br = BlastRadius(
+        vulnerability=Vulnerability(id="CVE-2024-1234", summary="test", severity=Severity.LOW),
+        package=Package(name="express", version="4.18.0", ecosystem="npm"),
+        affected_servers=[],
+        affected_agents=[],
+        exposed_credentials=[],
+        exposed_tools=[],
+    )
+    tags = tag_atlas(br)
+    assert "AML.T0010" in tags
+
+
+def test_atlas_exfiltration_via_agent_tool():
+    """AML.T0062 is tagged when credentials are exposed."""
+    from agent_bom.atlas import tag_blast_radius as tag_atlas
+    br = BlastRadius(
+        vulnerability=Vulnerability(id="CVE-2024-5678", summary="test", severity=Severity.HIGH),
+        package=Package(name="lodash", version="4.17.0", ecosystem="npm"),
+        affected_servers=[],
+        affected_agents=[],
+        exposed_credentials=["OPENAI_API_KEY", "AWS_SECRET_ACCESS_KEY"],
+        exposed_tools=[],
+    )
+    tags = tag_atlas(br)
+    assert "AML.T0062" in tags
+
+
+def test_atlas_agent_tools_broad_surface():
+    """AML.T0061 is tagged when >3 tools are reachable."""
+    from agent_bom.atlas import tag_blast_radius as tag_atlas
+    from agent_bom.models import MCPTool
+    tools = [MCPTool(name=f"tool_{i}", description="test") for i in range(5)]
+    br = BlastRadius(
+        vulnerability=Vulnerability(id="CVE-2024-9999", summary="test", severity=Severity.MEDIUM),
+        package=Package(name="axios", version="1.0.0", ecosystem="npm"),
+        affected_servers=[],
+        affected_agents=[],
+        exposed_credentials=[],
+        exposed_tools=tools,
+    )
+    tags = tag_atlas(br)
+    assert "AML.T0061" in tags
+
+
+def test_atlas_prompt_injection_surface():
+    """AML.T0051 is tagged when tools can access prompts/context."""
+    from agent_bom.atlas import tag_blast_radius as tag_atlas
+    from agent_bom.models import MCPTool
+    br = BlastRadius(
+        vulnerability=Vulnerability(id="CVE-2024-1111", summary="test", severity=Severity.HIGH),
+        package=Package(name="test-pkg", version="1.0.0", ecosystem="npm"),
+        affected_servers=[],
+        affected_agents=[],
+        exposed_credentials=[],
+        exposed_tools=[MCPTool(name="get_system_prompt", description="Read system prompt")],
+    )
+    tags = tag_atlas(br)
+    assert "AML.T0051" in tags
+
+
+def test_atlas_craft_adversarial_data():
+    """AML.T0043 is tagged when shell/exec tools are reachable."""
+    from agent_bom.atlas import tag_blast_radius as tag_atlas
+    from agent_bom.models import MCPTool
+    br = BlastRadius(
+        vulnerability=Vulnerability(id="CVE-2024-2222", summary="test", severity=Severity.CRITICAL),
+        package=Package(name="vulnerable-pkg", version="0.1.0", ecosystem="npm"),
+        affected_servers=[],
+        affected_agents=[],
+        exposed_credentials=[],
+        exposed_tools=[MCPTool(name="run_shell", description="Execute shell commands")],
+    )
+    tags = tag_atlas(br)
+    assert "AML.T0043" in tags
+
+
+def test_atlas_meta_prompt_extraction():
+    """AML.T0056 is tagged when file/data read tools are reachable."""
+    from agent_bom.atlas import tag_blast_radius as tag_atlas
+    from agent_bom.models import MCPTool
+    br = BlastRadius(
+        vulnerability=Vulnerability(id="CVE-2024-3333", summary="test", severity=Severity.MEDIUM),
+        package=Package(name="some-pkg", version="2.0.0", ecosystem="npm"),
+        affected_servers=[],
+        affected_agents=[],
+        exposed_credentials=[],
+        exposed_tools=[MCPTool(name="read_file", description="Read file contents")],
+    )
+    tags = tag_atlas(br)
+    assert "AML.T0056" in tags
+
+
+def test_atlas_poison_training_data():
+    """AML.T0020 is tagged when AI framework has HIGH+ CVE."""
+    from agent_bom.atlas import tag_blast_radius as tag_atlas
+    br = BlastRadius(
+        vulnerability=Vulnerability(id="CVE-2024-4444", summary="RCE in torch", severity=Severity.CRITICAL),
+        package=Package(name="torch", version="2.0.0", ecosystem="pypi"),
+        affected_servers=[],
+        affected_agents=[],
+        exposed_credentials=[],
+        exposed_tools=[],
+    )
+    tags = tag_atlas(br)
+    assert "AML.T0020" in tags
+
+
+def test_atlas_context_poisoning():
+    """AML.T0058 is tagged when AI framework + creds + HIGH+ severity."""
+    from agent_bom.atlas import tag_blast_radius as tag_atlas
+    br = BlastRadius(
+        vulnerability=Vulnerability(id="CVE-2024-5555", summary="RCE in langchain", severity=Severity.HIGH),
+        package=Package(name="langchain", version="0.1.0", ecosystem="pypi"),
+        affected_servers=[],
+        affected_agents=[],
+        exposed_credentials=["OPENAI_API_KEY"],
+        exposed_tools=[],
+    )
+    tags = tag_atlas(br)
+    assert "AML.T0058" in tags
+    assert "AML.T0024" in tags  # also exfil via inference API
+
+
+def test_atlas_label_formatting():
+    """atlas_label() and atlas_labels() return human-readable strings."""
+    from agent_bom.atlas import atlas_label, atlas_labels
+    label = atlas_label("AML.T0010")
+    assert "AML.T0010" in label
+    assert "Supply Chain" in label
+
+    labels = atlas_labels(["AML.T0010", "AML.T0051"])
+    assert len(labels) == 2
+    assert "Prompt Injection" in labels[1]
+
+
+def test_atlas_tags_in_blast_radius_model():
+    """BlastRadius model has atlas_tags field."""
+    br = BlastRadius(
+        vulnerability=Vulnerability(id="CVE-2024-0001", summary="test", severity=Severity.LOW),
+        package=Package(name="test", version="1.0.0", ecosystem="npm"),
+        affected_servers=[],
+        affected_agents=[],
+        exposed_credentials=[],
+        exposed_tools=[],
+    )
+    assert hasattr(br, "atlas_tags")
+    assert br.atlas_tags == []
+    br.atlas_tags = ["AML.T0010", "AML.T0051"]
+    assert len(br.atlas_tags) == 2
+
+
+# ─── End-to-End Scenario Tests ──────────────────────────────────────────────
+
+
+def test_scenario_enterprise_multi_agent():
+    """Enterprise scenario: 3 agents, each with multiple servers and credentials.
+
+    Validates that blast radius correctly maps CVEs across agents.
+    """
+    from agent_bom.atlas import tag_blast_radius as tag_atlas
+    from agent_bom.models import MCPTool
+    from agent_bom.owasp import tag_blast_radius as tag_owasp
+
+    # Agent 1: Claude Desktop with filesystem + sqlite servers
+    srv1 = MCPServer(
+        name="filesystem",
+        command="npx",
+        args=["-y", "@modelcontextprotocol/server-filesystem"],
+        packages=[Package(
+            name="glob",
+            version="7.1.6",
+            ecosystem="npm",
+            vulnerabilities=[Vulnerability(id="CVE-2024-GLOB", summary="ReDoS", severity=Severity.HIGH)],
+        )],
+        tools=[MCPTool(name="read_file", description="Read file"), MCPTool(name="write_file", description="Write file")],
+        env={"OPENAI_API_KEY": "***REDACTED***"},
+    )
+    srv2 = MCPServer(
+        name="sqlite-mcp",
+        command="uvx",
+        packages=[Package(
+            name="better-sqlite3",
+            version="9.0.0",
+            ecosystem="npm",
+            vulnerabilities=[Vulnerability(id="CVE-2024-SQL", summary="SQL injection", severity=Severity.CRITICAL)],
+        )],
+        tools=[MCPTool(name="query_db", description="Execute SQL query")],
+    )
+    agent1 = Agent(name="Claude Desktop", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/test.json", mcp_servers=[srv1, srv2])
+
+    # Agent 2: Cursor with different server
+    srv3 = MCPServer(
+        name="puppeteer",
+        command="npx",
+        packages=[Package(name="puppeteer", version="21.0.0", ecosystem="npm", vulnerabilities=[])],
+        tools=[MCPTool(name="navigate", description="Navigate browser"), MCPTool(name="screenshot", description="Take screenshot")],
+    )
+    agent2 = Agent(name="Cursor", agent_type=AgentType.CURSOR, config_path="/tmp/cursor.json", mcp_servers=[srv3])
+
+    # Build blast radii for Agent 1's vulnerable packages
+    br1 = BlastRadius(
+        vulnerability=srv1.packages[0].vulnerabilities[0],
+        package=srv1.packages[0],
+        affected_servers=[srv1],
+        affected_agents=[agent1],
+        exposed_credentials=["OPENAI_API_KEY"],
+        exposed_tools=srv1.tools,
+    )
+    br1.calculate_risk_score()
+    br1.owasp_tags = tag_owasp(br1)
+    br1.atlas_tags = tag_atlas(br1)
+
+    br2 = BlastRadius(
+        vulnerability=srv2.packages[0].vulnerabilities[0],
+        package=srv2.packages[0],
+        affected_servers=[srv2],
+        affected_agents=[agent1],
+        exposed_credentials=[],
+        exposed_tools=srv2.tools,
+    )
+    br2.calculate_risk_score()
+    br2.owasp_tags = tag_owasp(br2)
+    br2.atlas_tags = tag_atlas(br2)
+
+    # Assertions
+    assert br1.risk_score > 0
+    assert br2.risk_score > br1.risk_score  # CRITICAL > HIGH
+
+    # OWASP: supply chain + credential + file tools
+    assert "LLM05" in br1.owasp_tags
+    assert "LLM06" in br1.owasp_tags  # credentials exposed
+    assert "LLM07" in br1.owasp_tags  # read_file tool
+
+    # ATLAS: supply chain + exfil + prompt extraction
+    assert "AML.T0010" in br1.atlas_tags
+    assert "AML.T0062" in br1.atlas_tags  # cred exposure
+    assert "AML.T0056" in br1.atlas_tags  # read_file = data access
+
+    # Agent 2 has no CVEs, no blast radius
+    assert len(srv3.packages[0].vulnerabilities) == 0
+
+    # Report construction
+    report = AIBOMReport(agents=[agent1, agent2], blast_radii=[br1, br2])
+    assert report.total_agents == 2
+    assert report.total_servers == 3
+    assert len(report.blast_radii) == 2
+
+
+def test_scenario_individual_developer():
+    """Individual developer scenario: single agent, few servers, basic scan.
+
+    No enrichment, no credentials — just package CVEs.
+    """
+    srv = MCPServer(
+        name="weather-api",
+        command="npx",
+        packages=[
+            Package(name="axios", version="0.21.0", ecosystem="npm",
+                    vulnerabilities=[Vulnerability(id="CVE-2024-AXIOS", summary="SSRF", severity=Severity.MEDIUM)]),
+            Package(name="express", version="4.19.0", ecosystem="npm", vulnerabilities=[]),
+        ],
+    )
+    agent = Agent(name="Claude Desktop", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/dev.json", mcp_servers=[srv])
+
+    # Only 1 CVE, no credentials, no tools
+    br = BlastRadius(
+        vulnerability=srv.packages[0].vulnerabilities[0],
+        package=srv.packages[0],
+        affected_servers=[srv],
+        affected_agents=[agent],
+        exposed_credentials=[],
+        exposed_tools=[],
+    )
+    br.calculate_risk_score()
+
+    assert br.risk_score > 0
+    assert br.risk_score < 6.0  # MEDIUM severity, no amplifiers
+
+    report = AIBOMReport(agents=[agent], blast_radii=[br])
+    data = to_json(report)
+    assert len(data["blast_radius"]) == 1
+    assert data["blast_radius"][0]["vulnerability_id"] == "CVE-2024-AXIOS"
+
+
+def test_scenario_docker_image_packages():
+    """Scenario: Docker image scan produces packages from multiple ecosystems."""
+
+    # Simulating a Docker image with packages from npm + pypi + go
+    packages = [
+        Package(name="express", version="4.17.0", ecosystem="npm",
+                vulnerabilities=[Vulnerability(id="CVE-2024-NPM1", summary="XSS", severity=Severity.HIGH)]),
+        Package(name="flask", version="2.3.0", ecosystem="pypi",
+                vulnerabilities=[Vulnerability(id="CVE-2024-PY1", summary="Path traversal", severity=Severity.MEDIUM)]),
+        Package(name="gin", version="1.9.0", ecosystem="go", vulnerabilities=[]),
+    ]
+
+    srv = MCPServer(name="image-scan", command="grype", packages=packages)
+    agent = Agent(name="Docker Image", agent_type=AgentType.CUSTOM, config_path="python:3.11-slim", mcp_servers=[srv])
+
+    blast_radii = []
+    for pkg in packages:
+        for vuln in pkg.vulnerabilities:
+            br = BlastRadius(
+                vulnerability=vuln,
+                package=pkg,
+                affected_servers=[srv],
+                affected_agents=[agent],
+                exposed_credentials=[],
+                exposed_tools=[],
+            )
+            br.calculate_risk_score()
+            blast_radii.append(br)
+
+    assert len(blast_radii) == 2
+    assert blast_radii[0].package.ecosystem == "npm"
+    assert blast_radii[1].package.ecosystem == "pypi"
+
+    report = AIBOMReport(agents=[agent], blast_radii=blast_radii)
+    data = to_sarif(report)
+    assert len(data["runs"][0]["results"]) == 2
+
+
+def test_scenario_high_privilege_mcp_server():
+    """Scenario: MCP server with shell access + many tools + credentials = maximum risk."""
+    from agent_bom.atlas import tag_blast_radius as tag_atlas
+    from agent_bom.models import MCPTool
+    from agent_bom.owasp import tag_blast_radius as tag_owasp
+
+    tools = [
+        MCPTool(name="run_shell", description="Execute bash commands"),
+        MCPTool(name="read_file", description="Read any file"),
+        MCPTool(name="write_file", description="Write to any file"),
+        MCPTool(name="query_database", description="Execute SQL"),
+        MCPTool(name="deploy", description="Deploy to production"),
+        MCPTool(name="get_prompt_history", description="Get prompt history"),
+    ]
+
+    srv = MCPServer(
+        name="super-server",
+        command="npx",
+        packages=[Package(
+            name="langchain",
+            version="0.1.0",
+            ecosystem="pypi",
+            vulnerabilities=[Vulnerability(id="CVE-2024-LANG", summary="RCE in chains", severity=Severity.CRITICAL)],
+        )],
+        tools=tools,
+        env={"OPENAI_API_KEY": "***REDACTED***", "AWS_SECRET_ACCESS_KEY": "***REDACTED***", "DATABASE_URL": "***REDACTED***"},
+    )
+    agent = Agent(name="Claude Desktop", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/danger.json", mcp_servers=[srv])
+
+    br = BlastRadius(
+        vulnerability=srv.packages[0].vulnerabilities[0],
+        package=srv.packages[0],
+        affected_servers=[srv],
+        affected_agents=[agent],
+        exposed_credentials=["OPENAI_API_KEY", "AWS_SECRET_ACCESS_KEY", "DATABASE_URL"],
+        exposed_tools=tools,
+    )
+    br.calculate_risk_score()
+    br.owasp_tags = tag_owasp(br)
+    br.atlas_tags = tag_atlas(br)
+
+    # Maximum risk — should be close to 10.0
+    assert br.risk_score >= 9.0
+
+    # OWASP: every relevant tag should fire
+    assert "LLM05" in br.owasp_tags  # supply chain
+    assert "LLM06" in br.owasp_tags  # credential exposure
+    assert "LLM02" in br.owasp_tags  # shell exec
+    assert "LLM07" in br.owasp_tags  # file/prompt read
+    assert "LLM08" in br.owasp_tags  # excessive agency (>5 tools + CRITICAL)
+    assert "LLM04" in br.owasp_tags  # AI framework + CRITICAL
+
+    # ATLAS: maximum threat surface
+    assert "AML.T0010" in br.atlas_tags  # supply chain
+    assert "AML.T0062" in br.atlas_tags  # exfil via tools
+    assert "AML.T0061" in br.atlas_tags  # broad tool surface (6 tools)
+    assert "AML.T0043" in br.atlas_tags  # shell = craft adversarial data
+    assert "AML.T0051" in br.atlas_tags  # prompt access
+    assert "AML.T0056" in br.atlas_tags  # file read = meta prompt extraction
+    assert "AML.T0020" in br.atlas_tags  # AI + CRITICAL = poisoning
+    assert "AML.T0058" in br.atlas_tags  # AI + creds + CRITICAL = context poisoning
+    assert "AML.T0024" in br.atlas_tags  # AI + creds = exfil via inference
+
+
+def test_scenario_clean_scan():
+    """Scenario: scan finds agents but no CVEs — should produce empty blast radius."""
+    srv = MCPServer(
+        name="safe-server",
+        command="npx",
+        packages=[
+            Package(name="express", version="4.19.0", ecosystem="npm", vulnerabilities=[]),
+            Package(name="react", version="18.2.0", ecosystem="npm", vulnerabilities=[]),
+        ],
+    )
+    agent = Agent(name="Claude Desktop", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/safe.json", mcp_servers=[srv])
+
+    report = AIBOMReport(agents=[agent], blast_radii=[])
+    assert report.total_agents == 1
+    assert report.total_packages == 2
+    assert report.total_vulnerabilities == 0
+    assert len(report.blast_radii) == 0
+    assert len(report.critical_vulns) == 0
+
+    data = to_json(report)
+    assert data["summary"]["total_vulnerabilities"] == 0
+    assert len(data["blast_radius"]) == 0
+
+
+def test_scenario_json_output_has_atlas_tags():
+    """JSON output includes atlas_tags field in blast_radius entries."""
+    from agent_bom.atlas import tag_blast_radius as tag_atlas
+    vuln = Vulnerability(id="CVE-2024-0001", summary="test", severity=Severity.HIGH)
+    pkg = Package(name="lodash", version="4.17.0", ecosystem="npm", vulnerabilities=[vuln])
+    srv = MCPServer(name="test", command="npx", packages=[pkg])
+    agent = Agent(name="TestAgent", agent_type=AgentType.CUSTOM, config_path="/tmp/test.json", mcp_servers=[srv])
+
+    br = BlastRadius(
+        vulnerability=vuln,
+        package=pkg,
+        affected_servers=[srv],
+        affected_agents=[agent],
+        exposed_credentials=[],
+        exposed_tools=[],
+    )
+    br.calculate_risk_score()
+    br.atlas_tags = tag_atlas(br)
+
+    report = AIBOMReport(agents=[agent], blast_radii=[br])
+    data = to_json(report)
+
+    assert "atlas_tags" in data["blast_radius"][0]
+    assert "AML.T0010" in data["blast_radius"][0]["atlas_tags"]
+
+
+def test_scenario_sarif_output_has_atlas_tags():
+    """SARIF output includes atlas_tags in result properties."""
+    from agent_bom.atlas import tag_blast_radius as tag_atlas
+    from agent_bom.owasp import tag_blast_radius as tag_owasp
+
+    vuln = Vulnerability(id="CVE-2024-0002", summary="test", severity=Severity.CRITICAL)
+    pkg = Package(name="express", version="4.17.0", ecosystem="npm", vulnerabilities=[vuln])
+    srv = MCPServer(name="test", command="npx", packages=[pkg], config_path="/tmp/test.json")
+    agent = Agent(name="TestAgent", agent_type=AgentType.CUSTOM, config_path="/tmp/test.json", mcp_servers=[srv])
+
+    br = BlastRadius(
+        vulnerability=vuln,
+        package=pkg,
+        affected_servers=[srv],
+        affected_agents=[agent],
+        exposed_credentials=[],
+        exposed_tools=[],
+    )
+    br.calculate_risk_score()
+    br.owasp_tags = tag_owasp(br)
+    br.atlas_tags = tag_atlas(br)
+
+    report = AIBOMReport(agents=[agent], blast_radii=[br])
+    data = to_sarif(report)
+
+    result = data["runs"][0]["results"][0]
+    assert "properties" in result
+    assert "atlas_tags" in result["properties"]
+    assert "AML.T0010" in result["properties"]["atlas_tags"]

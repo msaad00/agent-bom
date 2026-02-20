@@ -1,170 +1,167 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 520" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 420" fill="none">
+  <style>
+    .title { font: 700 14px system-ui, -apple-system, sans-serif; fill: #e6edf3; }
+    .phase { font: 700 10px system-ui, sans-serif; letter-spacing: 0.08em; }
+    .item-label { font: 600 11px system-ui, sans-serif; fill: #e6edf3; }
+    .item-sub { font: 400 9.5px system-ui, sans-serif; fill: #8b949e; }
+    .footer { font: 500 9.5px system-ui, sans-serif; fill: #6e7681; }
+    .arrow { stroke: #484f58; stroke-width: 1.5; fill: none; }
+  </style>
   <defs>
-    <linearGradient id="scanGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#0c4a6e"/>
-      <stop offset="100%" stop-color="#075985"/>
-    </linearGradient>
-    <linearGradient id="intelGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#78350f"/>
-      <stop offset="100%" stop-color="#92400e"/>
-    </linearGradient>
-    <linearGradient id="blastGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#831843"/>
-      <stop offset="100%" stop-color="#9d174d"/>
-    </linearGradient>
-    <linearGradient id="outputGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#064e3b"/>
-      <stop offset="100%" stop-color="#065f46"/>
-    </linearGradient>
-    <filter id="shadow" x="-4%" y="-4%" width="108%" height="108%">
-      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.3"/>
-    </filter>
+    <marker id="arr" viewBox="0 0 8 6" refX="8" refY="3" markerWidth="7" markerHeight="5" orient="auto">
+      <path d="M0 0L8 3L0 6Z" fill="#484f58"/>
+    </marker>
   </defs>
 
   <!-- Background -->
-  <rect width="900" height="520" rx="16" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <rect width="880" height="420" rx="12" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
 
   <!-- Title -->
-  <text x="450" y="36" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="15" font-weight="700" fill="#e6edf3">How agent-bom works</text>
+  <text x="440" y="32" text-anchor="middle" class="title">How agent-bom works</text>
 
-  <!-- Column 1: Scan Sources -->
-  <g filter="url(#shadow)">
-    <rect x="20" y="56" width="190" height="440" rx="12" fill="url(#scanGrad)" stroke="#38bdf8" stroke-width="1"/>
+  <!-- ── Phase 1: Discovery ── -->
+  <rect x="24" y="52" width="192" height="6" rx="3" fill="#58a6ff" opacity="0.7"/>
+  <text x="120" y="76" text-anchor="middle" class="phase" fill="#58a6ff">DISCOVERY</text>
+
+  <g transform="translate(36, 90)">
+    <circle cx="6" cy="6" r="3.5" fill="#58a6ff" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">MCP Configs</text>
+    <text x="16" y="22" class="item-sub">Claude, Cursor, Windsurf, VS Code</text>
   </g>
-  <text x="115" y="82" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#7dd3fc">SCAN SOURCES</text>
-  <g font-family="system-ui, sans-serif" font-size="10" fill="#e0f2fe">
-    <rect x="32" y="96" width="166" height="42" rx="6" fill="#1e293b" stroke="#334155"/>
-    <text x="115" y="113" text-anchor="middle" font-weight="600" fill="#e0f2fe">MCP Configs</text>
-    <text x="115" y="128" text-anchor="middle" fill="#94a3b8" font-size="9">Claude, Cursor, Windsurf</text>
-
-    <rect x="32" y="148" width="166" height="42" rx="6" fill="#1e293b" stroke="#334155"/>
-    <text x="115" y="165" text-anchor="middle" font-weight="600" fill="#e0f2fe">Docker Images</text>
-    <text x="115" y="180" text-anchor="middle" fill="#94a3b8" font-size="9">Grype / Syft / Docker CLI</text>
-
-    <rect x="32" y="200" width="166" height="42" rx="6" fill="#1e293b" stroke="#334155"/>
-    <text x="115" y="217" text-anchor="middle" font-weight="600" fill="#e0f2fe">Kubernetes Pods</text>
-    <text x="115" y="232" text-anchor="middle" fill="#94a3b8" font-size="9">kubectl across namespaces</text>
-
-    <rect x="32" y="252" width="166" height="42" rx="6" fill="#1e293b" stroke="#334155"/>
-    <text x="115" y="269" text-anchor="middle" font-weight="600" fill="#e0f2fe">Terraform / IaC</text>
-    <text x="115" y="284" text-anchor="middle" fill="#94a3b8" font-size="9">Bedrock, Vertex AI, Azure</text>
-
-    <rect x="32" y="304" width="166" height="42" rx="6" fill="#1e293b" stroke="#334155"/>
-    <text x="115" y="321" text-anchor="middle" font-weight="600" fill="#e0f2fe">GitHub Actions</text>
-    <text x="115" y="336" text-anchor="middle" fill="#94a3b8" font-size="9">AI env vars + SDK steps</text>
-
-    <rect x="32" y="356" width="166" height="42" rx="6" fill="#1e293b" stroke="#334155"/>
-    <text x="115" y="373" text-anchor="middle" font-weight="600" fill="#e0f2fe">Python Agent Projects</text>
-    <text x="115" y="388" text-anchor="middle" fill="#94a3b8" font-size="9">LangChain, CrewAI, ADK...</text>
-
-    <rect x="32" y="408" width="166" height="42" rx="6" fill="#1e293b" stroke="#334155"/>
-    <text x="115" y="425" text-anchor="middle" font-weight="600" fill="#e0f2fe">Existing SBOMs</text>
-    <text x="115" y="440" text-anchor="middle" fill="#94a3b8" font-size="9">CycloneDX / SPDX import</text>
+  <g transform="translate(36, 126)">
+    <circle cx="6" cy="6" r="3.5" fill="#58a6ff" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">Docker Images</text>
+    <text x="16" y="22" class="item-sub">Grype + Syft deep scanning</text>
+  </g>
+  <g transform="translate(36, 162)">
+    <circle cx="6" cy="6" r="3.5" fill="#58a6ff" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">Kubernetes Pods</text>
+    <text x="16" y="22" class="item-sub">kubectl multi-namespace</text>
+  </g>
+  <g transform="translate(36, 198)">
+    <circle cx="6" cy="6" r="3.5" fill="#58a6ff" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">Existing SBOMs</text>
+    <text x="16" y="22" class="item-sub">CycloneDX + SPDX import</text>
+  </g>
+  <g transform="translate(36, 234)">
+    <circle cx="6" cy="6" r="3.5" fill="#58a6ff" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">Agent Frameworks</text>
+    <text x="16" y="22" class="item-sub">LangChain, CrewAI, ADK</text>
   </g>
 
   <!-- Arrow 1 -->
-  <g stroke="#6b7280" stroke-width="2" fill="#6b7280">
-    <line x1="218" y1="276" x2="240" y2="276"/>
-    <polygon points="240,272 250,276 240,280"/>
+  <line x1="224" y1="200" x2="244" y2="200" class="arrow" marker-end="url(#arr)"/>
+
+  <!-- ── Phase 2: Enrichment ── -->
+  <rect x="252" y="52" width="192" height="6" rx="3" fill="#d29922" opacity="0.7"/>
+  <text x="348" y="76" text-anchor="middle" class="phase" fill="#d29922">ENRICHMENT</text>
+
+  <g transform="translate(264, 90)">
+    <circle cx="6" cy="6" r="3.5" fill="#d29922" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">OSV.dev</text>
+    <text x="16" y="22" class="item-sub">Batch CVE lookup, all ecosystems</text>
   </g>
-
-  <!-- Column 2: Intelligence -->
-  <g filter="url(#shadow)">
-    <rect x="254" y="56" width="175" height="440" rx="12" fill="url(#intelGrad)" stroke="#fbbf24" stroke-width="1"/>
+  <g transform="translate(264, 126)">
+    <circle cx="6" cy="6" r="3.5" fill="#d29922" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">NVD / NIST</text>
+    <text x="16" y="22" class="item-sub">CVSS v3.1 / v4.0 severity</text>
   </g>
-  <text x="341" y="82" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#fde68a">INTELLIGENCE</text>
-  <g font-family="system-ui, sans-serif" font-size="10">
-    <rect x="266" y="96" width="150" height="42" rx="6" fill="#1e293b" stroke="#334155"/>
-    <text x="341" y="113" text-anchor="middle" font-weight="600" fill="#fef3c7">OSV.dev</text>
-    <text x="341" y="128" text-anchor="middle" fill="#94a3b8" font-size="9">Batch CVE lookup</text>
-
-    <rect x="266" y="148" width="150" height="42" rx="6" fill="#1e293b" stroke="#334155"/>
-    <text x="341" y="165" text-anchor="middle" font-weight="600" fill="#fef3c7">NVD / NIST</text>
-    <text x="341" y="180" text-anchor="middle" fill="#94a3b8" font-size="9">CVSS v4 severity scores</text>
-
-    <rect x="266" y="200" width="150" height="42" rx="6" fill="#1e293b" stroke="#334155"/>
-    <text x="341" y="217" text-anchor="middle" font-weight="600" fill="#fef3c7">FIRST EPSS</text>
-    <text x="341" y="232" text-anchor="middle" fill="#94a3b8" font-size="9">Exploit probability %</text>
-
-    <rect x="266" y="252" width="150" height="42" rx="6" fill="#1e293b" stroke="#334155"/>
-    <text x="341" y="269" text-anchor="middle" font-weight="600" fill="#fef3c7">CISA KEV</text>
-    <text x="341" y="284" text-anchor="middle" fill="#94a3b8" font-size="9">Known exploited vulns</text>
-
-    <rect x="266" y="304" width="150" height="42" rx="6" fill="#1e293b" stroke="#334155"/>
-    <text x="341" y="321" text-anchor="middle" font-weight="600" fill="#fef3c7">MCP Registry</text>
-    <text x="341" y="336" text-anchor="middle" fill="#94a3b8" font-size="9">100 servers + provenance</text>
+  <g transform="translate(264, 162)">
+    <circle cx="6" cy="6" r="3.5" fill="#d29922" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">FIRST EPSS</text>
+    <text x="16" y="22" class="item-sub">Exploit probability scores</text>
+  </g>
+  <g transform="translate(264, 198)">
+    <circle cx="6" cy="6" r="3.5" fill="#d29922" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">CISA KEV</text>
+    <text x="16" y="22" class="item-sub">Known exploited vulns catalog</text>
+  </g>
+  <g transform="translate(264, 234)">
+    <circle cx="6" cy="6" r="3.5" fill="#d29922" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">MCP Registry</text>
+    <text x="16" y="22" class="item-sub">55+ server provenance checks</text>
   </g>
 
   <!-- Arrow 2 -->
-  <g stroke="#6b7280" stroke-width="2" fill="#6b7280">
-    <line x1="437" y1="276" x2="459" y2="276"/>
-    <polygon points="459,272 469,276 459,280"/>
+  <line x1="452" y1="200" x2="472" y2="200" class="arrow" marker-end="url(#arr)"/>
+
+  <!-- ── Phase 3: Analysis ── -->
+  <rect x="480" y="52" width="192" height="6" rx="3" fill="#f47067" opacity="0.7"/>
+  <text x="576" y="76" text-anchor="middle" class="phase" fill="#f47067">ANALYSIS</text>
+
+  <g transform="translate(492, 90)">
+    <circle cx="6" cy="6" r="3.5" fill="#f47067" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">Blast Radius</text>
+    <text x="16" y="22" class="item-sub">Agent / credential / tool impact</text>
   </g>
-
-  <!-- Column 3: Blast Radius -->
-  <g filter="url(#shadow)">
-    <rect x="473" y="56" width="175" height="440" rx="12" fill="url(#blastGrad)" stroke="#f472b6" stroke-width="1"/>
+  <g transform="translate(492, 126)">
+    <circle cx="6" cy="6" r="3.5" fill="#f47067" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">OWASP LLM Top 10</text>
+    <text x="16" y="22" class="item-sub">LLM02 / LLM05 / LLM06 / LLM08</text>
   </g>
-  <text x="560" y="82" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#fbcfe8">BLAST RADIUS</text>
-  <g font-family="system-ui, sans-serif" font-size="10">
-    <rect x="485" y="96" width="150" height="42" rx="6" fill="#1e293b" stroke="#334155"/>
-    <text x="560" y="113" text-anchor="middle" font-weight="600" fill="#fce7f3">Affected Agents</text>
-    <text x="560" y="128" text-anchor="middle" fill="#94a3b8" font-size="9">Which AI agents at risk?</text>
-
-    <rect x="485" y="148" width="150" height="42" rx="6" fill="#1e293b" stroke="#334155"/>
-    <text x="560" y="165" text-anchor="middle" font-weight="600" fill="#fce7f3">Exposed Credentials</text>
-    <text x="560" y="180" text-anchor="middle" fill="#94a3b8" font-size="9">API keys, tokens, secrets</text>
-
-    <rect x="485" y="200" width="150" height="42" rx="6" fill="#1e293b" stroke="#334155"/>
-    <text x="560" y="217" text-anchor="middle" font-weight="600" fill="#fce7f3">Reachable Tools</text>
-    <text x="560" y="232" text-anchor="middle" fill="#94a3b8" font-size="9">shell, write_file, query_db</text>
-
-    <rect x="485" y="252" width="150" height="42" rx="6" fill="#1e293b" stroke="#334155"/>
-    <text x="560" y="269" text-anchor="middle" font-weight="600" fill="#fce7f3">OWASP LLM Tags</text>
-    <text x="560" y="284" text-anchor="middle" fill="#94a3b8" font-size="9">LLM05, LLM06, LLM08...</text>
-
-    <rect x="485" y="304" width="150" height="42" rx="6" fill="#1e293b" stroke="#334155"/>
-    <text x="560" y="321" text-anchor="middle" font-weight="600" fill="#fce7f3">Policy Violations</text>
-    <text x="560" y="336" text-anchor="middle" fill="#94a3b8" font-size="9">fail / warn / info actions</text>
+  <g transform="translate(492, 162)">
+    <circle cx="6" cy="6" r="3.5" fill="#f47067" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">MITRE ATLAS</text>
+    <text x="16" y="22" class="item-sub">AI adversarial threat mapping</text>
+  </g>
+  <g transform="translate(492, 198)">
+    <circle cx="6" cy="6" r="3.5" fill="#f47067" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">Policy Gates</text>
+    <text x="16" y="22" class="item-sub">fail / warn / info thresholds</text>
+  </g>
+  <g transform="translate(492, 234)">
+    <circle cx="6" cy="6" r="3.5" fill="#f47067" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">Risk Scoring</text>
+    <text x="16" y="22" class="item-sub">Composite blast score + EPSS</text>
   </g>
 
   <!-- Arrow 3 -->
-  <g stroke="#6b7280" stroke-width="2" fill="#6b7280">
-    <line x1="656" y1="276" x2="678" y2="276"/>
-    <polygon points="678,272 688,276 678,280"/>
+  <line x1="680" y1="200" x2="700" y2="200" class="arrow" marker-end="url(#arr)"/>
+
+  <!-- ── Phase 4: Output ── -->
+  <rect x="708" y="52" width="148" height="6" rx="3" fill="#3fb950" opacity="0.7"/>
+  <text x="782" y="76" text-anchor="middle" class="phase" fill="#3fb950">OUTPUT</text>
+
+  <g transform="translate(720, 90)">
+    <circle cx="6" cy="6" r="3.5" fill="#3fb950" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">Console</text>
+    <text x="16" y="22" class="item-sub">Rich tables + severity chart</text>
+  </g>
+  <g transform="translate(720, 126)">
+    <circle cx="6" cy="6" r="3.5" fill="#3fb950" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">SARIF</text>
+    <text x="16" y="22" class="item-sub">GitHub Security tab</text>
+  </g>
+  <g transform="translate(720, 162)">
+    <circle cx="6" cy="6" r="3.5" fill="#3fb950" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">CycloneDX</text>
+    <text x="16" y="22" class="item-sub">AI-BOM standard</text>
+  </g>
+  <g transform="translate(720, 198)">
+    <circle cx="6" cy="6" r="3.5" fill="#3fb950" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">SPDX 2.3</text>
+    <text x="16" y="22" class="item-sub">License + provenance</text>
+  </g>
+  <g transform="translate(720, 234)">
+    <circle cx="6" cy="6" r="3.5" fill="#3fb950" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">JSON + REST API</text>
+    <text x="16" y="22" class="item-sub">FastAPI on :8422</text>
   </g>
 
-  <!-- Column 4: Outputs -->
-  <g filter="url(#shadow)">
-    <rect x="692" y="56" width="190" height="440" rx="12" fill="url(#outputGrad)" stroke="#34d399" stroke-width="1"/>
-  </g>
-  <text x="787" y="82" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#a7f3d0">OUTPUTS</text>
-  <g font-family="system-ui, sans-serif" font-size="10">
-    <rect x="704" y="96" width="166" height="42" rx="6" fill="#1e293b" stroke="#334155"/>
-    <text x="787" y="113" text-anchor="middle" font-weight="600" fill="#d1fae5">Console + HTML</text>
-    <text x="787" y="128" text-anchor="middle" fill="#94a3b8" font-size="9">Rich tables + dashboard</text>
+  <!-- Separator line -->
+  <line x1="40" y1="284" x2="840" y2="284" stroke="#30363d" stroke-width="1"/>
 
-    <rect x="704" y="148" width="166" height="42" rx="6" fill="#1e293b" stroke="#334155"/>
-    <text x="787" y="165" text-anchor="middle" font-weight="600" fill="#d1fae5">SARIF</text>
-    <text x="787" y="180" text-anchor="middle" fill="#94a3b8" font-size="9">GitHub Security tab</text>
-
-    <rect x="704" y="200" width="166" height="42" rx="6" fill="#1e293b" stroke="#334155"/>
-    <text x="787" y="217" text-anchor="middle" font-weight="600" fill="#d1fae5">CycloneDX + SPDX</text>
-    <text x="787" y="232" text-anchor="middle" fill="#94a3b8" font-size="9">AI-BOM standards</text>
-
-    <rect x="704" y="252" width="166" height="42" rx="6" fill="#1e293b" stroke="#334155"/>
-    <text x="787" y="269" text-anchor="middle" font-weight="600" fill="#d1fae5">Prometheus + OTLP</text>
-    <text x="787" y="284" text-anchor="middle" fill="#94a3b8" font-size="9">Grafana dashboards</text>
-
-    <rect x="704" y="304" width="166" height="42" rx="6" fill="#1e293b" stroke="#334155"/>
-    <text x="787" y="321" text-anchor="middle" font-weight="600" fill="#d1fae5">REST API + SSE</text>
-    <text x="787" y="336" text-anchor="middle" fill="#94a3b8" font-size="9">Port 8422 / FastAPI</text>
-
-    <rect x="704" y="356" width="166" height="42" rx="6" fill="#1e293b" stroke="#334155"/>
-    <text x="787" y="373" text-anchor="middle" font-weight="600" fill="#d1fae5">JSON</text>
-    <text x="787" y="388" text-anchor="middle" fill="#94a3b8" font-size="9">Machine-readable export</text>
+  <!-- Trust bar -->
+  <g transform="translate(40, 300)">
+    <rect width="800" height="44" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+    <text x="400" y="18" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#8b949e" letter-spacing="0.05em">TRUST PRINCIPLES</text>
+    <text x="400" y="34" text-anchor="middle" class="footer">Read-only  ·  Agentless  ·  Never writes configs  ·  Never runs MCP servers  ·  Never stores credentials  ·  Sigstore-signed releases</text>
   </g>
 
-  <!-- Footer -->
-  <text x="450" y="510" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#6b7280">Read-only scanner — never writes configs, never runs servers, never stores credentials</text>
+  <!-- Integration row -->
+  <g transform="translate(40, 358)">
+    <rect width="800" height="44" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+    <text x="400" y="18" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#8b949e" letter-spacing="0.05em">INTERFACES</text>
+    <text x="400" y="34" text-anchor="middle" class="footer">CLI (pip install)  ·  REST API (FastAPI)  ·  GitHub Actions  ·  Next.js Cloud UI  ·  SARIF Upload  ·  Policy-as-Code YAML</text>
+  </g>
 </svg>

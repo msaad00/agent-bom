@@ -1,0 +1,53 @@
+{
+  "name": "agent-bom",
+  "displayName": "agent-bom",
+  "description": "AI Bill of Materials scanner — find CVEs, credentials, and blast radius in AI agent MCP configurations",
+  "version": "0.13.0",
+  "publisher": "agent-bom",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/agent-bom/agent-bom"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Linters",
+    "Other"
+  ],
+  "keywords": [
+    "security",
+    "mcp",
+    "ai-agents",
+    "sbom",
+    "vulnerability",
+    "ai-bom"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "agent-bom.scanWorkspace",
+        "title": "agent-bom: Scan Workspace"
+      },
+      {
+        "command": "agent-bom.showResults",
+        "title": "agent-bom: Show Results"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "@vscode/vsce": "^3.0.0"
+  }
+}

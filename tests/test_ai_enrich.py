@@ -1,8 +1,10 @@
-"""Tests for AI-powered enrichment via litellm."""
+"""Tests for AI-powered enrichment — Ollama (local) + litellm providers."""
 
 import asyncio
-from unittest.mock import AsyncMock, patch
+import os
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from agent_bom.models import (
@@ -290,3 +292,317 @@ def test_cli_has_ai_model_option():
     runner = CliRunner()
     result = runner.invoke(main, ["scan", "--help"])
     assert "--ai-model" in result.output
+
+
+def test_cli_ai_model_shows_ollama_examples():
+    """CLI --ai-model help should mention Ollama examples."""
+    from click.testing import CliRunner
+
+    from agent_bom.cli import main
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", "--help"])
+    assert "ollama" in result.output.lower()
+
+
+# ── Ollama Detection Tests ────────────────────────────────────────────────
+
+
+def test_detect_ollama_when_running():
+    """Should detect Ollama when API responds 200."""
+    from agent_bom.ai_enrich import _detect_ollama
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    with patch("agent_bom.ai_enrich.httpx.get", return_value=mock_response):
+        assert _detect_ollama() is True
+
+
+def test_detect_ollama_when_not_running():
+    """Should return False when Ollama is not running."""
+    from agent_bom.ai_enrich import _detect_ollama
+
+    with patch("agent_bom.ai_enrich.httpx.get", side_effect=httpx.ConnectError("Connection refused")):
+        assert _detect_ollama() is False
+
+
+def test_detect_ollama_timeout():
+    """Should return False when Ollama times out."""
+    from agent_bom.ai_enrich import _detect_ollama
+
+    with patch("agent_bom.ai_enrich.httpx.get", side_effect=httpx.TimeoutException("Timeout")):
+        assert _detect_ollama() is False
+
+
+def test_get_ollama_models():
+    """Should return model list from Ollama API."""
+    from agent_bom.ai_enrich import _get_ollama_models
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"models": [{"name": "llama3.2"}, {"name": "mistral"}]}
+    with patch("agent_bom.ai_enrich.httpx.get", return_value=mock_response):
+        models = _get_ollama_models()
+        assert "llama3.2" in models
+        assert "mistral" in models
+
+
+def test_get_ollama_models_failure():
+    """Should return empty list on Ollama failure."""
+    from agent_bom.ai_enrich import _get_ollama_models
+
+    with patch("agent_bom.ai_enrich.httpx.get", side_effect=httpx.ConnectError("Connection refused")):
+        assert _get_ollama_models() == []
+
+
+# ── Model Resolution Tests ────────────────────────────────────────────────
+
+
+def test_resolve_model_prefers_ollama():
+    """Should prefer Ollama when running."""
+    from agent_bom.ai_enrich import _resolve_model
+
+    with patch("agent_bom.ai_enrich._detect_ollama", return_value=True):
+        result = _resolve_model()
+        assert result == "ollama/llama3.2"
+
+
+def test_resolve_model_falls_back_to_openai():
+    """Should use openai when Ollama unavailable and key set."""
+    from agent_bom.ai_enrich import _resolve_model
+
+    with patch("agent_bom.ai_enrich._detect_ollama", return_value=False), \
+         patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}):
+        result = _resolve_model()
+        assert result == "openai/gpt-4o-mini"
+
+
+def test_resolve_model_no_provider():
+    """Should return default when no provider available."""
+    from agent_bom.ai_enrich import DEFAULT_MODEL, _resolve_model
+
+    with patch("agent_bom.ai_enrich._detect_ollama", return_value=False), \
+         patch.dict(os.environ, {}, clear=True):
+        result = _resolve_model()
+        assert result == DEFAULT_MODEL
+
+
+# ── Ollama Direct Call Tests ──────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_call_ollama_direct_success():
+    """Should call Ollama API and return text."""
+    from agent_bom.ai_enrich import _cache, _call_ollama_direct
+
+    _cache.clear()
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "message": {"content": "Analysis of the vulnerability..."}
+    }
+
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=mock_response)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("agent_bom.ai_enrich.httpx.AsyncClient", return_value=mock_client):
+        result = await _call_ollama_direct("test prompt", "llama3.2")
+        assert result == "Analysis of the vulnerability..."
+
+
+@pytest.mark.asyncio
+async def test_call_ollama_direct_connection_error():
+    """Should return None when Ollama is unreachable."""
+    from agent_bom.ai_enrich import _cache, _call_ollama_direct
+
+    _cache.clear()
+
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("agent_bom.ai_enrich.httpx.AsyncClient", return_value=mock_client):
+        result = await _call_ollama_direct("test prompt", "llama3.2")
+        assert result is None
+
+
+# ── LLM Routing Tests ─────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_call_llm_routes_ollama_to_direct():
+    """ollama/ prefix should route to direct API."""
+    from agent_bom.ai_enrich import _call_llm
+
+    with patch("agent_bom.ai_enrich._call_ollama_direct", new_callable=AsyncMock, return_value="Ollama response"):
+        result = await _call_llm("test prompt", "ollama/llama3.2")
+        assert result == "Ollama response"
+
+
+@pytest.mark.asyncio
+async def test_call_llm_routes_openai_to_litellm():
+    """Non-Ollama models should route to litellm."""
+    from agent_bom.ai_enrich import _call_llm
+
+    with patch("agent_bom.ai_enrich._call_llm_via_litellm", new_callable=AsyncMock, return_value="OpenAI response"):
+        result = await _call_llm("test prompt", "openai/gpt-4o-mini")
+        assert result == "OpenAI response"
+
+
+@pytest.mark.asyncio
+async def test_call_llm_ollama_falls_back_to_litellm():
+    """When Ollama direct fails, should fall back to litellm if installed."""
+    from agent_bom.ai_enrich import _call_llm
+
+    with patch("agent_bom.ai_enrich._call_ollama_direct", new_callable=AsyncMock, return_value=None), \
+         patch("agent_bom.ai_enrich._check_litellm", return_value=True), \
+         patch("agent_bom.ai_enrich._call_llm_via_litellm", new_callable=AsyncMock, return_value="litellm fallback"):
+        result = await _call_llm("test prompt", "ollama/llama3.2")
+        assert result == "litellm fallback"
+
+
+@pytest.mark.asyncio
+async def test_call_llm_ollama_no_fallback():
+    """When Ollama direct fails and no litellm, should return None."""
+    from agent_bom.ai_enrich import _call_llm
+
+    with patch("agent_bom.ai_enrich._call_ollama_direct", new_callable=AsyncMock, return_value=None), \
+         patch("agent_bom.ai_enrich._check_litellm", return_value=False):
+        result = await _call_llm("test prompt", "ollama/llama3.2")
+        assert result is None
+
+
+# ── Provider Guard Tests ──────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_enrichment_guard_allows_ollama():
+    """enrich_blast_radii should proceed when Ollama available (no litellm)."""
+    from agent_bom.ai_enrich import enrich_blast_radii
+    br = _make_blast_radius()
+
+    with patch("agent_bom.ai_enrich._check_litellm", return_value=False), \
+         patch("agent_bom.ai_enrich._detect_ollama", return_value=True), \
+         patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock, return_value="Ollama analysis"):
+        result = await enrich_blast_radii([br], model="ollama/llama3.2")
+        assert result == 1
+        assert br.ai_summary == "Ollama analysis"
+
+
+@pytest.mark.asyncio
+async def test_enrichment_guard_blocks_no_provider():
+    """enrich_blast_radii should return 0 when no provider available."""
+    from agent_bom.ai_enrich import enrich_blast_radii
+    br = _make_blast_radius()
+
+    with patch("agent_bom.ai_enrich._check_litellm", return_value=False), \
+         patch("agent_bom.ai_enrich._detect_ollama", return_value=False):
+        result = await enrich_blast_radii([br])
+        assert result == 0
+
+
+@pytest.mark.asyncio
+async def test_executive_summary_guard_allows_ollama():
+    """generate_executive_summary should work with Ollama only."""
+    from agent_bom.ai_enrich import generate_executive_summary
+    report = _make_report()
+
+    with patch("agent_bom.ai_enrich._check_litellm", return_value=False), \
+         patch("agent_bom.ai_enrich._detect_ollama", return_value=True), \
+         patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock, return_value="Risk summary"):
+        result = await generate_executive_summary(report, model="ollama/llama3.2")
+        assert result == "Risk summary"
+
+
+# ── Has-Any-Provider Tests ─────────────────────────────────────────────────
+
+
+def test_has_any_provider_ollama():
+    """Should return True for ollama/ model when Ollama is running."""
+    from agent_bom.ai_enrich import _has_any_provider
+
+    with patch("agent_bom.ai_enrich._detect_ollama", return_value=True):
+        assert _has_any_provider("ollama/llama3.2") is True
+
+
+def test_has_any_provider_litellm():
+    """Should return True for non-ollama model when litellm installed."""
+    from agent_bom.ai_enrich import _has_any_provider
+
+    with patch("agent_bom.ai_enrich._check_litellm", return_value=True):
+        assert _has_any_provider("openai/gpt-4o-mini") is True
+
+
+def test_has_any_provider_none():
+    """Should return False for ollama model when not running."""
+    from agent_bom.ai_enrich import _has_any_provider
+
+    with patch("agent_bom.ai_enrich._detect_ollama", return_value=False):
+        assert _has_any_provider("ollama/llama3.2") is False
+
+
+# ── Action YAML Tests ─────────────────────────────────────────────────────
+
+
+def test_action_yml_exists():
+    """action.yml should exist at repo root."""
+    from pathlib import Path
+    action_path = Path(__file__).parent.parent / "action.yml"
+    assert action_path.exists(), "action.yml not found at repo root"
+
+
+def test_action_yml_valid_yaml():
+    """action.yml should be valid YAML."""
+    from pathlib import Path
+
+    import yaml
+    action_path = Path(__file__).parent.parent / "action.yml"
+    with open(action_path) as f:
+        data = yaml.safe_load(f)
+    assert data is not None
+    assert "name" in data
+    assert "runs" in data
+
+
+def test_action_yml_has_required_inputs():
+    """action.yml should have key inputs."""
+    from pathlib import Path
+
+    import yaml
+    action_path = Path(__file__).parent.parent / "action.yml"
+    with open(action_path) as f:
+        data = yaml.safe_load(f)
+    inputs = data.get("inputs", {})
+    assert "severity-threshold" in inputs
+    assert "upload-sarif" in inputs
+    assert "policy" in inputs
+    assert "enrich" in inputs
+    assert "format" in inputs
+
+
+def test_action_yml_has_outputs():
+    """action.yml should have expected outputs."""
+    from pathlib import Path
+
+    import yaml
+    action_path = Path(__file__).parent.parent / "action.yml"
+    with open(action_path) as f:
+        data = yaml.safe_load(f)
+    outputs = data.get("outputs", {})
+    assert "sarif-file" in outputs
+    assert "exit-code" in outputs
+    assert "vulnerability-count" in outputs
+
+
+def test_action_yml_composite():
+    """action.yml should use composite runs."""
+    from pathlib import Path
+
+    import yaml
+    action_path = Path(__file__).parent.parent / "action.yml"
+    with open(action_path) as f:
+        data = yaml.safe_load(f)
+    assert data["runs"]["using"] == "composite"

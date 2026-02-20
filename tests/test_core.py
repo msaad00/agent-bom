@@ -255,7 +255,7 @@ def empty_report():
 
 def test_version_sync():
     from agent_bom import __version__
-    assert __version__ == "0.9.1"
+    assert __version__ == "0.10.0"
 
 
 def test_report_version_matches():

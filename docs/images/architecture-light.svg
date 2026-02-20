@@ -5,11 +5,10 @@
     .item-label { font: 600 11px system-ui, sans-serif; fill: #1e293b; }
     .item-sub { font: 400 9.5px system-ui, sans-serif; fill: #64748b; }
     .footer { font: 500 9.5px system-ui, sans-serif; fill: #94a3b8; }
-    .arrow { stroke: #cbd5e1; stroke-width: 1.5; fill: none; }
   </style>
   <defs>
-    <marker id="arr" viewBox="0 0 8 6" refX="8" refY="3" markerWidth="7" markerHeight="5" orient="auto">
-      <path d="M0 0L8 3L0 6Z" fill="#cbd5e1"/>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M1 1L9 5L1 9" stroke="#94a3b8" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
     </marker>
   </defs>
 
@@ -55,7 +54,10 @@
   </g>
 
   <!-- Arrow 1 -->
-  <line x1="224" y1="200" x2="244" y2="200" class="arrow" marker-end="url(#arr)"/>
+  <g transform="translate(226, 168)">
+    <path d="M0 0L14 16L0 32" stroke="#94a3b8" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M10 0L24 16L10 32" stroke="#94a3b8" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
+  </g>
 
   <!-- ── Phase 2: Enrichment ── -->
   <rect x="252" y="52" width="192" height="6" rx="3" fill="#d97706" opacity="0.8"/>
@@ -88,7 +90,10 @@
   </g>
 
   <!-- Arrow 2 -->
-  <line x1="452" y1="200" x2="472" y2="200" class="arrow" marker-end="url(#arr)"/>
+  <g transform="translate(454, 168)">
+    <path d="M0 0L14 16L0 32" stroke="#94a3b8" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M10 0L24 16L10 32" stroke="#94a3b8" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
+  </g>
 
   <!-- ── Phase 3: Analysis ── -->
   <rect x="480" y="52" width="192" height="6" rx="3" fill="#e11d48" opacity="0.8"/>
@@ -121,7 +126,10 @@
   </g>
 
   <!-- Arrow 3 -->
-  <line x1="680" y1="200" x2="700" y2="200" class="arrow" marker-end="url(#arr)"/>
+  <g transform="translate(682, 168)">
+    <path d="M0 0L14 16L0 32" stroke="#94a3b8" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M10 0L24 16L10 32" stroke="#94a3b8" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
+  </g>
 
   <!-- ── Phase 4: Output ── -->
   <rect x="708" y="52" width="148" height="6" rx="3" fill="#059669" opacity="0.8"/>

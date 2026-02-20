@@ -1,0 +1,159 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 560" fill="none">
+  <style>
+    .title { font: 700 15px system-ui, -apple-system, sans-serif; fill: #e6edf3; }
+    .subtitle { font: 400 11px system-ui, sans-serif; fill: #8b949e; }
+    .phase { font: 700 9px system-ui, sans-serif; letter-spacing: 0.1em; }
+    .label { font: 600 11px system-ui, sans-serif; }
+    .sub { font: 400 9px system-ui, sans-serif; fill: #8b949e; }
+    .badge { font: 600 8px system-ui, sans-serif; }
+    .note { font: 400 9px system-ui, sans-serif; fill: #6e7681; }
+    .arrow { stroke: #484f58; stroke-width: 1.5; fill: none; }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 8 6" refX="8" refY="3" markerWidth="7" markerHeight="5" orient="auto">
+      <path d="M0 0L8 3L0 6Z" fill="#484f58"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="560" rx="12" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+
+  <!-- Title -->
+  <text x="450" y="30" text-anchor="middle" class="title">Enterprise Scan Workflow</text>
+  <text x="450" y="48" text-anchor="middle" class="subtitle">How agent-bom fits into your security stack — no agents, no access, just analysis</text>
+
+  <!-- ═══ Row 1: Input Sources ═══ -->
+  <text x="32" y="80" class="phase" fill="#58a6ff">INPUT SOURCES</text>
+
+  <rect x="32" y="92" width="160" height="56" rx="8" fill="#161b22" stroke="#1f6feb" stroke-width="1" opacity="0.7"/>
+  <text x="112" y="112" text-anchor="middle" class="label" fill="#58a6ff">Developer Machines</text>
+  <text x="112" y="126" text-anchor="middle" class="sub">Claude, Cursor, Windsurf</text>
+  <text x="112" y="138" text-anchor="middle" class="sub">MCP config files</text>
+
+  <rect x="208" y="92" width="160" height="56" rx="8" fill="#161b22" stroke="#1f6feb" stroke-width="1" opacity="0.7"/>
+  <text x="288" y="112" text-anchor="middle" class="label" fill="#58a6ff">Container Registry</text>
+  <text x="288" y="126" text-anchor="middle" class="sub">Docker Hub, ECR, GCR</text>
+  <text x="288" y="138" text-anchor="middle" class="sub">OCI images</text>
+
+  <rect x="384" y="92" width="160" height="56" rx="8" fill="#161b22" stroke="#1f6feb" stroke-width="1" opacity="0.7"/>
+  <text x="464" y="112" text-anchor="middle" class="label" fill="#58a6ff">Kubernetes Cluster</text>
+  <text x="464" y="126" text-anchor="middle" class="sub">Pod image discovery</text>
+  <text x="464" y="138" text-anchor="middle" class="sub">Multi-namespace kubectl</text>
+
+  <rect x="560" y="92" width="160" height="56" rx="8" fill="#161b22" stroke="#1f6feb" stroke-width="1" opacity="0.7"/>
+  <text x="640" y="112" text-anchor="middle" class="label" fill="#58a6ff">Existing SBOMs</text>
+  <text x="640" y="126" text-anchor="middle" class="sub">CycloneDX / SPDX import</text>
+  <text x="640" y="138" text-anchor="middle" class="sub">Vendor-provided BOMs</text>
+
+  <rect x="736" y="92" width="136" height="56" rx="8" fill="#161b22" stroke="#1f6feb" stroke-width="1" opacity="0.7"/>
+  <text x="804" y="112" text-anchor="middle" class="label" fill="#58a6ff">Inventory File</text>
+  <text x="804" y="126" text-anchor="middle" class="sub">Manual package list</text>
+  <text x="804" y="138" text-anchor="middle" class="sub">JSON / YAML</text>
+
+  <!-- Arrows down from inputs -->
+  <line x1="112" y1="148" x2="112" y2="170" class="arrow" marker-end="url(#a)"/>
+  <line x1="288" y1="148" x2="288" y2="170" class="arrow" marker-end="url(#a)"/>
+  <line x1="464" y1="148" x2="464" y2="170" class="arrow" marker-end="url(#a)"/>
+  <line x1="640" y1="148" x2="640" y2="170" class="arrow" marker-end="url(#a)"/>
+  <line x1="804" y1="148" x2="804" y2="170" class="arrow" marker-end="url(#a)"/>
+
+  <!-- ═══ Row 2: agent-bom Core ═══ -->
+  <rect x="32" y="176" width="840" height="100" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+  <text x="450" y="194" text-anchor="middle" class="phase" fill="#8b949e">AGENT-BOM SCANNER (READ-ONLY · NO AGENTS · LOCAL EXECUTION)</text>
+
+  <rect x="52" y="206" width="148" height="56" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="126" y="222" text-anchor="middle" class="badge" fill="#8b949e">STEP 1</text>
+  <text x="126" y="238" text-anchor="middle" class="label" fill="#c9d1d9">Parse &amp; Extract</text>
+  <text x="126" y="252" text-anchor="middle" class="sub">Packages, versions,</text>
+  <text x="126" y="262" text-anchor="middle" class="sub">PURLs, credentials</text>
+
+  <line x1="200" y1="234" x2="218" y2="234" class="arrow" marker-end="url(#a)"/>
+
+  <rect x="224" y="206" width="148" height="56" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="298" y="222" text-anchor="middle" class="badge" fill="#8b949e">STEP 2</text>
+  <text x="298" y="238" text-anchor="middle" class="label" fill="#c9d1d9">CVE Scan</text>
+  <text x="298" y="252" text-anchor="middle" class="sub">OSV.dev batch API</text>
+  <text x="298" y="262" text-anchor="middle" class="sub">Grype for images</text>
+
+  <line x1="372" y1="234" x2="390" y2="234" class="arrow" marker-end="url(#a)"/>
+
+  <rect x="396" y="206" width="148" height="56" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="470" y="222" text-anchor="middle" class="badge" fill="#8b949e">STEP 3</text>
+  <text x="470" y="238" text-anchor="middle" class="label" fill="#c9d1d9">Enrich</text>
+  <text x="470" y="252" text-anchor="middle" class="sub">NVD CVSS + EPSS</text>
+  <text x="470" y="262" text-anchor="middle" class="sub">CISA KEV + CWEs</text>
+
+  <line x1="544" y1="234" x2="562" y2="234" class="arrow" marker-end="url(#a)"/>
+
+  <rect x="568" y="206" width="148" height="56" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="642" y="222" text-anchor="middle" class="badge" fill="#8b949e">STEP 4</text>
+  <text x="642" y="238" text-anchor="middle" class="label" fill="#c9d1d9">Threat Model</text>
+  <text x="642" y="252" text-anchor="middle" class="sub">Blast radius + OWASP</text>
+  <text x="642" y="262" text-anchor="middle" class="sub">ATLAS + risk scoring</text>
+
+  <line x1="716" y1="234" x2="734" y2="234" class="arrow" marker-end="url(#a)"/>
+
+  <rect x="740" y="206" width="120" height="56" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="800" y="222" text-anchor="middle" class="badge" fill="#8b949e">STEP 5</text>
+  <text x="800" y="238" text-anchor="middle" class="label" fill="#c9d1d9">Report</text>
+  <text x="800" y="252" text-anchor="middle" class="sub">JSON / SARIF / BOM</text>
+  <text x="800" y="262" text-anchor="middle" class="sub">+ source URLs</text>
+
+  <!-- Arrows down from core -->
+  <line x1="200" y1="276" x2="200" y2="310" class="arrow" marker-end="url(#a)"/>
+  <line x1="450" y1="276" x2="450" y2="310" class="arrow" marker-end="url(#a)"/>
+  <line x1="700" y1="276" x2="700" y2="310" class="arrow" marker-end="url(#a)"/>
+
+  <!-- ═══ Row 3: Enterprise Integration ═══ -->
+  <text x="32" y="330" class="phase" fill="#3fb950">ENTERPRISE INTEGRATION</text>
+
+  <rect x="32" y="340" width="260" height="72" rx="8" fill="#0d1117" stroke="#238636" stroke-width="1" opacity="0.8"/>
+  <text x="162" y="360" text-anchor="middle" class="label" fill="#3fb950">CI/CD Pipeline</text>
+  <text x="162" y="376" text-anchor="middle" class="sub">GitHub Actions / GitLab CI</text>
+  <text x="162" y="390" text-anchor="middle" class="sub">SARIF upload → Security tab auto-triage</text>
+  <text x="162" y="404" text-anchor="middle" class="sub">Policy gates: fail build on critical CVEs</text>
+
+  <rect x="310" y="340" width="280" height="72" rx="8" fill="#0d1117" stroke="#238636" stroke-width="1" opacity="0.8"/>
+  <text x="450" y="360" text-anchor="middle" class="label" fill="#3fb950">Security Dashboard</text>
+  <text x="450" y="376" text-anchor="middle" class="sub">Next.js Cloud UI on localhost:3000</text>
+  <text x="450" y="390" text-anchor="middle" class="sub">REST API on localhost:8422</text>
+  <text x="450" y="404" text-anchor="middle" class="sub">Live scan progress + history diffs</text>
+
+  <rect x="608" y="340" width="264" height="72" rx="8" fill="#0d1117" stroke="#238636" stroke-width="1" opacity="0.8"/>
+  <text x="740" y="360" text-anchor="middle" class="label" fill="#3fb950">Compliance &amp; Audit</text>
+  <text x="740" y="376" text-anchor="middle" class="sub">CycloneDX AI-BOM for supply chain</text>
+  <text x="740" y="390" text-anchor="middle" class="sub">SPDX 2.3 for license + provenance</text>
+  <text x="740" y="404" text-anchor="middle" class="sub">Scan history + baseline diffs</text>
+
+  <!-- ═══ Row 4: Data Sources ═══ -->
+  <text x="32" y="440" class="phase" fill="#bc8cff">EXTERNAL DATA SOURCES (PUBLIC APIs · NO AUTH · NO USER DATA SENT)</text>
+
+  <rect x="32" y="450" width="130" height="36" rx="6" fill="#161b22" stroke="#8b5cf6" stroke-width="1" opacity="0.6"/>
+  <text x="97" y="466" text-anchor="middle" class="label" fill="#bc8cff">OSV.dev</text>
+  <text x="97" y="480" text-anchor="middle" class="sub">CVE database</text>
+
+  <rect x="176" y="450" width="130" height="36" rx="6" fill="#161b22" stroke="#8b5cf6" stroke-width="1" opacity="0.6"/>
+  <text x="241" y="466" text-anchor="middle" class="label" fill="#bc8cff">NVD / NIST</text>
+  <text x="241" y="480" text-anchor="middle" class="sub">CVSS scores</text>
+
+  <rect x="320" y="450" width="130" height="36" rx="6" fill="#161b22" stroke="#8b5cf6" stroke-width="1" opacity="0.6"/>
+  <text x="385" y="466" text-anchor="middle" class="label" fill="#bc8cff">FIRST EPSS</text>
+  <text x="385" y="480" text-anchor="middle" class="sub">Exploit probability</text>
+
+  <rect x="464" y="450" width="130" height="36" rx="6" fill="#161b22" stroke="#8b5cf6" stroke-width="1" opacity="0.6"/>
+  <text x="529" y="466" text-anchor="middle" class="label" fill="#bc8cff">CISA KEV</text>
+  <text x="529" y="480" text-anchor="middle" class="sub">Exploited vulns</text>
+
+  <rect x="608" y="450" width="130" height="36" rx="6" fill="#161b22" stroke="#8b5cf6" stroke-width="1" opacity="0.6"/>
+  <text x="673" y="466" text-anchor="middle" class="label" fill="#bc8cff">MCP Registry</text>
+  <text x="673" y="480" text-anchor="middle" class="sub">55+ servers</text>
+
+  <rect x="752" y="450" width="120" height="36" rx="6" fill="#161b22" stroke="#8b5cf6" stroke-width="1" opacity="0.6"/>
+  <text x="812" y="466" text-anchor="middle" class="label" fill="#bc8cff">Grype DB</text>
+  <text x="812" y="480" text-anchor="middle" class="sub">Image vulns</text>
+
+  <!-- Footer -->
+  <rect x="32" y="504" width="840" height="44" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+  <text x="450" y="522" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#8b949e" letter-spacing="0.05em">WHY agent-bom vs Wiz / Snyk / Prisma</text>
+  <text x="450" y="538" text-anchor="middle" class="note">Free &amp; open source  ·  AI-native threat models (OWASP LLM + ATLAS)  ·  MCP supply chain focus  ·  No cloud access needed  ·  Runs in your CI, your laptop, your air-gap</text>
+</svg>

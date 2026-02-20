@@ -120,18 +120,15 @@ def print_blast_radius(report: AIBOMReport) -> None:
 
     console.print("\n[bold red]💥 Blast Radius Analysis[/bold red]\n")
 
-    table = Table(title="Vulnerability Impact Chain")
-    table.add_column("Risk", justify="center", width=6)
-    table.add_column("Vuln ID", width=20)
-    table.add_column("Package", width=25)
-    table.add_column("Severity", width=10)
-    table.add_column("EPSS", width=6, justify="center")
-    table.add_column("KEV", width=4, justify="center")
-    table.add_column("Agents", width=7, justify="center")
-    table.add_column("Creds", width=6, justify="center")
-    table.add_column("OWASP", width=18)
-    table.add_column("ATLAS", width=22)
-    table.add_column("Fix", width=15)
+    table = Table(title="Vulnerability Impact Chain", expand=True, padding=(0, 1))
+    table.add_column("Risk", justify="center", no_wrap=True)
+    table.add_column("Vulnerability", no_wrap=True, ratio=3)
+    table.add_column("Severity", no_wrap=True)
+    table.add_column("EPSS", justify="center", no_wrap=True)
+    table.add_column("KEV", justify="center", no_wrap=True)
+    table.add_column("Blast", justify="center", no_wrap=True)
+    table.add_column("Threats", justify="center", no_wrap=True)
+    table.add_column("Fix", ratio=2)
 
     severity_colors = {
         Severity.CRITICAL: "red bold",
@@ -154,20 +151,40 @@ def print_blast_radius(report: AIBOMReport) -> None:
         # KEV indicator
         kev_display = "[red bold]🔥[/red bold]" if br.vulnerability.is_kev else "—"
 
-        owasp_display = "[dim]" + " ".join(br.owasp_tags) + "[/dim]" if br.owasp_tags else "—"
-        atlas_display = "[dim]" + " ".join(br.atlas_tags) + "[/dim]" if br.atlas_tags else "—"
+        # Blast column: agents/creds compact
+        blast_parts = []
+        n_agents = len(br.affected_agents)
+        n_creds = len(br.exposed_credentials)
+        if n_agents:
+            blast_parts.append(f"{n_agents}A")
+        if n_creds:
+            blast_parts.append(f"[yellow]{n_creds}C[/yellow]")
+        blast_display = "/".join(blast_parts) if blast_parts else "—"
+
+        # Vulnerability: ID + package on two lines
+        vuln_display = (
+            f"{br.vulnerability.id}\n"
+            f"[dim]{br.package.name}@{br.package.version}[/dim]"
+        )
+
+        # Threats column: compact tag counts
+        n_owasp = len(br.owasp_tags)
+        n_atlas = len(br.atlas_tags)
+        threat_parts = []
+        if n_owasp:
+            threat_parts.append(f"[purple]O:{n_owasp}[/purple]")
+        if n_atlas:
+            threat_parts.append(f"[cyan]A:{n_atlas}[/cyan]")
+        threats_display = " ".join(threat_parts) if threat_parts else "—"
 
         table.add_row(
             f"[{sev_style}]{br.risk_score:.1f}[/{sev_style}]",
-            br.vulnerability.id,
-            f"{br.package.name}@{br.package.version}",
+            vuln_display,
             f"[{sev_style}]{br.vulnerability.severity.value}[/{sev_style}]",
             epss_display,
             kev_display,
-            str(len(br.affected_agents)),
-            str(len(br.exposed_credentials)),
-            owasp_display,
-            atlas_display,
+            blast_display,
+            threats_display,
             fix,
         )
 
@@ -176,6 +193,27 @@ def print_blast_radius(report: AIBOMReport) -> None:
     if len(report.blast_radii) > 25:
         console.print(f"\n  [dim]...and {len(report.blast_radii) - 25} more findings. "
                        f"Use --output to export full report.[/dim]")
+
+    # Verification sources — one link per unique CVE
+    seen_ids: set[str] = set()
+    sources: list[tuple[str, str]] = []
+    for br in report.blast_radii:
+        vid = br.vulnerability.id
+        if vid in seen_ids:
+            continue
+        seen_ids.add(vid)
+        if br.vulnerability.references:
+            sources.append((vid, br.vulnerability.references[0]))
+        elif vid.startswith("CVE-"):
+            sources.append((vid, f"https://osv.dev/vulnerability/{vid}"))
+        elif vid.startswith("GHSA-"):
+            sources.append((vid, f"https://github.com/advisories/{vid}"))
+    if sources:
+        console.print("\n[bold]Verification Sources[/bold]")
+        for vid, url in sources[:15]:
+            console.print(f"  [dim]{vid}[/dim]  →  [link={url}]{url}[/link]")
+        if len(sources) > 15:
+            console.print(f"  [dim]...and {len(sources) - 15} more (see JSON output for full list)[/dim]")
 
 
 def print_threat_frameworks(report: AIBOMReport) -> None:

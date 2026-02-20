@@ -101,7 +101,7 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
 - **[CI integration](#ci-integration)** — GitHub Actions + SARIF upload
 - **[REST API](#rest-api)** — FastAPI on port 8422
 - **[Skills](skills/)** — downloadable workflow playbooks (AI-BOM, cloud audit, OWASP, incident response)
-- **[MCP Registry](data/mcp-registry.yaml)** — 103 known servers with metadata
+- **[MCP Registry](data/mcp-registry.yaml)** — 102 known servers with metadata
 - **[PERMISSIONS.md](PERMISSIONS.md)** — auditable trust contract
 - **[Roadmap](#roadmap)** — what's coming next
 
@@ -409,7 +409,7 @@ What `--ai-enrich` generates:
 
 ### MCP Server Registry (102 servers)
 
-Ships with a curated registry of 101 known MCP servers — including OpenClaw. Each entry includes: package name + version pin, ecosystem, risk level, tool names, credential env vars, license, and source URL.
+Ships with a curated registry of 102 known MCP servers — including OpenClaw and ClickHouse. Each entry includes: package name + version pin, ecosystem, risk level, tool names, credential env vars, license, and source URL.
 
 Unverified servers in your configs trigger a warning. Policy rules can block them in CI.
 
@@ -474,8 +474,11 @@ The Next.js dashboard (`ui/`) provides an enterprise-grade web interface on top 
 - **Security posture dashboard** — fleet-wide severity distribution, scan source breakdown, top vulnerable packages across all scans
 - **Vulnerability explorer** — group by severity, package, or agent with full-text search
 - **Scan detail** — per-job blast radius table, threat framework matrix, remediation plan with impact bars
+- **Supply chain graph** — interactive React Flow visualization: Agent → MCP Server → Package → CVE with color-coded nodes, zoom/pan, minimap, and job selector
+- **Registry browser** — searchable MCP server catalog with risk level filters, expandable detail cards, verified badges
 - **Severity chart** — stacked bar chart with critical/high/medium/low percentage breakdown
 - **Source tracking** — each finding tagged by source (MCP agents, container images, K8s pods, SBOMs)
+- **Live API health check** — nav bar shows real-time backend status with version display
 
 ```bash
 cd ui && npm install && npm run dev   # http://localhost:3000

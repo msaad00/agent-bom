@@ -1,8 +1,8 @@
 {
   "_comment": "agent-bom MCP Server Registry \u2014 threat intelligence database for known MCP servers",
   "_schema_version": "2.0",
-  "_updated": "2026-02-19",
-  "_total_servers": 103,
+  "_updated": "2026-02-20",
+  "_total_servers": 102,
   "_differentiator": "Threat intelligence database \u2014 not just a catalog. Each entry has risk_level, tools, credential_env_vars for blast radius pre-computation.",
   "_source": "https://github.com/agent-bom/agent-bom/blob/main/data/mcp-registry.yaml",
   "servers": {

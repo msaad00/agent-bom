@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <b>Scan AI agents and MCP servers for CVEs. Map blast radius — credentials, tools, and agents at risk. Tag every finding with OWASP LLM Top 10 codes.</b>
+  <b>Scan AI agents and MCP servers for CVEs. Map blast radius — credentials, tools, and agents at risk. Tag every finding with OWASP LLM Top 10 + MITRE ATLAS.</b>
 </p>
 
 <p align="center">
@@ -161,6 +161,37 @@ Every finding is also mapped to [MITRE ATLAS](https://atlas.mitre.org/) adversar
 | **AML.T0020** | AI framework + HIGH+ CVE (training data poisoning) |
 | **AML.T0058** | AI framework + creds + HIGH+ (agent context poisoning) |
 
+### Threat framework coverage matrix
+
+After every scan, agent-bom shows which OWASP + ATLAS categories were triggered — and how many findings per category:
+
+**CLI** — `print_threat_frameworks()` renders two Rich tables with bar charts:
+
+```
+┌───────────── OWASP LLM Top 10 ──────────────┐
+│ LLM05  Supply Chain Vulnerabilities    12 ████│
+│ LLM06  Sensitive Information Disclosure 4 ██  │
+│ LLM08  Excessive Agency                2 █   │
+│ LLM01  Prompt Injection                —     │
+│ ...                                          │
+└──────────────────────────────────────────────┘
+```
+
+**JSON** — `threat_framework_summary` section with per-category counts:
+
+```json
+{
+  "threat_framework_summary": {
+    "owasp_llm_top10": [{"code": "LLM05", "name": "Supply Chain Vulnerabilities", "findings": 12, "triggered": true}],
+    "mitre_atlas": [{"technique_id": "AML.T0010", "name": "ML Supply Chain Compromise", "findings": 12, "triggered": true}],
+    "total_owasp_triggered": 4,
+    "total_atlas_triggered": 5
+  }
+}
+```
+
+**Cloud UI** — two-column threat matrix grid with hit/miss indicators and finding counts per category.
+
 ### Policy-as-code
 
 ```bash
@@ -267,6 +298,7 @@ These tools solve different problems and are **complementary**.
 
 - [x] MITRE ATLAS adversarial ML threat mapping
 - [x] SLSA provenance + SHA256 integrity verification
+- [x] Threat framework coverage matrix (CLI + JSON + UI)
 - [ ] AWS Bedrock live agent + action group discovery
 - [ ] Snowflake Cortex `CREATE MCP SERVER` scanning
 - [ ] Google Vertex AI agent discovery

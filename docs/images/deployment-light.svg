@@ -1,0 +1,223 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 520" fill="none">
+  <style>
+    .title { font: 700 15px system-ui, -apple-system, sans-serif; fill: #0f172a; }
+    .section-label { font: 700 10px system-ui, sans-serif; letter-spacing: 0.08em; }
+    .node-label { font: 600 10.5px system-ui, sans-serif; fill: #1e293b; }
+    .node-sub { font: 400 9px system-ui, sans-serif; fill: #64748b; }
+    .connector { stroke: #94a3b8; stroke-width: 1.5; fill: none; }
+    .footer { font: 500 9px system-ui, sans-serif; fill: #94a3b8; }
+  </style>
+
+  <!-- Background -->
+  <rect width="920" height="520" rx="12" fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+
+  <!-- Title -->
+  <text x="460" y="30" text-anchor="middle" class="title">Enterprise deployment topology</text>
+
+  <!-- ════════════════════════════════════════════════════════════════════ -->
+  <!-- LEFT COLUMN: Scan Sources -->
+  <!-- ════════════════════════════════════════════════════════════════════ -->
+
+  <rect x="20" y="48" width="220" height="6" rx="3" fill="#3b82f6" opacity="0.7"/>
+  <text x="130" y="72" text-anchor="middle" class="section-label" fill="#2563eb">SCAN SOURCES</text>
+
+  <!-- Cloud APIs -->
+  <g transform="translate(30, 86)">
+    <rect width="200" height="44" rx="6" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1"/>
+    <circle cx="16" cy="22" r="5" fill="#3b82f6" opacity="0.6"/>
+    <text x="28" y="18" class="node-label">Cloud Provider APIs</text>
+    <text x="28" y="32" class="node-sub">AWS Bedrock, Snowflake Cortex,</text>
+    <text x="28" y="42" class="node-sub">Databricks, Azure, GCP, Nebius</text>
+  </g>
+
+  <!-- MCP Configs -->
+  <g transform="translate(30, 140)">
+    <rect width="200" height="36" rx="6" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1"/>
+    <circle cx="16" cy="18" r="5" fill="#3b82f6" opacity="0.6"/>
+    <text x="28" y="15" class="node-label">MCP Agent Configs</text>
+    <text x="28" y="28" class="node-sub">10 clients: Claude, Cursor, OpenClaw...</text>
+  </g>
+
+  <!-- Container Images -->
+  <g transform="translate(30, 186)">
+    <rect width="200" height="36" rx="6" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1"/>
+    <circle cx="16" cy="18" r="5" fill="#3b82f6" opacity="0.6"/>
+    <text x="28" y="15" class="node-label">Container Images</text>
+    <text x="28" y="28" class="node-sub">Grype / Syft deep scanning</text>
+  </g>
+
+  <!-- K8s -->
+  <g transform="translate(30, 232)">
+    <rect width="200" height="36" rx="6" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1"/>
+    <circle cx="16" cy="18" r="5" fill="#3b82f6" opacity="0.6"/>
+    <text x="28" y="15" class="node-label">Kubernetes Clusters</text>
+    <text x="28" y="28" class="node-sub">kubectl multi-namespace pods</text>
+  </g>
+
+  <!-- IaC + CI -->
+  <g transform="translate(30, 278)">
+    <rect width="200" height="36" rx="6" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1"/>
+    <circle cx="16" cy="18" r="5" fill="#3b82f6" opacity="0.6"/>
+    <text x="28" y="15" class="node-label">IaC + CI/CD</text>
+    <text x="28" y="28" class="node-sub">Terraform, GitHub Actions</text>
+  </g>
+
+  <!-- SBOMs + Frameworks -->
+  <g transform="translate(30, 324)">
+    <rect width="200" height="36" rx="6" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1"/>
+    <circle cx="16" cy="18" r="5" fill="#3b82f6" opacity="0.6"/>
+    <text x="28" y="15" class="node-label">SBOMs + Agent Frameworks</text>
+    <text x="28" y="28" class="node-sub">CycloneDX, SPDX, LangChain, ADK</text>
+  </g>
+
+  <!-- ════════════════════════════════════════════════════════════════════ -->
+  <!-- CENTER: agent-bom Engine -->
+  <!-- ════════════════════════════════════════════════════════════════════ -->
+
+  <!-- Left arrows (sources → engine) -->
+  <g>
+    <path d="M232 108 L310 200" class="connector"/>
+    <path d="M232 158 L310 210" class="connector"/>
+    <path d="M232 204 L310 220" class="connector"/>
+    <path d="M232 250 L310 235" class="connector"/>
+    <path d="M232 296 L310 250" class="connector"/>
+    <path d="M232 342 L310 260" class="connector"/>
+  </g>
+
+  <!-- Engine box -->
+  <g transform="translate(310, 130)">
+    <rect width="300" height="200" rx="10" fill="#f8fafc" stroke="#3b82f6" stroke-width="2"/>
+
+    <!-- Engine header -->
+    <rect width="300" height="32" rx="10" fill="#3b82f6"/>
+    <rect y="20" width="300" height="12" fill="#3b82f6"/>
+    <text x="150" y="22" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#ffffff">agent-bom engine</text>
+
+    <!-- Inner components -->
+    <g transform="translate(12, 44)">
+      <rect width="130" height="28" rx="5" fill="#fef3c7" stroke="#fbbf24" stroke-width="1"/>
+      <text x="65" y="12" text-anchor="middle" class="node-label" fill="#92400e">CVE Scanning</text>
+      <text x="65" y="23" text-anchor="middle" class="node-sub" fill="#a16207">OSV + NVD + EPSS + KEV</text>
+    </g>
+
+    <g transform="translate(156, 44)">
+      <rect width="130" height="28" rx="5" fill="#fce7f3" stroke="#f472b6" stroke-width="1"/>
+      <text x="65" y="12" text-anchor="middle" class="node-label" fill="#9d174d">Blast Radius</text>
+      <text x="65" y="23" text-anchor="middle" class="node-sub" fill="#be185d">Agent + cred + tool map</text>
+    </g>
+
+    <g transform="translate(12, 82)">
+      <rect width="130" height="28" rx="5" fill="#ede9fe" stroke="#a78bfa" stroke-width="1"/>
+      <text x="65" y="12" text-anchor="middle" class="node-label" fill="#5b21b6">Threat Frameworks</text>
+      <text x="65" y="23" text-anchor="middle" class="node-sub" fill="#6d28d9">OWASP + ATLAS + NIST</text>
+    </g>
+
+    <g transform="translate(156, 82)">
+      <rect width="130" height="28" rx="5" fill="#d1fae5" stroke="#34d399" stroke-width="1"/>
+      <text x="65" y="12" text-anchor="middle" class="node-label" fill="#065f46">AI Enrichment</text>
+      <text x="65" y="23" text-anchor="middle" class="node-sub" fill="#047857">litellm: 100+ models</text>
+    </g>
+
+    <g transform="translate(12, 120)">
+      <rect width="130" height="28" rx="5" fill="#fff7ed" stroke="#fb923c" stroke-width="1"/>
+      <text x="65" y="12" text-anchor="middle" class="node-label" fill="#9a3412">MCP Registry</text>
+      <text x="65" y="23" text-anchor="middle" class="node-sub" fill="#c2410c">103 servers + provenance</text>
+    </g>
+
+    <g transform="translate(156, 120)">
+      <rect width="130" height="28" rx="5" fill="#ecfdf5" stroke="#6ee7b7" stroke-width="1"/>
+      <text x="65" y="12" text-anchor="middle" class="node-label" fill="#065f46">Policy Engine</text>
+      <text x="65" y="23" text-anchor="middle" class="node-sub" fill="#047857">fail / warn / info gates</text>
+    </g>
+
+    <!-- Remediation row -->
+    <g transform="translate(12, 158)">
+      <rect width="274" height="28" rx="5" fill="#f0f9ff" stroke="#7dd3fc" stroke-width="1"/>
+      <text x="137" y="12" text-anchor="middle" class="node-label" fill="#0c4a6e">Enterprise Remediation Plan</text>
+      <text x="137" y="23" text-anchor="middle" class="node-sub" fill="#0369a1">Named assets + impact % + risk narratives per fix</text>
+    </g>
+  </g>
+
+  <!-- ════════════════════════════════════════════════════════════════════ -->
+  <!-- RIGHT COLUMN: Deployment Surfaces -->
+  <!-- ════════════════════════════════════════════════════════════════════ -->
+
+  <!-- Right arrows (engine → surfaces) -->
+  <g>
+    <path d="M612 180 L680 100" class="connector"/>
+    <path d="M612 200 L680 158" class="connector"/>
+    <path d="M612 215 L680 214" class="connector"/>
+    <path d="M612 235 L680 272" class="connector"/>
+    <path d="M612 260 L680 330" class="connector"/>
+    <path d="M612 280 L680 388" class="connector"/>
+  </g>
+
+  <rect x="680" y="48" width="220" height="6" rx="3" fill="#059669" opacity="0.7"/>
+  <text x="790" y="72" text-anchor="middle" class="section-label" fill="#047857">DEPLOYMENT SURFACES</text>
+
+  <!-- CLI / CI/CD -->
+  <g transform="translate(690, 86)">
+    <rect width="200" height="36" rx="6" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="1"/>
+    <circle cx="16" cy="18" r="5" fill="#059669" opacity="0.6"/>
+    <text x="28" y="15" class="node-label">CLI + CI/CD Gate</text>
+    <text x="28" y="28" class="node-sub">pip install, Docker, --fail-on-severity</text>
+  </g>
+
+  <!-- REST API -->
+  <g transform="translate(690, 140)">
+    <rect width="200" height="44" rx="6" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="1"/>
+    <circle cx="16" cy="22" r="5" fill="#059669" opacity="0.6"/>
+    <text x="28" y="15" class="node-label">REST API (FastAPI)</text>
+    <text x="28" y="28" class="node-sub">:8422 — async scan, SSE stream,</text>
+    <text x="28" y="38" class="node-sub">registry, trust headers</text>
+  </g>
+
+  <!-- Dashboards -->
+  <g transform="translate(690, 198)">
+    <rect width="200" height="44" rx="6" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="1"/>
+    <circle cx="16" cy="22" r="5" fill="#059669" opacity="0.6"/>
+    <text x="28" y="15" class="node-label">Dashboards</text>
+    <text x="28" y="28" class="node-sub">Next.js Cloud UI (:3000)</text>
+    <text x="28" y="38" class="node-sub">Streamlit dashboard (agent-bom serve)</text>
+  </g>
+
+  <!-- Monitoring -->
+  <g transform="translate(690, 256)">
+    <rect width="200" height="44" rx="6" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="1"/>
+    <circle cx="16" cy="22" r="5" fill="#059669" opacity="0.6"/>
+    <text x="28" y="15" class="node-label">Monitoring</text>
+    <text x="28" y="28" class="node-sub">Prometheus + Grafana (metrics)</text>
+    <text x="28" y="38" class="node-sub">OpenTelemetry → Datadog/Splunk</text>
+  </g>
+
+  <!-- Compliance -->
+  <g transform="translate(690, 314)">
+    <rect width="200" height="44" rx="6" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="1"/>
+    <circle cx="16" cy="22" r="5" fill="#059669" opacity="0.6"/>
+    <text x="28" y="15" class="node-label">Compliance Exports</text>
+    <text x="28" y="28" class="node-sub">SARIF → GitHub Security tab</text>
+    <text x="28" y="38" class="node-sub">CycloneDX 1.6, SPDX 3.0</text>
+  </g>
+
+  <!-- SIEM -->
+  <g transform="translate(690, 372)">
+    <rect width="200" height="36" rx="6" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="1"/>
+    <circle cx="16" cy="18" r="5" fill="#059669" opacity="0.6"/>
+    <text x="28" y="15" class="node-label">SIEM + Alerting</text>
+    <text x="28" y="28" class="node-sub">JSON webhook, HTML reports</text>
+  </g>
+
+  <!-- ════════════════════════════════════════════════════════════════════ -->
+  <!-- BOTTOM: How AWS scan works callout -->
+  <!-- ════════════════════════════════════════════════════════════════════ -->
+
+  <line x1="40" y1="424" x2="880" y2="424" stroke="#e2e8f0" stroke-width="1"/>
+
+  <g transform="translate(30, 438)">
+    <rect width="860" height="66" rx="8" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+    <text x="430" y="16" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#475569" letter-spacing="0.05em">HOW CLOUD SCANNING WORKS (e.g. --aws)</text>
+    <text x="430" y="32" text-anchor="middle" class="footer" fill="#64748b">Your AWS creds (env / profile / IAM role)  →  agent-bom calls Bedrock, Lambda, EKS, SageMaker APIs  →  extracts packages from each resource</text>
+    <text x="430" y="46" text-anchor="middle" class="footer" fill="#64748b">→  OSV + NVD enrichment  →  blast radius analysis  →  threat framework tagging  →  output to any surface above</text>
+    <text x="430" y="58" text-anchor="middle" class="footer" fill="#94a3b8">Read-only  ·  Uses your existing credential chain  ·  Never provisions resources  ·  --dry-run to preview API calls</text>
+  </g>
+</svg>

@@ -82,6 +82,13 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
 </tr>
 </table>
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/agent-bom/agent-bom/main/docs/images/deployment-dark.svg">
+    <img src="https://raw.githubusercontent.com/agent-bom/agent-bom/main/docs/images/deployment-light.svg" alt="Enterprise deployment topology" width="800" style="padding: 20px 0" />
+  </picture>
+</p>
+
 ---
 
 ## Quick links

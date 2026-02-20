@@ -51,7 +51,7 @@ agent-bom answers the question security teams actually need:
 - **Enterprise remediation** — named assets, impact percentages, risk narratives per fix
 - **OWASP LLM Top 10 + MITRE ATLAS + NIST AI RMF** — triple threat framework tagging on every finding
 - **AI-powered enrichment** — LLM-generated risk narratives, executive summaries, and threat chains via `--ai-enrich`
-- **101-server MCP registry** — risk levels, provenance, tool inventories (incl. OpenClaw)
+- **102-server MCP registry** — risk levels, provenance, tool inventories (incl. OpenClaw)
 - **Policy-as-code** — block unverified servers, enforce risk thresholds in CI
 - **Read-only** — never writes configs, never runs servers, never stores secrets
 - **Works everywhere** — CLI, Docker, REST API, Cloud UI, CI/CD, Prometheus, Kubernetes
@@ -407,7 +407,7 @@ What `--ai-enrich` generates:
 - **Executive summary** — one-paragraph CISO brief with risk rating and actions
 - **Threat chains** — red-team-style attack chain analysis through MCP tools
 
-### MCP Server Registry (101 servers)
+### MCP Server Registry (102 servers)
 
 Ships with a curated registry of 101 known MCP servers — including OpenClaw. Each entry includes: package name + version pin, ecosystem, risk level, tool names, credential env vars, license, and source URL.
 
@@ -514,7 +514,7 @@ agent-bom covers the AI infrastructure landscape through multiple scanning strat
 | **AI frameworks** | Dependency scanning (PyPI/npm) | LangChain, LlamaIndex, AutoGen, CrewAI, PyTorch, Transformers, NeMo |
 | **Vector databases** | `--image` for self-hosted | Weaviate, Qdrant, Milvus, ChromaDB, pgvector |
 | **LLM providers** | API key detection + SDK scanning | OpenAI, Anthropic, Cohere, Mistral, Gemini |
-| **MCP ecosystem** | Auto-discovery (10 clients) + registry (101 servers) | Claude Desktop, Cursor, Windsurf, Cline, OpenClaw |
+| **MCP ecosystem** | Auto-discovery (10 clients) + registry (102 servers) | Claude Desktop, Cursor, Windsurf, Cline, OpenClaw |
 | **IaC + CI/CD** | `--tf-dir` and `--gha` | Terraform AI resources, GitHub Actions AI workflows |
 
 ---

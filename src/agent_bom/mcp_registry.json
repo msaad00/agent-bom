@@ -2540,6 +2540,35 @@
         "CVE-2026-27486",
         "CVE-2026-27487"
       ]
+    },
+    "mcp-clickhouse": {
+      "package": "mcp-clickhouse",
+      "ecosystem": "pypi",
+      "latest_version": "0.2.0",
+      "description": "ClickHouse MCP server — SQL query, database/table listing, chDB embedded engine (691 GitHub stars)",
+      "command_patterns": [
+        "mcp-clickhouse",
+        "mcp_clickhouse",
+        "python -m mcp_clickhouse.main"
+      ],
+      "category": "database",
+      "risk_level": "high",
+      "verified": true,
+      "license": "Apache-2.0",
+      "tools": [
+        "run_select_query",
+        "list_databases",
+        "list_tables",
+        "run_chdb_select_query"
+      ],
+      "credential_env_vars": [
+        "CLICKHOUSE_HOST",
+        "CLICKHOUSE_PORT",
+        "CLICKHOUSE_USER",
+        "CLICKHOUSE_PASSWORD",
+        "CLICKHOUSE_MCP_AUTH_TOKEN"
+      ],
+      "source_url": "https://github.com/ClickHouse/mcp-clickhouse"
     }
   }
 }

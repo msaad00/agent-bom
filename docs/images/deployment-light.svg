@@ -121,7 +121,7 @@
     <g transform="translate(12, 120)">
       <rect width="130" height="28" rx="5" fill="#fff7ed" stroke="#fb923c" stroke-width="1"/>
       <text x="65" y="12" text-anchor="middle" class="node-label" fill="#9a3412">MCP Registry</text>
-      <text x="65" y="23" text-anchor="middle" class="node-sub" fill="#c2410c">101 servers + provenance</text>
+      <text x="65" y="23" text-anchor="middle" class="node-sub" fill="#c2410c">102 servers + provenance</text>
     </g>
 
     <g transform="translate(156, 120)">

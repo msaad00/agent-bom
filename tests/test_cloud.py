@@ -1170,7 +1170,317 @@ def test_openai_fine_tunes_discovered():
     assert "succeeded" in ft_agents[0].version
 
 
+# ─── Azure Provider Tests ─────────────────────────────────────────────────
+
+
+def _install_mock_azure():
+    """Install mock Azure SDK modules in sys.modules."""
+    # azure.identity
+    azure = types.ModuleType("azure")
+    azure_identity = types.ModuleType("azure.identity")
+    azure_identity.DefaultAzureCredential = MagicMock
+    azure.identity = azure_identity
+
+    # azure.mgmt.appcontainers
+    azure_mgmt = types.ModuleType("azure.mgmt")
+    azure_mgmt_appcontainers = types.ModuleType("azure.mgmt.appcontainers")
+    azure_mgmt_appcontainers.ContainerAppsAPIClient = MagicMock
+    azure_mgmt.appcontainers = azure_mgmt_appcontainers
+
+    # azure.mgmt.resource
+    azure_mgmt_resource = types.ModuleType("azure.mgmt.resource")
+    azure_mgmt_resource.ResourceManagementClient = MagicMock
+    azure_mgmt.resource = azure_mgmt_resource
+
+    # azure.ai.projects
+    azure_ai = types.ModuleType("azure.ai")
+    azure_ai_projects = types.ModuleType("azure.ai.projects")
+    azure_ai_projects.AIProjectClient = MagicMock
+    azure_ai.projects = azure_ai_projects
+
+    sys.modules.setdefault("azure", azure)
+    sys.modules.setdefault("azure.identity", azure_identity)
+    sys.modules.setdefault("azure.mgmt", azure_mgmt)
+    sys.modules.setdefault("azure.mgmt.appcontainers", azure_mgmt_appcontainers)
+    sys.modules.setdefault("azure.mgmt.resource", azure_mgmt_resource)
+    sys.modules.setdefault("azure.ai", azure_ai)
+    sys.modules.setdefault("azure.ai.projects", azure_ai_projects)
+    return azure
+
+
+def test_azure_missing_sdk():
+    """Helpful error when azure-identity is not installed."""
+    with patch.dict(sys.modules, {"azure.identity": None, "azure": None}):
+        with pytest.raises(CloudDiscoveryError, match="azure-identity is required"):
+            import agent_bom.cloud.azure as az_mod
+            importlib.reload(az_mod)
+            az_mod.discover(subscription_id="sub-123")
+
+
+def test_azure_missing_subscription():
+    """Warning when AZURE_SUBSCRIPTION_ID is not set."""
+    _install_mock_azure()
+    importlib.reload(importlib.import_module("agent_bom.cloud.azure"))
+    from agent_bom.cloud.azure import discover
+
+    with patch.dict("os.environ", {}, clear=True):
+        agents, warnings = discover()
+    assert len(agents) == 0
+    assert any("AZURE_SUBSCRIPTION_ID" in w for w in warnings)
+
+
+def test_azure_container_apps_discovered():
+    """Azure Container Apps are discovered with images extracted."""
+    _install_mock_azure()
+    importlib.reload(importlib.import_module("agent_bom.cloud.azure"))
+    from agent_bom.cloud.azure import discover
+
+    mock_credential = MagicMock()
+    mock_client = MagicMock()
+
+    # Mock a Container App with a container image
+    mock_container = MagicMock()
+    mock_container.name = "api-container"
+    mock_container.image = "myregistry.azurecr.io/ai-agent:v1.2"
+
+    mock_template = MagicMock()
+    mock_template.containers = [mock_container]
+
+    mock_app = MagicMock()
+    mock_app.name = "my-ai-agent-app"
+    mock_app.id = "/subscriptions/sub-123/resourceGroups/rg-ai/providers/Microsoft.App/containerApps/my-ai-agent-app"
+    mock_app.template = mock_template
+
+    mock_client.container_apps.list_by_subscription.return_value = [mock_app]
+
+    with patch("azure.identity.DefaultAzureCredential", return_value=mock_credential), \
+         patch("azure.mgmt.appcontainers.ContainerAppsAPIClient", return_value=mock_client):
+        agents, warnings = discover(subscription_id="sub-123")
+
+    ca_agents = [a for a in agents if a.source == "azure-container-apps"]
+    assert len(ca_agents) == 1
+    assert "my-ai-agent-app" in ca_agents[0].name
+    assert ca_agents[0].mcp_servers[0].args[1] == "myregistry.azurecr.io/ai-agent:v1.2"
+
+
+def test_azure_ai_foundry_discovered():
+    """Azure AI Foundry ML workspaces are discovered."""
+    _install_mock_azure()
+    importlib.reload(importlib.import_module("agent_bom.cloud.azure"))
+    from agent_bom.cloud.azure import discover
+
+    mock_credential = MagicMock()
+    mock_ca_client = MagicMock()
+    mock_ca_client.container_apps.list_by_subscription.return_value = []
+
+    mock_rm_client = MagicMock()
+    mock_workspace = MagicMock()
+    mock_workspace.name = "my-ml-workspace"
+    mock_workspace.id = "/subscriptions/sub-123/resourceGroups/rg-ai/providers/Microsoft.MachineLearningServices/workspaces/my-ml-workspace"
+    mock_rm_client.resources.list.return_value = [mock_workspace]
+
+    with patch("azure.identity.DefaultAzureCredential", return_value=mock_credential), \
+         patch("azure.mgmt.appcontainers.ContainerAppsAPIClient", return_value=mock_ca_client), \
+         patch("azure.mgmt.resource.ResourceManagementClient", return_value=mock_rm_client):
+        agents, warnings = discover(subscription_id="sub-123")
+
+    ai_agents = [a for a in agents if a.source == "azure-ai-foundry"]
+    assert len(ai_agents) == 1
+    assert "my-ml-workspace" in ai_agents[0].name
+
+
+def test_azure_container_apps_by_resource_group():
+    """Azure Container Apps filtered by resource group."""
+    _install_mock_azure()
+    importlib.reload(importlib.import_module("agent_bom.cloud.azure"))
+    from agent_bom.cloud.azure import discover
+
+    mock_credential = MagicMock()
+    mock_client = MagicMock()
+
+    mock_container = MagicMock()
+    mock_container.name = "sidecar"
+    mock_container.image = "mcr.microsoft.com/agent:latest"
+    mock_template = MagicMock()
+    mock_template.containers = [mock_container]
+    mock_app = MagicMock()
+    mock_app.name = "rg-scoped-app"
+    mock_app.id = "azure://rg-scoped-app"
+    mock_app.template = mock_template
+
+    mock_client.container_apps.list_by_resource_group.return_value = [mock_app]
+
+    with patch("azure.identity.DefaultAzureCredential", return_value=mock_credential), \
+         patch("azure.mgmt.appcontainers.ContainerAppsAPIClient", return_value=mock_client):
+        agents, warnings = discover(subscription_id="sub-123", resource_group="rg-ai")
+
+    assert len(agents) >= 1
+    # Should use list_by_resource_group, not list_by_subscription
+    mock_client.container_apps.list_by_resource_group.assert_called_once_with("rg-ai")
+
+
+# ─── GCP Provider Tests ──────────────────────────────────────────────────
+
+
+def _install_mock_gcp():
+    """Install mock GCP SDK modules in sys.modules."""
+    google = types.ModuleType("google")
+    google_cloud = types.ModuleType("google.cloud")
+    google_cloud_aiplatform = types.ModuleType("google.cloud.aiplatform")
+    google_cloud_aiplatform.init = MagicMock()
+    google_cloud_aiplatform.Endpoint = MagicMock()
+    google_cloud.aiplatform = google_cloud_aiplatform
+
+    google_cloud_run_v2 = types.ModuleType("google.cloud.run_v2")
+    google_cloud_run_v2.ServicesClient = MagicMock
+    google_cloud.run_v2 = google_cloud_run_v2
+
+    google_auth = types.ModuleType("google.auth")
+    google.auth = google_auth
+    google.cloud = google_cloud
+
+    sys.modules.setdefault("google", google)
+    sys.modules.setdefault("google.auth", google_auth)
+    sys.modules.setdefault("google.cloud", google_cloud)
+    sys.modules.setdefault("google.cloud.aiplatform", google_cloud_aiplatform)
+    sys.modules.setdefault("google.cloud.run_v2", google_cloud_run_v2)
+    return google
+
+
+def test_gcp_missing_sdk():
+    """Helpful error when google-cloud-aiplatform is not installed."""
+    with patch.dict(sys.modules, {"google.cloud.aiplatform": None, "google.cloud": None, "google": None}):
+        with pytest.raises(CloudDiscoveryError, match="google-cloud-aiplatform is required"):
+            import agent_bom.cloud.gcp as gcp_mod
+            importlib.reload(gcp_mod)
+            gcp_mod.discover(project_id="my-project")
+
+
+def test_gcp_missing_project():
+    """Warning when GOOGLE_CLOUD_PROJECT is not set."""
+    _install_mock_gcp()
+    importlib.reload(importlib.import_module("agent_bom.cloud.gcp"))
+    from agent_bom.cloud.gcp import discover
+
+    with patch.dict("os.environ", {}, clear=True):
+        agents, warnings = discover()
+    assert len(agents) == 0
+    assert any("GOOGLE_CLOUD_PROJECT" in w for w in warnings)
+
+
+def test_gcp_vertex_ai_endpoints_discovered():
+    """Vertex AI endpoints with deployed models are discovered."""
+    _install_mock_gcp()
+    importlib.reload(importlib.import_module("agent_bom.cloud.gcp"))
+    from agent_bom.cloud.gcp import discover
+
+    mock_deployed_model = MagicMock()
+    mock_deployed_model.model = "projects/123/locations/us-central1/models/my-model"
+    mock_deployed_model.display_name = "bert-classifier"
+
+    mock_gca = MagicMock()
+    mock_gca.deployed_models = [mock_deployed_model]
+
+    mock_endpoint = MagicMock()
+    mock_endpoint.display_name = "prod-endpoint"
+    mock_endpoint.resource_name = "projects/123/locations/us-central1/endpoints/456"
+    mock_endpoint.gca_resource = mock_gca
+
+    with patch("google.cloud.aiplatform.init"), \
+         patch("google.cloud.aiplatform.Endpoint.list", return_value=[mock_endpoint]):
+        agents, warnings = discover(project_id="my-project", region="us-central1")
+
+    vertex_agents = [a for a in agents if a.source == "gcp-vertex-ai"]
+    assert len(vertex_agents) == 1
+    assert "prod-endpoint" in vertex_agents[0].name
+    assert len(vertex_agents[0].mcp_servers) == 1
+    assert "bert-classifier" in vertex_agents[0].mcp_servers[0].name
+
+
+def test_gcp_cloud_run_services_discovered():
+    """Cloud Run services with container images are discovered."""
+    _install_mock_gcp()
+    importlib.reload(importlib.import_module("agent_bom.cloud.gcp"))
+    from agent_bom.cloud.gcp import discover
+
+    mock_container = MagicMock()
+    mock_container.image = "gcr.io/my-project/ai-service:v2"
+
+    mock_template = MagicMock()
+    mock_template.containers = [mock_container]
+
+    mock_service = MagicMock()
+    mock_service.name = "projects/my-project/locations/us-central1/services/ai-service"
+    mock_service.template = mock_template
+
+    mock_client = MagicMock()
+    mock_client.list_services.return_value = [mock_service]
+
+    with patch("google.cloud.aiplatform.init"), \
+         patch("google.cloud.aiplatform.Endpoint.list", return_value=[]), \
+         patch("google.cloud.run_v2.ServicesClient", return_value=mock_client):
+        agents, warnings = discover(project_id="my-project", region="us-central1")
+
+    run_agents = [a for a in agents if a.source == "gcp-cloud-run"]
+    assert len(run_agents) == 1
+    assert "ai-service" in run_agents[0].name
+    assert "gcr.io/my-project/ai-service:v2" in run_agents[0].mcp_servers[0].args
+
+
+def test_gcp_vertex_and_cloud_run_combined():
+    """Both Vertex AI and Cloud Run are discovered in a single scan."""
+    _install_mock_gcp()
+    importlib.reload(importlib.import_module("agent_bom.cloud.gcp"))
+    from agent_bom.cloud.gcp import discover
+
+    # Vertex AI
+    mock_deployed = MagicMock()
+    mock_deployed.model = "projects/123/locations/us-central1/models/llm"
+    mock_deployed.display_name = "llm-model"
+    mock_gca = MagicMock()
+    mock_gca.deployed_models = [mock_deployed]
+    mock_ep = MagicMock()
+    mock_ep.display_name = "llm-endpoint"
+    mock_ep.resource_name = "projects/123/locations/us-central1/endpoints/789"
+    mock_ep.gca_resource = mock_gca
+
+    # Cloud Run
+    mock_container = MagicMock()
+    mock_container.image = "gcr.io/proj/svc:v1"
+    mock_template = MagicMock()
+    mock_template.containers = [mock_container]
+    mock_svc = MagicMock()
+    mock_svc.name = "projects/proj/locations/us-central1/services/svc"
+    mock_svc.template = mock_template
+    mock_run_client = MagicMock()
+    mock_run_client.list_services.return_value = [mock_svc]
+
+    with patch("google.cloud.aiplatform.init"), \
+         patch("google.cloud.aiplatform.Endpoint.list", return_value=[mock_ep]), \
+         patch("google.cloud.run_v2.ServicesClient", return_value=mock_run_client):
+        agents, warnings = discover(project_id="proj", region="us-central1")
+
+    assert len([a for a in agents if a.source == "gcp-vertex-ai"]) == 1
+    assert len([a for a in agents if a.source == "gcp-cloud-run"]) == 1
+
+
 # ─── CLI Dry-Run Tests for New Providers ──────────────────────────────────
+
+
+def test_dry_run_lists_azure_apis():
+    """--dry-run --azure mentions Azure APIs in output."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", "--dry-run", "--azure"])
+    assert result.exit_code == 0
+    assert "Azure" in result.output
+
+
+def test_dry_run_lists_gcp_apis():
+    """--dry-run --gcp mentions GCP APIs in output."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", "--dry-run", "--gcp"])
+    assert result.exit_code == 0
+    assert "GCP" in result.output
 
 
 def test_dry_run_lists_huggingface_apis():
@@ -1203,3 +1513,22 @@ def test_dry_run_lists_openai_apis():
     result = runner.invoke(main, ["scan", "--dry-run", "--openai"])
     assert result.exit_code == 0
     assert "OpenAI" in result.output
+
+
+# ─── MCP Registry — ClickHouse ────────────────────────────────────────────
+
+
+def test_clickhouse_in_mcp_registry():
+    """ClickHouse MCP server should be in the registry with real data."""
+    from pathlib import Path
+    registry_path = Path(__file__).parent.parent / "src" / "agent_bom" / "mcp_registry.json"
+    data = json.loads(registry_path.read_text())
+    assert "mcp-clickhouse" in data["servers"]
+    entry = data["servers"]["mcp-clickhouse"]
+    assert entry["ecosystem"] == "pypi"
+    assert entry["license"] == "Apache-2.0"
+    assert entry["risk_level"] == "high"
+    assert "CLICKHOUSE_PASSWORD" in entry["credential_env_vars"]
+    assert "run_select_query" in entry["tools"]
+    assert "list_databases" in entry["tools"]
+    assert entry["source_url"] == "https://github.com/ClickHouse/mcp-clickhouse"

@@ -83,18 +83,11 @@ CONFIG_LOCATIONS: dict[AgentType, dict[str, list[str]]] = {
     },
     AgentType.OPENCLAW: {
         # OpenClaw AI agent — https://github.com/openclaw/openclaw
-        "Darwin": [
-            "~/.openclaw/config.json",
-            "~/Library/Application Support/OpenClaw/openclaw.json",
-        ],
-        "Linux": [
-            "~/.openclaw/config.json",
-            "~/.config/openclaw/openclaw.json",
-        ],
-        "Windows": [
-            "~/.openclaw/config.json",
-            "~/AppData/Roaming/OpenClaw/openclaw.json",
-        ],
+        # Config dir: ~/.openclaw/ on all platforms (resolveConfigDir in src/utils.ts)
+        # Override via OPENCLAW_STATE_DIR env var
+        "Darwin": ["~/.openclaw/openclaw.json"],
+        "Linux": ["~/.openclaw/openclaw.json"],
+        "Windows": ["~/.openclaw/openclaw.json"],
     },
 }
 
@@ -120,8 +113,10 @@ def parse_mcp_config(config_data: dict, config_path: str) -> list[MCPServer]:
     """Parse MCP server definitions from a config file.
 
     Supports multiple config formats:
-    - Standard (Claude Desktop, Cursor, Windsurf, Cortex Code, OpenClaw):
+    - Standard (Claude Desktop, Cursor, Windsurf, Cortex Code):
         {"mcpServers": {"name": {"command": ..., "args": [...]}}}
+    - OpenClaw (openclaw.json — agent config + optional mcpServers):
+        {"agent": {...}, "mcpServers": {"name": {"command": ..., "args": [...]}}}
     - Continue.dev (array format):
         {"mcpServers": [{"name": "...", "command": ..., "args": [...]}]}
     - Zed editor:

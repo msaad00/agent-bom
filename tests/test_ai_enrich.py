@@ -19,27 +19,27 @@ from agent_bom.models import (
 
 
 def _make_blast_radius() -> BlastRadius:
-    """Create a test BlastRadius with realistic data."""
+    """Create a test BlastRadius with realistic data based on real OpenClaw CVEs."""
     vuln = Vulnerability(
-        id="CVE-2026-25253",
-        summary="Remote code execution in OpenClaw",
-        severity=Severity.CRITICAL,
-        cvss_score=9.8,
-        fixed_version="2.2.0",
+        id="CVE-2026-27001",
+        summary="Unsanitized CWD path injection into LLM prompts in OpenClaw",
+        severity=Severity.HIGH,
+        cvss_score=8.1,
+        fixed_version="2026.1.30",
     )
-    pkg = Package(name="openclaw", version="2.0.0", ecosystem="npm")
-    tool = MCPTool(name="shell_exec", description="Execute shell commands")
+    pkg = Package(name="openclaw", version="2026.1.15", ecosystem="npm")
+    tool = MCPTool(name="exec", description="Execute shell commands")
     server = MCPServer(
-        name="openclaw-server",
-        command="npx",
-        args=["openclaw"],
-        env={"OPENCLAW_API_KEY": "***REDACTED***"},
+        name="openclaw-gateway",
+        command="openclaw",
+        args=["daemon"],
+        env={"OPENAI_API_KEY": "***REDACTED***"},
         tools=[tool],
     )
     agent = Agent(
         name="openclaw",
         agent_type=AgentType.OPENCLAW,
-        config_path="~/.openclaw/config.json",
+        config_path="~/.openclaw/openclaw.json",
         mcp_servers=[server],
     )
     return BlastRadius(
@@ -47,7 +47,7 @@ def _make_blast_radius() -> BlastRadius:
         package=pkg,
         affected_servers=[server],
         affected_agents=[agent],
-        exposed_credentials=["OPENCLAW_API_KEY"],
+        exposed_credentials=["OPENAI_API_KEY"],
         exposed_tools=[tool],
         risk_score=9.5,
     )
@@ -100,11 +100,11 @@ def test_build_blast_radius_prompt():
     from agent_bom.ai_enrich import _build_blast_radius_prompt
     br = _make_blast_radius()
     prompt = _build_blast_radius_prompt(br)
-    assert "CVE-2026-25253" in prompt
+    assert "CVE-2026-27001" in prompt
     assert "openclaw" in prompt
-    assert "OPENCLAW_API_KEY" in prompt
-    assert "shell_exec" in prompt
-    assert "9.8" in prompt
+    assert "OPENAI_API_KEY" in prompt
+    assert "exec" in prompt
+    assert "8.1" in prompt
 
 
 def test_build_executive_summary_prompt():
@@ -113,7 +113,7 @@ def test_build_executive_summary_prompt():
     report = _make_report()
     prompt = _build_executive_summary_prompt(report)
     assert "agent(s)" in prompt
-    assert "CVE-2026-25253" in prompt
+    assert "MCP server(s)" in prompt
 
 
 def test_build_threat_chain_prompt():
@@ -121,9 +121,9 @@ def test_build_threat_chain_prompt():
     from agent_bom.ai_enrich import _build_threat_chain_prompt
     report = _make_report()
     prompt = _build_threat_chain_prompt(report)
-    assert "CVE-2026-25253" in prompt
-    assert "shell_exec" in prompt
-    assert "OPENCLAW_API_KEY" in prompt
+    assert "CVE-2026-27001" in prompt
+    assert "exec" in prompt
+    assert "OPENAI_API_KEY" in prompt
 
 
 # ── LLM Call Mocking Tests ─────────────────────────────────────────────────
@@ -161,10 +161,10 @@ async def test_threat_chains_with_mock_llm():
     report = _make_report()
 
     with patch("agent_bom.ai_enrich._check_litellm", return_value=True), \
-         patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock, return_value="1. Exploit CVE-2026-25253\n2. Access shell_exec\n3. Exfiltrate OPENCLAW_API_KEY"):
+         patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock, return_value="1. Exploit CVE-2026-27001\n2. Access exec\n3. Exfiltrate OPENAI_API_KEY"):
         result = await generate_threat_chains(report)
         assert len(result) == 1
-        assert "CVE-2026-25253" in result[0]
+        assert "CVE-2026-27001" in result[0]
 
 
 @pytest.mark.asyncio
@@ -236,10 +236,10 @@ def test_json_output_includes_ai_summary():
     """JSON output should include ai_summary field in blast_radius."""
     from agent_bom.output import to_json
     br = _make_blast_radius()
-    br.ai_summary = "AI-generated analysis of CVE-2026-25253"
+    br.ai_summary = "AI-generated analysis of CVE-2026-27001"
     report = _make_report([br])
     data = to_json(report)
-    assert data["blast_radius"][0]["ai_summary"] == "AI-generated analysis of CVE-2026-25253"
+    assert data["blast_radius"][0]["ai_summary"] == "AI-generated analysis of CVE-2026-27001"
 
 
 def test_json_output_includes_executive_summary():

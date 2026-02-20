@@ -51,7 +51,7 @@ agent-bom answers the question security teams actually need:
 - **Enterprise remediation** — named assets, impact percentages, risk narratives per fix
 - **OWASP LLM Top 10 + MITRE ATLAS + NIST AI RMF** — triple threat framework tagging on every finding
 - **AI-powered enrichment** — LLM-generated risk narratives, executive summaries, and threat chains via `--ai-enrich`
-- **103-server MCP registry** — risk levels, provenance, tool inventories (incl. OpenClaw)
+- **101-server MCP registry** — risk levels, provenance, tool inventories (incl. OpenClaw)
 - **Policy-as-code** — block unverified servers, enforce risk thresholds in CI
 - **Read-only** — never writes configs, never runs servers, never stores secrets
 - **Works everywhere** — CLI, Docker, REST API, Cloud UI, CI/CD, Prometheus, Kubernetes
@@ -375,10 +375,10 @@ agent-bom scan --aws -f graph -o agent-graph.json
 
 ### OpenClaw scanning
 
-[OpenClaw](https://github.com/openclaw/openclaw) (213k+ stars) is the fastest-growing open-source AI agent. agent-bom auto-discovers OpenClaw configs and scans them for vulnerabilities — including 7+ known CVEs (RCE, SSRF, secret leakage) and 800+ malicious skills in ClawHub.
+[OpenClaw](https://github.com/openclaw/openclaw) (214k+ stars) is the most popular open-source personal AI assistant. agent-bom auto-discovers OpenClaw configs and scans them for vulnerabilities — including 12 known CVEs (CWD injection, container escape, SSRF, XSS, secret leakage) from OpenClaw's published security advisories.
 
 ```bash
-# Auto-discovers ~/.openclaw/config.json and project-level .openclaw/openclaw.json
+# Auto-discovers ~/.openclaw/openclaw.json and project-level .openclaw/openclaw.json
 agent-bom scan
 
 # Combine with live introspection
@@ -407,9 +407,9 @@ What `--ai-enrich` generates:
 - **Executive summary** — one-paragraph CISO brief with risk rating and actions
 - **Threat chains** — red-team-style attack chain analysis through MCP tools
 
-### MCP Server Registry (103 servers)
+### MCP Server Registry (101 servers)
 
-Ships with a curated registry of 103 known MCP servers — including OpenClaw and its ecosystem. Each entry includes: package name + version pin, ecosystem, risk level, tool names, credential env vars, license, and source URL.
+Ships with a curated registry of 101 known MCP servers — including OpenClaw. Each entry includes: package name + version pin, ecosystem, risk level, tool names, credential env vars, license, and source URL.
 
 Unverified servers in your configs trigger a warning. Policy rules can block them in CI.
 
@@ -514,7 +514,7 @@ agent-bom covers the AI infrastructure landscape through multiple scanning strat
 | **AI frameworks** | Dependency scanning (PyPI/npm) | LangChain, LlamaIndex, AutoGen, CrewAI, PyTorch, Transformers, NeMo |
 | **Vector databases** | `--image` for self-hosted | Weaviate, Qdrant, Milvus, ChromaDB, pgvector |
 | **LLM providers** | API key detection + SDK scanning | OpenAI, Anthropic, Cohere, Mistral, Gemini |
-| **MCP ecosystem** | Auto-discovery (10 clients) + registry (103 servers) | Claude Desktop, Cursor, Windsurf, Cline, OpenClaw |
+| **MCP ecosystem** | Auto-discovery (10 clients) + registry (101 servers) | Claude Desktop, Cursor, Windsurf, Cline, OpenClaw |
 | **IaC + CI/CD** | `--tf-dir` and `--gha` | Terraform AI resources, GitHub Actions AI workflows |
 
 ---
@@ -562,7 +562,7 @@ These tools solve different problems and are **complementary**.
 - [x] AI platform discovery — HuggingFace Hub, Weights & Biases, MLflow, OpenAI
 - [x] NIST AI RMF compliance mapping (Govern, Map, Measure, Manage)
 - [x] MCP runtime introspection — connect to live servers for tool/resource discovery + drift detection
-- [x] OpenClaw discovery — auto-scan OpenClaw configs, 7+ known CVEs, ClawHub malicious skill detection
+- [x] OpenClaw discovery — auto-scan OpenClaw configs, 12 known CVEs from published security advisories
 - [x] AI-powered enrichment — LLM-generated risk narratives, executive summaries, and threat chains via litellm
 - [ ] Jupyter notebook AI library scanning
 - [ ] ToolHive integration (`--toolhive` flag for managed server scanning)

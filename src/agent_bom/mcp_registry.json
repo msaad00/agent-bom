@@ -2489,89 +2489,57 @@
     "openclaw": {
       "package": "openclaw",
       "ecosystem": "npm",
-      "latest_version": "2.1.0",
-      "description": "OpenClaw AI agent core runtime — autonomous personal AI with MCP support",
+      "latest_version": "2026.2.19",
+      "description": "OpenClaw personal AI assistant — multi-channel gateway (WhatsApp, Telegram, Slack, Discord, iMessage, Teams) with 214k+ GitHub stars",
       "command_patterns": [
         "openclaw",
-        "openclaw-server",
-        "openclaw-mcp"
+        "openclaw onboard",
+        "openclaw daemon"
       ],
       "category": "ai-agent",
       "risk_level": "high",
       "verified": true,
       "license": "MIT",
       "tools": [
-        "chat",
-        "generate",
-        "code_execute",
         "web_search",
-        "file_read",
-        "file_write",
-        "shell_exec",
-        "browser_navigate"
+        "web_fetch",
+        "read",
+        "write",
+        "edit",
+        "exec",
+        "process",
+        "browser",
+        "canvas",
+        "cron",
+        "gateway",
+        "memory_search",
+        "memory_get",
+        "message",
+        "sessions_list",
+        "sessions_send",
+        "sessions_spawn",
+        "nodes",
+        "agents_list"
       ],
       "credential_env_vars": [
-        "OPENCLAW_API_KEY",
         "OPENAI_API_KEY",
         "ANTHROPIC_API_KEY"
       ],
       "source_url": "https://github.com/openclaw/openclaw",
       "known_cves": [
-        "CVE-2026-25253",
-        "CVE-2026-24764",
-        "CVE-2026-26322",
-        "CVE-2026-26324",
-        "CVE-2026-26326",
-        "CVE-2026-26327",
-        "CVE-2026-27008"
+        "CVE-2026-27001",
+        "CVE-2026-27002",
+        "CVE-2026-27003",
+        "CVE-2026-27004",
+        "CVE-2026-27007",
+        "CVE-2026-27008",
+        "CVE-2026-27009",
+        "CVE-2026-26321",
+        "CVE-2026-27484",
+        "CVE-2026-27485",
+        "CVE-2026-27486",
+        "CVE-2026-27487"
       ]
-    },
-    "openclaw-mcp-filesystem": {
-      "package": "openclaw-mcp-filesystem",
-      "ecosystem": "npm",
-      "latest_version": "1.3.0",
-      "description": "OpenClaw filesystem access MCP server",
-      "command_patterns": [
-        "openclaw-mcp-filesystem",
-        "openclaw-fs"
-      ],
-      "category": "filesystem",
-      "risk_level": "high",
-      "verified": true,
-      "license": "MIT",
-      "tools": [
-        "read_file",
-        "write_file",
-        "list_directory",
-        "search_files",
-        "move_file",
-        "delete_file"
-      ],
-      "credential_env_vars": [],
-      "source_url": "https://github.com/openclaw/openclaw-mcp-servers"
-    },
-    "openclaw-mcp-browser": {
-      "package": "openclaw-mcp-browser",
-      "ecosystem": "npm",
-      "latest_version": "1.1.0",
-      "description": "OpenClaw headless browser automation MCP server",
-      "command_patterns": [
-        "openclaw-mcp-browser",
-        "openclaw-browser"
-      ],
-      "category": "browser",
-      "risk_level": "high",
-      "verified": true,
-      "license": "MIT",
-      "tools": [
-        "navigate",
-        "screenshot",
-        "click",
-        "fill",
-        "evaluate_js"
-      ],
-      "credential_env_vars": [],
-      "source_url": "https://github.com/openclaw/openclaw-mcp-servers"
     }
   }
 }

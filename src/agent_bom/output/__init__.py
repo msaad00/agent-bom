@@ -127,6 +127,7 @@ def print_blast_radius(report: AIBOMReport) -> None:
     table.add_column("EPSS", justify="center", no_wrap=True)
     table.add_column("KEV", justify="center", no_wrap=True)
     table.add_column("Blast", justify="center", no_wrap=True)
+    table.add_column("Threats", justify="center", no_wrap=True)
     table.add_column("Fix", ratio=2)
 
     severity_colors = {
@@ -166,13 +167,15 @@ def print_blast_radius(report: AIBOMReport) -> None:
             f"[dim]{br.package.name}@{br.package.version}[/dim]"
         )
 
-        # Tags line appended to Fix column
-        tags = []
-        if br.owasp_tags:
-            tags.append("[purple]" + " ".join(br.owasp_tags) + "[/purple]")
-        if br.atlas_tags:
-            tags.append("[cyan]" + " ".join(br.atlas_tags) + "[/cyan]")
-        fix_display = fix + ("\n" + " ".join(tags) if tags else "")
+        # Threats column: compact tag counts
+        n_owasp = len(br.owasp_tags)
+        n_atlas = len(br.atlas_tags)
+        threat_parts = []
+        if n_owasp:
+            threat_parts.append(f"[purple]O:{n_owasp}[/purple]")
+        if n_atlas:
+            threat_parts.append(f"[cyan]A:{n_atlas}[/cyan]")
+        threats_display = " ".join(threat_parts) if threat_parts else "—"
 
         table.add_row(
             f"[{sev_style}]{br.risk_score:.1f}[/{sev_style}]",
@@ -181,7 +184,8 @@ def print_blast_radius(report: AIBOMReport) -> None:
             epss_display,
             kev_display,
             blast_display,
-            fix_display,
+            threats_display,
+            fix,
         )
 
     console.print(table)
@@ -189,6 +193,27 @@ def print_blast_radius(report: AIBOMReport) -> None:
     if len(report.blast_radii) > 25:
         console.print(f"\n  [dim]...and {len(report.blast_radii) - 25} more findings. "
                        f"Use --output to export full report.[/dim]")
+
+    # Verification sources — one link per unique CVE
+    seen_ids: set[str] = set()
+    sources: list[tuple[str, str]] = []
+    for br in report.blast_radii:
+        vid = br.vulnerability.id
+        if vid in seen_ids:
+            continue
+        seen_ids.add(vid)
+        if br.vulnerability.references:
+            sources.append((vid, br.vulnerability.references[0]))
+        elif vid.startswith("CVE-"):
+            sources.append((vid, f"https://osv.dev/vulnerability/{vid}"))
+        elif vid.startswith("GHSA-"):
+            sources.append((vid, f"https://github.com/advisories/{vid}"))
+    if sources:
+        console.print("\n[bold]Verification Sources[/bold]")
+        for vid, url in sources[:15]:
+            console.print(f"  [dim]{vid}[/dim]  →  [link={url}]{url}[/link]")
+        if len(sources) > 15:
+            console.print(f"  [dim]...and {len(sources) - 15} more (see JSON output for full list)[/dim]")
 
 
 def print_threat_frameworks(report: AIBOMReport) -> None:

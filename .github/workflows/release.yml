@@ -121,10 +121,41 @@ jobs:
           name: python-package-signatures
           path: dist/*.bundle
 
+  vscode-extension:
+    name: Build VS Code Extension
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build VSIX
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          cd vscode-extension
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = '$VERSION';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          npm install
+          npm run compile
+          npx @vscode/vsce package --no-dependencies
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: vscode-extension-vsix
+          path: vscode-extension/*.vsix
+
   github-release:
     name: Create GitHub Release
     # Only requires PyPI publish — Docker Hub is best-effort (needs external secrets)
-    needs: [pypi-publish, sign]
+    needs: [pypi-publish, sign, vscode-extension]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -141,6 +172,12 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           name: python-package-signatures
+          path: dist/
+
+      - name: Download VSIX
+        uses: actions/download-artifact@v7
+        with:
+          name: vscode-extension-vsix
           path: dist/
 
       - name: Create GitHub Release

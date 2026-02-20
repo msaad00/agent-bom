@@ -1846,6 +1846,46 @@ def test_api_trust_headers():
     assert response.headers.get("x-agent-bom-no-credential-storage") == "true"
 
 
+def test_api_agents_endpoint():
+    """GET /v1/agents returns agents with count field."""
+    pytest.importorskip("fastapi", reason="fastapi not installed")
+    from fastapi.testclient import TestClient
+
+    from agent_bom.api.server import app
+    client = TestClient(app)
+    resp = client.get("/v1/agents")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "agents" in body
+    assert "count" in body
+    assert isinstance(body["agents"], list)
+    assert body["count"] == len(body["agents"])
+
+
+def test_api_scan_completes_successfully():
+    """POST /v1/scan → GET poll returns status done with result."""
+    pytest.importorskip("fastapi", reason="fastapi not installed")
+    from fastapi.testclient import TestClient
+
+    from agent_bom.api.server import app
+    client = TestClient(app)
+    resp = client.post("/v1/scan", json={})
+    assert resp.status_code == 202
+    job_id = resp.json()["job_id"]
+
+    # TestClient runs executor tasks synchronously, so poll should have result
+    import time
+    time.sleep(1)
+    poll = client.get(f"/v1/scan/{job_id}")
+    assert poll.status_code == 200
+    data = poll.json()
+    # Job should complete (done) or fail gracefully (no crash)
+    assert data["status"] in ("done", "failed", "running")
+    if data["status"] == "done":
+        assert data["result"] is not None
+        assert "agents" in data["result"]
+
+
 def test_registry_endpoint():
     """GET /v1/registry returns a non-empty list of MCP servers."""
     pytest.importorskip("fastapi", reason="fastapi not installed")

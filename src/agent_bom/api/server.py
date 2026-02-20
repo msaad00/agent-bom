@@ -166,15 +166,15 @@ def _now() -> str:
 
 def _run_scan_sync(job: ScanJob) -> None:
     """Run the full scan pipeline in a thread (blocking). Updates job in-place."""
-    import json as _json
-
     job.status = JobStatus.RUNNING
     job.started_at = _now()
     job.progress.append("Starting scan...")
 
     try:
+        from agent_bom.discovery import discover_all
         from agent_bom.output import to_json
-        from agent_bom.scanner import scan_agents
+        from agent_bom.parsers import extract_packages
+        from agent_bom.scanners import scan_agents_sync
 
         req = job.request
         agents = []
@@ -182,39 +182,59 @@ def _run_scan_sync(job: ScanJob) -> None:
 
         # Step 1 — auto-discover local MCP configs
         job.progress.append("Discovering local MCP configurations...")
-        local_agents, local_warnings = scan_agents()
+        local_agents = discover_all()
         agents.extend(local_agents)
-        warnings_all.extend(local_warnings)
 
         # Step 2 — inventory file
         if req.inventory:
             job.progress.append(f"Loading inventory: {req.inventory}")
-            from agent_bom.inventory import load_inventory
-            inv_agents, inv_warnings = load_inventory(req.inventory)
-            agents.extend(inv_agents)
-            warnings_all.extend(inv_warnings)
+            import json as _json
+
+            from agent_bom.models import Agent, AgentType, MCPServer
+            with open(req.inventory) as _f:
+                inv_data = _json.load(_f)
+            for agent_data in inv_data.get("agents", []):
+                servers = []
+                for s in agent_data.get("mcp_servers", []):
+                    servers.append(MCPServer(
+                        name=s.get("name", "unknown"),
+                        command=s.get("command", ""),
+                        args=s.get("args", []),
+                        env=s.get("env", {}),
+                    ))
+                agents.append(Agent(
+                    name=agent_data.get("name", "unknown"),
+                    agent_type=AgentType.CUSTOM,
+                    config_path=req.inventory,
+                    mcp_servers=servers,
+                ))
+            job.progress.append(f"Loaded {len(inv_data.get('agents', []))} agent(s) from inventory")
 
         # Step 3 — Docker images
-        for image in req.images:
-            job.progress.append(f"Scanning image: {image}")
-            from agent_bom.image_scanner import scan_image
-            img_agents, img_warnings = scan_image(image)
+        for image_ref in req.images:
+            job.progress.append(f"Scanning image: {image_ref}")
+            from agent_bom.image import scan_image
+            img_agents, img_warnings = scan_image(image_ref)
             agents.extend(img_agents)
             warnings_all.extend(img_warnings)
 
         # Step 4 — Kubernetes
         if req.k8s:
             job.progress.append("Scanning Kubernetes pods...")
-            from agent_bom.k8s_scanner import scan_k8s
-            k8s_agents, k8s_warnings = scan_k8s(namespace=req.k8s_namespace)
-            agents.extend(k8s_agents)
-            warnings_all.extend(k8s_warnings)
+            from agent_bom.k8s import discover_images
+            k8s_records = discover_images(namespace=req.k8s_namespace)
+            # Convert discovered images to image scans
+            for img, _pod, _ctr in k8s_records:
+                from agent_bom.image import scan_image
+                k8s_agents, k8s_warns = scan_image(img)
+                agents.extend(k8s_agents)
+                warnings_all.extend(k8s_warns)
 
         # Step 5 — Terraform
         for tf_dir in req.tf_dirs:
             job.progress.append(f"Scanning Terraform: {tf_dir}")
-            from agent_bom.terraform import scan_terraform
-            tf_agents, tf_warnings = scan_terraform(tf_dir)
+            from agent_bom.terraform import scan_terraform_dir
+            tf_agents, tf_warnings = scan_terraform_dir(tf_dir)
             agents.extend(tf_agents)
             warnings_all.extend(tf_warnings)
 
@@ -237,10 +257,20 @@ def _run_scan_sync(job: ScanJob) -> None:
         # Step 8 — existing SBOM
         if req.sbom:
             job.progress.append(f"Ingesting SBOM: {req.sbom}")
-            from agent_bom.sbom_ingest import ingest_sbom
-            sbom_agents, sbom_warnings = ingest_sbom(req.sbom)
-            agents.extend(sbom_agents)
-            warnings_all.extend(sbom_warnings)
+            from agent_bom.sbom import load_sbom
+            sbom_packages, _fmt = load_sbom(req.sbom)
+            # Attach SBOM packages to a synthetic agent
+            if sbom_packages:
+                from agent_bom.models import Agent, AgentType, MCPServer
+                sbom_server = MCPServer(name=f"sbom:{req.sbom}")
+                sbom_server.packages = sbom_packages
+                sbom_agent = Agent(
+                    name=f"sbom:{req.sbom}",
+                    agent_type=AgentType.CUSTOM,
+                    config_path=req.sbom,
+                    mcp_servers=[sbom_server],
+                )
+                agents.append(sbom_agent)
 
         if not agents:
             job.progress.append("No agents found.")
@@ -249,19 +279,27 @@ def _run_scan_sync(job: ScanJob) -> None:
             job.completed_at = _now()
             return
 
-        job.progress.append(f"Found {len(agents)} agent(s). Querying OSV.dev for CVEs...")
+        # Extract packages for all discovered agents
+        job.progress.append(f"Found {len(agents)} agent(s). Extracting packages...")
+        for agent in agents:
+            for server in agent.mcp_servers:
+                if not server.packages:
+                    server.packages = extract_packages(server)
 
-        # Step 9 — CVE scan
-        from agent_bom.scanner import scan_vulnerabilities
-        report = scan_vulnerabilities(agents, enrich=req.enrich)
+        job.progress.append("Querying OSV.dev for CVEs...")
+
+        # Step 9 — CVE scan + blast radius
+        blast_radii = scan_agents_sync(agents, enable_enrichment=req.enrich)
 
         if req.enrich:
             job.progress.append("Enriching with NVD CVSS, EPSS, CISA KEV...")
 
         job.progress.append("Computing blast radius...")
 
-        # Return JSON-serialisable report
-        report_json = _json.loads(to_json(report))
+        # Build report and serialise
+        from agent_bom.models import AIBOMReport
+        report = AIBOMReport(agents=agents, blast_radii=blast_radii)
+        report_json = to_json(report)
         report_json["warnings"] = warnings_all
         job.result = report_json
         job.status = JobStatus.DONE
@@ -374,12 +412,22 @@ async def list_agents() -> dict:
     No CVE scan — instant results for the UI sidebar.
     """
     try:
-        from agent_bom.scanner import scan_agents
-        agents, warnings = scan_agents()
+        from dataclasses import asdict
+
+        from agent_bom.discovery import discover_all
+        from agent_bom.parsers import extract_packages
+
+        agents = discover_all()
+        # Extract packages for each server
+        for agent in agents:
+            for server in agent.mcp_servers:
+                if not server.packages:
+                    server.packages = extract_packages(server)
+
         return {
-            "agents": [a.model_dump() for a in agents],
+            "agents": [asdict(a) for a in agents],
             "count": len(agents),
-            "warnings": warnings,
+            "warnings": [],
         }
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc

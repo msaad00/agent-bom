@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agent-bom"
-version = "0.11.1"
-description = "AI Bill of Materials (AI-BOM) generator — CVE scanning, blast radius, enterprise remediation plans, OWASP LLM Top 10 + MITRE ATLAS threat mapping, and MCP registry for AI agents."
+version = "0.12.0"
+description = "AI Bill of Materials (AI-BOM) generator — CVE scanning, blast radius, enterprise remediation plans, OWASP LLM Top 10 + MITRE ATLAS + NIST AI RMF threat mapping, MCP runtime introspection, and MCP registry for AI agents."
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.10"
 authors = [
     {name = "agent-bom", email = "security@agent-bom.dev"}
 ]
-keywords = ["ai-bom", "sbom", "mcp", "mcp-server", "security", "ai-agents", "vulnerability", "supply-chain", "owasp", "mitre-atlas", "grype", "syft", "blast-radius", "cve", "llm-security", "remediation"]
+keywords = ["ai-bom", "sbom", "mcp", "mcp-server", "security", "ai-agents", "vulnerability", "supply-chain", "owasp", "mitre-atlas", "nist-ai-rmf", "grype", "syft", "blast-radius", "cve", "llm-security", "remediation", "mcp-introspection"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",

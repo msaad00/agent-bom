@@ -136,6 +136,8 @@ def main():
 @click.option("--agent-project", "agent_projects", multiple=True, type=click.Path(exists=True), metavar="DIR",
               help="Python project using an agent framework (OpenAI Agents SDK, Google ADK, LangChain, AutoGen, "
                    "CrewAI, LlamaIndex, Pydantic AI, smolagents, Semantic Kernel, Haystack). Repeatable.")
+@click.option("--introspect", is_flag=True, help="Connect to live MCP servers to discover runtime tools/resources (read-only, requires mcp SDK)")
+@click.option("--introspect-timeout", type=float, default=10.0, show_default=True, help="Timeout per MCP server for --introspect (seconds)")
 @click.option("--verify-integrity", is_flag=True, help="Verify package integrity (SHA256/SRI) and SLSA provenance against registries")
 @click.option("--aws", is_flag=True, help="Discover AI agents from AWS Bedrock, Lambda, and ECS")
 @click.option("--aws-region", default=None, metavar="REGION", help="AWS region (default: AWS_DEFAULT_REGION)")
@@ -198,6 +200,8 @@ def scan(
     tf_dirs: tuple,
     gha_path: Optional[str],
     agent_projects: tuple,
+    introspect: bool,
+    introspect_timeout: float,
     verify_integrity: bool,
     aws: bool,
     aws_region: Optional[str],
@@ -611,6 +615,42 @@ def scan(
                 con.print(f"  [dim]  {server.name}: no local packages found[/dim]")
 
     con.print(f"\n  [bold]{total_packages} total packages.[/bold]")
+
+    # Step 2b: MCP Runtime Introspection (--introspect)
+    if introspect:
+        from agent_bom.mcp_introspect import IntrospectionError, enrich_servers, introspect_servers_sync
+        all_servers = [s for a in agents for s in a.mcp_servers]
+        con.print(f"\n[bold blue]Introspecting {len(all_servers)} MCP server(s)...[/bold blue]\n")
+        try:
+            intro_report = introspect_servers_sync(all_servers, timeout=introspect_timeout)
+            for w in intro_report.warnings:
+                con.print(f"  [yellow]⚠[/yellow] {w}")
+            for r in intro_report.results:
+                if r.success:
+                    drift_str = ""
+                    if r.has_drift:
+                        parts = []
+                        if r.tools_added:
+                            parts.append(f"+{len(r.tools_added)} tools")
+                        if r.tools_removed:
+                            parts.append(f"-{len(r.tools_removed)} tools")
+                        if r.resources_added:
+                            parts.append(f"+{len(r.resources_added)} resources")
+                        if r.resources_removed:
+                            parts.append(f"-{len(r.resources_removed)} resources")
+                        drift_str = f" [yellow]drift: {', '.join(parts)}[/yellow]"
+                    con.print(
+                        f"  [green]✓[/green] {r.server_name}: "
+                        f"{r.tool_count} tools, {r.resource_count} resources"
+                        f"{drift_str}"
+                    )
+                else:
+                    con.print(f"  [dim]  {r.server_name}: {r.error}[/dim]")
+            enriched = enrich_servers(all_servers, intro_report)
+            if enriched:
+                con.print(f"\n  [bold]{enriched} server(s) enriched with runtime data.[/bold]")
+        except IntrospectionError as exc:
+            con.print(f"  [yellow]⚠[/yellow] {exc}")
 
     # Step 3: Resolve unknown versions
     all_packages = [p for a in agents for s in a.mcp_servers for p in s.packages]

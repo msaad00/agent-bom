@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <b>Generate AI Bills of Materials. Scan AI agents and MCP servers for CVEs. Map blast radius. Enterprise remediation with named assets and risk narratives. OWASP LLM Top 10 + MITRE ATLAS.</b>
+  <b>Generate AI Bills of Materials. Scan AI agents and MCP servers for CVEs. Map blast radius. Enterprise remediation with named assets and risk narratives. OWASP LLM Top 10 + MITRE ATLAS + NIST AI RMF.</b>
 </p>
 
 <p align="center">
@@ -49,7 +49,7 @@ agent-bom answers the question security teams actually need:
 - **AI-BOM generation** — structured inventory of agents, servers, packages, credentials, tools
 - **Blast radius analysis** — maps CVEs to agents, credentials, and MCP tools
 - **Enterprise remediation** — named assets, impact percentages, risk narratives per fix
-- **OWASP LLM Top 10 + MITRE ATLAS** — dual threat framework tagging on every finding
+- **OWASP LLM Top 10 + MITRE ATLAS + NIST AI RMF** — triple threat framework tagging on every finding
 - **100-server MCP registry** — risk levels, provenance, tool inventories
 - **Policy-as-code** — block unverified servers, enforce risk thresholds in CI
 - **Read-only** — never writes configs, never runs servers, never stores secrets
@@ -69,6 +69,8 @@ agent-bom answers the question security teams actually need:
 | GitHub Actions | AI env vars + SDK steps |
 | Python agents | 10 frameworks detected |
 | Cloud providers | AWS, Azure, GCP, Databricks, Snowflake, Nebius |
+| AI platforms | HuggingFace, W&B, MLflow, OpenAI |
+| MCP servers | Runtime introspection via MCP SDK |
 | Existing SBOMs | CycloneDX / SPDX import |
 
 **What it outputs:**
@@ -172,20 +174,57 @@ Every finding is also mapped to [MITRE ATLAS](https://atlas.mitre.org/) adversar
 | **AML.T0020** | AI framework + HIGH+ CVE (training data poisoning) |
 | **AML.T0058** | AI framework + creds + HIGH+ (agent context poisoning) |
 
+### NIST AI RMF compliance mapping
+
+Every finding is also mapped to the [NIST AI Risk Management Framework](https://www.nist.gov/artificial-intelligence/ai-risk-management-framework) (AI RMF 1.0) — covering all four functions:
+
+| Subcategory | Triggered when |
+|-------------|---------------|
+| **GOVERN-1.7** | Any package CVE (always — third-party component risk) |
+| **MAP-3.5** | Any package CVE (always — supply chain risk assessed) |
+| **GOVERN-6.1** | Shell/exec tools reachable (third-party assessment) |
+| **GOVERN-6.2** | AI framework + creds + HIGH+ (contingency planning) |
+| **MAP-1.6** | >3 tools reachable (interface mapping) |
+| **MAP-5.2** | Data/file access tools reachable (deployment impact) |
+| **MEASURE-2.5** | AI framework + HIGH+ CVE (security testing) |
+| **MEASURE-2.9** | Fix available (mitigation effectiveness) |
+| **MANAGE-1.3** | CISA KEV finding (documented risk response) |
+| **MANAGE-2.2** | Credentials exposed (anomalous event detection) |
+| **MANAGE-2.4** | AI framework + creds + HIGH+ (remediation) |
+| **MANAGE-4.1** | Credentials + tools exposed (post-deployment monitoring) |
+
+### MCP runtime introspection
+
+Connect to live MCP servers to discover their actual runtime capabilities:
+
+```bash
+agent-bom scan --introspect                 # introspect all discovered servers
+agent-bom scan --introspect --introspect-timeout 15  # custom timeout per server
+```
+
+Introspection is **read-only** — it only calls `tools/list` and `resources/list` (never `tools/call`). It enables:
+
+- **Runtime tool discovery** — see actual tools exposed by running servers
+- **Drift detection** — compare config-declared tools vs runtime reality
+- **Hidden capability discovery** — find tools not declared in configs
+- **Server enrichment** — merge runtime data into the AI-BOM inventory
+
+Requires the MCP SDK: `pip install mcp`
+
 ### Threat framework coverage matrix
 
-After every scan, agent-bom shows which OWASP + ATLAS categories were triggered — and how many findings per category:
+After every scan, agent-bom shows which OWASP + ATLAS + NIST AI RMF categories were triggered — and how many findings per category:
 
-**CLI** — `print_threat_frameworks()` renders two Rich tables with bar charts:
+**CLI** — `print_threat_frameworks()` renders three Rich tables with bar charts:
 
 ```
-┌───────────── OWASP LLM Top 10 ──────────────┐
-│ LLM05  Supply Chain Vulnerabilities    12 ████│
-│ LLM06  Sensitive Information Disclosure 4 ██  │
-│ LLM08  Excessive Agency                2 █   │
-│ LLM01  Prompt Injection                —     │
-│ ...                                          │
-└──────────────────────────────────────────────┘
+┌───────────── OWASP LLM Top 10 ──────────────┐    ┌─────── NIST AI RMF 1.0 ────────┐
+│ LLM05  Supply Chain Vulnerabilities    12 ████│    │ GOVERN-1.7  Third-party risk 12 ████│
+│ LLM06  Sensitive Information Disclosure 4 ██  │    │ MAP-3.5     Supply chain    12 ████│
+│ LLM08  Excessive Agency                2 █   │    │ MANAGE-2.2  Event detection  4 ██  │
+│ LLM01  Prompt Injection                —     │    │ MEASURE-2.5 Security test    2 █   │
+│ ...                                          │    │ ...                               │
+└──────────────────────────────────────────────┘    └─────────────────────────────────┘
 ```
 
 **JSON** — `threat_framework_summary` section with per-category counts:
@@ -195,13 +234,15 @@ After every scan, agent-bom shows which OWASP + ATLAS categories were triggered 
   "threat_framework_summary": {
     "owasp_llm_top10": [{"code": "LLM05", "name": "Supply Chain Vulnerabilities", "findings": 12, "triggered": true}],
     "mitre_atlas": [{"technique_id": "AML.T0010", "name": "ML Supply Chain Compromise", "findings": 12, "triggered": true}],
+    "nist_ai_rmf": [{"subcategory_id": "MAP-3.5", "name": "AI supply chain risks assessed", "findings": 12, "triggered": true}],
     "total_owasp_triggered": 4,
-    "total_atlas_triggered": 5
+    "total_atlas_triggered": 5,
+    "total_nist_triggered": 6
   }
 }
 ```
 
-**Cloud UI** — two-column threat matrix grid with hit/miss indicators and finding counts per category.
+**Cloud UI** — three-column threat matrix grid with hit/miss indicators and finding counts per category.
 
 ### AI-BOM export
 
@@ -234,7 +275,7 @@ Each remediation tells you exactly **what will be protected** when you fix it:
 
 - **Named assets** — which specific agents, credentials, and tools are at risk
 - **Percentages** — what fraction of your total inventory each fix protects
-- **Threat tags** — which OWASP LLM + MITRE ATLAS categories are mitigated
+- **Threat tags** — which OWASP LLM + MITRE ATLAS + NIST AI RMF categories are mitigated
 - **Risk narratives** — plain-text explanation of what happens if you don't remediate
 
 ### Policy-as-code
@@ -425,7 +466,7 @@ agent-bom covers the AI infrastructure landscape through multiple scanning strat
 | Layer | How agent-bom covers it | Examples |
 |-------|------------------------|----------|
 | **GPU clouds** | `--k8s --context=<cluster>` | CoreWeave, Lambda Labs, Paperspace, DGX Cloud |
-| **AI platforms** | Cloud provider modules | AWS Bedrock/SageMaker, Azure AI Foundry, GCP Vertex AI, Databricks, Snowflake Cortex |
+| **AI platforms** | Cloud provider modules | AWS Bedrock/SageMaker, Azure AI Foundry, GCP Vertex AI, Databricks, Snowflake Cortex, HuggingFace Hub, W&B, MLflow, OpenAI |
 | **Container workloads** | `--image` via Grype/Syft | NVIDIA Triton, NIM, vLLM, TGI, Ollama, any OCI image |
 | **K8s-native inference** | `--k8s` discovers pods | KServe, Seldon Core, Kubeflow, Ray Serve, BentoML |
 | **AI frameworks** | Dependency scanning (PyPI/npm) | LangChain, LlamaIndex, AutoGen, CrewAI, PyTorch, Transformers, NeMo |
@@ -445,7 +486,7 @@ These tools solve different problems and are **complementary**.
 | **Purpose** | Scan + audit AI supply chain | Deploy + manage MCP servers |
 | **CVE scanning** | OSV, NVD, EPSS, CISA KEV, Grype | No |
 | **Blast radius** | Agents, credentials, tools | No |
-| **OWASP LLM Top 10** | Auto-tagged on every finding | No |
+| **OWASP + ATLAS + NIST** | Triple-framework tagging on every finding | No |
 | **MCP server isolation** | No (scanner only) | Yes (containers + seccomp) |
 | **Secret injection** | No | Yes (Vault, AWS SM) |
 | **Read-only** | Yes | No (manages processes) |
@@ -476,10 +517,12 @@ These tools solve different problems and are **complementary**.
 - [x] Deep cloud scanning — Snowflake Cortex Agents/MCP Servers, AWS Lambda/EKS/Step Functions/EC2
 - [x] Graph visualization (provider → agent → server → package → CVE)
 - [x] Security skills — downloadable workflow playbooks for AI-BOM, cloud audit, OWASP, incident response
-- [ ] Hugging Face Hub discovery (models, spaces, inference endpoints)
+- [x] AI platform discovery — HuggingFace Hub, Weights & Biases, MLflow, OpenAI
+- [x] NIST AI RMF compliance mapping (Govern, Map, Measure, Manage)
+- [x] MCP runtime introspection — connect to live servers for tool/resource discovery + drift detection
 - [ ] Jupyter notebook AI library scanning
-- [ ] Live MCP server introspection (tool enumeration without execution)
 - [ ] ToolHive integration (`--toolhive` flag for managed server scanning)
+- [ ] License compliance engine (SPDX license detection + copyleft chain analysis)
 
 ---
 

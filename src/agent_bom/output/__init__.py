@@ -170,11 +170,14 @@ def print_blast_radius(report: AIBOMReport) -> None:
         # Threats column: compact tag counts
         n_owasp = len(br.owasp_tags)
         n_atlas = len(br.atlas_tags)
+        n_nist = len(br.nist_ai_rmf_tags)
         threat_parts = []
         if n_owasp:
             threat_parts.append(f"[purple]O:{n_owasp}[/purple]")
         if n_atlas:
             threat_parts.append(f"[cyan]A:{n_atlas}[/cyan]")
+        if n_nist:
+            threat_parts.append(f"[green]N:{n_nist}[/green]")
         threats_display = " ".join(threat_parts) if threat_parts else "—"
 
         table.add_row(
@@ -217,10 +220,11 @@ def print_blast_radius(report: AIBOMReport) -> None:
 
 
 def print_threat_frameworks(report: AIBOMReport) -> None:
-    """Print aggregated threat framework coverage — OWASP LLM Top 10 + MITRE ATLAS."""
+    """Print aggregated threat framework coverage — OWASP LLM Top 10 + MITRE ATLAS + NIST AI RMF."""
     from collections import Counter
 
     from agent_bom.atlas import ATLAS_TECHNIQUES
+    from agent_bom.nist_ai_rmf import NIST_AI_RMF
     from agent_bom.owasp import OWASP_LLM_TOP10
 
     if not report.blast_radii:
@@ -229,13 +233,16 @@ def print_threat_frameworks(report: AIBOMReport) -> None:
     # Aggregate tag counts
     owasp_counts: Counter[str] = Counter()
     atlas_counts: Counter[str] = Counter()
+    nist_counts: Counter[str] = Counter()
     for br in report.blast_radii:
         for tag in br.owasp_tags:
             owasp_counts[tag] += 1
         for tag in br.atlas_tags:
             atlas_counts[tag] += 1
+        for tag in br.nist_ai_rmf_tags:
+            nist_counts[tag] += 1
 
-    if not owasp_counts and not atlas_counts:
+    if not owasp_counts and not atlas_counts and not nist_counts:
         return
 
     console.print("\n[bold]Threat Framework Coverage[/bold]\n")
@@ -279,6 +286,26 @@ def print_threat_frameworks(report: AIBOMReport) -> None:
                 atlas_table.add_row(f"[dim]{code}[/dim]", f"[dim]{name}[/dim]", "[dim]—[/dim]", "")
 
         console.print(atlas_table)
+
+    # NIST AI RMF table
+    if nist_counts:
+        nist_table = Table(title="NIST AI RMF 1.0", title_style="bold green", border_style="dim")
+        nist_table.add_column("Subcategory", width=14, style="bold green")
+        nist_table.add_column("Description", width=46)
+        nist_table.add_column("Findings", width=9, justify="right")
+        nist_table.add_column("", width=20)
+
+        for sid in sorted(NIST_AI_RMF.keys()):
+            count = nist_counts.get(sid, 0)
+            name = NIST_AI_RMF[sid]
+            if count > 0:
+                bar_len = min(count, 16)
+                bar = "[red]" + "█" * bar_len + "[/red]"
+                nist_table.add_row(sid, name, f"[bold]{count}[/bold]", bar)
+            else:
+                nist_table.add_row(f"[dim]{sid}[/dim]", f"[dim]{name}[/dim]", "[dim]—[/dim]", "")
+
+        console.print(nist_table)
     console.print()
 
 
@@ -296,7 +323,7 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
     groups: dict[tuple, dict] = defaultdict(lambda: {
         "package": "", "ecosystem": "", "current": "", "fix": None,
         "vulns": [], "agents": set(), "creds": set(), "tools": set(),
-        "owasp": set(), "atlas": set(),
+        "owasp": set(), "atlas": set(), "nist": set(),
         "max_severity": Severity.NONE, "has_kev": False, "ai_risk": False,
     })
     severity_order = {Severity.CRITICAL: 4, Severity.HIGH: 3, Severity.MEDIUM: 2, Severity.LOW: 1, Severity.NONE: 0}
@@ -315,6 +342,7 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
         g["tools"].update(t.name for t in br.exposed_tools)
         g["owasp"].update(br.owasp_tags)
         g["atlas"].update(br.atlas_tags)
+        g["nist"].update(br.nist_ai_rmf_tags)
         if severity_order.get(br.vulnerability.severity, 0) > severity_order.get(g["max_severity"], 0):
             g["max_severity"] = br.vulnerability.severity
         if br.vulnerability.is_kev:
@@ -330,6 +358,7 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
         g["tools"] = sorted(g["tools"])
         g["owasp"] = sorted(g["owasp"])
         g["atlas"] = sorted(g["atlas"])
+        g["nist"] = sorted(g["nist"])
         g["impact"] = (
             len(g["agents"]) * 10 + len(g["creds"]) * 3 + len(g["vulns"])
             + (5 if g["has_kev"] else 0) + (3 if g["ai_risk"] else 0)
@@ -410,6 +439,8 @@ def print_remediation_plan(report: AIBOMReport) -> None:
                 tags.append("[purple]" + " ".join(item["owasp"]) + "[/purple]")
             if item["atlas"]:
                 tags.append("[cyan]" + " ".join(item["atlas"]) + "[/cyan]")
+            if item["nist"]:
+                tags.append("[green]" + " ".join(item["nist"]) + "[/green]")
             if tags:
                 console.print(f"     [dim]mitigates:[/dim]  {' '.join(tags)}")
 
@@ -485,6 +516,7 @@ def _build_remediation_json(report: AIBOMReport) -> list[dict]:
             "tools_pct": round(n_tools / total_tools * 100) if n_tools else 0,
             "owasp_tags": item["owasp"],
             "atlas_tags": item["atlas"],
+            "nist_ai_rmf_tags": item["nist"],
             "risk_narrative": _risk_narrative(item),
         })
     return result
@@ -514,15 +546,19 @@ def _build_framework_summary(blast_radii: list[BlastRadius]) -> dict:
     from collections import Counter
 
     from agent_bom.atlas import ATLAS_TECHNIQUES
+    from agent_bom.nist_ai_rmf import NIST_AI_RMF
     from agent_bom.owasp import OWASP_LLM_TOP10
 
     owasp_counts: Counter[str] = Counter()
     atlas_counts: Counter[str] = Counter()
+    nist_counts: Counter[str] = Counter()
     for br in blast_radii:
         for tag in br.owasp_tags:
             owasp_counts[tag] += 1
         for tag in br.atlas_tags:
             atlas_counts[tag] += 1
+        for tag in br.nist_ai_rmf_tags:
+            nist_counts[tag] += 1
 
     return {
         "owasp_llm_top10": [
@@ -543,8 +579,18 @@ def _build_framework_summary(blast_radii: list[BlastRadius]) -> dict:
             }
             for tid in sorted(ATLAS_TECHNIQUES.keys())
         ],
+        "nist_ai_rmf": [
+            {
+                "subcategory_id": sid,
+                "name": NIST_AI_RMF[sid],
+                "findings": nist_counts.get(sid, 0),
+                "triggered": sid in nist_counts,
+            }
+            for sid in sorted(NIST_AI_RMF.keys())
+        ],
         "total_owasp_triggered": sum(1 for c in owasp_counts if owasp_counts[c] > 0),
         "total_atlas_triggered": sum(1 for c in atlas_counts if atlas_counts[c] > 0),
+        "total_nist_triggered": sum(1 for c in nist_counts if nist_counts[c] > 0),
     }
 
 
@@ -637,6 +683,7 @@ def to_json(report: AIBOMReport) -> dict:
                 "ai_risk_context": br.ai_risk_context,
                 "owasp_tags": br.owasp_tags,
                 "atlas_tags": br.atlas_tags,
+                "nist_ai_rmf_tags": br.nist_ai_rmf_tags,
             }
             for br in report.blast_radii
         ],
@@ -855,10 +902,11 @@ def to_sarif(report: AIBOMReport) -> dict:
                 }
             ],
         }
-        if br.owasp_tags or br.atlas_tags:
+        if br.owasp_tags or br.atlas_tags or br.nist_ai_rmf_tags:
             result["properties"] = {
                 "owasp_tags": br.owasp_tags,
                 "atlas_tags": br.atlas_tags,
+                "nist_ai_rmf_tags": br.nist_ai_rmf_tags,
                 "blast_score": br.risk_score,
                 "exposed_credentials": br.exposed_credentials,
             }

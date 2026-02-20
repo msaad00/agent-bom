@@ -1,16 +1,18 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { api, Vulnerability, ScanJob, severityColor, severityDot } from "@/lib/api";
-import { Bug, ExternalLink, ChevronDown, ChevronUp } from "lucide-react";
+import { api, Vulnerability, ScanJob, ScanResult, severityColor, severityDot, OWASP_LLM_TOP10, MITRE_ATLAS } from "@/lib/api";
+import { Bug, ExternalLink, ChevronDown, ChevronUp, Layers, Package, Server } from "lucide-react";
 
 interface EnrichedVuln extends Vulnerability {
   packages: string[];
   agents: string[];
+  sources: string[]; // scan source labels (e.g., "python:3.11-slim", "claude-desktop")
 }
 
 type SeverityFilter = "all" | "critical" | "high" | "medium" | "low";
 type SortKey = "severity" | "cvss" | "epss" | "id";
+type GroupKey = "none" | "package" | "agent" | "severity";
 
 const SEVERITY_ORDER: Record<string, number> = {
   critical: 4,
@@ -65,6 +67,7 @@ export default function VulnsPage() {
   const [sortKey, setSortKey] = useState<SortKey>("severity");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [search, setSearch] = useState("");
+  const [groupBy, setGroupBy] = useState<GroupKey>("none");
 
   useEffect(() => {
     async function load() {
@@ -72,16 +75,23 @@ export default function VulnsPage() {
         const jobsResp = await api.listJobs();
         const doneJobs = jobsResp.jobs.filter((j) => j.status === "done");
 
-        // Fetch full results for each done job
         const fullJobs: ScanJob[] = await Promise.all(
           doneJobs.map((j) => api.getScan(j.job_id))
         );
 
-        // Aggregate vulnerabilities across all jobs
         const vulnMap = new Map<string, EnrichedVuln>();
         for (const job of fullJobs) {
           if (!job.result) continue;
-          for (const agent of job.result.agents) {
+          const result = job.result as ScanResult;
+
+          // Determine scan source labels
+          const scanSources: string[] = [];
+          if (job.request.images?.length) scanSources.push(...job.request.images);
+          if (job.request.k8s) scanSources.push("kubernetes");
+          if (job.request.sbom) scanSources.push("sbom-import");
+          if (scanSources.length === 0) scanSources.push("local-agents");
+
+          for (const agent of result.agents) {
             for (const srv of agent.mcp_servers) {
               for (const pkg of srv.packages) {
                 for (const vuln of pkg.vulnerabilities ?? []) {
@@ -89,11 +99,15 @@ export default function VulnsPage() {
                   if (existing) {
                     if (!existing.packages.includes(pkg.name)) existing.packages.push(pkg.name);
                     if (!existing.agents.includes(agent.name)) existing.agents.push(agent.name);
+                    for (const src of scanSources) {
+                      if (!existing.sources.includes(src)) existing.sources.push(src);
+                    }
                   } else {
                     vulnMap.set(vuln.id, {
                       ...vuln,
                       packages: [pkg.name],
                       agents: [agent.name],
+                      sources: [...scanSources],
                     });
                   }
                 }
@@ -131,15 +145,14 @@ export default function VulnsPage() {
         (v) =>
           v.id.toLowerCase().includes(q) ||
           v.description?.toLowerCase().includes(q) ||
-          v.packages.some((p) => p.toLowerCase().includes(q))
+          v.packages.some((p) => p.toLowerCase().includes(q)) ||
+          v.agents.some((a) => a.toLowerCase().includes(q))
       );
     }
     list = [...list].sort((a, b) => {
       let diff = 0;
       if (sortKey === "severity") {
-        diff =
-          (SEVERITY_ORDER[a.severity.toLowerCase()] ?? 0) -
-          (SEVERITY_ORDER[b.severity.toLowerCase()] ?? 0);
+        diff = (SEVERITY_ORDER[a.severity.toLowerCase()] ?? 0) - (SEVERITY_ORDER[b.severity.toLowerCase()] ?? 0);
       } else if (sortKey === "cvss") {
         diff = (a.cvss_score ?? 0) - (b.cvss_score ?? 0);
       } else if (sortKey === "epss") {
@@ -151,6 +164,28 @@ export default function VulnsPage() {
     });
     return list;
   }, [vulns, filter, search, sortKey, sortDir]);
+
+  // Group displayed vulns
+  const grouped = useMemo(() => {
+    if (groupBy === "none") return null;
+
+    const groups = new Map<string, EnrichedVuln[]>();
+    for (const v of displayed) {
+      let keys: string[] = [];
+      if (groupBy === "package") keys = v.packages;
+      else if (groupBy === "agent") keys = v.agents;
+      else if (groupBy === "severity") keys = [v.severity];
+
+      for (const key of keys) {
+        const existing = groups.get(key) ?? [];
+        existing.push(v);
+        groups.set(key, existing);
+      }
+    }
+
+    // Sort groups: by count descending
+    return Array.from(groups.entries()).sort((a, b) => b[1].length - a[1].length);
+  }, [displayed, groupBy]);
 
   const counts = useMemo(() => {
     const c = { critical: 0, high: 0, medium: 0, low: 0 };
@@ -169,12 +204,19 @@ export default function VulnsPage() {
     { key: "low",      label: `Low (${counts.low})`,            color: "text-blue-400" },
   ];
 
+  const GROUP_OPTIONS: { key: GroupKey; label: string; icon: React.ElementType }[] = [
+    { key: "none", label: "Flat", icon: Layers },
+    { key: "severity", label: "Severity", icon: Bug },
+    { key: "package", label: "Package", icon: Package },
+    { key: "agent", label: "Agent", icon: Server },
+  ];
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Vulnerabilities</h1>
         <p className="text-zinc-400 text-sm mt-1">
-          Aggregated CVEs across all completed scan results
+          {vulns.length} unique CVEs aggregated across all scans
         </p>
       </div>
 
@@ -193,125 +235,177 @@ export default function VulnsPage() {
 
       {vulns.length > 0 && (
         <>
-          {/* Filters + search */}
-          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-            <div className="flex items-center gap-1 flex-wrap">
-              {FILTERS.map(({ key, label, color }) => (
+          {/* Controls */}
+          <div className="flex flex-col gap-3">
+            {/* Filters + search */}
+            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+              <div className="flex items-center gap-1 flex-wrap">
+                {FILTERS.map(({ key, label, color }) => (
+                  <button
+                    key={key}
+                    onClick={() => setFilter(key)}
+                    className={`px-3 py-1 text-xs font-medium rounded-md border transition-colors ${
+                      filter === key
+                        ? `${color} border-zinc-600 bg-zinc-800`
+                        : "text-zinc-500 border-zinc-800 hover:border-zinc-700 hover:text-zinc-300"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="text"
+                placeholder="Search CVE, package, agent…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full sm:w-64 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+              />
+            </div>
+
+            {/* Group by */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-zinc-500 uppercase tracking-wide font-medium">Group by</span>
+              {GROUP_OPTIONS.map(({ key, label, icon: Icon }) => (
                 <button
                   key={key}
-                  onClick={() => setFilter(key)}
-                  className={`px-3 py-1 text-xs font-medium rounded-md border transition-colors ${
-                    filter === key
-                      ? `${color} border-zinc-600 bg-zinc-800`
+                  onClick={() => setGroupBy(key)}
+                  className={`flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md border transition-colors ${
+                    groupBy === key
+                      ? "text-zinc-200 border-zinc-600 bg-zinc-800"
                       : "text-zinc-500 border-zinc-800 hover:border-zinc-700 hover:text-zinc-300"
                   }`}
                 >
+                  <Icon className="w-3 h-3" />
                   {label}
                 </button>
               ))}
             </div>
-            <input
-              type="text"
-              placeholder="Search CVE ID, package, description…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full sm:w-64 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
-            />
           </div>
 
-          {/* Table */}
-          <div className="border border-zinc-800 rounded-xl overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-zinc-900 border-b border-zinc-800">
-                <tr>
-                  <th className="text-left px-4 py-3">
-                    <SortButton label="CVE" field="id" current={sortKey} dir={sortDir} onClick={handleSort} />
-                  </th>
-                  <th className="text-left px-4 py-3">
-                    <SortButton label="Severity" field="severity" current={sortKey} dir={sortDir} onClick={handleSort} />
-                  </th>
-                  <th className="text-left px-4 py-3">
-                    <SortButton label="CVSS" field="cvss" current={sortKey} dir={sortDir} onClick={handleSort} />
-                  </th>
-                  <th className="text-left px-4 py-3">
-                    <SortButton label="EPSS" field="epss" current={sortKey} dir={sortDir} onClick={handleSort} />
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Packages</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Agents</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Fix</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-800 bg-zinc-950">
-                {displayed.map((v) => (
-                  <tr key={v.id} className="hover:bg-zinc-900 transition-colors">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${severityDot(v.severity)}`}
-                        />
-                        <a
-                          href={`https://osv.dev/vulnerability/${v.id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-mono text-xs text-zinc-200 hover:text-emerald-400 flex items-center gap-1 group"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {v.id}
-                          <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </a>
-                        {v.cisa_kev && <CisaKevBadge />}
-                      </div>
-                      {v.description && (
-                        <p className="text-xs text-zinc-600 mt-0.5 ml-3.5 line-clamp-1 max-w-xs">
-                          {v.description}
-                        </p>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded border ${severityColor(v.severity)}`}>
-                        {v.severity}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs font-mono text-zinc-400">
-                      {v.cvss_score != null ? v.cvss_score.toFixed(1) : "—"}
-                    </td>
-                    <td className="px-4 py-3 text-xs font-mono text-zinc-400">
-                      {v.epss_score != null ? (v.epss_score * 100).toFixed(2) + "%" : "—"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1">
-                        {v.packages.slice(0, 3).map((p) => (
-                          <span key={p} className="text-xs font-mono bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-zinc-400">
-                            {p}
-                          </span>
-                        ))}
-                        {v.packages.length > 3 && (
-                          <span className="text-xs text-zinc-600">+{v.packages.length - 3}</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-zinc-500">
-                      {v.agents.join(", ")}
-                    </td>
-                    <td className="px-4 py-3 text-xs font-mono text-emerald-500">
-                      {v.fixed_version ?? "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {displayed.length === 0 && (
-              <div className="px-4 py-8 text-center text-zinc-600 text-sm">
-                No vulnerabilities match your filters.
-              </div>
-            )}
-          </div>
+          {/* Grouped view */}
+          {grouped ? (
+            <div className="space-y-6">
+              {grouped.map(([groupLabel, groupVulns]) => (
+                <div key={groupLabel}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <h3 className="text-sm font-semibold text-zinc-300">{groupLabel}</h3>
+                    <span className="text-xs font-mono text-zinc-600 bg-zinc-800 rounded px-1.5 py-0.5">
+                      {groupVulns.length}
+                    </span>
+                  </div>
+                  <VulnTable vulns={groupVulns} sortKey={sortKey} sortDir={sortDir} handleSort={handleSort} />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <VulnTable vulns={displayed} sortKey={sortKey} sortDir={sortDir} handleSort={handleSort} />
+          )}
 
           <p className="text-xs text-zinc-600 text-right">
             Showing {displayed.length} of {vulns.length} vulnerabilities
           </p>
         </>
+      )}
+    </div>
+  );
+}
+
+function VulnTable({
+  vulns,
+  sortKey,
+  sortDir,
+  handleSort,
+}: {
+  vulns: EnrichedVuln[];
+  sortKey: SortKey;
+  sortDir: "asc" | "desc";
+  handleSort: (f: SortKey) => void;
+}) {
+  return (
+    <div className="border border-zinc-800 rounded-xl overflow-hidden">
+      <table className="w-full text-sm">
+        <thead className="bg-zinc-900 border-b border-zinc-800">
+          <tr>
+            <th className="text-left px-4 py-3">
+              <SortButton label="CVE" field="id" current={sortKey} dir={sortDir} onClick={handleSort} />
+            </th>
+            <th className="text-left px-4 py-3">
+              <SortButton label="Severity" field="severity" current={sortKey} dir={sortDir} onClick={handleSort} />
+            </th>
+            <th className="text-left px-4 py-3">
+              <SortButton label="CVSS" field="cvss" current={sortKey} dir={sortDir} onClick={handleSort} />
+            </th>
+            <th className="text-left px-4 py-3">
+              <SortButton label="EPSS" field="epss" current={sortKey} dir={sortDir} onClick={handleSort} />
+            </th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Packages</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Agents</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Fix</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-zinc-800 bg-zinc-950">
+          {vulns.map((v) => (
+            <tr key={v.id} className="hover:bg-zinc-900 transition-colors">
+              <td className="px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${severityDot(v.severity)}`} />
+                  <a
+                    href={`https://osv.dev/vulnerability/${v.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-mono text-xs text-zinc-200 hover:text-emerald-400 flex items-center gap-1 group"
+                  >
+                    {v.id}
+                    <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </a>
+                  {v.cisa_kev && <CisaKevBadge />}
+                </div>
+                {v.description && (
+                  <p className="text-xs text-zinc-600 mt-0.5 ml-3.5 line-clamp-1 max-w-xs">
+                    {v.description}
+                  </p>
+                )}
+              </td>
+              <td className="px-4 py-3">
+                <span className={`text-xs font-medium px-2 py-0.5 rounded border ${severityColor(v.severity)}`}>
+                  {v.severity}
+                </span>
+              </td>
+              <td className="px-4 py-3 text-xs font-mono text-zinc-400">
+                {v.cvss_score != null ? v.cvss_score.toFixed(1) : "—"}
+              </td>
+              <td className="px-4 py-3 text-xs font-mono text-zinc-400">
+                {v.epss_score != null ? (v.epss_score * 100).toFixed(1) + "%" : "—"}
+              </td>
+              <td className="px-4 py-3">
+                <div className="flex flex-wrap gap-1">
+                  {v.packages.slice(0, 3).map((p) => (
+                    <span key={p} className="text-xs font-mono bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-zinc-400">
+                      {p}
+                    </span>
+                  ))}
+                  {v.packages.length > 3 && (
+                    <span className="text-xs text-zinc-600">+{v.packages.length - 3}</span>
+                  )}
+                </div>
+              </td>
+              <td className="px-4 py-3 text-xs text-zinc-500">
+                {v.agents.slice(0, 2).join(", ")}
+                {v.agents.length > 2 && <span className="text-zinc-600"> +{v.agents.length - 2}</span>}
+              </td>
+              <td className="px-4 py-3 text-xs font-mono text-emerald-500">
+                {v.fixed_version ?? "—"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {vulns.length === 0 && (
+        <div className="px-4 py-8 text-center text-zinc-600 text-sm">
+          No vulnerabilities match your filters.
+        </div>
       )}
     </div>
   );

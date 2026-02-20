@@ -421,7 +421,8 @@ Unverified servers in your configs trigger a warning. Policy rules can block the
 |------|---------|----------|
 | Developer CLI | `agent-bom scan` | Local audit, pre-commit checks |
 | Pre-install check | `agent-bom check express@4.18.2 -e npm` | Before running any MCP server |
-| CI/CD gate | `agent-bom scan --fail-on-severity high -q` | Block PRs on critical CVEs |
+| GitHub Action | `uses: agent-bom/agent-bom@v0.13.0` | CI/CD gate + Security tab |
+| VS Code | Extension with diagnostics + status bar | Inline vulnerability alerts |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated, reproducible scans |
 | REST API | `agent-bom api` | Dashboards, SIEM, scripting |
 | Dashboard | `agent-bom serve` | Team-visible security dashboard |
@@ -430,22 +431,75 @@ Unverified servers in your configs trigger a warning. Policy rules can block the
 
 ---
 
-## CI integration
+## GitHub Action
+
+Use agent-bom directly in your CI/CD pipeline:
 
 ```yaml
 - name: AI supply chain scan
-  run: |
-    pip install agent-bom
-    agent-bom scan --inventory agents.json --enrich --fail-on-severity high \
-      -f sarif -o results.sarif
-
-- name: Upload to GitHub Security tab
-  uses: github/codeql-action/upload-sarif@v3
+  uses: agent-bom/agent-bom@v0.13.0
   with:
-    sarif_file: results.sarif
+    severity-threshold: high
+    upload-sarif: true
 ```
 
-SARIF output includes OWASP LLM tags in `result.properties` — visible directly in GitHub Advanced Security.
+Full options:
+
+```yaml
+- uses: agent-bom/agent-bom@v0.13.0
+  with:
+    severity-threshold: high        # fail on high+ CVEs
+    policy: policy.json             # policy-as-code gates
+    enrich: true                    # NVD CVSS + EPSS + CISA KEV
+    upload-sarif: true              # results in GitHub Security tab
+    fail-on-kev: true               # block actively exploited CVEs
+```
+
+Outputs: `sarif-file`, `exit-code`, `vulnerability-count` for downstream steps.
+
+SARIF output includes OWASP LLM tags, MITRE ATLAS techniques, and NIST AI RMF subcategories in `result.properties` — visible directly in GitHub Advanced Security.
+
+---
+
+## AI enrichment (Ollama)
+
+Generate risk narratives, executive summaries, and threat chain analysis using local open-source LLMs — no API keys, no cost:
+
+```bash
+# Install and start Ollama (one-time)
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull llama3.2
+
+# Scan with AI enrichment (auto-detects Ollama)
+agent-bom scan --ai-enrich
+```
+
+agent-bom auto-detects Ollama at `localhost:11434`. No extra Python dependencies needed — uses httpx (already included).
+
+For cloud LLMs (OpenAI, Anthropic, Mistral, etc.), install litellm:
+
+```bash
+pip install agent-bom[ai-enrich]
+export OPENAI_API_KEY=sk-...
+agent-bom scan --ai-enrich --ai-model openai/gpt-4o-mini
+```
+
+---
+
+## VS Code extension
+
+Scan MCP configurations directly from VS Code with diagnostics and a results panel:
+
+```bash
+cd vscode-extension && npm install && npm run compile
+# Press F5 in VS Code to launch Extension Development Host
+```
+
+Commands:
+- **agent-bom: Scan Workspace** — runs CLI, shows diagnostics on MCP config files
+- **agent-bom: Show Results** — webview panel with vulnerability table
+
+Status bar shows vulnerability count after each scan.
 
 ---
 

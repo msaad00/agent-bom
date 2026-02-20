@@ -1,12 +1,16 @@
 """AI-powered enrichment — LLM-generated risk narratives, executive summaries, and threat chains.
 
-Uses ``litellm`` as a unified LLM interface supporting 100+ providers
-(OpenAI, Anthropic, Ollama, etc.).  Install with::
+Supports two LLM backends:
 
-    pip install agent-bom[ai-enrich]
+1. **Ollama (free, local)** — auto-detected at ``http://localhost:11434``.
+   No extra install needed (uses httpx, already a core dependency).
+   Start with: ``ollama serve`` then ``ollama pull llama3.2``
+
+2. **litellm (100+ providers)** — OpenAI, Anthropic, Mistral, Groq, etc.
+   Install with: ``pip install agent-bom[ai-enrich]``
 
 All LLM calls are:
-- **Optional**: graceful fallback when litellm is not installed or API fails.
+- **Optional**: graceful fallback when no provider is available.
 - **Cached**: in-memory dedup by ``sha256(model:prompt)`` within a scan run.
 - **Batched**: grouped by package to minimize API calls.
 """
@@ -16,8 +20,10 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import os
 from typing import TYPE_CHECKING, Optional
 
+import httpx
 from rich.console import Console
 
 if TYPE_CHECKING:
@@ -30,9 +36,11 @@ logger = logging.getLogger(__name__)
 _cache: dict[str, str] = {}
 
 DEFAULT_MODEL = "openai/gpt-4o-mini"
+OLLAMA_BASE_URL = "http://localhost:11434"
+OLLAMA_DEFAULT_MODEL = "llama3.2"
 
 
-# ─── SDK check ─────────────────────────────────────────────────────────────────
+# ─── Provider detection ──────────────────────────────────────────────────────
 
 
 def _check_litellm() -> bool:
@@ -44,14 +52,96 @@ def _check_litellm() -> bool:
         return False
 
 
-# ─── LLM call with cache ──────────────────────────────────────────────────────
+def _detect_ollama() -> bool:
+    """Check if Ollama is running locally."""
+    try:
+        resp = httpx.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=2.0)
+        return resp.status_code == 200
+    except (httpx.ConnectError, httpx.TimeoutException, Exception):
+        return False
+
+
+def _get_ollama_models() -> list[str]:
+    """Get list of locally available Ollama models."""
+    try:
+        resp = httpx.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=2.0)
+        if resp.status_code == 200:
+            data = resp.json()
+            return [m["name"] for m in data.get("models", [])]
+    except Exception:
+        pass
+    return []
+
+
+def _resolve_model(model: str = DEFAULT_MODEL) -> str:
+    """Auto-detect the best available model.
+
+    Priority:
+    1. If Ollama is running → ``ollama/llama3.2``
+    2. If OPENAI_API_KEY is set → ``openai/gpt-4o-mini``
+    3. Fallback to default (will fail gracefully at call time)
+    """
+    if _detect_ollama():
+        return f"ollama/{OLLAMA_DEFAULT_MODEL}"
+    if os.environ.get("OPENAI_API_KEY"):
+        return DEFAULT_MODEL
+    return model
+
+
+def _has_any_provider(model: str) -> bool:
+    """Check if any LLM provider is available for the given model."""
+    if model.startswith("ollama/"):
+        return _detect_ollama()
+    return _check_litellm()
+
+
+# ─── LLM calls ───────────────────────────────────────────────────────────────
 
 
 def _cache_key(prompt: str, model: str) -> str:
     return hashlib.sha256(f"{model}:{prompt}".encode()).hexdigest()
 
 
-async def _call_llm(prompt: str, model: str, max_tokens: int = 500) -> Optional[str]:
+async def _call_ollama_direct(prompt: str, model: str, max_tokens: int = 500) -> Optional[str]:
+    """Call Ollama directly via HTTP API (no litellm dependency needed).
+
+    The *model* parameter is the bare model name (e.g. ``llama3.2``).
+    """
+    key = _cache_key(prompt, f"ollama/{model}")
+    if key in _cache:
+        return _cache[key]
+
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(
+                f"{OLLAMA_BASE_URL}/api/chat",
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "stream": False,
+                    "options": {
+                        "num_predict": max_tokens,
+                        "temperature": 0.3,
+                    },
+                },
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                text = data.get("message", {}).get("content", "").strip()
+                if text:
+                    _cache[key] = text
+                    return text
+            logger.warning("Ollama returned status %d", resp.status_code)
+            return None
+    except (httpx.ConnectError, httpx.TimeoutException) as exc:
+        logger.warning("Ollama connection failed: %s", exc)
+        return None
+    except Exception as exc:
+        logger.warning("Ollama call failed: %s", exc)
+        return None
+
+
+async def _call_llm_via_litellm(prompt: str, model: str, max_tokens: int = 500) -> Optional[str]:
     """Call LLM via litellm with caching and error handling."""
     key = _cache_key(prompt, model)
     if key in _cache:
@@ -77,7 +167,26 @@ async def _call_llm(prompt: str, model: str, max_tokens: int = 500) -> Optional[
         return None
 
 
-# ─── Prompt builders ───────────────────────────────────────────────────────────
+async def _call_llm(prompt: str, model: str, max_tokens: int = 500) -> Optional[str]:
+    """Call LLM via the best available provider.
+
+    Routing:
+    - ``ollama/*`` models → direct Ollama HTTP API (no extra dependency)
+    - Other models → litellm
+    """
+    if model.startswith("ollama/"):
+        bare_model = model[len("ollama/"):]
+        result = await _call_ollama_direct(prompt, bare_model, max_tokens)
+        if result is not None:
+            return result
+        # Fall back to litellm if installed (it also supports ollama/)
+        if _check_litellm():
+            return await _call_llm_via_litellm(prompt, model, max_tokens)
+        return None
+    return await _call_llm_via_litellm(prompt, model, max_tokens)
+
+
+# ─── Prompt builders ─────────────────────────────────────────────────────────
 
 
 def _build_blast_radius_prompt(br: BlastRadius) -> str:
@@ -186,7 +295,7 @@ def _build_remediation_prompt(items: list[dict]) -> str:
     )
 
 
-# ─── Enrichment functions ─────────────────────────────────────────────────────
+# ─── Enrichment functions ────────────────────────────────────────────────────
 
 
 async def enrich_blast_radii(
@@ -198,7 +307,9 @@ async def enrich_blast_radii(
     Groups findings by package to minimize API calls.
     Returns count of enriched findings.
     """
-    if not blast_radii or not _check_litellm():
+    if not blast_radii:
+        return 0
+    if not _check_litellm() and not _detect_ollama():
         return 0
 
     enriched = 0
@@ -229,7 +340,9 @@ async def generate_executive_summary(
     model: str = DEFAULT_MODEL,
 ) -> Optional[str]:
     """Generate an LLM-powered executive summary of the scan."""
-    if not report.blast_radii or not _check_litellm():
+    if not report.blast_radii:
+        return None
+    if not _check_litellm() and not _detect_ollama():
         return None
 
     prompt = _build_executive_summary_prompt(report)
@@ -241,7 +354,9 @@ async def generate_threat_chains(
     model: str = DEFAULT_MODEL,
 ) -> list[str]:
     """Generate LLM-powered threat chain analysis."""
-    if not report.blast_radii or not _check_litellm():
+    if not report.blast_radii:
+        return []
+    if not _check_litellm() and not _detect_ollama():
         return []
 
     prompt = _build_threat_chain_prompt(report)
@@ -249,7 +364,7 @@ async def generate_threat_chains(
     return [result] if result else []
 
 
-# ─── Orchestrator ──────────────────────────────────────────────────────────────
+# ─── Orchestrator ─────────────────────────────────────────────────────────────
 
 
 async def run_ai_enrichment(
@@ -257,12 +372,26 @@ async def run_ai_enrichment(
     model: str = DEFAULT_MODEL,
 ) -> None:
     """Run all AI enrichment steps on a report. Modifies report in-place."""
-    if not _check_litellm():
-        console.print("  [yellow]litellm not installed. Skipping AI enrichment.[/yellow]")
-        console.print("  [dim]Install with: pip install agent-bom[ai-enrich][/dim]")
+    # Auto-detect best model if using the default (which requires a paid key)
+    if model == DEFAULT_MODEL:
+        model = _resolve_model(model)
+
+    # Determine provider for display
+    if model.startswith("ollama/"):
+        if not _detect_ollama():
+            console.print("  [yellow]Ollama not running at localhost:11434. Skipping AI enrichment.[/yellow]")
+            console.print("  [dim]Start with: ollama serve && ollama pull llama3.2[/dim]")
+            return
+        provider = "Ollama (local, free)"
+    elif _check_litellm():
+        provider = "litellm"
+    else:
+        console.print("  [yellow]No LLM provider available. Skipping AI enrichment.[/yellow]")
+        console.print("  [dim]Option 1: Install Ollama (free, local) — ollama.com[/dim]")
+        console.print("  [dim]Option 2: pip install agent-bom[ai-enrich] + set API key[/dim]")
         return
 
-    console.print(f"\n[bold blue]AI Enrichment (model: {model})...[/bold blue]\n")
+    console.print(f"\n[bold blue]AI Enrichment[/bold blue]  [dim]model: {model} via {provider}[/dim]\n")
 
     # Step 1: Enrich blast radii with contextual narratives
     console.print("  [cyan]>[/cyan] Generating risk narratives...")

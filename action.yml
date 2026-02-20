@@ -1,0 +1,159 @@
+name: 'agent-bom Scan'
+description: 'Scan AI agents and MCP servers for vulnerabilities — map the full trust chain from AI agents to CVEs, credentials, and blast radius.'
+author: 'agent-bom'
+
+branding:
+  icon: 'shield'
+  color: 'green'
+
+inputs:
+  severity-threshold:
+    description: 'Fail if vulnerabilities at or above this severity (critical, high, medium, low). Empty = no gate.'
+    required: false
+    default: ''
+  policy:
+    description: 'Path to policy file (JSON/YAML) for policy-as-code gates.'
+    required: false
+    default: ''
+  enrich:
+    description: 'Enable NVD CVSS, EPSS, and CISA KEV enrichment.'
+    required: false
+    default: 'false'
+  format:
+    description: 'Output format (sarif, json, cyclonedx, spdx, text, console).'
+    required: false
+    default: 'sarif'
+  upload-sarif:
+    description: 'Upload SARIF results to GitHub Security tab.'
+    required: false
+    default: 'false'
+  fail-on-kev:
+    description: 'Fail if any CISA Known Exploited Vulnerability is found.'
+    required: false
+    default: 'false'
+  ai-enrich:
+    description: 'Enable LLM-powered risk analysis (requires Ollama or API key).'
+    required: false
+    default: 'false'
+  ai-model:
+    description: 'LLM model for AI enrichment (e.g. ollama/llama3.2, openai/gpt-4o-mini).'
+    required: false
+    default: ''
+  python-version:
+    description: 'Python version to use.'
+    required: false
+    default: '3.11'
+  agent-bom-version:
+    description: 'agent-bom package version to install (e.g. 0.13.0). Empty = latest.'
+    required: false
+    default: ''
+
+outputs:
+  sarif-file:
+    description: 'Path to generated SARIF file (if format=sarif).'
+    value: ${{ steps.scan.outputs.sarif_file }}
+  exit-code:
+    description: 'Scan exit code (0=clean, 1=violations found).'
+    value: ${{ steps.scan.outputs.exit_code }}
+  vulnerability-count:
+    description: 'Number of vulnerabilities found.'
+    value: ${{ steps.scan.outputs.vuln_count }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install agent-bom
+      shell: bash
+      env:
+        AGENT_BOM_VERSION: ${{ inputs.agent-bom-version }}
+        AI_ENRICH: ${{ inputs.ai-enrich }}
+      run: |
+        PKG="agent-bom"
+        if [ -n "$AGENT_BOM_VERSION" ]; then
+          PKG="agent-bom==$AGENT_BOM_VERSION"
+        fi
+        if [ "$AI_ENRICH" = "true" ]; then
+          pip install "${PKG}[ai-enrich]"
+        else
+          pip install "$PKG"
+        fi
+
+    - name: Run agent-bom scan
+      id: scan
+      shell: bash
+      env:
+        INPUT_FORMAT: ${{ inputs.format }}
+        INPUT_SEVERITY: ${{ inputs.severity-threshold }}
+        INPUT_POLICY: ${{ inputs.policy }}
+        INPUT_ENRICH: ${{ inputs.enrich }}
+        INPUT_FAIL_ON_KEV: ${{ inputs.fail-on-kev }}
+        INPUT_AI_ENRICH: ${{ inputs.ai-enrich }}
+        INPUT_AI_MODEL: ${{ inputs.ai-model }}
+      run: |
+        SARIF_FILE="agent-bom-results.sarif"
+        ARGS="scan"
+
+        # Output format
+        if [ "$INPUT_FORMAT" = "sarif" ]; then
+          ARGS="$ARGS -f sarif -o $SARIF_FILE"
+        elif [ -n "$INPUT_FORMAT" ]; then
+          ARGS="$ARGS -f $INPUT_FORMAT"
+        fi
+
+        # Severity gate
+        if [ -n "$INPUT_SEVERITY" ]; then
+          ARGS="$ARGS --fail-on-severity $INPUT_SEVERITY"
+        fi
+
+        # Policy file
+        if [ -n "$INPUT_POLICY" ]; then
+          ARGS="$ARGS --policy $INPUT_POLICY"
+        fi
+
+        # Enrichment
+        if [ "$INPUT_ENRICH" = "true" ]; then
+          ARGS="$ARGS --enrich"
+        fi
+
+        # KEV gate
+        if [ "$INPUT_FAIL_ON_KEV" = "true" ]; then
+          ARGS="$ARGS --fail-on-kev"
+        fi
+
+        # AI enrichment
+        if [ "$INPUT_AI_ENRICH" = "true" ]; then
+          ARGS="$ARGS --ai-enrich"
+          if [ -n "$INPUT_AI_MODEL" ]; then
+            ARGS="$ARGS --ai-model $INPUT_AI_MODEL"
+          fi
+        fi
+
+        # Run scan, capture exit code
+        set +e
+        agent-bom $ARGS
+        EXIT_CODE=$?
+        set -e
+
+        # Extract vuln count from SARIF
+        VULN_COUNT=0
+        if [ -f "$SARIF_FILE" ]; then
+          VULN_COUNT=$(python3 -c "import json; d=json.load(open('$SARIF_FILE')); print(len(d.get('runs',[{}])[0].get('results',[])))" 2>/dev/null || echo 0)
+        fi
+
+        echo "sarif_file=$SARIF_FILE" >> "$GITHUB_OUTPUT"
+        echo "exit_code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
+        echo "vuln_count=$VULN_COUNT" >> "$GITHUB_OUTPUT"
+
+        exit $EXIT_CODE
+
+    - name: Upload SARIF to GitHub Security tab
+      if: inputs.upload-sarif == 'true' && always()
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ steps.scan.outputs.sarif_file }}
+        category: agent-bom

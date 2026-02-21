@@ -19,8 +19,10 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import logging
 import os
+import re
 from typing import TYPE_CHECKING, Optional
 
 import httpx
@@ -28,6 +30,8 @@ from rich.console import Console
 
 if TYPE_CHECKING:
     from agent_bom.models import AIBOMReport, BlastRadius
+    from agent_bom.parsers.skill_audit import SkillAuditResult
+    from agent_bom.parsers.skills import SkillScanResult
 
 console = Console(stderr=True)
 logger = logging.getLogger(__name__)
@@ -370,6 +374,8 @@ async def generate_threat_chains(
 async def run_ai_enrichment(
     report: AIBOMReport,
     model: str = DEFAULT_MODEL,
+    skill_result: "SkillScanResult | None" = None,
+    skill_audit: "SkillAuditResult | None" = None,
 ) -> None:
     """Run all AI enrichment steps on a report. Modifies report in-place."""
     # Auto-detect best model if using the default (which requires a paid key)
@@ -394,28 +400,267 @@ async def run_ai_enrichment(
     console.print(f"\n[bold blue]AI Enrichment[/bold blue]  [dim]model: {model} via {provider}[/dim]\n")
 
     # Step 1: Enrich blast radii with contextual narratives
-    console.print("  [cyan]>[/cyan] Generating risk narratives...")
-    enriched = await enrich_blast_radii(report.blast_radii, model)
-    console.print(f"  [green]{enriched} finding(s) enriched[/green]")
+    if report.blast_radii:
+        console.print("  [cyan]>[/cyan] Generating risk narratives...")
+        enriched = await enrich_blast_radii(report.blast_radii, model)
+        console.print(f"  [green]{enriched} finding(s) enriched[/green]")
 
-    # Step 2: Generate executive summary
-    console.print("  [cyan]>[/cyan] Generating executive summary...")
-    summary = await generate_executive_summary(report, model)
-    if summary:
-        report.executive_summary = summary
-        console.print("  [green]Executive summary generated[/green]")
+        # Step 2: Generate executive summary
+        console.print("  [cyan]>[/cyan] Generating executive summary...")
+        summary = await generate_executive_summary(report, model)
+        if summary:
+            report.executive_summary = summary
+            console.print("  [green]Executive summary generated[/green]")
 
-    # Step 3: Generate threat chain analysis
-    console.print("  [cyan]>[/cyan] Analyzing threat chains...")
-    chains = await generate_threat_chains(report, model)
-    if chains:
-        report.ai_threat_chains = chains
-        console.print(f"  [green]{len(chains)} threat chain(s) analyzed[/green]")
+        # Step 3: Generate threat chain analysis
+        console.print("  [cyan]>[/cyan] Analyzing threat chains...")
+        chains = await generate_threat_chains(report, model)
+        if chains:
+            report.ai_threat_chains = chains
+            console.print(f"  [green]{len(chains)} threat chain(s) analyzed[/green]")
+
+    # Step 4: Skill file AI analysis
+    if skill_result and skill_audit and skill_result.raw_content:
+        console.print("  [cyan]>[/cyan] Analyzing skill file security...")
+        skill_enriched = await enrich_skill_audit(skill_result, skill_audit, model)
+        if skill_enriched:
+            console.print(f"  [green]Skill files analyzed (risk: {skill_audit.ai_overall_risk_level or 'unknown'})[/green]")
+        else:
+            console.print("  [dim]  Skill analysis could not be completed[/dim]")
 
 
 def run_ai_enrichment_sync(
     report: AIBOMReport,
     model: str = DEFAULT_MODEL,
+    skill_result: "SkillScanResult | None" = None,
+    skill_audit: "SkillAuditResult | None" = None,
 ) -> None:
     """Synchronous wrapper for run_ai_enrichment."""
-    asyncio.run(run_ai_enrichment(report, model))
+    asyncio.run(run_ai_enrichment(report, model, skill_result, skill_audit))
+
+
+# ─── Skill file AI analysis ──────────────────────────────────────────────────
+
+
+_VALID_SEVERITIES = {"critical", "high", "medium", "low"}
+
+
+def _build_skill_analysis_prompt(raw_content: dict[str, str], static_findings: list[dict]) -> str:
+    """Build a prompt that sends raw skill file text + static findings to the LLM.
+
+    The prompt asks the model to classify intent, review existing findings,
+    detect new threats, and assess overall risk.
+    """
+    # Truncate each file to 6000 chars to stay within context limits
+    file_sections = []
+    for filepath, content in raw_content.items():
+        truncated = content[:6000]
+        if len(content) > 6000:
+            truncated += "\n... [truncated]"
+        file_sections.append(f"### File: {filepath}\n```\n{truncated}\n```")
+
+    files_text = "\n\n".join(file_sections)
+
+    findings_text = json.dumps(static_findings, indent=2) if static_findings else "[]"
+
+    return (
+        "You are an AI security auditor specializing in analyzing skill files "
+        "(also called rules files, instruction files, or CLAUDE.md / .cursorrules / "
+        "copilot-instructions.md files). These are instructions that developers write "
+        "for AI coding assistants — they control how the AI behaves in a project.\n\n"
+        "IMPORTANT CONTEXT: A line saying 'never bind to 0.0.0.0' is a SAFETY "
+        "instruction, not a risk. A line saying 'always use 0.0.0.0 for the server' "
+        "is a RISKY directive. You must distinguish between warnings/safety guidance "
+        "and dangerous directives.\n\n"
+        "## Raw skill file content\n\n"
+        f"{files_text}\n\n"
+        "## Static analysis findings\n\n"
+        f"{findings_text}\n\n"
+        "## Your tasks\n\n"
+        "(a) **Intent classification**: For each notable instruction in the files, "
+        "classify it as a 'warning' (safety guidance) or 'directive' (tells the AI to do something).\n\n"
+        "(b) **Review static findings**: For each static finding above, provide a verdict: "
+        "'confirmed' (real risk), 'false_positive' (not actually risky), or "
+        "'severity_adjusted' (real but severity should change). Explain your reasoning.\n\n"
+        "(c) **Detect new threats**: Look for threats the static analysis may have missed, "
+        "including: social_engineering, prompt_injection, credential_harvesting, "
+        "supply_chain, permission_escalation, data_exfiltration, obfuscation.\n\n"
+        "(d) **Overall risk assessment**: Rate the overall risk as 'critical', 'high', "
+        "'medium', 'low', or 'safe' and provide a 2-3 sentence summary.\n\n"
+        "Respond with ONLY a JSON object (no markdown fencing, no extra text) with these keys:\n"
+        "- overall_risk_level: string ('critical'|'high'|'medium'|'low'|'safe')\n"
+        "- summary: string (2-3 sentence overall assessment)\n"
+        "- finding_reviews: list of objects, each with:\n"
+        "    - title: string (matching the static finding title)\n"
+        "    - verdict: 'confirmed' | 'false_positive' | 'severity_adjusted'\n"
+        "    - adjusted_severity: string | null (only if severity_adjusted)\n"
+        "    - reasoning: string\n"
+        "- new_findings: list of objects, each with:\n"
+        "    - severity: 'critical' | 'high' | 'medium' | 'low'\n"
+        "    - category: string (one of the threat categories above)\n"
+        "    - title: string\n"
+        "    - detail: string\n"
+        "    - recommendation: string"
+    )
+
+
+def _parse_skill_analysis_response(response: str) -> dict | None:
+    """Parse the LLM's JSON response, handling various formatting quirks.
+
+    Handles clean JSON, markdown-fenced JSON, and JSON embedded in text.
+    Returns None for non-parseable responses.
+    """
+    if not response or not response.strip():
+        return None
+
+    text = response.strip()
+
+    # Attempt 1: Parse as clean JSON directly
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict) and "overall_risk_level" in data:
+            return data
+    except json.JSONDecodeError:
+        pass
+
+    # Attempt 2: Extract from markdown fencing (```json ... ``` or ``` ... ```)
+    fence_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?\s*```", text, re.DOTALL)
+    if fence_match:
+        try:
+            data = json.loads(fence_match.group(1))
+            if isinstance(data, dict) and "overall_risk_level" in data:
+                return data
+        except json.JSONDecodeError:
+            pass
+
+    # Attempt 3: Find JSON object embedded in other text
+    brace_match = re.search(r"\{.*\}", text, re.DOTALL)
+    if brace_match:
+        try:
+            data = json.loads(brace_match.group(0))
+            if isinstance(data, dict) and "overall_risk_level" in data:
+                return data
+        except json.JSONDecodeError:
+            pass
+
+    logger.warning("Could not parse skill analysis LLM response as JSON")
+    return None
+
+
+def _apply_skill_analysis(audit: "SkillAuditResult", ai_data: dict) -> None:
+    """Apply parsed AI analysis results to a SkillAuditResult in-place.
+
+    Updates existing findings with AI verdicts, adds new AI-detected findings,
+    and recalculates the pass/fail status.
+    """
+    from agent_bom.parsers.skill_audit import SkillFinding
+
+    # Set top-level AI fields
+    audit.ai_overall_risk_level = ai_data.get("overall_risk_level")
+    audit.ai_skill_summary = ai_data.get("summary")
+
+    # Build a lookup of existing findings by title for matching
+    findings_by_title: dict[str, SkillFinding] = {}
+    for finding in audit.findings:
+        findings_by_title[finding.title] = finding
+
+    # Apply finding reviews
+    for review in ai_data.get("finding_reviews", []):
+        title = review.get("title") or review.get("original_title", "")
+        matched = findings_by_title.get(title)
+        if not matched:
+            continue
+
+        verdict = review.get("verdict", "confirmed")
+        reasoning = review.get("reasoning", "")
+        matched.ai_analysis = reasoning
+
+        if verdict == "false_positive":
+            matched.ai_adjusted_severity = "false_positive"
+        elif verdict == "severity_adjusted":
+            adjusted = review.get("adjusted_severity")
+            if adjusted and adjusted.lower() in _VALID_SEVERITIES:
+                matched.ai_adjusted_severity = adjusted.lower()
+
+    # Add new AI-detected findings
+    for new in ai_data.get("new_findings", []):
+        severity = new.get("severity", "medium").lower()
+        if severity not in _VALID_SEVERITIES:
+            severity = "medium"
+
+        source_file = next(iter(audit.findings), None)
+        source = source_file.source_file if source_file else "unknown"
+
+        audit.findings.append(SkillFinding(
+            severity=severity,
+            category=new.get("category", "ai_detected"),
+            title=new.get("title", "AI-detected finding"),
+            detail=new.get("detail", ""),
+            source_file=source,
+            recommendation=new.get("recommendation", ""),
+            context="ai_analysis",
+        ))
+
+    # Recalculate passed status: false_positive findings don't count
+    audit.passed = not any(
+        f.severity in ("critical", "high")
+        and f.ai_adjusted_severity != "false_positive"
+        for f in audit.findings
+    )
+
+
+async def enrich_skill_audit(
+    skill_result: "SkillScanResult",
+    skill_audit: "SkillAuditResult",
+    model: str = DEFAULT_MODEL,
+) -> bool:
+    """Orchestrate AI-powered skill file security analysis.
+
+    Sends raw skill file content and static findings to an LLM for
+    context-aware analysis, then applies the results to the audit.
+
+    Returns True if enrichment was applied, False otherwise.
+    """
+    # Guard: need raw content to analyze
+    if not skill_result.raw_content:
+        logger.debug("No raw content available for skill AI enrichment")
+        return False
+
+    # Guard: need an LLM provider
+    resolved_model = model
+    if model == DEFAULT_MODEL:
+        resolved_model = _resolve_model(model)
+
+    if not _has_any_provider(resolved_model):
+        logger.debug("No LLM provider available for skill enrichment")
+        return False
+
+    # Serialize static findings as list of dicts
+    static_findings = [
+        {
+            "severity": f.severity,
+            "category": f.category,
+            "title": f.title,
+            "detail": f.detail,
+            "source_file": f.source_file,
+            "context": f.context,
+        }
+        for f in skill_audit.findings
+    ]
+
+    # Build prompt and call LLM
+    prompt = _build_skill_analysis_prompt(skill_result.raw_content, static_findings)
+    response = await _call_llm(prompt, resolved_model, max_tokens=1500)
+
+    if not response:
+        logger.warning("LLM returned empty response for skill analysis")
+        return False
+
+    # Parse and apply
+    ai_data = _parse_skill_analysis_response(response)
+    if ai_data is None:
+        logger.warning("Could not parse LLM skill analysis response")
+        return False
+
+    _apply_skill_analysis(skill_audit, ai_data)
+    return True

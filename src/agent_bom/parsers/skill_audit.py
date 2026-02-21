@@ -54,6 +54,8 @@ class SkillFinding:
     server: str | None = None
     recommendation: str = ""
     context: str = "config_block"  # "config_block" | "code_block" | "env_reference" — where the data was extracted from
+    ai_analysis: str | None = None  # LLM-generated context-aware explanation
+    ai_adjusted_severity: str | None = None  # LLM may adjust severity or mark "false_positive"
 
 
 @dataclass
@@ -65,6 +67,8 @@ class SkillAuditResult:
     servers_checked: int = 0
     credentials_checked: int = 0
     passed: bool = True  # no critical/high findings
+    ai_skill_summary: str | None = None  # LLM-generated overall narrative
+    ai_overall_risk_level: str | None = None  # "critical"|"high"|"medium"|"low"|"safe"
 
 
 # ── Shell / dangerous keywords ───────────────────────────────────────────────

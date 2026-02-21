@@ -166,3 +166,35 @@ def test_scan_deduplicates(tmp_path):
     result = scan_skill_files([f1, f2])
     names = [p.name for p in result.packages]
     assert names.count("@modelcontextprotocol/server-filesystem") == 1
+
+
+def test_parse_preserves_raw_content(tmp_path):
+    """parse_skill_file stores raw text in raw_content dict."""
+    md = tmp_path / "CLAUDE.md"
+    md.write_text("# My Instructions\nDo not use 0.0.0.0\n")
+    from agent_bom.parsers.skills import parse_skill_file
+    result = parse_skill_file(md)
+    assert str(md) in result.raw_content
+    assert "Do not use 0.0.0.0" in result.raw_content[str(md)]
+
+
+def test_scan_merges_raw_content(tmp_path):
+    """scan_skill_files merges raw_content from all files."""
+    f1 = tmp_path / "CLAUDE.md"
+    f2 = tmp_path / "skill.md"
+    f1.write_text("# Claude\nInstructions here")
+    f2.write_text("# Skill\nMore instructions")
+    from agent_bom.parsers.skills import scan_skill_files
+    result = scan_skill_files([f1, f2])
+    assert len(result.raw_content) == 2
+    assert str(f1) in result.raw_content
+    assert str(f2) in result.raw_content
+
+
+def test_raw_content_truncated(tmp_path):
+    """Very large files are truncated to 8000 chars in raw_content."""
+    md = tmp_path / "huge.md"
+    md.write_text("x" * 20000)
+    from agent_bom.parsers.skills import parse_skill_file
+    result = parse_skill_file(md)
+    assert len(result.raw_content[str(md)]) == 8000

@@ -89,6 +89,7 @@ class SkillScanResult:
     servers: list[MCPServer] = field(default_factory=list)
     credential_env_vars: list[str] = field(default_factory=list)
     source_files: list[str] = field(default_factory=list)
+    raw_content: dict[str, str] = field(default_factory=dict)  # source_file -> raw text (truncated)
 
 
 # ─── Parsing ─────────────────────────────────────────────────────────────────
@@ -102,12 +103,13 @@ def parse_skill_file(path: Path) -> SkillScanResult:
     """
     try:
         content = path.read_text(encoding="utf-8", errors="replace")
+        truncated_content = content[:8000] if len(content) > 8000 else content
     except OSError:
         logger.warning("Could not read skill file: %s", path)
         return SkillScanResult()
 
     if not content.strip():
-        return SkillScanResult(source_files=[str(path)])
+        return SkillScanResult(source_files=[str(path)], raw_content={str(path): truncated_content})
 
     packages: list[Package] = []
     servers: list[MCPServer] = []
@@ -199,6 +201,7 @@ def parse_skill_file(path: Path) -> SkillScanResult:
         servers=servers,
         credential_env_vars=credential_vars,
         source_files=[str(path)],
+        raw_content={str(path): truncated_content},
     )
 
 
@@ -275,6 +278,7 @@ def scan_skill_files(paths: list[Path]) -> SkillScanResult:
     for path in paths:
         result = parse_skill_file(path)
         merged.source_files.extend(result.source_files)
+        merged.raw_content.update(result.raw_content)
 
         for pkg in result.packages:
             key = (pkg.name.lower(), pkg.ecosystem)

@@ -415,6 +415,22 @@ Skill files are a supply chain attack vector — a malicious CLAUDE.md or .curso
 
 Findings are shown inline during the scan and included in JSON output (`skill_audit` key) and the REST API (`GET /v1/scan/{id}/skill-audit`).
 
+### AI skill analysis
+
+When `--ai-enrich` is active, agent-bom sends raw skill file content alongside static findings to an LLM for context-aware security analysis. The AI distinguishes between safety warnings and dangerous directives — a line saying "never bind to 0.0.0.0" is recognized as a safety instruction, not flagged as a risk.
+
+```bash
+agent-bom scan --skill CLAUDE.md --ai-enrich
+```
+
+What the AI adds:
+- **False positive detection** — marks static findings that are actually safety warnings (e.g., "don't use bash" flagged as shell access)
+- **Severity adjustments** — raises or lowers severity based on context understanding
+- **New threat detection** — finds threats static rules can't catch: prompt injection, social engineering, credential harvesting, data exfiltration, obfuscation patterns
+- **Overall risk narrative** — 2-3 sentence summary with risk level (critical/high/medium/low/safe)
+
+AI results appear in console output, JSON (`skill_audit.ai_skill_summary`, `ai_overall_risk_level`), and per-finding annotations (`ai_analysis`, `ai_adjusted_severity`). Works with local Ollama (free, all data stays local) or any litellm-supported provider.
+
 ### CLI attack flow tree
 
 Visualize the full CVE → Package → Server → Agent → Credentials → Tools attack chain directly in your terminal:
@@ -479,6 +495,7 @@ What `--ai-enrich` generates:
 - **Risk narratives** — contextual 2-3 sentence analysis per finding (why this CVE matters in your agent's tool chain)
 - **Executive summary** — one-paragraph CISO brief with risk rating and actions
 - **Threat chains** — red-team-style attack chain analysis through MCP tools
+- **Skill file analysis** — context-aware review of skill files with false positive detection, severity adjustments, and new threat discovery
 
 ### MCP Server Registry (109 servers)
 
@@ -496,7 +513,7 @@ Unverified servers in your configs trigger a warning. Policy rules can block the
 |------|---------|----------|
 | Developer CLI | `agent-bom scan` | Local audit, pre-commit checks |
 | Pre-install check | `agent-bom check express@4.18.2 -e npm` | Before running any MCP server |
-| GitHub Action | `uses: agent-bom/agent-bom@v0.19.0` | CI/CD gate + Security tab |
+| GitHub Action | `uses: agent-bom/agent-bom@v0.20.0` | CI/CD gate + Security tab |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated, reproducible scans |
 | REST API | `agent-bom api` | Dashboards, SIEM, scripting |
 | Dashboard | `agent-bom serve` | Team-visible security dashboard |
@@ -511,7 +528,7 @@ Use agent-bom directly in your CI/CD pipeline:
 
 ```yaml
 - name: AI supply chain scan
-  uses: agent-bom/agent-bom@v0.19.0
+  uses: agent-bom/agent-bom@v0.20.0
   with:
     severity-threshold: high
     upload-sarif: true
@@ -692,6 +709,7 @@ These tools solve different problems and are **complementary**.
 - [x] Skill file scanning — CLAUDE.md, .cursorrules, AGENTS.md parsing for packages, MCP servers, credentials
 - [x] Skill security audit — 7 checks: typosquat detection, shell access, unverified servers, excessive credentials, external URLs
 - [x] CLI attack flow tree — terminal-native CVE → Package → Server → Agent → Credentials/Tools chain visualization
+- [x] AI skill file analysis — LLM-powered context-aware review of skill files with false positive detection, severity adjustments, and new threat discovery
 - [ ] Jupyter notebook AI library scanning
 - [ ] ToolHive integration (`--toolhive` flag for managed server scanning)
 - [ ] License compliance engine (SPDX license detection + copyleft chain analysis)

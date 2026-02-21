@@ -309,3 +309,48 @@ def test_skill_audit_absent_when_no_scan():
     report = AIBOMReport(agents=[], blast_radii=[])
     result = to_json(report)
     assert "skill_audit" not in result
+
+
+# ── 15. AI fields on SkillFinding ──────────────────────────────────────────
+
+
+def test_skill_finding_has_ai_fields():
+    """SkillFinding should have ai_analysis and ai_adjusted_severity defaults."""
+    from agent_bom.parsers.skill_audit import SkillFinding
+    f = SkillFinding(
+        severity="high", category="test", title="test",
+        detail="test", source_file="test.md",
+    )
+    assert f.ai_analysis is None
+    assert f.ai_adjusted_severity is None
+
+
+# ── 16. AI fields on SkillAuditResult ──────────────────────────────────────
+
+
+def test_skill_audit_result_has_ai_fields():
+    """SkillAuditResult should have ai_skill_summary and ai_overall_risk_level."""
+    from agent_bom.parsers.skill_audit import SkillAuditResult
+    r = SkillAuditResult()
+    assert r.ai_skill_summary is None
+    assert r.ai_overall_risk_level is None
+
+
+# ── 17. JSON output includes AI skill audit fields ────────────────────────
+
+
+def test_skill_audit_ai_fields_in_json():
+    """to_json includes AI skill analysis fields when set."""
+    report = AIBOMReport(agents=[], blast_radii=[])
+    report.skill_audit_data = {
+        "findings": [],
+        "packages_checked": 0,
+        "servers_checked": 0,
+        "credentials_checked": 0,
+        "passed": True,
+        "ai_skill_summary": "No significant risks detected.",
+        "ai_overall_risk_level": "low",
+    }
+    result = to_json(report)
+    assert result["skill_audit"]["ai_skill_summary"] == "No significant risks detected."
+    assert result["skill_audit"]["ai_overall_risk_level"] == "low"

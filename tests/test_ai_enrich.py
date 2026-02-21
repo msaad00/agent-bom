@@ -606,3 +606,168 @@ def test_action_yml_composite():
     with open(action_path) as f:
         data = yaml.safe_load(f)
     assert data["runs"]["using"] == "composite"
+
+
+# ── Skill file AI analysis tests ────────────────────────────────────────────
+
+
+def test_build_skill_analysis_prompt():
+    """Prompt should include file content, static findings, and threat categories."""
+    from agent_bom.ai_enrich import _build_skill_analysis_prompt
+    raw_content = {"CLAUDE.md": "# Claude\nUse npx @mcp/server-filesystem /tmp\nNever bind to 0.0.0.0"}
+    findings = [{"severity": "high", "category": "shell_access",
+                 "title": "Shell access via server 'bash'",
+                 "detail": "Uses bash", "source_file": "CLAUDE.md"}]
+    prompt = _build_skill_analysis_prompt(raw_content, findings)
+    assert "CLAUDE.md" in prompt
+    assert "Never bind to 0.0.0.0" in prompt
+    assert "Shell access" in prompt
+    assert "social_engineering" in prompt
+    assert "overall_risk_level" in prompt
+
+
+def test_parse_skill_analysis_response_valid():
+    """Should parse valid JSON response."""
+    from agent_bom.ai_enrich import _parse_skill_analysis_response
+    response = '{"overall_risk_level": "low", "summary": "Safe", "finding_reviews": [], "new_findings": []}'
+    result = _parse_skill_analysis_response(response)
+    assert result is not None
+    assert result["overall_risk_level"] == "low"
+    assert result["summary"] == "Safe"
+
+
+def test_parse_skill_analysis_response_markdown_fenced():
+    """Should strip markdown code fences."""
+    from agent_bom.ai_enrich import _parse_skill_analysis_response
+    response = '```json\n{"overall_risk_level": "medium", "summary": "Some risk"}\n```'
+    result = _parse_skill_analysis_response(response)
+    assert result is not None
+    assert result["overall_risk_level"] == "medium"
+
+
+def test_parse_skill_analysis_response_invalid():
+    """Should return None for non-JSON response."""
+    from agent_bom.ai_enrich import _parse_skill_analysis_response
+    result = _parse_skill_analysis_response("I cannot analyze this file.")
+    assert result is None
+
+
+def test_apply_skill_analysis_adjusts_severity():
+    """Should adjust finding severity based on AI review."""
+    from agent_bom.ai_enrich import _apply_skill_analysis
+    from agent_bom.parsers.skill_audit import SkillAuditResult, SkillFinding
+
+    audit = SkillAuditResult(
+        findings=[SkillFinding(
+            severity="high", category="shell_access",
+            title="Shell access via server 'bash'",
+            detail="Uses bash", source_file="CLAUDE.md",
+        )],
+        passed=False,
+    )
+    ai_data = {
+        "overall_risk_level": "low",
+        "summary": "The shell reference is in a 'do not use' section.",
+        "finding_reviews": [{
+            "original_title": "Shell access via server 'bash'",
+            "verdict": "false_positive",
+            "adjusted_severity": None,
+            "reasoning": "The file warns against using bash, not instructing to use it."
+        }],
+        "new_findings": [],
+    }
+    _apply_skill_analysis(audit, ai_data)
+
+    assert audit.ai_overall_risk_level == "low"
+    assert audit.findings[0].ai_adjusted_severity == "false_positive"
+    assert "warns against" in audit.findings[0].ai_analysis.lower()
+    assert audit.passed is True  # Recalculated since only finding is FP
+
+
+def test_apply_skill_analysis_adds_new_findings():
+    """Should add AI-discovered findings to the audit."""
+    from agent_bom.ai_enrich import _apply_skill_analysis
+    from agent_bom.parsers.skill_audit import SkillAuditResult
+
+    audit = SkillAuditResult(findings=[], passed=True)
+    ai_data = {
+        "overall_risk_level": "high",
+        "summary": "Detected prompt injection pattern.",
+        "finding_reviews": [],
+        "new_findings": [{
+            "severity": "high",
+            "category": "prompt_injection",
+            "title": "Hidden instruction in HTML comment",
+            "detail": "An HTML comment contains instructions to ignore safety guidelines.",
+            "recommendation": "Remove hidden instructions from skill files."
+        }],
+    }
+    _apply_skill_analysis(audit, ai_data)
+
+    assert len(audit.findings) == 1
+    assert audit.findings[0].category == "prompt_injection"
+    assert audit.findings[0].context == "ai_analysis"
+    assert audit.passed is False
+
+
+@pytest.mark.asyncio
+async def test_enrich_skill_audit_with_mock_llm():
+    """Should enrich skill audit when LLM returns valid JSON."""
+    import json as _json
+
+    from agent_bom.ai_enrich import enrich_skill_audit
+    from agent_bom.parsers.skill_audit import SkillAuditResult
+    from agent_bom.parsers.skills import SkillScanResult
+
+    skill_result = SkillScanResult(
+        source_files=["CLAUDE.md"],
+        raw_content={"CLAUDE.md": "# Claude\nDo not use 0.0.0.0"},
+    )
+    skill_audit = SkillAuditResult(findings=[], passed=True)
+
+    mock_response = _json.dumps({
+        "overall_risk_level": "safe",
+        "summary": "No security risks found in this skill file.",
+        "finding_reviews": [],
+        "new_findings": [],
+    })
+
+    with patch("agent_bom.ai_enrich._has_any_provider", return_value=True), \
+         patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock, return_value=mock_response):
+        result = await enrich_skill_audit(skill_result, skill_audit)
+        assert result is True
+        assert skill_audit.ai_overall_risk_level == "safe"
+        assert skill_audit.ai_skill_summary == "No security risks found in this skill file."
+
+
+@pytest.mark.asyncio
+async def test_enrich_skill_audit_no_provider():
+    """Should return False when no LLM provider available."""
+    from agent_bom.ai_enrich import enrich_skill_audit
+    from agent_bom.parsers.skill_audit import SkillAuditResult
+    from agent_bom.parsers.skills import SkillScanResult
+
+    skill_result = SkillScanResult(
+        source_files=["CLAUDE.md"],
+        raw_content={"CLAUDE.md": "# Claude instructions"},
+    )
+    skill_audit = SkillAuditResult(findings=[], passed=True)
+
+    with patch("agent_bom.ai_enrich._has_any_provider", return_value=False):
+        result = await enrich_skill_audit(skill_result, skill_audit)
+        assert result is False
+        assert skill_audit.ai_skill_summary is None
+
+
+@pytest.mark.asyncio
+async def test_enrich_skill_audit_empty_content():
+    """Should return False when raw_content is empty."""
+    from agent_bom.ai_enrich import enrich_skill_audit
+    from agent_bom.parsers.skill_audit import SkillAuditResult
+    from agent_bom.parsers.skills import SkillScanResult
+
+    skill_result = SkillScanResult(raw_content={})
+    skill_audit = SkillAuditResult()
+
+    result = await enrich_skill_audit(skill_result, skill_audit)
+    assert result is False

@@ -546,6 +546,8 @@ def scan(
     # Step 1g2: Skill file scanning (--skill + auto-discovery)
     from agent_bom.parsers.skills import discover_skill_files, scan_skill_files
     _skill_audit_data: dict | None = None  # will be set if skill audit runs
+    _skill_result_obj = None  # SkillScanResult for AI enrichment
+    _skill_audit_obj = None   # SkillAuditResult for AI enrichment
     skill_file_list: list[Path] = []
     for sp in skill_paths:
         p = Path(sp)
@@ -592,6 +594,8 @@ def scan(
             # Step 1g3: Skill security audit
             from agent_bom.parsers.skill_audit import audit_skill_result
             skill_audit = audit_skill_result(skill_result)
+            _skill_result_obj = skill_result  # store for AI enrichment
+            _skill_audit_obj = skill_audit    # store for AI enrichment
             _skill_audit_data = {
                 "findings": [
                     {
@@ -824,9 +828,42 @@ def scan(
         report.skill_audit_data = _skill_audit_data
 
     # Step 4c: AI-powered enrichment (optional)
-    if ai_enrich and blast_radii:
+    if ai_enrich:
         from agent_bom.ai_enrich import run_ai_enrichment_sync
-        run_ai_enrichment_sync(report, model=ai_model)
+        run_ai_enrichment_sync(
+            report,
+            model=ai_model,
+            skill_result=_skill_result_obj,
+            skill_audit=_skill_audit_obj,
+        )
+
+        # Re-serialize skill audit data with AI enrichment fields
+        if _skill_audit_obj:
+            _skill_audit_data = {
+                "findings": [
+                    {
+                        "severity": f.severity,
+                        "category": f.category,
+                        "title": f.title,
+                        "detail": f.detail,
+                        "source_file": f.source_file,
+                        "package": f.package,
+                        "server": f.server,
+                        "recommendation": f.recommendation,
+                        "context": f.context,
+                        "ai_analysis": f.ai_analysis,
+                        "ai_adjusted_severity": f.ai_adjusted_severity,
+                    }
+                    for f in _skill_audit_obj.findings
+                ],
+                "packages_checked": _skill_audit_obj.packages_checked,
+                "servers_checked": _skill_audit_obj.servers_checked,
+                "credentials_checked": _skill_audit_obj.credentials_checked,
+                "passed": _skill_audit_obj.passed,
+                "ai_skill_summary": _skill_audit_obj.ai_skill_summary,
+                "ai_overall_risk_level": _skill_audit_obj.ai_overall_risk_level,
+            }
+            report.skill_audit_data = _skill_audit_data
 
     # Step 4d: Generate remediation files (optional)
     if remediate_path or remediate_sh_path:
@@ -880,6 +917,37 @@ def scan(
             con.print("\n[bold]Threat Chain Analysis (AI-Generated)[/bold]")
             for chain in report.ai_threat_chains:
                 con.print(Panel(chain, border_style="red dim"))
+        # AI skill analysis output (if enriched)
+        if _skill_audit_obj and _skill_audit_obj.ai_skill_summary:
+            from rich.panel import Panel
+            sev_colors = {"critical": "red bold", "high": "red", "medium": "yellow", "low": "dim", "safe": "green"}
+            risk = _skill_audit_obj.ai_overall_risk_level or "unknown"
+            risk_style = sev_colors.get(risk, "white")
+            con.print(f"\n[bold]Skill File AI Analysis[/bold]  [{risk_style}]\\[{risk.upper()}][/{risk_style}]")
+            con.print(Panel.fit(_skill_audit_obj.ai_skill_summary, border_style="cyan"))
+
+            # Show AI-adjusted findings
+            adjusted = [f for f in _skill_audit_obj.findings if f.ai_adjusted_severity]
+            if adjusted:
+                for f in adjusted:
+                    if f.ai_adjusted_severity == "false_positive":
+                        con.print(f"  [green]✓ FP[/green] {f.title}")
+                        con.print(f"    [dim]{f.ai_analysis}[/dim]")
+                    else:
+                        con.print(f"  [yellow]↕ ADJ[/yellow] {f.title}: {f.severity} → {f.ai_adjusted_severity}")
+                        if f.ai_analysis:
+                            con.print(f"    [dim]{f.ai_analysis}[/dim]")
+
+            # Show AI-detected new findings
+            ai_detected = [f for f in _skill_audit_obj.findings if f.context == "ai_analysis"]
+            if ai_detected:
+                con.print(f"\n  [bold yellow]AI-Detected Threats ({len(ai_detected)})[/bold yellow]")
+                for f in ai_detected:
+                    style = sev_colors.get(f.severity, "white")
+                    con.print(f"    [{style}]\\[{f.severity.upper()}][/{style}] {f.title}")
+                    con.print(f"      [dim]{f.detail}[/dim]")
+                    if f.recommendation:
+                        con.print(f"      [green]→ {f.recommendation}[/green]")
         print_remediation_plan(report)
         print_export_hint(report)
     elif output_format == "text" and not output:

@@ -106,7 +106,7 @@ def main():
 @click.option("--push-gateway", "push_gateway", default=None, metavar="URL",
               help="Prometheus Pushgateway URL to push metrics after scan (e.g. http://localhost:9091)")
 @click.option("--otel-endpoint", "otel_endpoint", default=None, metavar="URL",
-              help="OpenTelemetry OTLP/HTTP collector endpoint (e.g. http://localhost:4318). Requires pip install agent-bom[otel]")
+              help="OpenTelemetry OTLP/HTTP collector endpoint (e.g. http://localhost:4318). Requires pip install 'agent-bom[otel]'")
 @click.option("--dry-run", is_flag=True, help="Show what files and APIs would be accessed without scanning, then exit 0")
 @click.option("--no-scan", is_flag=True, help="Skip vulnerability scanning (inventory only)")
 @click.option("--no-tree", is_flag=True, help="Skip dependency tree output")
@@ -148,7 +148,7 @@ def main():
 @click.option("--introspect", is_flag=True, help="Connect to live MCP servers to discover runtime tools/resources (read-only, requires mcp SDK)")
 @click.option("--introspect-timeout", type=float, default=10.0, show_default=True, help="Timeout per MCP server for --introspect (seconds)")
 @click.option("--verify-integrity", is_flag=True, help="Verify package integrity (SHA256/SRI) and SLSA provenance against registries")
-@click.option("--ai-enrich", is_flag=True, help="Enrich findings with LLM-generated risk narratives, executive summary, and threat chains. Auto-detects Ollama (free, local) or uses litellm (pip install agent-bom[ai-enrich])")
+@click.option("--ai-enrich", is_flag=True, help="Enrich findings with LLM-generated risk narratives, executive summary, and threat chains. Auto-detects Ollama (free, local) or uses litellm (pip install 'agent-bom[ai-enrich]')")
 @click.option("--ai-model", default="openai/gpt-4o-mini", show_default=True, metavar="MODEL",
               help="LLM model for --ai-enrich. Auto-detects Ollama if running. Examples: ollama/llama3.2 (free, local), ollama/mistral, openai/gpt-4o-mini")
 @click.option("--remediate", "remediate_path", type=str, default=None, metavar="PATH",
@@ -1538,7 +1538,7 @@ def serve_cmd(port: int, host: str, inventory: Optional[str]):
     """Launch the interactive Streamlit dashboard.
 
     \b
-    Requires:  pip install agent-bom[ui]
+    Requires:  pip install 'agent-bom[ui]'
 
     \b
     Usage:
@@ -1551,7 +1551,7 @@ def serve_cmd(port: int, host: str, inventory: Optional[str]):
     except ImportError:
         click.echo(
             "ERROR: Streamlit is required for `agent-bom serve`.\n"
-            "Install it with:  pip install agent-bom[ui]",
+            "Install it with:  pip install 'agent-bom[ui]'",
             err=True,
         )
         sys.exit(1)
@@ -1602,7 +1602,7 @@ def api_cmd(host: str, port: int, reload: bool, workers: int,
     """Start the agent-bom REST API server.
 
     \b
-    Requires:  pip install agent-bom[api]
+    Requires:  pip install 'agent-bom[api]'
 
     \b
     Endpoints:
@@ -1928,7 +1928,7 @@ def watch_cmd(webhook, alert_log, interval):
     - Alerts if new vulnerabilities or risks are introduced
 
     \b
-    Requires: pip install agent-bom[watch]
+    Requires: pip install 'agent-bom[watch]'
 
     \b
     Usage:

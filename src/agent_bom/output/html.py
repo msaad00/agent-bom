@@ -627,7 +627,9 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
 
     /* GRAPH */
     .graph-container{{position:relative;border-radius:12px;overflow:hidden;border:1px solid #ffffff08}}
-    #cy{{width:100%;height:600px;background:linear-gradient(180deg,#0f172a 0%,#1e293b 100%)}}
+    .graph-container:fullscreen{{border-radius:0;background:#0f172a}}
+    .graph-container:fullscreen #cy{{height:100vh}}
+    #cy{{width:100%;height:600px;background:#0f172a}}
     .graph-controls{{position:absolute;top:12px;right:12px;display:flex;flex-direction:column;gap:4px;z-index:10}}
     .graph-btn{{width:36px;height:36px;border-radius:8px;border:1px solid #334155;background:rgba(15,23,42,.85);color:#94a3b8;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;backdrop-filter:blur(8px)}}
     .graph-btn:hover{{background:#1e293b;color:#e2e8f0;border-color:#475569}}
@@ -1132,11 +1134,12 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
       layout: {{
         name: 'dagre',
         rankDir: 'LR',
-        nodeSep: 60,
-        rankSep: 100,
-        edgeSep: 20,
-        padding: 40,
+        nodeSep: 50,
+        rankSep: 80,
+        edgeSep: 15,
+        padding: 30,
         animate: false,
+        fit: true,
       }},
       minZoom: 0.15,
       maxZoom: 4,
@@ -1184,9 +1187,16 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     document.getElementById('fullscreenBtn').addEventListener('click', function() {{
       var gc = document.querySelector('.graph-container');
       if (!document.fullscreenElement) {{
-        gc.requestFullscreen().catch(function() {{}});
+        gc.requestFullscreen().then(function() {{
+          setTimeout(function() {{ cy.resize(); cy.fit(cy.elements(), 50); }}, 100);
+        }}).catch(function() {{}});
       }} else {{
         document.exitFullscreen();
+      }}
+    }});
+    document.addEventListener('fullscreenchange', function() {{
+      if (!document.fullscreenElement) {{
+        setTimeout(function() {{ cy.resize(); cy.fit(cy.elements(), 40); }}, 100);
       }}
     }});
   }} else if (cyContainer) {{

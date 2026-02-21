@@ -12,7 +12,7 @@ Features:
 - Remediation checklist
 - Re-scan button
 
-Requires: pip install agent-bom[ui]  (streamlit + plotly)
+Requires: pip install 'agent-bom[ui]'  (streamlit + plotly)
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ try:
 except ImportError:
     print(
         "ERROR: Streamlit and Plotly are required for agent-bom serve.\n"
-        "Install them with:  pip install agent-bom[ui]",
+        "Install them with:  pip install 'agent-bom[ui]'",
         file=sys.stderr,
     )
     sys.exit(1)

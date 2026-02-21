@@ -316,7 +316,7 @@ def push_otlp(
 
     Requires ``opentelemetry-exporter-otlp-proto-http`` to be installed::
 
-        pip install agent-bom[otel]
+        pip install 'agent-bom[otel]'
 
     Args:
         endpoint: OTLP collector endpoint, e.g. ``http://localhost:4318``
@@ -340,7 +340,7 @@ def push_otlp(
     except ImportError as exc:
         raise ImportError(
             "OpenTelemetry packages are required for OTLP export. "
-            "Install them with: pip install agent-bom[otel]\n"
+            "Install them with: pip install 'agent-bom[otel]'\n"
             "  (opentelemetry-api opentelemetry-sdk "
             "opentelemetry-exporter-otlp-proto-http)"
         ) from exc

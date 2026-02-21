@@ -4,7 +4,7 @@ Uses filesystem watchers to continuously monitor MCP client configuration files.
 On change, re-scans the affected config, diffs against the last scan, and sends
 alerts if new risks are introduced.
 
-Requires: pip install agent-bom[watch]  (for watchdog dependency)
+Requires: pip install 'agent-bom[watch]'  (for watchdog dependency)
 """
 
 from __future__ import annotations
@@ -249,7 +249,7 @@ def start_watching(
     """Start watching MCP config files for changes.
 
     Blocks indefinitely until KeyboardInterrupt.
-    Requires watchdog: pip install agent-bom[watch]
+    Requires watchdog: pip install 'agent-bom[watch]'
     """
     try:
         from watchdog.events import FileSystemEventHandler

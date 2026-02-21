@@ -3,7 +3,7 @@
   "name": "io.github.agent-bom/agent-bom",
   "description": "AI supply chain security scanner — CVE scanning, blast radius analysis, policy enforcement, and SBOM generation for MCP servers and AI agents",
   "title": "agent-bom",
-  "version": "0.23.0",
+  "version": "0.24.0",
   "repository": {
     "url": "https://github.com/agent-bom/agent-bom",
     "source": "github"
@@ -12,7 +12,7 @@
     {
       "registryType": "pypi",
       "identifier": "agent-bom",
-      "version": "0.23.0",
+      "version": "0.24.0",
       "transport": {
         "type": "stdio"
       },

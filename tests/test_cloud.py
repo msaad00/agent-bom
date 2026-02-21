@@ -463,6 +463,52 @@ def test_graph_json_format():
     assert parsed["format"] == "cytoscape"
 
 
+def test_attack_flow_empty_when_no_vulns():
+    """Attack flow returns empty list when no blast radii."""
+    from agent_bom.output.graph import build_attack_flow_elements
+    assert build_attack_flow_elements([]) == []
+
+
+def test_attack_flow_elements_structure():
+    """Attack flow builds correct node/edge types for CVE → impact propagation."""
+    from agent_bom.output.graph import build_attack_flow_elements
+    _, blast_radii = _make_sample_report()
+    elements = build_attack_flow_elements(blast_radii)
+    assert len(elements) > 0
+
+    nodes = [e for e in elements if "source" not in e["data"]]
+    edges = [e for e in elements if "source" in e["data"]]
+
+    # Should have CVE, package, and server/agent nodes
+    node_types = {n["data"].get("type", "") for n in nodes}
+    assert any(t.startswith("cve_") for t in node_types), "Missing CVE nodes"
+    assert "pkg_vuln" in node_types, "Missing package nodes"
+
+    # Should have exploits and runs_on edge types
+    edge_types = {e["data"].get("type", "") for e in edges}
+    assert "exploits" in edge_types, "Missing exploits edges"
+
+
+def test_attack_flow_deduplicates_nodes():
+    """Attack flow doesn't create duplicate nodes for shared packages."""
+    from agent_bom.output.graph import build_attack_flow_elements
+    _, blast_radii = _make_sample_report()
+    elements = build_attack_flow_elements(blast_radii)
+    nodes = [e for e in elements if "source" not in e["data"]]
+    node_ids = [n["data"]["id"] for n in nodes]
+    assert len(node_ids) == len(set(node_ids)), "Duplicate node IDs found"
+
+
+def test_html_contains_attack_flow():
+    """HTML output includes attack flow section when vulns exist."""
+    from agent_bom.output.html import to_html
+    report, blast_radii = _make_sample_report()
+    html = to_html(report, blast_radii)
+    assert 'id="attackflow"' in html
+    assert "ATTACK_FLOW" in html
+    assert "CVE Attack Flow" in html
+
+
 # ─── CLI Cloud Flag Tests ────────────────────────────────────────────────────
 
 

@@ -96,6 +96,14 @@ def _cytoscape_elements(report: "AIBOMReport", blast_radii: list["BlastRadius"])
     return json.dumps(elements)
 
 
+def _attack_flow_elements(blast_radii: list["BlastRadius"]) -> str:
+    """Build attack flow element list showing CVE → impact propagation."""
+    from agent_bom.output.graph import build_attack_flow_elements
+
+    elements = build_attack_flow_elements(blast_radii)
+    return json.dumps(elements)
+
+
 # ─── HTML sections ────────────────────────────────────────────────────────────
 
 
@@ -389,6 +397,42 @@ def _skill_audit_section(report: "AIBOMReport") -> str:
     )
 
 
+def _attack_flow_section(blast_radii: list["BlastRadius"]) -> str:
+    """Build the CVE attack flow graph section (only when vulns exist)."""
+    if not blast_radii:
+        return ""
+
+    total_creds = len({c for br in blast_radii for c in br.exposed_credentials})
+    total_tools = len({t for br in blast_radii for t in br.exposed_tools})
+    total_agents = len({a.name for br in blast_radii for a in br.affected_agents})
+
+    return (
+        '<section id="attackflow">'
+        '<div class="sec-title">&#x1f525; CVE Attack Flow'
+        '<span style="font-size:.68rem;font-weight:400;opacity:.5;margin-left:8px">'
+        f'{len(blast_radii)} CVEs &#x2192; {total_agents} agents &#x2192; '
+        f'{total_creds} credentials &#x2192; {total_tools} tools at risk'
+        '</span></div>'
+        '<div class="graph-container">'
+        '<div id="cyAttack" class="cy-graph"></div>'
+        '<div class="graph-controls" style="top:12px;right:12px">'
+        '<button class="graph-btn" id="afZoomIn" title="Zoom in">+</button>'
+        '<button class="graph-btn" id="afZoomOut" title="Zoom out">&minus;</button>'
+        '<button class="graph-btn" id="afFitBtn" title="Fit to view">&#x2922;</button>'
+        '</div>'
+        '</div>'
+        '<div class="legend">'
+        '<span><i class="diamond" style="background:#f87171"></i>CVE</span>'
+        '<span><i style="background:#dc2626"></i>Vulnerable Package</span>'
+        '<span><i style="background:#475569"></i>MCP Server</span>'
+        '<span><i style="background:#fbbf24"></i>Credential</span>'
+        '<span><i style="background:#818cf8"></i>Tool</span>'
+        '<span><i style="background:#3b82f6"></i>Agent</span>'
+        '</div>'
+        '</section>'
+    )
+
+
 def _inventory_cards(report: "AIBOMReport") -> str:
     cards = []
     for agent in report.agents:
@@ -524,6 +568,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     blast_radii = blast_radii or []
     generated = report.generated_at.strftime("%Y-%m-%d %H:%M:%S UTC")
     elements_json = _cytoscape_elements(report, blast_radii)
+    attack_flow_json = _attack_flow_elements(blast_radii)
     chart_data_json = _chart_data(blast_radii)
     crit = sum(1 for br in blast_radii if br.vulnerability.severity.value == "critical")
     total_vulns = len(blast_radii)
@@ -559,6 +604,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
         )
 
     vuln_nav = (
+        '<a href="#attackflow">Attack Flow</a>'
         '<a href="#vulns">Vulnerabilities</a>'
         '<a href="#blast">Blast Radius</a>'
         '<a href="#remediation">Remediation</a>'
@@ -572,7 +618,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     # Determine node counts for graph subtitle
     vuln_node_count = len({(br.package.name, br.package.ecosystem) for br in blast_radii})
     graph_note = (
-        f"agents + servers + {vuln_node_count} vulnerable pkg(s) only &mdash; "
+        f"agents + servers + {vuln_node_count} vulnerable pkg(s) only — "
         f"{report.total_packages - vuln_node_count} clean packages hidden"
         if report.total_packages > vuln_node_count
         else "agents + servers + packages"
@@ -628,8 +674,10 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     /* GRAPH */
     .graph-container{{position:relative;border-radius:12px;overflow:hidden;border:1px solid #ffffff08}}
     .graph-container:fullscreen{{border-radius:0;background:#0f172a}}
-    .graph-container:fullscreen #cy{{height:100vh}}
-    #cy{{width:100%;height:600px;background:#0f172a}}
+    .graph-container:fullscreen .cy-graph{{height:100vh}}
+    .cy-graph{{width:100%;height:600px;background:#0f172a}}
+    #cy{{width:100%;height:600px}}
+    #cyAttack{{width:100%;height:500px}}
     .graph-controls{{position:absolute;top:12px;right:12px;display:flex;flex-direction:column;gap:4px;z-index:10}}
     .graph-btn{{width:36px;height:36px;border-radius:8px;border:1px solid #334155;background:rgba(15,23,42,.85);color:#94a3b8;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;backdrop-filter:blur(8px)}}
     .graph-btn:hover{{background:#1e293b;color:#e2e8f0;border-color:#475569}}
@@ -802,6 +850,9 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
   <!-- Skill audit -->
   {skill_section}
 
+  <!-- Attack flow graph (only when vulns exist) -->
+  {_attack_flow_section(blast_radii)}
+
   <!-- Vuln / Blast / Remediation -->
   {vuln_sections}
 
@@ -818,6 +869,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
   // Injected data
   var CHART_DATA = {chart_data_json};
   var GRAPH_ELEMENTS = {elements_json};
+  var ATTACK_FLOW = {attack_flow_json};
 
   // Chart.js: Severity donut
   var sevCtx = document.getElementById('sevChart');
@@ -1201,6 +1253,276 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     }});
   }} else if (cyContainer) {{
     cyContainer.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#4ade80;font-size:.9rem">&#x2705; No supply chain nodes to display</div>';
+  }}
+
+  // Cytoscape: CVE Attack Flow graph
+  var cyAtkContainer = document.getElementById('cyAttack');
+  if (cyAtkContainer && ATTACK_FLOW.length > 0) {{
+    var cyAtk = cytoscape({{
+      container: cyAtkContainer,
+      elements: ATTACK_FLOW,
+      style: [
+        {{
+          selector: 'node[type^="cve_"]',
+          style: {{
+            'shape': 'diamond',
+            'width': 120,
+            'height': 34,
+            'label': 'data(label)',
+            'font-size': '9px',
+            'font-weight': '700',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'color': '#fecaca',
+            'background-color': '#991b1b',
+            'border-color': '#f87171',
+            'border-width': 2.5,
+          }},
+        }},
+        {{
+          selector: 'node[type="cve_critical"]',
+          style: {{
+            'background-color': '#7f1d1d',
+            'border-color': '#ef4444',
+            'border-width': 3,
+            'width': 130,
+            'height': 38,
+          }},
+        }},
+        {{
+          selector: 'node[type="cve_high"]',
+          style: {{
+            'background-color': '#9a3412',
+            'border-color': '#fb923c',
+            'color': '#fed7aa',
+          }},
+        }},
+        {{
+          selector: 'node[type="cve_medium"], node[type="cve_low"], node[type="cve_none"]',
+          style: {{
+            'background-color': '#854d0e',
+            'border-color': '#fbbf24',
+            'border-width': 1.5,
+            'color': '#fef08a',
+            'width': 100,
+            'height': 28,
+          }},
+        }},
+        {{
+          selector: 'node[type="pkg_vuln"]',
+          style: {{
+            'background-color': '#7f1d1d',
+            'border-color': '#dc2626',
+            'border-width': 2,
+            'label': 'data(label)',
+            'color': '#fca5a5',
+            'font-size': '9px',
+            'font-weight': '700',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'width': 130,
+            'height': 38,
+            'shape': 'round-rectangle',
+            'text-wrap': 'wrap',
+            'text-max-width': '120px',
+          }},
+        }},
+        {{
+          selector: 'node[type="server"]',
+          style: {{
+            'background-color': '#1e293b',
+            'border-color': '#475569',
+            'border-width': 2,
+            'label': 'data(label)',
+            'color': '#cbd5e1',
+            'font-size': '10px',
+            'font-weight': '600',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'width': 120,
+            'height': 36,
+            'shape': 'round-rectangle',
+            'text-wrap': 'wrap',
+            'text-max-width': '110px',
+          }},
+        }},
+        {{
+          selector: 'node[type="credential"]',
+          style: {{
+            'background-color': '#78350f',
+            'border-color': '#fbbf24',
+            'border-width': 2,
+            'label': 'data(label)',
+            'color': '#fde68a',
+            'font-size': '9px',
+            'font-weight': '700',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'width': 100,
+            'height': 32,
+            'shape': 'hexagon',
+          }},
+        }},
+        {{
+          selector: 'node[type="tool"]',
+          style: {{
+            'background-color': '#312e81',
+            'border-color': '#818cf8',
+            'border-width': 2,
+            'label': 'data(label)',
+            'color': '#c7d2fe',
+            'font-size': '9px',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'width': 100,
+            'height': 30,
+            'shape': 'round-tag',
+            'text-wrap': 'wrap',
+            'text-max-width': '90px',
+          }},
+        }},
+        {{
+          selector: 'node[type="agent"]',
+          style: {{
+            'background-color': '#1e3a8a',
+            'border-color': '#3b82f6',
+            'border-width': 2,
+            'label': 'data(label)',
+            'color': '#bfdbfe',
+            'font-size': '11px',
+            'font-weight': '700',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'width': 120,
+            'height': 38,
+            'shape': 'round-rectangle',
+            'text-wrap': 'wrap',
+            'text-max-width': '105px',
+          }},
+        }},
+        {{
+          selector: 'edge',
+          style: {{
+            'width': 1.8,
+            'line-color': '#334155',
+            'target-arrow-color': '#475569',
+            'target-arrow-shape': 'triangle',
+            'curve-style': 'bezier',
+            'arrow-scale': 0.8,
+          }},
+        }},
+        {{
+          selector: 'edge[type="exploits"]',
+          style: {{
+            'line-color': '#dc2626',
+            'target-arrow-color': '#ef4444',
+            'width': 2.5,
+          }},
+        }},
+        {{
+          selector: 'edge[type="runs_on"]',
+          style: {{
+            'line-color': '#475569',
+            'target-arrow-color': '#64748b',
+          }},
+        }},
+        {{
+          selector: 'edge[type="exposes"]',
+          style: {{
+            'line-color': '#f59e0b',
+            'target-arrow-color': '#fbbf24',
+            'line-style': 'dashed',
+            'line-dash-pattern': [6, 3],
+            'width': 2,
+          }},
+        }},
+        {{
+          selector: 'edge[type="reaches"]',
+          style: {{
+            'line-color': '#818cf8',
+            'target-arrow-color': '#a5b4fc',
+            'line-style': 'dashed',
+            'line-dash-pattern': [4, 4],
+          }},
+        }},
+        {{
+          selector: 'edge[type="compromises"]',
+          style: {{
+            'line-color': '#ef4444',
+            'target-arrow-color': '#f87171',
+            'line-style': 'dashed',
+            'line-dash-pattern': [8, 4],
+            'width': 2.5,
+          }},
+        }},
+        {{
+          selector: '.highlighted',
+          style: {{
+            'border-width': 4,
+            'border-color': '#f1f5f9',
+            'z-index': 999,
+          }},
+        }},
+        {{
+          selector: '.faded',
+          style: {{ 'opacity': 0.08 }},
+        }},
+      ],
+      layout: {{
+        name: 'dagre',
+        rankDir: 'LR',
+        nodeSep: 40,
+        rankSep: 100,
+        edgeSep: 12,
+        padding: 30,
+        animate: false,
+        fit: true,
+      }},
+      minZoom: 0.15,
+      maxZoom: 4,
+      wheelSensitivity: 0.3,
+    }});
+    cyAtk.ready(function() {{ cyAtk.fit(cyAtk.elements(), 40); }});
+
+    // Attack flow tooltip
+    cyAtk.on('mouseover', 'node', function(e) {{
+      var t = e.target.data('tip');
+      if (t) {{ tip.textContent = t; tip.style.display = 'block'; }}
+    }});
+    cyAtk.on('mousemove', function(e) {{
+      if (tip.style.display === 'block') {{
+        tip.style.left = (e.originalEvent.clientX + 14) + 'px';
+        tip.style.top  = (e.originalEvent.clientY + 14) + 'px';
+      }}
+    }});
+    cyAtk.on('mouseout', 'node', function() {{ tip.style.display = 'none'; }});
+
+    // Attack flow click to highlight
+    cyAtk.on('tap', 'node', function(e) {{
+      cyAtk.elements().removeClass('faded highlighted');
+      var hood = e.target.closedNeighborhood();
+      cyAtk.elements().not(hood).addClass('faded');
+      e.target.addClass('highlighted');
+    }});
+    cyAtk.on('tap', function(e) {{
+      if (e.target === cyAtk) {{
+        cyAtk.elements().removeClass('faded highlighted');
+      }}
+    }});
+
+    // Attack flow controls
+    var afZoomIn = document.getElementById('afZoomIn');
+    var afZoomOut = document.getElementById('afZoomOut');
+    var afFitBtn = document.getElementById('afFitBtn');
+    if (afZoomIn) afZoomIn.addEventListener('click', function() {{
+      cyAtk.zoom({{ level: cyAtk.zoom() * 1.3, renderedPosition: {{ x: cyAtk.width() / 2, y: cyAtk.height() / 2 }} }});
+    }});
+    if (afZoomOut) afZoomOut.addEventListener('click', function() {{
+      cyAtk.zoom({{ level: cyAtk.zoom() / 1.3, renderedPosition: {{ x: cyAtk.width() / 2, y: cyAtk.height() / 2 }} }});
+    }});
+    if (afFitBtn) afFitBtn.addEventListener('click', function() {{
+      cyAtk.fit(cyAtk.elements(), 40);
+    }});
   }}
 
   // Table sorting

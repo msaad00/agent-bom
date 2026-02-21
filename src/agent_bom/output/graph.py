@@ -203,3 +203,110 @@ def _provider_label(source: str) -> str:
         "snowflake": "Snowflake",
     }
     return labels.get(source, source.upper())
+
+
+def build_attack_flow_elements(
+    blast_radii: list["BlastRadius"],
+) -> list[dict]:
+    """Build a CVE-centric attack flow graph showing how vulns compromise assets.
+
+    Flow direction (left-to-right):
+      CVE → Package → MCP Server → Credentials / Tools / Agents
+
+    This is the *reverse* of the supply chain graph — it shows blast radius
+    propagation from vulnerability to impacted assets.
+
+    Node types:
+      - ``cve_*``      — CVE/advisory (severity-colored diamond)
+      - ``pkg_vuln``   — vulnerable package
+      - ``server``     — MCP server affected
+      - ``credential`` — exposed credential (key icon)
+      - ``tool``       — reachable MCP tool
+      - ``agent``      — affected agent
+
+    Edge types:
+      - ``exploits``   — CVE → package
+      - ``runs_on``    — package → server
+      - ``exposes``    — server → credential
+      - ``reaches``    — server → tool
+      - ``compromises``— server → agent
+    """
+    if not blast_radii:
+        return []
+
+    elements: list[dict] = []
+    seen_nodes: set[str] = set()
+
+    def _add_node(node_id: str, **data: object) -> None:
+        if node_id not in seen_nodes:
+            seen_nodes.add(node_id)
+            elements.append({"data": {"id": node_id, **data}})
+
+    seen_edges: set[tuple[str, str, str]] = set()
+
+    def _add_edge(source: str, target: str, edge_type: str) -> None:
+        key = (source, target, edge_type)
+        if key not in seen_edges:
+            seen_edges.add(key)
+            elements.append({"data": {"source": source, "target": target, "type": edge_type}})
+
+    for br in blast_radii:
+        v = br.vulnerability
+        sev = v.severity.value
+
+        # CVE node
+        cve_id = f"cve:{v.id}"
+        score_text = f"\nCVSS: {v.cvss_score:.1f}" if v.cvss_score else ""
+        fix_text = f"\nFix: {v.fixed_version}" if v.fixed_version else "\nNo fix available"
+        _add_node(cve_id,
+                  label=v.id,
+                  type=f"cve_{sev}",
+                  tip=f"{v.id}\nSeverity: {sev}{score_text}\nBlast score: {br.risk_score:.1f}{fix_text}")
+
+        # Package node
+        pkg_id = f"pkg:{br.package.name}"
+        _add_node(pkg_id,
+                  label=f"{br.package.name}\n@{br.package.version}",
+                  type="pkg_vuln",
+                  tip=f"Package: {br.package.name}\nVersion: {br.package.version}\nEcosystem: {br.package.ecosystem}")
+        _add_edge(cve_id, pkg_id, "exploits")
+
+        # Servers that use this package
+        for agent in br.affected_agents:
+            for srv in agent.mcp_servers:
+                pkg_match = any(
+                    p.name == br.package.name and p.ecosystem == br.package.ecosystem
+                    for p in srv.packages
+                )
+                if not pkg_match:
+                    continue
+
+                srv_id = f"srv:{agent.name}:{srv.name}"
+                _add_node(srv_id,
+                          label=srv.name,
+                          type="server",
+                          tip=f"MCP Server: {srv.name}\nAgent: {agent.name}\nPackages: {len(srv.packages)}")
+                _add_edge(pkg_id, srv_id, "runs_on")
+
+                # Exposed credentials
+                for cred in srv.credential_names:
+                    cred_id = f"cred:{cred}"
+                    _add_node(cred_id, label=cred, type="credential", tip=f"Credential: {cred}\nExposed via: {srv.name}")
+                    _add_edge(srv_id, cred_id, "exposes")
+
+                # Reachable tools (from introspection data if available)
+                tools = getattr(srv, "tool_names", []) or []
+                for tool_name in tools[:8]:  # cap at 8 to avoid graph explosion
+                    tool_id = f"tool:{srv.name}:{tool_name}"
+                    _add_node(tool_id, label=tool_name, type="tool", tip=f"MCP Tool: {tool_name}\nServer: {srv.name}")
+                    _add_edge(srv_id, tool_id, "reaches")
+
+                # Affected agent
+                agent_id = f"agent:{agent.name}"
+                _add_node(agent_id,
+                          label=agent.name,
+                          type="agent",
+                          tip=f"Agent: {agent.name}\nType: {agent.agent_type.value}")
+                _add_edge(srv_id, agent_id, "compromises")
+
+    return elements

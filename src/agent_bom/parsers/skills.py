@@ -140,12 +140,16 @@ def parse_skill_file(path: Path) -> SkillScanResult:
     # pip install packages
     for match in _PIP_INSTALL_RE.finditer(code_text):
         specs = match.group(1).strip()
+        # Strip inline comments before splitting into package specs
+        specs = specs.split("#")[0].strip()
+        if not specs:
+            continue
         for spec in re.split(r"\s+", specs):
             spec = spec.strip("'\"")
-            if not spec or spec.startswith("-") or spec.startswith("#"):
+            if not spec or spec.startswith("-"):
                 continue
             name = re.split(r"[><=!~]", spec)[0].split("[")[0]
-            if not name or not re.match(r"^[\w][\w.-]*$", name):
+            if not name or len(name) < 2 or not re.match(r"^[\w][\w.-]*$", name):
                 continue
             key = (name.lower(), "pypi")
             if key not in seen_packages:
@@ -156,9 +160,13 @@ def parse_skill_file(path: Path) -> SkillScanResult:
     # npm install packages
     for match in _NPM_INSTALL_RE.finditer(code_text):
         specs = match.group(1).strip()
+        # Strip inline comments before splitting into package specs
+        specs = specs.split("#")[0].strip()
+        if not specs:
+            continue
         for spec in re.split(r"\s+", specs):
             spec = spec.strip("'\"")
-            if not spec or spec.startswith("-") or spec.startswith("#"):
+            if not spec or spec.startswith("-"):
                 continue
             name, version = _parse_pkg_spec(spec, "@")
             if not name:

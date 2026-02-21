@@ -3,15 +3,20 @@
 Cross-references extracted packages and MCP servers against the bundled
 MCP registry to detect typosquatting, unverified servers, shell access,
 excessive credentials, and external URL data-exfiltration risks.
+
+Packages not in the MCP registry are dynamically verified against
+PyPI/npm before flagging as unknown (reduces false positives).
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from pathlib import Path
+from typing import Optional
 
 from agent_bom.models import TransportType
 from agent_bom.parsers.skills import SkillScanResult
@@ -81,6 +86,68 @@ _DANGEROUS_ARG_KEYWORDS = {
 
 _DANGEROUS_SERVER_NAME_KEYWORDS = {"exec", "shell", "terminal", "command"}
 
+# ── Dynamic package verification ─────────────────────────────────────────────
+
+NPM_REGISTRY = "https://registry.npmjs.org"
+PYPI_API = "https://pypi.org/pypi"
+
+
+async def _verify_package_exists(name: str, ecosystem: str) -> Optional[bool]:
+    """Check if a package exists on its ecosystem registry.
+
+    Returns True if found, False if confirmed not-found, None on error.
+    """
+    from agent_bom.http_client import create_client, request_with_retry
+
+    if ecosystem == "pypi":
+        url = f"{PYPI_API}/{name}/json"
+    elif ecosystem == "npm":
+        encoded = name.replace("/", "%2F")
+        url = f"{NPM_REGISTRY}/{encoded}/latest"
+    else:
+        return None
+
+    try:
+        async with create_client(timeout=5.0) as client:
+            resp = await request_with_retry(client, "GET", url, max_retries=1)
+            if resp is None:
+                return None
+            return resp.status_code == 200
+    except Exception:
+        return None
+
+
+async def _batch_verify_packages(
+    packages: list[tuple[str, str]],
+) -> dict[str, bool]:
+    """Verify multiple (name, ecosystem) pairs concurrently.
+
+    Returns ``{name: True/False}``. Packages that error default to True
+    (fail-open — don't flag if we can't verify).
+    """
+    if not packages:
+        return {}
+
+    results: dict[str, bool] = {}
+    sem = asyncio.Semaphore(20)
+
+    async def _check(name: str, eco: str) -> None:
+        async with sem:
+            found = await _verify_package_exists(name, eco)
+            # fail-open: treat network errors as "exists" to avoid false flags
+            results[name] = found if found is not None else True
+
+    await asyncio.gather(*[_check(n, e) for n, e in packages])
+    return results
+
+
+def _batch_verify_packages_sync(
+    packages: list[tuple[str, str]],
+) -> dict[str, bool]:
+    """Sync wrapper for ``_batch_verify_packages``."""
+    return asyncio.run(_batch_verify_packages(packages))
+
+
 # ── Main audit function ─────────────────────────────────────────────────────
 
 
@@ -105,8 +172,21 @@ def audit_skill_result(result: SkillScanResult) -> SkillAuditResult:
 
     registry_names = list(registry.keys())
 
+    # Batch-verify packages not in the MCP registry against PyPI/npm
+    unregistered = [
+        (pkg.name, pkg.ecosystem)
+        for pkg in result.packages
+        if pkg.name not in registry
+    ]
+    verified: dict[str, bool] = {}
+    if unregistered:
+        try:
+            verified = _batch_verify_packages_sync(unregistered)
+        except Exception:
+            logger.debug("Package verification failed, falling back to registry-only")
+
     for pkg in result.packages:
-        _check_package(pkg, registry, registry_names, source_file, audit)
+        _check_package(pkg, registry, registry_names, source_file, audit, verified)
 
     # ── 4-5, 7: Server checks ───────────────────────────────────────────
     audit.servers_checked = len(result.servers)
@@ -169,8 +249,14 @@ def _check_package(
     registry_names: list[str],
     source_file: str,
     audit: SkillAuditResult,
+    verified: dict[str, bool] | None = None,
 ) -> None:
-    """Run checks 1-3 against a single package."""
+    """Run checks 1-3 against a single package.
+
+    *verified* is a dict of ``{name: True/False}`` from dynamic PyPI/npm
+    verification.  Packages verified as existing on their registry are
+    silently skipped (not flagged as unknown).
+    """
     name = pkg.name
 
     # Exact match in registry — nothing to flag for typosquat/unknown
@@ -203,15 +289,20 @@ def _check_package(
             context="code_block",
         ))
     else:
-        # No close match at all — unknown package
+        # Dynamically verified as a real package on PyPI/npm — skip
+        if verified and verified.get(name):
+            return
+
+        # Not in registry AND not found on PyPI/npm — flag as unknown
         audit.findings.append(SkillFinding(
             severity="low",
             category="unknown_package",
             title=f"Unknown package: '{name}'",
             detail=(
                 f"Package '{name}' (extracted from a code block in {source_file}) "
-                "was not found in the MCP registry. "
-                "It may be legitimate but cannot be verified."
+                "was not found in the MCP registry or on "
+                f"{'PyPI' if pkg.ecosystem == 'pypi' else 'npm'}. "
+                "It may be a typo or a private package."
             ),
             source_file=source_file,
             package=name,

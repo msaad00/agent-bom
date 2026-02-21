@@ -1,5 +1,7 @@
 """Tests for skill file security audit."""
 
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from agent_bom.models import AIBOMReport, MCPServer, Package, TransportType
 from agent_bom.output import to_json
@@ -21,7 +23,9 @@ def test_typosquat_detection():
         ],
         source_files=["CLAUDE.md"],
     )
-    audit = audit_skill_result(result)
+    with patch("agent_bom.parsers.skill_audit._batch_verify_packages_sync",
+               return_value={}):
+        audit = audit_skill_result(result)
 
     typosquat_findings = [f for f in audit.findings if f.category == "typosquat"]
     assert len(typosquat_findings) >= 1
@@ -111,7 +115,10 @@ def test_unknown_package():
         ],
         source_files=["skill.md"],
     )
-    audit = audit_skill_result(result)
+    # Mock verification to avoid network calls — package doesn't exist
+    with patch("agent_bom.parsers.skill_audit._batch_verify_packages_sync",
+               return_value={"totally-fake-package-xyz": False}):
+        audit = audit_skill_result(result)
 
     unknown = [f for f in audit.findings if f.category == "unknown_package"]
     assert len(unknown) >= 1
@@ -354,3 +361,129 @@ def test_skill_audit_ai_fields_in_json():
     result = to_json(report)
     assert result["skill_audit"]["ai_skill_summary"] == "No significant risks detected."
     assert result["skill_audit"]["ai_overall_risk_level"] == "low"
+
+
+# ── Dynamic package verification tests ───────────────────────────────────
+
+
+def test_verify_package_exists_pypi():
+    """Should return True when PyPI responds 200."""
+    from agent_bom.parsers.skill_audit import _verify_package_exists
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+
+    mock_cm = AsyncMock()
+    mock_cm.__aenter__ = AsyncMock(return_value=AsyncMock())
+    mock_cm.__aexit__ = AsyncMock(return_value=False)
+
+    import agent_bom.http_client as _hc
+    with patch.object(_hc, "create_client", return_value=mock_cm), \
+         patch.object(_hc, "request_with_retry", new_callable=AsyncMock, return_value=mock_resp):
+        result = asyncio.run(_verify_package_exists("requests", "pypi"))
+        assert result is True
+
+
+def test_verify_package_not_found():
+    """Should return False when registry responds 404."""
+    from agent_bom.parsers.skill_audit import _verify_package_exists
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 404
+
+    mock_cm = AsyncMock()
+    mock_cm.__aenter__ = AsyncMock(return_value=AsyncMock())
+    mock_cm.__aexit__ = AsyncMock(return_value=False)
+
+    import agent_bom.http_client as _hc
+    with patch.object(_hc, "create_client", return_value=mock_cm), \
+         patch.object(_hc, "request_with_retry", new_callable=AsyncMock, return_value=mock_resp):
+        result = asyncio.run(_verify_package_exists("zzz-not-real-abc", "pypi"))
+        assert result is False
+
+
+def test_verify_package_network_error():
+    """Should return None on network error."""
+    from agent_bom.parsers.skill_audit import _verify_package_exists
+
+    mock_cm = AsyncMock()
+    mock_cm.__aenter__ = AsyncMock(return_value=AsyncMock())
+    mock_cm.__aexit__ = AsyncMock(return_value=False)
+
+    import agent_bom.http_client as _hc
+    with patch.object(_hc, "create_client", return_value=mock_cm), \
+         patch.object(_hc, "request_with_retry", new_callable=AsyncMock, return_value=None):
+        result = asyncio.run(_verify_package_exists("requests", "pypi"))
+        assert result is None
+
+
+def test_batch_verify_packages():
+    """Should verify multiple packages concurrently."""
+    from agent_bom.parsers.skill_audit import _batch_verify_packages
+
+    async def mock_verify(name, eco):
+        if name == "requests":
+            return True
+        return False
+
+    with patch("agent_bom.parsers.skill_audit._verify_package_exists",
+               side_effect=mock_verify):
+        results = asyncio.run(_batch_verify_packages([
+            ("requests", "pypi"),
+            ("zzz-fake", "pypi"),
+        ]))
+        assert results["requests"] is True
+        # fail-open: False from _verify → still False (only None coerced to True)
+        assert results["zzz-fake"] is False
+
+
+def test_unknown_package_skipped_if_verified():
+    """A package verified on PyPI should NOT be flagged as unknown."""
+    result = SkillScanResult(
+        packages=[
+            Package(name="flask", version="latest", ecosystem="pypi"),
+        ],
+        source_files=["skill.md"],
+    )
+    # flask exists on PyPI → verified as True
+    with patch("agent_bom.parsers.skill_audit._batch_verify_packages_sync",
+               return_value={"flask": True}):
+        audit = audit_skill_result(result)
+
+    unknown = [f for f in audit.findings if f.category == "unknown_package"]
+    assert len(unknown) == 0
+
+
+def test_unknown_package_flagged_if_not_verified():
+    """A package not on PyPI and not in registry should be flagged."""
+    result = SkillScanResult(
+        packages=[
+            Package(name="zzz-not-real-pkg", version="latest", ecosystem="pypi"),
+        ],
+        source_files=["skill.md"],
+    )
+    with patch("agent_bom.parsers.skill_audit._batch_verify_packages_sync",
+               return_value={"zzz-not-real-pkg": False}):
+        audit = audit_skill_result(result)
+
+    unknown = [f for f in audit.findings if f.category == "unknown_package"]
+    assert len(unknown) == 1
+    assert "PyPI" in unknown[0].detail
+
+
+def test_verification_failure_falls_back():
+    """When verification errors, audit still runs (fail-open)."""
+    result = SkillScanResult(
+        packages=[
+            Package(name="some-package", version="latest", ecosystem="pypi"),
+        ],
+        source_files=["skill.md"],
+    )
+    # Simulate network failure
+    with patch("agent_bom.parsers.skill_audit._batch_verify_packages_sync",
+               side_effect=Exception("Network error")):
+        audit = audit_skill_result(result)
+
+    # Should still produce findings (falls back to registry-only behavior)
+    unknown = [f for f in audit.findings if f.category == "unknown_package"]
+    assert len(unknown) == 1

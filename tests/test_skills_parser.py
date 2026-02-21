@@ -198,3 +198,58 @@ def test_raw_content_truncated(tmp_path):
     from agent_bom.parsers.skills import parse_skill_file
     result = parse_skill_file(md)
     assert len(result.raw_content[str(md)]) == 8000
+
+
+# ── Comment-stripping tests ──────────────────────────────────────────────
+
+
+def test_parse_pip_install_strips_comments(tmp_path):
+    """pip install should NOT extract words from inline comments."""
+    md = tmp_path / "setup.md"
+    md.write_text(
+        "# Setup\n\n"
+        "```bash\n"
+        "pip install 'agent-bom[aws]'       # AWS Bedrock, Lambda, EKS, SageMaker\n"
+        "pip install 'agent-bom[snowflake]'  # Cortex Agents, MCP Servers, Snowpark\n"
+        "pip install 'agent-bom[cloud]'      # All providers\n"
+        "```\n"
+    )
+    result = parse_skill_file(md)
+    names = [p.name for p in result.packages]
+    # Should only extract agent-bom (once, deduplicated)
+    assert "agent-bom" in names
+    # Comment words should NOT be extracted as packages
+    for bad_name in ["AWS", "Bedrock", "Lambda", "EKS", "SageMaker",
+                     "Cortex", "Agents", "MCP", "Servers", "Snowpark",
+                     "All", "providers"]:
+        assert bad_name not in names, f"False positive: '{bad_name}' extracted from comment"
+
+
+def test_parse_pip_install_extras_with_comment(tmp_path):
+    """pip install with extras bracket and comment extracts only the package."""
+    md = tmp_path / "setup.md"
+    md.write_text(
+        "```bash\n"
+        "pip install flask[async]  # web framework with async support\n"
+        "```\n"
+    )
+    result = parse_skill_file(md)
+    names = [p.name for p in result.packages]
+    assert "flask" in names
+    assert "web" not in names
+    assert "framework" not in names
+
+
+def test_parse_npm_install_strips_comments(tmp_path):
+    """npm install should NOT extract words from inline comments."""
+    md = tmp_path / "setup.md"
+    md.write_text(
+        "```bash\n"
+        "npm install express  # web framework for Node.js\n"
+        "```\n"
+    )
+    result = parse_skill_file(md)
+    names = [p.name for p in result.packages]
+    assert "express" in names
+    assert "web" not in names
+    assert "framework" not in names

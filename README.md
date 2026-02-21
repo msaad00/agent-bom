@@ -547,7 +547,7 @@ Unverified servers in your configs trigger a warning. Policy rules can block the
 |------|---------|----------|
 | Developer CLI | `agent-bom scan` | Local audit, pre-commit checks |
 | Pre-install check | `agent-bom check express@4.18.2 -e npm` | Before running any MCP server |
-| GitHub Action | `uses: agent-bom/agent-bom@v0.21.0` | CI/CD gate + Security tab |
+| GitHub Action | `uses: agent-bom/agent-bom@v0.22.0` | CI/CD gate + Security tab |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated, reproducible scans |
 | REST API | `agent-bom api` | Dashboards, SIEM, scripting |
 | Dashboard | `agent-bom serve` | Team-visible security dashboard |
@@ -562,7 +562,7 @@ Use agent-bom directly in your CI/CD pipeline:
 
 ```yaml
 - name: AI supply chain scan
-  uses: agent-bom/agent-bom@v0.21.0
+  uses: agent-bom/agent-bom@v0.22.0
   with:
     severity-threshold: high
     upload-sarif: true
@@ -642,6 +642,47 @@ agent-bom api --api-key $SECRET --cors-origins "https://myui.example.com" --rate
 | `--rate-limit RPM` | 60 | Scan endpoint requests/minute per IP |
 
 Max 10 concurrent scan jobs. Completed jobs auto-expire after 1 hour. Request body limited to 10MB.
+
+---
+
+## MCP Server
+
+agent-bom runs as an MCP server, making security scanning available inside any MCP client (Claude Desktop, ChatGPT, Cursor, Windsurf, VS Code Copilot, and more).
+
+```bash
+pip install agent-bom[mcp-server]
+agent-bom mcp-server                    # stdio (local clients)
+agent-bom mcp-server --transport sse    # SSE (remote clients)
+```
+
+**Claude Desktop config** (`~/.claude/claude_desktop_config.json`):
+```json
+{"mcpServers": {"agent-bom": {"command": "agent-bom", "args": ["mcp-server"]}}}
+```
+
+**Cursor config** (`~/.cursor/mcp.json`):
+```json
+{"mcpServers": {"agent-bom": {"command": "agent-bom", "args": ["mcp-server"]}}}
+```
+
+| MCP Tool | Description |
+|----------|-------------|
+| `scan` | Full discovery, CVE scanning, blast radius analysis |
+| `blast_radius` | Look up attack chain for a specific CVE |
+| `policy_check` | Evaluate security policy rules against findings |
+| `registry_lookup` | Query 109-server threat intelligence registry |
+| `generate_sbom` | Generate CycloneDX 1.6 or SPDX 3.0 SBOM |
+
+---
+
+## Integrations
+
+| Platform | How to use | Details |
+|----------|-----------|---------|
+| **ToolHive** | `thv run agent-bom` | [ToolHive registry entry](integrations/toolhive/server.json) — runs in isolated container |
+| **OpenClaw** | `clawhub install agent-bom` | [OpenClaw skill](integrations/openclaw/SKILL.md) — teaches agents to run security scans |
+| **MCP Registry** | `uvx agent-bom mcp-server` | [Registry entry](integrations/mcp-registry/server.json) — official MCP Registry |
+| **GitHub Actions** | `uses: agent-bom/agent-bom@v0.22.0` | SARIF upload to Security tab, policy gating |
 
 ---
 
@@ -762,10 +803,13 @@ These tools solve different problems and are **complementary**.
 - [x] Model binary file detection — .gguf, .safetensors, .onnx, .pt, .pkl security flags, 13 formats
 - [x] API server hardening — API key authentication, per-IP rate limiting, CORS tightening, job cleanup
 - [x] CLI tree labels — explicit 🤖 Agent / 🔌 MCP Server / 📦 Package prefixes with summary stats
+- [x] MCP server — expose scan, blast_radius, policy_check, registry_lookup, generate_sbom as MCP tools
+- [x] ToolHive integration — registry entry + MCP container for enterprise deployment
+- [x] OpenClaw skill — ClawHub-compatible skill for AI agent security scanning
+- [x] GitHub Action enhancements — image, config-dir, sbom, remediate inputs
 - [ ] CIS AI benchmarks — integrate CIS AI/agent security benchmarks when published
 - [ ] Agent guardrails engine — runtime policy enforcement for agent actions and tool calls
 - [ ] AI-powered discovery — use LLMs to identify AI components in unstructured codebases
-- [ ] ToolHive integration (`--toolhive` flag for managed server scanning)
 - [ ] EU AI Act compliance — risk classification and documentation requirements mapping
 - [ ] Multi-language SDK detection — Go, Rust, Java AI library scanning beyond Python/Node
 - [ ] n8n / workflow engine scanning — detect AI nodes in n8n, Zapier, Make automation flows

@@ -47,6 +47,22 @@ inputs:
     description: 'agent-bom package version to install (e.g. 0.13.0). Empty = latest.'
     required: false
     default: ''
+  image:
+    description: 'Docker image to scan (e.g. nginx:1.25).'
+    required: false
+    default: ''
+  config-dir:
+    description: 'Path to MCP config directory to scan.'
+    required: false
+    default: ''
+  sbom:
+    description: 'Path to existing SBOM file (CycloneDX or SPDX JSON) to ingest.'
+    required: false
+    default: ''
+  remediate:
+    description: 'Generate remediation plan at this path (e.g. remediation.md).'
+    required: false
+    default: ''
 
 outputs:
   sarif-file:
@@ -94,6 +110,10 @@ runs:
         INPUT_FAIL_ON_KEV: ${{ inputs.fail-on-kev }}
         INPUT_AI_ENRICH: ${{ inputs.ai-enrich }}
         INPUT_AI_MODEL: ${{ inputs.ai-model }}
+        INPUT_IMAGE: ${{ inputs.image }}
+        INPUT_CONFIG_DIR: ${{ inputs.config-dir }}
+        INPUT_SBOM: ${{ inputs.sbom }}
+        INPUT_REMEDIATE: ${{ inputs.remediate }}
       run: |
         SARIF_FILE="agent-bom-results.sarif"
         ARGS="scan"
@@ -123,6 +143,26 @@ runs:
         # KEV gate
         if [ "$INPUT_FAIL_ON_KEV" = "true" ]; then
           ARGS="$ARGS --fail-on-kev"
+        fi
+
+        # Docker image
+        if [ -n "$INPUT_IMAGE" ]; then
+          ARGS="$ARGS --image $INPUT_IMAGE"
+        fi
+
+        # Config directory
+        if [ -n "$INPUT_CONFIG_DIR" ]; then
+          ARGS="$ARGS --config-dir $INPUT_CONFIG_DIR"
+        fi
+
+        # Existing SBOM
+        if [ -n "$INPUT_SBOM" ]; then
+          ARGS="$ARGS --sbom $INPUT_SBOM"
+        fi
+
+        # Remediation plan
+        if [ -n "$INPUT_REMEDIATE" ]; then
+          ARGS="$ARGS --remediate $INPUT_REMEDIATE"
         fi
 
         # AI enrichment

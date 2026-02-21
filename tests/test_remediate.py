@@ -26,7 +26,7 @@ def test_credential_fix_github_pat():
     assert fix.credential_name == "GITHUB_PERSONAL_ACCESS_TOKEN"
     assert fix.locations == ["agent/server"]
     assert "repo scope" in fix.risk_description
-    assert "github.com" in fix.reference_url
+    assert fix.reference_url == "https://github.com/settings/tokens?type=beta"
 
 
 def test_credential_fix_postgres():
@@ -48,7 +48,7 @@ def test_credential_fix_slack():
     assert len(fixes) == 1
     fix = fixes[0]
     assert fix.credential_name == "SLACK_BOT_TOKEN"
-    assert "slack.com" in fix.reference_url
+    assert fix.reference_url == "https://api.slack.com/apps"
 
 
 def test_credential_fix_generic_api_key():

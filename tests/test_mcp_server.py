@@ -10,6 +10,9 @@ from click.testing import CliRunner
 
 from agent_bom.cli import main
 
+# Skip entire module if mcp SDK is not installed
+pytest.importorskip("mcp", reason="mcp SDK not installed — pip install 'agent-bom[mcp-server]'")
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

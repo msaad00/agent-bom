@@ -1660,6 +1660,56 @@ def api_cmd(host: str, port: int, reload: bool, workers: int,
     )
 
 
+@main.command("mcp-server")
+@click.option("--transport", type=click.Choice(["stdio", "sse"]), default="stdio",
+              show_default=True, help="MCP transport protocol.")
+@click.option("--port", default=8423, show_default=True, help="Port for SSE transport.")
+@click.option("--host", default="127.0.0.1", show_default=True, help="Host for SSE transport.")
+def mcp_server_cmd(transport: str, port: int, host: str):
+    """Start agent-bom as an MCP server.
+
+    \b
+    Requires:  pip install 'agent-bom[mcp-server]'
+
+    \b
+    Exposes 5 security tools via MCP protocol:
+      scan              Discover agents, scan for CVEs, compute blast radius
+      blast_radius      Look up blast radius for a specific CVE
+      policy_check      Evaluate policy rules against scan findings
+      registry_lookup   Query the MCP server threat intelligence registry
+      generate_sbom     Generate CycloneDX or SPDX SBOM
+
+    \b
+    Usage:
+      agent-bom mcp-server                    # stdio (Claude Desktop, Cursor)
+      agent-bom mcp-server --transport sse    # SSE (remote clients)
+
+    \b
+    Claude Desktop config (~/.claude/claude_desktop_config.json):
+      {"mcpServers": {"agent-bom": {"command": "agent-bom", "args": ["mcp-server"]}}}
+    """
+    try:
+        from agent_bom.mcp_server import create_mcp_server
+    except ImportError:
+        click.echo(
+            "ERROR: mcp SDK is required for `agent-bom mcp-server`.\n"
+            "Install it with:  pip install 'agent-bom[mcp-server]'",
+            err=True,
+        )
+        sys.exit(1)
+
+    server = create_mcp_server()
+
+    if transport == "sse":
+        from agent_bom import __version__ as _ver
+        click.echo(f"  agent-bom MCP Server v{_ver}", err=True)
+        click.echo(f"  Transport: SSE on http://{host}:{port}", err=True)
+        click.echo("  Press Ctrl+C to stop.\n", err=True)
+        server.run(transport="sse", host=host, port=port)
+    else:
+        server.run(transport="stdio")
+
+
 @main.command("completions")
 @click.argument("shell", type=click.Choice(["bash", "zsh", "fish"]))
 def completions_cmd(shell: str):

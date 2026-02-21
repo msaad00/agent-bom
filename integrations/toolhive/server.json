@@ -1,0 +1,53 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.agent-bom/agent-bom",
+  "description": "AI supply chain security scanner — CVE scanning, blast radius analysis, policy enforcement, and SBOM generation for MCP servers and AI agents",
+  "title": "agent-bom",
+  "version": "0.22.0",
+  "repository": {
+    "url": "https://github.com/agent-bom/agent-bom",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/agent-bom/agent-bom:v0.22.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "NVD_API_KEY",
+          "description": "NVD API key for higher rate limits on CVSS enrichment (optional)",
+          "isRequired": false,
+          "isSecret": true
+        }
+      ]
+    }
+  ],
+  "_meta": {
+    "io.modelcontextprotocol.registry/publisher-provided": {
+      "io.github.agent-bom": {
+        "ghcr.io/agent-bom/agent-bom:v0.22.0": {
+          "tier": "Community",
+          "status": "Active",
+          "tags": [
+            "security",
+            "vulnerability-scanning",
+            "sbom",
+            "supply-chain",
+            "cve",
+            "blast-radius"
+          ],
+          "tools": [
+            "scan",
+            "blast_radius",
+            "policy_check",
+            "registry_lookup",
+            "generate_sbom"
+          ]
+        }
+      }
+    }
+  }
+}

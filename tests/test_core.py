@@ -255,7 +255,7 @@ def empty_report():
 
 def test_version_sync():
     from agent_bom import __version__
-    assert __version__ == "0.21.0"
+    assert __version__ == "0.22.0"
 
 
 def test_report_version_matches():
@@ -2781,3 +2781,40 @@ def test_print_export_hint_no_crash(sample_report):
 
     # Should not raise
     print_export_hint(sample_report)
+
+
+# ---------------------------------------------------------------------------
+# Integration file validation
+# ---------------------------------------------------------------------------
+
+
+def test_toolhive_server_json_valid():
+    """ToolHive server.json should be valid JSON with required fields."""
+    import json as _json
+    from pathlib import Path
+    p = Path(__file__).parent.parent / "integrations" / "toolhive" / "server.json"
+    data = _json.loads(p.read_text())
+    assert data["name"] == "io.github.agent-bom/agent-bom"
+    assert data["version"] == "0.22.0"
+    assert "packages" in data
+    assert data["packages"][0]["registryType"] == "oci"
+
+
+def test_mcp_registry_server_json_valid():
+    """MCP registry server.json should be valid JSON with required fields."""
+    import json as _json
+    from pathlib import Path
+    p = Path(__file__).parent.parent / "integrations" / "mcp-registry" / "server.json"
+    data = _json.loads(p.read_text())
+    assert data["name"] == "io.github.agent-bom/agent-bom"
+    assert any(pkg["registryType"] == "pypi" for pkg in data["packages"])
+
+
+def test_openclaw_skill_exists():
+    """OpenClaw SKILL.md should exist with agent-bom content."""
+    from pathlib import Path
+    p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
+    assert p.exists()
+    content = p.read_text()
+    assert "agent-bom" in content
+    assert "name: agent-bom" in content

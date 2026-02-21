@@ -1,0 +1,39 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.agent-bom/agent-bom",
+  "description": "AI supply chain security scanner — CVE scanning, blast radius analysis, policy enforcement, and SBOM generation for MCP servers and AI agents",
+  "title": "agent-bom",
+  "version": "0.22.0",
+  "repository": {
+    "url": "https://github.com/agent-bom/agent-bom",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "agent-bom",
+      "version": "0.22.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "runtimeHint": "uvx",
+      "packageArguments": [
+        {
+          "type": "positional",
+          "name": "command",
+          "isRepeated": false,
+          "description": "The CLI subcommand to run the MCP server",
+          "defaultValue": "mcp-server"
+        }
+      ],
+      "environmentVariables": [
+        {
+          "name": "NVD_API_KEY",
+          "description": "NVD API key for higher rate limits on vulnerability enrichment",
+          "isRequired": false,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

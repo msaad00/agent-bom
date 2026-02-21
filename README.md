@@ -51,7 +51,7 @@ agent-bom answers the question security teams actually need:
 - **Enterprise remediation** — named assets, impact percentages, risk narratives per fix
 - **OWASP LLM Top 10 + MITRE ATLAS + NIST AI RMF** — triple threat framework tagging on every finding
 - **AI-powered enrichment** — LLM-generated risk narratives, executive summaries, and threat chains via `--ai-enrich`
-- **109-server MCP registry** — risk levels, risk justifications, tool inventories, detail pages (incl. OpenClaw)
+- **112-server MCP registry** — risk levels, risk justifications, tool inventories, detail pages (incl. OpenClaw)
 - **Policy-as-code** — block unverified servers, enforce risk thresholds in CI
 - **Read-only** — never writes configs, never runs servers, never stores secrets
 - **Works everywhere** — CLI, Docker, REST API, Cloud UI, CI/CD, Prometheus, Kubernetes
@@ -103,7 +103,7 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
 - **[CI integration](#ci-integration)** — GitHub Actions + SARIF upload
 - **[REST API](#rest-api)** — FastAPI on port 8422
 - **[Skills](skills/)** — downloadable workflow playbooks (AI-BOM, cloud audit, OWASP, incident response)
-- **[MCP Registry](src/agent_bom/mcp_registry.json)** — 109 known servers with metadata
+- **[MCP Registry](src/agent_bom/mcp_registry.json)** — 112 known servers with metadata
 - **[PERMISSIONS.md](PERMISSIONS.md)** — auditable trust contract
 - **[Roadmap](#roadmap)** — what's coming next
 
@@ -531,9 +531,9 @@ What `--ai-enrich` generates:
 - **Threat chains** — red-team-style attack chain analysis through MCP tools
 - **Skill file analysis** — context-aware review of skill files with false positive detection, severity adjustments, and new threat discovery
 
-### MCP Server Registry (109 servers)
+### MCP Server Registry (112 servers)
 
-Ships with a curated registry of 109 known MCP servers — including OpenClaw, ClickHouse, Figma, Prisma, Browserbase, and E2B. Each entry includes: package name + version pin, ecosystem, risk level, **risk justification** (why this server has its risk level), tool names, credential env vars, license, category, latest version, known CVEs, and source URL.
+Ships with a curated registry of 112 known MCP servers — including OpenClaw, ClickHouse, Figma, Prisma, Browserbase, and E2B. Each entry includes: package name + version pin, ecosystem, risk level, **risk justification** (why this server has its risk level), tool names, credential env vars, license, category, latest version, known CVEs, and source URL.
 
 The Cloud UI provides a full **registry browser** with search, risk/category filters, and drill-down detail pages showing tools, credentials, CVEs, and risk justification for each server.
 
@@ -552,7 +552,7 @@ Unverified servers in your configs trigger a warning. Policy rules can block the
 | REST API | `agent-bom api` | Dashboards, SIEM, scripting |
 | Dashboard | `agent-bom serve` | Team-visible security dashboard |
 | Prometheus | `--push-gateway` or `--otel-endpoint` | Continuous monitoring |
-| K8s CronJob | Helm chart + CronJob | Cluster-wide auditing |
+| K8s CronJob | `kubectl apply` CronJob manifest | Cluster-wide auditing |
 
 ---
 
@@ -629,7 +629,7 @@ agent-bom api --api-key $SECRET --cors-origins "https://myui.example.com" --rate
 | `GET /v1/scan/{job_id}/stream` | SSE real-time progress |
 | `GET /v1/scan/{job_id}/attack-flow` | Per-CVE attack flow graph (filterable) |
 | `GET /v1/scan/{job_id}/skill-audit` | Skill file security audit findings |
-| `GET /v1/registry` | Full MCP server registry (109 servers) |
+| `GET /v1/registry` | Full MCP server registry (112 servers) |
 | `GET /v1/registry/{id}` | Single registry entry |
 
 **API hardening options:**
@@ -670,7 +670,7 @@ agent-bom mcp-server --transport sse    # SSE (remote clients)
 | `scan` | Full discovery, CVE scanning, blast radius analysis |
 | `blast_radius` | Look up attack chain for a specific CVE |
 | `policy_check` | Evaluate security policy rules against findings |
-| `registry_lookup` | Query 109-server threat intelligence registry |
+| `registry_lookup` | Query 112-server threat intelligence registry |
 | `generate_sbom` | Generate CycloneDX 1.6 or SPDX 3.0 SBOM |
 
 ---
@@ -695,7 +695,7 @@ The Next.js dashboard (`ui/`) provides an enterprise-grade web interface on top 
 - **Scan detail** — per-job blast radius table, threat framework matrix, remediation plan with impact bars, collapsible sections
 - **Attack flow diagrams** — per-CVE interactive blast radius chain: CVE → Package → Server → Agent → Credentials/Tools, filterable by CVE, severity, framework tag, or agent, with exportable JSON for audit evidence
 - **Supply chain graph** — interactive React Flow visualization: Agent → MCP Server → Package → CVE with color-coded nodes, click-to-inspect detail panel, hover tooltips, zoom/pan, minimap, and job selector
-- **Registry browser** — searchable 109-server catalog with risk/category filters, drill-down detail pages (risk justification, tools, credentials, CVEs, versions), verified badges
+- **Registry browser** — searchable 112-server catalog with risk/category filters, drill-down detail pages (risk justification, tools, credentials, CVEs, versions), verified badges
 - **Agent discovery** — auto-discovered agents with stats bar (servers, packages, credentials, ecosystems), collapsible agent cards
 - **Enterprise scan form** — bulk Docker image input (one-at-a-time, bulk paste, .txt file upload), K8s, Terraform, GitHub Actions, Python agents
 - **Severity chart** — stacked bar chart with critical/high/medium/low percentage breakdown
@@ -791,7 +791,7 @@ These tools solve different problems and are **complementary**.
 - [x] AI-powered enrichment — LLM-generated risk narratives, executive summaries, and threat chains via litellm
 - [x] CLI posture summary — aggregate security posture panel with ecosystem breakdown and credential exposure
 - [x] Interactive supply chain graph — click-to-inspect detail panel, hover tooltips, pane click dismiss
-- [x] Registry enrichment — 109 servers with risk justifications, drill-down detail pages, category filters
+- [x] Registry enrichment — 112 servers with risk justifications, drill-down detail pages, category filters
 - [x] Enterprise scan form — bulk Docker image input (paste, file upload) for fleet-scale scanning
 - [x] Collapsible UI — agents, blast radius, remediation, and inventory sections collapse/expand
 - [x] Attack flow diagrams — per-CVE interactive blast radius chain with filters and audit export

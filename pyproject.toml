@@ -114,6 +114,9 @@ Documentation = "https://github.com/agent-bom/agent-bom#readme"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+agent_bom = ["mcp_registry.json"]
+
 [tool.ruff]
 line-length = 140  # Relaxed from 120 for CLI help strings
 target-version = "py310"

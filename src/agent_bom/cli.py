@@ -603,6 +603,7 @@ def scan(
                         "package": f.package,
                         "server": f.server,
                         "recommendation": f.recommendation,
+                        "context": f.context,
                     }
                     for f in skill_audit.findings
                 ],

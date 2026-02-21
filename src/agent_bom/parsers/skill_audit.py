@@ -53,6 +53,7 @@ class SkillFinding:
     package: str | None = None
     server: str | None = None
     recommendation: str = ""
+    context: str = "config_block"  # "config_block" | "code_block" | "env_reference" — where the data was extracted from
 
 
 @dataclass
@@ -118,12 +119,14 @@ def audit_skill_result(result: SkillScanResult) -> SkillAuditResult:
             category="excessive_permissions",
             title="Excessive credential exposure across skill files",
             detail=(
-                f"{len(result.credential_env_vars)} credential env vars detected: "
+                f"{len(result.credential_env_vars)} credential env vars referenced "
+                f"across skill files: "
                 f"{', '.join(result.credential_env_vars[:10])}"
                 f"{'...' if len(result.credential_env_vars) > 10 else ''}"
             ),
             source_file=source_file,
             recommendation="Reduce the number of credentials or scope them to individual servers.",
+            context="env_reference",
         ))
 
     # Also check per-server credential density
@@ -135,12 +138,14 @@ def audit_skill_result(result: SkillScanResult) -> SkillAuditResult:
                 category="excessive_permissions",
                 title=f"Server '{srv.name}' has {env_count} env vars configured",
                 detail=(
-                    f"MCP server '{srv.name}' has {env_count} environment variables, "
+                    f"MCP server config '{srv.name}' (from JSON block in {source_file}) "
+                    f"has {env_count} environment variables, "
                     "which may indicate over-provisioned access."
                 ),
                 source_file=source_file,
                 server=srv.name,
                 recommendation="Review env vars and remove any that are not strictly required.",
+                context="config_block",
             ))
 
     # ── Final pass/fail ──────────────────────────────────────────────────
@@ -184,12 +189,14 @@ def _check_package(
             category="typosquat",
             title=f"Possible typosquat: '{name}'",
             detail=(
-                f"Package '{name}' is {best_ratio:.0%} similar to known registry "
-                f"entry '{best_match}'. This could be a typosquat attack."
+                f"Package '{name}' (extracted from a code block in {source_file}) "
+                f"is {best_ratio:.0%} similar to known registry entry '{best_match}'. "
+                "This could be a typosquat attack."
             ),
             source_file=source_file,
             package=name,
             recommendation=f"Verify the package name. Did you mean '{best_match}'?",
+            context="code_block",
         ))
     else:
         # No close match at all — unknown package
@@ -198,12 +205,14 @@ def _check_package(
             category="unknown_package",
             title=f"Unknown package: '{name}'",
             detail=(
-                f"Package '{name}' was not found in the MCP registry and has no "
-                "close fuzzy match. It may be legitimate but cannot be verified."
+                f"Package '{name}' (extracted from a code block in {source_file}) "
+                "was not found in the MCP registry. "
+                "It may be legitimate but cannot be verified."
             ),
             source_file=source_file,
             package=name,
             recommendation="Verify the package source and maintainer before trusting it.",
+            context="code_block",
         ))
 
 
@@ -225,12 +234,14 @@ def _check_server(
             category="shell_access",
             title=f"Shell access via server '{srv.name}'",
             detail=(
-                f"Server '{srv.name}' uses shell command '{srv.command}', "
+                f"MCP server config '{srv.name}' (from JSON block in {source_file}) "
+                f"uses shell command '{srv.command}', "
                 "which grants arbitrary code execution."
             ),
             source_file=source_file,
             server=srv.name,
             recommendation="Avoid using raw shell commands. Use a purpose-built MCP server instead.",
+            context="config_block",
         ))
 
     # ── Check 4b: Shell/exec access via args ─────────────────────────────
@@ -245,12 +256,14 @@ def _check_server(
             category="shell_access",
             title=f"Dangerous arguments on server '{srv.name}'",
             detail=(
-                f"Server '{srv.name}' has arguments containing dangerous keywords: "
+                f"MCP server config '{srv.name}' (from JSON block in {source_file}) "
+                f"has arguments containing dangerous keywords: "
                 f"{', '.join(matched_args)}"
             ),
             source_file=source_file,
             server=srv.name,
             recommendation="Remove dangerous flags or use a sandboxed execution environment.",
+            context="config_block",
         ))
 
     # ── Check 5: Dangerous server name ───────────────────────────────────
@@ -264,12 +277,14 @@ def _check_server(
             category="shell_access",
             title=f"Server name suggests dangerous capabilities: '{srv.name}'",
             detail=(
-                f"Server name '{srv.name}' contains keywords suggesting "
+                f"MCP server '{srv.name}' (from JSON block in {source_file}) "
+                f"has a name containing keywords suggesting "
                 f"execution capabilities: {', '.join(matched_name_keywords)}"
             ),
             source_file=source_file,
             server=srv.name,
             recommendation="Review the server's actual capabilities and restrict if possible.",
+            context="config_block",
         ))
 
     # ── Check 2: Unverified MCP server ───────────────────────────────────
@@ -280,12 +295,13 @@ def _check_server(
             category="unverified_server",
             title=f"MCP server not found in registry: '{srv.name}'",
             detail=(
-                f"Server '{srv.name}' (command: '{srv.command}') does not match "
-                "any entry in the MCP registry."
+                f"MCP server config '{srv.name}' (command: '{srv.command}') "
+                f"from {source_file} does not match any entry in the MCP registry."
             ),
             source_file=source_file,
             server=srv.name,
             recommendation="Verify the server source and add it to the registry if trustworthy.",
+            context="config_block",
         ))
     elif not matched_entry.get("verified", False):
         audit.findings.append(SkillFinding(
@@ -293,12 +309,14 @@ def _check_server(
             category="unverified_server",
             title=f"Unverified MCP server: '{srv.name}'",
             detail=(
-                f"Server '{srv.name}' matches registry entry "
-                f"'{matched_entry.get('package', '?')}' but is marked as unverified."
+                f"MCP server config '{srv.name}' from {source_file} matches "
+                f"registry entry '{matched_entry.get('package', '?')}' but is "
+                "marked as unverified."
             ),
             source_file=source_file,
             server=srv.name,
             recommendation="Review the server source code before trusting it in production.",
+            context="config_block",
         ))
 
     # ── Check 7: External URL ────────────────────────────────────────────
@@ -314,12 +332,14 @@ def _check_server(
                 category="external_url",
                 title=f"External URL on server '{srv.name}'",
                 detail=(
-                    f"Server '{srv.name}' connects to external URL '{srv.url}'. "
+                    f"MCP server config '{srv.name}' (from JSON block in {source_file}) "
+                    f"connects to external URL '{srv.url}'. "
                     "Data sent to this server may leave your network."
                 ),
                 source_file=source_file,
                 server=srv.name,
                 recommendation="Ensure the remote endpoint is trusted and traffic is encrypted.",
+                context="config_block",
             ))
 
 

@@ -207,7 +207,9 @@ def test_external_url():
     external = [f for f in audit.findings if f.category == "external_url"]
     assert len(external) >= 1
     assert external[0].severity == "medium"
-    assert "evil.example.com" in external[0].detail
+    assert "remote-server" in external[0].detail
+    assert "external URL" in external[0].detail
+    assert external[0].context == "config_block"
 
 
 # ── 10. Localhost URL OK ─────────────────────────────────────────────────────
@@ -285,6 +287,7 @@ def test_skill_audit_in_json_output():
                 "package": None,
                 "server": "evil",
                 "recommendation": "Use a sandboxed MCP server.",
+                "context": "config_block",
             }
         ],
         "packages_checked": 3,

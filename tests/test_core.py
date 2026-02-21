@@ -255,7 +255,7 @@ def empty_report():
 
 def test_version_sync():
     from agent_bom import __version__
-    assert __version__ == "0.15.0"
+    assert __version__ == "0.16.0"
 
 
 def test_report_version_matches():
@@ -1901,7 +1901,7 @@ def test_registry_endpoint():
     assert body["count"] == len(body["servers"])
     # Registry has at least the official modelcontextprotocol servers
     ids = [s["id"] for s in body["servers"]]
-    assert "modelcontextprotocol/filesystem" in ids
+    assert "@modelcontextprotocol/server-filesystem" in ids
 
 
 # ── Resilient HTTP client tests ──────────────────────────────────────

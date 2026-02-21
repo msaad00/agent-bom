@@ -237,9 +237,9 @@ def test_list_sorted_by_name():
 
 
 def test_list_real_registry():
-    """Verify the real bundled registry loads and has 100+ servers."""
+    """Verify the real bundled registry loads and has 108+ servers."""
     entries = list_registry()
-    assert len(entries) >= 100
+    assert len(entries) >= 108
 
 
 def test_list_real_registry_filter_npm():
@@ -387,3 +387,71 @@ def test_registry_update_result_dataclass():
     r = RegistryUpdateResult(total=10, updated=3, failed=1, unchanged=6)
     assert r.total == 10
     assert r.updated == 3
+
+
+# ── API bridge tests ────────────────────────────────────────────────────────
+
+
+def test_api_bridge_normalizes_packages():
+    """Verify the API bridge normalizes package+ecosystem into packages array."""
+    from agent_bom.api.server import _load_registry
+
+    _load_registry.cache_clear()
+    servers = _load_registry()
+    for srv in servers:
+        assert isinstance(srv["packages"], list)
+        if srv["packages"]:
+            assert "name" in srv["packages"][0]
+            assert "ecosystem" in srv["packages"][0]
+
+
+def test_api_bridge_injects_id():
+    """Verify the dict key becomes item['id']."""
+    from agent_bom.api.server import _load_registry
+
+    _load_registry.cache_clear()
+    servers = _load_registry()
+    assert len(servers) >= 108
+    ids = {s["id"] for s in servers}
+    assert "@modelcontextprotocol/server-filesystem" in ids
+
+
+def test_api_bridge_risk_justification():
+    """Spot-check that entries have non-empty risk_justification."""
+    from agent_bom.api.server import _load_registry
+
+    _load_registry.cache_clear()
+    servers = _load_registry()
+    has_justification = sum(1 for s in servers if s.get("risk_justification"))
+    # At minimum 100 entries should have risk_justification
+    assert has_justification >= 100
+
+
+def test_api_bridge_tools_list():
+    """Verify tools field is always a list."""
+    from agent_bom.api.server import _load_registry
+
+    _load_registry.cache_clear()
+    servers = _load_registry()
+    for srv in servers:
+        assert isinstance(srv["tools"], list)
+
+
+def test_new_servers_present():
+    """Verify the 7 new servers from v0.16.0 are present."""
+    from agent_bom.api.server import _load_registry
+
+    _load_registry.cache_clear()
+    servers = _load_registry()
+    ids = {s["id"] for s in servers}
+    expected_new = [
+        "figma-mcp",
+        "rovo-mcp",
+        "@prisma/mcp-server",
+        "@upstash/mcp-server-redis",
+        "resend-mcp",
+        "@browserbase/mcp-server-browserbase",
+        "@e2b/mcp-server",
+    ]
+    for key in expected_new:
+        assert key in ids, f"Missing new server: {key}"

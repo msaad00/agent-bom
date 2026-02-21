@@ -453,20 +453,68 @@ async def list_jobs() -> dict:
 # ─── MCP Registry ─────────────────────────────────────────────────────────────
 
 import functools  # noqa: E402
+import re as _re  # noqa: E402
 from pathlib import Path as _Path  # noqa: E402
 
-import yaml  # noqa: E402
+
+def _derive_name(key: str) -> str:
+    """Derive a human-readable name from a registry key."""
+    # Strip npm scope prefix
+    name = _re.sub(r"^@[^/]+/", "", key)
+    # Strip common prefixes
+    for prefix in ("mcp-server-", "server-", "mcp-"):
+        if name.startswith(prefix):
+            name = name[len(prefix):]
+            break
+    # Title-case, replace hyphens with spaces
+    return name.replace("-", " ").title()
+
+
+def _infer_publisher(key: str) -> str:
+    """Infer publisher from a registry key."""
+    # npm scoped: @scope/pkg → scope
+    m = _re.match(r"^@([^/]+)/", key)
+    if m:
+        return m.group(1)
+    # Unscoped: use first segment before hyphen or the key itself
+    return key.split("-")[0] if "-" in key else key
 
 
 @functools.lru_cache(maxsize=1)
 def _load_registry() -> list[dict]:
-    """Load the bundled MCP registry YAML (cached after first load)."""
-    registry_path = _Path(__file__).parent.parent.parent.parent / "data" / "mcp-registry.yaml"
+    """Load the bundled MCP registry JSON (cached after first load)."""
+    import json as _json
+
+    registry_path = _Path(__file__).parent.parent / "mcp_registry.json"
     if not registry_path.exists():
         return []
-    with open(registry_path) as f:
-        data = yaml.safe_load(f)
-    return data.get("servers", [])
+    raw = _json.loads(registry_path.read_text())
+    servers_dict = raw.get("servers", {})
+    result = []
+    for key, entry in servers_dict.items():
+        result.append({
+            "id": key,
+            "name": entry.get("name", _derive_name(key)),
+            "publisher": _infer_publisher(key),
+            "verified": entry.get("verified", False),
+            "transport": "stdio",
+            "risk_level": entry.get("risk_level", "low"),
+            "packages": [{"name": entry["package"], "ecosystem": entry["ecosystem"]}]
+            if entry.get("package")
+            else [],
+            "source_url": entry.get("source_url", ""),
+            "description": entry.get("description"),
+            "sigstore_bundle": None,
+            "tools": entry.get("tools", []),
+            "credential_env_vars": entry.get("credential_env_vars", []),
+            "category": entry.get("category"),
+            "license": entry.get("license"),
+            "latest_version": entry.get("latest_version"),
+            "known_cves": entry.get("known_cves", []),
+            "command_patterns": entry.get("command_patterns", []),
+            "risk_justification": entry.get("risk_justification"),
+        })
+    return result
 
 
 @app.get("/v1/registry", tags=["registry"])

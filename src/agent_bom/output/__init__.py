@@ -42,6 +42,159 @@ def print_summary(report: AIBOMReport) -> None:
     console.print(table)
 
 
+def print_posture_summary(report: AIBOMReport) -> None:
+    """Print a high-level security posture summary with ecosystem and credential aggregation."""
+    from collections import Counter
+
+    # Aggregate agent status counts
+    configured = sum(1 for a in report.agents if a.status == AgentStatus.CONFIGURED)
+    not_configured = sum(1 for a in report.agents if a.status == AgentStatus.INSTALLED_NOT_CONFIGURED)
+
+    # Aggregate ecosystem breakdown
+    ecosystem_pkgs: Counter[str] = Counter()
+    ecosystem_servers: Counter[str] = Counter()
+    seen_pkgs: set[str] = set()
+    for agent in report.agents:
+        for server in agent.mcp_servers:
+            server_ecosystems: set[str] = set()
+            for pkg in server.packages:
+                pkg_key = f"{pkg.ecosystem}:{pkg.name}@{pkg.version}"
+                if pkg_key not in seen_pkgs:
+                    seen_pkgs.add(pkg_key)
+                    ecosystem_pkgs[pkg.ecosystem] += 1
+                server_ecosystems.add(pkg.ecosystem)
+            for eco in server_ecosystems:
+                ecosystem_servers[eco] += 1
+
+    # Aggregate credentials across agents
+    cred_map: dict[str, list[str]] = {}  # cred_name → [agent names]
+    total_cred_servers = 0
+    for agent in report.agents:
+        for server in agent.mcp_servers:
+            if server.has_credentials:
+                total_cred_servers += 1
+                for cred in server.credential_names:
+                    cred_map.setdefault(cred, []).append(f"{agent.name}/{server.name}")
+
+    # Vulnerability severity breakdown
+    sev_counts: Counter[str] = Counter()
+    for br in report.blast_radii:
+        sev_counts[br.vulnerability.severity.value.upper()] += 1
+
+    # Posture headline
+    if report.total_vulnerabilities == 0:
+        posture = "[bold green]CLEAN[/bold green]"
+        border_style = "green"
+    elif sev_counts.get("CRITICAL", 0) > 0:
+        parts = []
+        for sev in ("CRITICAL", "HIGH", "MEDIUM", "LOW"):
+            if sev_counts.get(sev, 0) > 0:
+                parts.append(f"{sev_counts[sev]} {sev}")
+        posture = "[bold red]" + ", ".join(parts) + "[/bold red]"
+        border_style = "red"
+    else:
+        parts = []
+        for sev in ("HIGH", "MEDIUM", "LOW"):
+            if sev_counts.get(sev, 0) > 0:
+                parts.append(f"{sev_counts[sev]} {sev}")
+        posture = "[bold yellow]" + ", ".join(parts) + "[/bold yellow]"
+        border_style = "yellow"
+
+    # Build the panel content
+    lines: list[str] = []
+    lines.append(f"  [bold]SECURITY POSTURE:[/bold]  {posture}")
+    lines.append("")
+
+    # Agent summary
+    agent_parts = [f"{report.total_agents}"]
+    if configured:
+        agent_parts.append(f"{configured} configured")
+    if not_configured:
+        agent_parts.append(f"{not_configured} installed-not-configured")
+    lines.append(f"  [bold]Agents[/bold]           {', '.join(agent_parts)}")
+
+    # Server summary
+    configured_agents = [a for a in report.agents if a.status == AgentStatus.CONFIGURED]
+    hosting_agents = sum(1 for a in configured_agents if a.mcp_servers)
+    lines.append(f"  [bold]MCP Servers[/bold]       {report.total_servers} across {hosting_agents} agent(s)")
+
+    # Package summary with ecosystem breakdown
+    unique_pkgs = len(seen_pkgs)
+    if ecosystem_pkgs:
+        eco_parts = [f"{eco}: {count}" for eco, count in ecosystem_pkgs.most_common()]
+        lines.append(f"  [bold]Packages[/bold]          {unique_pkgs} unique ({', '.join(eco_parts)})")
+    else:
+        lines.append(f"  [bold]Packages[/bold]          {unique_pkgs} unique")
+
+    # Credential exposure
+    if cred_map:
+        lines.append(f"  [bold yellow]Credentials[/bold yellow]       {total_cred_servers} server(s) with credentials exposed")
+        cred_names = list(cred_map.keys())
+        if len(cred_names) <= 4:
+            lines.append(f"                    [yellow]{', '.join(cred_names)}[/yellow]")
+        else:
+            lines.append(f"                    [yellow]{', '.join(cred_names[:4])}[/yellow]")
+            lines.append(f"                    [dim]+{len(cred_names) - 4} more[/dim]")
+    else:
+        lines.append("  [bold]Credentials[/bold]       None detected")
+
+    # Vulnerability count
+    lines.append(f"  [bold]Vulnerabilities[/bold]   {report.total_vulnerabilities}")
+
+    # Ecosystem breakdown section
+    if ecosystem_pkgs:
+        lines.append("")
+        lines.append("  [bold]Ecosystem Breakdown[/bold]")
+        for eco, count in ecosystem_pkgs.most_common():
+            srv_count = ecosystem_servers.get(eco, 0)
+            pkg_label = "package" if count == 1 else "packages"
+            srv_label = "server instance" if srv_count == 1 else "server instances"
+            lines.append(f"    {eco:<10} {count} {pkg_label} across {srv_count} {srv_label}")
+
+    # Credential exposure detail
+    if cred_map:
+        lines.append("")
+        lines.append("  [bold]Credential Exposure[/bold]")
+        for cred, locations in sorted(cred_map.items()):
+            loc_str = ", ".join(locations[:3])
+            if len(locations) > 3:
+                loc_str += f" +{len(locations) - 3}"
+            lines.append(f"    [yellow]{cred}[/yellow]  [dim]({loc_str})[/dim]")
+
+    # Top impacted packages (when vulns exist)
+    if report.blast_radii:
+        lines.append("")
+        lines.append("  [bold]Top Impacted Packages[/bold]")
+        # Group vulns by package
+        pkg_vulns: dict[str, dict] = {}
+        for br in report.blast_radii:
+            key = f"{br.package.name}@{br.package.version}"
+            if key not in pkg_vulns:
+                pkg_vulns[key] = {"eco": br.package.ecosystem, "sevs": Counter(), "agents": set(), "kev": False}
+            pkg_vulns[key]["sevs"][br.vulnerability.severity.value.upper()] += 1
+            for a in br.affected_agents:
+                pkg_vulns[key]["agents"].add(a.name)
+            if br.vulnerability.is_kev:
+                pkg_vulns[key]["kev"] = True
+
+        # Sort by total vuln count descending
+        sorted_pkgs = sorted(pkg_vulns.items(), key=lambda x: sum(x[1]["sevs"].values()), reverse=True)
+        for pkg_name, info in sorted_pkgs[:5]:
+            sev_parts = []
+            for sev in ("CRITICAL", "HIGH", "MEDIUM", "LOW"):
+                if info["sevs"].get(sev, 0) > 0:
+                    sev_parts.append(f"{info['sevs'][sev]} {sev.lower()}")
+            kev_flag = ", [red bold]CISA KEV[/red bold]" if info["kev"] else ""
+            agents_str = ", ".join(sorted(info["agents"]))
+            lines.append(
+                f"    {pkg_name} ({info['eco']})    "
+                f"{', '.join(sev_parts)}{kev_flag} — affects {agents_str}"
+            )
+
+    content = "\n".join(lines)
+    console.print(Panel(content, border_style=border_style, padding=(1, 1)))
+
+
 def print_agent_tree(report: AIBOMReport) -> None:
     """Print the agent → server → package dependency tree."""
     console.print("\n[bold blue]📊 AI-BOM Dependency Tree[/bold blue]\n")

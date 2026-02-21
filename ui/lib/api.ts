@@ -64,11 +64,14 @@ export interface RemediationItem {
   risk_narrative: string;
 }
 
+export type AgentStatus = "configured" | "installed-not-configured";
+
 export interface Agent {
   name: string;
   agent_type: string;
   config_path?: string;
   source?: string;
+  status?: AgentStatus;
   mcp_servers: MCPServer[];
 }
 
@@ -169,6 +172,14 @@ export interface RegistryServer {
   source_url: string;
   description?: string;
   sigstore_bundle: string | null;
+  tools?: string[];
+  credential_env_vars?: string[];
+  category?: string;
+  license?: string;
+  latest_version?: string;
+  known_cves?: string[];
+  command_patterns?: string[];
+  risk_justification?: string;
 }
 
 export interface RegistryResponse {
@@ -303,4 +314,8 @@ export function severityDot(severity: string): string {
 
 export function formatDate(iso: string): string {
   return new Date(iso).toLocaleString();
+}
+
+export function isConfigured(agent: Agent): boolean {
+  return agent.status !== "installed-not-configured";
 }

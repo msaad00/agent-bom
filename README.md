@@ -51,7 +51,7 @@ agent-bom answers the question security teams actually need:
 - **Enterprise remediation** — named assets, impact percentages, risk narratives per fix
 - **OWASP LLM Top 10 + MITRE ATLAS + NIST AI RMF** — triple threat framework tagging on every finding
 - **AI-powered enrichment** — LLM-generated risk narratives, executive summaries, and threat chains via `--ai-enrich`
-- **102-server MCP registry** — risk levels, provenance, tool inventories (incl. OpenClaw)
+- **109-server MCP registry** — risk levels, risk justifications, tool inventories, detail pages (incl. OpenClaw)
 - **Policy-as-code** — block unverified servers, enforce risk thresholds in CI
 - **Read-only** — never writes configs, never runs servers, never stores secrets
 - **Works everywhere** — CLI, Docker, REST API, Cloud UI, CI/CD, Prometheus, Kubernetes
@@ -101,7 +101,7 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
 - **[CI integration](#ci-integration)** — GitHub Actions + SARIF upload
 - **[REST API](#rest-api)** — FastAPI on port 8422
 - **[Skills](skills/)** — downloadable workflow playbooks (AI-BOM, cloud audit, OWASP, incident response)
-- **[MCP Registry](data/mcp-registry.yaml)** — 102 known servers with metadata
+- **[MCP Registry](src/agent_bom/mcp_registry.json)** — 109 known servers with metadata
 - **[PERMISSIONS.md](PERMISSIONS.md)** — auditable trust contract
 - **[Roadmap](#roadmap)** — what's coming next
 
@@ -407,9 +407,11 @@ What `--ai-enrich` generates:
 - **Executive summary** — one-paragraph CISO brief with risk rating and actions
 - **Threat chains** — red-team-style attack chain analysis through MCP tools
 
-### MCP Server Registry (102 servers)
+### MCP Server Registry (109 servers)
 
-Ships with a curated registry of 102 known MCP servers — including OpenClaw and ClickHouse. Each entry includes: package name + version pin, ecosystem, risk level, tool names, credential env vars, license, and source URL.
+Ships with a curated registry of 109 known MCP servers — including OpenClaw, ClickHouse, Figma, Prisma, Browserbase, and E2B. Each entry includes: package name + version pin, ecosystem, risk level, **risk justification** (why this server has its risk level), tool names, credential env vars, license, category, latest version, known CVEs, and source URL.
+
+The Cloud UI provides a full **registry browser** with search, risk/category filters, and drill-down detail pages showing tools, credentials, CVEs, and risk justification for each server.
 
 Unverified servers in your configs trigger a warning. Policy rules can block them in CI.
 
@@ -421,7 +423,7 @@ Unverified servers in your configs trigger a warning. Policy rules can block the
 |------|---------|----------|
 | Developer CLI | `agent-bom scan` | Local audit, pre-commit checks |
 | Pre-install check | `agent-bom check express@4.18.2 -e npm` | Before running any MCP server |
-| GitHub Action | `uses: agent-bom/agent-bom@v0.14.0` | CI/CD gate + Security tab |
+| GitHub Action | `uses: agent-bom/agent-bom@v0.16.0` | CI/CD gate + Security tab |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated, reproducible scans |
 | REST API | `agent-bom api` | Dashboards, SIEM, scripting |
 | Dashboard | `agent-bom serve` | Team-visible security dashboard |
@@ -436,7 +438,7 @@ Use agent-bom directly in your CI/CD pipeline:
 
 ```yaml
 - name: AI supply chain scan
-  uses: agent-bom/agent-bom@v0.14.0
+  uses: agent-bom/agent-bom@v0.16.0
   with:
     severity-threshold: high
     upload-sarif: true
@@ -445,7 +447,7 @@ Use agent-bom directly in your CI/CD pipeline:
 Full options:
 
 ```yaml
-- uses: agent-bom/agent-bom@v0.14.0
+- uses: agent-bom/agent-bom@v0.16.0
   with:
     severity-threshold: high        # fail on high+ CVEs
     policy: policy.json             # policy-as-code gates
@@ -498,7 +500,7 @@ agent-bom api   # http://127.0.0.1:8422  →  /docs for Swagger UI
 | `POST /v1/scan` | Start async scan (returns `job_id`) |
 | `GET /v1/scan/{job_id}` | Poll status + results |
 | `GET /v1/scan/{job_id}/stream` | SSE real-time progress |
-| `GET /v1/registry` | Full MCP server registry |
+| `GET /v1/registry` | Full MCP server registry (109 servers) |
 | `GET /v1/registry/{id}` | Single registry entry |
 
 ---
@@ -509,9 +511,11 @@ The Next.js dashboard (`ui/`) provides an enterprise-grade web interface on top 
 
 - **Security posture dashboard** — fleet-wide severity distribution, scan source breakdown, top vulnerable packages across all scans
 - **Vulnerability explorer** — group by severity, package, or agent with full-text search
-- **Scan detail** — per-job blast radius table, threat framework matrix, remediation plan with impact bars
-- **Supply chain graph** — interactive React Flow visualization: Agent → MCP Server → Package → CVE with color-coded nodes, zoom/pan, minimap, and job selector
-- **Registry browser** — searchable MCP server catalog with risk level filters, expandable detail cards, verified badges
+- **Scan detail** — per-job blast radius table, threat framework matrix, remediation plan with impact bars, collapsible sections
+- **Supply chain graph** — interactive React Flow visualization: Agent → MCP Server → Package → CVE with color-coded nodes, click-to-inspect detail panel, hover tooltips, zoom/pan, minimap, and job selector
+- **Registry browser** — searchable 109-server catalog with risk/category filters, drill-down detail pages (risk justification, tools, credentials, CVEs, versions), verified badges
+- **Agent discovery** — auto-discovered agents with stats bar (servers, packages, credentials, ecosystems), collapsible agent cards
+- **Enterprise scan form** — bulk Docker image input (one-at-a-time, bulk paste, .txt file upload), K8s, Terraform, GitHub Actions, Python agents
 - **Severity chart** — stacked bar chart with critical/high/medium/low percentage breakdown
 - **Source tracking** — each finding tagged by source (MCP agents, container images, K8s pods, SBOMs)
 - **Live API health check** — nav bar shows real-time backend status with version display
@@ -553,7 +557,7 @@ agent-bom covers the AI infrastructure landscape through multiple scanning strat
 | **AI frameworks** | Dependency scanning (PyPI/npm) | LangChain, LlamaIndex, AutoGen, CrewAI, PyTorch, Transformers, NeMo |
 | **Vector databases** | `--image` for self-hosted | Weaviate, Qdrant, Milvus, ChromaDB, pgvector |
 | **LLM providers** | API key detection + SDK scanning | OpenAI, Anthropic, Cohere, Mistral, Gemini |
-| **MCP ecosystem** | Auto-discovery (10 clients) + registry (102 servers) | Claude Desktop, Cursor, Windsurf, Cline, OpenClaw |
+| **MCP ecosystem** | Auto-discovery (10 clients) + registry (109 servers) | Claude Desktop, Cursor, Windsurf, Cline, OpenClaw |
 | **IaC + CI/CD** | `--tf-dir` and `--gha` | Terraform AI resources, GitHub Actions AI workflows |
 
 ---
@@ -603,6 +607,11 @@ These tools solve different problems and are **complementary**.
 - [x] MCP runtime introspection — connect to live servers for tool/resource discovery + drift detection
 - [x] OpenClaw discovery — auto-scan OpenClaw configs, 12 known CVEs from published security advisories
 - [x] AI-powered enrichment — LLM-generated risk narratives, executive summaries, and threat chains via litellm
+- [x] CLI posture summary — aggregate security posture panel with ecosystem breakdown and credential exposure
+- [x] Interactive supply chain graph — click-to-inspect detail panel, hover tooltips, pane click dismiss
+- [x] Registry enrichment — 109 servers with risk justifications, drill-down detail pages, category filters
+- [x] Enterprise scan form — bulk Docker image input (paste, file upload) for fleet-scale scanning
+- [x] Collapsible UI — agents, blast radius, remediation, and inventory sections collapse/expand
 - [ ] Jupyter notebook AI library scanning
 - [ ] ToolHive integration (`--toolhive` flag for managed server scanning)
 - [ ] License compliance engine (SPDX license detection + copyleft chain analysis)

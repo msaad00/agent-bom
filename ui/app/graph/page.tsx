@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ReactFlow,
   Background,
   Controls,
   MiniMap,
+  Handle,
   type Node,
   type Edge,
   Position,
@@ -21,6 +22,8 @@ import {
   Wrench,
   Loader2,
   AlertTriangle,
+  X,
+  ExternalLink,
 } from "lucide-react";
 import { api, type ScanJob, type ScanResult, severityColor } from "@/lib/api";
 
@@ -34,6 +37,7 @@ type NodeData = {
   tools?: number;
   credentials?: number;
   vulnCount?: number;
+  agentStatus?: string;
 };
 
 function CustomNode({ data }: { data: NodeData }) {
@@ -44,7 +48,9 @@ function CustomNode({ data }: { data: NodeData }) {
     vulnerability: Bug,
   };
   const colors = {
-    agent: "border-emerald-600 bg-emerald-950/80",
+    agent: data.agentStatus === "installed-not-configured"
+      ? "border-yellow-600 bg-yellow-950/80 border-dashed"
+      : "border-emerald-600 bg-emerald-950/80",
     server: "border-blue-600 bg-blue-950/80",
     package: "border-zinc-600 bg-zinc-900/80",
     vulnerability: data.severity === "critical"
@@ -57,10 +63,16 @@ function CustomNode({ data }: { data: NodeData }) {
   };
   const Icon = icons[data.type];
 
+  const hasTarget = data.type !== "agent";
+  const hasSource = data.type !== "vulnerability";
+
   return (
     <div
       className={`rounded-lg border-2 px-3 py-2 min-w-[140px] max-w-[200px] shadow-lg backdrop-blur ${colors[data.type]}`}
     >
+      {hasTarget && (
+        <Handle type="target" position={Position.Left} className="!bg-zinc-500 !w-2 !h-2 !border-zinc-400" />
+      )}
       <div className="flex items-center gap-1.5 mb-0.5">
         <Icon className="w-3.5 h-3.5 shrink-0" />
         <span className="text-xs font-semibold text-zinc-100 truncate">{data.label}</span>
@@ -90,6 +102,9 @@ function CustomNode({ data }: { data: NodeData }) {
           </span>
         )}
       </div>
+      {hasSource && (
+        <Handle type="source" position={Position.Right} className="!bg-zinc-500 !w-2 !h-2 !border-zinc-400" />
+      )}
     </div>
   );
 }
@@ -120,13 +135,14 @@ function buildGraph(result: ScanResult): { nodes: Node[]; edges: Edge[] } {
         label: agent.name,
         type: "agent",
         meta: agent.agent_type,
+        agentStatus: agent.status,
       },
     });
 
     let serverY = agentY - ((agent.mcp_servers.length - 1) * 100) / 2;
 
     for (const server of agent.mcp_servers) {
-      const serverId = `server:${server.name}`;
+      const serverId = `server:${agent.name}:${server.name}`;
       if (!seen.has(serverId)) {
         seen.add(serverId);
         const credCount = server.env
@@ -242,6 +258,127 @@ function buildGraph(result: ScanResult): { nodes: Node[]; edges: Edge[] } {
   return { nodes, edges };
 }
 
+// ─── Detail Panel ─────────────────────────────────────────────────────────────
+
+function DetailPanel({ data, onClose }: { data: NodeData; onClose: () => void }) {
+  const typeLabels = { agent: "Agent", server: "MCP Server", package: "Package", vulnerability: "Vulnerability" };
+  const typeColors = {
+    agent: "border-emerald-700",
+    server: "border-blue-700",
+    package: "border-zinc-700",
+    vulnerability: "border-red-700",
+  };
+
+  return (
+    <div className={`absolute right-0 top-0 bottom-0 w-80 bg-zinc-950/95 backdrop-blur-sm border-l ${typeColors[data.type]} z-50 overflow-y-auto`}>
+      <div className="p-4 space-y-4">
+        {/* Header */}
+        <div className="flex items-start justify-between">
+          <div>
+            <span className="text-[10px] uppercase tracking-wider text-zinc-500">{typeLabels[data.type]}</span>
+            <h3 className="text-sm font-semibold text-zinc-100 mt-0.5">{data.label}</h3>
+          </div>
+          <button onClick={onClose} className="p-1 text-zinc-500 hover:text-zinc-300 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {data.meta && (
+          <div className="text-xs text-zinc-400 font-mono">{data.meta}</div>
+        )}
+
+        {/* Agent details */}
+        {data.type === "agent" && (
+          <div className="space-y-2">
+            {data.agentStatus && (
+              <div className={`text-xs px-2 py-1 rounded border font-mono ${
+                data.agentStatus === "installed-not-configured"
+                  ? "border-yellow-800 bg-yellow-950 text-yellow-400"
+                  : "border-emerald-800 bg-emerald-950 text-emerald-400"
+              }`}>
+                {data.agentStatus === "installed-not-configured" ? "Not Configured" : "Configured"}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Server details */}
+        {data.type === "server" && (
+          <div className="space-y-2">
+            {data.tools !== undefined && data.tools > 0 && (
+              <div className="flex items-center gap-2 text-xs text-zinc-400">
+                <Wrench className="w-3 h-3" /> {data.tools} tool{data.tools !== 1 ? "s" : ""} available
+              </div>
+            )}
+            {data.credentials !== undefined && data.credentials > 0 && (
+              <div className="flex items-center gap-2 text-xs text-amber-400">
+                <KeyRound className="w-3 h-3" /> {data.credentials} credential{data.credentials !== 1 ? "s" : ""} exposed
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Package details */}
+        {data.type === "package" && (
+          <div className="space-y-2">
+            {data.vulnCount !== undefined && data.vulnCount > 0 ? (
+              <div className="flex items-center gap-2 text-xs text-red-400">
+                <Bug className="w-3 h-3" /> {data.vulnCount} vulnerability{data.vulnCount !== 1 ? "ies" : "y"}
+              </div>
+            ) : (
+              <div className="text-xs text-emerald-400">No known vulnerabilities</div>
+            )}
+          </div>
+        )}
+
+        {/* Vulnerability details */}
+        {data.type === "vulnerability" && (
+          <div className="space-y-2">
+            {data.severity && (
+              <span className={`text-xs px-2 py-1 rounded border font-mono uppercase ${severityColor(data.severity)}`}>
+                {data.severity}
+              </span>
+            )}
+            {data.meta && data.meta.startsWith("CVSS") && (
+              <div className="text-xs text-zinc-400">{data.meta}</div>
+            )}
+            <a
+              href={`https://osv.dev/vulnerability/${data.label}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 transition-colors"
+            >
+              <ExternalLink className="w-3 h-3" />
+              View on OSV
+            </a>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Tooltip ──────────────────────────────────────────────────────────────────
+
+function GraphTooltip({ x, y, data }: { x: number; y: number; data: NodeData }) {
+  return (
+    <div
+      className="fixed z-50 pointer-events-none bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 shadow-xl max-w-[200px]"
+      style={{ left: x + 12, top: y - 8 }}
+    >
+      <div className="text-xs font-semibold text-zinc-200 truncate">{data.label}</div>
+      {data.meta && <div className="text-[10px] text-zinc-500 truncate">{data.meta}</div>}
+      {data.type === "server" && data.tools !== undefined && data.tools > 0 && (
+        <div className="text-[10px] text-zinc-400 mt-1">{data.tools} tools</div>
+      )}
+      {data.type === "package" && data.vulnCount !== undefined && data.vulnCount > 0 && (
+        <div className="text-[10px] text-red-400 mt-1">{data.vulnCount} CVEs</div>
+      )}
+      <div className="text-[10px] text-zinc-600 mt-1">Click for details</div>
+    </div>
+  );
+}
+
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function GraphPage() {
@@ -249,6 +386,8 @@ export default function GraphPage() {
   const [selectedJob, setSelectedJob] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedNode, setSelectedNode] = useState<NodeData | null>(null);
+  const [tooltip, setTooltip] = useState<{ x: number; y: number; data: NodeData } | null>(null);
 
   // Load all completed jobs
   useEffect(() => {
@@ -341,6 +480,9 @@ export default function GraphPage() {
               <span className="w-2.5 h-2.5 rounded border-2 border-emerald-600 bg-emerald-950" /> Agent
             </span>
             <span className="flex items-center gap-1">
+              <span className="w-2.5 h-2.5 rounded border-2 border-dashed border-yellow-600 bg-yellow-950" /> Not configured
+            </span>
+            <span className="flex items-center gap-1">
               <span className="w-2.5 h-2.5 rounded border-2 border-blue-600 bg-blue-950" /> Server
             </span>
             <span className="flex items-center gap-1">
@@ -354,7 +496,7 @@ export default function GraphPage() {
       </div>
 
       {/* Graph */}
-      <div className="flex-1">
+      <div className="flex-1 relative">
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -364,6 +506,15 @@ export default function GraphPage() {
           maxZoom={2}
           defaultEdgeOptions={{ type: "smoothstep" }}
           proOptions={{ hideAttribution: true }}
+          onNodeClick={(_event, node) => {
+            setSelectedNode(node.data as NodeData);
+            setTooltip(null);
+          }}
+          onNodeMouseEnter={(event, node) => {
+            setTooltip({ x: (event as unknown as MouseEvent).clientX, y: (event as unknown as MouseEvent).clientY, data: node.data as NodeData });
+          }}
+          onNodeMouseLeave={() => setTooltip(null)}
+          onPaneClick={() => setSelectedNode(null)}
         >
           <Background color="#27272a" gap={20} />
           <Controls
@@ -372,7 +523,7 @@ export default function GraphPage() {
           <MiniMap
             nodeColor={(n) => {
               const d = n.data as NodeData;
-              if (d.type === "agent") return "#10b981";
+              if (d.type === "agent") return d.agentStatus === "installed-not-configured" ? "#eab308" : "#10b981";
               if (d.type === "server") return "#3b82f6";
               if (d.type === "vulnerability") return "#ef4444";
               return "#52525b";
@@ -380,6 +531,16 @@ export default function GraphPage() {
             className="!bg-zinc-900 !border-zinc-700 !rounded-lg"
           />
         </ReactFlow>
+
+        {/* Detail slide-over panel */}
+        {selectedNode && (
+          <DetailPanel data={selectedNode} onClose={() => setSelectedNode(null)} />
+        )}
+
+        {/* Hover tooltip */}
+        {tooltip && !selectedNode && (
+          <GraphTooltip x={tooltip.x} y={tooltip.y} data={tooltip.data} />
+        )}
       </div>
     </div>
   );

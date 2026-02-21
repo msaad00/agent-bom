@@ -25,6 +25,7 @@ from agent_bom.output import (
     print_diff,
     print_export_hint,
     print_policy_results,
+    print_posture_summary,
     print_remediation_plan,
     print_severity_chart,
     print_summary,
@@ -742,6 +743,7 @@ def scan(
         sys.stdout.write("\n")
     elif output_format == "console" and not output:
         print_summary(report)
+        print_posture_summary(report)
         if not no_tree:
             print_agent_tree(report)
         print_severity_chart(report)

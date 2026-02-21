@@ -4,7 +4,7 @@ import { use, useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { api, ScanJob, ScanResult, BlastRadius, RemediationItem, formatDate, OWASP_LLM_TOP10, MITRE_ATLAS, severityColor } from "@/lib/api";
 import { SeverityBadge } from "@/components/severity-badge";
-import { ArrowLeft, CheckCircle, XCircle, Loader2, Clock, Zap, Shield, Key, Wrench, ArrowUpCircle, AlertTriangle } from "lucide-react";
+import { ArrowLeft, CheckCircle, XCircle, Loader2, Clock, Zap, Shield, Key, Wrench, ArrowUpCircle, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
 
 export default function ScanResultPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -42,6 +42,17 @@ export default function ScanResultPage({ params }: { params: Promise<{ id: strin
       logRef.current.scrollTop = logRef.current.scrollHeight;
     }
   }, [messages]);
+
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+
+  function toggleSection(key: string) {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
 
   const result = job?.result as ScanResult | undefined;
   const summary = result?.summary;
@@ -107,16 +118,29 @@ export default function ScanResultPage({ params }: { params: Promise<{ id: strin
       {/* Blast radius */}
       {blastRadius.length > 0 && (
         <section>
-          <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest mb-3">
-            Blast Radius ({blastRadius.length})
-          </h2>
-          <div className="space-y-3">
-            {blastRadius
-              .sort((a, b) => b.blast_score - a.blast_score)
-              .map((b) => (
-                <BlastRadiusCard key={b.vulnerability_id} blast={b} />
-              ))}
-          </div>
+          <button
+            type="button"
+            onClick={() => toggleSection("blast")}
+            className="flex items-center gap-2 mb-3 group"
+          >
+            {collapsedSections.has("blast") ? (
+              <ChevronRight className="w-4 h-4 text-zinc-500" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-zinc-500" />
+            )}
+            <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest group-hover:text-zinc-300 transition-colors">
+              Blast Radius ({blastRadius.length})
+            </h2>
+          </button>
+          {!collapsedSections.has("blast") && (
+            <div className="space-y-3">
+              {blastRadius
+                .sort((a, b) => b.blast_score - a.blast_score)
+                .map((b) => (
+                  <BlastRadiusCard key={b.vulnerability_id} blast={b} />
+                ))}
+            </div>
+          )}
         </section>
       )}
 
@@ -125,22 +149,61 @@ export default function ScanResultPage({ params }: { params: Promise<{ id: strin
 
       {/* Remediation Plan */}
       {result?.remediation_plan && result.remediation_plan.length > 0 && (
-        <RemediationPlan items={result.remediation_plan} />
+        <section>
+          <button
+            type="button"
+            onClick={() => toggleSection("remediation")}
+            className="flex items-center gap-2 mb-3 group"
+          >
+            {collapsedSections.has("remediation") ? (
+              <ChevronRight className="w-4 h-4 text-zinc-500" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-zinc-500" />
+            )}
+            <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest group-hover:text-zinc-300 transition-colors">
+              Remediation Plan ({result.remediation_plan.filter((i) => i.fixed_version).length} fixable)
+            </h2>
+          </button>
+          {!collapsedSections.has("remediation") && (
+            <RemediationPlan items={result.remediation_plan} />
+          )}
+        </section>
       )}
 
       {/* Agent inventory */}
       {result && result.agents.length > 0 && (
         <section>
-          <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest mb-3">
-            Agents ({result.agents.length})
-          </h2>
+          <button
+            type="button"
+            onClick={() => toggleSection("agents")}
+            className="flex items-center gap-2 mb-3 group"
+          >
+            {collapsedSections.has("agents") ? (
+              <ChevronRight className="w-4 h-4 text-zinc-500" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-zinc-500" />
+            )}
+            <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest group-hover:text-zinc-300 transition-colors">
+              Agents ({result.agents.length})
+            </h2>
+          </button>
+          {!collapsedSections.has("agents") && (
           <div className="space-y-3">
             {result.agents.map((agent, i) => (
-              <div key={i} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+              <div key={i} className={`bg-zinc-900 border rounded-xl p-4 ${agent.status === "installed-not-configured" ? "border-dashed border-zinc-800" : "border-zinc-800"}`}>
                 <div className="flex items-center justify-between mb-2">
-                  <div>
+                  <div className="flex items-center gap-2">
                     <span className="font-semibold text-sm">{agent.name}</span>
-                    <span className="ml-2 text-xs text-zinc-500 font-mono">{agent.agent_type}</span>
+                    <span className="text-xs text-zinc-500 font-mono">{agent.agent_type}</span>
+                    {agent.status === "installed-not-configured" ? (
+                      <span className="text-[10px] font-mono bg-yellow-950 border border-yellow-800 text-yellow-400 rounded px-1.5 py-0.5">
+                        not configured
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-mono bg-emerald-950 border border-emerald-800 text-emerald-400 rounded px-1.5 py-0.5">
+                        configured
+                      </span>
+                    )}
                   </div>
                   <span className="text-xs text-zinc-600">{agent.source}</span>
                 </div>
@@ -180,6 +243,7 @@ export default function ScanResultPage({ params }: { params: Promise<{ id: strin
               </div>
             ))}
           </div>
+          )}
         </section>
       )}
 
@@ -334,10 +398,6 @@ function RemediationPlan({ items }: { items: RemediationItem[] }) {
   const unfixable = items.filter((i) => !i.fixed_version);
 
   return (
-    <section>
-      <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest mb-3">
-        Remediation Plan ({fixable.length} fixable)
-      </h2>
       <div className="space-y-3">
         {fixable.map((item, i) => (
           <div key={i} className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
@@ -433,7 +493,6 @@ function RemediationPlan({ items }: { items: RemediationItem[] }) {
           </div>
         )}
       </div>
-    </section>
   );
 }
 

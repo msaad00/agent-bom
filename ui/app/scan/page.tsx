@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { api, ScanRequest } from "@/lib/api";
-import { ArrowRight, Loader2, Plus, X } from "lucide-react";
+import { ArrowRight, Loader2, Plus, X, Upload } from "lucide-react";
 
 export default function ScanPage() {
   const router = useRouter();
@@ -17,6 +17,9 @@ export default function ScanPage() {
     agent_projects: [],
   });
   const [imageInput, setImageInput] = useState("");
+  const [imageMode, setImageMode] = useState<"single" | "bulk" | "upload">("single");
+  const [bulkText, setBulkText] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [tfInput, setTfInput] = useState("");
   const [apInput, setApInput] = useState("");
 
@@ -28,6 +31,35 @@ export default function ScanPage() {
 
   function removeFromList(key: "images" | "tf_dirs" | "agent_projects", idx: number) {
     setForm((f) => ({ ...f, [key]: (f[key] ?? []).filter((_, i) => i !== idx) }));
+  }
+
+  function parseBulkImages(text: string): string[] {
+    return text
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith("#"));
+  }
+
+  function applyBulk() {
+    const parsed = parseBulkImages(bulkText);
+    if (parsed.length === 0) return;
+    setForm((f) => ({ ...f, images: [...(f.images ?? []), ...parsed] }));
+    setBulkText("");
+  }
+
+  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      const parsed = parseBulkImages(text);
+      if (parsed.length > 0) {
+        setForm((f) => ({ ...f, images: [...(f.images ?? []), ...parsed] }));
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -57,15 +89,101 @@ export default function ScanPage() {
         </Section>
 
         {/* Docker images */}
-        <Section title="Docker images" subtitle="--image flag">
-          <ListInput
-            placeholder="nginx:1.25 or ghcr.io/org/app:v1"
-            value={imageInput}
-            onChange={setImageInput}
-            onAdd={() => addToList("images", imageInput, () => setImageInput(""))}
-            items={form.images ?? []}
-            onRemove={(i) => removeFromList("images", i)}
-          />
+        <Section title="Docker images" subtitle="--image flag · supports bulk input for enterprise scale">
+          {/* Mode tabs */}
+          <div className="flex items-center gap-1 mb-3">
+            {(["single", "bulk", "upload"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setImageMode(mode)}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  imageMode === mode
+                    ? "bg-zinc-700 text-zinc-100"
+                    : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                }`}
+              >
+                {mode === "single" ? "One at a time" : mode === "bulk" ? "Bulk paste" : "Upload .txt"}
+              </button>
+            ))}
+          </div>
+
+          {/* Single mode */}
+          {imageMode === "single" && (
+            <ListInput
+              placeholder="nginx:1.25 or ghcr.io/org/app:v1"
+              value={imageInput}
+              onChange={setImageInput}
+              onAdd={() => addToList("images", imageInput, () => setImageInput(""))}
+              items={[]}
+              onRemove={() => {}}
+            />
+          )}
+
+          {/* Bulk paste mode */}
+          {imageMode === "bulk" && (
+            <div className="space-y-2">
+              <textarea
+                placeholder={"# One image per line\nnginx:1.25\nredis:7-alpine\nghcr.io/org/app:latest"}
+                value={bulkText}
+                onChange={(e) => setBulkText(e.target.value)}
+                rows={5}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm font-mono text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-600 resize-y"
+              />
+              <button
+                type="button"
+                onClick={applyBulk}
+                disabled={!bulkText.trim()}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg text-xs text-white font-medium transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add {parseBulkImages(bulkText).length || 0} image{parseBulkImages(bulkText).length !== 1 ? "s" : ""}
+              </button>
+            </div>
+          )}
+
+          {/* Upload mode */}
+          {imageMode === "upload" && (
+            <div className="space-y-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".txt,.csv,.list"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-2 px-4 py-3 w-full bg-zinc-800 hover:bg-zinc-700 border border-dashed border-zinc-600 rounded-lg text-sm text-zinc-300 transition-colors justify-center"
+              >
+                <Upload className="w-4 h-4" />
+                Choose .txt file (one image per line)
+              </button>
+              <p className="text-[10px] text-zinc-600">
+                Lines starting with # are ignored. Supports .txt, .csv, .list files.
+              </p>
+            </div>
+          )}
+
+          {/* Always show current image list */}
+          {(form.images ?? []).length > 0 && (
+            <div className="mt-3 space-y-1.5">
+              <div className="text-xs text-zinc-500 font-medium">
+                {(form.images ?? []).length} image{(form.images ?? []).length !== 1 ? "s" : ""} queued
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(form.images ?? []).map((item, i) => (
+                  <span key={i} className="flex items-center gap-1.5 bg-zinc-800 border border-zinc-700 rounded-lg px-2.5 py-1 text-xs font-mono text-zinc-300">
+                    {item}
+                    <button type="button" onClick={() => removeFromList("images", i)}>
+                      <X className="w-3 h-3 text-zinc-500 hover:text-zinc-300" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </Section>
 
         {/* Kubernetes */}

@@ -203,10 +203,22 @@ def print_agent_tree(report: AIBOMReport) -> None:
         status_str = ""
         if agent.status == AgentStatus.INSTALLED_NOT_CONFIGURED:
             status_str = " [yellow][installed, not configured][/yellow]"
+        # Compute summary stats
+        total_servers = len(agent.mcp_servers)
+        total_pkgs = sum(len(s.packages) for s in agent.mcp_servers)
+        total_creds = sum(len(s.credential_names) for s in agent.mcp_servers)
+        stats_parts = [f"{total_servers} server{'s' if total_servers != 1 else ''}"]
+        stats_parts.append(f"{total_pkgs} package{'s' if total_pkgs != 1 else ''}")
+        if total_creds:
+            stats_parts.append(f"{total_creds} credential{'s' if total_creds != 1 else ''}")
+
         agent_tree = Tree(
-            f"[bold]{agent.name}[/bold] ({agent.agent_type.value})"
-            f"{status_str} - {agent.config_path}"
+            f"\U0001f916 Agent: [bold]{agent.name}[/bold] ({agent.agent_type.value})"
+            f"{status_str}"
         )
+        agent_tree.add(f"[dim]{agent.config_path}[/dim]")
+        sep = " \u00b7 "
+        agent_tree.add(f"[dim]{sep.join(stats_parts)}[/dim]")
 
         for server in agent.mcp_servers:
             vuln_count = server.total_vulnerabilities
@@ -214,13 +226,13 @@ def print_agent_tree(report: AIBOMReport) -> None:
             cred_indicator = f" [yellow]🔑 {len(server.credential_names)} cred(s)[/yellow]" if server.has_credentials else ""
 
             server_branch = agent_tree.add(
-                f"[bold cyan]{server.name}[/bold cyan] "
+                f"\U0001f50c MCP Server: [bold cyan]{server.name}[/bold cyan] "
                 f"({server.command} {' '.join(server.args[:2])})"
                 f"{vuln_indicator}{cred_indicator}"
             )
 
             if server.tools:
-                tools_branch = server_branch.add(f"[dim]Tools ({len(server.tools)})[/dim]")
+                tools_branch = server_branch.add(f"[dim]\U0001f527 Tools ({len(server.tools)})[/dim]")
                 for tool in server.tools[:10]:  # Limit display
                     tools_branch.add(f"[dim]{tool.name}[/dim]")
                 if len(server.tools) > 10:
@@ -232,7 +244,7 @@ def print_agent_tree(report: AIBOMReport) -> None:
                 transitive_pkgs = [p for p in server.packages if not p.is_direct]
 
                 pkg_branch = server_branch.add(
-                    f"Packages ({len(server.packages)}) - "
+                    f"\U0001f4e6 Packages ({len(server.packages)}) \u2014 "
                     f"{len(direct_pkgs)} direct, {len(transitive_pkgs)} transitive"
                 )
 
@@ -261,7 +273,7 @@ def print_agent_tree(report: AIBOMReport) -> None:
                         transitive_branch.add(f"[dim]...and {len(transitive_pkgs) - 20} more[/dim]")
 
             if server.has_credentials:
-                cred_branch = server_branch.add("[yellow]Credentials[/yellow]")
+                cred_branch = server_branch.add("[yellow]\U0001f511 Credentials[/yellow]")
                 for cred in server.credential_names:
                     cred_branch.add(f"[yellow]{cred}[/yellow]")
 
@@ -415,11 +427,11 @@ def print_attack_flow_tree(report: AIBOMReport) -> None:
 
         # Server branches
         for server in br.affected_servers:
-            srv_branch = pkg_branch.add(f"[bold cyan]{server.name}[/bold cyan] [dim](MCP Server)[/dim]")
+            srv_branch = pkg_branch.add(f"\U0001f50c [bold cyan]{server.name}[/bold cyan] [dim](MCP Server)[/dim]")
 
             # Agents
             for agent in br.affected_agents:
-                srv_branch.add(f"[green]{agent.name}[/green] [dim](Agent)[/dim]")
+                srv_branch.add(f"\U0001f916 [green]{agent.name}[/green] [dim](Agent)[/dim]")
 
             # Credentials
             for cred in br.exposed_credentials:
@@ -434,7 +446,7 @@ def print_attack_flow_tree(report: AIBOMReport) -> None:
         # If no servers, still show agents/creds/tools under package
         if not br.affected_servers:
             for agent in br.affected_agents:
-                pkg_branch.add(f"[green]{agent.name}[/green] [dim](Agent)[/dim]")
+                pkg_branch.add(f"\U0001f916 [green]{agent.name}[/green] [dim](Agent)[/dim]")
             for cred in br.exposed_credentials:
                 pkg_branch.add(f"[yellow]🔑 {cred}[/yellow]")
             if br.exposed_tools:
@@ -1001,6 +1013,9 @@ def to_json(report: AIBOMReport) -> dict:
     # Skill security audit (only when skill files were scanned)
     if report.skill_audit_data:
         result["skill_audit"] = report.skill_audit_data
+
+    if report.model_files:
+        result["model_files"] = report.model_files
 
     return result
 

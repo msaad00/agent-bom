@@ -72,6 +72,8 @@ agent-bom answers the question security teams actually need:
 | Cloud providers | AWS, Azure, GCP, Databricks, Snowflake, Nebius |
 | AI platforms | HuggingFace, W&B, MLflow, OpenAI |
 | MCP servers | Runtime introspection via MCP SDK |
+| Jupyter notebooks | AI library imports + model refs |
+| Model files | .gguf, .safetensors, .onnx, .pt, .pkl |
 | Existing SBOMs | CycloneDX / SPDX import |
 
 **What it outputs:**
@@ -431,6 +433,38 @@ What the AI adds:
 
 AI results appear in console output, JSON (`skill_audit.ai_skill_summary`, `ai_overall_risk_level`), and per-finding annotations (`ai_analysis`, `ai_adjusted_severity`). Works with local Ollama (free, all data stays local) or any litellm-supported provider.
 
+### Jupyter notebook scanning
+
+Scan Jupyter notebooks for AI/ML library usage, pip install commands, model references, and credential environment variables:
+
+```bash
+agent-bom scan --jupyter ./notebooks
+```
+
+Detects 30+ AI libraries (openai, anthropic, langchain, transformers, torch, tensorflow, crewai, etc.), `!pip install` / `%pip install` commands with version pinning, `os.environ["API_KEY"]` credential access, and hardcoded API key patterns. Each notebook with findings produces a separate agent entry in the AI-BOM.
+
+### Model binary file detection
+
+Scan directories for ML model artifacts and flag security risks:
+
+```bash
+agent-bom scan --model-files ./models
+```
+
+| Format | Extensions | Security |
+|--------|-----------|----------|
+| GGUF (Ollama/llama.cpp) | `.gguf` | — |
+| SafeTensors (HuggingFace) | `.safetensors` | — |
+| ONNX | `.onnx` | — |
+| PyTorch | `.pt`, `.pth` | — |
+| TensorFlow | `.pb`, `.tflite` | — |
+| Keras | `.h5`, `.keras` | — |
+| Core ML | `.mlmodel` | — |
+| Pickle | `.pkl` | **HIGH** — arbitrary code execution |
+| Joblib | `.joblib` | **MEDIUM** — uses pickle internally |
+
+Pickle-based model files (`.pkl`, `.joblib`) are flagged as security risks because they can execute arbitrary code on load via Python's `__reduce__` protocol. Results appear in JSON output (`model_files` key) and console summary.
+
 ### CLI attack flow tree
 
 Visualize the full CVE → Package → Server → Agent → Credentials → Tools attack chain directly in your terminal:
@@ -513,7 +547,7 @@ Unverified servers in your configs trigger a warning. Policy rules can block the
 |------|---------|----------|
 | Developer CLI | `agent-bom scan` | Local audit, pre-commit checks |
 | Pre-install check | `agent-bom check express@4.18.2 -e npm` | Before running any MCP server |
-| GitHub Action | `uses: agent-bom/agent-bom@v0.20.0` | CI/CD gate + Security tab |
+| GitHub Action | `uses: agent-bom/agent-bom@v0.21.0` | CI/CD gate + Security tab |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated, reproducible scans |
 | REST API | `agent-bom api` | Dashboards, SIEM, scripting |
 | Dashboard | `agent-bom serve` | Team-visible security dashboard |
@@ -528,7 +562,7 @@ Use agent-bom directly in your CI/CD pipeline:
 
 ```yaml
 - name: AI supply chain scan
-  uses: agent-bom/agent-bom@v0.20.0
+  uses: agent-bom/agent-bom@v0.21.0
   with:
     severity-threshold: high
     upload-sarif: true
@@ -582,6 +616,9 @@ agent-bom scan --ai-enrich --ai-model openai/gpt-4o-mini
 ```bash
 pip install agent-bom[api]
 agent-bom api   # http://127.0.0.1:8422  →  /docs for Swagger UI
+
+# Production hardening
+agent-bom api --api-key $SECRET --cors-origins "https://myui.example.com" --rate-limit 30
 ```
 
 | Endpoint | Description |
@@ -594,6 +631,17 @@ agent-bom api   # http://127.0.0.1:8422  →  /docs for Swagger UI
 | `GET /v1/scan/{job_id}/skill-audit` | Skill file security audit findings |
 | `GET /v1/registry` | Full MCP server registry (109 servers) |
 | `GET /v1/registry/{id}` | Single registry entry |
+
+**API hardening options:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--api-key KEY` | None | Require Bearer token or X-API-Key authentication |
+| `--cors-origins` | localhost:3000 | Comma-separated allowed origins |
+| `--cors-allow-all` | off | Allow all origins (dev mode) |
+| `--rate-limit RPM` | 60 | Scan endpoint requests/minute per IP |
+
+Max 10 concurrent scan jobs. Completed jobs auto-expire after 1 hour. Request body limited to 10MB.
 
 ---
 
@@ -710,8 +758,17 @@ These tools solve different problems and are **complementary**.
 - [x] Skill security audit — 7 checks: typosquat detection, shell access, unverified servers, excessive credentials, external URLs
 - [x] CLI attack flow tree — terminal-native CVE → Package → Server → Agent → Credentials/Tools chain visualization
 - [x] AI skill file analysis — LLM-powered context-aware review of skill files with false positive detection, severity adjustments, and new threat discovery
-- [ ] Jupyter notebook AI library scanning
+- [x] Jupyter notebook AI library scanning — detect 30+ AI/ML imports, pip installs, credentials, hardcoded keys
+- [x] Model binary file detection — .gguf, .safetensors, .onnx, .pt, .pkl security flags, 13 formats
+- [x] API server hardening — API key authentication, per-IP rate limiting, CORS tightening, job cleanup
+- [x] CLI tree labels — explicit 🤖 Agent / 🔌 MCP Server / 📦 Package prefixes with summary stats
+- [ ] CIS AI benchmarks — integrate CIS AI/agent security benchmarks when published
+- [ ] Agent guardrails engine — runtime policy enforcement for agent actions and tool calls
+- [ ] AI-powered discovery — use LLMs to identify AI components in unstructured codebases
 - [ ] ToolHive integration (`--toolhive` flag for managed server scanning)
+- [ ] EU AI Act compliance — risk classification and documentation requirements mapping
+- [ ] Multi-language SDK detection — Go, Rust, Java AI library scanning beyond Python/Node
+- [ ] n8n / workflow engine scanning — detect AI nodes in n8n, Zapier, Make automation flows
 - [ ] License compliance engine (SPDX license detection + copyleft chain analysis)
 
 ---

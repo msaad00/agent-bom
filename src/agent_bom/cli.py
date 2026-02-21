@@ -141,6 +141,10 @@ def main():
 @click.option("--skill", "skill_paths", multiple=True, type=click.Path(exists=True), metavar="PATH",
               help="Skill/instruction file to scan (CLAUDE.md, .cursorrules, skill.md). "
                    "Extracts MCP server refs, packages, and credential env vars. Repeatable.")
+@click.option("--jupyter", "jupyter_dirs", multiple=True, type=click.Path(exists=True), metavar="DIR",
+              help="Scan Jupyter notebooks (.ipynb) for AI library imports, model references, and credentials. Repeatable.")
+@click.option("--model-files", "model_dirs", multiple=True, type=click.Path(exists=True), metavar="DIR",
+              help="Scan for ML model binary files (.gguf, .safetensors, .onnx, .pt, .pkl, etc.). Repeatable.")
 @click.option("--introspect", is_flag=True, help="Connect to live MCP servers to discover runtime tools/resources (read-only, requires mcp SDK)")
 @click.option("--introspect-timeout", type=float, default=10.0, show_default=True, help="Timeout per MCP server for --introspect (seconds)")
 @click.option("--verify-integrity", is_flag=True, help="Verify package integrity (SHA256/SRI) and SLSA provenance against registries")
@@ -213,6 +217,8 @@ def scan(
     gha_path: Optional[str],
     agent_projects: tuple,
     skill_paths: tuple,
+    jupyter_dirs: tuple,
+    model_dirs: tuple,
     introspect: bool,
     introspect_timeout: float,
     verify_integrity: bool,
@@ -291,6 +297,10 @@ def scan(
             reads.append(f"  [green]Would read:[/green]   {tf_dir}  (Terraform .tf files)")
         for ap in agent_projects:
             reads.append(f"  [green]Would read:[/green]   {ap}  (Python agent project)")
+        for jdir in jupyter_dirs:
+            reads.append(f"  [green]Would read:[/green]   {jdir}  (Jupyter notebooks *.ipynb)")
+        for mdir in model_dirs:
+            reads.append(f"  [green]Would read:[/green]   {mdir}  (ML model files .gguf, .safetensors, .onnx, .pt, etc.)")
         if gha_path:
             reads.append(f"  [green]Would read:[/green]   {gha_path}/.github/workflows/  (GitHub Actions)")
         for img in images:
@@ -411,11 +421,11 @@ def scan(
         agents = discover_all(project_dir=project)
 
     any_cloud = aws or azure_flag or gcp_flag or databricks_flag or snowflake_flag or nebius_flag or hf_flag or wandb_flag or mlflow_flag or openai_flag
-    if not agents and not images and not k8s and not tf_dirs and not gha_path and not agent_projects and not any_cloud:
+    if not agents and not images and not k8s and not tf_dirs and not gha_path and not agent_projects and not jupyter_dirs and not any_cloud:
         con.print("\n[yellow]No MCP configurations found.[/yellow]")
         con.print(
             "  Use --project, --config-dir, --inventory, --image, --k8s, "
-            "--tf-dir, --gha, --agent-project, --aws, --azure, --gcp, "
+            "--tf-dir, --gha, --agent-project, --jupyter, --aws, --azure, --gcp, "
             "--databricks, --snowflake, --nebius, --huggingface, --wandb, "
             "--mlflow, or --openai to specify a target."
         )
@@ -626,6 +636,24 @@ def scan(
                     if finding.recommendation:
                         con.print(f"      [green]→ {finding.recommendation}[/green]")
 
+    # Step 1g4: Jupyter notebook scan (--jupyter)
+    if jupyter_dirs:
+        from agent_bom.jupyter import scan_jupyter_notebooks
+        for jdir in jupyter_dirs:
+            con.print(f"\n[bold blue]Scanning Jupyter notebooks in {jdir}...[/bold blue]\n")
+            j_agents, j_warnings = scan_jupyter_notebooks(jdir)
+            for w in j_warnings:
+                con.print(f"  [yellow]⚠[/yellow] {w}")
+            if j_agents:
+                pkg_count = sum(len(s.packages) for a in j_agents for s in a.mcp_servers)
+                con.print(
+                    f"  [green]✓[/green] {len(j_agents)} notebook(s) with AI libraries found, "
+                    f"{pkg_count} package(s) to scan"
+                )
+                agents.extend(j_agents)
+            else:
+                con.print("  [dim]  No AI library usage detected in notebooks[/dim]")
+
     # Step 1h: Cloud provider discovery
     cloud_providers: list[tuple[str, dict]] = []
     if aws:
@@ -826,6 +854,20 @@ def scan(
     report = AIBOMReport(agents=agents, blast_radii=blast_radii)
     if _skill_audit_data:
         report.skill_audit_data = _skill_audit_data
+
+    # ── Step 1i: Model binary file scan ─────────────────────────────
+    if model_dirs:
+        from agent_bom.model_files import scan_model_files
+        for mdir in model_dirs:
+            con.print(f"  [cyan]>[/cyan] Scanning for model files in {mdir}...")
+            mf_results, mf_warnings = scan_model_files(mdir)
+            report.model_files.extend(mf_results)
+            for w in mf_warnings:
+                con.print(f"  [yellow]⚠[/yellow] {w}")
+            if mf_results:
+                security_count = sum(1 for m in mf_results if m["security_flags"])
+                con.print(f"    [green]{len(mf_results)} model file(s) found[/green]"
+                         + (f" [red]({security_count} with security flags)[/red]" if security_count else ""))
 
     # Step 4c: AI-powered enrichment (optional)
     if ai_enrich:
@@ -1547,7 +1589,16 @@ def serve_cmd(port: int, host: str, inventory: Optional[str]):
 @click.option("--port", default=8422, show_default=True, help="Port to listen on")
 @click.option("--reload", is_flag=True, help="Auto-reload on code changes (development mode)")
 @click.option("--workers", default=1, show_default=True, help="Number of worker processes")
-def api_cmd(host: str, port: int, reload: bool, workers: int):
+@click.option("--cors-origins", default=None, metavar="ORIGINS",
+              help="Comma-separated CORS origins (default: localhost:3000).")
+@click.option("--cors-allow-all", is_flag=True, default=False,
+              help="Allow all CORS origins (dev mode).")
+@click.option("--api-key", default=None, envvar="AGENT_BOM_API_KEY", metavar="KEY",
+              help="Require API key auth (Bearer token or X-API-Key header).")
+@click.option("--rate-limit", "rate_limit_rpm", default=60, show_default=True, type=int, metavar="RPM",
+              help="Rate limit for scan endpoints (requests/minute per IP).")
+def api_cmd(host: str, port: int, reload: bool, workers: int,
+            cors_origins: str | None, cors_allow_all: bool, api_key: str | None, rate_limit_rpm: int):
     """Start the agent-bom REST API server.
 
     \b
@@ -1582,10 +1633,21 @@ def api_cmd(host: str, port: int, reload: bool, workers: int):
         sys.exit(1)
 
     from agent_bom import __version__ as _ver
+    from agent_bom.api.server import configure_api
+
+    origins = cors_origins.split(",") if cors_origins else None
+    configure_api(
+        cors_origins=origins,
+        cors_allow_all=cors_allow_all,
+        api_key=api_key,
+        rate_limit_rpm=rate_limit_rpm,
+    )
 
     click.echo(f"  agent-bom API v{_ver}")
     click.echo(f"  Listening on http://{host}:{port}")
     click.echo(f"  Docs:         http://{host}:{port}/docs")
+    if api_key:
+        click.echo("  Auth:         API key required (Bearer / X-API-Key)")
     click.echo("  Press Ctrl+C to stop.\n")
 
     uvicorn.run(

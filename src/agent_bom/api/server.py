@@ -18,7 +18,10 @@ Endpoints:
 from __future__ import annotations
 
 import asyncio
+import secrets
+import time
 import uuid
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from enum import Enum
@@ -41,6 +44,19 @@ except ImportError as exc:  # pragma: no cover
 
 # ─── App ──────────────────────────────────────────────────────────────────────
 
+from contextlib import asynccontextmanager  # noqa: E402
+
+
+@asynccontextmanager
+async def _lifespan(app_instance: FastAPI):
+    """Start background cleanup task on startup, cancel on shutdown."""
+    global _cleanup_task
+    _cleanup_task = asyncio.create_task(_cleanup_loop())
+    yield
+    if _cleanup_task:
+        _cleanup_task.cancel()
+
+
 app = FastAPI(
     title="agent-bom API",
     description=(
@@ -50,11 +66,18 @@ app = FastAPI(
     version=__version__,
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=_lifespan,
 )
 
+# ── API hardening config ─────────────────────────────────────────────────
+_cors_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+_api_key: str | None = None
+_rate_limit_rpm: int = 60
+
+# CORS: defaults to localhost; configure via configure_api() before startup
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # tighten in production with specific UI origins
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -65,6 +88,8 @@ app.add_middleware(
 
 from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
 from starlette.requests import Request as StarletteRequest  # noqa: E402
+from starlette.responses import JSONResponse  # noqa: E402
+from starlette.types import ASGIApp  # noqa: E402
 
 
 class TrustHeadersMiddleware(BaseHTTPMiddleware):
@@ -79,6 +104,113 @@ class TrustHeadersMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(TrustHeadersMiddleware)
+
+
+class APIKeyMiddleware(BaseHTTPMiddleware):
+    """Optional API key authentication via Bearer token or X-API-Key header."""
+
+    _EXEMPT_PATHS = {"/", "/health", "/version", "/docs", "/redoc", "/openapi.json"}
+
+    def __init__(self, app: ASGIApp, api_key: str):
+        super().__init__(app)
+        self._api_key = api_key
+
+    async def dispatch(self, request: StarletteRequest, call_next):
+        if request.url.path in self._EXEMPT_PATHS:
+            return await call_next(request)
+
+        # Check Authorization: Bearer <key>
+        auth = request.headers.get("authorization", "")
+        if auth.startswith("Bearer ") and secrets.compare_digest(auth[7:], self._api_key):
+            return await call_next(request)
+
+        # Check X-API-Key header
+        header_key = request.headers.get("x-api-key", "")
+        if header_key and secrets.compare_digest(header_key, self._api_key):
+            return await call_next(request)
+
+        return JSONResponse(status_code=401, content={"detail": "Unauthorized — provide API key via Authorization: Bearer <key> or X-API-Key header"})
+
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    """Per-IP sliding window rate limiter."""
+
+    def __init__(self, app: ASGIApp, scan_rpm: int = 60, read_rpm: int = 300):
+        super().__init__(app)
+        self._scan_rpm = scan_rpm
+        self._read_rpm = read_rpm
+        self._hits: dict[str, list[float]] = defaultdict(list)
+
+    async def dispatch(self, request: StarletteRequest, call_next):
+        client_ip = request.client.host if request.client else "unknown"
+        now = time.time()
+
+        is_scan = request.url.path.startswith("/v1/scan") and request.method == "POST"
+        limit = self._scan_rpm if is_scan else self._read_rpm
+
+        key = f"{client_ip}:{'scan' if is_scan else 'read'}"
+        self._hits[key] = [t for t in self._hits[key] if now - t < 60]
+
+        if len(self._hits[key]) >= limit:
+            retry_after = max(int(60 - (now - self._hits[key][0])), 1)
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Rate limit exceeded"},
+                headers={"Retry-After": str(retry_after)},
+            )
+
+        self._hits[key].append(now)
+        return await call_next(request)
+
+
+class MaxBodySizeMiddleware(BaseHTTPMiddleware):
+    """Reject requests with body larger than max_bytes."""
+
+    def __init__(self, app: ASGIApp, max_bytes: int = 10 * 1024 * 1024):
+        super().__init__(app)
+        self._max_bytes = max_bytes
+
+    async def dispatch(self, request: StarletteRequest, call_next):
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > self._max_bytes:
+            return JSONResponse(
+                status_code=413,
+                content={"detail": f"Request body too large (max {self._max_bytes // (1024*1024)}MB)"},
+            )
+        return await call_next(request)
+
+
+_MAX_CONCURRENT_JOBS = 10
+_JOB_TTL_SECONDS = 3600  # 1 hour
+
+
+def configure_api(
+    cors_origins: list[str] | None = None,
+    cors_allow_all: bool = False,
+    api_key: str | None = None,
+    rate_limit_rpm: int = 60,
+) -> None:
+    """Configure API hardening before server startup.
+
+    Call this before uvicorn.run() to set CORS, auth, and rate limiting.
+    """
+    global _cors_origins, _api_key, _rate_limit_rpm
+
+    if cors_allow_all:
+        _cors_origins = ["*"]
+    elif cors_origins:
+        _cors_origins = cors_origins
+
+    _api_key = api_key
+    _rate_limit_rpm = rate_limit_rpm
+
+    # Add optional middleware
+    if api_key:
+        app.add_middleware(APIKeyMiddleware, api_key=api_key)
+
+    app.add_middleware(RateLimitMiddleware, scan_rpm=rate_limit_rpm, read_rpm=rate_limit_rpm * 5)
+    app.add_middleware(MaxBodySizeMiddleware)
+
 
 # Thread pool for running blocking scan functions without blocking the event loop
 _executor = ThreadPoolExecutor(max_workers=4)
@@ -120,6 +252,9 @@ class ScanRequest(BaseModel):
 
     agent_projects: list[str] = []
     """Python project directories using AI agent frameworks."""
+
+    jupyter_dirs: list[str] = []
+    """Directories to scan for Jupyter notebooks (.ipynb) with AI library usage."""
 
     sbom: str | None = None
     """Path to an existing CycloneDX / SPDX SBOM file."""
@@ -254,6 +389,14 @@ def _run_scan_sync(job: ScanJob) -> None:
             agents.extend(py_agents)
             warnings_all.extend(py_warnings)
 
+        # Step 7b — Jupyter notebooks
+        for jdir in req.jupyter_dirs:
+            job.progress.append(f"Scanning Jupyter notebooks: {jdir}")
+            from agent_bom.jupyter import scan_jupyter_notebooks
+            j_agents, j_warnings = scan_jupyter_notebooks(jdir)
+            agents.extend(j_agents)
+            warnings_all.extend(j_warnings)
+
         # Step 8 — existing SBOM
         if req.sbom:
             job.progress.append(f"Ingesting SBOM: {req.sbom}")
@@ -313,6 +456,24 @@ def _run_scan_sync(job: ScanJob) -> None:
         job.completed_at = _now()
 
 
+_cleanup_task: asyncio.Task | None = None
+
+
+async def _cleanup_loop():
+    """Background task that removes expired jobs every 5 minutes."""
+    while True:
+        await asyncio.sleep(300)
+        now = datetime.now(timezone.utc)
+        expired = [
+            jid for jid, job in _jobs.items()
+            if job.status in (JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED)
+            and job.completed_at
+            and (now - datetime.fromisoformat(job.completed_at)).total_seconds() > _JOB_TTL_SECONDS
+        ]
+        for jid in expired:
+            del _jobs[jid]
+
+
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
 @app.get("/", include_in_schema=False)
@@ -337,6 +498,14 @@ async def create_scan(request: ScanRequest) -> ScanJob:
     """Start a scan. Returns immediately with a job_id.
     Poll GET /v1/scan/{job_id} for results, or stream via /v1/scan/{job_id}/stream.
     """
+    # Enforce max concurrent jobs
+    active = sum(1 for j in _jobs.values() if j.status in (JobStatus.PENDING, JobStatus.RUNNING))
+    if active >= _MAX_CONCURRENT_JOBS:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Max {_MAX_CONCURRENT_JOBS} concurrent scan jobs. Try again later.",
+        )
+
     job = ScanJob(
         job_id=str(uuid.uuid4()),
         created_at=_now(),

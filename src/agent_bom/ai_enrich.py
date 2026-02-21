@@ -7,11 +7,11 @@ Supports three LLM backends (in priority order):
    Start with: ``ollama serve`` then ``ollama pull llama3.2``
 
 2. **HuggingFace Inference API (free tier)** — open-source models in the cloud.
-   Install with: ``pip install agent-bom[huggingface]``
+   Install with: ``pip install 'agent-bom[huggingface]'``
    Set ``HF_TOKEN`` env var for gated models.
 
 3. **litellm (100+ providers)** — OpenAI, Anthropic, Mistral, Groq, etc.
-   Install with: ``pip install agent-bom[ai-enrich]``
+   Install with: ``pip install 'agent-bom[ai-enrich]'``
 
 All LLM calls are:
 - **Optional**: graceful fallback when no provider is available.
@@ -210,7 +210,7 @@ async def _call_llm_via_litellm(prompt: str, model: str, max_tokens: int = 500) 
         _cache[key] = text
         return text
     except ImportError:
-        logger.warning("litellm not installed. Install with: pip install agent-bom[ai-enrich]")
+        logger.warning("litellm not installed. Install with: pip install 'agent-bom[ai-enrich]'")
         return None
     except Exception as exc:
         logger.warning("LLM call failed: %s", exc)
@@ -249,7 +249,7 @@ async def _call_huggingface(
             return text
         return None
     except ImportError:
-        logger.warning("huggingface-hub not installed. Install with: pip install agent-bom[huggingface]")
+        logger.warning("huggingface-hub not installed. Install with: pip install 'agent-bom[huggingface]'")
         return None
     except Exception as exc:
         logger.warning("HuggingFace call failed: %s", exc)
@@ -614,13 +614,13 @@ async def run_ai_enrichment(
             else:
                 console.print("  [yellow]Ollama not running at localhost:11434. Skipping AI enrichment.[/yellow]")
                 console.print("  [dim]Start with: ollama serve && ollama pull llama3.2[/dim]")
-                console.print("  [dim]Or: pip install agent-bom[huggingface] + set HF_TOKEN[/dim]")
+                console.print("  [dim]Or: pip install 'agent-bom[huggingface]' + set HF_TOKEN[/dim]")
                 return
         else:
             provider = "Ollama (local, free)"
     elif model.startswith("huggingface/"):
         if not _check_huggingface():
-            console.print("  [yellow]huggingface-hub not installed. pip install agent-bom[huggingface][/yellow]")
+            console.print("  [yellow]huggingface-hub not installed. pip install 'agent-bom[huggingface]'[/yellow]")
             return
         provider = "HuggingFace Inference API (free)"
     elif _check_litellm():
@@ -628,8 +628,8 @@ async def run_ai_enrichment(
     else:
         console.print("  [yellow]No LLM provider available. Skipping AI enrichment.[/yellow]")
         console.print("  [dim]Option 1: Install Ollama (free, local) — ollama.com[/dim]")
-        console.print("  [dim]Option 2: pip install agent-bom[huggingface] + set HF_TOKEN[/dim]")
-        console.print("  [dim]Option 3: pip install agent-bom[ai-enrich] + set API key[/dim]")
+        console.print("  [dim]Option 2: pip install 'agent-bom[huggingface]' + set HF_TOKEN[/dim]")
+        console.print("  [dim]Option 3: pip install 'agent-bom[ai-enrich]' + set API key[/dim]")
         return
 
     console.print(f"\n[bold blue]AI Enrichment[/bold blue]  [dim]model: {model} via {provider}[/dim]\n")

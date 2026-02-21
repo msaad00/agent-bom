@@ -1,16 +1,18 @@
 """Self-contained HTML report generator for AI-BOM scans.
 
 Produces a single ``report.html`` file with:
-- Grafana-style dashboard: stat cards, severity donut, blast radius bar chart
-- Smart Cytoscape.js risk map — agents → servers → ONLY vulnerable packages
-  (clean packages are hidden to prevent graph pollution from large image scans)
-- Collapsible agent inventory panels with truncated package lists
+- Enterprise dashboard: stat cards, severity donut, blast radius bar chart
+- Hierarchical Cytoscape.js risk map (dagre layout: Provider → Agent → Server → Package → CVE)
+  with zoom controls, fullscreen toggle, and node highlighting
+- Collapsible agent inventory panels with search and truncated package lists
 - Sortable vulnerability table with severity pill, CVSS bar, EPSS, KEV badge
 - Blast radius table ordered by risk score with visual bar
 - Remediation plan ordered by impact
+- Skill audit findings section (when skill scan data is present)
+- Print-friendly stylesheet for PDF export
 
 No server required — open the file in any browser.
-Chart.js + Cytoscape.js loaded from CDN; everything else is inline.
+Chart.js + Cytoscape.js + dagre loaded from CDN; everything else is inline.
 """
 
 from __future__ import annotations
@@ -87,12 +89,7 @@ def _chart_data(blast_radii: list["BlastRadius"]) -> str:
 
 
 def _cytoscape_elements(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str:
-    """Build Cytoscape element list using the shared graph builder.
-
-    Delegates to ``agent_bom.output.graph.build_graph_elements`` which adds
-    provider nodes, CVE nodes, and typed edges on top of the original
-    agent → server → package hierarchy.
-    """
+    """Build Cytoscape element list using the shared graph builder."""
     from agent_bom.output.graph import build_graph_elements
 
     elements = build_graph_elements(report, blast_radii, include_cve_nodes=True)
@@ -120,17 +117,17 @@ def _summary_cards(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> s
         )
 
     return '<div class="stat-grid">' + "".join([
-        card("🤖", str(report.total_agents),   "Agents",          "#60a5fa",
+        card("&#x1f916;", str(report.total_agents),   "Agents",          "#60a5fa",
              f"{report.total_servers} servers"),
-        card("📦", str(report.total_packages), "Packages",        "#38bdf8",
+        card("&#x1f4e6;", str(report.total_packages), "Packages",        "#38bdf8",
              "direct + transitive"),
-        card("⚠️",  str(total_vulns),           "Vulnerabilities", "#f87171" if total_vulns else "#34d399",
+        card("&#x26a0;&#xfe0f;",  str(total_vulns),           "Vulnerabilities", "#f87171" if total_vulns else "#34d399",
              "across all agents"),
-        card("🔑", str(cred_servers),          "Servers w/ Creds","#fbbf24" if cred_servers else "#34d399",
+        card("&#x1f511;", str(cred_servers),          "Servers w/ Creds", "#fbbf24" if cred_servers else "#34d399",
              "credential exposure"),
-        card("🚨", str(crit),                  "Critical",        "#ef4444" if crit else "#34d399",
+        card("&#x1f6a8;", str(crit),                  "Critical",        "#ef4444" if crit else "#34d399",
              "needs immediate fix"),
-        card("🦠", str(kev_count),             "CISA KEV",        "#a855f7" if kev_count else "#34d399",
+        card("&#x1f9a0;", str(kev_count),             "CISA KEV",        "#a855f7" if kev_count else "#34d399",
              "actively exploited"),
     ]) + "</div>"
 
@@ -138,7 +135,7 @@ def _summary_cards(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> s
 def _vuln_table(blast_radii: list["BlastRadius"]) -> str:
     if not blast_radii:
         return (
-            '<div class="empty-state">✅ No vulnerabilities found in scanned packages.</div>'
+            '<div class="empty-state">&#x2705; No vulnerabilities found in scanned packages.</div>'
         )
 
     has_missing = any(
@@ -149,7 +146,7 @@ def _vuln_table(blast_radii: list["BlastRadius"]) -> str:
     if has_missing:
         hint = (
             '<div class="hint-box">'
-            '💡 <strong>Some entries are missing CVSS scores or descriptions.</strong> '
+            '&#x1f4a1; <strong>Some entries are missing CVSS scores or descriptions.</strong> '
             'Run with <code>--enrich</code> to fetch full NVD metadata, CVSS 3.x vectors, EPSS, and CISA KEV status.'
             '</div>'
         )
@@ -174,11 +171,11 @@ def _vuln_table(blast_radii: list["BlastRadius"]) -> str:
                 f'<strong style="color:{color}">{v.cvss_score:.1f}</strong></div>'
             )
         else:
-            cvss_bar = '<span style="color:#334155">—</span>'
-        epss = f'{v.epss_score:.1%}' if v.epss_score else '<span style="color:#334155">—</span>'
+            cvss_bar = '<span style="color:#334155">&mdash;</span>'
+        epss = f'{v.epss_score:.1%}' if v.epss_score else '<span style="color:#334155">&mdash;</span>'
         kev = (
             '<span class="badge-kev">KEV</span>'
-            if v.is_kev else '<span style="color:#334155">—</span>'
+            if v.is_kev else '<span style="color:#334155">&mdash;</span>'
         )
         fix = (
             f'<code style="color:#4ade80">{_esc(v.fixed_version)}</code>'
@@ -186,10 +183,10 @@ def _vuln_table(blast_radii: list["BlastRadius"]) -> str:
         )
         summary_text = (v.summary or "")[:90]
         summary = _esc(summary_text) if summary_text else '<span style="color:#475569;font-style:italic">Run --enrich</span>'
-        agents_s = ", ".join(_esc(a.name) for a in br.affected_agents) or "<span style='color:#334155'>—</span>"
+        agents_s = ", ".join(_esc(a.name) for a in br.affected_agents) or "<span style='color:#334155'>&mdash;</span>"
         creds_s = (
             " ".join(f'<code style="color:#fbbf24">{_esc(c)}</code>' for c in br.exposed_credentials)
-            or "<span style='color:#334155'>—</span>"
+            or "<span style='color:#334155'>&mdash;</span>"
         )
         rows.append(
             f'<tr>'
@@ -211,9 +208,9 @@ def _vuln_table(blast_radii: list["BlastRadius"]) -> str:
                "Affected Agents", "Exposed Creds", "Summary"]
     return (
         hint
-        + '<div class="table-wrap"><table class="data-table">'
+        + '<div class="table-wrap"><table class="data-table sortable">'
         + '<thead><tr>'
-        + "".join(f'<th>{h}</th>' for h in headers)
+        + "".join(f'<th data-col="{i}">{h} <span class="sort-arrow"></span></th>' for i, h in enumerate(headers))
         + '</tr></thead>'
         + f'<tbody>{"".join(rows)}</tbody></table></div>'
     )
@@ -237,7 +234,7 @@ def _blast_table(blast_radii: list["BlastRadius"]) -> str:
         )
         fix = (
             f'<code style="color:#4ade80;font-size:.8rem">{_esc(v.fixed_version)}</code>'
-            if v.fixed_version else '<span style="color:#475569">—</span>'
+            if v.fixed_version else '<span style="color:#475569">&mdash;</span>'
         )
         rows.append(
             f'<tr>'
@@ -257,20 +254,19 @@ def _blast_table(blast_radii: list["BlastRadius"]) -> str:
             f'<td>{fix}</td>'
             f'</tr>'
         )
+    headers = ["#", "Vuln ID", "Severity", "Blast Score (0&ndash;10)",
+               "Agents Hit", "Creds Exposed", "Tools Reachable", "Flags", "Fix"]
     return (
-        '<div class="table-wrap"><table class="data-table">'
+        '<div class="table-wrap"><table class="data-table sortable">'
         + '<thead><tr>'
-        + "".join(f'<th>{h}</th>' for h in [
-            "#", "Vuln ID", "Severity", "Blast Score (0–10)",
-            "Agents Hit", "Creds Exposed", "Tools Reachable", "Flags", "Fix",
-        ])
+        + "".join(f'<th data-col="{i}">{h} <span class="sort-arrow"></span></th>' for i, h in enumerate(headers))
         + f'</tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
     )
 
 
 def _remediation_list(blast_radii: list["BlastRadius"]) -> str:
     if not blast_radii:
-        return '<p style="color:#4ade80">✅ Nothing to remediate.</p>'
+        return '<p style="color:#4ade80">&#x2705; Nothing to remediate.</p>'
     with_fix = sorted(
         [b for b in blast_radii if b.vulnerability.fixed_version],
         key=lambda b: b.risk_score,
@@ -281,7 +277,7 @@ def _remediation_list(blast_radii: list["BlastRadius"]) -> str:
     for br in with_fix:
         v = br.vulnerability
         creds_note = (
-            f' · frees <strong style="color:#fbbf24">{len(br.exposed_credentials)}</strong> credential(s)'
+            f' &middot; frees <strong style="color:#fbbf24">{len(br.exposed_credentials)}</strong> credential(s)'
             if br.exposed_credentials else ""
         )
         items.append(
@@ -292,8 +288,8 @@ def _remediation_list(blast_radii: list["BlastRadius"]) -> str:
             f'<span style="color:#475569;font-weight:400">@{_esc(br.package.version)}</span></div>'
             f'<div style="font-size:.8rem;color:#64748b;margin-top:3px">'
             f'<code class="vuln-id">{_esc(v.id)}</code>'
-            f' · upgrade to <code style="color:#4ade80">{_esc(v.fixed_version)}</code>'
-            f' · protects <strong>{len(br.affected_agents)}</strong> agent(s)'
+            f' &middot; upgrade to <code style="color:#4ade80">{_esc(v.fixed_version)}</code>'
+            f' &middot; protects <strong>{len(br.affected_agents)}</strong> agent(s)'
             f'{creds_note}'
             f'</div></div>'
             f'<div style="flex-shrink:0;color:#475569;font-size:.78rem;padding-top:3px">score&nbsp;{br.risk_score:.1f}</div>'
@@ -304,9 +300,9 @@ def _remediation_list(blast_radii: list["BlastRadius"]) -> str:
         nf_rows = "".join(
             f'<div style="padding:9px 0;border-bottom:1px solid #1e293b;font-size:.82rem">'
             f'{_sev_badge(b.vulnerability.severity.value.lower())} '
-            f'<code class="vuln-id">{_esc(b.vulnerability.id)}</code> — '
+            f'<code class="vuln-id">{_esc(b.vulnerability.id)}</code> &mdash; '
             f'<strong style="color:#e2e8f0">{_esc(b.package.name)}</strong>@{_esc(b.package.version)}'
-            f' — <span style="color:#475569">no fix available — monitor upstream</span></div>'
+            f' &mdash; <span style="color:#475569">no fix available &mdash; monitor upstream</span></div>'
             for b in no_fix
         )
         nf_html = (
@@ -315,6 +311,82 @@ def _remediation_list(blast_radii: list["BlastRadius"]) -> str:
             + nf_rows + '</div>'
         )
     return "".join(items) + nf_html
+
+
+def _skill_audit_section(report: "AIBOMReport") -> str:
+    """Build the skill audit findings section if data is available."""
+    data = getattr(report, "skill_audit_data", None)
+    if not data:
+        return ""
+
+    findings = data.get("findings", [])
+    passed = data.get("passed", True)
+    pkgs_checked = data.get("packages_checked", 0)
+    servers_checked = data.get("servers_checked", 0)
+    creds_checked = data.get("credentials_checked", 0)
+    ai_summary = data.get("ai_skill_summary", "")
+    ai_risk = data.get("ai_overall_risk_level", "")
+
+    status_color = "#16a34a" if passed else "#dc2626"
+    status_text = "PASSED" if passed else "FAILED"
+
+    summary_html = ""
+    if ai_summary:
+        summary_html = (
+            f'<div class="hint-box" style="border-color:#818cf840;background:#1e1b4b40">'
+            f'<strong style="color:#c7d2fe">AI Analysis:</strong> {_esc(ai_summary)}'
+            f'</div>'
+        )
+
+    stats_html = (
+        f'<div style="display:flex;gap:24px;margin-bottom:16px;font-size:.82rem;color:#94a3b8">'
+        f'<span>Status: <strong style="color:{status_color}">{status_text}</strong></span>'
+        f'<span>Packages checked: <strong>{pkgs_checked}</strong></span>'
+        f'<span>Servers checked: <strong>{servers_checked}</strong></span>'
+        f'<span>Credentials checked: <strong>{creds_checked}</strong></span>'
+        + (f'<span>AI risk level: <strong style="color:{_SEV_COLOR.get(ai_risk, "#64748b")}">{_esc(ai_risk).upper()}</strong></span>' if ai_risk else "")
+        + '</div>'
+    )
+
+    if not findings:
+        return (
+            f'<section id="skillaudit">'
+            f'<div class="sec-title">&#x1f6e1;&#xfe0f; Skill File Audit</div>'
+            f'<div class="panel">{stats_html}{summary_html}'
+            f'<div class="empty-state">&#x2705; No security findings in skill files.</div>'
+            f'</div></section>'
+        )
+
+    rows = []
+    for f in findings:
+        sev = f.get("severity", "low")
+        rows.append(
+            f'<tr>'
+            f'<td>{_sev_badge(sev)}</td>'
+            f'<td style="color:#e2e8f0;font-weight:600;font-size:.85rem">{_esc(f.get("title", ""))}</td>'
+            f'<td><code style="color:#94a3b8;font-size:.75rem">{_esc(f.get("category", ""))}</code></td>'
+            f'<td style="font-size:.78rem;color:#94a3b8;max-width:300px">{_esc(f.get("detail", ""))}</td>'
+            f'<td style="font-size:.75rem;color:#64748b">{_esc(f.get("source_file", ""))}</td>'
+            f'<td style="font-size:.75rem;color:#4ade80">{_esc(f.get("recommendation", ""))}</td>'
+            f'</tr>'
+        )
+
+    headers = ["Severity", "Finding", "Category", "Detail", "Source", "Recommendation"]
+    table_html = (
+        '<div class="table-wrap"><table class="data-table sortable">'
+        + '<thead><tr>'
+        + "".join(f'<th data-col="{i}">{h} <span class="sort-arrow"></span></th>' for i, h in enumerate(headers))
+        + '</tr></thead>'
+        + f'<tbody>{"".join(rows)}</tbody></table></div>'
+    )
+
+    return (
+        f'<section id="skillaudit">'
+        f'<div class="sec-title">&#x1f6e1;&#xfe0f; Skill File Audit'
+        f'<sup style="font-size:.7rem;color:#475569;margin-left:6px">{len(findings)}</sup></div>'
+        f'<div class="panel">{stats_html}{summary_html}{table_html}</div>'
+        f'</section>'
+    )
 
 
 def _inventory_cards(report: "AIBOMReport") -> str:
@@ -348,7 +420,7 @@ def _inventory_cards(report: "AIBOMReport") -> str:
                 cmd_parts = [srv.command] + srv.args[:3]
                 cmd = _esc(" ".join(cmd_parts))
                 if srv.args and len(srv.args) > 3:
-                    cmd += f' <span style="color:#334155">…+{len(srv.args)-3} args</span>'
+                    cmd += f' <span style="color:#334155">&hellip;+{len(srv.args)-3} args</span>'
 
             # Credentials section
             creds_html = ""
@@ -357,7 +429,7 @@ def _inventory_cards(report: "AIBOMReport") -> str:
                     '<div style="margin-top:8px">'
                     + "".join(
                         f'<div style="font-size:.74rem;color:#fbbf24;padding:2px 0">'
-                        f'🔑 <code>{_esc(c)}</code></div>'
+                        f'&#x1f511; <code>{_esc(c)}</code></div>'
                         for c in srv.credential_names
                     )
                     + "</div>"
@@ -374,7 +446,7 @@ def _inventory_cards(report: "AIBOMReport") -> str:
                 if not isinstance(p, Package):
                     return ""
                 color = "#f87171" if p.has_vulnerabilities else "#38bdf8"
-                vuln_mark = " ⚠" if p.has_vulnerabilities else ""
+                vuln_mark = " &#x26a0;" if p.has_vulnerabilities else ""
                 return (
                     f'<div class="pkg-row">'
                     f'<span><code style="color:{color};font-size:.72rem">{_esc(p.ecosystem)}</code>'
@@ -394,7 +466,7 @@ def _inventory_cards(report: "AIBOMReport") -> str:
                         f'{preview_rows}'
                         f'<div id="{uid}" style="display:none">{rest_rows}</div>'
                         f'<button class="toggle-btn" onclick="togglePkgs(\'{uid}\',this)">'
-                        f'Show {len(rest)} more packages ▼</button>'
+                        f'Show {len(rest)} more packages &#x25bc;</button>'
                         f'</div>'
                     )
                 else:
@@ -403,7 +475,7 @@ def _inventory_cards(report: "AIBOMReport") -> str:
             srv_badges_html = " ".join(srv_badges)
             srv_header = (
                 f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
-                f'<div style="font-weight:600;color:#e2e8f0;font-size:.9rem">⚙️ {_esc(srv.name)} {srv_badges_html}</div>'
+                f'<div style="font-weight:600;color:#e2e8f0;font-size:.9rem">&#x2699;&#xfe0f; {_esc(srv.name)} {srv_badges_html}</div>'
                 f'<div style="font-size:.72rem;color:#475569">{pkg_count} pkg{"s" if pkg_count != 1 else ""}</div>'
                 f'</div>'
             )
@@ -426,17 +498,17 @@ def _inventory_cards(report: "AIBOMReport") -> str:
         cards.append(
             f'<details class="agent-card" open>'
             f'<summary class="agent-summary">'
-            f'<span>🤖 {_esc(agent.name)}</span>'
+            f'<span>&#x1f916; {_esc(agent.name)}</span>'
             f'<span style="display:flex;align-items:center;gap:8px">'
             f'{badges_html}'
             f'<span style="font-size:.72rem;color:#475569">'
-            f'{len(agent.mcp_servers)} server(s) · {agent.total_packages} pkg(s)'
+            f'{len(agent.mcp_servers)} server(s) &middot; {agent.total_packages} pkg(s)'
             f'</span>'
             f'</span>'
             f'</summary>'
             f'<div class="agent-detail">'
             f'<div style="font-size:.72rem;color:#475569;margin-bottom:12px">'
-            f'{_esc(agent.agent_type.value)} · {_esc(agent.config_path or "")}'
+            f'{_esc(agent.agent_type.value)} &middot; {_esc(agent.config_path or "")}'
             f'</div>'
             f'{servers_content}'
             f'</div>'
@@ -468,20 +540,20 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     if blast_radii:
         vuln_sections = (
             f'<section id="vulns">'
-            f'<div class="sec-title">⚠️ Vulnerabilities'
+            f'<div class="sec-title">&#x26a0;&#xfe0f; Vulnerabilities'
             f'<sup style="font-size:.7rem;color:#475569;margin-left:6px">{len(blast_radii)}</sup>'
             f'</div>'
             f'<div class="panel">{_vuln_table(blast_radii)}</div>'
             f'</section>'
             f'<section id="blast">'
-            f'<div class="sec-title">💥 Blast Radius'
+            f'<div class="sec-title">&#x1f4a5; Blast Radius'
             f'<sup style="font-size:.65rem;color:#475569;margin-left:6px;font-weight:400">'
             f'risk = CVSS + agents + creds + tools + KEV/EPSS boosts (max 10)'
             f'</sup></div>'
             f'<div class="panel">{_blast_table(blast_radii)}</div>'
             f'</section>'
             f'<section id="remediation">'
-            f'<div class="sec-title">🔧 Remediation Plan</div>'
+            f'<div class="sec-title">&#x1f527; Remediation Plan</div>'
             f'<div class="panel">{_remediation_list(blast_radii)}</div>'
             f'</section>'
         )
@@ -493,10 +565,14 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
         if blast_radii else ""
     )
 
+    # Skill audit section
+    skill_section = _skill_audit_section(report)
+    skill_nav = '<a href="#skillaudit">Skill Audit</a>' if skill_section else ""
+
     # Determine node counts for graph subtitle
     vuln_node_count = len({(br.package.name, br.package.ecosystem) for br in blast_radii})
     graph_note = (
-        f"agents + servers + {vuln_node_count} vulnerable pkg(s) only — "
+        f"agents + servers + {vuln_node_count} vulnerable pkg(s) only &mdash; "
         f"{report.total_packages - vuln_node_count} clean packages hidden"
         if report.total_packages > vuln_node_count
         else "agents + servers + packages"
@@ -507,108 +583,155 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>agent-bom AI-BOM — {_esc(generated)}</title>
+  <title>agent-bom AI-BOM &mdash; {_esc(generated)}</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
   <script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+  <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
+  <script src="https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js"></script>
   <style>
     *,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
-    body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0b1120;color:#cbd5e1;line-height:1.5;font-size:14px}}
+    body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0b1120;color:#cbd5e1;line-height:1.6;font-size:14px}}
     a{{color:#60a5fa;text-decoration:none}}
     a:hover{{text-decoration:underline}}
     code{{font-family:"SF Mono","Cascadia Code",Consolas,monospace;font-size:.9em}}
 
     /* NAV */
-    nav{{background:#0f172a;border-bottom:1px solid #1e293b;padding:0 28px;display:flex;align-items:center;gap:16px;height:52px;position:sticky;top:0;z-index:100}}
-    .brand{{font-weight:700;font-size:.95rem;color:#f1f5f9;letter-spacing:-.01em;white-space:nowrap}}
-    .status-badge{{padding:3px 10px;border-radius:4px;font-size:.7rem;font-weight:700;letter-spacing:.05em;background:{status_color}18;color:{status_color};border:1px solid {status_color}35;white-space:nowrap}}
-    .scan-time{{color:#334155;font-size:.72rem;white-space:nowrap}}
+    nav{{background:#0f172a;border-bottom:1px solid #1e293b;padding:0 32px;display:flex;align-items:center;gap:16px;height:56px;position:sticky;top:0;z-index:100;backdrop-filter:blur(12px);background:rgba(15,23,42,.92)}}
+    .brand{{font-weight:700;font-size:1rem;color:#f1f5f9;letter-spacing:-.01em;white-space:nowrap}}
+    .status-badge{{padding:4px 12px;border-radius:6px;font-size:.7rem;font-weight:700;letter-spacing:.05em;background:{status_color}15;color:{status_color};border:1px solid {status_color}30;white-space:nowrap}}
+    .scan-time{{color:#475569;font-size:.73rem;white-space:nowrap}}
     .navlinks{{display:flex;gap:2px;margin-left:auto;flex-wrap:wrap}}
-    .navlinks a{{color:#475569;font-size:.8rem;padding:4px 9px;border-radius:4px;white-space:nowrap}}
+    .navlinks a{{color:#64748b;font-size:.8rem;padding:6px 12px;border-radius:6px;white-space:nowrap;transition:all .15s}}
     .navlinks a:hover{{background:#1e293b;color:#e2e8f0;text-decoration:none}}
 
     /* LAYOUT */
-    .container{{max-width:1440px;margin:0 auto;padding:28px 28px 80px}}
-    section{{margin-bottom:44px}}
-    .sec-title{{font-size:.78rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#64748b;margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid #1e293b}}
-    .panel{{background:#1e293b;border-radius:10px;padding:20px}}
+    .container{{max-width:1480px;margin:0 auto;padding:32px 32px 80px}}
+    section{{margin-bottom:48px}}
+    .sec-title{{font-size:.82rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#64748b;margin-bottom:18px;padding-bottom:10px;border-bottom:1px solid #1e293b}}
+    .panel{{background:#1e293b;border-radius:12px;padding:24px;border:1px solid #ffffff08}}
 
     /* STAT CARDS */
-    .stat-grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:12px}}
-    .stat-card{{background:#1e293b;border-radius:8px;padding:18px 20px;border-left:4px solid #334155}}
-    .stat-icon{{font-size:1.3rem;margin-bottom:4px}}
-    .stat-value{{font-size:2rem;font-weight:700;line-height:1;margin-bottom:4px}}
-    .stat-label{{font-size:.68rem;color:#64748b;text-transform:uppercase;letter-spacing:.06em}}
+    .stat-grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px}}
+    .stat-card{{background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%);border-radius:10px;padding:20px 22px;border-left:4px solid #334155;border:1px solid #ffffff06;transition:transform .15s,box-shadow .15s}}
+    .stat-card:hover{{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.3)}}
+    .stat-icon{{font-size:1.4rem;margin-bottom:6px}}
+    .stat-value{{font-size:2.2rem;font-weight:800;line-height:1;margin-bottom:6px}}
+    .stat-label{{font-size:.7rem;color:#64748b;text-transform:uppercase;letter-spacing:.06em}}
 
     /* CHARTS ROW */
-    .charts-row{{display:grid;grid-template-columns:300px 1fr;gap:16px}}
-    .chart-panel{{background:#1e293b;border-radius:10px;padding:20px}}
-    .chart-title{{font-size:.72rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#64748b;margin-bottom:14px}}
+    .charts-row{{display:grid;grid-template-columns:320px 1fr;gap:16px}}
+    .chart-panel{{background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%);border-radius:12px;padding:24px;border:1px solid #ffffff06}}
+    .chart-title{{font-size:.73rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#64748b;margin-bottom:16px}}
     .chart-wrap{{position:relative}}
-    .donut-wrap{{max-width:240px;margin:0 auto}}
+    .donut-wrap{{max-width:260px;margin:0 auto}}
 
     /* GRAPH */
-    #cy{{width:100%;height:420px;background:#1e293b;border-radius:10px}}
-    .graph-note{{font-size:.7rem;color:#475569;margin-top:8px}}
-    .legend{{display:flex;gap:18px;flex-wrap:wrap;font-size:.75rem;color:#64748b;margin-top:10px}}
-    .legend span{{display:flex;align-items:center;gap:5px}}
-    .legend i{{display:inline-block;width:9px;height:9px;border-radius:50%}}
+    .graph-container{{position:relative;border-radius:12px;overflow:hidden;border:1px solid #ffffff08}}
+    .graph-container:fullscreen{{border-radius:0;background:#0f172a}}
+    .graph-container:fullscreen #cy{{height:100vh}}
+    #cy{{width:100%;height:600px;background:#0f172a}}
+    .graph-controls{{position:absolute;top:12px;right:12px;display:flex;flex-direction:column;gap:4px;z-index:10}}
+    .graph-btn{{width:36px;height:36px;border-radius:8px;border:1px solid #334155;background:rgba(15,23,42,.85);color:#94a3b8;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;backdrop-filter:blur(8px)}}
+    .graph-btn:hover{{background:#1e293b;color:#e2e8f0;border-color:#475569}}
+    .legend{{display:flex;gap:20px;flex-wrap:wrap;font-size:.76rem;color:#64748b;margin-top:12px;padding:0 4px}}
+    .legend span{{display:flex;align-items:center;gap:6px}}
+    .legend i{{display:inline-block;width:10px;height:10px;border-radius:3px}}
+    .legend i.diamond{{transform:rotate(45deg);border-radius:1px}}
 
     /* TOOLTIP */
-    #tip{{position:fixed;background:#0f172a;border:1px solid #334155;border-radius:6px;padding:8px 11px;font-size:.75rem;color:#e2e8f0;pointer-events:none;white-space:pre-line;max-width:260px;z-index:9999;display:none;line-height:1.45}}
+    #tip{{position:fixed;background:#0f172a;border:1px solid #334155;border-radius:8px;padding:10px 14px;font-size:.76rem;color:#e2e8f0;pointer-events:none;white-space:pre-line;max-width:280px;z-index:9999;display:none;line-height:1.5;box-shadow:0 8px 24px rgba(0,0,0,.4)}}
 
     /* TABLES */
-    .table-wrap{{overflow-x:auto}}
+    .table-wrap{{overflow-x:auto;border-radius:8px}}
     .data-table{{width:100%;border-collapse:collapse;font-size:.83rem}}
-    .data-table th{{padding:9px 12px;font-size:.68rem;letter-spacing:.06em;color:#64748b;font-weight:700;text-transform:uppercase;border-bottom:1px solid #334155;white-space:nowrap;background:#0f172a}}
-    .data-table td{{padding:9px 12px;border-bottom:1px solid #1e293b;vertical-align:middle}}
-    .data-table tr:hover td{{background:#ffffff06}}
+    .data-table th{{padding:10px 14px;font-size:.68rem;letter-spacing:.06em;color:#64748b;font-weight:700;text-transform:uppercase;border-bottom:2px solid #334155;white-space:nowrap;background:#0f172a;position:sticky;top:0}}
+    .data-table.sortable th{{cursor:pointer;user-select:none;transition:color .15s}}
+    .data-table.sortable th:hover{{color:#e2e8f0}}
+    .sort-arrow{{font-size:.6rem;margin-left:3px;opacity:.4}}
+    .sort-arrow.asc::after{{content:"\\25B2"}}
+    .sort-arrow.desc::after{{content:"\\25BC"}}
+    .data-table td{{padding:10px 14px;border-bottom:1px solid #1e293b;vertical-align:middle}}
+    .data-table tr{{transition:background .1s}}
+    .data-table tr:hover td{{background:rgba(255,255,255,.03)}}
 
     /* BADGES */
-    .badge-kev{{background:#7f1d1d;color:#fca5a5;padding:1px 6px;border-radius:3px;font-size:.68rem;font-weight:700}}
-    .badge-ai{{background:#1d4ed8;color:#bfdbfe;padding:2px 6px;border-radius:3px;font-size:.68rem;font-weight:700;margin-right:4px}}
-    .badge-vuln{{background:#7f1d1d;color:#fca5a5;font-size:.65rem;padding:1px 5px;border-radius:3px;font-weight:700}}
-    .badge-cred{{background:#78350f;color:#fde68a;font-size:.65rem;padding:1px 5px;border-radius:3px;font-weight:700}}
+    .badge-kev{{background:#7f1d1d;color:#fca5a5;padding:2px 8px;border-radius:4px;font-size:.68rem;font-weight:700}}
+    .badge-ai{{background:#1d4ed8;color:#bfdbfe;padding:2px 8px;border-radius:4px;font-size:.68rem;font-weight:700;margin-right:4px}}
+    .badge-vuln{{background:#7f1d1d;color:#fca5a5;font-size:.65rem;padding:2px 6px;border-radius:4px;font-weight:700}}
+    .badge-cred{{background:#78350f;color:#fde68a;font-size:.65rem;padding:2px 6px;border-radius:4px;font-weight:700}}
     .vuln-id{{color:#93c5fd;font-size:.78rem}}
 
     /* REMEDIATION */
-    .remediation-item{{display:flex;align-items:flex-start;gap:14px;padding:14px 0;border-bottom:1px solid #1e293b}}
-    .subsection-label{{font-size:.7rem;letter-spacing:.07em;text-transform:uppercase;color:#64748b;margin-bottom:8px}}
+    .remediation-item{{display:flex;align-items:flex-start;gap:14px;padding:16px 0;border-bottom:1px solid #1e293b;transition:background .1s}}
+    .remediation-item:hover{{background:rgba(255,255,255,.02);margin:0 -12px;padding-left:12px;padding-right:12px;border-radius:8px}}
+    .subsection-label{{font-size:.7rem;letter-spacing:.07em;text-transform:uppercase;color:#64748b;margin-bottom:10px}}
 
     /* INVENTORY */
-    .agent-card{{background:#1e293b;border-radius:10px;margin-bottom:12px;overflow:hidden}}
-    .agent-summary{{list-style:none;display:flex;justify-content:space-between;align-items:center;padding:16px 20px;cursor:pointer;user-select:none;font-weight:700;font-size:.95rem;color:#f1f5f9}}
+    .inv-search{{width:100%;padding:10px 14px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:.85rem;margin-bottom:16px;outline:none;transition:border-color .15s}}
+    .inv-search:focus{{border-color:#3b82f6}}
+    .inv-search::placeholder{{color:#475569}}
+    .agent-card{{background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%);border-radius:12px;margin-bottom:12px;overflow:hidden;border:1px solid #ffffff06;transition:box-shadow .15s}}
+    .agent-card:hover{{box-shadow:0 4px 16px rgba(0,0,0,.2)}}
+    .agent-summary{{list-style:none;display:flex;justify-content:space-between;align-items:center;padding:18px 22px;cursor:pointer;user-select:none;font-weight:700;font-size:.95rem;color:#f1f5f9}}
     .agent-summary::-webkit-details-marker{{display:none}}
-    .agent-summary::before{{content:"▶";margin-right:8px;font-size:.65rem;color:#475569;transition:transform .2s}}
+    .agent-summary::before{{content:"\\25B6";margin-right:10px;font-size:.6rem;color:#475569;transition:transform .2s}}
     details[open] .agent-summary::before{{transform:rotate(90deg)}}
-    .agent-detail{{padding:16px 20px;border-top:1px solid #0f172a}}
-    .server-card{{background:#0f172a;border-radius:6px;padding:12px 14px;margin-bottom:8px;border-left:3px solid #334155}}
-    .pkg-row{{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #0a1628;font-size:.78rem}}
+    .agent-detail{{padding:18px 22px;border-top:1px solid #0b112060}}
+    .server-card{{background:#0b1120;border-radius:8px;padding:14px 16px;margin-bottom:10px;border-left:3px solid #334155;border:1px solid #ffffff04;border-left:3px solid #334155}}
+    .pkg-row{{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #0a162830;font-size:.78rem}}
     .pkg-row:last-child{{border-bottom:none}}
     .pkg-name{{color:#e2e8f0}}
     .pkg-ver{{color:#64748b;font-family:monospace;font-size:.73rem}}
-    .toggle-btn{{background:transparent;border:1px solid #334155;color:#64748b;font-size:.72rem;padding:4px 10px;border-radius:4px;cursor:pointer;margin-top:8px;width:100%}}
+    .toggle-btn{{background:transparent;border:1px solid #334155;color:#64748b;font-size:.72rem;padding:6px 12px;border-radius:6px;cursor:pointer;margin-top:10px;width:100%;transition:all .15s}}
     .toggle-btn:hover{{background:#1e293b;color:#94a3b8}}
 
     /* HINTS */
-    .hint-box{{background:#1e3a5f;border:1px solid #3b82f660;border-radius:6px;padding:12px 16px;margin-bottom:16px;font-size:.82rem;color:#93c5fd}}
-    .empty-state{{background:#052e1620;border:1px solid #16a34a40;border-radius:8px;padding:20px;color:#4ade80;text-align:center;font-size:.9rem}}
+    .hint-box{{background:#1e3a5f40;border:1px solid #3b82f640;border-radius:8px;padding:14px 18px;margin-bottom:18px;font-size:.82rem;color:#93c5fd}}
+    .empty-state{{background:#052e1615;border:1px solid #16a34a30;border-radius:10px;padding:24px;color:#4ade80;text-align:center;font-size:.9rem}}
 
-    footer{{border-top:1px solid #1e293b;padding:20px 28px;text-align:center;font-size:.75rem;color:#334155}}
-    @media(max-width:800px){{.charts-row{{grid-template-columns:1fr}}}}
+    footer{{border-top:1px solid #1e293b;padding:24px 32px;text-align:center;font-size:.75rem;color:#334155}}
+    .print-btn{{background:transparent;border:1px solid #334155;color:#64748b;font-size:.75rem;padding:4px 12px;border-radius:6px;cursor:pointer;margin-left:12px;transition:all .15s}}
+    .print-btn:hover{{background:#1e293b;color:#94a3b8}}
+
+    @media(max-width:900px){{
+      .charts-row{{grid-template-columns:1fr}}
+      .stat-grid{{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}}
+      nav{{padding:0 16px;gap:8px}}
+      .container{{padding:20px 16px 60px}}
+    }}
+
+    /* PRINT */
+    @media print{{
+      body{{background:#fff;color:#1e293b;font-size:12px}}
+      nav,.graph-controls,.toggle-btn,.inv-search,.print-btn{{display:none}}
+      .container{{max-width:100%;padding:10px}}
+      section{{page-break-inside:avoid;margin-bottom:20px}}
+      .panel,.stat-card,.agent-card,.server-card,.chart-panel{{background:#f8fafc;border:1px solid #e2e8f0;box-shadow:none}}
+      .stat-value,.sec-title{{color:#0f172a}}
+      .data-table th{{background:#f1f5f9;color:#334155;border-bottom:2px solid #cbd5e1}}
+      .data-table td{{border-bottom:1px solid #e2e8f0}}
+      #cy{{height:400px;background:#f8fafc;border:1px solid #e2e8f0}}
+      .legend{{color:#475569}}
+      a{{color:#2563eb}}
+      footer{{color:#94a3b8}}
+      .graph-container{{border:1px solid #e2e8f0}}
+    }}
   </style>
 </head>
 <body>
 
 <nav>
-  <span class="brand">🛡️ agent-bom</span>
+  <span class="brand">&#x1f6e1;&#xfe0f; agent-bom</span>
   <span class="status-badge">{status_label}</span>
-  <span class="scan-time">{_esc(generated)} · v{_esc(report.tool_version)}</span>
+  <span class="scan-time">{_esc(generated)} &middot; v{_esc(report.tool_version)}</span>
   <div class="navlinks">
     <a href="#summary">Summary</a>
     <a href="#charts">Charts</a>
     <a href="#riskmap">Risk Map</a>
     <a href="#inventory">Inventory</a>
+    {skill_nav}
     {vuln_nav}
+    <button class="print-btn" onclick="window.print()">&#x1f5b6;&#xfe0f; Print</button>
   </div>
 </nav>
 
@@ -616,73 +739,87 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
 
 <div class="container">
 
-  <!-- ── Summary stat cards ── -->
+  <!-- Summary stat cards -->
   <section id="summary">
     <div class="sec-title">Summary</div>
     {_summary_cards(report, blast_radii)}
   </section>
 
-  <!-- ── Charts row ── -->
+  <!-- Charts row -->
   <section id="charts">
     <div class="sec-title">Risk Overview</div>
     <div class="charts-row">
       <div class="chart-panel">
         <div class="chart-title">Severity Distribution</div>
         <div class="donut-wrap">
-          <canvas id="sevChart" height="220"></canvas>
+          <canvas id="sevChart" height="240"></canvas>
         </div>
       </div>
       <div class="chart-panel">
         <div class="chart-title">Top Blast Radius Scores</div>
         <div class="chart-wrap">
-          <canvas id="blastChart" height="220"></canvas>
+          <canvas id="blastChart" height="240"></canvas>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ── Risk map graph ── -->
+  <!-- Risk map graph -->
   <section id="riskmap">
     <div class="sec-title">
-      Risk Map
+      Supply Chain Graph
       <span style="font-size:.68rem;font-weight:400;opacity:.5;margin-left:8px">
-        drag · scroll to zoom · hover for details · click to highlight · {_esc(graph_note)}
+        {_esc(graph_note)}
       </span>
     </div>
-    <div id="cy"></div>
+    <div class="graph-container">
+      <div id="cy"></div>
+      <div class="graph-controls">
+        <button class="graph-btn" id="zoomIn" title="Zoom in">+</button>
+        <button class="graph-btn" id="zoomOut" title="Zoom out">&minus;</button>
+        <button class="graph-btn" id="fitBtn" title="Fit to view">&#x2922;</button>
+        <button class="graph-btn" id="fullscreenBtn" title="Fullscreen">&#x26F6;</button>
+      </div>
+    </div>
     <div class="legend">
+      <span><i style="background:#818cf8"></i>Provider</span>
       <span><i style="background:#3b82f6"></i>Agent</span>
       <span><i style="background:#10b981"></i>Server (clean)</span>
       <span><i style="background:#f59e0b"></i>Server (credentials)</span>
       <span><i style="background:#ef4444"></i>Server (vulnerable)</span>
       <span><i style="background:#dc2626"></i>Vulnerable package</span>
+      <span><i class="diamond" style="background:#f87171"></i>CVE</span>
     </div>
   </section>
 
-  <!-- ── Agent inventory (collapsible) ── -->
+  <!-- Agent inventory (collapsible) -->
   <section id="inventory">
     <div class="sec-title">Agent Inventory</div>
+    <input type="text" class="inv-search" id="invSearch" placeholder="Search agents, servers, packages&hellip;">
     {_inventory_cards(report)}
   </section>
 
-  <!-- ── Vuln / Blast / Remediation ── -->
+  <!-- Skill audit -->
+  {skill_section}
+
+  <!-- Vuln / Blast / Remediation -->
   {vuln_sections}
 
 </div>
 
 <footer>
-  Generated by <strong style="color:#475569">agent-bom</strong> v{_esc(report.tool_version)} ·
-  <a href="https://github.com/agent-bom/agent-bom">github.com/agent-bom/agent-bom</a> ·
-  Vulnerability data: OSV.dev · NVD · CISA KEV · EPSS
+  Generated by <strong style="color:#475569">agent-bom</strong> v{_esc(report.tool_version)} &middot;
+  <a href="https://github.com/agent-bom/agent-bom">github.com/agent-bom/agent-bom</a> &middot;
+  Vulnerability data: OSV.dev &middot; NVD &middot; CISA KEV &middot; EPSS
 </footer>
 
 <script>
 (function() {{
-  // ── Injected data ───────────────────────────────────────────────────────
+  // Injected data
   var CHART_DATA = {chart_data_json};
   var GRAPH_ELEMENTS = {elements_json};
 
-  // ── Chart.js: Severity donut ────────────────────────────────────────────
+  // Chart.js: Severity donut
   var sevCtx = document.getElementById('sevChart');
   if (sevCtx && CHART_DATA.sev.data.some(function(v){{ return v > 0; }})) {{
     new Chart(sevCtx, {{
@@ -694,12 +831,12 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
           backgroundColor: CHART_DATA.sev.colors,
           borderColor: '#0b1120',
           borderWidth: 3,
-          hoverOffset: 6,
+          hoverOffset: 8,
         }}],
       }},
       options: {{
         responsive: true,
-        cutout: '65%',
+        cutout: '68%',
         plugins: {{
           legend: {{
             position: 'bottom',
@@ -707,10 +844,17 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
               color: '#94a3b8',
               font: {{ size: 11 }},
               boxWidth: 12,
-              padding: 12,
+              padding: 14,
             }},
           }},
           tooltip: {{
+            backgroundColor: '#0f172a',
+            borderColor: '#334155',
+            borderWidth: 1,
+            titleColor: '#e2e8f0',
+            bodyColor: '#94a3b8',
+            cornerRadius: 8,
+            padding: 10,
             callbacks: {{
               label: function(ctx) {{
                 return ' ' + ctx.label + ': ' + ctx.parsed;
@@ -722,12 +866,12 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     }});
   }} else if (sevCtx) {{
     var p = document.createElement('p');
-    p.style.cssText = 'color:#4ade80;text-align:center;padding:40px 0;font-size:.85rem';
-    p.textContent = '✅ No vulnerabilities';
+    p.style.cssText = 'color:#4ade80;text-align:center;padding:50px 0;font-size:.88rem';
+    p.innerHTML = '&#x2705; No vulnerabilities';
     sevCtx.parentNode.replaceChild(p, sevCtx);
   }}
 
-  // ── Chart.js: Blast radius bar ──────────────────────────────────────────
+  // Chart.js: Blast radius bar
   var blastCtx = document.getElementById('blastChart');
   if (blastCtx && CHART_DATA.blast.labels.length > 0) {{
     new Chart(blastCtx, {{
@@ -738,7 +882,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
           label: 'Blast Score',
           data: CHART_DATA.blast.scores,
           backgroundColor: CHART_DATA.blast.colors,
-          borderRadius: 4,
+          borderRadius: 6,
           borderSkipped: false,
         }}],
       }},
@@ -759,6 +903,12 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
         plugins: {{
           legend: {{ display: false }},
           tooltip: {{
+            backgroundColor: '#0f172a',
+            borderColor: '#334155',
+            borderWidth: 1,
+            titleColor: '#e2e8f0',
+            bodyColor: '#94a3b8',
+            cornerRadius: 8,
             callbacks: {{
               label: function(ctx) {{
                 return ' Score: ' + ctx.parsed.x.toFixed(2);
@@ -770,18 +920,37 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     }});
   }} else if (blastCtx) {{
     var p2 = document.createElement('p');
-    p2.style.cssText = 'color:#4ade80;text-align:center;padding:40px 0;font-size:.85rem';
-    p2.textContent = '✅ No blast radius data';
+    p2.style.cssText = 'color:#4ade80;text-align:center;padding:50px 0;font-size:.88rem';
+    p2.innerHTML = '&#x2705; No blast radius data';
     blastCtx.parentNode.replaceChild(p2, blastCtx);
   }}
 
-  // ── Cytoscape: Risk map ─────────────────────────────────────────────────
+  // Cytoscape: Supply chain graph with dagre hierarchical layout
   var cyContainer = document.getElementById('cy');
   if (cyContainer && GRAPH_ELEMENTS.length > 0) {{
     var cy = cytoscape({{
       container: cyContainer,
       elements: GRAPH_ELEMENTS,
       style: [
+        {{
+          selector: 'node[type="provider"]',
+          style: {{
+            'background-color': '#1e1b4b',
+            'border-color': '#818cf8',
+            'border-width': 3,
+            'label': 'data(label)',
+            'color': '#c7d2fe',
+            'font-size': '13px',
+            'font-weight': '700',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'width': 140,
+            'height': 44,
+            'shape': 'round-rectangle',
+            'text-wrap': 'wrap',
+            'text-max-width': '125px',
+          }},
+        }},
         {{
           selector: 'node[type="agent"]',
           style: {{
@@ -794,11 +963,11 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
             'font-weight': '700',
             'text-valign': 'center',
             'text-halign': 'center',
-            'width': 100,
-            'height': 38,
+            'width': 120,
+            'height': 40,
             'shape': 'round-rectangle',
             'text-wrap': 'wrap',
-            'text-max-width': '90px',
+            'text-max-width': '105px',
           }},
         }},
         {{
@@ -812,11 +981,11 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
             'font-size': '10px',
             'text-valign': 'center',
             'text-halign': 'center',
-            'width': 110,
-            'height': 34,
+            'width': 120,
+            'height': 36,
             'shape': 'round-rectangle',
             'text-wrap': 'wrap',
-            'text-max-width': '100px',
+            'text-max-width': '110px',
           }},
         }},
         {{
@@ -830,11 +999,11 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
             'font-size': '10px',
             'text-valign': 'center',
             'text-halign': 'center',
-            'width': 110,
-            'height': 34,
+            'width': 120,
+            'height': 36,
             'shape': 'round-rectangle',
             'text-wrap': 'wrap',
-            'text-max-width': '100px',
+            'text-max-width': '110px',
           }},
         }},
         {{
@@ -848,11 +1017,11 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
             'font-size': '10px',
             'text-valign': 'center',
             'text-halign': 'center',
-            'width': 110,
-            'height': 34,
+            'width': 120,
+            'height': 36,
             'shape': 'round-rectangle',
             'text-wrap': 'wrap',
-            'text-max-width': '100px',
+            'text-max-width': '110px',
           }},
         }},
         {{
@@ -867,27 +1036,8 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
             'font-weight': '700',
             'text-valign': 'center',
             'text-halign': 'center',
-            'width': 120,
-            'height': 36,
-            'shape': 'round-rectangle',
-            'text-wrap': 'wrap',
-            'text-max-width': '110px',
-          }},
-        }},
-        {{
-          selector: 'node[type="provider"]',
-          style: {{
-            'background-color': '#1e1b4b',
-            'border-color': '#818cf8',
-            'border-width': 3,
-            'label': 'data(label)',
-            'color': '#c7d2fe',
-            'font-size': '12px',
-            'font-weight': '700',
-            'text-valign': 'center',
-            'text-halign': 'center',
             'width': 130,
-            'height': 40,
+            'height': 38,
             'shape': 'round-rectangle',
             'text-wrap': 'wrap',
             'text-max-width': '120px',
@@ -904,8 +1054,8 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
             'font-size': '8px',
             'text-valign': 'center',
             'text-halign': 'center',
-            'width': 100,
-            'height': 28,
+            'width': 110,
+            'height': 30,
             'shape': 'diamond',
           }},
         }},
@@ -920,8 +1070,8 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
             'font-size': '8px',
             'text-valign': 'center',
             'text-halign': 'center',
-            'width': 90,
-            'height': 26,
+            'width': 100,
+            'height': 28,
             'shape': 'diamond',
           }},
         }},
@@ -936,43 +1086,68 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
             'font-size': '8px',
             'text-valign': 'center',
             'text-halign': 'center',
-            'width': 80,
-            'height': 24,
+            'width': 90,
+            'height': 26,
             'shape': 'diamond',
           }},
         }},
         {{
           selector: 'edge',
           style: {{
-            'width': 1.5,
+            'width': 1.8,
             'line-color': '#334155',
             'target-arrow-color': '#475569',
             'target-arrow-shape': 'triangle',
             'curve-style': 'bezier',
-            'arrow-scale': 0.7,
+            'arrow-scale': 0.8,
+          }},
+        }},
+        {{
+          selector: 'edge[type="hosts"]',
+          style: {{
+            'line-color': '#818cf850',
+            'target-arrow-color': '#818cf880',
+            'line-style': 'dashed',
+            'line-dash-pattern': [6, 3],
+          }},
+        }},
+        {{
+          selector: 'edge[type="affects"]',
+          style: {{
+            'line-color': '#dc262650',
+            'target-arrow-color': '#dc262680',
+          }},
+        }},
+        {{
+          selector: '.highlighted',
+          style: {{
+            'border-width': 4,
+            'border-color': '#f1f5f9',
+            'z-index': 999,
           }},
         }},
         {{
           selector: '.faded',
-          style: {{ 'opacity': 0.1 }},
+          style: {{ 'opacity': 0.08 }},
         }},
       ],
       layout: {{
-        name: 'cose',
-        animate: false,
+        name: 'dagre',
+        rankDir: 'LR',
+        nodeSep: 50,
+        rankSep: 80,
+        edgeSep: 15,
         padding: 30,
-        nodeRepulsion: function() {{ return 8000; }},
-        idealEdgeLength: function() {{ return 120; }},
-        edgeElasticity: function() {{ return 100; }},
-        gravity: 0.25,
-        numIter: 1000,
-        coolingFactor: 0.99,
+        animate: false,
+        fit: true,
       }},
-      minZoom: 0.2,
+      minZoom: 0.15,
       maxZoom: 4,
+      wheelSensitivity: 0.3,
     }});
-    cy.ready(function() {{ cy.fit(cy.elements(), 30); }});
+    cy.ready(function() {{ cy.fit(cy.elements(), 40); }});
 
+    // Tooltip
     var tip = document.getElementById('tip');
     cy.on('mouseover', 'node', function(e) {{
       var t = e.target.data('tip');
@@ -985,28 +1160,99 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
       }}
     }});
     cy.on('mouseout', 'node', function() {{ tip.style.display = 'none'; }});
+
+    // Click to highlight
     cy.on('tap', 'node', function(e) {{
-      cy.elements().removeClass('faded');
-      cy.elements().not(e.target.closedNeighborhood()).addClass('faded');
+      cy.elements().removeClass('faded highlighted');
+      var hood = e.target.closedNeighborhood();
+      cy.elements().not(hood).addClass('faded');
+      e.target.addClass('highlighted');
     }});
     cy.on('tap', function(e) {{
-      if (e.target === cy) cy.elements().removeClass('faded');
+      if (e.target === cy) {{
+        cy.elements().removeClass('faded highlighted');
+      }}
+    }});
+
+    // Graph controls
+    document.getElementById('zoomIn').addEventListener('click', function() {{
+      cy.zoom({{ level: cy.zoom() * 1.3, renderedPosition: {{ x: cy.width() / 2, y: cy.height() / 2 }} }});
+    }});
+    document.getElementById('zoomOut').addEventListener('click', function() {{
+      cy.zoom({{ level: cy.zoom() / 1.3, renderedPosition: {{ x: cy.width() / 2, y: cy.height() / 2 }} }});
+    }});
+    document.getElementById('fitBtn').addEventListener('click', function() {{
+      cy.fit(cy.elements(), 40);
+    }});
+    document.getElementById('fullscreenBtn').addEventListener('click', function() {{
+      var gc = document.querySelector('.graph-container');
+      if (!document.fullscreenElement) {{
+        gc.requestFullscreen().then(function() {{
+          setTimeout(function() {{ cy.resize(); cy.fit(cy.elements(), 50); }}, 100);
+        }}).catch(function() {{}});
+      }} else {{
+        document.exitFullscreen();
+      }}
+    }});
+    document.addEventListener('fullscreenchange', function() {{
+      if (!document.fullscreenElement) {{
+        setTimeout(function() {{ cy.resize(); cy.fit(cy.elements(), 40); }}, 100);
+      }}
+    }});
+  }} else if (cyContainer) {{
+    cyContainer.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#4ade80;font-size:.9rem">&#x2705; No supply chain nodes to display</div>';
+  }}
+
+  // Table sorting
+  document.querySelectorAll('.data-table.sortable th').forEach(function(th) {{
+    th.addEventListener('click', function() {{
+      var table = th.closest('table');
+      var tbody = table.querySelector('tbody');
+      var rows = Array.from(tbody.querySelectorAll('tr'));
+      var col = parseInt(th.getAttribute('data-col'));
+      var arrow = th.querySelector('.sort-arrow');
+      var asc = !arrow.classList.contains('asc');
+
+      table.querySelectorAll('.sort-arrow').forEach(function(a) {{ a.className = 'sort-arrow'; }});
+      arrow.className = 'sort-arrow ' + (asc ? 'asc' : 'desc');
+
+      rows.sort(function(a, b) {{
+        var at = (a.children[col] || {{}}).textContent || '';
+        var bt = (b.children[col] || {{}}).textContent || '';
+        var an = parseFloat(at.replace(/[^\\d.-]/g, ''));
+        var bn = parseFloat(bt.replace(/[^\\d.-]/g, ''));
+        if (!isNaN(an) && !isNaN(bn)) return asc ? an - bn : bn - an;
+        return asc ? at.localeCompare(bt) : bt.localeCompare(at);
+      }});
+      rows.forEach(function(r) {{ tbody.appendChild(r); }});
+    }});
+  }});
+
+  // Inventory search
+  var searchInput = document.getElementById('invSearch');
+  if (searchInput) {{
+    searchInput.addEventListener('input', function() {{
+      var q = this.value.toLowerCase();
+      document.querySelectorAll('.agent-card').forEach(function(card) {{
+        var text = card.textContent.toLowerCase();
+        card.style.display = text.includes(q) ? '' : 'none';
+      }});
     }});
   }}
 
-  // ── Package list toggle ─────────────────────────────────────────────────
+  // Package list toggle
   window.togglePkgs = function(id, btn) {{
     var el = document.getElementById(id);
     if (!el) return;
     var hidden = el.style.display === 'none';
     el.style.display = hidden ? 'block' : 'none';
-    btn.textContent = hidden
-      ? 'Show fewer ▲'
-      : btn.textContent.replace('Show fewer ▲', btn.dataset.orig || btn.textContent);
-    if (hidden && !btn.dataset.orig) btn.dataset.orig = btn.textContent;
+    btn.innerHTML = hidden
+      ? 'Show fewer &#x25B2;'
+      : btn.dataset.orig || btn.innerHTML;
+    if (hidden && !btn.dataset.orig) btn.dataset.orig = btn.innerHTML;
   }};
 
-  // ── Smooth scroll ───────────────────────────────────────────────────────
+  // Smooth scroll
   document.querySelectorAll('a[href^="#"]').forEach(function(a) {{
     a.addEventListener('click', function(e) {{
       e.preventDefault();

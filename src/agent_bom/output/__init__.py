@@ -1009,6 +1009,8 @@ def to_json(report: AIBOMReport) -> dict:
         result["executive_summary"] = report.executive_summary
     if report.ai_threat_chains:
         result["ai_threat_chains"] = report.ai_threat_chains
+    if report.mcp_config_analysis:
+        result["mcp_config_analysis"] = report.mcp_config_analysis
 
     # Skill security audit (only when skill files were scanned)
     if report.skill_audit_data:

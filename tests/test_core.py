@@ -255,7 +255,7 @@ def empty_report():
 
 def test_version_sync():
     from agent_bom import __version__
-    assert __version__ == "0.22.0"
+    assert __version__ == "0.23.0"
 
 
 def test_report_version_matches():
@@ -2795,7 +2795,7 @@ def test_toolhive_server_json_valid():
     p = Path(__file__).parent.parent / "integrations" / "toolhive" / "server.json"
     data = _json.loads(p.read_text())
     assert data["name"] == "io.github.agent-bom/agent-bom"
-    assert data["version"] == "0.22.0"
+    assert data["version"] == "0.23.0"
     assert "packages" in data
     assert data["packages"][0]["registryType"] == "oci"
 
@@ -2818,3 +2818,19 @@ def test_openclaw_skill_exists():
     content = p.read_text()
     assert "agent-bom" in content
     assert "name: agent-bom" in content
+
+
+def test_mcp_registry_has_awm_entries():
+    """MCP registry should include AWM ecosystem entries."""
+    from agent_bom.parsers import _load_registry
+    registry = _load_registry()
+    # fastapi-mcp: auto-exposes FastAPI endpoints as MCP tools
+    assert "fastapi-mcp" in registry
+    assert registry["fastapi-mcp"]["ecosystem"] == "pypi"
+    assert registry["fastapi-mcp"]["risk_level"] == "high"
+    # mcp-agent: MCP client SDK used in AWM
+    assert "mcp-agent" in registry
+    assert registry["mcp-agent"]["ecosystem"] == "pypi"
+    # agent-world-model: Snowflake's RL environment generator
+    assert "agent-world-model" in registry
+    assert registry["agent-world-model"]["risk_level"] == "high"

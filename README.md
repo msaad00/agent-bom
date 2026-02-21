@@ -63,7 +63,7 @@ agent-bom answers the question security teams actually need:
 
 | Source | How |
 |--------|-----|
-| MCP configs | Auto-discover (9 clients incl. OpenClaw) |
+| MCP configs | Auto-discover (11 clients incl. OpenClaw) |
 | Docker images | Grype / Syft / Docker CLI |
 | Kubernetes | kubectl across namespaces |
 | Terraform | Bedrock, Vertex AI, Azure |
@@ -547,7 +547,7 @@ Unverified servers in your configs trigger a warning. Policy rules can block the
 |------|---------|----------|
 | Developer CLI | `agent-bom scan` | Local audit, pre-commit checks |
 | Pre-install check | `agent-bom check express@4.18.2 -e npm` | Before running any MCP server |
-| GitHub Action | `uses: agent-bom/agent-bom@v0.22.0` | CI/CD gate + Security tab |
+| GitHub Action | `uses: agent-bom/agent-bom@v0.23.0` | CI/CD gate + Security tab |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated, reproducible scans |
 | REST API | `agent-bom api` | Dashboards, SIEM, scripting |
 | Dashboard | `agent-bom serve` | Team-visible security dashboard |
@@ -562,7 +562,7 @@ Use agent-bom directly in your CI/CD pipeline:
 
 ```yaml
 - name: AI supply chain scan
-  uses: agent-bom/agent-bom@v0.22.0
+  uses: agent-bom/agent-bom@v0.23.0
   with:
     severity-threshold: high
     upload-sarif: true
@@ -571,7 +571,7 @@ Use agent-bom directly in your CI/CD pipeline:
 Full options:
 
 ```yaml
-- uses: agent-bom/agent-bom@v0.19.0
+- uses: agent-bom/agent-bom@v0.23.0
   with:
     severity-threshold: high        # fail on high+ CVEs
     policy: policy.json             # policy-as-code gates
@@ -682,7 +682,7 @@ agent-bom mcp-server --transport sse    # SSE (remote clients)
 | **ToolHive** | `thv run agent-bom` | [ToolHive registry entry](integrations/toolhive/server.json) — runs in isolated container |
 | **OpenClaw** | `clawhub install agent-bom` | [OpenClaw skill](integrations/openclaw/SKILL.md) — teaches agents to run security scans |
 | **MCP Registry** | `uvx agent-bom mcp-server` | [Registry entry](integrations/mcp-registry/server.json) — official MCP Registry |
-| **GitHub Actions** | `uses: agent-bom/agent-bom@v0.22.0` | SARIF upload to Security tab, policy gating |
+| **GitHub Actions** | `uses: agent-bom/agent-bom@v0.23.0` | SARIF upload to Security tab, policy gating |
 
 ---
 
@@ -739,7 +739,7 @@ agent-bom covers the AI infrastructure landscape through multiple scanning strat
 | **AI frameworks** | Dependency scanning (PyPI/npm) | LangChain, LlamaIndex, AutoGen, CrewAI, PyTorch, Transformers, NeMo |
 | **Vector databases** | `--image` for self-hosted | Weaviate, Qdrant, Milvus, ChromaDB, pgvector |
 | **LLM providers** | API key detection + SDK scanning | OpenAI, Anthropic, Cohere, Mistral, Gemini |
-| **MCP ecosystem** | Auto-discovery (10 clients) + registry (109 servers) | Claude Desktop, Cursor, Windsurf, Cline, OpenClaw |
+| **MCP ecosystem** | Auto-discovery (11 clients) + registry (112 servers) | Claude Desktop, Cursor, Windsurf, Cline, OpenClaw |
 | **IaC + CI/CD** | `--tf-dir` and `--gha` | Terraform AI resources, GitHub Actions AI workflows |
 
 ---

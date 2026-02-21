@@ -1,18 +1,23 @@
 """AI-powered enrichment — LLM-generated risk narratives, executive summaries, and threat chains.
 
-Supports two LLM backends:
+Supports three LLM backends (in priority order):
 
 1. **Ollama (free, local)** — auto-detected at ``http://localhost:11434``.
    No extra install needed (uses httpx, already a core dependency).
    Start with: ``ollama serve`` then ``ollama pull llama3.2``
 
-2. **litellm (100+ providers)** — OpenAI, Anthropic, Mistral, Groq, etc.
+2. **HuggingFace Inference API (free tier)** — open-source models in the cloud.
+   Install with: ``pip install agent-bom[huggingface]``
+   Set ``HF_TOKEN`` env var for gated models.
+
+3. **litellm (100+ providers)** — OpenAI, Anthropic, Mistral, Groq, etc.
    Install with: ``pip install agent-bom[ai-enrich]``
 
 All LLM calls are:
 - **Optional**: graceful fallback when no provider is available.
 - **Cached**: in-memory dedup by ``sha256(model:prompt)`` within a scan run.
 - **Batched**: grouped by package to minimize API calls.
+- **Structured**: Pydantic schemas + Ollama's ``format`` parameter for reliable JSON.
 """
 
 from __future__ import annotations
@@ -29,6 +34,7 @@ import httpx
 from rich.console import Console
 
 if TYPE_CHECKING:
+    from agent_bom.ai_schemas import MCPConfigSecurityAnalysis
     from agent_bom.models import AIBOMReport, BlastRadius
     from agent_bom.parsers.skill_audit import SkillAuditResult
     from agent_bom.parsers.skills import SkillScanResult
@@ -42,6 +48,19 @@ _cache: dict[str, str] = {}
 DEFAULT_MODEL = "openai/gpt-4o-mini"
 OLLAMA_BASE_URL = "http://localhost:11434"
 OLLAMA_DEFAULT_MODEL = "llama3.2"
+HF_DEFAULT_MODEL = "meta-llama/Llama-3.1-8B-Instruct"
+
+# Ranked preference for local Ollama models (best for security analysis first)
+OLLAMA_MODEL_PREFERENCE = [
+    "llama3.1:8b",
+    "llama3.2",
+    "llama3.2:3b",
+    "qwen2.5:7b",
+    "mistral:7b",
+    "mistral",
+    "gemma2:9b",
+    "phi3:medium",
+]
 
 
 # ─── Provider detection ──────────────────────────────────────────────────────
@@ -51,6 +70,15 @@ def _check_litellm() -> bool:
     """Check if litellm is installed."""
     try:
         import litellm  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def _check_huggingface() -> bool:
+    """Check if huggingface-hub is installed with InferenceClient."""
+    try:
+        from huggingface_hub import InferenceClient  # noqa: F401
         return True
     except ImportError:
         return False
@@ -81,12 +109,28 @@ def _resolve_model(model: str = DEFAULT_MODEL) -> str:
     """Auto-detect the best available model.
 
     Priority:
-    1. If Ollama is running → ``ollama/llama3.2``
-    2. If OPENAI_API_KEY is set → ``openai/gpt-4o-mini``
-    3. Fallback to default (will fail gracefully at call time)
+    1. If Ollama is running → pick best installed model from preference list
+    2. If HF_TOKEN set + huggingface-hub installed → HuggingFace Inference API
+    3. If OPENAI_API_KEY is set → ``openai/gpt-4o-mini``
+    4. Fallback to default (will fail gracefully at call time)
     """
     if _detect_ollama():
-        return f"ollama/{OLLAMA_DEFAULT_MODEL}"
+        installed = _get_ollama_models()
+        if installed:
+            # Check preference list first
+            for preferred in OLLAMA_MODEL_PREFERENCE:
+                if preferred in installed:
+                    return f"ollama/{preferred}"
+                # Also match without tag (e.g. "llama3.2" matches "llama3.2:latest")
+                base = preferred.split(":")[0]
+                for inst in installed:
+                    if inst.startswith(base):
+                        return f"ollama/{inst}"
+            # None from preference list — use first available
+            return f"ollama/{installed[0]}"
+        # Ollama running but no models pulled — fall through
+    if _check_huggingface() and os.environ.get("HF_TOKEN"):
+        return f"huggingface/{HF_DEFAULT_MODEL}"
     if os.environ.get("OPENAI_API_KEY"):
         return DEFAULT_MODEL
     return model
@@ -95,7 +139,9 @@ def _resolve_model(model: str = DEFAULT_MODEL) -> str:
 def _has_any_provider(model: str) -> bool:
     """Check if any LLM provider is available for the given model."""
     if model.startswith("ollama/"):
-        return _detect_ollama()
+        return _detect_ollama() or _check_huggingface() or _check_litellm()
+    if model.startswith("huggingface/"):
+        return _check_huggingface()
     return _check_litellm()
 
 
@@ -171,11 +217,51 @@ async def _call_llm_via_litellm(prompt: str, model: str, max_tokens: int = 500) 
         return None
 
 
+async def _call_huggingface(
+    prompt: str, model: str = HF_DEFAULT_MODEL, max_tokens: int = 500,
+) -> Optional[str]:
+    """Call HuggingFace Inference API (free tier available).
+
+    Uses ``huggingface_hub.InferenceClient.chat_completion()``.
+    Requires ``HF_TOKEN`` env var for gated models.
+    """
+    key = _cache_key(prompt, f"huggingface/{model}")
+    if key in _cache:
+        return _cache[key]
+
+    try:
+        from huggingface_hub import InferenceClient
+
+        client = InferenceClient(
+            model=model,
+            token=os.environ.get("HF_TOKEN"),
+        )
+        # Run sync client in executor to avoid blocking event loop
+        response = await asyncio.to_thread(
+            client.chat_completion,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=max_tokens,
+            temperature=0.3,
+        )
+        text = response.choices[0].message.content.strip()
+        if text:
+            _cache[key] = text
+            return text
+        return None
+    except ImportError:
+        logger.warning("huggingface-hub not installed. Install with: pip install agent-bom[huggingface]")
+        return None
+    except Exception as exc:
+        logger.warning("HuggingFace call failed: %s", exc)
+        return None
+
+
 async def _call_llm(prompt: str, model: str, max_tokens: int = 500) -> Optional[str]:
     """Call LLM via the best available provider.
 
     Routing:
-    - ``ollama/*`` models → direct Ollama HTTP API (no extra dependency)
+    - ``ollama/*`` models → Ollama direct → HuggingFace → litellm
+    - ``huggingface/*`` models → HuggingFace directly
     - Other models → litellm
     """
     if model.startswith("ollama/"):
@@ -183,11 +269,145 @@ async def _call_llm(prompt: str, model: str, max_tokens: int = 500) -> Optional[
         result = await _call_ollama_direct(prompt, bare_model, max_tokens)
         if result is not None:
             return result
-        # Fall back to litellm if installed (it also supports ollama/)
+        # Fallback to HuggingFace
+        if _check_huggingface():
+            result = await _call_huggingface(prompt, max_tokens=max_tokens)
+            if result is not None:
+                return result
+        # Fallback to litellm
         if _check_litellm():
             return await _call_llm_via_litellm(prompt, model, max_tokens)
         return None
+
+    if model.startswith("huggingface/"):
+        hf_model = model[len("huggingface/"):]
+        return await _call_huggingface(prompt, model=hf_model, max_tokens=max_tokens)
+
     return await _call_llm_via_litellm(prompt, model, max_tokens)
+
+
+# ─── Structured output ──────────────────────────────────────────────────────
+
+
+def _parse_json_response(response: str) -> dict | None:
+    """Parse a JSON response with 3 fallback strategies.
+
+    1. Clean JSON
+    2. Markdown-fenced JSON (```json ... ```)
+    3. Brace-extraction from text
+
+    Returns None for non-parseable responses.
+    """
+    if not response or not response.strip():
+        return None
+
+    text = response.strip()
+
+    # Attempt 1: Parse as clean JSON directly
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict):
+            return data
+    except json.JSONDecodeError:
+        pass
+
+    # Attempt 2: Extract from markdown fencing
+    fence_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?\s*```", text, re.DOTALL)
+    if fence_match:
+        try:
+            data = json.loads(fence_match.group(1))
+            if isinstance(data, dict):
+                return data
+        except json.JSONDecodeError:
+            pass
+
+    # Attempt 3: Find JSON object embedded in other text
+    brace_match = re.search(r"\{.*\}", text, re.DOTALL)
+    if brace_match:
+        try:
+            data = json.loads(brace_match.group(0))
+            if isinstance(data, dict):
+                return data
+        except json.JSONDecodeError:
+            pass
+
+    return None
+
+
+async def _call_ollama_structured(
+    prompt: str, model: str, schema_cls: type, max_tokens: int = 500,
+) -> Optional[object]:
+    """Call Ollama with structured output via the ``format`` parameter.
+
+    Passes the Pydantic schema's JSON schema to force valid JSON output.
+    Falls back to None on error.
+    """
+    key = _cache_key(prompt, f"ollama/{model}:structured")
+    if key in _cache:
+        try:
+            return schema_cls.model_validate_json(_cache[key])
+        except Exception:
+            pass
+
+    try:
+        json_schema = schema_cls.model_json_schema()
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(
+                f"{OLLAMA_BASE_URL}/api/chat",
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "stream": False,
+                    "format": json_schema,
+                    "options": {
+                        "num_predict": max_tokens,
+                        "temperature": 0.3,
+                    },
+                },
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                text = data.get("message", {}).get("content", "").strip()
+                if text:
+                    _cache[key] = text
+                    return schema_cls.model_validate_json(text)
+        return None
+    except Exception as exc:
+        logger.debug("Structured Ollama call failed: %s, falling back to unstructured", exc)
+        return None
+
+
+async def _call_llm_structured(
+    prompt: str, model: str, schema_cls: type, max_tokens: int = 500,
+) -> Optional[object]:
+    """Call LLM with structured output, falling back to unstructured + parse.
+
+    Routing:
+    1. ollama/* → ``_call_ollama_structured`` (native ``format`` param)
+    2. Fallback: unstructured call + ``schema.model_validate_json()``
+    """
+    if model.startswith("ollama/"):
+        bare_model = model[len("ollama/"):]
+        result = await _call_ollama_structured(prompt, bare_model, schema_cls, max_tokens)
+        if result is not None:
+            return result
+
+    # Fallback: unstructured call + parse
+    raw = await _call_llm(prompt, model, max_tokens)
+    if raw:
+        # Try direct JSON parse
+        try:
+            return schema_cls.model_validate_json(raw)
+        except Exception:
+            pass
+        # Try extracting from markdown/braces
+        parsed = _parse_json_response(raw)
+        if parsed:
+            try:
+                return schema_cls.model_validate(parsed)
+            except Exception:
+                pass
+    return None
 
 
 # ─── Prompt builders ─────────────────────────────────────────────────────────
@@ -385,16 +605,31 @@ async def run_ai_enrichment(
     # Determine provider for display
     if model.startswith("ollama/"):
         if not _detect_ollama():
-            console.print("  [yellow]Ollama not running at localhost:11434. Skipping AI enrichment.[/yellow]")
-            console.print("  [dim]Start with: ollama serve && ollama pull llama3.2[/dim]")
+            # Check HuggingFace fallback
+            if _check_huggingface() and os.environ.get("HF_TOKEN"):
+                model = f"huggingface/{HF_DEFAULT_MODEL}"
+                provider = "HuggingFace Inference API (free)"
+            elif _check_litellm():
+                provider = "litellm (Ollama unavailable)"
+            else:
+                console.print("  [yellow]Ollama not running at localhost:11434. Skipping AI enrichment.[/yellow]")
+                console.print("  [dim]Start with: ollama serve && ollama pull llama3.2[/dim]")
+                console.print("  [dim]Or: pip install agent-bom[huggingface] + set HF_TOKEN[/dim]")
+                return
+        else:
+            provider = "Ollama (local, free)"
+    elif model.startswith("huggingface/"):
+        if not _check_huggingface():
+            console.print("  [yellow]huggingface-hub not installed. pip install agent-bom[huggingface][/yellow]")
             return
-        provider = "Ollama (local, free)"
+        provider = "HuggingFace Inference API (free)"
     elif _check_litellm():
         provider = "litellm"
     else:
         console.print("  [yellow]No LLM provider available. Skipping AI enrichment.[/yellow]")
         console.print("  [dim]Option 1: Install Ollama (free, local) — ollama.com[/dim]")
-        console.print("  [dim]Option 2: pip install agent-bom[ai-enrich] + set API key[/dim]")
+        console.print("  [dim]Option 2: pip install agent-bom[huggingface] + set HF_TOKEN[/dim]")
+        console.print("  [dim]Option 3: pip install agent-bom[ai-enrich] + set API key[/dim]")
         return
 
     console.print(f"\n[bold blue]AI Enrichment[/bold blue]  [dim]model: {model} via {provider}[/dim]\n")
@@ -419,7 +654,16 @@ async def run_ai_enrichment(
             report.ai_threat_chains = chains
             console.print(f"  [green]{len(chains)} threat chain(s) analyzed[/green]")
 
-    # Step 4: Skill file AI analysis
+    # Step 4: MCP config security analysis
+    total_servers = sum(len(a.mcp_servers) for a in report.agents)
+    if total_servers > 0:
+        console.print("  [cyan]>[/cyan] Analyzing MCP config security...")
+        config_analysis = await analyze_mcp_config_security(report, model)
+        if config_analysis:
+            report.mcp_config_analysis = config_analysis.model_dump()
+            console.print(f"  [green]Config analysis complete (risk: {config_analysis.overall_risk})[/green]")
+
+    # Step 5: Skill file AI analysis
     if skill_result and skill_audit and skill_result.raw_content:
         console.print("  [cyan]>[/cyan] Analyzing skill file security...")
         skill_enriched = await enrich_skill_audit(skill_result, skill_audit, model)
@@ -505,44 +749,14 @@ def _build_skill_analysis_prompt(raw_content: dict[str, str], static_findings: l
 
 
 def _parse_skill_analysis_response(response: str) -> dict | None:
-    """Parse the LLM's JSON response, handling various formatting quirks.
+    """Parse the LLM's skill analysis JSON response.
 
-    Handles clean JSON, markdown-fenced JSON, and JSON embedded in text.
-    Returns None for non-parseable responses.
+    Uses the generic ``_parse_json_response`` and validates that the result
+    contains the expected ``overall_risk_level`` key.
     """
-    if not response or not response.strip():
-        return None
-
-    text = response.strip()
-
-    # Attempt 1: Parse as clean JSON directly
-    try:
-        data = json.loads(text)
-        if isinstance(data, dict) and "overall_risk_level" in data:
-            return data
-    except json.JSONDecodeError:
-        pass
-
-    # Attempt 2: Extract from markdown fencing (```json ... ``` or ``` ... ```)
-    fence_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?\s*```", text, re.DOTALL)
-    if fence_match:
-        try:
-            data = json.loads(fence_match.group(1))
-            if isinstance(data, dict) and "overall_risk_level" in data:
-                return data
-        except json.JSONDecodeError:
-            pass
-
-    # Attempt 3: Find JSON object embedded in other text
-    brace_match = re.search(r"\{.*\}", text, re.DOTALL)
-    if brace_match:
-        try:
-            data = json.loads(brace_match.group(0))
-            if isinstance(data, dict) and "overall_risk_level" in data:
-                return data
-        except json.JSONDecodeError:
-            pass
-
+    data = _parse_json_response(response)
+    if data and "overall_risk_level" in data:
+        return data
     logger.warning("Could not parse skill analysis LLM response as JSON")
     return None
 
@@ -664,3 +878,91 @@ async def enrich_skill_audit(
 
     _apply_skill_analysis(skill_audit, ai_data)
     return True
+
+
+# ─── MCP config security analysis ──────────────────────────────────────────
+
+
+def _build_mcp_config_analysis_prompt(report: "AIBOMReport") -> str:
+    """Build a prompt for LLM-powered MCP configuration security analysis.
+
+    Examines the full server configuration (not individual CVEs) for
+    architectural security risks.
+    """
+    server_configs = []
+    for agent in report.agents[:20]:
+        for server in agent.mcp_servers[:10]:
+            creds = server.credential_names
+            tools = [t.name for t in server.tools[:10]]
+            server_configs.append(
+                f"- Server: {server.name}\n"
+                f"  Command: {server.command} {' '.join(server.args[:5])}\n"
+                f"  Transport: {server.transport.value}\n"
+                f"  Tools: {', '.join(tools) or 'unknown'}\n"
+                f"  Credentials: {', '.join(creds) or 'none'}\n"
+                f"  Agent: {agent.name} ({agent.agent_type.value})"
+            )
+
+    return (
+        "You are an AI infrastructure security analyst specializing in MCP "
+        "(Model Context Protocol) configurations. Analyze these MCP server "
+        "configurations for security risks.\n\n"
+        f"MCP Server Configurations:\n"
+        f"{chr(10).join(server_configs)}\n\n"
+        "Analyze for:\n"
+        "1. **Missing authentication**: Servers with no credential env vars "
+        "that expose write/execute tools\n"
+        "2. **Overly permissive access**: Servers with filesystem write, "
+        "shell exec, or database write tools\n"
+        "3. **Credential exposure**: Multiple high-privilege credentials on "
+        "a single server (blast radius risk)\n"
+        "4. **Suspicious patterns**: AWM-generated environments (fastapi-mcp "
+        "with no auth), unverified servers with critical tools\n"
+        "5. **Transport risks**: SSE/HTTP servers without TLS\n\n"
+        "Respond with ONLY a JSON object with these keys:\n"
+        "- overall_risk: string ('Critical'|'High'|'Medium'|'Low')\n"
+        "- summary: string (2-3 sentence assessment)\n"
+        "- findings: list of objects, each with:\n"
+        "    - severity: 'critical'|'high'|'medium'|'low'\n"
+        "    - category: string (e.g. auth_missing, overpermissive, "
+        "credential_exposure, awm_pattern, transport_risk)\n"
+        "    - title: string\n"
+        "    - detail: string\n"
+        "    - recommendation: string"
+    )
+
+
+async def analyze_mcp_config_security(
+    report: "AIBOMReport",
+    model: str = DEFAULT_MODEL,
+) -> Optional["MCPConfigSecurityAnalysis"]:
+    """Run LLM-powered MCP configuration security analysis.
+
+    Examines the full configuration surface — not individual CVEs — for
+    architectural security risks like missing auth, overpermission, AWM patterns.
+    """
+    from agent_bom.ai_schemas import MCPConfigSecurityAnalysis
+
+    total_servers = sum(len(a.mcp_servers) for a in report.agents)
+    if total_servers == 0:
+        return None
+    if not _has_any_provider(model):
+        return None
+
+    prompt = _build_mcp_config_analysis_prompt(report)
+
+    # Try structured output first
+    result = await _call_llm_structured(prompt, model, MCPConfigSecurityAnalysis, max_tokens=1000)
+    if result:
+        return result
+
+    # Fallback to unstructured
+    raw = await _call_llm(prompt, model, max_tokens=1000)
+    if raw:
+        parsed = _parse_json_response(raw)
+        if parsed:
+            try:
+                return MCPConfigSecurityAnalysis.model_validate(parsed)
+            except Exception:
+                pass
+    return None

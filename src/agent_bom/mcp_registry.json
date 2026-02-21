@@ -1,8 +1,8 @@
 {
   "_comment": "agent-bom MCP Server Registry \u2014 threat intelligence database for known MCP servers",
   "_schema_version": "2.0",
-  "_updated": "2026-02-20",
-  "_total_servers": 109,
+  "_updated": "2026-02-21",
+  "_total_servers": 112,
   "_differentiator": "Threat intelligence database \u2014 not just a catalog. Each entry has risk_level, tools, credential_env_vars for blast radius pre-computation.",
   "_source": "https://github.com/agent-bom/agent-bom/blob/main/data/mcp-registry.yaml",
   "servers": {
@@ -2975,6 +2975,77 @@
         "E2B_API_KEY"
       ],
       "source_url": "https://github.com/e2b-dev/mcp-server"
+    },
+    "fastapi-mcp": {
+      "package": "fastapi-mcp",
+      "ecosystem": "pypi",
+      "latest_version": "0.4.0",
+      "description": "Expose FastAPI applications as MCP tool servers — auto-converts endpoints to MCP tools",
+      "name": "FastAPI-MCP",
+      "risk_justification": "Automatically exposes ALL FastAPI endpoints as MCP tools. In AWM-generated environments, this means auth-free database/file endpoints become LLM-callable tools with no input validation.",
+      "command_patterns": [
+        "fastapi-mcp",
+        "fastapi_mcp"
+      ],
+      "category": "developer-tools",
+      "risk_level": "high",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "auto_generated_from_fastapi_routes"
+      ],
+      "credential_env_vars": [],
+      "source_url": "https://github.com/tadata-org/fastapi-mcp"
+    },
+    "mcp-agent": {
+      "package": "mcp-agent",
+      "ecosystem": "pypi",
+      "latest_version": "0.2.6",
+      "description": "MCP client SDK for building AI agents that connect to MCP servers",
+      "name": "MCP Agent",
+      "risk_justification": "MCP client that connects to arbitrary MCP servers via streamable HTTP. In AWM training, connects to deliberately insecure servers with no auth or validation.",
+      "command_patterns": [
+        "mcp-agent",
+        "mcp_agent"
+      ],
+      "category": "ai-framework",
+      "risk_level": "medium",
+      "verified": false,
+      "license": "MIT",
+      "tools": [
+        "connect",
+        "call_tool",
+        "list_tools",
+        "list_resources"
+      ],
+      "credential_env_vars": [],
+      "source_url": "https://github.com/lastmile-ai/mcp-agent"
+    },
+    "agent-world-model": {
+      "package": "agent-world-model",
+      "ecosystem": "pypi",
+      "latest_version": "0.1.0",
+      "description": "Snowflake AWM — synthesizes 1000 executable MCP server environments for agentic RL training",
+      "name": "Agent World Model (AWM)",
+      "risk_justification": "Generated environments deliberately have NO authentication, NO input validation, NO error handling. Designed for RL training, not production. Any deployment of AWM-generated servers exposes raw database/file access to LLMs.",
+      "command_patterns": [
+        "agent-world-model",
+        "awm"
+      ],
+      "category": "ai-framework",
+      "risk_level": "high",
+      "verified": false,
+      "license": "Apache-2.0",
+      "tools": [
+        "generate_environment",
+        "train_agent",
+        "evaluate"
+      ],
+      "credential_env_vars": [
+        "OPENAI_API_KEY",
+        "HF_TOKEN"
+      ],
+      "source_url": "https://github.com/Snowflake-Labs/agent-world-model"
     }
   }
 }

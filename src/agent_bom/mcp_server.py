@@ -39,7 +39,7 @@ def _check_mcp_sdk() -> None:
 # Shared scan pipeline helper
 # ---------------------------------------------------------------------------
 
-def _run_scan_pipeline(
+async def _run_scan_pipeline(
     config_path: Optional[str] = None,
     image: Optional[str] = None,
     sbom_path: Optional[str] = None,
@@ -47,12 +47,14 @@ def _run_scan_pipeline(
 ):
     """Run discovery → extraction → scanning and return (agents, blast_radii).
 
-    Reuses the existing pipeline functions without duplicating logic.
+    Async version — safe to call from within an existing event loop (e.g.
+    FastMCP's async context).  Falls back to asyncio.run() when no loop
+    is running (CLI usage).
     """
     from agent_bom.discovery import discover_all
     from agent_bom.models import Agent, AgentType, MCPServer, TransportType
     from agent_bom.parsers import extract_packages
-    from agent_bom.scanners import scan_agents_sync
+    from agent_bom.scanners import scan_agents, scan_agents_with_enrichment
 
     agents = discover_all(project_dir=config_path)
 
@@ -96,7 +98,10 @@ def _run_scan_pipeline(
             if not server.packages:
                 server.packages = extract_packages(server)
 
-    blast_radii = scan_agents_sync(agents, enable_enrichment=enrich)
+    if enrich:
+        blast_radii = await scan_agents_with_enrichment(agents)
+    else:
+        blast_radii = await scan_agents(agents)
     return agents, blast_radii
 
 
@@ -123,7 +128,7 @@ def create_mcp_server():
     # ── Tool 1: scan ──────────────────────────────────────────────────
 
     @mcp.tool()
-    def scan(
+    async def scan(
         config_path: Optional[str] = None,
         image: Optional[str] = None,
         sbom_path: Optional[str] = None,
@@ -150,7 +155,7 @@ def create_mcp_server():
             from agent_bom.models import AIBOMReport
             from agent_bom.output import to_json
 
-            agents, blast_radii = _run_scan_pipeline(config_path, image, sbom_path, enrich)
+            agents, blast_radii = await _run_scan_pipeline(config_path, image, sbom_path, enrich)
             if not agents:
                 return json.dumps({"status": "no_agents_found", "agents": [], "blast_radii": []})
 
@@ -162,7 +167,7 @@ def create_mcp_server():
     # ── Tool 2: blast_radius ──────────────────────────────────────────
 
     @mcp.tool()
-    def blast_radius(cve_id: str) -> str:
+    async def blast_radius(cve_id: str) -> str:
         """Look up the blast radius of a specific CVE across your AI agent setup.
 
         Scans local MCP configurations, finds the specified CVE, and returns
@@ -179,7 +184,7 @@ def create_mcp_server():
             exposed_tools. Returns found=false if CVE not found.
         """
         try:
-            _agents, blast_radii = _run_scan_pipeline()
+            _agents, blast_radii = await _run_scan_pipeline()
 
             matches = [br for br in blast_radii if br.vulnerability.id.upper() == cve_id.upper()]
             if not matches:
@@ -212,7 +217,7 @@ def create_mcp_server():
     # ── Tool 3: policy_check ──────────────────────────────────────────
 
     @mcp.tool()
-    def policy_check(policy_json: str) -> str:
+    async def policy_check(policy_json: str) -> str:
         """Evaluate a security policy against current scan results.
 
         Runs a scan, then evaluates the provided policy rules against the
@@ -234,7 +239,7 @@ def create_mcp_server():
             policy = json.loads(policy_json)
             _validate_policy(policy)
 
-            _agents, blast_radii = _run_scan_pipeline()
+            _agents, blast_radii = await _run_scan_pipeline()
             result = evaluate_policy(policy, blast_radii)
             return json.dumps(result, indent=2, default=str)
         except json.JSONDecodeError as exc:
@@ -308,7 +313,7 @@ def create_mcp_server():
     # ── Tool 5: generate_sbom ─────────────────────────────────────────
 
     @mcp.tool()
-    def generate_sbom(
+    async def generate_sbom(
         format: str = "cyclonedx",
         config_path: Optional[str] = None,
     ) -> str:
@@ -329,7 +334,7 @@ def create_mcp_server():
             from agent_bom.models import AIBOMReport
             from agent_bom.output import to_cyclonedx, to_spdx
 
-            agents, blast_radii = _run_scan_pipeline(config_path=config_path)
+            agents, blast_radii = await _run_scan_pipeline(config_path=config_path)
             if not agents:
                 return json.dumps({"error": "No agents found to generate SBOM from"})
 

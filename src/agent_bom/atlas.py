@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from agent_bom.models import Severity
+from agent_bom.risk_analyzer import ToolCapability, classify_tool
 
 if TYPE_CHECKING:
     from agent_bom.models import BlastRadius
@@ -51,26 +52,6 @@ _AI_PACKAGES: frozenset[str] = frozenset({
     "pydantic-ai",
 })
 
-# Tool name keywords that suggest shell/exec capability
-_EXEC_KEYWORDS: frozenset[str] = frozenset({
-    "exec", "shell", "run", "bash", "cmd", "eval",
-    "spawn", "popen", "terminal", "subprocess", "command",
-    "execute", "script", "deploy",
-})
-
-# Tool name keywords that suggest data access / retrieval
-_DATA_KEYWORDS: frozenset[str] = frozenset({
-    "read", "file", "resource", "retrieve", "fetch",
-    "load", "get_file", "read_file", "open", "download",
-    "query", "search", "database", "db", "sql", "rag",
-})
-
-# Tool name keywords suggesting prompt/context access
-_PROMPT_KEYWORDS: frozenset[str] = frozenset({
-    "prompt", "context", "memory", "history",
-    "system_prompt", "instruction",
-})
-
 # Severity levels considered high-risk
 _HIGH_RISK: frozenset[Severity] = frozenset({
     Severity.CRITICAL,
@@ -101,36 +82,30 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     if br.exposed_credentials:
         tags.add("AML.T0062")
 
-    has_exec_tools = False
-    has_data_tools = False
-    has_prompt_tools = False
+    has_exec = False
+    has_read = False
 
     for tool in br.exposed_tools:
-        name_lower = tool.name.lower()
-        desc_lower = (tool.description or "").lower()
-        combined = name_lower + " " + desc_lower
-
-        if any(kw in combined for kw in _EXEC_KEYWORDS):
-            has_exec_tools = True
-        if any(kw in combined for kw in _DATA_KEYWORDS):
-            has_data_tools = True
-        if any(kw in combined for kw in _PROMPT_KEYWORDS):
-            has_prompt_tools = True
+        caps = classify_tool(tool.name, tool.description)
+        if ToolCapability.EXECUTE in caps:
+            has_exec = True
+        if ToolCapability.READ in caps:
+            has_read = True
 
     # AML.T0061 — AI agent tools (broad tool surface)
     if len(br.exposed_tools) > 3:
         tags.add("AML.T0061")
 
-    # AML.T0051 — LLM prompt injection (prompt/context tools reachable)
-    if has_prompt_tools:
+    # AML.T0051 — LLM prompt injection (read tools reachable — can access context)
+    if has_read:
         tags.add("AML.T0051")
 
-    # AML.T0056 — meta prompt extraction (file/data read tools)
-    if has_data_tools:
+    # AML.T0056 — meta prompt extraction (read tools)
+    if has_read:
         tags.add("AML.T0056")
 
-    # AML.T0043 — craft adversarial data (exec/shell tools)
-    if has_exec_tools:
+    # AML.T0043 — craft adversarial data (exec tools)
+    if has_exec:
         tags.add("AML.T0043")
 
     is_ai_pkg = br.package.name.lower() in _AI_PACKAGES

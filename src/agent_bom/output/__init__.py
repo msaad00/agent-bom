@@ -283,7 +283,7 @@ def print_blast_radius(report: AIBOMReport) -> None:
     table.add_column("EPSS", justify="center", no_wrap=True)
     table.add_column("KEV", justify="center", no_wrap=True)
     table.add_column("Blast", justify="center", no_wrap=True)
-    table.add_column("Threats", justify="center", no_wrap=True)
+    table.add_column("Threats", ratio=3)
     table.add_column("Fix", ratio=2)
 
     severity_colors = {
@@ -323,18 +323,21 @@ def print_blast_radius(report: AIBOMReport) -> None:
             f"[dim]{br.package.name}@{br.package.version}[/dim]"
         )
 
-        # Threats column: compact tag counts
-        n_owasp = len(br.owasp_tags)
-        n_atlas = len(br.atlas_tags)
-        n_nist = len(br.nist_ai_rmf_tags)
-        threat_parts = []
-        if n_owasp:
-            threat_parts.append(f"[purple]O:{n_owasp}[/purple]")
-        if n_atlas:
-            threat_parts.append(f"[cyan]A:{n_atlas}[/cyan]")
-        if n_nist:
-            threat_parts.append(f"[green]N:{n_nist}[/green]")
-        threats_display = " ".join(threat_parts) if threat_parts else "—"
+        # Threats column: actual framework tag IDs per finding
+        threat_lines = []
+        if br.owasp_tags:
+            tags = sorted(br.owasp_tags)[:3]
+            extra = f" +{len(br.owasp_tags) - 3}" if len(br.owasp_tags) > 3 else ""
+            threat_lines.append(f"[purple]{' '.join(tags)}{extra}[/purple]")
+        if br.atlas_tags:
+            tags = sorted(br.atlas_tags)[:3]
+            extra = f" +{len(br.atlas_tags) - 3}" if len(br.atlas_tags) > 3 else ""
+            threat_lines.append(f"[cyan]{' '.join(tags)}{extra}[/cyan]")
+        if br.nist_ai_rmf_tags:
+            tags = sorted(br.nist_ai_rmf_tags)[:3]
+            extra = f" +{len(br.nist_ai_rmf_tags) - 3}" if len(br.nist_ai_rmf_tags) > 3 else ""
+            threat_lines.append(f"[green]{' '.join(tags)}{extra}[/green]")
+        threats_display = "\n".join(threat_lines) if threat_lines else "—"
 
         table.add_row(
             f"[{sev_style}]{br.risk_score:.1f}[/{sev_style}]",
@@ -617,19 +620,87 @@ def print_remediation_plan(report: AIBOMReport) -> None:
 
 
 def print_export_hint(report: AIBOMReport) -> None:
-    """Print an AI-BOM identity footer with export hints."""
-    console.print()
-    console.print(Panel.fit(
-        "[bold]AI Bill of Materials (AI-BOM)[/bold]\n"
+    """Print an AI-BOM identity footer with threat framework badge, explore links, and export hints."""
+    from collections import Counter
+
+    from agent_bom.atlas import ATLAS_TECHNIQUES
+    from agent_bom.nist_ai_rmf import NIST_AI_RMF
+    from agent_bom.owasp import OWASP_LLM_TOP10
+
+    lines: list[str] = []
+
+    # ── Threat Framework Coverage Badge ──
+    owasp_hit: set[str] = set()
+    atlas_hit: set[str] = set()
+    nist_hit: set[str] = set()
+    for br in report.blast_radii:
+        owasp_hit.update(br.owasp_tags)
+        atlas_hit.update(br.atlas_tags)
+        nist_hit.update(br.nist_ai_rmf_tags)
+
+    owasp_total = len(OWASP_LLM_TOP10)
+    atlas_total = len(ATLAS_TECHNIQUES)
+    nist_total = len(NIST_AI_RMF)
+
+    if report.blast_radii:
+        lines.append("[bold]AI Threat Framework Coverage[/bold]")
+        lines.append("")
+
+        # OWASP bar
+        owasp_pct = int(len(owasp_hit) / owasp_total * 100) if owasp_total else 0
+        owasp_bar = _coverage_bar(len(owasp_hit), owasp_total, "purple")
+        lines.append(f"  [bold purple]OWASP LLM Top 10[/bold purple]  {owasp_bar}  [purple]{len(owasp_hit)}/{owasp_total}[/purple] ({owasp_pct}%)")
+
+        # ATLAS bar
+        atlas_pct = int(len(atlas_hit) / atlas_total * 100) if atlas_total else 0
+        atlas_bar = _coverage_bar(len(atlas_hit), atlas_total, "cyan")
+        lines.append(f"  [bold cyan]MITRE ATLAS      [/bold cyan]  {atlas_bar}  [cyan]{len(atlas_hit)}/{atlas_total}[/cyan] ({atlas_pct}%)")
+
+        # NIST bar
+        nist_pct = int(len(nist_hit) / nist_total * 100) if nist_total else 0
+        nist_bar = _coverage_bar(len(nist_hit), nist_total, "green")
+        lines.append(f"  [bold green]NIST AI RMF 1.0  [/bold green]  {nist_bar}  [green]{len(nist_hit)}/{nist_total}[/green] ({nist_pct}%)")
+
+        lines.append("")
+
+    # ── Identity ──
+    lines.append("[bold]AI Bill of Materials (AI-BOM)[/bold]")
+    lines.append(
         f"[dim]{report.total_agents} agents · {report.total_servers} MCP servers · "
-        f"{report.total_packages} packages · {report.total_vulnerabilities} vulnerabilities[/dim]\n\n"
-        "[dim]Export this AI-BOM:[/dim]\n"
-        "  [green]agent-bom scan -f cyclonedx -o ai-bom.cdx.json[/green]   [dim]CycloneDX 1.6[/dim]\n"
-        "  [green]agent-bom scan -f spdx -o ai-bom.spdx.json[/green]       [dim]SPDX 3.0[/dim]\n"
-        "  [green]agent-bom scan -f json -o ai-bom.json[/green]            [dim]Full AI-BOM[/dim]\n"
-        "  [green]agent-bom scan -f sarif -o results.sarif[/green]         [dim]GitHub Security[/dim]",
-        border_style="dim",
-    ))
+        f"{report.total_packages} packages · {report.total_vulnerabilities} vulnerabilities[/dim]"
+    )
+    lines.append("")
+
+    # ── Explore ──
+    lines.append("[bold]Explore & Analyze[/bold]")
+    lines.append("  [green]agent-bom serve[/green]                              [dim]Interactive dashboard (graphs, detail pages)[/dim]")
+    lines.append("  [green]agent-bom scan -f html -o report.html[/green]        [dim]Self-contained HTML report[/dim]")
+    lines.append("  [green]agent-bom api[/green]                                [dim]REST API for CI/CD integration[/dim]")
+    lines.append("")
+
+    # ── Runtime ──
+    lines.append("[bold]Runtime Security[/bold]")
+    lines.append("  [green]agent-bom proxy -- npx @mcp/server ...[/green]       [dim]Intercept & audit MCP tool calls[/dim]")
+    lines.append("  [green]agent-bom watch --webhook <url>[/green]              [dim]Continuous config monitoring + alerts[/dim]")
+    lines.append("  [green]agent-bom scan --remediate fix.md[/green]            [dim]Generate actionable fix commands[/dim]")
+    lines.append("")
+
+    # ── Export ──
+    lines.append("[bold]Export AI-BOM[/bold]")
+    lines.append("  [green]agent-bom scan -f cyclonedx -o ai-bom.cdx.json[/green]   [dim]CycloneDX 1.6[/dim]")
+    lines.append("  [green]agent-bom scan -f spdx -o ai-bom.spdx.json[/green]       [dim]SPDX 3.0[/dim]")
+    lines.append("  [green]agent-bom scan -f sarif -o results.sarif[/green]         [dim]GitHub Security tab[/dim]")
+    lines.append("  [green]agent-bom scan -f json -o ai-bom.json[/green]            [dim]Full AI-BOM JSON[/dim]")
+
+    console.print()
+    console.print(Panel("\n".join(lines), border_style="blue", padding=(1, 2)))
+
+
+def _coverage_bar(hit: int, total: int, color: str, width: int = 20) -> str:
+    """Build a colored coverage bar like [████████░░░░░░░░░░░░]."""
+    filled = int(width * hit / total) if total else 0
+    empty = width - filled
+    return f"[{color}]{'█' * filled}[/{color}][dim]{'░' * empty}[/dim]"
 
 
 def _pct(part: int, total: int) -> str:

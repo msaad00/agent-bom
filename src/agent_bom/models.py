@@ -102,6 +102,12 @@ class Package:
     dependency_depth: int = 0  # 0 for direct, 1+ for transitive
     resolved_from_registry: bool = False  # True if resolved dynamically vs from lock file
 
+    # Auto-discovery metadata (populated when not in bundled registry)
+    auto_risk_level: Optional[str] = None
+    auto_risk_justification: Optional[str] = None
+    maintainer_count: Optional[int] = None
+    source_repo: Optional[str] = None
+
     @property
     def has_vulnerabilities(self) -> bool:
         return len(self.vulnerabilities) > 0

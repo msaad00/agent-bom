@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from agent_bom.models import Severity
+from agent_bom.risk_analyzer import ToolCapability, classify_tool
 
 if TYPE_CHECKING:
     from agent_bom.models import BlastRadius
@@ -56,20 +57,6 @@ _AI_PACKAGES: frozenset[str] = frozenset({
     "pydantic-ai",
 })
 
-# Tool name keywords that suggest shell/exec capability
-_EXEC_KEYWORDS: frozenset[str] = frozenset({
-    "exec", "shell", "run", "bash", "cmd", "eval",
-    "spawn", "popen", "terminal", "subprocess", "command",
-    "execute", "script", "deploy",
-})
-
-# Tool name keywords that suggest data access / retrieval
-_DATA_KEYWORDS: frozenset[str] = frozenset({
-    "read", "file", "resource", "retrieve", "fetch",
-    "load", "get_file", "read_file", "open", "download",
-    "query", "search", "database", "db", "sql",
-})
-
 # Severity levels considered high-risk
 _HIGH_RISK: frozenset[Severity] = frozenset({
     Severity.CRITICAL,
@@ -102,29 +89,26 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
         "MAP-3.5",     # always — supply chain risk assessed
     }
 
-    has_exec_tools = False
-    has_data_tools = False
+    has_exec = False
+    has_read = False
 
     for tool in br.exposed_tools:
-        name_lower = tool.name.lower()
-        desc_lower = (tool.description or "").lower()
-        combined = name_lower + " " + desc_lower
+        caps = classify_tool(tool.name, tool.description)
+        if ToolCapability.EXECUTE in caps:
+            has_exec = True
+        if ToolCapability.READ in caps:
+            has_read = True
 
-        if any(kw in combined for kw in _EXEC_KEYWORDS):
-            has_exec_tools = True
-        if any(kw in combined for kw in _DATA_KEYWORDS):
-            has_data_tools = True
-
-    # GOVERN-6.1 — third-party entity assessment (shell/exec tools)
-    if has_exec_tools:
+    # GOVERN-6.1 — third-party entity assessment (exec tools)
+    if has_exec:
         tags.add("GOVERN-6.1")
 
     # MAP-1.6 — system dependencies and interfaces mapped (broad tool surface)
     if len(br.exposed_tools) > 3:
         tags.add("MAP-1.6")
 
-    # MAP-5.2 — deployment impact practices (data access tools)
-    if has_data_tools:
+    # MAP-5.2 — deployment impact practices (read/data access tools)
+    if has_read:
         tags.add("MAP-5.2")
 
     # MANAGE-2.2 — anomalous event detection (credentials exposed)

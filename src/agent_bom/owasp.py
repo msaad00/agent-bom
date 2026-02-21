@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from agent_bom.models import Severity
+from agent_bom.risk_analyzer import ToolCapability, classify_tool
 
 if TYPE_CHECKING:
     from agent_bom.models import BlastRadius
@@ -48,20 +49,6 @@ _AI_PACKAGES: frozenset[str] = frozenset({
     "pydantic-ai",
 })
 
-# Tool name keywords that suggest shell/code execution (LLM02)
-_SHELL_KEYWORDS: frozenset[str] = frozenset({
-    "exec", "shell", "run", "bash", "cmd", "eval",
-    "spawn", "popen", "terminal", "subprocess", "command",
-    "execute", "script",
-})
-
-# Tool name keywords that suggest file/prompt reading (LLM07)
-_READ_KEYWORDS: frozenset[str] = frozenset({
-    "read", "file", "resource", "prompt", "retrieve",
-    "fetch", "load", "get_file", "read_file", "open",
-    "context", "memory", "history",
-})
-
 # Severity levels considered high-risk for agency/AI-poisoning checks
 _HIGH_RISK_SEVERITIES: frozenset[Severity] = frozenset({
     Severity.CRITICAL,
@@ -78,8 +65,8 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     Rules applied:
     - LLM05: Always — any package CVE in an AI agent is a supply chain risk.
     - LLM06: Credential env vars are exposed alongside a vulnerable package.
-    - LLM02: A reachable tool has shell/exec semantics (code injection risk).
-    - LLM07: A reachable tool reads files/prompts (context leakage risk).
+    - LLM02: A reachable tool has EXECUTE capability (code injection risk).
+    - LLM07: A reachable tool has READ capability (context leakage risk).
     - LLM08: Server has >5 tools AND severity is CRITICAL/HIGH (excessive agency).
     - LLM04: Vulnerable package is a core AI/ML framework AND severity is HIGH+.
     """
@@ -89,14 +76,12 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     if br.exposed_credentials:
         tags.add("LLM06")
 
-    # LLM02 / LLM07 — tool-level risks
+    # LLM02 / LLM07 — tool-level risks via semantic capability analysis
     for tool in br.exposed_tools:
-        name_lower = tool.name.lower()
-        desc_lower = (tool.description or "").lower()
-        combined = name_lower + " " + desc_lower
-        if any(kw in combined for kw in _SHELL_KEYWORDS):
+        caps = classify_tool(tool.name, tool.description)
+        if ToolCapability.EXECUTE in caps:
             tags.add("LLM02")
-        if any(kw in combined for kw in _READ_KEYWORDS):
+        if ToolCapability.READ in caps:
             tags.add("LLM07")
 
     # LLM08 — excessive agency: many tools + high-severity CVE

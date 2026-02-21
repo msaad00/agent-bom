@@ -143,6 +143,10 @@ def main():
 @click.option("--ai-enrich", is_flag=True, help="Enrich findings with LLM-generated risk narratives, executive summary, and threat chains. Auto-detects Ollama (free, local) or uses litellm (pip install agent-bom[ai-enrich])")
 @click.option("--ai-model", default="openai/gpt-4o-mini", show_default=True, metavar="MODEL",
               help="LLM model for --ai-enrich. Auto-detects Ollama if running. Examples: ollama/llama3.2 (free, local), ollama/mistral, openai/gpt-4o-mini")
+@click.option("--remediate", "remediate_path", type=str, default=None, metavar="PATH",
+              help="Generate remediation.md with fix commands for all findings")
+@click.option("--remediate-sh", "remediate_sh_path", type=str, default=None, metavar="PATH",
+              help="Generate remediation.sh script with package upgrade commands")
 @click.option("--aws", is_flag=True, help="Discover AI agents from AWS Bedrock, Lambda, and ECS")
 @click.option("--aws-region", default=None, metavar="REGION", help="AWS region (default: AWS_DEFAULT_REGION)")
 @click.option("--aws-profile", default=None, metavar="PROFILE", help="AWS credential profile")
@@ -239,6 +243,8 @@ def scan(
     openai_flag: bool,
     openai_api_key: Optional[str],
     openai_org_id: Optional[str],
+    remediate_path: Optional[str],
+    remediate_sh_path: Optional[str],
 ):
     """Discover agents, extract dependencies, scan for vulnerabilities.
 
@@ -666,7 +672,23 @@ def scan(
         resolved = resolve_all_versions_sync(all_packages)
         con.print(f"\n  [bold]Resolved {resolved}/{len(unresolved)} version(s).[/bold]")
 
-    # Step 3b: Version drift detection
+    # Step 3b: Auto-discover metadata for unknown packages
+    unknown_pkgs = [
+        p for p in all_packages
+        if not p.resolved_from_registry
+        and not getattr(p, "auto_risk_level", None)
+        and p.version not in ("unknown", "latest", "")
+        and p.ecosystem in ("npm", "pypi", "PyPI")
+    ]
+    if unknown_pkgs and not no_scan:
+        import asyncio as _asyncio_ad
+
+        from agent_bom.autodiscover import enrich_unknown_packages
+        con.print(f"\n[bold blue]Auto-discovering metadata for {len(unknown_pkgs)} package(s)...[/bold blue]\n")
+        enriched_count = _asyncio_ad.run(enrich_unknown_packages(unknown_pkgs))
+        con.print(f"  [green]✓[/green] Auto-discovered metadata for {enriched_count} package(s)")
+
+    # Step 3c: Version drift detection
     registry_pkgs = [p for p in all_packages if p.resolved_from_registry]
     if registry_pkgs and not quiet:
         from agent_bom.registry import detect_version_drift
@@ -719,6 +741,17 @@ def scan(
     if ai_enrich and blast_radii:
         from agent_bom.ai_enrich import run_ai_enrichment_sync
         run_ai_enrichment_sync(report, model=ai_model)
+
+    # Step 4d: Generate remediation files (optional)
+    if remediate_path or remediate_sh_path:
+        from agent_bom.remediate import export_remediation_md, export_remediation_sh, generate_remediation
+        remed_plan = generate_remediation(report, blast_radii)
+        if remediate_path:
+            export_remediation_md(remed_plan, remediate_path)
+            con.print(f"\n  [green]✓[/green] Remediation plan: {remediate_path}")
+        if remediate_sh_path:
+            export_remediation_sh(remed_plan, remediate_sh_path)
+            con.print(f"\n  [green]✓[/green] Remediation script: {remediate_sh_path}")
 
     # Step 5: Output
     if is_stdout:
@@ -1566,6 +1599,103 @@ def registry_update(concurrency, dry_run):
     con.print(f"\n[bold]Summary:[/bold] {result.updated} updated, {result.unchanged} unchanged, {result.failed} failed (of {result.total} total)")
     if not dry_run and result.updated > 0:
         con.print("[green]Registry file updated.[/green]")
+
+
+@main.command("proxy")
+@click.option("--policy", type=click.Path(exists=True), help="Policy file for runtime enforcement")
+@click.option("--log", "log_path", default=None, help="Audit log output path (JSONL)")
+@click.option("--block-undeclared", is_flag=True, help="Block tool calls not in tools/list response")
+@click.argument("server_cmd", nargs=-1, required=True)
+def proxy_cmd(policy, log_path, block_undeclared, server_cmd):
+    """Run an MCP server through agent-bom's security proxy.
+
+    \b
+    Intercepts JSON-RPC messages between client and server:
+    - Logs every tools/call invocation to an audit trail
+    - Optionally enforces policy rules in real-time
+    - Blocks undeclared tools (not in tools/list response)
+
+    \b
+    Usage:
+      agent-bom proxy -- npx @modelcontextprotocol/server-filesystem /tmp
+      agent-bom proxy --log audit.jsonl -- npx @mcp/server-github
+      agent-bom proxy --policy policy.json --block-undeclared -- npx @mcp/server-postgres
+
+    \b
+    Configure in your MCP client (e.g. Claude Desktop):
+      {
+        "mcpServers": {
+          "filesystem": {
+            "command": "agent-bom",
+            "args": ["proxy", "--log", "audit.jsonl", "--",
+                     "npx", "@modelcontextprotocol/server-filesystem", "/tmp"]
+          }
+        }
+      }
+    """
+    import asyncio
+
+    from agent_bom.proxy import run_proxy
+
+    exit_code = asyncio.run(run_proxy(
+        server_cmd=list(server_cmd),
+        policy_path=policy,
+        log_path=log_path,
+        block_undeclared=block_undeclared,
+    ))
+    sys.exit(exit_code)
+
+
+@main.command("watch")
+@click.option("--webhook", default=None, help="Webhook URL for alerts (Slack/Teams/PagerDuty)")
+@click.option("--log", "alert_log", default=None, help="Alert log file (JSONL)")
+@click.option("--interval", default=2.0, type=float, help="Debounce interval in seconds")
+def watch_cmd(webhook, alert_log, interval):
+    """Watch MCP configs for changes and alert on new risks.
+
+    \b
+    Continuously monitors MCP client configuration files. On change:
+    - Re-scans the affected config
+    - Diffs against the last scan
+    - Alerts if new vulnerabilities or risks are introduced
+
+    \b
+    Requires: pip install agent-bom[watch]
+
+    \b
+    Usage:
+      agent-bom watch
+      agent-bom watch --webhook https://hooks.slack.com/services/...
+      agent-bom watch --log alerts.jsonl
+    """
+    from agent_bom.watch import (
+        ConsoleAlertSink,
+        FileAlertSink,
+        WebhookAlertSink,
+        discover_config_dirs,
+        start_watching,
+    )
+
+    console = Console()
+    console.print(BANNER, style="bold blue")
+
+    sinks = [ConsoleAlertSink()]
+    if webhook:
+        sinks.append(WebhookAlertSink(webhook))
+    if alert_log:
+        sinks.append(FileAlertSink(alert_log))
+
+    dirs = discover_config_dirs()
+    if not dirs:
+        console.print("[yellow]No MCP config directories found to watch.[/yellow]")
+        sys.exit(0)
+
+    console.print(f"\n[bold blue]Watching {len(dirs)} config director{'ies' if len(dirs) > 1 else 'y'}...[/bold blue]")
+    for d in dirs:
+        console.print(f"  [dim]{d}[/dim]")
+    console.print("\n  [dim]Press Ctrl+C to stop.[/dim]\n")
+
+    start_watching(sinks, debounce_seconds=interval)
 
 
 if __name__ == "__main__":

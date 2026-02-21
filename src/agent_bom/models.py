@@ -279,6 +279,7 @@ class AIBOMReport:
     tool_version: str = ""
     executive_summary: Optional[str] = None  # LLM-generated executive summary
     ai_threat_chains: list[str] = field(default_factory=list)  # LLM-generated threat chain analyses
+    skill_audit_data: Optional[dict] = None  # Serialized SkillAuditResult (set by CLI)
 
     def __post_init__(self):
         if not self.tool_version:

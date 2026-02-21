@@ -399,6 +399,43 @@ Extracts:
 - MCP server JSON config blocks (`mcpServers`)
 - Credential env var names (API keys, tokens, secrets)
 
+### Skill security audit
+
+Skill files are a supply chain attack vector — a malicious CLAUDE.md or .cursorrules could contain typosquatted packages, unverified MCP servers, or credential-harvesting env vars. agent-bom audits skill scan results with 7 security checks:
+
+| Check | Severity | What it detects |
+|-------|----------|-----------------|
+| Typosquat detection | HIGH | Package name within edit distance of a known registry entry (fuzzy match ≥80%) |
+| Shell/exec access | HIGH | Server command is `bash`/`sh`/`cmd`/`powershell`, or args contain `--allow-exec` |
+| Dangerous server names | HIGH | Server names containing `exec`, `shell`, `terminal`, `command` |
+| Unverified MCP server | MEDIUM | Server not found in registry or marked as unverified |
+| Excessive credentials | MEDIUM | Server with ≥5 env vars, or skill files referencing ≥8 credential vars total |
+| External URL | MEDIUM | SSE/HTTP server pointing to a non-localhost URL (data exfiltration risk) |
+| Unknown package | LOW | Package not found in any registry entry |
+
+Findings are shown inline during the scan and included in JSON output (`skill_audit` key) and the REST API (`GET /v1/scan/{id}/skill-audit`).
+
+### CLI attack flow tree
+
+Visualize the full CVE → Package → Server → Agent → Credentials → Tools attack chain directly in your terminal:
+
+```
+💥 Attack Flow Chains
+
+CVE-2024-1234 [CRITICAL] CVSS 9.8 · EPSS 72% · KEV
+ └─ express@4.18.2 (npm)
+      └─ github-mcp (MCP Server)
+           ├─ claude-desktop (Agent)
+           ├─ cursor (Agent)
+           ├─ 🔑 GITHUB_TOKEN
+           └─ 🔧 create_issue, push_code
+```
+
+- Severity-colored output (red for CRITICAL/HIGH, yellow for MEDIUM)
+- Top 15 findings by risk score
+- Shows exposed credentials and MCP tools per chain
+- Disable with `--no-tree`
+
 ### Graph visualization
 
 Cloud and local agents are visualized as an interactive dependency graph in the HTML dashboard. Provider nodes connect to agents, which connect to servers and packages. CVE nodes are attached to vulnerable packages with severity coloring.
@@ -459,7 +496,7 @@ Unverified servers in your configs trigger a warning. Policy rules can block the
 |------|---------|----------|
 | Developer CLI | `agent-bom scan` | Local audit, pre-commit checks |
 | Pre-install check | `agent-bom check express@4.18.2 -e npm` | Before running any MCP server |
-| GitHub Action | `uses: agent-bom/agent-bom@v0.18.0` | CI/CD gate + Security tab |
+| GitHub Action | `uses: agent-bom/agent-bom@v0.19.0` | CI/CD gate + Security tab |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated, reproducible scans |
 | REST API | `agent-bom api` | Dashboards, SIEM, scripting |
 | Dashboard | `agent-bom serve` | Team-visible security dashboard |
@@ -474,7 +511,7 @@ Use agent-bom directly in your CI/CD pipeline:
 
 ```yaml
 - name: AI supply chain scan
-  uses: agent-bom/agent-bom@v0.18.0
+  uses: agent-bom/agent-bom@v0.19.0
   with:
     severity-threshold: high
     upload-sarif: true
@@ -483,7 +520,7 @@ Use agent-bom directly in your CI/CD pipeline:
 Full options:
 
 ```yaml
-- uses: agent-bom/agent-bom@v0.18.0
+- uses: agent-bom/agent-bom@v0.19.0
   with:
     severity-threshold: high        # fail on high+ CVEs
     policy: policy.json             # policy-as-code gates
@@ -537,6 +574,7 @@ agent-bom api   # http://127.0.0.1:8422  →  /docs for Swagger UI
 | `GET /v1/scan/{job_id}` | Poll status + results |
 | `GET /v1/scan/{job_id}/stream` | SSE real-time progress |
 | `GET /v1/scan/{job_id}/attack-flow` | Per-CVE attack flow graph (filterable) |
+| `GET /v1/scan/{job_id}/skill-audit` | Skill file security audit findings |
 | `GET /v1/registry` | Full MCP server registry (109 servers) |
 | `GET /v1/registry/{id}` | Single registry entry |
 
@@ -652,6 +690,8 @@ These tools solve different problems and are **complementary**.
 - [x] Collapsible UI — agents, blast radius, remediation, and inventory sections collapse/expand
 - [x] Attack flow diagrams — per-CVE interactive blast radius chain with filters and audit export
 - [x] Skill file scanning — CLAUDE.md, .cursorrules, AGENTS.md parsing for packages, MCP servers, credentials
+- [x] Skill security audit — 7 checks: typosquat detection, shell access, unverified servers, excessive credentials, external URLs
+- [x] CLI attack flow tree — terminal-native CVE → Package → Server → Agent → Credentials/Tools chain visualization
 - [ ] Jupyter notebook AI library scanning
 - [ ] ToolHive integration (`--toolhive` flag for managed server scanning)
 - [ ] License compliance engine (SPDX license detection + copyleft chain analysis)

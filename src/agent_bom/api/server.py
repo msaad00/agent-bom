@@ -399,6 +399,30 @@ async def get_attack_flow(
     )
 
 
+@app.get("/v1/scan/{job_id}/skill-audit", tags=["scan"])
+async def get_skill_audit(job_id: str) -> dict:
+    """Get the skill security audit results for a completed scan.
+
+    Returns findings from the skill file security audit including
+    typosquat detection, unverified servers, shell access, and more.
+    Empty results if no skill files were scanned.
+    """
+    if job_id not in _jobs:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+    job = _jobs[job_id]
+    if job.status != JobStatus.DONE or not job.result:
+        raise HTTPException(status_code=409, detail="Scan not completed yet")
+
+    return job.result.get("skill_audit", {
+        "findings": [],
+        "packages_checked": 0,
+        "servers_checked": 0,
+        "credentials_checked": 0,
+        "passed": True,
+    })
+
+
 @app.delete("/v1/scan/{job_id}", status_code=204, tags=["scan"])
 async def delete_scan(job_id: str) -> None:
     """Discard a job record."""

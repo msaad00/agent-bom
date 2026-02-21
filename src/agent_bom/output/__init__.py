@@ -378,6 +378,78 @@ def print_blast_radius(report: AIBOMReport) -> None:
             console.print(f"  [dim]...and {len(sources) - 15} more (see JSON output for full list)[/dim]")
 
 
+def print_attack_flow_tree(report: AIBOMReport) -> None:
+    """Print per-CVE blast radius chains as Rich Trees."""
+    if not report.blast_radii:
+        return
+
+    console.print("\n[bold red]🔗 Attack Flow Chains[/bold red]\n")
+
+    severity_styles = {
+        Severity.CRITICAL: "red bold",
+        Severity.HIGH: "red",
+        Severity.MEDIUM: "yellow",
+        Severity.LOW: "dim",
+    }
+
+    for br in sorted(report.blast_radii, key=lambda b: b.risk_score, reverse=True)[:15]:
+        sev = br.vulnerability.severity
+        sev_style = severity_styles.get(sev, "white")
+
+        # Root: CVE line
+        root_parts = [f"[{sev_style}]{br.vulnerability.id}[/{sev_style}]"]
+        root_parts.append(f"[{sev_style}]\\[{sev.value}][/{sev_style}]")
+        if br.vulnerability.cvss_score is not None:
+            root_parts.append(f"CVSS {br.vulnerability.cvss_score:.1f}")
+        if br.vulnerability.epss_score is not None:
+            pct = int(br.vulnerability.epss_score * 100)
+            root_parts.append(f"EPSS {pct}%")
+        if br.vulnerability.is_kev:
+            root_parts.append("[red bold]🔥 KEV[/red bold]")
+
+        cve_tree = Tree(" · ".join(root_parts))
+
+        # Package node
+        pkg_label = f"{br.package.name}@{br.package.version} ({br.package.ecosystem})"
+        pkg_branch = cve_tree.add(f"[dim]{pkg_label}[/dim]")
+
+        # Server branches
+        for server in br.affected_servers:
+            srv_branch = pkg_branch.add(f"[bold cyan]{server.name}[/bold cyan] [dim](MCP Server)[/dim]")
+
+            # Agents
+            for agent in br.affected_agents:
+                srv_branch.add(f"[green]{agent.name}[/green] [dim](Agent)[/dim]")
+
+            # Credentials
+            for cred in br.exposed_credentials:
+                srv_branch.add(f"[yellow]🔑 {cred}[/yellow]")
+
+            # Tools (compact, max 5 per line)
+            if br.exposed_tools:
+                tool_names = [t.name for t in br.exposed_tools[:5]]
+                extra = f" +{len(br.exposed_tools) - 5}" if len(br.exposed_tools) > 5 else ""
+                srv_branch.add(f"[dim]🔧 {', '.join(tool_names)}{extra}[/dim]")
+
+        # If no servers, still show agents/creds/tools under package
+        if not br.affected_servers:
+            for agent in br.affected_agents:
+                pkg_branch.add(f"[green]{agent.name}[/green] [dim](Agent)[/dim]")
+            for cred in br.exposed_credentials:
+                pkg_branch.add(f"[yellow]🔑 {cred}[/yellow]")
+            if br.exposed_tools:
+                tool_names = [t.name for t in br.exposed_tools[:5]]
+                extra = f" +{len(br.exposed_tools) - 5}" if len(br.exposed_tools) > 5 else ""
+                pkg_branch.add(f"[dim]🔧 {', '.join(tool_names)}{extra}[/dim]")
+
+        console.print(cve_tree)
+
+    remaining = len(report.blast_radii) - 15
+    if remaining > 0:
+        console.print(f"\n  [dim]...and {remaining} more findings. Use --output to export full report.[/dim]")
+    console.print()
+
+
 def print_threat_frameworks(report: AIBOMReport) -> None:
     """Print aggregated threat framework coverage — OWASP LLM Top 10 + MITRE ATLAS + NIST AI RMF."""
     from collections import Counter
@@ -925,6 +997,10 @@ def to_json(report: AIBOMReport) -> dict:
         result["executive_summary"] = report.executive_summary
     if report.ai_threat_chains:
         result["ai_threat_chains"] = report.ai_threat_chains
+
+    # Skill security audit (only when skill files were scanned)
+    if report.skill_audit_data:
+        result["skill_audit"] = report.skill_audit_data
 
     return result
 

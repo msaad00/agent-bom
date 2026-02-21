@@ -255,7 +255,7 @@ def empty_report():
 
 def test_version_sync():
     from agent_bom import __version__
-    assert __version__ == "0.18.0"
+    assert __version__ == "0.19.0"
 
 
 def test_report_version_matches():
@@ -1902,6 +1902,68 @@ def test_registry_endpoint():
     # Registry has at least the official modelcontextprotocol servers
     ids = [s["id"] for s in body["servers"]]
     assert "@modelcontextprotocol/server-filesystem" in ids
+
+
+def test_api_skill_audit_endpoint():
+    """GET /v1/scan/{id}/skill-audit returns skill audit data when available."""
+    pytest.importorskip("fastapi", reason="fastapi not installed")
+    from fastapi.testclient import TestClient
+
+    from agent_bom.api.server import JobStatus, ScanJob, ScanRequest, _jobs, app
+    client = TestClient(app)
+
+    # Create a fake completed job with skill_audit data
+    job = ScanJob(
+        job_id="skill-audit-test",
+        status=JobStatus.DONE,
+        created_at="2026-01-01T00:00:00Z",
+        request=ScanRequest(),
+        result={
+            "skill_audit": {
+                "findings": [{"severity": "high", "category": "shell_access", "title": "Shell access"}],
+                "packages_checked": 2,
+                "servers_checked": 1,
+                "credentials_checked": 0,
+                "passed": False,
+            }
+        },
+    )
+    _jobs["skill-audit-test"] = job
+    try:
+        resp = client.get("/v1/scan/skill-audit-test/skill-audit")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["passed"] is False
+        assert len(body["findings"]) == 1
+        assert body["findings"][0]["category"] == "shell_access"
+    finally:
+        _jobs.pop("skill-audit-test", None)
+
+
+def test_api_skill_audit_empty():
+    """GET /v1/scan/{id}/skill-audit returns empty default when no skill audit ran."""
+    pytest.importorskip("fastapi", reason="fastapi not installed")
+    from fastapi.testclient import TestClient
+
+    from agent_bom.api.server import JobStatus, ScanJob, ScanRequest, _jobs, app
+    client = TestClient(app)
+
+    job = ScanJob(
+        job_id="no-skill-audit-test",
+        status=JobStatus.DONE,
+        created_at="2026-01-01T00:00:00Z",
+        request=ScanRequest(),
+        result={"agents": []},
+    )
+    _jobs["no-skill-audit-test"] = job
+    try:
+        resp = client.get("/v1/scan/no-skill-audit-test/skill-audit")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["passed"] is True
+        assert body["findings"] == []
+    finally:
+        _jobs.pop("no-skill-audit-test", None)
 
 
 # ── Resilient HTTP client tests ──────────────────────────────────────

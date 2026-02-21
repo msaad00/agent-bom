@@ -21,6 +21,7 @@ from agent_bom.output import (
     export_sarif,
     export_spdx,
     print_agent_tree,
+    print_attack_flow_tree,
     print_blast_radius,
     print_diff,
     print_export_hint,
@@ -544,6 +545,7 @@ def scan(
 
     # Step 1g2: Skill file scanning (--skill + auto-discovery)
     from agent_bom.parsers.skills import discover_skill_files, scan_skill_files
+    _skill_audit_data: dict | None = None  # will be set if skill audit runs
     skill_file_list: list[Path] = []
     for sp in skill_paths:
         p = Path(sp)
@@ -586,6 +588,38 @@ def scan(
                 con.print(f"  [green]✓[/green] Found {len(skill_result.packages)} package(s) referenced in skill files")
             if skill_result.credential_env_vars:
                 con.print(f"  [yellow]⚠[/yellow] {len(skill_result.credential_env_vars)} credential env var(s) referenced in skill files")
+
+            # Step 1g3: Skill security audit
+            from agent_bom.parsers.skill_audit import audit_skill_result
+            skill_audit = audit_skill_result(skill_result)
+            _skill_audit_data = {
+                "findings": [
+                    {
+                        "severity": f.severity,
+                        "category": f.category,
+                        "title": f.title,
+                        "detail": f.detail,
+                        "source_file": f.source_file,
+                        "package": f.package,
+                        "server": f.server,
+                        "recommendation": f.recommendation,
+                    }
+                    for f in skill_audit.findings
+                ],
+                "packages_checked": skill_audit.packages_checked,
+                "servers_checked": skill_audit.servers_checked,
+                "credentials_checked": skill_audit.credentials_checked,
+                "passed": skill_audit.passed,
+            }
+            if skill_audit.findings:
+                con.print(f"\n  [bold yellow]⚠ Skill Security Audit ({len(skill_audit.findings)} finding(s))[/bold yellow]")
+                sev_colors = {"critical": "red bold", "high": "red", "medium": "yellow", "low": "dim"}
+                for finding in skill_audit.findings:
+                    style = sev_colors.get(finding.severity, "white")
+                    con.print(f"    [{style}]\\[{finding.severity.upper()}][/{style}] {finding.title}")
+                    con.print(f"      [dim]{finding.detail}[/dim]")
+                    if finding.recommendation:
+                        con.print(f"      [green]→ {finding.recommendation}[/green]")
 
     # Step 1h: Cloud provider discovery
     cloud_providers: list[tuple[str, dict]] = []
@@ -785,6 +819,8 @@ def scan(
 
     # Build report
     report = AIBOMReport(agents=agents, blast_radii=blast_radii)
+    if _skill_audit_data:
+        report.skill_audit_data = _skill_audit_data
 
     # Step 4c: AI-powered enrichment (optional)
     if ai_enrich and blast_radii:
@@ -830,6 +866,8 @@ def scan(
             print_agent_tree(report)
         print_severity_chart(report)
         print_blast_radius(report)
+        if not no_tree:
+            print_attack_flow_tree(report)
         print_threat_frameworks(report)
         # AI enrichment output (if enriched)
         if report.executive_summary:

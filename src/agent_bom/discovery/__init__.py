@@ -140,6 +140,9 @@ def parse_mcp_config(config_data: dict, config_path: str) -> list[MCPServer]:
     Supports multiple config formats:
     - Standard (Claude Desktop, Cursor, Windsurf, Cortex Code):
         {"mcpServers": {"name": {"command": ..., "args": [...]}}}
+    - VS Code native MCP (mcp.json):
+        {"servers": {"name": {"type": "stdio", "command": ..., "args": [...]}}}
+        {"servers": {"name": {"type": "http", "uri": "http://..."}}}
     - OpenClaw (openclaw.json — agent config + optional mcpServers):
         {"agent": {...}, "mcpServers": {"name": {"command": ..., "args": [...]}}}
     - Continue.dev (array format):
@@ -181,11 +184,19 @@ def parse_mcp_config(config_data: dict, config_path: str) -> list[MCPServer]:
             continue
 
         # Determine transport type
+        # VS Code native format uses "type" field + "uri"; standard format uses "url"
         transport = TransportType.STDIO
         url = None
-        if "url" in server_def:
-            url = server_def["url"]
-            if "sse" in url.lower():
+        vscode_type = server_def.get("type", "")
+        if vscode_type == "sse":
+            transport = TransportType.SSE
+            url = server_def.get("uri") or server_def.get("url")
+        elif vscode_type == "http":
+            transport = TransportType.STREAMABLE_HTTP
+            url = server_def.get("uri") or server_def.get("url")
+        elif "url" in server_def or "uri" in server_def:
+            url = server_def.get("url") or server_def.get("uri")
+            if url and "sse" in url.lower():
                 transport = TransportType.SSE
             else:
                 transport = TransportType.STREAMABLE_HTTP
@@ -559,6 +570,122 @@ def discover_docker_mcp() -> Optional[Agent]:
     )
 
 
+# Docker Compose file names to search for MCP server services
+COMPOSE_FILE_NAMES = [
+    "docker-compose.yml",
+    "docker-compose.yaml",
+    "compose.yml",
+    "compose.yaml",
+]
+
+# Image prefixes that indicate MCP servers in Docker Compose
+MCP_IMAGE_PREFIXES = (
+    "mcp/",
+    "ghcr.io/modelcontextprotocol/",
+    "modelcontextprotocol/",
+)
+
+
+def discover_compose_mcp_servers(project_dir: Optional[str] = None) -> Optional[Agent]:
+    """Discover MCP servers defined in Docker Compose files.
+
+    Scans ``docker-compose.yml`` / ``compose.yml`` for services whose images
+    match known MCP server patterns (e.g. ``mcp/playwright``, ``mcp/fetch``).
+    """
+    from agent_bom.models import Package
+
+    search_dir = Path(project_dir) if project_dir else Path.cwd()
+    compose_path: Optional[Path] = None
+    for name in COMPOSE_FILE_NAMES:
+        candidate = search_dir / name
+        if candidate.exists():
+            compose_path = candidate
+            break
+
+    if not compose_path:
+        return None
+
+    try:
+        compose_data = yaml.safe_load(compose_path.read_text())
+    except Exception:
+        return None
+
+    if not compose_data or not isinstance(compose_data, dict):
+        return None
+
+    services = compose_data.get("services", {})
+    if not isinstance(services, dict):
+        return None
+
+    mcp_servers: list[MCPServer] = []
+
+    for svc_name, svc_def in services.items():
+        if not isinstance(svc_def, dict):
+            continue
+
+        image = svc_def.get("image", "")
+        if not image:
+            continue
+
+        # Check if this service uses a known MCP server image
+        is_mcp = any(image.startswith(prefix) for prefix in MCP_IMAGE_PREFIXES)
+        if not is_mcp:
+            continue
+
+        # Extract version from image tag
+        pkg_version = "latest"
+        pkg_name = image
+        if "@sha256:" in image:
+            pkg_name = image.split("@")[0]
+            pkg_version = image.split("@sha256:")[1][:12]
+        elif ":" in image and not image.startswith("ghcr.io:"):
+            parts = image.rsplit(":", 1)
+            pkg_name = parts[0]
+            pkg_version = parts[1]
+
+        # Extract env vars (list or dict format)
+        raw_env = svc_def.get("environment", {})
+        env: dict[str, str] = {}
+        if isinstance(raw_env, list):
+            for entry in raw_env:
+                if isinstance(entry, str) and "=" in entry:
+                    k, _, v = entry.partition("=")
+                    env[k] = v
+        elif isinstance(raw_env, dict):
+            env = {k: str(v) for k, v in raw_env.items()}
+
+        # Redact sensitive values
+        env = sanitize_env_vars(env)
+
+        packages = [Package(
+            name=pkg_name,
+            version=pkg_version,
+            ecosystem="docker",
+            is_direct=True,
+        )]
+
+        server = MCPServer(
+            name=svc_name,
+            command=f"docker compose up {svc_name}",
+            args=[],
+            env=env,
+            transport=TransportType.STDIO,
+            packages=packages,
+            config_path=str(compose_path),
+        )
+        mcp_servers.append(server)
+
+    if not mcp_servers:
+        return None
+
+    return Agent(
+        name="docker-compose",
+        agent_type=AgentType.CUSTOM,
+        config_path=str(compose_path),
+        mcp_servers=mcp_servers,
+    )
+
+
 def discover_all(project_dir: Optional[str] = None) -> list[Agent]:
     """Run full discovery: global configs + project configs + CLI agents."""
     console.print("\n[bold blue]🔍 Discovering MCP configurations...[/bold blue]\n")
@@ -569,6 +696,15 @@ def discover_all(project_dir: Optional[str] = None) -> list[Agent]:
         agents.extend(discover_project_configs(project_dir))
     else:
         agents.extend(discover_project_configs())
+
+    # Docker Compose MCP server discovery
+    compose_agent = discover_compose_mcp_servers(project_dir)
+    if compose_agent:
+        console.print(
+            f"  [green]✓[/green] Found {len(compose_agent.mcp_servers)} MCP "
+            f"server(s) in Docker Compose: {compose_agent.config_path}"
+        )
+        agents.append(compose_agent)
 
     # ToolHive CLI-based discovery
     thv_agent = discover_toolhive()

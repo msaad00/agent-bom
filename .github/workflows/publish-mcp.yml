@@ -34,8 +34,8 @@ jobs:
           build-args: |
             VERSION=${{ steps.version.outputs.version }}
           tags: |
-            ghcr.io/agent-bom/agent-bom:${{ github.ref_name }}
-            ghcr.io/agent-bom/agent-bom:latest
+            ghcr.io/msaad00/agent-bom:${{ github.ref_name }}
+            ghcr.io/msaad00/agent-bom:latest
 
   publish-sse:
     runs-on: ubuntu-latest
@@ -62,5 +62,5 @@ jobs:
           build-args: |
             VERSION=${{ steps.version.outputs.version }}
           tags: |
-            ghcr.io/agent-bom/agent-bom-sse:${{ github.ref_name }}
-            ghcr.io/agent-bom/agent-bom-sse:latest
+            ghcr.io/msaad00/agent-bom-sse:${{ github.ref_name }}
+            ghcr.io/msaad00/agent-bom-sse:latest

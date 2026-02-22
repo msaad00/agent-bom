@@ -1255,7 +1255,7 @@ def to_sarif(report: AIBOMReport) -> dict:
                     "driver": {
                         "name": "agent-bom",
                         "version": report.tool_version,
-                        "informationUri": "https://github.com/agent-bom/agent-bom",
+                        "informationUri": "https://github.com/msaad00/agent-bom",
                         "rules": rules,
                     }
                 },

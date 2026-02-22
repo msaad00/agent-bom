@@ -4,7 +4,7 @@
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Report via [GitHub Security Advisories](https://github.com/agent-bom/agent-bom/security/advisories/new).
+Report via [GitHub Security Advisories](https://github.com/msaad00/agent-bom/security/advisories/new).
 
 We aim to respond within 48 hours and provide a fix within 7 days for critical issues.
 

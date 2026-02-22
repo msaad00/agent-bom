@@ -87,7 +87,7 @@ def main():
       agent-bom serve                       Streamlit dashboard (port 8501)
 
     \b
-    Docs:  https://github.com/agent-bom/agent-bom
+    Docs:  https://github.com/msaad00/agent-bom
     """
     pass
 
@@ -383,7 +383,7 @@ def scan(
         con.print()
         con.print("  [bold green]✓ agent-bom is read-only.[/bold green] It never writes to configs or executes MCP servers.")
         con.print("  [bold green]✓ Credential values are never read.[/bold green] Only env var names appear in reports.")
-        con.print("  See [link=https://github.com/agent-bom/agent-bom/blob/main/PERMISSIONS.md]PERMISSIONS.md[/link] for the full trust contract.")
+        con.print("  See [link=https://github.com/msaad00/agent-bom/blob/main/PERMISSIONS.md]PERMISSIONS.md[/link] for the full trust contract.")
         return
 
     # Step 1: Discovery

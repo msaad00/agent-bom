@@ -9,7 +9,7 @@ Be respectful, inclusive, and constructive. We're building tools to make AI infr
 ## Getting Started
 
 ```bash
-git clone https://github.com/agent-bom/agent-bom.git
+git clone https://github.com/msaad00/agent-bom.git
 cd agent-bom
 
 # Create virtual environment

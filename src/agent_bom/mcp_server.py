@@ -541,7 +541,7 @@ def build_server_card() -> dict:
             "AI supply chain security scanner — CVE scanning, blast radius analysis, "
             "policy enforcement, and SBOM generation for MCP servers and AI agents."
         ),
-        "repository": "https://github.com/agent-bom/agent-bom",
+        "repository": "https://github.com/msaad00/agent-bom",
         "transport": ["stdio", "sse"],
         "tools": _SERVER_CARD_TOOLS,
         "capabilities": {

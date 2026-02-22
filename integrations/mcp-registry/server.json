@@ -5,7 +5,7 @@
   "title": "agent-bom",
   "version": "0.28.0",
   "repository": {
-    "url": "https://github.com/agent-bom/agent-bom",
+    "url": "https://github.com/msaad00/agent-bom",
     "source": "github"
   },
   "packages": [

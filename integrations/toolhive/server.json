@@ -5,13 +5,13 @@
   "title": "agent-bom",
   "version": "0.28.0",
   "repository": {
-    "url": "https://github.com/agent-bom/agent-bom",
+    "url": "https://github.com/msaad00/agent-bom",
     "source": "github"
   },
   "packages": [
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/agent-bom/agent-bom:v0.28.0",
+      "identifier": "ghcr.io/msaad00/agent-bom:v0.28.0",
       "transport": {
         "type": "stdio"
       },
@@ -28,7 +28,7 @@
   "_meta": {
     "io.modelcontextprotocol.registry/publisher-provided": {
       "io.github.agent-bom": {
-        "ghcr.io/agent-bom/agent-bom:v0.28.0": {
+        "ghcr.io/msaad00/agent-bom:v0.28.0": {
           "tier": "Community",
           "status": "Active",
           "tags": [

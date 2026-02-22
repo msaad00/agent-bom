@@ -76,7 +76,7 @@ This is an open-source tool — you can verify every claim above:
 | Audit credential handling | `src/agent_bom/models.py` — `MCPServer.credential_names` |
 | Run in isolation | `--no-scan` skips all network calls; `--dry-run` reads nothing |
 | Signed releases | Releases v0.7.0+ are signed via [Sigstore/cosign](https://www.sigstore.dev/) — `.bundle` files attached to each GitHub Release |
-| OpenSSF Scorecard | [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/agent-bom/agent-bom/badge)](https://securityscorecards.dev/viewer/?uri=github.com/agent-bom/agent-bom) |
+| OpenSSF Scorecard | [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/msaad00/agent-bom/badge)](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom) |
 
 ---
 

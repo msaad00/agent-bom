@@ -6,12 +6,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/agent-bom/agent-bom/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/agent-bom/agent-bom/ci.yml?style=flat&logo=github&label=Build" alt="Build"></a>
+  <a href="https://github.com/msaad00/agent-bom/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/agent-bom/agent-bom/ci.yml?style=flat&logo=github&label=Build" alt="Build"></a>
   <a href="https://pypi.org/project/agent-bom/"><img src="https://img.shields.io/pypi/v/agent-bom?style=flat&label=Latest%20version" alt="PyPI"></a>
   <a href="https://hub.docker.com/r/agentbom/agent-bom"><img src="https://img.shields.io/docker/pulls/agentbom/agent-bom?style=flat&label=Docker%20pulls" alt="Docker"></a>
-  <a href="https://github.com/agent-bom/agent-bom/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue?style=flat" alt="License"></a>
-  <a href="https://securityscorecards.dev/viewer/?uri=github.com/agent-bom/agent-bom"><img src="https://api.securityscorecards.dev/projects/github.com/agent-bom/agent-bom/badge" alt="OpenSSF"></a>
-  <a href="https://github.com/agent-bom/agent-bom/stargazers"><img src="https://img.shields.io/github/stars/agent-bom/agent-bom?style=flat&logo=github&label=Stars" alt="Stars"></a>
+  <a href="https://github.com/msaad00/agent-bom/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue?style=flat" alt="License"></a>
+  <a href="https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom"><img src="https://api.securityscorecards.dev/projects/github.com/msaad00/agent-bom/badge" alt="OpenSSF"></a>
+  <a href="https://github.com/msaad00/agent-bom/stargazers"><img src="https://img.shields.io/github/stars/agent-bom/agent-bom?style=flat&logo=github&label=Stars" alt="Stars"></a>
 </p>
 <!-- mcp-name: io.github.agent-bom/agent-bom -->
 
@@ -852,7 +852,7 @@ These tools solve different problems and are **complementary**.
 ## Contributing
 
 ```bash
-git clone https://github.com/agent-bom/agent-bom.git && cd agent-bom
+git clone https://github.com/msaad00/agent-bom.git && cd agent-bom
 pip install -e ".[dev]"
 pytest && ruff check src/
 ```
@@ -869,4 +869,4 @@ Apache 2.0 — [LICENSE](LICENSE)
 [license-img]: https://img.shields.io/badge/License-Apache%202.0-blue?style=flat
 [docker-img]: https://img.shields.io/docker/pulls/agentbom/agent-bom?style=flat&label=Docker%20pulls
 [stars-img]: https://img.shields.io/github/stars/agent-bom/agent-bom?style=flat&logo=github&label=Stars
-[ossf-img]: https://api.securityscorecards.dev/projects/github.com/agent-bom/agent-bom/badge
+[ossf-img]: https://api.securityscorecards.dev/projects/github.com/msaad00/agent-bom/badge

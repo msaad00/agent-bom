@@ -5,7 +5,7 @@ ARG VERSION=dev
 LABEL maintainer="Wagdy Saad <crewnycgiving@gmail.com>"
 LABEL description="agent-bom: AI Bill of Materials generator and vulnerability scanner for AI agents and MCP servers"
 LABEL org.opencontainers.image.version="${VERSION}"
-LABEL org.opencontainers.image.source="https://github.com/agent-bom/agent-bom"
+LABEL org.opencontainers.image.source="https://github.com/msaad00/agent-bom"
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \

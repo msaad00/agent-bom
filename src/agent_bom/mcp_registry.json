@@ -4,7 +4,7 @@
   "_updated": "2026-02-21",
   "_total_servers": 112,
   "_differentiator": "Threat intelligence database \u2014 not just a catalog. Each entry has risk_level, tools, credential_env_vars for blast radius pre-computation.",
-  "_source": "https://github.com/agent-bom/agent-bom/blob/main/data/mcp-registry.yaml",
+  "_source": "https://github.com/msaad00/agent-bom/blob/main/data/mcp-registry.yaml",
   "servers": {
     "@modelcontextprotocol/server-filesystem": {
       "package": "@modelcontextprotocol/server-filesystem",

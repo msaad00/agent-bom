@@ -1,6 +1,6 @@
 # agent-bom MCP Registry v0
 # A catalog of known MCP servers with provenance and risk metadata.
-# Schema: https://github.com/agent-bom/agent-bom/blob/main/data/mcp-registry.yaml
+# Schema: https://github.com/msaad00/agent-bom/blob/main/data/mcp-registry.yaml
 #
 # Fields:
 #   id:           Unique identifier (publisher/server-name)

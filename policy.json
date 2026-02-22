@@ -1,0 +1,59 @@
+{
+  "version": "1",
+  "name": "my-security-policy",
+  "rules": [
+    {
+      "id": "no-kev",
+      "description": "CISA Known Exploited Vulnerabilities must be fixed immediately",
+      "is_kev": true,
+      "action": "fail"
+    },
+    {
+      "id": "no-critical",
+      "description": "No critical vulnerabilities allowed",
+      "severity_gte": "CRITICAL",
+      "action": "fail"
+    },
+    {
+      "id": "no-ai-creds-high",
+      "description": "AI framework packages with exposed credentials must not have high+ vulnerabilities",
+      "ai_risk": true,
+      "has_credentials": true,
+      "severity_gte": "HIGH",
+      "action": "fail"
+    },
+    {
+      "id": "warn-high-with-creds",
+      "description": "High vulnerabilities in servers with credentials trigger a warning",
+      "has_credentials": true,
+      "severity_gte": "HIGH",
+      "action": "warn"
+    },
+    {
+      "id": "warn-medium",
+      "description": "Medium vulnerabilities generate advisory warnings",
+      "severity_gte": "MEDIUM",
+      "action": "warn"
+    },
+    {
+      "id": "no-unverified-high",
+      "description": "Unverified MCP servers with high+ vulnerabilities are blocked",
+      "unverified_server": true,
+      "severity_gte": "HIGH",
+      "action": "fail"
+    },
+    {
+      "id": "warn-excessive-agency",
+      "description": "Servers with >5 tools and any CVE trigger excessive agency warning",
+      "min_tools": 6,
+      "action": "warn"
+    },
+    {
+      "id": "no-high-risk-server-cve",
+      "description": "High-risk registry servers must not have critical CVEs",
+      "registry_risk_gte": "high",
+      "severity_gte": "CRITICAL",
+      "action": "fail"
+    }
+  ]
+}

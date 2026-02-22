@@ -105,13 +105,13 @@ dev = [
 agent-bom = "agent_bom.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/agent-bom/agent-bom"
-Repository = "https://github.com/agent-bom/agent-bom"
-Issues = "https://github.com/agent-bom/agent-bom/issues"
-Changelog = "https://github.com/agent-bom/agent-bom/releases"
-Documentation = "https://github.com/agent-bom/agent-bom#readme"
-"Security Policy" = "https://github.com/agent-bom/agent-bom/blob/main/SECURITY.md"
-"Trust & Permissions" = "https://github.com/agent-bom/agent-bom/blob/main/PERMISSIONS.md"
+Homepage = "https://github.com/msaad00/agent-bom"
+Repository = "https://github.com/msaad00/agent-bom"
+Issues = "https://github.com/msaad00/agent-bom/issues"
+Changelog = "https://github.com/msaad00/agent-bom/releases"
+Documentation = "https://github.com/msaad00/agent-bom#readme"
+"Security Policy" = "https://github.com/msaad00/agent-bom/blob/main/SECURITY.md"
+"Trust & Permissions" = "https://github.com/msaad00/agent-bom/blob/main/PERMISSIONS.md"
 
 [tool.setuptools.packages.find]
 where = ["src"]

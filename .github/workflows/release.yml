@@ -89,7 +89,7 @@ jobs:
             agentbom/agent-bom:latest
           labels: |
             org.opencontainers.image.version=${{ steps.meta.outputs.version }}
-            org.opencontainers.image.source=https://github.com/agent-bom/agent-bom
+            org.opencontainers.image.source=https://github.com/msaad00/agent-bom
             org.opencontainers.image.title=agent-bom
             org.opencontainers.image.description=AI Bill of Materials generator for AI agents and MCP servers
 

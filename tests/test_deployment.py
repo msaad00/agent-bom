@@ -97,7 +97,7 @@ def test_toolhive_entry_valid():
     assert data["name"] == "io.github.agent-bom/agent-bom"
     pkg = data["packages"][0]
     assert pkg["registryType"] == "oci"
-    assert pkg["identifier"].startswith("ghcr.io/agent-bom/agent-bom:")
+    assert pkg["identifier"].startswith("ghcr.io/msaad00/agent-bom:")
 
 
 def test_smithery_yaml_exists():
@@ -156,7 +156,7 @@ def test_server_card_metadata():
     assert card["pypi"] == "agent-bom"
     assert "stdio" in card["transport"]
     assert "sse" in card["transport"]
-    assert "github.com/agent-bom/agent-bom" in card["repository"]
+    assert "github.com/msaad00/agent-bom" in card["repository"]
 
 
 # ---------------------------------------------------------------------------

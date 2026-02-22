@@ -113,8 +113,8 @@ ToolHive uses OCI containers from GHCR.
 ### Step 1: Ensure GHCR image is published
 
 The `publish-mcp.yml` CI workflow pushes to GHCR on each release:
-- `ghcr.io/agent-bom/agent-bom:latest` (stdio)
-- `ghcr.io/agent-bom/agent-bom-sse:latest` (SSE)
+- `ghcr.io/msaad00/agent-bom:latest` (stdio)
+- `ghcr.io/msaad00/agent-bom-sse:latest` (SSE)
 
 ### Step 2: Submit to ToolHive catalog
 
@@ -184,15 +184,15 @@ docker run --rm agentbom/agent-bom --version
 Automated via `.github/workflows/publish-mcp.yml` on each GitHub Release.
 
 Images published:
-- `ghcr.io/agent-bom/agent-bom:{tag}` — stdio MCP server
-- `ghcr.io/agent-bom/agent-bom-sse:{tag}` — SSE MCP server
+- `ghcr.io/msaad00/agent-bom:{tag}` — stdio MCP server
+- `ghcr.io/msaad00/agent-bom-sse:{tag}` — SSE MCP server
 - Both with `:latest` tags
 
 ### Verification
 
 ```bash
-docker pull ghcr.io/agent-bom/agent-bom:latest
-docker run --rm ghcr.io/agent-bom/agent-bom
+docker pull ghcr.io/msaad00/agent-bom:latest
+docker run --rm ghcr.io/msaad00/agent-bom
 ```
 
 ---

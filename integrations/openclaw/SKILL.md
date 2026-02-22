@@ -8,7 +8,7 @@ metadata:
       bins:
         - agent-bom
     emoji: "\U0001F6E1"
-    homepage: https://github.com/agent-bom/agent-bom
+    homepage: https://github.com/msaad00/agent-bom
     os:
       - darwin
       - linux

@@ -112,7 +112,11 @@ async def _run_scan_pipeline(
 # ---------------------------------------------------------------------------
 
 def create_mcp_server():
-    """Create and configure the agent-bom MCP server with all tools."""
+    """Create and configure the agent-bom MCP server with all tools.
+
+    When the smithery SDK is installed, the server is automatically enhanced
+    with session-config and CORS middleware for Smithery.ai hosted deployment.
+    """
     _check_mcp_sdk()
     from mcp.server.fastmcp import FastMCP
 
@@ -505,3 +509,28 @@ def create_mcp_server():
             return json.dumps({"error": str(exc)})
 
     return mcp
+
+
+# ---------------------------------------------------------------------------
+# Smithery-compatible entry point
+# ---------------------------------------------------------------------------
+
+def create_smithery_server():
+    """Smithery-compatible server factory.
+
+    When the ``smithery`` SDK is installed, the ``@smithery.server()``
+    decorator patches the FastMCP instance with CORS + session-config
+    middleware so Smithery can host it.  Falls back to the plain server
+    when the SDK is absent (local stdio usage).
+    """
+    try:
+        from smithery.decorators import smithery
+
+        @smithery.server()
+        def _factory():
+            return create_mcp_server()
+
+        return _factory()
+    except ImportError:
+        # smithery SDK not installed — return plain FastMCP server
+        return create_mcp_server()

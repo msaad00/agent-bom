@@ -1,3 +1,4 @@
+runtime: "python"
 startCommand:
   type: stdio
   configSchema:

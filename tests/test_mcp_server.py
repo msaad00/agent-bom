@@ -351,3 +351,21 @@ def test_remediate_returns_plan(mock_pipeline):
     assert "package_fixes" in result
     assert "credential_fixes" in result
     assert "unfixable" in result
+
+
+# ---------------------------------------------------------------------------
+# Smithery entry point
+# ---------------------------------------------------------------------------
+
+
+def test_create_smithery_server():
+    """create_smithery_server returns a working server (with or without smithery SDK)."""
+    from agent_bom.mcp_server import create_smithery_server
+    server = create_smithery_server()
+    # Whether SmitheryFastMCP wrapper or plain FastMCP, it must have tools
+    inner = server._fastmcp if hasattr(server, "_fastmcp") else server
+    tools = inner._tool_manager._tools
+    assert len(tools) >= 7
+    assert "scan" in tools
+    assert "compliance" in tools
+    assert "remediate" in tools

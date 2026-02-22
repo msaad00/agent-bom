@@ -76,6 +76,7 @@ ai-enrich = ["litellm>=1.30"]
 watch = ["watchdog>=4.0"]
 mcp-server = [
     "mcp>=1.0",
+    "smithery>=0.4",
 ]
 cloud = [
     "agent-bom[aws]",
@@ -116,6 +117,9 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 agent_bom = ["mcp_registry.json"]
+
+[tool.smithery]
+server = "agent_bom.mcp_server:create_smithery_server"
 
 [tool.ruff]
 line-length = 140  # Relaxed from 120 for CLI help strings

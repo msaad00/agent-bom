@@ -30,8 +30,7 @@ def test_railway_json_valid():
     assert "build" in data
     assert "deploy" in data
     assert "Dockerfile.sse" in data["build"]["dockerfilePath"]
-    assert "mcp-server" in data["deploy"]["startCommand"]
-    assert "sse" in data["deploy"]["startCommand"]
+    assert data["deploy"]["restartPolicyType"] == "ON_FAILURE"
 
 
 def test_render_yaml_valid():

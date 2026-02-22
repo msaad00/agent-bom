@@ -11,6 +11,7 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
+import yaml
 from rich.console import Console
 
 from agent_bom.models import Agent, AgentStatus, AgentType, MCPServer, TransportType
@@ -93,6 +94,12 @@ CONFIG_LOCATIONS: dict[AgentType, dict[str, list[str]]] = {
     },
     AgentType.TOOLHIVE: {
         # ToolHive MCP server manager — discovery via `thv list`, not config files
+        "Darwin": [],
+        "Linux": [],
+        "Windows": [],
+    },
+    AgentType.DOCKER_MCP: {
+        # Docker Desktop MCP Toolkit — discovery via registry.yaml + catalog
         "Darwin": [],
         "Linux": [],
         "Windows": [],
@@ -419,6 +426,139 @@ def discover_project_configs(project_dir: Optional[str] = None) -> list[Agent]:
     return agents
 
 
+def _parse_docker_mcp_catalog(
+    enabled_names: set[str],
+    catalog_path: Path,
+) -> list[MCPServer]:
+    """Parse Docker MCP catalog YAML and return MCPServer objects for enabled servers.
+
+    The catalog at ``~/.docker/mcp/catalogs/docker-mcp.yaml`` contains 300+
+    server definitions with image refs, tool lists, secrets, and metadata.
+    We only parse entries that the user has enabled in ``registry.yaml``.
+    """
+    from agent_bom.models import MCPTool, Package
+
+    try:
+        catalog_data = yaml.safe_load(catalog_path.read_text())
+    except Exception:
+        return []
+
+    registry = catalog_data.get("registry", {})
+    servers: list[MCPServer] = []
+
+    for name in enabled_names:
+        entry = registry.get(name)
+        if not entry or not isinstance(entry, dict):
+            continue
+
+        image_ref = entry.get("image", "")
+
+        # Build MCPTool objects from catalog tool list
+        tools: list[MCPTool] = []
+        for tool_entry in entry.get("tools", []):
+            if isinstance(tool_entry, dict) and tool_entry.get("name"):
+                tools.append(MCPTool(
+                    name=tool_entry["name"],
+                    description=tool_entry.get("description", ""),
+                ))
+
+        # Map secrets to credential env vars (values redacted)
+        cred_env: dict[str, str] = {}
+        for secret in entry.get("secrets", []):
+            if isinstance(secret, dict) and secret.get("env"):
+                cred_env[secret["env"]] = "***REDACTED***"
+
+        # Build Package from Docker image reference
+        pkg_version = "latest"
+        if "@sha256:" in image_ref:
+            pkg_version = image_ref.split("@sha256:")[1][:12]
+        elif ":" in image_ref:
+            pkg_version = image_ref.split(":")[-1]
+
+        pkg_name = image_ref.split("@")[0] if "@" in image_ref else image_ref
+        packages = [Package(
+            name=pkg_name,
+            version=pkg_version,
+            ecosystem="docker",
+            is_direct=True,
+        )]
+
+        server = MCPServer(
+            name=name,
+            command=f"docker run {image_ref}",
+            args=[],
+            env=cred_env,
+            transport=TransportType.STDIO,
+            tools=tools,
+            packages=packages,
+            config_path=str(catalog_path),
+        )
+        servers.append(server)
+
+    return servers
+
+
+def discover_docker_mcp() -> Optional[Agent]:
+    """Discover Docker Desktop MCP Toolkit servers.
+
+    Reads ``~/.docker/mcp/registry.yaml`` for enabled servers, then
+    cross-references with ``~/.docker/mcp/catalogs/docker-mcp.yaml``
+    for image refs, tools, secrets, and metadata.
+    """
+    mcp_dir = Path(os.path.expanduser("~/.docker/mcp"))
+    registry_path = mcp_dir / "registry.yaml"
+
+    if not registry_path.exists():
+        return None
+
+    try:
+        registry_data = yaml.safe_load(registry_path.read_text())
+    except Exception:
+        return None
+
+    if not registry_data or not isinstance(registry_data, dict):
+        return None
+
+    registry_section = registry_data.get("registry", {})
+    if not isinstance(registry_section, dict):
+        return None
+
+    enabled_names = set(registry_section.keys())
+    if not enabled_names:
+        return Agent(
+            name="docker-mcp",
+            agent_type=AgentType.DOCKER_MCP,
+            config_path=str(registry_path),
+            status=AgentStatus.INSTALLED_NOT_CONFIGURED,
+        )
+
+    # Cross-reference with catalog for full metadata
+    catalog_path = mcp_dir / "catalogs" / "docker-mcp.yaml"
+    servers: list[MCPServer] = []
+
+    if catalog_path.exists():
+        servers = _parse_docker_mcp_catalog(enabled_names, catalog_path)
+
+    # For enabled servers not found in catalog, create minimal entries
+    found_names = {s.name for s in servers}
+    for name in enabled_names - found_names:
+        servers.append(MCPServer(
+            name=name,
+            command="docker",
+            args=[],
+            transport=TransportType.STDIO,
+            config_path=str(registry_path),
+        ))
+
+    return Agent(
+        name="docker-mcp",
+        agent_type=AgentType.DOCKER_MCP,
+        config_path=str(registry_path),
+        mcp_servers=servers,
+        status=AgentStatus.CONFIGURED if servers else AgentStatus.INSTALLED_NOT_CONFIGURED,
+    )
+
+
 def discover_all(project_dir: Optional[str] = None) -> list[Agent]:
     """Run full discovery: global configs + project configs + CLI agents."""
     console.print("\n[bold blue]🔍 Discovering MCP configurations...[/bold blue]\n")
@@ -443,6 +583,22 @@ def discover_all(project_dir: Optional[str] = None) -> list[Agent]:
                 "  [dim]  toolhive: installed but not configured[/dim]"
             )
         agents.append(thv_agent)
+
+    # Docker Desktop MCP Toolkit discovery
+    docker_agent = discover_docker_mcp()
+    if docker_agent:
+        if docker_agent.mcp_servers:
+            total_tools = sum(len(s.tools) for s in docker_agent.mcp_servers)
+            console.print(
+                f"  [green]✓[/green] Found docker-mcp with "
+                f"{len(docker_agent.mcp_servers)} enabled server(s), "
+                f"{total_tools} tool(s) (via Docker Desktop MCP Toolkit)"
+            )
+        else:
+            console.print(
+                "  [dim]  docker-mcp: installed but not configured[/dim]"
+            )
+        agents.append(docker_agent)
 
     # Detect installed-but-not-configured agents
     discovered_types = {a.agent_type for a in agents}

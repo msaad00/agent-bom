@@ -307,7 +307,10 @@ def print_blast_radius(report: AIBOMReport) -> None:
 
     for br in report.blast_radii[:25]:  # Top 25
         sev_style = severity_colors.get(br.vulnerability.severity, "white")
-        fix = br.vulnerability.fixed_version or "—"
+        if br.vulnerability.fixed_version:
+            fix = f"[green]✓ {br.vulnerability.fixed_version}[/green]"
+        else:
+            fix = "[red dim]No fix[/red dim]"
 
         # EPSS score display
         epss_display = "—"
@@ -354,7 +357,7 @@ def print_blast_radius(report: AIBOMReport) -> None:
         table.add_row(
             f"[{sev_style}]{br.risk_score:.1f}[/{sev_style}]",
             vuln_display,
-            f"[{sev_style}]{br.vulnerability.severity.value}[/{sev_style}]",
+            f"[{sev_style} reverse] {br.vulnerability.severity.value.upper()} [/{sev_style} reverse]",
             epss_display,
             kev_display,
             blast_display,

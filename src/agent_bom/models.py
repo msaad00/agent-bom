@@ -28,6 +28,7 @@ class AgentType(str, Enum):
     ZED = "zed"                       # Zed editor
     OPENCLAW = "openclaw"             # OpenClaw AI agent
     TOOLHIVE = "toolhive"            # ToolHive MCP server manager
+    DOCKER_MCP = "docker-mcp"        # Docker Desktop MCP Toolkit
     CUSTOM = "custom"
 
 

@@ -1403,6 +1403,24 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool):
         console.print("  Provide a version: agent-bom check name@version --ecosystem ecosystem")
         sys.exit(0)
 
+    # Resolve "latest" / empty version from npm/PyPI registry
+    if version in ("latest", ""):
+        from agent_bom.http_client import create_client
+        from agent_bom.resolver import resolve_package_version
+
+        async def _resolve() -> bool:
+            async with create_client(timeout=15.0) as client:
+                return await resolve_package_version(pkg, client)
+
+        resolved = asyncio.run(_resolve())
+        if resolved:
+            console.print(f"  [green]✓ Resolved @latest → {pkg.version}[/green]")
+            version = pkg.version
+        else:
+            console.print(f"[yellow]⚠ Could not resolve latest version for {name} ({ecosystem})[/yellow]")
+            console.print("  Provide an explicit version: agent-bom check name@1.2.3 -e ecosystem")
+            sys.exit(0)
+
     console.print(f"\n[bold blue]🔍 Checking {name}@{version} ({ecosystem})[/bold blue]\n")
 
     results = asyncio.run(query_osv_batch([pkg]))
@@ -1431,11 +1449,16 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool):
         for v in vulns:
             sev = v.severity.value.lower()
             style = severity_styles.get(sev, "white")
+            fix_display = (
+                f"[green]✓ {v.fixed_version}[/green]"
+                if v.fixed_version
+                else "[red dim]No fix[/red dim]"
+            )
             table.add_row(
                 v.id,
-                f"[{style}]{v.severity.value}[/{style}]",
+                f"[{style} reverse] {v.severity.value.upper()} [/{style} reverse]",
                 f"{v.cvss_score:.1f}" if v.cvss_score else "—",
-                v.fixed_version or "—",
+                fix_display,
                 (v.summary or "")[:80],
             )
         console.print(table)

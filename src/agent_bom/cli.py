@@ -141,6 +141,8 @@ def main():
 @click.option("--skill", "skill_paths", multiple=True, type=click.Path(exists=True), metavar="PATH",
               help="Skill/instruction file to scan (CLAUDE.md, .cursorrules, skill.md). "
                    "Extracts MCP server refs, packages, and credential env vars. Repeatable.")
+@click.option("--no-skill", is_flag=True, help="Skip all skill/instruction file scanning (auto-discovery + explicit --skill paths)")
+@click.option("--skill-only", is_flag=True, help="Scan ONLY skill/instruction files; skip agent/package/CVE scanning")
 @click.option("--jupyter", "jupyter_dirs", multiple=True, type=click.Path(exists=True), metavar="DIR",
               help="Scan Jupyter notebooks (.ipynb) for AI library imports, model references, and credentials. Repeatable.")
 @click.option("--model-files", "model_dirs", multiple=True, type=click.Path(exists=True), metavar="DIR",
@@ -217,6 +219,8 @@ def scan(
     gha_path: Optional[str],
     agent_projects: tuple,
     skill_paths: tuple,
+    no_skill: bool,
+    skill_only: bool,
     jupyter_dirs: tuple,
     model_dirs: tuple,
     introspect: bool,
@@ -265,6 +269,11 @@ def scan(
       1  Fail — policy failure, or vulnerabilities found at or above
                 --fail-on-severity / --fail-on-kev / --fail-if-ai-risk
     """
+    # Mutual exclusivity: --no-skill and --skill-only cannot be used together
+    if no_skill and skill_only:
+        click.echo("Error: --no-skill and --skill-only are mutually exclusive.", err=True)
+        sys.exit(2)
+
     # Route console output based on flags
     is_stdout = output == "-"
     con = _make_console(quiet=quiet or is_stdout, output_format=output_format)
@@ -303,6 +312,14 @@ def scan(
             reads.append(f"  [green]Would read:[/green]   {mdir}  (ML model files .gguf, .safetensors, .onnx, .pt, etc.)")
         if gha_path:
             reads.append(f"  [green]Would read:[/green]   {gha_path}/.github/workflows/  (GitHub Actions)")
+        for sp in skill_paths:
+            reads.append(f"  [green]Would read:[/green]   {sp}  (skill/instruction file)")
+        if no_skill:
+            reads.append("  [dim]Skill scanning:[/dim]   disabled (--no-skill)")
+        elif not skill_paths:
+            reads.append("  [green]Would discover:[/green] skill files (CLAUDE.md, .cursorrules, etc.)")
+        if skill_only:
+            reads.append("  [bold cyan]Mode:[/bold cyan]           skill-only (skipping agent/package/CVE scanning)")
         for img in images:
             reads.append(f"  [green]Would scan:[/green]   docker image {img}  (via grype → syft → docker)")
         if aws:
@@ -348,7 +365,10 @@ def scan(
         return
 
     # Step 1: Discovery
-    if inventory:
+    if skill_only:
+        agents = []  # skill-only: no agent discovery
+
+    if not skill_only and inventory:
         con.print(f"\n[bold blue]Loading inventory from {inventory}...[/bold blue]\n")
         from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
         with open(inventory) as f:
@@ -414,14 +434,14 @@ def scan(
             agents.append(agent)
 
         con.print(f"  [green]✓[/green] Loaded {len(agents)} agent(s) from inventory")
-    elif config_dir:
+    elif not skill_only and config_dir:
         con.print(f"\n[bold blue]Scanning config directory: {config_dir}...[/bold blue]\n")
         agents = discover_all(project_dir=config_dir)
-    else:
+    elif not skill_only:
         agents = discover_all(project_dir=project)
 
     any_cloud = aws or azure_flag or gcp_flag or databricks_flag or snowflake_flag or nebius_flag or hf_flag or wandb_flag or mlflow_flag or openai_flag
-    if not agents and not images and not k8s and not tf_dirs and not gha_path and not agent_projects and not jupyter_dirs and not any_cloud:
+    if not skill_only and not agents and not images and not k8s and not tf_dirs and not gha_path and not agent_projects and not jupyter_dirs and not any_cloud:
         con.print("\n[yellow]No MCP configurations found.[/yellow]")
         con.print(
             "  Use --project, --config-dir, --inventory, --image, --k8s, "
@@ -433,7 +453,7 @@ def scan(
 
     # Step 1b: Load SBOM packages if provided
     sbom_packages: list = []
-    if sbom_file:
+    if not skill_only and sbom_file:
         from agent_bom.sbom import load_sbom
         try:
             sbom_packages, sbom_fmt = load_sbom(sbom_file)
@@ -446,7 +466,7 @@ def scan(
             sys.exit(1)
 
     # Step 1c: Discover K8s container images (--k8s)
-    if k8s:
+    if not skill_only and k8s:
         from agent_bom.k8s import K8sDiscoveryError, discover_images
         ns_label = "all namespaces" if all_namespaces else f"namespace '{namespace}'"
         con.print(f"\n[bold blue]Discovering container images from Kubernetes ({ns_label})...[/bold blue]\n")
@@ -467,7 +487,7 @@ def scan(
             sys.exit(1)
 
     # Step 1d: Scan Docker images (--image)
-    if images:
+    if not skill_only and images:
         from agent_bom.image import ImageScanError, scan_image
         from agent_bom.models import Agent, AgentType, MCPServer, TransportType
 
@@ -498,7 +518,7 @@ def scan(
                 con.print(f"  [yellow]⚠[/yellow] {image_ref}: {e}")
 
     # Step 1e: Terraform scan (--tf-dir)
-    if tf_dirs:
+    if not skill_only and tf_dirs:
         from agent_bom.terraform import scan_terraform_dir
         con.print(f"\n[bold blue]Scanning {len(tf_dirs)} Terraform director{'ies' if len(tf_dirs) > 1 else 'y'}...[/bold blue]\n")
         for tf_dir in tf_dirs:
@@ -518,7 +538,7 @@ def scan(
                 con.print(f"  [dim]  {tf_dir}: no AI resources or providers found[/dim]")
 
     # Step 1f: GitHub Actions scan (--gha)
-    if gha_path:
+    if not skill_only and gha_path:
         from agent_bom.github_actions import scan_github_actions
         con.print(f"\n[bold blue]Scanning GitHub Actions workflows in {gha_path}...[/bold blue]\n")
         gha_agents, gha_warnings = scan_github_actions(gha_path)
@@ -535,7 +555,7 @@ def scan(
             con.print("  [dim]  No AI-using workflows found[/dim]")
 
     # Step 1g: Python agent framework scan (--agent-project)
-    if agent_projects:
+    if not skill_only and agent_projects:
         from agent_bom.python_agents import scan_python_agents
         for ap in agent_projects:
             con.print(f"\n[bold blue]Scanning Python agent project: {ap}...[/bold blue]\n")
@@ -554,90 +574,92 @@ def scan(
                 con.print("  [dim]  No agent framework usage detected[/dim]")
 
     # Step 1g2: Skill file scanning (--skill + auto-discovery)
-    from agent_bom.parsers.skills import discover_skill_files, scan_skill_files
     _skill_audit_data: dict | None = None  # will be set if skill audit runs
     _skill_result_obj = None  # SkillScanResult for AI enrichment
     _skill_audit_obj = None   # SkillAuditResult for AI enrichment
-    skill_file_list: list[Path] = []
-    for sp in skill_paths:
-        p = Path(sp)
-        if p.is_dir():
-            skill_file_list.extend(discover_skill_files(p))
-        else:
-            skill_file_list.append(p)
-    # Auto-discover skill files in project directory
-    search_dir = Path(project) if project else Path.cwd()
-    auto_skills = discover_skill_files(search_dir)
-    for sf in auto_skills:
-        if sf not in skill_file_list:
-            skill_file_list.append(sf)
 
-    if skill_file_list:
-        skill_result = scan_skill_files(skill_file_list)
-        if skill_result.servers or skill_result.packages or skill_result.credential_env_vars:
-            con.print(f"\n[bold blue]Scanning {len(skill_file_list)} skill file(s)...[/bold blue]\n")
-            if skill_result.servers:
-                from agent_bom.models import Agent, AgentType
-                skill_agent = Agent(
-                    name="skill-files",
-                    agent_type=AgentType.CUSTOM,
-                    config_path=str(skill_file_list[0]),
-                    mcp_servers=skill_result.servers,
-                )
-                agents.append(skill_agent)
-                con.print(f"  [green]✓[/green] Found {len(skill_result.servers)} MCP server(s) in skill files")
-            if skill_result.packages:
-                from agent_bom.models import Agent, AgentType
-                from agent_bom.models import MCPServer as _SkillSrv
-                skill_server = _SkillSrv(name="skill-packages", command="(from skill files)", packages=skill_result.packages)
-                skill_pkg_agent = Agent(
-                    name="skill-packages",
-                    agent_type=AgentType.CUSTOM,
-                    config_path=", ".join(str(p) for p in skill_file_list[:3]),
-                    mcp_servers=[skill_server],
-                )
-                agents.append(skill_pkg_agent)
-                con.print(f"  [green]✓[/green] Found {len(skill_result.packages)} package(s) referenced in skill files")
-            if skill_result.credential_env_vars:
-                con.print(f"  [yellow]⚠[/yellow] {len(skill_result.credential_env_vars)} credential env var(s) referenced in skill files")
+    if not no_skill:
+        from agent_bom.parsers.skills import discover_skill_files, scan_skill_files
+        skill_file_list: list[Path] = []
+        for sp in skill_paths:
+            p = Path(sp)
+            if p.is_dir():
+                skill_file_list.extend(discover_skill_files(p))
+            else:
+                skill_file_list.append(p)
+        # Auto-discover skill files in project directory
+        search_dir = Path(project) if project else Path.cwd()
+        auto_skills = discover_skill_files(search_dir)
+        for sf in auto_skills:
+            if sf not in skill_file_list:
+                skill_file_list.append(sf)
 
-            # Step 1g3: Skill security audit
-            from agent_bom.parsers.skill_audit import audit_skill_result
-            skill_audit = audit_skill_result(skill_result)
-            _skill_result_obj = skill_result  # store for AI enrichment
-            _skill_audit_obj = skill_audit    # store for AI enrichment
-            _skill_audit_data = {
-                "findings": [
-                    {
-                        "severity": f.severity,
-                        "category": f.category,
-                        "title": f.title,
-                        "detail": f.detail,
-                        "source_file": f.source_file,
-                        "package": f.package,
-                        "server": f.server,
-                        "recommendation": f.recommendation,
-                        "context": f.context,
-                    }
-                    for f in skill_audit.findings
-                ],
-                "packages_checked": skill_audit.packages_checked,
-                "servers_checked": skill_audit.servers_checked,
-                "credentials_checked": skill_audit.credentials_checked,
-                "passed": skill_audit.passed,
-            }
-            if skill_audit.findings:
-                con.print(f"\n  [bold yellow]⚠ Skill Security Audit ({len(skill_audit.findings)} finding(s))[/bold yellow]")
-                sev_colors = {"critical": "red bold", "high": "red", "medium": "yellow", "low": "dim"}
-                for finding in skill_audit.findings:
-                    style = sev_colors.get(finding.severity, "white")
-                    con.print(f"    [{style}]\\[{finding.severity.upper()}][/{style}] {finding.title}")
-                    con.print(f"      [dim]{finding.detail}[/dim]")
-                    if finding.recommendation:
-                        con.print(f"      [green]→ {finding.recommendation}[/green]")
+        if skill_file_list:
+            skill_result = scan_skill_files(skill_file_list)
+            if skill_result.servers or skill_result.packages or skill_result.credential_env_vars:
+                con.print(f"\n[bold blue]Scanning {len(skill_file_list)} skill file(s)...[/bold blue]\n")
+                if skill_result.servers:
+                    from agent_bom.models import Agent, AgentType
+                    skill_agent = Agent(
+                        name="skill-files",
+                        agent_type=AgentType.CUSTOM,
+                        config_path=str(skill_file_list[0]),
+                        mcp_servers=skill_result.servers,
+                    )
+                    agents.append(skill_agent)
+                    con.print(f"  [green]✓[/green] Found {len(skill_result.servers)} MCP server(s) in skill files")
+                if skill_result.packages:
+                    from agent_bom.models import Agent, AgentType
+                    from agent_bom.models import MCPServer as _SkillSrv
+                    skill_server = _SkillSrv(name="skill-packages", command="(from skill files)", packages=skill_result.packages)
+                    skill_pkg_agent = Agent(
+                        name="skill-packages",
+                        agent_type=AgentType.CUSTOM,
+                        config_path=", ".join(str(p) for p in skill_file_list[:3]),
+                        mcp_servers=[skill_server],
+                    )
+                    agents.append(skill_pkg_agent)
+                    con.print(f"  [green]✓[/green] Found {len(skill_result.packages)} package(s) referenced in skill files")
+                if skill_result.credential_env_vars:
+                    con.print(f"  [yellow]⚠[/yellow] {len(skill_result.credential_env_vars)} credential env var(s) referenced in skill files")
+
+                # Step 1g3: Skill security audit
+                from agent_bom.parsers.skill_audit import audit_skill_result
+                skill_audit = audit_skill_result(skill_result)
+                _skill_result_obj = skill_result  # store for AI enrichment
+                _skill_audit_obj = skill_audit    # store for AI enrichment
+                _skill_audit_data = {
+                    "findings": [
+                        {
+                            "severity": f.severity,
+                            "category": f.category,
+                            "title": f.title,
+                            "detail": f.detail,
+                            "source_file": f.source_file,
+                            "package": f.package,
+                            "server": f.server,
+                            "recommendation": f.recommendation,
+                            "context": f.context,
+                        }
+                        for f in skill_audit.findings
+                    ],
+                    "packages_checked": skill_audit.packages_checked,
+                    "servers_checked": skill_audit.servers_checked,
+                    "credentials_checked": skill_audit.credentials_checked,
+                    "passed": skill_audit.passed,
+                }
+                if skill_audit.findings:
+                    con.print(f"\n  [bold yellow]⚠ Skill Security Audit ({len(skill_audit.findings)} finding(s))[/bold yellow]")
+                    sev_colors = {"critical": "red bold", "high": "red", "medium": "yellow", "low": "dim"}
+                    for finding in skill_audit.findings:
+                        style = sev_colors.get(finding.severity, "white")
+                        con.print(f"    [{style}]\\[{finding.severity.upper()}][/{style}] {finding.title}")
+                        con.print(f"      [dim]{finding.detail}[/dim]")
+                        if finding.recommendation:
+                            con.print(f"      [green]→ {finding.recommendation}[/green]")
 
     # Step 1g4: Jupyter notebook scan (--jupyter)
-    if jupyter_dirs:
+    if not skill_only and jupyter_dirs:
         from agent_bom.jupyter import scan_jupyter_notebooks
         for jdir in jupyter_dirs:
             con.print(f"\n[bold blue]Scanning Jupyter notebooks in {jdir}...[/bold blue]\n")
@@ -656,7 +678,7 @@ def scan(
 
     # Step 1h: Cloud provider discovery
     cloud_providers: list[tuple[str, dict]] = []
-    if aws:
+    if not skill_only and aws:
         aws_kwargs: dict = {"region": aws_region, "profile": aws_profile}
         if aws_include_lambda:
             aws_kwargs["include_lambda"] = True
@@ -670,23 +692,23 @@ def scan(
                 k, v = aws_ec2_tag.split("=", 1)
                 aws_kwargs["ec2_tag_filter"] = {k: v}
         cloud_providers.append(("aws", aws_kwargs))
-    if azure_flag:
+    if not skill_only and azure_flag:
         cloud_providers.append(("azure", {"subscription_id": azure_subscription}))
-    if gcp_flag:
+    if not skill_only and gcp_flag:
         cloud_providers.append(("gcp", {"project_id": gcp_project}))
-    if databricks_flag:
+    if not skill_only and databricks_flag:
         cloud_providers.append(("databricks", {}))
-    if snowflake_flag:
+    if not skill_only and snowflake_flag:
         cloud_providers.append(("snowflake", {}))
-    if nebius_flag:
+    if not skill_only and nebius_flag:
         cloud_providers.append(("nebius", {"api_key": nebius_api_key, "project_id": nebius_project_id}))
-    if hf_flag:
+    if not skill_only and hf_flag:
         cloud_providers.append(("huggingface", {"token": hf_token, "username": hf_username, "organization": hf_organization}))
-    if wandb_flag:
+    if not skill_only and wandb_flag:
         cloud_providers.append(("wandb", {"api_key": wandb_api_key, "entity": wandb_entity, "project": wandb_project}))
-    if mlflow_flag:
+    if not skill_only and mlflow_flag:
         cloud_providers.append(("mlflow", {"tracking_uri": mlflow_tracking_uri}))
-    if openai_flag:
+    if not skill_only and openai_flag:
         cloud_providers.append(("openai", {"api_key": openai_api_key, "organization": openai_org_id}))
 
     for provider_name, provider_kwargs in cloud_providers:
@@ -709,146 +731,148 @@ def scan(
             con.print(f"\n  [red]{provider_name.upper()} discovery error: {exc}[/red]")
 
     # Step 2: Extract packages
-    con.print("\n[bold blue]Extracting package dependencies...[/bold blue]\n")
-    if transitive:
-        con.print(f"  [cyan]Transitive resolution enabled (max depth: {max_depth})[/cyan]\n")
-
     total_packages = 0
-    for agent in agents:
-        for server in agent.mcp_servers:
-            # Keep pre-populated packages from inventory, merge with discovered ones
-            pre_populated = list(server.packages)
-            discovered = extract_packages(server, resolve_transitive=transitive, max_depth=max_depth)
+    if skill_only:
+        blast_radii = []
+    else:
+        con.print("\n[bold blue]Extracting package dependencies...[/bold blue]\n")
+        if transitive:
+            con.print(f"  [cyan]Transitive resolution enabled (max depth: {max_depth})[/cyan]\n")
+        for agent in agents:
+            for server in agent.mcp_servers:
+                # Keep pre-populated packages from inventory, merge with discovered ones
+                pre_populated = list(server.packages)
+                discovered = extract_packages(server, resolve_transitive=transitive, max_depth=max_depth)
 
-            # Merge: discovered + pre-populated + SBOM packages (deduplicated)
-            discovered_names = {(p.name, p.ecosystem) for p in discovered}
-            merged = discovered + [p for p in pre_populated if (p.name, p.ecosystem) not in discovered_names]
-            if sbom_packages:
-                existing_names = {(p.name, p.ecosystem) for p in merged}
-                merged += [p for p in sbom_packages if (p.name, p.ecosystem) not in existing_names]
-                sbom_packages = []  # Attach to first server only, avoid duplication
-            server.packages = merged
+                # Merge: discovered + pre-populated + SBOM packages (deduplicated)
+                discovered_names = {(p.name, p.ecosystem) for p in discovered}
+                merged = discovered + [p for p in pre_populated if (p.name, p.ecosystem) not in discovered_names]
+                if sbom_packages:
+                    existing_names = {(p.name, p.ecosystem) for p in merged}
+                    merged += [p for p in sbom_packages if (p.name, p.ecosystem) not in existing_names]
+                    sbom_packages = []  # Attach to first server only, avoid duplication
+                server.packages = merged
 
-            total_packages += len(server.packages)
-            if server.packages:
-                direct_count = sum(1 for p in server.packages if p.is_direct)
-                transitive_count = len(server.packages) - direct_count
-                transitive_str = f" ({transitive_count} transitive)" if transitive_count > 0 else ""
-                pre_str = f" ({len(pre_populated)} from inventory)" if pre_populated else ""
-                con.print(
-                    f"  [green]✓[/green] {server.name}: {len(server.packages)} package(s) "
-                    f"({server.packages[0].ecosystem}){transitive_str}{pre_str}"
-                )
-            else:
-                con.print(f"  [dim]  {server.name}: no local packages found[/dim]")
-
-    con.print(f"\n  [bold]{total_packages} total packages.[/bold]")
-
-    # Step 2b: MCP Runtime Introspection (--introspect)
-    if introspect:
-        from agent_bom.mcp_introspect import IntrospectionError, enrich_servers, introspect_servers_sync
-        all_servers = [s for a in agents for s in a.mcp_servers]
-        con.print(f"\n[bold blue]Introspecting {len(all_servers)} MCP server(s)...[/bold blue]\n")
-        try:
-            intro_report = introspect_servers_sync(all_servers, timeout=introspect_timeout)
-            for w in intro_report.warnings:
-                con.print(f"  [yellow]⚠[/yellow] {w}")
-            for r in intro_report.results:
-                if r.success:
-                    drift_str = ""
-                    if r.has_drift:
-                        parts = []
-                        if r.tools_added:
-                            parts.append(f"+{len(r.tools_added)} tools")
-                        if r.tools_removed:
-                            parts.append(f"-{len(r.tools_removed)} tools")
-                        if r.resources_added:
-                            parts.append(f"+{len(r.resources_added)} resources")
-                        if r.resources_removed:
-                            parts.append(f"-{len(r.resources_removed)} resources")
-                        drift_str = f" [yellow]drift: {', '.join(parts)}[/yellow]"
+                total_packages += len(server.packages)
+                if server.packages:
+                    direct_count = sum(1 for p in server.packages if p.is_direct)
+                    transitive_count = len(server.packages) - direct_count
+                    transitive_str = f" ({transitive_count} transitive)" if transitive_count > 0 else ""
+                    pre_str = f" ({len(pre_populated)} from inventory)" if pre_populated else ""
                     con.print(
-                        f"  [green]✓[/green] {r.server_name}: "
-                        f"{r.tool_count} tools, {r.resource_count} resources"
-                        f"{drift_str}"
+                        f"  [green]✓[/green] {server.name}: {len(server.packages)} package(s) "
+                        f"({server.packages[0].ecosystem}){transitive_str}{pre_str}"
                     )
                 else:
-                    con.print(f"  [dim]  {r.server_name}: {r.error}[/dim]")
-            enriched = enrich_servers(all_servers, intro_report)
-            if enriched:
-                con.print(f"\n  [bold]{enriched} server(s) enriched with runtime data.[/bold]")
-        except IntrospectionError as exc:
-            con.print(f"  [yellow]⚠[/yellow] {exc}")
+                    con.print(f"  [dim]  {server.name}: no local packages found[/dim]")
 
-    # Step 3: Resolve unknown versions
-    all_packages = [p for a in agents for s in a.mcp_servers for p in s.packages]
-    unresolved = [p for p in all_packages if p.version in ("latest", "unknown", "")]
-    if unresolved:
-        con.print(f"\n[bold blue]Resolving {len(unresolved)} package version(s)...[/bold blue]\n")
-        resolved = resolve_all_versions_sync(all_packages)
-        con.print(f"\n  [bold]Resolved {resolved}/{len(unresolved)} version(s).[/bold]")
+        con.print(f"\n  [bold]{total_packages} total packages.[/bold]")
 
-    # Step 3b: Auto-discover metadata for unknown packages
-    unknown_pkgs = [
-        p for p in all_packages
-        if not p.resolved_from_registry
-        and not getattr(p, "auto_risk_level", None)
-        and p.version not in ("unknown", "latest", "")
-        and p.ecosystem in ("npm", "pypi", "PyPI")
-    ]
-    if unknown_pkgs and not no_scan:
-        import asyncio as _asyncio_ad
+        # Step 2b: MCP Runtime Introspection (--introspect)
+        if introspect:
+            from agent_bom.mcp_introspect import IntrospectionError, enrich_servers, introspect_servers_sync
+            all_servers = [s for a in agents for s in a.mcp_servers]
+            con.print(f"\n[bold blue]Introspecting {len(all_servers)} MCP server(s)...[/bold blue]\n")
+            try:
+                intro_report = introspect_servers_sync(all_servers, timeout=introspect_timeout)
+                for w in intro_report.warnings:
+                    con.print(f"  [yellow]⚠[/yellow] {w}")
+                for r in intro_report.results:
+                    if r.success:
+                        drift_str = ""
+                        if r.has_drift:
+                            parts = []
+                            if r.tools_added:
+                                parts.append(f"+{len(r.tools_added)} tools")
+                            if r.tools_removed:
+                                parts.append(f"-{len(r.tools_removed)} tools")
+                            if r.resources_added:
+                                parts.append(f"+{len(r.resources_added)} resources")
+                            if r.resources_removed:
+                                parts.append(f"-{len(r.resources_removed)} resources")
+                            drift_str = f" [yellow]drift: {', '.join(parts)}[/yellow]"
+                        con.print(
+                            f"  [green]✓[/green] {r.server_name}: "
+                            f"{r.tool_count} tools, {r.resource_count} resources"
+                            f"{drift_str}"
+                        )
+                    else:
+                        con.print(f"  [dim]  {r.server_name}: {r.error}[/dim]")
+                enriched = enrich_servers(all_servers, intro_report)
+                if enriched:
+                    con.print(f"\n  [bold]{enriched} server(s) enriched with runtime data.[/bold]")
+            except IntrospectionError as exc:
+                con.print(f"  [yellow]⚠[/yellow] {exc}")
 
-        from agent_bom.autodiscover import enrich_unknown_packages
-        con.print(f"\n[bold blue]Auto-discovering metadata for {len(unknown_pkgs)} package(s)...[/bold blue]\n")
-        enriched_count = _asyncio_ad.run(enrich_unknown_packages(unknown_pkgs))
-        con.print(f"  [green]✓[/green] Auto-discovered metadata for {enriched_count} package(s)")
+        # Step 3: Resolve unknown versions
+        all_packages = [p for a in agents for s in a.mcp_servers for p in s.packages]
+        unresolved = [p for p in all_packages if p.version in ("latest", "unknown", "")]
+        if unresolved:
+            con.print(f"\n[bold blue]Resolving {len(unresolved)} package version(s)...[/bold blue]\n")
+            resolved = resolve_all_versions_sync(all_packages)
+            con.print(f"\n  [bold]Resolved {resolved}/{len(unresolved)} version(s).[/bold]")
 
-    # Step 3c: Version drift detection
-    registry_pkgs = [p for p in all_packages if p.resolved_from_registry]
-    if registry_pkgs and not quiet:
-        from agent_bom.registry import detect_version_drift
+        # Step 3b: Auto-discover metadata for unknown packages
+        unknown_pkgs = [
+            p for p in all_packages
+            if not p.resolved_from_registry
+            and not getattr(p, "auto_risk_level", None)
+            and p.version not in ("unknown", "latest", "")
+            and p.ecosystem in ("npm", "pypi", "PyPI")
+        ]
+        if unknown_pkgs and not no_scan:
+            import asyncio as _asyncio_ad
 
-        drift = detect_version_drift(registry_pkgs)
-        outdated = [d for d in drift if d.status == "outdated"]
-        if outdated:
-            con.print(f"\n[bold yellow]  {len(outdated)} outdated package(s):[/bold yellow]")
-            for d in outdated:
-                con.print(f"    {d.package}: {d.installed} → {d.latest}")
+            from agent_bom.autodiscover import enrich_unknown_packages
+            con.print(f"\n[bold blue]Auto-discovering metadata for {len(unknown_pkgs)} package(s)...[/bold blue]\n")
+            enriched_count = _asyncio_ad.run(enrich_unknown_packages(unknown_pkgs))
+            con.print(f"  [green]✓[/green] Auto-discovered metadata for {enriched_count} package(s)")
 
-    # Step 4: Vulnerability scan
-    blast_radii = []
-    if not no_scan and total_packages > 0:
-        blast_radii = scan_agents_sync(agents, enable_enrichment=enrich, nvd_api_key=nvd_api_key)
+        # Step 3c: Version drift detection
+        registry_pkgs = [p for p in all_packages if p.resolved_from_registry]
+        if registry_pkgs and not quiet:
+            from agent_bom.registry import detect_version_drift
 
-    # Step 4b: Integrity + provenance verification (optional)
-    if verify_integrity:
-        import asyncio as _asyncio
+            drift = detect_version_drift(registry_pkgs)
+            outdated = [d for d in drift if d.status == "outdated"]
+            if outdated:
+                con.print(f"\n[bold yellow]  {len(outdated)} outdated package(s):[/bold yellow]")
+                for d in outdated:
+                    con.print(f"    {d.package}: {d.installed} → {d.latest}")
 
-        from agent_bom.http_client import create_client as _create_client
-        from agent_bom.integrity import check_package_provenance, verify_package_integrity
+        # Step 4: Vulnerability scan
+        blast_radii = []
+        if not no_scan and total_packages > 0:
+            blast_radii = scan_agents_sync(agents, enable_enrichment=enrich, nvd_api_key=nvd_api_key)
 
-        all_pkgs = [pkg for agent in agents for srv in agent.mcp_servers for pkg in srv.packages]
-        unique_pkgs = {f"{p.ecosystem}:{p.name}@{p.version}": p for p in all_pkgs if p.version not in ("latest", "unknown", "")}
+        # Step 4b: Integrity + provenance verification (optional)
+        if verify_integrity:
+            import asyncio as _asyncio
 
-        async def _verify_all():
-            async with _create_client(timeout=15.0) as client:
-                for key, pkg in unique_pkgs.items():
-                    integrity = await verify_package_integrity(pkg, client)
-                    if integrity and integrity.get("verified"):
-                        con.print(f"  [green]✓[/green] {pkg.name}@{pkg.version} — integrity verified (SHA256/SRI)")
-                    elif integrity:
-                        con.print(f"  [yellow]⚠[/yellow] {pkg.name}@{pkg.version} — no integrity hash found")
+            from agent_bom.http_client import create_client as _create_client
+            from agent_bom.integrity import check_package_provenance, verify_package_integrity
 
-                    provenance = await check_package_provenance(pkg, client)
-                    if provenance and provenance.get("has_provenance"):
-                        con.print(f"  [green]✓[/green] {pkg.name}@{pkg.version} — SLSA provenance attested")
-                    elif provenance:
-                        con.print(f"  [dim]  {pkg.name}@{pkg.version} — no SLSA provenance[/dim]")
+            all_pkgs = [pkg for agent in agents for srv in agent.mcp_servers for pkg in srv.packages]
+            unique_pkgs = {f"{p.ecosystem}:{p.name}@{p.version}": p for p in all_pkgs if p.version not in ("latest", "unknown", "")}
 
-        if unique_pkgs:
-            con.print(f"\n[bold blue]🔐 Verifying integrity for {len(unique_pkgs)} package(s)...[/bold blue]\n")
-            _asyncio.run(_verify_all())
+            async def _verify_all():
+                async with _create_client(timeout=15.0) as client:
+                    for key, pkg in unique_pkgs.items():
+                        integrity = await verify_package_integrity(pkg, client)
+                        if integrity and integrity.get("verified"):
+                            con.print(f"  [green]✓[/green] {pkg.name}@{pkg.version} — integrity verified (SHA256/SRI)")
+                        elif integrity:
+                            con.print(f"  [yellow]⚠[/yellow] {pkg.name}@{pkg.version} — no integrity hash found")
+
+                        provenance = await check_package_provenance(pkg, client)
+                        if provenance and provenance.get("has_provenance"):
+                            con.print(f"  [green]✓[/green] {pkg.name}@{pkg.version} — SLSA provenance attested")
+                        elif provenance:
+                            con.print(f"  [dim]  {pkg.name}@{pkg.version} — no SLSA provenance[/dim]")
+
+            if unique_pkgs:
+                con.print(f"\n[bold blue]🔐 Verifying integrity for {len(unique_pkgs)} package(s)...[/bold blue]\n")
+                _asyncio.run(_verify_all())
 
     # Build report
     report = AIBOMReport(agents=agents, blast_radii=blast_radii)
@@ -856,7 +880,7 @@ def scan(
         report.skill_audit_data = _skill_audit_data
 
     # ── Step 1i: Model binary file scan ─────────────────────────────
-    if model_dirs:
+    if not skill_only and model_dirs:
         from agent_bom.model_files import scan_model_files
         for mdir in model_dirs:
             con.print(f"  [cyan]>[/cyan] Scanning for model files in {mdir}...")

@@ -197,7 +197,8 @@ def _vuln_table(blast_radii: list["BlastRadius"]) -> str:
             or "<span style='color:#334155'>&mdash;</span>"
         )
         rows.append(
-            f'<tr>'
+            f'<tr data-severity="{sev}" data-kev="{"1" if v.is_kev else "0"}" '
+            f'data-cvss="{v.cvss_score if v.cvss_score else 0}">'
             f'<td><code class="vuln-id">{_esc(v.id)}</code></td>'
             f'<td>{_sev_badge(sev)}</td>'
             f'<td><strong style="color:#e2e8f0">{_esc(br.package.name)}</strong>'
@@ -214,9 +215,33 @@ def _vuln_table(blast_radii: list["BlastRadius"]) -> str:
 
     headers = ["Vuln ID", "Severity", "Package", "CVSS", "EPSS", "KEV", "Fix",
                "Affected Agents", "Exposed Creds", "Summary"]
+
+    filter_bar = (
+        '<div class="vuln-filter-bar" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;'
+        'margin-bottom:14px;padding:12px 16px;background:#0f172a;border-radius:8px;border:1px solid #1e293b">'
+        '<span style="font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.06em;font-weight:700">Filter:</span>'
+        '<label style="display:flex;align-items:center;gap:4px;font-size:.78rem;color:#fca5a5;cursor:pointer">'
+        '<input type="checkbox" class="vuln-sev-filter" value="critical" checked> Critical</label>'
+        '<label style="display:flex;align-items:center;gap:4px;font-size:.78rem;color:#fb923c;cursor:pointer">'
+        '<input type="checkbox" class="vuln-sev-filter" value="high" checked> High</label>'
+        '<label style="display:flex;align-items:center;gap:4px;font-size:.78rem;color:#fbbf24;cursor:pointer">'
+        '<input type="checkbox" class="vuln-sev-filter" value="medium" checked> Medium</label>'
+        '<label style="display:flex;align-items:center;gap:4px;font-size:.78rem;color:#94a3b8;cursor:pointer">'
+        '<input type="checkbox" class="vuln-sev-filter" value="low" checked> Low</label>'
+        '<span style="width:1px;height:18px;background:#334155"></span>'
+        '<label style="display:flex;align-items:center;gap:4px;font-size:.78rem;color:#fca5a5;cursor:pointer">'
+        '<input type="checkbox" id="kevToggle"> KEV only</label>'
+        '<span style="width:1px;height:18px;background:#334155"></span>'
+        '<input type="text" id="vulnSearch" placeholder="Search vulns&hellip;" '
+        'style="padding:6px 10px;background:#1e293b;border:1px solid #334155;border-radius:6px;'
+        'color:#e2e8f0;font-size:.78rem;width:160px;outline:none">'
+        '</div>'
+    )
+
     return (
         hint
-        + '<div class="table-wrap"><table class="data-table sortable">'
+        + filter_bar
+        + '<div class="table-wrap"><table class="data-table sortable" id="vulnTable">'
         + '<thead><tr>'
         + "".join(f'<th data-col="{i}">{h} <span class="sort-arrow"></span></th>' for i, h in enumerate(headers))
         + '</tr></thead>'
@@ -751,7 +776,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     /* PRINT */
     @media print{{
       body{{background:#fff;color:#1e293b;font-size:12px}}
-      nav,.graph-controls,.toggle-btn,.inv-search,.print-btn{{display:none}}
+      nav,.graph-controls,.graph-filter-bar,.vuln-filter-bar,.toggle-btn,.inv-search,.print-btn{{display:none}}
       .container{{max-width:100%;padding:10px}}
       section{{page-break-inside:avoid;margin-bottom:20px}}
       .panel,.stat-card,.agent-card,.server-card,.chart-panel{{background:#f8fafc;border:1px solid #e2e8f0;box-shadow:none}}
@@ -822,6 +847,14 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     </div>
     <div class="graph-container">
       <div id="cy"></div>
+      <div class="graph-filter-bar" style="position:absolute;top:12px;left:12px;display:flex;gap:8px;align-items:center;z-index:10;background:rgba(15,23,42,.92);padding:8px 12px;border-radius:8px;border:1px solid #334155;backdrop-filter:blur(8px)">
+        <label style="display:flex;align-items:center;gap:3px;font-size:.72rem;color:#fca5a5;cursor:pointer"><input type="checkbox" class="graph-sev-filter" value="critical" checked> Crit</label>
+        <label style="display:flex;align-items:center;gap:3px;font-size:.72rem;color:#fb923c;cursor:pointer"><input type="checkbox" class="graph-sev-filter" value="high" checked> High</label>
+        <label style="display:flex;align-items:center;gap:3px;font-size:.72rem;color:#fbbf24;cursor:pointer"><input type="checkbox" class="graph-sev-filter" value="medium" checked> Med</label>
+        <label style="display:flex;align-items:center;gap:3px;font-size:.72rem;color:#94a3b8;cursor:pointer"><input type="checkbox" class="graph-sev-filter" value="low" checked> Low</label>
+        <span style="width:1px;height:16px;background:#334155"></span>
+        <input type="text" id="graphSearch" placeholder="Search nodes&hellip;" style="padding:4px 8px;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:.72rem;width:120px;outline:none">
+      </div>
       <div class="graph-controls">
         <button class="graph-btn" id="zoomIn" title="Zoom in">+</button>
         <button class="graph-btn" id="zoomOut" title="Zoom out">&minus;</button>
@@ -1196,6 +1229,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
       minZoom: 0.15,
       maxZoom: 4,
       wheelSensitivity: 0.3,
+      autoungrabify: false,
     }});
     cy.ready(function() {{ cy.fit(cy.elements(), 40); }});
 
@@ -1251,9 +1285,81 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
         setTimeout(function() {{ cy.resize(); cy.fit(cy.elements(), 40); }}, 100);
       }}
     }});
+    // Graph severity filter
+    document.querySelectorAll('.graph-sev-filter').forEach(function(cb) {{
+      cb.addEventListener('change', function() {{
+        var checked = Array.from(document.querySelectorAll('.graph-sev-filter:checked')).map(function(c) {{ return c.value; }});
+        cy.nodes().forEach(function(n) {{
+          var t = n.data('type') || '';
+          if (t.startsWith('cve_')) {{
+            var sev = t.replace('cve_', '');
+            if (checked.indexOf(sev) === -1) {{
+              n.style('display', 'none');
+              n.connectedEdges().style('display', 'none');
+            }} else {{
+              n.style('display', 'element');
+              n.connectedEdges().style('display', 'element');
+            }}
+          }}
+        }});
+      }});
+    }});
+
+    // Graph search
+    var graphSearchInput = document.getElementById('graphSearch');
+    if (graphSearchInput) {{
+      graphSearchInput.addEventListener('input', function() {{
+        var q = this.value.toLowerCase();
+        if (!q) {{
+          cy.elements().removeClass('faded highlighted');
+          return;
+        }}
+        cy.elements().removeClass('faded highlighted');
+        var matched = cy.nodes().filter(function(n) {{
+          return (n.data('label') || '').toLowerCase().indexOf(q) >= 0;
+        }});
+        if (matched.length > 0) {{
+          var hood = matched.closedNeighborhood();
+          cy.elements().not(hood).addClass('faded');
+          matched.addClass('highlighted');
+        }} else {{
+          cy.elements().addClass('faded');
+        }}
+      }});
+    }}
   }} else if (cyContainer) {{
     cyContainer.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#4ade80;font-size:.9rem">&#x2705; No supply chain nodes to display</div>';
   }}
+
+  // Vulnerability table filtering
+  function filterVulnTable() {{
+    var table = document.getElementById('vulnTable');
+    if (!table) return;
+    var rows = table.querySelectorAll('tbody tr');
+    var checkedSevs = Array.from(document.querySelectorAll('.vuln-sev-filter:checked')).map(function(c) {{ return c.value; }});
+    var kevOnly = document.getElementById('kevToggle') && document.getElementById('kevToggle').checked;
+    var q = (document.getElementById('vulnSearch') || {{}}).value || '';
+    q = q.toLowerCase();
+    var visible = 0;
+    rows.forEach(function(row) {{
+      var sev = row.getAttribute('data-severity') || '';
+      var kev = row.getAttribute('data-kev') === '1';
+      var text = row.textContent.toLowerCase();
+      var show = true;
+      if (checkedSevs.indexOf(sev) === -1) show = false;
+      if (kevOnly && !kev) show = false;
+      if (q && text.indexOf(q) === -1) show = false;
+      row.style.display = show ? '' : 'none';
+      if (show) visible++;
+    }});
+  }}
+  document.querySelectorAll('.vuln-sev-filter').forEach(function(cb) {{
+    cb.addEventListener('change', filterVulnTable);
+  }});
+  var kevToggle = document.getElementById('kevToggle');
+  if (kevToggle) kevToggle.addEventListener('change', filterVulnTable);
+  var vulnSearchInput = document.getElementById('vulnSearch');
+  if (vulnSearchInput) vulnSearchInput.addEventListener('input', filterVulnTable);
 
   // Cytoscape: CVE Attack Flow graph
   var cyAtkContainer = document.getElementById('cyAttack');

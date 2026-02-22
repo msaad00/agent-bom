@@ -2834,3 +2834,65 @@ def test_mcp_registry_has_awm_entries():
     # agent-world-model: Snowflake's RL environment generator
     assert "agent-world-model" in registry
     assert registry["agent-world-model"]["risk_level"] == "high"
+
+
+# ─── --no-skill / --skill-only CLI flag tests ────────────────────────────────
+
+
+def test_no_skill_flag_dry_run():
+    """--no-skill flag is accepted and shows 'disabled' in dry-run output."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", "--dry-run", "--no-skill"])
+    assert result.exit_code == 0
+    assert "disabled" in result.output
+
+
+def test_skill_only_flag_dry_run():
+    """--skill-only flag is accepted and shows 'skill-only' in dry-run output."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", "--dry-run", "--skill-only"])
+    assert result.exit_code == 0
+    assert "skill-only" in result.output
+
+
+def test_no_skill_and_skill_only_mutually_exclusive():
+    """--no-skill and --skill-only cannot be used together."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", "--no-skill", "--skill-only"])
+    assert result.exit_code == 2
+    assert "mutually exclusive" in result.output
+
+
+# ─── HTML visualization filter tests ─────────────────────────────────────────
+
+
+def test_html_vuln_filter_controls():
+    """HTML report includes vulnerability filter controls."""
+    from agent_bom.output.html import to_html
+
+    report, blast_radii = _make_report_with_vuln()
+    html = to_html(report, blast_radii)
+    assert 'class="vuln-sev-filter"' in html
+    assert 'id="vulnSearch"' in html
+    assert 'id="kevToggle"' in html
+
+
+def test_html_graph_filter_controls():
+    """HTML report includes graph severity filter and search."""
+    from agent_bom.output.html import to_html
+
+    report, blast_radii = _make_report_with_vuln()
+    html = to_html(report, blast_radii)
+    assert 'class="graph-sev-filter"' in html
+    assert 'id="graphSearch"' in html
+
+
+def test_html_vuln_rows_have_data_attributes():
+    """Vulnerability table rows include data-severity, data-kev, data-cvss."""
+    from agent_bom.output.html import to_html
+
+    report, blast_radii = _make_report_with_vuln()
+    html = to_html(report, blast_radii)
+    assert 'data-severity="high"' in html
+    assert 'data-kev=' in html
+    assert 'data-cvss=' in html

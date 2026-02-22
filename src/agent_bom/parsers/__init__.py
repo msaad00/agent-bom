@@ -385,13 +385,19 @@ def detect_uvx_package(server: MCPServer) -> list[Package]:
     return packages
 
 
-def extract_packages(server: MCPServer, resolve_transitive: bool = False, max_depth: int = 3) -> list[Package]:
+def extract_packages(
+    server: MCPServer,
+    resolve_transitive: bool = False,
+    max_depth: int = 3,
+    smithery_token: str | None = None,
+) -> list[Package]:
     """Extract all packages for an MCP server.
 
     Args:
         server: The MCP server to extract packages from
         resolve_transitive: If True, resolve transitive dependencies for npx/uvx packages
         max_depth: Maximum depth for transitive dependency resolution
+        smithery_token: Optional Smithery API key for live registry fallback
     """
     packages = []
 
@@ -431,6 +437,21 @@ def extract_packages(server: MCPServer, resolve_transitive: bool = False, max_de
                 f"({registry_packages[0].name})[/dim cyan]"
             )
         packages.extend(registry_packages)
+
+    # Smithery fallback: if local registry also missed, try Smithery API
+    if not packages and smithery_token:
+        try:
+            from agent_bom.smithery import smithery_lookup_sync
+
+            smithery_packages = smithery_lookup_sync(server, token=smithery_token)
+            if smithery_packages:
+                console.print(
+                    f"  [dim magenta]→ {server.name}: resolved from Smithery "
+                    f"({smithery_packages[0].name})[/dim magenta]"
+                )
+            packages.extend(smithery_packages)
+        except Exception as exc:
+            logger.debug("Smithery lookup failed for %s: %s", server.name, exc)
 
     # Deduplicate
     seen = set()

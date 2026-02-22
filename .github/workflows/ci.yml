@@ -89,6 +89,77 @@ jobs:
       - name: Run tests
         run: pytest tests/ -v --tb=short
 
+  # 3b. Version Alignment Check
+  version-check:
+    name: Version Alignment
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Verify version consistency
+        run: |
+          # Extract version from pyproject.toml
+          PYPROJECT_VER=$(python -c "
+          import re
+          text = open('pyproject.toml').read()
+          m = re.search(r'version\s*=\s*\"([^\"]+)\"', text)
+          print(m.group(1))
+          ")
+
+          # Extract fallback version from __init__.py
+          INIT_VER=$(python -c "
+          import re
+          text = open('src/agent_bom/__init__.py').read()
+          m = re.search(r'\"(\d+\.\d+\.\d+)\"', text)
+          print(m.group(1))
+          ")
+
+          # Extract Dockerfile.mcp ARG VERSION
+          DOCKER_VER=$(python -c "
+          import re
+          text = open('integrations/toolhive/Dockerfile.mcp').read()
+          m = re.search(r'ARG VERSION=(\S+)', text)
+          print(m.group(1))
+          ")
+
+          # Extract server.json version
+          SERVER_VER=$(python -c "
+          import json
+          data = json.load(open('integrations/toolhive/server.json'))
+          print(data['version'])
+          ")
+
+          echo "pyproject.toml:    $PYPROJECT_VER"
+          echo "__init__.py:       $INIT_VER"
+          echo "Dockerfile.mcp:    $DOCKER_VER"
+          echo "server.json:       $SERVER_VER"
+
+          MISMATCH=0
+          if [ "$PYPROJECT_VER" != "$INIT_VER" ]; then
+            echo "::error::Version mismatch: pyproject.toml ($PYPROJECT_VER) != __init__.py ($INIT_VER)"
+            MISMATCH=1
+          fi
+          if [ "$PYPROJECT_VER" != "$DOCKER_VER" ]; then
+            echo "::error::Version mismatch: pyproject.toml ($PYPROJECT_VER) != Dockerfile.mcp ($DOCKER_VER)"
+            MISMATCH=1
+          fi
+          if [ "$PYPROJECT_VER" != "$SERVER_VER" ]; then
+            echo "::error::Version mismatch: pyproject.toml ($PYPROJECT_VER) != server.json ($SERVER_VER)"
+            MISMATCH=1
+          fi
+
+          if [ "$MISMATCH" -eq 1 ]; then
+            echo "::error::Version numbers must be aligned across all files"
+            exit 1
+          fi
+          echo "All version numbers aligned at $PYPROJECT_VER"
+
   # 4. Build Python Package
   build:
     name: Build Package

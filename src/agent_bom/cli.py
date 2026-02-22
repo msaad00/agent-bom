@@ -191,6 +191,8 @@ def main():
 @click.option("--openai", "openai_flag", is_flag=True, help="Discover assistants and fine-tuned models from OpenAI")
 @click.option("--openai-api-key", default=None, envvar="OPENAI_API_KEY", metavar="KEY", help="OpenAI API key")
 @click.option("--openai-org-id", default=None, envvar="OPENAI_ORG_ID", metavar="ORG", help="OpenAI organization ID")
+@click.option("--smithery", "smithery_flag", is_flag=True, help="Use Smithery.ai registry as fallback for unknown MCP servers (extends coverage from 112 to 2800+ servers)")
+@click.option("--smithery-token", default=None, envvar="SMITHERY_API_KEY", metavar="KEY", help="Smithery API key (or set SMITHERY_API_KEY env var)")
 def scan(
     project: Optional[str],
     config_dir: Optional[str],
@@ -262,6 +264,8 @@ def scan(
     openai_flag: bool,
     openai_api_key: Optional[str],
     openai_org_id: Optional[str],
+    smithery_flag: bool,
+    smithery_token: Optional[str],
     remediate_path: Optional[str],
     remediate_sh_path: Optional[str],
     apply_fixes_flag: bool,
@@ -748,7 +752,8 @@ def scan(
             for server in agent.mcp_servers:
                 # Keep pre-populated packages from inventory, merge with discovered ones
                 pre_populated = list(server.packages)
-                discovered = extract_packages(server, resolve_transitive=transitive, max_depth=max_depth)
+                _smithery_tok = smithery_token if smithery_flag else None
+                discovered = extract_packages(server, resolve_transitive=transitive, max_depth=max_depth, smithery_token=_smithery_tok)
 
                 # Merge: discovered + pre-populated + SBOM packages (deduplicated)
                 discovered_names = {(p.name, p.ecosystem) for p in discovered}
@@ -2045,6 +2050,54 @@ def registry_enrich(dry_run):
 
     con.print(f"\n[bold]Summary:[/bold] {result.enriched} enriched, {result.skipped} already complete (of {result.total} total)")
     if not dry_run and result.enriched > 0:
+        con.print("[green]Registry file updated.[/green]")
+
+
+@registry.command("smithery-sync")
+@click.option("--token", envvar="SMITHERY_API_KEY", help="Smithery API key (or set SMITHERY_API_KEY).")
+@click.option("--max-pages", type=int, default=10, show_default=True, help="Maximum pages to fetch from Smithery.")
+@click.option("--dry-run", is_flag=True, help="Preview without writing to registry.")
+def registry_smithery_sync(token, max_pages, dry_run):
+    """Import MCP servers from Smithery.ai into the local registry.
+
+    \b
+    Fetches servers from smithery.ai and adds new entries that don't already
+    exist in mcp_registry.json. Does not overwrite existing entries.
+    Extends coverage from ~112 to 2800+ MCP servers.
+
+    \b
+    Requires a Smithery API key:
+      export SMITHERY_API_KEY=your-key
+      agent-bom registry smithery-sync
+    """
+    from rich.console import Console
+
+    from agent_bom.smithery import sync_from_smithery_sync
+
+    con = Console(stderr=True)
+    if not token:
+        con.print("[red]Error: Smithery API key required.[/red]")
+        con.print("Set SMITHERY_API_KEY env var or use --token.")
+        sys.exit(1)
+
+    con.print("[bold]Syncing MCP servers from Smithery.ai...[/bold]")
+    if dry_run:
+        con.print("[dim](dry run — no files will be modified)[/dim]")
+
+    result = sync_from_smithery_sync(token=token, max_pages=max_pages, dry_run=dry_run)
+
+    if result.added:
+        con.print(f"\n[bold green]Added {result.added} new server(s):[/bold green]")
+        for d in result.details[:20]:
+            verified = "[green]verified[/green]" if d["verified"] else "[yellow]unverified[/yellow]"
+            con.print(f"  {d['display_name']}: {verified}, {d['use_count']} installs, risk={d['risk_level']}")
+        if len(result.details) > 20:
+            con.print(f"  ... and {len(result.details) - 20} more")
+    else:
+        con.print("\n[green]No new servers found (all already in local registry).[/green]")
+
+    con.print(f"\n[bold]Summary:[/bold] {result.added} added, {result.skipped} already known (of {result.total_fetched} fetched)")
+    if not dry_run and result.added > 0:
         con.print("[green]Registry file updated.[/green]")
 
 

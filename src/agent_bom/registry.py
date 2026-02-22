@@ -288,3 +288,205 @@ def update_registry_versions_sync(
 ) -> RegistryUpdateResult:
     """Sync wrapper for update_registry_versions."""
     return asyncio.run(update_registry_versions(concurrency=concurrency, dry_run=dry_run))
+
+
+# ─── Registry enrichment ─────────────────────────────────────────────────────
+
+# Risk inference based on category keywords
+_RISK_CATEGORY_MAP: dict[str, str] = {
+    "filesystem": "high",
+    "shell": "high",
+    "exec": "high",
+    "code-execution": "high",
+    "database": "medium",
+    "developer-tools": "medium",
+    "cloud": "medium",
+    "communication": "medium",
+    "search": "low",
+    "data": "low",
+    "monitoring": "low",
+    "utilities": "low",
+    "ai": "low",
+}
+
+# Package name patterns → likely credential env vars
+_CREDENTIAL_PATTERNS: list[tuple[list[str], list[str]]] = [
+    (["github"], ["GITHUB_PERSONAL_ACCESS_TOKEN"]),
+    (["gitlab"], ["GITLAB_PERSONAL_ACCESS_TOKEN"]),
+    (["slack"], ["SLACK_BOT_TOKEN"]),
+    (["postgres", "pg"], ["POSTGRES_CONNECTION_STRING"]),
+    (["redis"], ["REDIS_URL"]),
+    (["mysql", "mariadb"], ["MYSQL_CONNECTION_STRING"]),
+    (["mongo"], ["MONGODB_URI"]),
+    (["aws", "s3", "dynamodb", "lambda"], ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]),
+    (["azure"], ["AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET", "AZURE_TENANT_ID"]),
+    (["gcp", "google", "firebase", "bigquery"], ["GOOGLE_APPLICATION_CREDENTIALS"]),
+    (["openai"], ["OPENAI_API_KEY"]),
+    (["anthropic", "claude"], ["ANTHROPIC_API_KEY"]),
+    (["stripe"], ["STRIPE_SECRET_KEY"]),
+    (["twilio"], ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"]),
+    (["sendgrid"], ["SENDGRID_API_KEY"]),
+    (["notion"], ["NOTION_API_KEY"]),
+    (["jira", "confluence", "atlassian"], ["ATLASSIAN_API_TOKEN"]),
+    (["linear"], ["LINEAR_API_KEY"]),
+    (["sentry"], ["SENTRY_DSN"]),
+    (["datadog"], ["DD_API_KEY"]),
+    (["puppeteer", "playwright", "browser"], []),
+    (["fetch", "http"], []),
+]
+
+# Package name patterns → likely risk justification
+_RISK_JUSTIFICATIONS: dict[str, str] = {
+    "filesystem": "Filesystem read/write access allows data exfiltration or corruption of local files.",
+    "shell": "Shell command execution enables arbitrary code execution on the host.",
+    "exec": "Code execution capability allows arbitrary operations on the host system.",
+    "database": "Database access may expose sensitive data or allow destructive schema changes.",
+    "cloud": "Cloud API access may permit resource provisioning, data access, or cost escalation.",
+    "communication": "Messaging access may allow impersonation, data leakage, or spam.",
+    "developer-tools": "Developer tool access may expose source code, secrets, or CI/CD pipelines.",
+    "search": "Search access is generally read-only with limited blast radius.",
+    "data": "Data access may expose sensitive information depending on the data source.",
+    "monitoring": "Monitoring access is generally read-only with limited blast radius.",
+}
+
+
+@dataclass
+class EnrichResult:
+    """Result of a registry enrichment run."""
+
+    total: int = 0
+    enriched: int = 0
+    skipped: int = 0
+    details: list[dict] = field(default_factory=list)
+
+
+def _infer_risk_level(name: str, entry: dict) -> str | None:
+    """Infer risk level from category and package name patterns."""
+    category = entry.get("category", "").lower()
+    if category in _RISK_CATEGORY_MAP:
+        return _RISK_CATEGORY_MAP[category]
+
+    # Fallback: check package name for risky keywords
+    pkg_lower = name.lower()
+    for keyword in ("filesystem", "shell", "exec", "terminal", "bash"):
+        if keyword in pkg_lower:
+            return "high"
+    for keyword in ("database", "postgres", "redis", "mysql", "mongo"):
+        if keyword in pkg_lower:
+            return "medium"
+    return "low"
+
+
+def _infer_credentials(name: str, entry: dict) -> list[str] | None:
+    """Infer likely credential environment variables from package name."""
+    pkg_lower = name.lower()
+    for patterns, creds in _CREDENTIAL_PATTERNS:
+        if any(pat in pkg_lower for pat in patterns):
+            return creds
+    return None
+
+
+def _infer_risk_justification(entry: dict) -> str | None:
+    """Infer risk justification from category."""
+    category = entry.get("category", "").lower()
+    return _RISK_JUSTIFICATIONS.get(category)
+
+
+def _needs_enrichment(entry: dict) -> list[str]:
+    """Return list of fields that need enrichment (empty or missing)."""
+    needs: list[str] = []
+    if not entry.get("risk_level"):
+        needs.append("risk_level")
+    if not entry.get("description"):
+        needs.append("description")
+    if not entry.get("risk_justification"):
+        needs.append("risk_justification")
+    if not entry.get("category"):
+        needs.append("category")
+    # tools and credential_env_vars are valid as empty arrays
+    if "tools" not in entry:
+        needs.append("tools")
+    if "credential_env_vars" not in entry:
+        needs.append("credential_env_vars")
+    return needs
+
+
+def enrich_registry_entries(dry_run: bool = False) -> EnrichResult:
+    """Find and enrich registry entries missing key metadata fields.
+
+    Fills in risk_level, risk_justification, and credential_env_vars
+    using heuristic inference from package names and categories.
+    Does not overwrite existing non-empty values.
+
+    Args:
+        dry_run: If True, preview enrichment without writing.
+
+    Returns:
+        EnrichResult with counts and per-entry details.
+    """
+    data = _load_registry_full()
+    servers = data.get("servers", {})
+    result = EnrichResult(total=len(servers))
+
+    for name, entry in servers.items():
+        needs = _needs_enrichment(entry)
+        if not needs:
+            result.skipped += 1
+            continue
+
+        enriched_fields: dict[str, object] = {}
+
+        if "risk_level" in needs:
+            inferred = _infer_risk_level(name, entry)
+            if inferred:
+                enriched_fields["risk_level"] = inferred
+                if not dry_run:
+                    entry["risk_level"] = inferred
+
+        if "risk_justification" in needs:
+            inferred = _infer_risk_justification(entry)
+            if inferred:
+                enriched_fields["risk_justification"] = inferred
+                if not dry_run:
+                    entry["risk_justification"] = inferred
+
+        if "credential_env_vars" in needs:
+            inferred = _infer_credentials(name, entry)
+            if inferred is not None:
+                enriched_fields["credential_env_vars"] = inferred
+                if not dry_run:
+                    entry["credential_env_vars"] = inferred
+
+        if "tools" in needs:
+            enriched_fields["tools"] = []
+            if not dry_run:
+                entry["tools"] = []
+
+        if "category" in needs:
+            enriched_fields["category"] = "other"
+            if not dry_run:
+                entry["category"] = "other"
+
+        if "description" in needs:
+            enriched_fields["description"] = f"MCP server: {name}"
+            if not dry_run:
+                entry["description"] = f"MCP server: {name}"
+
+        if enriched_fields:
+            result.enriched += 1
+            result.details.append({
+                "server": name,
+                "fields_enriched": list(enriched_fields.keys()),
+                "values": enriched_fields,
+            })
+        else:
+            result.skipped += 1
+
+    # Write updated registry
+    if not dry_run and result.enriched > 0:
+        from datetime import datetime, timezone
+
+        data["_updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        _REGISTRY_PATH.write_text(json.dumps(data, indent=2) + "\n")
+
+    return result

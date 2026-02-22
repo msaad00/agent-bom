@@ -78,6 +78,7 @@ mcp-server = [
     "mcp>=1.0",
     "smithery>=0.4",
 ]
+snyk = []  # Uses existing httpx dependency, no additional packages needed
 cloud = [
     "agent-bom[aws]",
     "agent-bom[azure]",

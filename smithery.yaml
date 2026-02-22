@@ -1,0 +1,8 @@
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    required: []
+    properties: {}
+  commandFunction: |-
+    config => ({ command: 'uvx', args: ['agent-bom[mcp-server]', 'mcp-server'], env: {} })

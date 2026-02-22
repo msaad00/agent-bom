@@ -2795,7 +2795,7 @@ def test_toolhive_server_json_valid():
     p = Path(__file__).parent.parent / "integrations" / "toolhive" / "server.json"
     data = _json.loads(p.read_text())
     assert data["name"] == "io.github.agent-bom/agent-bom"
-    assert data["version"] == "0.25.0"
+    assert data["version"] == "0.26.0"
     assert "packages" in data
     assert data["packages"][0]["registryType"] == "oci"
 

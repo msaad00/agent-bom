@@ -10,6 +10,8 @@ Tools:
     policy_check      — Evaluate a policy against scan results
     registry_lookup   — Query the MCP server threat intelligence registry
     generate_sbom     — Generate CycloneDX or SPDX SBOM
+    compliance        — OWASP/ATLAS/NIST AI RMF compliance posture
+    remediate         — Generate actionable remediation plan
 
 Security: Read-only. Never executes MCP servers or reads credential values.
 """
@@ -344,6 +346,161 @@ def create_mcp_server():
                 return json.dumps(to_spdx(report), indent=2, default=str)
             else:
                 return json.dumps(to_cyclonedx(report), indent=2, default=str)
+        except Exception as exc:
+            return json.dumps({"error": str(exc)})
+
+    # ── Tool 6: compliance ───────────────────────────────────────────
+
+    @mcp.tool()
+    async def compliance(
+        config_path: Optional[str] = None,
+        image: Optional[str] = None,
+    ) -> str:
+        """Get OWASP LLM Top 10 / MITRE ATLAS / NIST AI RMF compliance posture.
+
+        Scans local MCP configurations, maps findings to 37 security controls
+        across three AI security frameworks, and returns per-control
+        pass/warning/fail status with an overall compliance score.
+
+        Args:
+            config_path: Path to a specific MCP config directory.
+                         If not provided, auto-discovers all local agent configs.
+            image: Docker image reference to scan (e.g. "nginx:1.25").
+
+        Returns:
+            JSON with overall_score (0-100), overall_status (pass/warning/fail),
+            and per-control details for OWASP LLM Top 10 (10 controls),
+            MITRE ATLAS (13 techniques), and NIST AI RMF (14 subcategories).
+        """
+        try:
+            from agent_bom.atlas import ATLAS_TECHNIQUES
+            from agent_bom.nist_ai_rmf import NIST_AI_RMF
+            from agent_bom.owasp import OWASP_LLM_TOP10
+
+            agents, blast_radii = await _run_scan_pipeline(config_path, image)
+
+            # Convert BlastRadius objects to dicts for aggregation
+            br_dicts = []
+            for br in blast_radii:
+                br_dicts.append({
+                    "severity": br.vulnerability.severity.value,
+                    "package": f"{br.package.name}@{br.package.version}",
+                    "affected_agents": [a.name for a in br.affected_agents],
+                    "owasp_tags": list(br.owasp_tags),
+                    "atlas_tags": list(br.atlas_tags),
+                    "nist_ai_rmf_tags": list(br.nist_ai_rmf_tags),
+                })
+
+            def _build_controls(catalog, tag_field, id_key):
+                controls = []
+                for code, name in sorted(catalog.items()):
+                    sev_bk = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+                    pkgs, ags, findings = set(), set(), 0
+                    for br in br_dicts:
+                        if code in br.get(tag_field, []):
+                            findings += 1
+                            sev = (br.get("severity") or "").lower()
+                            if sev in sev_bk:
+                                sev_bk[sev] += 1
+                            if br.get("package"):
+                                pkgs.add(br["package"])
+                            for a in br.get("affected_agents", []):
+                                ags.add(a)
+                    status = "pass" if findings == 0 else (
+                        "fail" if sev_bk["critical"] > 0 or sev_bk["high"] > 0 else "warning"
+                    )
+                    controls.append({
+                        id_key: code, "name": name, "findings": findings,
+                        "status": status, "severity_breakdown": sev_bk,
+                        "affected_packages": sorted(pkgs),
+                        "affected_agents": sorted(ags),
+                    })
+                return controls
+
+            owasp = _build_controls(OWASP_LLM_TOP10, "owasp_tags", "code")
+            atlas = _build_controls(ATLAS_TECHNIQUES, "atlas_tags", "code")
+            nist = _build_controls(NIST_AI_RMF, "nist_ai_rmf_tags", "code")
+
+            total = len(owasp) + len(atlas) + len(nist)
+            total_pass = sum(1 for c in owasp + atlas + nist if c["status"] == "pass")
+            score = round((total_pass / total) * 100, 1) if total > 0 else 100.0
+            has_fail = any(c["status"] == "fail" for c in owasp + atlas + nist)
+            has_warn = any(c["status"] == "warning" for c in owasp + atlas + nist)
+
+            return json.dumps({
+                "overall_score": score,
+                "overall_status": "fail" if has_fail else ("warning" if has_warn else "pass"),
+                "total_controls": total,
+                "owasp_llm_top10": owasp,
+                "mitre_atlas": atlas,
+                "nist_ai_rmf": nist,
+            }, indent=2, default=str)
+        except Exception as exc:
+            return json.dumps({"error": str(exc)})
+
+    # ── Tool 7: remediate ────────────────────────────────────────────
+
+    @mcp.tool()
+    async def remediate(
+        config_path: Optional[str] = None,
+        image: Optional[str] = None,
+    ) -> str:
+        """Generate a remediation plan for vulnerabilities in your AI agent setup.
+
+        Scans for vulnerabilities, then generates actionable fix commands for
+        each affected package (npm install, pip install), credential scope
+        reduction guidance, and reports on unfixable vulnerabilities.
+
+        Args:
+            config_path: Path to a specific MCP config directory.
+                         If not provided, auto-discovers all local agent configs.
+            image: Docker image reference to scan (e.g. "nginx:1.25").
+
+        Returns:
+            JSON with package_fixes (upgrade commands by ecosystem),
+            credential_fixes (scope reduction steps), and unfixable items.
+        """
+        try:
+            from agent_bom.models import AIBOMReport
+            from agent_bom.remediate import generate_remediation
+
+            agents, blast_radii = await _run_scan_pipeline(config_path, image)
+            if not agents:
+                return json.dumps({
+                    "package_fixes": [],
+                    "credential_fixes": [],
+                    "unfixable": [],
+                    "message": "No agents found — nothing to remediate",
+                })
+
+            report = AIBOMReport(agents=agents, blast_radii=blast_radii)
+            plan = generate_remediation(report, blast_radii)
+
+            return json.dumps({
+                "generated_at": plan.generated_at,
+                "package_fixes": [
+                    {
+                        "package": f.package,
+                        "ecosystem": f.ecosystem,
+                        "current_version": f.current_version,
+                        "fixed_version": f.fixed_version,
+                        "command": f.command,
+                        "vulns": f.vulns[:5],
+                        "agents": f.agents[:5],
+                    }
+                    for f in plan.package_fixes
+                ],
+                "credential_fixes": [
+                    {
+                        "credential": f.credential_name,
+                        "locations": f.locations[:5],
+                        "risk": f.risk_description,
+                        "fix_steps": f.fix_steps,
+                    }
+                    for f in plan.credential_fixes
+                ],
+                "unfixable": plan.unfixable[:10],
+            }, indent=2, default=str)
         except Exception as exc:
             return json.dumps({"error": str(exc)})
 

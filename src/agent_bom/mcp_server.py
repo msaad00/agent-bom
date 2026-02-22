@@ -111,7 +111,7 @@ async def _run_scan_pipeline(
 # MCP Server factory
 # ---------------------------------------------------------------------------
 
-def create_mcp_server():
+def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
     """Create and configure the agent-bom MCP server with all tools.
 
     When the smithery SDK is installed, the server is automatically enhanced
@@ -124,6 +124,8 @@ def create_mcp_server():
 
     mcp = FastMCP(
         name="agent-bom",
+        host=host,
+        port=port,
         instructions=(
             f"agent-bom v{__version__} — AI supply chain security scanner. "
             "Scans AI agents and MCP servers for CVEs, maps blast radius, "

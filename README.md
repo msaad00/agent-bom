@@ -1,17 +1,17 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/agent-bom/agent-bom/main/docs/images/logo-dark.svg">
-    <img src="https://raw.githubusercontent.com/agent-bom/agent-bom/main/docs/images/logo-light.svg" alt="agent-bom" width="480" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/logo-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/logo-light.svg" alt="agent-bom" width="480" />
   </picture>
 </p>
 
 <p align="center">
-  <a href="https://github.com/msaad00/agent-bom/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/agent-bom/agent-bom/ci.yml?style=flat&logo=github&label=Build" alt="Build"></a>
+  <a href="https://github.com/msaad00/agent-bom/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/msaad00/agent-bom/ci.yml?style=flat&logo=github&label=Build" alt="Build"></a>
   <a href="https://pypi.org/project/agent-bom/"><img src="https://img.shields.io/pypi/v/agent-bom?style=flat&label=Latest%20version" alt="PyPI"></a>
   <a href="https://hub.docker.com/r/agentbom/agent-bom"><img src="https://img.shields.io/docker/pulls/agentbom/agent-bom?style=flat&label=Docker%20pulls" alt="Docker"></a>
   <a href="https://github.com/msaad00/agent-bom/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue?style=flat" alt="License"></a>
   <a href="https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom"><img src="https://api.securityscorecards.dev/projects/github.com/msaad00/agent-bom/badge" alt="OpenSSF"></a>
-  <a href="https://github.com/msaad00/agent-bom/stargazers"><img src="https://img.shields.io/github/stars/agent-bom/agent-bom?style=flat&logo=github&label=Stars" alt="Stars"></a>
+  <a href="https://github.com/msaad00/agent-bom/stargazers"><img src="https://img.shields.io/github/stars/msaad00/agent-bom?style=flat&logo=github&label=Stars" alt="Stars"></a>
 </p>
 <!-- mcp-name: io.github.agent-bom/agent-bom -->
 
@@ -21,15 +21,15 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/agent-bom/agent-bom/main/docs/images/architecture-dark.svg">
-    <img src="https://raw.githubusercontent.com/agent-bom/agent-bom/main/docs/images/architecture-light.svg" alt="agent-bom architecture" width="800" style="padding: 20px 0" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-light.svg" alt="agent-bom architecture" width="800" style="padding: 20px 0" />
   </picture>
 </p>
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/agent-bom/agent-bom/main/docs/images/blast-radius-dark.svg">
-    <img src="https://raw.githubusercontent.com/agent-bom/agent-bom/main/docs/images/blast-radius-light.svg" alt="Blast radius attack surface" width="800" style="padding: 20px 0" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-light.svg" alt="Blast radius attack surface" width="800" style="padding: 20px 0" />
   </picture>
 </p>
 
@@ -105,8 +105,8 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/agent-bom/agent-bom/main/docs/images/deployment-dark.svg">
-    <img src="https://raw.githubusercontent.com/agent-bom/agent-bom/main/docs/images/deployment-light.svg" alt="Enterprise deployment topology" width="800" style="padding: 20px 0" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/deployment-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/deployment-light.svg" alt="Enterprise deployment topology" width="800" style="padding: 20px 0" />
   </picture>
 </p>
 
@@ -578,7 +578,7 @@ Unverified servers in your configs trigger a warning. Policy rules can block the
 |------|---------|----------|
 | Developer CLI | `agent-bom scan` | Local audit, pre-commit checks |
 | Pre-install check | `agent-bom check express@4.18.2 -e npm` | Before running any MCP server |
-| GitHub Action | `uses: agent-bom/agent-bom@v0.25.0` | CI/CD gate + Security tab |
+| GitHub Action | `uses: msaad00/agent-bom@v0.25.0` | CI/CD gate + Security tab |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated, reproducible scans |
 | REST API | `agent-bom api` | Dashboards, SIEM, scripting |
 | Dashboard | `agent-bom serve` | Team-visible security dashboard |
@@ -593,7 +593,7 @@ Use agent-bom directly in your CI/CD pipeline:
 
 ```yaml
 - name: AI supply chain scan
-  uses: agent-bom/agent-bom@v0.25.0
+  uses: msaad00/agent-bom@v0.25.0
   with:
     severity-threshold: high
     upload-sarif: true
@@ -602,7 +602,7 @@ Use agent-bom directly in your CI/CD pipeline:
 Full options:
 
 ```yaml
-- uses: agent-bom/agent-bom@v0.25.0
+- uses: msaad00/agent-bom@v0.25.0
   with:
     severity-threshold: high        # fail on high+ CVEs
     policy: policy.json             # policy-as-code gates
@@ -713,7 +713,7 @@ agent-bom mcp-server --transport sse    # SSE (remote clients)
 | **ToolHive** | `thv run agent-bom` | [ToolHive registry entry](integrations/toolhive/server.json) — runs in isolated container |
 | **OpenClaw** | `clawhub install agent-bom` | [OpenClaw skill](integrations/openclaw/SKILL.md) — teaches agents to run security scans |
 | **MCP Registry** | `uvx agent-bom mcp-server` | [Registry entry](integrations/mcp-registry/server.json) — official MCP Registry |
-| **GitHub Actions** | `uses: agent-bom/agent-bom@v0.25.0` | SARIF upload to Security tab, policy gating |
+| **GitHub Actions** | `uses: msaad00/agent-bom@v0.25.0` | SARIF upload to Security tab, policy gating |
 
 ---
 
@@ -865,8 +865,8 @@ Apache 2.0 — [LICENSE](LICENSE)
 
 <!-- Badge reference links -->
 [release-img]: https://img.shields.io/pypi/v/agent-bom?style=flat&label=Latest%20version
-[ci-img]: https://img.shields.io/github/actions/workflow/status/agent-bom/agent-bom/ci.yml?style=flat&logo=github&label=Build
+[ci-img]: https://img.shields.io/github/actions/workflow/status/msaad00/agent-bom/ci.yml?style=flat&logo=github&label=Build
 [license-img]: https://img.shields.io/badge/License-Apache%202.0-blue?style=flat
 [docker-img]: https://img.shields.io/docker/pulls/agentbom/agent-bom?style=flat&label=Docker%20pulls
-[stars-img]: https://img.shields.io/github/stars/agent-bom/agent-bom?style=flat&logo=github&label=Stars
+[stars-img]: https://img.shields.io/github/stars/msaad00/agent-bom?style=flat&logo=github&label=Stars
 [ossf-img]: https://api.securityscorecards.dev/projects/github.com/msaad00/agent-bom/badge

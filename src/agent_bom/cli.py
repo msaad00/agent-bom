@@ -1838,14 +1838,14 @@ def mcp_server_cmd(transport: str, port: int, host: str):
         )
         sys.exit(1)
 
-    server = create_mcp_server()
+    server = create_mcp_server(host=host, port=port)
 
     if transport == "sse":
         from agent_bom import __version__ as _ver
         click.echo(f"  agent-bom MCP Server v{_ver}", err=True)
         click.echo(f"  Transport: SSE on http://{host}:{port}", err=True)
         click.echo("  Press Ctrl+C to stop.\n", err=True)
-        server.run(transport="sse", host=host, port=port)
+        server.run(transport="sse")
     else:
         server.run(transport="stdio")
 

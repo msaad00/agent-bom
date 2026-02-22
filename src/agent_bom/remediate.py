@@ -1,11 +1,16 @@
 """Remediation automation — generate actionable fix commands for vulnerabilities and credentials.
 
 Produces executable upgrade commands per ecosystem, credential scope-reduction
-guides, and exportable remediation.md / remediation.sh files.
+guides, exportable remediation.md / remediation.sh files, and auto-apply of
+package version fixes to dependency files (package.json, requirements.txt).
 """
 
 from __future__ import annotations
 
+import json
+import logging
+import re
+import shutil
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,6 +18,8 @@ from typing import Optional
 
 from agent_bom.models import AIBOMReport, BlastRadius
 from agent_bom.output import build_remediation_plan
+
+logger = logging.getLogger(__name__)
 
 # ─── Data structures ─────────────────────────────────────────────────────────
 
@@ -401,3 +408,251 @@ def export_remediation_sh(plan: RemediationPlan, path: str) -> None:
     Path(path).write_text("\n".join(lines))
     # Make executable
     Path(path).chmod(0o755)
+
+
+# ─── Auto-apply fixes ──────────────────────────────────────────────────────
+
+
+@dataclass
+class ApplyResult:
+    """Result of applying remediation fixes to dependency files."""
+
+    applied: list[PackageFix] = field(default_factory=list)
+    skipped: list[PackageFix] = field(default_factory=list)
+    backed_up: list[str] = field(default_factory=list)
+    dry_run: bool = False
+
+
+def _backup_file(path: Path) -> str:
+    """Create a backup copy of a file. Returns the backup path."""
+    backup_path = path.parent / f"{path.name}.agent-bom-backup"
+    shutil.copy2(path, backup_path)
+    return str(backup_path)
+
+
+def _apply_npm_fixes(
+    fixes: list[PackageFix],
+    project_dir: Path,
+    dry_run: bool,
+    backup: bool,
+) -> tuple[list[PackageFix], list[PackageFix], list[str]]:
+    """Apply npm package fixes to package.json.
+
+    Returns (applied, skipped, backed_up_paths).
+    """
+    pkg_json_path = project_dir / "package.json"
+    if not pkg_json_path.exists():
+        return [], fixes, []
+
+    applied: list[PackageFix] = []
+    skipped: list[PackageFix] = []
+    backed_up: list[str] = []
+
+    try:
+        content = pkg_json_path.read_text()
+        # Detect indentation
+        indent = 2
+        for line in content.splitlines():
+            stripped = line.lstrip()
+            if stripped and line != stripped:
+                indent = len(line) - len(stripped)
+                break
+
+        data = json.loads(content)
+    except (json.JSONDecodeError, OSError):
+        return [], fixes, []
+
+    modified = False
+    for fix in fixes:
+        if not fix.fixed_version:
+            skipped.append(fix)
+            continue
+
+        updated = False
+        for dep_key in ("dependencies", "devDependencies"):
+            deps = data.get(dep_key, {})
+            if fix.package in deps:
+                new_version = f"^{fix.fixed_version}"
+                if not dry_run:
+                    deps[fix.package] = new_version
+                updated = True
+                modified = True
+
+        if updated:
+            applied.append(fix)
+        else:
+            skipped.append(fix)
+
+    if modified and not dry_run:
+        if backup:
+            backed_up.append(_backup_file(pkg_json_path))
+        pkg_json_path.write_text(json.dumps(data, indent=indent) + "\n")
+
+    return applied, skipped, backed_up
+
+
+def _apply_pip_fixes(
+    fixes: list[PackageFix],
+    project_dir: Path,
+    dry_run: bool,
+    backup: bool,
+) -> tuple[list[PackageFix], list[PackageFix], list[str]]:
+    """Apply pip package fixes to requirements.txt.
+
+    Returns (applied, skipped, backed_up_paths).
+    """
+    req_path = project_dir / "requirements.txt"
+    if not req_path.exists():
+        return [], fixes, []
+
+    applied: list[PackageFix] = []
+    skipped: list[PackageFix] = []
+    backed_up: list[str] = []
+
+    try:
+        lines = req_path.read_text().splitlines()
+    except OSError:
+        return [], fixes, []
+
+    # Build lookup of fixes by lowercase package name
+    fix_map: dict[str, PackageFix] = {}
+    for fix in fixes:
+        if fix.fixed_version:
+            fix_map[fix.package.lower()] = fix
+
+    new_lines: list[str] = []
+    matched_packages: set[str] = set()
+    modified = False
+
+    for line in lines:
+        stripped = line.strip()
+        # Preserve comments, blank lines, flags
+        if not stripped or stripped.startswith("#") or stripped.startswith("-"):
+            new_lines.append(line)
+            continue
+
+        # Parse package name from line (handles ==, >=, ~=, etc.)
+        match = re.match(r'^([a-zA-Z0-9_.-]+)', stripped)
+        if not match:
+            new_lines.append(line)
+            continue
+
+        pkg_name = match.group(1).lower()
+        if pkg_name in fix_map:
+            fix = fix_map[pkg_name]
+            new_line = f"{fix.package}>={fix.fixed_version}"
+            new_lines.append(new_line)
+            matched_packages.add(pkg_name)
+            modified = True
+        else:
+            new_lines.append(line)
+
+    for fix in fixes:
+        if fix.package.lower() in matched_packages:
+            applied.append(fix)
+        else:
+            skipped.append(fix)
+
+    if modified and not dry_run:
+        if backup:
+            backed_up.append(_backup_file(req_path))
+        req_path.write_text("\n".join(new_lines) + "\n")
+
+    return applied, skipped, backed_up
+
+
+def apply_fixes(
+    plan: RemediationPlan,
+    project_dirs: list[Path],
+    dry_run: bool = False,
+    backup: bool = True,
+) -> ApplyResult:
+    """Apply package version fixes to dependency files.
+
+    Modifies package.json (npm) and requirements.txt (pypi) with fixed versions.
+    Creates backup files before modification unless backup=False.
+
+    Args:
+        plan: Remediation plan with package fixes.
+        project_dirs: Directories to search for dependency files.
+        dry_run: If True, preview changes without modifying files.
+        backup: If True, create .agent-bom-backup files before modifying.
+
+    Returns:
+        ApplyResult with applied/skipped fixes and backup paths.
+    """
+    result = ApplyResult(dry_run=dry_run)
+
+    if not plan.package_fixes:
+        return result
+
+    # Split fixes by ecosystem
+    npm_fixes = [f for f in plan.package_fixes if f.ecosystem == "npm" and f.fixed_version]
+    pip_fixes = [f for f in plan.package_fixes if f.ecosystem in ("pypi", "PyPI") and f.fixed_version]
+    other_fixes = [
+        f for f in plan.package_fixes
+        if f.ecosystem not in ("npm", "pypi", "PyPI") or not f.fixed_version
+    ]
+
+    # Skip unsupported ecosystems
+    result.skipped.extend(other_fixes)
+
+    for project_dir in project_dirs:
+        project_dir = Path(project_dir)
+
+        if npm_fixes:
+            applied, skipped, backed = _apply_npm_fixes(npm_fixes, project_dir, dry_run, backup)
+            result.applied.extend(applied)
+            # Only add to skipped if not applied in any directory
+            if not applied:
+                result.skipped.extend(skipped)
+            result.backed_up.extend(backed)
+
+        if pip_fixes:
+            applied, skipped, backed = _apply_pip_fixes(pip_fixes, project_dir, dry_run, backup)
+            result.applied.extend(applied)
+            if not applied:
+                result.skipped.extend(skipped)
+            result.backed_up.extend(backed)
+
+    return result
+
+
+def apply_fixes_from_json(
+    scan_json_path: str,
+    project_dir: str,
+    dry_run: bool = False,
+    backup: bool = True,
+) -> ApplyResult:
+    """Apply fixes from a saved scan result JSON file.
+
+    Parses the remediation_plan from the JSON output and applies fixes
+    to dependency files in the given project directory.
+    """
+    data = json.loads(Path(scan_json_path).read_text())
+    remediation_items = data.get("remediation_plan", [])
+
+    if not remediation_items:
+        return ApplyResult(dry_run=dry_run)
+
+    # Convert JSON remediation items to PackageFix objects
+    fixable: list[PackageFix] = []
+    for item in remediation_items:
+        fixed = item.get("fixed_version")
+        if not fixed:
+            continue
+        eco = item.get("ecosystem", "")
+        template = _ECOSYSTEM_COMMANDS.get(eco, "# Upgrade {package} to {version}")
+        command = template.format(package=item["package"], version=fixed)
+        fixable.append(PackageFix(
+            package=item["package"],
+            ecosystem=eco,
+            current_version=item.get("current_version", "unknown"),
+            fixed_version=fixed,
+            command=command,
+            vulns=item.get("vulnerabilities", []),
+            agents=item.get("affected_agents", []),
+        ))
+
+    plan = RemediationPlan(package_fixes=fixable)
+    return apply_fixes(plan, [Path(project_dir)], dry_run=dry_run, backup=backup)

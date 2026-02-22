@@ -157,6 +157,10 @@ def main():
               help="Generate remediation.md with fix commands for all findings")
 @click.option("--remediate-sh", "remediate_sh_path", type=str, default=None, metavar="PATH",
               help="Generate remediation.sh script with package upgrade commands")
+@click.option("--apply", "apply_fixes_flag", is_flag=True,
+              help="Auto-apply package version fixes to dependency files (package.json, requirements.txt)")
+@click.option("--apply-dry-run", is_flag=True,
+              help="Preview what --apply would change without modifying files")
 @click.option("--aws", is_flag=True, help="Discover AI agents from AWS Bedrock, Lambda, and ECS")
 @click.option("--aws-region", default=None, metavar="REGION", help="AWS region (default: AWS_DEFAULT_REGION)")
 @click.option("--aws-profile", default=None, metavar="PROFILE", help="AWS credential profile")
@@ -260,6 +264,8 @@ def scan(
     openai_org_id: Optional[str],
     remediate_path: Optional[str],
     remediate_sh_path: Optional[str],
+    apply_fixes_flag: bool,
+    apply_dry_run: bool,
 ):
     """Discover agents, extract dependencies, scan for vulnerabilities.
 
@@ -941,6 +947,44 @@ def scan(
         if remediate_sh_path:
             export_remediation_sh(remed_plan, remediate_sh_path)
             con.print(f"\n  [green]✓[/green] Remediation script: {remediate_sh_path}")
+
+    # Step 4e: Auto-apply fixes (optional)
+    if apply_fixes_flag or apply_dry_run:
+        from agent_bom.remediate import apply_fixes as _apply_fixes
+        from agent_bom.remediate import generate_remediation as _gen_remed
+
+        remed_plan = _gen_remed(report, blast_radii)
+        if remed_plan.package_fixes:
+            # Collect project directories from agent config paths
+            project_dirs = []
+            for agent in agents:
+                if agent.config_path:
+                    config_dir = Path(agent.config_path).parent
+                    # Walk up to find package.json or requirements.txt
+                    for d in [config_dir, config_dir.parent, config_dir.parent.parent]:
+                        if (d / "package.json").exists() or (d / "requirements.txt").exists():
+                            if d not in project_dirs:
+                                project_dirs.append(d)
+                            break
+            # Also try current working directory
+            cwd = Path.cwd()
+            if cwd not in project_dirs and ((cwd / "package.json").exists() or (cwd / "requirements.txt").exists()):
+                project_dirs.append(cwd)
+
+            if project_dirs:
+                ar = _apply_fixes(remed_plan, project_dirs, dry_run=apply_dry_run)
+                if ar.dry_run:
+                    con.print("\n  [yellow]Dry run — no files modified[/yellow]")
+                for fix in ar.applied:
+                    con.print(f"  [green]✓[/green] {fix.package} {fix.current_version} → {fix.fixed_version} ({fix.ecosystem})")
+                for fix in ar.skipped:
+                    con.print(f"  [dim]  Skipped {fix.package} — no {fix.ecosystem} dependency file found[/dim]")
+                if ar.backed_up:
+                    con.print(f"\n  Backups: {', '.join(ar.backed_up)}")
+            else:
+                con.print("\n  [yellow]⚠ No project directories with dependency files found for --apply[/yellow]")
+        else:
+            con.print("\n  [green]✓[/green] No fixable vulnerabilities — nothing to apply")
 
     # Step 5: Output
     if is_stdout:
@@ -1792,6 +1836,57 @@ def completions_cmd(shell: str):
             click.echo('eval (env _AGENT_BOM_COMPLETE=fish_source agent-bom)')
 
 
+@main.command("apply")
+@click.argument("scan_json", type=click.Path(exists=True))
+@click.option("--dir", "-d", "project_dir", type=click.Path(exists=True), default=".",
+              help="Project directory containing dependency files")
+@click.option("--dry-run", is_flag=True, help="Preview changes without modifying files")
+@click.option("--no-backup", is_flag=True, help="Skip creating backup files")
+def apply_command(scan_json, project_dir, dry_run, no_backup):
+    """Apply remediation fixes from a scan result JSON file.
+
+    Reads vulnerability fixes from a previous scan output and modifies
+    package.json / requirements.txt with fixed versions.
+
+    \b
+    Example:
+        agent-bom scan --format json --output scan.json
+        agent-bom apply scan.json --dir ./my-project --dry-run
+        agent-bom apply scan.json --dir ./my-project
+    """
+    from rich.console import Console
+
+    from agent_bom.remediate import apply_fixes_from_json
+
+    con = Console(stderr=True)
+    con.print(f"\n  Applying fixes from [bold]{scan_json}[/bold] to [bold]{project_dir}[/bold]")
+
+    result = apply_fixes_from_json(
+        scan_json,
+        project_dir,
+        dry_run=dry_run,
+        backup=not no_backup,
+    )
+
+    if not result.applied and not result.skipped:
+        con.print("  [green]✓[/green] No fixable vulnerabilities in scan output")
+        return
+
+    if result.dry_run:
+        con.print("  [yellow]Dry run — no files modified[/yellow]\n")
+
+    for fix in result.applied:
+        con.print(f"  [green]✓[/green] {fix.package} {fix.current_version} → {fix.fixed_version} ({fix.ecosystem})")
+
+    for fix in result.skipped:
+        con.print(f"  [dim]  Skipped {fix.package} — no {fix.ecosystem} dependency file found[/dim]")
+
+    if result.backed_up:
+        con.print(f"\n  Backups: {', '.join(result.backed_up)}")
+
+    con.print(f"\n  Applied: {len(result.applied)}, Skipped: {len(result.skipped)}")
+
+
 @main.group()
 def registry():
     """Manage the MCP server registry."""
@@ -1913,6 +2008,43 @@ def registry_update(concurrency, dry_run):
 
     con.print(f"\n[bold]Summary:[/bold] {result.updated} updated, {result.unchanged} unchanged, {result.failed} failed (of {result.total} total)")
     if not dry_run and result.updated > 0:
+        con.print("[green]Registry file updated.[/green]")
+
+
+@registry.command("enrich")
+@click.option("--dry-run", is_flag=True, help="Show enrichment without writing.")
+def registry_enrich(dry_run):
+    """Enrich registry entries missing risk, tools, or credentials.
+
+    \b
+    Fills in empty metadata fields using heuristic inference:
+    - risk_level from category/package name patterns
+    - credential_env_vars from known service patterns
+    - risk_justification from category templates
+
+    Useful after 'registry update' adds new entries from CI.
+    """
+    from rich.console import Console
+
+    from agent_bom.registry import enrich_registry_entries
+
+    con = Console(stderr=True)
+    con.print("[bold]Enriching MCP registry entries...[/bold]")
+    if dry_run:
+        con.print("[dim](dry run — no files will be modified)[/dim]")
+
+    result = enrich_registry_entries(dry_run=dry_run)
+
+    if result.enriched:
+        con.print(f"\n[bold green]Enriched {result.enriched} entry/entries:[/bold green]")
+        for d in result.details:
+            fields = ", ".join(d["fields_enriched"])
+            con.print(f"  {d['server']}: {fields}")
+    else:
+        con.print("\n[green]All entries already have complete metadata.[/green]")
+
+    con.print(f"\n[bold]Summary:[/bold] {result.enriched} enriched, {result.skipped} already complete (of {result.total} total)")
+    if not dry_run and result.enriched > 0:
         con.print("[green]Registry file updated.[/green]")
 
 

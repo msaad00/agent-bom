@@ -390,6 +390,12 @@ agent-bom scan --skill CLAUDE.md --skill .cursorrules
 
 # Auto-discovery — scans all well-known skill files in the project
 agent-bom scan
+
+# Skip skill scanning entirely
+agent-bom scan --no-skill
+
+# Scan ONLY skill/instruction files (skip agent/package/CVE scanning)
+agent-bom scan --skill-only
 ```
 
 Auto-discovers: `CLAUDE.md`, `.claude/CLAUDE.md`, `.cursorrules`, `.cursor/rules/*.md`, `skill.md`, `skills/*.md`, `.github/copilot-instructions.md`, `.windsurfrules`, `AGENTS.md`
@@ -441,7 +447,7 @@ Scan Jupyter notebooks for AI/ML library usage, pip install commands, model refe
 agent-bom scan --jupyter ./notebooks
 ```
 
-Detects 30+ AI libraries (openai, anthropic, langchain, transformers, torch, tensorflow, crewai, etc.), `!pip install` / `%pip install` commands with version pinning, `os.environ["API_KEY"]` credential access, and hardcoded API key patterns. Each notebook with findings produces a separate agent entry in the AI-BOM.
+Detects 29+ AI libraries (openai, anthropic, langchain, transformers, torch, tensorflow, crewai, etc.), `!pip install` / `%pip install` commands with version pinning, `os.environ["API_KEY"]` credential access, and hardcoded API key patterns. Each notebook with findings produces a separate agent entry in the AI-BOM.
 
 ### Model binary file detection
 
@@ -462,6 +468,7 @@ agent-bom scan --model-files ./models
 | Core ML | `.mlmodel` | — |
 | Pickle | `.pkl` | **HIGH** — arbitrary code execution |
 | Joblib | `.joblib` | **MEDIUM** — uses pickle internally |
+| Generic Binary | `.bin` | Size-filtered (≥10 MB) |
 
 Pickle-based model files (`.pkl`, `.joblib`) are flagged as security risks because they can execute arbitrary code on load via Python's `__reduce__` protocol. Results appear in JSON output (`model_files` key) and console summary.
 
@@ -804,7 +811,8 @@ These tools solve different problems and are **complementary**.
 - [x] Skill security audit — 7 checks: typosquat detection, shell access, unverified servers, excessive credentials, external URLs
 - [x] CLI attack flow tree — terminal-native CVE → Package → Server → Agent → Credentials/Tools chain visualization
 - [x] AI skill file analysis — LLM-powered context-aware review of skill files with false positive detection, severity adjustments, and new threat discovery
-- [x] Jupyter notebook AI library scanning — detect 30+ AI/ML imports, pip installs, credentials, hardcoded keys
+- [x] Jupyter notebook AI library scanning — detect 29+ AI/ML imports, pip installs, credentials, hardcoded keys
+- [x] Skill scanning control — `--no-skill` to skip, `--skill-only` for skill-only mode
 - [x] Model binary file detection — .gguf, .safetensors, .onnx, .pt, .pkl security flags, 13 formats
 - [x] API server hardening — API key authentication, per-IP rate limiting, CORS tightening, job cleanup
 - [x] CLI tree labels — explicit 🤖 Agent / 🔌 MCP Server / 📦 Package prefixes with summary stats

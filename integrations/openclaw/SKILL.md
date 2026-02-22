@@ -28,7 +28,7 @@ maps blast radius (which credentials and tools are exposed if a package is compr
 generates SBOMs (CycloneDX, SPDX, SARIF), and enforces security policies.
 
 Covers 10+ MCP clients (Claude Desktop, Cursor, Windsurf, VS Code Copilot, OpenClaw, etc.)
-and a threat intelligence registry of 109+ MCP servers with risk levels and tool metadata.
+and a threat intelligence registry of 112+ MCP servers with risk levels and tool metadata.
 
 ## When to use
 

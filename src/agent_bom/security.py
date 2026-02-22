@@ -326,7 +326,7 @@ def validate_mcp_server_config(server_config: dict) -> None:
     """
     # Validate command (remote/URL-based servers don't require a local command)
     command = server_config.get("command", "")
-    has_url = bool(server_config.get("url"))
+    has_url = bool(server_config.get("url") or server_config.get("uri"))
     if not has_url:
         validate_command(command)
 

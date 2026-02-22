@@ -1,0 +1,18 @@
+# Render.com deployment blueprint for agent-bom MCP server (SSE transport).
+#
+# Deploy: connect this repo on https://dashboard.render.com → New Blueprint → select this file
+# Docs: https://docs.render.com/infrastructure-as-code
+
+services:
+  - type: web
+    name: agent-bom-mcp
+    runtime: docker
+    dockerfilePath: ./Dockerfile.sse
+    plan: free
+    envVars:
+      - key: PORT
+        value: "8423"
+      - key: NVD_API_KEY
+        sync: false
+    healthCheckPath: /
+    autoDeploy: true

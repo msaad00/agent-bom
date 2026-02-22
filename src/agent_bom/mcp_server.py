@@ -512,6 +512,56 @@ def create_mcp_server():
 
 
 # ---------------------------------------------------------------------------
+# Server card — /.well-known/mcp/server-card.json
+# ---------------------------------------------------------------------------
+
+_SERVER_CARD_TOOLS = [
+    {"name": "scan", "description": "Full discovery → scan → output pipeline"},
+    {"name": "blast_radius", "description": "Look up blast radius for a specific CVE"},
+    {"name": "policy_check", "description": "Evaluate security policy rules"},
+    {"name": "registry_lookup", "description": "Query MCP server threat intelligence registry"},
+    {"name": "generate_sbom", "description": "Generate CycloneDX or SPDX SBOM"},
+    {"name": "compliance", "description": "OWASP / MITRE ATLAS / NIST AI RMF posture"},
+    {"name": "remediate", "description": "Generate actionable remediation plan"},
+]
+
+
+def build_server_card() -> dict:
+    """Build MCP server card metadata for auto-discovery.
+
+    Returns a dict suitable for serving at ``/.well-known/mcp/server-card.json``.
+    Used by Smithery, ToolHive, and other MCP clients to discover capabilities.
+    """
+    from agent_bom import __version__
+
+    return {
+        "name": "agent-bom",
+        "version": __version__,
+        "description": (
+            "AI supply chain security scanner — CVE scanning, blast radius analysis, "
+            "policy enforcement, and SBOM generation for MCP servers and AI agents."
+        ),
+        "repository": "https://github.com/agent-bom/agent-bom",
+        "transport": ["stdio", "sse"],
+        "tools": _SERVER_CARD_TOOLS,
+        "capabilities": {
+            "frameworks": ["OWASP LLM Top 10", "MITRE ATLAS", "NIST AI RMF"],
+            "sbom_formats": ["CycloneDX 1.6", "SPDX 3.0", "SARIF 2.1.0"],
+            "data_sources": ["OSV.dev", "NVD", "EPSS", "CISA KEV", "Snyk", "MCP Registry", "Smithery"],
+            "discovery_sources": [
+                "Local MCP configs", "AWS Bedrock", "Azure AI Foundry", "GCP Vertex AI",
+                "Databricks", "Snowflake", "Docker images", "Kubernetes", "SBOMs",
+            ],
+            "registry_servers": 112,
+            "read_only": True,
+        },
+        "license": "Apache-2.0",
+        "pypi": "agent-bom",
+        "install": "pip install agent-bom[mcp-server]",
+    }
+
+
+# ---------------------------------------------------------------------------
 # Smithery-compatible entry point
 # ---------------------------------------------------------------------------
 

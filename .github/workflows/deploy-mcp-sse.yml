@@ -1,0 +1,25 @@
+name: Deploy MCP SSE
+
+# Deploys the SSE container to Railway when a new release is published.
+# Requires RAILWAY_TOKEN secret to be set in the repository.
+# Skip this workflow if you deploy via Render or Fly.io instead.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ vars.DEPLOY_TARGET == 'railway' }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service agent-bom-mcp --detach

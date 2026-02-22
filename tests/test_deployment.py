@@ -98,7 +98,7 @@ def test_toolhive_entry_valid():
     assert data["name"] == "io.github.agent-bom/agent-bom"
     pkg = data["packages"][0]
     assert pkg["registryType"] == "oci"
-    assert "ghcr.io" in pkg["identifier"]
+    assert pkg["identifier"].startswith("ghcr.io/agent-bom/agent-bom:")
 
 
 def test_smithery_yaml_exists():

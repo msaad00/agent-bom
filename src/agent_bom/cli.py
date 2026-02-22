@@ -193,6 +193,10 @@ def main():
 @click.option("--openai-org-id", default=None, envvar="OPENAI_ORG_ID", metavar="ORG", help="OpenAI organization ID")
 @click.option("--smithery", "smithery_flag", is_flag=True, help="Use Smithery.ai registry as fallback for unknown MCP servers (extends coverage from 112 to 2800+ servers)")
 @click.option("--smithery-token", default=None, envvar="SMITHERY_API_KEY", metavar="KEY", help="Smithery API key (or set SMITHERY_API_KEY env var)")
+@click.option("--mcp-registry", "mcp_registry_flag", is_flag=True, help="Use Official MCP Registry as fallback for unknown MCP servers (free, no auth)")
+@click.option("--snyk", "snyk_flag", is_flag=True, help="Enrich vulnerabilities with Snyk intelligence (requires SNYK_TOKEN)")
+@click.option("--snyk-token", default=None, envvar="SNYK_TOKEN", metavar="KEY", help="Snyk API token (or set SNYK_TOKEN env var)")
+@click.option("--snyk-org", default=None, envvar="SNYK_ORG_ID", metavar="ORG", help="Snyk organization ID (or set SNYK_ORG_ID env var)")
 def scan(
     project: Optional[str],
     config_dir: Optional[str],
@@ -266,6 +270,10 @@ def scan(
     openai_org_id: Optional[str],
     smithery_flag: bool,
     smithery_token: Optional[str],
+    mcp_registry_flag: bool,
+    snyk_flag: bool,
+    snyk_token: Optional[str],
+    snyk_org: Optional[str],
     remediate_path: Optional[str],
     remediate_sh_path: Optional[str],
     apply_fixes_flag: bool,
@@ -360,6 +368,10 @@ def scan(
             reads.append("  [green]Would query:[/green]  MLflow Tracking Server (models, experiments)")
         if openai_flag:
             reads.append("  [green]Would query:[/green]  OpenAI Assistants/Fine-tuning APIs")
+        if mcp_registry_flag:
+            reads.append("  [green]Would query:[/green]  https://registry.modelcontextprotocol.io/v0/servers  (Official MCP Registry, no auth)")
+        if snyk_flag:
+            reads.append("  [green]Would query:[/green]  https://api.snyk.io/rest/  (Snyk vulnerability enrichment)")
         for line in reads:
             con.print(line)
         con.print()
@@ -740,6 +752,18 @@ def scan(
         except CloudDiscoveryError as exc:
             con.print(f"\n  [red]{provider_name.upper()} discovery error: {exc}[/red]")
 
+    # Step 1z: Multi-source correlation (dedup + merge across sources)
+    if not skill_only and agents:
+        sources = {a.source or "local" for a in agents}
+        if len(sources) > 1:
+            from agent_bom.correlate import correlate_agents
+            agents, corr_result = correlate_agents(agents)
+            if corr_result.cross_source_matches:
+                con.print(
+                    f"\n  [bold]Correlated:[/bold] {corr_result.cross_source_matches} package(s) "
+                    f"merged across {len(corr_result.source_summary)} source(s)"
+                )
+
     # Step 2: Extract packages
     total_packages = 0
     if skill_only:
@@ -753,7 +777,7 @@ def scan(
                 # Keep pre-populated packages from inventory, merge with discovered ones
                 pre_populated = list(server.packages)
                 _smithery_tok = smithery_token if smithery_flag else None
-                discovered = extract_packages(server, resolve_transitive=transitive, max_depth=max_depth, smithery_token=_smithery_tok)
+                discovered = extract_packages(server, resolve_transitive=transitive, max_depth=max_depth, smithery_token=_smithery_tok, mcp_registry=mcp_registry_flag)
 
                 # Merge: discovered + pre-populated + SBOM packages (deduplicated)
                 discovered_names = {(p.name, p.ecosystem) for p in discovered}
@@ -855,6 +879,24 @@ def scan(
         blast_radii = []
         if not no_scan and total_packages > 0:
             blast_radii = scan_agents_sync(agents, enable_enrichment=enrich, nvd_api_key=nvd_api_key)
+
+        # Step 4a: Snyk vulnerability enrichment (optional)
+        if snyk_flag and not no_scan and total_packages > 0:
+            all_pkgs_for_snyk = [p for a in agents for s in a.mcp_servers for p in s.packages]
+            if snyk_token:
+                try:
+                    from agent_bom.snyk import enrich_with_snyk_sync
+
+                    con.print("\n[bold blue]Enriching with Snyk vulnerability data...[/bold blue]\n")
+                    snyk_count = enrich_with_snyk_sync(all_pkgs_for_snyk, token=snyk_token, org_id=snyk_org)
+                    if snyk_count:
+                        con.print(f"  [green]✓[/green] Snyk: {snyk_count} additional vulnerability(ies) found")
+                    else:
+                        con.print("  [dim]  Snyk: no additional vulnerabilities found[/dim]")
+                except Exception as exc:
+                    con.print(f"  [yellow]⚠[/yellow] Snyk enrichment failed: {exc}")
+            else:
+                con.print("\n[yellow]  --snyk requires SNYK_TOKEN (set env var or use --snyk-token)[/yellow]")
 
         # Step 4b: Integrity + provenance verification (optional)
         if verify_integrity:
@@ -2091,6 +2133,46 @@ def registry_smithery_sync(token, max_pages, dry_run):
         for d in result.details[:20]:
             verified = "[green]verified[/green]" if d["verified"] else "[yellow]unverified[/yellow]"
             con.print(f"  {d['display_name']}: {verified}, {d['use_count']} installs, risk={d['risk_level']}")
+        if len(result.details) > 20:
+            con.print(f"  ... and {len(result.details) - 20} more")
+    else:
+        con.print("\n[green]No new servers found (all already in local registry).[/green]")
+
+    con.print(f"\n[bold]Summary:[/bold] {result.added} added, {result.skipped} already known (of {result.total_fetched} fetched)")
+    if not dry_run and result.added > 0:
+        con.print("[green]Registry file updated.[/green]")
+
+
+@registry.command("mcp-sync")
+@click.option("--max-pages", type=int, default=10, show_default=True, help="Maximum pages to fetch from the official registry.")
+@click.option("--dry-run", is_flag=True, help="Preview without writing to registry.")
+def registry_mcp_sync(max_pages, dry_run):
+    """Import MCP servers from the Official MCP Registry into the local registry.
+
+    \b
+    Fetches servers from registry.modelcontextprotocol.io and adds new entries
+    that don't already exist in mcp_registry.json. No authentication required.
+
+    \b
+    Usage:
+      agent-bom registry mcp-sync
+      agent-bom registry mcp-sync --dry-run
+    """
+    from rich.console import Console
+
+    from agent_bom.mcp_official_registry import sync_from_official_registry_sync
+
+    con = Console(stderr=True)
+    con.print("[bold]Syncing MCP servers from Official MCP Registry...[/bold]")
+    if dry_run:
+        con.print("[dim](dry run — no files will be modified)[/dim]")
+
+    result = sync_from_official_registry_sync(max_pages=max_pages, dry_run=dry_run)
+
+    if result.added:
+        con.print(f"\n[bold green]Added {result.added} new server(s):[/bold green]")
+        for d in result.details[:20]:
+            con.print(f"  {d['server']}" + (f" (v{d['version']})" if d.get("version") else ""))
         if len(result.details) > 20:
             con.print(f"  ... and {len(result.details) - 20} more")
     else:

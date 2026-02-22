@@ -223,6 +223,14 @@ def _provider_label(source: str) -> str:
         "snowflake-cortex": "Snowflake Cortex",
         "snowflake-streamlit": "Snowflake Streamlit",
         "snowflake": "Snowflake",
+        "mcp-registry": "MCP Registry",
+        "smithery": "Smithery",
+        "snyk": "Snyk",
+        "huggingface": "Hugging Face",
+        "openai": "OpenAI",
+        "mlflow": "MLflow",
+        "wandb": "W&B",
+        "nebius": "Nebius",
     }
     return labels.get(source, source.upper())
 

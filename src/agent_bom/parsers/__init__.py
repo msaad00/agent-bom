@@ -390,6 +390,7 @@ def extract_packages(
     resolve_transitive: bool = False,
     max_depth: int = 3,
     smithery_token: str | None = None,
+    mcp_registry: bool = False,
 ) -> list[Package]:
     """Extract all packages for an MCP server.
 
@@ -398,6 +399,7 @@ def extract_packages(
         resolve_transitive: If True, resolve transitive dependencies for npx/uvx packages
         max_depth: Maximum depth for transitive dependency resolution
         smithery_token: Optional Smithery API key for live registry fallback
+        mcp_registry: If True, query the Official MCP Registry as a fallback
     """
     packages = []
 
@@ -437,6 +439,21 @@ def extract_packages(
                 f"({registry_packages[0].name})[/dim cyan]"
             )
         packages.extend(registry_packages)
+
+    # Official MCP Registry fallback: free API, no auth required
+    if not packages and mcp_registry:
+        try:
+            from agent_bom.mcp_official_registry import official_registry_lookup_sync
+
+            mcp_reg_packages = official_registry_lookup_sync(server)
+            if mcp_reg_packages:
+                console.print(
+                    f"  [dim blue]→ {server.name}: resolved from Official MCP Registry "
+                    f"({mcp_reg_packages[0].name})[/dim blue]"
+                )
+            packages.extend(mcp_reg_packages)
+        except Exception as exc:
+            logger.debug("Official MCP Registry lookup failed for %s: %s", server.name, exc)
 
     # Smithery fallback: if local registry also missed, try Smithery API
     if not packages and smithery_token:

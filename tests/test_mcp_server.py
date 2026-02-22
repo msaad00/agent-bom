@@ -54,12 +54,12 @@ def test_create_mcp_server_returns_object():
     assert server.name == "agent-bom"
 
 
-def test_mcp_server_has_five_tools():
-    """Server should register exactly 5 tools."""
+def test_mcp_server_has_seven_tools():
+    """Server should register exactly 7 tools."""
     from agent_bom.mcp_server import create_mcp_server
     server = create_mcp_server()
     tools = _run(server.list_tools())
-    assert len(tools) == 5
+    assert len(tools) == 7
 
 
 def test_mcp_server_tool_names():
@@ -68,7 +68,10 @@ def test_mcp_server_tool_names():
     server = create_mcp_server()
     tools = _run(server.list_tools())
     names = {t.name for t in tools}
-    assert names == {"scan", "blast_radius", "policy_check", "registry_lookup", "generate_sbom"}
+    assert names == {
+        "scan", "blast_radius", "policy_check", "registry_lookup",
+        "generate_sbom", "compliance", "remediate",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -240,3 +243,111 @@ def test_cli_mcp_server_transport_options():
     assert "--transport" in result.output
     assert "--port" in result.output
     assert "--host" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Tool: compliance
+# ---------------------------------------------------------------------------
+
+
+@patch("agent_bom.mcp_server._run_scan_pipeline")
+def test_compliance_no_agents(mock_pipeline):
+    """Compliance with no agents should return 100% score."""
+    mock_pipeline.return_value = ([], [])
+    from agent_bom.mcp_server import create_mcp_server
+    server = create_mcp_server()
+    result = _call_tool(server, "compliance", {})
+    assert result["overall_score"] == 100.0
+    assert result["overall_status"] == "pass"
+    assert len(result["owasp_llm_top10"]) == 10
+    assert len(result["mitre_atlas"]) == 13
+    assert len(result["nist_ai_rmf"]) == 14
+
+
+@patch("agent_bom.mcp_server._run_scan_pipeline")
+def test_compliance_with_findings(mock_pipeline):
+    """Compliance with high-severity findings should fail."""
+    from agent_bom.models import (
+        Agent,
+        AgentType,
+        BlastRadius,
+        MCPServer,
+        Package,
+        Severity,
+        TransportType,
+        Vulnerability,
+    )
+    mock_agent = Agent(
+        name="test-agent", agent_type=AgentType.CLAUDE_DESKTOP,
+        config_path="/tmp/test", mcp_servers=[
+            MCPServer(name="test-server", command="npx", args=[], env={},
+                      transport=TransportType.STDIO, packages=[])
+        ],
+    )
+    br = BlastRadius(
+        vulnerability=Vulnerability(
+            id="CVE-2025-0001", severity=Severity.HIGH, summary="Test vuln",
+        ),
+        package=Package(name="express", version="4.17.1", ecosystem="npm"),
+        affected_servers=[mock_agent.mcp_servers[0]],
+        affected_agents=[mock_agent],
+        exposed_credentials=[],
+        exposed_tools=[],
+    )
+    br.owasp_tags = ["LLM05"]
+    br.atlas_tags = ["AML.T0010"]
+    br.nist_ai_rmf_tags = ["MAP-3.5"]
+
+    mock_pipeline.return_value = ([mock_agent], [br])
+    from agent_bom.mcp_server import create_mcp_server
+    server = create_mcp_server()
+    result = _call_tool(server, "compliance", {})
+    assert result["overall_status"] == "fail"
+    assert result["overall_score"] < 100.0
+
+    # LLM05 should be fail
+    lmm05 = next(c for c in result["owasp_llm_top10"] if c["code"] == "LLM05")
+    assert lmm05["status"] == "fail"
+    assert lmm05["findings"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Tool: remediate
+# ---------------------------------------------------------------------------
+
+
+@patch("agent_bom.mcp_server._run_scan_pipeline")
+def test_remediate_no_agents(mock_pipeline):
+    """Remediate with no agents should return empty plan."""
+    mock_pipeline.return_value = ([], [])
+    from agent_bom.mcp_server import create_mcp_server
+    server = create_mcp_server()
+    result = _call_tool(server, "remediate", {})
+    assert result["package_fixes"] == []
+    assert result["credential_fixes"] == []
+
+
+@patch("agent_bom.mcp_server._run_scan_pipeline")
+def test_remediate_returns_plan(mock_pipeline):
+    """Remediate with agents returns valid plan structure."""
+    from agent_bom.models import (
+        Agent,
+        AgentType,
+        MCPServer,
+        TransportType,
+    )
+    mock_agent = Agent(
+        name="test-agent", agent_type=AgentType.CLAUDE_DESKTOP,
+        config_path="/tmp/test", mcp_servers=[
+            MCPServer(name="test-server", command="npx", args=[], env={},
+                      transport=TransportType.STDIO, packages=[])
+        ],
+    )
+    mock_pipeline.return_value = ([mock_agent], [])
+    from agent_bom.mcp_server import create_mcp_server
+    server = create_mcp_server()
+    result = _call_tool(server, "remediate", {})
+    assert "generated_at" in result
+    assert "package_fixes" in result
+    assert "credential_fixes" in result
+    assert "unfixable" in result

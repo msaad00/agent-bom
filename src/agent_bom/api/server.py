@@ -683,6 +683,119 @@ async def list_jobs() -> dict:
     }
 
 
+# ─── Compliance Posture ───────────────────────────────────────────────────────
+
+
+@app.get("/v1/compliance", tags=["compliance"])
+async def get_compliance() -> dict:
+    """Aggregate OWASP LLM Top 10, MITRE ATLAS, and NIST AI RMF compliance
+    posture across all completed scans.
+
+    Returns per-control pass/warning/fail status and an overall compliance score.
+    """
+    from agent_bom.atlas import ATLAS_TECHNIQUES
+    from agent_bom.nist_ai_rmf import NIST_AI_RMF
+    from agent_bom.owasp import OWASP_LLM_TOP10
+
+    # Collect blast_radius entries from all completed scans
+    all_blast: list[dict] = []
+    latest_scan: str | None = None
+    scan_count = 0
+
+    for job in _jobs.values():
+        if job.status != JobStatus.DONE or not job.result:
+            continue
+        scan_count += 1
+        br_list = job.result.get("blast_radius", [])
+        all_blast.extend(br_list)
+        if latest_scan is None or (job.completed_at and job.completed_at > latest_scan):
+            latest_scan = job.completed_at
+
+    def _build_controls(
+        catalog: dict[str, str],
+        tag_field: str,
+        id_key: str,
+    ) -> list[dict]:
+        """Build per-control compliance entries from blast_radius data."""
+        controls = []
+        for code, name in sorted(catalog.items()):
+            sev_breakdown = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+            affected_pkgs: set[str] = set()
+            affected_agents: set[str] = set()
+            findings = 0
+
+            for br in all_blast:
+                tags = br.get(tag_field, [])
+                if code in tags:
+                    findings += 1
+                    sev = (br.get("severity") or "").lower()
+                    if sev in sev_breakdown:
+                        sev_breakdown[sev] += 1
+                    pkg = br.get("package")
+                    if pkg:
+                        affected_pkgs.add(pkg)
+                    for agent in br.get("affected_agents", []):
+                        affected_agents.add(agent)
+
+            if findings == 0:
+                status = "pass"
+            elif sev_breakdown["critical"] > 0 or sev_breakdown["high"] > 0:
+                status = "fail"
+            else:
+                status = "warning"
+
+            controls.append({
+                id_key: code,
+                "name": name,
+                "findings": findings,
+                "status": status,
+                "severity_breakdown": sev_breakdown,
+                "affected_packages": sorted(affected_pkgs),
+                "affected_agents": sorted(affected_agents),
+            })
+        return controls
+
+    owasp = _build_controls(OWASP_LLM_TOP10, "owasp_tags", "code")
+    atlas = _build_controls(ATLAS_TECHNIQUES, "atlas_tags", "code")
+    nist = _build_controls(NIST_AI_RMF, "nist_ai_rmf_tags", "code")
+
+    def _count_statuses(controls: list[dict]) -> tuple[int, int, int]:
+        p = sum(1 for c in controls if c["status"] == "pass")
+        w = sum(1 for c in controls if c["status"] == "warning")
+        f = sum(1 for c in controls if c["status"] == "fail")
+        return p, w, f
+
+    op, ow, of_ = _count_statuses(owasp)
+    ap, aw, af = _count_statuses(atlas)
+    np_, nw, nf = _count_statuses(nist)
+
+    total_controls = len(owasp) + len(atlas) + len(nist)
+    total_pass = op + ap + np_
+    overall_score = round((total_pass / total_controls) * 100, 1) if total_controls > 0 else 100.0
+
+    if of_ > 0 or af > 0 or nf > 0:
+        overall_status = "fail"
+    elif ow > 0 or aw > 0 or nw > 0:
+        overall_status = "warning"
+    else:
+        overall_status = "pass"
+
+    return {
+        "overall_score": overall_score,
+        "overall_status": overall_status,
+        "scan_count": scan_count,
+        "latest_scan": latest_scan,
+        "owasp_llm_top10": owasp,
+        "mitre_atlas": atlas,
+        "nist_ai_rmf": nist,
+        "summary": {
+            "owasp_pass": op, "owasp_warn": ow, "owasp_fail": of_,
+            "atlas_pass": ap, "atlas_warn": aw, "atlas_fail": af,
+            "nist_pass": np_, "nist_warn": nw, "nist_fail": nf,
+        },
+    }
+
+
 # ─── MCP Registry ─────────────────────────────────────────────────────────────
 
 import functools  # noqa: E402

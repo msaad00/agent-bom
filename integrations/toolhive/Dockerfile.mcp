@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 
-ARG VERSION=0.26.0
+ARG VERSION=0.27.0
 
 LABEL maintainer="agent-bom <261858605+agent-bom@users.noreply.github.com>"
 LABEL description="agent-bom MCP Server: AI supply chain security scanning via MCP protocol"

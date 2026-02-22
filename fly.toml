@@ -1,0 +1,25 @@
+# Fly.io deployment config for agent-bom MCP server (SSE transport).
+#
+# Deploy: fly launch --config fly.toml
+# Docs: https://fly.io/docs/reference/configuration/
+
+app = "agent-bom-mcp"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile.sse"
+
+[env]
+  PORT = "8423"
+
+[http_service]
+  internal_port = 8423
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1

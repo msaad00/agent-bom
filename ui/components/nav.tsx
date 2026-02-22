@@ -11,17 +11,19 @@ import {
   Activity,
   GitBranch,
   Library,
+  Shield,
 } from "lucide-react";
 import { api } from "@/lib/api";
 
 const links = [
-  { href: "/",          label: "Dashboard",  icon: Activity },
-  { href: "/scan",      label: "New Scan",   icon: Scan },
-  { href: "/agents",    label: "Agents",     icon: Server },
-  { href: "/vulns",     label: "Vulns",      icon: Bug },
-  { href: "/graph",     label: "Graph",      icon: GitBranch },
-  { href: "/registry",  label: "Registry",   icon: Library },
-  { href: "/jobs",      label: "Jobs",       icon: ShieldAlert },
+  { href: "/",           label: "Dashboard",   icon: Activity },
+  { href: "/scan",       label: "New Scan",    icon: Scan },
+  { href: "/agents",     label: "Agents",      icon: Server },
+  { href: "/vulns",      label: "Vulns",       icon: Bug },
+  { href: "/compliance", label: "Compliance",  icon: Shield },
+  { href: "/graph",      label: "Graph",       icon: GitBranch },
+  { href: "/registry",   label: "Registry",    icon: Library },
+  { href: "/jobs",       label: "Jobs",        icon: ShieldAlert },
 ];
 
 export function Nav() {

@@ -246,6 +246,33 @@ export interface RegistryResponse {
   count: number;
 }
 
+// ─── Compliance Types ─────────────────────────────────────────────────────────
+
+export interface ComplianceControl {
+  code: string;
+  name: string;
+  findings: number;
+  status: "pass" | "warning" | "fail";
+  severity_breakdown: Record<string, number>;
+  affected_packages: string[];
+  affected_agents: string[];
+}
+
+export interface ComplianceResponse {
+  overall_score: number;
+  overall_status: "pass" | "warning" | "fail";
+  scan_count: number;
+  latest_scan: string | null;
+  owasp_llm_top10: ComplianceControl[];
+  mitre_atlas: ComplianceControl[];
+  nist_ai_rmf: ComplianceControl[];
+  summary: {
+    owasp_pass: number; owasp_warn: number; owasp_fail: number;
+    atlas_pass: number; atlas_warn: number; atlas_fail: number;
+    nist_pass: number;  nist_warn: number;  nist_fail: number;
+  };
+}
+
 // ─── Fetch helpers ────────────────────────────────────────────────────────────
 
 async function get<T>(path: string): Promise<T> {
@@ -328,6 +355,9 @@ export const api = {
     };
     return () => es.close(); // cleanup fn
   },
+
+  /** Compliance posture across all completed scans */
+  getCompliance: () => get<ComplianceResponse>("/v1/compliance"),
 };
 
 // ─── Threat Framework Catalogs ────────────────────────────────────────────────
@@ -361,6 +391,24 @@ export const MITRE_ATLAS: Record<string, string> = {
   "AML.T0060": "Data from AI Services",
   "AML.T0061": "AI Agent Tools",
   "AML.T0062": "Exfiltration via AI Agent Tool Invocation",
+};
+
+/** NIST AI RMF 1.0 — subcategory ID → human-readable name */
+export const NIST_AI_RMF: Record<string, string> = {
+  "GOVERN-1.5": "Ongoing monitoring mechanisms for AI risk",
+  "GOVERN-1.7": "Third-party AI component risk processes",
+  "GOVERN-6.1": "Assessment policies for third-party AI entities",
+  "GOVERN-6.2": "Contingency plans for third-party AI failures",
+  "MAP-1.6": "System dependencies and external interfaces mapped",
+  "MAP-3.5": "AI supply chain risks assessed",
+  "MAP-5.2": "AI deployment impact practices identified",
+  "MEASURE-2.5": "AI system security testing conducted",
+  "MEASURE-2.6": "AI system results validated",
+  "MEASURE-2.9": "Effectiveness of risk mitigations assessed",
+  "MANAGE-1.3": "Responses to identified AI risks documented",
+  "MANAGE-2.2": "Anomalous event detection and response",
+  "MANAGE-2.4": "Risk treatments including remediation applied",
+  "MANAGE-4.1": "Post-deployment monitoring plans implemented",
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

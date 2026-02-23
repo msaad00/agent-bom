@@ -204,11 +204,11 @@ To trigger all CI pipelines (PyPI, Docker Hub, GHCR, MCP containers):
 ```bash
 # Ensure version is bumped in pyproject.toml
 # Tag and push
-git tag v0.28.0
-git push origin v0.28.0
+git tag v0.28.1
+git push origin v0.28.1
 
 # Create GitHub Release (triggers all publish workflows)
-gh release create v0.28.0 --generate-notes --title "agent-bom v0.28.0"
+gh release create v0.28.1 --generate-notes --title "agent-bom v0.28.1"
 ```
 
 This triggers:

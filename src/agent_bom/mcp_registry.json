@@ -1,7 +1,7 @@
 {
   "_comment": "agent-bom MCP Server Registry \u2014 threat intelligence database for known MCP servers",
   "_schema_version": "2.0",
-  "_updated": "2026-02-21",
+  "_updated": "2026-02-23",
   "_total_servers": 112,
   "_differentiator": "Threat intelligence database \u2014 not just a catalog. Each entry has risk_level, tools, credential_env_vars for blast radius pre-computation.",
   "_source": "https://github.com/msaad00/agent-bom/blob/main/data/mcp-registry.yaml",
@@ -9,7 +9,7 @@
     "@modelcontextprotocol/server-filesystem": {
       "package": "@modelcontextprotocol/server-filesystem",
       "ecosystem": "npm",
-      "latest_version": "2025.1.14",
+      "latest_version": "2026.1.14",
       "description": "Read and write local filesystem files",
       "name": "Filesystem",
       "risk_justification": "write_file and create_directory grant full filesystem write access within configured paths.",
@@ -37,7 +37,7 @@
     "@modelcontextprotocol/server-github": {
       "package": "@modelcontextprotocol/server-github",
       "ecosystem": "npm",
-      "latest_version": "2025.1.14",
+      "latest_version": "2025.4.8",
       "description": "Read GitHub repos, issues, and PRs via GitHub API",
       "name": "GitHub",
       "risk_justification": "Read/write access to GitHub repos, issues, and PRs via GITHUB_PERSONAL_ACCESS_TOKEN. Token exposure enables repository-wide access.",
@@ -74,7 +74,7 @@
     "@modelcontextprotocol/server-gitlab": {
       "package": "@modelcontextprotocol/server-gitlab",
       "ecosystem": "npm",
-      "latest_version": "2025.1.14",
+      "latest_version": "2025.4.25",
       "description": "Read GitLab repos, issues, and MRs",
       "name": "GitLab",
       "risk_justification": "Read/write access to GitLab repos, issues, and MRs via GITLAB_PERSONAL_ACCESS_TOKEN. Token exposure enables project-wide access.",
@@ -105,7 +105,7 @@
     "@modelcontextprotocol/server-slack": {
       "package": "@modelcontextprotocol/server-slack",
       "ecosystem": "npm",
-      "latest_version": "2025.1.14",
+      "latest_version": "2025.4.25",
       "description": "Read and post Slack messages",
       "name": "Slack",
       "risk_justification": "Read/write access to Slack channels and messages via SLACK_BOT_TOKEN. Token exposure enables workspace-wide message access.",
@@ -136,7 +136,7 @@
     "@modelcontextprotocol/server-postgres": {
       "package": "@modelcontextprotocol/server-postgres",
       "ecosystem": "npm",
-      "latest_version": "2025.1.14",
+      "latest_version": "0.6.2",
       "description": "Execute SQL queries against PostgreSQL",
       "name": "PostgreSQL",
       "risk_justification": "Executes raw SQL queries via POSTGRES_CONNECTION_STRING. Arbitrary data read/write/delete possible.",
@@ -183,7 +183,7 @@
     "@modelcontextprotocol/server-brave-search": {
       "package": "@modelcontextprotocol/server-brave-search",
       "ecosystem": "npm",
-      "latest_version": "2025.1.14",
+      "latest_version": "0.6.2",
       "description": "Web search via Brave Search API",
       "name": "Brave Search",
       "risk_justification": "Read-only web search via BRAVE_API_KEY. No write capability.",
@@ -226,7 +226,7 @@
     "@modelcontextprotocol/server-memory": {
       "package": "@modelcontextprotocol/server-memory",
       "ecosystem": "npm",
-      "latest_version": "2025.1.14",
+      "latest_version": "2026.1.26",
       "description": "Persistent key-value store / knowledge graph",
       "name": "Memory",
       "risk_justification": "Local knowledge graph storage only. No credential exposure or network access.",
@@ -254,7 +254,7 @@
     "@modelcontextprotocol/server-puppeteer": {
       "package": "@modelcontextprotocol/server-puppeteer",
       "ecosystem": "npm",
-      "latest_version": "2025.1.14",
+      "latest_version": "2025.5.12",
       "description": "Control headless Chromium browser",
       "name": "Puppeteer",
       "risk_justification": "Controls a headless browser with script execution. Can steal cookies, automate phishing, exfiltrate DOM content.",
@@ -280,7 +280,7 @@
     "@modelcontextprotocol/server-aws-kb-retrieval": {
       "package": "@modelcontextprotocol/server-aws-kb-retrieval",
       "ecosystem": "npm",
-      "latest_version": "2025.1.14",
+      "latest_version": "0.6.2",
       "description": "Query AWS Bedrock Knowledge Bases",
       "name": "AWS KB Retrieval",
       "risk_justification": "Read-only access to AWS Bedrock Knowledge Bases via AWS credentials. Token exposure enables knowledge base queries across the account.",
@@ -304,7 +304,7 @@
     "@modelcontextprotocol/server-google-maps": {
       "package": "@modelcontextprotocol/server-google-maps",
       "ecosystem": "npm",
-      "latest_version": "2025.1.14",
+      "latest_version": "0.6.2",
       "description": "Geocoding, directions, places via Google Maps",
       "name": "Google Maps",
       "risk_justification": "Read-only geocoding and directions via GOOGLE_MAPS_API_KEY. No write capability.",
@@ -383,7 +383,7 @@
     "@modelcontextprotocol/server-sequential-thinking": {
       "package": "@modelcontextprotocol/server-sequential-thinking",
       "ecosystem": "npm",
-      "latest_version": "2025.1.14",
+      "latest_version": "2025.12.18",
       "description": "Structured sequential reasoning",
       "name": "Sequential Thinking",
       "risk_justification": "Local computation only. No credential exposure or network access.",
@@ -403,7 +403,7 @@
     "@modelcontextprotocol/server-everything": {
       "package": "@modelcontextprotocol/server-everything",
       "ecosystem": "npm",
-      "latest_version": "2025.1.14",
+      "latest_version": "2026.1.26",
       "description": "Demo server with all MCP primitives",
       "name": "Everything",
       "risk_justification": "Demo/testing server with no real-world side effects. No credential exposure or network access.",
@@ -429,7 +429,7 @@
     "mcp-server-git": {
       "package": "mcp-server-git",
       "ecosystem": "pypi",
-      "latest_version": "2025.1.14",
+      "latest_version": "2026.1.14",
       "description": "Git operations on local repositories",
       "name": "Git",
       "risk_justification": "Read/write access to local Git repositories. Can commit and push code changes without credential exposure.",
@@ -456,7 +456,7 @@
     "mcp-server-time": {
       "package": "mcp-server-time",
       "ecosystem": "pypi",
-      "latest_version": "2025.1.14",
+      "latest_version": "2026.1.26",
       "description": "Time and timezone utilities",
       "name": "Time",
       "risk_justification": "Local computation only. No credential exposure or network access.",
@@ -477,7 +477,7 @@
     "mcp-server-fetch": {
       "package": "mcp-server-fetch",
       "ecosystem": "pypi",
-      "latest_version": "2025.1.14",
+      "latest_version": "2025.4.7",
       "description": "HTTP fetch (Python implementation)",
       "name": "Fetch (Python)",
       "risk_justification": "Can fetch arbitrary HTTP URLs, enabling SSRF and internal network probing. No credential storage but network access is unbounded.",
@@ -519,7 +519,7 @@
     "@stripe/agent-toolkit": {
       "package": "@stripe/agent-toolkit",
       "ecosystem": "npm",
-      "latest_version": "0.3.0",
+      "latest_version": "0.9.0",
       "description": "Stripe payment operations",
       "name": "Stripe",
       "risk_justification": "Creates payments and manages customers via STRIPE_SECRET_KEY. Key exposure enables financial fraud.",
@@ -548,7 +548,7 @@
     "linear-mcp-server": {
       "package": "linear-mcp-server",
       "ecosystem": "npm",
-      "latest_version": "0.5.0",
+      "latest_version": "0.1.0",
       "description": "Linear issue tracking",
       "name": "Linear",
       "risk_justification": "Read/write access to Linear issues and projects via LINEAR_API_KEY. Token exposure enables workspace-wide issue management.",
@@ -576,7 +576,7 @@
     "mcp-atlassian": {
       "package": "mcp-atlassian",
       "ecosystem": "pypi",
-      "latest_version": "0.10.0",
+      "latest_version": "0.16.1",
       "description": "Jira and Confluence integration",
       "name": "Atlassian",
       "risk_justification": "Read/write access to Jira and Confluence via ATLASSIAN_API_TOKEN. Token exposure enables workspace-wide access.",
@@ -634,7 +634,7 @@
     "@cloudflare/mcp-server-cloudflare": {
       "package": "@cloudflare/mcp-server-cloudflare",
       "ecosystem": "npm",
-      "latest_version": "0.6.0",
+      "latest_version": "0.2.0",
       "description": "Manage Cloudflare Workers, KV, R2, DNS",
       "name": "Cloudflare",
       "risk_justification": "Read/write access to Cloudflare Workers, KV, R2, and DNS via CLOUDFLARE_API_TOKEN. Token exposure enables domain and infrastructure changes.",
@@ -663,7 +663,7 @@
     "@vercel/mcp-adapter": {
       "package": "@vercel/mcp-adapter",
       "ecosystem": "npm",
-      "latest_version": "0.3.0",
+      "latest_version": "0.3.2",
       "description": "Deploy and manage Vercel projects",
       "name": "Vercel",
       "risk_justification": "Read/write access to Vercel deployments via VERCEL_TOKEN. Token exposure enables deploying and managing projects.",
@@ -689,7 +689,7 @@
     "awslabs.core-mcp-server": {
       "package": "awslabs.core-mcp-server",
       "ecosystem": "pypi",
-      "latest_version": "0.4.0",
+      "latest_version": "1.0.23",
       "description": "AWS services (S3, Lambda, DynamoDB, Bedrock)",
       "name": "AWS Core",
       "risk_justification": "Full AWS service access via AWS credentials. Credential exposure enables account-wide operations across S3, Lambda, DynamoDB, and Bedrock.",
@@ -720,7 +720,7 @@
     "awslabs.bedrock-kb-retrieval-mcp-server": {
       "package": "awslabs.bedrock-kb-retrieval-mcp-server",
       "ecosystem": "pypi",
-      "latest_version": "0.2.0",
+      "latest_version": "1.0.16",
       "description": "AWS Bedrock Knowledge Base queries",
       "name": "AWS Bedrock KB",
       "risk_justification": "Read-only access to AWS Bedrock Knowledge Bases via AWS credentials. Token exposure enables knowledge base queries across the account.",
@@ -746,7 +746,7 @@
     "mcp-server-qdrant": {
       "package": "mcp-server-qdrant",
       "ecosystem": "pypi",
-      "latest_version": "0.3.1",
+      "latest_version": "0.8.1",
       "description": "Qdrant vector database search and storage",
       "name": "Qdrant",
       "risk_justification": "Read/write access to Qdrant vector database via QDRANT_API_KEY. Token exposure enables vector data manipulation.",
@@ -771,7 +771,7 @@
     "mongodb-mcp-server": {
       "package": "mongodb-mcp-server",
       "ecosystem": "npm",
-      "latest_version": "0.1.3",
+      "latest_version": "1.6.0",
       "description": "Query and modify MongoDB collections",
       "name": "MongoDB",
       "risk_justification": "Executes arbitrary MongoDB queries via MONGODB_URI. Full data read/write/delete possible across all collections.",
@@ -802,7 +802,7 @@
     "@supabase/mcp-server-supabase": {
       "package": "@supabase/mcp-server-supabase",
       "ecosystem": "npm",
-      "latest_version": "0.2.0",
+      "latest_version": "0.6.3",
       "description": "Read/write Supabase tables, storage, Edge Functions",
       "name": "Supabase",
       "risk_justification": "Executes raw SQL and manages Edge Functions via SUPABASE_SERVICE_ROLE_KEY. Key exposure enables full database and serverless function control.",
@@ -890,7 +890,7 @@
     "mcp-server-elasticsearch": {
       "package": "mcp-server-elasticsearch",
       "ecosystem": "npm",
-      "latest_version": "0.1.0",
+      "latest_version": "0.2.0",
       "description": "Query Elasticsearch indices",
       "name": "Elasticsearch",
       "risk_justification": "Read/write access to Elasticsearch indices via ELASTICSEARCH_API_KEY. Token exposure enables index-wide data access.",
@@ -918,7 +918,7 @@
     "mcp-server-kubernetes": {
       "package": "mcp-server-kubernetes",
       "ecosystem": "npm",
-      "latest_version": "0.3.0",
+      "latest_version": "3.2.1",
       "description": "Kubernetes cluster management",
       "name": "Kubernetes",
       "risk_justification": "Full Kubernetes cluster management via KUBECONFIG. Can apply manifests, scale deployments, and delete resources.",
@@ -949,7 +949,7 @@
     "mcp-server-docker": {
       "package": "mcp-server-docker",
       "ecosystem": "npm",
-      "latest_version": "0.2.0",
+      "latest_version": "1.0.0",
       "description": "Docker container management",
       "name": "Docker",
       "risk_justification": "Full Docker container lifecycle management via DOCKER_HOST. Can run, stop, and exec commands inside containers.",
@@ -979,7 +979,7 @@
     "@notionhq/notion-mcp-server": {
       "package": "@notionhq/notion-mcp-server",
       "ecosystem": "npm",
-      "latest_version": "1.6.1",
+      "latest_version": "2.1.0",
       "description": "Read and write Notion pages, databases, blocks",
       "name": "Notion",
       "risk_justification": "Read/write access to Notion pages and databases via NOTION_API_KEY. Token exposure enables workspace-wide content manipulation.",
@@ -1016,7 +1016,7 @@
     "exa-mcp-server": {
       "package": "exa-mcp-server",
       "ecosystem": "npm",
-      "latest_version": "1.1.2",
+      "latest_version": "3.1.8",
       "description": "AI-native web search via Exa",
       "name": "Exa",
       "risk_justification": "Read-only web search via EXA_API_KEY. No write capability.",
@@ -1041,7 +1041,7 @@
     "tavily-mcp": {
       "package": "tavily-mcp",
       "ecosystem": "npm",
-      "latest_version": "0.2.0",
+      "latest_version": "0.2.17",
       "description": "Real-time web search for AI agents",
       "name": "Tavily",
       "risk_justification": "Read-only web search via TAVILY_API_KEY. No write capability.",
@@ -1065,7 +1065,7 @@
     "duckduckgo-mcp-server": {
       "package": "duckduckgo-mcp-server",
       "ecosystem": "pypi",
-      "latest_version": "0.2.0",
+      "latest_version": "0.1.1",
       "description": "Privacy-first web search via DuckDuckGo",
       "name": "DuckDuckGo",
       "risk_justification": "Local search proxy only. No credential exposure or write capability.",
@@ -1086,7 +1086,7 @@
     "mcp-server-firecrawl": {
       "package": "mcp-server-firecrawl",
       "ecosystem": "npm",
-      "latest_version": "1.5.0",
+      "latest_version": "1.2.4",
       "description": "Web scraping and crawling via Firecrawl",
       "name": "Firecrawl",
       "risk_justification": "Web scraping and crawling via FIRECRAWL_API_KEY. Can extract data from arbitrary URLs.",
@@ -1112,7 +1112,7 @@
     "mcp-grafana": {
       "package": "mcp-grafana",
       "ecosystem": "pypi",
-      "latest_version": "0.3.0",
+      "latest_version": "0.1.2",
       "description": "Query Grafana dashboards and alerts",
       "name": "Grafana",
       "risk_justification": "Read/write access to Grafana dashboards and alerts via GRAFANA_API_KEY. Token exposure enables dashboard and alert rule manipulation.",
@@ -1168,7 +1168,7 @@
     "mcp-server-playwright": {
       "package": "@playwright/mcp",
       "ecosystem": "npm",
-      "latest_version": "0.1.0",
+      "latest_version": "0.0.68",
       "description": "Browser automation via Playwright",
       "name": "Playwright",
       "risk_justification": "Controls a headless browser with script execution. Can steal cookies, automate phishing, exfiltrate DOM content.",
@@ -1196,7 +1196,7 @@
     "@jetbrains/mcp-proxy": {
       "package": "@jetbrains/mcp-proxy",
       "ecosystem": "npm",
-      "latest_version": "0.2.0",
+      "latest_version": "1.8.0",
       "description": "Control JetBrains IDEs",
       "name": "JetBrains",
       "risk_justification": "Read/write access to JetBrains IDE operations. Can navigate files, refactor code, and run configurations within the IDE.",
@@ -1349,7 +1349,7 @@
     "mcp-openai": {
       "package": "mcp-openai",
       "ecosystem": "npm",
-      "latest_version": "0.3.0",
+      "latest_version": "0.0.1",
       "description": "Call OpenAI models from MCP session",
       "name": "OpenAI",
       "risk_justification": "Executes OpenAI API calls via OPENAI_API_KEY. Token exposure enables model invocation and cost accrual.",
@@ -1483,7 +1483,7 @@
     "mcp-server-shopify": {
       "package": "mcp-server-shopify",
       "ecosystem": "npm",
-      "latest_version": "0.2.0",
+      "latest_version": "1.0.2",
       "description": "Shopify store management",
       "name": "Shopify",
       "risk_justification": "Full Shopify store management via SHOPIFY_ACCESS_TOKEN. Token exposure enables product, order, and customer data manipulation.",
@@ -1596,7 +1596,7 @@
     "mcp-server-snowflake": {
       "package": "mcp-server-snowflake",
       "ecosystem": "pypi",
-      "latest_version": "0.1.0",
+      "latest_version": "0.3.8",
       "description": "Snowflake data warehouse queries",
       "name": "Snowflake",
       "risk_justification": "Executes raw SQL queries via SNOWFLAKE_PASSWORD. Arbitrary data read/write/delete possible across the warehouse.",
@@ -1654,7 +1654,7 @@
     "mcp-server-pinecone": {
       "package": "mcp-server-pinecone",
       "ecosystem": "npm",
-      "latest_version": "0.1.0",
+      "latest_version": "0.0.1",
       "description": "Pinecone vector database",
       "name": "Pinecone",
       "risk_justification": "Read/write access to Pinecone vector indices via PINECONE_API_KEY. Token exposure enables vector data manipulation.",
@@ -1736,7 +1736,7 @@
     "mcp-server-discord": {
       "package": "mcp-server-discord",
       "ecosystem": "npm",
-      "latest_version": "0.1.0",
+      "latest_version": "1.2.8",
       "description": "Discord bot operations",
       "name": "Discord",
       "risk_justification": "Read/write access to Discord channels and messages via DISCORD_BOT_TOKEN. Token exposure enables server-wide message access.",
@@ -1763,7 +1763,7 @@
     "mcp-server-telegram": {
       "package": "mcp-server-telegram",
       "ecosystem": "npm",
-      "latest_version": "0.1.0",
+      "latest_version": "0.0.1",
       "description": "Send Telegram messages",
       "name": "Telegram",
       "risk_justification": "Read/write access to Telegram chats via TELEGRAM_BOT_TOKEN. Token exposure enables sending messages as the bot.",
@@ -1817,7 +1817,7 @@
     "mcp-server-trello": {
       "package": "mcp-server-trello",
       "ecosystem": "npm",
-      "latest_version": "0.1.0",
+      "latest_version": "1.0.4",
       "description": "Trello board management",
       "name": "Trello",
       "risk_justification": "Read/write access to Trello boards and cards via TRELLO_API_KEY. Token exposure enables board-wide card manipulation.",
@@ -1846,7 +1846,7 @@
     "mcp-server-google-workspace": {
       "package": "mcp-server-google-workspace",
       "ecosystem": "npm",
-      "latest_version": "0.1.0",
+      "latest_version": "0.2.6",
       "description": "Google Workspace (Docs, Sheets, Calendar)",
       "name": "Google Workspace",
       "risk_justification": "Read/write access to Google Docs, Sheets, and Calendar via OAuth credentials. Token exposure enables workspace-wide document access.",
@@ -1875,7 +1875,7 @@
     "mcp-server-replicate": {
       "package": "mcp-server-replicate",
       "ecosystem": "pypi",
-      "latest_version": "0.1.0",
+      "latest_version": "0.1.9",
       "description": "Run ML models on Replicate",
       "name": "Replicate",
       "risk_justification": "Executes ML model inference via REPLICATE_API_TOKEN. Token exposure enables model invocation and cost accrual.",
@@ -2118,7 +2118,7 @@
     "mcp-youtube": {
       "package": "mcp-youtube",
       "ecosystem": "npm",
-      "latest_version": "0.1.0",
+      "latest_version": "0.0.1",
       "description": "YouTube transcript download and search",
       "name": "YouTube Transcripts",
       "risk_justification": "Local YouTube transcript extraction only. No credential exposure or write capability.",
@@ -2288,7 +2288,7 @@
     "mcp-server-neon": {
       "package": "mcp-server-neon",
       "ecosystem": "npm",
-      "latest_version": "0.3.0",
+      "latest_version": "0.0.1",
       "description": "Neon serverless Postgres management",
       "name": "Neon",
       "risk_justification": "Executes raw SQL and manages Neon projects via NEON_API_KEY. Key exposure enables full database and project control.",
@@ -2342,7 +2342,7 @@
     "mcp-server-turso": {
       "package": "mcp-server-turso",
       "ecosystem": "npm",
-      "latest_version": "0.1.0",
+      "latest_version": "0.0.1",
       "description": "Turso/libSQL edge database",
       "name": "Turso",
       "risk_justification": "Read/write access to Turso/libSQL databases via TURSO_AUTH_TOKEN. Token exposure enables arbitrary query execution.",
@@ -2425,7 +2425,7 @@
     "mcp-server-github-actions": {
       "package": "mcp-server-github-actions",
       "ecosystem": "npm",
-      "latest_version": "0.1.0",
+      "latest_version": "1.0.0",
       "description": "GitHub Actions workflow management",
       "name": "GitHub Actions",
       "risk_justification": "Triggers and manages GitHub Actions workflows via GITHUB_TOKEN. Token exposure enables arbitrary workflow execution.",
@@ -2452,7 +2452,7 @@
     "mcp-server-groq": {
       "package": "mcp-server-groq",
       "ecosystem": "npm",
-      "latest_version": "0.1.0",
+      "latest_version": "0.0.1",
       "description": "Fast inference via Groq API",
       "name": "Groq",
       "risk_justification": "Read-only inference via GROQ_API_KEY. No write capability; risk bounded to API cost accrual.",
@@ -2476,7 +2476,7 @@
     "mcp-server-together": {
       "package": "mcp-server-together",
       "ecosystem": "npm",
-      "latest_version": "0.1.0",
+      "latest_version": "0.0.1",
       "description": "Together AI inference",
       "name": "Together AI",
       "risk_justification": "Read-only inference via TOGETHER_API_KEY. No write capability; risk bounded to API cost accrual.",
@@ -2661,7 +2661,7 @@
     "mcp-server-airtable": {
       "package": "mcp-server-airtable",
       "ecosystem": "npm",
-      "latest_version": "0.1.0",
+      "latest_version": "0.0.1",
       "description": "Airtable base and record management",
       "name": "Airtable",
       "risk_justification": "Read/write access to Airtable bases and records via AIRTABLE_API_KEY. Token exposure enables base-wide data manipulation.",
@@ -2689,7 +2689,7 @@
     "openclaw": {
       "package": "openclaw",
       "ecosystem": "npm",
-      "latest_version": "2026.2.19",
+      "latest_version": "2026.2.22-2",
       "description": "OpenClaw personal AI assistant \u2014 multi-channel gateway (WhatsApp, Telegram, Slack, Discord, iMessage, Teams) with 214k+ GitHub stars",
       "name": "OpenClaw",
       "risk_justification": "Full system access including filesystem, browser, code execution, and multi-channel messaging via OPENAI_API_KEY and ANTHROPIC_API_KEY. Credential exposure enables complete agent takeover.",
@@ -2777,7 +2777,7 @@
     "figma-mcp": {
       "package": "figma-mcp",
       "ecosystem": "npm",
-      "latest_version": "0.3.0",
+      "latest_version": "0.1.4",
       "description": "Read Figma design files, components, and frames via Figma REST API",
       "name": "Figma",
       "risk_justification": "Read access to all Figma design data via FIGMA_ACCESS_TOKEN. Token exposure enables reading all accessible design files.",
@@ -2895,7 +2895,7 @@
     "resend-mcp": {
       "package": "resend-mcp",
       "ecosystem": "npm",
-      "latest_version": "0.1.0",
+      "latest_version": "2.0.1",
       "description": "Send transactional emails via Resend API",
       "name": "Resend",
       "risk_justification": "Sends emails from your Resend-verified domains via RESEND_API_KEY. Key exposure enables email spoofing from your domain.",
@@ -2951,7 +2951,7 @@
     "@e2b/mcp-server": {
       "package": "@e2b/mcp-server",
       "ecosystem": "npm",
-      "latest_version": "0.1.0",
+      "latest_version": "0.2.3",
       "description": "E2B cloud sandbox - execute code in isolated cloud VMs",
       "name": "E2B Code Interpreter",
       "risk_justification": "Executes arbitrary code in cloud VMs via E2B API. While sandboxed, code execution enables network exfiltration from within the sandbox.",
@@ -2980,7 +2980,7 @@
       "package": "fastapi-mcp",
       "ecosystem": "pypi",
       "latest_version": "0.4.0",
-      "description": "Expose FastAPI applications as MCP tool servers — auto-converts endpoints to MCP tools",
+      "description": "Expose FastAPI applications as MCP tool servers \u2014 auto-converts endpoints to MCP tools",
       "name": "FastAPI-MCP",
       "risk_justification": "Automatically exposes ALL FastAPI endpoints as MCP tools. In AWM-generated environments, this means auth-free database/file endpoints become LLM-callable tools with no input validation.",
       "command_patterns": [
@@ -3025,7 +3025,7 @@
       "package": "agent-world-model",
       "ecosystem": "pypi",
       "latest_version": "0.1.0",
-      "description": "Snowflake AWM — synthesizes 1000 executable MCP server environments for agentic RL training",
+      "description": "Snowflake AWM \u2014 synthesizes 1000 executable MCP server environments for agentic RL training",
       "name": "Agent World Model (AWM)",
       "risk_justification": "Generated environments deliberately have NO authentication, NO input validation, NO error handling. Designed for RL training, not production. Any deployment of AWM-generated servers exposes raw database/file access to LLMs.",
       "command_patterns": [

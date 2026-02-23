@@ -1,0 +1,105 @@
+name: Publish to Registries
+
+# Auto-publishes to Smithery and ClawHub when a new GitHub release is created.
+# Secrets needed (add via Settings → Secrets):
+#   SMITHERY_API_TOKEN  — Smithery service token (smithery.ai → API tokens)
+#   CLAWHUB_TOKEN       — ClawHub auth token (clawhub.ai → Settings)
+# Optional vars:
+#   RAILWAY_MCP_URL     — Override Railway MCP endpoint URL
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smithery:
+    name: Publish to Smithery
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Extract version from tag
+        id: meta
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to Smithery
+        env:
+          SMITHERY_API_TOKEN: ${{ secrets.SMITHERY_API_TOKEN }}
+          RAILWAY_MCP_URL: ${{ vars.RAILWAY_MCP_URL }}
+        run: |
+          if [ -z "$SMITHERY_API_TOKEN" ]; then
+            echo "::warning::SMITHERY_API_TOKEN not set — skipping Smithery publish"
+            exit 0
+          fi
+
+          QUALIFIED_NAME="msaad00%2Fagent-bom"
+          MCP_URL="${RAILWAY_MCP_URL:-https://web-production-c0852.up.railway.app/mcp}"
+
+          echo "Publishing agent-bom v${{ steps.meta.outputs.version }} to Smithery..."
+
+          HTTP_STATUS=$(curl -s -o /tmp/smithery-response.json -w "%{http_code}" \
+            -X PUT "https://api.smithery.ai/servers/${QUALIFIED_NAME}/releases" \
+            -H "Authorization: Bearer ${SMITHERY_API_TOKEN}" \
+            -F "payload={
+              \"type\": \"external\",
+              \"url\": \"${MCP_URL}\",
+              \"configSchema\": {
+                \"type\": \"object\",
+                \"properties\": {
+                  \"NVD_API_KEY\": {
+                    \"type\": \"string\",
+                    \"description\": \"NVD API key for higher rate limits on CVSS enrichment (optional)\"
+                  }
+                }
+              }
+            }")
+
+          echo "Smithery response (HTTP ${HTTP_STATUS}):"
+          cat /tmp/smithery-response.json
+
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+            echo "Smithery publish succeeded"
+          else
+            echo "::warning::Smithery publish returned HTTP ${HTTP_STATUS} — check response above"
+          fi
+
+  clawhub:
+    name: Publish to ClawHub
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Extract version from tag
+        id: meta
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Publish to ClawHub
+        env:
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+        run: |
+          if [ -z "$CLAWHUB_TOKEN" ]; then
+            echo "::warning::CLAWHUB_TOKEN not set — skipping ClawHub publish"
+            exit 0
+          fi
+
+          echo "Publishing agent-bom v${{ steps.meta.outputs.version }} to ClawHub..."
+
+          npm install -g clawdhub@latest
+          clawhub login --token "${CLAWHUB_TOKEN}"
+          clawhub publish integrations/openclaw \
+            --slug agent-bom \
+            --name "agent-bom" \
+            --version "${{ steps.meta.outputs.version }}" \
+            --changelog "Release v${{ steps.meta.outputs.version }}" \
+            --force
+
+          echo "ClawHub publish succeeded"

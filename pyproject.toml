@@ -10,7 +10,7 @@ readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.10"
 authors = [
-    {name = "agent-bom", email = "261858605+agent-bom@users.noreply.github.com"}
+    {name = "Mohamed Saad", email = "34316639+msaad00@users.noreply.github.com"}
 ]
 keywords = ["ai-bom", "sbom", "mcp", "mcp-server", "security", "ai-agents", "vulnerability", "supply-chain", "owasp", "mitre-atlas", "nist-ai-rmf", "grype", "syft", "blast-radius", "cve", "llm-security", "remediation", "mcp-introspection", "openclaw", "ai-enrichment"]
 classifiers = [

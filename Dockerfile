@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 ARG VERSION=dev
 
-LABEL maintainer="Wagdy Saad <crewnycgiving@gmail.com>"
+LABEL maintainer="Mohamed Saad <34316639+msaad00@users.noreply.github.com>"
 LABEL description="agent-bom: AI Bill of Materials generator and vulnerability scanner for AI agents and MCP servers"
 LABEL org.opencontainers.image.version="${VERSION}"
 LABEL org.opencontainers.image.source="https://github.com/msaad00/agent-bom"

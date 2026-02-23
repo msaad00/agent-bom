@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 ARG VERSION=0.29.0
 
-LABEL maintainer="agent-bom <261858605+agent-bom@users.noreply.github.com>"
+LABEL maintainer="Mohamed Saad <34316639+msaad00@users.noreply.github.com>"
 LABEL description="agent-bom MCP Server: AI supply chain security scanning via MCP protocol"
 LABEL org.opencontainers.image.version="${VERSION}"
 LABEL org.opencontainers.image.source="https://github.com/msaad00/agent-bom"

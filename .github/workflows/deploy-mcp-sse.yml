@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ vars.DEPLOY_TARGET == 'railway' }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: actions/checkout@v6
 
       - name: Install Railway CLI
         run: npm install -g @railway/cli
@@ -25,4 +25,9 @@ jobs:
       - name: Deploy to Railway
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: railway up --service agent-bom-mcp --detach
+        run: |
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "::warning::RAILWAY_TOKEN not set — skipping Railway deploy"
+            exit 0
+          fi
+          railway up --service agent-bom-mcp --detach

@@ -18,7 +18,8 @@ jobs:
 
       - name: Validate server.json
         run: |
-          HTTP_STATUS=$(curl -s -o /tmp/validate-response.json -w "%{http_code}" \
+          HTTP_STATUS=$(curl -s --connect-timeout 10 --max-time 30 \
+            -o /tmp/validate-response.json -w "%{http_code}" \
             -X POST "https://registry.modelcontextprotocol.io/v0.1/validate" \
             -H "Content-Type: application/json" \
             -d @integrations/mcp-registry/server.json)
@@ -46,7 +47,8 @@ jobs:
       - name: Exchange OIDC token for Registry JWT
         id: auth
         run: |
-          AUTH_RESPONSE=$(curl -s -X POST "https://registry.modelcontextprotocol.io/v0.1/auth/github-oidc" \
+          AUTH_RESPONSE=$(curl -s --connect-timeout 10 --max-time 30 \
+            -X POST "https://registry.modelcontextprotocol.io/v0.1/auth/github-oidc" \
             -H "Content-Type: application/json" \
             -d "{\"oidc_token\": \"${{ steps.oidc.outputs.token }}\"}")
           JWT=$(echo "$AUTH_RESPONSE" | jq -r '.registry_token // .token // empty')
@@ -59,7 +61,8 @@ jobs:
 
       - name: Publish to MCP Registry
         run: |
-          HTTP_STATUS=$(curl -s -o /tmp/publish-response.json -w "%{http_code}" \
+          HTTP_STATUS=$(curl -s --connect-timeout 10 --max-time 30 \
+            -o /tmp/publish-response.json -w "%{http_code}" \
             -X POST "https://registry.modelcontextprotocol.io/v0.1/publish" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ steps.auth.outputs.jwt }}" \

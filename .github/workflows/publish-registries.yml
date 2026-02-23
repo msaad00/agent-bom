@@ -41,7 +41,8 @@ jobs:
 
           echo "Publishing agent-bom v${{ steps.meta.outputs.version }} to Smithery..."
 
-          HTTP_STATUS=$(curl -s -o /tmp/smithery-response.json -w "%{http_code}" \
+          HTTP_STATUS=$(curl -s --connect-timeout 10 --max-time 30 \
+            -o /tmp/smithery-response.json -w "%{http_code}" \
             -X PUT "https://api.smithery.ai/servers/${QUALIFIED_NAME}/releases" \
             -H "Authorization: Bearer ${SMITHERY_API_TOKEN}" \
             -F "payload={

@@ -215,7 +215,27 @@ def configure_api(
 # Thread pool for running blocking scan functions without blocking the event loop
 _executor = ThreadPoolExecutor(max_workers=4)
 
-# In-memory job store  {job_id: ScanJob}
+# ─── Job store (pluggable) ────────────────────────────────────────────────────
+# Import lazily to avoid circular import at module level
+_store: Any = None  # Initialized on first use
+
+
+def _get_store():
+    """Get the active job store, creating InMemoryJobStore if not yet set."""
+    global _store
+    if _store is None:
+        from agent_bom.api.store import InMemoryJobStore
+        _store = InMemoryJobStore()
+    return _store
+
+
+def set_job_store(store: Any) -> None:
+    """Switch the job store backend. Call before server startup."""
+    global _store
+    _store = store
+
+
+# Legacy alias for direct dict access (read-only compatibility)
 _jobs: dict[str, "ScanJob"] = {}
 
 
@@ -454,6 +474,8 @@ def _run_scan_sync(job: ScanJob) -> None:
         job.progress.append(f"Error: {exc}")
     finally:
         job.completed_at = _now()
+        # Persist final state
+        _get_store().put(job)
 
 
 _cleanup_task: asyncio.Task | None = None
@@ -463,15 +485,7 @@ async def _cleanup_loop():
     """Background task that removes expired jobs every 5 minutes."""
     while True:
         await asyncio.sleep(300)
-        now = datetime.now(timezone.utc)
-        expired = [
-            jid for jid, job in _jobs.items()
-            if job.status in (JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED)
-            and job.completed_at
-            and (now - datetime.fromisoformat(job.completed_at)).total_seconds() > _JOB_TTL_SECONDS
-        ]
-        for jid in expired:
-            del _jobs[jid]
+        _get_store().cleanup_expired(_JOB_TTL_SECONDS)
 
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
@@ -499,7 +513,8 @@ async def create_scan(request: ScanRequest) -> ScanJob:
     Poll GET /v1/scan/{job_id} for results, or stream via /v1/scan/{job_id}/stream.
     """
     # Enforce max concurrent jobs
-    active = sum(1 for j in _jobs.values() if j.status in (JobStatus.PENDING, JobStatus.RUNNING))
+    store = _get_store()
+    active = sum(1 for j in store.list_all() if j.status in (JobStatus.PENDING, JobStatus.RUNNING))
     if active >= _MAX_CONCURRENT_JOBS:
         raise HTTPException(
             status_code=429,
@@ -511,6 +526,8 @@ async def create_scan(request: ScanRequest) -> ScanJob:
         created_at=_now(),
         request=request,
     )
+    store.put(job)
+    # Keep in-memory ref for SSE streaming (progress list updates in real-time)
     _jobs[job.job_id] = job
 
     loop = asyncio.get_event_loop()
@@ -522,9 +539,13 @@ async def create_scan(request: ScanRequest) -> ScanJob:
 @app.get("/v1/scan/{job_id}", response_model=ScanJob, tags=["scan"])
 async def get_scan(job_id: str) -> ScanJob:
     """Poll scan status and results."""
-    if job_id not in _jobs:
+    # Check in-memory first (for in-progress jobs with live progress)
+    if job_id in _jobs:
+        return _jobs[job_id]
+    job = _get_store().get(job_id)
+    if job is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
-    return _jobs[job_id]
+    return job
 
 
 @app.get("/v1/scan/{job_id}/attack-flow", tags=["scan"])
@@ -546,10 +567,9 @@ async def get_attack_flow(
       ?framework=LLM05       - filter by OWASP/ATLAS/NIST tag
       ?agent=claude-desktop  - filter to a specific agent
     """
-    if job_id not in _jobs:
+    job = _jobs.get(job_id) or _get_store().get(job_id)
+    if job is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
-
-    job = _jobs[job_id]
     if job.status != JobStatus.DONE or not job.result:
         raise HTTPException(status_code=409, detail="Scan not completed yet")
 
@@ -576,10 +596,10 @@ async def get_skill_audit(job_id: str) -> dict:
     typosquat detection, unverified servers, shell access, and more.
     Empty results if no skill files were scanned.
     """
-    if job_id not in _jobs:
+    job = _jobs.get(job_id) or _get_store().get(job_id)
+    if job is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
-    job = _jobs[job_id]
     if job.status != JobStatus.DONE or not job.result:
         raise HTTPException(status_code=409, detail="Scan not completed yet")
 
@@ -595,9 +615,10 @@ async def get_skill_audit(job_id: str) -> dict:
 @app.delete("/v1/scan/{job_id}", status_code=204, tags=["scan"])
 async def delete_scan(job_id: str) -> None:
     """Discard a job record."""
-    if job_id not in _jobs:
+    in_memory = _jobs.pop(job_id, None)
+    in_store = _get_store().delete(job_id)
+    if not in_memory and not in_store:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
-    del _jobs[job_id]
 
 
 @app.get("/v1/scan/{job_id}/stream", tags=["scan"])
@@ -669,17 +690,10 @@ async def list_agents() -> dict:
 @app.get("/v1/jobs", tags=["scan"])
 async def list_jobs() -> dict:
     """List all scan jobs (for the UI job history panel)."""
+    summary = _get_store().list_summary()
     return {
-        "jobs": [
-            {
-                "job_id": j.job_id,
-                "status": j.status,
-                "created_at": j.created_at,
-                "completed_at": j.completed_at,
-            }
-            for j in _jobs.values()
-        ],
-        "count": len(_jobs),
+        "jobs": summary,
+        "count": len(summary),
     }
 
 
@@ -702,7 +716,7 @@ async def get_compliance() -> dict:
     latest_scan: str | None = None
     scan_count = 0
 
-    for job in _jobs.values():
+    for job in _get_store().list_all():
         if job.status != JobStatus.DONE or not job.result:
             continue
         scan_count += 1

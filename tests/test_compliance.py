@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from starlette.testclient import TestClient
 
-from agent_bom.api.server import JobStatus, _jobs, app
+from agent_bom.api.server import JobStatus, _get_store, app
+from agent_bom.api.store import InMemoryJobStore
 
 
 def _clear_jobs():
-    """Remove all jobs from the in-memory store."""
-    _jobs.clear()
+    """Reset the job store to a fresh in-memory store."""
+    from agent_bom.api.server import set_job_store
+    set_job_store(InMemoryJobStore())
 
 
 def _add_done_job(blast_radius: list[dict], job_id: str = "test-job"):
@@ -28,7 +30,7 @@ def _add_done_job(blast_radius: list[dict], job_id: str = "test-job"):
         "blast_radius": blast_radius,
         "threat_framework_summary": {},
     }
-    _jobs[job_id] = job
+    _get_store().put(job)
 
 
 # ─── Tests ───────────────────────────────────────────────────────────────────

@@ -153,26 +153,27 @@ def test_max_body_size_middleware():
 
 def test_max_concurrent_jobs():
     """Should return 429 when max concurrent jobs exceeded."""
-    from agent_bom.api.server import _MAX_CONCURRENT_JOBS, JobStatus, ScanJob, ScanRequest, _jobs
+    from agent_bom.api.server import _MAX_CONCURRENT_JOBS, JobStatus, ScanJob, ScanRequest, _get_store, set_job_store
+    from agent_bom.api.store import InMemoryJobStore
 
-    # Create fake jobs up to the limit
-    original_jobs = dict(_jobs)
+    # Use a fresh in-memory store filled with running jobs
+    original_store = _get_store()
+    fake_store = InMemoryJobStore()
+    dummy_request = ScanRequest()
+    for i in range(_MAX_CONCURRENT_JOBS):
+        fake_store.put(ScanJob(
+            job_id=f"fake-{i}",
+            status=JobStatus.RUNNING,
+            created_at="2026-01-01T00:00:00Z",
+            request=dummy_request,
+            progress=[],
+        ))
+
+    set_job_store(fake_store)
     try:
-        _jobs.clear()
-        dummy_request = ScanRequest()
-        for i in range(_MAX_CONCURRENT_JOBS):
-            _jobs[f"fake-{i}"] = ScanJob(
-                job_id=f"fake-{i}",
-                status=JobStatus.RUNNING,
-                created_at="2026-01-01T00:00:00Z",
-                request=dummy_request,
-                progress=[],
-            )
-
         client = TestClient(app)
         resp = client.post("/v1/scan", json={"images": [], "k8s": False, "tf_dirs": [], "agent_projects": [], "enrich": False})
         assert resp.status_code == 429
         assert "concurrent" in resp.json()["detail"].lower()
     finally:
-        _jobs.clear()
-        _jobs.update(original_jobs)
+        set_job_store(original_store)

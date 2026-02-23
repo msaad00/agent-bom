@@ -23,7 +23,12 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+from mcp.types import ToolAnnotations
+
 logger = logging.getLogger(__name__)
+
+# All agent-bom tools are read-only scanners
+_READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True)
 
 
 def _check_mcp_sdk() -> None:
@@ -137,7 +142,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     # ── Tool 1: scan ──────────────────────────────────────────────────
 
-    @mcp.tool()
+    @mcp.tool(annotations=_READ_ONLY)
     async def scan(
         config_path: Optional[str] = None,
         image: Optional[str] = None,
@@ -176,7 +181,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     # ── Tool 2: blast_radius ──────────────────────────────────────────
 
-    @mcp.tool()
+    @mcp.tool(annotations=_READ_ONLY)
     async def blast_radius(cve_id: str) -> str:
         """Look up the blast radius of a specific CVE across your AI agent setup.
 
@@ -226,7 +231,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     # ── Tool 3: policy_check ──────────────────────────────────────────
 
-    @mcp.tool()
+    @mcp.tool(annotations=_READ_ONLY)
     async def policy_check(policy_json: str) -> str:
         """Evaluate a security policy against current scan results.
 
@@ -261,7 +266,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     # ── Tool 4: registry_lookup ───────────────────────────────────────
 
-    @mcp.tool()
+    @mcp.tool(annotations=_READ_ONLY)
     def registry_lookup(
         server_name: Optional[str] = None,
         package_name: Optional[str] = None,
@@ -322,7 +327,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     # ── Tool 5: generate_sbom ─────────────────────────────────────────
 
-    @mcp.tool()
+    @mcp.tool(annotations=_READ_ONLY)
     async def generate_sbom(
         format: str = "cyclonedx",
         config_path: Optional[str] = None,
@@ -359,7 +364,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     # ── Tool 6: compliance ───────────────────────────────────────────
 
-    @mcp.tool()
+    @mcp.tool(annotations=_READ_ONLY)
     async def compliance(
         config_path: Optional[str] = None,
         image: Optional[str] = None,
@@ -448,7 +453,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     # ── Tool 7: remediate ────────────────────────────────────────────
 
-    @mcp.tool()
+    @mcp.tool(annotations=_READ_ONLY)
     async def remediate(
         config_path: Optional[str] = None,
         image: Optional[str] = None,
@@ -512,6 +517,37 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         except Exception as exc:
             return json.dumps({"error": str(exc)})
 
+    # ── Prompts ─────────────────────────────────────────────────────
+
+    @mcp.prompt(name="quick-audit", description="Run a complete security audit of your AI agent setup")
+    def quick_audit_prompt() -> str:
+        return (
+            "Scan my local AI agent and MCP server configurations for vulnerabilities. "
+            "Show the blast radius for any critical findings and suggest remediation steps. "
+            "Include OWASP LLM Top 10 and MITRE ATLAS mappings."
+        )
+
+    @mcp.prompt(name="pre-install-check", description="Check an MCP server package for vulnerabilities before installing")
+    def pre_install_check_prompt(package: str, ecosystem: str = "npm") -> str:
+        return (
+            f"Check the MCP server package '{package}' (ecosystem: {ecosystem}) for known CVEs. "
+            "Show severity, EPSS score, and whether it's in CISA KEV. Recommend whether to install."
+        )
+
+    @mcp.prompt(name="compliance-report", description="Generate OWASP/ATLAS/NIST compliance posture for your AI stack")
+    def compliance_report_prompt() -> str:
+        return (
+            "Scan my AI agent setup, map findings to OWASP LLM Top 10, MITRE ATLAS, and NIST AI RMF. "
+            "Generate a compliance summary suitable for security review."
+        )
+
+    # ── Custom route: server card ────────────────────────────────────
+
+    @mcp.custom_route("/.well-known/mcp/server-card.json", methods=["GET"])
+    async def server_card_route(request):
+        from starlette.responses import JSONResponse
+        return JSONResponse(build_server_card())
+
     return mcp
 
 
@@ -520,13 +556,19 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 # ---------------------------------------------------------------------------
 
 _SERVER_CARD_TOOLS = [
-    {"name": "scan", "description": "Full discovery → scan → output pipeline"},
-    {"name": "blast_radius", "description": "Look up blast radius for a specific CVE"},
-    {"name": "policy_check", "description": "Evaluate security policy rules"},
-    {"name": "registry_lookup", "description": "Query MCP server threat intelligence registry"},
-    {"name": "generate_sbom", "description": "Generate CycloneDX or SPDX SBOM"},
-    {"name": "compliance", "description": "OWASP / MITRE ATLAS / NIST AI RMF posture"},
-    {"name": "remediate", "description": "Generate actionable remediation plan"},
+    {"name": "scan", "description": "Full discovery → scan → output pipeline", "annotations": {"readOnlyHint": True}},
+    {"name": "blast_radius", "description": "Look up blast radius for a specific CVE", "annotations": {"readOnlyHint": True}},
+    {"name": "policy_check", "description": "Evaluate security policy rules", "annotations": {"readOnlyHint": True}},
+    {"name": "registry_lookup", "description": "Query MCP server threat intelligence registry", "annotations": {"readOnlyHint": True}},
+    {"name": "generate_sbom", "description": "Generate CycloneDX or SPDX SBOM", "annotations": {"readOnlyHint": True}},
+    {"name": "compliance", "description": "OWASP / MITRE ATLAS / NIST AI RMF posture", "annotations": {"readOnlyHint": True}},
+    {"name": "remediate", "description": "Generate actionable remediation plan", "annotations": {"readOnlyHint": True}},
+]
+
+_SERVER_CARD_PROMPTS = [
+    {"name": "quick-audit", "description": "Run a complete security audit of your AI agent setup"},
+    {"name": "pre-install-check", "description": "Check an MCP server package for vulnerabilities before installing"},
+    {"name": "compliance-report", "description": "Generate OWASP/ATLAS/NIST compliance posture for your AI stack"},
 ]
 
 
@@ -546,8 +588,9 @@ def build_server_card() -> dict:
             "policy enforcement, and SBOM generation for MCP servers and AI agents."
         ),
         "repository": "https://github.com/msaad00/agent-bom",
-        "transport": ["stdio", "sse"],
+        "transport": ["stdio", "sse", "streamable-http"],
         "tools": _SERVER_CARD_TOOLS,
+        "prompts": _SERVER_CARD_PROMPTS,
         "capabilities": {
             "frameworks": ["OWASP LLM Top 10", "MITRE ATLAS", "NIST AI RMF"],
             "sbom_formats": ["CycloneDX 1.6", "SPDX 3.0", "SARIF 2.1.0"],

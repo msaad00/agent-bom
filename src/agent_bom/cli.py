@@ -1799,10 +1799,10 @@ def api_cmd(host: str, port: int, reload: bool, workers: int,
 
 
 @main.command("mcp-server")
-@click.option("--transport", type=click.Choice(["stdio", "sse"]), default="stdio",
+@click.option("--transport", type=click.Choice(["stdio", "sse", "streamable-http"]), default="stdio",
               show_default=True, help="MCP transport protocol.")
-@click.option("--port", default=8423, show_default=True, help="Port for SSE transport.")
-@click.option("--host", default="127.0.0.1", show_default=True, help="Host for SSE transport.")
+@click.option("--port", default=8423, show_default=True, help="Port for HTTP/SSE transport.")
+@click.option("--host", default="127.0.0.1", show_default=True, help="Host for HTTP/SSE transport.")
 def mcp_server_cmd(transport: str, port: int, host: str):
     """Start agent-bom as an MCP server.
 
@@ -1821,8 +1821,9 @@ def mcp_server_cmd(transport: str, port: int, host: str):
 
     \b
     Usage:
-      agent-bom mcp-server                    # stdio (Claude Desktop, Cursor)
-      agent-bom mcp-server --transport sse    # SSE (remote clients)
+      agent-bom mcp-server                                # stdio (Claude Desktop, Cursor)
+      agent-bom mcp-server --transport sse                # SSE (remote clients)
+      agent-bom mcp-server --transport streamable-http    # Streamable HTTP (Smithery, etc.)
 
     \b
     Claude Desktop config (~/.claude/claude_desktop_config.json):
@@ -1840,12 +1841,12 @@ def mcp_server_cmd(transport: str, port: int, host: str):
 
     server = create_mcp_server(host=host, port=port)
 
-    if transport == "sse":
+    if transport in ("sse", "streamable-http"):
         from agent_bom import __version__ as _ver
         click.echo(f"  agent-bom MCP Server v{_ver}", err=True)
-        click.echo(f"  Transport: SSE on http://{host}:{port}", err=True)
+        click.echo(f"  Transport: {transport} on http://{host}:{port}", err=True)
         click.echo("  Press Ctrl+C to stop.\n", err=True)
-        server.run(transport="sse")
+        server.run(transport=transport)
     else:
         server.run(transport="stdio")
 

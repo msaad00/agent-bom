@@ -2794,7 +2794,7 @@ def test_toolhive_server_json_valid():
     from pathlib import Path
     p = Path(__file__).parent.parent / "integrations" / "toolhive" / "server.json"
     data = _json.loads(p.read_text())
-    assert data["name"] == "io.github.agent-bom/agent-bom"
+    assert data["name"] == "io.github.msaad00/agent-bom"
     assert data["version"] == "0.28.1"
     assert "packages" in data
     assert data["packages"][0]["registryType"] == "oci"
@@ -2806,7 +2806,7 @@ def test_mcp_registry_server_json_valid():
     from pathlib import Path
     p = Path(__file__).parent.parent / "integrations" / "mcp-registry" / "server.json"
     data = _json.loads(p.read_text())
-    assert data["name"] == "io.github.agent-bom/agent-bom"
+    assert data["name"] == "io.github.msaad00/agent-bom"
     assert any(pkg["registryType"] == "pypi" for pkg in data["packages"])
 
 

@@ -208,7 +208,7 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: '0'
 
-  # 6. agent-bom Self-Scan (dogfooding → GitHub Security tab)
+  # 6. agent-bom Self-Scan (dogfooding with test SBOM → GitHub Security tab)
   agent-bom-scan:
     name: agent-bom Self-Scan
     runs-on: ubuntu-latest
@@ -228,10 +228,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
 
-      - name: Run agent-bom scan
+      - name: Run agent-bom scan (ingest test SBOM)
         run: |
-          agent-bom scan -f sarif -o results.sarif || true
-          # Ensure valid SARIF exists even when no MCP configs are found
+          agent-bom scan --sbom tests/fixtures/test-sbom.cdx.json -f sarif -o results.sarif || true
           if [ ! -f results.sarif ]; then
             echo '{"$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json","version":"2.1.0","runs":[{"tool":{"driver":{"name":"agent-bom"}},"results":[]}]}' > results.sarif
           fi
@@ -242,3 +241,18 @@ jobs:
         with:
           sarif_file: results.sarif
           category: agent-bom
+
+  # 7. Dogfood GitHub Action (test action.yml via uses: ./)
+  action-dogfood:
+    name: Dogfood GitHub Action
+    runs-on: ubuntu-latest
+    needs: [test]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run agent-bom action from local checkout
+        uses: ./
+        with:
+          sbom: tests/fixtures/test-sbom.cdx.json
+          format: sarif
+          upload-sarif: 'false'

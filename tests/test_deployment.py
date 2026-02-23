@@ -80,7 +80,7 @@ def test_mcp_registry_entry_valid():
     f = ROOT / "integrations" / "mcp-registry" / "server.json"
     assert f.exists()
     data = json.loads(f.read_text())
-    assert data["name"] == "io.github.agent-bom/agent-bom"
+    assert data["name"] == "io.github.msaad00/agent-bom"
     assert "version" in data
     # Should have at least one package entry
     assert len(data["packages"]) >= 1
@@ -94,7 +94,7 @@ def test_toolhive_entry_valid():
     f = ROOT / "integrations" / "toolhive" / "server.json"
     assert f.exists()
     data = json.loads(f.read_text())
-    assert data["name"] == "io.github.agent-bom/agent-bom"
+    assert data["name"] == "io.github.msaad00/agent-bom"
     pkg = data["packages"][0]
     assert pkg["registryType"] == "oci"
     assert pkg["identifier"].startswith("ghcr.io/msaad00/agent-bom:")

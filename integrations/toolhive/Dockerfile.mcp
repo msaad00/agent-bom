@@ -6,7 +6,7 @@ LABEL maintainer="agent-bom <261858605+agent-bom@users.noreply.github.com>"
 LABEL description="agent-bom MCP Server: AI supply chain security scanning via MCP protocol"
 LABEL org.opencontainers.image.version="${VERSION}"
 LABEL org.opencontainers.image.source="https://github.com/msaad00/agent-bom"
-LABEL io.modelcontextprotocol.server.name="io.github.agent-bom/agent-bom"
+LABEL io.modelcontextprotocol.server.name="io.github.msaad00/agent-bom"
 
 WORKDIR /app
 

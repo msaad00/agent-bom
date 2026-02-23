@@ -31,7 +31,7 @@ jobs:
         run: bandit -r src/ --severity-level medium
 
       - name: pip-audit (Dependency Vulnerabilities)
-        run: pip-audit
+        run: pip-audit --ignore-vuln CVE-2025-14009  # nltk transitive via safety; no fix released yet
 
       - name: Trivy filesystem scan
         uses: aquasecurity/trivy-action@master

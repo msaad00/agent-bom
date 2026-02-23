@@ -20,9 +20,8 @@
       "packageArguments": [
         {
           "type": "positional",
-          "name": "command",
-          "isRepeated": false,
-          "description": "The CLI subcommand to run the MCP server"
+          "value": "mcp-server",
+          "isRepeated": false
         }
       ],
       "environmentVariables": [

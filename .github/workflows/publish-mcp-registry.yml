@@ -25,7 +25,12 @@ jobs:
           echo "Validation status: $HTTP_STATUS"
           cat /tmp/validate-response.json
           if [ "$HTTP_STATUS" -ge 400 ]; then
-            echo "::error::server.json validation failed"
+            echo "::error::server.json validation failed (HTTP $HTTP_STATUS)"
+            exit 1
+          fi
+          VALID=$(jq -r '.valid // true' /tmp/validate-response.json)
+          if [ "$VALID" = "false" ]; then
+            echo "::error::server.json schema validation failed"
             exit 1
           fi
 
@@ -33,7 +38,7 @@ jobs:
         id: oidc
         run: |
           OIDC_TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://registry.modelcontextprotocol.io" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=mcp-registry" \
             | jq -r '.value')
           echo "::add-mask::$OIDC_TOKEN"
           echo "token=$OIDC_TOKEN" >> "$GITHUB_OUTPUT"

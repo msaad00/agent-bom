@@ -49,7 +49,7 @@ jobs:
           AUTH_RESPONSE=$(curl -s -X POST "https://registry.modelcontextprotocol.io/v0.1/auth/github-oidc" \
             -H "Content-Type: application/json" \
             -d "{\"oidc_token\": \"${{ steps.oidc.outputs.token }}\"}")
-          JWT=$(echo "$AUTH_RESPONSE" | jq -r '.token // empty')
+          JWT=$(echo "$AUTH_RESPONSE" | jq -r '.registry_token // .token // empty')
           if [ -z "$JWT" ]; then
             echo "::error::Failed to get Registry JWT: $AUTH_RESPONSE"
             exit 1

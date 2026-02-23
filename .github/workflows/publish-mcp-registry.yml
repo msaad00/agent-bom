@@ -1,0 +1,68 @@
+name: Publish to MCP Registry
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write  # Required for GitHub OIDC token exchange
+
+jobs:
+  publish:
+    name: Publish to Official MCP Registry
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate server.json
+        run: |
+          HTTP_STATUS=$(curl -s -o /tmp/validate-response.json -w "%{http_code}" \
+            -X POST "https://registry.modelcontextprotocol.io/v0.1/validate" \
+            -H "Content-Type: application/json" \
+            -d @integrations/mcp-registry/server.json)
+          echo "Validation status: $HTTP_STATUS"
+          cat /tmp/validate-response.json
+          if [ "$HTTP_STATUS" -ge 400 ]; then
+            echo "::error::server.json validation failed"
+            exit 1
+          fi
+
+      - name: Get GitHub OIDC token
+        id: oidc
+        run: |
+          OIDC_TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://registry.modelcontextprotocol.io" \
+            | jq -r '.value')
+          echo "::add-mask::$OIDC_TOKEN"
+          echo "token=$OIDC_TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Exchange OIDC token for Registry JWT
+        id: auth
+        run: |
+          AUTH_RESPONSE=$(curl -s -X POST "https://registry.modelcontextprotocol.io/v0.1/auth/github-oidc" \
+            -H "Content-Type: application/json" \
+            -d "{\"oidc_token\": \"${{ steps.oidc.outputs.token }}\"}")
+          JWT=$(echo "$AUTH_RESPONSE" | jq -r '.token // empty')
+          if [ -z "$JWT" ]; then
+            echo "::error::Failed to get Registry JWT: $AUTH_RESPONSE"
+            exit 1
+          fi
+          echo "::add-mask::$JWT"
+          echo "jwt=$JWT" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to MCP Registry
+        run: |
+          HTTP_STATUS=$(curl -s -o /tmp/publish-response.json -w "%{http_code}" \
+            -X POST "https://registry.modelcontextprotocol.io/v0.1/publish" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ steps.auth.outputs.jwt }}" \
+            -d @integrations/mcp-registry/server.json)
+          echo "Publish status: $HTTP_STATUS"
+          cat /tmp/publish-response.json
+          if [ "$HTTP_STATUS" -ge 400 ]; then
+            echo "::warning::MCP Registry publish returned $HTTP_STATUS — may need manual review"
+          else
+            echo "Published to MCP Registry successfully"
+          fi

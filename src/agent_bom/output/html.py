@@ -439,7 +439,7 @@ def _attack_flow_section(blast_radii: list["BlastRadius"]) -> str:
         f'{total_creds} credentials &#x2192; {total_tools} tools at risk'
         '</span></div>'
         '<div class="graph-container">'
-        '<div id="cyAttack" class="d3-graph"></div>'
+        '<div id="cyAttack" class="cy-graph"></div>'
         '<div class="graph-controls" style="top:12px;right:12px">'
         '<button class="graph-btn" id="afZoomIn" title="Zoom in">+</button>'
         '<button class="graph-btn" id="afZoomOut" title="Zoom out">&minus;</button>'
@@ -656,7 +656,10 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>agent-bom AI-BOM &mdash; {_esc(generated)}</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+  <script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+  <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
+  <script src="https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js"></script>
+  <script src="https://unpkg.com/cytoscape-popper@2.0.0/cytoscape-popper.js"></script>
   <style>
     *,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
     body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0b1120;color:#cbd5e1;line-height:1.6;font-size:14px}}
@@ -697,18 +700,10 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     /* GRAPH */
     .graph-container{{position:relative;border-radius:12px;overflow:hidden;border:1px solid #ffffff08}}
     .graph-container:fullscreen{{border-radius:0;background:#0f172a}}
-    .graph-container:fullscreen svg{{height:100vh}}
-    .d3-graph{{width:100%;background:#0f172a}}
+    .graph-container:fullscreen .cy-graph{{height:100vh}}
+    .cy-graph{{width:100%;height:600px;background:#0f172a}}
     #cy{{width:100%;height:600px}}
-    #cy svg{{width:100%;height:600px}}
     #cyAttack{{width:100%;height:500px}}
-    #cyAttack svg{{width:100%;height:500px}}
-    .d3-graph .node-group{{cursor:pointer}}
-    .d3-graph .node-group:hover rect,.d3-graph .node-group:hover polygon{{filter:brightness(1.3)}}
-    .d3-graph .link{{fill:none;stroke-opacity:.6}}
-    .d3-graph .node-label{{pointer-events:none;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}}
-    .d3-graph .faded{{opacity:.08;transition:opacity .2s}}
-    .d3-graph .highlighted rect,.d3-graph .highlighted polygon{{stroke:#f1f5f9!important;stroke-width:4!important}}
     .graph-controls{{position:absolute;top:12px;right:12px;display:flex;flex-direction:column;gap:4px;z-index:10}}
     .graph-btn{{width:36px;height:36px;border-radius:8px;border:1px solid #334155;background:rgba(15,23,42,.85);color:#94a3b8;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;backdrop-filter:blur(8px)}}
     .graph-btn:hover{{background:#1e293b;color:#e2e8f0;border-color:#475569}}
@@ -716,6 +711,20 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     .legend span{{display:flex;align-items:center;gap:6px}}
     .legend i{{display:inline-block;width:10px;height:10px;border-radius:3px}}
     .legend i.diamond{{transform:rotate(45deg);border-radius:1px}}
+
+    /* MINIMAP */
+    .cy-minimap{{position:absolute;bottom:12px;left:12px;width:180px;height:130px;background:rgba(15,23,42,.9);border:1px solid #334155;border-radius:8px;overflow:hidden;z-index:10;backdrop-filter:blur(8px)}}
+    .cy-minimap canvas{{width:100%!important;height:100%!important}}
+
+    /* CONTEXT MENU */
+    .cy-ctx-menu{{position:fixed;background:rgba(15,23,42,.97);border:1px solid #334155;border-radius:10px;padding:6px 0;min-width:200px;z-index:300;backdrop-filter:blur(12px);box-shadow:0 8px 32px rgba(0,0,0,.5);display:none}}
+    .cy-ctx-menu.show{{display:block}}
+    .cy-ctx-item{{padding:8px 16px;font-size:.8rem;color:#cbd5e1;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background .1s}}
+    .cy-ctx-item:hover{{background:#1e293b;color:#f1f5f9}}
+    .cy-ctx-sep{{height:1px;background:#1e293b;margin:4px 0}}
+
+    /* RISK PULSE for critical nodes */
+    @keyframes riskPulse{{0%{{box-shadow:0 0 0 0 rgba(220,38,38,.5)}}70%{{box-shadow:0 0 0 12px rgba(220,38,38,0)}}100%{{box-shadow:0 0 0 0 rgba(220,38,38,0)}}}}
 
     /* NODE DETAIL SIDEBAR */
     .node-sidebar{{position:fixed;top:56px;right:0;bottom:0;width:340px;background:rgba(15,23,42,.97);border-left:1px solid #334155;backdrop-filter:blur(12px);z-index:200;overflow-y:auto;transform:translateX(100%);transition:transform .25s ease;padding:0}}
@@ -810,7 +819,6 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
       .data-table th{{background:#f1f5f9;color:#334155;border-bottom:2px solid #cbd5e1}}
       .data-table td{{border-bottom:1px solid #e2e8f0}}
       #cy{{height:400px;background:#f8fafc;border:1px solid #e2e8f0}}
-      #cy svg{{height:400px}}
       .legend{{color:#475569}}
       a{{color:#2563eb}}
       footer{{color:#94a3b8}}
@@ -886,7 +894,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
       </span>
     </div>
     <div class="graph-container">
-      <div id="cy" class="d3-graph"></div>
+      <div id="cy"></div>
       <div class="graph-filter-bar" style="position:absolute;top:12px;left:12px;display:flex;gap:8px;align-items:center;z-index:10;background:rgba(15,23,42,.92);padding:8px 12px;border-radius:8px;border:1px solid #334155;backdrop-filter:blur(8px)">
         <label style="display:flex;align-items:center;gap:3px;font-size:.72rem;color:#fca5a5;cursor:pointer"><input type="checkbox" class="graph-sev-filter" value="critical" checked> Crit</label>
         <label style="display:flex;align-items:center;gap:3px;font-size:.72rem;color:#fb923c;cursor:pointer"><input type="checkbox" class="graph-sev-filter" value="high" checked> High</label>
@@ -1050,245 +1058,257 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     blastCtx.parentNode.replaceChild(p2, blastCtx);
   }}
 
-  // D3.js helper: convert Cytoscape elements to D3 nodes + links
-  function cytoToD3(elements) {{
-    var nodeMap = {{}};
-    var nodes = [];
-    var links = [];
-    elements.forEach(function(el) {{
-      var d = el.data;
-      if (d.source && d.target) {{
-        links.push({{ source: d.source, target: d.target, type: d.type || '' }});
-      }} else if (d.id) {{
-        var node = Object.assign({{}}, d);
-        nodeMap[d.id] = node;
-        nodes.push(node);
-      }}
-    }});
-    // Build adjacency for neighbor lookups
-    nodes.forEach(function(n) {{ n._neighbors = []; }});
-    links.forEach(function(l) {{
-      if (nodeMap[l.source]) nodeMap[l.source]._neighbors.push(l.target);
-      if (nodeMap[l.target]) nodeMap[l.target]._neighbors.push(l.source);
-    }});
-    return {{ nodes: nodes, links: links, nodeMap: nodeMap }};
-  }}
-
-  // D3.js node style config
-  var NODE_STYLES = {{
-    'provider':      {{ fill:'#1e1b4b', stroke:'#818cf8', strokeW:3, w:140, h:44, fontSize:13, fontWeight:700, color:'#c7d2fe', shape:'rect' }},
-    'agent':         {{ fill:'#1e3a8a', stroke:'#3b82f6', strokeW:2, w:120, h:40, fontSize:12, fontWeight:700, color:'#bfdbfe', shape:'rect' }},
-    'server_clean':  {{ fill:'#052e16', stroke:'#10b981', strokeW:2, w:120, h:36, fontSize:10, fontWeight:400, color:'#6ee7b7', shape:'rect' }},
-    'server_cred':   {{ fill:'#431407', stroke:'#f59e0b', strokeW:2, w:120, h:36, fontSize:10, fontWeight:400, color:'#fde68a', shape:'rect' }},
-    'server_vuln':   {{ fill:'#450a0a', stroke:'#ef4444', strokeW:2.5, w:120, h:36, fontSize:10, fontWeight:400, color:'#fca5a5', shape:'rect' }},
-    'pkg_vuln':      {{ fill:'#7f1d1d', stroke:'#dc2626', strokeW:2, w:130, h:38, fontSize:9, fontWeight:700, color:'#fca5a5', shape:'rect' }},
-    'cve_critical':  {{ fill:'#991b1b', stroke:'#f87171', strokeW:2, w:110, h:30, fontSize:8, fontWeight:400, color:'#fecaca', shape:'diamond' }},
-    'cve_high':      {{ fill:'#9a3412', stroke:'#fb923c', strokeW:2, w:100, h:28, fontSize:8, fontWeight:400, color:'#fed7aa', shape:'diamond' }},
-    'cve_medium':    {{ fill:'#854d0e', stroke:'#fbbf24', strokeW:1.5, w:90, h:26, fontSize:8, fontWeight:400, color:'#fef08a', shape:'diamond' }},
-    'cve_low':       {{ fill:'#854d0e', stroke:'#fbbf24', strokeW:1.5, w:90, h:26, fontSize:8, fontWeight:400, color:'#fef08a', shape:'diamond' }},
-    'cve_none':      {{ fill:'#854d0e', stroke:'#fbbf24', strokeW:1.5, w:90, h:26, fontSize:8, fontWeight:400, color:'#fef08a', shape:'diamond' }},
-  }};
-  function getNodeStyle(type) {{
-    return NODE_STYLES[type] || NODE_STYLES['cve_medium'];
-  }}
-
-  // Edge color config
-  var EDGE_COLORS = {{
-    'hosts':   {{ stroke:'#818cf8', opacity:0.3, dash:'6,3' }},
-    'uses':    {{ stroke:'#334155', opacity:0.6, dash:'' }},
-    'depends_on': {{ stroke:'#334155', opacity:0.6, dash:'' }},
-    'affects': {{ stroke:'#dc2626', opacity:0.3, dash:'' }},
-  }};
-  function getEdgeStyle(type) {{
-    return EDGE_COLORS[type] || {{ stroke:'#334155', opacity:0.6, dash:'' }};
-  }}
-
-  // Hierarchical rank for force X positioning
-  var TYPE_RANK = {{ 'provider':0, 'agent':1, 'server_clean':2, 'server_cred':2, 'server_vuln':2, 'pkg_vuln':3, 'cve_critical':4, 'cve_high':4, 'cve_medium':4, 'cve_low':4, 'cve_none':4 }};
-
-  // D3.js: Supply chain graph
+  // Cytoscape: Supply chain graph with dagre hierarchical layout
   var cyContainer = document.getElementById('cy');
   if (cyContainer && GRAPH_ELEMENTS.length > 0) {{
-    var graphData = cytoToD3(GRAPH_ELEMENTS);
-    var gNodes = graphData.nodes;
-    var gLinks = graphData.links;
-    var gNodeMap = graphData.nodeMap;
-
-    var width = cyContainer.clientWidth || 900;
-    var height = 600;
-    var svg = d3.select('#cy').append('svg')
-      .attr('width', width)
-      .attr('height', height);
-
-    // Arrow markers
-    var defs = svg.append('defs');
-    ['default','hosts','affects'].forEach(function(key) {{
-      var ec = key === 'hosts' ? '#818cf8' : key === 'affects' ? '#dc2626' : '#475569';
-      defs.append('marker')
-        .attr('id', 'arrow-' + key)
-        .attr('viewBox', '0 -5 10 10')
-        .attr('refX', 20).attr('refY', 0)
-        .attr('markerWidth', 6).attr('markerHeight', 6)
-        .attr('orient', 'auto')
-        .append('path').attr('d', 'M0,-5L10,0L0,5').attr('fill', ec);
+    var cy = cytoscape({{
+      container: cyContainer,
+      elements: GRAPH_ELEMENTS,
+      style: [
+        {{
+          selector: 'node[type="provider"]',
+          style: {{
+            'background-color': '#1e1b4b',
+            'border-color': '#818cf8',
+            'border-width': 3,
+            'label': 'data(label)',
+            'color': '#c7d2fe',
+            'font-size': '13px',
+            'font-weight': '700',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'width': 140,
+            'height': 44,
+            'shape': 'round-rectangle',
+            'text-wrap': 'wrap',
+            'text-max-width': '125px',
+          }},
+        }},
+        {{
+          selector: 'node[type="agent"]',
+          style: {{
+            'background-color': '#1e3a8a',
+            'border-color': '#3b82f6',
+            'border-width': 2,
+            'label': 'data(label)',
+            'color': '#bfdbfe',
+            'font-size': '12px',
+            'font-weight': '700',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'width': 120,
+            'height': 40,
+            'shape': 'round-rectangle',
+            'text-wrap': 'wrap',
+            'text-max-width': '105px',
+          }},
+        }},
+        {{
+          selector: 'node[type="server_clean"]',
+          style: {{
+            'background-color': '#052e16',
+            'border-color': '#10b981',
+            'border-width': 2,
+            'label': 'data(label)',
+            'color': '#6ee7b7',
+            'font-size': '10px',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'width': 120,
+            'height': 36,
+            'shape': 'round-rectangle',
+            'text-wrap': 'wrap',
+            'text-max-width': '110px',
+          }},
+        }},
+        {{
+          selector: 'node[type="server_cred"]',
+          style: {{
+            'background-color': '#431407',
+            'border-color': '#f59e0b',
+            'border-width': 2,
+            'label': 'data(label)',
+            'color': '#fde68a',
+            'font-size': '10px',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'width': 120,
+            'height': 36,
+            'shape': 'round-rectangle',
+            'text-wrap': 'wrap',
+            'text-max-width': '110px',
+          }},
+        }},
+        {{
+          selector: 'node[type="server_vuln"]',
+          style: {{
+            'background-color': '#450a0a',
+            'border-color': '#ef4444',
+            'border-width': 2.5,
+            'label': 'data(label)',
+            'color': '#fca5a5',
+            'font-size': '10px',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'width': 120,
+            'height': 36,
+            'shape': 'round-rectangle',
+            'text-wrap': 'wrap',
+            'text-max-width': '110px',
+          }},
+        }},
+        {{
+          selector: 'node[type="pkg_vuln"]',
+          style: {{
+            'background-color': '#7f1d1d',
+            'border-color': '#dc2626',
+            'border-width': 2,
+            'label': 'data(label)',
+            'color': '#fca5a5',
+            'font-size': '9px',
+            'font-weight': '700',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'width': 130,
+            'height': 38,
+            'shape': 'round-rectangle',
+            'text-wrap': 'wrap',
+            'text-max-width': '120px',
+          }},
+        }},
+        {{
+          selector: 'node[type^="cve_critical"]',
+          style: {{
+            'background-color': '#991b1b',
+            'border-color': '#f87171',
+            'border-width': 2,
+            'label': 'data(label)',
+            'color': '#fecaca',
+            'font-size': '8px',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'width': 110,
+            'height': 30,
+            'shape': 'diamond',
+            'underlay-color': '#ef4444',
+            'underlay-padding': '6px',
+            'underlay-opacity': 0.15,
+            'underlay-shape': 'ellipse',
+          }},
+        }},
+        {{
+          selector: 'node[type^="cve_high"]',
+          style: {{
+            'background-color': '#9a3412',
+            'border-color': '#fb923c',
+            'border-width': 2,
+            'label': 'data(label)',
+            'color': '#fed7aa',
+            'font-size': '8px',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'width': 100,
+            'height': 28,
+            'shape': 'diamond',
+            'underlay-color': '#fb923c',
+            'underlay-padding': '4px',
+            'underlay-opacity': 0.1,
+            'underlay-shape': 'ellipse',
+          }},
+        }},
+        {{
+          selector: 'node[type^="cve_medium"], node[type^="cve_low"], node[type^="cve_none"]',
+          style: {{
+            'background-color': '#854d0e',
+            'border-color': '#fbbf24',
+            'border-width': 1.5,
+            'label': 'data(label)',
+            'color': '#fef08a',
+            'font-size': '8px',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'width': 90,
+            'height': 26,
+            'shape': 'diamond',
+          }},
+        }},
+        {{
+          selector: 'edge',
+          style: {{
+            'width': 1.8,
+            'line-color': '#334155',
+            'target-arrow-color': '#475569',
+            'target-arrow-shape': 'triangle',
+            'curve-style': 'bezier',
+            'arrow-scale': 0.8,
+          }},
+        }},
+        {{
+          selector: 'edge[type="hosts"]',
+          style: {{
+            'line-color': '#818cf850',
+            'target-arrow-color': '#818cf880',
+            'line-style': 'dashed',
+            'line-dash-pattern': [6, 3],
+          }},
+        }},
+        {{
+          selector: 'edge[type="affects"]',
+          style: {{
+            'line-color': '#dc262650',
+            'target-arrow-color': '#dc262680',
+          }},
+        }},
+        {{
+          selector: '.highlighted',
+          style: {{
+            'border-width': 4,
+            'border-color': '#f1f5f9',
+            'z-index': 999,
+          }},
+        }},
+        {{
+          selector: '.faded',
+          style: {{ 'opacity': 0.08 }},
+        }},
+      ],
+      layout: {{
+        name: 'dagre',
+        rankDir: 'LR',
+        nodeSep: 50,
+        rankSep: 80,
+        edgeSep: 15,
+        padding: 30,
+        animate: false,
+        fit: true,
+      }},
+      minZoom: 0.15,
+      maxZoom: 4,
+      wheelSensitivity: 0.3,
+      autoungrabify: false,
     }});
-
-    var g = svg.append('g');
-
-    // Zoom/pan
-    var zoomBehavior = d3.zoom()
-      .scaleExtent([0.15, 4])
-      .on('zoom', function(event) {{ g.attr('transform', event.transform); }});
-    svg.call(zoomBehavior);
-
-    // Assign initial X by rank for hierarchical feel
-    var rankSpacing = width / 6;
-    gNodes.forEach(function(n) {{
-      var rank = TYPE_RANK[n.type] !== undefined ? TYPE_RANK[n.type] : 3;
-      n.x = rank * rankSpacing + rankSpacing * 0.5;
-      n.y = height / 2 + (Math.random() - 0.5) * height * 0.6;
-    }});
-
-    var simulation = d3.forceSimulation(gNodes)
-      .force('link', d3.forceLink(gLinks).id(function(d) {{ return d.id; }}).distance(100).strength(0.7))
-      .force('charge', d3.forceManyBody().strength(-300))
-      .force('x', d3.forceX(function(d) {{
-        var rank = TYPE_RANK[d.type] !== undefined ? TYPE_RANK[d.type] : 3;
-        return rank * rankSpacing + rankSpacing * 0.5;
-      }}).strength(0.4))
-      .force('y', d3.forceY(height / 2).strength(0.1))
-      .force('collision', d3.forceCollide(function(d) {{
-        var s = getNodeStyle(d.type);
-        return Math.max(s.w, s.h) / 2 + 8;
-      }}));
-
-    // Links
-    var linkGroup = g.append('g').attr('class', 'links');
-    var link = linkGroup.selectAll('line')
-      .data(gLinks).enter().append('line')
-      .attr('class', 'link')
-      .attr('stroke', function(d) {{ return getEdgeStyle(d.type).stroke; }})
-      .attr('stroke-opacity', function(d) {{ return getEdgeStyle(d.type).opacity; }})
-      .attr('stroke-width', 1.8)
-      .attr('stroke-dasharray', function(d) {{ return getEdgeStyle(d.type).dash; }})
-      .attr('marker-end', function(d) {{
-        if (d.type === 'hosts') return 'url(#arrow-hosts)';
-        if (d.type === 'affects') return 'url(#arrow-affects)';
-        return 'url(#arrow-default)';
-      }});
-
-    // Nodes
-    var nodeGroup = g.append('g').attr('class', 'nodes');
-    var node = nodeGroup.selectAll('g')
-      .data(gNodes).enter().append('g')
-      .attr('class', 'node-group')
-      .call(d3.drag()
-        .on('start', function(event, d) {{
-          if (!event.active) simulation.alphaTarget(0.3).restart();
-          d.fx = d.x; d.fy = d.y;
-        }})
-        .on('drag', function(event, d) {{ d.fx = event.x; d.fy = event.y; }})
-        .on('end', function(event, d) {{
-          if (!event.active) simulation.alphaTarget(0);
-          d.fx = null; d.fy = null;
-        }})
-      );
-
-    // Draw shapes
-    node.each(function(d) {{
-      var el = d3.select(this);
-      var s = getNodeStyle(d.type);
-      if (s.shape === 'diamond') {{
-        var hw = s.w / 2, hh = s.h / 2;
-        el.append('polygon')
-          .attr('points', '0,' + (-hh) + ' ' + hw + ',0 0,' + hh + ' ' + (-hw) + ',0')
-          .attr('fill', s.fill).attr('stroke', s.stroke).attr('stroke-width', s.strokeW)
-          .attr('rx', 4);
-      }} else {{
-        el.append('rect')
-          .attr('x', -s.w / 2).attr('y', -s.h / 2)
-          .attr('width', s.w).attr('height', s.h)
-          .attr('rx', 8).attr('ry', 8)
-          .attr('fill', s.fill).attr('stroke', s.stroke).attr('stroke-width', s.strokeW);
-      }}
-    }});
-
-    // Labels (split on newline)
-    node.each(function(d) {{
-      var el = d3.select(this);
-      var s = getNodeStyle(d.type);
-      var lines = (d.label || d.id || '').split('\\n');
-      var lineH = s.fontSize + 2;
-      var startY = -(lines.length - 1) * lineH / 2;
-      lines.forEach(function(line, i) {{
-        el.append('text')
-          .attr('class', 'node-label')
-          .attr('text-anchor', 'middle')
-          .attr('dy', startY + i * lineH + s.fontSize * 0.35)
-          .attr('fill', s.color)
-          .attr('font-size', s.fontSize + 'px')
-          .attr('font-weight', s.fontWeight)
-          .text(line.length > 18 ? line.slice(0, 17) + '\u2026' : line);
-      }});
-    }});
-
-    simulation.on('tick', function() {{
-      link
-        .attr('x1', function(d) {{ return d.source.x; }})
-        .attr('y1', function(d) {{ return d.source.y; }})
-        .attr('x2', function(d) {{ return d.target.x; }})
-        .attr('y2', function(d) {{ return d.target.y; }});
-      node.attr('transform', function(d) {{ return 'translate(' + d.x + ',' + d.y + ')'; }});
-    }});
-
-    // Auto-fit after simulation stabilizes
-    simulation.on('end', function() {{
-      var bounds = g.node().getBBox();
-      if (bounds.width > 0 && bounds.height > 0) {{
-        var pad = 40;
-        var scale = Math.min(
-          (width - 2 * pad) / bounds.width,
-          (height - 2 * pad) / bounds.height,
-          1.5
-        );
-        var tx = width / 2 - (bounds.x + bounds.width / 2) * scale;
-        var ty = height / 2 - (bounds.y + bounds.height / 2) * scale;
-        svg.transition().duration(500).call(
-          zoomBehavior.transform,
-          d3.zoomIdentity.translate(tx, ty).scale(scale)
-        );
-      }}
-    }});
+    cy.ready(function() {{ cy.fit(cy.elements(), 40); }});
 
     // Tooltip
     var tip = document.getElementById('tip');
-    node.on('mouseover', function(event, d) {{
-      if (d.tip) {{ tip.textContent = d.tip; tip.style.display = 'block'; }}
+    cy.on('mouseover', 'node', function(e) {{
+      var t = e.target.data('tip');
+      if (t) {{ tip.textContent = t; tip.style.display = 'block'; }}
     }});
-    node.on('mousemove', function(event) {{
+    cy.on('mousemove', function(e) {{
       if (tip.style.display === 'block') {{
-        tip.style.left = (event.clientX + 14) + 'px';
-        tip.style.top  = (event.clientY + 14) + 'px';
+        tip.style.left = (e.originalEvent.clientX + 14) + 'px';
+        tip.style.top  = (e.originalEvent.clientY + 14) + 'px';
       }}
     }});
-    node.on('mouseout', function() {{ tip.style.display = 'none'; }});
+    cy.on('mouseout', 'node', function() {{ tip.style.display = 'none'; }});
 
     // Click to highlight + sidebar
     var sidebar = document.getElementById('nodeDetailSidebar');
     var sidebarCloseBtn = document.getElementById('sidebarClose');
 
-    function getNeighborIds(nodeId) {{
-      var ids = new Set();
-      gLinks.forEach(function(l) {{
-        var sid = typeof l.source === 'object' ? l.source.id : l.source;
-        var tid = typeof l.target === 'object' ? l.target.id : l.target;
-        if (sid === nodeId) ids.add(tid);
-        if (tid === nodeId) ids.add(sid);
-      }});
-      return ids;
-    }}
-
-    function showSidebar(d) {{
+    function showSidebar(node) {{
+      var d = node.data();
       var t = d.type || '';
       var typeLabels = {{'provider':'Provider','agent':'Agent','server_clean':'MCP Server','server_cred':'MCP Server','server_vuln':'MCP Server','pkg_vuln':'Package'}};
       var typeLabel = typeLabels[t] || (t.indexOf('cve_')===0 ? 'Vulnerability' : t);
@@ -1298,22 +1318,20 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
       document.getElementById('sidebarNodeType').textContent = typeLabel;
       document.getElementById('sidebarNodeType').style.borderColor = badgeColor;
       document.getElementById('sidebarNodeType').style.color = badgeColor;
-      document.getElementById('sidebarNodeName').textContent = (d.label || d.id || '').replace('\\n', ' ');
+      document.getElementById('sidebarNodeName').textContent = d.label || d.id;
 
       ['sidebarMeta','sidebarConnected','sidebarCredentials','sidebarCves','sidebarRemediation'].forEach(function(id) {{
         document.getElementById(id).innerHTML = '';
       }});
 
       // Connected nodes
-      var nids = getNeighborIds(d.id);
-      if (nids.size > 0) {{
-        var h = '<div class="sidebar-label">Connected (' + nids.size + ')</div><ul class="sidebar-list">';
-        nids.forEach(function(nid) {{
-          var nb = gNodeMap[nid];
-          if (!nb) return;
-          var nt = nb.type || '';
+      var neighbors = node.neighborhood('node');
+      if (neighbors.length > 0) {{
+        var h = '<div class="sidebar-label">Connected (' + neighbors.length + ')</div><ul class="sidebar-list">';
+        neighbors.forEach(function(n) {{
+          var nt = n.data('type') || '';
           var icon = nt === 'agent' ? '&#x1f916;' : nt.indexOf('server')===0 ? '&#x2699;' : nt === 'pkg_vuln' ? '&#x1f4e6;' : nt.indexOf('cve_')===0 ? '&#x1f41b;' : '&#x25cf;';
-          h += '<li>' + icon + ' ' + (nb.label || nb.id || '').replace('\\n',' ') + '</li>';
+          h += '<li>' + icon + ' ' + (n.data('label') || n.data('id')).replace('\\n',' ') + '</li>';
         }});
         h += '</ul>';
         document.getElementById('sidebarConnected').innerHTML = h;
@@ -1406,68 +1424,35 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
 
     sidebarCloseBtn.addEventListener('click', closeSidebar);
 
-    node.on('click', function(event, d) {{
-      event.stopPropagation();
-      // Remove all highlights
-      node.classed('faded', false).classed('highlighted', false);
-      link.classed('faded', false);
-
-      var nids = getNeighborIds(d.id);
-      nids.add(d.id);
-
-      node.classed('faded', function(n) {{ return !nids.has(n.id); }});
-      link.classed('faded', function(l) {{
-        var sid = typeof l.source === 'object' ? l.source.id : l.source;
-        var tid = typeof l.target === 'object' ? l.target.id : l.target;
-        return !nids.has(sid) || !nids.has(tid);
-      }});
-      d3.select(this).classed('highlighted', true);
-      showSidebar(d);
+    cy.on('tap', 'node', function(e) {{
+      cy.elements().removeClass('faded highlighted');
+      var hood = e.target.closedNeighborhood();
+      cy.elements().not(hood).addClass('faded');
+      e.target.addClass('highlighted');
+      showSidebar(e.target);
     }});
-
-    svg.on('click', function(event) {{
-      if (event.target === svg.node() || event.target.tagName === 'svg') {{
-        node.classed('faded', false).classed('highlighted', false);
-        link.classed('faded', false);
+    cy.on('tap', function(e) {{
+      if (e.target === cy) {{
+        cy.elements().removeClass('faded highlighted');
         closeSidebar();
       }}
     }});
 
     // Graph controls
     document.getElementById('zoomIn').addEventListener('click', function() {{
-      svg.transition().duration(200).call(zoomBehavior.scaleBy, 1.3);
+      cy.zoom({{ level: cy.zoom() * 1.3, renderedPosition: {{ x: cy.width() / 2, y: cy.height() / 2 }} }});
     }});
     document.getElementById('zoomOut').addEventListener('click', function() {{
-      svg.transition().duration(200).call(zoomBehavior.scaleBy, 1 / 1.3);
+      cy.zoom({{ level: cy.zoom() / 1.3, renderedPosition: {{ x: cy.width() / 2, y: cy.height() / 2 }} }});
     }});
     document.getElementById('fitBtn').addEventListener('click', function() {{
-      var bounds = g.node().getBBox();
-      if (bounds.width > 0) {{
-        var pad = 40;
-        var scale = Math.min((width - 2*pad)/bounds.width, (height - 2*pad)/bounds.height, 1.5);
-        var tx = width/2 - (bounds.x + bounds.width/2)*scale;
-        var ty = height/2 - (bounds.y + bounds.height/2)*scale;
-        svg.transition().duration(400).call(
-          zoomBehavior.transform,
-          d3.zoomIdentity.translate(tx, ty).scale(scale)
-        );
-      }}
+      cy.fit(cy.elements(), 40);
     }});
     document.getElementById('fullscreenBtn').addEventListener('click', function() {{
       var gc = document.querySelector('.graph-container');
       if (!document.fullscreenElement) {{
         gc.requestFullscreen().then(function() {{
-          setTimeout(function() {{
-            var fw = gc.clientWidth, fh = gc.clientHeight;
-            svg.attr('width', fw).attr('height', fh);
-            var bounds = g.node().getBBox();
-            if (bounds.width > 0) {{
-              var scale = Math.min((fw-80)/bounds.width, (fh-80)/bounds.height, 2);
-              var tx = fw/2 - (bounds.x + bounds.width/2)*scale;
-              var ty = fh/2 - (bounds.y + bounds.height/2)*scale;
-              svg.call(zoomBehavior.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
-            }}
-          }}, 100);
+          setTimeout(function() {{ cy.resize(); cy.fit(cy.elements(), 50); }}, 100);
         }}).catch(function() {{}});
       }} else {{
         document.exitFullscreen();
@@ -1475,43 +1460,24 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     }});
     document.addEventListener('fullscreenchange', function() {{
       if (!document.fullscreenElement) {{
-        svg.attr('width', width).attr('height', height);
-        setTimeout(function() {{
-          var bounds = g.node().getBBox();
-          if (bounds.width > 0) {{
-            var scale = Math.min((width-80)/bounds.width, (height-80)/bounds.height, 1.5);
-            var tx = width/2 - (bounds.x + bounds.width/2)*scale;
-            var ty = height/2 - (bounds.y + bounds.height/2)*scale;
-            svg.transition().duration(300).call(
-              zoomBehavior.transform, d3.zoomIdentity.translate(tx, ty).scale(scale)
-            );
-          }}
-        }}, 100);
+        setTimeout(function() {{ cy.resize(); cy.fit(cy.elements(), 40); }}, 100);
       }}
     }});
-
     // Graph severity filter
     document.querySelectorAll('.graph-sev-filter').forEach(function(cb) {{
       cb.addEventListener('change', function() {{
         var checked = Array.from(document.querySelectorAll('.graph-sev-filter:checked')).map(function(c) {{ return c.value; }});
-        node.each(function(d) {{
-          var t = d.type || '';
-          if (t.indexOf('cve_') === 0) {{
+        cy.nodes().forEach(function(n) {{
+          var t = n.data('type') || '';
+          if (t.startsWith('cve_')) {{
             var sev = t.replace('cve_', '');
-            var show = checked.indexOf(sev) !== -1;
-            d3.select(this).style('display', show ? null : 'none');
-          }}
-        }});
-        link.each(function(l) {{
-          var sid = typeof l.source === 'object' ? l.source : gNodeMap[l.source];
-          var tid = typeof l.target === 'object' ? l.target : gNodeMap[l.target];
-          if (sid && (sid.type||'').indexOf('cve_')===0) {{
-            var sev = sid.type.replace('cve_','');
-            d3.select(this).style('display', checked.indexOf(sev) !== -1 ? null : 'none');
-          }}
-          if (tid && (tid.type||'').indexOf('cve_')===0) {{
-            var sev = tid.type.replace('cve_','');
-            d3.select(this).style('display', checked.indexOf(sev) !== -1 ? null : 'none');
+            if (checked.indexOf(sev) === -1) {{
+              n.style('display', 'none');
+              n.connectedEdges().style('display', 'none');
+            }} else {{
+              n.style('display', 'element');
+              n.connectedEdges().style('display', 'element');
+            }}
           }}
         }});
       }});
@@ -1523,36 +1489,191 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
       graphSearchInput.addEventListener('input', function() {{
         var q = this.value.toLowerCase();
         if (!q) {{
-          node.classed('faded', false).classed('highlighted', false);
-          link.classed('faded', false);
+          cy.elements().removeClass('faded highlighted');
           return;
         }}
-        var matchedIds = new Set();
-        gNodes.forEach(function(n) {{
-          if ((n.label || '').toLowerCase().indexOf(q) >= 0) matchedIds.add(n.id);
+        cy.elements().removeClass('faded highlighted');
+        var matched = cy.nodes().filter(function(n) {{
+          return (n.data('label') || '').toLowerCase().indexOf(q) >= 0;
         }});
-        // Expand to neighbors
-        var hoodIds = new Set(matchedIds);
-        matchedIds.forEach(function(mid) {{
-          var nids = getNeighborIds(mid);
-          nids.forEach(function(nid) {{ hoodIds.add(nid); }});
-        }});
-        if (matchedIds.size > 0) {{
-          node.classed('faded', function(n) {{ return !hoodIds.has(n.id); }});
-          node.classed('highlighted', function(n) {{ return matchedIds.has(n.id); }});
-          link.classed('faded', function(l) {{
-            var sid = typeof l.source === 'object' ? l.source.id : l.source;
-            var tid = typeof l.target === 'object' ? l.target.id : l.target;
-            return !hoodIds.has(sid) || !hoodIds.has(tid);
-          }});
+        if (matched.length > 0) {{
+          var hood = matched.closedNeighborhood();
+          cy.elements().not(hood).addClass('faded');
+          matched.addClass('highlighted');
         }} else {{
-          node.classed('faded', true).classed('highlighted', false);
-          link.classed('faded', true);
+          cy.elements().addClass('faded');
         }}
       }});
     }}
+
+    // Context menu (right-click on nodes)
+    var ctxMenu = document.createElement('div');
+    ctxMenu.className = 'cy-ctx-menu';
+    document.body.appendChild(ctxMenu);
+
+    function hideCtxMenu() {{ ctxMenu.classList.remove('show'); }}
+    document.addEventListener('click', hideCtxMenu);
+    document.addEventListener('scroll', hideCtxMenu);
+
+    cy.on('cxttap', 'node', function(e) {{
+      e.originalEvent.preventDefault();
+      var node = e.target;
+      var d = node.data();
+      var t = d.type || '';
+      var items = [];
+
+      // Focus neighborhood
+      items.push({{icon:'&#x1f50d;',label:'Focus neighborhood',action:function(){{
+        cy.elements().removeClass('faded highlighted');
+        var hood = node.closedNeighborhood();
+        cy.elements().not(hood).addClass('faded');
+        node.addClass('highlighted');
+        showSidebar(node);
+      }}}});
+      // Fit to node
+      items.push({{icon:'&#x1f4cd;',label:'Zoom to node',action:function(){{
+        cy.animate({{ fit: {{ eles: node.closedNeighborhood(), padding: 80 }}, duration: 400 }});
+      }}}});
+      // Highlight path to root
+      items.push({{icon:'&#x2b06;',label:'Trace to root',action:function(){{
+        cy.elements().removeClass('faded highlighted');
+        var path = node.predecessors().union(node);
+        cy.elements().not(path).addClass('faded');
+        path.nodes().addClass('highlighted');
+      }}}});
+      // Highlight downstream
+      items.push({{icon:'&#x2b07;',label:'Show downstream impact',action:function(){{
+        cy.elements().removeClass('faded highlighted');
+        var downstream = node.successors().union(node);
+        cy.elements().not(downstream).addClass('faded');
+        downstream.nodes().addClass('highlighted');
+      }}}});
+
+      // Vulnerability node: open in OSV
+      if (t.indexOf('cve_')===0) {{
+        var vid = d.label || '';
+        items.push({{sep:true}});
+        items.push({{icon:'&#x1f517;',label:'Open in OSV',action:function(){{
+          window.open('https://osv.dev/vulnerability/'+vid, '_blank');
+        }}}});
+        items.push({{icon:'&#x1f517;',label:'Open in NVD',action:function(){{
+          window.open('https://nvd.nist.gov/vuln/detail/'+vid, '_blank');
+        }}}});
+      }}
+
+      // Build menu HTML
+      ctxMenu.innerHTML = '';
+      items.forEach(function(item) {{
+        if (item.sep) {{
+          var sep = document.createElement('div');
+          sep.className = 'cy-ctx-sep';
+          ctxMenu.appendChild(sep);
+        }} else {{
+          var el = document.createElement('div');
+          el.className = 'cy-ctx-item';
+          el.innerHTML = '<span>'+item.icon+'</span> '+item.label;
+          el.addEventListener('click', function(ev) {{
+            ev.stopPropagation();
+            hideCtxMenu();
+            item.action();
+          }});
+          ctxMenu.appendChild(el);
+        }}
+      }});
+
+      var cx = e.originalEvent.clientX, cy2 = e.originalEvent.clientY;
+      ctxMenu.style.left = cx + 'px';
+      ctxMenu.style.top = cy2 + 'px';
+      ctxMenu.classList.add('show');
+    }});
+
+    // Minimap — render a small overview of the full graph
+    var minimapEl = document.createElement('div');
+    minimapEl.className = 'cy-minimap';
+    cyContainer.parentNode.appendChild(minimapEl);
+    var mmCanvas = document.createElement('canvas');
+    mmCanvas.width = 180; mmCanvas.height = 130;
+    minimapEl.appendChild(mmCanvas);
+
+    function drawMinimap() {{
+      var ctx2d = mmCanvas.getContext('2d');
+      ctx2d.clearRect(0, 0, 180, 130);
+      var bb = cy.elements().boundingBox();
+      if (!bb || bb.w === 0) return;
+      var scaleX = 170 / bb.w, scaleY = 120 / bb.h;
+      var sc = Math.min(scaleX, scaleY);
+      var offX = (180 - bb.w * sc) / 2 - bb.x1 * sc;
+      var offY = (130 - bb.h * sc) / 2 - bb.y1 * sc;
+
+      // Draw edges
+      ctx2d.strokeStyle = '#334155'; ctx2d.lineWidth = 0.5;
+      cy.edges().forEach(function(edge) {{
+        var sp = edge.sourceEndpoint(), tp = edge.targetEndpoint();
+        ctx2d.beginPath();
+        ctx2d.moveTo(sp.x * sc + offX, sp.y * sc + offY);
+        ctx2d.lineTo(tp.x * sc + offX, tp.y * sc + offY);
+        ctx2d.stroke();
+      }});
+
+      // Draw nodes
+      cy.nodes().forEach(function(n) {{
+        var pos = n.position(); var t = n.data('type') || '';
+        var colors = {{'provider':'#818cf8','agent':'#3b82f6','server_clean':'#10b981','server_cred':'#f59e0b','server_vuln':'#ef4444','pkg_vuln':'#dc2626'}};
+        ctx2d.fillStyle = colors[t] || (t.indexOf('cve_')===0 ? '#f87171' : '#64748b');
+        var nx = pos.x * sc + offX, ny = pos.y * sc + offY;
+        ctx2d.beginPath();
+        if (t.indexOf('cve_')===0) {{
+          // Diamond
+          ctx2d.moveTo(nx, ny - 4); ctx2d.lineTo(nx + 5, ny); ctx2d.lineTo(nx, ny + 4); ctx2d.lineTo(nx - 5, ny);
+        }} else {{
+          ctx2d.arc(nx, ny, 3, 0, Math.PI * 2);
+        }}
+        ctx2d.fill();
+      }});
+
+      // Viewport rectangle
+      var ext = cy.extent();
+      ctx2d.strokeStyle = '#60a5fa'; ctx2d.lineWidth = 1.5;
+      ctx2d.strokeRect(ext.x1 * sc + offX, ext.y1 * sc + offY, ext.w * sc, ext.h * sc);
+    }}
+
+    cy.on('render viewport', drawMinimap);
+    setTimeout(drawMinimap, 500);
+
+    // Click minimap to pan
+    mmCanvas.addEventListener('click', function(e) {{
+      var rect = mmCanvas.getBoundingClientRect();
+      var mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      var bb = cy.elements().boundingBox();
+      if (!bb || bb.w === 0) return;
+      var scaleX = 170 / bb.w, scaleY = 120 / bb.h;
+      var sc = Math.min(scaleX, scaleY);
+      var offX = (180 - bb.w * sc) / 2 - bb.x1 * sc;
+      var offY = (130 - bb.h * sc) / 2 - bb.y1 * sc;
+      var targetX = (mx - offX) / sc, targetY = (my - offY) / sc;
+      cy.animate({{ center: {{ x: targetX, y: targetY }}, duration: 300 }});
+    }});
+
+    // Node statistics overlay
+    var nodeStats = document.createElement('div');
+    nodeStats.style.cssText = 'position:absolute;bottom:12px;right:12px;background:rgba(15,23,42,.9);border:1px solid #334155;border-radius:8px;padding:8px 14px;font-size:.72rem;color:#64748b;z-index:10;backdrop-filter:blur(8px)';
+    var nodeCounts = {{}};
+    cy.nodes().forEach(function(n) {{
+      var t = n.data('type') || 'other';
+      if (t.indexOf('cve_')===0) t = 'cve';
+      else if (t.indexOf('server_')===0) t = 'server';
+      nodeCounts[t] = (nodeCounts[t] || 0) + 1;
+    }});
+    var statsHTML = [];
+    if (nodeCounts.agent) statsHTML.push('<span style="color:#3b82f6">' + nodeCounts.agent + ' agents</span>');
+    if (nodeCounts.server) statsHTML.push('<span style="color:#10b981">' + nodeCounts.server + ' servers</span>');
+    if (nodeCounts.pkg_vuln) statsHTML.push('<span style="color:#dc2626">' + nodeCounts.pkg_vuln + ' packages</span>');
+    if (nodeCounts.cve) statsHTML.push('<span style="color:#f87171">' + nodeCounts.cve + ' CVEs</span>');
+    nodeStats.innerHTML = statsHTML.join(' &middot; ');
+    cyContainer.parentNode.appendChild(nodeStats);
+
   }} else if (cyContainer) {{
-    cyContainer.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:600px;color:#4ade80;font-size:.9rem">&#x2705; No supply chain nodes to display</div>';
+    cyContainer.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#4ade80;font-size:.9rem">&#x2705; No supply chain nodes to display</div>';
   }}
 
   // Vulnerability table filtering
@@ -1585,245 +1706,324 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
   var vulnSearchInput = document.getElementById('vulnSearch');
   if (vulnSearchInput) vulnSearchInput.addEventListener('input', filterVulnTable);
 
-  // D3.js: CVE Attack Flow graph
-  var AF_STYLES = {{
-    'cve_critical':  {{ fill:'#7f1d1d', stroke:'#ef4444', strokeW:3, w:130, h:38, fontSize:9, fontWeight:700, color:'#fecaca', shape:'diamond' }},
-    'cve_high':      {{ fill:'#9a3412', stroke:'#fb923c', strokeW:2.5, w:120, h:34, fontSize:9, fontWeight:700, color:'#fed7aa', shape:'diamond' }},
-    'cve_medium':    {{ fill:'#854d0e', stroke:'#fbbf24', strokeW:1.5, w:100, h:28, fontSize:9, fontWeight:700, color:'#fef08a', shape:'diamond' }},
-    'cve_low':       {{ fill:'#854d0e', stroke:'#fbbf24', strokeW:1.5, w:100, h:28, fontSize:9, fontWeight:700, color:'#fef08a', shape:'diamond' }},
-    'cve_none':      {{ fill:'#854d0e', stroke:'#fbbf24', strokeW:1.5, w:100, h:28, fontSize:9, fontWeight:700, color:'#fef08a', shape:'diamond' }},
-    'pkg_vuln':      {{ fill:'#7f1d1d', stroke:'#dc2626', strokeW:2, w:130, h:38, fontSize:9, fontWeight:700, color:'#fca5a5', shape:'rect' }},
-    'server':        {{ fill:'#1e293b', stroke:'#475569', strokeW:2, w:120, h:36, fontSize:10, fontWeight:600, color:'#cbd5e1', shape:'rect' }},
-    'credential':    {{ fill:'#78350f', stroke:'#fbbf24', strokeW:2, w:100, h:32, fontSize:9, fontWeight:700, color:'#fde68a', shape:'diamond' }},
-    'tool':          {{ fill:'#312e81', stroke:'#818cf8', strokeW:2, w:100, h:30, fontSize:9, fontWeight:400, color:'#c7d2fe', shape:'rect' }},
-    'agent':         {{ fill:'#1e3a8a', stroke:'#3b82f6', strokeW:2, w:120, h:38, fontSize:11, fontWeight:700, color:'#bfdbfe', shape:'rect' }},
-  }};
-  function getAFStyle(type) {{
-    return AF_STYLES[type] || AF_STYLES['server'];
-  }}
-
-  var AF_EDGE_COLORS = {{
-    'exploits':    {{ stroke:'#dc2626', opacity:0.8, dash:'', width:2.5 }},
-    'runs_on':     {{ stroke:'#475569', opacity:0.6, dash:'', width:1.8 }},
-    'exposes':     {{ stroke:'#f59e0b', opacity:0.7, dash:'6,3', width:2 }},
-    'reaches':     {{ stroke:'#818cf8', opacity:0.6, dash:'4,4', width:1.8 }},
-    'compromises': {{ stroke:'#ef4444', opacity:0.7, dash:'8,4', width:2.5 }},
-  }};
-  function getAFEdgeStyle(type) {{
-    return AF_EDGE_COLORS[type] || {{ stroke:'#334155', opacity:0.6, dash:'', width:1.8 }};
-  }}
-
-  var AF_RANK = {{ 'cve_critical':0, 'cve_high':0, 'cve_medium':0, 'cve_low':0, 'cve_none':0, 'pkg_vuln':1, 'server':2, 'credential':3, 'tool':3, 'agent':3 }};
-
+  // Cytoscape: CVE Attack Flow graph
   var cyAtkContainer = document.getElementById('cyAttack');
   if (cyAtkContainer && ATTACK_FLOW.length > 0) {{
-    var afData = cytoToD3(ATTACK_FLOW);
-    var afNodes = afData.nodes;
-    var afLinks = afData.links;
-    var afNodeMap = afData.nodeMap;
-
-    var afW = cyAtkContainer.clientWidth || 900;
-    var afH = 500;
-    var afSvg = d3.select('#cyAttack').append('svg')
-      .attr('width', afW).attr('height', afH);
-
-    // Arrow markers for attack flow
-    var afDefs = afSvg.append('defs');
-    ['af-default','af-exploits','af-exposes','af-compromises','af-reaches'].forEach(function(key) {{
-      var colors = {{ 'af-exploits':'#ef4444','af-exposes':'#fbbf24','af-compromises':'#f87171','af-reaches':'#a5b4fc' }};
-      var ec = colors[key] || '#475569';
-      afDefs.append('marker')
-        .attr('id', key)
-        .attr('viewBox', '0 -5 10 10')
-        .attr('refX', 20).attr('refY', 0)
-        .attr('markerWidth', 6).attr('markerHeight', 6)
-        .attr('orient', 'auto')
-        .append('path').attr('d', 'M0,-5L10,0L0,5').attr('fill', ec);
+    var cyAtk = cytoscape({{
+      container: cyAtkContainer,
+      elements: ATTACK_FLOW,
+      style: [
+        {{
+          selector: 'node[type^="cve_"]',
+          style: {{
+            'shape': 'diamond',
+            'width': 120,
+            'height': 34,
+            'label': 'data(label)',
+            'font-size': '9px',
+            'font-weight': '700',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'color': '#fecaca',
+            'background-color': '#991b1b',
+            'border-color': '#f87171',
+            'border-width': 2.5,
+          }},
+        }},
+        {{
+          selector: 'node[type="cve_critical"]',
+          style: {{
+            'background-color': '#7f1d1d',
+            'border-color': '#ef4444',
+            'border-width': 3,
+            'width': 130,
+            'height': 38,
+            'underlay-color': '#ef4444',
+            'underlay-padding': '6px',
+            'underlay-opacity': 0.15,
+            'underlay-shape': 'ellipse',
+          }},
+        }},
+        {{
+          selector: 'node[type="cve_high"]',
+          style: {{
+            'background-color': '#9a3412',
+            'border-color': '#fb923c',
+            'color': '#fed7aa',
+            'underlay-color': '#fb923c',
+            'underlay-padding': '4px',
+            'underlay-opacity': 0.1,
+            'underlay-shape': 'ellipse',
+          }},
+        }},
+        {{
+          selector: 'node[type="cve_medium"], node[type="cve_low"], node[type="cve_none"]',
+          style: {{
+            'background-color': '#854d0e',
+            'border-color': '#fbbf24',
+            'border-width': 1.5,
+            'color': '#fef08a',
+            'width': 100,
+            'height': 28,
+          }},
+        }},
+        {{
+          selector: 'node[type="pkg_vuln"]',
+          style: {{
+            'background-color': '#7f1d1d',
+            'border-color': '#dc2626',
+            'border-width': 2,
+            'label': 'data(label)',
+            'color': '#fca5a5',
+            'font-size': '9px',
+            'font-weight': '700',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'width': 130,
+            'height': 38,
+            'shape': 'round-rectangle',
+            'text-wrap': 'wrap',
+            'text-max-width': '120px',
+          }},
+        }},
+        {{
+          selector: 'node[type="server"]',
+          style: {{
+            'background-color': '#1e293b',
+            'border-color': '#475569',
+            'border-width': 2,
+            'label': 'data(label)',
+            'color': '#cbd5e1',
+            'font-size': '10px',
+            'font-weight': '600',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'width': 120,
+            'height': 36,
+            'shape': 'round-rectangle',
+            'text-wrap': 'wrap',
+            'text-max-width': '110px',
+          }},
+        }},
+        {{
+          selector: 'node[type="credential"]',
+          style: {{
+            'background-color': '#78350f',
+            'border-color': '#fbbf24',
+            'border-width': 2,
+            'label': 'data(label)',
+            'color': '#fde68a',
+            'font-size': '9px',
+            'font-weight': '700',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'width': 100,
+            'height': 32,
+            'shape': 'hexagon',
+          }},
+        }},
+        {{
+          selector: 'node[type="tool"]',
+          style: {{
+            'background-color': '#312e81',
+            'border-color': '#818cf8',
+            'border-width': 2,
+            'label': 'data(label)',
+            'color': '#c7d2fe',
+            'font-size': '9px',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'width': 100,
+            'height': 30,
+            'shape': 'round-tag',
+            'text-wrap': 'wrap',
+            'text-max-width': '90px',
+          }},
+        }},
+        {{
+          selector: 'node[type="agent"]',
+          style: {{
+            'background-color': '#1e3a8a',
+            'border-color': '#3b82f6',
+            'border-width': 2,
+            'label': 'data(label)',
+            'color': '#bfdbfe',
+            'font-size': '11px',
+            'font-weight': '700',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'width': 120,
+            'height': 38,
+            'shape': 'round-rectangle',
+            'text-wrap': 'wrap',
+            'text-max-width': '105px',
+          }},
+        }},
+        {{
+          selector: 'edge',
+          style: {{
+            'width': 1.8,
+            'line-color': '#334155',
+            'target-arrow-color': '#475569',
+            'target-arrow-shape': 'triangle',
+            'curve-style': 'bezier',
+            'arrow-scale': 0.8,
+          }},
+        }},
+        {{
+          selector: 'edge[type="exploits"]',
+          style: {{
+            'line-color': '#dc2626',
+            'target-arrow-color': '#ef4444',
+            'width': 2.5,
+          }},
+        }},
+        {{
+          selector: 'edge[type="runs_on"]',
+          style: {{
+            'line-color': '#475569',
+            'target-arrow-color': '#64748b',
+          }},
+        }},
+        {{
+          selector: 'edge[type="exposes"]',
+          style: {{
+            'line-color': '#f59e0b',
+            'target-arrow-color': '#fbbf24',
+            'line-style': 'dashed',
+            'line-dash-pattern': [6, 3],
+            'width': 2,
+          }},
+        }},
+        {{
+          selector: 'edge[type="reaches"]',
+          style: {{
+            'line-color': '#818cf8',
+            'target-arrow-color': '#a5b4fc',
+            'line-style': 'dashed',
+            'line-dash-pattern': [4, 4],
+          }},
+        }},
+        {{
+          selector: 'edge[type="compromises"]',
+          style: {{
+            'line-color': '#ef4444',
+            'target-arrow-color': '#f87171',
+            'line-style': 'dashed',
+            'line-dash-pattern': [8, 4],
+            'width': 2.5,
+          }},
+        }},
+        {{
+          selector: '.highlighted',
+          style: {{
+            'border-width': 4,
+            'border-color': '#f1f5f9',
+            'z-index': 999,
+          }},
+        }},
+        {{
+          selector: '.faded',
+          style: {{ 'opacity': 0.08 }},
+        }},
+      ],
+      layout: {{
+        name: 'dagre',
+        rankDir: 'LR',
+        nodeSep: 40,
+        rankSep: 100,
+        edgeSep: 12,
+        padding: 30,
+        animate: false,
+        fit: true,
+      }},
+      minZoom: 0.15,
+      maxZoom: 4,
+      wheelSensitivity: 0.3,
     }});
-
-    var afG = afSvg.append('g');
-
-    var afZoom = d3.zoom()
-      .scaleExtent([0.15, 4])
-      .on('zoom', function(event) {{ afG.attr('transform', event.transform); }});
-    afSvg.call(afZoom);
-
-    var afRankSpacing = afW / 5;
-    afNodes.forEach(function(n) {{
-      var rank = AF_RANK[n.type] !== undefined ? AF_RANK[n.type] : 2;
-      n.x = rank * afRankSpacing + afRankSpacing * 0.5;
-      n.y = afH / 2 + (Math.random() - 0.5) * afH * 0.6;
-    }});
-
-    var afSim = d3.forceSimulation(afNodes)
-      .force('link', d3.forceLink(afLinks).id(function(d) {{ return d.id; }}).distance(120).strength(0.6))
-      .force('charge', d3.forceManyBody().strength(-250))
-      .force('x', d3.forceX(function(d) {{
-        var rank = AF_RANK[d.type] !== undefined ? AF_RANK[d.type] : 2;
-        return rank * afRankSpacing + afRankSpacing * 0.5;
-      }}).strength(0.4))
-      .force('y', d3.forceY(afH / 2).strength(0.1))
-      .force('collision', d3.forceCollide(function(d) {{
-        var s = getAFStyle(d.type);
-        return Math.max(s.w, s.h) / 2 + 6;
-      }}));
-
-    var afLink = afG.append('g').attr('class', 'links').selectAll('line')
-      .data(afLinks).enter().append('line')
-      .attr('class', 'link')
-      .attr('stroke', function(d) {{ return getAFEdgeStyle(d.type).stroke; }})
-      .attr('stroke-opacity', function(d) {{ return getAFEdgeStyle(d.type).opacity; }})
-      .attr('stroke-width', function(d) {{ return getAFEdgeStyle(d.type).width; }})
-      .attr('stroke-dasharray', function(d) {{ return getAFEdgeStyle(d.type).dash; }})
-      .attr('marker-end', function(d) {{
-        if (d.type === 'exploits') return 'url(#af-exploits)';
-        if (d.type === 'exposes') return 'url(#af-exposes)';
-        if (d.type === 'compromises') return 'url(#af-compromises)';
-        if (d.type === 'reaches') return 'url(#af-reaches)';
-        return 'url(#af-default)';
-      }});
-
-    var afNode = afG.append('g').attr('class', 'nodes').selectAll('g')
-      .data(afNodes).enter().append('g')
-      .attr('class', 'node-group')
-      .call(d3.drag()
-        .on('start', function(event, d) {{
-          if (!event.active) afSim.alphaTarget(0.3).restart();
-          d.fx = d.x; d.fy = d.y;
-        }})
-        .on('drag', function(event, d) {{ d.fx = event.x; d.fy = event.y; }})
-        .on('end', function(event, d) {{
-          if (!event.active) afSim.alphaTarget(0);
-          d.fx = null; d.fy = null;
-        }})
-      );
-
-    afNode.each(function(d) {{
-      var el = d3.select(this);
-      var s = getAFStyle(d.type);
-      if (s.shape === 'diamond') {{
-        var hw = s.w / 2, hh = s.h / 2;
-        el.append('polygon')
-          .attr('points', '0,' + (-hh) + ' ' + hw + ',0 0,' + hh + ' ' + (-hw) + ',0')
-          .attr('fill', s.fill).attr('stroke', s.stroke).attr('stroke-width', s.strokeW);
-      }} else {{
-        el.append('rect')
-          .attr('x', -s.w / 2).attr('y', -s.h / 2)
-          .attr('width', s.w).attr('height', s.h)
-          .attr('rx', 8).attr('ry', 8)
-          .attr('fill', s.fill).attr('stroke', s.stroke).attr('stroke-width', s.strokeW);
-      }}
-    }});
-
-    afNode.each(function(d) {{
-      var el = d3.select(this);
-      var s = getAFStyle(d.type);
-      var lines = (d.label || d.id || '').split('\\n');
-      var lineH = s.fontSize + 2;
-      var startY = -(lines.length - 1) * lineH / 2;
-      lines.forEach(function(line, i) {{
-        el.append('text')
-          .attr('class', 'node-label')
-          .attr('text-anchor', 'middle')
-          .attr('dy', startY + i * lineH + s.fontSize * 0.35)
-          .attr('fill', s.color)
-          .attr('font-size', s.fontSize + 'px')
-          .attr('font-weight', s.fontWeight)
-          .text(line.length > 18 ? line.slice(0, 17) + '\u2026' : line);
-      }});
-    }});
-
-    afSim.on('tick', function() {{
-      afLink
-        .attr('x1', function(d) {{ return d.source.x; }})
-        .attr('y1', function(d) {{ return d.source.y; }})
-        .attr('x2', function(d) {{ return d.target.x; }})
-        .attr('y2', function(d) {{ return d.target.y; }});
-      afNode.attr('transform', function(d) {{ return 'translate(' + d.x + ',' + d.y + ')'; }});
-    }});
-
-    afSim.on('end', function() {{
-      var bounds = afG.node().getBBox();
-      if (bounds.width > 0 && bounds.height > 0) {{
-        var pad = 40;
-        var scale = Math.min((afW - 2*pad)/bounds.width, (afH - 2*pad)/bounds.height, 1.5);
-        var tx = afW/2 - (bounds.x + bounds.width/2)*scale;
-        var ty = afH/2 - (bounds.y + bounds.height/2)*scale;
-        afSvg.transition().duration(500).call(
-          afZoom.transform,
-          d3.zoomIdentity.translate(tx, ty).scale(scale)
-        );
-      }}
-    }});
+    cyAtk.ready(function() {{ cyAtk.fit(cyAtk.elements(), 40); }});
 
     // Attack flow tooltip
-    if (!tip) var tip = document.getElementById('tip');
-    afNode.on('mouseover', function(event, d) {{
-      if (d.tip) {{ tip.textContent = d.tip; tip.style.display = 'block'; }}
+    cyAtk.on('mouseover', 'node', function(e) {{
+      var t = e.target.data('tip');
+      if (t) {{ tip.textContent = t; tip.style.display = 'block'; }}
     }});
-    afNode.on('mousemove', function(event) {{
+    cyAtk.on('mousemove', function(e) {{
       if (tip.style.display === 'block') {{
-        tip.style.left = (event.clientX + 14) + 'px';
-        tip.style.top  = (event.clientY + 14) + 'px';
+        tip.style.left = (e.originalEvent.clientX + 14) + 'px';
+        tip.style.top  = (e.originalEvent.clientY + 14) + 'px';
       }}
     }});
-    afNode.on('mouseout', function() {{ tip.style.display = 'none'; }});
+    cyAtk.on('mouseout', 'node', function() {{ tip.style.display = 'none'; }});
 
     // Attack flow click to highlight
-    function getAFNeighborIds(nodeId) {{
-      var ids = new Set();
-      afLinks.forEach(function(l) {{
-        var sid = typeof l.source === 'object' ? l.source.id : l.source;
-        var tid = typeof l.target === 'object' ? l.target.id : l.target;
-        if (sid === nodeId) ids.add(tid);
-        if (tid === nodeId) ids.add(sid);
-      }});
-      return ids;
-    }}
-
-    afNode.on('click', function(event, d) {{
-      event.stopPropagation();
-      afNode.classed('faded', false).classed('highlighted', false);
-      afLink.classed('faded', false);
-      var nids = getAFNeighborIds(d.id);
-      nids.add(d.id);
-      afNode.classed('faded', function(n) {{ return !nids.has(n.id); }});
-      afLink.classed('faded', function(l) {{
-        var sid = typeof l.source === 'object' ? l.source.id : l.source;
-        var tid = typeof l.target === 'object' ? l.target.id : l.target;
-        return !nids.has(sid) || !nids.has(tid);
-      }});
-      d3.select(this).classed('highlighted', true);
+    cyAtk.on('tap', 'node', function(e) {{
+      cyAtk.elements().removeClass('faded highlighted');
+      var hood = e.target.closedNeighborhood();
+      cyAtk.elements().not(hood).addClass('faded');
+      e.target.addClass('highlighted');
     }});
-    afSvg.on('click', function(event) {{
-      if (event.target === afSvg.node() || event.target.tagName === 'svg') {{
-        afNode.classed('faded', false).classed('highlighted', false);
-        afLink.classed('faded', false);
+    cyAtk.on('tap', function(e) {{
+      if (e.target === cyAtk) {{
+        cyAtk.elements().removeClass('faded highlighted');
       }}
     }});
 
     // Attack flow controls
-    var afZoomInBtn = document.getElementById('afZoomIn');
-    var afZoomOutBtn = document.getElementById('afZoomOut');
-    var afFitBtnEl = document.getElementById('afFitBtn');
-    if (afZoomInBtn) afZoomInBtn.addEventListener('click', function() {{
-      afSvg.transition().duration(200).call(afZoom.scaleBy, 1.3);
+    var afZoomIn = document.getElementById('afZoomIn');
+    var afZoomOut = document.getElementById('afZoomOut');
+    var afFitBtn = document.getElementById('afFitBtn');
+    if (afZoomIn) afZoomIn.addEventListener('click', function() {{
+      cyAtk.zoom({{ level: cyAtk.zoom() * 1.3, renderedPosition: {{ x: cyAtk.width() / 2, y: cyAtk.height() / 2 }} }});
     }});
-    if (afZoomOutBtn) afZoomOutBtn.addEventListener('click', function() {{
-      afSvg.transition().duration(200).call(afZoom.scaleBy, 1/1.3);
+    if (afZoomOut) afZoomOut.addEventListener('click', function() {{
+      cyAtk.zoom({{ level: cyAtk.zoom() / 1.3, renderedPosition: {{ x: cyAtk.width() / 2, y: cyAtk.height() / 2 }} }});
     }});
-    if (afFitBtnEl) afFitBtnEl.addEventListener('click', function() {{
-      var bounds = afG.node().getBBox();
-      if (bounds.width > 0) {{
-        var pad = 40;
-        var scale = Math.min((afW-2*pad)/bounds.width, (afH-2*pad)/bounds.height, 1.5);
-        var tx = afW/2 - (bounds.x + bounds.width/2)*scale;
-        var ty = afH/2 - (bounds.y + bounds.height/2)*scale;
-        afSvg.transition().duration(400).call(
-          afZoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale)
-        );
-      }}
+    if (afFitBtn) afFitBtn.addEventListener('click', function() {{
+      cyAtk.fit(cyAtk.elements(), 40);
     }});
+
+    // Animated dash flow on exploit/compromises edges
+    var dashOffset = 0;
+    function animateAttackEdges() {{
+      dashOffset = (dashOffset + 0.5) % 24;
+      cyAtk.edges('[type="exploits"],[type="compromises"]').forEach(function(edge) {{
+        edge.style('line-dash-offset', -dashOffset);
+      }});
+      requestAnimationFrame(animateAttackEdges);
+    }}
+    // Only animate if attack edges exist
+    if (cyAtk.edges('[type="exploits"],[type="compromises"]').length > 0) {{
+      // Set dashed style for animation
+      cyAtk.edges('[type="exploits"]').style({{
+        'line-style': 'dashed',
+        'line-dash-pattern': [8, 4],
+      }});
+      cyAtk.edges('[type="compromises"]').style({{
+        'line-style': 'dashed',
+        'line-dash-pattern': [10, 5],
+      }});
+      animateAttackEdges();
+    }}
+
+    // Attack flow node count stats
+    var afStats = document.createElement('div');
+    afStats.style.cssText = 'position:absolute;bottom:12px;right:12px;background:rgba(15,23,42,.9);border:1px solid #334155;border-radius:8px;padding:8px 14px;font-size:.72rem;color:#64748b;z-index:10;backdrop-filter:blur(8px)';
+    var afCounts = {{}};
+    cyAtk.nodes().forEach(function(n) {{
+      var t = n.data('type') || 'other';
+      if (t.indexOf('cve_')===0) t = 'cve';
+      afCounts[t] = (afCounts[t] || 0) + 1;
+    }});
+    var afParts = [];
+    if (afCounts.cve) afParts.push('<span style="color:#f87171">' + afCounts.cve + ' CVEs</span>');
+    if (afCounts.pkg_vuln) afParts.push('<span style="color:#dc2626">' + afCounts.pkg_vuln + ' pkgs</span>');
+    if (afCounts.server) afParts.push('<span style="color:#64748b">' + afCounts.server + ' servers</span>');
+    if (afCounts.credential) afParts.push('<span style="color:#fbbf24">' + afCounts.credential + ' creds</span>');
+    if (afCounts.tool) afParts.push('<span style="color:#818cf8">' + afCounts.tool + ' tools</span>');
+    if (afCounts.agent) afParts.push('<span style="color:#3b82f6">' + afCounts.agent + ' agents</span>');
+    afStats.innerHTML = afParts.join(' &middot; ');
+    cyAtkContainer.parentNode.appendChild(afStats);
   }}
 
   // Table sorting

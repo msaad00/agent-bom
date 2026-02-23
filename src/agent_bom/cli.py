@@ -1744,8 +1744,11 @@ def serve_cmd(port: int, host: str, inventory: Optional[str]):
               help="Require API key auth (Bearer token or X-API-Key header).")
 @click.option("--rate-limit", "rate_limit_rpm", default=60, show_default=True, type=int, metavar="RPM",
               help="Rate limit for scan endpoints (requests/minute per IP).")
+@click.option("--persist", default=None, metavar="DB_PATH",
+              help="Enable persistent job storage via SQLite (e.g. --persist jobs.db). Jobs survive restarts.")
 def api_cmd(host: str, port: int, reload: bool, workers: int,
-            cors_origins: str | None, cors_allow_all: bool, api_key: str | None, rate_limit_rpm: int):
+            cors_origins: str | None, cors_allow_all: bool, api_key: str | None, rate_limit_rpm: int,
+            persist: str | None):
     """Start the agent-bom REST API server.
 
     \b
@@ -1780,7 +1783,7 @@ def api_cmd(host: str, port: int, reload: bool, workers: int,
         sys.exit(1)
 
     from agent_bom import __version__ as _ver
-    from agent_bom.api.server import configure_api
+    from agent_bom.api.server import configure_api, set_job_store
 
     origins = cors_origins.split(",") if cors_origins else None
     configure_api(
@@ -1790,11 +1793,17 @@ def api_cmd(host: str, port: int, reload: bool, workers: int,
         rate_limit_rpm=rate_limit_rpm,
     )
 
+    if persist:
+        from agent_bom.api.store import SQLiteJobStore
+        set_job_store(SQLiteJobStore(db_path=persist))
+
     click.echo(f"  agent-bom API v{_ver}")
     click.echo(f"  Listening on http://{host}:{port}")
     click.echo(f"  Docs:         http://{host}:{port}/docs")
     if api_key:
         click.echo("  Auth:         API key required (Bearer / X-API-Key)")
+    if persist:
+        click.echo(f"  Storage:      SQLite ({persist})")
     click.echo("  Press Ctrl+C to stop.\n")
 
     uvicorn.run(

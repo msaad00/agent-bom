@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agent-bom"
-version = "0.29.0"
+version = "0.30.0"
 description = "AI Bill of Materials (AI-BOM) generator — CVE scanning, blast radius, enterprise remediation plans, OWASP LLM Top 10 + MITRE ATLAS + NIST AI RMF threat mapping, LLM-powered enrichment, OpenClaw discovery, MCP runtime introspection, and MCP registry for AI agents."
 readme = "README.md"
 license = {text = "Apache-2.0"}

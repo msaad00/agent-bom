@@ -73,10 +73,18 @@ class ConsoleAlertSink:
 
 
 class WebhookAlertSink:
-    """POST alerts to a webhook URL (Slack, Teams, PagerDuty, etc.)."""
+    """POST alerts to a webhook URL (Slack, Teams, PagerDuty, etc.).
 
-    def __init__(self, url: str):
+    Features:
+    - Retries on transient failures (5xx, timeouts) with exponential backoff
+    - Logs warning on persistent failure, never raises
+    - Payload format compatible with Slack ``text`` field
+    """
+
+    def __init__(self, url: str, retries: int = 2, timeout: float = 10.0):
         self.url = url
+        self.retries = retries
+        self.timeout = timeout
 
     def send(self, alert: Alert) -> None:
         import httpx
@@ -89,10 +97,25 @@ class WebhookAlertSink:
             "details": alert.details,
             "timestamp": alert.timestamp,
         }
-        try:
-            httpx.post(self.url, json=payload, timeout=10.0)
-        except Exception:  # noqa: BLE001
-            logger.warning("Failed to send webhook alert to %s", self.url)
+        last_err: Exception | None = None
+        for attempt in range(1 + self.retries):
+            try:
+                resp = httpx.post(self.url, json=payload, timeout=self.timeout)
+                if resp.status_code < 400:
+                    return  # Success
+                if resp.status_code >= 500 and attempt < self.retries:
+                    time.sleep(0.5 * (2 ** attempt))
+                    continue  # Retry on 5xx
+                logger.warning(
+                    "Webhook alert to %s returned HTTP %d", self.url, resp.status_code
+                )
+                return
+            except Exception as exc:  # noqa: BLE001
+                last_err = exc
+                if attempt < self.retries:
+                    time.sleep(0.5 * (2 ** attempt))
+                    continue
+        logger.warning("Failed to send webhook alert to %s: %s", self.url, last_err)
 
 
 class FileAlertSink:

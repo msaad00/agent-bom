@@ -8,6 +8,7 @@ Extracts:
   1. Code blocks with npx/uvx/pip/npm commands → Package objects
   2. MCP server config JSON blocks → MCPServer objects
   3. Env var references matching credential patterns → credential names
+  4. YAML frontmatter metadata (SKILL.md format) → SkillMetadata
 """
 
 from __future__ import annotations
@@ -78,6 +79,93 @@ _ENV_VAR_EXCLUDE = {
 }
 
 
+# ─── YAML frontmatter parsing ────────────────────────────────────────────────
+
+_FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+
+# Lightweight YAML-ish parser for skill frontmatter (avoids PyYAML dependency).
+# Handles simple key: value pairs and nested metadata.openclaw blocks.
+_YAML_KV_RE = re.compile(r"^(\w[\w.-]*):\s*(.+)$", re.MULTILINE)
+_YAML_LIST_ITEM_RE = re.compile(r"^\s+-\s+(.+)$", re.MULTILINE)
+
+
+@dataclass
+class SkillMetadata:
+    """Parsed metadata from SKILL.md YAML frontmatter."""
+
+    name: str = ""
+    description: str = ""
+    version: str = ""
+    homepage: str = ""
+    source: str = ""
+    license: str = ""
+    required_bins: list[str] = field(default_factory=list)
+    optional_bins: list[str] = field(default_factory=list)
+    install_methods: list[str] = field(default_factory=list)  # e.g. ["uv", "pip", "pipx"]
+    os_support: list[str] = field(default_factory=list)
+    raw_frontmatter: str = ""
+
+
+def _parse_frontmatter(content: str) -> SkillMetadata | None:
+    """Extract and parse YAML frontmatter from skill file content.
+
+    Returns None if no frontmatter found.
+    """
+    match = _FRONTMATTER_RE.match(content)
+    if not match:
+        return None
+
+    raw = match.group(1)
+    meta = SkillMetadata(raw_frontmatter=raw)
+
+    # Parse top-level simple key: value pairs
+    for kv in _YAML_KV_RE.finditer(raw):
+        key, value = kv.group(1), kv.group(2).strip().strip("'\"")
+        if key == "name":
+            meta.name = value
+        elif key == "description":
+            meta.description = value
+        elif key == "version":
+            meta.version = value
+
+    # Parse nested metadata block (openclaw section)
+    # Extract homepage, source, license from anywhere in frontmatter (may be indented)
+    indented_kv = re.compile(r"^\s*(\w[\w.-]*):\s*(.+)$", re.MULTILINE)
+    for kv in indented_kv.finditer(raw):
+        key, value = kv.group(1), kv.group(2).strip().strip("'\"")
+        if key == "homepage":
+            meta.homepage = value
+        elif key == "source":
+            meta.source = value
+        elif key == "license":
+            meta.license = value
+
+    # Extract required bins (under requires: bins:)
+    bins_section = re.search(
+        r"requires:\s*\n\s+bins:\s*\n((?:\s+-\s+\S+\n?)+)", raw
+    )
+    if bins_section:
+        meta.required_bins = _YAML_LIST_ITEM_RE.findall(bins_section.group(1))
+
+    # Extract optional bins
+    opt_bins_section = re.search(
+        r"optional_bins:\s*\n((?:\s+-\s+\S+\n?)+)", raw
+    )
+    if opt_bins_section:
+        meta.optional_bins = _YAML_LIST_ITEM_RE.findall(opt_bins_section.group(1))
+
+    # Extract install methods (kind: values)
+    for kind_match in re.finditer(r"kind:\s*(\w+)", raw):
+        meta.install_methods.append(kind_match.group(1))
+
+    # Extract OS support
+    os_section = re.search(r"os:\s*\n((?:\s+-\s+\S+\n?)+)", raw)
+    if os_section:
+        meta.os_support = _YAML_LIST_ITEM_RE.findall(os_section.group(1))
+
+    return meta
+
+
 # ─── Data structure ──────────────────────────────────────────────────────────
 
 
@@ -90,6 +178,7 @@ class SkillScanResult:
     credential_env_vars: list[str] = field(default_factory=list)
     source_files: list[str] = field(default_factory=list)
     raw_content: dict[str, str] = field(default_factory=dict)  # source_file -> raw text (truncated)
+    metadata: SkillMetadata | None = None  # Parsed frontmatter (SKILL.md format)
 
 
 # ─── Parsing ─────────────────────────────────────────────────────────────────
@@ -204,12 +293,16 @@ def parse_skill_file(path: Path) -> SkillScanResult:
         if _is_credential_name(v) and v not in _ENV_VAR_EXCLUDE
     )
 
+    # Parse YAML frontmatter (SKILL.md format)
+    metadata = _parse_frontmatter(content)
+
     return SkillScanResult(
         packages=packages,
         servers=servers,
         credential_env_vars=credential_vars,
         source_files=[str(path)],
         raw_content={str(path): truncated_content},
+        metadata=metadata,
     )
 
 
@@ -287,6 +380,10 @@ def scan_skill_files(paths: list[Path]) -> SkillScanResult:
         result = parse_skill_file(path)
         merged.source_files.extend(result.source_files)
         merged.raw_content.update(result.raw_content)
+
+        # Keep the first valid metadata (typically from SKILL.md)
+        if result.metadata is not None and merged.metadata is None:
+            merged.metadata = result.metadata
 
         for pkg in result.packages:
             key = (pkg.name.lower(), pkg.ecosystem)

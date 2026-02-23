@@ -253,3 +253,97 @@ def test_parse_npm_install_strips_comments(tmp_path):
     assert "express" in names
     assert "web" not in names
     assert "framework" not in names
+
+
+# ── Frontmatter parsing tests ──────────────────────────────────────────────
+
+
+def test_parse_frontmatter_full(tmp_path):
+    """Parses YAML frontmatter with all metadata fields."""
+    md = tmp_path / "SKILL.md"
+    md.write_text(
+        "---\n"
+        "name: my-tool\n"
+        "description: A security scanner\n"
+        "version: 1.2.3\n"
+        "metadata:\n"
+        "  openclaw:\n"
+        "    requires:\n"
+        "      bins:\n"
+        "        - my-tool\n"
+        "    optional_bins:\n"
+        "      - docker\n"
+        "      - grype\n"
+        "    homepage: https://github.com/example/my-tool\n"
+        "    source: https://github.com/example/my-tool\n"
+        "    license: MIT\n"
+        "    os:\n"
+        "      - darwin\n"
+        "      - linux\n"
+        "    install:\n"
+        "      - kind: uv\n"
+        "        package: my-tool\n"
+        "      - kind: pip\n"
+        "        package: my-tool\n"
+        "---\n\n"
+        "# My Tool\n\nDoes stuff.\n"
+    )
+    result = parse_skill_file(md)
+    meta = result.metadata
+    assert meta is not None
+    assert meta.name == "my-tool"
+    assert meta.description == "A security scanner"
+    assert meta.version == "1.2.3"
+    assert meta.homepage == "https://github.com/example/my-tool"
+    assert meta.source == "https://github.com/example/my-tool"
+    assert meta.license == "MIT"
+    assert "my-tool" in meta.required_bins
+    assert "docker" in meta.optional_bins
+    assert "grype" in meta.optional_bins
+    assert "uv" in meta.install_methods
+    assert "pip" in meta.install_methods
+    assert "darwin" in meta.os_support
+    assert "linux" in meta.os_support
+
+
+def test_parse_no_frontmatter(tmp_path):
+    """Files without frontmatter have metadata=None."""
+    md = tmp_path / "CLAUDE.md"
+    md.write_text("# Claude Instructions\n\nDo stuff.\n")
+    result = parse_skill_file(md)
+    assert result.metadata is None
+
+
+def test_parse_frontmatter_minimal(tmp_path):
+    """Minimal frontmatter with just name and version."""
+    md = tmp_path / "SKILL.md"
+    md.write_text(
+        "---\n"
+        "name: bare-tool\n"
+        "version: 0.1.0\n"
+        "---\n\n# Bare Tool\n"
+    )
+    result = parse_skill_file(md)
+    meta = result.metadata
+    assert meta is not None
+    assert meta.name == "bare-tool"
+    assert meta.version == "0.1.0"
+    assert meta.homepage == ""
+    assert meta.source == ""
+    assert meta.license == ""
+    assert meta.required_bins == []
+    assert meta.optional_bins == []
+
+
+def test_scan_skill_files_merges_metadata(tmp_path):
+    """scan_skill_files keeps the first valid metadata."""
+    skill = tmp_path / "SKILL.md"
+    skill.write_text(
+        "---\nname: tool-a\nversion: 1.0.0\n---\n\n# Tool A\n"
+    )
+    claude = tmp_path / "CLAUDE.md"
+    claude.write_text("# Claude\nJust instructions.\n")
+
+    result = scan_skill_files([skill, claude])
+    assert result.metadata is not None
+    assert result.metadata.name == "tool-a"

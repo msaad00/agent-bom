@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from agent_bom.models import AIBOMReport, MCPServer, Package, TransportType
 from agent_bom.output import to_json
 from agent_bom.parsers.skill_audit import SkillAuditResult, audit_skill_result
-from agent_bom.parsers.skills import SkillScanResult
+from agent_bom.parsers.skills import SkillMetadata, SkillScanResult
 
 # ── 1. Typosquat detection ───────────────────────────────────────────────────
 
@@ -777,3 +777,224 @@ def test_behavioral_coexists_with_config_checks():
     assert len(shell_findings) >= 1  # From config check
     assert len(behavioral) >= 1  # From behavioral scan
     assert audit.passed is False  # Both HIGH findings
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Metadata quality checks (OpenClaw-style assessment)
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def _make_metadata_result(
+    metadata: SkillMetadata | None = None,
+    raw_content: dict[str, str] | None = None,
+) -> SkillScanResult:
+    """Helper: create a SkillScanResult with metadata for quality checks."""
+    return SkillScanResult(
+        source_files=["SKILL.md"],
+        raw_content=raw_content or {"SKILL.md": "# Test Skill"},
+        metadata=metadata,
+    )
+
+
+def test_metadata_missing_source():
+    """Skill with no homepage or source URL gets flagged."""
+    meta = SkillMetadata(name="my-tool", version="1.0.0")
+    result = _make_metadata_result(metadata=meta)
+    audit = audit_skill_result(result)
+    findings = [f for f in audit.findings if f.category == "missing_source"]
+    assert len(findings) == 1
+    assert findings[0].severity == "medium"
+
+
+def test_metadata_has_source_no_finding():
+    """Skill with homepage doesn't get missing_source finding."""
+    meta = SkillMetadata(
+        name="my-tool", version="1.0.0",
+        homepage="https://github.com/example/my-tool",
+    )
+    result = _make_metadata_result(metadata=meta)
+    audit = audit_skill_result(result)
+    findings = [f for f in audit.findings if f.category == "missing_source"]
+    assert len(findings) == 0
+
+
+def test_metadata_missing_license():
+    """Skill with no license gets a low finding."""
+    meta = SkillMetadata(name="my-tool", version="1.0.0",
+                         homepage="https://example.com")
+    result = _make_metadata_result(metadata=meta)
+    audit = audit_skill_result(result)
+    findings = [f for f in audit.findings if f.category == "missing_license"]
+    assert len(findings) == 1
+    assert findings[0].severity == "low"
+
+
+def test_metadata_has_license_no_finding():
+    """Skill with license declared doesn't get flagged."""
+    meta = SkillMetadata(name="my-tool", version="1.0.0",
+                         homepage="https://example.com", license="MIT")
+    result = _make_metadata_result(metadata=meta)
+    audit = audit_skill_result(result)
+    findings = [f for f in audit.findings if f.category == "missing_license"]
+    assert len(findings) == 0
+
+
+def test_metadata_undeclared_docker_dep():
+    """Skill referencing docker without declaring it gets flagged."""
+    meta = SkillMetadata(
+        name="my-tool", version="1.0.0",
+        homepage="https://example.com", license="MIT",
+        required_bins=["my-tool"],
+    )
+    result = _make_metadata_result(
+        metadata=meta,
+        raw_content={"SKILL.md": "## Docker image scan\n\nRun: `my-tool scan --image nginx:1.25`\nRequires docker binary."},
+    )
+    audit = audit_skill_result(result)
+    findings = [f for f in audit.findings if f.category == "undeclared_dependency"]
+    assert len(findings) >= 1
+    assert any("docker" in f.title for f in findings)
+
+
+def test_metadata_declared_docker_no_finding():
+    """Skill that declares docker as optional_bins doesn't get flagged."""
+    meta = SkillMetadata(
+        name="my-tool", version="1.0.0",
+        homepage="https://example.com", license="MIT",
+        required_bins=["my-tool"],
+        optional_bins=["docker"],
+    )
+    result = _make_metadata_result(
+        metadata=meta,
+        raw_content={"SKILL.md": "Scan Docker images with docker CLI."},
+    )
+    audit = audit_skill_result(result)
+    findings = [f for f in audit.findings if f.category == "undeclared_dependency" and "docker" in f.title]
+    assert len(findings) == 0
+
+
+def test_metadata_single_install_method():
+    """Skill with only one install method gets a low finding."""
+    meta = SkillMetadata(
+        name="my-tool", version="1.0.0",
+        homepage="https://example.com", license="MIT",
+        install_methods=["uv"],
+    )
+    result = _make_metadata_result(metadata=meta)
+    audit = audit_skill_result(result)
+    findings = [f for f in audit.findings if f.category == "limited_install"]
+    assert len(findings) == 1
+    assert findings[0].severity == "low"
+
+
+def test_metadata_multiple_install_methods_no_finding():
+    """Skill with multiple install methods doesn't get flagged."""
+    meta = SkillMetadata(
+        name="my-tool", version="1.0.0",
+        homepage="https://example.com", license="MIT",
+        install_methods=["uv", "pip", "pipx"],
+    )
+    result = _make_metadata_result(metadata=meta)
+    audit = audit_skill_result(result)
+    findings = [f for f in audit.findings if f.category == "limited_install"]
+    assert len(findings) == 0
+
+
+def test_metadata_read_only_claim_without_source():
+    """Skill claiming read-only without source URL gets flagged."""
+    meta = SkillMetadata(name="my-tool", version="1.0.0")
+    result = _make_metadata_result(
+        metadata=meta,
+        raw_content={"SKILL.md": "This tool is read-only and never modifies files."},
+    )
+    audit = audit_skill_result(result)
+    findings = [f for f in audit.findings if f.category == "unverifiable_claim"]
+    assert len(findings) == 1
+    assert findings[0].severity == "medium"
+
+
+def test_metadata_read_only_with_source_no_finding():
+    """Skill claiming read-only WITH source URL doesn't get flagged."""
+    meta = SkillMetadata(
+        name="my-tool", version="1.0.0",
+        source="https://github.com/example/my-tool",
+    )
+    result = _make_metadata_result(
+        metadata=meta,
+        raw_content={"SKILL.md": "This tool is read-only and never modifies files."},
+    )
+    audit = audit_skill_result(result)
+    findings = [f for f in audit.findings if f.category == "unverifiable_claim"]
+    assert len(findings) == 0
+
+
+def test_metadata_undocumented_network():
+    """Skill with API URLs but no network documentation gets flagged."""
+    meta = SkillMetadata(
+        name="my-tool", version="1.0.0",
+        homepage="https://example.com", license="MIT",
+    )
+    result = _make_metadata_result(
+        metadata=meta,
+        raw_content={"SKILL.md": "Queries https://api.osv.dev/v1/querybatch for vulns."},
+    )
+    audit = audit_skill_result(result)
+    findings = [f for f in audit.findings if f.category == "undocumented_network"]
+    assert len(findings) == 1
+
+
+def test_metadata_documented_network_no_finding():
+    """Skill with API URLs AND network documentation doesn't get flagged."""
+    meta = SkillMetadata(
+        name="my-tool", version="1.0.0",
+        homepage="https://example.com", license="MIT",
+    )
+    result = _make_metadata_result(
+        metadata=meta,
+        raw_content={"SKILL.md": (
+            "Queries https://api.osv.dev/v1/querybatch for vulns.\n\n"
+            "## Network endpoints called\n"
+            "All API calls are read-only queries.\n"
+        )},
+    )
+    audit = audit_skill_result(result)
+    findings = [f for f in audit.findings if f.category == "undocumented_network"]
+    assert len(findings) == 0
+
+
+def test_metadata_no_frontmatter_skips_metadata_checks():
+    """Files without frontmatter skip metadata quality checks entirely."""
+    result = _make_metadata_result(metadata=None)
+    audit = audit_skill_result(result)
+    metadata_cats = {"missing_source", "missing_license", "undeclared_dependency",
+                     "limited_install", "unverifiable_claim", "undocumented_network"}
+    findings = [f for f in audit.findings if f.category in metadata_cats]
+    assert len(findings) == 0
+
+
+def test_metadata_complete_skill_passes():
+    """A fully complete SKILL.md metadata produces no metadata findings."""
+    meta = SkillMetadata(
+        name="my-tool", version="1.0.0",
+        homepage="https://github.com/example/my-tool",
+        source="https://github.com/example/my-tool",
+        license="Apache-2.0",
+        required_bins=["my-tool"],
+        optional_bins=["docker", "grype"],
+        install_methods=["uv", "pip", "pipx"],
+    )
+    result = _make_metadata_result(
+        metadata=meta,
+        raw_content={"SKILL.md": (
+            "This tool is read-only.\n"
+            "Uses https://api.osv.dev for scanning.\n\n"
+            "## Network endpoints called\n"
+            "All API calls are read-only queries to OSV.dev.\n"
+            "Docker scanning requires docker binary.\n"
+        )},
+    )
+    audit = audit_skill_result(result)
+    metadata_cats = {"missing_source", "missing_license", "undeclared_dependency",
+                     "limited_install", "unverifiable_claim", "undocumented_network"}
+    findings = [f for f in audit.findings if f.category in metadata_cats]
+    assert len(findings) == 0

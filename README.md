@@ -57,7 +57,7 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 |---|---|---|
 | Package CVE detection | Yes | Yes — OSV batch + NVD CVSS v4 + FIRST EPSS + CISA KEV |
 | SBOM generation | Yes (Syft) | Yes — CycloneDX 1.6, SPDX 3.0, SARIF |
-| **AI agent discovery** | — | 11 MCP clients auto-discovered (Claude, Cursor, Windsurf, Cortex Code, OpenClaw, ...) |
+| **AI agent discovery** | — | 12 MCP clients + Docker Compose auto-discovered |
 | **Blast radius mapping** | — | CVE → package → server → agent → credentials → tools |
 | **Credential exposure** | — | Which secrets leak per vulnerability, per agent |
 | **MCP tool reachability** | — | Which tools (read_file, run_shell) an attacker reaches post-exploit |
@@ -77,8 +77,8 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 
 | Source | How |
 |--------|-----|
-| MCP configs | Auto-discover (11 clients incl. OpenClaw) |
-| Docker images | Grype / Syft / Docker CLI |
+| MCP configs | Auto-discover (12 clients + Docker Compose) |
+| Docker images | Grype / Syft if available, else Docker CLI |
 | Kubernetes | kubectl across namespaces |
 | Terraform | Bedrock, Vertex AI, Azure |
 | GitHub Actions | AI env vars + SDK steps |
@@ -170,7 +170,7 @@ No config needed. Auto-discovers Claude Desktop, Claude Code, Cursor, Windsurf, 
 
 ```bash
 agent-bom scan --enrich                    # OSV + NVD CVSS + EPSS + CISA KEV
-agent-bom scan --image myapp:latest        # Docker image (all ecosystems via Grype)
+agent-bom scan --image myapp:latest        # Docker image (Grype/Syft if available, else Docker CLI)
 agent-bom scan --k8s --all-namespaces      # Every pod in the cluster
 agent-bom scan --sbom syft-output.cdx.json # Pipe in existing SBOMs
 ```
@@ -765,12 +765,12 @@ agent-bom covers the AI infrastructure landscape through multiple scanning strat
 |-------|------------------------|----------|
 | **GPU clouds** | `--k8s --context=<cluster>` | CoreWeave, Lambda Labs, Paperspace, DGX Cloud |
 | **AI platforms** | Cloud provider modules | AWS Bedrock/SageMaker, Azure AI Foundry, GCP Vertex AI, Databricks, Snowflake Cortex, HuggingFace Hub, W&B, MLflow, OpenAI |
-| **Container workloads** | `--image` via Grype/Syft | NVIDIA Triton, NIM, vLLM, TGI, Ollama, any OCI image |
+| **Container workloads** | `--image` (Grype/Syft optional, Docker CLI fallback) | NVIDIA Triton, NIM, vLLM, TGI, Ollama, any OCI image |
 | **K8s-native inference** | `--k8s` discovers pods | KServe, Seldon Core, Kubeflow, Ray Serve, BentoML |
 | **AI frameworks** | Dependency scanning (PyPI/npm) | LangChain, LlamaIndex, AutoGen, CrewAI, PyTorch, Transformers, NeMo |
 | **Vector databases** | `--image` for self-hosted | Weaviate, Qdrant, Milvus, ChromaDB, pgvector |
 | **LLM providers** | API key detection + SDK scanning | OpenAI, Anthropic, Cohere, Mistral, Gemini |
-| **MCP ecosystem** | Auto-discovery (11 clients) + registry (112 servers) | Claude Desktop, Cursor, Windsurf, Cline, OpenClaw |
+| **MCP ecosystem** | Auto-discovery (12 clients + Docker Compose) + registry (112 servers) | Claude Desktop, Cursor, Windsurf, Cline, OpenClaw |
 | **IaC + CI/CD** | `--tf-dir` and `--gha` | Terraform AI resources, GitHub Actions AI workflows |
 
 ---
@@ -782,7 +782,7 @@ These tools solve different problems and are **complementary**.
 | | agent-bom | ToolHive |
 |---|---|---|
 | **Purpose** | Scan + audit AI supply chain | Deploy + manage MCP servers |
-| **CVE scanning** | OSV, NVD, EPSS, CISA KEV, Grype | No |
+| **CVE scanning** | OSV, NVD, EPSS, CISA KEV (+ optional Grype for images) | No |
 | **Blast radius** | Agents, credentials, tools | No |
 | **OWASP + ATLAS + NIST** | Triple-framework tagging on every finding | No |
 | **MCP server isolation** | No (scanner only) | Yes (containers + seccomp) |

@@ -54,7 +54,7 @@ docker run -d -p 8423:8423 --name agent-bom-mcp agent-bom-sse
 ### Step 2: Get your public URL
 
 After deployment, note the public URL. Examples:
-- Railway: `https://agent-bom-mcp.up.railway.app`
+- Railway: `https://web-production-c0852.up.railway.app`
 - Render: `https://agent-bom-mcp.onrender.com`
 - Fly.io: `https://agent-bom-mcp.fly.dev`
 

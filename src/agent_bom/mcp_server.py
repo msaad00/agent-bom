@@ -132,6 +132,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             "generates SBOMs, and enforces security policies. Read-only."
         ),
     )
+    # Set the actual agent-bom version (FastMCP defaults to SDK version)
+    mcp._mcp_server.version = __version__
 
     # ── Tool 1: scan ──────────────────────────────────────────────────
 

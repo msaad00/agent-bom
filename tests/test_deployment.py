@@ -124,8 +124,9 @@ def test_server_card_has_all_tools():
     assert card["name"] == "agent-bom"
     assert "version" in card
     tool_names = [t["name"] for t in card["tools"]]
-    assert len(tool_names) == 7
+    assert len(tool_names) == 8
     assert "scan" in tool_names
+    assert "check" in tool_names
     assert "blast_radius" in tool_names
     assert "policy_check" in tool_names
     assert "registry_lookup" in tool_names

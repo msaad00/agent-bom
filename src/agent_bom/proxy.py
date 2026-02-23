@@ -16,11 +16,72 @@ import json
 import logging
 import re
 import sys
+import time
+from collections import defaultdict
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+
+# ─── Proxy metrics ──────────────────────────────────────────────────────────
+
+
+@dataclass
+class ProxyMetrics:
+    """Runtime observability metrics collected during proxy operation."""
+
+    start_time: float = field(default_factory=time.monotonic)
+    tool_calls: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    blocked_calls: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    latencies_ms: list[float] = field(default_factory=list)
+    total_messages_client_to_server: int = 0
+    total_messages_server_to_client: int = 0
+
+    def record_call(self, tool_name: str) -> None:
+        """Record an allowed tool call."""
+        self.tool_calls[tool_name] += 1
+
+    def record_blocked(self, reason: str) -> None:
+        """Record a blocked tool call by reason category."""
+        self.blocked_calls[reason] += 1
+
+    def record_latency(self, duration_ms: float) -> None:
+        """Record tool call round-trip latency in milliseconds."""
+        self.latencies_ms.append(duration_ms)
+
+    def summary(self) -> dict:
+        """Generate a metrics summary dict for JSONL export."""
+        elapsed = time.monotonic() - self.start_time
+        total_calls = sum(self.tool_calls.values())
+        total_blocked = sum(self.blocked_calls.values())
+
+        latency_stats: dict = {}
+        if self.latencies_ms:
+            sorted_lat = sorted(self.latencies_ms)
+            latency_stats = {
+                "min_ms": round(sorted_lat[0], 2),
+                "max_ms": round(sorted_lat[-1], 2),
+                "avg_ms": round(sum(sorted_lat) / len(sorted_lat), 2),
+                "p50_ms": round(sorted_lat[len(sorted_lat) // 2], 2),
+                "p95_ms": round(sorted_lat[int(len(sorted_lat) * 0.95)], 2),
+                "count": len(sorted_lat),
+            }
+
+        return {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "type": "proxy_summary",
+            "uptime_seconds": round(elapsed, 2),
+            "total_tool_calls": total_calls,
+            "total_blocked": total_blocked,
+            "calls_by_tool": dict(self.tool_calls),
+            "blocked_by_reason": dict(self.blocked_calls),
+            "latency": latency_stats,
+            "messages_client_to_server": self.total_messages_client_to_server,
+            "messages_server_to_client": self.total_messages_server_to_client,
+        }
 
 
 # ─── JSON-RPC parsing ────────────────────────────────────────────────────────
@@ -212,9 +273,14 @@ async def run_proxy(
     if log_path:
         log_file = open(log_path, "a")  # noqa: SIM115
 
+    # Metrics
+    metrics = ProxyMetrics()
+
     # Track declared tools from tools/list responses
     declared_tools: set[str] = set()
     tools_list_request_ids: set[int | str] = set()
+    # Track in-flight tool calls for latency measurement
+    pending_calls: dict[int | str, tuple[str, float]] = {}  # id → (tool_name, start_time)
 
     # Spawn the actual MCP server
     process = await asyncio.create_subprocess_exec(
@@ -239,6 +305,8 @@ async def run_proxy(
             msg = parse_jsonrpc(line_str)
 
             if msg:
+                metrics.total_messages_client_to_server += 1
+
                 # Track tools/list requests so we can identify responses
                 if msg.get("method") == "tools/list" and "id" in msg:
                     tools_list_request_ids.add(msg["id"])
@@ -251,6 +319,7 @@ async def run_proxy(
                     # Check if tool is declared
                     if block_undeclared and declared_tools and tool_name not in declared_tools:
                         reason = f"Tool '{tool_name}' not in declared tools/list"
+                        metrics.record_blocked("undeclared")
                         if log_file:
                             log_tool_call(log_file, tool_name, arguments, "blocked", reason)
                         # Send error back to client
@@ -263,12 +332,18 @@ async def run_proxy(
                     if policy:
                         allowed, reason = check_policy(policy, tool_name, arguments)
                         if not allowed:
+                            metrics.record_blocked("policy")
                             if log_file:
                                 log_tool_call(log_file, tool_name, arguments, "blocked", reason)
                             error_resp = make_error_response(msg.get("id"), -32600, reason)
                             sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
                             sys.stdout.buffer.flush()
                             continue
+
+                    # Record allowed call + start latency timer
+                    metrics.record_call(tool_name)
+                    if "id" in msg:
+                        pending_calls[msg["id"]] = (tool_name, time.monotonic())
 
                     # Log allowed call
                     if log_file:
@@ -291,11 +366,20 @@ async def run_proxy(
             line_str = line.decode("utf-8", errors="replace")
             msg = parse_jsonrpc(line_str)
 
-            # Capture tools/list responses to track declared tools
-            if msg and is_tools_list_response(msg):
-                new_tools = extract_declared_tools(msg)
-                declared_tools.update(new_tools)
-                logger.debug("Declared tools updated: %s", declared_tools)
+            if msg:
+                metrics.total_messages_server_to_client += 1
+
+                # Capture tools/list responses to track declared tools
+                if is_tools_list_response(msg):
+                    new_tools = extract_declared_tools(msg)
+                    declared_tools.update(new_tools)
+                    logger.debug("Declared tools updated: %s", declared_tools)
+
+                # Complete latency tracking for tool call responses
+                resp_id = msg.get("id")
+                if resp_id is not None and resp_id in pending_calls:
+                    _tool_name, start = pending_calls.pop(resp_id)
+                    metrics.record_latency((time.monotonic() - start) * 1000)
 
             # Forward to client
             sys.stdout.buffer.write(line)
@@ -322,7 +406,10 @@ async def run_proxy(
     except (BrokenPipeError, ConnectionResetError):
         pass
     finally:
+        # Write metrics summary to audit log before closing
         if log_file:
+            summary_line = json.dumps(metrics.summary()) + "\n"
+            log_file.write(summary_line)
             log_file.close()
         if process.returncode is None:
             process.terminate()

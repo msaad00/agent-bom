@@ -39,7 +39,8 @@ DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     ("README.md", re.compile(r"(msaad00/agent-bom@v)[^\s\"]+"), r"\g<1>{v}"),
     # tests/test_core.py — version assertions
     ("tests/test_core.py", re.compile(r'(assert\s+__version__\s*==\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
-    ("tests/test_core.py", re.compile(r'(assert\s+data\["version"\]\s*==\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
+    # Only match version assertions that currently contain a semver pattern (avoids clobbering SARIF "2.1.0")
+    ("tests/test_core.py", re.compile(r'(assert\s+data\["version"\]\s*==\s*")0\.\d+\.\d+(")', re.M), r"\g<1>{v}\g<2>"),
 ]
 
 

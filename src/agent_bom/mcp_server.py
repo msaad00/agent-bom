@@ -6,6 +6,7 @@ Start with:
 
 Tools:
     scan              — Full discovery → scan → output pipeline
+    check             — Check a specific package for CVEs before installing
     blast_radius      — Look up blast radius for a specific CVE
     policy_check      — Evaluate a policy against scan results
     registry_lookup   — Query the MCP server threat intelligence registry
@@ -179,7 +180,95 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         except Exception as exc:
             return json.dumps({"error": str(exc)})
 
-    # ── Tool 2: blast_radius ──────────────────────────────────────────
+    # ── Tool 2: check ────────────────────────────────────────────────
+
+    @mcp.tool(annotations=_READ_ONLY)
+    async def check(package: str, ecosystem: str = "npm") -> str:
+        """Check a specific package for known CVEs before installing.
+
+        Queries OSV.dev for vulnerabilities in the given package. Use this
+        before installing an MCP server or dependency to verify it is safe.
+
+        Args:
+            package: Package name with optional version, e.g. "express@4.18.2",
+                     "@modelcontextprotocol/server-filesystem@2025.1.14",
+                     or just "requests" (resolves @latest).
+            ecosystem: Package ecosystem — "npm", "pypi", "go", "cargo",
+                       "maven", or "nuget". Defaults to "npm".
+
+        Returns:
+            JSON with package, version, ecosystem, vulnerability count,
+            and vulnerability details (id, severity, cvss, fix version, summary).
+        """
+        try:
+            from agent_bom.models import Package as Pkg
+            from agent_bom.scanners import build_vulnerabilities, query_osv_batch
+
+            # Parse name@version
+            spec = package.strip()
+            if "@" in spec and not spec.startswith("@"):
+                name, version = spec.rsplit("@", 1)
+            elif spec.startswith("@") and spec.count("@") > 1:
+                last_at = spec.rindex("@")
+                name, version = spec[:last_at], spec[last_at + 1:]
+            else:
+                name, version = spec, "latest"
+
+            eco = ecosystem.lower().strip()
+            pkg = Pkg(name=name, version=version, ecosystem=eco)
+
+            # Resolve "latest" via registry
+            if version in ("latest", ""):
+                from agent_bom.http_client import create_client
+                from agent_bom.resolver import resolve_package_version
+
+                async with create_client(timeout=15.0) as client:
+                    resolved = await resolve_package_version(pkg, client)
+                if resolved:
+                    version = pkg.version
+                else:
+                    return json.dumps({
+                        "package": name,
+                        "ecosystem": eco,
+                        "error": f"Could not resolve latest version for {name}",
+                    })
+
+            results = await query_osv_batch([pkg])
+            key = f"{eco}:{name}@{version}"
+            vuln_data = results.get(key, [])
+
+            if not vuln_data:
+                return json.dumps({
+                    "package": name,
+                    "version": version,
+                    "ecosystem": eco,
+                    "vulnerabilities": 0,
+                    "status": "clean",
+                    "message": f"No known vulnerabilities in {name}@{version}",
+                })
+
+            vulns = build_vulnerabilities(vuln_data, pkg)
+            return json.dumps({
+                "package": name,
+                "version": version,
+                "ecosystem": eco,
+                "vulnerabilities": len(vulns),
+                "status": "vulnerable",
+                "details": [
+                    {
+                        "id": v.id,
+                        "severity": v.severity.value,
+                        "cvss_score": v.cvss_score,
+                        "fixed_version": v.fixed_version,
+                        "summary": (v.summary or "")[:200],
+                    }
+                    for v in vulns
+                ],
+            }, indent=2, default=str)
+        except Exception as exc:
+            return json.dumps({"error": str(exc)})
+
+    # ── Tool 3: blast_radius ──────────────────────────────────────────
 
     @mcp.tool(annotations=_READ_ONLY)
     async def blast_radius(cve_id: str) -> str:
@@ -229,7 +318,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         except Exception as exc:
             return json.dumps({"error": str(exc)})
 
-    # ── Tool 3: policy_check ──────────────────────────────────────────
+    # ── Tool 4: policy_check ──────────────────────────────────────────
 
     @mcp.tool(annotations=_READ_ONLY)
     async def policy_check(policy_json: str) -> str:
@@ -264,7 +353,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         except Exception as exc:
             return json.dumps({"error": str(exc)})
 
-    # ── Tool 4: registry_lookup ───────────────────────────────────────
+    # ── Tool 5: registry_lookup ───────────────────────────────────────
 
     @mcp.tool(annotations=_READ_ONLY)
     def registry_lookup(
@@ -325,7 +414,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
         return json.dumps({"found": False, "query": search_term, "message": "No matching server found in registry"})
 
-    # ── Tool 5: generate_sbom ─────────────────────────────────────────
+    # ── Tool 6: generate_sbom ─────────────────────────────────────────
 
     @mcp.tool(annotations=_READ_ONLY)
     async def generate_sbom(
@@ -362,7 +451,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         except Exception as exc:
             return json.dumps({"error": str(exc)})
 
-    # ── Tool 6: compliance ───────────────────────────────────────────
+    # ── Tool 7: compliance ───────────────────────────────────────────
 
     @mcp.tool(annotations=_READ_ONLY)
     async def compliance(
@@ -451,7 +540,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         except Exception as exc:
             return json.dumps({"error": str(exc)})
 
-    # ── Tool 7: remediate ────────────────────────────────────────────
+    # ── Tool 8: remediate ────────────────────────────────────────────
 
     @mcp.tool(annotations=_READ_ONLY)
     async def remediate(
@@ -557,6 +646,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
 _SERVER_CARD_TOOLS = [
     {"name": "scan", "description": "Full discovery → scan → output pipeline", "annotations": {"readOnlyHint": True}},
+    {"name": "check", "description": "Check a specific package for CVEs before installing", "annotations": {"readOnlyHint": True}},
     {"name": "blast_radius", "description": "Look up blast radius for a specific CVE", "annotations": {"readOnlyHint": True}},
     {"name": "policy_check", "description": "Evaluate security policy rules", "annotations": {"readOnlyHint": True}},
     {"name": "registry_lookup", "description": "Query MCP server threat intelligence registry", "annotations": {"readOnlyHint": True}},

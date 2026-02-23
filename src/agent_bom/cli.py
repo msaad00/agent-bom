@@ -99,7 +99,7 @@ def main():
 @click.option("--output", "-o", type=str, help="Output file path (use '-' for stdout)")
 @click.option(
     "--format", "-f", "output_format",
-    type=click.Choice(["console", "json", "cyclonedx", "sarif", "spdx", "text", "html", "prometheus", "graph"]),
+    type=click.Choice(["console", "json", "cyclonedx", "sarif", "spdx", "text", "html", "prometheus", "graph", "mermaid"]),
     default="console",
     help="Output format",
 )
@@ -1051,6 +1051,9 @@ def scan(
             from agent_bom.output.graph import build_graph_elements
             elements = build_graph_elements(report, blast_radii)
             sys.stdout.write(json.dumps({"elements": elements, "format": "cytoscape"}, indent=2))
+        elif output_format == "mermaid":
+            from agent_bom.output.mermaid import to_mermaid
+            sys.stdout.write(to_mermaid(report, blast_radii))
         else:
             sys.stdout.write(json.dumps(to_json(report), indent=2))
         sys.stdout.write("\n")
@@ -1142,6 +1145,12 @@ def scan(
         Path(out_path).write_text(json.dumps({"elements": elements, "format": "cytoscape"}, indent=2))
         con.print(f"\n  [green]✓[/green] Graph JSON: {out_path}")
         con.print("  [dim]Cytoscape.js-compatible element list — open with Cytoscape desktop or any JS graph library[/dim]")
+    elif output_format == "mermaid":
+        from agent_bom.output.mermaid import to_mermaid
+        out_path = output or "agent-bom-blast-radius.mmd"
+        Path(out_path).write_text(to_mermaid(report, blast_radii))
+        con.print(f"\n  [green]✓[/green] Mermaid diagram: {out_path}")
+        con.print("  [dim]Render with: mermaid-cli, GitHub markdown, or mermaid.live[/dim]")
     elif output_format == "text" and output:
         Path(output).write_text(_format_text(report, blast_radii))
         con.print(f"\n  [green]✓[/green] Text report: {output}")

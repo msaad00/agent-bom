@@ -6,6 +6,7 @@ import io
 import json
 
 from agent_bom.proxy import (
+    ProxyMetrics,
     check_policy,
     extract_tool_name,
     is_tools_call,
@@ -126,6 +127,76 @@ def test_check_policy_blocks_arg_pattern():
     allowed, reason = check_policy(policy, "read_file", {"path": "/etc/passwd"})
     assert allowed is False
     assert "/etc/.*" in reason
+
+
+# ── ProxyMetrics ────────────────────────────────────────────────────────────
+
+
+def test_proxy_metrics_record_call():
+    """record_call increments tool call counter."""
+    m = ProxyMetrics()
+    m.record_call("read_file")
+    m.record_call("read_file")
+    m.record_call("write_file")
+    assert m.tool_calls["read_file"] == 2
+    assert m.tool_calls["write_file"] == 1
+
+
+def test_proxy_metrics_record_blocked():
+    """record_blocked increments blocked counter by reason."""
+    m = ProxyMetrics()
+    m.record_blocked("policy")
+    m.record_blocked("policy")
+    m.record_blocked("undeclared")
+    assert m.blocked_calls["policy"] == 2
+    assert m.blocked_calls["undeclared"] == 1
+
+
+def test_proxy_metrics_latency():
+    """record_latency stores latency values."""
+    m = ProxyMetrics()
+    m.record_latency(10.5)
+    m.record_latency(20.3)
+    m.record_latency(15.1)
+    assert len(m.latencies_ms) == 3
+
+
+def test_proxy_metrics_summary():
+    """summary() returns a well-structured dict."""
+    m = ProxyMetrics()
+    m.record_call("scan")
+    m.record_call("scan")
+    m.record_call("check")
+    m.record_blocked("policy")
+    m.record_latency(10.0)
+    m.record_latency(50.0)
+    m.total_messages_client_to_server = 5
+    m.total_messages_server_to_client = 3
+
+    s = m.summary()
+    assert s["type"] == "proxy_summary"
+    assert s["total_tool_calls"] == 3
+    assert s["total_blocked"] == 1
+    assert s["calls_by_tool"]["scan"] == 2
+    assert s["calls_by_tool"]["check"] == 1
+    assert s["blocked_by_reason"]["policy"] == 1
+    assert s["latency"]["min_ms"] == 10.0
+    assert s["latency"]["max_ms"] == 50.0
+    assert s["latency"]["count"] == 2
+    assert s["messages_client_to_server"] == 5
+    assert s["messages_server_to_client"] == 3
+    assert "ts" in s
+    assert "uptime_seconds" in s
+
+
+def test_proxy_metrics_summary_empty():
+    """summary() works when no data recorded."""
+    m = ProxyMetrics()
+    s = m.summary()
+    assert s["total_tool_calls"] == 0
+    assert s["total_blocked"] == 0
+    assert s["latency"] == {}
+    assert s["messages_client_to_server"] == 0
 
 
 # ── CLI proxy --help ─────────────────────────────────────────────────────────

@@ -54,12 +54,12 @@ def test_create_mcp_server_returns_object():
     assert server.name == "agent-bom"
 
 
-def test_mcp_server_has_seven_tools():
-    """Server should register exactly 7 tools."""
+def test_mcp_server_has_eight_tools():
+    """Server should register exactly 8 tools."""
     from agent_bom.mcp_server import create_mcp_server
     server = create_mcp_server()
     tools = _run(server.list_tools())
-    assert len(tools) == 7
+    assert len(tools) == 8
 
 
 def test_mcp_server_tool_names():
@@ -69,7 +69,7 @@ def test_mcp_server_tool_names():
     tools = _run(server.list_tools())
     names = {t.name for t in tools}
     assert names == {
-        "scan", "blast_radius", "policy_check", "registry_lookup",
+        "scan", "check", "blast_radius", "policy_check", "registry_lookup",
         "generate_sbom", "compliance", "remediate",
     }
 
@@ -112,6 +112,86 @@ def test_registry_lookup_empty_query():
     server = create_mcp_server()
     result = _call_tool(server, "registry_lookup", {})
     assert "error" in result
+
+
+# ---------------------------------------------------------------------------
+# Tool: check (mocked OSV)
+# ---------------------------------------------------------------------------
+
+
+@patch("agent_bom.scanners.query_osv_batch")
+def test_check_clean_package(mock_osv):
+    """Check tool returns clean status when no vulns."""
+    from agent_bom.mcp_server import create_mcp_server
+
+    async def _fake_osv(pkgs):
+        return {}
+
+    mock_osv.side_effect = _fake_osv
+    server = create_mcp_server()
+    result = _call_tool(server, "check", {"package": "safe-pkg@1.0.0", "ecosystem": "npm"})
+    assert result["status"] == "clean"
+    assert result["vulnerabilities"] == 0
+    assert result["package"] == "safe-pkg"
+    assert result["version"] == "1.0.0"
+
+
+@patch("agent_bom.scanners.query_osv_batch")
+def test_check_vulnerable_package(mock_osv):
+    """Check tool returns vulnerable status with details."""
+    from agent_bom.mcp_server import create_mcp_server
+
+    async def _fake_osv(pkgs):
+        return {
+            "npm:bad-pkg@1.0.0": [
+                {
+                    "id": "CVE-2025-9999",
+                    "summary": "Test vulnerability",
+                    "severity": [{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}],
+                    "affected": [{"ranges": [{"events": [{"fixed": "1.1.0"}]}]}],
+                }
+            ],
+        }
+
+    mock_osv.side_effect = _fake_osv
+    server = create_mcp_server()
+    result = _call_tool(server, "check", {"package": "bad-pkg@1.0.0", "ecosystem": "npm"})
+    assert result["status"] == "vulnerable"
+    assert result["vulnerabilities"] >= 1
+    assert result["details"][0]["id"] == "CVE-2025-9999"
+
+
+@patch("agent_bom.scanners.query_osv_batch")
+def test_check_scoped_npm_package(mock_osv):
+    """Check parses scoped npm package correctly."""
+    from agent_bom.mcp_server import create_mcp_server
+
+    async def _fake_osv(pkgs):
+        return {}
+
+    mock_osv.side_effect = _fake_osv
+    server = create_mcp_server()
+    result = _call_tool(server, "check", {
+        "package": "@modelcontextprotocol/server-filesystem@2025.1.14",
+        "ecosystem": "npm",
+    })
+    assert result["status"] == "clean"
+    assert result["package"] == "@modelcontextprotocol/server-filesystem"
+    assert result["version"] == "2025.1.14"
+
+
+@patch("agent_bom.scanners.query_osv_batch")
+def test_check_default_ecosystem(mock_osv):
+    """Check defaults to npm ecosystem."""
+    from agent_bom.mcp_server import create_mcp_server
+
+    async def _fake_osv(pkgs):
+        return {}
+
+    mock_osv.side_effect = _fake_osv
+    server = create_mcp_server()
+    result = _call_tool(server, "check", {"package": "express@4.18.2"})
+    assert result["ecosystem"] == "npm"
 
 
 # ---------------------------------------------------------------------------
@@ -365,7 +445,7 @@ def test_create_smithery_server():
     # Whether SmitheryFastMCP wrapper or plain FastMCP, it must have tools
     inner = server._fastmcp if hasattr(server, "_fastmcp") else server
     tools = inner._tool_manager._tools
-    assert len(tools) >= 7
+    assert len(tools) >= 8
     assert "scan" in tools
     assert "compliance" in tools
     assert "remediate" in tools

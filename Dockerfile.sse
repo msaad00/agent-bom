@@ -1,11 +1,11 @@
-# MCP Server — SSE (Server-Sent Events) transport for remote clients.
+# MCP Server — Streamable HTTP transport for remote clients.
 #
-# Exposes agent-bom's 7 MCP tools over HTTP/SSE so that Smithery, Claude Desktop
-# (remote mode), and any other MCP client can connect via public URL.
+# Exposes agent-bom's 7 MCP tools over streamable HTTP so that Smithery, Claude
+# Desktop (remote mode), and any other MCP client can connect via public URL.
 #
 # Build:   docker build -f Dockerfile.sse -t agent-bom-sse .
 # Run:     docker run -p 8423:8423 agent-bom-sse
-# Test:    curl http://localhost:8423/sse
+# Test:    curl http://localhost:8423/mcp
 #
 # Environment variables (optional):
 #   NVD_API_KEY  — Higher rate limits for CVSS enrichment
@@ -15,13 +15,13 @@ FROM python:3.12-slim
 
 ARG VERSION=0.28.1
 
-LABEL org.opencontainers.image.title="agent-bom MCP Server (SSE)"
-LABEL org.opencontainers.image.description="AI supply chain security scanner — MCP server with SSE transport"
+LABEL org.opencontainers.image.title="agent-bom MCP Server"
+LABEL org.opencontainers.image.description="AI supply chain security scanner — MCP server with streamable HTTP transport"
 LABEL org.opencontainers.image.version="${VERSION}"
 LABEL org.opencontainers.image.source="https://github.com/msaad00/agent-bom"
 LABEL org.opencontainers.image.licenses="Apache-2.0"
-LABEL io.modelcontextprotocol.server.name="io.github.agent-bom/agent-bom"
-LABEL io.modelcontextprotocol.server.transport="sse"
+LABEL io.modelcontextprotocol.server.name="io.github.msaad00/agent-bom"
+LABEL io.modelcontextprotocol.server.transport="streamable-http"
 
 WORKDIR /app
 
@@ -31,7 +31,7 @@ COPY src/ ./src/
 
 RUN pip install --no-cache-dir ".[mcp-server]"
 
-# SSE transport defaults
+# Streamable HTTP transport defaults
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8423
 
@@ -41,4 +41,4 @@ HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
     CMD agent-bom --version || exit 1
 
 # Use shell form so $PORT is expanded at runtime (Railway/Render inject PORT)
-CMD agent-bom mcp-server --transport sse --host 0.0.0.0 --port ${PORT}
+CMD agent-bom mcp-server --transport streamable-http --host 0.0.0.0 --port ${PORT}

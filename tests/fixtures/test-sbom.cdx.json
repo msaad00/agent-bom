@@ -1,0 +1,38 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "component": {
+      "type": "application",
+      "name": "ci-dogfood-test",
+      "version": "1.0.0"
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "name": "flask",
+      "version": "2.2.0",
+      "purl": "pkg:pypi/flask@2.2.0"
+    },
+    {
+      "type": "library",
+      "name": "werkzeug",
+      "version": "2.2.0",
+      "purl": "pkg:pypi/werkzeug@2.2.0"
+    },
+    {
+      "type": "library",
+      "name": "jinja2",
+      "version": "3.1.2",
+      "purl": "pkg:pypi/jinja2@3.1.2"
+    },
+    {
+      "type": "library",
+      "name": "requests",
+      "version": "2.28.0",
+      "purl": "pkg:pypi/requests@2.28.0"
+    }
+  ]
+}

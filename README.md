@@ -13,7 +13,7 @@
   <a href="https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom"><img src="https://api.securityscorecards.dev/projects/github.com/msaad00/agent-bom/badge" alt="OpenSSF"></a>
   <a href="https://github.com/msaad00/agent-bom/stargazers"><img src="https://img.shields.io/github/stars/msaad00/agent-bom?style=flat&logo=github&label=Stars" alt="Stars"></a>
 </p>
-<!-- mcp-name: io.github.agent-bom/agent-bom -->
+<!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center">
   <b>Generate AI Bills of Materials. Scan AI agents and MCP servers for CVEs. Map blast radius. Enterprise remediation with named assets and risk narratives. OWASP LLM Top 10 + MITRE ATLAS + NIST AI RMF.</b>

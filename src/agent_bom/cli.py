@@ -387,6 +387,9 @@ def scan(
         return
 
     # Step 1: Discovery
+    from rich.rule import Rule
+    con.print(Rule("Discovery", style="blue"))
+
     if skill_only:
         agents = []  # skill-only: no agent discovery
 
@@ -671,14 +674,49 @@ def scan(
                     "passed": skill_audit.passed,
                 }
                 if skill_audit.findings:
-                    con.print(f"\n  [bold yellow]⚠ Skill Security Audit ({len(skill_audit.findings)} finding(s))[/bold yellow]")
+                    from rich.panel import Panel
+                    from rich.table import Table as RichTable
+
                     sev_colors = {"critical": "red bold", "high": "red", "medium": "yellow", "low": "dim"}
+                    sev_icons = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "⚪"}
+
+                    audit_table = RichTable(
+                        title=f"Skill Security Audit — {len(skill_audit.findings)} finding(s)",
+                        expand=True, padding=(0, 1), title_style="bold yellow",
+                    )
+                    audit_table.add_column("Sev", justify="center", no_wrap=True, width=10)
+                    audit_table.add_column("Category", no_wrap=True, width=20)
+                    audit_table.add_column("Finding", ratio=3)
+                    audit_table.add_column("Source", ratio=2, style="dim")
+
                     for finding in skill_audit.findings:
                         style = sev_colors.get(finding.severity, "white")
-                        con.print(f"    [{style}]\\[{finding.severity.upper()}][/{style}] {finding.title}")
-                        con.print(f"      [dim]{finding.detail}[/dim]")
+                        icon = sev_icons.get(finding.severity, "⚪")
+                        sev_cell = f"{icon} [{style}]{finding.severity.upper()}[/{style}]"
+                        cat_cell = f"[cyan]{finding.category}[/cyan]"
+                        detail_parts = [f"[bold]{finding.title}[/bold]"]
+                        detail_parts.append(f"[dim]{finding.detail}[/dim]")
                         if finding.recommendation:
-                            con.print(f"      [green]→ {finding.recommendation}[/green]")
+                            detail_parts.append(f"[green]→ {finding.recommendation}[/green]")
+                        detail_cell = "\n".join(detail_parts)
+                        source_parts = []
+                        if finding.source_file:
+                            source_parts.append(Path(finding.source_file).name)
+                        if finding.package:
+                            source_parts.append(f"pkg:{finding.package}")
+                        if finding.server:
+                            source_parts.append(f"srv:{finding.server}")
+                        source_cell = "\n".join(source_parts) if source_parts else "—"
+                        audit_table.add_row(sev_cell, cat_cell, detail_cell, source_cell)
+
+                    stats_line = (
+                        f"[dim]Checked: {skill_audit.packages_checked} pkg(s) · "
+                        f"{skill_audit.servers_checked} server(s) · "
+                        f"{skill_audit.credentials_checked} credential(s) · "
+                        f"{'[green]PASS[/green]' if skill_audit.passed else '[red]FAIL[/red]'}[/dim]"
+                    )
+                    con.print()
+                    con.print(Panel(audit_table, subtitle=stats_line, border_style="yellow"))
 
     # Step 1g4: Jupyter notebook scan (--jupyter)
     if not skill_only and jupyter_dirs:
@@ -769,7 +807,9 @@ def scan(
     if skill_only:
         blast_radii = []
     else:
-        con.print("\n[bold blue]Extracting package dependencies...[/bold blue]\n")
+        con.print()
+        con.print(Rule("Package Extraction", style="blue"))
+        con.print()
         if transitive:
             con.print(f"  [cyan]Transitive resolution enabled (max depth: {max_depth})[/cyan]\n")
         for agent in agents:
@@ -876,9 +916,14 @@ def scan(
                     con.print(f"    {d.package}: {d.installed} → {d.latest}")
 
         # Step 4: Vulnerability scan
+        con.print()
+        con.print(Rule("Vulnerability Scan", style="red"))
+        con.print()
         blast_radii = []
         if not no_scan and total_packages > 0:
-            blast_radii = scan_agents_sync(agents, enable_enrichment=enrich, nvd_api_key=nvd_api_key)
+            with con.status("[bold]Querying OSV + NVD + KEV + EPSS...[/bold]", spinner="dots"):
+                blast_radii = scan_agents_sync(agents, enable_enrichment=enrich, nvd_api_key=nvd_api_key)
+            con.print(f"  [green]✓[/green] Scan complete — {len(blast_radii)} finding(s)")
 
         # Step 4a: Snyk vulnerability enrichment (optional)
         if snyk_flag and not no_scan and total_packages > 0:
@@ -1212,6 +1257,11 @@ def scan(
         except (FileNotFoundError, ValueError) as e:
             con.print(f"\n  [red]Policy error: {e}[/red]")
             sys.exit(1)
+
+    # Scan completion divider
+    if output_format == "console" and not output and not quiet:
+        con.print()
+        con.print(Rule("Scan Complete", style="green" if not blast_radii else "yellow"))
 
     # Step 8: Exit code based on policy flags
     exit_code = 0

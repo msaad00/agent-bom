@@ -1101,13 +1101,13 @@ def test_html_contains_credential_warning():
     assert "API_KEY" in html
 
 
-def test_html_contains_d3_graph():
+def test_html_contains_cytoscape_graph():
     from agent_bom.output.html import to_html
 
     report, blast_radii = _make_report_with_vuln()
     html = to_html(report, blast_radii)
-    assert "d3.min.js" in html or "d3@7" in html
-    assert "forceSimulation" in html or "d3.forceSimulation" in html
+    assert "cytoscape" in html
+    assert "cy.nodes" in html
 
 
 def test_html_clean_report_shows_clean_status():

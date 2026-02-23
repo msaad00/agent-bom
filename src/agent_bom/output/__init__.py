@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from rich.console import Console
 from rich.panel import Panel
+from rich.rule import Rule
 from rich.table import Table
 from rich.tree import Tree
 
@@ -197,7 +198,9 @@ def print_posture_summary(report: AIBOMReport) -> None:
 
 def print_agent_tree(report: AIBOMReport) -> None:
     """Print the agent → server → package dependency tree."""
-    console.print("\n[bold blue]📊 AI-BOM Dependency Tree[/bold blue]\n")
+    console.print()
+    console.print(Rule("AI-BOM Dependency Tree", style="blue"))
+    console.print()
 
     for agent in report.agents:
         status_str = ""
@@ -286,7 +289,9 @@ def print_blast_radius(report: AIBOMReport) -> None:
     if not report.blast_radii:
         return
 
-    console.print("\n[bold red]💥 Blast Radius Analysis[/bold red]\n")
+    console.print()
+    console.print(Rule("Blast Radius Analysis", style="red"))
+    console.print()
 
     table = Table(title="Vulnerability Impact Chain", expand=True, padding=(0, 1))
     table.add_column("Risk", justify="center", no_wrap=True)
@@ -398,7 +403,9 @@ def print_attack_flow_tree(report: AIBOMReport) -> None:
     if not report.blast_radii:
         return
 
-    console.print("\n[bold red]🔗 Attack Flow Chains[/bold red]\n")
+    console.print()
+    console.print(Rule("Attack Flow Chains", style="red"))
+    console.print()
 
     severity_styles = {
         Severity.CRITICAL: "red bold",
@@ -491,7 +498,9 @@ def print_threat_frameworks(report: AIBOMReport) -> None:
     if not owasp_counts and not atlas_counts and not nist_counts:
         return
 
-    console.print("\n[bold]Threat Framework Coverage[/bold]\n")
+    console.print()
+    console.print(Rule("Threat Framework Coverage", style="bold"))
+    console.print()
 
     # OWASP table
     if owasp_counts:
@@ -634,7 +643,9 @@ def print_remediation_plan(report: AIBOMReport) -> None:
     total_creds = len(all_creds) or 1
     total_tools = len(all_tools) or 1
 
-    console.print("\n[bold green]🔧 Remediation Plan[/bold green]\n")
+    console.print()
+    console.print(Rule("Remediation Plan", style="green"))
+    console.print()
 
     sev_style = {
         Severity.CRITICAL: "red bold", Severity.HIGH: "red",
@@ -1403,7 +1414,9 @@ def print_severity_chart(report: AIBOMReport) -> None:
     if total == 0:
         return
 
-    console.print("\n[bold]Severity Distribution[/bold]")
+    console.print()
+    console.print(Rule("Severity Distribution", style="bold"))
+    console.print()
     max_count = max(counts.values()) or 1
     bar_width = 30
     styles = {

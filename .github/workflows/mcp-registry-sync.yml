@@ -151,7 +151,6 @@ jobs:
           **Versions refreshed:** ${VERSION_COUNT}
 
           Please review the changes in \`src/agent_bom/mcp_registry.json\` before merging." \
-            --label "dependencies" \
             --base main
 
       - name: No changes

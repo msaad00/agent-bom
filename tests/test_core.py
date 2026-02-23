@@ -255,7 +255,7 @@ def empty_report():
 
 def test_version_sync():
     from agent_bom import __version__
-    assert __version__ == "0.29.0"
+    assert __version__ == "0.30.0"
 
 
 def test_report_version_matches():
@@ -1101,13 +1101,13 @@ def test_html_contains_credential_warning():
     assert "API_KEY" in html
 
 
-def test_html_contains_cytoscape_graph():
+def test_html_contains_d3_graph():
     from agent_bom.output.html import to_html
 
     report, blast_radii = _make_report_with_vuln()
     html = to_html(report, blast_radii)
-    assert "cytoscape" in html.lower()
-    assert "cy.nodes" in html or "cytoscape(" in html
+    assert "d3.min.js" in html or "d3@7" in html
+    assert "forceSimulation" in html or "d3.forceSimulation" in html
 
 
 def test_html_clean_report_shows_clean_status():
@@ -1909,7 +1909,7 @@ def test_api_skill_audit_endpoint():
     pytest.importorskip("fastapi", reason="fastapi not installed")
     from fastapi.testclient import TestClient
 
-    from agent_bom.api.server import JobStatus, ScanJob, ScanRequest, _jobs, app
+    from agent_bom.api.server import JobStatus, ScanJob, ScanRequest, _get_store, app
     client = TestClient(app)
 
     # Create a fake completed job with skill_audit data
@@ -1928,7 +1928,7 @@ def test_api_skill_audit_endpoint():
             }
         },
     )
-    _jobs["skill-audit-test"] = job
+    _get_store().put(job)
     try:
         resp = client.get("/v1/scan/skill-audit-test/skill-audit")
         assert resp.status_code == 200
@@ -1937,7 +1937,7 @@ def test_api_skill_audit_endpoint():
         assert len(body["findings"]) == 1
         assert body["findings"][0]["category"] == "shell_access"
     finally:
-        _jobs.pop("skill-audit-test", None)
+        _get_store().delete("skill-audit-test")
 
 
 def test_api_skill_audit_empty():
@@ -1945,7 +1945,7 @@ def test_api_skill_audit_empty():
     pytest.importorskip("fastapi", reason="fastapi not installed")
     from fastapi.testclient import TestClient
 
-    from agent_bom.api.server import JobStatus, ScanJob, ScanRequest, _jobs, app
+    from agent_bom.api.server import JobStatus, ScanJob, ScanRequest, _get_store, app
     client = TestClient(app)
 
     job = ScanJob(
@@ -1955,7 +1955,7 @@ def test_api_skill_audit_empty():
         request=ScanRequest(),
         result={"agents": []},
     )
-    _jobs["no-skill-audit-test"] = job
+    _get_store().put(job)
     try:
         resp = client.get("/v1/scan/no-skill-audit-test/skill-audit")
         assert resp.status_code == 200
@@ -1963,7 +1963,7 @@ def test_api_skill_audit_empty():
         assert body["passed"] is True
         assert body["findings"] == []
     finally:
-        _jobs.pop("no-skill-audit-test", None)
+        _get_store().delete("no-skill-audit-test")
 
 
 # ── Resilient HTTP client tests ──────────────────────────────────────
@@ -2795,7 +2795,7 @@ def test_toolhive_server_json_valid():
     p = Path(__file__).parent.parent / "integrations" / "toolhive" / "server.json"
     data = _json.loads(p.read_text())
     assert data["name"] == "io.github.msaad00/agent-bom"
-    assert data["version"] == "0.29.0"
+    assert data["version"] == "0.30.0"
     assert "packages" in data
     assert data["packages"][0]["registryType"] == "oci"
 

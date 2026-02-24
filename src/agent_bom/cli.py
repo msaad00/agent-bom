@@ -100,10 +100,12 @@ def main():
 @click.option("--output", "-o", type=str, help="Output file path (use '-' for stdout)")
 @click.option(
     "--format", "-f", "output_format",
-    type=click.Choice(["console", "json", "cyclonedx", "sarif", "spdx", "text", "html", "prometheus", "graph", "mermaid", "badge"]),
+    type=click.Choice(["console", "json", "cyclonedx", "sarif", "spdx", "text", "html", "prometheus", "graph", "graph-html", "mermaid", "svg", "badge"]),
     default="console",
     help="Output format",
 )
+@click.option("--mermaid-mode", type=click.Choice(["supply-chain", "attack-flow"]), default="supply-chain",
+              help="Mermaid diagram mode: supply-chain (full hierarchy) or attack-flow (CVE blast radius)")
 @click.option("--push-gateway", "push_gateway", default=None, metavar="URL",
               help="Prometheus Pushgateway URL to push metrics after scan (e.g. http://localhost:9091)")
 @click.option("--otel-endpoint", "otel_endpoint", default=None, metavar="URL",
@@ -227,6 +229,7 @@ def scan(
     namespace: str,
     all_namespaces: bool,
     k8s_context: Optional[str],
+    mermaid_mode: str,
     push_gateway: Optional[str],
     otel_endpoint: Optional[str],
     tf_dirs: tuple,
@@ -1193,8 +1196,18 @@ def scan(
             elements = build_graph_elements(report, blast_radii)
             sys.stdout.write(json.dumps({"elements": elements, "format": "cytoscape"}, indent=2))
         elif output_format == "mermaid":
-            from agent_bom.output.mermaid import to_mermaid
-            sys.stdout.write(to_mermaid(report, blast_radii))
+            if mermaid_mode == "attack-flow":
+                from agent_bom.output.mermaid import to_mermaid
+                sys.stdout.write(to_mermaid(report, blast_radii))
+            else:
+                from agent_bom.output.mermaid import to_mermaid_supply_chain
+                sys.stdout.write(to_mermaid_supply_chain(report))
+        elif output_format == "svg":
+            from agent_bom.output.svg import to_svg
+            sys.stdout.write(to_svg(report, blast_radii))
+        elif output_format == "graph-html":
+            click.echo("Error: --format graph-html requires --output/-o (cannot write HTML to stdout)", err=True)
+            sys.exit(2)
         else:
             sys.stdout.write(json.dumps(to_json(report), indent=2))
         sys.stdout.write("\n")
@@ -1287,11 +1300,27 @@ def scan(
         con.print(f"\n  [green]✓[/green] Graph JSON: {out_path}")
         con.print("  [dim]Cytoscape.js-compatible element list — open with Cytoscape desktop or any JS graph library[/dim]")
     elif output_format == "mermaid":
-        from agent_bom.output.mermaid import to_mermaid
-        out_path = output or "agent-bom-blast-radius.mmd"
-        Path(out_path).write_text(to_mermaid(report, blast_radii))
-        con.print(f"\n  [green]✓[/green] Mermaid diagram: {out_path}")
+        out_path = output or "agent-bom-diagram.mmd"
+        if mermaid_mode == "attack-flow":
+            from agent_bom.output.mermaid import to_mermaid
+            Path(out_path).write_text(to_mermaid(report, blast_radii))
+        else:
+            from agent_bom.output.mermaid import to_mermaid_supply_chain
+            Path(out_path).write_text(to_mermaid_supply_chain(report))
+        con.print(f"\n  [green]✓[/green] Mermaid diagram ({mermaid_mode}): {out_path}")
         con.print("  [dim]Render with: mermaid-cli, GitHub markdown, or mermaid.live[/dim]")
+    elif output_format == "svg":
+        from agent_bom.output.svg import export_svg
+        out_path = output or "agent-bom-supply-chain.svg"
+        export_svg(report, blast_radii, out_path)
+        con.print(f"\n  [green]✓[/green] SVG diagram: {out_path}")
+        con.print("  [dim]Open in any browser or image viewer[/dim]")
+    elif output_format == "graph-html":
+        from agent_bom.output.graph import export_graph_html
+        out_path = output or "agent-bom-graph.html"
+        export_graph_html(report, blast_radii, out_path)
+        con.print(f"\n  [green]✓[/green] Interactive graph: {out_path}")
+        con.print(f"  [dim]Open with:[/dim] open {out_path}")
     elif output_format == "badge":
         out_path = output or "agent-bom-badge.json"
         export_badge(report, out_path)

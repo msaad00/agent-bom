@@ -340,3 +340,130 @@ def build_attack_flow_elements(
                 _add_edge(srv_id, agent_id, "compromises")
 
     return elements
+
+
+def export_graph_html(
+    report: "AIBOMReport",
+    blast_radii: list["BlastRadius"],
+    output_path: str,
+) -> None:
+    """Export an interactive standalone HTML file with Cytoscape.js supply chain graph.
+
+    Self-contained: loads Cytoscape + dagre from CDN, embeds data inline.
+    Supports zoom, pan, click-to-inspect, legend, and PNG export.
+    """
+    from pathlib import Path
+
+    elements = build_graph_elements(report, blast_radii)
+    elements_json = json.dumps(elements, indent=2)
+
+    total_agents = len(report.agents)
+    total_servers = sum(len(a.mcp_servers) for a in report.agents)
+    total_pkgs = sum(a.total_packages for a in report.agents)
+    total_vulns = len(blast_radii)
+
+    html_content = _GRAPH_HTML_TEMPLATE.format(
+        elements_json=elements_json,
+        total_agents=total_agents,
+        total_servers=total_servers,
+        total_pkgs=total_pkgs,
+        total_vulns=total_vulns,
+    )
+    Path(output_path).write_text(html_content, encoding="utf-8")
+
+
+_GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agent-bom Supply Chain Graph</title>
+<style>
+  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+  body {{ font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; background: #0f1419; color: #e7e9ea; }}
+  #header {{ padding: 16px 24px; display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid #2f3336; }}
+  #header h1 {{ font-size: 18px; font-weight: 600; }}
+  #stats {{ font-size: 13px; color: #71767b; }}
+  #stats span {{ margin: 0 8px; }}
+  #cy {{ width: 100%; height: calc(100vh - 120px); }}
+  #legend {{ position: fixed; bottom: 16px; left: 16px; background: #1a1f25; border: 1px solid #2f3336;
+    border-radius: 8px; padding: 12px; font-size: 11px; z-index: 10; }}
+  #legend div {{ display: flex; align-items: center; gap: 6px; margin: 4px 0; }}
+  .dot {{ width: 12px; height: 12px; border-radius: 3px; display: inline-block; }}
+  #detail {{ position: fixed; top: 60px; right: 16px; background: #1a1f25; border: 1px solid #2f3336;
+    border-radius: 8px; padding: 16px; width: 280px; font-size: 12px; z-index: 10; display: none; }}
+  #detail h3 {{ font-size: 14px; margin-bottom: 8px; }}
+  #detail pre {{ white-space: pre-wrap; color: #71767b; font-size: 11px; }}
+  #controls {{ position: fixed; bottom: 16px; right: 16px; z-index: 10; display: flex; gap: 6px; }}
+  #controls button {{ padding: 6px 12px; border: 1px solid #2f3336; background: #1a1f25;
+    color: #e7e9ea; border-radius: 6px; cursor: pointer; font-size: 12px; }}
+  #controls button:hover {{ background: #2f3336; }}
+</style>
+</head>
+<body>
+<div id="header">
+  <h1>agent-bom Supply Chain Graph</h1>
+  <div id="stats">
+    <span>{total_agents} agents</span> | <span>{total_servers} servers</span> |
+    <span>{total_pkgs} packages</span> | <span>{total_vulns} CVEs</span>
+  </div>
+</div>
+<div id="cy"></div>
+<div id="legend">
+  <div><span class="dot" style="background:#4a9eff"></span> Provider</div>
+  <div><span class="dot" style="background:#2ea043"></span> Agent</div>
+  <div><span class="dot" style="background:#6e7681"></span> Server (clean)</div>
+  <div><span class="dot" style="background:#f85149"></span> Server (vulnerable)</div>
+  <div><span class="dot" style="background:#d29922"></span> Server (credentials)</div>
+  <div><span class="dot" style="background:#da3633"></span> CVE critical</div>
+  <div><span class="dot" style="background:#db6d28"></span> CVE high</div>
+  <div><span class="dot" style="background:#d29922"></span> CVE medium</div>
+</div>
+<div id="detail"><h3 id="dt"></h3><pre id="db"></pre></div>
+<div id="controls">
+  <button onclick="cy.fit(50)">Fit</button>
+  <button onclick="cy.zoom(cy.zoom()*1.3);cy.center()">+</button>
+  <button onclick="cy.zoom(cy.zoom()/1.3);cy.center()">-</button>
+  <button onclick="dlPng()">PNG</button>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.2/cytoscape.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dagre@0.8.5/dist/dagre.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.js"></script>
+<script>
+const els={elements_json};
+cytoscape.use(cytoscapeDagre);
+const cy=cytoscape({{
+  container:document.getElementById('cy'),elements:els,
+  layout:{{name:'dagre',rankDir:'LR',nodeSep:40,rankSep:120,padding:30}},
+  style:[
+    {{selector:'node',style:{{'label':'data(label)','text-wrap':'wrap','text-max-width':140,
+      'font-size':10,'text-valign':'center','color':'#e7e9ea','width':140,'height':40,
+      'shape':'roundrectangle','background-color':'#2f3336','border-width':1,'border-color':'#444'}}}},
+    {{selector:'node[type="provider"]',style:{{'background-color':'#1a3a5c','border-color':'#4a9eff'}}}},
+    {{selector:'node[type="agent"]',style:{{'background-color':'#1a3520','border-color':'#2ea043'}}}},
+    {{selector:'node[type="server_clean"]',style:{{'background-color':'#21262d','border-color':'#6e7681'}}}},
+    {{selector:'node[type="server_vuln"]',style:{{'background-color':'#3b1a1a','border-color':'#f85149'}}}},
+    {{selector:'node[type="server_cred"]',style:{{'background-color':'#3b2a0a','border-color':'#d29922'}}}},
+    {{selector:'node[type="pkg_vuln"]',style:{{'background-color':'#3b1a1a','border-color':'#da3633'}}}},
+    {{selector:'node[type^="cve_critical"]',style:{{'background-color':'#da3633','color':'#fff','shape':'diamond','width':100,'height':40}}}},
+    {{selector:'node[type^="cve_high"]',style:{{'background-color':'#db6d28','color':'#fff','shape':'diamond','width':100,'height':40}}}},
+    {{selector:'node[type^="cve_medium"]',style:{{'background-color':'#d29922','color':'#000','shape':'diamond','width':100,'height':40}}}},
+    {{selector:'node[type^="cve_low"]',style:{{'background-color':'#6e7681','color':'#fff','shape':'diamond','width':100,'height':40}}}},
+    {{selector:'edge',style:{{'width':1.5,'line-color':'#444','target-arrow-color':'#444',
+      'target-arrow-shape':'triangle','curve-style':'bezier','arrow-scale':0.8}}}},
+    {{selector:'edge[type="affects"]',style:{{'line-color':'#da3633','target-arrow-color':'#da3633'}}}},
+  ],wheelSensitivity:0.3
+}});
+cy.on('tap','node',function(e){{
+  const d=e.target.data();
+  document.getElementById('detail').style.display='block';
+  document.getElementById('dt').textContent=d.label||d.id;
+  document.getElementById('db').textContent=d.tip||JSON.stringify(d,null,2);
+}});
+cy.on('tap',function(e){{if(e.target===cy)document.getElementById('detail').style.display='none';}});
+function dlPng(){{const a=document.createElement('a');a.href=cy.png({{scale:2,bg:'#0f1419'}});
+  a.download='agent-bom-graph.png';a.click();}}
+</script>
+</body>
+</html>"""

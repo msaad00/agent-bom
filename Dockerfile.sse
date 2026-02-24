@@ -13,7 +13,7 @@
 
 FROM python:3.12-slim
 
-ARG VERSION=0.31.4
+ARG VERSION=0.31.5
 
 LABEL org.opencontainers.image.title="agent-bom MCP Server"
 LABEL org.opencontainers.image.description="AI supply chain security scanner — MCP server with streamable HTTP transport"
@@ -30,6 +30,10 @@ COPY pyproject.toml README.md LICENSE ./
 COPY src/ ./src/
 
 RUN pip install --no-cache-dir ".[mcp-server]"
+
+# Create non-root user for least-privilege execution
+RUN addgroup --system abom && adduser --system --ingroup abom abom
+USER abom
 
 # Streamable HTTP transport defaults
 ENV PYTHONUNBUFFERED=1

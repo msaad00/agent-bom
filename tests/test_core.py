@@ -255,7 +255,7 @@ def empty_report():
 
 def test_version_sync():
     from agent_bom import __version__
-    assert __version__ == "0.31.3"
+    assert __version__ == "0.31.4"
 
 
 def test_report_version_matches():
@@ -2795,7 +2795,7 @@ def test_toolhive_server_json_valid():
     p = Path(__file__).parent.parent / "integrations" / "toolhive" / "server.json"
     data = _json.loads(p.read_text())
     assert data["name"] == "io.github.msaad00/agent-bom"
-    assert data["version"] == "0.31.3"
+    assert data["version"] == "0.31.4"
     assert "packages" in data
     assert data["packages"][0]["registryType"] == "oci"
 
@@ -2847,13 +2847,15 @@ def test_openclaw_skill_declares_network_endpoints():
 
 
 def test_openclaw_skill_declares_env():
-    """OpenClaw SKILL.md manifest should declare required env vars."""
+    """OpenClaw SKILL.md manifest should declare NVD_API_KEY as optional, not required."""
     from pathlib import Path
     p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
     content = p.read_text()
     assert "requires:" in content
-    assert "env:" in content
+    assert "env: []" in content, "requires.env should be empty — no env vars are required"
+    assert "optional_env:" in content
     assert "NVD_API_KEY" in content
+    assert "required: false" in content
 
 
 def test_openclaw_skill_has_all_install_methods():
@@ -2875,6 +2877,19 @@ def test_openclaw_skill_has_verification_section():
     assert "cosign verify-blob" in content
     assert "Binary behavior audit" in content
     assert "--dry-run" in content
+    # Source code evidence for binary verifiability
+    assert "Source code evidence" in content
+    assert "credential_names" in content
+    assert "CONFIG_LOCATIONS" in content
+
+
+def test_openclaw_skill_has_file_reads_justification():
+    """OpenClaw SKILL.md should justify the broad file_reads list."""
+    from pathlib import Path
+    p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
+    content = p.read_text()
+    assert "file_reads_justification:" in content
+    assert "silently skipped" in content
 
 
 def test_openclaw_skill_nvd_auth_consistent():
@@ -2899,6 +2914,7 @@ def test_openclaw_skill_nvd_auth_consistent():
 def test_cli_dry_run_shows_data_audit():
     """--dry-run should include Data Audit section showing what gets extracted and sent."""
     from click.testing import CliRunner
+
     from agent_bom.cli import main
     runner = CliRunner()
     result = runner.invoke(main, ["scan", "--dry-run"])
@@ -2952,7 +2968,7 @@ def test_badge_output_clean():
 
 def test_badge_output_with_vulns():
     """Badge output should reflect vulnerability severity."""
-    from agent_bom.models import AIBOMReport, Agent, AgentType, MCPServer, Package, Vulnerability, Severity
+    from agent_bom.models import Agent, AgentType, AIBOMReport, MCPServer, Package, Severity, Vulnerability
     report = AIBOMReport()
     vuln = Vulnerability(id="CVE-2024-0001", severity=Severity.HIGH, summary="test")
     pkg = Package(name="test-pkg", version="1.0.0", ecosystem="npm", vulnerabilities=[vuln])

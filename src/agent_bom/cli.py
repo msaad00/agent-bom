@@ -143,6 +143,7 @@ def main():
                    "Extracts MCP server refs, packages, and credential env vars. Repeatable.")
 @click.option("--no-skill", is_flag=True, help="Skip all skill/instruction file scanning (auto-discovery + explicit --skill paths)")
 @click.option("--skill-only", is_flag=True, help="Scan ONLY skill/instruction files; skip agent/package/CVE scanning")
+@click.option("--scan-prompts", is_flag=True, help="Scan prompt template files (.prompt, system_prompt.*, prompts/) for security risks")
 @click.option("--jupyter", "jupyter_dirs", multiple=True, type=click.Path(exists=True), metavar="DIR",
               help="Scan Jupyter notebooks (.ipynb) for AI library imports, model references, and credentials. Repeatable.")
 @click.option("--model-files", "model_dirs", multiple=True, type=click.Path(exists=True), metavar="DIR",
@@ -191,6 +192,8 @@ def main():
 @click.option("--openai", "openai_flag", is_flag=True, help="Discover assistants and fine-tuned models from OpenAI")
 @click.option("--openai-api-key", default=None, envvar="OPENAI_API_KEY", metavar="KEY", help="OpenAI API key")
 @click.option("--openai-org-id", default=None, envvar="OPENAI_ORG_ID", metavar="ORG", help="OpenAI organization ID")
+@click.option("--ollama", "ollama_flag", is_flag=True, help="Discover locally downloaded Ollama models")
+@click.option("--ollama-host", default=None, envvar="OLLAMA_HOST", metavar="URL", help="Ollama API host (default: http://localhost:11434)")
 @click.option("--smithery", "smithery_flag", is_flag=True, help="Use Smithery.ai registry as fallback for unknown MCP servers (extends coverage from 112 to 2800+ servers)")
 @click.option("--smithery-token", default=None, envvar="SMITHERY_API_KEY", metavar="KEY", help="Smithery API key (or set SMITHERY_API_KEY env var)")
 @click.option("--mcp-registry", "mcp_registry_flag", is_flag=True, help="Use Official MCP Registry as fallback for unknown MCP servers (free, no auth)")
@@ -231,6 +234,7 @@ def scan(
     skill_paths: tuple,
     no_skill: bool,
     skill_only: bool,
+    scan_prompts: bool,
     jupyter_dirs: tuple,
     model_dirs: tuple,
     introspect: bool,
@@ -268,6 +272,8 @@ def scan(
     openai_flag: bool,
     openai_api_key: Optional[str],
     openai_org_id: Optional[str],
+    ollama_flag: bool,
+    ollama_host: Optional[str],
     smithery_flag: bool,
     smithery_token: Optional[str],
     mcp_registry_flag: bool,
@@ -368,6 +374,9 @@ def scan(
             reads.append("  [green]Would query:[/green]  MLflow Tracking Server (models, experiments)")
         if openai_flag:
             reads.append("  [green]Would query:[/green]  OpenAI Assistants/Fine-tuning APIs")
+        if ollama_flag:
+            _host = ollama_host or "http://localhost:11434"
+            reads.append(f"  [green]Would query:[/green]  Ollama API ({_host}/api/tags) + ~/.ollama/models manifests")
         if mcp_registry_flag:
             reads.append("  [green]Would query:[/green]  https://registry.modelcontextprotocol.io/v0/servers  (Official MCP Registry, no auth)")
         if snyk_flag:
@@ -465,14 +474,14 @@ def scan(
     elif not skill_only:
         agents = discover_all(project_dir=project)
 
-    any_cloud = aws or azure_flag or gcp_flag or databricks_flag or snowflake_flag or nebius_flag or hf_flag or wandb_flag or mlflow_flag or openai_flag
+    any_cloud = aws or azure_flag or gcp_flag or databricks_flag or snowflake_flag or nebius_flag or hf_flag or wandb_flag or mlflow_flag or openai_flag or ollama_flag
     if not skill_only and not agents and not images and not k8s and not tf_dirs and not gha_path and not agent_projects and not jupyter_dirs and not any_cloud:
         con.print("\n[yellow]No MCP configurations found.[/yellow]")
         con.print(
             "  Use --project, --config-dir, --inventory, --image, --k8s, "
             "--tf-dir, --gha, --agent-project, --jupyter, --aws, --azure, --gcp, "
             "--databricks, --snowflake, --nebius, --huggingface, --wandb, "
-            "--mlflow, or --openai to specify a target."
+            "--mlflow, --openai, or --ollama to specify a target."
         )
         sys.exit(0)
 
@@ -718,6 +727,74 @@ def scan(
                     con.print()
                     con.print(Panel(audit_table, subtitle=stats_line, border_style="yellow"))
 
+    # Step 1g3b: Prompt template scanning (--scan-prompts)
+    _prompt_scan_data: dict | None = None
+    if scan_prompts:
+        from agent_bom.parsers.prompt_scanner import scan_prompt_files
+        search_dir = Path(project) if project else Path.cwd()
+        prompt_result = scan_prompt_files(root=search_dir)
+        if prompt_result.files_scanned > 0:
+            con.print(f"\n[bold blue]Scanned {prompt_result.files_scanned} prompt template file(s)...[/bold blue]\n")
+            for pf in prompt_result.prompt_files:
+                con.print(f"  [dim]•[/dim] {Path(pf).name}")
+            _prompt_scan_data = {
+                "files_scanned": prompt_result.files_scanned,
+                "prompt_files": prompt_result.prompt_files,
+                "findings": [
+                    {
+                        "severity": f.severity,
+                        "category": f.category,
+                        "title": f.title,
+                        "detail": f.detail,
+                        "source_file": f.source_file,
+                        "line_number": f.line_number,
+                        "matched_text": f.matched_text,
+                        "recommendation": f.recommendation,
+                    }
+                    for f in prompt_result.findings
+                ],
+                "passed": prompt_result.passed,
+            }
+            if prompt_result.findings:
+                from rich.panel import Panel
+                from rich.table import Table as RichTable
+
+                sev_colors = {"critical": "red bold", "high": "red", "medium": "yellow", "low": "dim"}
+                sev_icons = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "⚪"}
+
+                prompt_table = RichTable(
+                    title=f"Prompt Template Security Scan — {len(prompt_result.findings)} finding(s)",
+                    expand=True, padding=(0, 1), title_style="bold magenta",
+                )
+                prompt_table.add_column("Sev", justify="center", no_wrap=True, width=10)
+                prompt_table.add_column("Category", no_wrap=True, width=20)
+                prompt_table.add_column("Finding", ratio=3)
+                prompt_table.add_column("File", ratio=2, style="dim")
+
+                for finding in prompt_result.findings:
+                    style = sev_colors.get(finding.severity, "white")
+                    icon = sev_icons.get(finding.severity, "⚪")
+                    sev_cell = f"{icon} [{style}]{finding.severity.upper()}[/{style}]"
+                    cat_cell = f"[cyan]{finding.category}[/cyan]"
+                    detail_parts = [f"[bold]{finding.title}[/bold]"]
+                    detail_parts.append(f"[dim]{finding.detail}[/dim]")
+                    if finding.recommendation:
+                        detail_parts.append(f"[green]→ {finding.recommendation}[/green]")
+                    detail_cell = "\n".join(detail_parts)
+                    file_info = Path(finding.source_file).name
+                    if finding.line_number:
+                        file_info += f":{finding.line_number}"
+                    prompt_table.add_row(sev_cell, cat_cell, detail_cell, file_info)
+
+                stats_line = (
+                    f"[dim]{prompt_result.files_scanned} file(s) scanned · "
+                    f"{'[green]PASS[/green]' if prompt_result.passed else '[red]FAIL[/red]'}[/dim]"
+                )
+                con.print()
+                con.print(Panel(prompt_table, subtitle=stats_line, border_style="magenta"))
+            else:
+                con.print(f"  [green]✓[/green] No security issues found in prompt templates")
+
     # Step 1g4: Jupyter notebook scan (--jupyter)
     if not skill_only and jupyter_dirs:
         from agent_bom.jupyter import scan_jupyter_notebooks
@@ -770,6 +847,8 @@ def scan(
         cloud_providers.append(("mlflow", {"tracking_uri": mlflow_tracking_uri}))
     if not skill_only and openai_flag:
         cloud_providers.append(("openai", {"api_key": openai_api_key, "organization": openai_org_id}))
+    if not skill_only and ollama_flag:
+        cloud_providers.append(("ollama", {"host": ollama_host}))
 
     for provider_name, provider_kwargs in cloud_providers:
         from agent_bom.cloud import CloudDiscoveryError, discover_from_provider
@@ -976,6 +1055,8 @@ def scan(
     report = AIBOMReport(agents=agents, blast_radii=blast_radii)
     if _skill_audit_data:
         report.skill_audit_data = _skill_audit_data
+    if _prompt_scan_data:
+        report.prompt_scan_data = _prompt_scan_data
 
     # ── Step 1i: Model binary file scan ─────────────────────────────
     if not skill_only and model_dirs:

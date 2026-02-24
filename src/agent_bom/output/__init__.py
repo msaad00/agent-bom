@@ -1030,6 +1030,9 @@ def to_json(report: AIBOMReport) -> dict:
     if report.skill_audit_data:
         result["skill_audit"] = report.skill_audit_data
 
+    if report.prompt_scan_data:
+        result["prompt_scan"] = report.prompt_scan_data
+
     if report.model_files:
         result["model_files"] = report.model_files
 

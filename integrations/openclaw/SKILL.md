@@ -71,7 +71,7 @@ pipx install agent-bom
 ### Verify installation
 ```bash
 agent-bom --version
-# Should print: agent-bom 0.28.1
+# Should print: agent-bom 0.30.0
 ```
 
 ### Verify source

@@ -1578,3 +1578,130 @@ def test_clickhouse_in_mcp_registry():
     assert "run_select_query" in entry["tools"]
     assert "list_databases" in entry["tools"]
     assert entry["source_url"] == "https://github.com/ClickHouse/mcp-clickhouse"
+
+
+# ─── Ollama Local Model Discovery ─────────────────────────────────────────
+
+
+def test_ollama_discover_via_api():
+    """Ollama API discovery returns agents with correct metadata."""
+    api_response = {
+        "models": [
+            {
+                "name": "llama3:8b",
+                "size": 4_294_967_296,
+                "details": {
+                    "family": "llama",
+                    "parameter_size": "8B",
+                    "quantization_level": "Q4_0",
+                    "format": "gguf",
+                },
+            },
+            {
+                "name": "qwen2.5-coder:7b-instruct-q4_K_M",
+                "size": 3_758_096_384,
+                "details": {"family": "qwen2", "parameter_size": "7B"},
+            },
+        ]
+    }
+
+    with patch("agent_bom.cloud.ollama._discover_via_api", return_value=api_response["models"]):
+        from agent_bom.cloud.ollama import discover
+        agents, warnings = discover(host="http://localhost:11434")
+
+    assert len(agents) == 2
+    assert agents[0].name == "ollama-model-llama3"
+    assert agents[0].source == "ollama-api"
+    assert agents[0].mcp_servers[0].packages[0].name == "llama3"
+    assert agents[0].mcp_servers[0].packages[0].version == "8b"
+    assert agents[0].mcp_servers[0].packages[0].ecosystem == "ollama"
+    assert agents[1].name == "ollama-model-qwen2.5-coder"
+    assert agents[1].mcp_servers[0].packages[0].version == "7b-instruct-q4_K_M"
+
+
+def test_ollama_discover_via_manifests(tmp_path):
+    """Ollama manifest fallback discovers models from disk."""
+    # Create fake manifest structure
+    lib_dir = tmp_path / "manifests" / "registry.ollama.ai" / "library"
+    (lib_dir / "mistral" / "latest").mkdir(parents=True)
+    (lib_dir / "mistral" / "latest").rmdir()
+    (lib_dir / "mistral").mkdir(parents=True, exist_ok=True)
+    (lib_dir / "mistral" / "latest").write_text("{}")
+    (lib_dir / "mistral" / "7b-instruct-v0.3").write_text("{}")
+    (lib_dir / "phi3").mkdir(parents=True, exist_ok=True)
+    (lib_dir / "phi3" / "mini").write_text("{}")
+
+    with patch("agent_bom.cloud.ollama._discover_via_api", return_value=None), \
+         patch("agent_bom.cloud.ollama._MANIFEST_DIR", lib_dir.parent):
+        from agent_bom.cloud.ollama import discover
+        agents, warnings = discover()
+
+    assert len(agents) == 3
+    names = {a.name for a in agents}
+    assert "ollama-model-mistral" in names
+    assert "ollama-model-phi3" in names
+    assert all(a.source == "ollama-manifest" for a in agents)
+
+
+def test_ollama_discover_no_api_no_manifests():
+    """Ollama returns warning when neither API nor manifests are available."""
+    with patch("agent_bom.cloud.ollama._discover_via_api", return_value=None), \
+         patch("agent_bom.cloud.ollama._MANIFEST_DIR") as mock_dir:
+        mock_dir.is_dir.return_value = False
+        from agent_bom.cloud.ollama import discover
+        agents, warnings = discover()
+
+    assert len(agents) == 0
+    assert any("not detected" in w for w in warnings)
+
+
+def test_ollama_api_returns_empty():
+    """Ollama API with no models returns empty list, no warnings."""
+    with patch("agent_bom.cloud.ollama._discover_via_api", return_value=[]):
+        from agent_bom.cloud.ollama import discover
+        agents, warnings = discover()
+
+    assert len(agents) == 0
+    assert len(warnings) == 0
+
+
+def test_ollama_provider_registered():
+    """Ollama should be in the cloud provider registry."""
+    from agent_bom.cloud import _PROVIDERS
+    assert "ollama" in _PROVIDERS
+    assert _PROVIDERS["ollama"] == "agent_bom.cloud.ollama"
+
+
+def test_dry_run_lists_ollama():
+    """--dry-run --ollama mentions Ollama in output."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", "--dry-run", "--ollama"])
+    assert result.exit_code == 0
+    assert "Ollama" in result.output or "ollama" in result.output
+
+
+def test_ollama_tool_metadata():
+    """Ollama API discovery includes tool metadata (family, params, quant)."""
+    api_response = [
+        {
+            "name": "deepseek-r1:14b",
+            "size": 9_126_805_504,
+            "details": {
+                "family": "deepseek",
+                "parameter_size": "14B",
+                "quantization_level": "Q4_K_M",
+                "format": "gguf",
+            },
+        },
+    ]
+
+    with patch("agent_bom.cloud.ollama._discover_via_api", return_value=api_response):
+        from agent_bom.cloud.ollama import discover
+        agents, _ = discover()
+
+    assert len(agents) == 1
+    tool = agents[0].mcp_servers[0].tools[0]
+    assert "family:deepseek" in tool.description
+    assert "params:14B" in tool.description
+    assert "quant:Q4_K_M" in tool.description
+    assert "format:gguf" in tool.description

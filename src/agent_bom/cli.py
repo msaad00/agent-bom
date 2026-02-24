@@ -745,6 +745,54 @@ def scan(
                     con.print()
                     con.print(Panel(audit_table, subtitle=stats_line, border_style="yellow"))
 
+    # Step 1g4: Trust assessment (ClawHub-style)
+    _trust_assessment_data: dict | None = None
+    if _skill_result_obj and _skill_audit_obj:
+        from agent_bom.parsers.trust_assessment import TrustLevel, Verdict, assess_trust
+        trust_result = assess_trust(_skill_result_obj, _skill_audit_obj)
+        _trust_assessment_data = trust_result.to_dict()
+
+        # Console output: trust assessment panel
+        from rich.panel import Panel as TrustPanel
+        from rich.table import Table as TrustTable
+
+        level_icons = {
+            TrustLevel.PASS: "[green]✓[/green]",
+            TrustLevel.INFO: "[blue]ℹ[/blue]",
+            TrustLevel.WARN: "[yellow]⚠[/yellow]",
+            TrustLevel.FAIL: "[red]✗[/red]",
+        }
+        verdict_styles = {
+            Verdict.BENIGN: "green",
+            Verdict.SUSPICIOUS: "yellow",
+            Verdict.MALICIOUS: "red bold",
+        }
+        trust_table = TrustTable(expand=True, padding=(0, 1), show_header=True)
+        trust_table.add_column("", justify="center", no_wrap=True, width=3)
+        trust_table.add_column("Category", no_wrap=True, width=24)
+        trust_table.add_column("Summary", ratio=3)
+
+        for cat in trust_result.categories:
+            icon = level_icons.get(cat.level, "?")
+            trust_table.add_row(icon, f"[bold]{cat.name}[/bold]", cat.summary)
+
+        vstyle = verdict_styles.get(trust_result.verdict, "white")
+        verdict_line = (
+            f"[{vstyle}]{trust_result.verdict.value.upper()}[/{vstyle}] "
+            f"({trust_result.confidence.value} confidence)"
+        )
+        con.print()
+        con.print(TrustPanel(
+            trust_table,
+            title="[bold]Trust Assessment[/bold]",
+            subtitle=verdict_line,
+            border_style=vstyle,
+        ))
+
+        if trust_result.recommendations:
+            for rec in trust_result.recommendations:
+                con.print(f"  [dim]→ {rec}[/dim]")
+
     # Step 1g3b: Prompt template scanning (--scan-prompts)
     _prompt_scan_data: dict | None = None
     if scan_prompts:
@@ -1073,6 +1121,8 @@ def scan(
     report = AIBOMReport(agents=agents, blast_radii=blast_radii)
     if _skill_audit_data:
         report.skill_audit_data = _skill_audit_data
+    if _trust_assessment_data:
+        report.trust_assessment_data = _trust_assessment_data
     if _prompt_scan_data:
         report.prompt_scan_data = _prompt_scan_data
 

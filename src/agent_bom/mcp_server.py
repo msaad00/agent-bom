@@ -13,6 +13,7 @@ Tools:
     generate_sbom     — Generate CycloneDX or SPDX SBOM
     compliance        — OWASP/ATLAS/NIST AI RMF compliance posture
     remediate         — Generate actionable remediation plan
+    skill_trust       — ClawHub-style trust assessment for SKILL.md files
 
 Security: Read-only. Never executes MCP servers or reads credential values.
 """
@@ -606,6 +607,47 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         except Exception as exc:
             return json.dumps({"error": str(exc)})
 
+    # ── Tool 9: skill_trust ──────────────────────────────────────────
+
+    @mcp.tool(annotations=_READ_ONLY)
+    def skill_trust(
+        skill_path: str,
+    ) -> str:
+        """Assess the trust level of a SKILL.md file using ClawHub-style categories.
+
+        Parses a SKILL.md file, runs security audit checks, then evaluates
+        trust across 5 categories: Purpose & Capability, Instruction Scope,
+        Install Mechanism, Credentials, and Persistence & Privilege.
+
+        Returns an overall verdict (benign/suspicious/malicious) with
+        confidence level and actionable recommendations.
+
+        Args:
+            skill_path: Path to a SKILL.md file (or any skill/instruction file).
+
+        Returns:
+            JSON with verdict, confidence, per-category assessments, and
+            recommendations.
+        """
+        try:
+            from pathlib import Path as _Path
+
+            from agent_bom.parsers.skill_audit import audit_skill_result
+            from agent_bom.parsers.skills import parse_skill_file
+            from agent_bom.parsers.trust_assessment import assess_trust
+
+            p = _Path(skill_path).expanduser().resolve()
+            if not p.is_file():
+                return json.dumps({"error": f"File not found: {skill_path}"})
+
+            scan = parse_skill_file(p)
+            audit = audit_skill_result(scan)
+            trust = assess_trust(scan, audit)
+
+            return json.dumps(trust.to_dict(), indent=2)
+        except Exception as exc:
+            return json.dumps({"error": str(exc)})
+
     # ── Prompts ─────────────────────────────────────────────────────
 
     @mcp.prompt(name="quick-audit", description="Run a complete security audit of your AI agent setup")
@@ -653,6 +695,7 @@ _SERVER_CARD_TOOLS = [
     {"name": "generate_sbom", "description": "Generate CycloneDX or SPDX SBOM", "annotations": {"readOnlyHint": True}},
     {"name": "compliance", "description": "OWASP / MITRE ATLAS / NIST AI RMF posture", "annotations": {"readOnlyHint": True}},
     {"name": "remediate", "description": "Generate actionable remediation plan", "annotations": {"readOnlyHint": True}},
+    {"name": "skill_trust", "description": "ClawHub-style trust assessment for SKILL.md files", "annotations": {"readOnlyHint": True}},
 ]
 
 _SERVER_CARD_PROMPTS = [

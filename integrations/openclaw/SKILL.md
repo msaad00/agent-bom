@@ -1,7 +1,7 @@
 ---
 name: agent-bom
 description: Scan AI agents and MCP servers for CVEs, generate SBOMs, map blast radius, enforce security policies
-version: 0.31.5
+version: 0.31.6
 metadata:
   openclaw:
     requires:
@@ -105,6 +105,11 @@ metadata:
       written_to_disk: false
     data_sent: "package names and versions only"
     data_not_sent: "file paths, config contents, env var values, hostnames, IP addresses"
+    checksums:
+      pypi_sha256: "auto-verified at install time via pip"
+      sigstore_signed: true
+      slsa_provenance: "GitHub Actions OIDC (see release.yml)"
+      verify_command: "cosign verify-blob dist/agent_bom-*.whl --bundle dist/agent_bom-*.whl.bundle --certificate-oidc-issuer https://token.actions.githubusercontent.com"
     telemetry: false
     persistence: false
     privilege_escalation: false
@@ -251,7 +256,7 @@ pipx install agent-bom
 ### Verify installation
 ```bash
 agent-bom --version
-# Should print: agent-bom 0.31.5
+# Should print: agent-bom 0.31.6
 ```
 
 ### Verify source
@@ -348,7 +353,7 @@ agent-bom scan --enrich --remediate remediation.md
 - **Deterministic**: Same input always produces the same output (modulo upstream API data freshness)
 - **Auditable**: Full source code at https://github.com/msaad00/agent-bom (Apache-2.0 license)
 - **Signed releases**: Every PyPI release is signed with Sigstore OIDC
-- **CI-verified**: Every commit passes 960+ automated tests including security scanning
+- **CI-verified**: Every commit passes 1000+ automated tests including security scanning
 - **Docker non-root**: All container images run as unprivileged `abom` user (USER directive in every Dockerfile)
 
 ## Verification & provenance
@@ -362,7 +367,7 @@ You can independently verify every claim in this manifest:
 | File access | `grep -rn "open(\|Path(" src/agent_bom/discovery/` — all file reads happen in the discovery module only |
 | Credential handling | `grep -n "credential_names\|SENSITIVE_PATTERNS\|REDACTED" src/agent_bom/` — values are never stored |
 | Signed release | `cosign verify-blob dist/agent_bom-*.whl --bundle dist/agent_bom-*.whl.bundle --certificate-oidc-issuer https://token.actions.githubusercontent.com` |
-| CI test count | See [GitHub Actions](https://github.com/msaad00/agent-bom/actions) — every commit runs 950+ tests including security scanning |
+| CI test count | See [GitHub Actions](https://github.com/msaad00/agent-bom/actions) — every commit runs 1000+ tests including security scanning |
 | OpenSSF Scorecard | [Scorecard viewer](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom) |
 | Dry-run audit | `agent-bom scan --dry-run` — shows every file, API, and data element that would be accessed, with a full data audit |
 

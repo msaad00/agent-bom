@@ -1,7 +1,7 @@
 ---
 name: agent-bom
 description: Scan AI agents and MCP servers for CVEs, generate SBOMs, map blast radius, enforce security policies
-version: 0.31.2
+version: 0.31.3
 metadata:
   openclaw:
     requires:
@@ -68,7 +68,7 @@ metadata:
         auth: false
       - url: "https://services.nvd.nist.gov/rest/json/cves/2.0"
         purpose: "CVSS score enrichment"
-        auth: false
+        auth: "optional — NVD_API_KEY increases rate limit from 5 to 50 req/30s, not required"
       - url: "https://api.first.org/data/v1/epss"
         purpose: "Exploit probability scores"
         auth: false
@@ -229,7 +229,7 @@ pipx install agent-bom
 ### Verify installation
 ```bash
 agent-bom --version
-# Should print: agent-bom 0.31.2
+# Should print: agent-bom 0.31.3
 ```
 
 ### Verify source
@@ -327,6 +327,43 @@ agent-bom scan --enrich --remediate remediation.md
 - **Auditable**: Full source code at https://github.com/msaad00/agent-bom (Apache-2.0 license)
 - **Signed releases**: Every PyPI release is signed with Sigstore OIDC
 - **CI-verified**: Every commit passes 950+ automated tests including security scanning
+
+## Verification & provenance
+
+You can independently verify every claim in this manifest:
+
+| What to verify | How |
+|---------------|-----|
+| Source code | `git clone https://github.com/msaad00/agent-bom && grep -r "requests\|urllib\|httpx" src/` — all network calls use httpx, fully auditable |
+| Network endpoints | `grep -n "osv.dev\|nvd.nist\|first.org\|cisa.gov\|npmjs.org\|pypi.org" src/agent_bom/` — exhaustive list of all outbound URLs in source |
+| File access | `grep -rn "open(\|Path(" src/agent_bom/discovery/` — all file reads happen in the discovery module only |
+| Credential handling | `grep -n "credential_names\|SENSITIVE_PATTERNS\|REDACTED" src/agent_bom/` — values are never stored |
+| Signed release | `cosign verify-blob dist/agent_bom-*.whl --bundle dist/agent_bom-*.whl.bundle --certificate-oidc-issuer https://token.actions.githubusercontent.com` |
+| CI test count | See [GitHub Actions](https://github.com/msaad00/agent-bom/actions) — every commit runs 950+ tests including security scanning |
+| OpenSSF Scorecard | [Scorecard viewer](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom) |
+| Dry-run audit | `agent-bom scan --dry-run` — shows every file, API, and data element that would be accessed, with a full data audit |
+
+### Binary behavior audit
+
+ClawHub notes that `agent-bom` is an external binary not bundled in the skill. To verify it matches the source:
+
+```bash
+# 1. Install from source (not PyPI) to guarantee source-binary match
+git clone https://github.com/msaad00/agent-bom && cd agent-bom
+pip install -e .
+
+# 2. Compare installed version to source
+agent-bom --version  # Should match pyproject.toml version
+python -c "import agent_bom; print(agent_bom.__file__)"  # Points to cloned source
+
+# 3. Run dry-run data audit to confirm scope
+agent-bom scan --dry-run
+```
+
+The `--dry-run` output includes a **Data Audit** section that shows:
+- Exactly which data elements are extracted from config files (server names, commands, env var NAMES only)
+- Exactly what data is sent to each API (package name + version only)
+- What is explicitly NOT sent (file paths, config contents, env var values, hostnames)
 
 ## Runtime dependencies
 

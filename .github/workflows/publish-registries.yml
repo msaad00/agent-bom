@@ -59,7 +59,7 @@ jobs:
             -H "Authorization: Bearer ${SMITHERY_API_TOKEN}" \
             -F "payload={
               \"type\": \"external\",
-              \"url\": \"${MCP_URL}\",
+              \"upstreamUrl\": \"${MCP_URL}\",
               \"configSchema\": {
                 \"type\": \"object\",
                 \"properties\": {

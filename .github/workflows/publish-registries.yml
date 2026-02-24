@@ -1,6 +1,6 @@
 name: Publish to Registries
 
-# Auto-publishes to Smithery and ClawHub when a new GitHub release is created.
+# Auto-publishes to Smithery and ClawHub after a successful Release workflow.
 # Secrets needed (add via Settings → Secrets):
 #   SMITHERY_API_TOKEN  — Smithery service token (smithery.ai → API tokens)
 #   CLAWHUB_TOKEN       — ClawHub auth token (clawhub.ai → Settings)
@@ -8,8 +8,9 @@ name: Publish to Registries
 #   RAILWAY_MCP_URL     — Override Railway MCP endpoint URL
 
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -19,12 +20,20 @@ jobs:
   smithery:
     name: Publish to Smithery
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v6
 
-      - name: Extract version from tag
+      - name: Extract version
         id: meta
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="${{ github.event.workflow_run.head_branch }}"
+            VERSION="${VERSION#v}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Publish to Smithery
         env:
@@ -71,12 +80,20 @@ jobs:
   clawhub:
     name: Publish to ClawHub
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v6
 
-      - name: Extract version from tag
+      - name: Extract version
         id: meta
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="${{ github.event.workflow_run.head_branch }}"
+            VERSION="${VERSION#v}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -94,13 +111,14 @@ jobs:
 
           echo "Publishing agent-bom v${{ steps.meta.outputs.version }} to ClawHub..."
 
-          npm install -g clawdhub@latest
+          npm install -g clawhub@latest
           clawhub login --token "${CLAWHUB_TOKEN}"
           clawhub publish integrations/openclaw \
             --slug agent-bom \
             --name "agent-bom" \
             --version "${{ steps.meta.outputs.version }}" \
             --changelog "Release v${{ steps.meta.outputs.version }}" \
+            --no-input \
             --force
 
           echo "ClawHub publish succeeded"

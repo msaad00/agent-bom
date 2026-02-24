@@ -1,8 +1,9 @@
 name: Publish MCP Container
 
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -12,6 +13,7 @@ permissions:
 jobs:
   publish-stdio:
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v6
 
@@ -22,9 +24,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract version from tag
+      - name: Extract version
         id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            BRANCH="${{ github.event.workflow_run.head_branch }}"
+            echo "version=${BRANCH#v}" >> "$GITHUB_OUTPUT"
+            echo "tag=${BRANCH}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Build and push MCP container (stdio)
         uses: docker/build-push-action@v6
@@ -35,11 +45,12 @@ jobs:
           build-args: |
             VERSION=${{ steps.version.outputs.version }}
           tags: |
-            ghcr.io/${{ github.repository_owner }}/agent-bom:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/agent-bom:${{ steps.version.outputs.tag }}
             ghcr.io/${{ github.repository_owner }}/agent-bom:latest
 
   publish-sse:
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v6
 
@@ -50,9 +61,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract version from tag
+      - name: Extract version
         id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            BRANCH="${{ github.event.workflow_run.head_branch }}"
+            echo "version=${BRANCH#v}" >> "$GITHUB_OUTPUT"
+            echo "tag=${BRANCH}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Build and push MCP container (SSE)
         uses: docker/build-push-action@v6
@@ -63,5 +82,5 @@ jobs:
           build-args: |
             VERSION=${{ steps.version.outputs.version }}
           tags: |
-            ghcr.io/${{ github.repository_owner }}/agent-bom-sse:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/agent-bom-sse:${{ steps.version.outputs.tag }}
             ghcr.io/${{ github.repository_owner }}/agent-bom-sse:latest

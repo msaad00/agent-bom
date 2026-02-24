@@ -1,12 +1,13 @@
 name: Deploy MCP SSE
 
-# Deploys the SSE container to Railway when a new release is published.
-# Requires RAILWAY_TOKEN secret to be set in the repository.
-# Skip this workflow if you deploy via Render or Fly.io instead.
+# Deploys the SSE container to Railway after a successful Release workflow.
+# Requires RAILWAY_TOKEN secret and DEPLOY_TARGET=railway variable.
+# Optional: RAILWAY_SERVICE variable to specify the service name.
 
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -15,7 +16,11 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if: ${{ vars.DEPLOY_TARGET == 'railway' }}
+    if: >-
+      ${{
+        vars.DEPLOY_TARGET == 'railway' &&
+        (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+      }}
     steps:
       - uses: actions/checkout@v6
 
@@ -25,9 +30,14 @@ jobs:
       - name: Deploy to Railway
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_SERVICE: ${{ vars.RAILWAY_SERVICE }}
         run: |
           if [ -z "$RAILWAY_TOKEN" ]; then
             echo "::warning::RAILWAY_TOKEN not set — skipping Railway deploy"
             exit 0
           fi
-          railway up --service agent-bom-mcp --detach
+          if [ -n "$RAILWAY_SERVICE" ]; then
+            railway up --service "$RAILWAY_SERVICE" --detach
+          else
+            railway up --detach
+          fi

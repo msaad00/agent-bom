@@ -78,7 +78,7 @@ def bump(new_version: str, *, dry_run: bool = False) -> int:
     print(f"\n{'Would update' if dry_run else 'Updated'} {changed} occurrence(s)")
 
     if not dry_run and changed > 0:
-        print(f"\nNext steps:")
+        print("\nNext steps:")
         print(f"  git add -A && git commit -m 'chore: bump version to {new_version}'")
         print(f"  git tag v{new_version}")
         print(f"  git push origin main v{new_version}")

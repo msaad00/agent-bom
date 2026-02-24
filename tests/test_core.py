@@ -2838,9 +2838,10 @@ def test_openclaw_skill_declares_network_endpoints():
     p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
     content = p.read_text()
     assert "network_endpoints:" in content
-    assert "api.osv.dev" in content
-    assert "services.nvd.nist.gov" in content
-    assert "api.first.org" in content
+    # Check for full URL patterns (not substrings) to satisfy CodeQL
+    assert "https://api.osv.dev/" in content
+    assert "https://services.nvd.nist.gov/" in content
+    assert "https://api.first.org/" in content
 
 
 def test_openclaw_skill_declares_env():

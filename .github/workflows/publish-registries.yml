@@ -47,7 +47,7 @@ jobs:
             exit 0
           fi
 
-          QUALIFIED_NAME="msaad00%2Fagent-bom"
+          QUALIFIED_NAME="agentbom%2Fagent-bom"
           MCP_URL="${RAILWAY_MCP_URL:-https://agent-bom-mcp.up.railway.app/mcp}"
 
           echo "Publishing agent-bom v${{ steps.meta.outputs.version }} to Smithery..."

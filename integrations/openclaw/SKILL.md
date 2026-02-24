@@ -1,7 +1,7 @@
 ---
 name: agent-bom
 description: Scan AI agents and MCP servers for CVEs, generate SBOMs, map blast radius, enforce security policies
-version: 0.31.3
+version: 0.31.4
 metadata:
   openclaw:
     requires:
@@ -10,8 +10,12 @@ metadata:
       optional_bins:
         - docker
         - grype
-      env:
-        - NVD_API_KEY
+      env: []
+    optional_env:
+      - name: NVD_API_KEY
+        purpose: "Increases NVD rate limit from 5 to 50 requests per 30 seconds — not required for any functionality"
+        sent_only_to: "https://services.nvd.nist.gov"
+        required: false
     emoji: "\U0001F6E1"
     homepage: https://github.com/msaad00/agent-bom
     source: https://github.com/msaad00/agent-bom
@@ -61,6 +65,16 @@ metadata:
       - "docker-compose.yaml"
       - "compose.yml"
       - "compose.yaml"
+    file_reads_justification: |
+      These are the standard config file locations for 11 MCP clients.
+      Each file is a JSON/YAML config containing MCP server definitions.
+      agent-bom reads them to discover which MCP servers are configured,
+      then extracts package names for CVE scanning. On any given system,
+      only 2-4 of these files typically exist — the rest are silently skipped.
+      The 27 paths break down as: 11 MCP clients × ~2 OS variants = ~19 global
+      paths + 5 project-level configs + 4 Docker Compose filenames.
+      No directory traversal, no glob patterns, no recursive walks.
+      Use --dry-run to see exactly which files exist on YOUR system.
     file_writes: []
     network_endpoints:
       - url: "https://api.osv.dev/v1/querybatch"
@@ -215,7 +229,7 @@ Users can restrict or bypass auto-discovery entirely:
 agent-bom itself optionally uses:
 - `NVD_API_KEY` — higher NVD rate limits (optional, never logged or transmitted beyond NVD)
 
-This is declared in `metadata.openclaw.requires.env` above.
+This is declared in `metadata.openclaw.optional_env` above. **No env vars are required.**
 
 ## Installation
 
@@ -237,7 +251,7 @@ pipx install agent-bom
 ### Verify installation
 ```bash
 agent-bom --version
-# Should print: agent-bom 0.31.3
+# Should print: agent-bom 0.31.4
 ```
 
 ### Verify source
@@ -350,6 +364,50 @@ You can independently verify every claim in this manifest:
 | CI test count | See [GitHub Actions](https://github.com/msaad00/agent-bom/actions) — every commit runs 950+ tests including security scanning |
 | OpenSSF Scorecard | [Scorecard viewer](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom) |
 | Dry-run audit | `agent-bom scan --dry-run` — shows every file, API, and data element that would be accessed, with a full data audit |
+
+### Source code evidence
+
+The following are actual code excerpts from the agent-bom source that enforce the claims above.
+These can be verified at the linked source files.
+
+**Credential names only — values never read** ([models.py:222-233](https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/models.py#L222-L233)):
+```python
+@property
+def credential_names(self) -> list[str]:
+    """Return names of env vars that look like credentials."""
+    sensitive_patterns = [
+        "key", "token", "secret", "password", "credential",
+        "api_key", "apikey", "auth", "private",
+        "connection", "conn_str", "database_url", "db_url",
+    ]
+    return [
+        k for k in self.env  # self.env is dict of {name: value} but only KEYS are returned
+        if any(pat in k.lower() for pat in sensitive_patterns)
+    ]
+```
+
+**Config parsing extracts structure only** ([discovery/__init__.py:160-167](https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/discovery/__init__.py#L160-L167)):
+```python
+def parse_mcp_config(config_data: dict, config_path: str) -> list[MCPServer]:
+    """Parse MCP server definitions from a config file.
+    Supports multiple config formats:
+    - Standard: {"mcpServers": {"name": {"command": ..., "args": [...]}}}
+    - VS Code:  {"servers": {"name": {"type": "stdio", "command": ...}}}
+    """
+    # Only extracts: server name, command, args, env var keys
+```
+
+**All file reads are enumerated — no dynamic paths** ([discovery/__init__.py:30-107](https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/discovery/__init__.py#L30-L107)):
+```python
+CONFIG_LOCATIONS: dict[AgentType, dict[str, list[str]]] = {
+    AgentType.CLAUDE_DESKTOP: {
+        "Darwin": ["~/Library/Application Support/Claude/claude_desktop_config.json"],
+        "Linux": ["~/.config/Claude/claude_desktop_config.json"],
+    },
+    # ... 10 more clients, each with hardcoded paths
+}
+# No dynamic path construction, no user input in paths, no glob patterns
+```
 
 ### Binary behavior audit
 

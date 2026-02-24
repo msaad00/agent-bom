@@ -122,10 +122,12 @@ jobs:
 
           npm install -g clawhub@latest
           clawhub login --token "${CLAWHUB_TOKEN}"
-          clawhub publish integrations/openclaw \
+          if clawhub publish integrations/openclaw \
             --slug agent-bom \
             --name "agent-bom" \
             --version "${VERSION}" \
-            --changelog "Release v${VERSION}"
-
-          echo "ClawHub publish succeeded"
+            --changelog "Release v${VERSION}"; then
+            echo "ClawHub publish succeeded"
+          else
+            echo "::warning::ClawHub publish failed (version may already exist) — continuing"
+          fi

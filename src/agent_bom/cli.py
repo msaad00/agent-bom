@@ -475,13 +475,13 @@ def scan(
         agents = discover_all(project_dir=project)
 
     any_cloud = aws or azure_flag or gcp_flag or databricks_flag or snowflake_flag or nebius_flag or hf_flag or wandb_flag or mlflow_flag or openai_flag or ollama_flag
-    if not skill_only and not agents and not images and not k8s and not tf_dirs and not gha_path and not agent_projects and not jupyter_dirs and not any_cloud:
+    if not skill_only and not scan_prompts and not agents and not images and not k8s and not tf_dirs and not gha_path and not agent_projects and not jupyter_dirs and not any_cloud:
         con.print("\n[yellow]No MCP configurations found.[/yellow]")
         con.print(
             "  Use --project, --config-dir, --inventory, --image, --k8s, "
             "--tf-dir, --gha, --agent-project, --jupyter, --aws, --azure, --gcp, "
             "--databricks, --snowflake, --nebius, --huggingface, --wandb, "
-            "--mlflow, --openai, or --ollama to specify a target."
+            "--mlflow, --openai, --ollama, or --scan-prompts to specify a target."
         )
         sys.exit(0)
 
@@ -793,7 +793,7 @@ def scan(
                 con.print()
                 con.print(Panel(prompt_table, subtitle=stats_line, border_style="magenta"))
             else:
-                con.print(f"  [green]✓[/green] No security issues found in prompt templates")
+                con.print("  [green]✓[/green] No security issues found in prompt templates")
 
     # Step 1g4: Jupyter notebook scan (--jupyter)
     if not skill_only and jupyter_dirs:

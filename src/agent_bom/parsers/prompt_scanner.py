@@ -380,7 +380,7 @@ def _analyze_content(
                 severity="medium",
                 category="sensitive_data",
                 title=title,
-                detail=f"Possible sensitive data in prompt template",
+                detail="Possible sensitive data in prompt template",
                 source_file=source_file,
                 line_number=_find_line(match.start()),
                 matched_text=_redact(match.group(0)),

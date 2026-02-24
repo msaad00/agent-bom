@@ -255,7 +255,7 @@ def empty_report():
 
 def test_version_sync():
     from agent_bom import __version__
-    assert __version__ == "0.31.4"
+    assert __version__ == "0.31.5"
 
 
 def test_report_version_matches():
@@ -2795,7 +2795,7 @@ def test_toolhive_server_json_valid():
     p = Path(__file__).parent.parent / "integrations" / "toolhive" / "server.json"
     data = _json.loads(p.read_text())
     assert data["name"] == "io.github.msaad00/agent-bom"
-    assert data["version"] == "0.31.4"
+    assert data["version"] == "0.31.5"
     assert "packages" in data
     assert data["packages"][0]["registryType"] == "oci"
 
@@ -2952,6 +2952,88 @@ def test_openclaw_skill_declares_sensitive_data_handling():
     assert "env var NAMES only" in content
     assert "REDACTED" in content
     assert "written_to_disk: false" in content
+
+
+def test_svg_output_basic():
+    """SVG output for an empty report should produce valid SVG."""
+    from agent_bom.models import AIBOMReport
+    from agent_bom.output.svg import to_svg
+    report = AIBOMReport()
+    svg = to_svg(report, [])
+    assert svg.startswith("<svg")
+    assert "</svg>" in svg
+    assert "agent-bom" in svg
+
+
+def test_svg_output_with_agents():
+    """SVG output should include agent and server nodes."""
+    from agent_bom.models import Agent, AgentType, AIBOMReport, MCPServer, Package
+    report = AIBOMReport()
+    pkg = Package(name="express", version="4.17.1", ecosystem="npm")
+    server = MCPServer(name="filesystem", command="npx", packages=[pkg])
+    agent = Agent(name="Claude", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/test.json", mcp_servers=[server])
+    report.agents = [agent]
+    from agent_bom.output.svg import to_svg
+    svg = to_svg(report, [])
+    assert "Claude" in svg
+    assert "filesystem" in svg
+    assert "express" in svg
+
+
+def test_mermaid_supply_chain():
+    """Mermaid supply chain mode should produce provider-to-package hierarchy."""
+    from agent_bom.models import Agent, AgentType, AIBOMReport, MCPServer, Package
+    report = AIBOMReport()
+    pkg = Package(name="express", version="4.17.1", ecosystem="npm")
+    server = MCPServer(name="test-server", command="npx", packages=[pkg])
+    agent = Agent(name="TestAgent", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/test.json", mcp_servers=[server])
+    report.agents = [agent]
+    from agent_bom.output.mermaid import to_mermaid_supply_chain
+    result = to_mermaid_supply_chain(report)
+    assert "graph LR" in result
+    assert "TestAgent" in result
+    assert "test-server" in result
+    assert "express" in result
+
+
+def test_graph_html_export():
+    """Graph HTML export should produce a self-contained HTML file with Cytoscape."""
+    import tempfile
+
+    from agent_bom.models import AIBOMReport
+    from agent_bom.output.graph import export_graph_html
+    report = AIBOMReport()
+    with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as f:
+        export_graph_html(report, [], f.name)
+        content = open(f.name).read()
+    assert "<!DOCTYPE html>" in content
+    assert "cytoscape" in content
+    assert "agent-bom Supply Chain Graph" in content
+
+
+def test_dockerfile_non_root():
+    """All Dockerfiles should use a non-root USER directive."""
+    from pathlib import Path
+    root = Path(__file__).parent.parent
+    dockerfiles = [
+        root / "Dockerfile",
+        root / "Dockerfile.sse",
+        root / "integrations" / "toolhive" / "Dockerfile.mcp",
+    ]
+    for df in dockerfiles:
+        content = df.read_text()
+        assert "USER abom" in content, f"{df.name} missing USER abom directive"
+        assert "adduser" in content, f"{df.name} missing user creation"
+
+
+def test_cli_mermaid_mode_option():
+    """--mermaid-mode should be accepted by the CLI."""
+    from click.testing import CliRunner
+
+    from agent_bom.cli import main
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", "--dry-run", "--format", "mermaid", "--mermaid-mode", "supply-chain"])
+    assert result.exit_code == 0
 
 
 def test_badge_output_clean():

@@ -23,8 +23,14 @@ COPY src/ ./src/
 # Install agent-bom
 RUN pip install --no-cache-dir -e .
 
+# Create non-root user for least-privilege execution
+RUN addgroup --system abom && adduser --system --ingroup abom abom
+
 # Create workspace directory for mounting
 WORKDIR /workspace
+RUN chown abom:abom /workspace
+
+USER abom
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1

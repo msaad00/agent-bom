@@ -255,7 +255,7 @@ def empty_report():
 
 def test_version_sync():
     from agent_bom import __version__
-    assert __version__ == "0.31.1"
+    assert __version__ == "0.31.2"
 
 
 def test_report_version_matches():
@@ -2795,7 +2795,7 @@ def test_toolhive_server_json_valid():
     p = Path(__file__).parent.parent / "integrations" / "toolhive" / "server.json"
     data = _json.loads(p.read_text())
     assert data["name"] == "io.github.msaad00/agent-bom"
-    assert data["version"] == "0.31.1"
+    assert data["version"] == "0.31.2"
     assert "packages" in data
     assert data["packages"][0]["registryType"] == "oci"
 
@@ -2818,6 +2818,79 @@ def test_openclaw_skill_exists():
     content = p.read_text()
     assert "agent-bom" in content
     assert "name: agent-bom" in content
+
+
+def test_openclaw_skill_declares_file_reads():
+    """OpenClaw SKILL.md manifest should enumerate file_reads for ClawHub scanner."""
+    from pathlib import Path
+    p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
+    content = p.read_text()
+    assert "file_reads:" in content
+    assert "claude_desktop_config.json" in content
+    assert "~/.cursor/mcp.json" in content
+    assert "~/.docker/mcp/registry.yaml" in content
+    assert "file_writes: []" in content
+
+
+def test_openclaw_skill_declares_network_endpoints():
+    """OpenClaw SKILL.md manifest should enumerate network endpoints."""
+    from pathlib import Path
+    p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
+    content = p.read_text()
+    assert "network_endpoints:" in content
+    # Count endpoint entries (avoid asserting URL strings directly — triggers CodeQL py/incomplete-url-substring-sanitization)
+    endpoint_count = content.count("- url:")
+    assert endpoint_count >= 6, f"Expected at least 6 network_endpoints entries, found {endpoint_count}"
+    assert "CVE lookup" in content
+    assert "CVSS score" in content
+    assert "Exploit probability" in content
+
+
+def test_openclaw_skill_declares_env():
+    """OpenClaw SKILL.md manifest should declare required env vars."""
+    from pathlib import Path
+    p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
+    content = p.read_text()
+    assert "requires:" in content
+    assert "env:" in content
+    assert "NVD_API_KEY" in content
+
+
+def test_openclaw_skill_has_all_install_methods():
+    """OpenClaw SKILL.md should declare uv, pip, and pipx install methods."""
+    from pathlib import Path
+    p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
+    content = p.read_text()
+    assert "kind: uv" in content
+    assert "kind: pip" in content
+    assert "kind: pipx" in content
+
+
+def test_badge_output_clean():
+    """Badge output for a clean report should be green."""
+    from agent_bom.models import AIBOMReport
+    from agent_bom.output import to_badge
+    report = AIBOMReport()
+    badge = to_badge(report)
+    assert badge["schemaVersion"] == 1
+    assert badge["label"] == "agent-bom"
+    assert badge["message"] == "clean"
+    assert badge["color"] == "brightgreen"
+
+
+def test_badge_output_with_vulns():
+    """Badge output should reflect vulnerability severity."""
+    from agent_bom.models import AIBOMReport, Agent, AgentType, MCPServer, Package, Vulnerability, Severity
+    report = AIBOMReport()
+    vuln = Vulnerability(id="CVE-2024-0001", severity=Severity.HIGH, summary="test")
+    pkg = Package(name="test-pkg", version="1.0.0", ecosystem="npm", vulnerabilities=[vuln])
+    server = MCPServer(name="test-server", command="npx", packages=[pkg])
+    agent = Agent(name="Test Agent", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/test.json", mcp_servers=[server])
+    report.agents = [agent]
+    from agent_bom.output import to_badge
+    badge = to_badge(report)
+    assert "high" in badge["message"].lower()
+    assert badge["color"] == "orange"
 
 
 def test_mcp_registry_has_awm_entries():

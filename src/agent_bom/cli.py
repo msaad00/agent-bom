@@ -14,6 +14,7 @@ from agent_bom import __version__
 from agent_bom.discovery import discover_all
 from agent_bom.models import AIBOMReport
 from agent_bom.output import (
+    export_badge,
     export_cyclonedx,
     export_html,
     export_json,
@@ -99,7 +100,7 @@ def main():
 @click.option("--output", "-o", type=str, help="Output file path (use '-' for stdout)")
 @click.option(
     "--format", "-f", "output_format",
-    type=click.Choice(["console", "json", "cyclonedx", "sarif", "spdx", "text", "html", "prometheus", "graph", "mermaid"]),
+    type=click.Choice(["console", "json", "cyclonedx", "sarif", "spdx", "text", "html", "prometheus", "graph", "mermaid", "badge"]),
     default="console",
     help="Output format",
 )
@@ -1273,6 +1274,11 @@ def scan(
         Path(out_path).write_text(to_mermaid(report, blast_radii))
         con.print(f"\n  [green]✓[/green] Mermaid diagram: {out_path}")
         con.print("  [dim]Render with: mermaid-cli, GitHub markdown, or mermaid.live[/dim]")
+    elif output_format == "badge":
+        out_path = output or "agent-bom-badge.json"
+        export_badge(report, out_path)
+        con.print(f"\n  [green]✓[/green] Badge JSON: {out_path}")
+        con.print("  [dim]Use with: https://img.shields.io/endpoint?url=<public-url-to-badge-json>[/dim]")
     elif output_format == "text" and output:
         Path(output).write_text(_format_text(report, blast_radii))
         con.print(f"\n  [green]✓[/green] Text report: {output}")

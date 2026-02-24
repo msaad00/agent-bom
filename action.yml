@@ -63,6 +63,10 @@ inputs:
     description: 'Generate remediation plan at this path (e.g. remediation.md).'
     required: false
     default: ''
+  badge:
+    description: 'Generate shields.io badge JSON at this path (e.g. agent-bom-badge.json).'
+    required: false
+    default: ''
 
 outputs:
   sarif-file:
@@ -74,6 +78,9 @@ outputs:
   vulnerability-count:
     description: 'Number of vulnerabilities found.'
     value: ${{ steps.scan.outputs.vuln_count }}
+  badge-file:
+    description: 'Path to generated badge JSON (if badge input is set).'
+    value: ${{ steps.badge.outputs.badge_file }}
 
 runs:
   using: 'composite'
@@ -114,6 +121,7 @@ runs:
         INPUT_CONFIG_DIR: ${{ inputs.config-dir }}
         INPUT_SBOM: ${{ inputs.sbom }}
         INPUT_REMEDIATE: ${{ inputs.remediate }}
+        INPUT_BADGE: ${{ inputs.badge }}
       run: |
         SARIF_FILE="agent-bom-results.sarif"
         ARGS="scan"
@@ -173,6 +181,11 @@ runs:
           fi
         fi
 
+        # Badge generation (run alongside main scan)
+        if [ -n "$INPUT_BADGE" ]; then
+          agent-bom scan -f badge -o "$INPUT_BADGE" 2>/dev/null || true
+        fi
+
         # Run scan, capture exit code
         set +e
         agent-bom $ARGS
@@ -190,6 +203,17 @@ runs:
         echo "vuln_count=$VULN_COUNT" >> "$GITHUB_OUTPUT"
 
         exit $EXIT_CODE
+
+    - name: Set badge output
+      id: badge
+      if: inputs.badge != ''
+      shell: bash
+      env:
+        BADGE_PATH: ${{ inputs.badge }}
+      run: |
+        if [ -f "$BADGE_PATH" ]; then
+          echo "badge_file=$BADGE_PATH" >> "$GITHUB_OUTPUT"
+        fi
 
     - name: Upload SARIF to GitHub Security tab
       if: inputs.upload-sarif == 'true' && always()

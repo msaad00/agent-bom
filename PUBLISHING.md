@@ -22,7 +22,7 @@ The SSE server is deployed on Railway at `https://agent-bom-mcp.up.railway.app` 
 
 **Option A — Web UI**:
 1. Go to https://smithery.ai/servers/new
-2. Namespace: `msaad00`
+2. Namespace: `agent-bom`
 3. Server ID: `agent-bom`
 4. MCP Server URL: `https://agent-bom-mcp.up.railway.app/mcp`
 5. Click **Continue**
@@ -32,7 +32,7 @@ The `publish-registries.yml` workflow auto-publishes to Smithery on each release
 
 ### Verification
 
-After publishing, check: https://smithery.ai/server/msaad00/agent-bom
+After publishing, check: https://smithery.ai/server/agent-bom/agent-bom
 
 ---
 

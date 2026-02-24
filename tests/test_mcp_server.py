@@ -54,12 +54,12 @@ def test_create_mcp_server_returns_object():
     assert server.name == "agent-bom"
 
 
-def test_mcp_server_has_eight_tools():
-    """Server should register exactly 8 tools."""
+def test_mcp_server_has_nine_tools():
+    """Server should register exactly 9 tools."""
     from agent_bom.mcp_server import create_mcp_server
     server = create_mcp_server()
     tools = _run(server.list_tools())
-    assert len(tools) == 8
+    assert len(tools) == 9
 
 
 def test_mcp_server_tool_names():
@@ -70,7 +70,7 @@ def test_mcp_server_tool_names():
     names = {t.name for t in tools}
     assert names == {
         "scan", "check", "blast_radius", "policy_check", "registry_lookup",
-        "generate_sbom", "compliance", "remediate",
+        "generate_sbom", "compliance", "remediate", "skill_trust",
     }
 
 

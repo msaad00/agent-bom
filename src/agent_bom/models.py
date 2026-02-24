@@ -318,6 +318,7 @@ class AIBOMReport:
     ai_threat_chains: list[str] = field(default_factory=list)  # LLM-generated threat chain analyses
     mcp_config_analysis: Optional[dict] = None  # LLM-powered MCP config security analysis
     skill_audit_data: Optional[dict] = None  # Serialized SkillAuditResult (set by CLI)
+    trust_assessment_data: Optional[dict] = None  # Serialized TrustAssessmentResult (set by CLI)
     prompt_scan_data: Optional[dict] = None  # Serialized PromptScanResult (set by CLI)
     model_files: list[dict] = field(default_factory=list)
 

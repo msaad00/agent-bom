@@ -2884,14 +2884,15 @@ def test_openclaw_skill_nvd_auth_consistent():
     content = p.read_text()
     # NVD endpoint should say auth is optional, not false
     assert "optional" in content.lower()
-    # Should not have auth: false for NVD
+    # Find the CVSS score endpoint block and verify its auth field says optional
     lines = content.split("\n")
-    in_nvd = False
+    in_cvss = False
     for line in lines:
-        if "nvd.nist.gov" in line:
-            in_nvd = True
-        elif in_nvd and "auth:" in line:
+        if "CVSS score" in line:
+            in_cvss = True
+        elif in_cvss and "auth:" in line:
             assert "false" not in line.lower(), "NVD auth should not be 'false' — NVD_API_KEY is optional"
+            assert "optional" in line.lower(), "NVD auth should indicate optional API key"
             break
 
 
@@ -2923,6 +2924,18 @@ def test_permissions_md_has_full_config_paths():
     assert ".vscode/mcp.json" in content
     assert "docker-compose.yml" in content
     assert "Credential name detection" in content
+
+
+def test_openclaw_skill_declares_sensitive_data_handling():
+    """OpenClaw SKILL.md should declare how sensitive data in config files is handled."""
+    from pathlib import Path
+    p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
+    content = p.read_text()
+    assert "sensitive_data_handling:" in content
+    assert "config_files_contain_secrets: true" in content
+    assert "env var NAMES only" in content
+    assert "REDACTED" in content
+    assert "written_to_disk: false" in content
 
 
 def test_badge_output_clean():

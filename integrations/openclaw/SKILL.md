@@ -81,6 +81,14 @@ metadata:
       - url: "https://pypi.org/pypi"
         purpose: "PyPI package metadata"
         auth: false
+    sensitive_data_handling:
+      config_files_contain_secrets: true
+      what_is_extracted: "server names, commands, arguments, env var NAMES only"
+      what_is_never_extracted: "env var VALUES, file contents beyond JSON structure, auth tokens, passwords"
+      credential_name_detection: "pattern-match on key names (*KEY*, *TOKEN*, *SECRET*, *PASSWORD*, *AUTH*) — values never read"
+      redaction: "all credential-like values shown as ***REDACTED*** in output"
+      in_memory_only: true
+      written_to_disk: false
     data_sent: "package names and versions only"
     data_not_sent: "file paths, config contents, env var values, hostnames, IP addresses"
     telemetry: false

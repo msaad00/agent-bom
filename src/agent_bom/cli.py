@@ -1735,6 +1735,39 @@ def where(as_json: bool):
     console.print(f"\n  [bold]Total:[/bold] {total_paths} paths checked, {found_paths} found on this system")
 
 
+def _parse_package_spec(
+    package_spec: str,
+    ecosystem: Optional[str] = None,
+) -> tuple[str, str, str]:
+    """Parse a package spec into (name, version, ecosystem).
+
+    Handles npx/uvx prefixes, scoped npm packages, and name@version.
+    """
+    spec = package_spec.strip()
+    if spec.startswith("npx ") or spec.startswith("uvx "):
+        parts = spec.split()
+        pkg_args = [p for p in parts[1:] if not p.startswith("-")]
+        spec = pkg_args[0] if pkg_args else spec
+        if not ecosystem:
+            ecosystem = "pypi" if package_spec.startswith("uvx") else "npm"
+
+    if "@" in spec and not spec.startswith("@"):
+        name, version = spec.rsplit("@", 1)
+    elif spec.startswith("@") and spec.count("@") > 1:
+        last_at = spec.rindex("@")
+        name, version = spec[:last_at], spec[last_at + 1:]
+    else:
+        name, version = spec, "unknown"
+
+    if not ecosystem:
+        if name.startswith("@") or "-" in name and "." not in name:
+            ecosystem = "npm"
+        else:
+            ecosystem = "pypi"
+
+    return name, version, ecosystem
+
+
 @main.command()
 @click.argument("package_spec")
 @click.option(
@@ -1761,31 +1794,7 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool):
 
     console = Console()
 
-    # Parse package spec: handle "npx package-name", "uvx package-name", or "name@version"
-    spec = package_spec.strip()
-    if spec.startswith("npx ") or spec.startswith("uvx "):
-        parts = spec.split()
-        # npx -y @scope/pkg → take last arg that looks like a package
-        pkg_args = [p for p in parts[1:] if not p.startswith("-")]
-        spec = pkg_args[0] if pkg_args else spec
-        if not ecosystem:
-            ecosystem = "pypi" if package_spec.startswith("uvx") else "npm"
-
-    if "@" in spec and not spec.startswith("@"):
-        name, version = spec.rsplit("@", 1)
-    elif spec.startswith("@") and spec.count("@") > 1:
-        # Scoped npm: @scope/pkg@version
-        last_at = spec.rindex("@")
-        name, version = spec[:last_at], spec[last_at + 1:]
-    else:
-        name, version = spec, "unknown"
-
-    # Infer ecosystem from name if not provided
-    if not ecosystem:
-        if name.startswith("@") or "-" in name and "." not in name:
-            ecosystem = "npm"
-        else:
-            ecosystem = "pypi"
+    name, version, ecosystem = _parse_package_spec(package_spec, ecosystem)
 
     from agent_bom.models import Package
     from agent_bom.scanners import build_vulnerabilities, query_osv_batch
@@ -1860,6 +1869,208 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool):
 
     console.print(f"  [red]✗ {len(vulns)} vulnerability/ies found — do not install without review.[/red]\n")
     sys.exit(1)
+
+
+@main.command()
+@click.argument("package_spec", required=False, default=None)
+@click.option(
+    "--ecosystem", "-e",
+    type=click.Choice(["npm", "pypi"]),
+    help="Package ecosystem (default: pypi for self-verify)",
+)
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+@click.option("--quiet", "-q", is_flag=True, help="Only print verdict, no details")
+def verify(package_spec: Optional[str], ecosystem: Optional[str], as_json: bool, quiet: bool):
+    """Verify package integrity and provenance against registries.
+
+    \b
+    Self-verify (no arguments):
+      agent-bom verify              check THIS installation of agent-bom
+
+    \b
+    Verify any package:
+      agent-bom verify requests@2.28.0 -e pypi
+      agent-bom verify @modelcontextprotocol/server-filesystem@2025.1.14 -e npm
+
+    \b
+    Exit codes:
+      0  Verified — integrity and provenance checks passed
+      1  Unverified — one or more checks failed
+      2  Error — could not complete verification
+    """
+    import asyncio
+
+    from agent_bom.http_client import create_client
+    from agent_bom.integrity import (
+        check_package_provenance,
+        fetch_pypi_release_metadata,
+        verify_installed_record,
+        verify_package_integrity,
+    )
+    from agent_bom.models import Package
+
+    console = Console()
+    if not quiet:
+        console.print(BANNER, style="bold blue")
+
+    # Determine target
+    if package_spec is None:
+        name, version, eco = "agent-bom", __version__, "pypi"
+        if not quiet:
+            console.print(f"\n[bold blue]Verifying agent-bom {version} installation...[/bold blue]\n")
+        record_result = verify_installed_record("agent-bom")
+    else:
+        name, version, eco = _parse_package_spec(package_spec, ecosystem)
+        record_result = None
+        if not quiet:
+            console.print(f"\n[bold blue]Verifying {name}@{version} ({eco})...[/bold blue]\n")
+
+    if version in ("unknown", ""):
+        console.print("[red]Error: version required. Use name@version format.[/red]")
+        sys.exit(2)
+
+    checks: dict[str, dict] = {}
+    exit_code = 0
+
+    # RECORD check (self-verify only)
+    if record_result is not None:
+        if record_result["installed_version"] is None:
+            console.print("[red]Error: agent-bom is not installed as a package.[/red]")
+            sys.exit(2)
+        if not record_result["record_available"]:
+            checks["record_integrity"] = {
+                "status": "unknown",
+                "detail": "RECORD not available (editable install?)",
+            }
+        elif record_result["record_intact"]:
+            checks["record_integrity"] = {
+                "status": "pass",
+                "detail": f"{record_result['verified_files']}/{record_result['total_files']} files verified",
+            }
+        else:
+            failed = record_result["failed_files"]
+            checks["record_integrity"] = {
+                "status": "fail",
+                "detail": f"{len(failed)} file(s) tampered: {', '.join(failed[:3])}",
+            }
+            exit_code = 1
+
+    # Registry + provenance checks (async)
+    async def _verify():
+        async with create_client(timeout=15.0) as client:
+            pkg = Package(name=name, version=version, ecosystem=eco)
+            integrity = await verify_package_integrity(pkg, client)
+            provenance = await check_package_provenance(pkg, client)
+            pypi_meta = None
+            if eco == "pypi":
+                pypi_meta = await fetch_pypi_release_metadata(name, version, client)
+            return integrity, provenance, pypi_meta
+
+    try:
+        integrity, provenance, pypi_meta = asyncio.run(_verify())
+    except Exception as exc:
+        console.print(f"[red]Error during verification: {exc}[/red]")
+        sys.exit(2)
+
+    # Registry hash check
+    if integrity and integrity.get("verified"):
+        hash_val = integrity.get("sha256") or integrity.get("sha512_sri") or "present"
+        checks["registry_hash"] = {
+            "status": "pass",
+            "detail": f"sha256:{hash_val[:16]}..." if len(str(hash_val)) > 16 else str(hash_val),
+        }
+    elif integrity:
+        checks["registry_hash"] = {"status": "fail", "detail": "No hash found on registry"}
+        exit_code = 1
+    else:
+        checks["registry_hash"] = {"status": "unknown", "detail": "Could not reach registry"}
+
+    # Provenance check
+    if provenance and provenance.get("has_provenance"):
+        att_count = provenance.get("attestation_count", 0)
+        checks["provenance"] = {
+            "status": "pass",
+            "detail": f"Attestation found ({att_count} attestation(s))",
+        }
+    elif provenance:
+        checks["provenance"] = {"status": "unknown", "detail": "No provenance attestation"}
+    else:
+        checks["provenance"] = {"status": "unknown", "detail": "Could not check provenance"}
+
+    # Metadata consistency (self-verify with pypi_meta only)
+    if pypi_meta and record_result:
+        local_meta = record_result.get("metadata", {})
+        mismatches = []
+        if pypi_meta.get("version") != version:
+            mismatches.append("version")
+        pypi_repo = pypi_meta.get("source_repo", "")
+        local_repo = local_meta.get("source_repo", "")
+        if pypi_repo and local_repo and pypi_repo != local_repo:
+            mismatches.append("source_repo")
+        if mismatches:
+            checks["metadata_match"] = {
+                "status": "fail",
+                "detail": f"Mismatch: {', '.join(mismatches)}",
+            }
+            exit_code = 1
+        else:
+            checks["metadata_match"] = {"status": "pass", "detail": "version, source match PyPI"}
+
+    # JSON output
+    if as_json:
+        output = {
+            "package": name,
+            "version": version,
+            "ecosystem": eco,
+            "checks": checks,
+            "verdict": "verified" if exit_code == 0 else "unverified",
+        }
+        if pypi_meta:
+            output["source_repo"] = pypi_meta.get("source_repo", "")
+            output["license"] = pypi_meta.get("license", "")
+        click.echo(json.dumps(output, indent=2))
+        sys.exit(exit_code)
+
+    # Quiet output
+    if quiet:
+        verdict = "VERIFIED" if exit_code == 0 else "UNVERIFIED"
+        console.print(f"{name}@{version}: {verdict}")
+        sys.exit(exit_code)
+
+    # Rich table output
+    from rich.table import Table
+
+    status_icons = {"pass": "[green]PASS[/green]", "fail": "[red]FAIL[/red]", "unknown": "[yellow]UNKNOWN[/yellow]"}
+    check_labels = {
+        "record_integrity": "RECORD integrity",
+        "registry_hash": "Registry SHA-256",
+        "provenance": "Provenance attestation",
+        "metadata_match": "Metadata consistency",
+    }
+
+    table = Table(title=f"{name}@{version} ({eco})", show_header=True)
+    table.add_column("Check", width=25)
+    table.add_column("Status", width=10, justify="center")
+    table.add_column("Detail", max_width=60)
+
+    for key in ["record_integrity", "registry_hash", "provenance", "metadata_match"]:
+        if key in checks:
+            c = checks[key]
+            table.add_row(check_labels[key], status_icons[c["status"]], c["detail"])
+
+    console.print(table)
+
+    # Source info
+    if pypi_meta:
+        console.print(f"\n  Source:  {pypi_meta.get('source_repo', 'N/A')}")
+        console.print(f"  License: {pypi_meta.get('license', 'N/A')}")
+
+    if exit_code == 0:
+        console.print(f"\n  [bold green]VERIFIED[/bold green] — {name}@{version} integrity confirmed\n")
+    else:
+        console.print("\n  [bold red]UNVERIFIED[/bold red] — one or more checks failed\n")
+
+    sys.exit(exit_code)
 
 
 @main.command("history")

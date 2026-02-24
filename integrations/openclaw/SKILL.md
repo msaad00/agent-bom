@@ -109,7 +109,8 @@ metadata:
       pypi_sha256: "auto-verified at install time via pip"
       sigstore_signed: true
       slsa_provenance: "GitHub Actions OIDC (see release.yml)"
-      verify_command: "cosign verify-blob dist/agent_bom-*.whl --bundle dist/agent_bom-*.whl.bundle --certificate-oidc-issuer https://token.actions.githubusercontent.com"
+      verify_command: "agent-bom verify"
+      verify_command_manual: "cosign verify-blob dist/agent_bom-*.whl --bundle dist/agent_bom-*.whl.bundle --certificate-oidc-issuer https://token.actions.githubusercontent.com"
     telemetry: false
     persistence: false
     privilege_escalation: false
@@ -259,11 +260,26 @@ agent-bom --version
 # Should print: agent-bom 0.31.6
 ```
 
+### Verify integrity and provenance
+```bash
+# One-command verification — checks RECORD hashes, PyPI digest, PEP 740 attestation
+agent-bom verify
+
+# JSON output for automation
+agent-bom verify --json
+```
+
+This checks:
+1. Every installed file against its RECORD hash (detects post-install tampering)
+2. The release exists on PyPI with valid SHA-256 digests
+3. PEP 740 / Sigstore attestation exists (proves the release was built by GitHub Actions CI)
+4. Metadata consistency (version, license, source repo match between local install and PyPI)
+
 ### Verify source
 - **PyPI**: https://pypi.org/project/agent-bom/
 - **Source**: https://github.com/msaad00/agent-bom
 - **Sigstore signatures**: Each release wheel and sdist is signed with Sigstore OIDC.
-  Verify with: `cosign verify-blob dist/agent_bom-*.whl --bundle dist/agent_bom-*.whl.bundle`
+  Manual verify: `cosign verify-blob dist/agent_bom-*.whl --bundle dist/agent_bom-*.whl.bundle`
 
 ## When to use
 
@@ -362,6 +378,7 @@ You can independently verify every claim in this manifest:
 
 | What to verify | How |
 |---------------|-----|
+| Installed binary integrity | `agent-bom verify` — checks RECORD file hashes, PyPI digest, PEP 740 attestation, metadata consistency |
 | Source code | `git clone https://github.com/msaad00/agent-bom && grep -r "requests\|urllib\|httpx" src/` — all network calls use httpx, fully auditable |
 | Network endpoints | `grep -n "osv.dev\|nvd.nist\|first.org\|cisa.gov\|npmjs.org\|pypi.org" src/agent_bom/` — exhaustive list of all outbound URLs in source |
 | File access | `grep -rn "open(\|Path(" src/agent_bom/discovery/` — all file reads happen in the discovery module only |
@@ -417,18 +434,26 @@ CONFIG_LOCATIONS: dict[AgentType, dict[str, list[str]]] = {
 
 ### Binary behavior audit
 
-ClawHub notes that `agent-bom` is an external binary not bundled in the skill. To verify it matches the source:
+The simplest way to verify the installed binary matches the published source:
 
 ```bash
-# 1. Install from source (not PyPI) to guarantee source-binary match
+# One-command integrity + provenance check
+agent-bom verify
+
+# Preview what files and APIs would be accessed (no actual reads)
+agent-bom scan --dry-run
+```
+
+`agent-bom verify` checks:
+1. Every installed file against its RECORD hash (detects post-install tampering)
+2. The release exists on PyPI with valid SHA-256 digests
+3. PEP 740 / Sigstore attestation (proves CI built this release from the source repo)
+4. Metadata consistency (version, license, source repo match)
+
+For maximum assurance, install from source instead of PyPI:
+```bash
 git clone https://github.com/msaad00/agent-bom && cd agent-bom
 pip install -e .
-
-# 2. Compare installed version to source
-agent-bom --version  # Should match pyproject.toml version
-python -c "import agent_bom; print(agent_bom.__file__)"  # Points to cloned source
-
-# 3. Run dry-run data audit to confirm scope
 agent-bom scan --dry-run
 ```
 

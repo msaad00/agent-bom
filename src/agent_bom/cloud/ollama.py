@@ -143,8 +143,11 @@ def _discover_via_api(host: str) -> list[dict] | None:
     try:
         import urllib.request
 
-        req = urllib.request.Request(f"{host}/api/tags", method="GET")
-        with urllib.request.urlopen(req, timeout=3) as resp:
+        url = f"{host}/api/tags"
+        if not url.startswith(("http://", "https://")):
+            return None
+        req = urllib.request.Request(url, method="GET")
+        with urllib.request.urlopen(req, timeout=3) as resp:  # nosec B310
             if resp.status == 200:
                 data = json.loads(resp.read())
                 return data.get("models", [])

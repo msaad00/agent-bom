@@ -156,12 +156,50 @@ agent-bom scan --enrich --remediate remediation.md
 - **risk_score**: 0-10 contextual score based on severity + reach + credential exposure
 - **owasp_tags/atlas_tags/nist_ai_rmf_tags**: OWASP LLM Top 10, MITRE ATLAS, NIST AI RMF mappings
 
+## Scope boundaries
+
+agent-bom operates within a **strictly bounded scope**. This section defines exactly what it can and cannot access.
+
+### What agent-bom CAN access
+
+1. **A fixed set of MCP client config files** — only the paths listed in the table below. No directory traversal, no recursive search outside these paths.
+2. **Public vulnerability APIs** — read-only HTTP GET/POST to 6 well-known security databases (listed below). Only package names and versions are sent.
+3. **Docker images** — only when the user explicitly passes `--image`. Requires `docker` binary.
+
+### What agent-bom CANNOT access
+
+- **Arbitrary files** — it cannot read files outside the enumerated config paths
+- **Environment variable values** — only names are extracted; values are never read, stored, or logged
+- **Private networks or internal APIs** — all network calls go to public endpoints only
+- **Other processes** — no IPC, no signals, no process inspection
+- **System configuration** — no `/etc`, no system services, no kernel parameters
+- **Browser data** — no cookies, history, bookmarks, or stored passwords
+- **SSH keys, GPG keys, or keychains** — never accessed
+- **User documents** — no access to Desktop, Documents, Downloads, or media files
+
+### User control over scope
+
+Users can restrict or bypass auto-discovery entirely:
+
+| Flag | Effect |
+|------|--------|
+| `--dry-run` | Shows exactly which files and APIs would be accessed, then exits without reading anything |
+| `--inventory <file>` | Scans only the agents/packages defined in a JSON inventory file — skips all config discovery |
+| `--project <dir>` | Scans only MCP configs in a specific project directory |
+| `--config-dir <dir>` | Reads MCP configs from a single custom directory only |
+| `--no-skill` | Disables skill/instruction file scanning |
+| `--skill-only` | Runs only skill scanning, skips all agent/package/CVE analysis |
+| `--no-scan` | Inventory-only mode — discovers configs but makes no network calls |
+
+**Recommended first run**: `agent-bom scan --dry-run` to preview the access plan before any actual scanning.
+
 ## Transparency: what agent-bom reads
 
 ### Config files read (per MCP client)
 
 agent-bom reads the following JSON/YAML config files to discover MCP server entries.
 It only reads server names, commands, arguments, and environment variable **names** (never values).
+Each path is checked with a simple `open()` — if the file does not exist, it is silently skipped.
 
 | Client | macOS path | Linux path |
 |--------|-----------|------------|
@@ -177,9 +215,25 @@ It only reads server names, commands, arguments, and environment variable **name
 | Cortex Code | `~/.snowflake/cortex/mcp.json` | same |
 | Docker MCP Toolkit | `~/.docker/mcp/registry.yaml`, `~/.docker/mcp/catalogs/docker-mcp.yaml` | same |
 
-**Project-level configs** (in current working directory): `.mcp.json`, `mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`
+**Project-level configs** (in current working directory only): `.mcp.json`, `mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`
 
-**Docker Compose files**: `docker-compose.yml`, `docker-compose.yaml`, `compose.yml`, `compose.yaml`
+**Docker Compose files** (in current working directory only): `docker-compose.yml`, `docker-compose.yaml`, `compose.yml`, `compose.yaml`
+
+**Total**: ~20 specific file paths. No glob patterns, no recursive directory walks, no arbitrary file reads.
+
+### Data flow: what goes in and what comes out
+
+```
+[Local config files]  →  read server name, command, args, env var NAMES
+                          ↓
+[Package names+versions]  →  sent to OSV.dev, NVD, EPSS, KEV, npm, PyPI
+                          ↓
+[CVE results]  →  returned to local process, written to stdout or --output file
+```
+
+- **Inbound to APIs**: package name + version only (e.g., `express@4.17.1`)
+- **Outbound from APIs**: CVE IDs, severity scores, advisory URLs
+- **Never sent**: file paths, config contents, env var values, scan results, hostnames, IP addresses
 
 ### Network endpoints called (all read-only GET/POST queries)
 
@@ -192,12 +246,12 @@ It only reads server names, commands, arguments, and environment variable **name
 | npm registry | `https://registry.npmjs.org/{pkg}/{version}` | Package metadata | No |
 | PyPI | `https://pypi.org/pypi/{pkg}/{version}/json` | Package metadata | No |
 
-**No data is sent to any endpoint except package names and versions for vulnerability lookup.**
-**No scan results, config contents, or credential values are transmitted anywhere.**
+**No telemetry, analytics, or tracking.** agent-bom makes zero network calls unless scanning for vulnerabilities.
+Network calls can be completely disabled with `--no-scan` (inventory-only mode).
 
 ### Environment variables
 
-agent-bom reads these env var **names only** from MCP server configs (to map blast radius):
+agent-bom reads env var **names only** from MCP server configs (to map blast radius):
 - It pattern-matches for credential-like names: `*KEY*`, `*TOKEN*`, `*SECRET*`, `*PASSWORD*`, `*CREDENTIAL*`, `*AUTH*`
 - Standard system vars (`PATH`, `HOME`, `LANG`) are excluded
 - **Values are never read, stored, logged, or transmitted** — only the variable name appears in reports
@@ -213,13 +267,16 @@ agent-bom itself optionally uses:
 - **No data exfiltration**: Scan results stay local. Only package names/versions are sent to public APIs
 - **No persistence**: No background processes, daemons, cron jobs, or system modifications
 - **No privilege escalation**: Runs as current user, no sudo/root required
+- **No telemetry**: No analytics, crash reports, or usage tracking of any kind
+- **Deterministic**: Same input always produces the same output (modulo upstream API data freshness)
 - **Auditable**: Full source code at https://github.com/msaad00/agent-bom (Apache-2.0 license)
 - **Signed releases**: Every PyPI release is signed with Sigstore OIDC
+- **CI-verified**: Every commit passes 940+ automated tests including security scanning
 
 ## Runtime dependencies
 
 | Feature | Required binary | Notes |
 |---------|----------------|-------|
 | Core scanning | `agent-bom` only | No external tools needed |
-| Docker image scanning | `docker` | Optional — only for `--image` flag |
+| Docker image scanning | `docker` | Optional — only when user passes `--image` |
 | Enhanced image scanning | `grype`, `syft` | Optional — richer results if available |

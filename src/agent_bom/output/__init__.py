@@ -139,6 +139,16 @@ def print_posture_summary(report: AIBOMReport) -> None:
     else:
         lines.append("  [bold]Credentials[/bold]       None detected")
 
+    # Privilege summary
+    elevated_servers = sum(
+        1 for a in report.agents for s in a.mcp_servers
+        if s.permission_profile and s.permission_profile.is_elevated
+    )
+    if elevated_servers:
+        lines.append(f"  [bold red]Privileges[/bold red]        {elevated_servers} server(s) with elevated privileges")
+    else:
+        lines.append("  [bold]Privileges[/bold]        None elevated")
+
     # Vulnerability count
     lines.append(f"  [bold]Vulnerabilities[/bold]   {report.total_vulnerabilities}")
 
@@ -228,10 +238,20 @@ def print_agent_tree(report: AIBOMReport) -> None:
             vuln_indicator = f" [red]⚠ {vuln_count} vuln(s)[/red]" if vuln_count else ""
             cred_indicator = f" [yellow]🔑 {len(server.credential_names)} cred(s)[/yellow]" if server.has_credentials else ""
 
+            priv_indicator = ""
+            if server.permission_profile and server.permission_profile.is_elevated:
+                plevel = server.permission_profile.privilege_level
+                if plevel == "critical":
+                    priv_indicator = " [red bold]🛡 PRIVILEGED[/red bold]"
+                elif plevel == "high":
+                    priv_indicator = " [red]🛡 root/shell[/red]"
+                elif plevel == "medium":
+                    priv_indicator = " [yellow]🛡 elevated[/yellow]"
+
             server_branch = agent_tree.add(
                 f"\U0001f50c MCP Server: [bold cyan]{server.name}[/bold cyan] "
                 f"({server.command} {' '.join(server.args[:2])})"
-                f"{vuln_indicator}{cred_indicator}"
+                f"{vuln_indicator}{cred_indicator}{priv_indicator}"
             )
 
             if server.tools:
@@ -985,6 +1005,19 @@ def to_json(report: AIBOMReport) -> dict:
                             }
                             for pkg in server.packages
                         ],
+                        "permission_profile": (
+                            {
+                                "runs_as_root": server.permission_profile.runs_as_root,
+                                "container_privileged": server.permission_profile.container_privileged,
+                                "privilege_level": server.permission_profile.privilege_level,
+                                "tool_permissions": server.permission_profile.tool_permissions,
+                                "capabilities": server.permission_profile.capabilities,
+                                "network_access": server.permission_profile.network_access,
+                                "filesystem_write": server.permission_profile.filesystem_write,
+                                "shell_access": server.permission_profile.shell_access,
+                            }
+                            if server.permission_profile else None
+                        ),
                     }
                     for server in agent.mcp_servers
                 ],

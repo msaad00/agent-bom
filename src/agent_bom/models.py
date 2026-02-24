@@ -144,6 +144,41 @@ class MCPResource:
 
 
 @dataclass
+class PermissionProfile:
+    """Privilege and permission profile for an MCP server or container."""
+
+    runs_as_root: bool = False
+    container_privileged: bool = False
+    tool_permissions: dict[str, str] = field(default_factory=dict)  # tool -> "read"|"write"|"execute"|"destructive"
+    capabilities: list[str] = field(default_factory=list)  # Linux caps: CAP_SYS_ADMIN, etc.
+    network_access: bool = False
+    filesystem_write: bool = False
+    shell_access: bool = False
+    security_opt: list[str] = field(default_factory=list)
+
+    @property
+    def is_elevated(self) -> bool:
+        """True if server has any elevated privileges."""
+        return (
+            self.runs_as_root
+            or self.container_privileged
+            or self.shell_access
+            or bool(self.capabilities)
+        )
+
+    @property
+    def privilege_level(self) -> str:
+        """Summarize privilege level as critical/high/medium/low."""
+        if self.container_privileged or "CAP_SYS_ADMIN" in self.capabilities:
+            return "critical"
+        if self.runs_as_root or self.shell_access:
+            return "high"
+        if self.filesystem_write or self.network_access or self.capabilities:
+            return "medium"
+        return "low"
+
+
+@dataclass
 class MCPServer:
     """An MCP server with its tools, resources, and dependencies."""
 
@@ -161,6 +196,7 @@ class MCPServer:
     mcp_version: Optional[str] = None  # MCP protocol version (e.g. "2024-11-05")
     registry_verified: bool = False  # True if found in agent-bom MCP registry
     registry_id: Optional[str] = None  # Registry entry ID, e.g. "modelcontextprotocol/filesystem"
+    permission_profile: Optional[PermissionProfile] = None
 
     @property
     def vulnerable_packages(self) -> list[Package]:

@@ -438,6 +438,26 @@ def extract_packages(
                 f"  [dim cyan]→ {server.name}: resolved from MCP registry "
                 f"({registry_packages[0].name})[/dim cyan]"
             )
+            # Enrich server with permission profile from registry data
+            entry = get_registry_entry(server)
+            if entry:
+                from agent_bom.permissions import build_permission_profile
+                tool_names = entry.get("tools", [])
+                cred_vars = entry.get("credential_env_vars", [])
+                profile = build_permission_profile(
+                    tools=tool_names,
+                    credential_env_vars=cred_vars,
+                    command=server.command,
+                    args=server.args,
+                )
+                # Merge with discovery-time profile if present
+                if server.permission_profile is not None:
+                    profile.runs_as_root = profile.runs_as_root or server.permission_profile.runs_as_root
+                    profile.shell_access = profile.shell_access or server.permission_profile.shell_access
+                    profile.container_privileged = server.permission_profile.container_privileged
+                    profile.capabilities = server.permission_profile.capabilities
+                    profile.security_opt = server.permission_profile.security_opt
+                server.permission_profile = profile
         packages.extend(registry_packages)
 
     # Official MCP Registry fallback: free API, no auth required

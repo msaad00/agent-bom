@@ -255,7 +255,7 @@ def empty_report():
 
 def test_version_sync():
     from agent_bom import __version__
-    assert __version__ == "0.31.2"
+    assert __version__ == "0.31.3"
 
 
 def test_report_version_matches():
@@ -2795,7 +2795,7 @@ def test_toolhive_server_json_valid():
     p = Path(__file__).parent.parent / "integrations" / "toolhive" / "server.json"
     data = _json.loads(p.read_text())
     assert data["name"] == "io.github.msaad00/agent-bom"
-    assert data["version"] == "0.31.2"
+    assert data["version"] == "0.31.3"
     assert "packages" in data
     assert data["packages"][0]["registryType"] == "oci"
 
@@ -2864,6 +2864,78 @@ def test_openclaw_skill_has_all_install_methods():
     assert "kind: uv" in content
     assert "kind: pip" in content
     assert "kind: pipx" in content
+
+
+def test_openclaw_skill_has_verification_section():
+    """OpenClaw SKILL.md should include verification & provenance section for ClawHub trust."""
+    from pathlib import Path
+    p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
+    content = p.read_text()
+    assert "Verification & provenance" in content
+    assert "cosign verify-blob" in content
+    assert "Binary behavior audit" in content
+    assert "--dry-run" in content
+
+
+def test_openclaw_skill_nvd_auth_consistent():
+    """OpenClaw SKILL.md should not mark NVD as auth:false while requiring NVD_API_KEY."""
+    from pathlib import Path
+    p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
+    content = p.read_text()
+    # NVD endpoint should say auth is optional, not false
+    assert "optional" in content.lower()
+    # Find the CVSS score endpoint block and verify its auth field says optional
+    lines = content.split("\n")
+    in_cvss = False
+    for line in lines:
+        if "CVSS score" in line:
+            in_cvss = True
+        elif in_cvss and "auth:" in line:
+            assert "false" not in line.lower(), "NVD auth should not be 'false' — NVD_API_KEY is optional"
+            assert "optional" in line.lower(), "NVD auth should indicate optional API key"
+            break
+
+
+def test_cli_dry_run_shows_data_audit():
+    """--dry-run should include Data Audit section showing what gets extracted and sent."""
+    from click.testing import CliRunner
+    from agent_bom.cli import main
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", "--dry-run"])
+    assert result.exit_code == 0
+    assert "Data Audit" in result.output
+    assert "Extracted from config files" in result.output
+    assert "Sent to vulnerability APIs" in result.output
+    assert "Credential detection" in result.output
+    assert "NAMES only" in result.output
+
+
+def test_permissions_md_has_full_config_paths():
+    """PERMISSIONS.md should list all 27 discovery config paths."""
+    from pathlib import Path
+    p = Path(__file__).parent.parent / "PERMISSIONS.md"
+    content = p.read_text()
+    assert "claude_desktop_config.json" in content
+    assert "~/.cursor/mcp.json" in content
+    assert "~/.windsurf/mcp.json" in content
+    assert "~/.docker/mcp/registry.yaml" in content
+    assert "~/.openclaw/openclaw.json" in content
+    assert "~/.snowflake/cortex/mcp.json" in content
+    assert ".vscode/mcp.json" in content
+    assert "docker-compose.yml" in content
+    assert "Credential name detection" in content
+
+
+def test_openclaw_skill_declares_sensitive_data_handling():
+    """OpenClaw SKILL.md should declare how sensitive data in config files is handled."""
+    from pathlib import Path
+    p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
+    content = p.read_text()
+    assert "sensitive_data_handling:" in content
+    assert "config_files_contain_secrets: true" in content
+    assert "env var NAMES only" in content
+    assert "REDACTED" in content
+    assert "written_to_disk: false" in content
 
 
 def test_badge_output_clean():

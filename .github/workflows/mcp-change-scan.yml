@@ -2,7 +2,6 @@ name: MCP Config Change Scanner
 
 permissions:
   contents: read
-  pull-requests: write
 
 on:
   pull_request:
@@ -20,11 +19,14 @@ jobs:
   scan:
     name: Scan MCP Config Changes
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: '3.11'
 

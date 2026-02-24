@@ -41,6 +41,7 @@ jobs:
         env:
           SMITHERY_API_TOKEN: ${{ secrets.SMITHERY_API_TOKEN }}
           RAILWAY_MCP_URL: ${{ vars.RAILWAY_MCP_URL }}
+          VERSION: ${{ steps.meta.outputs.version }}
         run: |
           if [ -z "$SMITHERY_API_TOKEN" ]; then
             echo "::warning::SMITHERY_API_TOKEN not set — skipping Smithery publish"
@@ -50,7 +51,7 @@ jobs:
           QUALIFIED_NAME="agent-bom%2Fagent-bom"
           MCP_URL="${RAILWAY_MCP_URL:-https://agent-bom-mcp.up.railway.app/mcp}"
 
-          echo "Publishing agent-bom v${{ steps.meta.outputs.version }} to Smithery..."
+          echo "Publishing agent-bom v${VERSION} to Smithery..."
 
           HTTP_STATUS=$(curl -s --connect-timeout 10 --max-time 30 \
             -o /tmp/smithery-response.json -w "%{http_code}" \
@@ -107,20 +108,21 @@ jobs:
       - name: Publish to ClawHub
         env:
           CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+          VERSION: ${{ steps.meta.outputs.version }}
         run: |
           if [ -z "$CLAWHUB_TOKEN" ]; then
             echo "::warning::CLAWHUB_TOKEN not set — skipping ClawHub publish"
             exit 0
           fi
 
-          echo "Publishing agent-bom v${{ steps.meta.outputs.version }} to ClawHub..."
+          echo "Publishing agent-bom v${VERSION} to ClawHub..."
 
           npm install -g clawhub@latest
           clawhub login --token "${CLAWHUB_TOKEN}"
           clawhub publish integrations/openclaw \
             --slug agent-bom \
             --name "agent-bom" \
-            --version "${{ steps.meta.outputs.version }}" \
-            --changelog "Release v${{ steps.meta.outputs.version }}"
+            --version "${VERSION}" \
+            --changelog "Release v${VERSION}"
 
           echo "ClawHub publish succeeded"

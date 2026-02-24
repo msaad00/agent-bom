@@ -219,6 +219,18 @@ def parse_mcp_config(config_data: dict, config_path: str) -> list[MCPServer]:
             config_path=config_path,
         )
 
+        # Detect privilege indicators from command/args
+        from agent_bom.models import PermissionProfile
+        from agent_bom.permissions import command_is_shell, command_runs_as_root
+        safe_args = server.args if isinstance(server.args, list) else [server.args]
+        is_root = command_runs_as_root(command, safe_args)
+        is_shell = command_is_shell(command, safe_args)
+        if is_root or is_shell:
+            server.permission_profile = PermissionProfile(
+                runs_as_root=is_root,
+                shell_access=is_shell,
+            )
+
         # Try to determine working directory from args
         for arg in server.args:
             if os.path.isdir(arg):

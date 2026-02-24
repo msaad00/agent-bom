@@ -164,6 +164,22 @@ def official_registry_lookup_sync(server: MCPServer) -> list[Package]:
 
 # ─── Registry Sync ───────────────────────────────────────────────────────────
 
+_GENERIC_SEGMENTS = frozenset({"server", "mcp", "main", "index", "app", "src"})
+
+
+def _build_command_patterns(qualified_name: str) -> list[str]:
+    """Build command_patterns for a registry entry.
+
+    Always includes the full qualified name. If the name contains '/' and
+    the last segment is specific enough, include it too.
+    """
+    patterns = [qualified_name]
+    if "/" in qualified_name:
+        last = qualified_name.split("/")[-1]
+        if last.lower() not in _GENERIC_SEGMENTS and len(last) > 3:
+            patterns.append(last)
+    return patterns
+
 
 async def sync_from_official_registry(
     max_pages: int = 10,
@@ -217,19 +233,33 @@ async def sync_from_official_registry(
                     result.skipped += 1
                     continue
 
+                # Extract tools and credentials from the entry
+                tools_data = s.get("tools", [])
+                tool_names = [
+                    (t.get("name", "") if isinstance(t, dict) else str(t))
+                    for t in tools_data
+                ] if tools_data else []
+                cred_vars = s.get("credential_env_vars", []) or []
+
+                # Auto-classify risk level based on tool capabilities
+                from agent_bom.permissions import _infer_category, classify_risk_level
+                risk = classify_risk_level(tool_names, cred_vars)
+                category = _infer_category(qn, (s.get("description", "") or ""))
+
                 reg_entry = {
                     "package": qn,
                     "ecosystem": "mcp-registry",
                     "latest_version": s.get("version", "latest"),
                     "description": (s.get("description", "") or "")[:200],
                     "name": qn,
-                    "category": "mcp-server",
-                    "risk_level": "medium",
+                    "category": category,
+                    "risk_level": risk,
                     "verified": True,
-                    "tools": [],
-                    "credential_env_vars": [],
-                    "command_patterns": [qn.split("/")[-1]] if "/" in qn else [qn],
+                    "tools": tool_names,
+                    "credential_env_vars": cred_vars,
+                    "command_patterns": _build_command_patterns(qn),
                     "source_url": s.get("repository", {}).get("url", "") if isinstance(s.get("repository"), dict) else "",
+                    "auto_enriched": True,
                 }
 
                 if not dry_run:

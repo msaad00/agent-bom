@@ -32,7 +32,7 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-from agent_bom.models import Package, Severity, Vulnerability
+from agent_bom.models import Package, PermissionProfile, Severity, Vulnerability
 from agent_bom.sbom import parse_cyclonedx
 
 
@@ -224,6 +224,89 @@ def _docker_inspect(image_ref: str) -> dict:
         return json.loads(result.stdout)[0]
     except (json.JSONDecodeError, IndexError) as e:
         raise ImageScanError(f"docker inspect output parse error: {e}")
+
+
+def detect_image_privileges(image_ref: str) -> PermissionProfile:
+    """Extract privilege info from a Docker image (without running it).
+
+    Uses ``docker inspect --type image`` to check:
+    - Config.User: empty/"0"/"root" → runs_as_root
+    - Config.ExposedPorts → network_access
+    - Config.Volumes → filesystem_write
+    """
+    try:
+        data = _docker_inspect(image_ref)
+    except ImageScanError:
+        return PermissionProfile()
+
+    config = data.get("Config", {})
+
+    user = config.get("User", "")
+    runs_as_root = user in ("", "0", "root")
+
+    exposed_ports = config.get("ExposedPorts") or {}
+    network_access = bool(exposed_ports)
+
+    volumes = config.get("Volumes") or {}
+    filesystem_write = bool(volumes)
+
+    return PermissionProfile(
+        runs_as_root=runs_as_root,
+        network_access=network_access,
+        filesystem_write=filesystem_write,
+    )
+
+
+def detect_container_privileges(container_id: str) -> PermissionProfile:
+    """Extract privilege info from a running or created container.
+
+    Uses ``docker inspect`` on a container to check:
+    - Config.User → runs_as_root
+    - HostConfig.Privileged → container_privileged
+    - HostConfig.CapAdd/CapDrop → capabilities
+    - HostConfig.SecurityOpt → security_opt
+    - HostConfig.NetworkMode → network_access (host mode)
+    """
+    try:
+        result = subprocess.run(
+            ["docker", "inspect", container_id],
+            capture_output=True, text=True, timeout=30,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return PermissionProfile()
+
+    if result.returncode != 0:
+        return PermissionProfile()
+
+    try:
+        data = json.loads(result.stdout)[0]
+    except (json.JSONDecodeError, IndexError):
+        return PermissionProfile()
+
+    config = data.get("Config", {})
+    host_config = data.get("HostConfig", {})
+
+    user = config.get("User", "")
+    runs_as_root = user in ("", "0", "root")
+
+    container_privileged = host_config.get("Privileged", False)
+
+    cap_add = host_config.get("CapAdd") or []
+    cap_drop = host_config.get("CapDrop") or []
+    capabilities = [c for c in cap_add if c not in cap_drop]
+
+    security_opt = host_config.get("SecurityOpt") or []
+
+    network_mode = host_config.get("NetworkMode", "")
+    network_access = network_mode in ("host", "bridge", "default", "")
+
+    return PermissionProfile(
+        runs_as_root=runs_as_root,
+        container_privileged=container_privileged,
+        capabilities=capabilities,
+        security_opt=security_opt,
+        network_access=network_access,
+    )
 
 
 def _packages_from_tar(tar_path: Path) -> list[Package]:

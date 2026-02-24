@@ -31,7 +31,13 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
         run: |
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            VERSION="${GITHUB_REF_NAME#v}"
+            # workflow_dispatch may run from main or a tag — prefer tag, fall back to pyproject.toml
+            REF="${GITHUB_REF_NAME#v}"
+            if echo "$REF" | grep -qE '^[0-9]+\.[0-9]+'; then
+              VERSION="$REF"
+            else
+              VERSION=$(grep '^version' pyproject.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+            fi
           else
             VERSION="${HEAD_BRANCH#v}"
           fi
@@ -94,7 +100,13 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
         run: |
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            VERSION="${GITHUB_REF_NAME#v}"
+            # workflow_dispatch may run from main or a tag — prefer tag, fall back to pyproject.toml
+            REF="${GITHUB_REF_NAME#v}"
+            if echo "$REF" | grep -qE '^[0-9]+\.[0-9]+'; then
+              VERSION="$REF"
+            else
+              VERSION=$(grep '^version' pyproject.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+            fi
           else
             VERSION="${HEAD_BRANCH#v}"
           fi

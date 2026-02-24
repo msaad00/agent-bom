@@ -65,16 +65,7 @@ jobs:
             -H "Authorization: Bearer ${SMITHERY_API_TOKEN}" \
             -F "payload={
               \"type\": \"external\",
-              \"upstreamUrl\": \"${MCP_URL}\",
-              \"configSchema\": {
-                \"type\": \"object\",
-                \"properties\": {
-                  \"NVD_API_KEY\": {
-                    \"type\": \"string\",
-                    \"description\": \"NVD API key for higher rate limits on CVSS enrichment (optional)\"
-                  }
-                }
-              }
+              \"upstreamUrl\": \"${MCP_URL}\"
             }")
 
           echo "Smithery response (HTTP ${HTTP_STATUS}):"

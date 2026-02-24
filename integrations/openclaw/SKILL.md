@@ -1,7 +1,7 @@
 ---
 name: agent-bom
 description: Scan AI agents and MCP servers for CVEs, generate SBOMs, map blast radius, enforce security policies
-version: 0.31.0
+version: 0.31.1
 metadata:
   openclaw:
     requires:
@@ -71,7 +71,7 @@ pipx install agent-bom
 ### Verify installation
 ```bash
 agent-bom --version
-# Should print: agent-bom 0.31.0
+# Should print: agent-bom 0.31.1
 ```
 
 ### Verify source

@@ -134,6 +134,29 @@ def expand_path(path_str: str) -> Path:
     return Path(os.path.expanduser(path_str)).resolve()
 
 
+def get_all_discovery_paths(plat: Optional[str] = None) -> list[tuple[str, str]]:
+    """Return all config paths that would be checked during discovery.
+
+    Returns a list of (client_name, path_string) tuples for the given platform.
+    Used by --dry-run and ``agent-bom paths`` for full transparency.
+    """
+    plat = plat or get_platform()
+    paths: list[tuple[str, str]] = []
+    for agent_type, platforms in CONFIG_LOCATIONS.items():
+        for p in platforms.get(plat, []):
+            paths.append((agent_type.value, p))
+    # Docker MCP Toolkit paths (not in CONFIG_LOCATIONS)
+    paths.append(("Docker MCP Toolkit", "~/.docker/mcp/registry.yaml"))
+    paths.append(("Docker MCP Toolkit", "~/.docker/mcp/catalogs/docker-mcp.yaml"))
+    # Project-level configs (relative to CWD)
+    for pf in PROJECT_CONFIG_FILES:
+        paths.append(("Project config", pf))
+    # Docker Compose files (relative to CWD)
+    for cf in COMPOSE_FILE_NAMES:
+        paths.append(("Docker Compose", cf))
+    return paths
+
+
 def parse_mcp_config(config_data: dict, config_path: str) -> list[MCPServer]:
     """Parse MCP server definitions from a config file.
 

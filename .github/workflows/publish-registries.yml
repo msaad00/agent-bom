@@ -121,8 +121,6 @@ jobs:
             --slug agent-bom \
             --name "agent-bom" \
             --version "${{ steps.meta.outputs.version }}" \
-            --changelog "Release v${{ steps.meta.outputs.version }}" \
-            --no-input \
-            --force
+            --changelog "Release v${{ steps.meta.outputs.version }}"
 
           echo "ClawHub publish succeeded"

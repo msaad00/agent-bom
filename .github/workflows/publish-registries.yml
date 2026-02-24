@@ -26,12 +26,14 @@ jobs:
 
       - name: Extract version
         id: meta
+        env:
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             VERSION="${GITHUB_REF_NAME#v}"
           else
-            VERSION="${{ github.event.workflow_run.head_branch }}"
-            VERSION="${VERSION#v}"
+            VERSION="${HEAD_BRANCH#v}"
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
@@ -86,12 +88,14 @@ jobs:
 
       - name: Extract version
         id: meta
+        env:
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             VERSION="${GITHUB_REF_NAME#v}"
           else
-            VERSION="${{ github.event.workflow_run.head_branch }}"
-            VERSION="${VERSION#v}"
+            VERSION="${HEAD_BRANCH#v}"
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 

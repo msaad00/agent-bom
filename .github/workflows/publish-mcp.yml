@@ -26,14 +26,16 @@ jobs:
 
       - name: Extract version
         id: version
+        env:
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
             echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           else
-            BRANCH="${{ github.event.workflow_run.head_branch }}"
-            echo "version=${BRANCH#v}" >> "$GITHUB_OUTPUT"
-            echo "tag=${BRANCH}" >> "$GITHUB_OUTPUT"
+            echo "version=${HEAD_BRANCH#v}" >> "$GITHUB_OUTPUT"
+            echo "tag=${HEAD_BRANCH}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build and push MCP container (stdio)
@@ -63,14 +65,16 @@ jobs:
 
       - name: Extract version
         id: version
+        env:
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
             echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           else
-            BRANCH="${{ github.event.workflow_run.head_branch }}"
-            echo "version=${BRANCH#v}" >> "$GITHUB_OUTPUT"
-            echo "tag=${BRANCH}" >> "$GITHUB_OUTPUT"
+            echo "version=${HEAD_BRANCH#v}" >> "$GITHUB_OUTPUT"
+            echo "tag=${HEAD_BRANCH}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build and push MCP container (SSE)

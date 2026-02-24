@@ -1,8 +1,9 @@
 name: Publish to MCP Registry
 
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -13,6 +14,7 @@ jobs:
   publish:
     name: Publish to Official MCP Registry
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v6
 

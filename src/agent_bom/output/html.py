@@ -428,7 +428,7 @@ def _attack_flow_section(blast_radii: list["BlastRadius"]) -> str:
         return ""
 
     total_creds = len({c for br in blast_radii for c in br.exposed_credentials})
-    total_tools = len({t for br in blast_radii for t in br.exposed_tools})
+    total_tools = len({t.name for br in blast_radii for t in br.exposed_tools})
     total_agents = len({a.name for br in blast_radii for a in br.affected_agents})
 
     return (

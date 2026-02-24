@@ -319,13 +319,9 @@ def scan(
         if config_dir:
             reads.append(f"  [green]Would read:[/green]   {config_dir}  (config directory)")
         if not reads:
-            import platform
-            if platform.system() == "Darwin":
-                reads.append("  [green]Would read:[/green]   ~/Library/Application Support/Claude/claude_desktop_config.json")
-                reads.append("  [green]Would read:[/green]   ~/.cursor/mcp.json")
-                reads.append("  [green]Would read:[/green]   ~/.codeium/windsurf/mcp_config.json")
-            else:
-                reads.append("  [green]Would read:[/green]   ~/.config/claude/claude_desktop_config.json")
+            from agent_bom.discovery import get_all_discovery_paths
+            for client, path in get_all_discovery_paths():
+                reads.append(f"  [green]Would read:[/green]   {path}  ({client})")
         for tf_dir in tf_dirs:
             reads.append(f"  [green]Would read:[/green]   {tf_dir}  (Terraform .tf files)")
         for ap in agent_projects:
@@ -1535,17 +1531,49 @@ def validate(inventory_file: str):
 
 
 @main.command()
-def where():
-    """Show where agent-bom looks for MCP configurations."""
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON for machine consumption")
+def where(as_json: bool):
+    """Show where agent-bom looks for MCP configurations.
+
+    Lists every config path that would be checked during auto-discovery,
+    grouped by MCP client. Paths that exist on your system are marked with ✓.
+
+    Use --json for machine-readable output (useful for auditing).
+    """
     import shutil
+
+    from agent_bom.discovery import (
+        AGENT_BINARIES,
+        COMPOSE_FILE_NAMES,
+        CONFIG_LOCATIONS,
+        PROJECT_CONFIG_FILES,
+        expand_path,
+        get_all_discovery_paths,
+        get_platform,
+    )
+
+    current_platform = get_platform()
+
+    if as_json:
+        import json as _json
+        entries = []
+        for client, path in get_all_discovery_paths(current_platform):
+            expanded = str(expand_path(path)) if not path.startswith(".") else path
+            entries.append({
+                "client": client,
+                "path": path,
+                "expanded": expanded,
+                "exists": expand_path(path).exists() if not path.startswith(".") else Path(path).exists(),
+            })
+        click.echo(_json.dumps({"platform": current_platform, "paths": entries}, indent=2))
+        return
 
     console = Console()
     console.print(BANNER, style="bold blue")
     console.print("\n[bold]MCP Client Configuration Locations[/bold]\n")
 
-    from agent_bom.discovery import AGENT_BINARIES, CONFIG_LOCATIONS, PROJECT_CONFIG_FILES, expand_path, get_platform
-
-    current_platform = get_platform()
+    total_paths = 0
+    found_paths = 0
 
     for agent_type, platforms in CONFIG_LOCATIONS.items():
         paths = platforms.get(current_platform, [])
@@ -1560,16 +1588,48 @@ def where():
         console.print(f"\n  [bold cyan]{agent_type.value}[/bold cyan]{binary_status}")
         if paths:
             for p in paths:
+                total_paths += 1
                 expanded = expand_path(p)
                 exists = "✓" if expanded.exists() else "✗"
                 style = "green" if expanded.exists() else "dim"
+                if expanded.exists():
+                    found_paths += 1
                 console.print(f"    [{style}]{exists} {expanded}[/{style}]")
         else:
             console.print(f"    [dim]  (CLI-based discovery via {binary or 'N/A'})[/dim]")
 
-    console.print("\n  [bold cyan]Project-level configs[/bold cyan]")
+    # Docker MCP Toolkit paths
+    console.print("\n  [bold cyan]Docker MCP Toolkit[/bold cyan]")
+    for dp in ["~/.docker/mcp/registry.yaml", "~/.docker/mcp/catalogs/docker-mcp.yaml"]:
+        total_paths += 1
+        expanded = expand_path(dp)
+        exists = "✓" if expanded.exists() else "✗"
+        style = "green" if expanded.exists() else "dim"
+        if expanded.exists():
+            found_paths += 1
+        console.print(f"    [{style}]{exists} {expanded}[/{style}]")
+
+    console.print("\n  [bold cyan]Project-level configs[/bold cyan]  [dim](relative to CWD)[/dim]")
     for config_name in PROJECT_CONFIG_FILES:
-        console.print(f"    [dim]  ./{config_name}[/dim]")
+        total_paths += 1
+        exists = Path(config_name).exists()
+        mark = "✓" if exists else "✗"
+        style = "green" if exists else "dim"
+        if exists:
+            found_paths += 1
+        console.print(f"    [{style}]{mark} ./{config_name}[/{style}]")
+
+    console.print("\n  [bold cyan]Docker Compose files[/bold cyan]  [dim](relative to CWD)[/dim]")
+    for cf in COMPOSE_FILE_NAMES:
+        total_paths += 1
+        exists = Path(cf).exists()
+        mark = "✓" if exists else "✗"
+        style = "green" if exists else "dim"
+        if exists:
+            found_paths += 1
+        console.print(f"    [{style}]{mark} ./{cf}[/{style}]")
+
+    console.print(f"\n  [bold]Total:[/bold] {total_paths} paths checked, {found_paths} found on this system")
 
 
 @main.command()

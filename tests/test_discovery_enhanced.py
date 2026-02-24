@@ -411,3 +411,59 @@ def test_where_shows_binary_info():
     assert result.exit_code == 0
     # Should mention binary detection
     assert "binary:" in result.output or "toolhive" in result.output.lower()
+
+
+def test_get_all_discovery_paths_returns_all_clients():
+    from agent_bom.discovery import get_all_discovery_paths
+
+    paths = get_all_discovery_paths("Darwin")
+    clients = {c for c, _ in paths}
+    # Must include key clients
+    for expected in ["claude-desktop", "claude-code", "cursor", "windsurf",
+                     "Docker MCP Toolkit", "Project config", "Docker Compose"]:
+        assert expected in clients, f"Missing client: {expected}"
+    # Must have a reasonable number of paths
+    assert len(paths) >= 20
+
+
+def test_get_all_discovery_paths_linux():
+    from agent_bom.discovery import get_all_discovery_paths
+
+    paths = get_all_discovery_paths("Linux")
+    path_strs = [p for _, p in paths]
+    # Linux should use ~/.config paths, not ~/Library
+    assert any("/.config/" in p for p in path_strs)
+    assert not any("Library/Application Support" in p for p in path_strs)
+
+
+def test_where_json_output():
+    import json
+
+    from click.testing import CliRunner
+
+    from agent_bom.cli import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["where", "--json"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert "platform" in data
+    assert "paths" in data
+    assert len(data["paths"]) >= 20
+    # Each entry has required fields
+    for entry in data["paths"]:
+        assert "client" in entry
+        assert "path" in entry
+        assert "exists" in entry
+
+
+def test_where_shows_totals():
+    from click.testing import CliRunner
+
+    from agent_bom.cli import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["where"])
+    assert result.exit_code == 0
+    assert "Total:" in result.output
+    assert "paths checked" in result.output

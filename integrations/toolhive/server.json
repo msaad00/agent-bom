@@ -3,7 +3,7 @@
   "name": "io.github.msaad00/agent-bom",
   "description": "AI supply chain security scanner — CVE scanning, blast radius analysis, policy enforcement, and SBOM generation for MCP servers and AI agents",
   "title": "agent-bom",
-  "version": "0.30.0",
+  "version": "0.31.0",
   "repository": {
     "url": "https://github.com/msaad00/agent-bom",
     "source": "github"
@@ -11,7 +11,7 @@
   "packages": [
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/msaad00/agent-bom:v0.30.0",
+      "identifier": "ghcr.io/msaad00/agent-bom:v0.31.0",
       "transport": {
         "type": "stdio"
       },
@@ -28,7 +28,7 @@
   "_meta": {
     "io.modelcontextprotocol.registry/publisher-provided": {
       "io.github.msaad00": {
-        "ghcr.io/msaad00/agent-bom:v0.30.0": {
+        "ghcr.io/msaad00/agent-bom:v0.31.0": {
           "tier": "Community",
           "status": "Active",
           "tags": [

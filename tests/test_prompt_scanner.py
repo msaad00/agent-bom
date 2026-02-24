@@ -1,18 +1,13 @@
 """Tests for prompt template security scanner."""
 
-from pathlib import Path
 
-import pytest
 from click.testing import CliRunner
 
 from agent_bom.cli import main
 from agent_bom.parsers.prompt_scanner import (
-    PromptFinding,
-    PromptScanResult,
     discover_prompt_files,
     scan_prompt_files,
 )
-
 
 # ── Discovery tests ──────────────────────────────────────────────────────────
 

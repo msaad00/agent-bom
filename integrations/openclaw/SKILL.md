@@ -1,7 +1,7 @@
 ---
 name: agent-bom
 description: Scan AI agents and MCP servers for CVEs, generate SBOMs, map blast radius, enforce security policies
-version: 0.30.0
+version: 0.31.0
 metadata:
   openclaw:
     requires:
@@ -48,7 +48,7 @@ and tools are exposed if a package is compromised), generates SBOMs, and evaluat
 - Blast radius mapping: CVE → package → server → agent → credentials/tools
 - SBOM generation: CycloneDX 1.6, SPDX 3.0, SARIF 2.1.0
 - Policy-as-code engine for CI/CD security gates
-- Threat intelligence registry of 112+ known MCP servers with risk metadata
+- Threat intelligence registry of 427+ known MCP servers with risk metadata
 - Docker image scanning (requires `docker` binary, optional)
 
 ## Installation
@@ -71,7 +71,7 @@ pipx install agent-bom
 ### Verify installation
 ```bash
 agent-bom --version
-# Should print: agent-bom 0.30.0
+# Should print: agent-bom 0.31.0
 ```
 
 ### Verify source

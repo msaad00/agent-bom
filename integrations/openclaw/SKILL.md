@@ -1,7 +1,7 @@
 ---
 name: agent-bom
 description: Scan AI agents and MCP servers for CVEs, generate SBOMs, map blast radius, enforce security policies
-version: 0.31.1
+version: 0.31.2
 metadata:
   openclaw:
     requires:
@@ -10,6 +10,8 @@ metadata:
       optional_bins:
         - docker
         - grype
+      env:
+        - NVD_API_KEY
     emoji: "\U0001F6E1"
     homepage: https://github.com/msaad00/agent-bom
     source: https://github.com/msaad00/agent-bom
@@ -31,6 +33,59 @@ metadata:
         package: agent-bom
         bins:
           - agent-bom
+    file_reads:
+      - "~/Library/Application Support/Claude/claude_desktop_config.json"
+      - "~/.config/Claude/claude_desktop_config.json"
+      - "~/.claude/settings.json"
+      - "~/.claude.json"
+      - "~/Library/Application Support/Cursor/User/globalStorage/cursor.mcp/mcp.json"
+      - "~/.config/Cursor/User/globalStorage/cursor.mcp/mcp.json"
+      - "~/.cursor/mcp.json"
+      - "~/.windsurf/mcp.json"
+      - "~/Library/Application Support/Windsurf/User/globalStorage/windsurf.mcp/mcp.json"
+      - "~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json"
+      - "~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json"
+      - "~/Library/Application Support/Code/User/mcp.json"
+      - "~/.config/Code/User/mcp.json"
+      - "~/.continue/config.json"
+      - "~/.config/zed/settings.json"
+      - "~/.openclaw/openclaw.json"
+      - "~/.snowflake/cortex/mcp.json"
+      - "~/.docker/mcp/registry.yaml"
+      - "~/.docker/mcp/catalogs/docker-mcp.yaml"
+      - ".mcp.json"
+      - "mcp.json"
+      - ".cursor/mcp.json"
+      - ".vscode/mcp.json"
+      - "docker-compose.yml"
+      - "docker-compose.yaml"
+      - "compose.yml"
+      - "compose.yaml"
+    file_writes: []
+    network_endpoints:
+      - url: "https://api.osv.dev/v1/querybatch"
+        purpose: "CVE lookup by package name+version"
+        auth: false
+      - url: "https://services.nvd.nist.gov/rest/json/cves/2.0"
+        purpose: "CVSS score enrichment"
+        auth: false
+      - url: "https://api.first.org/data/v1/epss"
+        purpose: "Exploit probability scores"
+        auth: false
+      - url: "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+        purpose: "Known exploited vulnerability status"
+        auth: false
+      - url: "https://registry.npmjs.org"
+        purpose: "npm package metadata"
+        auth: false
+      - url: "https://pypi.org/pypi"
+        purpose: "PyPI package metadata"
+        auth: false
+    data_sent: "package names and versions only"
+    data_not_sent: "file paths, config contents, env var values, hostnames, IP addresses"
+    telemetry: false
+    persistence: false
+    privilege_escalation: false
 ---
 
 # agent-bom — AI Supply Chain Security Scanner
@@ -50,6 +105,109 @@ and tools are exposed if a package is compromised), generates SBOMs, and evaluat
 - Policy-as-code engine for CI/CD security gates
 - Threat intelligence registry of 427+ known MCP servers with risk metadata
 - Docker image scanning (requires `docker` binary, optional)
+
+## Scope boundaries
+
+agent-bom operates within a **strictly bounded scope**. Every file path, network endpoint,
+and data element is enumerated below and in the manifest metadata above.
+
+### Config files read (exhaustive list)
+
+The following paths are the **only** files agent-bom reads. Each is a JSON/YAML MCP client
+config. If a file does not exist, it is silently skipped. No directory traversal, no glob
+patterns, no recursive walks.
+
+| Client | macOS path | Linux path |
+|--------|-----------|------------|
+| Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` | `~/.config/Claude/claude_desktop_config.json` |
+| Claude Code | `~/.claude/settings.json`, `~/.claude.json` | same |
+| Cursor | `~/Library/Application Support/Cursor/User/globalStorage/cursor.mcp/mcp.json`, `~/.cursor/mcp.json` | `~/.config/Cursor/User/globalStorage/cursor.mcp/mcp.json`, `~/.cursor/mcp.json` |
+| Windsurf | `~/.windsurf/mcp.json`, `~/Library/Application Support/Windsurf/User/globalStorage/windsurf.mcp/mcp.json` | `~/.windsurf/mcp.json` |
+| Cline (VS Code) | `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json` | `~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json` |
+| VS Code Copilot | `~/Library/Application Support/Code/User/mcp.json` | `~/.config/Code/User/mcp.json` |
+| Continue.dev | `~/.continue/config.json` | same |
+| Zed | `~/.config/zed/settings.json` | same |
+| OpenClaw | `~/.openclaw/openclaw.json` | same |
+| Cortex Code | `~/.snowflake/cortex/mcp.json` | same |
+| Docker MCP Toolkit | `~/.docker/mcp/registry.yaml`, `~/.docker/mcp/catalogs/docker-mcp.yaml` | same |
+
+**Project-level configs** (current working directory only): `.mcp.json`, `mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`
+
+**Docker Compose files** (current working directory only): `docker-compose.yml`, `docker-compose.yaml`, `compose.yml`, `compose.yaml`
+
+**Total**: 27 specific file paths. All enumerated in `metadata.openclaw.file_reads` above.
+
+### What agent-bom extracts from these files
+
+- Server names, commands, arguments
+- Environment variable **names only** (values are never read, stored, or logged)
+- Credential-like env var names are flagged: `*KEY*`, `*TOKEN*`, `*SECRET*`, `*PASSWORD*`, `*CREDENTIAL*`, `*AUTH*`
+- Standard system vars (`PATH`, `HOME`, `LANG`) are excluded
+
+### What agent-bom CANNOT access
+
+- **Arbitrary files** — only the 27 paths listed above
+- **Environment variable values** — only names are extracted
+- **Private networks or internal APIs** — all network calls go to public endpoints only
+- **Other processes** — no IPC, no signals, no process inspection
+- **System configuration** — no `/etc`, no system services, no kernel parameters
+- **Browser data** — no cookies, history, bookmarks, or stored passwords
+- **SSH keys, GPG keys, or keychains** — never accessed
+- **User documents** — no access to Desktop, Documents, Downloads, or media files
+
+### Network endpoints (exhaustive list)
+
+All network calls are read-only GET/POST to public vulnerability databases.
+Only package names and versions are sent. All enumerated in `metadata.openclaw.network_endpoints` above.
+
+| API | URL | Purpose | Auth required |
+|-----|-----|---------|---------------|
+| OSV.dev | `https://api.osv.dev/v1/querybatch` | CVE lookup by package | No |
+| NVD | `https://services.nvd.nist.gov/rest/json/cves/2.0` | CVSS scores | No (API key optional) |
+| EPSS | `https://api.first.org/data/v1/epss` | Exploit probability | No |
+| CISA KEV | `https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json` | Known exploited vulns | No |
+| npm | `https://registry.npmjs.org/{pkg}/{version}` | Package metadata | No |
+| PyPI | `https://pypi.org/pypi/{pkg}/{version}/json` | Package metadata | No |
+
+**No telemetry, analytics, or tracking.** Zero network calls unless scanning for vulnerabilities.
+Network calls can be completely disabled with `--no-scan` (inventory-only mode).
+
+### Data flow
+
+```
+[Local config files]  →  read server name, command, args, env var NAMES
+                          ↓
+[Package names+versions]  →  sent to OSV.dev, NVD, EPSS, KEV, npm, PyPI
+                          ↓
+[CVE results]  →  returned to local process, written to stdout or --output file
+```
+
+- **Sent to APIs**: package name + version only (e.g., `express@4.17.1`)
+- **Returned from APIs**: CVE IDs, severity scores, advisory URLs
+- **Never sent**: file paths, config contents, env var values, scan results, hostnames, IP addresses
+
+### User control over scope
+
+Users can restrict or bypass auto-discovery entirely:
+
+| Flag | Effect |
+|------|--------|
+| `--dry-run` | Shows exactly which files and APIs would be accessed, then exits without reading anything |
+| `--inventory <file>` | Scans only the agents/packages defined in a JSON inventory file — skips all config discovery |
+| `--project <dir>` | Scans only MCP configs in a specific project directory |
+| `--config-dir <dir>` | Reads MCP configs from a single custom directory only |
+| `--no-skill` | Disables skill/instruction file scanning |
+| `--skill-only` | Runs only skill scanning, skips all agent/package/CVE analysis |
+| `--no-scan` | Inventory-only mode — discovers configs but makes no network calls |
+
+**Recommended first run**: `agent-bom scan --dry-run` to preview the access plan before any actual scanning.
+
+## Environment variables
+
+agent-bom itself optionally uses:
+- `NVD_API_KEY` — higher NVD rate limits (optional, never logged or transmitted beyond NVD)
+
+This is declared in `metadata.openclaw.requires.env` above.
 
 ## Installation
 
@@ -71,7 +229,7 @@ pipx install agent-bom
 ### Verify installation
 ```bash
 agent-bom --version
-# Should print: agent-bom 0.31.1
+# Should print: agent-bom 0.31.2
 ```
 
 ### Verify source
@@ -156,109 +314,6 @@ agent-bom scan --enrich --remediate remediation.md
 - **risk_score**: 0-10 contextual score based on severity + reach + credential exposure
 - **owasp_tags/atlas_tags/nist_ai_rmf_tags**: OWASP LLM Top 10, MITRE ATLAS, NIST AI RMF mappings
 
-## Scope boundaries
-
-agent-bom operates within a **strictly bounded scope**. This section defines exactly what it can and cannot access.
-
-### What agent-bom CAN access
-
-1. **A fixed set of MCP client config files** — only the paths listed in the table below. No directory traversal, no recursive search outside these paths.
-2. **Public vulnerability APIs** — read-only HTTP GET/POST to 6 well-known security databases (listed below). Only package names and versions are sent.
-3. **Docker images** — only when the user explicitly passes `--image`. Requires `docker` binary.
-
-### What agent-bom CANNOT access
-
-- **Arbitrary files** — it cannot read files outside the enumerated config paths
-- **Environment variable values** — only names are extracted; values are never read, stored, or logged
-- **Private networks or internal APIs** — all network calls go to public endpoints only
-- **Other processes** — no IPC, no signals, no process inspection
-- **System configuration** — no `/etc`, no system services, no kernel parameters
-- **Browser data** — no cookies, history, bookmarks, or stored passwords
-- **SSH keys, GPG keys, or keychains** — never accessed
-- **User documents** — no access to Desktop, Documents, Downloads, or media files
-
-### User control over scope
-
-Users can restrict or bypass auto-discovery entirely:
-
-| Flag | Effect |
-|------|--------|
-| `--dry-run` | Shows exactly which files and APIs would be accessed, then exits without reading anything |
-| `--inventory <file>` | Scans only the agents/packages defined in a JSON inventory file — skips all config discovery |
-| `--project <dir>` | Scans only MCP configs in a specific project directory |
-| `--config-dir <dir>` | Reads MCP configs from a single custom directory only |
-| `--no-skill` | Disables skill/instruction file scanning |
-| `--skill-only` | Runs only skill scanning, skips all agent/package/CVE analysis |
-| `--no-scan` | Inventory-only mode — discovers configs but makes no network calls |
-
-**Recommended first run**: `agent-bom scan --dry-run` to preview the access plan before any actual scanning.
-
-## Transparency: what agent-bom reads
-
-### Config files read (per MCP client)
-
-agent-bom reads the following JSON/YAML config files to discover MCP server entries.
-It only reads server names, commands, arguments, and environment variable **names** (never values).
-Each path is checked with a simple `open()` — if the file does not exist, it is silently skipped.
-
-| Client | macOS path | Linux path |
-|--------|-----------|------------|
-| Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` | `~/.config/Claude/claude_desktop_config.json` |
-| Claude Code | `~/.claude/settings.json`, `~/.claude.json` | same |
-| Cursor | `~/Library/Application Support/Cursor/User/globalStorage/cursor.mcp/mcp.json`, `~/.cursor/mcp.json` | `~/.config/Cursor/User/globalStorage/cursor.mcp/mcp.json`, `~/.cursor/mcp.json` |
-| Windsurf | `~/.windsurf/mcp.json`, `~/Library/Application Support/Windsurf/User/globalStorage/windsurf.mcp/mcp.json` | `~/.windsurf/mcp.json` |
-| Cline (VS Code) | `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json` | `~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json` |
-| VS Code Copilot | `~/Library/Application Support/Code/User/mcp.json` | `~/.config/Code/User/mcp.json` |
-| Continue.dev | `~/.continue/config.json` | same |
-| Zed | `~/.config/zed/settings.json` | same |
-| OpenClaw | `~/.openclaw/openclaw.json` | same |
-| Cortex Code | `~/.snowflake/cortex/mcp.json` | same |
-| Docker MCP Toolkit | `~/.docker/mcp/registry.yaml`, `~/.docker/mcp/catalogs/docker-mcp.yaml` | same |
-
-**Project-level configs** (in current working directory only): `.mcp.json`, `mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`
-
-**Docker Compose files** (in current working directory only): `docker-compose.yml`, `docker-compose.yaml`, `compose.yml`, `compose.yaml`
-
-**Total**: ~20 specific file paths. No glob patterns, no recursive directory walks, no arbitrary file reads.
-
-### Data flow: what goes in and what comes out
-
-```
-[Local config files]  →  read server name, command, args, env var NAMES
-                          ↓
-[Package names+versions]  →  sent to OSV.dev, NVD, EPSS, KEV, npm, PyPI
-                          ↓
-[CVE results]  →  returned to local process, written to stdout or --output file
-```
-
-- **Inbound to APIs**: package name + version only (e.g., `express@4.17.1`)
-- **Outbound from APIs**: CVE IDs, severity scores, advisory URLs
-- **Never sent**: file paths, config contents, env var values, scan results, hostnames, IP addresses
-
-### Network endpoints called (all read-only GET/POST queries)
-
-| API | URL | Purpose | Auth required |
-|-----|-----|---------|---------------|
-| OSV.dev | `https://api.osv.dev/v1/querybatch` | CVE lookup by package | No |
-| NVD | `https://services.nvd.nist.gov/rest/json/cves/2.0` | CVSS scores | No (API key optional for rate limits) |
-| EPSS | `https://api.first.org/data/v1/epss` | Exploit probability | No |
-| CISA KEV | `https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json` | Known exploited vulns | No |
-| npm registry | `https://registry.npmjs.org/{pkg}/{version}` | Package metadata | No |
-| PyPI | `https://pypi.org/pypi/{pkg}/{version}/json` | Package metadata | No |
-
-**No telemetry, analytics, or tracking.** agent-bom makes zero network calls unless scanning for vulnerabilities.
-Network calls can be completely disabled with `--no-scan` (inventory-only mode).
-
-### Environment variables
-
-agent-bom reads env var **names only** from MCP server configs (to map blast radius):
-- It pattern-matches for credential-like names: `*KEY*`, `*TOKEN*`, `*SECRET*`, `*PASSWORD*`, `*CREDENTIAL*`, `*AUTH*`
-- Standard system vars (`PATH`, `HOME`, `LANG`) are excluded
-- **Values are never read, stored, logged, or transmitted** — only the variable name appears in reports
-
-agent-bom itself optionally uses:
-- `NVD_API_KEY` — higher NVD rate limits (optional, never logged or transmitted beyond NVD)
-
 ## Guardrails
 
 - **Read-only**: agent-bom never writes, modifies, or deletes any file on your system
@@ -271,7 +326,7 @@ agent-bom itself optionally uses:
 - **Deterministic**: Same input always produces the same output (modulo upstream API data freshness)
 - **Auditable**: Full source code at https://github.com/msaad00/agent-bom (Apache-2.0 license)
 - **Signed releases**: Every PyPI release is signed with Sigstore OIDC
-- **CI-verified**: Every commit passes 940+ automated tests including security scanning
+- **CI-verified**: Every commit passes 950+ automated tests including security scanning
 
 ## Runtime dependencies
 

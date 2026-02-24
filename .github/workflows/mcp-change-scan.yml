@@ -1,0 +1,90 @@
+name: MCP Config Change Scanner
+
+permissions:
+  contents: read
+  pull-requests: write
+
+on:
+  pull_request:
+    paths:
+      - '**/.mcp.json'
+      - '**/mcp.json'
+      - '.cursor/mcp.json'
+      - '.vscode/mcp.json'
+      - 'docker-compose.yml'
+      - 'docker-compose.yaml'
+      - 'compose.yml'
+      - 'compose.yaml'
+
+jobs:
+  scan:
+    name: Scan MCP Config Changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install agent-bom
+        run: pip install agent-bom
+
+      - name: Scan changed MCP configs
+        id: scan
+        env:
+          PR_NUMBER: "${{ github.event.pull_request.number }}"
+        run: |
+          set +e
+
+          # Find which MCP config files changed in this PR
+          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '(\.mcp\.json|mcp\.json|docker-compose\.ya?ml|compose\.ya?ml)$' || true)
+
+          if [ -z "$CHANGED" ]; then
+            echo "No MCP config files changed"
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          echo "## MCP Config Changes Detected" > scan-report.md
+          echo "" >> scan-report.md
+          echo "The following MCP configuration files were modified in this PR:" >> scan-report.md
+          echo "" >> scan-report.md
+
+          for f in $CHANGED; do
+            echo "- \`$f\`" >> scan-report.md
+          done
+
+          echo "" >> scan-report.md
+          echo "### Security Scan Results" >> scan-report.md
+          echo "" >> scan-report.md
+
+          # Run agent-bom check on each config
+          VULN_COUNT=0
+          for f in $CHANGED; do
+            if [ -f "$f" ]; then
+              echo "Scanning $f..."
+              echo "<details>" >> scan-report.md
+              echo "<summary><code>$f</code></summary>" >> scan-report.md
+              echo "" >> scan-report.md
+              echo '```' >> scan-report.md
+              agent-bom scan --project "$(dirname "$f")" --format json 2>&1 | head -100 >> scan-report.md || true
+              echo '```' >> scan-report.md
+              echo "</details>" >> scan-report.md
+              echo "" >> scan-report.md
+            fi
+          done
+
+          echo "" >> scan-report.md
+          echo "---" >> scan-report.md
+          echo "*Scanned by [agent-bom](https://github.com/msaad00/agent-bom) — AI supply chain security scanner*" >> scan-report.md
+
+      - name: Comment on PR
+        if: steps.scan.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          PR_NUMBER: "${{ github.event.pull_request.number }}"
+        run: |
+          gh pr comment "${PR_NUMBER}" --body-file scan-report.md

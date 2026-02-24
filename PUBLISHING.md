@@ -6,7 +6,7 @@ How to publish agent-bom to each MCP ecosystem platform.
 
 - agent-bom is already published on [PyPI](https://pypi.org/project/agent-bom/) (automated via release CI)
 - Docker images are published to Docker Hub and GHCR (automated via release CI)
-- MCP server supports both **stdio** and **SSE** transports
+- MCP server supports both **stdio** and **SSE/streamable-http** transports
 
 ---
 
@@ -16,88 +16,35 @@ Smithery requires a publicly accessible HTTP URL for the MCP server.
 
 ### Step 1: Deploy SSE server
 
-Pick one of the following deployment platforms:
+The SSE server is deployed on Railway at `https://agent-bom-mcp.up.railway.app` (automated via `deploy-mcp-sse.yml`).
 
-**Railway** (recommended — simplest):
-```bash
-# Install Railway CLI
-npm install -g @railway/cli
-
-# Login and deploy
-railway login
-railway init
-railway up
-```
-
-**Render**:
-```bash
-# Connect repo on https://dashboard.render.com
-# Select "New Blueprint" → point to render.yaml in this repo
-```
-
-**Fly.io**:
-```bash
-# Install flyctl
-curl -L https://fly.io/install.sh | sh
-
-# Deploy
-fly launch --config fly.toml
-fly deploy
-```
-
-**Docker (any VPS)**:
-```bash
-docker build -f Dockerfile.sse -t agent-bom-sse .
-docker run -d -p 8423:8423 --name agent-bom-mcp agent-bom-sse
-```
-
-### Step 2: Get your public URL
-
-After deployment, note the public URL. Examples:
-- Railway: `https://web-production-c0852.up.railway.app`
-- Render: `https://agent-bom-mcp.onrender.com`
-- Fly.io: `https://agent-bom-mcp.fly.dev`
-
-### Step 3: Publish to Smithery
+### Step 2: Publish to Smithery
 
 **Option A — Web UI**:
-1. Go to https://smithery.ai
-2. Click **Publish** → **MCP**
-3. Namespace: `agent-bom`
-4. Server ID: `agent-bom`
-5. MCP Server URL: paste your public URL from Step 2
-6. Click **Continue**
+1. Go to https://smithery.ai/servers/new
+2. Namespace: `agent-bom`
+3. Server ID: `agent-bom`
+4. MCP Server URL: `https://agent-bom-mcp.up.railway.app/mcp`
+5. Click **Continue**
 
-**Option B — CLI**:
-```bash
-npx @smithery/cli mcp publish <YOUR_URL> -n agent-bom/agent-bom
-```
+**Option B — Automated**:
+The `publish-registries.yml` workflow auto-publishes to Smithery on each release using `SMITHERY_API_TOKEN`.
 
 ### Verification
 
-After publishing, check: https://smithery.ai/server/@agent-bom/agent-bom
+After publishing, check: https://smithery.ai/server/agent-bom/agent-bom
 
 ---
 
 ## 2. Official MCP Registry
 
-The official MCP server registry at https://registry.modelcontextprotocol.io may auto-discover servers published on PyPI.
+Automated via `publish-mcp-registry.yml` using GitHub OIDC — no secrets needed.
 
-### Option A: Auto-discovery
-
-Since agent-bom is on PyPI and includes MCP server metadata, it may be automatically indexed. Check:
-
-```bash
-curl -s "https://registry.modelcontextprotocol.io/v0/servers?search=agent-bom" | python -m json.tool
-```
-
-### Option B: Manual submission
-
-If not auto-discovered, use our prepared registry entry:
+### Manual submission
 
 ```bash
 # Our entry is at: integrations/mcp-registry/server.json
-# Submit to the MCP registry team or create a PR if they have a public repo
+# Validates and publishes automatically on each release
 ```
 
 ### Verification
@@ -132,101 +79,88 @@ git add servers/agent-bom.json
 git commit -m "feat: add agent-bom MCP server"
 git push origin add-agent-bom
 gh pr create --title "feat: add agent-bom security scanner" \
-  --body "Adds agent-bom — AI supply chain security scanner with 7 MCP tools for CVE scanning, blast radius, SBOM generation, compliance, and remediation."
+  --body "Adds agent-bom — AI supply chain security scanner with 7 MCP tools."
 ```
 
 ### Verification
 
-After the PR is merged, verify with:
+After the PR is merged:
 ```bash
 thv run agent-bom
 ```
 
 ---
 
-## 4. OpenClaw
+## 4. ClawHub / OpenClaw
 
-### Submit the skill
+Automated via `publish-registries.yml` using `CLAWHUB_TOKEN`.
+
+### Manual publish
 
 ```bash
-# Our skill definition is at: integrations/openclaw/SKILL.md
-# Submit to OpenClaw's skill registry following their contribution guidelines
+npm install -g clawhub@latest
+clawhub login --token "$CLAWHUB_TOKEN"
+clawhub publish integrations/openclaw \
+  --slug agent-bom --name "agent-bom" \
+  --version "0.31.0" --no-input --force
 ```
 
 ### Verification
 
 ```bash
 clawhub install agent-bom
-agent-bom scan
 ```
 
 ---
 
 ## 5. Docker Hub
 
-Automated via `.github/workflows/release.yml` on each GitHub Release.
+Automated via `.github/workflows/release.yml` on each tag push.
 
 Images published:
 - `agentbom/agent-bom:v{version}`
 - `agentbom/agent-bom:latest`
 
-### Verification
-
-```bash
-docker pull agentbom/agent-bom:latest
-docker run --rm agentbom/agent-bom --version
-```
-
 ---
 
 ## 6. GitHub Container Registry (GHCR)
 
-Automated via `.github/workflows/publish-mcp.yml` on each GitHub Release.
+Automated via `.github/workflows/publish-mcp.yml` after each release.
 
 Images published:
 - `ghcr.io/msaad00/agent-bom:{tag}` — stdio MCP server
 - `ghcr.io/msaad00/agent-bom-sse:{tag}` — SSE MCP server
-- Both with `:latest` tags
-
-### Verification
-
-```bash
-docker pull ghcr.io/msaad00/agent-bom:latest
-docker run --rm ghcr.io/msaad00/agent-bom
-```
 
 ---
 
 ## 7. Creating a Release
 
-To trigger all CI pipelines (PyPI, Docker Hub, GHCR, MCP containers):
+Tag push triggers the full pipeline automatically:
 
 ```bash
-# Ensure version is bumped in pyproject.toml
-# Tag and push
-git tag v0.28.1
-git push origin v0.28.1
-
-# Create GitHub Release (triggers all publish workflows)
-gh release create v0.28.1 --generate-notes --title "agent-bom v0.28.1"
+git tag v0.31.0
+git push origin v0.31.0
 ```
 
 This triggers:
-1. **release.yml** → PyPI publish + Docker Hub + Sigstore signing
-2. **publish-mcp.yml** → GHCR stdio + SSE containers
-3. **deploy-mcp-sse.yml** → Railway deployment (if configured)
+1. **release.yml** → PyPI + Docker Hub + Sigstore signing + GitHub Release
+2. **publish-mcp.yml** → GHCR stdio + SSE containers (via workflow_run)
+3. **publish-registries.yml** → Smithery + ClawHub (via workflow_run)
+4. **publish-mcp-registry.yml** → Official MCP Registry (via workflow_run)
+5. **deploy-mcp-sse.yml** → Railway deployment (via workflow_run)
 
 ---
 
-## Platform Status Checklist
+## Platform Status
 
-| Platform | Entry File | CI Automated | Manual Step |
-|----------|-----------|-------------|-------------|
-| **PyPI** | `pyproject.toml` | release.yml | None |
-| **Docker Hub** | `Dockerfile` | release.yml | None |
-| **GHCR (stdio)** | `integrations/toolhive/Dockerfile.mcp` | publish-mcp.yml | None |
-| **GHCR (SSE)** | `Dockerfile.sse` | publish-mcp.yml | None |
-| **Smithery** | `smithery.yaml` | — | Deploy SSE + publish URL |
-| **MCP Registry** | `integrations/mcp-registry/server.json` | — | Check auto-discovery or submit |
-| **ToolHive** | `integrations/toolhive/server.json` | — | PR to stacklok/toolhive-catalog |
-| **OpenClaw** | `integrations/openclaw/SKILL.md` | — | Submit to OpenClaw registry |
+| Platform | Entry File | Automated | Trigger |
+|----------|-----------|-----------|---------|
+| **PyPI** | `pyproject.toml` | release.yml | tag push |
+| **Docker Hub** | `Dockerfile` | release.yml | tag push |
+| **GHCR (stdio)** | `Dockerfile.mcp` | publish-mcp.yml | workflow_run |
+| **GHCR (SSE)** | `Dockerfile.sse` | publish-mcp.yml | workflow_run |
+| **Smithery** | workflow API | publish-registries.yml | workflow_run |
+| **ClawHub** | `integrations/openclaw/` | publish-registries.yml | workflow_run |
+| **MCP Registry** | `integrations/mcp-registry/server.json` | publish-mcp-registry.yml | workflow_run |
+| **ToolHive** | `integrations/toolhive/server.json` | — | Manual PR |
+| **Railway** | `Dockerfile.sse` | deploy-mcp-sse.yml | workflow_run |

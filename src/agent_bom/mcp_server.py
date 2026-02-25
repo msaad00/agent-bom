@@ -144,9 +144,10 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         host=host,
         port=port,
         instructions=(
-            f"agent-bom v{__version__} — AI supply chain security scanner. "
+            f"agent-bom v{__version__} — The open-source Grype for the AI era. "
             "Scans packages and images for CVEs, assesses credential exposure and tool access risks, "
-            "maps blast radius, generates SBOMs, and enforces security policies. Agentless, read-only."
+            "maps blast radius from vulnerabilities to credentials and tools, generates SBOMs, "
+            "and enforces security policies. Agentless, read-only, non-root."
         ),
     )
     # Set the actual agent-bom version (FastMCP defaults to SDK version)

@@ -3,7 +3,7 @@ FROM python:3.11-slim
 ARG VERSION=dev
 
 LABEL maintainer="W S <34316639+msaad00@users.noreply.github.com>"
-LABEL description="agent-bom: AI supply chain security scanner — CVE scanning for packages and images, config security assessment, blast radius mapping"
+LABEL description="agent-bom: The open-source Grype for the AI era — CVEs, config security, blast radius, compliance"
 LABEL org.opencontainers.image.version="${VERSION}"
 LABEL org.opencontainers.image.source="https://github.com/msaad00/agent-bom"
 

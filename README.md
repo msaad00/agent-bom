@@ -16,7 +16,7 @@
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center">
-  <b>AI supply chain security scanner. CVE scanning for packages and images. Config security — credential exposure, tool access, privilege escalation. Blast radius mapping. OWASP LLM Top 10 + MITRE ATLAS + NIST AI RMF.</b>
+  <b>The open-source Grype for the AI era. Scan packages and images for CVEs. Assess config security — credential exposure, tool access, privilege escalation. Map blast radius from vulnerabilities to credentials and tools. OWASP LLM Top 10 + MITRE ATLAS + NIST AI RMF.</b>
 </p>
 
 <p align="center">
@@ -355,7 +355,7 @@ agent-bom mcp-server                    # stdio
 agent-bom mcp-server --transport sse    # remote
 ```
 
-8 tools: `scan`, `check`, `blast_radius`, `policy_check`, `registry_lookup`, `generate_sbom`, `compliance`, `remediate`
+13 tools: `scan`, `check`, `blast_radius`, `policy_check`, `registry_lookup`, `generate_sbom`, `compliance`, `remediate`, `verify`, `where`, `inventory`, `diff`, `skill_trust`
 
 ### Cloud UI
 
@@ -401,12 +401,16 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 
 ## Roadmap
 
-- [ ] CIS AI benchmarks
-- [ ] Agent guardrails engine — runtime policy enforcement
+- [ ] Cloud AI inventory wiring — AWS Bedrock, Azure AI Foundry, GCP Vertex, Snowflake Cortex (code exists, CLI integration in progress)
+- [ ] Runtime MCP traffic monitoring — live tool call analysis, anomaly detection
+- [ ] Tool poisoning / prompt injection detection — static + dynamic MCP tool analysis
+- [ ] Model security — weights, datasets, fine-tuning supply chain risks
+- [ ] GPU/VM infrastructure scanning — NVIDIA NIM, vLLM, compute fleet inventory
+- [ ] K8s AI workload discovery — pod-level agent and model scanning
 - [ ] EU AI Act compliance mapping
-- [ ] Multi-language SDK detection (Go, Rust, Java)
-- [ ] Workflow engine scanning (n8n, Zapier, Make)
+- [ ] CIS AI benchmarks
 - [ ] License compliance engine
+- [ ] Workflow engine scanning (n8n, Zapier, Make)
 
 ---
 

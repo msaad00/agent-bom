@@ -23,9 +23,10 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Annotated, Optional
 
 from mcp.types import ToolAnnotations
+from pydantic import Field
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ async def _run_scan_pipeline(
     image: Optional[str] = None,
     sbom_path: Optional[str] = None,
     enrich: bool = False,
+    transitive: bool = False,
 ):
     """Run discovery → extraction → scanning and return (agents, blast_radii).
 
@@ -146,23 +148,20 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     @mcp.tool(annotations=_READ_ONLY)
     async def scan(
-        config_path: Optional[str] = None,
-        image: Optional[str] = None,
-        sbom_path: Optional[str] = None,
-        enrich: bool = False,
+        config_path: Annotated[str | None, Field(description="Path to MCP client config directory. Auto-discovers all if omitted.")] = None,
+        image: Annotated[str | None, Field(description="Docker image to scan (e.g. 'nginx:1.25', 'ghcr.io/org/app:v1').")] = None,
+        sbom_path: Annotated[str | None, Field(description="Path to existing CycloneDX or SPDX JSON SBOM file to ingest.")] = None,
+        enrich: Annotated[bool, Field(description="Enable NVD CVSS, EPSS probability, and CISA KEV enrichment.")] = False,
+        transitive: Annotated[bool, Field(description="Resolve transitive dependencies for npx/uvx packages.")] = False,
+        verify_integrity: Annotated[bool, Field(description="Verify package SHA-256/SRI hashes and SLSA provenance against registries.")] = False,
+        fail_severity: Annotated[str | None, Field(description="Return failure status if vulns at this severity or higher: critical, high, medium, low.")] = None,
+        policy: Annotated[dict | None, Field(description="Policy object to evaluate alongside scan results, e.g. {\"rules\": [{\"id\": \"no-critical\", \"severity_gte\": \"critical\", \"action\": \"fail\"}]}.")] = None,
     ) -> str:
         """Run a full security scan of AI agents and MCP servers.
 
         Discovers local MCP configurations (Claude Desktop, Cursor, Windsurf,
         VS Code Copilot, OpenClaw, etc.), extracts package dependencies, queries
         OSV.dev for CVEs, computes blast radius, and returns structured results.
-
-        Args:
-            config_path: Path to a specific MCP config directory to scan.
-                         If not provided, auto-discovers all local agent configs.
-            image: Docker image reference to scan (e.g. "nginx:1.25").
-            sbom_path: Path to an existing SBOM file (CycloneDX or SPDX JSON).
-            enrich: Enable NVD CVSS, EPSS, and CISA KEV enrichment.
 
         Returns:
             JSON with the complete AI-BOM report including agents, packages,
@@ -172,19 +171,64 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             from agent_bom.models import AIBOMReport
             from agent_bom.output import to_json
 
-            agents, blast_radii = await _run_scan_pipeline(config_path, image, sbom_path, enrich)
+            agents, blast_radii = await _run_scan_pipeline(
+                config_path, image, sbom_path, enrich, transitive=transitive,
+            )
             if not agents:
                 return json.dumps({"status": "no_agents_found", "agents": [], "blast_radii": []})
 
+            # Integrity verification
+            if verify_integrity:
+                from agent_bom.http_client import create_client
+                from agent_bom.integrity import verify_package_integrity
+
+                async with create_client(timeout=15.0) as client:
+                    for agent in agents:
+                        for server in agent.mcp_servers:
+                            for pkg in server.packages:
+                                try:
+                                    result = await verify_package_integrity(pkg, client)
+                                    if result:
+                                        pkg.integrity = result
+                                except Exception:
+                                    pass
+
             report = AIBOMReport(agents=agents, blast_radii=blast_radii)
-            return json.dumps(to_json(report), indent=2, default=str)
+            result = to_json(report)
+
+            # Policy evaluation
+            if policy:
+                from agent_bom.policy import _validate_policy, evaluate_policy
+
+                _validate_policy(policy)
+                result["policy_results"] = evaluate_policy(policy, blast_radii)
+
+            # Severity gate
+            if fail_severity:
+                from agent_bom.models import Severity
+
+                threshold = Severity(fail_severity.lower())
+                severity_order = ["critical", "high", "medium", "low"]
+                threshold_idx = severity_order.index(threshold.value)
+                gate_fail = any(
+                    severity_order.index(br.vulnerability.severity.value) <= threshold_idx
+                    for br in blast_radii
+                    if br.vulnerability.severity.value in severity_order
+                )
+                result["gate_status"] = "fail" if gate_fail else "pass"
+                result["gate_severity"] = fail_severity.lower()
+
+            return json.dumps(result, indent=2, default=str)
         except Exception as exc:
             return json.dumps({"error": str(exc)})
 
     # ── Tool 2: check ────────────────────────────────────────────────
 
     @mcp.tool(annotations=_READ_ONLY)
-    async def check(package: str, ecosystem: str = "npm") -> str:
+    async def check(
+        package: Annotated[str, Field(description="Package name with optional version, e.g. 'express@4.18.2', '@modelcontextprotocol/server-filesystem@2025.1.14', or 'requests' (resolves @latest).")],
+        ecosystem: Annotated[str, Field(description="Package ecosystem: 'npm', 'pypi', 'go', 'cargo', 'maven', or 'nuget'.")] = "npm",
+    ) -> str:
         """Check a specific package for known CVEs before installing.
 
         Queries OSV.dev for vulnerabilities in the given package. Use this
@@ -272,7 +316,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
     # ── Tool 3: blast_radius ──────────────────────────────────────────
 
     @mcp.tool(annotations=_READ_ONLY)
-    async def blast_radius(cve_id: str) -> str:
+    async def blast_radius(
+        cve_id: Annotated[str, Field(description="CVE identifier to look up, e.g. 'CVE-2024-1234' or 'GHSA-xxxx'.")],
+    ) -> str:
         """Look up the blast radius of a specific CVE across your AI agent setup.
 
         Scans local MCP configurations, finds the specified CVE, and returns
@@ -322,7 +368,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
     # ── Tool 4: policy_check ──────────────────────────────────────────
 
     @mcp.tool(annotations=_READ_ONLY)
-    async def policy_check(policy_json: str) -> str:
+    async def policy_check(
+        policy_json: Annotated[str, Field(description="JSON string containing policy rules, e.g. {\"rules\": [{\"id\": \"no-critical\", \"severity_gte\": \"critical\", \"action\": \"fail\"}]}.")],
+    ) -> str:
         """Evaluate a security policy against current scan results.
 
         Runs a scan, then evaluates the provided policy rules against the
@@ -358,8 +406,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     @mcp.tool(annotations=_READ_ONLY)
     def registry_lookup(
-        server_name: Optional[str] = None,
-        package_name: Optional[str] = None,
+        server_name: Annotated[str | None, Field(description="MCP server name to look up, e.g. 'filesystem', '@modelcontextprotocol/server-github'.")] = None,
+        package_name: Annotated[str | None, Field(description="Package name to search for, e.g. 'mcp-server-sqlite'. At least one of server_name or package_name is required.")] = None,
     ) -> str:
         """Query the agent-bom MCP server threat intelligence registry.
 
@@ -419,8 +467,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     @mcp.tool(annotations=_READ_ONLY)
     async def generate_sbom(
-        format: str = "cyclonedx",
-        config_path: Optional[str] = None,
+        format: Annotated[str, Field(description="SBOM format: 'cyclonedx' (CycloneDX 1.6) or 'spdx' (SPDX 3.0).")] = "cyclonedx",
+        config_path: Annotated[str | None, Field(description="Path to MCP client config directory. Auto-discovers all if omitted.")] = None,
     ) -> str:
         """Generate a Software Bill of Materials (SBOM) for your AI agent setup.
 
@@ -456,8 +504,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     @mcp.tool(annotations=_READ_ONLY)
     async def compliance(
-        config_path: Optional[str] = None,
-        image: Optional[str] = None,
+        config_path: Annotated[str | None, Field(description="Path to MCP client config directory. Auto-discovers all if omitted.")] = None,
+        image: Annotated[str | None, Field(description="Docker image to scan, e.g. 'nginx:1.25'.")] = None,
     ) -> str:
         """Get OWASP LLM Top 10 / MITRE ATLAS / NIST AI RMF compliance posture.
 
@@ -545,8 +593,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     @mcp.tool(annotations=_READ_ONLY)
     async def remediate(
-        config_path: Optional[str] = None,
-        image: Optional[str] = None,
+        config_path: Annotated[str | None, Field(description="Path to MCP client config directory. Auto-discovers all if omitted.")] = None,
+        image: Annotated[str | None, Field(description="Docker image to scan, e.g. 'nginx:1.25'.")] = None,
     ) -> str:
         """Generate a remediation plan for vulnerabilities in your AI agent setup.
 
@@ -611,7 +659,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     @mcp.tool(annotations=_READ_ONLY)
     def skill_trust(
-        skill_path: str,
+        skill_path: Annotated[str, Field(description="Path to a SKILL.md file (or any skill/instruction file) to assess.")],
     ) -> str:
         """Assess the trust level of a SKILL.md file using ClawHub-style categories.
 

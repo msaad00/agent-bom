@@ -117,7 +117,7 @@ def test_smithery_yaml_exists():
 
 
 def test_server_card_has_all_tools():
-    """Server card should list all 7 MCP tools."""
+    """Server card should list all 9 MCP tools."""
     from agent_bom.mcp_server import build_server_card
 
     card = build_server_card()
@@ -166,15 +166,15 @@ def test_server_card_metadata():
 # ---------------------------------------------------------------------------
 
 
-def test_mcp_server_help_shows_7_tools():
-    """MCP server help should mention 7 tools."""
+def test_mcp_server_help_shows_9_tools():
+    """MCP server help should mention 9 tools."""
     from click.testing import CliRunner
 
     from agent_bom.cli import main
 
     runner = CliRunner()
     result = runner.invoke(main, ["mcp-server", "--help"])
-    assert "7 security tools" in result.output
+    assert "9 security tools" in result.output
     assert "compliance" in result.output
     assert "remediate" in result.output
 

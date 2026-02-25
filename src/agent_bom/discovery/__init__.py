@@ -92,6 +92,18 @@ CONFIG_LOCATIONS: dict[AgentType, dict[str, list[str]]] = {
         "Linux": ["~/.openclaw/openclaw.json"],
         "Windows": ["~/.openclaw/openclaw.json"],
     },
+    AgentType.ROO_CODE: {
+        # Roo Code VS Code extension (formerly Roo Cline)
+        "Darwin": ["~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json"],
+        "Linux": ["~/.config/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json"],
+        "Windows": ["~/AppData/Roaming/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json"],
+    },
+    AgentType.AMAZON_Q: {
+        # Amazon Q Developer VS Code extension
+        "Darwin": ["~/Library/Application Support/Code/User/globalStorage/amazonwebservices.amazon-q-vscode/mcp.json"],
+        "Linux": ["~/.config/Code/User/globalStorage/amazonwebservices.amazon-q-vscode/mcp.json"],
+        "Windows": ["~/AppData/Roaming/Code/User/globalStorage/amazonwebservices.amazon-q-vscode/mcp.json"],
+    },
     AgentType.TOOLHIVE: {
         # ToolHive MCP server manager — discovery via `thv list`, not config files
         "Darwin": [],

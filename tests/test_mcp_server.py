@@ -54,12 +54,12 @@ def test_create_mcp_server_returns_object():
     assert server.name == "agent-bom"
 
 
-def test_mcp_server_has_nine_tools():
-    """Server should register exactly 9 tools."""
+def test_mcp_server_has_thirteen_tools():
+    """Server should register exactly 13 tools."""
     from agent_bom.mcp_server import create_mcp_server
     server = create_mcp_server()
     tools = _run(server.list_tools())
-    assert len(tools) == 9
+    assert len(tools) == 13
 
 
 def test_mcp_server_tool_names():
@@ -71,6 +71,7 @@ def test_mcp_server_tool_names():
     assert names == {
         "scan", "check", "blast_radius", "policy_check", "registry_lookup",
         "generate_sbom", "compliance", "remediate", "skill_trust",
+        "verify", "where", "inventory", "diff",
     }
 
 
@@ -567,3 +568,140 @@ def test_scan_with_policy(mock_pipeline):
     result = _call_tool(server, "scan", {"policy": policy})
     assert "policy_results" in result
     assert result["policy_results"]["passed"] is True
+
+
+# ---------------------------------------------------------------------------
+# Tool: where (no mocking needed — reads config paths)
+# ---------------------------------------------------------------------------
+
+
+def test_where_returns_clients():
+    """where tool should return list of MCP clients with config paths."""
+    from agent_bom.mcp_server import create_mcp_server
+    server = create_mcp_server()
+    result = _call_tool(server, "where", {})
+    assert "clients" in result
+    assert "platform" in result
+    assert len(result["clients"]) >= 10
+    # Each client should have the expected structure
+    client = result["clients"][0]
+    assert "client" in client
+    assert "config_paths" in client
+
+
+# ---------------------------------------------------------------------------
+# Tool: inventory (mocked discovery)
+# ---------------------------------------------------------------------------
+
+
+@patch("agent_bom.parsers.extract_packages")
+@patch("agent_bom.discovery.discover_all")
+def test_inventory_returns_agents(mock_discover, mock_extract):
+    """inventory tool should return agent list without scanning."""
+    from agent_bom.models import Agent, AgentType, MCPServer, TransportType
+    mock_agent = Agent(
+        name="test-agent", agent_type=AgentType.CLAUDE_DESKTOP,
+        config_path="/tmp/test", mcp_servers=[
+            MCPServer(name="s", command="npx", args=[], env={},
+                      transport=TransportType.STDIO, packages=[])
+        ],
+    )
+    mock_discover.return_value = [mock_agent]
+    mock_extract.return_value = []
+    from agent_bom.mcp_server import create_mcp_server
+    server = create_mcp_server()
+    result = _call_tool(server, "inventory", {})
+    assert "agents" in result
+    assert result["total_agents"] == 1
+    assert result["agents"][0]["name"] == "test-agent"
+
+
+@patch("agent_bom.discovery.discover_all")
+def test_inventory_no_agents(mock_discover):
+    """inventory with no agents should return no_agents_found."""
+    mock_discover.return_value = []
+    from agent_bom.mcp_server import create_mcp_server
+    server = create_mcp_server()
+    result = _call_tool(server, "inventory", {})
+    assert result["status"] == "no_agents_found"
+
+
+# ---------------------------------------------------------------------------
+# Tool: diff (mocked pipeline)
+# ---------------------------------------------------------------------------
+
+
+@patch("agent_bom.mcp_server._run_scan_pipeline")
+def test_diff_no_baseline(mock_pipeline):
+    """diff with no saved baseline should save current as first baseline."""
+    from agent_bom.models import Agent, AgentType, MCPServer, TransportType
+    mock_agent = Agent(
+        name="test-agent", agent_type=AgentType.CLAUDE_DESKTOP,
+        config_path="/tmp/test", mcp_servers=[
+            MCPServer(name="s", command="npx", args=[], env={},
+                      transport=TransportType.STDIO, packages=[])
+        ],
+    )
+    mock_pipeline.return_value = ([mock_agent], [])
+
+    with patch("agent_bom.history.latest_report", return_value=None), \
+         patch("agent_bom.history.save_report"):
+        from agent_bom.mcp_server import create_mcp_server
+        server = create_mcp_server()
+        result = _call_tool(server, "diff", {})
+        assert "message" in result
+        assert "baseline" in result["message"].lower()
+
+
+@patch("agent_bom.mcp_server._run_scan_pipeline")
+def test_diff_no_agents(mock_pipeline):
+    """diff with no agents should return error."""
+    mock_pipeline.return_value = ([], [])
+    from agent_bom.mcp_server import create_mcp_server
+    server = create_mcp_server()
+    result = _call_tool(server, "diff", {})
+    assert "error" in result
+
+
+# ---------------------------------------------------------------------------
+# Tool: verify (mocked integrity)
+# ---------------------------------------------------------------------------
+
+
+@patch("agent_bom.integrity.check_package_provenance")
+@patch("agent_bom.integrity.verify_package_integrity")
+def test_verify_returns_result(mock_integrity, mock_provenance):
+    """verify tool should return integrity + provenance results."""
+    mock_integrity.return_value = None
+    mock_provenance.return_value = None
+    from agent_bom.mcp_server import create_mcp_server
+    server = create_mcp_server()
+    result = _call_tool(server, "verify", {"package": "express@4.18.2", "ecosystem": "npm"})
+    assert result["package"] == "express"
+    assert result["version"] == "4.18.2"
+    assert result["ecosystem"] == "npm"
+    assert "integrity" in result
+    assert "provenance" in result
+
+
+# ---------------------------------------------------------------------------
+# Resources
+# ---------------------------------------------------------------------------
+
+
+def test_resource_registry_servers():
+    """registry://servers resource should return valid JSON."""
+    from agent_bom.mcp_server import create_mcp_server
+    server = create_mcp_server()
+    resources = _run(server.list_resources())
+    uris = [str(r.uri) for r in resources]
+    assert "registry://servers" in uris
+
+
+def test_resource_policy_template():
+    """policy://template resource should return valid policy JSON."""
+    from agent_bom.mcp_server import create_mcp_server
+    server = create_mcp_server()
+    resources = _run(server.list_resources())
+    uris = [str(r.uri) for r in resources]
+    assert "policy://template" in uris

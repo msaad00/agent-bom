@@ -568,8 +568,8 @@ def test_mcp_skill_trust_tool_exists():
     assert "skill_trust" in tool_names
 
 
-def test_mcp_server_card_has_9_tools():
-    """Server card lists 9 tools."""
+def test_mcp_server_card_has_13_tools():
+    """Server card lists 13 tools."""
     from agent_bom.mcp_server import _SERVER_CARD_TOOLS
 
-    assert len(_SERVER_CARD_TOOLS) == 9
+    assert len(_SERVER_CARD_TOOLS) == 13

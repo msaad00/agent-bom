@@ -1,7 +1,7 @@
 ---
 name: agent-bom
 description: Scan AI agents and MCP servers for CVEs, generate SBOMs, map blast radius, enforce security policies
-version: 0.31.8
+version: 0.31.9
 metadata:
   openclaw:
     requires:
@@ -253,7 +253,7 @@ uv tool install agent-bom
 ### Verify installation
 ```bash
 agent-bom --version
-# Should print: agent-bom 0.31.8
+# Should print: agent-bom 0.31.9
 ```
 
 ### Verify integrity and provenance

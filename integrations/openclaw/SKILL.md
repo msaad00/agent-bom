@@ -25,15 +25,11 @@ metadata:
       - darwin
       - linux
     install:
-      - kind: uv
+      - kind: pipx
         package: agent-bom
         bins:
           - agent-bom
       - kind: pip
-        package: agent-bom
-        bins:
-          - agent-bom
-      - kind: pipx
         package: agent-bom
         bins:
           - agent-bom
@@ -239,9 +235,9 @@ This is declared in `metadata.openclaw.optional_env` above. **No env vars are re
 
 ## Installation
 
-### Recommended: uv (fastest)
+### Recommended: pipx (isolated environment)
 ```bash
-uv tool install agent-bom
+pipx install agent-bom
 ```
 
 ### Alternative: pip
@@ -249,9 +245,9 @@ uv tool install agent-bom
 pip install agent-bom
 ```
 
-### Alternative: pipx (isolated environment)
+### Alternative: uv (fastest)
 ```bash
-pipx install agent-bom
+uv tool install agent-bom
 ```
 
 ### Verify installation

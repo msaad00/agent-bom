@@ -1,5 +1,5 @@
 name: 'agent-bom Scan'
-description: 'Scan AI supply chain dependencies for CVEs — discover MCP configs, extract packages, map blast radius.'
+description: 'Scan AI supply chain for CVEs and config risks — packages, images, credential exposure, blast radius.'
 author: 'agent-bom'
 
 branding:

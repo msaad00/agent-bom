@@ -145,8 +145,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         port=port,
         instructions=(
             f"agent-bom v{__version__} — AI supply chain security scanner. "
-            "Discovers MCP configs, scans package dependencies for CVEs, maps blast radius, "
-            "generates SBOMs, and enforces security policies. Read-only."
+            "Scans packages and images for CVEs, assesses credential exposure and tool access risks, "
+            "maps blast radius, generates SBOMs, and enforces security policies. Agentless, read-only."
         ),
     )
     # Set the actual agent-bom version (FastMCP defaults to SDK version)
@@ -169,7 +169,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
         Discovers local MCP configurations (Claude Desktop, Cursor, Windsurf,
         VS Code Copilot, OpenClaw, etc.), extracts package dependencies, queries
-        OSV.dev for CVEs, computes blast radius, and returns structured results.
+        OSV.dev for CVEs, assesses config security (credential exposure, tool access),
+        computes blast radius, and returns structured results.
 
         Returns:
             JSON with the complete AI-BOM report including agents, packages,
@@ -804,7 +805,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         """List all discovered MCP configurations and servers without CVE scanning.
 
         Performs fast discovery and package extraction only — no vulnerability
-        scanning. Use this for a quick overview of your AI supply chain inventory.
+        scanning. Use this for a quick inventory of configs, servers, and packages.
 
         Returns:
             JSON with discovered agents, their MCP servers, packages, and

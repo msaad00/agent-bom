@@ -1,6 +1,6 @@
 ---
 name: agent-bom
-description: AI supply chain security scanner — discover MCP configs, scan package dependencies for CVEs, generate SBOMs, map blast radius, check compliance
+description: AI supply chain security scanner — CVE scanning for packages and images, config security assessment, blast radius mapping, SBOMs, compliance
 version: 0.32.0
 metadata:
   openclaw:
@@ -29,8 +29,8 @@ metadata:
 
 # agent-bom — AI Supply Chain Security Scanner
 
-An MCP-powered skill that discovers MCP configs, scans package dependencies for CVEs,
-generates SBOMs, maps blast radius, and evaluates compliance — all through a remote MCP server.
+An MCP-powered skill that scans the AI supply chain for security risks — CVEs in packages
+and images, credential exposure, tool access risks, privilege escalation — all through a remote MCP server.
 No local binary install required.
 
 ## Setup
@@ -114,8 +114,12 @@ registry_lookup(server_name="brave-search")
 ## What the MCP Server Does
 
 The remote server discovers MCP client configurations, extracts package dependencies,
-and queries public vulnerability databases (OSV.dev, NVD, EPSS, CISA KEV). It returns
-structured results — CVE IDs, severity scores, blast radius chains, and remediation advice.
+queries public vulnerability databases (OSV.dev, NVD, EPSS, CISA KEV), and assesses
+config security (credential exposure, tool access patterns, privilege escalation risks).
+It returns structured results — CVE IDs, severity scores, config findings, blast radius
+chains linking vulnerabilities to exposed credentials and tools, and remediation advice.
+
+Agentless, read-only, non-root. No binary install required.
 
 **Data handling:**
 - Only package names and versions are sent to vulnerability APIs

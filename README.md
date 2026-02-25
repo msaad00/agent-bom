@@ -16,7 +16,7 @@
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center">
-  <b>AI supply chain security scanner. Discover MCP configs, scan package dependencies for CVEs, map blast radius. Privilege detection. OWASP LLM Top 10 + MITRE ATLAS + NIST AI RMF.</b>
+  <b>AI supply chain security scanner. CVE scanning for packages and images. Config security — credential exposure, tool access, privilege escalation. Blast radius mapping. OWASP LLM Top 10 + MITRE ATLAS + NIST AI RMF.</b>
 </p>
 
 <p align="center">

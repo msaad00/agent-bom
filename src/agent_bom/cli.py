@@ -203,6 +203,8 @@ def main():
 @click.option("--snyk", "snyk_flag", is_flag=True, help="Enrich vulnerabilities with Snyk intelligence (requires SNYK_TOKEN)")
 @click.option("--snyk-token", default=None, envvar="SNYK_TOKEN", metavar="KEY", help="Snyk API token (or set SNYK_TOKEN env var)")
 @click.option("--snyk-org", default=None, envvar="SNYK_ORG_ID", metavar="ORG", help="Snyk organization ID (or set SNYK_ORG_ID env var)")
+@click.option("--preset", type=click.Choice(["ci", "enterprise", "quick"]), default=None,
+              help="Scan preset: ci (quiet, json, fail-on-critical), enterprise (enrich, introspect, transitive, verify-integrity), quick (no transitive, no enrich)")
 def scan(
     project: Optional[str],
     config_dir: Optional[str],
@@ -288,6 +290,7 @@ def scan(
     remediate_sh_path: Optional[str],
     apply_fixes_flag: bool,
     apply_dry_run: bool,
+    preset: Optional[str],
 ):
     """Discover agents, extract dependencies, scan for vulnerabilities.
 
@@ -297,6 +300,23 @@ def scan(
       1  Fail — policy failure, or vulnerabilities found at or above
                 --fail-on-severity / --fail-on-kev / --fail-if-ai-risk
     """
+    import time as _time
+    _scan_start = _time.monotonic()
+
+    # Apply presets (override defaults, don't override explicit flags)
+    if preset == "ci":
+        quiet = True
+        output_format = output_format if output_format != "console" else "json"
+        fail_on_severity = fail_on_severity or "critical"
+    elif preset == "enterprise":
+        enrich = True
+        introspect = True
+        transitive = True
+        verify_integrity = True
+    elif preset == "quick":
+        transitive = False
+        enrich = False
+
     # Mutual exclusivity: --no-skill and --skill-only cannot be used together
     if no_skill and skill_only:
         click.echo("Error: --no-skill and --skill-only are mutually exclusive.", err=True)
@@ -1439,9 +1459,10 @@ def scan(
             sys.exit(1)
 
     # Scan completion divider
+    _elapsed = _time.monotonic() - _scan_start
     if output_format == "console" and not output and not quiet:
         con.print()
-        con.print(Rule("Scan Complete", style="green" if not blast_radii else "yellow"))
+        con.print(Rule(f"Scan Complete — {_elapsed:.1f}s", style="green" if not blast_radii else "yellow"))
 
     # Step 8: Exit code based on policy flags
     exit_code = 0

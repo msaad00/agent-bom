@@ -586,6 +586,96 @@ def _inventory_cards(report: "AIBOMReport") -> str:
     return "".join(cards)
 
 
+# ─── Compliance section ──────────────────────────────────────────────────────
+
+_STATUS_BADGE = {
+    "pass": '<span style="background:#16a34a;color:#fff;padding:2px 8px;border-radius:4px;font-size:.75rem">PASS</span>',
+    "warning": '<span style="background:#d97706;color:#fff;padding:2px 8px;border-radius:4px;font-size:.75rem">WARN</span>',
+    "fail": '<span style="background:#dc2626;color:#fff;padding:2px 8px;border-radius:4px;font-size:.75rem">FAIL</span>',
+}
+
+
+def _compliance_section(blast_radii: list["BlastRadius"]) -> str:
+    """Build OWASP/ATLAS/NIST compliance tables from blast radius tags."""
+    try:
+        from agent_bom.atlas import ATLAS_TECHNIQUES
+        from agent_bom.nist_ai_rmf import NIST_AI_RMF
+        from agent_bom.owasp import OWASP_LLM_TOP10
+    except ImportError:
+        return ""
+
+    br_dicts = []
+    for br in blast_radii:
+        br_dicts.append({
+            "severity": br.vulnerability.severity.value,
+            "owasp_tags": list(br.owasp_tags),
+            "atlas_tags": list(br.atlas_tags),
+            "nist_ai_rmf_tags": list(br.nist_ai_rmf_tags),
+        })
+
+    def _build_rows(catalog: dict, tag_field: str) -> tuple[str, int, int, int]:
+        rows = []
+        pass_count = fail_count = warn_count = 0
+        for code, name in sorted(catalog.items()):
+            findings = sum(1 for b in br_dicts if code in b.get(tag_field, []))
+            sev_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+            for b in br_dicts:
+                if code in b.get(tag_field, []):
+                    s = b.get("severity", "").lower()
+                    if s in sev_counts:
+                        sev_counts[s] += 1
+            if findings == 0:
+                status = "pass"
+                pass_count += 1
+            elif sev_counts["critical"] > 0 or sev_counts["high"] > 0:
+                status = "fail"
+                fail_count += 1
+            else:
+                status = "warning"
+                warn_count += 1
+            badge = _STATUS_BADGE[status]
+            rows.append(
+                f"<tr><td><code>{_esc(code)}</code></td><td>{_esc(name)}</td>"
+                f"<td style='text-align:center'>{findings}</td><td style='text-align:center'>{badge}</td></tr>"
+            )
+        return "\n".join(rows), pass_count, fail_count, warn_count
+
+    owasp_rows, op, of, ow = _build_rows(OWASP_LLM_TOP10, "owasp_tags")
+    atlas_rows, ap, af, aw = _build_rows(ATLAS_TECHNIQUES, "atlas_tags")
+    nist_rows, np_, nf, nw = _build_rows(NIST_AI_RMF, "nist_ai_rmf_tags")
+
+    total = (op + of + ow) + (ap + af + aw) + (np_ + nf + nw)
+    total_pass = op + ap + np_
+    score = round((total_pass / total) * 100, 1) if total > 0 else 100.0
+    has_fail = (of + af + nf) > 0
+    has_warn = (ow + aw + nw) > 0
+    overall = "fail" if has_fail else ("warning" if has_warn else "pass")
+    overall_badge = _STATUS_BADGE[overall]
+
+    def _framework_table(title: str, rows: str, p: int, f: int, w: int) -> str:
+        sub_total = p + f + w
+        return (
+            f'<details style="margin-bottom:12px" {"open" if f > 0 else ""}>'
+            f'<summary style="cursor:pointer;font-weight:600;padding:6px 0">'
+            f'{title} <span style="font-size:.8rem;color:#94a3b8">({p}/{sub_total} pass)</span></summary>'
+            f'<table class="vtable" style="margin-top:8px"><thead><tr>'
+            f'<th>Code</th><th>Control</th><th>Findings</th><th>Status</th></tr></thead>'
+            f'<tbody>{rows}</tbody></table></details>'
+        )
+
+    return (
+        f'<section id="compliance">'
+        f'<div class="sec-title">&#x1f6e1;&#xfe0f; Compliance Posture'
+        f'<sup style="font-size:.7rem;color:#475569;margin-left:6px">'
+        f'Score: {score}% {overall_badge}</sup></div>'
+        f'<div class="panel">'
+        f'{_framework_table("OWASP LLM Top 10", owasp_rows, op, of, ow)}'
+        f'{_framework_table("MITRE ATLAS", atlas_rows, ap, af, aw)}'
+        f'{_framework_table("NIST AI RMF", nist_rows, np_, nf, nw)}'
+        f'</div></section>'
+    )
+
+
 # ─── Main assembler ───────────────────────────────────────────────────────────
 
 
@@ -635,6 +725,10 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
         '<a href="#remediation">Remediation</a>'
         if blast_radii else ""
     )
+
+    # Compliance section
+    compliance_html = _compliance_section(blast_radii)
+    compliance_nav = '<a href="#compliance">Compliance</a>' if compliance_html else ""
 
     # Skill audit section
     skill_section = _skill_audit_section(report)
@@ -838,6 +932,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     <a href="#riskmap">Risk Map</a>
     <a href="#inventory">Inventory</a>
     {skill_nav}
+    {compliance_nav}
     {vuln_nav}
     <button class="print-btn" onclick="window.print()">&#x1f5b6;&#xfe0f; Print</button>
   </div>
@@ -936,6 +1031,9 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
 
   <!-- Vuln / Blast / Remediation -->
   {vuln_sections}
+
+  <!-- Compliance posture -->
+  {compliance_html}
 
 </div>
 

@@ -323,6 +323,7 @@ class AIBOMReport:
     trust_assessment_data: Optional[dict] = None  # Serialized TrustAssessmentResult (set by CLI)
     prompt_scan_data: Optional[dict] = None  # Serialized PromptScanResult (set by CLI)
     model_files: list[dict] = field(default_factory=list)
+    enforcement_data: Optional[dict] = None  # Serialized EnforcementReport (set by CLI)
 
     def __post_init__(self):
         if not self.tool_version:

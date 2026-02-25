@@ -16,7 +16,7 @@
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center">
-  <b>AI Bill of Materials generator. CVE scanning for AI agents and MCP servers. Blast radius mapping. Privilege detection. OWASP LLM Top 10 + MITRE ATLAS + NIST AI RMF.</b>
+  <b>AI supply chain security scanner. Discover MCP configs, scan package dependencies for CVEs, map blast radius. Privilege detection. OWASP LLM Top 10 + MITRE ATLAS + NIST AI RMF.</b>
 </p>
 
 <p align="center">

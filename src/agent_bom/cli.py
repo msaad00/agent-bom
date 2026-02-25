@@ -2366,7 +2366,7 @@ def mcp_server_cmd(transport: str, port: int, host: str):
 
     \b
     Exposes 13 security tools via MCP protocol:
-      scan              Discover agents, scan for CVEs, compute blast radius
+      scan              Discover MCP configs, scan dependencies for CVEs, map blast radius
       check             Check a specific package for CVEs before installing
       blast_radius      Look up blast radius for a specific CVE
       policy_check      Evaluate policy rules against scan findings

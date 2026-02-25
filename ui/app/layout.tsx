@@ -8,7 +8,7 @@ const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" });
 
 export const metadata: Metadata = {
   title: "agent-bom",
-  description: "AI Bill of Materials — map the full trust chain from AI agents to CVEs",
+  description: "AI supply chain security scanner — discover MCP configs, scan dependencies for CVEs, map blast radius",
   icons: { icon: "/favicon.ico" },
 };
 

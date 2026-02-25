@@ -1,6 +1,6 @@
 ---
 name: agent-bom
-description: AI supply chain security scanner — scan MCP servers for CVEs, generate SBOMs, map blast radius, check compliance
+description: AI supply chain security scanner — discover MCP configs, scan package dependencies for CVEs, generate SBOMs, map blast radius, check compliance
 version: 0.32.0
 metadata:
   openclaw:
@@ -29,8 +29,8 @@ metadata:
 
 # agent-bom — AI Supply Chain Security Scanner
 
-An MCP-powered skill that scans AI agents and MCP servers for CVEs, generates SBOMs,
-maps blast radius, and evaluates compliance — all through a remote MCP server.
+An MCP-powered skill that discovers MCP configs, scans package dependencies for CVEs,
+generates SBOMs, maps blast radius, and evaluates compliance — all through a remote MCP server.
 No local binary install required.
 
 ## Setup

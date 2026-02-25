@@ -1,6 +1,6 @@
 // agent-bom Jenkins Pipeline
 //
-// Scans AI agents and MCP servers, fails the build on high/critical vulns,
+// Scans AI supply chain dependencies for CVEs, fails the build on high/critical vulns,
 // uploads SARIF to GitHub Security tab, and pushes metrics to Prometheus.
 //
 // Required Jenkins plugins:

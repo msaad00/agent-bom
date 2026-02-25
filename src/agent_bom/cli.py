@@ -2333,14 +2333,16 @@ def mcp_server_cmd(transport: str, port: int, host: str):
     Requires:  pip install 'agent-bom[mcp-server]'
 
     \b
-    Exposes 7 security tools via MCP protocol:
+    Exposes 9 security tools via MCP protocol:
       scan              Discover agents, scan for CVEs, compute blast radius
+      check             Check a specific package for CVEs before installing
       blast_radius      Look up blast radius for a specific CVE
       policy_check      Evaluate policy rules against scan findings
       registry_lookup   Query the MCP server threat intelligence registry
       generate_sbom     Generate CycloneDX or SPDX SBOM
       compliance        OWASP / MITRE ATLAS / NIST AI RMF posture
       remediate         Generate actionable remediation plan
+      skill_trust       ClawHub-style trust assessment for SKILL.md files
 
     \b
     Usage:

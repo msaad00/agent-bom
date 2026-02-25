@@ -449,3 +449,121 @@ def test_create_smithery_server():
     assert "scan" in tools
     assert "compliance" in tools
     assert "remediate" in tools
+
+
+# ---------------------------------------------------------------------------
+# Parameter descriptions (Smithery score regression test)
+# ---------------------------------------------------------------------------
+
+
+def test_tool_parameters_have_descriptions():
+    """Every parameter on every tool must have a JSON Schema 'description'.
+
+    This is required for Smithery to score Parameter Descriptions at 100%.
+    FastMCP only propagates descriptions from Annotated[type, Field(description=...)].
+    """
+    from agent_bom.mcp_server import create_mcp_server
+    server = create_mcp_server()
+    tools = _run(server.list_tools())
+
+    for tool in tools:
+        schema = tool.inputSchema
+        props = schema.get("properties", {})
+        for param_name, param_schema in props.items():
+            assert "description" in param_schema, (
+                f"Tool '{tool.name}' param '{param_name}' is missing a description"
+            )
+            assert len(param_schema["description"]) > 5, (
+                f"Tool '{tool.name}' param '{param_name}' has a too-short description"
+            )
+
+
+# ---------------------------------------------------------------------------
+# Scan tool: new parameters (transitive, verify_integrity, fail_severity, policy)
+# ---------------------------------------------------------------------------
+
+
+@patch("agent_bom.mcp_server._run_scan_pipeline")
+def test_scan_with_transitive(mock_pipeline):
+    """Scan should pass transitive flag to pipeline."""
+    from agent_bom.models import Agent, AgentType, MCPServer, TransportType
+    mock_agent = Agent(
+        name="test-agent", agent_type=AgentType.CLAUDE_DESKTOP,
+        config_path="/tmp/test", mcp_servers=[
+            MCPServer(name="s", command="npx", args=[], env={},
+                      transport=TransportType.STDIO, packages=[])
+        ],
+    )
+    mock_pipeline.return_value = ([mock_agent], [])
+    from agent_bom.mcp_server import create_mcp_server
+    server = create_mcp_server()
+    _call_tool(server, "scan", {"transitive": True})
+    _args, kwargs = mock_pipeline.call_args
+    assert kwargs.get("transitive") is True or (len(_args) > 4 and _args[4] is True)
+
+
+@patch("agent_bom.mcp_server._run_scan_pipeline")
+def test_scan_with_fail_severity_pass(mock_pipeline):
+    """Scan with fail_severity should return gate_status=pass when no vulns."""
+    from agent_bom.models import Agent, AgentType, MCPServer, TransportType
+    mock_agent = Agent(
+        name="test-agent", agent_type=AgentType.CLAUDE_DESKTOP,
+        config_path="/tmp/test", mcp_servers=[
+            MCPServer(name="s", command="npx", args=[], env={},
+                      transport=TransportType.STDIO, packages=[])
+        ],
+    )
+    mock_pipeline.return_value = ([mock_agent], [])
+    from agent_bom.mcp_server import create_mcp_server
+    server = create_mcp_server()
+    result = _call_tool(server, "scan", {"fail_severity": "critical"})
+    assert result["gate_status"] == "pass"
+    assert result["gate_severity"] == "critical"
+
+
+@patch("agent_bom.mcp_server._run_scan_pipeline")
+def test_scan_with_fail_severity_fail(mock_pipeline):
+    """Scan with fail_severity should return gate_status=fail when vulns exceed threshold."""
+    from agent_bom.models import (
+        Agent, AgentType, BlastRadius, MCPServer, Package,
+        Severity, TransportType, Vulnerability,
+    )
+    mock_agent = Agent(
+        name="test-agent", agent_type=AgentType.CLAUDE_DESKTOP,
+        config_path="/tmp/test", mcp_servers=[
+            MCPServer(name="s", command="npx", args=[], env={},
+                      transport=TransportType.STDIO, packages=[])
+        ],
+    )
+    br = BlastRadius(
+        vulnerability=Vulnerability(id="CVE-2025-0001", severity=Severity.CRITICAL, summary="Bad"),
+        package=Package(name="express", version="4.17.1", ecosystem="npm"),
+        affected_servers=[mock_agent.mcp_servers[0]],
+        affected_agents=[mock_agent],
+        exposed_credentials=[], exposed_tools=[],
+    )
+    mock_pipeline.return_value = ([mock_agent], [br])
+    from agent_bom.mcp_server import create_mcp_server
+    server = create_mcp_server()
+    result = _call_tool(server, "scan", {"fail_severity": "high"})
+    assert result["gate_status"] == "fail"
+
+
+@patch("agent_bom.mcp_server._run_scan_pipeline")
+def test_scan_with_policy(mock_pipeline):
+    """Scan with inline policy should include policy_results."""
+    from agent_bom.models import Agent, AgentType, MCPServer, TransportType
+    mock_agent = Agent(
+        name="test-agent", agent_type=AgentType.CLAUDE_DESKTOP,
+        config_path="/tmp/test", mcp_servers=[
+            MCPServer(name="s", command="npx", args=[], env={},
+                      transport=TransportType.STDIO, packages=[])
+        ],
+    )
+    mock_pipeline.return_value = ([mock_agent], [])
+    from agent_bom.mcp_server import create_mcp_server
+    server = create_mcp_server()
+    policy = {"rules": [{"id": "no-crit", "severity_gte": "critical", "action": "fail"}]}
+    result = _call_tool(server, "scan", {"policy": policy})
+    assert "policy_results" in result
+    assert result["policy_results"]["passed"] is True

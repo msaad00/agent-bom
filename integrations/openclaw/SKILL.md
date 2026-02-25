@@ -1,6 +1,6 @@
 ---
 name: agent-bom
-description: AI supply chain security scanner — CVE scanning for packages and images, config security assessment, blast radius mapping, SBOMs, compliance
+description: The open-source Grype for the AI era — scan packages for CVEs, assess credential exposure, map blast radius from vulnerabilities to tools, OWASP/MITRE/NIST compliance
 version: 0.32.0
 metadata:
   openclaw:
@@ -27,11 +27,15 @@ metadata:
     privilege_escalation: false
 ---
 
-# agent-bom — AI Supply Chain Security Scanner
+# agent-bom — The Open-Source Grype for the AI Era
 
-An MCP-powered skill that scans the AI supply chain for security risks — CVEs in packages
-and images, credential exposure, tool access risks, privilege escalation — all through a remote MCP server.
-No local binary install required.
+An MCP-powered skill that scans the AI supply chain for security risks:
+- **CVEs** in packages, dependencies, and images (OSV.dev + NVD + EPSS + CISA KEV)
+- **Config security** — credential exposure, tool access risks, privilege escalation
+- **Blast radius** — links CVEs to exposed credentials and tools via server → agent mapping
+- **Compliance** — OWASP LLM Top 10, MITRE ATLAS, NIST AI RMF
+
+All through a remote MCP server. No local binary install required. Agentless, read-only, non-root.
 
 ## Setup
 

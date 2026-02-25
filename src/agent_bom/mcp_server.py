@@ -179,11 +179,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
             # Integrity verification
             if verify_integrity:
-                from agent_bom.integrity import (
-                    check_package_provenance,
-                    verify_package_integrity,
-                )
                 from agent_bom.http_client import create_client
+                from agent_bom.integrity import verify_package_integrity
 
                 async with create_client(timeout=15.0) as client:
                     for agent in agents:

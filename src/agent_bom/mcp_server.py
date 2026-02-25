@@ -145,7 +145,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         port=port,
         instructions=(
             f"agent-bom v{__version__} — AI supply chain security scanner. "
-            "Scans AI agents and MCP servers for CVEs, maps blast radius, "
+            "Discovers MCP configs, scans package dependencies for CVEs, maps blast radius, "
             "generates SBOMs, and enforces security policies. Read-only."
         ),
     )
@@ -165,7 +165,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         fail_severity: Annotated[str | None, Field(description="Return failure status if vulns at this severity or higher: critical, high, medium, low.")] = None,
         policy: Annotated[dict | None, Field(description="Policy object to evaluate alongside scan results, e.g. {\"rules\": [{\"id\": \"no-critical\", \"severity_gte\": \"critical\", \"action\": \"fail\"}]}.")] = None,
     ) -> str:
-        """Run a full security scan of AI agents and MCP servers.
+        """Run a full AI supply chain security scan.
 
         Discovers local MCP configurations (Claude Desktop, Cursor, Windsurf,
         VS Code Copilot, OpenClaw, etc.), extracts package dependencies, queries
@@ -801,10 +801,10 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
     def inventory(
         config_path: Annotated[str | None, Field(description="Path to MCP client config directory. Auto-discovers all if omitted.")] = None,
     ) -> str:
-        """List all discovered AI agents and MCP servers without CVE scanning.
+        """List all discovered MCP configurations and servers without CVE scanning.
 
         Performs fast discovery and package extraction only — no vulnerability
-        scanning. Use this for a quick overview of your AI agent inventory.
+        scanning. Use this for a quick overview of your AI supply chain inventory.
 
         Returns:
             JSON with discovered agents, their MCP servers, packages, and

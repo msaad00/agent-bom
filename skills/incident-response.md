@@ -4,7 +4,7 @@
 
 ## Goal
 
-When a new CVE drops or a security advisory is published, quickly determine: **which AI agents are affected, what credentials are exposed, which tools an attacker can reach, and what to fix first.**
+When a new CVE drops or a security advisory is published, quickly determine: **which MCP servers have affected packages, what credentials are exposed, which tools an attacker can reach, and what to fix first.**
 
 ## Prerequisites
 

@@ -3,7 +3,7 @@ FROM python:3.11-slim
 ARG VERSION=dev
 
 LABEL maintainer="W S <34316639+msaad00@users.noreply.github.com>"
-LABEL description="agent-bom: AI Bill of Materials generator and vulnerability scanner for AI agents and MCP servers"
+LABEL description="agent-bom: AI supply chain security scanner — discover MCP configs, scan package dependencies for CVEs, map blast radius"
 LABEL org.opencontainers.image.version="${VERSION}"
 LABEL org.opencontainers.image.source="https://github.com/msaad00/agent-bom"
 

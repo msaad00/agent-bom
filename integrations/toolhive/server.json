@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.msaad00/agent-bom",
-  "description": "AI supply chain security scanner — CVE scanning, blast radius analysis, policy enforcement, and SBOM generation for MCP servers and AI agents",
+  "description": "AI supply chain security scanner — discover MCP configs, scan package dependencies for CVEs, map blast radius, generate SBOMs, enforce policies",
   "title": "agent-bom",
   "version": "0.32.0",
   "repository": {

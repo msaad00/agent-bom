@@ -422,6 +422,74 @@ def _skill_audit_section(report: "AIBOMReport") -> str:
     )
 
 
+def _trust_assessment_section(report: "AIBOMReport") -> str:
+    """Build the trust assessment section if data is available."""
+    data = getattr(report, "trust_assessment_data", None)
+    if not data:
+        return ""
+
+    skill_name = _esc(data.get("skill_name", ""))
+    source_file = _esc(data.get("source_file", ""))
+    verdict = data.get("verdict", "benign").upper()
+    confidence = data.get("confidence", "low")
+    categories = data.get("categories", [])
+    recommendations = data.get("recommendations", [])
+
+    verdict_colors = {"BENIGN": "#16a34a", "SUSPICIOUS": "#d97706", "MALICIOUS": "#dc2626"}
+    verdict_color = verdict_colors.get(verdict, "#6b7280")
+
+    level_icons = {"pass": "&#x2713;", "info": "&#x2139;", "warn": "&#x26a0;", "fail": "&#x2717;"}
+    level_colors = {"pass": "#16a34a", "info": "#60a5fa", "warn": "#d97706", "fail": "#dc2626"}
+
+    cat_rows = []
+    for cat in categories:
+        level = cat.get("level", "pass")
+        icon = level_icons.get(level, "?")
+        color = level_colors.get(level, "#6b7280")
+        cat_rows.append(
+            f'<tr>'
+            f'<td style="text-align:center;color:{color};font-size:1.1rem">{icon}</td>'
+            f'<td style="color:#e2e8f0;font-weight:600;font-size:.85rem">{_esc(cat.get("name", ""))}</td>'
+            f'<td>{_sev_badge(level)}</td>'
+            f'<td style="font-size:.78rem;color:#94a3b8">{_esc(cat.get("summary", ""))}</td>'
+            f'</tr>'
+        )
+
+    verdict_badge = (
+        f'<span style="background:{verdict_color};color:#fff;padding:4px 14px;border-radius:6px;'
+        f'font-size:.82rem;font-weight:700;letter-spacing:.04em">{verdict}</span>'
+        f'<span style="color:#64748b;font-size:.78rem;margin-left:8px">({confidence} confidence)</span>'
+    )
+
+    title_suffix = f" &mdash; {skill_name}" if skill_name else ""
+    source_note = f'<div style="font-size:.72rem;color:#475569;margin-bottom:12px">Source: <code>{source_file}</code></div>' if source_file else ""
+
+    rec_html = ""
+    if recommendations:
+        rec_items = "".join(f'<li style="color:#4ade80;font-size:.78rem;margin-bottom:4px">{_esc(r)}</li>' for r in recommendations)
+        rec_html = f'<ul style="list-style:none;padding:0;margin-top:16px">{rec_items}</ul>'
+
+    headers = ["", "Category", "Level", "Summary"]
+    table_html = (
+        '<div class="table-wrap"><table class="data-table">'
+        + '<thead><tr>'
+        + "".join(f'<th>{h}</th>' for h in headers)
+        + '</tr></thead>'
+        + f'<tbody>{"".join(cat_rows)}</tbody></table></div>'
+    )
+
+    return (
+        f'<section id="trust">'
+        f'<div class="sec-title">&#x1f50d; Trust Assessment{title_suffix}</div>'
+        f'<div class="panel">'
+        f'{source_note}'
+        f'<div style="margin-bottom:16px">{verdict_badge}</div>'
+        f'{table_html}'
+        f'{rec_html}'
+        f'</div></section>'
+    )
+
+
 def _attack_flow_section(blast_radii: list["BlastRadius"]) -> str:
     """Build the CVE attack flow graph section (only when vulns exist)."""
     if not blast_radii:
@@ -734,6 +802,10 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     skill_section = _skill_audit_section(report)
     skill_nav = '<a href="#skillaudit">Skill Audit</a>' if skill_section else ""
 
+    # Trust assessment section
+    trust_section = _trust_assessment_section(report)
+    trust_nav = '<a href="#trust">Trust</a>' if trust_section else ""
+
     # Determine node counts for graph subtitle
     vuln_node_count = len({(br.package.name, br.package.ecosystem) for br in blast_radii})
     graph_note = (
@@ -932,6 +1004,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     <a href="#riskmap">Risk Map</a>
     <a href="#inventory">Inventory</a>
     {skill_nav}
+    {trust_nav}
     {compliance_nav}
     {vuln_nav}
     <button class="print-btn" onclick="window.print()">&#x1f5b6;&#xfe0f; Print</button>
@@ -1025,6 +1098,9 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
 
   <!-- Skill audit -->
   {skill_section}
+
+  <!-- Trust assessment -->
+  {trust_section}
 
   <!-- Attack flow graph (only when vulns exist) -->
   {_attack_flow_section(blast_radii)}

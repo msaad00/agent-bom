@@ -45,6 +45,10 @@ metadata:
       - "~/Library/Application Support/Windsurf/User/globalStorage/windsurf.mcp/mcp.json"
       - "~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json"
       - "~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json"
+      - "~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json"
+      - "~/.config/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json"
+      - "~/Library/Application Support/Code/User/globalStorage/amazonwebservices.amazon-q-vscode/mcp.json"
+      - "~/.config/Code/User/globalStorage/amazonwebservices.amazon-q-vscode/mcp.json"
       - "~/Library/Application Support/Code/User/mcp.json"
       - "~/.config/Code/User/mcp.json"
       - "~/.continue/config.json"
@@ -62,12 +66,12 @@ metadata:
       - "compose.yml"
       - "compose.yaml"
     file_reads_justification: |
-      These are the standard config file locations for 11 MCP clients.
+      These are the standard config file locations for 13 MCP clients.
       Each file is a JSON/YAML config containing MCP server definitions.
       agent-bom reads them to discover which MCP servers are configured,
       then extracts package names for CVE scanning. On any given system,
       only 2-4 of these files typically exist — the rest are silently skipped.
-      The 27 paths break down as: 11 MCP clients × ~2 OS variants = ~19 global
+      The 31 paths break down as: 13 MCP clients × ~2 OS variants = ~23 global
       paths + 5 project-level configs + 4 Docker Compose filenames.
       No directory traversal, no glob patterns, no recursive walks.
       Use --dry-run to see exactly which files exist on YOUR system.
@@ -148,6 +152,8 @@ patterns, no recursive walks.
 | Cursor | `~/Library/Application Support/Cursor/User/globalStorage/cursor.mcp/mcp.json`, `~/.cursor/mcp.json` | `~/.config/Cursor/User/globalStorage/cursor.mcp/mcp.json`, `~/.cursor/mcp.json` |
 | Windsurf | `~/.windsurf/mcp.json`, `~/Library/Application Support/Windsurf/User/globalStorage/windsurf.mcp/mcp.json` | `~/.windsurf/mcp.json` |
 | Cline (VS Code) | `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json` | `~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json` |
+| Roo Code | `~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json` | `~/.config/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json` |
+| Amazon Q | `~/Library/Application Support/Code/User/globalStorage/amazonwebservices.amazon-q-vscode/mcp.json` | `~/.config/Code/User/globalStorage/amazonwebservices.amazon-q-vscode/mcp.json` |
 | VS Code Copilot | `~/Library/Application Support/Code/User/mcp.json` | `~/.config/Code/User/mcp.json` |
 | Continue.dev | `~/.continue/config.json` | same |
 | Zed | `~/.config/zed/settings.json` | same |
@@ -159,7 +165,7 @@ patterns, no recursive walks.
 
 **Docker Compose files** (current working directory only): `docker-compose.yml`, `docker-compose.yaml`, `compose.yml`, `compose.yaml`
 
-**Total**: 27 specific file paths. All enumerated in `metadata.openclaw.file_reads` above.
+**Total**: 31 specific file paths. All enumerated in `metadata.openclaw.file_reads` above.
 
 ### What agent-bom extracts from these files
 

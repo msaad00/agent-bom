@@ -98,6 +98,8 @@ def main():
 @click.option("--config-dir", type=click.Path(exists=True), help="Custom agent config directory to scan")
 @click.option("--inventory", type=click.Path(exists=True), help="Manual inventory JSON file")
 @click.option("--output", "-o", type=str, help="Output file path (use '-' for stdout)")
+@click.option("--open", "open_report", is_flag=True, default=False,
+              help="Auto-open HTML/graph-html report in default browser after generation")
 @click.option(
     "--format", "-f", "output_format",
     type=click.Choice(["console", "json", "cyclonedx", "sarif", "spdx", "text", "html", "prometheus", "graph", "graph-html", "mermaid", "svg", "badge"]),
@@ -291,6 +293,7 @@ def scan(
     apply_fixes_flag: bool,
     apply_dry_run: bool,
     preset: Optional[str],
+    open_report: bool,
 ):
     """Discover agents, extract dependencies, scan for vulnerabilities.
 
@@ -804,7 +807,7 @@ def scan(
         con.print()
         con.print(TrustPanel(
             trust_table,
-            title="[bold]Trust Assessment[/bold]",
+            title=f"[bold]Trust Assessment — {Path(trust_result.source_file).name}[/bold]",
             subtitle=verdict_line,
             border_style=vstyle,
         ))
@@ -1356,7 +1359,11 @@ def scan(
         out_path = output or "agent-bom-report.html"
         export_html(report, out_path, blast_radii)
         con.print(f"\n  [green]✓[/green] HTML report: {out_path}")
-        con.print(f"  [dim]Open with:[/dim] open {out_path}")
+        if open_report:
+            import webbrowser
+            webbrowser.open(f"file://{Path(out_path).resolve()}")
+        else:
+            con.print(f"  [dim]Open with:[/dim] open {out_path}")
     elif output_format == "prometheus":
         out_path = output or "agent-bom-metrics.prom"
         export_prometheus(report, out_path, blast_radii)
@@ -1390,7 +1397,11 @@ def scan(
         out_path = output or "agent-bom-graph.html"
         export_graph_html(report, blast_radii, out_path)
         con.print(f"\n  [green]✓[/green] Interactive graph: {out_path}")
-        con.print(f"  [dim]Open with:[/dim] open {out_path}")
+        if open_report:
+            import webbrowser
+            webbrowser.open(f"file://{Path(out_path).resolve()}")
+        else:
+            con.print(f"  [dim]Open with:[/dim] open {out_path}")
     elif output_format == "badge":
         out_path = output or "agent-bom-badge.json"
         export_badge(report, out_path)

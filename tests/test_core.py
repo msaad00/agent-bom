@@ -2866,82 +2866,59 @@ def test_openclaw_skill_exists():
     assert "name: agent-bom" in content
 
 
-def test_openclaw_skill_declares_file_reads():
-    """OpenClaw SKILL.md manifest should enumerate file_reads for ClawHub scanner."""
+def test_openclaw_skill_is_pure_mcp():
+    """OpenClaw SKILL.md should be a pure MCP instruction skill — no binary requirements."""
     from pathlib import Path
     p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
     content = p.read_text()
-    assert "file_reads:" in content
-    assert "claude_desktop_config.json" in content
-    assert "~/.cursor/mcp.json" in content
-    assert "~/.docker/mcp/registry.yaml" in content
+    assert "bins: []" in content, "Should require no binaries"
+    assert "file_reads: []" in content, "Should declare no file reads"
     assert "file_writes: []" in content
+    assert "telemetry: false" in content
+    assert "persistence: false" in content
 
 
-def test_openclaw_skill_declares_network_endpoints():
-    """OpenClaw SKILL.md manifest should enumerate network endpoints."""
+def test_openclaw_skill_declares_mcp_endpoint():
+    """OpenClaw SKILL.md should point to the Railway MCP server."""
     from pathlib import Path
     p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
     content = p.read_text()
     assert "network_endpoints:" in content
-    # Count endpoint entries (avoid asserting URL strings directly — triggers CodeQL py/incomplete-url-substring-sanitization)
-    endpoint_count = content.count("- url:")
-    assert endpoint_count >= 6, f"Expected at least 6 network_endpoints entries, found {endpoint_count}"
-    assert "CVE lookup" in content
-    assert "CVSS score" in content
-    assert "Exploit probability" in content
+    assert "MCP server endpoint" in content
+    assert "sse" in content.lower()
 
 
-def test_openclaw_skill_declares_env():
-    """OpenClaw SKILL.md manifest should declare NVD_API_KEY as optional, not required."""
+def test_openclaw_skill_lists_tools():
+    """OpenClaw SKILL.md should document all 13 MCP tools."""
     from pathlib import Path
     p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
     content = p.read_text()
+    for tool in ["scan", "check", "blast_radius", "policy_check", "registry_lookup",
+                 "generate_sbom", "compliance", "remediate", "verify", "where",
+                 "inventory", "diff", "skill_trust"]:
+        assert tool in content, f"Tool '{tool}' should be documented in SKILL.md"
+
+
+def test_openclaw_skill_has_source_links():
+    """OpenClaw SKILL.md should include source and verification links."""
+    from pathlib import Path
+    p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
+    content = p.read_text()
+    assert "github.com/msaad00/agent-bom" in content
+    assert "Apache-2.0" in content
+    assert "Sigstore" in content
+
+
+def test_openclaw_skill_no_binary_install():
+    """OpenClaw SKILL.md must NOT require installing an external binary (ClawHub trust)."""
+    from pathlib import Path
+    p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
+    content = p.read_text()
+    assert "kind: pipx" not in content, "Should not have pipx install spec in metadata"
+    assert "kind: pip" not in content, "Should not have pip install spec in metadata"
+    # The local install hint at the very end is fine — it's informational, not in metadata
     assert "requires:" in content
-    assert "env: []" in content, "requires.env should be empty — no env vars are required"
-    assert "optional_env:" in content
-    assert "NVD_API_KEY" in content
-    assert "required: false" in content
-
-
-def test_openclaw_skill_has_all_install_methods():
-    """OpenClaw SKILL.md should declare pip and pipx install methods."""
-    from pathlib import Path
-    p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
-    content = p.read_text()
-    assert "kind: pip" in content
-    assert "kind: pipx" in content
-
-
-def test_openclaw_skill_has_verification_section():
-    """OpenClaw SKILL.md should include verification & provenance section for ClawHub trust."""
-    from pathlib import Path
-    p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
-    content = p.read_text()
-    assert "Verification & provenance" in content
-    assert "cosign verify-blob" in content
-    assert "Binary behavior audit" in content
-    assert "--dry-run" in content
-    # Source code evidence for binary verifiability
-    assert "Source code evidence" in content
-    assert "credential_names" in content
-    assert "CONFIG_LOCATIONS" in content
-
-
-def test_openclaw_skill_has_file_reads_justification():
-    """OpenClaw SKILL.md should justify the broad file_reads list."""
-    from pathlib import Path
-    p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
-    content = p.read_text()
-    assert "file_reads_justification:" in content
-    assert "silently skipped" in content
-
-
-def test_openclaw_skill_nvd_auth_consistent():
-    """OpenClaw SKILL.md should not mark NVD as auth:false while requiring NVD_API_KEY."""
-    from pathlib import Path
-    p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
-    content = p.read_text()
+    assert "bins: []" in content
     # NVD endpoint should say auth is optional, not false
     assert "optional" in content.lower()
     # Find the CVSS score endpoint block and verify its auth field says optional
@@ -2987,16 +2964,14 @@ def test_permissions_md_has_full_config_paths():
     assert "Credential name detection" in content
 
 
-def test_openclaw_skill_declares_sensitive_data_handling():
-    """OpenClaw SKILL.md should declare how sensitive data in config files is handled."""
+def test_openclaw_skill_describes_data_handling():
+    """OpenClaw SKILL.md should describe data handling behavior."""
     from pathlib import Path
     p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
     content = p.read_text()
-    assert "sensitive_data_handling:" in content
-    assert "config_files_contain_secrets: true" in content
-    assert "env var NAMES only" in content
-    assert "REDACTED" in content
-    assert "written_to_disk: false" in content
+    assert "Data handling" in content
+    assert "package names and versions" in content
+    assert "never transmitted" in content
 
 
 def test_svg_output_basic():

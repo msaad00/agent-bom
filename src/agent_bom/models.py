@@ -23,7 +23,11 @@ class AgentType(str, Enum):
     WINDSURF = "windsurf"
     CLINE = "cline"
     VSCODE_COPILOT = "vscode-copilot"
-    CORTEX_CODE = "cortex-code"       # Snowflake Cortex Code CLI
+    CORTEX_CODE = "cortex-code"       # Snowflake Cortex Code CLI (CoCo)
+    CODEX_CLI = "codex-cli"           # OpenAI Codex CLI
+    GEMINI_CLI = "gemini-cli"         # Google Gemini CLI
+    GOOSE = "goose"                   # Block Goose AI agent
+    SNOWFLAKE_CLI = "snowflake-cli"   # Snowflake CLI (snow)
     CONTINUE = "continue"             # Continue.dev
     ZED = "zed"                       # Zed editor
     OPENCLAW = "openclaw"             # OpenClaw AI agent
@@ -246,6 +250,7 @@ class Agent:
     version: Optional[str] = None
     source: Optional[str] = None  # Inventory source (e.g. "snowflake", "aws", "local")
     status: AgentStatus = AgentStatus.CONFIGURED
+    metadata: dict = field(default_factory=dict)  # Extra config data (permissions, hooks, etc.)
 
     @property
     def total_packages(self) -> int:

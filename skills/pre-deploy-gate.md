@@ -4,7 +4,7 @@
 
 ## Goal
 
-Integrate agent-bom into your CI/CD pipeline to automatically scan AI supply chain dependencies, container images, and MCP server packages before deployment. Fail the build on critical/high CVEs, CISA KEV matches, policy violations, or excessive tool agency.
+Integrate agent-bom into your CI/CD pipeline to scan AI supply chain packages, container images, and MCP server configs before deployment. Fail the build on critical/high CVEs, credential exposure, CISA KEV matches, policy violations, or excessive tool agency.
 
 ## Prerequisites
 

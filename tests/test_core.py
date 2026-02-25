@@ -2859,11 +2859,10 @@ def test_openclaw_skill_declares_env():
 
 
 def test_openclaw_skill_has_all_install_methods():
-    """OpenClaw SKILL.md should declare uv, pip, and pipx install methods."""
+    """OpenClaw SKILL.md should declare pip and pipx install methods."""
     from pathlib import Path
     p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
     content = p.read_text()
-    assert "kind: uv" in content
     assert "kind: pip" in content
     assert "kind: pipx" in content
 

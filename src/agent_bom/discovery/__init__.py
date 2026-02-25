@@ -11,6 +11,7 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
+import toml
 import yaml
 from rich.console import Console
 
@@ -64,10 +65,46 @@ CONFIG_LOCATIONS: dict[AgentType, dict[str, list[str]]] = {
         "Windows": ["~/AppData/Roaming/Code/User/mcp.json"],
     },
     AgentType.CORTEX_CODE: {
-        # Snowflake Cortex Code CLI — cortex mcp add writes to this file
-        "Darwin": ["~/.snowflake/cortex/mcp.json"],
-        "Linux": ["~/.snowflake/cortex/mcp.json"],
-        "Windows": ["~/.snowflake/cortex/mcp.json"],
+        # Snowflake Cortex Code CLI (CoCo) — MCP servers, permissions, hooks, settings
+        "Darwin": ["~/.snowflake/cortex/mcp.json",
+                    "~/.snowflake/cortex/settings.json",
+                    "~/.snowflake/cortex/permissions.json",
+                    "~/.snowflake/cortex/hooks.json"],
+        "Linux": ["~/.snowflake/cortex/mcp.json",
+                   "~/.snowflake/cortex/settings.json",
+                   "~/.snowflake/cortex/permissions.json",
+                   "~/.snowflake/cortex/hooks.json"],
+        "Windows": ["~/.snowflake/cortex/mcp.json",
+                     "~/.snowflake/cortex/settings.json",
+                     "~/.snowflake/cortex/permissions.json",
+                     "~/.snowflake/cortex/hooks.json"],
+    },
+    AgentType.CODEX_CLI: {
+        # OpenAI Codex CLI — TOML config with [mcp_servers.*] tables
+        "Darwin": ["~/.codex/config.toml"],
+        "Linux": ["~/.codex/config.toml"],
+        "Windows": ["~/.codex/config.toml"],
+    },
+    AgentType.GEMINI_CLI: {
+        # Google Gemini CLI — standard mcpServers JSON format
+        "Darwin": ["~/.gemini/settings.json"],
+        "Linux": ["~/.gemini/settings.json"],
+        "Windows": ["~/.gemini/settings.json"],
+    },
+    AgentType.GOOSE: {
+        # Block Goose — YAML config with extensions section
+        "Darwin": ["~/.config/goose/config.yaml"],
+        "Linux": ["~/.config/goose/config.yaml"],
+        "Windows": ["~/AppData/Roaming/Block/goose/config/config.yaml"],
+    },
+    AgentType.SNOWFLAKE_CLI: {
+        # Snowflake CLI (snow) — TOML connection profiles
+        "Darwin": ["~/.snowflake/connections.toml",
+                    "~/.snowflake/config.toml"],
+        "Linux": ["~/.snowflake/connections.toml",
+                   "~/.snowflake/config.toml"],
+        "Windows": ["~/.snowflake/connections.toml",
+                     "~/.snowflake/config.toml"],
     },
     AgentType.CONTINUE: {
         # Continue.dev VS Code extension
@@ -126,6 +163,11 @@ AGENT_BINARIES: dict[AgentType, str] = {
     AgentType.ZED: "zed",
     AgentType.CURSOR: "cursor",
     AgentType.WINDSURF: "windsurf",
+    AgentType.CORTEX_CODE: "cortex",
+    AgentType.CODEX_CLI: "codex",
+    AgentType.GEMINI_CLI: "gemini",
+    AgentType.GOOSE: "goose",
+    AgentType.SNOWFLAKE_CLI: "snow",
 }
 
 # Project-level config files to search for
@@ -135,6 +177,8 @@ PROJECT_CONFIG_FILES = [
     ".cursor/mcp.json",
     ".vscode/mcp.json",
     ".openclaw/openclaw.json",
+    ".codex/config.toml",
+    ".gemini/settings.json",
 ]
 
 
@@ -327,6 +371,197 @@ def _parse_toolhive_servers(data) -> list[MCPServer]:
     return servers
 
 
+def parse_codex_config(config_path: str) -> list[MCPServer]:
+    """Parse OpenAI Codex CLI TOML config with [mcp_servers.*] tables.
+
+    Supports both stdio (command/args) and HTTP (url/bearer_token_env_var) transports.
+    """
+    try:
+        data = toml.load(config_path)
+    except Exception:
+        return []
+
+    mcp_section = data.get("mcp_servers", {})
+    if not isinstance(mcp_section, dict):
+        return []
+
+    servers: list[MCPServer] = []
+    for name, server_def in mcp_section.items():
+        if not isinstance(server_def, dict):
+            continue
+        if server_def.get("enabled") is False:
+            continue
+
+        # Determine transport
+        transport = TransportType.STDIO
+        url = server_def.get("url")
+        command = server_def.get("command", "")
+        args = server_def.get("args", [])
+
+        if url:
+            transport = TransportType.SSE if "sse" in url.lower() else TransportType.STREAMABLE_HTTP
+
+        raw_env = server_def.get("env", {})
+        env = sanitize_env_vars(raw_env) if isinstance(raw_env, dict) else {}
+
+        # Bearer token env var → track as credential
+        bearer_var = server_def.get("bearer_token_env_var")
+        if bearer_var:
+            env[bearer_var] = "***REDACTED***"
+
+        server = MCPServer(
+            name=name,
+            command=command,
+            args=args if isinstance(args, list) else [args],
+            env=env,
+            transport=transport,
+            url=url,
+            config_path=config_path,
+        )
+        servers.append(server)
+
+    return servers
+
+
+def parse_goose_config(config_path: str) -> list[MCPServer]:
+    """Parse Block Goose YAML config with extensions section.
+
+    Extensions use type: stdio (cmd/args) or type: streamable_http (uri).
+    """
+    try:
+        with open(config_path) as f:
+            data = yaml.safe_load(f)
+    except Exception:
+        return []
+
+    if not isinstance(data, dict):
+        return []
+
+    extensions = data.get("extensions", {})
+    if not isinstance(extensions, dict):
+        return []
+
+    servers: list[MCPServer] = []
+    for name, ext_def in extensions.items():
+        if not isinstance(ext_def, dict):
+            continue
+        if ext_def.get("enabled") is False:
+            continue
+        ext_type = ext_def.get("type", "")
+        if ext_type == "builtin":
+            continue  # Skip bundled extensions
+
+        transport = TransportType.STDIO
+        url = ext_def.get("uri")
+        command = ext_def.get("cmd", "")
+        args = ext_def.get("args", [])
+
+        if ext_type == "streamable_http" or ext_type == "sse":
+            transport = TransportType.SSE if ext_type == "sse" else TransportType.STREAMABLE_HTTP
+
+        raw_env = ext_def.get("envs", {})
+        env = sanitize_env_vars(raw_env) if isinstance(raw_env, dict) else {}
+
+        server = MCPServer(
+            name=ext_def.get("name", name),
+            command=command,
+            args=args if isinstance(args, list) else [args],
+            env=env,
+            transport=transport,
+            url=url,
+            config_path=config_path,
+        )
+        servers.append(server)
+
+    return servers
+
+
+def parse_snowflake_connections(config_path: str) -> list[MCPServer]:
+    """Parse Snowflake CLI connections.toml or config.toml into inventory entries.
+
+    Each connection profile becomes an MCPServer entry for inventory visibility.
+    connections.toml uses [profile_name] sections; config.toml uses [connections.name].
+    """
+    try:
+        data = toml.load(config_path)
+    except Exception:
+        return []
+
+    if not isinstance(data, dict):
+        return []
+
+    # connections.toml: top-level [profile_name] sections
+    # config.toml: nested [connections.name] sections
+    connections = data.get("connections", data)
+
+    servers: list[MCPServer] = []
+    for name, conn_def in connections.items():
+        if not isinstance(conn_def, dict):
+            continue
+        if name in ("cli", "default_connection_name"):
+            continue  # Skip non-connection sections
+
+        account = conn_def.get("account", "")
+        user = conn_def.get("user", "")
+        authenticator = conn_def.get("authenticator", "SNOWFLAKE")
+
+        # Build env dict with redacted credentials
+        env: dict[str, str] = {}
+        if account:
+            env["account"] = account
+        if user:
+            env["user"] = user
+        if conn_def.get("password"):
+            env["password"] = "***REDACTED***"
+        if conn_def.get("private_key_file"):
+            env["private_key_file"] = conn_def["private_key_file"]
+
+        server = MCPServer(
+            name=f"sf-connection:{name}",
+            command=f"snow --connection {name}",
+            args=[],
+            env=env,
+            transport=TransportType.UNKNOWN,
+            config_path=config_path,
+        )
+        servers.append(server)
+
+    return servers
+
+
+def parse_cortex_code_metadata(config_path: str) -> dict:
+    """Parse Cortex Code auxiliary config files (permissions, hooks, settings).
+
+    Returns metadata dict to attach to the agent for security audit visibility.
+    """
+    try:
+        with open(config_path) as f:
+            data = json.load(f)
+    except Exception:
+        return {}
+
+    if not isinstance(data, dict):
+        return {}
+
+    filename = Path(config_path).name
+    if filename == "permissions.json":
+        return {"cortex_permissions": data}
+    elif filename == "hooks.json":
+        return {"cortex_hooks": data}
+    elif filename == "settings.json" and "mcpServers" not in data:
+        return {"cortex_settings": data}
+
+    return {}
+
+
+# Custom parsers for non-JSON config formats
+_CUSTOM_PARSERS: dict[AgentType, str] = {
+    AgentType.CODEX_CLI: "toml",
+    AgentType.GOOSE: "yaml",
+    AgentType.SNOWFLAKE_CLI: "toml",
+}
+
+
 def discover_toolhive() -> Optional[Agent]:
     """Discover MCP servers managed by ToolHive via ``thv list``.
 
@@ -425,12 +660,35 @@ def discover_global_configs(agent_types: Optional[list[AgentType]] = None) -> li
             config_path = expand_path(path_str)
             if config_path.exists():
                 try:
-                    config_data = json.loads(config_path.read_text())
-                    servers = parse_mcp_config(config_data, str(config_path))
+                    servers: list[MCPServer] = []
+                    metadata: dict = {}
 
-                    # Claude Code ~/.claude.json has project-level MCP servers
-                    if agent_type == AgentType.CLAUDE_CODE and config_path.name == ".claude.json":
-                        servers = servers + parse_claude_json_projects(config_data, str(config_path))
+                    # Cortex Code auxiliary files (permissions, hooks, settings)
+                    if agent_type == AgentType.CORTEX_CODE and config_path.name != "mcp.json":
+                        metadata = parse_cortex_code_metadata(str(config_path))
+                        if metadata:
+                            # Attach metadata to existing agent or store for later
+                            for a in agents:
+                                if a.agent_type == AgentType.CORTEX_CODE:
+                                    a.metadata.update(metadata)
+                                    break
+                        continue
+
+                    # Custom parsers for non-JSON formats
+                    if agent_type == AgentType.CODEX_CLI:
+                        servers = parse_codex_config(str(config_path))
+                    elif agent_type == AgentType.GOOSE:
+                        servers = parse_goose_config(str(config_path))
+                    elif agent_type == AgentType.SNOWFLAKE_CLI:
+                        servers = parse_snowflake_connections(str(config_path))
+                    else:
+                        # Default JSON parsing
+                        config_data = json.loads(config_path.read_text())
+                        servers = parse_mcp_config(config_data, str(config_path))
+
+                        # Claude Code ~/.claude.json has project-level MCP servers
+                        if agent_type == AgentType.CLAUDE_CODE and config_path.name == ".claude.json":
+                            servers = servers + parse_claude_json_projects(config_data, str(config_path))
 
                     if servers:
                         agent = Agent(
@@ -444,7 +702,7 @@ def discover_global_configs(agent_types: Optional[list[AgentType]] = None) -> li
                             f"  [green]✓[/green] Found {agent_type.value} with "
                             f"{len(servers)} MCP server(s): {config_path}"
                         )
-                except (json.JSONDecodeError, KeyError, TypeError) as e:
+                except (json.JSONDecodeError, KeyError, TypeError, Exception) as e:
                     console.print(
                         f"  [yellow]⚠[/yellow] Error parsing {config_path}: {e}"
                     )
@@ -461,8 +719,14 @@ def discover_project_configs(project_dir: Optional[str] = None) -> list[Agent]:
         config_path = search_dir / config_name
         if config_path.exists():
             try:
-                config_data = json.loads(config_path.read_text())
-                servers = parse_mcp_config(config_data, str(config_path))
+                servers: list[MCPServer] = []
+
+                if config_name.endswith(".toml"):
+                    # Codex project config
+                    servers = parse_codex_config(str(config_path))
+                else:
+                    config_data = json.loads(config_path.read_text())
+                    servers = parse_mcp_config(config_data, str(config_path))
 
                 if servers:
                     agent = Agent(
@@ -476,7 +740,7 @@ def discover_project_configs(project_dir: Optional[str] = None) -> list[Agent]:
                         f"  [green]✓[/green] Found project config with "
                         f"{len(servers)} MCP server(s): {config_path}"
                     )
-            except (json.JSONDecodeError, KeyError, TypeError) as e:
+            except (json.JSONDecodeError, KeyError, TypeError, Exception) as e:
                 console.print(
                     f"  [yellow]⚠[/yellow] Error parsing {config_path}: {e}"
                 )

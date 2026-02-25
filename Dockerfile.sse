@@ -13,7 +13,7 @@
 
 FROM python:3.12-slim
 
-ARG VERSION=0.31.8
+ARG VERSION=0.31.9
 
 LABEL org.opencontainers.image.title="agent-bom MCP Server"
 LABEL org.opencontainers.image.description="AI supply chain security scanner — MCP server with streamable HTTP transport"

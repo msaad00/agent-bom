@@ -98,6 +98,8 @@ def main():
 @click.option("--config-dir", type=click.Path(exists=True), help="Custom agent config directory to scan")
 @click.option("--inventory", type=click.Path(exists=True), help="Manual inventory JSON file")
 @click.option("--output", "-o", type=str, help="Output file path (use '-' for stdout)")
+@click.option("--open", "open_report", is_flag=True, default=False,
+              help="Auto-open HTML/graph-html report in default browser after generation")
 @click.option(
     "--format", "-f", "output_format",
     type=click.Choice(["console", "json", "cyclonedx", "sarif", "spdx", "text", "html", "prometheus", "graph", "graph-html", "mermaid", "svg", "badge"]),
@@ -203,6 +205,8 @@ def main():
 @click.option("--snyk", "snyk_flag", is_flag=True, help="Enrich vulnerabilities with Snyk intelligence (requires SNYK_TOKEN)")
 @click.option("--snyk-token", default=None, envvar="SNYK_TOKEN", metavar="KEY", help="Snyk API token (or set SNYK_TOKEN env var)")
 @click.option("--snyk-org", default=None, envvar="SNYK_ORG_ID", metavar="ORG", help="Snyk organization ID (or set SNYK_ORG_ID env var)")
+@click.option("--preset", type=click.Choice(["ci", "enterprise", "quick"]), default=None,
+              help="Scan preset: ci (quiet, json, fail-on-critical), enterprise (enrich, introspect, transitive, verify-integrity), quick (no transitive, no enrich)")
 def scan(
     project: Optional[str],
     config_dir: Optional[str],
@@ -288,6 +292,8 @@ def scan(
     remediate_sh_path: Optional[str],
     apply_fixes_flag: bool,
     apply_dry_run: bool,
+    preset: Optional[str],
+    open_report: bool,
 ):
     """Discover agents, extract dependencies, scan for vulnerabilities.
 
@@ -297,6 +303,23 @@ def scan(
       1  Fail — policy failure, or vulnerabilities found at or above
                 --fail-on-severity / --fail-on-kev / --fail-if-ai-risk
     """
+    import time as _time
+    _scan_start = _time.monotonic()
+
+    # Apply presets (override defaults, don't override explicit flags)
+    if preset == "ci":
+        quiet = True
+        output_format = output_format if output_format != "console" else "json"
+        fail_on_severity = fail_on_severity or "critical"
+    elif preset == "enterprise":
+        enrich = True
+        introspect = True
+        transitive = True
+        verify_integrity = True
+    elif preset == "quick":
+        transitive = False
+        enrich = False
+
     # Mutual exclusivity: --no-skill and --skill-only cannot be used together
     if no_skill and skill_only:
         click.echo("Error: --no-skill and --skill-only are mutually exclusive.", err=True)
@@ -784,7 +807,7 @@ def scan(
         con.print()
         con.print(TrustPanel(
             trust_table,
-            title="[bold]Trust Assessment[/bold]",
+            title=f"[bold]Trust Assessment — {Path(trust_result.source_file).name}[/bold]",
             subtitle=verdict_line,
             border_style=vstyle,
         ))
@@ -1336,7 +1359,11 @@ def scan(
         out_path = output or "agent-bom-report.html"
         export_html(report, out_path, blast_radii)
         con.print(f"\n  [green]✓[/green] HTML report: {out_path}")
-        con.print(f"  [dim]Open with:[/dim] open {out_path}")
+        if open_report:
+            import webbrowser
+            webbrowser.open(f"file://{Path(out_path).resolve()}")
+        else:
+            con.print(f"  [dim]Open with:[/dim] open {out_path}")
     elif output_format == "prometheus":
         out_path = output or "agent-bom-metrics.prom"
         export_prometheus(report, out_path, blast_radii)
@@ -1370,7 +1397,11 @@ def scan(
         out_path = output or "agent-bom-graph.html"
         export_graph_html(report, blast_radii, out_path)
         con.print(f"\n  [green]✓[/green] Interactive graph: {out_path}")
-        con.print(f"  [dim]Open with:[/dim] open {out_path}")
+        if open_report:
+            import webbrowser
+            webbrowser.open(f"file://{Path(out_path).resolve()}")
+        else:
+            con.print(f"  [dim]Open with:[/dim] open {out_path}")
     elif output_format == "badge":
         out_path = output or "agent-bom-badge.json"
         export_badge(report, out_path)
@@ -1439,9 +1470,10 @@ def scan(
             sys.exit(1)
 
     # Scan completion divider
+    _elapsed = _time.monotonic() - _scan_start
     if output_format == "console" and not output and not quiet:
         con.print()
-        con.print(Rule("Scan Complete", style="green" if not blast_radii else "yellow"))
+        con.print(Rule(f"Scan Complete — {_elapsed:.1f}s", style="green" if not blast_radii else "yellow"))
 
     # Step 8: Exit code based on policy flags
     exit_code = 0
@@ -2333,7 +2365,7 @@ def mcp_server_cmd(transport: str, port: int, host: str):
     Requires:  pip install 'agent-bom[mcp-server]'
 
     \b
-    Exposes 9 security tools via MCP protocol:
+    Exposes 13 security tools via MCP protocol:
       scan              Discover agents, scan for CVEs, compute blast radius
       check             Check a specific package for CVEs before installing
       blast_radius      Look up blast radius for a specific CVE
@@ -2343,6 +2375,10 @@ def mcp_server_cmd(transport: str, port: int, host: str):
       compliance        OWASP / MITRE ATLAS / NIST AI RMF posture
       remediate         Generate actionable remediation plan
       skill_trust       ClawHub-style trust assessment for SKILL.md files
+      verify            Package integrity + SLSA provenance verification
+      where             Show all MCP discovery paths + existence status
+      inventory         List agents/servers without CVE scanning
+      diff              Compare scan against baseline for new/resolved vulns
 
     \b
     Usage:

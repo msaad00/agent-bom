@@ -79,7 +79,7 @@ git add servers/agent-bom.json
 git commit -m "feat: add agent-bom MCP server"
 git push origin add-agent-bom
 gh pr create --title "feat: add agent-bom security scanner" \
-  --body "Adds agent-bom — AI supply chain security scanner with 9 MCP tools."
+  --body "Adds agent-bom — AI supply chain security scanner with 13 MCP tools."
 ```
 
 ### Verification

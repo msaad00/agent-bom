@@ -1144,6 +1144,52 @@ def test_cli_scan_has_html_format():
     assert "html" in result.output
 
 
+# ─── HTML trust assessment tests ──────────────────────────────────────────────
+
+
+def test_html_trust_assessment_section():
+    from agent_bom.output.html import to_html
+
+    report, blast_radii = _make_report_with_vuln()
+    report.trust_assessment_data = {
+        "skill_name": "test-skill",
+        "source_file": "/tmp/SKILL.md",
+        "verdict": "suspicious",
+        "confidence": "medium",
+        "categories": [
+            {"name": "Purpose & Capability", "key": "purpose", "level": "pass", "summary": "Standard tool"},
+            {"name": "Instruction Scope", "key": "scope", "level": "warn", "summary": "Broad permissions"},
+            {"name": "Install Mechanism", "key": "install", "level": "pass", "summary": "Trusted source"},
+            {"name": "Credentials", "key": "credentials", "level": "fail", "summary": "Excessive credential access"},
+            {"name": "Persistence & Privilege", "key": "persistence", "level": "info", "summary": "No persistence"},
+        ],
+        "recommendations": ["Restrict credential access", "Add scope limits"],
+    }
+    html = to_html(report, blast_radii)
+    assert "Trust Assessment" in html
+    assert "test-skill" in html
+    assert "SUSPICIOUS" in html
+    assert "medium confidence" in html
+    assert "Purpose &amp; Capability" in html
+    assert "Excessive credential access" in html
+    assert "Restrict credential access" in html
+    assert 'id="trust"' in html
+
+
+def test_html_trust_assessment_absent():
+    from agent_bom.output.html import to_html
+
+    report, blast_radii = _make_report_with_vuln()
+    html = to_html(report, blast_radii)
+    assert 'id="trust"' not in html
+
+
+def test_cli_open_flag_accepted():
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", "--help"])
+    assert "--open" in result.output
+
+
 # ─── Prometheus output tests ──────────────────────────────────────────────────
 
 

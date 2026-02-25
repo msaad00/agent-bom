@@ -4,7 +4,7 @@ Start with:
     agent-bom mcp-server              # stdio (for Claude Desktop, Cursor, etc.)
     agent-bom mcp-server --sse        # SSE transport (for remote clients)
 
-Tools:
+Tools (13):
     scan              — Full discovery → scan → output pipeline
     check             — Check a specific package for CVEs before installing
     blast_radius      — Look up blast radius for a specific CVE
@@ -14,6 +14,14 @@ Tools:
     compliance        — OWASP/ATLAS/NIST AI RMF compliance posture
     remediate         — Generate actionable remediation plan
     skill_trust       — ClawHub-style trust assessment for SKILL.md files
+    verify            — Package integrity + SLSA provenance verification
+    where             — Show all MCP discovery paths + existence status
+    inventory         — List agents/servers without CVE scanning
+    diff              — Compare scan against baseline for new/resolved vulns
+
+Resources (2):
+    registry://servers  — Browse 427+ server threat intel registry
+    policy://template   — Default security policy template
 
 Security: Read-only. Never executes MCP servers or reads credential values.
 """
@@ -696,6 +704,231 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         except Exception as exc:
             return json.dumps({"error": str(exc)})
 
+    # ── Tool 10: verify ─────────────────────────────────────────────
+
+    @mcp.tool(annotations=_READ_ONLY)
+    async def verify(
+        package: Annotated[str, Field(description="Package name with optional version, e.g. 'express@4.18.2' or 'requests==2.31.0'.")],
+        ecosystem: Annotated[str, Field(description="Package ecosystem: 'npm' or 'pypi'.")] = "npm",
+    ) -> str:
+        """Verify package integrity and SLSA provenance against registries.
+
+        Checks SHA-256/SRI hashes against npm/PyPI registries and looks up
+        SLSA build provenance attestations to confirm the package was built
+        from its claimed source repository.
+
+        Returns:
+            JSON with integrity verification (hash match, expected vs actual)
+            and provenance status (SLSA level, source repo, build trigger).
+        """
+        try:
+            from agent_bom.http_client import create_client
+            from agent_bom.integrity import (
+                check_package_provenance,
+                verify_package_integrity,
+            )
+            from agent_bom.models import Package as Pkg
+
+            spec = package.strip()
+            eco = ecosystem.lower().strip()
+
+            # Parse name@version or name==version
+            if eco == "pypi" and "==" in spec:
+                name, version = spec.split("==", 1)
+            elif "@" in spec and not spec.startswith("@"):
+                name, version = spec.rsplit("@", 1)
+            elif spec.startswith("@") and spec.count("@") > 1:
+                last_at = spec.rindex("@")
+                name, version = spec[:last_at], spec[last_at + 1:]
+            else:
+                name, version = spec, "latest"
+
+            pkg = Pkg(name=name, version=version, ecosystem=eco)
+
+            async with create_client(timeout=15.0) as client:
+                integrity = await verify_package_integrity(pkg, client)
+                provenance = await check_package_provenance(pkg, client)
+
+            result = {
+                "package": name,
+                "version": version,
+                "ecosystem": eco,
+                "integrity": integrity.to_dict() if integrity and hasattr(integrity, "to_dict") else integrity,
+                "provenance": provenance.to_dict() if provenance and hasattr(provenance, "to_dict") else provenance,
+            }
+            return json.dumps(result, indent=2, default=str)
+        except Exception as exc:
+            return json.dumps({"error": str(exc)})
+
+    # ── Tool 11: where ────────────────────────────────────────────
+
+    @mcp.tool(annotations=_READ_ONLY)
+    def where() -> str:
+        """Show all MCP discovery paths and which config files exist.
+
+        Lists every known MCP client config path per platform, indicating
+        which files are present on the current system. Useful for debugging
+        discovery issues or understanding where MCP configs live.
+
+        Returns:
+            JSON with per-client config paths, existence status, and platform.
+        """
+        import platform
+
+        from agent_bom.discovery import CONFIG_LOCATIONS
+
+        current_os = platform.system()
+        clients = []
+        for agent_type, platforms in CONFIG_LOCATIONS.items():
+            paths = platforms.get(current_os, [])
+            entries = []
+            for p in paths:
+                expanded = Path(p).expanduser()
+                entries.append({
+                    "path": str(expanded),
+                    "exists": expanded.exists(),
+                })
+            clients.append({
+                "client": agent_type.value,
+                "platform": current_os,
+                "config_paths": entries,
+            })
+        return json.dumps({"clients": clients, "platform": current_os}, indent=2)
+
+    # ── Tool 12: inventory ────────────────────────────────────────
+
+    @mcp.tool(annotations=_READ_ONLY)
+    def inventory(
+        config_path: Annotated[str | None, Field(description="Path to MCP client config directory. Auto-discovers all if omitted.")] = None,
+    ) -> str:
+        """List all discovered AI agents and MCP servers without CVE scanning.
+
+        Performs fast discovery and package extraction only — no vulnerability
+        scanning. Use this for a quick overview of your AI agent inventory.
+
+        Returns:
+            JSON with discovered agents, their MCP servers, packages, and
+            transport types.
+        """
+        try:
+            from agent_bom.discovery import discover_all
+            from agent_bom.parsers import extract_packages
+
+            agents = discover_all(project_dir=config_path)
+            if not agents:
+                return json.dumps({"status": "no_agents_found", "agents": []})
+
+            for agent in agents:
+                for server in agent.mcp_servers:
+                    if not server.packages:
+                        server.packages = extract_packages(server)
+
+            result = []
+            for agent in agents:
+                servers = []
+                for s in agent.mcp_servers:
+                    servers.append({
+                        "name": s.name,
+                        "command": s.command,
+                        "transport": s.transport.value,
+                        "packages": [
+                            {"name": p.name, "version": p.version, "ecosystem": p.ecosystem}
+                            for p in s.packages
+                        ],
+                    })
+                result.append({
+                    "name": agent.name,
+                    "agent_type": agent.agent_type.value,
+                    "config_path": agent.config_path,
+                    "servers": servers,
+                })
+            return json.dumps({"agents": result, "total_agents": len(result)}, indent=2)
+        except Exception as exc:
+            return json.dumps({"error": str(exc)})
+
+    # ── Tool 13: diff ─────────────────────────────────────────────
+
+    @mcp.tool(annotations=_READ_ONLY)
+    async def diff(
+        baseline: Annotated[dict | None, Field(description="Baseline report JSON object. If omitted, uses the latest saved report from history.")] = None,
+    ) -> str:
+        """Compare a fresh scan against a baseline to find new and resolved vulns.
+
+        Runs a new scan, then diffs it against the provided baseline (or the
+        latest saved report). Shows new vulnerabilities, resolved ones, and
+        changes in the package inventory.
+
+        Returns:
+            JSON with new findings, resolved findings, new/removed packages,
+            and a human-readable summary.
+        """
+        try:
+            from agent_bom.history import diff_reports, latest_report, load_report, save_report
+            from agent_bom.models import AIBOMReport
+            from agent_bom.output import to_json
+
+            agents, blast_radii = await _run_scan_pipeline()
+            if not agents:
+                return json.dumps({"error": "No agents found — nothing to diff"})
+
+            report = AIBOMReport(agents=agents, blast_radii=blast_radii)
+            current = to_json(report)
+
+            if baseline is None:
+                latest = latest_report()
+                if latest:
+                    baseline = load_report(latest)
+                else:
+                    save_report(current)
+                    return json.dumps({
+                        "message": "No baseline found. Current scan saved as first baseline.",
+                        "current_summary": current.get("summary", {}),
+                    }, indent=2, default=str)
+
+            result = diff_reports(baseline, current)
+            save_report(current)
+            return json.dumps(result, indent=2, default=str)
+        except Exception as exc:
+            return json.dumps({"error": str(exc)})
+
+    # ── Resources ────────────────────────────────────────────────
+
+    @mcp.resource("registry://servers")
+    def registry_servers_resource() -> str:
+        """Browse the MCP server threat intelligence registry (427+ servers).
+
+        Returns the full registry with risk levels, tools, credential
+        requirements, and verification status for every known MCP server.
+        """
+        registry_path = Path(__file__).parent / "mcp_registry.json"
+        return registry_path.read_text()
+
+    @mcp.resource("policy://template")
+    def policy_template_resource() -> str:
+        """Get a default security policy template for agent-bom.
+
+        Returns a ready-to-use policy with common rules: block critical CVEs,
+        flag CISA KEV entries, warn on unverified servers, and limit credential
+        exposure.
+        """
+        template = {
+            "name": "default-security-policy",
+            "version": "1.0",
+            "rules": [
+                {"id": "no-critical", "severity_gte": "critical", "action": "fail",
+                 "message": "Block critical vulnerabilities"},
+                {"id": "no-kev", "is_kev": True, "action": "fail",
+                 "message": "Block CISA Known Exploited Vulnerabilities"},
+                {"id": "warn-high", "severity_gte": "high", "action": "warn",
+                 "message": "Warn on high-severity vulnerabilities"},
+                {"id": "warn-unverified", "unverified_server": True, "action": "warn",
+                 "message": "Warn on unverified MCP servers"},
+                {"id": "warn-credentials", "has_credentials": True, "action": "warn",
+                 "message": "Flag servers with credential exposure"},
+            ],
+        }
+        return json.dumps(template, indent=2)
+
     # ── Prompts ─────────────────────────────────────────────────────
 
     @mcp.prompt(name="quick-audit", description="Run a complete security audit of your AI agent setup")
@@ -744,6 +977,10 @@ _SERVER_CARD_TOOLS = [
     {"name": "compliance", "description": "OWASP / MITRE ATLAS / NIST AI RMF posture", "annotations": {"readOnlyHint": True}},
     {"name": "remediate", "description": "Generate actionable remediation plan", "annotations": {"readOnlyHint": True}},
     {"name": "skill_trust", "description": "ClawHub-style trust assessment for SKILL.md files", "annotations": {"readOnlyHint": True}},
+    {"name": "verify", "description": "Package integrity + SLSA provenance verification", "annotations": {"readOnlyHint": True}},
+    {"name": "where", "description": "Show all MCP discovery paths + existence status", "annotations": {"readOnlyHint": True}},
+    {"name": "inventory", "description": "List agents/servers without CVE scanning", "annotations": {"readOnlyHint": True}},
+    {"name": "diff", "description": "Compare scan against baseline for new/resolved vulns", "annotations": {"readOnlyHint": True}},
 ]
 
 _SERVER_CARD_PROMPTS = [

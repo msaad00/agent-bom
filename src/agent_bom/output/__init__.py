@@ -1073,6 +1073,9 @@ def to_json(report: AIBOMReport) -> dict:
     if report.model_files:
         result["model_files"] = report.model_files
 
+    if report.enforcement_data:
+        result["enforcement"] = report.enforcement_data
+
     return result
 
 

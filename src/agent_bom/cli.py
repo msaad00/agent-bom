@@ -155,6 +155,7 @@ def main():
               help="Scan for ML model binary files (.gguf, .safetensors, .onnx, .pt, .pkl, etc.). Repeatable.")
 @click.option("--introspect", is_flag=True, help="Connect to live MCP servers to discover runtime tools/resources (read-only, requires mcp SDK)")
 @click.option("--introspect-timeout", type=float, default=10.0, show_default=True, help="Timeout per MCP server for --introspect (seconds)")
+@click.option("--enforce", is_flag=True, help="Run tool poisoning detection and enforcement checks (description injection, capability combos, CVE exposure, drift)")
 @click.option("--verify-integrity", is_flag=True, help="Verify package integrity (SHA256/SRI) and SLSA provenance against registries")
 @click.option("--ai-enrich", is_flag=True, help="Enrich findings with LLM-generated risk narratives, executive summary, and threat chains. Auto-detects Ollama (free, local) or uses litellm (pip install 'agent-bom[ai-enrich]')")
 @click.option("--ai-model", default="openai/gpt-4o-mini", show_default=True, metavar="MODEL",
@@ -247,6 +248,7 @@ def scan(
     model_dirs: tuple,
     introspect: bool,
     introspect_timeout: float,
+    enforce: bool,
     verify_integrity: bool,
     ai_enrich: bool,
     ai_model: str,
@@ -1012,6 +1014,8 @@ def scan(
         con.print(f"\n  [bold]{total_packages} total packages.[/bold]")
 
         # Step 2b: MCP Runtime Introspection (--introspect)
+        _enforcement_data: dict | None = None
+        _intro_report = None
         if introspect:
             from agent_bom.mcp_introspect import IntrospectionError, enrich_servers, introspect_servers_sync
             all_servers = [s for a in agents for s in a.mcp_servers]
@@ -1044,8 +1048,41 @@ def scan(
                 enriched = enrich_servers(all_servers, intro_report)
                 if enriched:
                     con.print(f"\n  [bold]{enriched} server(s) enriched with runtime data.[/bold]")
+                _intro_report = intro_report
             except IntrospectionError as exc:
                 con.print(f"  [yellow]⚠[/yellow] {exc}")
+
+        # Step 2c: Tool poisoning detection + enforcement (--enforce)
+        if enforce:
+            from agent_bom.enforcement import run_enforcement
+            all_enforce_servers = [s for a in agents for s in a.mcp_servers]
+            con.print(f"\n[bold blue]Running enforcement checks on {len(all_enforce_servers)} server(s)...[/bold blue]\n")
+            enforce_result = run_enforcement(
+                servers=all_enforce_servers,
+                introspection_report=_intro_report,
+            )
+            _enforcement_data = enforce_result.to_dict()
+            # Display findings
+            if enforce_result.findings:
+                from rich.table import Table
+                etable = Table(title="Enforcement Findings", show_lines=False)
+                etable.add_column("Severity", width=10)
+                etable.add_column("Category", width=16)
+                etable.add_column("Server", width=20)
+                etable.add_column("Tool", width=16)
+                etable.add_column("Reason")
+                sev_colors = {"critical": "red bold", "high": "red", "medium": "yellow", "low": "dim"}
+                for f in enforce_result.findings:
+                    etable.add_row(
+                        f"[{sev_colors.get(f.severity, 'white')}]{f.severity.upper()}[/]",
+                        f.category,
+                        f.server_name,
+                        f.tool_name or "—",
+                        f.reason,
+                    )
+                con.print(etable)
+            status = "[green]PASS[/green]" if enforce_result.passed else "[red]FAIL[/red]"
+            con.print(f"\n  Enforcement: {status} ({enforce_result.critical_count} critical, {enforce_result.high_count} high)")
 
         # Step 3: Resolve unknown versions
         all_packages = [p for a in agents for s in a.mcp_servers for p in s.packages]
@@ -1148,6 +1185,8 @@ def scan(
         report.trust_assessment_data = _trust_assessment_data
     if _prompt_scan_data:
         report.prompt_scan_data = _prompt_scan_data
+    if _enforcement_data:
+        report.enforcement_data = _enforcement_data
 
     # ── Step 1i: Model binary file scan ─────────────────────────────
     if not skill_only and model_dirs:

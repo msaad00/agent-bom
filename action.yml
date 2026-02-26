@@ -1,5 +1,5 @@
 name: 'agent-bom Scan'
-description: 'The open-source Grype for the AI era — CVEs, credential exposure, blast radius, compliance.'
+description: 'AI supply chain security scanner — CVEs, credential exposure, blast radius, compliance.'
 author: 'agent-bom'
 
 branding:

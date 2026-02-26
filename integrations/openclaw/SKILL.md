@@ -1,6 +1,6 @@
 ---
 name: agent-bom
-description: The open-source Grype for the AI era — scan packages for CVEs, assess credential exposure, map blast radius from vulnerabilities to tools, OWASP/MITRE/NIST compliance
+description: AI supply chain security scanner — check packages for CVEs, look up MCP servers in the threat registry, assess blast radius, generate SBOMs, enforce compliance
 version: 0.33.0
 metadata:
   openclaw:
@@ -20,22 +20,33 @@ metadata:
     file_writes: []
     network_endpoints:
       - url: "https://agent-bom-mcp.up.railway.app/sse"
-        purpose: "MCP server endpoint — all 13 tools are accessed via this single SSE connection"
+        purpose: "Remote MCP server — tools query public vulnerability databases (OSV, NVD, EPSS, KEV) and the bundled 427-server registry. No local file access."
         auth: false
     telemetry: false
     persistence: false
     privilege_escalation: false
 ---
 
-# agent-bom — The Open-Source Grype for the AI Era
+# agent-bom — AI Supply Chain Security Scanner
 
-An MCP-powered skill that scans the AI supply chain for security risks:
-- **CVEs** in packages, dependencies, and images (OSV.dev + NVD + EPSS + CISA KEV)
-- **Config security** — credential exposure, tool access risks, privilege escalation
-- **Blast radius** — links CVEs to exposed credentials and tools via server → agent mapping
+An MCP server that provides security scanning tools for AI infrastructure:
+- **CVE lookup** — check any package against OSV.dev, NVD, EPSS, CISA KEV
+- **MCP registry** — look up any MCP server in the 427+ server threat intelligence registry
+- **Blast radius** — map how a CVE reaches credentials and tools
 - **Compliance** — OWASP LLM Top 10, MITRE ATLAS, NIST AI RMF
 
-All through a remote MCP server. No local binary install required. Agentless, read-only, non-root.
+## How the Remote Server Works
+
+This skill connects to a remote MCP server hosted on Railway. The server:
+
+1. **Does NOT read your local files.** The server runs on Railway, not your machine. `file_reads: []` is accurate — this skill never accesses your filesystem.
+2. **Tools that need local data require you to provide it.** For example, `check(package="langchain", ecosystem="pypi")` sends only the package name you provide. The server queries public vulnerability databases and returns results.
+3. **Tools that query bundled data work immediately.** `registry_lookup`, `compliance`, `skill_trust` query data bundled inside the server (the 427-server registry, OWASP/ATLAS/NIST mappings).
+4. **The `scan()` tool on this remote server** scans the server's own environment — it does NOT reach into your machine. For local MCP config discovery, use the CLI: `pipx install agent-bom && agent-bom scan`.
+
+**What the server receives:** Only the arguments you provide in tool calls (package names, CVE IDs, server names). Nothing else.
+
+**What the server sends outbound:** Package names + versions to OSV.dev, NVD, EPSS, and CISA KEV APIs. No credentials, hostnames, or config contents.
 
 ## Setup
 
@@ -59,36 +70,37 @@ For OpenClaw, add this to `~/.openclaw/openclaw.json`. For other MCP clients
 
 Once connected, the agent-bom MCP server provides **13 tools**:
 
+### Tools that work fully via remote server (no local access needed)
+
 | Tool | Description |
 |------|-------------|
-| `scan` | Full scan pipeline — discover agents, extract packages, scan for CVEs, return results |
-| `check` | Check a specific package for known vulnerabilities |
+| `check` | Check a specific package for known vulnerabilities (you provide package name + ecosystem) |
 | `blast_radius` | Map the impact chain of a CVE across agents, servers, credentials, and tools |
-| `policy_check` | Evaluate scan results against a security policy |
 | `registry_lookup` | Look up an MCP server in the 427+ server threat intelligence registry |
-| `generate_sbom` | Generate a Software Bill of Materials (CycloneDX or SPDX) |
 | `compliance` | Check OWASP LLM Top 10, MITRE ATLAS, and NIST AI RMF compliance |
 | `remediate` | Generate a prioritized remediation plan for discovered vulnerabilities |
 | `verify` | Check package integrity and SLSA provenance |
-| `where` | Show all MCP client config discovery paths and which exist on this system |
-| `inventory` | List discovered agents and servers without running a CVE scan |
-| `diff` | Compare two scan reports to see what changed |
 | `skill_trust` | Assess trust level of a skill file (5-category analysis with verdict) |
+| `generate_sbom` | Generate a Software Bill of Materials (CycloneDX or SPDX) |
+| `policy_check` | Evaluate scan results against a security policy |
+| `diff` | Compare two scan reports to see what changed |
+
+### Tools that scan the server's own environment (not your machine)
+
+| Tool | Description |
+|------|-------------|
+| `scan` | Run the full discovery → scan pipeline on the server's environment. For local scanning, use the CLI. |
+| `where` | Show MCP client config discovery paths on the server. For your machine, use the CLI. |
+| `inventory` | List agents and servers found on the server. For local inventory, use the CLI. |
 
 ## Available MCP Resources
 
 | Resource | Description |
 |----------|-------------|
 | `registry://servers` | Browse the 427+ MCP server threat intelligence registry |
-| `policy://template` | Get a starter security policy template |
+| `policy://template` | Default security policy template |
 
 ## Example Workflows
-
-### Scan for vulnerabilities
-Call the `scan` tool with no arguments to auto-discover local MCP configs and scan:
-```
-scan()
-```
 
 ### Check a package before installing
 ```
@@ -100,9 +112,9 @@ check(package="@modelcontextprotocol/server-filesystem", ecosystem="npm")
 blast_radius(cve_id="CVE-2024-21538")
 ```
 
-### Generate an SBOM
+### Look up a server in the threat registry
 ```
-generate_sbom(format="cyclonedx")
+registry_lookup(server_name="brave-search")
 ```
 
 ### Check compliance
@@ -110,25 +122,32 @@ generate_sbom(format="cyclonedx")
 compliance()
 ```
 
-### Look up a server in the threat registry
+### Generate an SBOM
 ```
-registry_lookup(server_name="brave-search")
+generate_sbom(format="cyclonedx")
 ```
 
-## What the MCP Server Does
+### Assess trust of a skill file
+```
+skill_trust(skill_content="<paste SKILL.md content>")
+```
 
-The remote server discovers MCP client configurations, extracts package dependencies,
-queries public vulnerability databases (OSV.dev, NVD, EPSS, CISA KEV), and assesses
-config security (credential exposure, tool access patterns, privilege escalation risks).
-It returns structured results — CVE IDs, severity scores, config findings, blast radius
-chains linking vulnerabilities to exposed credentials and tools, and remediation advice.
+## For Local Scanning (Auto-Discovery of Your MCP Configs)
 
-Agentless, read-only, non-root. No binary install required.
+To scan your own machine's MCP client configs with full auto-discovery across
+18 clients (Claude Desktop, Cursor, Codex CLI, Gemini CLI, etc.), install the
+CLI locally:
 
-**Data handling:**
-- Only package names and versions are sent to vulnerability APIs
-- Config file contents, env var values, and credentials are never transmitted
-- All results are returned to the calling agent — nothing is stored server-side
+```bash
+pipx install agent-bom
+agent-bom scan                    # auto-discover + scan local configs
+agent-bom scan --dry-run          # preview what would be read (nothing accessed)
+agent-bom scan --enforce          # + tool poisoning detection
+agent-bom where                   # show all 18 client discovery paths
+```
+
+The CLI reads 27 specific config paths (enumerated in [PERMISSIONS.md](https://github.com/msaad00/agent-bom/blob/main/PERMISSIONS.md)).
+It extracts server names, package names, and env var **names** only — never values, credentials, or secrets.
 
 ## Source & Verification
 
@@ -136,7 +155,5 @@ Agentless, read-only, non-root. No binary install required.
 - **PyPI**: https://pypi.org/project/agent-bom/
 - **Smithery**: https://smithery.ai/server/agent-bom/agent-bom (99/100 quality score)
 - **Sigstore signed**: Every release is signed with Sigstore OIDC
-- **1000+ tests**: Every commit passes automated security scanning
+- **1100+ tests**: Every commit passes automated security scanning
 - **OpenSSF Scorecard**: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
-
-For local/offline usage, install the CLI: `pipx install agent-bom`

@@ -138,7 +138,7 @@
   <rect x="608" y="340" width="264" height="72" rx="8" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="1"/>
   <text x="740" y="360" text-anchor="middle" class="label" fill="#065f46">Compliance &amp; Audit</text>
   <text x="740" y="376" text-anchor="middle" class="sub">CycloneDX AI-BOM for supply chain</text>
-  <text x="740" y="390" text-anchor="middle" class="sub">SPDX 2.3 for license + provenance</text>
+  <text x="740" y="390" text-anchor="middle" class="sub">SPDX 3.0 for license + provenance</text>
   <text x="740" y="404" text-anchor="middle" class="sub">Scan history + baseline diffs</text>
 
   <!-- ═══ Row 4: Data Sources (external APIs) ═══ -->

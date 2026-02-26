@@ -254,7 +254,7 @@ def check_huggingface_provenance(
     url = f"https://huggingface.co/api/models/{model_name}"
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "agent-bom"})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # nosec B310 — URL prefix is hardcoded https://huggingface.co
             data = json.loads(resp.read().decode())
     except urllib.error.HTTPError as exc:
         if exc.code == 404:

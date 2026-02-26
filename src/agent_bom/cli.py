@@ -1195,7 +1195,7 @@ def scan(
 
     # ── Step 1i: Model binary file scan ─────────────────────────────
     if not skill_only and model_dirs:
-        from agent_bom.model_files import scan_model_files, verify_model_hash, check_sigstore_signature
+        from agent_bom.model_files import check_sigstore_signature, scan_model_files, verify_model_hash
         for mdir in model_dirs:
             con.print(f"  [cyan]>[/cyan] Scanning for model files in {mdir}...")
             mf_results, mf_warnings = scan_model_files(mdir)

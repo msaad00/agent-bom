@@ -210,6 +210,13 @@ def main():
 @click.option("--snyk", "snyk_flag", is_flag=True, help="Enrich vulnerabilities with Snyk intelligence (requires SNYK_TOKEN)")
 @click.option("--snyk-token", default=None, envvar="SNYK_TOKEN", metavar="KEY", help="Snyk API token (or set SNYK_TOKEN env var)")
 @click.option("--snyk-org", default=None, envvar="SNYK_ORG_ID", metavar="ORG", help="Snyk organization ID (or set SNYK_ORG_ID env var)")
+@click.option("--jira-url", default=None, envvar="JIRA_URL", metavar="URL", help="Jira base URL for ticket creation (e.g. https://company.atlassian.net)")
+@click.option("--jira-user", default=None, envvar="JIRA_USER", metavar="EMAIL", help="Jira user email (or set JIRA_USER env var)")
+@click.option("--jira-token", default=None, envvar="JIRA_API_TOKEN", metavar="TOKEN", help="Jira API token (or set JIRA_API_TOKEN env var)")
+@click.option("--jira-project", default=None, envvar="JIRA_PROJECT", metavar="KEY", help="Jira project key (e.g. SEC)")
+@click.option("--slack-webhook", default=None, envvar="SLACK_WEBHOOK_URL", metavar="URL", help="Slack incoming webhook URL for scan alerts")
+@click.option("--vanta-token", default=None, envvar="VANTA_API_TOKEN", metavar="TOKEN", help="Vanta API token for compliance evidence upload")
+@click.option("--drata-token", default=None, envvar="DRATA_API_TOKEN", metavar="TOKEN", help="Drata API token for GRC evidence upload")
 @click.option("--preset", type=click.Choice(["ci", "enterprise", "quick"]), default=None,
               help="Scan preset: ci (quiet, json, fail-on-critical), enterprise (enrich, introspect, transitive, verify-integrity), quick (no transitive, no enrich)")
 def scan(
@@ -301,6 +308,13 @@ def scan(
     remediate_sh_path: Optional[str],
     apply_fixes_flag: bool,
     apply_dry_run: bool,
+    jira_url: Optional[str],
+    jira_user: Optional[str],
+    jira_token: Optional[str],
+    jira_project: Optional[str],
+    slack_webhook: Optional[str],
+    vanta_token: Optional[str],
+    drata_token: Optional[str],
     preset: Optional[str],
     open_report: bool,
 ):
@@ -1567,7 +1581,78 @@ def scan(
         con.print()
         con.print(Rule(f"Scan Complete — {_elapsed:.1f}s", style="green" if not blast_radii else "yellow"))
 
-    # Step 8: Exit code based on policy flags
+    # Step 8: Enterprise integrations (optional, post-scan)
+    if blast_radii and (slack_webhook or jira_url or vanta_token or drata_token):
+        import asyncio as _asyncio_int
+
+        findings = []
+        for br in blast_radii:
+            findings.append({
+                "vulnerability_id": br.vulnerability.id,
+                "severity": br.vulnerability.severity.value.lower(),
+                "package": f"{br.package.name}@{br.package.version}",
+                "risk_score": br.risk_score,
+                "affected_agents": [a.name for a in br.affected_agents] if br.affected_agents else [],
+                "affected_servers": [s.name for s in br.affected_servers] if br.affected_servers else [],
+                "exposed_credentials": list(br.exposed_credentials) if br.exposed_credentials else [],
+                "fixed_version": br.vulnerability.fixed_version,
+                "owasp_tags": list(br.owasp_tags) if br.owasp_tags else [],
+                "owasp_mcp_tags": list(br.owasp_mcp_tags) if br.owasp_mcp_tags else [],
+                "atlas_tags": list(br.atlas_tags) if br.atlas_tags else [],
+                "nist_ai_rmf_tags": list(br.nist_ai_rmf_tags) if br.nist_ai_rmf_tags else [],
+            })
+
+        if slack_webhook and findings:
+            try:
+                from agent_bom.integrations.slack import build_summary_message, send_slack_alert, send_slack_payload
+
+                async def _send_slack():
+                    for f in findings[:10]:  # Cap at 10 individual alerts
+                        await send_slack_alert(slack_webhook, f)
+                    if len(findings) > 1:
+                        summary = build_summary_message(findings)
+                        await send_slack_payload(slack_webhook, summary)
+
+                _asyncio_int.run(_send_slack())
+                con.print(f"  [green]✓[/green] Slack: sent {min(len(findings), 10)} alert(s)")
+            except Exception as exc:
+                con.print(f"  [yellow]⚠[/yellow] Slack alert failed: {exc}")
+
+        if jira_url and jira_token and jira_project and findings:
+            try:
+                from agent_bom.integrations.jira import create_jira_ticket
+
+                async def _create_jira():
+                    created = 0
+                    for f in findings[:20]:  # Cap at 20 tickets
+                        await create_jira_ticket(jira_url, jira_user or "", jira_token, jira_project, f)
+                        created += 1
+                    return created
+
+                jira_count = _asyncio_int.run(_create_jira())
+                con.print(f"  [green]✓[/green] Jira: created {jira_count} ticket(s)")
+            except Exception as exc:
+                con.print(f"  [yellow]⚠[/yellow] Jira ticket creation failed: {exc}")
+
+        if vanta_token and findings:
+            try:
+                from agent_bom.integrations.vanta import upload_evidence
+
+                _asyncio_int.run(upload_evidence(vanta_token, findings))
+                con.print("  [green]✓[/green] Vanta: evidence uploaded")
+            except Exception as exc:
+                con.print(f"  [yellow]⚠[/yellow] Vanta upload failed: {exc}")
+
+        if drata_token and findings:
+            try:
+                from agent_bom.integrations.drata import upload_evidence
+
+                _asyncio_int.run(upload_evidence(drata_token, findings))
+                con.print("  [green]✓[/green] Drata: evidence uploaded")
+            except Exception as exc:
+                con.print(f"  [yellow]⚠[/yellow] Drata upload failed: {exc}")
+
+    # Step 9: Exit code based on policy flags
     exit_code = 0
 
     if fail_on_severity and blast_radii:

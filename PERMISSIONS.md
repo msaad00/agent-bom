@@ -121,6 +121,10 @@ Only package names and versions are sent. No user data is included in requests.
 | npm registry | `https://registry.npmjs.org/{pkg}/{version}` | Package name + version | Package metadata | None |
 | PyPI | `https://pypi.org/pypi/{pkg}/{version}/json` | Package name + version | Package metadata | None |
 | OpenSSF Scorecard | `https://api.securityscorecards.dev/projects/github.com/{owner}/{repo}` | GitHub owner/repo | Scorecard scores | None |
+| Jira (optional) | `https://{instance}.atlassian.net/rest/api/3/issue` | Finding summaries | Ticket confirmation | API token (`--jira-token`) |
+| Slack (optional) | User-provided webhook URL | Finding summaries | Delivery status | Webhook URL (`--slack-webhook`) |
+| Vanta (optional) | `https://api.vanta.com/v1/` | Compliance evidence | Upload confirmation | API token (`--vanta-token`) |
+| Drata (optional) | `https://public-api.drata.com/` | Compliance evidence | Upload confirmation | API token (`--drata-token`) |
 
 ### Data flow
 
@@ -128,6 +132,8 @@ Only package names and versions are sent. No user data is included in requests.
 [Local config files]  →  extract server name, command, args, env var NAMES
                           ↓
 [Package names+versions]  →  sent to OSV.dev, NVD, EPSS, KEV, npm, PyPI, OpenSSF Scorecard
+                          ↓
+[Findings (optional)]     →  sent to Jira, Slack, Vanta, Drata (only if flags provided)
                           ↓
 [CVE results]  →  returned to local process, written to stdout or --output file
 ```

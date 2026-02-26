@@ -404,6 +404,7 @@ agent-bom scan --aws -f graph -o graph.json   # export graph data
 | GitHub Action | `uses: msaad00/agent-bom@v0.33.0` | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated scans |
 | REST API | `agent-bom api` | Dashboards, SIEM |
+| Runtime proxy | `agent-bom proxy` | Live MCP traffic audit |
 | MCP Server | `agent-bom mcp-server` | Inside any MCP client |
 | Dashboard | `agent-bom serve` | Team UI |
 | Prometheus | `--push-gateway` / `--otel-endpoint` | Monitoring |
@@ -432,6 +433,9 @@ agent-bom api --api-key $SECRET --rate-limit 30   # http://127.0.0.1:8422/docs
 | `GET /v1/scan/{id}` | Results + status |
 | `GET /v1/scan/{id}/attack-flow` | Per-CVE blast radius graph |
 | `GET /v1/registry` | 427+ server registry |
+| `GET /v1/compliance` | Full 4-framework compliance posture |
+| `GET /v1/compliance/{framework}` | Single framework (owasp-llm, owasp-mcp, atlas, nist) |
+| `GET /v1/malicious/check` | Malicious package / typosquat check |
 
 ### MCP Server
 
@@ -504,10 +508,11 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 - [x] Malicious package detection — OSV MAL- prefix flagging + typosquat heuristics
 - [x] OpenSSF Scorecard enrichment — `--scorecard` for package health scoring
 - [x] GPU infrastructure coverage — NVIDIA CUDA, AMD ROCm, TensorRT, Triton, vLLM, JAX
+- [x] Runtime MCP traffic monitoring — live tool call analysis, anomaly detection, credential leak detection
+- [x] Enterprise integrations — Jira, Slack, Vanta, Drata
+- [x] Runtime sidecar Docker container — `Dockerfile.runtime` + Docker Compose for MCP proxy deployment
 
 **Planned:**
-- [ ] Runtime MCP traffic monitoring — live tool call analysis, anomaly detection, credential leak detection
-- [ ] Enterprise integrations — Jira, Slack, Vanta, Drata
 - [ ] EU AI Act compliance mapping
 - [ ] CIS AI benchmarks
 - [ ] License compliance engine

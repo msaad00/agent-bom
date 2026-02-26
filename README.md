@@ -55,13 +55,15 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 |---|---|---|
 | Package CVE detection | Yes | Yes — OSV + NVD CVSS v4 + EPSS + CISA KEV |
 | SBOM generation | Yes (Syft) | Yes — CycloneDX 1.6, SPDX 3.0, SARIF |
-| **AI agent discovery** | — | 13 MCP clients + Docker Compose auto-discovered |
+| **AI agent discovery** | — | 18 MCP clients + Docker Compose auto-discovered |
 | **Blast radius mapping** | — | CVE → package → server → agent → credentials → tools |
 | **Credential exposure** | — | Which secrets leak per vulnerability, per agent |
 | **MCP tool reachability** | — | Which tools an attacker reaches post-exploit |
 | **Privilege detection** | — | runs_as_root, shell_access, container_privileged, per-tool permissions |
 | **Enterprise remediation** | — | Named assets, impact percentages, risk narratives |
 | **Triple-framework tagging** | — | OWASP LLM Top 10 + MITRE ATLAS + NIST AI RMF |
+| **Tool poisoning detection** | — | Description injection, capability combos, CVE exposure, drift |
+| **Model weight provenance** | — | SHA-256 hash, Sigstore signature, HuggingFace metadata |
 | **Policy-as-code** | — | Block unverified servers, enforce thresholds in CI/CD |
 | **427+ server MCP registry** | — | Risk levels, tool inventories, auto-synced weekly |
 
@@ -73,7 +75,7 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 
 | Source | How |
 |--------|-----|
-| MCP configs | Auto-discover (13 clients + Docker Compose) |
+| MCP configs | Auto-discover (18 clients + Docker Compose) |
 | Docker images | Grype / Syft / Docker CLI fallback |
 | Kubernetes | kubectl across namespaces |
 | Cloud providers | AWS, Azure, GCP, Databricks, Snowflake, Nebius |
@@ -129,13 +131,15 @@ pip install agent-bom
 agent-bom scan                                     # auto-discover + scan
 agent-bom scan --enrich                            # + NVD CVSS + EPSS + CISA KEV
 agent-bom scan -f html -o report.html              # HTML dashboard
+agent-bom scan --enforce                           # tool poisoning detection
 agent-bom scan --fail-on-severity high -q          # CI gate
 agent-bom scan --image myapp:latest                # Docker image scanning
 agent-bom scan --k8s --all-namespaces              # K8s cluster
 agent-bom scan --aws --snowflake --databricks      # Multi-cloud
+agent-bom scan --hf-model meta-llama/Llama-3.1-8B  # model provenance
 ```
 
-Auto-discovers Claude Desktop, Claude Code, Cursor, Windsurf, Cline, VS Code Copilot, Continue, Zed, Cortex Code, OpenClaw, ToolHive, Docker MCP Toolkit, and VS Code native MCP.
+Auto-discovers Claude Desktop, Claude Code, Cursor, Windsurf, Cline, VS Code Copilot, Continue, Zed, Cortex Code (CoCo), Codex CLI, Gemini CLI, Goose, Snowflake CLI, OpenClaw, Roo Code, Amazon Q, ToolHive, and Docker MCP Toolkit.
 
 <details>
 <summary><b>Install extras</b></summary>
@@ -285,6 +289,30 @@ agent-bom scan --ai-enrich --ai-model openai/gpt-4o-mini # cloud LLM
 </details>
 
 <details>
+<summary><b>Tool poisoning detection + enforcement</b></summary>
+
+Static analysis of MCP tool descriptions for prompt injection patterns, dangerous capability combinations (EXECUTE + WRITE), CVE exposure in server dependencies, and tool drift detection via introspection.
+
+```bash
+agent-bom scan --enforce                       # tool poisoning + enforcement checks
+agent-bom scan --enforce --introspect          # + drift detection against live servers
+```
+
+</details>
+
+<details>
+<summary><b>Model weight provenance</b></summary>
+
+SHA-256 hash verification, Sigstore signature detection (.sig/.sigstore/.bundle), and HuggingFace model metadata (author, license, model card, gated status, download count).
+
+```bash
+agent-bom scan --model-files ./models --model-provenance   # hash + signature checks
+agent-bom scan --hf-model meta-llama/Llama-3.1-8B          # HuggingFace provenance
+```
+
+</details>
+
+<details>
 <summary><b>Jupyter notebook + model file scanning</b></summary>
 
 Detect 29+ AI libraries, pip installs, credentials in notebooks. Scan 13 model file formats with security flags for pickle-based formats.
@@ -383,7 +411,7 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 | **AI platforms** | Cloud modules | Bedrock, Vertex AI, Snowflake Cortex, Databricks |
 | **Containers** | `--image` | NVIDIA NIM, vLLM, Ollama, any OCI image |
 | **AI frameworks** | Dependency scan | LangChain, LlamaIndex, AutoGen, PyTorch |
-| **MCP ecosystem** | Auto-discovery + registry | 13 clients, 427+ servers |
+| **MCP ecosystem** | Auto-discovery + registry | 18 clients, 427+ servers |
 | **LLM providers** | API key + SDK detection | OpenAI, Anthropic, Cohere, Mistral |
 | **IaC + CI/CD** | `--tf-dir`, `--gha` | Terraform AI resources, GitHub Actions |
 
@@ -401,12 +429,16 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 
 ## Roadmap
 
-- [ ] Cloud AI inventory wiring — AWS Bedrock, Azure AI Foundry, GCP Vertex, Snowflake Cortex (code exists, CLI integration in progress)
+**Shipped:**
+- [x] Cloud AI inventory — AWS Bedrock, Azure AI Foundry, GCP Vertex, Snowflake Cortex, Databricks, Nebius
+- [x] Tool poisoning / prompt injection detection — `--enforce` with description injection, capability combos, CVE exposure, drift
+- [x] Model weight provenance — SHA-256 hash, Sigstore signatures, HuggingFace metadata (`--model-provenance`, `--hf-model`)
+- [x] 18 MCP client discovery — Codex CLI, Gemini CLI, Goose, Snowflake CLI, full Cortex Code (CoCo) coverage
+- [x] K8s AI workload discovery — `--k8s --all-namespaces` with pod-level scanning
+
+**Planned:**
 - [ ] Runtime MCP traffic monitoring — live tool call analysis, anomaly detection
-- [ ] Tool poisoning / prompt injection detection — static + dynamic MCP tool analysis
-- [ ] Model security — weights, datasets, fine-tuning supply chain risks
 - [ ] GPU/VM infrastructure scanning — NVIDIA NIM, vLLM, compute fleet inventory
-- [ ] K8s AI workload discovery — pod-level agent and model scanning
 - [ ] EU AI Act compliance mapping
 - [ ] CIS AI benchmarks
 - [ ] License compliance engine
@@ -422,7 +454,7 @@ pip install -e ".[dev]"
 pytest && ruff check src/
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) | [SECURITY.md](SECURITY.md) | [Skills](skills/)
+See [CONTRIBUTING.md](CONTRIBUTING.md) | [SECURITY.md](SECURITY.md) | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | [Skills](skills/)
 
 ---
 

@@ -38,6 +38,31 @@ from pydantic import Field
 
 logger = logging.getLogger(__name__)
 
+# Maximum file size for SBOM/skill file reads (50 MB)
+_MAX_FILE_SIZE = 50 * 1024 * 1024
+
+# Cached registry data (loaded once, reused across requests)
+_registry_cache: dict | None = None
+_registry_raw_cache: str | None = None
+
+
+def _get_registry_data() -> dict:
+    """Load and cache the MCP registry JSON as a dict."""
+    global _registry_cache
+    if _registry_cache is None:
+        registry_path = Path(__file__).parent / "mcp_registry.json"
+        _registry_cache = json.loads(registry_path.read_text())
+    return _registry_cache
+
+
+def _get_registry_data_raw() -> str:
+    """Load and cache the MCP registry JSON as raw text."""
+    global _registry_raw_cache
+    if _registry_raw_cache is None:
+        registry_path = Path(__file__).parent / "mcp_registry.json"
+        _registry_raw_cache = registry_path.read_text()
+    return _registry_raw_cache
+
 # All agent-bom tools are read-only scanners
 _READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True)
 
@@ -64,7 +89,7 @@ async def _run_scan_pipeline(
     enrich: bool = False,
     transitive: bool = False,
 ):
-    """Run discovery → extraction → scanning and return (agents, blast_radii).
+    """Run discovery → extraction → scanning and return (agents, blast_radii, warnings).
 
     Async version — safe to call from within an existing event loop (e.g.
     FastMCP's async context).  Falls back to asyncio.run() when no loop
@@ -75,6 +100,7 @@ async def _run_scan_pipeline(
     from agent_bom.parsers import extract_packages
     from agent_bom.scanners import scan_agents, scan_agents_with_enrichment
 
+    warnings: list[str] = []
     agents = discover_all(project_dir=config_path)
 
     # Docker image scanning
@@ -84,33 +110,43 @@ async def _run_scan_pipeline(
             img_agents, _warnings = scan_image(image)
             agents.extend(img_agents)
         except Exception as exc:
-            logger.warning("Image scan failed for %s: %s", image, exc)
+            msg = f"Image scan failed for {image}: {exc}"
+            logger.warning(msg)
+            warnings.append(msg)
 
     # SBOM ingestion
     if sbom_path:
         try:
-            from agent_bom.sbom import load_sbom
-            sbom_packages, _warnings = load_sbom(sbom_path)
-            if sbom_packages:
-                sbom_server = MCPServer(
-                    name=f"sbom:{Path(sbom_path).name}",
-                    command="",
-                    args=[],
-                    env={},
-                    transport=TransportType.UNKNOWN,
-                    packages=sbom_packages,
-                )
-                agents.append(Agent(
-                    name=f"sbom:{Path(sbom_path).name}",
-                    agent_type=AgentType.CUSTOM,
-                    config_path=sbom_path,
-                    mcp_servers=[sbom_server],
-                ))
+            # File size check
+            sbom_file = Path(sbom_path)
+            if sbom_file.exists() and sbom_file.stat().st_size > _MAX_FILE_SIZE:
+                msg = f"SBOM file too large ({sbom_file.stat().st_size} bytes, max {_MAX_FILE_SIZE})"
+                warnings.append(msg)
+            else:
+                from agent_bom.sbom import load_sbom
+                sbom_packages, _warnings = load_sbom(sbom_path)
+                if sbom_packages:
+                    sbom_server = MCPServer(
+                        name=f"sbom:{Path(sbom_path).name}",
+                        command="",
+                        args=[],
+                        env={},
+                        transport=TransportType.UNKNOWN,
+                        packages=sbom_packages,
+                    )
+                    agents.append(Agent(
+                        name=f"sbom:{Path(sbom_path).name}",
+                        agent_type=AgentType.CUSTOM,
+                        config_path=sbom_path,
+                        mcp_servers=[sbom_server],
+                    ))
         except Exception as exc:
-            logger.warning("SBOM load failed for %s: %s", sbom_path, exc)
+            msg = f"SBOM load failed for {sbom_path}: {exc}"
+            logger.warning(msg)
+            warnings.append(msg)
 
     if not agents:
-        return [], []
+        return [], [], warnings
 
     for agent in agents:
         for server in agent.mcp_servers:
@@ -121,7 +157,7 @@ async def _run_scan_pipeline(
         blast_radii = await scan_agents_with_enrichment(agents)
     else:
         blast_radii = await scan_agents(agents)
-    return agents, blast_radii
+    return agents, blast_radii, warnings
 
 
 # ---------------------------------------------------------------------------
@@ -181,11 +217,14 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             from agent_bom.models import AIBOMReport
             from agent_bom.output import to_json
 
-            agents, blast_radii = await _run_scan_pipeline(
+            agents, blast_radii, scan_warnings = await _run_scan_pipeline(
                 config_path, image, sbom_path, enrich, transitive=transitive,
             )
             if not agents:
-                return json.dumps({"status": "no_agents_found", "agents": [], "blast_radii": []})
+                result = {"status": "no_agents_found", "agents": [], "blast_radii": []}
+                if scan_warnings:
+                    result["warnings"] = scan_warnings
+                return json.dumps(result)
 
             # Integrity verification
             if verify_integrity:
@@ -217,17 +256,22 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             if fail_severity:
                 from agent_bom.models import Severity
 
-                threshold = Severity(fail_severity.lower())
                 severity_order = ["critical", "high", "medium", "low"]
-                threshold_idx = severity_order.index(threshold.value)
+                try:
+                    threshold = Severity(fail_severity.lower())
+                    threshold_idx = severity_order.index(threshold.value)
+                except (ValueError, KeyError):
+                    return json.dumps({"error": f"Invalid severity: {fail_severity}. Use: critical, high, medium, low"})
                 gate_fail = any(
-                    severity_order.index(br.vulnerability.severity.value) <= threshold_idx
+                    severity_order.index(sev) <= threshold_idx
                     for br in blast_radii
-                    if br.vulnerability.severity.value in severity_order
+                    if (sev := br.vulnerability.severity.value) in severity_order
                 )
                 result["gate_status"] = "fail" if gate_fail else "pass"
                 result["gate_severity"] = fail_severity.lower()
 
+            if scan_warnings:
+                result["warnings"] = scan_warnings
             return json.dumps(result, indent=2, default=str)
         except Exception as exc:
             return json.dumps({"error": str(exc)})
@@ -345,7 +389,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             exposed_tools. Returns found=false if CVE not found.
         """
         try:
-            _agents, blast_radii = await _run_scan_pipeline()
+            _agents, blast_radii, _warnings = await _run_scan_pipeline()
 
             matches = [br for br in blast_radii if br.vulnerability.id.upper() == cve_id.upper()]
             if not matches:
@@ -402,7 +446,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             policy = json.loads(policy_json)
             _validate_policy(policy)
 
-            _agents, blast_radii = await _run_scan_pipeline()
+            _agents, blast_radii, _warnings = await _run_scan_pipeline()
             result = evaluate_policy(policy, blast_radii)
             return json.dumps(result, indent=2, default=str)
         except json.JSONDecodeError as exc:
@@ -440,9 +484,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         if not search_term:
             return json.dumps({"error": "Provide server_name or package_name"})
 
-        registry_path = Path(__file__).parent / "mcp_registry.json"
         try:
-            data = json.loads(registry_path.read_text())
+            data = _get_registry_data()
         except Exception as exc:
             return json.dumps({"error": f"Failed to read registry: {exc}"})
 
@@ -497,7 +540,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             from agent_bom.models import AIBOMReport
             from agent_bom.output import to_cyclonedx, to_spdx
 
-            agents, blast_radii = await _run_scan_pipeline(config_path=config_path)
+            agents, blast_radii, _warnings = await _run_scan_pipeline(config_path=config_path)
             if not agents:
                 return json.dumps({"error": "No agents found to generate SBOM from"})
 
@@ -538,7 +581,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             from agent_bom.nist_ai_rmf import NIST_AI_RMF
             from agent_bom.owasp import OWASP_LLM_TOP10
 
-            agents, blast_radii = await _run_scan_pipeline(config_path, image)
+            agents, blast_radii, _warnings = await _run_scan_pipeline(config_path, image)
 
             # Convert BlastRadius objects to dicts for aggregation
             br_dicts = []
@@ -625,7 +668,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             from agent_bom.models import AIBOMReport
             from agent_bom.remediate import generate_remediation
 
-            agents, blast_radii = await _run_scan_pipeline(config_path, image)
+            agents, blast_radii, _warnings = await _run_scan_pipeline(config_path, image)
             if not agents:
                 return json.dumps({
                     "package_fixes": [],
@@ -697,6 +740,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             p = _Path(skill_path).expanduser().resolve()
             if not p.is_file():
                 return json.dumps({"error": f"File not found: {skill_path}"})
+            if p.stat().st_size > _MAX_FILE_SIZE:
+                return json.dumps({"error": f"File too large ({p.stat().st_size} bytes, max {_MAX_FILE_SIZE})"})
 
             scan = parse_skill_file(p)
             audit = audit_skill_result(scan)
@@ -775,27 +820,33 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         Returns:
             JSON with per-client config paths, existence status, and platform.
         """
-        import platform
+        try:
+            import platform
 
-        from agent_bom.discovery import CONFIG_LOCATIONS
+            from agent_bom.discovery import CONFIG_LOCATIONS
 
-        current_os = platform.system()
-        clients = []
-        for agent_type, platforms in CONFIG_LOCATIONS.items():
-            paths = platforms.get(current_os, [])
-            entries = []
-            for p in paths:
-                expanded = Path(p).expanduser()
-                entries.append({
-                    "path": str(expanded),
-                    "exists": expanded.exists(),
+            current_os = platform.system()
+            clients = []
+            for agent_type, platforms in CONFIG_LOCATIONS.items():
+                paths = platforms.get(current_os, [])
+                entries = []
+                for p in paths:
+                    try:
+                        expanded = Path(p).expanduser()
+                        entries.append({
+                            "path": str(expanded),
+                            "exists": expanded.exists(),
+                        })
+                    except Exception:
+                        entries.append({"path": p, "exists": False, "error": "path expansion failed"})
+                clients.append({
+                    "client": agent_type.value,
+                    "platform": current_os,
+                    "config_paths": entries,
                 })
-            clients.append({
-                "client": agent_type.value,
-                "platform": current_os,
-                "config_paths": entries,
-            })
-        return json.dumps({"clients": clients, "platform": current_os}, indent=2)
+            return json.dumps({"clients": clients, "platform": current_os}, indent=2)
+        except Exception as exc:
+            return json.dumps({"error": str(exc)})
 
     # ── Tool 12: inventory ────────────────────────────────────────
 
@@ -869,7 +920,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             from agent_bom.models import AIBOMReport
             from agent_bom.output import to_json
 
-            agents, blast_radii = await _run_scan_pipeline()
+            agents, blast_radii, _warnings = await _run_scan_pipeline()
             if not agents:
                 return json.dumps({"error": "No agents found — nothing to diff"})
 
@@ -902,8 +953,10 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         Returns the full registry with risk levels, tools, credential
         requirements, and verification status for every known MCP server.
         """
-        registry_path = Path(__file__).parent / "mcp_registry.json"
-        return registry_path.read_text()
+        try:
+            return _get_registry_data_raw()
+        except Exception as exc:
+            return json.dumps({"error": f"Failed to read registry: {exc}"})
 
     @mcp.resource("policy://template")
     def policy_template_resource() -> str:

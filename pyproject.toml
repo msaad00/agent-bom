@@ -5,14 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "agent-bom"
 version = "0.33.0"
-description = "AI supply chain security scanner — scan packages and images for CVEs, assess credential exposure and tool access risks, map blast radius from vulnerabilities to credentials and tools, generate SBOMs, OWASP/MITRE/NIST compliance."
+description = "AI supply chain security scanner — scan packages and images for CVEs, assess credential exposure and tool access risks, map blast radius, generate SBOMs. OWASP LLM + OWASP MCP + MITRE ATLAS + NIST AI RMF. GPU infrastructure (NVIDIA/AMD) coverage."
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.10"
 authors = [
     {name = "W S", email = "34316639+msaad00@users.noreply.github.com"}
 ]
-keywords = ["ai-bom", "sbom", "mcp", "mcp-server", "security", "ai-agents", "vulnerability", "supply-chain", "owasp", "mitre-atlas", "nist-ai-rmf", "grype", "syft", "blast-radius", "cve", "llm-security", "remediation", "mcp-introspection", "openclaw", "ai-enrichment", "credential-exposure", "config-security", "ai-supply-chain"]
+keywords = ["ai-bom", "sbom", "mcp", "mcp-server", "security", "ai-agents", "vulnerability", "supply-chain", "owasp", "mitre-atlas", "nist-ai-rmf", "grype", "syft", "blast-radius", "cve", "llm-security", "remediation", "mcp-introspection", "openclaw", "ai-enrichment", "credential-exposure", "config-security", "ai-supply-chain", "gpu-security", "cuda", "rocm", "ai-infrastructure"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",

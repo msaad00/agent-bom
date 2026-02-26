@@ -3,7 +3,7 @@
   "name": "io.github.msaad00/agent-bom",
   "description": "The open-source Grype for the AI era — scan packages for CVEs, assess credential exposure, map blast radius from vulnerabilities to tools, generate SBOMs, enforce policies",
   "title": "agent-bom",
-  "version": "0.32.0",
+  "version": "0.33.0",
   "repository": {
     "url": "https://github.com/msaad00/agent-bom",
     "source": "github"
@@ -11,7 +11,7 @@
   "packages": [
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/msaad00/agent-bom:v0.32.0",
+      "identifier": "ghcr.io/msaad00/agent-bom:v0.33.0",
       "transport": {
         "type": "stdio"
       },
@@ -28,7 +28,7 @@
   "_meta": {
     "io.modelcontextprotocol.registry/publisher-provided": {
       "io.github.msaad00": {
-        "ghcr.io/msaad00/agent-bom:v0.32.0": {
+        "ghcr.io/msaad00/agent-bom:v0.33.0": {
           "tier": "Community",
           "status": "Active",
           "tags": [

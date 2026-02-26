@@ -35,7 +35,7 @@
     <rect width="200" height="36" rx="6" fill="#161b22" stroke="#1f6feb" stroke-width="1" opacity="0.8"/>
     <circle cx="16" cy="18" r="5" fill="#58a6ff" opacity="0.5"/>
     <text x="28" y="15" class="node-label">MCP Agent Configs</text>
-    <text x="28" y="28" class="node-sub">10 clients: Claude, Cursor, OpenClaw...</text>
+    <text x="28" y="28" class="node-sub">18 clients: Claude, Cursor, Codex, Gemini...</text>
   </g>
 
   <!-- Container Images -->
@@ -121,7 +121,7 @@
     <g transform="translate(12, 120)">
       <rect width="130" height="28" rx="5" fill="#1c1917" stroke="#d29922" stroke-width="1"/>
       <text x="65" y="12" text-anchor="middle" class="node-label" fill="#d29922">MCP Registry</text>
-      <text x="65" y="23" text-anchor="middle" class="node-sub">112 servers + provenance</text>
+      <text x="65" y="23" text-anchor="middle" class="node-sub">427+ servers + provenance</text>
     </g>
 
     <g transform="translate(156, 120)">

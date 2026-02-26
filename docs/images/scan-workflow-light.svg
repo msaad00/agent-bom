@@ -31,8 +31,8 @@
   <!-- Developer Workstation -->
   <rect x="32" y="92" width="160" height="56" rx="8" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1"/>
   <text x="112" y="112" text-anchor="middle" class="label" fill="#1e40af">Developer Machines</text>
-  <text x="112" y="126" text-anchor="middle" class="sub">Claude, Cursor, Windsurf</text>
-  <text x="112" y="138" text-anchor="middle" class="sub">MCP config files</text>
+  <text x="112" y="126" text-anchor="middle" class="sub">18 clients: Claude, Cursor,</text>
+  <text x="112" y="138" text-anchor="middle" class="sub">Codex, Gemini, Goose, +13</text>
 
   <!-- Container Registry -->
   <rect x="208" y="92" width="160" height="56" rx="8" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1"/>
@@ -162,7 +162,7 @@
 
   <rect x="608" y="450" width="130" height="36" rx="6" fill="#f5f3ff" stroke="#ddd6fe" stroke-width="1"/>
   <text x="673" y="466" text-anchor="middle" class="label" fill="#6d28d9">MCP Registry</text>
-  <text x="673" y="480" text-anchor="middle" class="sub">112+ servers</text>
+  <text x="673" y="480" text-anchor="middle" class="sub">427+ servers</text>
 
   <rect x="752" y="450" width="120" height="36" rx="6" fill="#f5f3ff" stroke="#ddd6fe" stroke-width="1"/>
   <text x="812" y="466" text-anchor="middle" class="label" fill="#6d28d9">Grype DB</text>

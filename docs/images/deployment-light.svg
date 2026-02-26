@@ -168,8 +168,8 @@
     <rect width="200" height="44" rx="6" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="1"/>
     <circle cx="16" cy="22" r="5" fill="#059669" opacity="0.6"/>
     <text x="28" y="15" class="node-label">REST API (FastAPI)</text>
-    <text x="28" y="28" class="node-sub">:8422 — async scan, SSE stream,</text>
-    <text x="28" y="38" class="node-sub">registry, trust headers</text>
+    <text x="28" y="28" class="node-sub">:8422 — scan, proxy status/alerts,</text>
+    <text x="28" y="38" class="node-sub">scorecard, SSE stream, registry</text>
   </g>
 
   <!-- Dashboards -->
@@ -204,7 +204,7 @@
     <rect width="200" height="36" rx="6" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="1"/>
     <circle cx="16" cy="18" r="5" fill="#059669" opacity="0.6"/>
     <text x="28" y="15" class="node-label">SIEM + Alerting</text>
-    <text x="28" y="28" class="node-sub">JSON webhook, HTML reports</text>
+    <text x="28" y="28" class="node-sub">Jira, Slack, Vanta, Drata webhooks</text>
   </g>
 
   <!-- ════════════════════════════════════════════════════════════════════ -->

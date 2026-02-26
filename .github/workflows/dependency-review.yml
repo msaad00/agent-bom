@@ -22,3 +22,12 @@ jobs:
         with:
           fail-on-severity: high
           comment-summary-in-pr: always
+          allow-licenses: >-
+            Apache-2.0, MIT, BSD-2-Clause, BSD-3-Clause, ISC, PSF-2.0,
+            Python-2.0, 0BSD, Unlicense, CC0-1.0, MPL-2.0
+          # jinja2 and werkzeug are BSD-3-Clause (Pallets) but GitHub
+          # dependency review cannot resolve their license from version
+          # constraint pins — whitelist them explicitly.
+          allow-dependencies-licenses: >-
+            pkg:pypi/jinja2,
+            pkg:pypi/werkzeug

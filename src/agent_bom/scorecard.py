@@ -112,8 +112,9 @@ async def fetch_scorecard(repo: str) -> Optional[dict]:
                 _scorecard_cache[repo] = result
                 return result
             except (ValueError, KeyError) as exc:
+                safe_repo = repo.replace("\n", "").replace("\r", "")
                 safe_exc = str(exc).replace("\n", "\\n").replace("\r", "\\r")
-                logger.debug("Scorecard parse error for %s: %s", repo, safe_exc)
+                logger.debug("Scorecard parse error for %s: %s", safe_repo, safe_exc)
 
         _scorecard_cache[repo] = None
         return None

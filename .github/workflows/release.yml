@@ -112,14 +112,14 @@ jobs:
       - name: Sign wheels and sdist
         run: |
           for f in dist/*.whl dist/*.tar.gz; do
-            cosign sign-blob "$f" --yes --bundle "${f}.bundle"
+            cosign sign-blob "$f" --yes --bundle "${f}.sigstore.json"
           done
 
       - name: Upload signed bundles
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: python-package-signatures
-          path: dist/*.bundle
+          path: dist/*.sigstore.json
 
   provenance:
     name: Generate SLSA provenance

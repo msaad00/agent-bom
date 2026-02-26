@@ -1,0 +1,59 @@
+# agent-bom runtime sidecar — example deployment
+#
+# Demonstrates agent-bom proxy running as a sidecar alongside an MCP server.
+# The proxy intercepts all JSON-RPC traffic for audit logging and policy
+# enforcement.
+#
+# Quick start:
+#   docker compose -f docker-compose.runtime.yml up
+#
+# The proxy wraps the filesystem MCP server and logs all tool calls to
+# ./audit-logs/audit.jsonl on the host.
+
+services:
+
+  # ── MCP server (the target being monitored) ───────────────────────────────
+  mcp-server:
+    image: node:20-slim
+    container_name: mcp-filesystem-server
+    command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/workspace"]
+    volumes:
+      - workspace:/workspace
+    # No ports exposed — communicates via stdio through the proxy
+    restart: unless-stopped
+
+  # ── agent-bom runtime proxy (sidecar) ──────────────────────────────────────
+  agent-bom-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile.runtime
+    image: agent-bom-runtime:latest
+    container_name: agent-bom-runtime-proxy
+    depends_on:
+      - mcp-server
+    environment:
+      - AGENT_BOM_LOG=/var/log/agent-bom/audit.jsonl
+    volumes:
+      # Audit log output (persisted on host)
+      - ./audit-logs:/var/log/agent-bom
+      # Policy file (optional — mount a custom policy)
+      # - ./policy.json:/etc/agent-bom/policy.json:ro
+    command:
+      - "--log"
+      - "/var/log/agent-bom/audit.jsonl"
+      - "--block-undeclared"
+      - "--"
+      - "npx"
+      - "-y"
+      - "@modelcontextprotocol/server-filesystem"
+      - "/workspace"
+    ports:
+      - "8422:8422"
+    restart: unless-stopped
+
+volumes:
+  workspace:
+
+networks:
+  default:
+    name: agent-bom-runtime

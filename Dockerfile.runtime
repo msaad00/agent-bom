@@ -1,0 +1,44 @@
+# Runtime sidecar — slim container running agent-bom proxy.
+#
+# Sits between MCP client and server, intercepting JSON-RPC messages
+# for audit logging, policy enforcement, and tool-drift detection.
+#
+# Build:   docker build -f Dockerfile.runtime -t agent-bom-runtime .
+# Run:     docker run --rm agent-bom-runtime -- npx @mcp/server-filesystem /tmp
+#
+# Environment variables (optional):
+#   AGENT_BOM_POLICY   — Path to policy JSON file (mounted volume)
+#   AGENT_BOM_LOG      — Path to audit JSONL log (mounted volume)
+
+FROM python:3.12-slim@sha256:39e4e1ccb01578e3c86f7a0cf7b7fd89b8dbe2c27a88de11cf726ba669469f49
+
+ARG VERSION=0.33.0
+
+LABEL org.opencontainers.image.title="agent-bom runtime proxy"
+LABEL org.opencontainers.image.description="MCP runtime security proxy — intercepts JSON-RPC for audit logging and policy enforcement"
+LABEL org.opencontainers.image.version="${VERSION}"
+LABEL org.opencontainers.image.source="https://github.com/msaad00/agent-bom"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
+WORKDIR /app
+
+# Install agent-bom from PyPI (no local source needed)
+RUN pip install --no-cache-dir agent-bom==${VERSION}
+
+# Create non-root user for least-privilege execution
+RUN addgroup --system abom && adduser --system --ingroup abom abom
+
+# Create directories for audit logs and policy files
+RUN mkdir -p /var/log/agent-bom /etc/agent-bom && \
+    chown -R abom:abom /var/log/agent-bom /etc/agent-bom
+
+USER abom
+
+ENV PYTHONUNBUFFERED=1
+
+EXPOSE 8422
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD agent-bom --version || exit 1
+
+ENTRYPOINT ["agent-bom", "proxy"]

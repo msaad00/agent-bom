@@ -16,6 +16,9 @@ Endpoints:
     GET  /v1/compliance                full 4-framework compliance posture
     GET  /v1/compliance/{framework}    single framework (owasp-llm, owasp-mcp, atlas, nist)
     GET  /v1/malicious/check           malicious package / typosquat check
+    GET  /v1/proxy/status              runtime proxy metrics
+    GET  /v1/proxy/alerts              recent runtime proxy alerts
+    GET  /v1/scorecard/{eco}/{pkg}     OpenSSF Scorecard lookup
 """
 
 from __future__ import annotations
@@ -960,4 +963,219 @@ async def get_compliance_by_framework(framework: str) -> dict:
         "controls": controls,
         "summary": {"pass": pass_count, "warning": warn_count, "fail": fail_count},
         "score": round((pass_count / len(controls)) * 100, 1) if controls else 100.0,
+    }
+
+
+# ─── Proxy Status & Alerts ──────────────────────────────────────────────────
+
+# In-process ring buffer for proxy alerts/metrics.  The proxy (when running
+# in the same process, e.g. via the API) pushes records here.  External proxy
+# processes write to the JSONL audit log, and these endpoints read it.
+
+_proxy_alerts: list[dict] = []
+_proxy_metrics: dict | None = None
+
+
+def push_proxy_alert(alert: dict) -> None:
+    """Called by the proxy to record a runtime alert (in-process path)."""
+    _proxy_alerts.append(alert)
+    if len(_proxy_alerts) > 1000:
+        _proxy_alerts.pop(0)
+
+
+def push_proxy_metrics(metrics: dict) -> None:
+    """Called by the proxy to record latest metrics summary."""
+    global _proxy_metrics
+    _proxy_metrics = metrics
+
+
+def _get_configured_log_path() -> _Path | None:
+    """Return the server-configured audit log path, if set.
+
+    The path is set via the AGENT_BOM_LOG environment variable (server-side
+    config only — never from user input).  Returns None when the env var is
+    unset or the file doesn't exist.
+    """
+    import os
+
+    log_env = os.environ.get("AGENT_BOM_LOG")
+    if not log_env:
+        return None
+    path = _Path(log_env).resolve()
+    if not path.is_file() or path.suffix != ".jsonl":
+        return None
+    return path
+
+
+def _read_alerts_from_log(path: _Path) -> list[dict]:
+    """Read runtime_alert records from a JSONL audit log."""
+    import json as _json
+
+    alerts = []
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            record = _json.loads(line)
+            if record.get("type") == "runtime_alert":
+                alerts.append(record)
+        except (ValueError, KeyError):
+            continue
+    return alerts
+
+
+def _read_metrics_from_log(path: _Path) -> dict | None:
+    """Read the last proxy_summary record from a JSONL audit log."""
+    import json as _json
+
+    last_summary = None
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            record = _json.loads(line)
+            if record.get("type") == "proxy_summary":
+                last_summary = record
+        except (ValueError, KeyError):
+            continue
+    return last_summary
+
+
+@app.get("/v1/proxy/status", tags=["proxy"])
+async def proxy_status() -> dict:
+    """Get runtime proxy metrics.
+
+    Returns the latest proxy metrics summary.  Reads from the in-process
+    buffer (populated by ``push_proxy_metrics``) or from the audit log
+    configured via the ``AGENT_BOM_LOG`` environment variable.
+    """
+    if _proxy_metrics is not None:
+        return _proxy_metrics
+
+    log_path = _get_configured_log_path()
+    if log_path:
+        metrics = _read_metrics_from_log(log_path)
+        if metrics is not None:
+            return metrics
+
+    return {
+        "status": "no_proxy_session",
+        "message": "No proxy metrics available. Start a proxy session or set AGENT_BOM_LOG.",
+    }
+
+
+@app.get("/v1/proxy/alerts", tags=["proxy"])
+async def proxy_alerts(
+    severity: str | None = None,
+    detector: str | None = None,
+    limit: int = 100,
+) -> dict:
+    """Get recent runtime proxy alerts.
+
+    Returns alerts from the in-process buffer or the audit log configured
+    via the ``AGENT_BOM_LOG`` environment variable.
+
+    Query params:
+        severity: Filter by severity (critical, high, medium, low, info).
+        detector: Filter by detector name.
+        limit: Maximum number of alerts to return (default 100).
+    """
+    log_path = _get_configured_log_path()
+    if log_path and not _proxy_alerts:
+        alerts = _read_alerts_from_log(log_path)
+    else:
+        alerts = list(_proxy_alerts)
+
+    # Apply filters
+    if severity:
+        alerts = [a for a in alerts if a.get("severity", "").lower() == severity.lower()]
+    if detector:
+        alerts = [a for a in alerts if a.get("detector", "").lower() == detector.lower()]
+
+    # Newest first, apply limit
+    alerts = alerts[-limit:][::-1]
+
+    return {
+        "alerts": alerts,
+        "count": len(alerts),
+        "filters": {
+            "severity": severity,
+            "detector": detector,
+            "limit": limit,
+        },
+    }
+
+
+# ─── OpenSSF Scorecard Lookup ────────────────────────────────────────────────
+
+
+@app.get("/v1/scorecard/{ecosystem}/{package:path}", tags=["security"])
+async def scorecard_lookup(ecosystem: str, package: str) -> dict:
+    """Look up OpenSSF Scorecard for a package.
+
+    Resolves the package's source repository and fetches its scorecard
+    from api.securityscorecards.dev.
+
+    Path params:
+        ecosystem: Package ecosystem (npm, pypi, go, cargo)
+        package: Package name
+    """
+    import re as _re_local
+
+    from agent_bom.scorecard import extract_github_repo, fetch_scorecard
+
+    # Validate package input — only allow safe characters
+    if not _re_local.match(r"^[A-Za-z0-9._@/:-]+$", package):
+        raise HTTPException(status_code=400, detail="Invalid package name")
+
+    # For GitHub-hosted packages, try direct repo lookup
+    # Common patterns: npm @scope/pkg -> github.com/scope/pkg
+    repo = None
+
+    # Try direct GitHub repo format
+    if "/" in package:
+        repo = package
+
+    if not repo:
+        # Try ecosystem-specific heuristics
+        if ecosystem == "npm":
+            # npm packages often map to github.com/owner/repo
+            # Strip @ scope prefix for GitHub lookup
+            clean = package.lstrip("@").replace("/", "/")
+            repo = clean
+        elif ecosystem == "pypi":
+            # PyPI packages often use the package name as the repo
+            repo = None  # Need source_repo metadata
+        elif ecosystem == "go":
+            # Go modules are their repo path
+            repo_match = extract_github_repo(f"https://{package}")
+            if repo_match:
+                repo = repo_match
+
+    if not repo:
+        return {
+            "package": package,
+            "ecosystem": ecosystem,
+            "scorecard": None,
+            "error": "Could not resolve GitHub repository for this package. "
+                     "Try providing the GitHub owner/repo directly (e.g., /v1/scorecard/github/expressjs/express).",
+        }
+
+    data = await fetch_scorecard(repo)
+    if data is None:
+        return {
+            "package": package,
+            "ecosystem": ecosystem,
+            "repo": repo,
+            "scorecard": None,
+            "error": f"No scorecard found for github.com/{repo}",
+        }
+
+    return {
+        "package": package,
+        "ecosystem": ecosystem,
+        "repo": repo,
+        "scorecard": data,
     }

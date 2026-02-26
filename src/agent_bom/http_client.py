@@ -17,6 +17,14 @@ MAX_BACKOFF = 30.0
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
 
+def _sanitize_for_log(value: object) -> str:
+    """Sanitize a value for safe inclusion in log messages.
+
+    Replaces newlines and carriage returns to prevent log injection.
+    """
+    return str(value).replace("\n", "\\n").replace("\r", "\\r")
+
+
 def create_client(timeout: float = 30.0) -> httpx.AsyncClient:
     """Create an httpx.AsyncClient with connection-level retries.
 
@@ -48,6 +56,7 @@ async def request_with_retry(
     Returns:
         httpx.Response on success, None on exhausted retries.
     """
+    safe_url = _sanitize_for_log(url)
     backoff = INITIAL_BACKOFF
 
     for attempt in range(max_retries + 1):
@@ -70,14 +79,14 @@ async def request_with_retry(
             if attempt < max_retries:
                 logger.info(
                     "HTTP %d from %s — retry %d/%d in %.1fs",
-                    response.status_code, url, attempt + 1, max_retries, wait,
+                    response.status_code, safe_url, attempt + 1, max_retries, wait,
                 )
                 await asyncio.sleep(wait)
                 backoff = min(backoff * 2, MAX_BACKOFF)
             else:
                 logger.warning(
                     "HTTP %d from %s — exhausted %d retries",
-                    response.status_code, url, max_retries,
+                    response.status_code, safe_url, max_retries,
                 )
                 return response
 
@@ -85,24 +94,25 @@ async def request_with_retry(
             if attempt < max_retries:
                 logger.info(
                     "Timeout on %s — retry %d/%d in %.1fs",
-                    url, attempt + 1, max_retries, backoff,
+                    safe_url, attempt + 1, max_retries, backoff,
                 )
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, MAX_BACKOFF)
             else:
-                logger.warning("Timeout on %s — exhausted %d retries", url, max_retries)
+                logger.warning("Timeout on %s — exhausted %d retries", safe_url, max_retries)
                 return None
 
         except httpx.HTTPError as e:
+            safe_err = _sanitize_for_log(e)
             if attempt < max_retries:
                 logger.info(
                     "HTTP error on %s: %s — retry %d/%d in %.1fs",
-                    url, e, attempt + 1, max_retries, backoff,
+                    safe_url, safe_err, attempt + 1, max_retries, backoff,
                 )
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, MAX_BACKOFF)
             else:
-                logger.warning("HTTP error on %s: %s — exhausted %d retries", url, e, max_retries)
+                logger.warning("HTTP error on %s: %s — exhausted %d retries", safe_url, safe_err, max_retries)
                 return None
 
     return None

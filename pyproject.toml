@@ -36,6 +36,9 @@ dependencies = [
     "toml>=0.10",
     "pyyaml>=6.0",
     "jsonschema>=4.0",
+    # Transitive dep pins — fix known CVEs flagged by OpenSSF/OSV
+    "jinja2>=3.1.6",  # GHSA-cpwx-vrp4-4pq7, GHSA-gmj6-6f8f-6699 (sandbox breakout)
+    "werkzeug>=3.1.3",  # GHSA-q34m-jh98-afg2 (debugger RCE)
 ]
 
 [project.optional-dependencies]

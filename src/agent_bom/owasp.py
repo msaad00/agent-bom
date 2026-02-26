@@ -47,6 +47,23 @@ _AI_PACKAGES: frozenset[str] = frozenset({
     "dspy-ai", "guidance",
     "semantic-kernel",
     "pydantic-ai",
+    # Vector stores / RAG backends
+    "chromadb", "pinecone-client", "weaviate-client", "qdrant-client",
+    "faiss-cpu", "faiss-gpu", "pymilvus", "milvus",
+    "pgvector", "lancedb",
+    # Embedding models
+    "sentence-transformers",
+})
+
+# Packages directly involved in training data handling and fine-tuning.
+# CVEs here risk training data poisoning (LLM03).
+_TRAINING_DATA_PACKAGES: frozenset[str] = frozenset({
+    "datasets", "huggingface-hub", "tokenizers",
+    "transformers", "diffusers", "accelerate", "trl",
+    "sentence-transformers", "peft",
+    "torch", "torchvision", "torchaudio",
+    "tensorflow", "tensorflow-gpu",
+    "safetensors", "optimum",
 })
 
 # Severity levels considered high-risk for agency/AI-poisoning checks
@@ -90,6 +107,10 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
         and br.vulnerability.severity in _HIGH_RISK_SEVERITIES
     ):
         tags.add("LLM08")
+
+    # LLM03 — training data poisoning: training/dataset package with CVE
+    if br.package.name.lower() in _TRAINING_DATA_PACKAGES:
+        tags.add("LLM03")
 
     # LLM04 — data/model poisoning: AI framework package with high CVE
     if (

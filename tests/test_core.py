@@ -3199,3 +3199,125 @@ def test_html_graph_nodes_have_sidebar_data():
     assert '"credentials"' in html
     assert '"severity"' in html
     assert '"ecosystem"' in html
+
+
+# ─── Audit Improvement Tests ────────────────────────────────────────────────
+
+
+def test_cli_scan_has_verbose_flag():
+    """--verbose flag appears in scan --help."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", "--help"])
+    assert "--verbose" in result.output or "-v" in result.output
+
+
+def test_cli_scan_has_no_color_flag():
+    """--no-color flag appears in scan --help."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", "--help"])
+    assert "--no-color" in result.output
+
+
+def test_make_console_no_color():
+    """_make_console with no_color=True disables styling."""
+    from agent_bom.cli import _make_console
+    con = _make_console(no_color=True)
+    assert con.no_color is True
+
+
+def test_make_console_default_has_color():
+    """_make_console with default settings enables color."""
+    from agent_bom.cli import _make_console
+    con = _make_console()
+    assert con.no_color is False
+
+
+def test_owasp_llm03_training_data_poisoning():
+    """LLM03 is tagged when a training-data package has any CVE."""
+    from agent_bom.owasp import tag_blast_radius as tag_owasp
+    br = BlastRadius(
+        vulnerability=Vulnerability(id="CVE-2024-9999", summary="Deserialization in datasets", severity=Severity.MEDIUM),
+        package=Package(name="datasets", version="2.14.0", ecosystem="pypi"),
+        affected_servers=[],
+        affected_agents=[],
+        exposed_credentials=[],
+        exposed_tools=[],
+    )
+    tags = tag_owasp(br)
+    assert "LLM03" in tags
+    assert "LLM05" in tags  # always present
+
+
+def test_owasp_llm03_for_transformers():
+    """LLM03 is tagged for transformers (training framework)."""
+    from agent_bom.owasp import tag_blast_radius as tag_owasp
+    br = BlastRadius(
+        vulnerability=Vulnerability(id="CVE-2024-8888", summary="RCE", severity=Severity.HIGH),
+        package=Package(name="transformers", version="4.30.0", ecosystem="pypi"),
+        affected_servers=[],
+        affected_agents=[],
+        exposed_credentials=[],
+        exposed_tools=[],
+    )
+    tags = tag_owasp(br)
+    assert "LLM03" in tags
+    assert "LLM04" in tags  # also HIGH+ AI framework
+    assert "LLM05" in tags
+
+
+def test_owasp_llm03_not_for_non_training_package():
+    """LLM03 is NOT tagged for non-training packages like openai client."""
+    from agent_bom.owasp import tag_blast_radius as tag_owasp
+    br = BlastRadius(
+        vulnerability=Vulnerability(id="CVE-2024-7777", summary="SSRF", severity=Severity.HIGH),
+        package=Package(name="openai", version="1.0.0", ecosystem="pypi"),
+        affected_servers=[],
+        affected_agents=[],
+        exposed_credentials=[],
+        exposed_tools=[],
+    )
+    tags = tag_owasp(br)
+    assert "LLM03" not in tags
+    assert "LLM04" in tags  # still gets LLM04 (AI framework + HIGH)
+
+
+def test_rag_vector_stores_in_ai_packages():
+    """Vector store packages are recognized as AI framework packages."""
+    from agent_bom.scanners import _AI_FRAMEWORK_PACKAGES
+    rag_packages = {"chromadb", "pinecone-client", "weaviate-client", "qdrant-client",
+                    "faiss-cpu", "faiss-gpu", "pymilvus", "milvus", "pgvector", "lancedb"}
+    for pkg in rag_packages:
+        assert pkg in _AI_FRAMEWORK_PACKAGES, f"{pkg} missing from _AI_FRAMEWORK_PACKAGES"
+
+
+def test_owasp_rag_packages_covered():
+    """Vector store / RAG packages are in OWASP _AI_PACKAGES for LLM04 tagging."""
+    from agent_bom.owasp import _AI_PACKAGES
+    rag_packages = {"chromadb", "pymilvus", "qdrant-client", "sentence-transformers"}
+    for pkg in rag_packages:
+        assert pkg in _AI_PACKAGES, f"{pkg} missing from OWASP _AI_PACKAGES"
+
+
+def test_atlas_rag_packages_covered():
+    """Vector store / RAG packages are in ATLAS _AI_PACKAGES."""
+    from agent_bom.atlas import _AI_PACKAGES
+    rag_packages = {"chromadb", "pymilvus", "qdrant-client", "lancedb"}
+    for pkg in rag_packages:
+        assert pkg in _AI_PACKAGES, f"{pkg} missing from ATLAS _AI_PACKAGES"
+
+
+def test_nist_rag_packages_covered():
+    """Vector store / RAG packages are in NIST AI RMF _AI_PACKAGES."""
+    from agent_bom.nist_ai_rmf import _AI_PACKAGES
+    rag_packages = {"chromadb", "pymilvus", "pgvector"}
+    for pkg in rag_packages:
+        assert pkg in _AI_PACKAGES, f"{pkg} missing from NIST _AI_PACKAGES"
+
+
+def test_owasp_training_data_packages_set():
+    """_TRAINING_DATA_PACKAGES contains expected training/fine-tuning packages."""
+    from agent_bom.owasp import _TRAINING_DATA_PACKAGES
+    expected = {"datasets", "transformers", "torch", "accelerate", "trl",
+                "sentence-transformers", "peft", "safetensors"}
+    for pkg in expected:
+        assert pkg in _TRAINING_DATA_PACKAGES, f"{pkg} missing from _TRAINING_DATA_PACKAGES"

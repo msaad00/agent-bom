@@ -57,18 +57,19 @@ BANNER = r"""
 SEVERITY_ORDER = {"critical": 4, "high": 3, "medium": 2, "low": 1, "none": 0}
 
 
-def _make_console(quiet: bool = False, output_format: str = "console") -> Console:
+def _make_console(quiet: bool = False, output_format: str = "console", no_color: bool = False) -> Console:
     """Create a Console that routes output correctly.
 
     - quiet mode: suppress all output
     - json/cyclonedx format: route to stderr (keep stdout clean for piping)
+    - no_color: disable all ANSI styling (for piping / CI)
     - console format: normal stdout
     """
     if quiet:
         return Console(stderr=True, quiet=True)
     if output_format != "console":
-        return Console(stderr=True)
-    return Console()
+        return Console(stderr=True, no_color=no_color)
+    return Console(no_color=no_color)
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
@@ -217,6 +218,8 @@ def main():
 @click.option("--slack-webhook", default=None, envvar="SLACK_WEBHOOK_URL", metavar="URL", help="Slack incoming webhook URL for scan alerts")
 @click.option("--vanta-token", default=None, envvar="VANTA_API_TOKEN", metavar="TOKEN", help="Vanta API token for compliance evidence upload")
 @click.option("--drata-token", default=None, envvar="DRATA_API_TOKEN", metavar="TOKEN", help="Drata API token for GRC evidence upload")
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose/debug output (show API calls, timing, parse details)")
+@click.option("--no-color", is_flag=True, help="Disable colored output (useful for piping, CI logs, accessibility)")
 @click.option("--preset", type=click.Choice(["ci", "enterprise", "quick"]), default=None,
               help="Scan preset: ci (quiet, json, fail-on-critical), enterprise (enrich, introspect, transitive, verify-integrity), quick (no transitive, no enrich)")
 def scan(
@@ -315,6 +318,8 @@ def scan(
     slack_webhook: Optional[str],
     vanta_token: Optional[str],
     drata_token: Optional[str],
+    verbose: bool,
+    no_color: bool,
     preset: Optional[str],
     open_report: bool,
 ):
@@ -326,8 +331,13 @@ def scan(
       1  Fail — policy failure, or vulnerabilities found at or above
                 --fail-on-severity / --fail-on-kev / --fail-if-ai-risk
     """
+    import logging as _logging
     import time as _time
     _scan_start = _time.monotonic()
+
+    # Verbose mode: set root logging to DEBUG
+    if verbose:
+        _logging.basicConfig(level=_logging.DEBUG, format="%(name)s %(levelname)s: %(message)s")
 
     # Apply presets (override defaults, don't override explicit flags)
     if preset == "ci":
@@ -350,7 +360,7 @@ def scan(
 
     # Route console output based on flags
     is_stdout = output == "-"
-    con = _make_console(quiet=quiet or is_stdout, output_format=output_format)
+    con = _make_console(quiet=quiet or is_stdout, output_format=output_format, no_color=no_color)
 
     # Also set the output module's console so print_summary etc. route correctly
     import agent_bom.output as _out

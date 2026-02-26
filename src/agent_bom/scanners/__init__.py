@@ -34,7 +34,8 @@ _AI_FRAMEWORK_PACKAGES = frozenset({
     "sentence-transformers", "optimum",
     # Vector stores and RAG
     "chromadb", "pinecone-client", "weaviate-client", "qdrant-client",
-    "faiss-cpu", "faiss-gpu",
+    "faiss-cpu", "faiss-gpu", "pymilvus", "milvus",
+    "pgvector", "lancedb",
     # MCP and agent infrastructure
     "mcp", "fastmcp", "modelcontextprotocol",
     # GPU / AI infrastructure — NVIDIA

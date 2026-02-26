@@ -253,6 +253,16 @@ def check_policy(
 # ─── Proxy core ──────────────────────────────────────────────────────────────
 
 
+async def _send_webhook(url: str, payload: dict) -> None:
+    """Fire-and-forget POST to an alert webhook URL."""
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            await client.post(url, json=payload)
+    except Exception:  # noqa: BLE001
+        logger.debug("Failed to send webhook to %s", url)
+
+
 async def run_proxy(
     server_cmd: list[str],
     policy_path: Optional[str] = None,
@@ -261,6 +271,7 @@ async def run_proxy(
     detect_credentials: bool = False,
     rate_limit_threshold: int = 0,
     log_only: bool = False,
+    alert_webhook: Optional[str] = None,
 ) -> int:
     """Main proxy loop. Spawns server subprocess, relays JSON-RPC.
 
@@ -272,6 +283,7 @@ async def run_proxy(
         detect_credentials: Enable credential leak detection in responses.
         rate_limit_threshold: Max calls per tool per 60s (0 = disabled).
         log_only: Log alerts without blocking (advisory mode).
+        alert_webhook: Optional webhook URL for runtime alert notifications.
 
     Returns the server process exit code.
     """
@@ -305,7 +317,7 @@ async def run_proxy(
     runtime_alerts: list[dict] = []
 
     def _handle_alerts(alerts, log_f=None):
-        """Log alerts and optionally record them."""
+        """Log alerts and optionally record them + dispatch webhook."""
         for alert in alerts:
             alert_dict = alert.to_dict()
             runtime_alerts.append(alert_dict)
@@ -313,6 +325,8 @@ async def run_proxy(
             if log_f:
                 log_f.write(json.dumps(alert_dict) + "\n")
                 log_f.flush()
+            if alert_webhook:
+                asyncio.ensure_future(_send_webhook(alert_webhook, alert_dict))
 
     # Track declared tools from tools/list responses
     declared_tools: set[str] = set()

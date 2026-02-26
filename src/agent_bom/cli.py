@@ -2931,8 +2931,9 @@ def registry_mcp_sync(max_pages, dry_run):
 @click.option("--detect-credentials", is_flag=True, help="Detect credential leaks in tool responses")
 @click.option("--rate-limit-threshold", type=int, default=0, help="Max calls per tool per 60s (0=disabled)")
 @click.option("--log-only", is_flag=True, help="Log alerts without blocking (advisory mode)")
+@click.option("--alert-webhook", default=None, envvar="AGENT_BOM_ALERT_WEBHOOK", help="Webhook URL for runtime alerts (Slack/Teams/PagerDuty)")
 @click.argument("server_cmd", nargs=-1, required=True)
-def proxy_cmd(policy, log_path, block_undeclared, detect_credentials, rate_limit_threshold, log_only, server_cmd):
+def proxy_cmd(policy, log_path, block_undeclared, detect_credentials, rate_limit_threshold, log_only, alert_webhook, server_cmd):
     """Run an MCP server through agent-bom's security proxy.
 
     \b
@@ -2974,6 +2975,7 @@ def proxy_cmd(policy, log_path, block_undeclared, detect_credentials, rate_limit
         detect_credentials=detect_credentials,
         rate_limit_threshold=rate_limit_threshold,
         log_only=log_only,
+        alert_webhook=alert_webhook,
     ))
     sys.exit(exit_code)
 

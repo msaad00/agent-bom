@@ -103,7 +103,7 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
 |----------|------|
 | PyPI | `pip install agent-bom` |
 | Docker | `docker run agentbom/agent-bom scan` |
-| GitHub Action | `uses: msaad00/agent-bom@v0.32.0` |
+| GitHub Action | `uses: msaad00/agent-bom@v0.33.0` |
 | MCP Registry | [server.json](integrations/mcp-registry/server.json) |
 | ToolHive | [registry entry](integrations/toolhive/server.json) |
 | OpenClaw | [SKILL.md](integrations/openclaw/SKILL.md) |
@@ -118,6 +118,13 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/deployment-dark.svg">
     <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/deployment-light.svg" alt="Enterprise deployment topology" width="800" style="padding: 20px 0" />
+  </picture>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scan-workflow-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scan-workflow-light.svg" alt="Enterprise scan workflow" width="800" style="padding: 20px 0" />
   </picture>
 </p>
 
@@ -343,7 +350,7 @@ agent-bom scan --aws -f graph -o graph.json   # export graph data
 |------|---------|----------|
 | CLI | `agent-bom scan` | Local audit |
 | Pre-install check | `agent-bom check express@4.18.2 -e npm` | Before running MCP servers |
-| GitHub Action | `uses: msaad00/agent-bom@v0.32.0` | CI/CD + SARIF |
+| GitHub Action | `uses: msaad00/agent-bom@v0.33.0` | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated scans |
 | REST API | `agent-bom api` | Dashboards, SIEM |
 | MCP Server | `agent-bom mcp-server` | Inside any MCP client |
@@ -353,7 +360,7 @@ agent-bom scan --aws -f graph -o graph.json   # export graph data
 ### GitHub Action
 
 ```yaml
-- uses: msaad00/agent-bom@v0.32.0
+- uses: msaad00/agent-bom@v0.33.0
   with:
     severity-threshold: high
     upload-sarif: true

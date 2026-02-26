@@ -24,13 +24,13 @@
 
   <g transform="translate(36, 88)">
     <circle cx="6" cy="6" r="3.5" fill="#58a6ff" opacity="0.5"/>
-    <text x="16" y="10" class="item-label">MCP Configs</text>
-    <text x="16" y="22" class="item-sub">Claude, Cursor, Windsurf, VS Code</text>
+    <text x="16" y="10" class="item-label">MCP Configs (18 clients)</text>
+    <text x="16" y="22" class="item-sub">Claude, Cursor, Codex, Gemini, Goose, +13</text>
   </g>
   <g transform="translate(36, 118)">
     <circle cx="6" cy="6" r="3.5" fill="#58a6ff" opacity="0.5"/>
     <text x="16" y="10" class="item-label">Cloud Providers</text>
-    <text x="16" y="22" class="item-sub">AWS, Azure, GCP, Snowflake, +3</text>
+    <text x="16" y="22" class="item-sub">AWS, Azure, GCP, Snowflake, Databricks, Nebius</text>
   </g>
   <g transform="translate(36, 148)">
     <circle cx="6" cy="6" r="3.5" fill="#58a6ff" opacity="0.5"/>
@@ -86,7 +86,7 @@
   <g transform="translate(264, 234)">
     <circle cx="6" cy="6" r="3.5" fill="#d29922" opacity="0.5"/>
     <text x="16" y="10" class="item-label">MCP Registry</text>
-    <text x="16" y="22" class="item-sub">112+ server provenance checks</text>
+    <text x="16" y="22" class="item-sub">427+ server provenance checks</text>
   </g>
 
   <!-- Arrow 2 -->
@@ -116,13 +116,13 @@
   </g>
   <g transform="translate(492, 198)">
     <circle cx="6" cy="6" r="3.5" fill="#f47067" opacity="0.5"/>
-    <text x="16" y="10" class="item-label">Policy Gates</text>
-    <text x="16" y="22" class="item-sub">fail / warn / info thresholds</text>
+    <text x="16" y="10" class="item-label">Enforcement Engine</text>
+    <text x="16" y="22" class="item-sub">Tool poisoning + policy gates</text>
   </g>
   <g transform="translate(492, 234)">
     <circle cx="6" cy="6" r="3.5" fill="#f47067" opacity="0.5"/>
-    <text x="16" y="10" class="item-label">Dependency Graph</text>
-    <text x="16" y="22" class="item-sub">Interactive Cytoscape.js viz</text>
+    <text x="16" y="10" class="item-label">Model Provenance</text>
+    <text x="16" y="22" class="item-sub">SHA-256, Sigstore, HuggingFace</text>
   </g>
 
   <!-- Arrow 3 -->

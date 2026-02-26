@@ -1,7 +1,7 @@
 ---
 name: agent-bom
 description: The open-source Grype for the AI era — scan packages for CVEs, assess credential exposure, map blast radius from vulnerabilities to tools, OWASP/MITRE/NIST compliance
-version: 0.32.0
+version: 0.33.0
 metadata:
   openclaw:
     requires:

@@ -16,7 +16,7 @@
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center">
-  <b>The open-source Grype for the AI era. Scan packages and images for CVEs. Assess config security — credential exposure, tool access, privilege escalation. Map blast radius from vulnerabilities to credentials and tools. OWASP LLM Top 10 + MITRE ATLAS + NIST AI RMF.</b>
+  <b>AI supply chain security scanner. Scan packages and images for CVEs. Assess config security — credential exposure, tool access, privilege escalation. Map blast radius from vulnerabilities to credentials and tools. OWASP LLM Top 10 + MITRE ATLAS + NIST AI RMF.</b>
 </p>
 
 <p align="center">
@@ -37,7 +37,7 @@
 
 ## Why agent-bom?
 
-> **Grype tells you a package has a CVE.**
+> **Traditional scanners tell you a package has a CVE.**
 > **agent-bom tells you which AI agents are compromised, which credentials leak, which tools an attacker reaches, and what the business impact is.**
 
 ```

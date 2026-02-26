@@ -2843,8 +2843,11 @@ def registry_mcp_sync(max_pages, dry_run):
 @click.option("--policy", type=click.Path(exists=True), help="Policy file for runtime enforcement")
 @click.option("--log", "log_path", default=None, help="Audit log output path (JSONL)")
 @click.option("--block-undeclared", is_flag=True, help="Block tool calls not in tools/list response")
+@click.option("--detect-credentials", is_flag=True, help="Detect credential leaks in tool responses")
+@click.option("--rate-limit-threshold", type=int, default=0, help="Max calls per tool per 60s (0=disabled)")
+@click.option("--log-only", is_flag=True, help="Log alerts without blocking (advisory mode)")
 @click.argument("server_cmd", nargs=-1, required=True)
-def proxy_cmd(policy, log_path, block_undeclared, server_cmd):
+def proxy_cmd(policy, log_path, block_undeclared, detect_credentials, rate_limit_threshold, log_only, server_cmd):
     """Run an MCP server through agent-bom's security proxy.
 
     \b
@@ -2852,12 +2855,15 @@ def proxy_cmd(policy, log_path, block_undeclared, server_cmd):
     - Logs every tools/call invocation to an audit trail
     - Optionally enforces policy rules in real-time
     - Blocks undeclared tools (not in tools/list response)
+    - Detects tool drift (rug pull), dangerous arguments, credential leaks
+    - Rate limiting and suspicious sequence detection
 
     \b
     Usage:
       agent-bom proxy -- npx @modelcontextprotocol/server-filesystem /tmp
       agent-bom proxy --log audit.jsonl -- npx @mcp/server-github
       agent-bom proxy --policy policy.json --block-undeclared -- npx @mcp/server-postgres
+      agent-bom proxy --detect-credentials --log-only -- npx @mcp/server-github
 
     \b
     Configure in your MCP client (e.g. Claude Desktop):
@@ -2865,8 +2871,8 @@ def proxy_cmd(policy, log_path, block_undeclared, server_cmd):
         "mcpServers": {
           "filesystem": {
             "command": "agent-bom",
-            "args": ["proxy", "--log", "audit.jsonl", "--",
-                     "npx", "@modelcontextprotocol/server-filesystem", "/tmp"]
+            "args": ["proxy", "--log", "audit.jsonl", "--detect-credentials",
+                     "--", "npx", "@modelcontextprotocol/server-filesystem", "/tmp"]
           }
         }
       }
@@ -2880,6 +2886,9 @@ def proxy_cmd(policy, log_path, block_undeclared, server_cmd):
         policy_path=policy,
         log_path=log_path,
         block_undeclared=block_undeclared,
+        detect_credentials=detect_credentials,
+        rate_limit_threshold=rate_limit_threshold,
+        log_only=log_only,
     ))
     sys.exit(exit_code)
 

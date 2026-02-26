@@ -119,6 +119,7 @@ def main():
 @click.option("--max-depth", type=int, default=3, help="Maximum depth for transitive dependency resolution")
 @click.option("--enrich", is_flag=True, help="Enrich vulnerabilities with NVD, EPSS, and CISA KEV data")
 @click.option("--nvd-api-key", envvar="NVD_API_KEY", help="NVD API key for higher rate limits")
+@click.option("--scorecard", "scorecard_flag", is_flag=True, help="Enrich packages with OpenSSF Scorecard scores")
 @click.option("--quiet", "-q", is_flag=True, help="Suppress all output except results (for scripting)")
 @click.option(
     "--fail-on-severity",
@@ -224,6 +225,7 @@ def scan(
     max_depth: int,
     enrich: bool,
     nvd_api_key: Optional[str],
+    scorecard_flag: bool,
     quiet: bool,
     fail_on_severity: Optional[str],
     fail_on_kev: bool,
@@ -1153,7 +1155,25 @@ def scan(
             else:
                 con.print("\n[yellow]  --snyk requires SNYK_TOKEN (set env var or use --snyk-token)[/yellow]")
 
-        # Step 4b: Integrity + provenance verification (optional)
+        # Step 4b: OpenSSF Scorecard enrichment (optional)
+        if scorecard_flag and not no_scan:
+            all_pkgs_for_sc = [p for a in agents for s in a.mcp_servers for p in s.packages]
+            if all_pkgs_for_sc:
+                import asyncio as _asyncio_sc
+
+                from agent_bom.scorecard import enrich_packages_with_scorecard
+
+                con.print("\n[bold blue]Enriching with OpenSSF Scorecard data...[/bold blue]\n")
+                try:
+                    sc_count = _asyncio_sc.run(enrich_packages_with_scorecard(all_pkgs_for_sc))
+                    if sc_count:
+                        con.print(f"  [green]✓[/green] Scorecard: enriched {sc_count} package(s)")
+                    else:
+                        con.print("  [dim]  Scorecard: no packages with resolvable GitHub repos[/dim]")
+                except Exception as exc:
+                    con.print(f"  [yellow]⚠[/yellow] Scorecard enrichment failed: {exc}")
+
+        # Step 4c: Integrity + provenance verification (optional)
         if verify_integrity:
             import asyncio as _asyncio
 

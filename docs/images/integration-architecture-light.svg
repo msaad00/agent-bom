@@ -1,0 +1,205 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 420" fill="none">
+  <style>
+    .title { font: 700 14px system-ui, -apple-system, sans-serif; fill: #1f2328; }
+    .node-label { font: 700 11px system-ui, sans-serif; fill: #1f2328; }
+    .node-sub { font: 400 9px system-ui, sans-serif; fill: #656d76; }
+    .node-tag { font: 600 8px system-ui, sans-serif; }
+    .engine-label { font: 700 12px system-ui, sans-serif; fill: #1f2328; }
+    .engine-sub { font: 400 9.5px system-ui, sans-serif; fill: #656d76; }
+    .engine-tag { font: 600 8.5px system-ui, sans-serif; }
+    .footer { font: 500 10px system-ui, -apple-system, sans-serif; fill: #656d76; }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M1 1L9 5L1 9" stroke="#656d76" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="880" height="420" rx="12" fill="#ffffff" stroke="#d1d9e0" stroke-width="1"/>
+
+  <!-- Title -->
+  <text x="440" y="34" text-anchor="middle" class="title">Integration Architecture</text>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- Node 1: Developer IDE (blue #58a6ff) -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <g transform="translate(24, 64)">
+    <rect width="140" height="168" rx="10" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="1"/>
+    <!-- Accent bar -->
+    <rect x="0" y="0" width="140" height="4" rx="2" fill="#58a6ff" opacity="0.9"/>
+    <!-- Icon circle -->
+    <circle cx="70" cy="32" r="14" fill="#58a6ff" opacity="0.1"/>
+    <circle cx="70" cy="32" r="6" fill="#58a6ff" opacity="0.7"/>
+    <!-- Label -->
+    <text x="70" y="62" text-anchor="middle" class="node-label">Developer IDE</text>
+    <!-- Items -->
+    <g transform="translate(14, 76)">
+      <circle cx="4" cy="4" r="2.5" fill="#58a6ff" opacity="0.6"/>
+      <text x="12" y="7" class="node-sub">Claude Code</text>
+    </g>
+    <g transform="translate(14, 94)">
+      <circle cx="4" cy="4" r="2.5" fill="#58a6ff" opacity="0.6"/>
+      <text x="12" y="7" class="node-sub">Cursor</text>
+    </g>
+    <g transform="translate(14, 112)">
+      <circle cx="4" cy="4" r="2.5" fill="#58a6ff" opacity="0.6"/>
+      <text x="12" y="7" class="node-sub">VS Code Copilot</text>
+    </g>
+    <!-- Tag pill -->
+    <rect x="16" y="134" width="108" height="20" rx="10" fill="#58a6ff" opacity="0.1"/>
+    <text x="70" y="148" text-anchor="middle" class="node-tag" fill="#0969da">Real-time scanning</text>
+  </g>
+
+  <!-- Arrow 1→2 -->
+  <line x1="168" y1="148" x2="194" y2="148" stroke="#656d76" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- Node 2: CI/CD Pipeline (green #3fb950) -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <g transform="translate(200, 64)">
+    <rect width="140" height="168" rx="10" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="1"/>
+    <rect x="0" y="0" width="140" height="4" rx="2" fill="#3fb950" opacity="0.9"/>
+    <circle cx="70" cy="32" r="14" fill="#3fb950" opacity="0.1"/>
+    <circle cx="70" cy="32" r="6" fill="#3fb950" opacity="0.7"/>
+    <text x="70" y="62" text-anchor="middle" class="node-label">CI/CD Pipeline</text>
+    <g transform="translate(14, 76)">
+      <circle cx="4" cy="4" r="2.5" fill="#3fb950" opacity="0.6"/>
+      <text x="12" y="7" class="node-sub">GitHub Actions</text>
+    </g>
+    <g transform="translate(14, 94)">
+      <circle cx="4" cy="4" r="2.5" fill="#3fb950" opacity="0.6"/>
+      <text x="12" y="7" class="node-sub">GitLab CI</text>
+    </g>
+    <rect x="16" y="134" width="108" height="20" rx="10" fill="#3fb950" opacity="0.1"/>
+    <text x="70" y="148" text-anchor="middle" class="node-tag" fill="#1a7f37">Gate deployments</text>
+  </g>
+
+  <!-- Arrow 2→3 -->
+  <line x1="344" y1="148" x2="370" y2="148" stroke="#656d76" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- Node 3: agent-bom Engine (purple #bc8cff) — CENTER / LARGER -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <g transform="translate(376, 52)">
+    <rect width="164" height="192" rx="12" fill="#f6f8fa" stroke="#8250df" stroke-width="1.5" opacity="1"/>
+    <!-- Thicker accent bar -->
+    <rect x="0" y="0" width="164" height="5" rx="2.5" fill="#bc8cff" opacity="0.9"/>
+    <!-- Larger icon -->
+    <circle cx="82" cy="34" r="17" fill="#bc8cff" opacity="0.1"/>
+    <circle cx="82" cy="34" r="8" fill="#bc8cff" opacity="0.7"/>
+    <!-- Label -->
+    <text x="82" y="68" text-anchor="middle" class="engine-label">agent-bom Engine</text>
+    <!-- Pipeline items -->
+    <g transform="translate(16, 84)">
+      <circle cx="4" cy="4" r="2.5" fill="#bc8cff" opacity="0.6"/>
+      <text x="12" y="7" class="engine-sub">Discovery</text>
+    </g>
+    <g transform="translate(16, 102)">
+      <circle cx="4" cy="4" r="2.5" fill="#bc8cff" opacity="0.6"/>
+      <text x="12" y="7" class="engine-sub">Parse</text>
+    </g>
+    <g transform="translate(16, 120)">
+      <circle cx="4" cy="4" r="2.5" fill="#bc8cff" opacity="0.6"/>
+      <text x="12" y="7" class="engine-sub">Scan</text>
+    </g>
+    <g transform="translate(16, 138)">
+      <circle cx="4" cy="4" r="2.5" fill="#bc8cff" opacity="0.6"/>
+      <text x="12" y="7" class="engine-sub">Enrich</text>
+    </g>
+    <!-- Tag pill -->
+    <rect x="16" y="158" width="132" height="22" rx="11" fill="#bc8cff" opacity="0.1"/>
+    <text x="82" y="173" text-anchor="middle" class="engine-tag" fill="#8250df">4 compliance frameworks</text>
+  </g>
+
+  <!-- Arrow 3→4 -->
+  <line x1="544" y1="148" x2="570" y2="148" stroke="#656d76" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- Node 4: Dashboard / API (orange #f0883e) -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <g transform="translate(576, 64)">
+    <rect width="140" height="168" rx="10" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="1"/>
+    <rect x="0" y="0" width="140" height="4" rx="2" fill="#f0883e" opacity="0.9"/>
+    <circle cx="70" cy="32" r="14" fill="#f0883e" opacity="0.1"/>
+    <circle cx="70" cy="32" r="6" fill="#f0883e" opacity="0.7"/>
+    <text x="70" y="62" text-anchor="middle" class="node-label">Dashboard / API</text>
+    <g transform="translate(14, 76)">
+      <circle cx="4" cy="4" r="2.5" fill="#f0883e" opacity="0.6"/>
+      <text x="12" y="7" class="node-sub">REST API</text>
+    </g>
+    <g transform="translate(14, 94)">
+      <circle cx="4" cy="4" r="2.5" fill="#f0883e" opacity="0.6"/>
+      <text x="12" y="7" class="node-sub">SSE stream</text>
+    </g>
+    <rect x="16" y="134" width="108" height="20" rx="10" fill="#f0883e" opacity="0.1"/>
+    <text x="70" y="148" text-anchor="middle" class="node-tag" fill="#bc4c00">Live monitoring</text>
+  </g>
+
+  <!-- Arrow 4→5 -->
+  <line x1="720" y1="148" x2="746" y2="148" stroke="#656d76" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- Node 5: Enterprise / SIEM (red #f85149) -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <g transform="translate(752, 64)">
+    <rect width="104" height="168" rx="10" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="1"/>
+    <rect x="0" y="0" width="104" height="4" rx="2" fill="#f85149" opacity="0.9"/>
+    <circle cx="52" cy="32" r="14" fill="#f85149" opacity="0.1"/>
+    <circle cx="52" cy="32" r="6" fill="#f85149" opacity="0.7"/>
+    <text x="52" y="62" text-anchor="middle" class="node-label">Enterprise / SIEM</text>
+    <g transform="translate(10, 76)">
+      <circle cx="4" cy="4" r="2.5" fill="#f85149" opacity="0.6"/>
+      <text x="12" y="7" class="node-sub">Jira</text>
+    </g>
+    <g transform="translate(10, 94)">
+      <circle cx="4" cy="4" r="2.5" fill="#f85149" opacity="0.6"/>
+      <text x="12" y="7" class="node-sub">Slack</text>
+    </g>
+    <g transform="translate(10, 112)">
+      <circle cx="4" cy="4" r="2.5" fill="#f85149" opacity="0.6"/>
+      <text x="12" y="7" class="node-sub">Vanta</text>
+    </g>
+    <g transform="translate(10, 130)">
+      <circle cx="4" cy="4" r="2.5" fill="#f85149" opacity="0.6"/>
+      <text x="12" y="7" class="node-sub">Drata</text>
+    </g>
+    <rect x="6" y="144" width="92" height="18" rx="9" fill="#f85149" opacity="0.1"/>
+    <text x="52" y="157" text-anchor="middle" class="node-tag" fill="#cf222e">Alert &amp; remediate</text>
+  </g>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- Flow label row -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <g transform="translate(24, 260)">
+    <!-- Decorative connecting line -->
+    <line x1="70" y1="14" x2="810" y2="14" stroke="#d1d9e0" stroke-width="1" stroke-dasharray="4 3"/>
+    <!-- Step labels -->
+    <text x="94" y="38" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="600" fill="#0969da" letter-spacing="0.05em">1 DEVELOP</text>
+    <text x="270" y="38" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="600" fill="#1a7f37" letter-spacing="0.05em">2 BUILD</text>
+    <text x="458" y="38" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="600" fill="#8250df" letter-spacing="0.05em">3 ANALYZE</text>
+    <text x="646" y="38" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="600" fill="#bc4c00" letter-spacing="0.05em">4 MONITOR</text>
+    <text x="804" y="38" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="600" fill="#cf222e" letter-spacing="0.05em">5 RESPOND</text>
+  </g>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- Bottom info bars -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+
+  <!-- Formats bar -->
+  <g transform="translate(40, 316)">
+    <rect width="800" height="36" rx="8" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="1"/>
+    <text x="400" y="15" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#656d76" letter-spacing="0.06em">OUTPUT FORMATS</text>
+    <text x="400" y="28" text-anchor="middle" class="footer">CycloneDX 1.6  ·  SPDX 3.0  ·  SARIF  ·  JSON  ·  HTML Dashboard  ·  Console</text>
+  </g>
+
+  <!-- Compliance bar -->
+  <g transform="translate(40, 362)">
+    <rect width="800" height="36" rx="8" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="1"/>
+    <text x="400" y="15" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#656d76" letter-spacing="0.06em">COMPLIANCE</text>
+    <text x="400" y="28" text-anchor="middle" class="footer">OWASP LLM Top 10  ·  MITRE ATLAS  ·  NIST AI RMF  ·  EU AI Act</text>
+  </g>
+
+  <!-- Footer -->
+  <text x="440" y="414" text-anchor="middle" class="footer">agent-bom — AI Supply Chain Security</text>
+</svg>

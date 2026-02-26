@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 420" fill="none">
+  <style>
+    .title { font: 700 15px system-ui, -apple-system, sans-serif; fill: #1f2328; }
+    .panel-header { font: 700 13px system-ui, -apple-system, sans-serif; }
+    .bullet { font: 500 11px system-ui, -apple-system, sans-serif; fill: #1f2328; }
+    .footer { font: 500 10px system-ui, -apple-system, sans-serif; fill: #656d76; }
+  </style>
+
+  <!-- Background -->
+  <rect width="880" height="420" rx="12" fill="#ffffff" stroke="#d1d9e0" stroke-width="1"/>
+
+  <!-- Title -->
+  <text x="440" y="36" text-anchor="middle" class="title">Before &amp; After</text>
+
+  <!-- ── Left Panel: Before ── -->
+  <rect x="32" y="56" width="396" height="304" rx="10" fill="#f6f8fa" stroke="#f8514933" stroke-width="1"/>
+
+  <!-- Red accent bar -->
+  <rect x="32" y="56" width="396" height="6" rx="3" fill="#f85149" opacity="0.6"/>
+
+  <!-- Header with X icon -->
+  <g transform="translate(56, 80)">
+    <!-- X icon -->
+    <circle cx="10" cy="10" r="10" fill="#f85149" opacity="0.12"/>
+    <path d="M6.5 6.5L13.5 13.5M13.5 6.5L6.5 13.5" stroke="#f85149" stroke-width="1.8" stroke-linecap="round"/>
+    <text x="28" y="14" class="panel-header" fill="#f85149">Without agent-bom</text>
+  </g>
+
+  <!-- Before bullets -->
+  <g transform="translate(64, 118)">
+    <circle cx="6" cy="8" r="4" fill="#f85149" opacity="0.35"/>
+    <text x="18" y="12" class="bullet">Unknown MCP server dependencies</text>
+  </g>
+  <g transform="translate(64, 156)">
+    <circle cx="6" cy="8" r="4" fill="#f85149" opacity="0.35"/>
+    <text x="18" y="12" class="bullet">No vulnerability visibility</text>
+  </g>
+  <g transform="translate(64, 194)">
+    <circle cx="6" cy="8" r="4" fill="#f85149" opacity="0.35"/>
+    <text x="18" y="12" class="bullet">Credentials exposed without tracking</text>
+  </g>
+  <g transform="translate(64, 232)">
+    <circle cx="6" cy="8" r="4" fill="#f85149" opacity="0.35"/>
+    <text x="18" y="12" class="bullet">No blast radius mapping</text>
+  </g>
+  <g transform="translate(64, 270)">
+    <circle cx="6" cy="8" r="4" fill="#f85149" opacity="0.35"/>
+    <text x="18" y="12" class="bullet">Manual compliance reporting</text>
+  </g>
+  <g transform="translate(64, 308)">
+    <circle cx="6" cy="8" r="4" fill="#f85149" opacity="0.35"/>
+    <text x="18" y="12" class="bullet">Shadow AI tools undetected</text>
+  </g>
+
+  <!-- ── Right Panel: After ── -->
+  <rect x="452" y="56" width="396" height="304" rx="10" fill="#f6f8fa" stroke="#3fb95033" stroke-width="1"/>
+
+  <!-- Green accent bar -->
+  <rect x="452" y="56" width="396" height="6" rx="3" fill="#3fb950" opacity="0.6"/>
+
+  <!-- Header with checkmark icon -->
+  <g transform="translate(476, 80)">
+    <!-- Checkmark icon -->
+    <circle cx="10" cy="10" r="10" fill="#3fb950" opacity="0.12"/>
+    <path d="M6 10.5L9 13.5L14.5 7" stroke="#3fb950" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <text x="28" y="14" class="panel-header" fill="#3fb950">With agent-bom</text>
+  </g>
+
+  <!-- After bullets -->
+  <g transform="translate(484, 118)">
+    <circle cx="6" cy="8" r="4" fill="#3fb950" opacity="0.35"/>
+    <text x="18" y="12" class="bullet">Full dependency inventory (npm, PyPI, Go, Docker)</text>
+  </g>
+  <g transform="translate(484, 156)">
+    <circle cx="6" cy="8" r="4" fill="#3fb950" opacity="0.35"/>
+    <text x="18" y="12" class="bullet">Real-time CVE + EPSS + KEV scanning</text>
+  </g>
+  <g transform="translate(484, 194)">
+    <circle cx="6" cy="8" r="4" fill="#3fb950" opacity="0.35"/>
+    <text x="18" y="12" class="bullet">Credential exposure mapped to blast radius</text>
+  </g>
+  <g transform="translate(484, 232)">
+    <circle cx="6" cy="8" r="4" fill="#3fb950" opacity="0.35"/>
+    <text x="18" y="12" class="bullet">Attack path: package → server → agent → tool</text>
+  </g>
+  <g transform="translate(484, 270)">
+    <circle cx="6" cy="8" r="4" fill="#3fb950" opacity="0.35"/>
+    <text x="18" y="12" class="bullet">4 compliance frameworks auto-mapped</text>
+  </g>
+  <g transform="translate(484, 308)">
+    <circle cx="6" cy="8" r="4" fill="#3fb950" opacity="0.35"/>
+    <text x="18" y="12" class="bullet">18-client discovery + 427 server registry</text>
+  </g>
+
+  <!-- Separator -->
+  <line x1="40" y1="376" x2="840" y2="376" stroke="#d1d9e0" stroke-width="1"/>
+
+  <!-- Footer -->
+  <text x="440" y="402" text-anchor="middle" class="footer">From blind spots to full AI supply chain visibility</text>
+</svg>

@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 480" fill="none">
+  <style>
+    .title { font: 700 14px system-ui, -apple-system, sans-serif; fill: #1f2328; }
+    .hub-title { font: 700 12px system-ui, -apple-system, sans-serif; fill: #1f2328; }
+    .hub-sub { font: 400 9px system-ui, -apple-system, sans-serif; fill: #656d76; }
+    .spoke-title { font: 700 11px system-ui, -apple-system, sans-serif; fill: #1f2328; }
+    .spoke-line1 { font: 500 9.5px system-ui, -apple-system, sans-serif; fill: #656d76; }
+    .spoke-line2 { font: 400 9px system-ui, -apple-system, sans-serif; fill: #656d76; }
+    .footer { font: 500 9.5px system-ui, -apple-system, sans-serif; fill: #656d76; }
+  </style>
+
+  <!-- Background -->
+  <rect width="880" height="480" rx="12" fill="#ffffff" stroke="#d1d9e0" stroke-width="1"/>
+
+  <!-- Title -->
+  <text x="440" y="32" text-anchor="middle" class="title">Deployment &amp; Offerings Map</text>
+
+  <!-- Connecting lines from center hub to spokes -->
+  <!-- Center hub is at (440, 252) -->
+  <!-- 1. CLI — top-left (160, 110) -->
+  <line x1="370" y1="228" x2="222" y2="134" stroke="#d1d9e0" stroke-width="1.5"/>
+  <!-- 2. GitHub Action — top (440, 90) -->
+  <line x1="440" y1="222" x2="440" y2="134" stroke="#d1d9e0" stroke-width="1.5"/>
+  <!-- 3. MCP Server — top-right (720, 110) -->
+  <line x1="510" y1="228" x2="658" y2="134" stroke="#d1d9e0" stroke-width="1.5"/>
+  <!-- 4. Docker — right (750, 252) -->
+  <line x1="530" y1="252" x2="668" y2="252" stroke="#d1d9e0" stroke-width="1.5"/>
+  <!-- 5. REST API — bottom-right (720, 394) -->
+  <line x1="510" y1="276" x2="658" y2="370" stroke="#d1d9e0" stroke-width="1.5"/>
+  <!-- 6. SSE Stream — bottom (440, 414) -->
+  <line x1="440" y1="282" x2="440" y2="370" stroke="#d1d9e0" stroke-width="1.5"/>
+  <!-- 7. Policy Engine — bottom-left (160, 394) -->
+  <line x1="370" y1="276" x2="222" y2="370" stroke="#d1d9e0" stroke-width="1.5"/>
+  <!-- 8. Watch Mode — left (130, 252) -->
+  <line x1="350" y1="252" x2="212" y2="252" stroke="#d1d9e0" stroke-width="1.5"/>
+
+  <!-- ── Center Hub ── -->
+  <rect x="350" y="222" width="180" height="60" rx="12" fill="#f6f8fa" stroke="#bc8cff" stroke-width="2"/>
+  <text x="440" y="248" text-anchor="middle" class="hub-title" fill="#8250df">agent-bom Engine</text>
+  <text x="440" y="268" text-anchor="middle" class="hub-sub">Discovery → Parse → Scan → Enrich → Report</text>
+
+  <!-- ── Spoke 1: CLI (top-left) ── -->
+  <rect x="80" y="78" width="170" height="56" rx="12" fill="#f6f8fa" stroke="#58a6ff" stroke-width="1.5"/>
+  <rect x="80" y="78" width="170" height="4" rx="2" fill="#58a6ff" opacity="0.6"/>
+  <text x="165" y="102" text-anchor="middle" class="spoke-title" fill="#0969da">CLI</text>
+  <text x="165" y="116" text-anchor="middle" class="spoke-line1">agent-bom scan</text>
+  <text x="165" y="128" text-anchor="middle" class="spoke-line2">JSON, CycloneDX, SPDX, SARIF</text>
+
+  <!-- ── Spoke 2: GitHub Action (top) ── -->
+  <rect x="340" y="78" width="200" height="56" rx="12" fill="#f6f8fa" stroke="#3fb950" stroke-width="1.5"/>
+  <rect x="340" y="78" width="200" height="4" rx="2" fill="#3fb950" opacity="0.6"/>
+  <text x="440" y="102" text-anchor="middle" class="spoke-title" fill="#1a7f37">GitHub Action</text>
+  <text x="440" y="116" text-anchor="middle" class="spoke-line1">CI/CD gate</text>
+  <text x="440" y="128" text-anchor="middle" class="spoke-line2">PR comments, fail-on-severity</text>
+
+  <!-- ── Spoke 3: MCP Server (top-right) ── -->
+  <rect x="630" y="78" width="170" height="56" rx="12" fill="#f6f8fa" stroke="#bc8cff" stroke-width="1.5"/>
+  <rect x="630" y="78" width="170" height="4" rx="2" fill="#bc8cff" opacity="0.6"/>
+  <text x="715" y="102" text-anchor="middle" class="spoke-title" fill="#8250df">MCP Server</text>
+  <text x="715" y="116" text-anchor="middle" class="spoke-line1">7 tools for AI agents</text>
+  <text x="715" y="128" text-anchor="middle" class="spoke-line2">stdio + SSE transport</text>
+
+  <!-- ── Spoke 4: Docker (right) ── -->
+  <rect x="668" y="224" width="170" height="56" rx="12" fill="#f6f8fa" stroke="#58a6ff" stroke-width="1.5"/>
+  <rect x="668" y="224" width="170" height="4" rx="2" fill="#58a6ff" opacity="0.6"/>
+  <text x="753" y="248" text-anchor="middle" class="spoke-title" fill="#0969da">Docker</text>
+  <text x="753" y="262" text-anchor="middle" class="spoke-line1">Container scanning</text>
+  <text x="753" y="274" text-anchor="middle" class="spoke-line2">Grype + Syft integration</text>
+
+  <!-- ── Spoke 5: REST API (bottom-right) ── -->
+  <rect x="630" y="370" width="170" height="56" rx="12" fill="#f6f8fa" stroke="#f0883e" stroke-width="1.5"/>
+  <rect x="630" y="370" width="170" height="4" rx="2" fill="#f0883e" opacity="0.6"/>
+  <text x="715" y="394" text-anchor="middle" class="spoke-title" fill="#bc4c00">REST API</text>
+  <text x="715" y="408" text-anchor="middle" class="spoke-line1">FastAPI server</text>
+  <text x="715" y="420" text-anchor="middle" class="spoke-line2">/v1/scan, /v1/blast-radius</text>
+
+  <!-- ── Spoke 6: SSE Stream (bottom) ── -->
+  <rect x="340" y="370" width="200" height="56" rx="12" fill="#f6f8fa" stroke="#f0883e" stroke-width="1.5"/>
+  <rect x="340" y="370" width="200" height="4" rx="2" fill="#f0883e" opacity="0.6"/>
+  <text x="440" y="394" text-anchor="middle" class="spoke-title" fill="#bc4c00">SSE Stream</text>
+  <text x="440" y="408" text-anchor="middle" class="spoke-line1">Railway deployment</text>
+  <text x="440" y="420" text-anchor="middle" class="spoke-line2">Real-time event stream</text>
+
+  <!-- ── Spoke 7: Policy Engine (bottom-left) ── -->
+  <rect x="80" y="370" width="170" height="56" rx="12" fill="#f6f8fa" stroke="#f85149" stroke-width="1.5"/>
+  <rect x="80" y="370" width="170" height="4" rx="2" fill="#f85149" opacity="0.6"/>
+  <text x="165" y="394" text-anchor="middle" class="spoke-title" fill="#cf222e">Policy Engine</text>
+  <text x="165" y="408" text-anchor="middle" class="spoke-line1">Policy-as-code</text>
+  <text x="165" y="420" text-anchor="middle" class="spoke-line2">YAML rules, CI enforcement</text>
+
+  <!-- ── Spoke 8: Watch Mode (left) ── -->
+  <rect x="42" y="224" width="170" height="56" rx="12" fill="#f6f8fa" stroke="#d29922" stroke-width="1.5"/>
+  <rect x="42" y="224" width="170" height="4" rx="2" fill="#d29922" opacity="0.6"/>
+  <text x="127" y="248" text-anchor="middle" class="spoke-title" fill="#9a6700">Watch Mode</text>
+  <text x="127" y="262" text-anchor="middle" class="spoke-line1">File system watcher</text>
+  <text x="127" y="274" text-anchor="middle" class="spoke-line2">Config change alerts</text>
+
+  <!-- Footer -->
+  <text x="440" y="462" text-anchor="middle" class="footer">One engine, multiple deployment modes</text>
+</svg>

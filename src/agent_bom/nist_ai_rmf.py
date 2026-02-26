@@ -55,6 +55,11 @@ _AI_PACKAGES: frozenset[str] = frozenset({
     "dspy-ai", "guidance",
     "semantic-kernel",
     "pydantic-ai",
+    # Vector stores / RAG backends
+    "chromadb", "pinecone-client", "weaviate-client", "qdrant-client",
+    "faiss-cpu", "faiss-gpu", "pymilvus", "milvus",
+    "pgvector", "lancedb",
+    "sentence-transformers",
 })
 
 # Severity levels considered high-risk

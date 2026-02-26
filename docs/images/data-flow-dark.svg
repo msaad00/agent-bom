@@ -1,0 +1,171 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 480" fill="none">
+  <style>
+    .title { font: 700 15px system-ui, -apple-system, sans-serif; fill: #e6edf3; }
+    .subtitle { font: 400 10px system-ui, sans-serif; fill: #8b949e; }
+    .phase { font: 700 9px system-ui, sans-serif; letter-spacing: 0.1em; }
+    .label { font: 600 11px system-ui, sans-serif; }
+    .sub { font: 400 9px system-ui, sans-serif; fill: #8b949e; }
+    .data { font: 600 8.5px monospace; }
+    .badge { font: 700 8px system-ui, sans-serif; letter-spacing: 0.05em; }
+    .note { font: 400 9px system-ui, sans-serif; fill: #6e7681; }
+    .arrow { stroke: #484f58; stroke-width: 1.5; fill: none; }
+    .arrow-green { stroke: #238636; stroke-width: 1.5; fill: none; }
+    .arrow-red { stroke: #da3633; stroke-width: 1.5; stroke-dasharray: 4 3; fill: none; }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 8 6" refX="8" refY="3" markerWidth="7" markerHeight="5" orient="auto">
+      <path d="M0 0L8 3L0 6Z" fill="#484f58"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 8 6" refX="8" refY="3" markerWidth="7" markerHeight="5" orient="auto">
+      <path d="M0 0L8 3L0 6Z" fill="#238636"/>
+    </marker>
+    <marker id="ar" viewBox="0 0 8 6" refX="8" refY="3" markerWidth="7" markerHeight="5" orient="auto">
+      <path d="M0 0L8 3L0 6Z" fill="#da3633"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="480" rx="12" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+
+  <!-- Title -->
+  <text x="450" y="28" text-anchor="middle" class="title">How agent-bom Scans — Data Flow &amp; Trust Model</text>
+  <text x="450" y="44" text-anchor="middle" class="subtitle">What data is read, what is sent, what is never touched — fully auditable with --dry-run</text>
+
+  <!-- ═══ LEFT: Your Machine ═══ -->
+  <rect x="20" y="60" width="260" height="362" rx="10" fill="#161b22" stroke="#1f6feb" stroke-width="1.5"/>
+  <text x="150" y="78" text-anchor="middle" class="phase" fill="#58a6ff">YOUR MACHINE (LOCAL · READ-ONLY)</text>
+
+  <!-- Config files -->
+  <rect x="34" y="90" width="232" height="74" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="150" y="106" text-anchor="middle" class="label" fill="#58a6ff">MCP Config Files</text>
+  <text x="150" y="120" text-anchor="middle" class="sub">18 client paths auto-discovered</text>
+  <text x="42" y="136" class="data" fill="#3fb950">EXTRACTED:</text>
+  <text x="120" y="136" class="data" fill="#8b949e">server names, package names,</text>
+  <text x="42" y="150" class="data" fill="#8b949e">env var NAMES, tool lists</text>
+
+  <!-- Redaction box -->
+  <rect x="34" y="174" width="232" height="56" rx="6" fill="#1c1917" stroke="#da3633" stroke-width="1"/>
+  <text x="150" y="190" text-anchor="middle" class="badge" fill="#da3633">NEVER EXTRACTED</text>
+  <text x="42" y="206" class="data" fill="#f47067">env var VALUES, credentials, secrets,</text>
+  <text x="42" y="218" class="data" fill="#f47067">tokens, API keys, passwords, hostnames</text>
+
+  <!-- What's sent -->
+  <rect x="34" y="240" width="232" height="56" rx="6" fill="#0d1117" stroke="#238636" stroke-width="1"/>
+  <text x="150" y="256" text-anchor="middle" class="badge" fill="#3fb950">SENT TO APIs</text>
+  <text x="42" y="272" class="data" fill="#3fb950">package names + versions only</text>
+  <text x="42" y="284" class="data" fill="#8b949e">e.g. "better-sqlite3", "9.0.0", "npm"</text>
+
+  <!-- Dry run -->
+  <rect x="34" y="306" width="232" height="44" rx="6" fill="#0d1117" stroke="#d29922" stroke-width="1"/>
+  <text x="150" y="322" text-anchor="middle" class="label" fill="#d29922">--dry-run</text>
+  <text x="150" y="336" text-anchor="middle" class="sub">Preview all files + API calls, then exit.</text>
+  <text x="150" y="348" text-anchor="middle" class="sub">Nothing is read or sent.</text>
+
+  <!-- No-write guarantee -->
+  <rect x="34" y="360" width="232" height="50" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="150" y="376" text-anchor="middle" class="badge" fill="#8b949e">GUARANTEES</text>
+  <text x="42" y="392" class="data" fill="#8b949e">No file writes · No config changes</text>
+  <text x="42" y="402" class="data" fill="#8b949e">No servers started · Non-root</text>
+
+  <!-- ═══ CENTER: Arrows showing data flow ═══ -->
+
+  <!-- Arrow: config → extraction (green = safe data) -->
+  <line x1="280" y1="130" x2="310" y2="130" class="arrow-green" marker-end="url(#ag)"/>
+  <text x="295" y="122" text-anchor="middle" class="sub" fill="#3fb950" transform="rotate(-90 295 122)"></text>
+
+  <!-- Arrow: packages → APIs (green) -->
+  <line x1="280" y1="268" x2="310" y2="268" class="arrow-green" marker-end="url(#ag)"/>
+
+  <!-- Red crossed arrow: secrets never sent -->
+  <line x1="280" y1="200" x2="310" y2="200" class="arrow-red" marker-end="url(#ar)"/>
+  <text x="298" y="196" class="badge" fill="#da3633">✗</text>
+
+  <!-- ═══ CENTER: agent-bom Engine ═══ -->
+  <rect x="316" y="60" width="268" height="170" rx="10" fill="#161b22" stroke="#58a6ff" stroke-width="2"/>
+  <text x="450" y="78" text-anchor="middle" class="phase" fill="#58a6ff">AGENT-BOM ENGINE</text>
+
+  <rect x="330" y="90" width="118" height="34" rx="5" fill="#0d1117" stroke="#d29922" stroke-width="1"/>
+  <text x="389" y="104" text-anchor="middle" class="label" fill="#d29922">CVE Scan</text>
+  <text x="389" y="116" text-anchor="middle" class="sub">OSV batch API</text>
+
+  <rect x="454" y="90" width="118" height="34" rx="5" fill="#0d1117" stroke="#f47067" stroke-width="1"/>
+  <text x="513" y="104" text-anchor="middle" class="label" fill="#f47067">Blast Radius</text>
+  <text x="513" y="116" text-anchor="middle" class="sub">CVE → cred → tool</text>
+
+  <rect x="330" y="132" width="118" height="34" rx="5" fill="#0d1117" stroke="#a371f7" stroke-width="1"/>
+  <text x="389" y="146" text-anchor="middle" class="label" fill="#a371f7">Threat Model</text>
+  <text x="389" y="158" text-anchor="middle" class="sub">OWASP + ATLAS</text>
+
+  <rect x="454" y="132" width="118" height="34" rx="5" fill="#0d1117" stroke="#3fb950" stroke-width="1"/>
+  <text x="513" y="146" text-anchor="middle" class="label" fill="#3fb950">Enforcement</text>
+  <text x="513" y="158" text-anchor="middle" class="sub">Poisoning + drift</text>
+
+  <rect x="330" y="174" width="242" height="34" rx="5" fill="#0d1117" stroke="#58a6ff" stroke-width="1"/>
+  <text x="451" y="188" text-anchor="middle" class="label" fill="#58a6ff">Remediation Plan</text>
+  <text x="451" y="200" text-anchor="middle" class="sub">Named assets + impact % + fix priority</text>
+
+  <!-- ═══ RIGHT: Public APIs ═══ -->
+  <rect x="600" y="60" width="280" height="170" rx="10" fill="#161b22" stroke="#a371f7" stroke-width="1.5"/>
+  <text x="740" y="78" text-anchor="middle" class="phase" fill="#bc8cff">PUBLIC APIs (NO AUTH · READ-ONLY)</text>
+
+  <rect x="614" y="90" width="122" height="28" rx="5" fill="#0d1117" stroke="#8b5cf6" stroke-width="1"/>
+  <text x="675" y="104" text-anchor="middle" class="label" fill="#bc8cff">OSV.dev</text>
+  <text x="675" y="114" text-anchor="middle" class="sub">CVE lookup</text>
+
+  <rect x="744" y="90" width="122" height="28" rx="5" fill="#0d1117" stroke="#8b5cf6" stroke-width="1"/>
+  <text x="805" y="104" text-anchor="middle" class="label" fill="#bc8cff">NVD / NIST</text>
+  <text x="805" y="114" text-anchor="middle" class="sub">CVSS scores</text>
+
+  <rect x="614" y="126" width="122" height="28" rx="5" fill="#0d1117" stroke="#8b5cf6" stroke-width="1"/>
+  <text x="675" y="140" text-anchor="middle" class="label" fill="#bc8cff">FIRST EPSS</text>
+  <text x="675" y="150" text-anchor="middle" class="sub">Exploit probability</text>
+
+  <rect x="744" y="126" width="122" height="28" rx="5" fill="#0d1117" stroke="#8b5cf6" stroke-width="1"/>
+  <text x="805" y="140" text-anchor="middle" class="label" fill="#bc8cff">CISA KEV</text>
+  <text x="805" y="150" text-anchor="middle" class="sub">Exploited vulns</text>
+
+  <rect x="614" y="162" width="122" height="28" rx="5" fill="#0d1117" stroke="#8b5cf6" stroke-width="1"/>
+  <text x="675" y="176" text-anchor="middle" class="label" fill="#bc8cff">MCP Registry</text>
+  <text x="675" y="186" text-anchor="middle" class="sub">427+ servers</text>
+
+  <rect x="744" y="162" width="122" height="28" rx="5" fill="#0d1117" stroke="#8b5cf6" stroke-width="1"/>
+  <text x="805" y="176" text-anchor="middle" class="label" fill="#bc8cff">HuggingFace</text>
+  <text x="805" y="186" text-anchor="middle" class="sub">Model provenance</text>
+
+  <!-- Arrow: engine → APIs -->
+  <line x1="584" y1="140" x2="608" y2="140" class="arrow-green" marker-end="url(#ag)"/>
+
+  <!-- ═══ BOTTOM: Output ═══ -->
+  <rect x="316" y="248" width="564" height="174" rx="10" fill="#161b22" stroke="#238636" stroke-width="1.5"/>
+  <text x="598" y="266" text-anchor="middle" class="phase" fill="#3fb950">OUTPUT — RESULTS RETURNED TO YOU (NOTHING STORED)</text>
+
+  <rect x="330" y="278" width="158" height="56" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="409" y="294" text-anchor="middle" class="label" fill="#3fb950">Console / JSON</text>
+  <text x="409" y="308" text-anchor="middle" class="sub">CVE table + blast radius</text>
+  <text x="409" y="322" text-anchor="middle" class="sub">Enforcement findings</text>
+
+  <rect x="500" y="278" width="158" height="56" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="579" y="294" text-anchor="middle" class="label" fill="#3fb950">SARIF / SBOM</text>
+  <text x="579" y="308" text-anchor="middle" class="sub">CycloneDX 1.6, SPDX 3.0</text>
+  <text x="579" y="322" text-anchor="middle" class="sub">GitHub Security tab</text>
+
+  <rect x="670" y="278" width="196" height="56" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="768" y="294" text-anchor="middle" class="label" fill="#3fb950">HTML Report</text>
+  <text x="768" y="308" text-anchor="middle" class="sub">Interactive dashboard</text>
+  <text x="768" y="322" text-anchor="middle" class="sub">Threat frameworks + remediation</text>
+
+  <!-- Verification section -->
+  <rect x="330" y="346" width="536" height="64" rx="6" fill="#0d1117" stroke="#d29922" stroke-width="1"/>
+  <text x="598" y="362" text-anchor="middle" class="badge" fill="#d29922">SUPPLY CHAIN VERIFICATION</text>
+  <text x="598" y="378" text-anchor="middle" class="sub">Sigstore OIDC signing on every release · SLSA provenance via GitHub Actions</text>
+  <text x="598" y="392" text-anchor="middle" class="sub">cosign verify-blob · OpenSSF Scorecard · 1100+ automated tests · Apache 2.0 source</text>
+  <text x="598" y="404" text-anchor="middle" class="data" fill="#d29922">agent-bom verify agent-bom  →  check integrity yourself</text>
+
+  <!-- Arrow: engine → output -->
+  <line x1="450" y1="216" x2="450" y2="242" class="arrow-green" marker-end="url(#ag)"/>
+
+  <!-- Bottom callout -->
+  <rect x="20" y="434" width="860" height="36" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+  <text x="450" y="450" text-anchor="middle" class="badge" fill="#8b949e">CLAWHUB TRUST ASSESSMENT RESPONSE</text>
+  <text x="450" y="462" text-anchor="middle" class="note">No binary install needed (SSE) · No file writes · No credential values read · Dry-run before any access · Sigstore + OpenSSF verified · 27 specific config paths (not wildcards)</text>
+</svg>

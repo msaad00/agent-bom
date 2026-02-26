@@ -273,27 +273,32 @@ python3 -c "import json; d=json.load(open('enriched-test.json')); print('EPSS:',
 
 ---
 
-## 🚀 Next Steps
+## OpenSSF Scorecard Enrichment
 
-Now that enrichment is implemented, you can:
+The `--scorecard` flag enriches packages with [OpenSSF Scorecard](https://scorecard.dev/) scores from `api.securityscorecards.dev`. Scorecard measures the security health of open source projects across 18 checks (Code-Review, Maintained, Vulnerabilities, etc.).
 
-1. **Test locally**:
-   ```bash
-   agent-bom scan --enrich
-   ```
+```bash
+agent-bom scan --scorecard                    # enrich packages with scorecard data
+agent-bom scan --enrich --scorecard -f json   # full enrichment + scorecard
+```
 
-2. **Get NVD API key** for faster scanning
+**How it works:**
+- Packages with a known GitHub source repo get their scorecard fetched
+- Scores range from 0.0 (worst) to 10.0 (best)
+- Low scores amplify blast radius risk: `< 3.0` = +0.75 risk, `< 5.0` = +0.5, `< 7.0` = +0.25
+- Console output shows `SC:X.X` badges (green/yellow/red) per package
+- JSON output includes `scorecard_score` and individual `scorecard_checks`
 
-3. **Run end-to-end tests**:
-   ```bash
-   ./test_e2e.sh
-   ```
+**No API key required.** The OpenSSF Scorecard API is free and public.
 
-4. **Move to next phase**:
-   - ✅ NVD/EPSS/KEV enrichment
-   - ⏭️ End-to-end testing on your machine
-   - ⏭️ Snowflake integration
-   - ⏭️ Visualization/diagrams
-   - ⏭️ CI/CD setup
+---
 
-**Ready to test enrichment?** 🎯
+## Malicious Package Detection
+
+agent-bom automatically detects known malicious packages from the [OpenSSF Malicious Packages](https://github.com/ossf/malicious-packages) dataset (via OSV.dev `MAL-` prefixed IDs) and flags potential typosquats of 57 popular npm/PyPI packages.
+
+**MAL- prefix detection:** Any vulnerability with an ID starting with `MAL-` (e.g., `MAL-2024-1234`) automatically flags the package as malicious. These appear as skull badges in console output and `is_malicious: true` in JSON.
+
+**Typosquat detection:** Package names are compared against popular packages using sequence matching. A similarity ratio >= 85% triggers a warning (e.g., `expresss` flagged as typosquat of `express`).
+
+No additional flags needed — malicious detection runs automatically during every scan.

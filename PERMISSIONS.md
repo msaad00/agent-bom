@@ -120,13 +120,14 @@ Only package names and versions are sent. No user data is included in requests.
 | CISA KEV | `https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json` | _(none — full download)_ | KEV catalog | None |
 | npm registry | `https://registry.npmjs.org/{pkg}/{version}` | Package name + version | Package metadata | None |
 | PyPI | `https://pypi.org/pypi/{pkg}/{version}/json` | Package name + version | Package metadata | None |
+| OpenSSF Scorecard | `https://api.securityscorecards.dev/projects/github.com/{owner}/{repo}` | GitHub owner/repo | Scorecard scores | None |
 
 ### Data flow
 
 ```
 [Local config files]  →  extract server name, command, args, env var NAMES
                           ↓
-[Package names+versions]  →  sent to OSV.dev, NVD, EPSS, KEV, npm, PyPI
+[Package names+versions]  →  sent to OSV.dev, NVD, EPSS, KEV, npm, PyPI, OpenSSF Scorecard
                           ↓
 [CVE results]  →  returned to local process, written to stdout or --output file
 ```

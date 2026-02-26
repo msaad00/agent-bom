@@ -42,6 +42,21 @@ def extract_github_repo(url: str) -> Optional[str]:
     return m.group(1) if m else None
 
 
+def extract_github_repo_from_purl(purl: str) -> Optional[str]:
+    """Extract 'owner/repo' from a PURL that may embed a GitHub URL.
+
+    This avoids relying on a simple substring check like
+    '"github.com" in purl' by using the same robust extractor
+    used for regular URLs.
+    """
+    if not purl:
+        return None
+
+    # Reuse the GitHub URL extraction logic; this will only return
+    # a repo if a valid GitHub URL pattern is present in the PURL.
+    return extract_github_repo(purl)
+
+
 def _repo_url_from_package(pkg: Package) -> Optional[str]:
     """Try to determine GitHub repo URL from package metadata."""
     # Check source_repo field first (populated by registry lookup)
@@ -51,8 +66,8 @@ def _repo_url_from_package(pkg: Package) -> Optional[str]:
             return repo
 
     # Check PURL for hints (some PURLs include qualifiers with repo info)
-    if pkg.purl and "github.com" in pkg.purl:
-        repo = extract_github_repo(pkg.purl)
+    if pkg.purl:
+        repo = extract_github_repo_from_purl(pkg.purl)
         if repo:
             return repo
 

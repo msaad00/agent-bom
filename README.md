@@ -113,7 +113,7 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
 |----------|------|
 | PyPI | `pip install agent-bom` |
 | Docker | `docker run agentbom/agent-bom scan` |
-| GitHub Action | `uses: msaad00/agent-bom@v0.33.0` |
+| GitHub Action | `uses: msaad00/agent-bom@v0.34.0` |
 | MCP Registry | [server.json](integrations/mcp-registry/server.json) |
 | ToolHive | [registry entry](integrations/toolhive/server.json) |
 | OpenClaw | [SKILL.md](integrations/openclaw/SKILL.md) |
@@ -401,7 +401,7 @@ agent-bom scan --aws -f graph -o graph.json   # export graph data
 |------|---------|----------|
 | CLI | `agent-bom scan` | Local audit |
 | Pre-install check | `agent-bom check express@4.18.2 -e npm` | Before running MCP servers |
-| GitHub Action | `uses: msaad00/agent-bom@v0.33.0` | CI/CD + SARIF |
+| GitHub Action | `uses: msaad00/agent-bom@v0.34.0` | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated scans |
 | REST API | `agent-bom api` | Dashboards, SIEM |
 | Runtime proxy | `agent-bom proxy` | Live MCP traffic audit |
@@ -412,7 +412,7 @@ agent-bom scan --aws -f graph -o graph.json   # export graph data
 ### GitHub Action
 
 ```yaml
-- uses: msaad00/agent-bom@v0.33.0
+- uses: msaad00/agent-bom@v0.34.0
   with:
     severity-threshold: high
     upload-sarif: true

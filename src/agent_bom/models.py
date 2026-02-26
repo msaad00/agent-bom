@@ -111,6 +111,10 @@ class Package:
     is_malicious: bool = False  # True if flagged as known malicious (MAL- prefix in OSV)
     malicious_reason: Optional[str] = None  # Why this package is flagged (e.g. "MAL-2024-1234")
 
+    # OpenSSF Scorecard enrichment (populated by --scorecard flag)
+    scorecard_score: Optional[float] = None  # 0.0-10.0 overall score
+    scorecard_checks: dict[str, int] = field(default_factory=dict)  # check_name -> score (-1 to 10)
+
     # Auto-discovery metadata (populated when not in bundled registry)
     auto_risk_level: Optional[str] = None
     auto_risk_justification: Optional[str] = None
@@ -312,7 +316,17 @@ class BlastRadius:
         kev_boost = 1.0 if self.vulnerability.is_kev else 0.0
         epss_boost = 0.5 if (self.vulnerability.epss_score or 0) >= 0.7 else 0.0
 
-        self.risk_score = min(base + agent_factor + cred_factor + tool_factor + ai_boost + kev_boost + epss_boost, 10.0)
+        # Boost for low OpenSSF Scorecard (score < 4.0 = poorly maintained)
+        scorecard_boost = 0.0
+        if self.package.scorecard_score is not None:
+            if self.package.scorecard_score < 3.0:
+                scorecard_boost = 0.75
+            elif self.package.scorecard_score < 5.0:
+                scorecard_boost = 0.5
+            elif self.package.scorecard_score < 7.0:
+                scorecard_boost = 0.25
+
+        self.risk_score = min(base + agent_factor + cred_factor + tool_factor + ai_boost + kev_boost + epss_boost + scorecard_boost, 10.0)
         return self.risk_score
 
 

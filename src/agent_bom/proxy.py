@@ -258,8 +258,20 @@ async def run_proxy(
     policy_path: Optional[str] = None,
     log_path: Optional[str] = None,
     block_undeclared: bool = False,
+    detect_credentials: bool = False,
+    rate_limit_threshold: int = 0,
+    log_only: bool = False,
 ) -> int:
     """Main proxy loop. Spawns server subprocess, relays JSON-RPC.
+
+    Args:
+        server_cmd: Command to spawn the MCP server.
+        policy_path: Path to policy JSON file.
+        log_path: Path to audit JSONL log.
+        block_undeclared: Block tools not in initial tools/list.
+        detect_credentials: Enable credential leak detection in responses.
+        rate_limit_threshold: Max calls per tool per 60s (0 = disabled).
+        log_only: Log alerts without blocking (advisory mode).
 
     Returns the server process exit code.
     """
@@ -275,6 +287,32 @@ async def run_proxy(
 
     # Metrics
     metrics = ProxyMetrics()
+
+    # Runtime detectors
+    from agent_bom.runtime.detectors import (
+        ArgumentAnalyzer,
+        CredentialLeakDetector,
+        RateLimitTracker,
+        SequenceAnalyzer,
+        ToolDriftDetector,
+    )
+
+    drift_detector = ToolDriftDetector()
+    arg_analyzer = ArgumentAnalyzer()
+    cred_detector = CredentialLeakDetector() if detect_credentials else None
+    rate_tracker = RateLimitTracker(threshold=rate_limit_threshold) if rate_limit_threshold > 0 else None
+    seq_analyzer = SequenceAnalyzer()
+    runtime_alerts: list[dict] = []
+
+    def _handle_alerts(alerts, log_f=None):
+        """Log alerts and optionally record them."""
+        for alert in alerts:
+            alert_dict = alert.to_dict()
+            runtime_alerts.append(alert_dict)
+            logger.warning("Runtime alert: %s", alert.message)
+            if log_f:
+                log_f.write(json.dumps(alert_dict) + "\n")
+                log_f.flush()
 
     # Track declared tools from tools/list responses
     declared_tools: set[str] = set()
@@ -340,6 +378,19 @@ async def run_proxy(
                             sys.stdout.buffer.flush()
                             continue
 
+                    # Runtime detectors: argument analysis
+                    arg_alerts = arg_analyzer.check(tool_name, arguments)
+                    _handle_alerts(arg_alerts, log_file)
+
+                    # Runtime detectors: rate limiting
+                    if rate_tracker:
+                        rate_alerts = rate_tracker.record(tool_name)
+                        _handle_alerts(rate_alerts, log_file)
+
+                    # Runtime detectors: sequence analysis
+                    seq_alerts = seq_analyzer.record(tool_name)
+                    _handle_alerts(seq_alerts, log_file)
+
                     # Record allowed call + start latency timer
                     metrics.record_call(tool_name)
                     if "id" in msg:
@@ -375,6 +426,20 @@ async def run_proxy(
                     declared_tools.update(new_tools)
                     logger.debug("Declared tools updated: %s", declared_tools)
 
+                    # Runtime detector: tool drift
+                    drift_alerts = drift_detector.check(new_tools)
+                    _handle_alerts(drift_alerts, log_file)
+
+                # Runtime detector: credential leak in responses
+                if cred_detector and "result" in msg:
+                    result_text = json.dumps(msg.get("result", ""))
+                    resp_id = msg.get("id")
+                    tool_for_resp = ""
+                    if resp_id is not None and resp_id in pending_calls:
+                        tool_for_resp = pending_calls[resp_id][0]
+                    cred_alerts = cred_detector.check(tool_for_resp or "unknown", result_text)
+                    _handle_alerts(cred_alerts, log_file)
+
                 # Complete latency tracking for tool call responses
                 resp_id = msg.get("id")
                 if resp_id is not None and resp_id in pending_calls:
@@ -406,9 +471,11 @@ async def run_proxy(
     except (BrokenPipeError, ConnectionResetError):
         pass
     finally:
-        # Write metrics summary to audit log before closing
+        # Write metrics summary + runtime alerts to audit log before closing
         if log_file:
-            summary_line = json.dumps(metrics.summary()) + "\n"
+            summary = metrics.summary()
+            summary["runtime_alerts"] = len(runtime_alerts)
+            summary_line = json.dumps(summary) + "\n"
             log_file.write(summary_line)
             log_file.close()
         if process.returncode is None:

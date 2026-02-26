@@ -16,7 +16,7 @@
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center">
-  <b>AI supply chain security scanner. Scan packages and images for CVEs. Assess config security — credential exposure, tool access, privilege escalation. Map blast radius from vulnerabilities to credentials and tools. OWASP LLM Top 10 + MITRE ATLAS + NIST AI RMF.</b>
+  <b>AI supply chain security scanner. Scan packages and images for CVEs. Assess config security — credential exposure, tool access, privilege escalation. Map blast radius from vulnerabilities to credentials and tools. OWASP LLM Top 10 + OWASP MCP Top 10 + MITRE ATLAS + NIST AI RMF.</b>
 </p>
 
 <p align="center">
@@ -61,11 +61,21 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 | **MCP tool reachability** | — | Which tools an attacker reaches post-exploit |
 | **Privilege detection** | — | runs_as_root, shell_access, container_privileged, per-tool permissions |
 | **Enterprise remediation** | — | Named assets, impact percentages, risk narratives |
-| **Triple-framework tagging** | — | OWASP LLM Top 10 + MITRE ATLAS + NIST AI RMF |
+| **Quad-framework compliance** | — | OWASP LLM Top 10 + OWASP MCP Top 10 + MITRE ATLAS + NIST AI RMF |
+| **Malicious package detection** | — | OSV MAL- prefix + typosquat heuristics (57 popular packages) |
+| **OpenSSF Scorecard enrichment** | — | Package health scores from api.securityscorecards.dev |
 | **Tool poisoning detection** | — | Description injection, capability combos, CVE exposure, drift |
 | **Model weight provenance** | — | SHA-256 hash, Sigstore signature, HuggingFace metadata |
 | **Policy-as-code** | — | Block unverified servers, enforce thresholds in CI/CD |
+| **GPU infrastructure scanning** | — | NVIDIA CUDA, AMD ROCm, TensorRT, Triton, vLLM |
 | **427+ server MCP registry** | — | Risk levels, tool inventories, auto-synced weekly |
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/attack-path-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/attack-path-light.svg" alt="Attack path visualization" width="800" style="padding: 20px 0" />
+  </picture>
+</p>
 
 <table>
 <tr>
@@ -147,6 +157,20 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
 
 **Trust guarantees:** Read-only (no file writes, no config changes, no servers started). `--dry-run` previews all files and API calls then exits. Every release is Sigstore-signed. Run `agent-bom verify agent-bom` to check integrity. See [PERMISSIONS.md](PERMISSIONS.md) for the full auditable trust contract.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/integration-architecture-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/integration-architecture-light.svg" alt="Integration architecture" width="800" style="padding: 20px 0" />
+  </picture>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/before-after-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/before-after-light.svg" alt="Before and after agent-bom" width="800" style="padding: 20px 0" />
+  </picture>
+</p>
+
 ---
 
 ## Get started
@@ -210,11 +234,12 @@ Every MCP server is assessed for privilege escalation risk:
 
 Privilege levels: **critical** (privileged container, CAP_SYS_ADMIN) → **high** (root, shell) → **medium** (fs write, network) → **low** (read-only).
 
-### Triple-framework threat mapping
+### Quad-framework compliance mapping
 
-Every finding is tagged against three frameworks simultaneously:
+Every finding is tagged against four frameworks simultaneously:
 
 - **OWASP LLM Top 10** — LLM01 through LLM10 (6 categories triggered)
+- **OWASP MCP Top 10** — MCP01 through MCP10 (8 categories triggered) — token exposure, tool poisoning, supply chain, shadow servers
 - **MITRE ATLAS** — AML.T0010, AML.T0043, AML.T0051, etc. (8 techniques mapped)
 - **NIST AI RMF 1.0** — Govern, Map, Measure, Manage (12 subcategories mapped)
 
@@ -365,6 +390,13 @@ agent-bom scan --aws -f graph -o graph.json   # export graph data
 
 ## Deployment
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/offerings-map-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/offerings-map-light.svg" alt="Deployment and offerings map" width="800" style="padding: 20px 0" />
+  </picture>
+</p>
+
 | Mode | Command | Best for |
 |------|---------|----------|
 | CLI | `agent-bom scan` | Local audit |
@@ -433,13 +465,18 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 
 | Layer | Coverage | Examples |
 |-------|----------|----------|
-| **GPU clouds** | `--k8s` | CoreWeave, Lambda Labs, Paperspace |
+| **GPU infrastructure** | `--image` + dependency scan | NVIDIA CUDA, cuDNN, NCCL, TensorRT, AMD ROCm, HIP |
+| **GPU clouds** | `--k8s` | CoreWeave, Lambda Labs, Nebius, Paperspace |
 | **AI platforms** | Cloud modules | Bedrock, Vertex AI, Snowflake Cortex, Databricks |
-| **Containers** | `--image` | NVIDIA NIM, vLLM, Ollama, any OCI image |
-| **AI frameworks** | Dependency scan | LangChain, LlamaIndex, AutoGen, PyTorch |
+| **Containers** | `--image` | NVIDIA NGC, ROCm, vLLM, Triton, Ollama, any OCI image |
+| **AI frameworks** | Dependency scan | LangChain, LlamaIndex, AutoGen, PyTorch, JAX, TensorFlow |
+| **Inference servers** | `--image` | vLLM, Triton, TGI, llama.cpp |
+| **MLOps** | Dependency scan | MLflow, W&B, Ray, ClearML |
 | **MCP ecosystem** | Auto-discovery + registry | 18 clients, 427+ servers |
 | **LLM providers** | API key + SDK detection | OpenAI, Anthropic, Cohere, Mistral |
 | **IaC + CI/CD** | `--tf-dir`, `--gha` | Terraform AI resources, GitHub Actions |
+
+> See [AI Infrastructure Scanning Guide](docs/AI_INFRASTRUCTURE_SCANNING.md) for GPU container scanning examples (NVIDIA + AMD ROCm).
 
 ---
 
@@ -463,10 +500,14 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 - [x] Model weight provenance — SHA-256 hash, Sigstore signatures, HuggingFace metadata (`--model-provenance`, `--hf-model`)
 - [x] 18 MCP client discovery — Codex CLI, Gemini CLI, Goose, Snowflake CLI, full Cortex Code (CoCo) coverage
 - [x] K8s AI workload discovery — `--k8s --all-namespaces` with pod-level scanning
+- [x] OWASP MCP Top 10 compliance mapping — first scanner to map MCP-specific risks (MCP01–MCP10)
+- [x] Malicious package detection — OSV MAL- prefix flagging + typosquat heuristics
+- [x] OpenSSF Scorecard enrichment — `--scorecard` for package health scoring
+- [x] GPU infrastructure coverage — NVIDIA CUDA, AMD ROCm, TensorRT, Triton, vLLM, JAX
 
 **Planned:**
-- [ ] Runtime MCP traffic monitoring — live tool call analysis, anomaly detection
-- [ ] GPU/VM infrastructure scanning — NVIDIA NIM, vLLM, compute fleet inventory
+- [ ] Runtime MCP traffic monitoring — live tool call analysis, anomaly detection, credential leak detection
+- [ ] Enterprise integrations — Jira, Slack, Vanta, Drata
 - [ ] EU AI Act compliance mapping
 - [ ] CIS AI benchmarks
 - [ ] License compliance engine

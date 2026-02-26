@@ -347,6 +347,10 @@ def print_blast_radius(report: AIBOMReport) -> None:
         # KEV indicator
         kev_display = "[red bold]🔥[/red bold]" if br.vulnerability.is_kev else "—"
 
+        # Malicious package indicator
+        if br.package.is_malicious:
+            kev_display += " [red bold]☠[/red bold]"
+
         # Blast column: agents/creds compact
         blast_parts = []
         n_agents = len(br.affected_agents)
@@ -1087,6 +1091,8 @@ def to_json(report: AIBOMReport) -> dict:
                 "is_kev": br.vulnerability.is_kev,
                 "package": f"{br.package.name}@{br.package.version}",
                 "ecosystem": br.package.ecosystem,
+                "is_malicious": br.package.is_malicious,
+                "malicious_reason": br.package.malicious_reason,
                 "affected_agents": [a.name for a in br.affected_agents],
                 "affected_servers": [s.name for s in br.affected_servers],
                 "exposed_credentials": br.exposed_credentials,

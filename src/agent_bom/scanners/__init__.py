@@ -12,6 +12,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from agent_bom.atlas import tag_blast_radius as tag_atlas_techniques
 from agent_bom.http_client import create_client, request_with_retry
+from agent_bom.malicious import check_typosquat, flag_malicious_from_vulns
 from agent_bom.models import Agent, BlastRadius, MCPServer, Package, Severity, Vulnerability
 from agent_bom.nist_ai_rmf import tag_blast_radius as tag_nist_ai_rmf
 from agent_bom.owasp import tag_blast_radius
@@ -303,6 +304,16 @@ async def scan_packages(packages: list[Package]) -> int:
         if vuln_data:
             pkg.vulnerabilities = build_vulnerabilities(vuln_data, pkg)
             total_vulns += len(pkg.vulnerabilities)
+            # Flag packages with MAL- prefixed vulnerability IDs as malicious
+            flag_malicious_from_vulns(pkg)
+
+    # Typosquat detection for all scanned packages
+    for pkg in scannable:
+        if not pkg.is_malicious:
+            target = check_typosquat(pkg.name, pkg.ecosystem)
+            if target:
+                pkg.is_malicious = True
+                pkg.malicious_reason = f"Possible typosquat of '{target}'"
 
     return total_vulns
 

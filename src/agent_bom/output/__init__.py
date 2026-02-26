@@ -276,8 +276,12 @@ def print_agent_tree(report: AIBOMReport) -> None:
                     vuln_str = ""
                     if pkg.has_vulnerabilities:
                         vuln_str = f" [red]({len(pkg.vulnerabilities)} vuln(s) - {pkg.max_severity.value})[/red]"
+                    sc_str = ""
+                    if pkg.scorecard_score is not None:
+                        sc_color = "green" if pkg.scorecard_score >= 7.0 else "yellow" if pkg.scorecard_score >= 4.0 else "red"
+                        sc_str = f" [{sc_color}]SC:{pkg.scorecard_score:.1f}[/{sc_color}]"
                     pkg_branch.add(
-                        f"{pkg.name}@{pkg.version} [{pkg.ecosystem}]{vuln_str}"
+                        f"{pkg.name}@{pkg.version} [{pkg.ecosystem}]{sc_str}{vuln_str}"
                     )
 
                 # Show transitive packages grouped by depth (limit display)
@@ -1041,6 +1045,8 @@ def to_json(report: AIBOMReport) -> dict:
                                 "parent_package": pkg.parent_package,
                                 "dependency_depth": pkg.dependency_depth,
                                 "resolved_from_registry": pkg.resolved_from_registry,
+                                "scorecard_score": pkg.scorecard_score,
+                                "scorecard_checks": pkg.scorecard_checks or None,
                                 "vulnerabilities": [
                                     {
                                         "id": v.id,
@@ -1093,6 +1099,7 @@ def to_json(report: AIBOMReport) -> dict:
                 "ecosystem": br.package.ecosystem,
                 "is_malicious": br.package.is_malicious,
                 "malicious_reason": br.package.malicious_reason,
+                "scorecard_score": br.package.scorecard_score,
                 "affected_agents": [a.name for a in br.affected_agents],
                 "affected_servers": [s.name for s in br.affected_servers],
                 "exposed_credentials": br.exposed_credentials,
@@ -1215,6 +1222,10 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                 if pkg.parent_package:
                     pkg_properties.append({
                         "name": "agent-bom:parent-package", "value": pkg.parent_package
+                    })
+                if pkg.scorecard_score is not None:
+                    pkg_properties.append({
+                        "name": "agent-bom:scorecard-score", "value": str(pkg.scorecard_score)
                     })
 
                 components.append({

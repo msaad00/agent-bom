@@ -461,13 +461,18 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 
 | Layer | Coverage | Examples |
 |-------|----------|----------|
-| **GPU clouds** | `--k8s` | CoreWeave, Lambda Labs, Paperspace |
+| **GPU infrastructure** | `--image` + dependency scan | NVIDIA CUDA, cuDNN, NCCL, TensorRT, AMD ROCm, HIP |
+| **GPU clouds** | `--k8s` | CoreWeave, Lambda Labs, Nebius, Paperspace |
 | **AI platforms** | Cloud modules | Bedrock, Vertex AI, Snowflake Cortex, Databricks |
-| **Containers** | `--image` | NVIDIA NIM, vLLM, Ollama, any OCI image |
-| **AI frameworks** | Dependency scan | LangChain, LlamaIndex, AutoGen, PyTorch |
+| **Containers** | `--image` | NVIDIA NGC, ROCm, vLLM, Triton, Ollama, any OCI image |
+| **AI frameworks** | Dependency scan | LangChain, LlamaIndex, AutoGen, PyTorch, JAX, TensorFlow |
+| **Inference servers** | `--image` | vLLM, Triton, TGI, llama.cpp |
+| **MLOps** | Dependency scan | MLflow, W&B, Ray, ClearML |
 | **MCP ecosystem** | Auto-discovery + registry | 18 clients, 427+ servers |
 | **LLM providers** | API key + SDK detection | OpenAI, Anthropic, Cohere, Mistral |
 | **IaC + CI/CD** | `--tf-dir`, `--gha` | Terraform AI resources, GitHub Actions |
+
+> See [AI Infrastructure Scanning Guide](docs/AI_INFRASTRUCTURE_SCANNING.md) for GPU container scanning examples (NVIDIA + AMD ROCm).
 
 ---
 

@@ -126,11 +126,15 @@
     <text x="70" y="62" text-anchor="middle" class="node-label">Dashboard / API</text>
     <g transform="translate(14, 76)">
       <circle cx="4" cy="4" r="2.5" fill="#f0883e" opacity="0.5"/>
-      <text x="12" y="7" class="node-sub">REST API</text>
+      <text x="12" y="7" class="node-sub">REST API + SSE</text>
     </g>
     <g transform="translate(14, 94)">
       <circle cx="4" cy="4" r="2.5" fill="#f0883e" opacity="0.5"/>
-      <text x="12" y="7" class="node-sub">SSE stream</text>
+      <text x="12" y="7" class="node-sub">Runtime Proxy</text>
+    </g>
+    <g transform="translate(14, 112)">
+      <circle cx="4" cy="4" r="2.5" fill="#f0883e" opacity="0.5"/>
+      <text x="12" y="7" class="node-sub">Alert webhook</text>
     </g>
     <rect x="16" y="134" width="108" height="20" rx="10" fill="#f0883e" opacity="0.12"/>
     <text x="70" y="148" text-anchor="middle" class="node-tag" fill="#f0883e">Live monitoring</text>

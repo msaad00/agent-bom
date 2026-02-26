@@ -231,6 +231,12 @@ def _rule_matches(rule: dict, br) -> bool:
         if rule["owasp_tag"] not in tags:
             return False
 
+    # owasp_mcp_tag: finding must have this OWASP MCP Top 10 tag
+    if "owasp_mcp_tag" in rule:
+        tags = getattr(br, "owasp_mcp_tags", [])
+        if rule["owasp_mcp_tag"] not in tags:
+            return False
+
     return True
 
 

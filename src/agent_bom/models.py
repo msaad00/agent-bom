@@ -284,6 +284,7 @@ class BlastRadius:
     owasp_tags: list[str] = field(default_factory=list)  # OWASP LLM Top 10 codes, e.g. ["LLM05", "LLM06"]
     atlas_tags: list[str] = field(default_factory=list)  # MITRE ATLAS technique IDs, e.g. ["AML.T0010"]
     nist_ai_rmf_tags: list[str] = field(default_factory=list)  # NIST AI RMF subcategories, e.g. ["MAP-3.5"]
+    owasp_mcp_tags: list[str] = field(default_factory=list)  # OWASP MCP Top 10 codes, e.g. ["MCP04", "MCP01"]
     ai_summary: Optional[str] = None  # LLM-generated contextual risk narrative
 
     def calculate_risk_score(self) -> float:

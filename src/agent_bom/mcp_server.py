@@ -560,10 +560,10 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         config_path: Annotated[str | None, Field(description="Path to MCP client config directory. Auto-discovers all if omitted.")] = None,
         image: Annotated[str | None, Field(description="Docker image to scan, e.g. 'nginx:1.25'.")] = None,
     ) -> str:
-        """Get OWASP LLM Top 10 / MITRE ATLAS / NIST AI RMF compliance posture.
+        """Get OWASP LLM Top 10 / OWASP MCP Top 10 / MITRE ATLAS / NIST AI RMF compliance posture.
 
-        Scans local MCP configurations, maps findings to 37 security controls
-        across three AI security frameworks, and returns per-control
+        Scans local MCP configurations, maps findings to 47 security controls
+        across four AI security frameworks, and returns per-control
         pass/warning/fail status with an overall compliance score.
 
         Args:
@@ -574,12 +574,14 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         Returns:
             JSON with overall_score (0-100), overall_status (pass/warning/fail),
             and per-control details for OWASP LLM Top 10 (10 controls),
-            MITRE ATLAS (13 techniques), and NIST AI RMF (14 subcategories).
+            OWASP MCP Top 10 (10 controls), MITRE ATLAS (13 techniques),
+            and NIST AI RMF (14 subcategories).
         """
         try:
             from agent_bom.atlas import ATLAS_TECHNIQUES
             from agent_bom.nist_ai_rmf import NIST_AI_RMF
             from agent_bom.owasp import OWASP_LLM_TOP10
+            from agent_bom.owasp_mcp import OWASP_MCP_TOP10
 
             agents, blast_radii, _warnings = await _run_scan_pipeline(config_path, image)
 
@@ -593,6 +595,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                     "owasp_tags": list(br.owasp_tags),
                     "atlas_tags": list(br.atlas_tags),
                     "nist_ai_rmf_tags": list(br.nist_ai_rmf_tags),
+                    "owasp_mcp_tags": list(br.owasp_mcp_tags),
                 })
 
             def _build_controls(catalog, tag_field, id_key):
@@ -624,12 +627,14 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             owasp = _build_controls(OWASP_LLM_TOP10, "owasp_tags", "code")
             atlas = _build_controls(ATLAS_TECHNIQUES, "atlas_tags", "code")
             nist = _build_controls(NIST_AI_RMF, "nist_ai_rmf_tags", "code")
+            owasp_mcp = _build_controls(OWASP_MCP_TOP10, "owasp_mcp_tags", "code")
 
-            total = len(owasp) + len(atlas) + len(nist)
-            total_pass = sum(1 for c in owasp + atlas + nist if c["status"] == "pass")
+            all_controls = owasp + atlas + nist + owasp_mcp
+            total = len(all_controls)
+            total_pass = sum(1 for c in all_controls if c["status"] == "pass")
             score = round((total_pass / total) * 100, 1) if total > 0 else 100.0
-            has_fail = any(c["status"] == "fail" for c in owasp + atlas + nist)
-            has_warn = any(c["status"] == "warning" for c in owasp + atlas + nist)
+            has_fail = any(c["status"] == "fail" for c in all_controls)
+            has_warn = any(c["status"] == "warning" for c in all_controls)
 
             return json.dumps({
                 "overall_score": score,
@@ -638,6 +643,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                 "owasp_llm_top10": owasp,
                 "mitre_atlas": atlas,
                 "nist_ai_rmf": nist,
+                "owasp_mcp_top10": owasp_mcp,
             }, indent=2, default=str)
         except Exception as exc:
             return json.dumps({"error": str(exc)})
@@ -991,7 +997,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         return (
             "Scan my local AI agent and MCP server configurations for vulnerabilities. "
             "Show the blast radius for any critical findings and suggest remediation steps. "
-            "Include OWASP LLM Top 10 and MITRE ATLAS mappings."
+            "Include OWASP LLM Top 10, OWASP MCP Top 10, and MITRE ATLAS mappings."
         )
 
     @mcp.prompt(name="pre-install-check", description="Check an MCP server package for vulnerabilities before installing")
@@ -1004,7 +1010,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
     @mcp.prompt(name="compliance-report", description="Generate OWASP/ATLAS/NIST compliance posture for your AI stack")
     def compliance_report_prompt() -> str:
         return (
-            "Scan my AI agent setup, map findings to OWASP LLM Top 10, MITRE ATLAS, and NIST AI RMF. "
+            "Scan my AI agent setup, map findings to OWASP LLM Top 10, OWASP MCP Top 10, MITRE ATLAS, and NIST AI RMF. "
             "Generate a compliance summary suitable for security review."
         )
 
@@ -1029,7 +1035,7 @@ _SERVER_CARD_TOOLS = [
     {"name": "policy_check", "description": "Evaluate security policy rules", "annotations": {"readOnlyHint": True}},
     {"name": "registry_lookup", "description": "Query MCP server threat intelligence registry", "annotations": {"readOnlyHint": True}},
     {"name": "generate_sbom", "description": "Generate CycloneDX or SPDX SBOM", "annotations": {"readOnlyHint": True}},
-    {"name": "compliance", "description": "OWASP / MITRE ATLAS / NIST AI RMF posture", "annotations": {"readOnlyHint": True}},
+    {"name": "compliance", "description": "OWASP LLM + OWASP MCP + MITRE ATLAS + NIST AI RMF posture", "annotations": {"readOnlyHint": True}},
     {"name": "remediate", "description": "Generate actionable remediation plan", "annotations": {"readOnlyHint": True}},
     {"name": "skill_trust", "description": "ClawHub-style trust assessment for SKILL.md files", "annotations": {"readOnlyHint": True}},
     {"name": "verify", "description": "Package integrity + SLSA provenance verification", "annotations": {"readOnlyHint": True}},
@@ -1041,7 +1047,7 @@ _SERVER_CARD_TOOLS = [
 _SERVER_CARD_PROMPTS = [
     {"name": "quick-audit", "description": "Run a complete security audit of your AI agent setup"},
     {"name": "pre-install-check", "description": "Check an MCP server package for vulnerabilities before installing"},
-    {"name": "compliance-report", "description": "Generate OWASP/ATLAS/NIST compliance posture for your AI stack"},
+    {"name": "compliance-report", "description": "Generate OWASP LLM + OWASP MCP + ATLAS + NIST compliance posture for your AI stack"},
 ]
 
 
@@ -1065,7 +1071,7 @@ def build_server_card() -> dict:
         "tools": _SERVER_CARD_TOOLS,
         "prompts": _SERVER_CARD_PROMPTS,
         "capabilities": {
-            "frameworks": ["OWASP LLM Top 10", "MITRE ATLAS", "NIST AI RMF"],
+            "frameworks": ["OWASP LLM Top 10", "OWASP MCP Top 10", "MITRE ATLAS", "NIST AI RMF"],
             "sbom_formats": ["CycloneDX 1.6", "SPDX 3.0", "SARIF 2.1.0"],
             "data_sources": ["OSV.dev", "NVD", "EPSS", "CISA KEV", "Snyk", "MCP Registry", "Smithery"],
             "discovery_sources": [

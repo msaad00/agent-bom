@@ -377,6 +377,10 @@ def print_blast_radius(report: AIBOMReport) -> None:
             tags = sorted(br.nist_ai_rmf_tags)[:3]
             extra = f" +{len(br.nist_ai_rmf_tags) - 3}" if len(br.nist_ai_rmf_tags) > 3 else ""
             threat_lines.append(f"[green]{' '.join(tags)}{extra}[/green]")
+        if br.owasp_mcp_tags:
+            tags = sorted(br.owasp_mcp_tags)[:3]
+            extra = f" +{len(br.owasp_mcp_tags) - 3}" if len(br.owasp_mcp_tags) > 3 else ""
+            threat_lines.append(f"[yellow]{' '.join(tags)}{extra}[/yellow]")
         threats_display = "\n".join(threat_lines) if threat_lines else "—"
 
         table.add_row(
@@ -507,6 +511,7 @@ def print_threat_frameworks(report: AIBOMReport) -> None:
     owasp_counts: Counter[str] = Counter()
     atlas_counts: Counter[str] = Counter()
     nist_counts: Counter[str] = Counter()
+    owasp_mcp_counts: Counter[str] = Counter()
     for br in report.blast_radii:
         for tag in br.owasp_tags:
             owasp_counts[tag] += 1
@@ -514,8 +519,10 @@ def print_threat_frameworks(report: AIBOMReport) -> None:
             atlas_counts[tag] += 1
         for tag in br.nist_ai_rmf_tags:
             nist_counts[tag] += 1
+        for tag in br.owasp_mcp_tags:
+            owasp_mcp_counts[tag] += 1
 
-    if not owasp_counts and not atlas_counts and not nist_counts:
+    if not owasp_counts and not atlas_counts and not nist_counts and not owasp_mcp_counts:
         return
 
     console.print()
@@ -581,6 +588,27 @@ def print_threat_frameworks(report: AIBOMReport) -> None:
                 nist_table.add_row(f"[dim]{sid}[/dim]", f"[dim]{name}[/dim]", "[dim]—[/dim]", "")
 
         console.print(nist_table)
+
+    # OWASP MCP Top 10 table
+    if owasp_mcp_counts:
+        from agent_bom.owasp_mcp import OWASP_MCP_TOP10
+        mcp_table = Table(title="OWASP MCP Top 10", title_style="bold yellow", border_style="dim")
+        mcp_table.add_column("Code", width=7, style="bold yellow")
+        mcp_table.add_column("Risk", width=42)
+        mcp_table.add_column("Findings", width=9, justify="right")
+        mcp_table.add_column("", width=20)
+
+        for code in sorted(OWASP_MCP_TOP10.keys()):
+            count = owasp_mcp_counts.get(code, 0)
+            name = OWASP_MCP_TOP10[code]
+            if count > 0:
+                bar_len = min(count, 16)
+                bar = "[red]" + "█" * bar_len + "[/red]"
+                mcp_table.add_row(code, name, f"[bold]{count}[/bold]", bar)
+            else:
+                mcp_table.add_row(f"[dim]{code}[/dim]", f"[dim]{name}[/dim]", "[dim]—[/dim]", "")
+
+        console.print(mcp_table)
     console.print()
 
 
@@ -598,7 +626,7 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
     groups: dict[tuple, dict] = defaultdict(lambda: {
         "package": "", "ecosystem": "", "current": "", "fix": None,
         "vulns": [], "agents": set(), "creds": set(), "tools": set(),
-        "owasp": set(), "atlas": set(), "nist": set(),
+        "owasp": set(), "atlas": set(), "nist": set(), "owasp_mcp": set(),
         "max_severity": Severity.NONE, "has_kev": False, "ai_risk": False,
     })
     severity_order = {Severity.CRITICAL: 4, Severity.HIGH: 3, Severity.MEDIUM: 2, Severity.LOW: 1, Severity.NONE: 0}
@@ -618,6 +646,7 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
         g["owasp"].update(br.owasp_tags)
         g["atlas"].update(br.atlas_tags)
         g["nist"].update(br.nist_ai_rmf_tags)
+        g["owasp_mcp"].update(br.owasp_mcp_tags)
         if severity_order.get(br.vulnerability.severity, 0) > severity_order.get(g["max_severity"], 0):
             g["max_severity"] = br.vulnerability.severity
         if br.vulnerability.is_kev:
@@ -751,14 +780,18 @@ def print_export_hint(report: AIBOMReport) -> None:
     owasp_hit: set[str] = set()
     atlas_hit: set[str] = set()
     nist_hit: set[str] = set()
+    owasp_mcp_hit: set[str] = set()
     for br in report.blast_radii:
         owasp_hit.update(br.owasp_tags)
         atlas_hit.update(br.atlas_tags)
         nist_hit.update(br.nist_ai_rmf_tags)
+        owasp_mcp_hit.update(br.owasp_mcp_tags)
 
+    from agent_bom.owasp_mcp import OWASP_MCP_TOP10
     owasp_total = len(OWASP_LLM_TOP10)
     atlas_total = len(ATLAS_TECHNIQUES)
     nist_total = len(NIST_AI_RMF)
+    owasp_mcp_total = len(OWASP_MCP_TOP10)
 
     if report.blast_radii:
         lines.append("[bold]AI Threat Framework Coverage[/bold]")
@@ -778,6 +811,11 @@ def print_export_hint(report: AIBOMReport) -> None:
         nist_pct = int(len(nist_hit) / nist_total * 100) if nist_total else 0
         nist_bar = _coverage_bar(len(nist_hit), nist_total, "green")
         lines.append(f"  [bold green]NIST AI RMF 1.0  [/bold green]  {nist_bar}  [green]{len(nist_hit)}/{nist_total}[/green] ({nist_pct}%)")
+
+        # OWASP MCP bar
+        owasp_mcp_pct = int(len(owasp_mcp_hit) / owasp_mcp_total * 100) if owasp_mcp_total else 0
+        owasp_mcp_bar = _coverage_bar(len(owasp_mcp_hit), owasp_mcp_total, "yellow")
+        lines.append(f"  [bold yellow]OWASP MCP Top 10 [/bold yellow]  {owasp_mcp_bar}  [yellow]{len(owasp_mcp_hit)}/{owasp_mcp_total}[/yellow] ({owasp_mcp_pct}%)")
 
         lines.append("")
 
@@ -862,6 +900,7 @@ def _build_remediation_json(report: AIBOMReport) -> list[dict]:
             "owasp_tags": item["owasp"],
             "atlas_tags": item["atlas"],
             "nist_ai_rmf_tags": item["nist"],
+            "owasp_mcp_tags": item["owasp_mcp"],
             "risk_narrative": _risk_narrative(item),
         })
     return result
@@ -893,10 +932,12 @@ def _build_framework_summary(blast_radii: list[BlastRadius]) -> dict:
     from agent_bom.atlas import ATLAS_TECHNIQUES
     from agent_bom.nist_ai_rmf import NIST_AI_RMF
     from agent_bom.owasp import OWASP_LLM_TOP10
+    from agent_bom.owasp_mcp import OWASP_MCP_TOP10
 
     owasp_counts: Counter[str] = Counter()
     atlas_counts: Counter[str] = Counter()
     nist_counts: Counter[str] = Counter()
+    owasp_mcp_counts: Counter[str] = Counter()
     for br in blast_radii:
         for tag in br.owasp_tags:
             owasp_counts[tag] += 1
@@ -904,6 +945,8 @@ def _build_framework_summary(blast_radii: list[BlastRadius]) -> dict:
             atlas_counts[tag] += 1
         for tag in br.nist_ai_rmf_tags:
             nist_counts[tag] += 1
+        for tag in br.owasp_mcp_tags:
+            owasp_mcp_counts[tag] += 1
 
     return {
         "owasp_llm_top10": [
@@ -933,9 +976,19 @@ def _build_framework_summary(blast_radii: list[BlastRadius]) -> dict:
             }
             for sid in sorted(NIST_AI_RMF.keys())
         ],
+        "owasp_mcp_top10": [
+            {
+                "code": code,
+                "name": OWASP_MCP_TOP10[code],
+                "findings": owasp_mcp_counts.get(code, 0),
+                "triggered": code in owasp_mcp_counts,
+            }
+            for code in sorted(OWASP_MCP_TOP10.keys())
+        ],
         "total_owasp_triggered": sum(1 for c in owasp_counts if owasp_counts[c] > 0),
         "total_atlas_triggered": sum(1 for c in atlas_counts if atlas_counts[c] > 0),
         "total_nist_triggered": sum(1 for c in nist_counts if nist_counts[c] > 0),
+        "total_owasp_mcp_triggered": sum(1 for c in owasp_mcp_counts if owasp_mcp_counts[c] > 0),
     }
 
 
@@ -1044,6 +1097,7 @@ def to_json(report: AIBOMReport) -> dict:
                 "owasp_tags": br.owasp_tags,
                 "atlas_tags": br.atlas_tags,
                 "nist_ai_rmf_tags": br.nist_ai_rmf_tags,
+                "owasp_mcp_tags": br.owasp_mcp_tags,
             }
             for br in report.blast_radii
         ],
@@ -1293,11 +1347,12 @@ def to_sarif(report: AIBOMReport) -> dict:
                 }
             ],
         }
-        if br.owasp_tags or br.atlas_tags or br.nist_ai_rmf_tags:
+        if br.owasp_tags or br.atlas_tags or br.nist_ai_rmf_tags or br.owasp_mcp_tags:
             result["properties"] = {
                 "owasp_tags": br.owasp_tags,
                 "atlas_tags": br.atlas_tags,
                 "nist_ai_rmf_tags": br.nist_ai_rmf_tags,
+                "owasp_mcp_tags": br.owasp_mcp_tags,
                 "blast_score": br.risk_score,
                 "exposed_credentials": br.exposed_credentials,
             }

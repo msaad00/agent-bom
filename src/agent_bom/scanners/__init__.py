@@ -15,6 +15,7 @@ from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.models import Agent, BlastRadius, MCPServer, Package, Severity, Vulnerability
 from agent_bom.nist_ai_rmf import tag_blast_radius as tag_nist_ai_rmf
 from agent_bom.owasp import tag_blast_radius
+from agent_bom.owasp_mcp import tag_blast_radius as tag_owasp_mcp
 
 # Known AI/ML framework packages — vulnerabilities in these carry elevated risk
 # because they run inside AI agents that have credentials and tool access
@@ -426,6 +427,7 @@ async def scan_agents(agents: list[Agent]) -> list[BlastRadius]:
             br.owasp_tags = tag_blast_radius(br)
             br.atlas_tags = tag_atlas_techniques(br)
             br.nist_ai_rmf_tags = tag_nist_ai_rmf(br)
+            br.owasp_mcp_tags = tag_owasp_mcp(br)
             blast_radii.append(br)
 
     # Sort by risk score descending

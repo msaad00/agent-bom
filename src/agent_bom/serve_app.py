@@ -86,7 +86,7 @@ def _run_scan(
     agents: list[Agent] = []
 
     if inventory:
-        inv_path = Path(inventory).expanduser().resolve()  # lgtm[py/path-injection]
+        inv_path = Path(inventory).expanduser().resolve()
         if not inv_path.is_file():
             raise ValueError(f"Inventory file not found: {inventory}")
         with open(inv_path) as f:

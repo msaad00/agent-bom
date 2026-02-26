@@ -260,7 +260,9 @@ def scan_terraform_dir(tf_dir: str) -> tuple[list[Agent], list[str]]:
         ``warnings`` — human-readable warning strings about hardcoded secrets.
         Values are **never** included.
     """
-    tf_path = Path(tf_dir).expanduser().resolve()  # lgtm[py/path-injection]
+    tf_path = Path(tf_dir).expanduser().resolve()
+    if not tf_path.is_dir():
+        return [], [f"Not a directory: {tf_dir}"]
     tf_contents = _read_tf_files(tf_path)
 
     if not tf_contents:

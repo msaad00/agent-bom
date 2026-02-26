@@ -989,12 +989,39 @@ def push_proxy_metrics(metrics: dict) -> None:
     _proxy_metrics = metrics
 
 
+def _validate_log_path(log_path: str) -> str:
+    """Validate and sanitize a log file path.
+
+    Ensures the path:
+    - Has a .jsonl extension (audit log format)
+    - Is resolved to an absolute path (no traversal)
+    - Does not traverse outside the resolved parent directory
+
+    Returns the resolved absolute path string.
+    Raises HTTPException on invalid paths.
+    """
+    from pathlib import Path as _Pth
+
+    resolved = _Pth(log_path).resolve()
+
+    # Must be a .jsonl file
+    if resolved.suffix != ".jsonl":
+        raise HTTPException(status_code=400, detail="Log path must be a .jsonl file")
+
+    # Must not contain path traversal components
+    if ".." in _Pth(log_path).parts:
+        raise HTTPException(status_code=400, detail="Path traversal not allowed")
+
+    return str(resolved)
+
+
 def _read_alerts_from_log(log_path: str) -> list[dict]:
     """Read runtime_alert records from a JSONL audit log."""
     import json as _json
     from pathlib import Path as _Pth
 
-    path = _Pth(log_path)
+    safe_path = _validate_log_path(log_path)
+    path = _Pth(safe_path)
     if not path.exists():
         return []
     alerts = []
@@ -1016,7 +1043,8 @@ def _read_metrics_from_log(log_path: str) -> dict | None:
     import json as _json
     from pathlib import Path as _Pth
 
-    path = _Pth(log_path)
+    safe_path = _validate_log_path(log_path)
+    path = _Pth(safe_path)
     if not path.exists():
         return None
     last_summary = None

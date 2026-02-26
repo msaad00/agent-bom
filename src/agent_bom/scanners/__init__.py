@@ -37,6 +37,30 @@ _AI_FRAMEWORK_PACKAGES = frozenset({
     "faiss-cpu", "faiss-gpu",
     # MCP and agent infrastructure
     "mcp", "fastmcp", "modelcontextprotocol",
+    # GPU / AI infrastructure — NVIDIA
+    "cuda-python", "cupy", "cupy-cuda11x", "cupy-cuda12x",
+    "nvidia-cublas-cu11", "nvidia-cublas-cu12",
+    "nvidia-cudnn-cu11", "nvidia-cudnn-cu12",
+    "nvidia-cufft-cu11", "nvidia-cufft-cu12",
+    "nvidia-cusolver-cu11", "nvidia-cusolver-cu12",
+    "nvidia-cusparse-cu11", "nvidia-cusparse-cu12",
+    "nvidia-nccl-cu11", "nvidia-nccl-cu12",
+    "nvidia-cuda-runtime-cu11", "nvidia-cuda-runtime-cu12",
+    "nvidia-cuda-nvrtc-cu11", "nvidia-cuda-nvrtc-cu12",
+    "tensorrt", "nvidia-tensorrt",
+    "triton", "tritonclient",
+    # GPU / AI infrastructure — AMD ROCm
+    "hip-python", "rocm-smi",
+    # ML frameworks with GPU backends
+    "torch", "torchvision", "torchaudio",
+    "tensorflow", "tensorflow-gpu", "tf-nightly",
+    "jax", "jaxlib",
+    # Inference servers
+    "vllm", "text-generation-inference",
+    "llama-cpp-python", "ctransformers",
+    # MLOps / experiment tracking
+    "mlflow", "wandb", "neptune", "clearml",
+    "ray", "ray[serve]",
 })
 
 console = Console(stderr=True)

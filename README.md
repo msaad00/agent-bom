@@ -70,6 +70,13 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 | **GPU infrastructure scanning** | — | NVIDIA CUDA, AMD ROCm, TensorRT, Triton, vLLM |
 | **427+ server MCP registry** | — | Risk levels, tool inventories, auto-synced weekly |
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/attack-path-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/attack-path-light.svg" alt="Attack path visualization" width="800" style="padding: 20px 0" />
+  </picture>
+</p>
+
 <table>
 <tr>
 <td width="50%" valign="top">
@@ -149,6 +156,20 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
 5. **Report** — JSON, SARIF, CycloneDX, SPDX, HTML, or console output. Nothing stored server-side.
 
 **Trust guarantees:** Read-only (no file writes, no config changes, no servers started). `--dry-run` previews all files and API calls then exits. Every release is Sigstore-signed. Run `agent-bom verify agent-bom` to check integrity. See [PERMISSIONS.md](PERMISSIONS.md) for the full auditable trust contract.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/integration-architecture-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/integration-architecture-light.svg" alt="Integration architecture" width="800" style="padding: 20px 0" />
+  </picture>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/before-after-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/before-after-light.svg" alt="Before and after agent-bom" width="800" style="padding: 20px 0" />
+  </picture>
+</p>
 
 ---
 
@@ -369,6 +390,13 @@ agent-bom scan --aws -f graph -o graph.json   # export graph data
 
 ## Deployment
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/offerings-map-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/offerings-map-light.svg" alt="Deployment and offerings map" width="800" style="padding: 20px 0" />
+  </picture>
+</p>
+
 | Mode | Command | Best for |
 |------|---------|----------|
 | CLI | `agent-bom scan` | Local audit |
@@ -437,13 +465,18 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 
 | Layer | Coverage | Examples |
 |-------|----------|----------|
-| **GPU clouds** | `--k8s` | CoreWeave, Lambda Labs, Paperspace |
+| **GPU infrastructure** | `--image` + dependency scan | NVIDIA CUDA, cuDNN, NCCL, TensorRT, AMD ROCm, HIP |
+| **GPU clouds** | `--k8s` | CoreWeave, Lambda Labs, Nebius, Paperspace |
 | **AI platforms** | Cloud modules | Bedrock, Vertex AI, Snowflake Cortex, Databricks |
-| **Containers** | `--image` | NVIDIA NIM, vLLM, Ollama, any OCI image |
-| **AI frameworks** | Dependency scan | LangChain, LlamaIndex, AutoGen, PyTorch |
+| **Containers** | `--image` | NVIDIA NGC, ROCm, vLLM, Triton, Ollama, any OCI image |
+| **AI frameworks** | Dependency scan | LangChain, LlamaIndex, AutoGen, PyTorch, JAX, TensorFlow |
+| **Inference servers** | `--image` | vLLM, Triton, TGI, llama.cpp |
+| **MLOps** | Dependency scan | MLflow, W&B, Ray, ClearML |
 | **MCP ecosystem** | Auto-discovery + registry | 18 clients, 427+ servers |
 | **LLM providers** | API key + SDK detection | OpenAI, Anthropic, Cohere, Mistral |
 | **IaC + CI/CD** | `--tf-dir`, `--gha` | Terraform AI resources, GitHub Actions |
+
+> See [AI Infrastructure Scanning Guide](docs/AI_INFRASTRUCTURE_SCANNING.md) for GPU container scanning examples (NVIDIA + AMD ROCm).
 
 ---
 

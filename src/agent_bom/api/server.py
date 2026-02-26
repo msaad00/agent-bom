@@ -13,6 +13,9 @@ Endpoints:
     GET  /v1/scan/{job_id}/stream      SSE — real-time scan progress
     GET  /v1/agents                    quick agent discovery (no CVE scan)
     DELETE /v1/scan/{job_id}           cancel / discard a job
+    GET  /v1/compliance                full 4-framework compliance posture
+    GET  /v1/compliance/{framework}    single framework (owasp-llm, owasp-mcp, atlas, nist)
+    GET  /v1/malicious/check           malicious package / typosquat check
 """
 
 from __future__ import annotations
@@ -769,7 +772,10 @@ async def get_compliance() -> dict:
             })
         return controls
 
+    from agent_bom.owasp_mcp import OWASP_MCP_TOP10
+
     owasp = _build_controls(OWASP_LLM_TOP10, "owasp_tags", "code")
+    owasp_mcp = _build_controls(OWASP_MCP_TOP10, "owasp_mcp_tags", "code")
     atlas = _build_controls(ATLAS_TECHNIQUES, "atlas_tags", "code")
     nist = _build_controls(NIST_AI_RMF, "nist_ai_rmf_tags", "code")
 
@@ -780,16 +786,17 @@ async def get_compliance() -> dict:
         return p, w, f
 
     op, ow, of_ = _count_statuses(owasp)
+    mp, mw, mf = _count_statuses(owasp_mcp)
     ap, aw, af = _count_statuses(atlas)
     np_, nw, nf = _count_statuses(nist)
 
-    total_controls = len(owasp) + len(atlas) + len(nist)
-    total_pass = op + ap + np_
+    total_controls = len(owasp) + len(owasp_mcp) + len(atlas) + len(nist)
+    total_pass = op + mp + ap + np_
     overall_score = round((total_pass / total_controls) * 100, 1) if total_controls > 0 else 100.0
 
-    if of_ > 0 or af > 0 or nf > 0:
+    if of_ > 0 or mf > 0 or af > 0 or nf > 0:
         overall_status = "fail"
-    elif ow > 0 or aw > 0 or nw > 0:
+    elif ow > 0 or mw > 0 or aw > 0 or nw > 0:
         overall_status = "warning"
     else:
         overall_status = "pass"
@@ -800,10 +807,12 @@ async def get_compliance() -> dict:
         "scan_count": scan_count,
         "latest_scan": latest_scan,
         "owasp_llm_top10": owasp,
+        "owasp_mcp_top10": owasp_mcp,
         "mitre_atlas": atlas,
         "nist_ai_rmf": nist,
         "summary": {
             "owasp_pass": op, "owasp_warn": ow, "owasp_fail": of_,
+            "owasp_mcp_pass": mp, "owasp_mcp_warn": mw, "owasp_mcp_fail": mf,
             "atlas_pass": ap, "atlas_warn": aw, "atlas_fail": af,
             "nist_pass": np_, "nist_warn": nw, "nist_fail": nf,
         },
@@ -892,3 +901,63 @@ async def get_registry_server(server_id: str) -> dict:
         if server.get("id") == server_id:
             return server
     raise HTTPException(status_code=404, detail=f"Registry entry '{server_id}' not found")
+
+
+# ─── Malicious Package Check ────────────────────────────────────────────────
+
+
+@app.get("/v1/malicious/check", tags=["security"])
+async def check_malicious(name: str, ecosystem: str = "npm") -> dict:
+    """Check if a package name is a known malicious package or typosquat.
+
+    Query params:
+        name: Package name to check
+        ecosystem: Package ecosystem (npm, pypi)
+    """
+    from agent_bom.malicious import check_typosquat
+
+    typosquat_target = check_typosquat(name, ecosystem)
+    return {
+        "package": name,
+        "ecosystem": ecosystem,
+        "is_typosquat": typosquat_target is not None,
+        "typosquat_target": typosquat_target,
+    }
+
+
+# ─── Compliance by Framework ────────────────────────────────────────────────
+
+
+@app.get("/v1/compliance/{framework}", tags=["compliance"])
+async def get_compliance_by_framework(framework: str) -> dict:
+    """Get compliance posture for a single framework.
+
+    Supported frameworks: owasp-llm, owasp-mcp, atlas, nist
+    """
+    full = await get_compliance()
+
+    framework_map = {
+        "owasp-llm": "owasp_llm_top10",
+        "owasp-mcp": "owasp_mcp_top10",
+        "atlas": "mitre_atlas",
+        "nist": "nist_ai_rmf",
+    }
+
+    key = framework_map.get(framework.lower())
+    if not key:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown framework '{framework}'. Supported: {', '.join(framework_map.keys())}",
+        )
+
+    controls = full.get(key, [])
+    pass_count = sum(1 for c in controls if c["status"] == "pass")
+    warn_count = sum(1 for c in controls if c["status"] == "warning")
+    fail_count = sum(1 for c in controls if c["status"] == "fail")
+
+    return {
+        "framework": framework,
+        "controls": controls,
+        "summary": {"pass": pass_count, "warning": warn_count, "fail": fail_count},
+        "score": round((pass_count / len(controls)) * 100, 1) if controls else 100.0,
+    }

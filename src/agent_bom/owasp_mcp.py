@@ -87,6 +87,10 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     if has_unverified and br.vulnerability.severity in _HIGH_RISK_SEVERITIES:
         tags.add("MCP03")
 
+    # MCP03 — also triggered by known malicious packages (definitive poisoning)
+    if br.package.is_malicious:
+        tags.add("MCP03")
+
     # MCP05 / MCP10 — tool-level risks via semantic capability analysis
     has_read = False
     has_execute = False

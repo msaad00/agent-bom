@@ -108,6 +108,8 @@ class Package:
     parent_package: Optional[str] = None  # Name of parent package (for transitive deps)
     dependency_depth: int = 0  # 0 for direct, 1+ for transitive
     resolved_from_registry: bool = False  # True if resolved dynamically vs from lock file
+    is_malicious: bool = False  # True if flagged as known malicious (MAL- prefix in OSV)
+    malicious_reason: Optional[str] = None  # Why this package is flagged (e.g. "MAL-2024-1234")
 
     # Auto-discovery metadata (populated when not in bundled registry)
     auto_risk_level: Optional[str] = None

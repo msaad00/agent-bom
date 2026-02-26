@@ -237,6 +237,11 @@ def _rule_matches(rule: dict, br) -> bool:
         if rule["owasp_mcp_tag"] not in tags:
             return False
 
+    # is_malicious: finding's package is flagged as malicious
+    if rule.get("is_malicious"):
+        if not getattr(br.package, "is_malicious", False):
+            return False
+
     return True
 
 

@@ -35,9 +35,30 @@ An MCP server that provides security scanning tools for AI infrastructure:
 - **Blast radius** — map how a CVE reaches credentials and tools
 - **Compliance** — OWASP LLM Top 10, MITRE ATLAS, NIST AI RMF
 
-## How the Remote Server Works
+## Security Boundaries
 
-This skill connects to a remote MCP server hosted on Railway. The server:
+### What is safe to send to the remote server
+
+| Safe to send | Examples |
+|-------------|----------|
+| Package names + versions | `langchain`, `express@4.18.2` |
+| Ecosystem identifiers | `pypi`, `npm`, `go` |
+| CVE IDs | `CVE-2024-21538` |
+| MCP server names | `brave-search`, `filesystem` |
+| Non-sensitive skill text | SKILL.md content for trust assessment |
+
+### What you must NOT send
+
+| Never send | Why |
+|-----------|-----|
+| API keys, tokens, passwords | The remote server does not need them and cannot use them securely |
+| Full config files | May contain credential values or internal hostnames |
+| `.env` file contents | Contains secrets |
+| Internal URLs or hostnames | Reveals infrastructure |
+
+### How the remote server works
+
+This skill connects to a remote MCP server hosted on Railway over **HTTPS/TLS**. The server:
 
 1. **Does NOT read your local files.** The server runs on Railway, not your machine. `file_reads: []` is accurate — this skill never accesses your filesystem.
 2. **Tools that need local data require you to provide it.** For example, `check(package="langchain", ecosystem="pypi")` sends only the package name you provide. The server queries public vulnerability databases and returns results.
@@ -47,6 +68,10 @@ This skill connects to a remote MCP server hosted on Railway. The server:
 **What the server receives:** Only the arguments you provide in tool calls (package names, CVE IDs, server names). Nothing else.
 
 **What the server sends outbound:** Package names + versions to OSV.dev, NVD, EPSS, and CISA KEV APIs. No credentials, hostnames, or config contents.
+
+### If using autonomous agent invocation
+
+If your MCP client allows the agent to call tools autonomously (without your confirmation per call), limit the agent's scope to only send package names, CVE IDs, and server names. Do not allow the agent to pass config file contents, environment variables, or credential values to any tool.
 
 ## Setup
 
@@ -155,5 +180,5 @@ It extracts server names, package names, and env var **names** only — never va
 - **PyPI**: https://pypi.org/project/agent-bom/
 - **Smithery**: https://smithery.ai/server/agent-bom/agent-bom (99/100 quality score)
 - **Sigstore signed**: Every release is signed with Sigstore OIDC
-- **1100+ tests**: Every commit passes automated security scanning
+- **1,260+ tests**: Every commit passes automated security scanning
 - **OpenSSF Scorecard**: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom

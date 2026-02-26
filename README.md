@@ -130,6 +130,25 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
 
 ---
 
+## How it works
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/data-flow-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/data-flow-light.svg" alt="Data flow and trust model" width="800" style="padding: 20px 0" />
+  </picture>
+</p>
+
+1. **Discover** — auto-detect MCP configs across 18 clients (Claude Desktop, Cursor, Codex CLI, Gemini CLI, Goose, etc.)
+2. **Extract** — pull server names, package names, env var **names**, and tool lists. Credential **values** are never read.
+3. **Scan** — send only package names + versions to public APIs (OSV.dev, NVD, EPSS, CISA KEV). No hostnames, no secrets, no auth tokens.
+4. **Analyze** — CVE blast radius mapping, tool poisoning detection (`--enforce`), OWASP/ATLAS/NIST threat models, model provenance (`--hf-model`)
+5. **Report** — JSON, SARIF, CycloneDX, SPDX, HTML, or console output. Nothing stored server-side.
+
+**Trust guarantees:** Read-only (no file writes, no config changes, no servers started). `--dry-run` previews all files and API calls then exits. Every release is Sigstore-signed. Run `agent-bom verify agent-bom` to check integrity. See [PERMISSIONS.md](PERMISSIONS.md) for the full auditable trust contract.
+
+---
+
 ## Get started
 
 ```bash
@@ -426,11 +445,13 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 
 ## Trust & permissions
 
-- **`--dry-run`** — preview every file and API URL before access
-- **[PERMISSIONS.md](PERMISSIONS.md)** — auditable trust contract
-- **Read-only** — never writes configs, runs servers, or stores secrets
-- **Sigstore signed** — releases v0.7.0+ signed via cosign
-- **Credential redaction** — only env var **names** in reports
+- **`--dry-run`** — preview every file and API URL before access, then exit without reading anything
+- **[PERMISSIONS.md](PERMISSIONS.md)** — auditable trust contract with all 27 config paths enumerated
+- **Read-only** — never writes configs, runs servers, provisions resources, or stores secrets
+- **Credential redaction** — only env var **names** in reports; values, tokens, passwords never read
+- **Sigstore signed** — releases v0.7.0+ signed via cosign OIDC; verify with `agent-bom verify agent-bom`
+- **No binary needed (MCP)** — SSE transport requires zero local install; local CLI available for air-gapped use
+- **OpenSSF Scorecard** — [automated supply chain scoring](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom)
 
 ---
 

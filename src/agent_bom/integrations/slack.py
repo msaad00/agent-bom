@@ -113,6 +113,17 @@ async def send_slack_alert(
         return False
 
 
+async def send_slack_payload(webhook_url: str, payload: dict) -> bool:
+    """Send a raw Slack payload to a webhook URL."""
+    async with create_client(timeout=10.0) as client:
+        response = await request_with_retry(
+            client, "POST", webhook_url, json_body=payload, max_retries=2,
+        )
+        if response and response.status_code == 200:
+            return True
+        return False
+
+
 def build_summary_message(findings: list[dict]) -> dict:
     """Build a summary Slack message for multiple findings.
 

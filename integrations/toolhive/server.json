@@ -48,7 +48,11 @@
             "generate_sbom",
             "compliance",
             "remediate",
-            "skill_trust"
+            "skill_trust",
+            "verify",
+            "where",
+            "inventory",
+            "diff"
           ]
         }
       }

@@ -197,6 +197,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         image: Annotated[str | None, Field(description="Docker image to scan (e.g. 'nginx:1.25', 'ghcr.io/org/app:v1').")] = None,
         sbom_path: Annotated[str | None, Field(description="Path to existing CycloneDX or SPDX JSON SBOM file to ingest.")] = None,
         enrich: Annotated[bool, Field(description="Enable NVD CVSS, EPSS probability, and CISA KEV enrichment.")] = False,
+        scorecard: Annotated[bool, Field(description="Enrich packages with OpenSSF Scorecard scores (requires resolvable GitHub repos).")] = False,
         transitive: Annotated[bool, Field(description="Resolve transitive dependencies for npx/uvx packages.")] = False,
         verify_integrity: Annotated[bool, Field(description="Verify package SHA-256/SRI hashes and SLSA provenance against registries.")] = False,
         fail_severity: Annotated[str | None, Field(description="Return failure status if vulns at this severity or higher: critical, high, medium, low.")] = None,
@@ -241,6 +242,16 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                                         pkg.integrity = result
                                 except Exception:
                                     pass
+
+            # OpenSSF Scorecard enrichment
+            if scorecard:
+                try:
+                    from agent_bom.scorecard import enrich_packages_with_scorecard
+                    all_pkgs = [p for a in agents for s in a.mcp_servers for p in s.packages]
+                    if all_pkgs:
+                        await enrich_packages_with_scorecard(all_pkgs)
+                except Exception:
+                    pass  # Non-fatal; scorecard is best-effort enrichment
 
             report = AIBOMReport(agents=agents, blast_radii=blast_radii)
             result = to_json(report)

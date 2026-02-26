@@ -6,7 +6,11 @@ Detects common model file formats and flags security risks
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -117,3 +121,188 @@ def scan_model_files(
             })
 
     return results, warnings
+
+
+# ── Model weight provenance ─────────────────────────────────────
+
+
+def verify_model_hash(
+    file_path: str | Path,
+    expected_sha256: str | None = None,
+) -> dict:
+    """Compute SHA-256 of a model file and optionally verify against expected hash.
+
+    Returns dict with: sha256, match (bool|None), size_bytes, security_flags.
+    """
+    file_path = Path(file_path)
+    result: dict = {
+        "path": str(file_path),
+        "sha256": None,
+        "match": None,
+        "size_bytes": 0,
+        "security_flags": [],
+    }
+
+    if not file_path.is_file():
+        result["security_flags"].append({
+            "severity": "HIGH",
+            "type": "FILE_NOT_FOUND",
+            "description": f"Model file not found: {file_path}",
+        })
+        return result
+
+    h = hashlib.sha256()
+    size = 0
+    try:
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                h.update(chunk)
+                size += len(chunk)
+    except OSError as exc:
+        result["security_flags"].append({
+            "severity": "MEDIUM",
+            "type": "HASH_ERROR",
+            "description": f"Could not read file for hashing: {exc}",
+        })
+        return result
+
+    result["sha256"] = h.hexdigest()
+    result["size_bytes"] = size
+
+    if expected_sha256 is not None:
+        result["match"] = result["sha256"] == expected_sha256.lower()
+        if not result["match"]:
+            result["security_flags"].append({
+                "severity": "CRITICAL",
+                "type": "HASH_MISMATCH",
+                "description": (
+                    f"SHA-256 mismatch — expected {expected_sha256[:16]}..., "
+                    f"got {result['sha256'][:16]}... File may be tampered."
+                ),
+            })
+
+    return result
+
+
+def check_sigstore_signature(file_path: str | Path) -> dict:
+    """Check for adjacent Sigstore signature or bundle files.
+
+    Looks for .sig, .sigstore, .bundle adjacent to the model file.
+    Returns dict with: signed (bool), signature_path, security_flags.
+    """
+    file_path = Path(file_path)
+    result: dict = {
+        "path": str(file_path),
+        "signed": False,
+        "signature_path": None,
+        "security_flags": [],
+    }
+
+    if not file_path.is_file():
+        return result
+
+    # Check for common Sigstore/cosign signature file patterns
+    sig_candidates = [
+        file_path.with_suffix(file_path.suffix + ".sig"),
+        file_path.with_suffix(file_path.suffix + ".sigstore"),
+        file_path.with_suffix(file_path.suffix + ".bundle"),
+        file_path.parent / (file_path.name + ".sig"),
+        file_path.parent / (file_path.name + ".sigstore"),
+        file_path.parent / (file_path.name + ".bundle"),
+    ]
+
+    for candidate in sig_candidates:
+        if candidate.is_file():
+            result["signed"] = True
+            result["signature_path"] = str(candidate)
+            break
+
+    if not result["signed"]:
+        result["security_flags"].append({
+            "severity": "MEDIUM",
+            "type": "UNSIGNED",
+            "description": (
+                "No Sigstore signature found. Model provenance cannot be verified. "
+                "Consider signing with cosign or sigstore."
+            ),
+        })
+
+    return result
+
+
+def check_huggingface_provenance(
+    model_name: str,
+    timeout: float = 10.0,
+) -> dict:
+    """Query HuggingFace API for model provenance metadata.
+
+    model_name should be in 'org/model' format (e.g., 'meta-llama/Llama-3.1-8B').
+    Returns dict with: author, license, has_model_card, sha256_available, gated, security_flags.
+    """
+    result: dict = {
+        "model": model_name,
+        "author": None,
+        "license": None,
+        "has_model_card": False,
+        "sha256_available": False,
+        "gated": False,
+        "downloads": None,
+        "tags": [],
+        "security_flags": [],
+    }
+
+    url = f"https://huggingface.co/api/models/{model_name}"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "agent-bom"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            result["security_flags"].append({
+                "severity": "HIGH",
+                "type": "NO_PROVENANCE",
+                "description": f"Model '{model_name}' not found on HuggingFace. Cannot verify provenance.",
+            })
+        else:
+            result["security_flags"].append({
+                "severity": "MEDIUM",
+                "type": "PROVENANCE_CHECK_FAILED",
+                "description": f"HuggingFace API error {exc.code}: {exc.reason}",
+            })
+        return result
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        result["security_flags"].append({
+            "severity": "MEDIUM",
+            "type": "PROVENANCE_CHECK_FAILED",
+            "description": f"Could not reach HuggingFace API: {exc}",
+        })
+        return result
+
+    result["author"] = data.get("author")
+    result["license"] = data.get("cardData", {}).get("license") if data.get("cardData") else data.get("license")
+    result["has_model_card"] = data.get("cardData") is not None or data.get("hasModelCard", False)
+    result["gated"] = data.get("gated", False)
+    result["downloads"] = data.get("downloads")
+    result["tags"] = data.get("tags", [])
+
+    # Check if siblings include sha256-bearing files
+    siblings = data.get("siblings", [])
+    result["sha256_available"] = any(
+        s.get("lfs", {}).get("sha256") for s in siblings if isinstance(s, dict)
+    )
+
+    # Flag if no model card or author info
+    if not result["has_model_card"]:
+        result["security_flags"].append({
+            "severity": "LOW",
+            "type": "NO_MODEL_CARD",
+            "description": "Model has no model card. Documentation of training data, biases, and limitations is missing.",
+        })
+    if not result["author"]:
+        result["security_flags"].append({
+            "severity": "MEDIUM",
+            "type": "NO_AUTHOR",
+            "description": "Model has no identified author. Provenance cannot be attributed.",
+        })
+
+    return result

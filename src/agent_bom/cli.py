@@ -153,6 +153,9 @@ def main():
               help="Scan Jupyter notebooks (.ipynb) for AI library imports, model references, and credentials. Repeatable.")
 @click.option("--model-files", "model_dirs", multiple=True, type=click.Path(exists=True), metavar="DIR",
               help="Scan for ML model binary files (.gguf, .safetensors, .onnx, .pt, .pkl, etc.). Repeatable.")
+@click.option("--model-provenance", is_flag=True, help="Enable SHA-256 hash and Sigstore signature checks for --model-files scans")
+@click.option("--hf-model", "hf_models", multiple=True, metavar="NAME",
+              help="Check HuggingFace model provenance (org/model format, e.g. meta-llama/Llama-3.1-8B). Repeatable.")
 @click.option("--introspect", is_flag=True, help="Connect to live MCP servers to discover runtime tools/resources (read-only, requires mcp SDK)")
 @click.option("--introspect-timeout", type=float, default=10.0, show_default=True, help="Timeout per MCP server for --introspect (seconds)")
 @click.option("--enforce", is_flag=True, help="Run tool poisoning detection and enforcement checks (description injection, capability combos, CVE exposure, drift)")
@@ -246,6 +249,8 @@ def scan(
     scan_prompts: bool,
     jupyter_dirs: tuple,
     model_dirs: tuple,
+    model_provenance: bool,
+    hf_models: tuple,
     introspect: bool,
     introspect_timeout: float,
     enforce: bool,
@@ -1190,10 +1195,21 @@ def scan(
 
     # ── Step 1i: Model binary file scan ─────────────────────────────
     if not skill_only and model_dirs:
-        from agent_bom.model_files import scan_model_files
+        from agent_bom.model_files import scan_model_files, verify_model_hash, check_sigstore_signature
         for mdir in model_dirs:
             con.print(f"  [cyan]>[/cyan] Scanning for model files in {mdir}...")
             mf_results, mf_warnings = scan_model_files(mdir)
+            # Provenance checks (hash + signature) when --model-provenance
+            if model_provenance:
+                for mf in mf_results:
+                    hash_result = verify_model_hash(mf["path"])
+                    mf["sha256"] = hash_result["sha256"]
+                    mf["security_flags"].extend(hash_result["security_flags"])
+
+                    sig_result = check_sigstore_signature(mf["path"])
+                    mf["signed"] = sig_result["signed"]
+                    mf["signature_path"] = sig_result["signature_path"]
+                    mf["security_flags"].extend(sig_result["security_flags"])
             report.model_files.extend(mf_results)
             for w in mf_warnings:
                 con.print(f"  [yellow]⚠[/yellow] {w}")
@@ -1201,6 +1217,23 @@ def scan(
                 security_count = sum(1 for m in mf_results if m["security_flags"])
                 con.print(f"    [green]{len(mf_results)} model file(s) found[/green]"
                          + (f" [red]({security_count} with security flags)[/red]" if security_count else ""))
+
+    # ── Step 1j: HuggingFace model provenance ─────────────────────────
+    if hf_models:
+        from agent_bom.model_files import check_huggingface_provenance
+        hf_provenance: list[dict] = []
+        for hf_name in hf_models:
+            con.print(f"  [cyan]>[/cyan] Checking HuggingFace provenance: {hf_name}...")
+            hf_result = check_huggingface_provenance(hf_name)
+            hf_provenance.append(hf_result)
+            if hf_result["security_flags"]:
+                for flag in hf_result["security_flags"]:
+                    con.print(f"    [yellow]⚠[/yellow] {flag['type']}: {flag['description']}")
+            else:
+                author = hf_result.get("author") or "unknown"
+                license_val = hf_result.get("license") or "unspecified"
+                con.print(f"    [green]✓[/green] {hf_name} — author: {author}, license: {license_val}")
+        report.model_provenance = hf_provenance
 
     # Step 4c: AI-powered enrichment (optional)
     if ai_enrich:

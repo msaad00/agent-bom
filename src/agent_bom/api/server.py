@@ -989,41 +989,28 @@ def push_proxy_metrics(metrics: dict) -> None:
     _proxy_metrics = metrics
 
 
-def _validate_log_path(log_path: str) -> str:
-    """Validate and sanitize a log file path.
+def _get_configured_log_path() -> _Path | None:
+    """Return the server-configured audit log path, if set.
 
-    Ensures the path:
-    - Has a .jsonl extension (audit log format)
-    - Is resolved to an absolute path (no traversal)
-    - Does not traverse outside the resolved parent directory
-
-    Returns the resolved absolute path string.
-    Raises HTTPException on invalid paths.
+    The path is set via the AGENT_BOM_LOG environment variable (server-side
+    config only — never from user input).  Returns None when the env var is
+    unset or the file doesn't exist.
     """
-    from pathlib import Path as _Pth
+    import os
 
-    resolved = _Pth(log_path).resolve()
-
-    # Must be a .jsonl file
-    if resolved.suffix != ".jsonl":
-        raise HTTPException(status_code=400, detail="Log path must be a .jsonl file")
-
-    # Must not contain path traversal components
-    if ".." in _Pth(log_path).parts:
-        raise HTTPException(status_code=400, detail="Path traversal not allowed")
-
-    return str(resolved)
+    log_env = os.environ.get("AGENT_BOM_LOG")
+    if not log_env:
+        return None
+    path = _Path(log_env).resolve()
+    if not path.is_file() or path.suffix != ".jsonl":
+        return None
+    return path
 
 
-def _read_alerts_from_log(log_path: str) -> list[dict]:
+def _read_alerts_from_log(path: _Path) -> list[dict]:
     """Read runtime_alert records from a JSONL audit log."""
     import json as _json
-    from pathlib import Path as _Pth
 
-    safe_path = _validate_log_path(log_path)
-    path = _Pth(safe_path)
-    if not path.exists():
-        return []
     alerts = []
     for line in path.read_text().splitlines():
         line = line.strip()
@@ -1038,15 +1025,10 @@ def _read_alerts_from_log(log_path: str) -> list[dict]:
     return alerts
 
 
-def _read_metrics_from_log(log_path: str) -> dict | None:
+def _read_metrics_from_log(path: _Path) -> dict | None:
     """Read the last proxy_summary record from a JSONL audit log."""
     import json as _json
-    from pathlib import Path as _Pth
 
-    safe_path = _validate_log_path(log_path)
-    path = _Pth(safe_path)
-    if not path.exists():
-        return None
     last_summary = None
     for line in path.read_text().splitlines():
         line = line.strip()
@@ -1062,50 +1044,47 @@ def _read_metrics_from_log(log_path: str) -> dict | None:
 
 
 @app.get("/v1/proxy/status", tags=["proxy"])
-async def proxy_status(log: str | None = None) -> dict:
+async def proxy_status() -> dict:
     """Get runtime proxy metrics.
 
-    Returns the latest proxy metrics summary. If running in-process, reads
-    from the shared buffer. If a ``log`` query param is provided, reads the
-    last proxy_summary from that JSONL audit log file.
-
-    Query params:
-        log: Path to the proxy audit log (JSONL) to read metrics from.
+    Returns the latest proxy metrics summary.  Reads from the in-process
+    buffer (populated by ``push_proxy_metrics``) or from the audit log
+    configured via the ``AGENT_BOM_LOG`` environment variable.
     """
-    if log:
-        metrics = _read_metrics_from_log(log)
-        if metrics is None:
-            raise HTTPException(status_code=404, detail="No proxy metrics found in log")
-        return metrics
-
     if _proxy_metrics is not None:
         return _proxy_metrics
 
+    log_path = _get_configured_log_path()
+    if log_path:
+        metrics = _read_metrics_from_log(log_path)
+        if metrics is not None:
+            return metrics
+
     return {
         "status": "no_proxy_session",
-        "message": "No proxy metrics available. Start a proxy session or provide ?log=path/to/audit.jsonl",
+        "message": "No proxy metrics available. Start a proxy session or set AGENT_BOM_LOG.",
     }
 
 
 @app.get("/v1/proxy/alerts", tags=["proxy"])
 async def proxy_alerts(
-    log: str | None = None,
     severity: str | None = None,
     detector: str | None = None,
     limit: int = 100,
 ) -> dict:
     """Get recent runtime proxy alerts.
 
-    Returns alerts from the current or most recent proxy session.
+    Returns alerts from the in-process buffer or the audit log configured
+    via the ``AGENT_BOM_LOG`` environment variable.
 
     Query params:
-        log: Path to the proxy audit log (JSONL) to read alerts from.
         severity: Filter by severity (critical, high, medium, low, info).
         detector: Filter by detector name.
         limit: Maximum number of alerts to return (default 100).
     """
-    if log:
-        alerts = _read_alerts_from_log(log)
+    log_path = _get_configured_log_path()
+    if log_path and not _proxy_alerts:
+        alerts = _read_alerts_from_log(log_path)
     else:
         alerts = list(_proxy_alerts)
 
@@ -1143,7 +1122,13 @@ async def scorecard_lookup(ecosystem: str, package: str) -> dict:
         ecosystem: Package ecosystem (npm, pypi, go, cargo)
         package: Package name
     """
+    import re as _re_local
+
     from agent_bom.scorecard import extract_github_repo, fetch_scorecard
+
+    # Validate package input — only allow safe characters
+    if not _re_local.match(r"^[A-Za-z0-9._@/:-]+$", package):
+        raise HTTPException(status_code=400, detail="Invalid package name")
 
     # For GitHub-hosted packages, try direct repo lookup
     # Common patterns: npm @scope/pkg -> github.com/scope/pkg

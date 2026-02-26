@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 from pathlib import Path
 
@@ -23,11 +24,16 @@ def test_proxy_status_no_session():
 
     # Reset state
     srv._proxy_metrics = None
-    client = TestClient(app)
-    resp = client.get("/v1/proxy/status")
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["status"] == "no_proxy_session"
+    old = os.environ.pop("AGENT_BOM_LOG", None)
+    try:
+        client = TestClient(app)
+        resp = client.get("/v1/proxy/status")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "no_proxy_session"
+    finally:
+        if old is not None:
+            os.environ["AGENT_BOM_LOG"] = old
 
 
 def test_proxy_status_with_metrics():
@@ -54,34 +60,55 @@ def test_proxy_status_with_metrics():
 
 
 def test_proxy_status_from_log():
-    """Reads metrics from a JSONL audit log file."""
+    """Reads metrics from a JSONL audit log file via AGENT_BOM_LOG env."""
+    import agent_bom.api.server as srv
+
+    srv._proxy_metrics = None
+
     with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
-        # Write some records
         f.write(json.dumps({"type": "tools/call", "tool": "read"}) + "\n")
         f.write(json.dumps({"type": "proxy_summary", "total_tool_calls": 10, "total_blocked": 1}) + "\n")
         log_path = f.name
 
+    old = os.environ.get("AGENT_BOM_LOG")
+    os.environ["AGENT_BOM_LOG"] = log_path
     try:
         client = TestClient(app)
-        resp = client.get(f"/v1/proxy/status?log={log_path}")
+        resp = client.get("/v1/proxy/status")
         assert resp.status_code == 200
         data = resp.json()
         assert data["total_tool_calls"] == 10
     finally:
+        if old is not None:
+            os.environ["AGENT_BOM_LOG"] = old
+        else:
+            os.environ.pop("AGENT_BOM_LOG", None)
         Path(log_path).unlink(missing_ok=True)
 
 
-def test_proxy_status_from_log_not_found():
-    """Returns 404 when log file has no proxy_summary."""
+def test_proxy_status_from_log_no_summary():
+    """Returns no_proxy_session when log file has no proxy_summary."""
+    import agent_bom.api.server as srv
+
+    srv._proxy_metrics = None
+
     with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
         f.write(json.dumps({"type": "tools/call", "tool": "read"}) + "\n")
         log_path = f.name
 
+    old = os.environ.get("AGENT_BOM_LOG")
+    os.environ["AGENT_BOM_LOG"] = log_path
     try:
         client = TestClient(app)
-        resp = client.get(f"/v1/proxy/status?log={log_path}")
-        assert resp.status_code == 404
+        resp = client.get("/v1/proxy/status")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "no_proxy_session"
     finally:
+        if old is not None:
+            os.environ["AGENT_BOM_LOG"] = old
+        else:
+            os.environ.pop("AGENT_BOM_LOG", None)
         Path(log_path).unlink(missing_ok=True)
 
 
@@ -93,12 +120,17 @@ def test_proxy_alerts_empty():
     import agent_bom.api.server as srv
 
     srv._proxy_alerts.clear()
-    client = TestClient(app)
-    resp = client.get("/v1/proxy/alerts")
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["count"] == 0
-    assert data["alerts"] == []
+    old = os.environ.pop("AGENT_BOM_LOG", None)
+    try:
+        client = TestClient(app)
+        resp = client.get("/v1/proxy/alerts")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["count"] == 0
+        assert data["alerts"] == []
+    finally:
+        if old is not None:
+            os.environ["AGENT_BOM_LOG"] = old
 
 
 def test_proxy_alerts_with_data():
@@ -168,20 +200,30 @@ def test_proxy_alerts_filter_detector():
 
 
 def test_proxy_alerts_from_log():
-    """Reads alerts from a JSONL audit log file."""
+    """Reads alerts from a JSONL audit log file via AGENT_BOM_LOG env."""
+    import agent_bom.api.server as srv
+
+    srv._proxy_alerts.clear()
+
     with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
         f.write(json.dumps({"type": "tools/call", "tool": "read"}) + "\n")
         f.write(json.dumps({"type": "runtime_alert", "detector": "cred", "severity": "critical", "message": "leak"}) + "\n")
         f.write(json.dumps({"type": "runtime_alert", "detector": "seq", "severity": "high", "message": "exfil"}) + "\n")
         log_path = f.name
 
+    old = os.environ.get("AGENT_BOM_LOG")
+    os.environ["AGENT_BOM_LOG"] = log_path
     try:
         client = TestClient(app)
-        resp = client.get(f"/v1/proxy/alerts?log={log_path}")
+        resp = client.get("/v1/proxy/alerts")
         assert resp.status_code == 200
         data = resp.json()
         assert data["count"] == 2
     finally:
+        if old is not None:
+            os.environ["AGENT_BOM_LOG"] = old
+        else:
+            os.environ.pop("AGENT_BOM_LOG", None)
         Path(log_path).unlink(missing_ok=True)
 
 
@@ -218,7 +260,6 @@ def test_scorecard_no_repo():
 def test_scorecard_github_direct():
     """Accepts GitHub owner/repo path directly."""
     client = TestClient(app)
-    # This makes a real API call, so we mock it
     from unittest.mock import AsyncMock, patch
 
     mock_data = {
@@ -289,3 +330,26 @@ def test_proxy_cli_alert_webhook_flag():
     result = runner.invoke(main, ["proxy", "--help"])
     assert result.exit_code == 0
     assert "--alert-webhook" in result.output
+
+
+# ── HTTP client log sanitization ──────────────────────────────────────────
+
+
+def test_sanitize_for_log():
+    """Log sanitizer strips newlines."""
+    from agent_bom.http_client import _sanitize_for_log
+
+    assert _sanitize_for_log("normal") == "normal"
+    assert "\\n" in _sanitize_for_log("line1\nline2")
+    assert "\\r" in _sanitize_for_log("line1\rline2")
+
+
+# ── Scorecard repo validation ────────────────────────────────────────────
+
+
+def test_scorecard_rejects_invalid_package():
+    """Scorecard endpoint rejects packages with invalid chars."""
+    client = TestClient(app)
+    # Pipe is not in the [A-Za-z0-9._@/:-] allowlist
+    resp = client.get("/v1/scorecard/npm/foo|bar")
+    assert resp.status_code == 400

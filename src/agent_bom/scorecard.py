@@ -74,6 +74,9 @@ def _repo_url_from_package(pkg: Package) -> Optional[str]:
     return None
 
 
+_SAFE_REPO_PATTERN = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
+
+
 async def fetch_scorecard(repo: str) -> Optional[dict]:
     """Fetch OpenSSF Scorecard for a GitHub repository.
 
@@ -83,6 +86,10 @@ async def fetch_scorecard(repo: str) -> Optional[dict]:
     Returns:
         Scorecard data dict with 'score' and 'checks', or None.
     """
+    # Validate repo format to prevent SSRF via path manipulation
+    if not _SAFE_REPO_PATTERN.match(repo):
+        return None
+
     if repo in _scorecard_cache:
         return _scorecard_cache[repo]
 
@@ -105,7 +112,8 @@ async def fetch_scorecard(repo: str) -> Optional[dict]:
                 _scorecard_cache[repo] = result
                 return result
             except (ValueError, KeyError) as exc:
-                logger.debug("Scorecard parse error for %s: %s", repo, exc)
+                safe_exc = str(exc).replace("\n", "\\n").replace("\r", "\\r")
+                logger.debug("Scorecard parse error for %s: %s", repo, safe_exc)
 
         _scorecard_cache[repo] = None
         return None

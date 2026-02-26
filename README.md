@@ -16,7 +16,7 @@
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center">
-  <b>AI supply chain security scanner. Scan packages and images for CVEs. Assess config security — credential exposure, tool access, privilege escalation. Map blast radius from vulnerabilities to credentials and tools. OWASP LLM Top 10 + MITRE ATLAS + NIST AI RMF.</b>
+  <b>AI supply chain security scanner. Scan packages and images for CVEs. Assess config security — credential exposure, tool access, privilege escalation. Map blast radius from vulnerabilities to credentials and tools. OWASP LLM Top 10 + OWASP MCP Top 10 + MITRE ATLAS + NIST AI RMF.</b>
 </p>
 
 <p align="center">
@@ -61,10 +61,13 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 | **MCP tool reachability** | — | Which tools an attacker reaches post-exploit |
 | **Privilege detection** | — | runs_as_root, shell_access, container_privileged, per-tool permissions |
 | **Enterprise remediation** | — | Named assets, impact percentages, risk narratives |
-| **Triple-framework tagging** | — | OWASP LLM Top 10 + MITRE ATLAS + NIST AI RMF |
+| **Quad-framework compliance** | — | OWASP LLM Top 10 + OWASP MCP Top 10 + MITRE ATLAS + NIST AI RMF |
+| **Malicious package detection** | — | OSV MAL- prefix + typosquat heuristics (57 popular packages) |
+| **OpenSSF Scorecard enrichment** | — | Package health scores from api.securityscorecards.dev |
 | **Tool poisoning detection** | — | Description injection, capability combos, CVE exposure, drift |
 | **Model weight provenance** | — | SHA-256 hash, Sigstore signature, HuggingFace metadata |
 | **Policy-as-code** | — | Block unverified servers, enforce thresholds in CI/CD |
+| **GPU infrastructure scanning** | — | NVIDIA CUDA, AMD ROCm, TensorRT, Triton, vLLM |
 | **427+ server MCP registry** | — | Risk levels, tool inventories, auto-synced weekly |
 
 <table>
@@ -210,11 +213,12 @@ Every MCP server is assessed for privilege escalation risk:
 
 Privilege levels: **critical** (privileged container, CAP_SYS_ADMIN) → **high** (root, shell) → **medium** (fs write, network) → **low** (read-only).
 
-### Triple-framework threat mapping
+### Quad-framework compliance mapping
 
-Every finding is tagged against three frameworks simultaneously:
+Every finding is tagged against four frameworks simultaneously:
 
 - **OWASP LLM Top 10** — LLM01 through LLM10 (6 categories triggered)
+- **OWASP MCP Top 10** — MCP01 through MCP10 (8 categories triggered) — token exposure, tool poisoning, supply chain, shadow servers
 - **MITRE ATLAS** — AML.T0010, AML.T0043, AML.T0051, etc. (8 techniques mapped)
 - **NIST AI RMF 1.0** — Govern, Map, Measure, Manage (12 subcategories mapped)
 
@@ -463,10 +467,14 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 - [x] Model weight provenance — SHA-256 hash, Sigstore signatures, HuggingFace metadata (`--model-provenance`, `--hf-model`)
 - [x] 18 MCP client discovery — Codex CLI, Gemini CLI, Goose, Snowflake CLI, full Cortex Code (CoCo) coverage
 - [x] K8s AI workload discovery — `--k8s --all-namespaces` with pod-level scanning
+- [x] OWASP MCP Top 10 compliance mapping — first scanner to map MCP-specific risks (MCP01–MCP10)
+- [x] Malicious package detection — OSV MAL- prefix flagging + typosquat heuristics
+- [x] OpenSSF Scorecard enrichment — `--scorecard` for package health scoring
+- [x] GPU infrastructure coverage — NVIDIA CUDA, AMD ROCm, TensorRT, Triton, vLLM, JAX
 
 **Planned:**
-- [ ] Runtime MCP traffic monitoring — live tool call analysis, anomaly detection
-- [ ] GPU/VM infrastructure scanning — NVIDIA NIM, vLLM, compute fleet inventory
+- [ ] Runtime MCP traffic monitoring — live tool call analysis, anomaly detection, credential leak detection
+- [ ] Enterprise integrations — Jira, Slack, Vanta, Drata
 - [ ] EU AI Act compliance mapping
 - [ ] CIS AI benchmarks
 - [ ] License compliance engine

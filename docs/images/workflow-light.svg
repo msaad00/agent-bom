@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 340" fill="none">
+  <style>
+    .title { font: 700 14px system-ui, -apple-system, sans-serif; fill: #1f2328; }
+    .step-num { font: 700 18px system-ui, sans-serif; }
+    .step-label { font: 700 11px system-ui, sans-serif; fill: #1f2328; }
+    .step-detail { font: 400 9.5px system-ui, sans-serif; fill: #656d76; }
+    .example { font: 500 9px 'SF Mono', 'Fira Code', monospace; fill: #656d76; }
+    .note { font: 400 9px system-ui, sans-serif; fill: #8b949e; }
+    .badge { font: 700 8px system-ui, sans-serif; letter-spacing: 0.06em; }
+  </style>
+  <defs>
+    <marker id="arr" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="6" orient="auto">
+      <path d="M1 1L9 4L1 7" stroke="#afb8c1" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="880" height="340" rx="12" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
+
+  <!-- Title -->
+  <text x="440" y="28" text-anchor="middle" class="title">How agent-bom works</text>
+
+  <!-- ═══ Step 1: Discover ═══ -->
+  <rect x="20" y="50" width="152" height="180" rx="10" fill="#f6f8fa" stroke="#0969da" stroke-width="1.5"/>
+  <text x="96" y="74" text-anchor="middle" class="step-num" fill="#0969da">1</text>
+  <text x="96" y="90" text-anchor="middle" class="step-label">Discover</text>
+  <line x1="44" y1="98" x2="148" y2="98" stroke="#d0d7de" stroke-width="0.5"/>
+  <text x="96" y="116" text-anchor="middle" class="step-detail">18 MCP clients</text>
+  <text x="96" y="130" text-anchor="middle" class="step-detail">Docker images</text>
+  <text x="96" y="144" text-anchor="middle" class="step-detail">Kubernetes pods</text>
+  <text x="96" y="158" text-anchor="middle" class="step-detail">Cloud providers</text>
+  <text x="96" y="172" text-anchor="middle" class="step-detail">Existing SBOMs</text>
+  <text x="96" y="186" text-anchor="middle" class="step-detail">AI platforms</text>
+  <line x1="44" y1="196" x2="148" y2="196" stroke="#d0d7de" stroke-width="0.5"/>
+  <text x="96" y="212" text-anchor="middle" class="example">agent-bom scan</text>
+  <text x="96" y="224" text-anchor="middle" class="example">agent-bom scan --aws</text>
+
+  <!-- Arrow 1→2 -->
+  <line x1="172" y1="140" x2="196" y2="140" stroke="#afb8c1" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- ═══ Step 2: Extract ═══ -->
+  <rect x="200" y="50" width="140" height="180" rx="10" fill="#f6f8fa" stroke="#bf8700" stroke-width="1.5"/>
+  <text x="270" y="74" text-anchor="middle" class="step-num" fill="#bf8700">2</text>
+  <text x="270" y="90" text-anchor="middle" class="step-label">Extract</text>
+  <line x1="220" y1="98" x2="320" y2="98" stroke="#d0d7de" stroke-width="0.5"/>
+  <text x="270" y="116" text-anchor="middle" class="step-detail">Package names</text>
+  <text x="270" y="130" text-anchor="middle" class="step-detail">Versions + PURLs</text>
+  <text x="270" y="144" text-anchor="middle" class="step-detail">Env var names</text>
+  <text x="270" y="158" text-anchor="middle" class="step-detail">Tool inventories</text>
+  <line x1="220" y1="168" x2="320" y2="168" stroke="#d0d7de" stroke-width="0.5"/>
+  <rect x="218" y="176" width="104" height="20" rx="4" fill="#ffebe9" stroke="#cf222e" stroke-width="0.8"/>
+  <text x="270" y="190" text-anchor="middle" class="badge" fill="#cf222e">SECRETS NEVER READ</text>
+  <text x="270" y="212" text-anchor="middle" class="note">Values, tokens, keys</text>
+  <text x="270" y="222" text-anchor="middle" class="note">are never extracted</text>
+
+  <!-- Arrow 2→3 -->
+  <line x1="340" y1="140" x2="364" y2="140" stroke="#afb8c1" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- ═══ Step 3: Scan + Enrich ═══ -->
+  <rect x="368" y="50" width="152" height="180" rx="10" fill="#f6f8fa" stroke="#8250df" stroke-width="1.5"/>
+  <text x="444" y="74" text-anchor="middle" class="step-num" fill="#8250df">3</text>
+  <text x="444" y="90" text-anchor="middle" class="step-label">Scan + Enrich</text>
+  <line x1="388" y1="98" x2="500" y2="98" stroke="#d0d7de" stroke-width="0.5"/>
+  <text x="444" y="116" text-anchor="middle" class="step-detail">OSV.dev CVE lookup</text>
+  <text x="444" y="130" text-anchor="middle" class="step-detail">NVD CVSS scoring</text>
+  <text x="444" y="144" text-anchor="middle" class="step-detail">EPSS exploit prob</text>
+  <text x="444" y="158" text-anchor="middle" class="step-detail">CISA KEV catalog</text>
+  <text x="444" y="172" text-anchor="middle" class="step-detail">OpenSSF Scorecard</text>
+  <text x="444" y="186" text-anchor="middle" class="step-detail">MCP registry check</text>
+  <line x1="388" y1="196" x2="500" y2="196" stroke="#d0d7de" stroke-width="0.5"/>
+  <text x="444" y="212" text-anchor="middle" class="example">--enrich --scorecard</text>
+  <text x="444" y="224" text-anchor="middle" class="example">--image myapp:latest</text>
+
+  <!-- Arrow 3→4 -->
+  <line x1="520" y1="140" x2="544" y2="140" stroke="#afb8c1" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- ═══ Step 4: Analyze ═══ -->
+  <rect x="548" y="50" width="140" height="180" rx="10" fill="#f6f8fa" stroke="#cf222e" stroke-width="1.5"/>
+  <text x="618" y="74" text-anchor="middle" class="step-num" fill="#cf222e">4</text>
+  <text x="618" y="90" text-anchor="middle" class="step-label">Analyze</text>
+  <line x1="568" y1="98" x2="668" y2="98" stroke="#d0d7de" stroke-width="0.5"/>
+  <text x="618" y="116" text-anchor="middle" class="step-detail">Blast radius mapping</text>
+  <text x="618" y="130" text-anchor="middle" class="step-detail">OWASP LLM Top 10</text>
+  <text x="618" y="144" text-anchor="middle" class="step-detail">OWASP MCP Top 10</text>
+  <text x="618" y="158" text-anchor="middle" class="step-detail">MITRE ATLAS</text>
+  <text x="618" y="172" text-anchor="middle" class="step-detail">Tool poisoning</text>
+  <text x="618" y="186" text-anchor="middle" class="step-detail">Malicious packages</text>
+  <line x1="568" y1="196" x2="668" y2="196" stroke="#d0d7de" stroke-width="0.5"/>
+  <text x="618" y="212" text-anchor="middle" class="example">--enforce --policy</text>
+  <text x="618" y="224" text-anchor="middle" class="example">--fail-on-severity high</text>
+
+  <!-- Arrow 4→5 -->
+  <line x1="688" y1="140" x2="712" y2="140" stroke="#afb8c1" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- ═══ Step 5: Report ═══ -->
+  <rect x="716" y="50" width="144" height="180" rx="10" fill="#f6f8fa" stroke="#1a7f37" stroke-width="1.5"/>
+  <text x="788" y="74" text-anchor="middle" class="step-num" fill="#1a7f37">5</text>
+  <text x="788" y="90" text-anchor="middle" class="step-label">Report</text>
+  <line x1="736" y1="98" x2="840" y2="98" stroke="#d0d7de" stroke-width="0.5"/>
+  <text x="788" y="116" text-anchor="middle" class="step-detail">Console + HTML</text>
+  <text x="788" y="130" text-anchor="middle" class="step-detail">CycloneDX 1.6</text>
+  <text x="788" y="144" text-anchor="middle" class="step-detail">SPDX 3.0</text>
+  <text x="788" y="158" text-anchor="middle" class="step-detail">SARIF (GitHub)</text>
+  <text x="788" y="172" text-anchor="middle" class="step-detail">JSON / REST API</text>
+  <text x="788" y="186" text-anchor="middle" class="step-detail">Prometheus / OTLP</text>
+  <line x1="736" y1="196" x2="840" y2="196" stroke="#d0d7de" stroke-width="0.5"/>
+  <text x="788" y="212" text-anchor="middle" class="example">-f html -o report.html</text>
+  <text x="788" y="224" text-anchor="middle" class="example">-f sarif -o scan.sarif</text>
+
+  <!-- ═══ Bottom bar: Trust ═══ -->
+  <rect x="20" y="248" width="840" height="36" rx="8" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1"/>
+  <text x="440" y="264" text-anchor="middle" class="badge" fill="#656d76">TRUST GUARANTEES</text>
+  <text x="440" y="278" text-anchor="middle" class="note">Read-only · Agentless · Never writes configs · Never runs servers · Never stores credentials · Sigstore-signed · --dry-run preview</text>
+
+  <!-- Bottom bar: Deployment modes -->
+  <rect x="20" y="294" width="840" height="36" rx="8" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1"/>
+  <text x="440" y="310" text-anchor="middle" class="badge" fill="#656d76">RUNS AS</text>
+  <text x="440" y="324" text-anchor="middle" class="note">CLI (pip install) · GitHub Action · Docker · MCP Server · REST API · Runtime Proxy · Streamlit Dashboard</text>
+</svg>

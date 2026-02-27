@@ -65,4 +65,26 @@ def discover_governance(
     return mod.discover_governance(**kwargs)
 
 
-__all__ = ["CloudDiscoveryError", "discover_from_provider", "discover_governance"]
+def discover_activity(
+    provider: str = "snowflake",
+    **kwargs: Any,
+) -> Any:
+    """Run activity timeline discovery for the given provider.
+
+    Currently only Snowflake is supported.
+
+    Returns:
+        ActivityTimeline with query history and observability events.
+    """
+    if provider != "snowflake":
+        raise ValueError(f"Activity discovery not supported for '{provider}'.")
+    mod = importlib.import_module(_PROVIDERS["snowflake"])
+    return mod.discover_activity(**kwargs)
+
+
+__all__ = [
+    "CloudDiscoveryError",
+    "discover_from_provider",
+    "discover_governance",
+    "discover_activity",
+]

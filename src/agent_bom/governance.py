@@ -89,6 +89,112 @@ class AgentUsageRecord:
 
 
 @dataclass
+class QueryHistoryRecord:
+    """A QUERY_HISTORY record for agent activity timeline reconstruction."""
+
+    query_id: str
+    query_text: str
+    user_name: str
+    role_name: str
+    start_time: str
+    end_time: str = ""
+    execution_status: str = ""  # SUCCESS, FAIL, INCIDENT
+    warehouse_name: str = ""
+    database_name: str = ""
+    schema_name: str = ""
+    query_type: str = ""  # SELECT, INSERT, CREATE, etc.
+    rows_produced: int = 0
+    bytes_scanned: int = 0
+    execution_time_ms: int = 0
+    # Derived classification
+    is_agent_query: bool = False
+    agent_pattern: str = ""  # e.g. "CREATE AGENT", "CORTEX", "MCP SERVER"
+
+
+@dataclass
+class ObservabilityEvent:
+    """An AI_OBSERVABILITY_EVENTS record — full execution trace."""
+
+    event_id: str
+    event_type: str  # AGENT_RUN, TOOL_CALL, LLM_INFERENCE, USER_FEEDBACK
+    agent_name: str = ""
+    timestamp: str = ""
+    duration_ms: int = 0
+    status: str = ""
+    model_name: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    tool_name: str = ""
+    tool_input: str = ""
+    tool_output_summary: str = ""
+    user_feedback: str = ""
+    trace_id: str = ""  # correlates events in a single execution
+    parent_event_id: str = ""
+    details: dict = field(default_factory=dict)
+
+
+@dataclass
+class ActivityTimeline:
+    """Reconstructed agent activity timeline from Snowflake telemetry."""
+
+    account: str
+    query_history: list[QueryHistoryRecord] = field(default_factory=list)
+    observability_events: list[ObservabilityEvent] = field(default_factory=list)
+    discovered_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    warnings: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        # Aggregate stats
+        agent_queries = [q for q in self.query_history if q.is_agent_query]
+        unique_agents = {e.agent_name for e in self.observability_events if e.agent_name}
+        tool_calls = [e for e in self.observability_events if e.event_type == "TOOL_CALL"]
+
+        return {
+            "account": self.account,
+            "discovered_at": self.discovered_at,
+            "summary": {
+                "total_queries": len(self.query_history),
+                "agent_queries": len(agent_queries),
+                "observability_events": len(self.observability_events),
+                "unique_agents": len(unique_agents),
+                "tool_calls": len(tool_calls),
+            },
+            "query_history": [
+                {
+                    "query_id": q.query_id,
+                    "query_text": q.query_text[:200],  # truncate for API
+                    "user_name": q.user_name,
+                    "role_name": q.role_name,
+                    "start_time": q.start_time,
+                    "execution_status": q.execution_status,
+                    "query_type": q.query_type,
+                    "is_agent_query": q.is_agent_query,
+                    "agent_pattern": q.agent_pattern,
+                    "execution_time_ms": q.execution_time_ms,
+                }
+                for q in self.query_history
+            ],
+            "observability_events": [
+                {
+                    "event_id": e.event_id,
+                    "event_type": e.event_type,
+                    "agent_name": e.agent_name,
+                    "timestamp": e.timestamp,
+                    "duration_ms": e.duration_ms,
+                    "status": e.status,
+                    "model_name": e.model_name,
+                    "tool_name": e.tool_name,
+                    "trace_id": e.trace_id,
+                    "input_tokens": e.input_tokens,
+                    "output_tokens": e.output_tokens,
+                }
+                for e in self.observability_events
+            ],
+            "warnings": self.warnings,
+        }
+
+
+@dataclass
 class GovernanceFinding:
     """A derived governance risk finding."""
 

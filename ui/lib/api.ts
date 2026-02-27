@@ -128,6 +128,7 @@ export interface BlastRadius {
 // ─── Attack Flow Types ───────────────────────────────────────────────────────
 
 export interface AttackFlowNodeData {
+  [key: string]: unknown;
   nodeType: "cve" | "package" | "server" | "agent" | "credential" | "tool";
   label: string;
   severity?: string;
@@ -143,6 +144,7 @@ export interface AttackFlowNodeData {
   ecosystem?: string;
   agent_type?: string;
   status?: string;
+  description?: string;
 }
 
 export interface AttackFlowNode {

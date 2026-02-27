@@ -19,7 +19,7 @@ metadata:
     file_reads: []
     file_writes: []
     network_endpoints:
-      - url: "https://agent-bom-mcp.up.railway.app/sse"
+      - url: "https://trustworthy-solace-production-14a6.up.railway.app/sse"
         purpose: "Remote MCP server — tools query public vulnerability databases (OSV, NVD, EPSS, KEV) and the bundled 427-server registry. No local file access."
         auth: false
     telemetry: false
@@ -82,7 +82,7 @@ Add the agent-bom MCP server to your client config:
   "mcpServers": {
     "agent-bom": {
       "type": "sse",
-      "url": "https://agent-bom-mcp.up.railway.app/sse"
+      "url": "https://trustworthy-solace-production-14a6.up.railway.app/sse"
     }
   }
 }
@@ -180,5 +180,5 @@ It extracts server names, package names, and env var **names** only — never va
 - **PyPI**: https://pypi.org/project/agent-bom/
 - **Smithery**: https://smithery.ai/server/agent-bom/agent-bom (99/100 quality score)
 - **Sigstore signed**: Every release is signed with Sigstore OIDC
-- **1,430+ tests**: Every commit passes automated security scanning
+- **1,490+ tests**: Every commit passes automated security scanning
 - **OpenSSF Scorecard**: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom

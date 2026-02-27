@@ -5,6 +5,7 @@ Usage:
     python scripts/bump-version.py 0.29.0
     python scripts/bump-version.py 0.29.0 --dry-run
 """
+
 from __future__ import annotations
 
 import argparse
@@ -22,6 +23,7 @@ VERSION_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     ("pyproject.toml", re.compile(r'^(version\s*=\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
     ("src/agent_bom/__init__.py", re.compile(r'(__version__\s*=\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
     # Dockerfiles
+    ("Dockerfile.runtime", re.compile(r"^(ARG VERSION=)\S+", re.M), r"\g<1>{v}"),
     ("Dockerfile.sse", re.compile(r"^(ARG VERSION=)\S+", re.M), r"\g<1>{v}"),
     ("integrations/toolhive/Dockerfile.mcp", re.compile(r"^(ARG VERSION=)\S+", re.M), r"\g<1>{v}"),
     # MCP Registry server.json (version field + pypi identifier version)
@@ -35,8 +37,13 @@ VERSION_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
 
 # Patterns that reference the version in docs/tests (updated separately)
 DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
-    # README.md — GitHub Action version references
+    # README.md + docs — GitHub Action version references
     ("README.md", re.compile(r"(msaad00/agent-bom@v)[^\s\"]+"), r"\g<1>{v}"),
+    ("docs/AI_INFRASTRUCTURE_SCANNING.md", re.compile(r"(msaad00/agent-bom@v)[^\s\"]+"), r"\g<1>{v}"),
+    # PUBLISHING.md — version examples
+    ("PUBLISHING.md", re.compile(r'(--version\s+")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
+    ("PUBLISHING.md", re.compile(r"(git tag v)\S+", re.M), r"\g<1>{v}"),
+    ("PUBLISHING.md", re.compile(r"(git push origin v)\S+", re.M), r"\g<1>{v}"),
     # tests/test_core.py — version assertions
     ("tests/test_core.py", re.compile(r'(assert\s+__version__\s*==\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
     # Only match version assertions that currently contain a semver pattern (avoids clobbering SARIF "2.1.0")

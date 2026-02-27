@@ -27,33 +27,23 @@ def _query(sql: str) -> pd.DataFrame:
 
 @st.cache_data(ttl=60)
 def load_jobs() -> pd.DataFrame:
-    return _query(
-        "SELECT job_id, status, created_at, completed_at, data "
-        "FROM scan_jobs ORDER BY created_at DESC LIMIT 100"
-    )
+    return _query("SELECT job_id, status, created_at, completed_at, data FROM scan_jobs ORDER BY created_at DESC LIMIT 100")
 
 
 @st.cache_data(ttl=60)
 def load_fleet() -> pd.DataFrame:
-    return _query(
-        "SELECT agent_id, name, lifecycle_state, trust_score, updated_at, data "
-        "FROM fleet_agents ORDER BY name"
-    )
+    return _query("SELECT agent_id, name, lifecycle_state, trust_score, updated_at, data FROM fleet_agents ORDER BY name")
 
 
 @st.cache_data(ttl=60)
 def load_policies() -> pd.DataFrame:
-    return _query(
-        "SELECT policy_id, name, mode, enabled, updated_at, data "
-        "FROM gateway_policies ORDER BY name"
-    )
+    return _query("SELECT policy_id, name, mode, enabled, updated_at, data FROM gateway_policies ORDER BY name")
 
 
 @st.cache_data(ttl=60)
 def load_audit(limit: int = 200) -> pd.DataFrame:
     return _query(
-        f"SELECT entry_id, policy_id, agent_name, action_taken, timestamp, data "
-        f"FROM policy_audit_log ORDER BY timestamp DESC LIMIT {limit}"
+        f"SELECT entry_id, policy_id, agent_name, action_taken, timestamp, data FROM policy_audit_log ORDER BY timestamp DESC LIMIT {limit}"
     )
 
 
@@ -84,18 +74,20 @@ def _extract_vulns_from_job(job_data: dict) -> list[dict]:
         for server in agent.get("mcp_servers", []):
             for pkg in server.get("packages", []):
                 for vuln in pkg.get("vulnerabilities", []):
-                    vulns.append({
-                        "id": vuln.get("id", ""),
-                        "severity": vuln.get("severity", "unknown"),
-                        "cvss": vuln.get("cvss_score", 0),
-                        "epss": vuln.get("epss_score", 0),
-                        "kev": vuln.get("is_kev", False),
-                        "package": pkg.get("name", ""),
-                        "version": pkg.get("version", ""),
-                        "fixed_version": vuln.get("fixed_version", ""),
-                        "agent": agent_name,
-                        "server": server.get("name", ""),
-                    })
+                    vulns.append(
+                        {
+                            "id": vuln.get("id", ""),
+                            "severity": vuln.get("severity", "unknown"),
+                            "cvss": vuln.get("cvss_score", 0),
+                            "epss": vuln.get("epss_score", 0),
+                            "kev": vuln.get("is_kev", False),
+                            "package": pkg.get("name", ""),
+                            "version": pkg.get("version", ""),
+                            "fixed_version": vuln.get("fixed_version", ""),
+                            "agent": agent_name,
+                            "server": server.get("name", ""),
+                        }
+                    )
     return vulns
 
 
@@ -156,16 +148,12 @@ if not jobs_df.empty:
             job_data = _parse_variant(match)[0]
 
 all_vulns = _extract_vulns_from_job(job_data) if job_data else []
-filtered_vulns = [
-    v for v in all_vulns
-    if v["severity"].lower() in severity_filter
-    and (not agent_filter or v["agent"] in agent_filter)
-]
+filtered_vulns = [v for v in all_vulns if v["severity"].lower() in severity_filter and (not agent_filter or v["agent"] in agent_filter)]
 
 # ─── Tabs ─────────────────────────────────────────────────────────────────────
 
-tab_dash, tab_agents, tab_vulns, tab_compliance, tab_policies = st.tabs(
-    ["Dashboard", "Agents", "Vulnerabilities", "Compliance", "Policies"]
+tab_dash, tab_agents, tab_vulns, tab_compliance, tab_policies, tab_gov = st.tabs(
+    ["Dashboard", "Agents", "Vulnerabilities", "Compliance", "Policies", "Governance"]
 )
 
 # ── Tab 1: Dashboard ─────────────────────────────────────────────────────────
@@ -176,14 +164,8 @@ with tab_dash:
     result = job_data.get("result", {})
     agents = result.get("agents", [])
     total_servers = sum(len(a.get("mcp_servers", [])) for a in agents)
-    total_pkgs = sum(
-        len(s.get("packages", []))
-        for a in agents for s in a.get("mcp_servers", [])
-    )
-    total_creds = sum(
-        len(s.get("env_keys", []))
-        for a in agents for s in a.get("mcp_servers", [])
-    )
+    total_pkgs = sum(len(s.get("packages", [])) for a in agents for s in a.get("mcp_servers", []))
+    total_creds = sum(len(s.get("env_keys", [])) for a in agents for s in a.get("mcp_servers", []))
     kev_count = sum(1 for v in all_vulns if v.get("kev"))
 
     col1.metric("Agents", len(agents))
@@ -209,8 +191,10 @@ with tab_dash:
                 y="count",
                 color="severity",
                 color_discrete_map={
-                    "critical": "#dc2626", "high": "#f97316",
-                    "medium": "#eab308", "low": "#3b82f6",
+                    "critical": "#dc2626",
+                    "high": "#f97316",
+                    "medium": "#eab308",
+                    "low": "#3b82f6",
                 },
             )
             fig.update_layout(showlegend=False, height=300)
@@ -227,8 +211,10 @@ with tab_dash:
                     color="severity",
                     hover_data=["id", "package", "agent"],
                     color_discrete_map={
-                        "critical": "#dc2626", "high": "#f97316",
-                        "medium": "#eab308", "low": "#3b82f6",
+                        "critical": "#dc2626",
+                        "high": "#f97316",
+                        "medium": "#eab308",
+                        "low": "#3b82f6",
                     },
                 )
                 fig2.update_layout(height=300)
@@ -250,8 +236,10 @@ with tab_agents:
         # Color-code states
         def _state_badge(state: str) -> str:
             colors = {
-                "discovered": "🔵", "pending_review": "🟡",
-                "approved": "🟢", "quarantined": "🔴",
+                "discovered": "🔵",
+                "pending_review": "🟡",
+                "approved": "🟢",
+                "quarantined": "🔴",
                 "decommissioned": "⚫",
             }
             return f"{colors.get(state, '⚪')} {state}"
@@ -362,6 +350,97 @@ with tab_policies:
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("No audit entries yet.")
+
+# ── Tab 6: Governance ────────────────────────────────────────────────────────
+
+with tab_gov:
+    st.subheader("Governance Posture")
+
+    gov_left, gov_right = st.columns(2)
+
+    with gov_left:
+        st.markdown("#### Access Patterns")
+        try:
+            access_df = _query(
+                "SELECT role_name, COUNT(*) AS access_count, "
+                "       COUNT(DISTINCT direct_objects_accessed) AS objects_accessed "
+                "FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY "
+                "WHERE query_start_time >= DATEADD(day, -30, CURRENT_TIMESTAMP()) "
+                "GROUP BY role_name "
+                "ORDER BY access_count DESC "
+                "LIMIT 20"
+            )
+            if not access_df.empty:
+                st.dataframe(access_df, use_container_width=True, hide_index=True)
+            else:
+                st.info("No access history data available.")
+        except Exception:
+            st.info("ACCESS_HISTORY requires Enterprise edition or ACCOUNTADMIN.")
+
+    with gov_right:
+        st.markdown("#### Agent Usage")
+        try:
+            usage_df = _query(
+                "SELECT agent_name, COUNT(*) AS calls, "
+                "       SUM(total_tokens) AS total_tokens, "
+                "       SUM(credits_used) AS total_credits "
+                "FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_AGENT_USAGE_HISTORY "
+                "WHERE start_time >= DATEADD(day, -30, CURRENT_TIMESTAMP()) "
+                "GROUP BY agent_name "
+                "ORDER BY total_tokens DESC"
+            )
+            if not usage_df.empty:
+                st.dataframe(usage_df, use_container_width=True, hide_index=True)
+
+                fig = px.bar(
+                    usage_df,
+                    x="AGENT_NAME",
+                    y="TOTAL_TOKENS",
+                    color="TOTAL_CREDITS",
+                    labels={"AGENT_NAME": "Agent", "TOTAL_TOKENS": "Tokens"},
+                )
+                fig.update_layout(height=300, showlegend=False)
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No Cortex Agent usage data available.")
+        except Exception:
+            st.info("CORTEX_AGENT_USAGE_HISTORY requires Cortex Agents (GA Feb 2026).")
+
+    st.divider()
+
+    st.markdown("#### Elevated Privileges")
+    try:
+        grants_df = _query(
+            "SELECT grantee_name AS role, privilege, granted_on, name AS object_name "
+            "FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES "
+            "WHERE deleted_on IS NULL "
+            "  AND privilege IN ('OWNERSHIP', 'ALL', 'ALL PRIVILEGES', 'CREATE ROLE', "
+            "       'MANAGE GRANTS', 'CREATE USER') "
+            "ORDER BY grantee_name "
+            "LIMIT 50"
+        )
+        if not grants_df.empty:
+            st.dataframe(grants_df, use_container_width=True, hide_index=True)
+        else:
+            st.success("No elevated privilege grants found.")
+    except Exception:
+        st.info("GRANTS_TO_ROLES not accessible.")
+
+    st.markdown("#### Data Classifications")
+    try:
+        tags_df = _query(
+            "SELECT tag_name, tag_value, object_name, column_name "
+            "FROM SNOWFLAKE.ACCOUNT_USAGE.TAG_REFERENCES "
+            "WHERE tag_name ILIKE ANY ('%PII%', '%PHI%', '%SENSITIVE%', '%CONFIDENTIAL%') "
+            "ORDER BY object_name "
+            "LIMIT 50"
+        )
+        if not tags_df.empty:
+            st.dataframe(tags_df, use_container_width=True, hide_index=True)
+        else:
+            st.info("No PII/PHI/sensitive data classification tags found.")
+    except Exception:
+        st.info("TAG_REFERENCES not accessible.")
 
 # ─── Footer ──────────────────────────────────────────────────────────────────
 

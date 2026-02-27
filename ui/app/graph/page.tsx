@@ -1,382 +1,340 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ReactFlow,
   Background,
   Controls,
   MiniMap,
-  Handle,
   type Node,
   type Edge,
-  Position,
   MarkerType,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
   ShieldAlert,
-  Server,
-  Package,
-  Bug,
-  KeyRound,
-  Wrench,
   Loader2,
   AlertTriangle,
-  X,
-  ExternalLink,
 } from "lucide-react";
-import { api, type ScanJob, type ScanResult, severityColor } from "@/lib/api";
-
-// ─── Custom Node Component ───────────────────────────────────────────────────
-
-type NodeData = {
-  label: string;
-  type: "agent" | "server" | "package" | "vulnerability";
-  severity?: string;
-  meta?: string;
-  tools?: number;
-  credentials?: number;
-  vulnCount?: number;
-  agentStatus?: string;
-};
-
-function CustomNode({ data }: { data: NodeData }) {
-  const icons = {
-    agent: ShieldAlert,
-    server: Server,
-    package: Package,
-    vulnerability: Bug,
-  };
-  const colors = {
-    agent: data.agentStatus === "installed-not-configured"
-      ? "border-yellow-600 bg-yellow-950/80 border-dashed"
-      : "border-emerald-600 bg-emerald-950/80",
-    server: "border-blue-600 bg-blue-950/80",
-    package: "border-zinc-600 bg-zinc-900/80",
-    vulnerability: data.severity === "critical"
-      ? "border-red-600 bg-red-950/80"
-      : data.severity === "high"
-      ? "border-orange-600 bg-orange-950/80"
-      : data.severity === "medium"
-      ? "border-yellow-600 bg-yellow-950/80"
-      : "border-blue-600 bg-blue-950/80",
-  };
-  const Icon = icons[data.type];
-
-  const hasTarget = data.type !== "agent";
-  const hasSource = data.type !== "vulnerability";
-
-  return (
-    <div
-      className={`rounded-lg border-2 px-3 py-2 min-w-[140px] max-w-[200px] shadow-lg backdrop-blur ${colors[data.type]}`}
-    >
-      {hasTarget && (
-        <Handle type="target" position={Position.Left} className="!bg-zinc-500 !w-2 !h-2 !border-zinc-400" />
-      )}
-      <div className="flex items-center gap-1.5 mb-0.5">
-        <Icon className="w-3.5 h-3.5 shrink-0" />
-        <span className="text-xs font-semibold text-zinc-100 truncate">{data.label}</span>
-      </div>
-      {data.meta && (
-        <div className="text-[10px] text-zinc-400 truncate">{data.meta}</div>
-      )}
-      <div className="flex gap-2 mt-1">
-        {data.type === "server" && data.tools !== undefined && data.tools > 0 && (
-          <span className="flex items-center gap-0.5 text-[10px] text-zinc-500">
-            <Wrench className="w-2.5 h-2.5" /> {data.tools}
-          </span>
-        )}
-        {data.type === "server" && data.credentials !== undefined && data.credentials > 0 && (
-          <span className="flex items-center gap-0.5 text-[10px] text-amber-500">
-            <KeyRound className="w-2.5 h-2.5" /> {data.credentials}
-          </span>
-        )}
-        {data.type === "package" && data.vulnCount !== undefined && data.vulnCount > 0 && (
-          <span className="flex items-center gap-0.5 text-[10px] text-red-400">
-            <Bug className="w-2.5 h-2.5" /> {data.vulnCount} CVE{data.vulnCount > 1 ? "s" : ""}
-          </span>
-        )}
-        {data.type === "vulnerability" && data.severity && (
-          <span className={`text-[10px] px-1.5 py-0.5 rounded border font-mono uppercase ${severityColor(data.severity)}`}>
-            {data.severity}
-          </span>
-        )}
-      </div>
-      {hasSource && (
-        <Handle type="source" position={Position.Right} className="!bg-zinc-500 !w-2 !h-2 !border-zinc-400" />
-      )}
-    </div>
-  );
-}
-
-const nodeTypes = { custom: CustomNode };
+import { api, type ScanJob, type ScanResult } from "@/lib/api";
+import { applyDagreLayout } from "@/lib/dagre-layout";
+import { lineageNodeTypes, type LineageNodeData, type LineageNodeType } from "@/components/lineage-nodes";
+import { FilterPanel, DEFAULT_FILTERS, type FilterState } from "@/components/lineage-filter";
+import { LineageDetailPanel } from "@/components/lineage-detail";
 
 // ─── Graph Builder ───────────────────────────────────────────────────────────
 
-function buildGraph(result: ScanResult): { nodes: Node[]; edges: Edge[] } {
+function buildLineageGraph(
+  result: ScanResult,
+  filters: FilterState
+): { nodes: Node[]; edges: Edge[]; agentNames: string[] } {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
   const seen = new Set<string>();
+  const agentNames: string[] = [];
 
-  let agentY = 0;
+  // Collect vulnerable package keys for vulnOnly filter
+  const vulnPkgKeys = new Set<string>();
+  for (const agent of result.agents) {
+    for (const server of agent.mcp_servers) {
+      for (const pkg of server.packages) {
+        if (pkg.vulnerabilities && pkg.vulnerabilities.length > 0) {
+          vulnPkgKeys.add(`${pkg.name}@${pkg.version}`);
+        }
+      }
+    }
+  }
+
+  // Collect vulnerable server keys
+  const vulnServerKeys = new Set<string>();
+  for (const agent of result.agents) {
+    for (const server of agent.mcp_servers) {
+      for (const pkg of server.packages) {
+        if (vulnPkgKeys.has(`${pkg.name}@${pkg.version}`)) {
+          vulnServerKeys.add(`${agent.name}:${server.name}`);
+        }
+      }
+    }
+  }
 
   for (const agent of result.agents) {
+    agentNames.push(agent.name);
+
+    // Agent name filter
+    if (filters.agentName && agent.name !== filters.agentName) continue;
+
+    // Vuln-only: skip agents with no vulnerable servers
+    const agentHasVulns = agent.mcp_servers.some((s) =>
+      vulnServerKeys.has(`${agent.name}:${s.name}`)
+    );
+    if (filters.vulnOnly && !agentHasVulns) continue;
+
     const agentId = `agent:${agent.name}`;
-    if (seen.has(agentId)) continue;
-    seen.add(agentId);
 
-    nodes.push({
-      id: agentId,
-      type: "custom",
-      position: { x: 0, y: agentY },
-      sourcePosition: Position.Right,
-      targetPosition: Position.Left,
-      data: {
-        label: agent.name,
-        type: "agent",
-        meta: agent.agent_type,
-        agentStatus: agent.status,
-      },
-    });
+    if (filters.layers.agent && !seen.has(agentId)) {
+      seen.add(agentId);
+      const totalPkgs = agent.mcp_servers.reduce((s, srv) => s + srv.packages.length, 0);
+      const totalVulns = agent.mcp_servers.reduce(
+        (s, srv) => s + srv.packages.reduce((vs, p) => vs + (p.vulnerabilities?.length ?? 0), 0),
+        0
+      );
 
-    let serverY = agentY - ((agent.mcp_servers.length - 1) * 100) / 2;
+      nodes.push({
+        id: agentId,
+        type: "agentNode",
+        position: { x: 0, y: 0 },
+        data: {
+          label: agent.name,
+          nodeType: "agent",
+          agentType: agent.agent_type,
+          agentStatus: agent.status,
+          serverCount: agent.mcp_servers.length,
+          packageCount: totalPkgs,
+          vulnCount: totalVulns,
+        } satisfies LineageNodeData,
+      });
+    }
 
     for (const server of agent.mcp_servers) {
-      const serverId = `server:${agent.name}:${server.name}`;
-      if (!seen.has(serverId)) {
-        seen.add(serverId);
-        const credCount = server.env
-          ? Object.keys(server.env).filter((k) =>
-              /key|token|secret|password|credential|auth/i.test(k)
-            ).length
-          : 0;
+      const serverHasVulns = vulnServerKeys.has(`${agent.name}:${server.name}`);
+      if (filters.vulnOnly && !serverHasVulns) continue;
 
+      const serverId = `server:${agent.name}:${server.name}`;
+      const credKeys = server.env
+        ? Object.keys(server.env).filter((k) =>
+            /key|token|secret|password|credential|auth/i.test(k)
+          )
+        : [];
+
+      if (filters.layers.server && !seen.has(serverId)) {
+        seen.add(serverId);
         nodes.push({
           id: serverId,
-          type: "custom",
-          position: { x: 300, y: serverY },
-          sourcePosition: Position.Right,
-          targetPosition: Position.Left,
+          type: "serverNode",
+          position: { x: 0, y: 0 },
           data: {
             label: server.name,
-            type: "server",
-            meta: server.command || server.transport || "",
-            tools: server.tools?.length || 0,
-            credentials: credCount,
-          },
+            nodeType: "server",
+            command: server.command || server.transport || "",
+            toolCount: server.tools?.length ?? 0,
+            credentialCount: credKeys.length,
+          } satisfies LineageNodeData,
         });
       }
 
-      edges.push({
-        id: `${agentId}->${serverId}`,
-        source: agentId,
-        target: serverId,
-        type: "smoothstep",
-        animated: true,
-        style: { stroke: "#10b981", strokeWidth: 2 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
-      });
+      // Agent → Server edge
+      if (filters.layers.agent && filters.layers.server) {
+        const edgeId = `${agentId}->${serverId}`;
+        if (!seen.has(edgeId)) {
+          seen.add(edgeId);
+          edges.push({
+            id: edgeId,
+            source: agentId,
+            target: serverId,
+            type: "smoothstep",
+            animated: true,
+            style: { stroke: "#10b981", strokeWidth: 2 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
+          });
+        }
+      }
 
-      let pkgY = serverY - ((server.packages.length - 1) * 80) / 2;
+      // Credential nodes
+      if (filters.layers.credential && credKeys.length > 0) {
+        for (const cred of credKeys) {
+          const credId = `cred:${server.name}:${cred}`;
+          if (!seen.has(credId)) {
+            seen.add(credId);
+            nodes.push({
+              id: credId,
+              type: "credentialNode",
+              position: { x: 0, y: 0 },
+              data: {
+                label: cred,
+                nodeType: "credential",
+                serverName: server.name,
+              } satisfies LineageNodeData,
+            });
+          }
+          const credEdgeId = `${serverId}->${credId}`;
+          if (filters.layers.server && !seen.has(credEdgeId)) {
+            seen.add(credEdgeId);
+            edges.push({
+              id: credEdgeId,
+              source: serverId,
+              target: credId,
+              type: "smoothstep",
+              style: { stroke: "#f59e0b", strokeWidth: 1.5, strokeDasharray: "5 3" },
+              markerEnd: { type: MarkerType.ArrowClosed, color: "#f59e0b" },
+            });
+          }
+        }
+      }
 
+      // Tool nodes (limit to 8 per server to avoid clutter)
+      if (filters.layers.tool && server.tools && server.tools.length > 0) {
+        const displayTools = server.tools.slice(0, 8);
+        for (const tool of displayTools) {
+          const toolId = `tool:${server.name}:${tool.name}`;
+          if (!seen.has(toolId)) {
+            seen.add(toolId);
+            nodes.push({
+              id: toolId,
+              type: "toolNode",
+              position: { x: 0, y: 0 },
+              data: {
+                label: tool.name,
+                nodeType: "tool",
+                description: tool.description,
+              } satisfies LineageNodeData,
+            });
+          }
+          const toolEdgeId = `${serverId}->${toolId}`;
+          if (filters.layers.server && !seen.has(toolEdgeId)) {
+            seen.add(toolEdgeId);
+            edges.push({
+              id: toolEdgeId,
+              source: serverId,
+              target: toolId,
+              type: "smoothstep",
+              style: { stroke: "#a855f7", strokeWidth: 1 },
+              markerEnd: { type: MarkerType.ArrowClosed, color: "#a855f7" },
+            });
+          }
+        }
+      }
+
+      // Package nodes
       for (const pkg of server.packages) {
-        const pkgId = `pkg:${pkg.name}@${pkg.version}`;
-        if (!seen.has(pkgId)) {
-          seen.add(pkgId);
-          const vulnCount = pkg.vulnerabilities?.length || 0;
+        const pkgKey = `${pkg.name}@${pkg.version}`;
+        const pkgHasVulns = vulnPkgKeys.has(pkgKey);
+        if (filters.vulnOnly && !pkgHasVulns) continue;
 
+        const pkgId = `pkg:${pkgKey}`;
+        const vulnCount = pkg.vulnerabilities?.length ?? 0;
+
+        if (filters.layers.package && !seen.has(pkgId)) {
+          seen.add(pkgId);
           nodes.push({
             id: pkgId,
-            type: "custom",
-            position: { x: 600, y: pkgY },
-            sourcePosition: Position.Right,
-            targetPosition: Position.Left,
+            type: "packageNode",
+            position: { x: 0, y: 0 },
             data: {
-              label: `${pkg.name}@${pkg.version}`,
-              type: "package",
-              meta: pkg.ecosystem,
+              label: pkgKey,
+              nodeType: "package",
+              ecosystem: pkg.ecosystem,
+              version: pkg.version,
               vulnCount,
-            },
+            } satisfies LineageNodeData,
           });
+        }
 
-          // Vulnerability nodes
-          let vulnY = pkgY;
-          for (const vuln of pkg.vulnerabilities || []) {
-            const vulnId = `vuln:${vuln.id}`;
-            if (!seen.has(vulnId)) {
-              seen.add(vulnId);
-              nodes.push({
-                id: vulnId,
-                type: "custom",
-                position: { x: 900, y: vulnY },
-                targetPosition: Position.Left,
-                data: {
-                  label: vuln.id,
-                  type: "vulnerability",
-                  severity: vuln.severity,
-                  meta: vuln.cvss_score ? `CVSS ${vuln.cvss_score}` : undefined,
-                },
-              });
-            }
-
+        // Server → Package edge
+        if (filters.layers.server && filters.layers.package) {
+          const pkgEdgeId = `${serverId}->${pkgId}`;
+          if (!seen.has(pkgEdgeId)) {
+            seen.add(pkgEdgeId);
             edges.push({
-              id: `${pkgId}->${vulnId}`,
-              source: pkgId,
-              target: vulnId,
+              id: pkgEdgeId,
+              source: serverId,
+              target: pkgId,
               type: "smoothstep",
-              style: {
-                stroke: vuln.severity === "critical" ? "#ef4444" : vuln.severity === "high" ? "#f97316" : "#eab308",
-                strokeWidth: 2,
-              },
-              markerEnd: {
-                type: MarkerType.ArrowClosed,
-                color: vuln.severity === "critical" ? "#ef4444" : vuln.severity === "high" ? "#f97316" : "#eab308",
-              },
+              style: { stroke: "#3b82f6", strokeWidth: 1.5 },
+              markerEnd: { type: MarkerType.ArrowClosed, color: "#3b82f6" },
             });
-            vulnY += 70;
           }
         }
 
-        edges.push({
-          id: `${serverId}->${pkgId}`,
-          source: serverId,
-          target: pkgId,
-          type: "smoothstep",
-          style: { stroke: "#3b82f6", strokeWidth: 1.5 },
-          markerEnd: { type: MarkerType.ArrowClosed, color: "#3b82f6" },
-        });
+        // Vulnerability nodes
+        if (filters.layers.vulnerability && pkg.vulnerabilities) {
+          for (const vuln of pkg.vulnerabilities) {
+            // Severity filter
+            if (filters.severity && vuln.severity !== filters.severity) continue;
 
-        pkgY += 80;
+            const vulnId = `vuln:${vuln.id}`;
+            if (!seen.has(vulnId)) {
+              seen.add(vulnId);
+              // Find blast radius info
+              const br = result.blast_radius?.find((b) => b.vulnerability_id === vuln.id);
+              nodes.push({
+                id: vulnId,
+                type: "vulnNode",
+                position: { x: 0, y: 0 },
+                data: {
+                  label: vuln.id,
+                  nodeType: "vulnerability",
+                  severity: vuln.severity,
+                  cvssScore: vuln.cvss_score ?? br?.cvss_score,
+                  epssScore: vuln.epss_score ?? br?.epss_score,
+                  isKev: vuln.cisa_kev ?? br?.is_kev,
+                  fixedVersion: vuln.fixed_version ?? br?.fixed_version,
+                  owaspTags: br?.owasp_tags,
+                  atlasTags: br?.atlas_tags,
+                } satisfies LineageNodeData,
+              });
+            }
+
+            // Package → Vuln edge
+            if (filters.layers.package) {
+              const vulnEdgeId = `${pkgId}->${vulnId}`;
+              if (!seen.has(vulnEdgeId)) {
+                seen.add(vulnEdgeId);
+                const color =
+                  vuln.severity === "critical" ? "#ef4444" :
+                  vuln.severity === "high" ? "#f97316" :
+                  vuln.severity === "medium" ? "#eab308" : "#3b82f6";
+                // Thicker edges for higher blast radius
+                const brCount = result.blast_radius?.find((b) => b.vulnerability_id === vuln.id)?.affected_agents.length ?? 1;
+                edges.push({
+                  id: vulnEdgeId,
+                  source: pkgId,
+                  target: vulnId,
+                  type: "smoothstep",
+                  style: { stroke: color, strokeWidth: Math.min(1 + brCount, 4) },
+                  markerEnd: { type: MarkerType.ArrowClosed, color },
+                });
+              }
+            }
+          }
+        }
       }
-
-      serverY += 120;
     }
-
-    agentY += Math.max(agent.mcp_servers.length * 120, 200);
   }
 
-  return { nodes, edges };
+  return { nodes, edges, agentNames };
 }
 
-// ─── Detail Panel ─────────────────────────────────────────────────────────────
+// ─── Hover Highlighting ──────────────────────────────────────────────────────
 
-function DetailPanel({ data, onClose }: { data: NodeData; onClose: () => void }) {
-  const typeLabels = { agent: "Agent", server: "MCP Server", package: "Package", vulnerability: "Vulnerability" };
-  const typeColors = {
-    agent: "border-emerald-700",
-    server: "border-blue-700",
-    package: "border-zinc-700",
-    vulnerability: "border-red-700",
-  };
-
-  return (
-    <div className={`absolute right-0 top-0 bottom-0 w-80 bg-zinc-950/95 backdrop-blur-sm border-l ${typeColors[data.type]} z-50 overflow-y-auto`}>
-      <div className="p-4 space-y-4">
-        {/* Header */}
-        <div className="flex items-start justify-between">
-          <div>
-            <span className="text-[10px] uppercase tracking-wider text-zinc-500">{typeLabels[data.type]}</span>
-            <h3 className="text-sm font-semibold text-zinc-100 mt-0.5">{data.label}</h3>
-          </div>
-          <button onClick={onClose} className="p-1 text-zinc-500 hover:text-zinc-300 transition-colors">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {data.meta && (
-          <div className="text-xs text-zinc-400 font-mono">{data.meta}</div>
-        )}
-
-        {/* Agent details */}
-        {data.type === "agent" && (
-          <div className="space-y-2">
-            {data.agentStatus && (
-              <div className={`text-xs px-2 py-1 rounded border font-mono ${
-                data.agentStatus === "installed-not-configured"
-                  ? "border-yellow-800 bg-yellow-950 text-yellow-400"
-                  : "border-emerald-800 bg-emerald-950 text-emerald-400"
-              }`}>
-                {data.agentStatus === "installed-not-configured" ? "Not Configured" : "Configured"}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Server details */}
-        {data.type === "server" && (
-          <div className="space-y-2">
-            {data.tools !== undefined && data.tools > 0 && (
-              <div className="flex items-center gap-2 text-xs text-zinc-400">
-                <Wrench className="w-3 h-3" /> {data.tools} tool{data.tools !== 1 ? "s" : ""} available
-              </div>
-            )}
-            {data.credentials !== undefined && data.credentials > 0 && (
-              <div className="flex items-center gap-2 text-xs text-amber-400">
-                <KeyRound className="w-3 h-3" /> {data.credentials} credential{data.credentials !== 1 ? "s" : ""} exposed
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Package details */}
-        {data.type === "package" && (
-          <div className="space-y-2">
-            {data.vulnCount !== undefined && data.vulnCount > 0 ? (
-              <div className="flex items-center gap-2 text-xs text-red-400">
-                <Bug className="w-3 h-3" /> {data.vulnCount} vulnerability{data.vulnCount !== 1 ? "ies" : "y"}
-              </div>
-            ) : (
-              <div className="text-xs text-emerald-400">No known vulnerabilities</div>
-            )}
-          </div>
-        )}
-
-        {/* Vulnerability details */}
-        {data.type === "vulnerability" && (
-          <div className="space-y-2">
-            {data.severity && (
-              <span className={`text-xs px-2 py-1 rounded border font-mono uppercase ${severityColor(data.severity)}`}>
-                {data.severity}
-              </span>
-            )}
-            {data.meta && data.meta.startsWith("CVSS") && (
-              <div className="text-xs text-zinc-400">{data.meta}</div>
-            )}
-            <a
-              href={`https://osv.dev/vulnerability/${data.label}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 transition-colors"
-            >
-              <ExternalLink className="w-3 h-3" />
-              View on OSV
-            </a>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Tooltip ──────────────────────────────────────────────────────────────────
-
-function GraphTooltip({ x, y, data }: { x: number; y: number; data: NodeData }) {
-  return (
-    <div
-      className="fixed z-50 pointer-events-none bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 shadow-xl max-w-[200px]"
-      style={{ left: x + 12, top: y - 8 }}
-    >
-      <div className="text-xs font-semibold text-zinc-200 truncate">{data.label}</div>
-      {data.meta && <div className="text-[10px] text-zinc-500 truncate">{data.meta}</div>}
-      {data.type === "server" && data.tools !== undefined && data.tools > 0 && (
-        <div className="text-[10px] text-zinc-400 mt-1">{data.tools} tools</div>
-      )}
-      {data.type === "package" && data.vulnCount !== undefined && data.vulnCount > 0 && (
-        <div className="text-[10px] text-red-400 mt-1">{data.vulnCount} CVEs</div>
-      )}
-      <div className="text-[10px] text-zinc-600 mt-1">Click for details</div>
-    </div>
-  );
+function getConnectedIds(nodeId: string, edges: Edge[]): Set<string> {
+  const connected = new Set<string>([nodeId]);
+  // Walk outgoing
+  const queue = [nodeId];
+  const visited = new Set<string>([nodeId]);
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const e of edges) {
+      if (e.source === current && !visited.has(e.target)) {
+        visited.add(e.target);
+        connected.add(e.target);
+        queue.push(e.target);
+      }
+    }
+  }
+  // Walk incoming
+  const queue2 = [nodeId];
+  const visited2 = new Set<string>([nodeId]);
+  while (queue2.length > 0) {
+    const current = queue2.shift()!;
+    for (const e of edges) {
+      if (e.target === current && !visited2.has(e.source)) {
+        visited2.add(e.source);
+        connected.add(e.source);
+        queue2.push(e.source);
+      }
+    }
+  }
+  return connected;
 }
 
 // ─── Page ────────────────────────────────────────────────────────────────────
@@ -386,10 +344,10 @@ export default function GraphPage() {
   const [selectedJob, setSelectedJob] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedNode, setSelectedNode] = useState<NodeData | null>(null);
-  const [tooltip, setTooltip] = useState<{ x: number; y: number; data: NodeData } | null>(null);
+  const [selectedNode, setSelectedNode] = useState<LineageNodeData | null>(null);
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
 
-  // Load all completed jobs
   useEffect(() => {
     api
       .listJobs()
@@ -401,7 +359,7 @@ export default function GraphPage() {
               const full = await api.getScan(j.job_id);
               if (full.result) fullJobs.push(full);
             } catch {
-              // skip failed fetches
+              /* skip */
             }
           }
         }
@@ -417,10 +375,68 @@ export default function GraphPage() {
     [jobs, selectedJob]
   );
 
-  const { nodes, edges } = useMemo(
-    () => (activeResult ? buildGraph(activeResult) : { nodes: [], edges: [] }),
-    [activeResult]
+  const { rawNodes, rawEdges, agentNames } = useMemo(() => {
+    if (!activeResult) return { rawNodes: [], rawEdges: [], agentNames: [] };
+    const { nodes, edges, agentNames } = buildLineageGraph(activeResult, filters);
+    return { rawNodes: nodes, rawEdges: edges, agentNames };
+  }, [activeResult, filters]);
+
+  // Apply dagre layout
+  const { nodes: layoutNodes, edges: layoutEdges } = useMemo(
+    () =>
+      rawNodes.length > 0
+        ? applyDagreLayout(rawNodes, rawEdges, {
+            direction: "LR",
+            nodeWidth: 180,
+            nodeHeight: 60,
+            rankSep: 100,
+            nodeSep: 25,
+          })
+        : { nodes: [], edges: [] },
+    [rawNodes, rawEdges]
   );
+
+  // Apply hover highlighting
+  const connectedIds = useMemo(
+    () => (hoveredNodeId ? getConnectedIds(hoveredNodeId, layoutEdges) : null),
+    [hoveredNodeId, layoutEdges]
+  );
+
+  const displayNodes = useMemo(() => {
+    if (!connectedIds) return layoutNodes;
+    return layoutNodes.map((n) => ({
+      ...n,
+      data: {
+        ...n.data,
+        dimmed: !connectedIds.has(n.id),
+        highlighted: connectedIds.has(n.id),
+      },
+    }));
+  }, [layoutNodes, connectedIds]);
+
+  const displayEdges = useMemo(() => {
+    if (!connectedIds) return layoutEdges;
+    return layoutEdges.map((e) => ({
+      ...e,
+      style: {
+        ...e.style,
+        opacity: connectedIds.has(e.source) && connectedIds.has(e.target) ? 1 : 0.15,
+      },
+    }));
+  }, [layoutEdges, connectedIds]);
+
+  const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
+    setSelectedNode(node.data as LineageNodeData);
+    setHoveredNodeId(null);
+  }, []);
+
+  const onNodeMouseEnter = useCallback((_event: React.MouseEvent, node: Node) => {
+    setHoveredNodeId(node.id);
+  }, []);
+
+  const onNodeMouseLeave = useCallback(() => {
+    setHoveredNodeId(null);
+  }, []);
 
   if (loading) {
     return (
@@ -446,7 +462,7 @@ export default function GraphPage() {
       <div className="flex flex-col items-center justify-center h-[80vh] text-zinc-400 gap-3">
         <ShieldAlert className="w-8 h-8 text-zinc-600" />
         <p className="text-sm">No completed scans found</p>
-        <p className="text-xs text-zinc-500">Run a scan first to visualize the supply chain graph</p>
+        <p className="text-xs text-zinc-500">Run a scan first to visualize the lineage graph</p>
       </div>
     );
   }
@@ -456,13 +472,12 @@ export default function GraphPage() {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
         <div>
-          <h1 className="text-lg font-semibold text-zinc-100">Supply Chain Graph</h1>
+          <h1 className="text-lg font-semibold text-zinc-100">Lineage Graph</h1>
           <p className="text-xs text-zinc-500">
-            Agent → MCP Server → Package → CVE dependency chain
+            Agent → Server → Package → CVE · Credentials · Tools
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {/* Job selector */}
           <select
             value={selectedJob}
             onChange={(e) => setSelectedJob(e.target.value)}
@@ -474,73 +489,80 @@ export default function GraphPage() {
               </option>
             ))}
           </select>
-          {/* Legend */}
-          <div className="flex items-center gap-3 text-[10px] text-zinc-500">
+          <div className="flex items-center gap-2.5 text-[10px] text-zinc-500">
             <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded border-2 border-emerald-600 bg-emerald-950" /> Agent
+              <span className="w-2 h-2 rounded-full bg-emerald-500" /> Agent
             </span>
             <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded border-2 border-dashed border-yellow-600 bg-yellow-950" /> Not configured
+              <span className="w-2 h-2 rounded-full bg-blue-500" /> Server
             </span>
             <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded border-2 border-blue-600 bg-blue-950" /> Server
+              <span className="w-2 h-2 rounded-full bg-zinc-500" /> Package
             </span>
             <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded border-2 border-zinc-600 bg-zinc-900" /> Package
+              <span className="w-2 h-2 rounded-full bg-red-500" /> CVE
             </span>
             <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded border-2 border-red-600 bg-red-950" /> CVE
+              <span className="w-2 h-2 rounded-full bg-amber-500" /> Cred
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-purple-500" /> Tool
             </span>
           </div>
         </div>
       </div>
 
-      {/* Graph */}
-      <div className="flex-1 relative">
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={nodeTypes}
-          fitView
-          minZoom={0.1}
-          maxZoom={2}
-          defaultEdgeOptions={{ type: "smoothstep" }}
-          proOptions={{ hideAttribution: true }}
-          onNodeClick={(_event, node) => {
-            setSelectedNode(node.data as NodeData);
-            setTooltip(null);
-          }}
-          onNodeMouseEnter={(event, node) => {
-            setTooltip({ x: (event as unknown as MouseEvent).clientX, y: (event as unknown as MouseEvent).clientY, data: node.data as NodeData });
-          }}
-          onNodeMouseLeave={() => setTooltip(null)}
-          onPaneClick={() => setSelectedNode(null)}
-        >
-          <Background color="#27272a" gap={20} />
-          <Controls
-            className="!bg-zinc-900 !border-zinc-700 !rounded-lg [&>button]:!bg-zinc-800 [&>button]:!border-zinc-700 [&>button]:!text-zinc-300 [&>button:hover]:!bg-zinc-700"
-          />
-          <MiniMap
-            nodeColor={(n) => {
-              const d = n.data as NodeData;
-              if (d.type === "agent") return d.agentStatus === "installed-not-configured" ? "#eab308" : "#10b981";
-              if (d.type === "server") return "#3b82f6";
-              if (d.type === "vulnerability") return "#ef4444";
-              return "#52525b";
-            }}
-            className="!bg-zinc-900 !border-zinc-700 !rounded-lg"
-          />
-        </ReactFlow>
+      {/* Body: Filter + Graph + Detail */}
+      <div className="flex-1 flex relative overflow-hidden">
+        <FilterPanel
+          filters={filters}
+          onChange={setFilters}
+          agentNames={agentNames}
+        />
 
-        {/* Detail slide-over panel */}
-        {selectedNode && (
-          <DetailPanel data={selectedNode} onClose={() => setSelectedNode(null)} />
-        )}
+        <div className="flex-1 relative">
+          <ReactFlow
+            nodes={displayNodes}
+            edges={displayEdges}
+            nodeTypes={lineageNodeTypes}
+            fitView
+            minZoom={0.05}
+            maxZoom={2.5}
+            defaultEdgeOptions={{ type: "smoothstep" }}
+            proOptions={{ hideAttribution: true }}
+            onNodeClick={onNodeClick}
+            onNodeMouseEnter={onNodeMouseEnter}
+            onNodeMouseLeave={onNodeMouseLeave}
+            onPaneClick={() => { setSelectedNode(null); setHoveredNodeId(null); }}
+          >
+            <Background color="#27272a" gap={20} />
+            <Controls
+              className="!bg-zinc-900 !border-zinc-700 !rounded-lg [&>button]:!bg-zinc-800 [&>button]:!border-zinc-700 [&>button]:!text-zinc-300 [&>button:hover]:!bg-zinc-700"
+            />
+            <MiniMap
+              nodeColor={(n) => {
+                const d = n.data as LineageNodeData;
+                const colors: Record<LineageNodeType, string> = {
+                  agent: "#10b981",
+                  server: "#3b82f6",
+                  package: "#52525b",
+                  vulnerability: "#ef4444",
+                  credential: "#f59e0b",
+                  tool: "#a855f7",
+                };
+                return colors[d.nodeType] ?? "#52525b";
+              }}
+              className="!bg-zinc-900 !border-zinc-700 !rounded-lg"
+            />
+          </ReactFlow>
 
-        {/* Hover tooltip */}
-        {tooltip && !selectedNode && (
-          <GraphTooltip x={tooltip.x} y={tooltip.y} data={tooltip.data} />
-        )}
+          {selectedNode && (
+            <LineageDetailPanel
+              data={selectedNode}
+              onClose={() => setSelectedNode(null)}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

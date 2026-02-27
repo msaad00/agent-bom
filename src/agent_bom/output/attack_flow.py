@@ -49,10 +49,12 @@ def build_attack_flow(
         filtered = [br for br in filtered if br.get("severity", "").lower() == severity.lower()]
     if framework:
         filtered = [
-            br for br in filtered
+            br
+            for br in filtered
             if framework in br.get("owasp_tags", [])
             or framework in br.get("atlas_tags", [])
             or framework in br.get("nist_ai_rmf_tags", [])
+            or framework in br.get("owasp_mcp_tags", [])
         ]
     if agent_name:
         filtered = [br for br in filtered if agent_name in br.get("affected_agents", [])]
@@ -104,7 +106,7 @@ def build_attack_flow(
             # Scoped package like @scope/name@version
             at_idx = pkg_str.index("@", 1)
             pkg_name = pkg_str[:at_idx]
-            pkg_version = pkg_str[at_idx + 1:]
+            pkg_version = pkg_str[at_idx + 1 :]
         else:
             pkg_name = pkg_str
             pkg_version = ""
@@ -115,24 +117,27 @@ def build_attack_flow(
             seen_nodes.add(cve_id)
             unique_cves.add(vuln_id)
             severity_counts[sev] = severity_counts.get(sev, 0) + 1
-            nodes.append({
-                "id": cve_id,
-                "type": "attackFlowNode",
-                "position": {"x": _X_CVE, "y": y_cve},
-                "data": {
-                    "nodeType": "cve",
-                    "label": vuln_id,
-                    "severity": sev,
-                    "cvss_score": br.get("cvss_score"),
-                    "epss_score": br.get("epss_score"),
-                    "is_kev": br.get("is_kev", False),
-                    "risk_score": br.get("risk_score"),
-                    "fixed_version": br.get("fixed_version"),
-                    "owasp_tags": br.get("owasp_tags", []),
-                    "atlas_tags": br.get("atlas_tags", []),
-                    "nist_ai_rmf_tags": br.get("nist_ai_rmf_tags", []),
-                },
-            })
+            nodes.append(
+                {
+                    "id": cve_id,
+                    "type": "attackFlowNode",
+                    "position": {"x": _X_CVE, "y": y_cve},
+                    "data": {
+                        "nodeType": "cve",
+                        "label": vuln_id,
+                        "severity": sev,
+                        "cvss_score": br.get("cvss_score"),
+                        "epss_score": br.get("epss_score"),
+                        "is_kev": br.get("is_kev", False),
+                        "risk_score": br.get("risk_score"),
+                        "fixed_version": br.get("fixed_version"),
+                        "owasp_tags": br.get("owasp_tags", []),
+                        "atlas_tags": br.get("atlas_tags", []),
+                        "nist_ai_rmf_tags": br.get("nist_ai_rmf_tags", []),
+                        "owasp_mcp_tags": br.get("owasp_mcp_tags", []),
+                    },
+                }
+            )
             y_cve += _Y_SPACING
 
         # Package node
@@ -140,31 +145,35 @@ def build_attack_flow(
         if pkg_id not in seen_nodes:
             seen_nodes.add(pkg_id)
             unique_packages.add(pkg_str)
-            nodes.append({
-                "id": pkg_id,
-                "type": "attackFlowNode",
-                "position": {"x": _X_PACKAGE, "y": y_package},
-                "data": {
-                    "nodeType": "package",
-                    "label": pkg_name,
-                    "version": pkg_version,
-                    "ecosystem": ecosystem,
-                },
-            })
+            nodes.append(
+                {
+                    "id": pkg_id,
+                    "type": "attackFlowNode",
+                    "position": {"x": _X_PACKAGE, "y": y_package},
+                    "data": {
+                        "nodeType": "package",
+                        "label": pkg_name,
+                        "version": pkg_version,
+                        "ecosystem": ecosystem,
+                    },
+                }
+            )
             y_package += _Y_SPACING
 
         # CVE → Package edge
         edge_cp = f"e:{cve_id}->{pkg_id}"
         if edge_cp not in seen_nodes:
             seen_nodes.add(edge_cp)
-            edges.append({
-                "id": edge_cp,
-                "source": cve_id,
-                "target": pkg_id,
-                "type": "smoothstep",
-                "animated": True,
-                "style": {"stroke": _severity_color(sev)},
-            })
+            edges.append(
+                {
+                    "id": edge_cp,
+                    "source": cve_id,
+                    "target": pkg_id,
+                    "type": "smoothstep",
+                    "animated": True,
+                    "style": {"stroke": _severity_color(sev)},
+                }
+            )
 
         # Server nodes
         for srv_name in br.get("affected_servers", []):
@@ -172,28 +181,32 @@ def build_attack_flow(
             if srv_id not in seen_nodes:
                 seen_nodes.add(srv_id)
                 unique_servers.add(srv_name)
-                nodes.append({
-                    "id": srv_id,
-                    "type": "attackFlowNode",
-                    "position": {"x": _X_SERVER, "y": y_server},
-                    "data": {
-                        "nodeType": "server",
-                        "label": srv_name,
-                    },
-                })
+                nodes.append(
+                    {
+                        "id": srv_id,
+                        "type": "attackFlowNode",
+                        "position": {"x": _X_SERVER, "y": y_server},
+                        "data": {
+                            "nodeType": "server",
+                            "label": srv_name,
+                        },
+                    }
+                )
                 y_server += _Y_SPACING
 
             # Package → Server edge
             edge_ps = f"e:{pkg_id}->{srv_id}"
             if edge_ps not in seen_nodes:
                 seen_nodes.add(edge_ps)
-                edges.append({
-                    "id": edge_ps,
-                    "source": pkg_id,
-                    "target": srv_id,
-                    "type": "smoothstep",
-                    "style": {"stroke": "#3b82f6"},
-                })
+                edges.append(
+                    {
+                        "id": edge_ps,
+                        "source": pkg_id,
+                        "target": srv_id,
+                        "type": "smoothstep",
+                        "style": {"stroke": "#3b82f6"},
+                    }
+                )
 
         # Agent nodes
         for agent_nm in br.get("affected_agents", []):
@@ -202,17 +215,19 @@ def build_attack_flow(
                 seen_nodes.add(agent_id)
                 unique_agents.add(agent_nm)
                 agent_meta = agent_lookup.get(agent_nm, {})
-                nodes.append({
-                    "id": agent_id,
-                    "type": "attackFlowNode",
-                    "position": {"x": _X_AGENT, "y": y_agent},
-                    "data": {
-                        "nodeType": "agent",
-                        "label": agent_nm,
-                        "agent_type": agent_meta.get("agent_type", ""),
-                        "status": agent_meta.get("status", ""),
-                    },
-                })
+                nodes.append(
+                    {
+                        "id": agent_id,
+                        "type": "attackFlowNode",
+                        "position": {"x": _X_AGENT, "y": y_agent},
+                        "data": {
+                            "nodeType": "agent",
+                            "label": agent_nm,
+                            "agent_type": agent_meta.get("agent_type", ""),
+                            "status": agent_meta.get("status", ""),
+                        },
+                    }
+                )
                 y_agent += _Y_SPACING
 
             # Server → Agent edges (connect each affected server to this agent)
@@ -221,13 +236,15 @@ def build_attack_flow(
                 edge_sa = f"e:{srv_id}->{agent_id}"
                 if edge_sa not in seen_nodes:
                     seen_nodes.add(edge_sa)
-                    edges.append({
-                        "id": edge_sa,
-                        "source": srv_id,
-                        "target": agent_id,
-                        "type": "smoothstep",
-                        "style": {"stroke": "#10b981"},
-                    })
+                    edges.append(
+                        {
+                            "id": edge_sa,
+                            "source": srv_id,
+                            "target": agent_id,
+                            "type": "smoothstep",
+                            "style": {"stroke": "#10b981"},
+                        }
+                    )
 
         # Credential nodes
         for cred_name in br.get("exposed_credentials", []):
@@ -235,15 +252,17 @@ def build_attack_flow(
             if cred_id not in seen_nodes:
                 seen_nodes.add(cred_id)
                 unique_credentials.add(cred_name)
-                nodes.append({
-                    "id": cred_id,
-                    "type": "attackFlowNode",
-                    "position": {"x": _X_CREDENTIAL, "y": y_credential + _Y_BRANCH_OFFSET},
-                    "data": {
-                        "nodeType": "credential",
-                        "label": cred_name,
-                    },
-                })
+                nodes.append(
+                    {
+                        "id": cred_id,
+                        "type": "attackFlowNode",
+                        "position": {"x": _X_CREDENTIAL, "y": y_credential + _Y_BRANCH_OFFSET},
+                        "data": {
+                            "nodeType": "credential",
+                            "label": cred_name,
+                        },
+                    }
+                )
                 y_credential += _Y_SPACING
 
             # Server → Credential edges
@@ -252,14 +271,16 @@ def build_attack_flow(
                 edge_sc = f"e:{srv_id}->{cred_id}"
                 if edge_sc not in seen_nodes:
                     seen_nodes.add(edge_sc)
-                    edges.append({
-                        "id": edge_sc,
-                        "source": srv_id,
-                        "target": cred_id,
-                        "type": "smoothstep",
-                        "animated": True,
-                        "style": {"stroke": "#eab308"},
-                    })
+                    edges.append(
+                        {
+                            "id": edge_sc,
+                            "source": srv_id,
+                            "target": cred_id,
+                            "type": "smoothstep",
+                            "animated": True,
+                            "style": {"stroke": "#eab308"},
+                        }
+                    )
 
         # Tool nodes
         for tool_name in br.get("exposed_tools", br.get("reachable_tools", [])):
@@ -267,15 +288,17 @@ def build_attack_flow(
             if tool_id not in seen_nodes:
                 seen_nodes.add(tool_id)
                 unique_tools.add(tool_name)
-                nodes.append({
-                    "id": tool_id,
-                    "type": "attackFlowNode",
-                    "position": {"x": _X_TOOL, "y": y_tool + _Y_BRANCH_OFFSET * 2},
-                    "data": {
-                        "nodeType": "tool",
-                        "label": tool_name,
-                    },
-                })
+                nodes.append(
+                    {
+                        "id": tool_id,
+                        "type": "attackFlowNode",
+                        "position": {"x": _X_TOOL, "y": y_tool + _Y_BRANCH_OFFSET * 2},
+                        "data": {
+                            "nodeType": "tool",
+                            "label": tool_name,
+                        },
+                    }
+                )
                 y_tool += int(_Y_SPACING * 0.8)
 
             # Server → Tool edges
@@ -284,13 +307,15 @@ def build_attack_flow(
                 edge_st = f"e:{srv_id}->{tool_id}"
                 if edge_st not in seen_nodes:
                     seen_nodes.add(edge_st)
-                    edges.append({
-                        "id": edge_st,
-                        "source": srv_id,
-                        "target": tool_id,
-                        "type": "smoothstep",
-                        "style": {"stroke": "#a855f7"},
-                    })
+                    edges.append(
+                        {
+                            "id": edge_st,
+                            "source": srv_id,
+                            "target": tool_id,
+                            "type": "smoothstep",
+                            "style": {"stroke": "#a855f7"},
+                        }
+                    )
 
     return {
         "nodes": nodes,

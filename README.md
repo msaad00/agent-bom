@@ -213,6 +213,8 @@ agent-bom scan -f spdx -o ai-bom.spdx.json       # SPDX 3.0
 agent-bom scan -f sarif -o results.sarif           # GitHub Security tab
 agent-bom scan -f json -o ai-bom.json             # Full AI-BOM
 agent-bom scan -f html -o report.html              # Interactive dashboard
+agent-bom scan -f mermaid                          # Mermaid supply chain diagram
+agent-bom scan -f graph -o graph.json              # Cytoscape-compatible graph JSON
 ```
 
 ### Policy-as-code
@@ -334,13 +336,30 @@ agent-bom scan --model-files ./models
 </details>
 
 <details>
-<summary><b>Attack flow visualization</b></summary>
+<summary><b>Attack flow & supply chain visualization</b></summary>
 
-CLI attack flow tree, interactive HTML graphs (Cytoscape.js), per-CVE React Flow diagrams via REST API.
+Multiple visualization modes: CLI attack flow tree, Mermaid diagrams, interactive HTML (Cytoscape.js), React Flow graphs via REST API.
 
 ```bash
-agent-bom scan --aws -f graph -o graph.json   # export graph data
+agent-bom scan -f mermaid                              # supply chain diagram
+agent-bom scan -f mermaid --mermaid-mode attack-flow   # CVE blast radius
+agent-bom scan -f graph -o graph.json                  # Cytoscape-compatible JSON
+agent-bom scan -f html -o report.html                  # interactive HTML report
 ```
+
+Example Mermaid output:
+
+```mermaid
+graph TD
+    A["Cursor IDE"] --> S1["filesystem-server"]
+    A --> S2["github-server"]
+    S1 --> P1["@modelcontextprotocol/server-filesystem@2025.3.28"]
+    S2 --> P2["@modelcontextprotocol/server-github@2025.3.28"]
+    P1 -->|"GHSA-xxxx"| V1["CVE-2025-1234 CRITICAL"]
+    V1 -.->|"MCP04"| F1["Supply Chain Attack"]
+```
+
+The REST API (`agent-bom api`) serves interactive React Flow attack-flow graphs with OWASP LLM Top 10, OWASP MCP Top 10, and MITRE ATLAS framework tagging on every CVE node.
 
 </details>
 

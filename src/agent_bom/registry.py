@@ -98,7 +98,9 @@ def detect_version_drift(
     """Compare installed package versions against registry latest_version.
 
     Only checks packages that have resolved_from_registry=True.
-    Works offline — compares against local registry JSON.
+    Uses pkg.registry_version (if set) for comparison, otherwise falls
+    back to registry lookup.  Works offline — compares against local
+    registry JSON.
     """
     if registry is None:
         registry = _load_registry()
@@ -108,29 +110,35 @@ def detect_version_drift(
         if not pkg.resolved_from_registry:
             continue
 
-        # Find matching registry entry
-        entry = registry.get(pkg.name)
-        if not entry:
-            # Try matching by package field
-            for _key, ent in registry.items():
-                if ent.get("package") == pkg.name:
-                    entry = ent
-                    break
-        if not entry:
-            continue
+        # Prefer the registry_version stored on the Package (set during
+        # lookup_mcp_registry) so we compare actual installed vs. known latest.
+        latest = getattr(pkg, "registry_version", None) or ""
 
-        latest = entry.get("latest_version", "")
+        if not latest or latest in ("latest", "unknown"):
+            # Fall back to registry lookup
+            entry = registry.get(pkg.name)
+            if not entry:
+                for _key, ent in registry.items():
+                    if ent.get("package") == pkg.name:
+                        entry = ent
+                        break
+            if not entry:
+                continue
+            latest = entry.get("latest_version", "")
+
         if not latest or latest in ("latest", "unknown"):
             continue
 
         status = compare_versions(pkg.version, latest)
-        results.append(VersionDrift(
-            package=pkg.name,
-            ecosystem=pkg.ecosystem,
-            installed=pkg.version,
-            latest=latest,
-            status=status,
-        ))
+        results.append(
+            VersionDrift(
+                package=pkg.name,
+                ecosystem=pkg.ecosystem,
+                installed=pkg.version,
+                latest=latest,
+                status=status,
+            )
+        )
 
     return results
 
@@ -236,37 +244,45 @@ async def update_registry_versions(
                     if not dry_run:
                         entry["latest_version"] = new_version
                     result.updated += 1
-                    result.details.append({
-                        "package": pkg_name,
-                        "old": old_version,
-                        "new": new_version,
-                        "status": "updated",
-                    })
+                    result.details.append(
+                        {
+                            "package": pkg_name,
+                            "old": old_version,
+                            "new": new_version,
+                            "status": "updated",
+                        }
+                    )
                 elif new_version:
                     result.unchanged += 1
-                    result.details.append({
-                        "package": pkg_name,
-                        "old": old_version,
-                        "new": old_version,
-                        "status": "unchanged",
-                    })
+                    result.details.append(
+                        {
+                            "package": pkg_name,
+                            "old": old_version,
+                            "new": old_version,
+                            "status": "unchanged",
+                        }
+                    )
                 else:
                     result.failed += 1
-                    result.details.append({
+                    result.details.append(
+                        {
+                            "package": pkg_name,
+                            "old": old_version,
+                            "new": None,
+                            "status": "failed",
+                        }
+                    )
+            except Exception as exc:
+                logger.debug("Failed to resolve %s: %s", pkg_name, exc)
+                result.failed += 1
+                result.details.append(
+                    {
                         "package": pkg_name,
                         "old": old_version,
                         "new": None,
                         "status": "failed",
-                    })
-            except Exception as exc:
-                logger.debug("Failed to resolve %s: %s", pkg_name, exc)
-                result.failed += 1
-                result.details.append({
-                    "package": pkg_name,
-                    "old": old_version,
-                    "new": None,
-                    "status": "failed",
-                })
+                    }
+                )
 
     async with create_client(timeout=15.0) as client:
         tasks = [update_one(client, name, entry) for name, entry in servers.items()]
@@ -474,11 +490,13 @@ def enrich_registry_entries(dry_run: bool = False) -> EnrichResult:
 
         if enriched_fields:
             result.enriched += 1
-            result.details.append({
-                "server": name,
-                "fields_enriched": list(enriched_fields.keys()),
-                "values": enriched_fields,
-            })
+            result.details.append(
+                {
+                    "server": name,
+                    "fields_enriched": list(enriched_fields.keys()),
+                    "values": enriched_fields,
+                }
+            )
         else:
             result.skipped += 1
 

@@ -30,6 +30,25 @@ def _load_registry() -> dict:
     return _registry_cache
 
 
+def _extract_version_from_args(args: list[str]) -> str | None:
+    """Try to extract a pinned version from server command args.
+
+    Detects patterns like @1.2.3, ==1.2.3, or version flags.
+    """
+    for arg in args:
+        if arg.startswith("-"):
+            continue
+        # npm-style: @scope/package@1.2.3
+        m = re.search(r"@(\d+\.\d+[\w.-]*)\s*$", arg)
+        if m:
+            return m.group(1)
+        # pip-style: package==1.2.3
+        m = re.search(r"==(\d+\.\d+[\w.-]*)$", arg)
+        if m:
+            return m.group(1)
+    return None
+
+
 def lookup_mcp_registry(server: MCPServer) -> list[Package]:
     """Look up an MCP server's packages using the bundled registry.
 
@@ -37,7 +56,10 @@ def lookup_mcp_registry(server: MCPServer) -> list[Package]:
     1. Exact npm package name in args (e.g. @modelcontextprotocol/server-filesystem)
     2. command_patterns substring match against server name or args
 
-    Returns packages with pinned versions (not "latest") when the registry has them.
+    Preserves the registry's latest_version in registry_version for drift
+    comparison, and tries to detect the actual installed version from args.
+    If no installed version is detectable, version is set to "latest" so the
+    resolver can query npm/PyPI for the real current version.
     """
     registry = _load_registry()
     if not registry:
@@ -51,9 +73,20 @@ def lookup_mcp_registry(server: MCPServer) -> list[Package]:
             for pattern in patterns:
                 if pattern in candidate or candidate in pkg_name:
                     ecosystem = entry.get("ecosystem", "npm")
-                    version = entry.get("latest_version", "latest")
+                    registry_version = entry.get("latest_version", "latest")
                     risk_level = entry.get("risk_level")
                     verified = entry.get("verified", False)
+
+                    # Try to detect actual installed version from args
+                    detected_version = _extract_version_from_args(server.args)
+                    if detected_version:
+                        version = detected_version
+                        version_source = "detected"
+                    else:
+                        # Set to "latest" so resolver queries npm/PyPI
+                        # for the actual current version
+                        version = "latest"
+                        version_source = "registry_fallback"
 
                     # Log warnings for unverified or high-risk servers
                     if not verified:
@@ -67,14 +100,18 @@ def lookup_mcp_registry(server: MCPServer) -> list[Package]:
                             entry["package"],
                         )
 
-                    return [Package(
-                        name=entry["package"],
-                        version=version,
-                        ecosystem=ecosystem,
-                        purl=f"pkg:{ecosystem}/{entry['package']}@{version}",
-                        is_direct=True,
-                        resolved_from_registry=True,
-                    )]
+                    return [
+                        Package(
+                            name=entry["package"],
+                            version=version,
+                            ecosystem=ecosystem,
+                            purl=f"pkg:{ecosystem}/{entry['package']}@{version}",
+                            is_direct=True,
+                            resolved_from_registry=True,
+                            registry_version=registry_version,
+                            version_source=version_source,
+                        )
+                    ]
     return []
 
 
@@ -93,6 +130,7 @@ def get_registry_entry(server: MCPServer) -> dict | None:
                 if pattern in candidate or candidate in pkg_name:
                     return entry
     return None
+
 
 console = Console(stderr=True)
 logger = logging.getLogger(__name__)
@@ -161,13 +199,15 @@ def parse_npm_packages(directory: Path) -> list[Package]:
                     continue
 
                 version = info.get("version", "unknown")
-                packages.append(Package(
-                    name=clean_name,
-                    version=version,
-                    ecosystem="npm",
-                    purl=f"pkg:npm/{clean_name}@{version}",
-                    is_direct=clean_name in direct_deps,
-                ))
+                packages.append(
+                    Package(
+                        name=clean_name,
+                        version=version,
+                        ecosystem="npm",
+                        purl=f"pkg:npm/{clean_name}@{version}",
+                        is_direct=clean_name in direct_deps,
+                    )
+                )
         except (json.JSONDecodeError, KeyError):
             pass
 
@@ -178,13 +218,15 @@ def parse_npm_packages(directory: Path) -> list[Package]:
             for dep_type in ("dependencies", "devDependencies"):
                 for name, version_spec in pkg_data.get(dep_type, {}).items():
                     version = version_spec.lstrip("^~>=<")
-                    packages.append(Package(
-                        name=name,
-                        version=version,
-                        ecosystem="npm",
-                        purl=f"pkg:npm/{name}@{version}",
-                        is_direct=True,
-                    ))
+                    packages.append(
+                        Package(
+                            name=name,
+                            version=version,
+                            ecosystem="npm",
+                            purl=f"pkg:npm/{name}@{version}",
+                            is_direct=True,
+                        )
+                    )
         except (json.JSONDecodeError, KeyError):
             pass
 
@@ -203,26 +245,30 @@ def parse_pip_packages(directory: Path) -> list[Package]:
             if not line or line.startswith("#") or line.startswith("-"):
                 continue
             # Parse name==version, name>=version, etc.
-            match = re.match(r'^([a-zA-Z0-9_.-]+)\s*([=<>!~]+)\s*([a-zA-Z0-9_.*+-]+)', line)
+            match = re.match(r"^([a-zA-Z0-9_.-]+)\s*([=<>!~]+)\s*([a-zA-Z0-9_.*+-]+)", line)
             if match:
                 name, _, version = match.groups()
-                packages.append(Package(
-                    name=name,
-                    version=version,
-                    ecosystem="pypi",
-                    purl=f"pkg:pypi/{name}@{version}",
-                    is_direct=True,
-                ))
+                packages.append(
+                    Package(
+                        name=name,
+                        version=version,
+                        ecosystem="pypi",
+                        purl=f"pkg:pypi/{name}@{version}",
+                        is_direct=True,
+                    )
+                )
             else:
                 # Just a name, no version
-                name_match = re.match(r'^([a-zA-Z0-9_.-]+)', line)
+                name_match = re.match(r"^([a-zA-Z0-9_.-]+)", line)
                 if name_match:
-                    packages.append(Package(
-                        name=name_match.group(1),
-                        version="unknown",
-                        ecosystem="pypi",
-                        is_direct=True,
-                    ))
+                    packages.append(
+                        Package(
+                            name=name_match.group(1),
+                            version="unknown",
+                            ecosystem="pypi",
+                            is_direct=True,
+                        )
+                    )
 
     # Try Pipfile.lock
     pipfile_lock = directory / "Pipfile.lock"
@@ -233,13 +279,15 @@ def parse_pip_packages(directory: Path) -> list[Package]:
                 for name, info in lock_data.get(section, {}).items():
                     if isinstance(info, dict):
                         version = info.get("version", "").lstrip("=")
-                        packages.append(Package(
-                            name=name,
-                            version=version or "unknown",
-                            ecosystem="pypi",
-                            purl=f"pkg:pypi/{name}@{version}" if version else None,
-                            is_direct=section == "default",
-                        ))
+                        packages.append(
+                            Package(
+                                name=name,
+                                version=version or "unknown",
+                                ecosystem="pypi",
+                                purl=f"pkg:pypi/{name}@{version}" if version else None,
+                                is_direct=section == "default",
+                            )
+                        )
         except (json.JSONDecodeError, KeyError):
             pass
 
@@ -248,19 +296,22 @@ def parse_pip_packages(directory: Path) -> list[Package]:
     if pyproject.exists() and not packages:
         try:
             import toml
+
             proj_data = toml.loads(pyproject.read_text())
             deps = proj_data.get("project", {}).get("dependencies", [])
             for dep in deps:
-                match = re.match(r'^([a-zA-Z0-9_.-]+)\s*([=<>!~]+)\s*([a-zA-Z0-9_.*+-]+)', dep)
+                match = re.match(r"^([a-zA-Z0-9_.-]+)\s*([=<>!~]+)\s*([a-zA-Z0-9_.*+-]+)", dep)
                 if match:
                     name, _, version = match.groups()
-                    packages.append(Package(
-                        name=name,
-                        version=version,
-                        ecosystem="pypi",
-                        purl=f"pkg:pypi/{name}@{version}",
-                        is_direct=True,
-                    ))
+                    packages.append(
+                        Package(
+                            name=name,
+                            version=version,
+                            ecosystem="pypi",
+                            purl=f"pkg:pypi/{name}@{version}",
+                            is_direct=True,
+                        )
+                    )
         except Exception as e:
             logger.debug(f"Failed to parse pyproject.toml at {pyproject}: {e}")
 
@@ -282,13 +333,15 @@ def parse_go_packages(directory: Path) -> list[Package]:
                 key = (name, version)
                 if key not in seen:
                     seen.add(key)
-                    packages.append(Package(
-                        name=name,
-                        version=version,
-                        ecosystem="go",
-                        purl=f"pkg:golang/{name}@{version}",
-                        is_direct=True,
-                    ))
+                    packages.append(
+                        Package(
+                            name=name,
+                            version=version,
+                            ecosystem="go",
+                            purl=f"pkg:golang/{name}@{version}",
+                            is_direct=True,
+                        )
+                    )
 
     return packages
 
@@ -307,13 +360,15 @@ def parse_cargo_packages(directory: Path) -> list[Package]:
                 current_name = line.split('"')[1]
             elif line.startswith('version = "') and current_name:
                 current_version = line.split('"')[1]
-                packages.append(Package(
-                    name=current_name,
-                    version=current_version,
-                    ecosystem="cargo",
-                    purl=f"pkg:cargo/{current_name}@{current_version}",
-                    is_direct=True,
-                ))
+                packages.append(
+                    Package(
+                        name=current_name,
+                        version=current_version,
+                        ecosystem="cargo",
+                        purl=f"pkg:cargo/{current_name}@{current_version}",
+                        is_direct=True,
+                    )
+                )
                 current_name = None
                 current_version = None
 
@@ -330,17 +385,19 @@ def detect_npx_package(server: MCPServer) -> list[Package]:
         if arg.startswith("-"):
             continue
         # Parse @scope/package@version or package@version
-        match = re.match(r'^(@?[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)?)(?:@(.+))?$', arg)
+        match = re.match(r"^(@?[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)?)(?:@(.+))?$", arg)
         if match:
             name = match.group(1)
             version = match.group(2) or "latest"
-            packages.append(Package(
-                name=name,
-                version=version,
-                ecosystem="npm",
-                purl=f"pkg:npm/{name}@{version}",
-                is_direct=True,
-            ))
+            packages.append(
+                Package(
+                    name=name,
+                    version=version,
+                    ecosystem="npm",
+                    purl=f"pkg:npm/{name}@{version}",
+                    is_direct=True,
+                )
+            )
             break  # First non-flag arg is the package
 
     return packages
@@ -356,30 +413,34 @@ def detect_uvx_package(server: MCPServer) -> list[Package]:
     for i, arg in enumerate(args):
         if arg in ("run", "tool") and i + 1 < len(args):
             pkg_arg = args[i + 1]
-            match = re.match(r'^([a-zA-Z0-9_.-]+)(?:==(.+))?$', pkg_arg)
+            match = re.match(r"^([a-zA-Z0-9_.-]+)(?:==(.+))?$", pkg_arg)
             if match:
                 name = match.group(1)
                 version = match.group(2) or "latest"
-                packages.append(Package(
-                    name=name,
-                    version=version,
-                    ecosystem="pypi",
-                    purl=f"pkg:pypi/{name}@{version}",
-                    is_direct=True,
-                ))
+                packages.append(
+                    Package(
+                        name=name,
+                        version=version,
+                        ecosystem="pypi",
+                        purl=f"pkg:pypi/{name}@{version}",
+                        is_direct=True,
+                    )
+                )
             break
         elif not arg.startswith("-") and arg not in ("run", "tool"):
-            match = re.match(r'^([a-zA-Z0-9_.-]+)(?:==(.+))?$', arg)
+            match = re.match(r"^([a-zA-Z0-9_.-]+)(?:==(.+))?$", arg)
             if match:
                 name = match.group(1)
                 version = match.group(2) or "latest"
-                packages.append(Package(
-                    name=name,
-                    version=version,
-                    ecosystem="pypi",
-                    purl=f"pkg:pypi/{name}@{version}",
-                    is_direct=True,
-                ))
+                packages.append(
+                    Package(
+                        name=name,
+                        version=version,
+                        ecosystem="pypi",
+                        purl=f"pkg:pypi/{name}@{version}",
+                        is_direct=True,
+                    )
+                )
             break
 
     return packages
@@ -434,14 +495,12 @@ def extract_packages(
     if not packages:
         registry_packages = lookup_mcp_registry(server)
         if registry_packages:
-            console.print(
-                f"  [dim cyan]→ {server.name}: resolved from MCP registry "
-                f"({registry_packages[0].name})[/dim cyan]"
-            )
+            console.print(f"  [dim cyan]→ {server.name}: resolved from MCP registry ({registry_packages[0].name})[/dim cyan]")
             # Enrich server with permission profile from registry data
             entry = get_registry_entry(server)
             if entry:
                 from agent_bom.permissions import build_permission_profile
+
                 tool_names = entry.get("tools", [])
                 cred_vars = entry.get("credential_env_vars", [])
                 profile = build_permission_profile(
@@ -467,10 +526,7 @@ def extract_packages(
 
             mcp_reg_packages = official_registry_lookup_sync(server)
             if mcp_reg_packages:
-                console.print(
-                    f"  [dim blue]→ {server.name}: resolved from Official MCP Registry "
-                    f"({mcp_reg_packages[0].name})[/dim blue]"
-                )
+                console.print(f"  [dim blue]→ {server.name}: resolved from Official MCP Registry ({mcp_reg_packages[0].name})[/dim blue]")
             packages.extend(mcp_reg_packages)
         except Exception as exc:
             logger.debug("Official MCP Registry lookup failed for %s: %s", server.name, exc)
@@ -482,10 +538,7 @@ def extract_packages(
 
             smithery_packages = smithery_lookup_sync(server, token=smithery_token)
             if smithery_packages:
-                console.print(
-                    f"  [dim magenta]→ {server.name}: resolved from Smithery "
-                    f"({smithery_packages[0].name})[/dim magenta]"
-                )
+                console.print(f"  [dim magenta]→ {server.name}: resolved from Smithery ({smithery_packages[0].name})[/dim magenta]")
             packages.extend(smithery_packages)
         except Exception as exc:
             logger.debug("Smithery lookup failed for %s: %s", server.name, exc)

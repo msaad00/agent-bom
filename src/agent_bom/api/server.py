@@ -362,6 +362,58 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _sync_scan_agents_to_fleet(agents: list) -> None:
+    """Sync discovered agents from a scan into the fleet registry.
+
+    Creates new FleetAgent entries for previously unseen agents and updates
+    counts/trust scores for existing ones.  This ensures the fleet table is
+    always populated after every scan — closing the gap where scan_jobs had
+    data but fleet_agents stayed empty.
+    """
+    from agent_bom.api.fleet_store import FleetAgent, FleetLifecycleState
+    from agent_bom.fleet.trust_scoring import compute_trust_score
+
+    store = _get_fleet_store()
+    now = _now()
+
+    for agent in agents:
+        existing = store.get_by_name(agent.name)
+        server_count = len(agent.mcp_servers)
+        pkg_count = sum(len(s.packages) for s in agent.mcp_servers)
+        cred_count = sum(len(s.credential_names) for s in agent.mcp_servers)
+        vuln_count = sum(s.total_vulnerabilities for s in agent.mcp_servers)
+
+        score, factors = compute_trust_score(agent)
+
+        if existing:
+            existing.server_count = server_count
+            existing.package_count = pkg_count
+            existing.credential_count = cred_count
+            existing.vuln_count = vuln_count
+            existing.trust_score = score
+            existing.trust_factors = factors
+            existing.updated_at = now
+            store.put(existing)
+        else:
+            fleet_agent = FleetAgent(
+                agent_id=str(uuid.uuid4()),
+                name=agent.name,
+                agent_type=agent.agent_type.value if hasattr(agent.agent_type, "value") else str(agent.agent_type),
+                config_path=agent.config_path or "",
+                lifecycle_state=FleetLifecycleState.DISCOVERED,
+                trust_score=score,
+                trust_factors=factors,
+                server_count=server_count,
+                package_count=pkg_count,
+                credential_count=cred_count,
+                vuln_count=vuln_count,
+                last_discovery=now,
+                created_at=now,
+                updated_at=now,
+            )
+            store.put(fleet_agent)
+
+
 def _run_scan_sync(job: ScanJob) -> None:
     """Run the full scan pipeline in a thread (blocking). Updates job in-place."""
     job.status = JobStatus.RUNNING
@@ -525,6 +577,12 @@ def _run_scan_sync(job: ScanJob) -> None:
         job.result = report_json
         job.status = JobStatus.DONE
         job.progress.append("Scan complete.")
+
+        # Auto-sync discovered agents to fleet registry
+        try:
+            _sync_scan_agents_to_fleet(agents)
+        except Exception as fleet_exc:  # noqa: BLE001
+            job.progress.append(f"Fleet sync skipped: {fleet_exc}")
 
     except Exception as exc:  # noqa: BLE001
         job.status = JobStatus.FAILED

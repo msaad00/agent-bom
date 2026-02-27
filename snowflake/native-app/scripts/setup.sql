@@ -49,7 +49,48 @@ CREATE TABLE IF NOT EXISTS core.policy_audit_log (
 -- 4. Grant table access to app role
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA core TO APPLICATION ROLE app_user;
 
--- 5. Streamlit dashboard (default_streamlit in manifest)
+-- 5. Vulnerability view (flattens VARIANT JSON for fast queries)
+CREATE OR REPLACE VIEW core.vulnerabilities AS
+SELECT
+    j.job_id,
+    j.created_at AS scan_time,
+    a.value:name::VARCHAR AS agent_name,
+    s.value:name::VARCHAR AS server_name,
+    p.value:name::VARCHAR AS package_name,
+    p.value:version::VARCHAR AS package_version,
+    p.value:ecosystem::VARCHAR AS ecosystem,
+    v.value:id::VARCHAR AS vuln_id,
+    v.value:severity::VARCHAR AS severity,
+    v.value:cvss_score::FLOAT AS cvss_score,
+    v.value:epss_score::FLOAT AS epss_score,
+    v.value:is_kev::BOOLEAN AS is_kev,
+    v.value:fixed_version::VARCHAR AS fixed_version
+FROM core.scan_jobs j,
+    LATERAL FLATTEN(INPUT => j.data:agents, OUTER => TRUE) a,
+    LATERAL FLATTEN(INPUT => a.value:mcp_servers, OUTER => TRUE) s,
+    LATERAL FLATTEN(INPUT => s.value:packages, OUTER => TRUE) p,
+    LATERAL FLATTEN(INPUT => p.value:vulnerabilities, OUTER => TRUE) v
+WHERE j.status = 'done'
+  AND v.value:id IS NOT NULL;
+
+GRANT SELECT ON VIEW core.vulnerabilities TO APPLICATION ROLE app_user;
+
+-- 6. Cleanup stored procedure (removes completed jobs older than ttl_days)
+CREATE OR REPLACE PROCEDURE core.cleanup_old_jobs(ttl_days INT)
+    RETURNS VARCHAR
+    LANGUAGE SQL
+AS
+BEGIN
+    DELETE FROM core.scan_jobs
+    WHERE status IN ('done', 'failed')
+      AND completed_at IS NOT NULL
+      AND DATEDIFF(DAY, completed_at, CURRENT_TIMESTAMP()) > :ttl_days;
+    RETURN 'Cleanup complete';
+END;
+
+GRANT USAGE ON PROCEDURE core.cleanup_old_jobs(INT) TO APPLICATION ROLE app_user;
+
+-- 7. Streamlit dashboard (default_streamlit in manifest)
 CREATE STREAMLIT IF NOT EXISTS core.dashboard
     FROM 'streamlit'
     MAIN_FILE = 'dashboard.py';

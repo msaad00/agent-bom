@@ -18,13 +18,16 @@ from typing import Any
 
 from agent_bom.governance import (
     AccessRecord,
+    ActivityTimeline,
     AgentUsageRecord,
     DataClassification,
     GovernanceCategory,
     GovernanceFinding,
     GovernanceReport,
     GovernanceSeverity,
+    ObservabilityEvent,
     PrivilegeGrant,
+    QueryHistoryRecord,
 )
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
 
@@ -1277,3 +1280,258 @@ def _is_write_operation(obj: dict) -> bool:
     """Check if an ACCESS_HISTORY object was written to."""
     op = _infer_operation(obj)
     return op in ("INSERT", "UPDATE", "DELETE", "MERGE", "COPY")
+
+
+# ---------------------------------------------------------------------------
+# Activity Timeline — QUERY_HISTORY 365-day + AI_OBSERVABILITY_EVENTS
+# ---------------------------------------------------------------------------
+
+# Patterns in query_text that indicate agent/AI activity
+_AGENT_QUERY_PATTERNS: list[tuple[str, str]] = [
+    (r"\bCREATE\s+(OR\s+REPLACE\s+)?AGENT\b", "CREATE AGENT"),
+    (r"\bCREATE\s+(OR\s+REPLACE\s+)?MCP\s+SERVER\b", "CREATE MCP SERVER"),
+    (r"\bALTER\s+AGENT\b", "ALTER AGENT"),
+    (r"\bALTER\s+MCP\s+SERVER\b", "ALTER MCP SERVER"),
+    (r"\bDESCRIBE\s+AGENT\b", "DESCRIBE AGENT"),
+    (r"\bDESCRIBE\s+MCP\s+SERVER\b", "DESCRIBE MCP SERVER"),
+    (r"\bSHOW\s+AGENTS\b", "SHOW AGENTS"),
+    (r"\bSHOW\s+MCP\s+SERVERS\b", "SHOW MCP SERVERS"),
+    (r"\bCORTEX\b", "CORTEX"),
+    (r"\bSNOWFLAKE\.CORTEX\b", "CORTEX FUNCTION"),
+    (r"\bCORTEX_SEARCH\b", "CORTEX SEARCH"),
+    (r"\bSYSTEM\$EXECUTE_SQL\b", "SYSTEM_EXECUTE_SQL"),
+    (r"\bSNOWFLAKE\.ML\b", "ML FUNCTION"),
+]
+
+_COMPILED_PATTERNS = [(re.compile(p, re.IGNORECASE), label) for p, label in _AGENT_QUERY_PATTERNS]
+
+
+def discover_activity(
+    account: str | None = None,
+    user: str | None = None,
+    authenticator: str | None = None,
+    database: str | None = None,
+    schema: str | None = None,
+    days: int = 30,
+) -> ActivityTimeline:
+    """Reconstruct agent activity timeline from Snowflake telemetry.
+
+    Mines QUERY_HISTORY (up to 365 days via ACCOUNT_USAGE) for agent-related
+    queries and AI_OBSERVABILITY_EVENTS for full execution traces.
+
+    Args:
+        account: Snowflake account identifier.
+        user: Snowflake username.
+        authenticator: Auth method.
+        database: Default database context.
+        schema: Default schema context.
+        days: Look-back window (max 365 for QUERY_HISTORY via ACCOUNT_USAGE).
+
+    Returns:
+        ActivityTimeline with query history and observability events.
+    """
+    resolved_account = account or os.environ.get("SNOWFLAKE_ACCOUNT", "")
+    resolved_user = user or os.environ.get("SNOWFLAKE_USER", "")
+    timeline = ActivityTimeline(account=resolved_account)
+
+    if not resolved_account:
+        timeline.warnings.append("SNOWFLAKE_ACCOUNT not set.")
+        return timeline
+
+    try:
+        import snowflake.connector
+        from snowflake.connector.errors import DatabaseError  # noqa: F401
+    except ImportError:
+        from .base import CloudDiscoveryError
+
+        raise CloudDiscoveryError("snowflake-connector-python is required. Install with: pip install 'agent-bom[snowflake]'")
+
+    conn_kwargs: dict[str, Any] = {
+        "account": resolved_account,
+        "user": resolved_user,
+    }
+    if authenticator:
+        conn_kwargs["authenticator"] = authenticator
+    if database:
+        conn_kwargs["database"] = database
+    if schema:
+        conn_kwargs["schema"] = schema
+
+    if not authenticator:
+        password = os.environ.get("SNOWFLAKE_PASSWORD", "")
+        if password:
+            conn_kwargs["password"] = password
+        else:
+            conn_kwargs["authenticator"] = "externalbrowser"
+
+    try:
+        conn = snowflake.connector.connect(**conn_kwargs)
+    except (DatabaseError, Exception) as exc:
+        timeline.warnings.append(f"Could not connect to Snowflake: {exc}")
+        return timeline
+
+    try:
+        # 1. QUERY_HISTORY from ACCOUNT_USAGE (365-day lookback)
+        queries, qh_warns = _mine_query_history_365(conn, days)
+        timeline.query_history = queries
+        timeline.warnings.extend(qh_warns)
+
+        # 2. AI_OBSERVABILITY_EVENTS
+        events, ev_warns = _mine_observability_events(conn, days)
+        timeline.observability_events = events
+        timeline.warnings.extend(ev_warns)
+
+    finally:
+        conn.close()
+
+    return timeline
+
+
+def _mine_query_history_365(
+    conn: Any,
+    days: int,
+) -> tuple[list[QueryHistoryRecord], list[str]]:
+    """Mine SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY for agent-related queries.
+
+    ACCOUNT_USAGE.QUERY_HISTORY provides up to 365 days of history
+    (vs INFORMATION_SCHEMA which only has 7 days). Filters for queries
+    containing agent/MCP/Cortex keywords.
+    """
+    records: list[QueryHistoryRecord] = []
+    warnings: list[str] = []
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "SELECT query_id, query_text, user_name, role_name, "
+            "       start_time, end_time, execution_status, "
+            "       warehouse_name, database_name, schema_name, "
+            "       query_type, rows_produced, bytes_scanned, "
+            "       total_elapsed_time "
+            "FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY "
+            f"WHERE start_time >= DATEADD(day, -{min(days, 365)}, CURRENT_TIMESTAMP()) "  # nosec B608 — days is int
+            "  AND (query_text ILIKE '%AGENT%' "
+            "       OR query_text ILIKE '%MCP%SERVER%' "
+            "       OR query_text ILIKE '%CORTEX%' "
+            "       OR query_text ILIKE '%SNOWFLAKE.ML%' "
+            "       OR query_text ILIKE '%EXECUTE_SQL%') "
+            "ORDER BY start_time DESC "
+            "LIMIT 2000"
+        )
+        columns = [desc[0].lower() for desc in cursor.description] if cursor.description else []
+
+        for row in cursor.fetchall():
+            row_dict = dict(zip(columns, row))
+            query_text = str(row_dict.get("query_text", ""))
+
+            # Classify the query
+            is_agent, pattern = _classify_agent_query(query_text)
+
+            records.append(
+                QueryHistoryRecord(
+                    query_id=str(row_dict.get("query_id", "")),
+                    query_text=query_text,
+                    user_name=str(row_dict.get("user_name", "")),
+                    role_name=str(row_dict.get("role_name", "")),
+                    start_time=str(row_dict.get("start_time", "")),
+                    end_time=str(row_dict.get("end_time", "")),
+                    execution_status=str(row_dict.get("execution_status", "")),
+                    warehouse_name=str(row_dict.get("warehouse_name", "")),
+                    database_name=str(row_dict.get("database_name", "")),
+                    schema_name=str(row_dict.get("schema_name", "")),
+                    query_type=str(row_dict.get("query_type", "")),
+                    rows_produced=int(row_dict.get("rows_produced", 0) or 0),
+                    bytes_scanned=int(row_dict.get("bytes_scanned", 0) or 0),
+                    execution_time_ms=int(row_dict.get("total_elapsed_time", 0) or 0),
+                    is_agent_query=is_agent,
+                    agent_pattern=pattern,
+                )
+            )
+
+    except Exception as exc:
+        msg = str(exc)
+        if "query_history" in msg.lower():
+            warnings.append(
+                "ACCOUNT_USAGE.QUERY_HISTORY not accessible. Requires ACCOUNTADMIN or IMPORTED PRIVILEGES on SNOWFLAKE database."
+            )
+        else:
+            warnings.append(f"Could not query QUERY_HISTORY: {exc}")
+
+    finally:
+        cursor.close()
+
+    return records, warnings
+
+
+def _mine_observability_events(
+    conn: Any,
+    days: int,
+) -> tuple[list[ObservabilityEvent], list[str]]:
+    """Mine SNOWFLAKE.LOCAL.AI_OBSERVABILITY_EVENTS for agent execution traces.
+
+    Provides full execution traces including tool calls, LLM inferences,
+    and user feedback. Available when AI observability is enabled.
+    """
+    events: list[ObservabilityEvent] = []
+    warnings: list[str] = []
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "SELECT event_id, event_type, agent_name, timestamp, "
+            "       duration_ms, status, model_name, "
+            "       input_tokens, output_tokens, "
+            "       tool_name, tool_input, tool_output_summary, "
+            "       user_feedback, trace_id, parent_event_id "
+            "FROM TABLE(SNOWFLAKE.LOCAL.AI_OBSERVABILITY_EVENTS("
+            f"  INTERVAL => '{min(days, 365)} days'"  # nosec B608 — days is int
+            ")) "
+            "ORDER BY timestamp DESC "
+            "LIMIT 5000"
+        )
+        columns = [desc[0].lower() for desc in cursor.description] if cursor.description else []
+
+        for row in cursor.fetchall():
+            row_dict = dict(zip(columns, row))
+            events.append(
+                ObservabilityEvent(
+                    event_id=str(row_dict.get("event_id", "")),
+                    event_type=str(row_dict.get("event_type", "")),
+                    agent_name=str(row_dict.get("agent_name", "")),
+                    timestamp=str(row_dict.get("timestamp", "")),
+                    duration_ms=int(row_dict.get("duration_ms", 0) or 0),
+                    status=str(row_dict.get("status", "")),
+                    model_name=str(row_dict.get("model_name", "")),
+                    input_tokens=int(row_dict.get("input_tokens", 0) or 0),
+                    output_tokens=int(row_dict.get("output_tokens", 0) or 0),
+                    tool_name=str(row_dict.get("tool_name", "")),
+                    tool_input=str(row_dict.get("tool_input", ""))[:500],
+                    tool_output_summary=str(row_dict.get("tool_output_summary", ""))[:500],
+                    user_feedback=str(row_dict.get("user_feedback", "")),
+                    trace_id=str(row_dict.get("trace_id", "")),
+                    parent_event_id=str(row_dict.get("parent_event_id", "")),
+                )
+            )
+
+    except Exception as exc:
+        msg = str(exc)
+        if "ai_observability" in msg.lower() or "does not exist" in msg.lower():
+            warnings.append("AI_OBSERVABILITY_EVENTS not available. Enable AI observability in Snowflake to capture agent traces.")
+        else:
+            warnings.append(f"Could not query AI_OBSERVABILITY_EVENTS: {exc}")
+
+    finally:
+        cursor.close()
+
+    return events, warnings
+
+
+def _classify_agent_query(query_text: str) -> tuple[bool, str]:
+    """Classify a query as agent-related based on pattern matching.
+
+    Returns (is_agent_query, matched_pattern_label).
+    """
+    for pattern, label in _COMPILED_PATTERNS:
+        if pattern.search(query_text):
+            return True, label
+    return False, ""

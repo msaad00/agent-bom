@@ -21,6 +21,7 @@ Endpoints:
     GET  /v1/scorecard/{eco}/{pkg}     OpenSSF Scorecard lookup
     GET  /v1/governance                Snowflake governance report
     GET  /v1/governance/findings       governance findings (filtered)
+    GET  /v1/activity                  agent activity timeline
 """
 
 from __future__ import annotations
@@ -1936,5 +1937,32 @@ async def governance_findings(
             "count": len(findings),
             "warnings": report.warnings,
         }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ─── Activity Timeline ──────────────────────────────────────────────────────
+
+
+@app.get("/v1/activity", tags=["governance"])
+async def activity_timeline(days: int = 30):
+    """Agent activity timeline from Snowflake QUERY_HISTORY + AI_OBSERVABILITY_EVENTS.
+
+    Reconstructs agent execution history from 365-day query history
+    and AI observability traces.
+    """
+    import os as _os
+
+    if not _os.environ.get("SNOWFLAKE_ACCOUNT"):
+        raise HTTPException(
+            status_code=400,
+            detail="SNOWFLAKE_ACCOUNT env var not set. Activity requires Snowflake.",
+        )
+
+    try:
+        from agent_bom.cloud import discover_activity
+
+        timeline = discover_activity(provider="snowflake", days=days)
+        return timeline.to_dict()
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))

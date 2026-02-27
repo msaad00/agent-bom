@@ -545,6 +545,7 @@ export default function GraphPage() {
                 const colors: Record<LineageNodeType, string> = {
                   agent: "#10b981",
                   server: "#3b82f6",
+                  sharedServer: "#22d3ee",
                   package: "#52525b",
                   vulnerability: "#ef4444",
                   credential: "#f59e0b",

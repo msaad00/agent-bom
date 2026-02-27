@@ -13,6 +13,7 @@ export const DEFAULT_FILTERS: FilterState = {
   layers: {
     agent: true,
     server: true,
+    sharedServer: true,
     package: true,
     vulnerability: true,
     credential: true,

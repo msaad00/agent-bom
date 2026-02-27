@@ -14,6 +14,7 @@ import {
   Shield,
   Lock,
   Users,
+  Network,
 } from "lucide-react";
 import { api } from "@/lib/api";
 
@@ -26,6 +27,7 @@ const links = [
   { href: "/gateway",    label: "Gateway",     icon: Lock },
   { href: "/compliance", label: "Compliance",  icon: Shield },
   { href: "/graph",      label: "Graph",       icon: GitBranch },
+  { href: "/mesh",       label: "Mesh",        icon: Network },
   { href: "/registry",   label: "Registry",    icon: Library },
   { href: "/jobs",       label: "Jobs",        icon: ShieldAlert },
 ];

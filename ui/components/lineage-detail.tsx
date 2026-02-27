@@ -13,27 +13,30 @@ import {
 import { severityColor } from "@/lib/api";
 import type { LineageNodeData } from "./lineage-nodes";
 
-const TYPE_ICON = {
+const TYPE_ICON: Record<string, typeof ShieldAlert> = {
   agent: ShieldAlert,
   server: Server,
+  sharedServer: Server,
   package: Package,
   vulnerability: Bug,
   credential: KeyRound,
   tool: Wrench,
 };
 
-const TYPE_LABELS = {
+const TYPE_LABELS: Record<string, string> = {
   agent: "Agent",
   server: "MCP Server",
+  sharedServer: "Shared MCP Server",
   package: "Package",
   vulnerability: "Vulnerability",
   credential: "Credential",
   tool: "Tool",
 };
 
-const TYPE_BORDER = {
+const TYPE_BORDER: Record<string, string> = {
   agent: "border-emerald-700",
   server: "border-blue-700",
+  sharedServer: "border-cyan-700",
   package: "border-zinc-700",
   vulnerability: "border-red-700",
   credential: "border-amber-700",
@@ -114,6 +117,46 @@ export function LineageDetailPanel({
             )}
             {(data.credentialCount ?? 0) > 0 && (
               <Row label="Credentials" value={data.credentialCount!} className="text-amber-400" />
+            )}
+          </div>
+        )}
+
+        {/* Shared Server */}
+        {data.nodeType === "sharedServer" && (
+          <div className="space-y-3">
+            {data.sharedBy && (
+              <div className="text-xs px-2 py-1 rounded bg-cyan-900/60 text-cyan-300 border border-cyan-700 font-mono">
+                Shared by {data.sharedBy} agents
+              </div>
+            )}
+            {data.sharedAgents && data.sharedAgents.length > 0 && (
+              <div>
+                <Label>Connected Agents</Label>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {data.sharedAgents.map((a) => (
+                    <span key={a} className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">
+                      {a}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {data.command && (
+              <div>
+                <Label>Command</Label>
+                <div className="text-xs font-mono text-zinc-300 bg-zinc-900 rounded px-2 py-1 break-all">
+                  {data.command}
+                </div>
+              </div>
+            )}
+            {(data.toolCount ?? 0) > 0 && (
+              <Row label="Tools" value={data.toolCount!} />
+            )}
+            {(data.credentialCount ?? 0) > 0 && (
+              <Row label="Credentials" value={data.credentialCount!} className="text-amber-400" />
+            )}
+            {(data.packageCount ?? 0) > 0 && (
+              <Row label="Packages" value={data.packageCount!} />
             )}
           </div>
         )}

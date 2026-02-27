@@ -19,7 +19,8 @@ export type LineageNodeType =
   | "package"
   | "vulnerability"
   | "credential"
-  | "tool";
+  | "tool"
+  | "sharedServer";
 
 export type LineageNodeData = {
   label: string;
@@ -30,10 +31,12 @@ export type LineageNodeData = {
   serverCount?: number;
   packageCount?: number;
   vulnCount?: number;
-  // Server
+  // Server / Shared Server
   toolCount?: number;
   credentialCount?: number;
   command?: string;
+  sharedBy?: number;
+  sharedAgents?: string[];
   // Package
   ecosystem?: string;
   version?: string;
@@ -232,6 +235,47 @@ function ToolNode({ data }: { data: LineageNodeData }) {
   );
 }
 
+// ─── Shared Server Node ──────────────────────────────────────────────────────
+
+function SharedServerNode({ data }: { data: LineageNodeData }) {
+  return (
+    <div
+      className={`rounded-xl border-2 px-4 py-3 min-w-[170px] max-w-[240px] shadow-lg shadow-cyan-500/20 backdrop-blur border-cyan-400 bg-cyan-950/80 transition-opacity ${
+        data.dimmed ? "opacity-25" : ""
+      } ${data.highlighted ? "ring-2 ring-cyan-300" : ""}`}
+    >
+      <Handle type="target" position={Position.Left} className="!bg-cyan-400 !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Right} className="!bg-cyan-400 !w-2.5 !h-2.5" />
+      <div className="flex items-center gap-1.5 mb-1">
+        <Server className="w-4 h-4 text-cyan-300 shrink-0" />
+        <span className="text-xs font-bold text-cyan-100 truncate">{data.label}</span>
+      </div>
+      {data.sharedBy && data.sharedBy > 1 && (
+        <div className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-900/60 text-cyan-300 border border-cyan-700 font-mono inline-block mb-1">
+          Shared by {data.sharedBy} agents
+        </div>
+      )}
+      <div className="flex gap-2 mt-1">
+        {data.toolCount !== undefined && data.toolCount > 0 && (
+          <span className="flex items-center gap-0.5 text-[10px] text-purple-400">
+            <Wrench className="w-2.5 h-2.5" /> {data.toolCount}
+          </span>
+        )}
+        {data.credentialCount !== undefined && data.credentialCount > 0 && (
+          <span className="flex items-center gap-0.5 text-[10px] text-amber-400">
+            <KeyRound className="w-2.5 h-2.5" /> {data.credentialCount}
+          </span>
+        )}
+        {data.packageCount !== undefined && data.packageCount > 0 && (
+          <span className="flex items-center gap-0.5 text-[10px] text-zinc-400">
+            <Package className="w-2.5 h-2.5" /> {data.packageCount}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Node Types Map ──────────────────────────────────────────────────────────
 
 export const lineageNodeTypes = {
@@ -241,4 +285,5 @@ export const lineageNodeTypes = {
   vulnNode: VulnNode,
   credentialNode: CredentialNode,
   toolNode: ToolNode,
+  sharedServerNode: SharedServerNode,
 };

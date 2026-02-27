@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
-import { api, ScanJob, ScanResult, BlastRadius, formatDate, OWASP_LLM_TOP10, MITRE_ATLAS } from "@/lib/api";
+import { api, ScanJob, ScanResult, BlastRadius, Agent, formatDate, OWASP_LLM_TOP10, MITRE_ATLAS } from "@/lib/api";
+import { AgentTopology } from "@/components/agent-topology";
 import { SeverityBadge } from "@/components/severity-badge";
 import {
   ShieldAlert, Server, Package, Bug, Zap, ArrowRight, Clock,
@@ -127,7 +128,8 @@ function aggregateSources(jobs: ScanJob[]): ScanSource[] {
 
 export default function Dashboard() {
   const [jobs, setJobs] = useState<ScanJob[]>([]);
-  const [agents, setAgents] = useState<number>(0);
+  const [agentCount, setAgentCount] = useState<number>(0);
+  const [agentList, setAgentList] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState(false);
 
@@ -142,7 +144,8 @@ export default function Dashboard() {
           jobsRes.jobs.map((j) => api.getScan(j.job_id))
         );
         setJobs(fullJobs.sort((a, b) => b.created_at.localeCompare(a.created_at)));
-        setAgents(agentsRes.count);
+        setAgentCount(agentsRes.count);
+        setAgentList(agentsRes.agents);
       } catch {
         setApiError(true);
       } finally {
@@ -194,7 +197,7 @@ export default function Dashboard() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Security Posture</h1>
           <p className="text-zinc-400 text-sm mt-1">
-            Aggregated across {doneJobs.length} scan{doneJobs.length !== 1 ? "s" : ""} — {agents} agent{agents !== 1 ? "s" : ""} · {totalPackages} packages · {uniqueCVEs} unique CVEs
+            Aggregated across {doneJobs.length} scan{doneJobs.length !== 1 ? "s" : ""} — {agentCount} agent{agentCount !== 1 ? "s" : ""} · {totalPackages} packages · {uniqueCVEs} unique CVEs
           </p>
         </div>
         <Link
@@ -209,7 +212,7 @@ export default function Dashboard() {
       {/* Fleet stats */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <StatCard icon={Layers} label="Total scans" value={loading ? "—" : String(doneJobs.length)} color="zinc" />
-        <StatCard icon={Server} label="Agents" value={loading ? "—" : String(agents)} color="emerald" />
+        <StatCard icon={Server} label="Agents" value={loading ? "—" : String(agentCount)} color="emerald" />
         <StatCard icon={Package} label="Packages" value={loading ? "—" : String(totalPackages)} color="blue" />
         <StatCard icon={Bug} label="Unique CVEs" value={loading ? "—" : String(uniqueCVEs)} color="orange" />
         <StatCard icon={Zap} label="Critical" value={loading ? "—" : String(severity.critical)} color="red" />
@@ -221,6 +224,21 @@ export default function Dashboard() {
           <SeverityChart severity={severity} />
           <SourceBreakdown sources={sources} />
         </div>
+      )}
+
+      {/* Agent topology */}
+      {!loading && agentList.length > 0 && (
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest">
+              Agent Topology
+            </h2>
+            <Link href="/agents" className="text-xs text-emerald-500 hover:text-emerald-400 flex items-center gap-1">
+              View all <ArrowRight className="w-3 h-3" />
+            </Link>
+          </div>
+          <AgentTopology agents={agentList} />
+        </section>
       )}
 
       {/* Top vulnerable packages */}

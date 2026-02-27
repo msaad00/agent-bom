@@ -20,8 +20,8 @@ WORKDIR /app
 COPY pyproject.toml README.md LICENSE ./
 COPY src/ ./src/
 
-# Install agent-bom
-RUN pip install --no-cache-dir -e .
+# Install agent-bom with API extras
+RUN pip install --no-cache-dir -e ".[api]"
 
 # Create non-root user for least-privilege execution
 RUN addgroup --system abom && adduser --system --ingroup abom abom

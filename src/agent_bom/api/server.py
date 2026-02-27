@@ -1489,9 +1489,9 @@ async def sync_fleet():
     New agents → state=DISCOVERED. Existing agents → counts updated.
     Trust scores are recomputed for all synced agents.
     """
+    from agent_bom.api.fleet_store import FleetAgent, FleetLifecycleState
     from agent_bom.discovery import discover_all
     from agent_bom.fleet.trust_scoring import compute_trust_score
-    from agent_bom.api.fleet_store import FleetAgent, FleetLifecycleState
 
     discovered = discover_all()
     store = _get_fleet_store()

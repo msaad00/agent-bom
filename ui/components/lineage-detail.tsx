@@ -166,6 +166,15 @@ export function LineageDetailPanel({
           <div className="space-y-3">
             {data.ecosystem && <Row label="Ecosystem" value={data.ecosystem} />}
             {data.version && <Row label="Version" value={data.version} />}
+            {data.versionSource && (
+              <Row label="Version source" value={data.versionSource} />
+            )}
+            {data.registryVersion && data.registryVersion !== data.version && (
+              <div className="text-xs">
+                <span className="text-zinc-500">Registry latest: </span>
+                <span className="text-amber-400 font-mono">{data.registryVersion}</span>
+              </div>
+            )}
             {(data.vulnCount ?? 0) > 0 ? (
               <Row label="Vulnerabilities" value={data.vulnCount!} className="text-red-400" />
             ) : (

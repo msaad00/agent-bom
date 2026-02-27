@@ -24,12 +24,14 @@ console = Console()
 def print_summary(report: AIBOMReport) -> None:
     """Print a summary of the AI-BOM report to console."""
     console.print("\n")
-    console.print(Panel.fit(
-        f"[bold]AI-BOM Report[/bold]\n"
-        f"Generated: {report.generated_at.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
-        f"agent-bom v{report.tool_version}",
-        border_style="blue",
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold]AI-BOM Report[/bold]\n"
+            f"Generated: {report.generated_at.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
+            f"agent-bom v{report.tool_version}",
+            border_style="blue",
+        )
+    )
 
     # Summary stats
     table = Table(show_header=False, box=None, padding=(0, 2))
@@ -140,10 +142,7 @@ def print_posture_summary(report: AIBOMReport) -> None:
         lines.append("  [bold]Credentials[/bold]       None detected")
 
     # Privilege summary
-    elevated_servers = sum(
-        1 for a in report.agents for s in a.mcp_servers
-        if s.permission_profile and s.permission_profile.is_elevated
-    )
+    elevated_servers = sum(1 for a in report.agents for s in a.mcp_servers if s.permission_profile and s.permission_profile.is_elevated)
     if elevated_servers:
         lines.append(f"  [bold red]Privileges[/bold red]        {elevated_servers} server(s) with elevated privileges")
     else:
@@ -197,10 +196,7 @@ def print_posture_summary(report: AIBOMReport) -> None:
                     sev_parts.append(f"{info['sevs'][sev]} {sev.lower()}")
             kev_flag = ", [red bold]CISA KEV[/red bold]" if info["kev"] else ""
             agents_str = ", ".join(sorted(info["agents"]))
-            lines.append(
-                f"    {pkg_name} ({info['eco']})    "
-                f"{', '.join(sev_parts)}{kev_flag} — affects {agents_str}"
-            )
+            lines.append(f"    {pkg_name} ({info['eco']})    {', '.join(sev_parts)}{kev_flag} — affects {agents_str}")
 
     content = "\n".join(lines)
     console.print(Panel(content, border_style=border_style, padding=(1, 1)))
@@ -225,10 +221,7 @@ def print_agent_tree(report: AIBOMReport) -> None:
         if total_creds:
             stats_parts.append(f"{total_creds} credential{'s' if total_creds != 1 else ''}")
 
-        agent_tree = Tree(
-            f"\U0001f916 Agent: [bold]{agent.name}[/bold] ({agent.agent_type.value})"
-            f"{status_str}"
-        )
+        agent_tree = Tree(f"\U0001f916 Agent: [bold]{agent.name}[/bold] ({agent.agent_type.value}){status_str}")
         agent_tree.add(f"[dim]{agent.config_path}[/dim]")
         sep = " \u00b7 "
         agent_tree.add(f"[dim]{sep.join(stats_parts)}[/dim]")
@@ -267,8 +260,7 @@ def print_agent_tree(report: AIBOMReport) -> None:
                 transitive_pkgs = [p for p in server.packages if not p.is_direct]
 
                 pkg_branch = server_branch.add(
-                    f"\U0001f4e6 Packages ({len(server.packages)}) \u2014 "
-                    f"{len(direct_pkgs)} direct, {len(transitive_pkgs)} transitive"
+                    f"\U0001f4e6 Packages ({len(server.packages)}) \u2014 {len(direct_pkgs)} direct, {len(transitive_pkgs)} transitive"
                 )
 
                 # Show direct packages first
@@ -280,9 +272,7 @@ def print_agent_tree(report: AIBOMReport) -> None:
                     if pkg.scorecard_score is not None:
                         sc_color = "green" if pkg.scorecard_score >= 7.0 else "yellow" if pkg.scorecard_score >= 4.0 else "red"
                         sc_str = f" [{sc_color}]SC:{pkg.scorecard_score:.1f}[/{sc_color}]"
-                    pkg_branch.add(
-                        f"{pkg.name}@{pkg.version} [{pkg.ecosystem}]{sc_str}{vuln_str}"
-                    )
+                    pkg_branch.add(f"{pkg.name}@{pkg.version} [{pkg.ecosystem}]{sc_str}{vuln_str}")
 
                 # Show transitive packages grouped by depth (limit display)
                 if transitive_pkgs:
@@ -293,9 +283,7 @@ def print_agent_tree(report: AIBOMReport) -> None:
                             vuln_str = f" [red]({len(pkg.vulnerabilities)} vuln(s))[/red]"
                         indent = "  " * pkg.dependency_depth
                         parent_str = f" ← {pkg.parent_package}" if pkg.parent_package else ""
-                        transitive_branch.add(
-                            f"[dim]{indent}{pkg.name}@{pkg.version}{parent_str}{vuln_str}[/dim]"
-                        )
+                        transitive_branch.add(f"[dim]{indent}{pkg.name}@{pkg.version}{parent_str}{vuln_str}[/dim]")
                     if len(transitive_pkgs) > 20:
                         transitive_branch.add(f"[dim]...and {len(transitive_pkgs) - 20} more[/dim]")
 
@@ -366,10 +354,7 @@ def print_blast_radius(report: AIBOMReport) -> None:
         blast_display = "/".join(blast_parts) if blast_parts else "—"
 
         # Vulnerability: ID + package on two lines
-        vuln_display = (
-            f"{br.vulnerability.id}\n"
-            f"[dim]{br.package.name}@{br.package.version}[/dim]"
-        )
+        vuln_display = f"{br.vulnerability.id}\n[dim]{br.package.name}@{br.package.version}[/dim]"
 
         # Threats column: actual framework tag IDs per finding
         threat_lines = []
@@ -405,8 +390,7 @@ def print_blast_radius(report: AIBOMReport) -> None:
     console.print(table)
 
     if len(report.blast_radii) > 25:
-        console.print(f"\n  [dim]...and {len(report.blast_radii) - 25} more findings. "
-                       f"Use --output to export full report.[/dim]")
+        console.print(f"\n  [dim]...and {len(report.blast_radii) - 25} more findings. Use --output to export full report.[/dim]")
 
     # Verification sources — one link per unique CVE
     seen_ids: set[str] = set()
@@ -600,6 +584,7 @@ def print_threat_frameworks(report: AIBOMReport) -> None:
     # OWASP MCP Top 10 table
     if owasp_mcp_counts:
         from agent_bom.owasp_mcp import OWASP_MCP_TOP10
+
         mcp_table = Table(title="OWASP MCP Top 10", title_style="bold yellow", border_style="dim")
         mcp_table.add_column("Code", width=7, style="bold yellow")
         mcp_table.add_column("Risk", width=42)
@@ -631,12 +616,25 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
     """
     from collections import defaultdict
 
-    groups: dict[tuple, dict] = defaultdict(lambda: {
-        "package": "", "ecosystem": "", "current": "", "fix": None,
-        "vulns": [], "agents": set(), "creds": set(), "tools": set(),
-        "owasp": set(), "atlas": set(), "nist": set(), "owasp_mcp": set(),
-        "max_severity": Severity.NONE, "has_kev": False, "ai_risk": False,
-    })
+    groups: dict[tuple, dict] = defaultdict(
+        lambda: {
+            "package": "",
+            "ecosystem": "",
+            "current": "",
+            "fix": None,
+            "vulns": [],
+            "agents": set(),
+            "creds": set(),
+            "tools": set(),
+            "owasp": set(),
+            "atlas": set(),
+            "nist": set(),
+            "owasp_mcp": set(),
+            "max_severity": Severity.NONE,
+            "has_kev": False,
+            "ai_risk": False,
+        }
+    )
     severity_order = {Severity.CRITICAL: 4, Severity.HIGH: 3, Severity.MEDIUM: 2, Severity.LOW: 1, Severity.NONE: 0}
 
     for br in blast_radii:
@@ -671,9 +669,9 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
         g["owasp"] = sorted(g["owasp"])
         g["atlas"] = sorted(g["atlas"])
         g["nist"] = sorted(g["nist"])
+        g["owasp_mcp"] = sorted(g["owasp_mcp"])
         g["impact"] = (
-            len(g["agents"]) * 10 + len(g["creds"]) * 3 + len(g["vulns"])
-            + (5 if g["has_kev"] else 0) + (3 if g["ai_risk"] else 0)
+            len(g["agents"]) * 10 + len(g["creds"]) * 3 + len(g["vulns"]) + (5 if g["has_kev"] else 0) + (3 if g["ai_risk"] else 0)
         )
         plan.append(g)
 
@@ -705,8 +703,11 @@ def print_remediation_plan(report: AIBOMReport) -> None:
     console.print()
 
     sev_style = {
-        Severity.CRITICAL: "red bold", Severity.HIGH: "red",
-        Severity.MEDIUM: "yellow", Severity.LOW: "dim", Severity.NONE: "white",
+        Severity.CRITICAL: "red bold",
+        Severity.HIGH: "red",
+        Severity.MEDIUM: "yellow",
+        Severity.LOW: "dim",
+        Severity.NONE: "white",
     }
 
     if fixable:
@@ -744,8 +745,10 @@ def print_remediation_plan(report: AIBOMReport) -> None:
             if item["creds"]:
                 console.print(f"     [dim]credentials:[/dim]  [yellow]{', '.join(item['creds'])}[/yellow]")
             if item["tools"]:
-                console.print(f"     [dim]tools:[/dim]  {', '.join(item['tools'][:8])}"
-                              + (f" +{len(item['tools']) - 8} more" if len(item["tools"]) > 8 else ""))
+                console.print(
+                    f"     [dim]tools:[/dim]  {', '.join(item['tools'][:8])}"
+                    + (f" +{len(item['tools']) - 8} more" if len(item["tools"]) > 8 else "")
+                )
 
             # Threat framework tags
             tags = []
@@ -759,11 +762,13 @@ def print_remediation_plan(report: AIBOMReport) -> None:
                 console.print(f"     [dim]mitigates:[/dim]  {' '.join(tags)}")
 
             # Risk narrative — what happens if NOT fixed
-            console.print(f"     [dim red]⚠ if not fixed:[/dim red] "
-                          f"[dim]attacker exploiting {item['vulns'][0]} can reach "
-                          f"{'[yellow]' + ', '.join(item['creds'][:2]) + '[/yellow]' if item['creds'] else 'no credentials'} "
-                          f"via {', '.join(item['agents'][:2])}"
-                          f"{' through ' + ', '.join(item['tools'][:3]) if item['tools'] else ''}[/dim]")
+            console.print(
+                f"     [dim red]⚠ if not fixed:[/dim red] "
+                f"[dim]attacker exploiting {item['vulns'][0]} can reach "
+                f"{'[yellow]' + ', '.join(item['creds'][:2]) + '[/yellow]' if item['creds'] else 'no credentials'} "
+                f"via {', '.join(item['agents'][:2])}"
+                f"{' through ' + ', '.join(item['tools'][:3]) if item['tools'] else ''}[/dim]"
+            )
             console.print()
 
     if unfixable:
@@ -796,6 +801,7 @@ def print_export_hint(report: AIBOMReport) -> None:
         owasp_mcp_hit.update(br.owasp_mcp_tags)
 
     from agent_bom.owasp_mcp import OWASP_MCP_TOP10
+
     owasp_total = len(OWASP_LLM_TOP10)
     atlas_total = len(ATLAS_TECHNIQUES)
     nist_total = len(NIST_AI_RMF)
@@ -808,7 +814,9 @@ def print_export_hint(report: AIBOMReport) -> None:
         # OWASP bar
         owasp_pct = int(len(owasp_hit) / owasp_total * 100) if owasp_total else 0
         owasp_bar = _coverage_bar(len(owasp_hit), owasp_total, "purple")
-        lines.append(f"  [bold purple]OWASP LLM Top 10[/bold purple]  {owasp_bar}  [purple]{len(owasp_hit)}/{owasp_total}[/purple] ({owasp_pct}%)")
+        lines.append(
+            f"  [bold purple]OWASP LLM Top 10[/bold purple]  {owasp_bar}  [purple]{len(owasp_hit)}/{owasp_total}[/purple] ({owasp_pct}%)"
+        )
 
         # ATLAS bar
         atlas_pct = int(len(atlas_hit) / atlas_total * 100) if atlas_total else 0
@@ -823,7 +831,9 @@ def print_export_hint(report: AIBOMReport) -> None:
         # OWASP MCP bar
         owasp_mcp_pct = int(len(owasp_mcp_hit) / owasp_mcp_total * 100) if owasp_mcp_total else 0
         owasp_mcp_bar = _coverage_bar(len(owasp_mcp_hit), owasp_mcp_total, "yellow")
-        lines.append(f"  [bold yellow]OWASP MCP Top 10 [/bold yellow]  {owasp_mcp_bar}  [yellow]{len(owasp_mcp_hit)}/{owasp_mcp_total}[/yellow] ({owasp_mcp_pct}%)")
+        lines.append(
+            f"  [bold yellow]OWASP MCP Top 10 [/bold yellow]  {owasp_mcp_bar}  [yellow]{len(owasp_mcp_hit)}/{owasp_mcp_total}[/yellow] ({owasp_mcp_pct}%)"
+        )
 
         lines.append("")
 
@@ -889,27 +899,29 @@ def _build_remediation_json(report: AIBOMReport) -> list[dict]:
         n_agents = len(item["agents"])
         n_creds = len(item["creds"])
         n_tools = len(item["tools"])
-        result.append({
-            "package": item["package"],
-            "ecosystem": item["ecosystem"],
-            "current_version": item["current"],
-            "fixed_version": item["fix"],
-            "severity": item["max_severity"].value,
-            "is_kev": item["has_kev"],
-            "impact_score": item["impact"],
-            "vulnerabilities": item["vulns"],
-            "affected_agents": item["agents"],
-            "agents_pct": round(n_agents / total_agents * 100),
-            "exposed_credentials": item["creds"],
-            "credentials_pct": round(n_creds / total_creds * 100) if n_creds else 0,
-            "reachable_tools": item["tools"],
-            "tools_pct": round(n_tools / total_tools * 100) if n_tools else 0,
-            "owasp_tags": item["owasp"],
-            "atlas_tags": item["atlas"],
-            "nist_ai_rmf_tags": item["nist"],
-            "owasp_mcp_tags": item["owasp_mcp"],
-            "risk_narrative": _risk_narrative(item),
-        })
+        result.append(
+            {
+                "package": item["package"],
+                "ecosystem": item["ecosystem"],
+                "current_version": item["current"],
+                "fixed_version": item["fix"],
+                "severity": item["max_severity"].value,
+                "is_kev": item["has_kev"],
+                "impact_score": item["impact"],
+                "vulnerabilities": item["vulns"],
+                "affected_agents": item["agents"],
+                "agents_pct": round(n_agents / total_agents * 100),
+                "exposed_credentials": item["creds"],
+                "credentials_pct": round(n_creds / total_creds * 100) if n_creds else 0,
+                "reachable_tools": item["tools"],
+                "tools_pct": round(n_tools / total_tools * 100) if n_tools else 0,
+                "owasp_tags": item["owasp"],
+                "atlas_tags": item["atlas"],
+                "nist_ai_rmf_tags": item["nist"],
+                "owasp_mcp_tags": item["owasp_mcp"],
+                "risk_narrative": _risk_narrative(item),
+            }
+        )
     return result
 
 
@@ -1030,10 +1042,7 @@ def to_json(report: AIBOMReport) -> dict:
                         "mcp_version": server.mcp_version,
                         "has_credentials": server.has_credentials,
                         "credential_env_vars": server.credential_names,
-                        "tools": [
-                            {"name": t.name, "description": t.description}
-                            for t in server.tools
-                        ],
+                        "tools": [{"name": t.name, "description": t.description} for t in server.tools],
                         "packages": [
                             {
                                 "name": pkg.name,
@@ -1044,6 +1053,8 @@ def to_json(report: AIBOMReport) -> dict:
                                 "parent_package": pkg.parent_package,
                                 "dependency_depth": pkg.dependency_depth,
                                 "resolved_from_registry": pkg.resolved_from_registry,
+                                "version_source": pkg.version_source,
+                                "registry_version": pkg.registry_version,
                                 "scorecard_score": pkg.scorecard_score,
                                 "scorecard_checks": pkg.scorecard_checks or None,
                                 "vulnerabilities": [
@@ -1078,7 +1089,8 @@ def to_json(report: AIBOMReport) -> dict:
                                 "filesystem_write": server.permission_profile.filesystem_write,
                                 "shell_access": server.permission_profile.shell_access,
                             }
-                            if server.permission_profile else None
+                            if server.permission_profile
+                            else None
                         ),
                     }
                     for server in agent.mcp_servers
@@ -1171,18 +1183,20 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
         agent_ref = f"agent-{agent.name}"
         agent_deps = []
 
-        components.append({
-            "type": "application",
-            "bom-ref": agent_ref,
-            "name": agent.name,
-            "version": agent.version or "unknown",
-            "description": f"AI Agent ({agent.agent_type.value})",
-            "properties": [
-                {"name": "agent-bom:type", "value": "ai-agent"},
-                {"name": "agent-bom:config-path", "value": agent.config_path},
-                {"name": "agent-bom:status", "value": agent.status.value},
-            ],
-        })
+        components.append(
+            {
+                "type": "application",
+                "bom-ref": agent_ref,
+                "name": agent.name,
+                "version": agent.version or "unknown",
+                "description": f"AI Agent ({agent.agent_type.value})",
+                "properties": [
+                    {"name": "agent-bom:type", "value": "ai-agent"},
+                    {"name": "agent-bom:config-path", "value": agent.config_path},
+                    {"name": "agent-bom:status", "value": agent.status.value},
+                ],
+            }
+        )
 
         for server in agent.mcp_servers:
             server_ref = f"mcp-server-{server.name}-{comp_id}"
@@ -1195,17 +1209,17 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                 {"name": "agent-bom:transport", "value": server.transport.value},
             ]
             if server.has_credentials:
-                server_props.append({
-                    "name": "agent-bom:has-credentials", "value": "true"
-                })
+                server_props.append({"name": "agent-bom:has-credentials", "value": "true"})
 
-            components.append({
-                "type": "application",
-                "bom-ref": server_ref,
-                "name": server.name,
-                "description": f"MCP Server ({server.transport.value})",
-                "properties": server_props,
-            })
+            components.append(
+                {
+                    "type": "application",
+                    "bom-ref": server_ref,
+                    "name": server.name,
+                    "description": f"MCP Server ({server.transport.value})",
+                    "properties": server_props,
+                }
+            )
             agent_deps.append(server_ref)
 
             for pkg in server.packages:
@@ -1219,22 +1233,20 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                     {"name": "agent-bom:resolved-from-registry", "value": str(pkg.resolved_from_registry).lower()},
                 ]
                 if pkg.parent_package:
-                    pkg_properties.append({
-                        "name": "agent-bom:parent-package", "value": pkg.parent_package
-                    })
+                    pkg_properties.append({"name": "agent-bom:parent-package", "value": pkg.parent_package})
                 if pkg.scorecard_score is not None:
-                    pkg_properties.append({
-                        "name": "agent-bom:scorecard-score", "value": str(pkg.scorecard_score)
-                    })
+                    pkg_properties.append({"name": "agent-bom:scorecard-score", "value": str(pkg.scorecard_score)})
 
-                components.append({
-                    "type": "library",
-                    "bom-ref": pkg_ref,
-                    "name": pkg.name,
-                    "version": pkg.version,
-                    "purl": pkg.purl,
-                    "properties": pkg_properties,
-                })
+                components.append(
+                    {
+                        "type": "library",
+                        "bom-ref": pkg_ref,
+                        "name": pkg.name,
+                        "version": pkg.version,
+                        "purl": pkg.purl,
+                        "properties": pkg_properties,
+                    }
+                )
                 server_deps.append(pkg_ref)
                 bom_ref_map[f"{pkg.ecosystem}:{pkg.name}@{pkg.version}"] = pkg_ref
 
@@ -1248,15 +1260,19 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                         "affects": [{"ref": pkg_ref}],
                     }
                     if vuln.cvss_score:
-                        vuln_entry["ratings"].append({
-                            "score": vuln.cvss_score,
-                            "severity": vuln.severity.value,
-                            "method": "CVSSv3",
-                        })
+                        vuln_entry["ratings"].append(
+                            {
+                                "score": vuln.cvss_score,
+                                "severity": vuln.severity.value,
+                                "method": "CVSSv3",
+                            }
+                        )
                     else:
-                        vuln_entry["ratings"].append({
-                            "severity": vuln.severity.value,
-                        })
+                        vuln_entry["ratings"].append(
+                            {
+                                "severity": vuln.severity.value,
+                            }
+                        )
                     if vuln.fixed_version:
                         vuln_entry["recommendation"] = f"Upgrade to {vuln.fixed_version}"
                     vulnerabilities_cdx.append(vuln_entry)
@@ -1339,10 +1355,7 @@ def to_sarif(report: AIBOMReport) -> dict:
             rules.append(rule)
 
         affected = ", ".join(a.name for a in br.affected_agents)
-        message_text = (
-            f"{vuln.id} ({vuln.severity.value}) in {br.package.name}@{br.package.version}. "
-            f"Affects agents: {affected}."
-        )
+        message_text = f"{vuln.id} ({vuln.severity.value}) in {br.package.name}@{br.package.version}. Affects agents: {affected}."
         if vuln.fixed_version:
             message_text += f" Fix: upgrade to {vuln.fixed_version}."
 
@@ -1430,10 +1443,7 @@ def print_compact_summary(report: AIBOMReport) -> None:
     cred_names = sorted(set(cred_names))
 
     # Privilege count
-    elevated = sum(
-        1 for a in report.agents for s in a.mcp_servers
-        if s.permission_profile and s.permission_profile.is_elevated
-    )
+    elevated = sum(1 for a in report.agents for s in a.mcp_servers if s.permission_profile and s.permission_profile.is_elevated)
 
     lines = [
         f"  [bold]SECURITY POSTURE:[/bold]  {posture}",
@@ -1450,12 +1460,14 @@ def print_compact_summary(report: AIBOMReport) -> None:
     if elevated:
         lines.append(f"  [red]Privileges:[/red]  {elevated} server(s) elevated")
 
-    console.print(Panel(
-        "\n".join(lines),
-        title=f"[bold]AI-BOM Report[/bold]  v{report.tool_version}",
-        border_style=border_style,
-        padding=(0, 1),
-    ))
+    console.print(
+        Panel(
+            "\n".join(lines),
+            title=f"[bold]AI-BOM Report[/bold]  v{report.tool_version}",
+            border_style=border_style,
+            padding=(0, 1),
+        )
+    )
 
 
 def print_compact_agents(report: AIBOMReport) -> None:
@@ -1508,8 +1520,10 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 5) -> None:
     table.add_column("Fix", ratio=1)
 
     severity_colors = {
-        Severity.CRITICAL: "red bold", Severity.HIGH: "red",
-        Severity.MEDIUM: "yellow", Severity.LOW: "dim",
+        Severity.CRITICAL: "red bold",
+        Severity.HIGH: "red",
+        Severity.MEDIUM: "yellow",
+        Severity.LOW: "dim",
     }
 
     for br in report.blast_radii[:limit]:
@@ -1551,8 +1565,11 @@ def print_compact_remediation(report: AIBOMReport, limit: int = 3) -> None:
     console.print(f"  [bold]{title}[/bold]")
 
     sev_style = {
-        Severity.CRITICAL: "red bold", Severity.HIGH: "red",
-        Severity.MEDIUM: "yellow", Severity.LOW: "dim", Severity.NONE: "white",
+        Severity.CRITICAL: "red bold",
+        Severity.HIGH: "red",
+        Severity.MEDIUM: "yellow",
+        Severity.LOW: "dim",
+        Severity.NONE: "white",
     }
 
     for i, item in enumerate(fixable[:limit], 1):
@@ -1578,8 +1595,7 @@ def print_compact_export_hint(report: AIBOMReport) -> None:
         f"[bold]{report.total_vulnerabilities} vulns[/bold]",
         "",
         "  [green]agent-bom scan -f[/green] json | cyclonedx | sarif | spdx | html",
-        "  [green]agent-bom serve[/green]  [dim]API + dashboard[/dim]    "
-        "[green]--verbose[/green]  [dim]full tree & details[/dim]",
+        "  [green]agent-bom serve[/green]  [dim]API + dashboard[/dim]    [green]--verbose[/green]  [dim]full tree & details[/dim]",
     ]
     console.print(Panel("\n".join(lines), border_style="blue", padding=(0, 1)))
 
@@ -1593,8 +1609,7 @@ def print_diff(diff: dict) -> None:
     baseline_ts = diff["baseline_generated_at"]
     current_ts = diff["current_generated_at"]
 
-    console.print(f"\n[bold blue]📊 Scan Diff[/bold blue]  "
-                  f"[dim]{baseline_ts}[/dim] → [dim]{current_ts}[/dim]\n")
+    console.print(f"\n[bold blue]📊 Scan Diff[/bold blue]  [dim]{baseline_ts}[/dim] → [dim]{current_ts}[/dim]\n")
 
     parts = []
     if summary["new_findings"]:
@@ -1615,8 +1630,10 @@ def print_diff(diff: dict) -> None:
         return
 
     severity_styles = {
-        "CRITICAL": "red bold", "HIGH": "red",
-        "MEDIUM": "yellow", "LOW": "dim",
+        "CRITICAL": "red bold",
+        "HIGH": "red",
+        "MEDIUM": "yellow",
+        "LOW": "dim",
     }
 
     if diff["new"]:
@@ -1628,8 +1645,7 @@ def print_diff(diff: dict) -> None:
             ai = " [magenta][AI-RISK][/magenta]" if br.get("ai_risk_context") else ""
             fix = f" → fix: {br['fixed_version']}" if br.get("fixed_version") else " (no fix)"
             console.print(
-                f"    [+] [{style}]{br.get('vulnerability_id', '?')}[/{style}]  "
-                f"{br.get('package', '?')}  [{sev}]{kev}{ai}[dim]{fix}[/dim]"
+                f"    [+] [{style}]{br.get('vulnerability_id', '?')}[/{style}]  {br.get('package', '?')}  [{sev}]{kev}{ai}[dim]{fix}[/dim]"
             )
         if len(diff["new"]) > 20:
             console.print(f"    [dim]...and {len(diff['new']) - 20} more[/dim]")
@@ -1638,10 +1654,7 @@ def print_diff(diff: dict) -> None:
     if diff["resolved"]:
         console.print(f"  [green]Resolved findings ({len(diff['resolved'])}):[/green]")
         for br in diff["resolved"][:10]:
-            console.print(
-                f"    [-] [dim]{br.get('vulnerability_id', '?')}  "
-                f"{br.get('package', '?')}[/dim]"
-            )
+            console.print(f"    [-] [dim]{br.get('vulnerability_id', '?')}  {br.get('package', '?')}[/dim]")
         console.print()
 
     if diff["new_packages"]:
@@ -1673,10 +1686,7 @@ def print_policy_results(policy_result: dict) -> None:
     if warnings:
         console.print(f"  [yellow]⚠ {len(warnings)} warning(s):[/yellow]")
         for v in warnings[:10]:
-            console.print(
-                f"    [yellow]WARN[/yellow]  [{v['rule_id']}]  "
-                f"{v['vulnerability_id']}  {v['package']}  [{v['severity']}]"
-            )
+            console.print(f"    [yellow]WARN[/yellow]  [{v['rule_id']}]  {v['vulnerability_id']}  {v['package']}  [{v['severity']}]")
             console.print(f"           [dim]{v['rule_description']}[/dim]")
         console.print()
 
@@ -1686,8 +1696,7 @@ def print_policy_results(policy_result: dict) -> None:
             kev = " [red bold][KEV][/red bold]" if v.get("is_kev") else ""
             ai = " [magenta][AI-RISK][/magenta]" if v.get("ai_risk_context") else ""
             console.print(
-                f"    [red bold]FAIL[/red bold]  [{v['rule_id']}]  "
-                f"{v['vulnerability_id']}  {v['package']}  [{v['severity']}]{kev}{ai}"
+                f"    [red bold]FAIL[/red bold]  [{v['rule_id']}]  {v['vulnerability_id']}  {v['package']}  [{v['severity']}]{kev}{ai}"
             )
             console.print(f"           [dim]{v['rule_description']}[/dim]")
         if len(failures) > 10:
@@ -1734,11 +1743,7 @@ def print_severity_chart(report: AIBOMReport) -> None:
         bar = "█" * bar_len
         style = styles[sev]
         pct = int(100 * count / total) if total else 0
-        console.print(
-            f"  [{style}]{sev:8}[/{style}]  "
-            f"[{style}]{bar:<{bar_width}}[/{style}]  "
-            f"[dim]{count:3} ({pct}%)[/dim]"
-        )
+        console.print(f"  [{style}]{sev:8}[/{style}]  [{style}]{bar:<{bar_width}}[/{style}]  [dim]{count:3} ({pct}%)[/dim]")
     console.print()
 
 
@@ -1818,13 +1823,15 @@ def to_spdx(report: AIBOMReport) -> dict:
                 server_element["versionInfo"] = server.mcp_version
             elements.append(server_element)
 
-            relationships.append({
-                "type": "Relationship",
-                "spdxId": _next_id("SPDXRef-Rel"),
-                "relationshipType": "CONTAINS",
-                "from": agent_id,
-                "to": [server_id],
-            })
+            relationships.append(
+                {
+                    "type": "Relationship",
+                    "spdxId": _next_id("SPDXRef-Rel"),
+                    "relationshipType": "CONTAINS",
+                    "from": agent_id,
+                    "to": [server_id],
+                }
+            )
 
             for pkg in server.packages:
                 pkg_key = f"{pkg.ecosystem}:{pkg.name}@{pkg.version}"
@@ -1840,19 +1847,19 @@ def to_spdx(report: AIBOMReport) -> dict:
                         "primaryPurpose": "LIBRARY",
                     }
                     if pkg.purl:
-                        pkg_element["externalIdentifier"] = [
-                            {"type": "PackageURL", "identifier": pkg.purl}
-                        ]
+                        pkg_element["externalIdentifier"] = [{"type": "PackageURL", "identifier": pkg.purl}]
                     elements.append(pkg_element)
 
                 pkg_id = pkg_ref_map[pkg_key]
-                relationships.append({
-                    "type": "Relationship",
-                    "spdxId": _next_id("SPDXRef-Rel"),
-                    "relationshipType": "DEPENDS_ON",
-                    "from": server_id,
-                    "to": [pkg_id],
-                })
+                relationships.append(
+                    {
+                        "type": "Relationship",
+                        "spdxId": _next_id("SPDXRef-Rel"),
+                        "relationshipType": "DEPENDS_ON",
+                        "from": server_id,
+                        "to": [pkg_id],
+                    }
+                )
 
                 # Security relationships for each vulnerability
                 for vuln in pkg.vulnerabilities:
@@ -1862,9 +1869,7 @@ def to_spdx(report: AIBOMReport) -> dict:
                         "spdxId": vuln_element_id,
                         "name": vuln.id,
                         "description": vuln.summary or "",
-                        "externalIdentifier": [{"type": "cve", "identifier": vuln.id}]
-                        if vuln.id.startswith("CVE-")
-                        else [],
+                        "externalIdentifier": [{"type": "cve", "identifier": vuln.id}] if vuln.id.startswith("CVE-") else [],
                     }
                     if vuln.cvss_score is not None:
                         vuln_element["assessedElement"] = pkg_id
@@ -1915,12 +1920,14 @@ def export_spdx(report: AIBOMReport, output_path: str) -> None:
 def to_html(report: AIBOMReport, blast_radii: list | None = None) -> str:
     """Generate a self-contained HTML report string."""
     from agent_bom.output.html import to_html as _to_html
+
     return _to_html(report, blast_radii or [])
 
 
 def export_html(report: AIBOMReport, output_path: str, blast_radii: list | None = None) -> None:
     """Export report as a self-contained HTML file."""
     from agent_bom.output.html import export_html as _export_html
+
     _export_html(report, output_path, blast_radii or [])
 
 
@@ -1930,14 +1937,14 @@ def export_html(report: AIBOMReport, output_path: str, blast_radii: list | None 
 def to_prometheus(report: AIBOMReport, blast_radii: list | None = None) -> str:
     """Generate Prometheus text exposition format string."""
     from agent_bom.output.prometheus import to_prometheus as _to_prometheus
+
     return _to_prometheus(report, blast_radii or [])
 
 
-def export_prometheus(
-    report: AIBOMReport, output_path: str, blast_radii: list | None = None
-) -> None:
+def export_prometheus(report: AIBOMReport, output_path: str, blast_radii: list | None = None) -> None:
     """Write Prometheus metrics to a .prom file."""
     from agent_bom.output.prometheus import export_prometheus as _export_prometheus
+
     _export_prometheus(report, output_path, blast_radii or [])
 
 
@@ -1950,6 +1957,7 @@ def push_to_gateway(
 ) -> None:
     """Push scan metrics to a Prometheus Pushgateway."""
     from agent_bom.output.prometheus import push_to_gateway as _push
+
     _push(gateway_url, report, blast_radii or [], job=job, instance=instance)
 
 
@@ -1960,6 +1968,7 @@ def push_otlp(
 ) -> None:
     """Export metrics via OpenTelemetry OTLP/HTTP (requires agent-bom[otel])."""
     from agent_bom.output.prometheus import push_otlp as _push_otlp
+
     _push_otlp(endpoint, report, blast_radii or [])
 
 

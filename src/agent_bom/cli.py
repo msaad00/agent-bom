@@ -119,9 +119,9 @@ def main():
 )
 @click.option(
     "--mermaid-mode",
-    type=click.Choice(["supply-chain", "attack-flow"]),
+    type=click.Choice(["supply-chain", "attack-flow", "lifecycle"]),
     default="supply-chain",
-    help="Mermaid diagram mode: supply-chain (full hierarchy) or attack-flow (CVE blast radius)",
+    help="Mermaid diagram mode: supply-chain (full hierarchy), attack-flow (CVE blast radius), or lifecycle (gantt timeline)",
 )
 @click.option(
     "--push-gateway",
@@ -1561,6 +1561,10 @@ def scan(
                 from agent_bom.output.mermaid import to_mermaid
 
                 sys.stdout.write(to_mermaid(report, blast_radii))
+            elif mermaid_mode == "lifecycle":
+                from agent_bom.output.mermaid import to_mermaid_lifecycle
+
+                sys.stdout.write(to_mermaid_lifecycle(report, blast_radii))
             else:
                 from agent_bom.output.mermaid import to_mermaid_supply_chain
 
@@ -1691,6 +1695,10 @@ def scan(
             from agent_bom.output.mermaid import to_mermaid
 
             Path(out_path).write_text(to_mermaid(report, blast_radii))
+        elif mermaid_mode == "lifecycle":
+            from agent_bom.output.mermaid import to_mermaid_lifecycle
+
+            Path(out_path).write_text(to_mermaid_lifecycle(report, blast_radii))
         else:
             from agent_bom.output.mermaid import to_mermaid_supply_chain
 

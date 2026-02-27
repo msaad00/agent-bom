@@ -13,7 +13,7 @@ from agent_bom.models import (
     TransportType,
     Vulnerability,
 )
-from agent_bom.output.mermaid import to_mermaid
+from agent_bom.output.mermaid import to_mermaid, to_mermaid_lifecycle
 
 
 def _make_report_and_blast_radii():
@@ -172,3 +172,23 @@ def test_mermaid_no_duplicate_edges():
     # Count occurrences of the CVE → package edge
     edge_count = result.count("-->|affects|")
     assert edge_count == 1
+
+
+def test_mermaid_lifecycle_basic():
+    """Lifecycle mode generates gantt chart with package section."""
+    report, brs = _make_report_and_blast_radii()
+    result = to_mermaid_lifecycle(report, brs)
+    assert result.startswith("gantt\n")
+    assert "Vulnerability Lifecycle Timeline" in result
+    assert "express@4.17.1" in result
+    assert "CVE-2024-1234" in result
+    assert "Fix" in result
+    assert "4.18.0" in result
+
+
+def test_mermaid_lifecycle_empty():
+    """Empty blast radii returns minimal gantt."""
+    report = AIBOMReport(agents=[], blast_radii=[])
+    result = to_mermaid_lifecycle(report, [])
+    assert "gantt" in result
+    assert "No vulnerabilities" in result

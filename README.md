@@ -46,7 +46,7 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 
 | | Grype / Syft / Trivy | agent-bom |
 |---|---|---|
-| Package CVE detection | Yes | Yes — OSV + NVD CVSS v4 + EPSS + CISA KEV |
+| Package CVE detection | Yes | Yes — OSV + NVD CVSS v4 + EPSS + CISA KEV + GHSA + NVIDIA CSAF |
 | SBOM generation | Yes (Syft) | Yes — CycloneDX 1.6, SPDX 3.0, SARIF |
 | **AI agent discovery** | — | 18 MCP clients + Docker Compose auto-discovered |
 | **Blast radius mapping** | — | CVE → package → server → agent → credentials → tools |
@@ -343,6 +343,7 @@ Multiple visualization modes: CLI attack flow tree, Mermaid diagrams, interactiv
 ```bash
 agent-bom scan -f mermaid                              # supply chain diagram
 agent-bom scan -f mermaid --mermaid-mode attack-flow   # CVE blast radius
+agent-bom scan -f mermaid --mermaid-mode lifecycle     # vulnerability lifecycle gantt
 agent-bom scan -f graph -o graph.json                  # Cytoscape-compatible JSON
 agent-bom scan -f html -o report.html                  # interactive HTML report
 ```
@@ -359,7 +360,31 @@ graph TD
     V1 -.->|"MCP04"| F1["Supply Chain Attack"]
 ```
 
+Example lifecycle gantt output:
+
+```mermaid
+gantt
+    title Vulnerability Lifecycle Timeline
+    dateFormat YYYY-MM-DD
+    section express@4.17.1
+        Scanned        :done, t0, 2025-06-15, 1d
+        CVE-2024-1234  :crit, t1, after t0, 1d
+        Fix → 4.18.0   :active, t2, after t1, 1d
+```
+
 The REST API (`agent-bom api`) serves interactive React Flow attack-flow graphs with OWASP LLM Top 10, OWASP MCP Top 10, and MITRE ATLAS framework tagging on every CVE node.
+
+</details>
+
+<details>
+<summary><b>Supplemental advisory enrichment</b></summary>
+
+Beyond OSV.dev, agent-bom checks supplemental sources to catch CVEs not yet indexed:
+
+- **GitHub Security Advisories (GHSA)** — all ecosystems (PyPI, npm, Go, Maven, Cargo, NuGet)
+- **NVIDIA CSAF advisories** — GPU/ML packages (CUDA, cuDNN, TensorRT, NCCL)
+
+Both sources deduplicate by CVE ID against OSV results. Packages without a pinned version are auto-resolved from npm/PyPI registries before scanning.
 
 </details>
 

@@ -189,9 +189,9 @@ Privilege levels: **critical** (privileged container, CAP_SYS_ADMIN) → **high*
 
 Every finding is tagged against four frameworks simultaneously:
 
-- **OWASP LLM Top 10** — LLM01 through LLM10 (6 categories triggered)
+- **OWASP LLM Top 10** — LLM01 through LLM10 (7 categories triggered)
 - **OWASP MCP Top 10** — MCP01 through MCP10 (8 categories triggered) — token exposure, tool poisoning, supply chain, shadow servers
-- **MITRE ATLAS** — AML.T0010, AML.T0043, AML.T0051, etc. (8 techniques mapped)
+- **MITRE ATLAS** — AML.T0010, AML.T0043, AML.T0051, etc. (9 techniques mapped)
 - **NIST AI RMF 1.0** — Govern, Map, Measure, Manage (12 subcategories mapped)
 
 ### Enterprise remediation
@@ -217,7 +217,7 @@ agent-bom scan --policy policy.json --fail-on-severity high
 ### Cloud provider discovery
 
 ```bash
-agent-bom scan --aws --aws-region us-east-1       # Bedrock, Lambda, EKS, ECS, SageMaker, EC2
+agent-bom scan --aws --aws-region us-east-1       # Bedrock, Lambda, EKS, ECS, EC2, Step Functions
 agent-bom scan --snowflake                         # Cortex Agents, MCP Servers, Search, Snowpark
 agent-bom scan --databricks                        # Cluster libraries, model serving
 agent-bom scan --nebius --nebius-project-id proj   # GPU cloud K8s + containers
@@ -229,7 +229,7 @@ agent-bom scan --k8s --context=coreweave-cluster   # CoreWeave / any K8s
 
 | Provider | What's discovered | Install |
 |----------|------------------|---------|
-| **AWS** | Bedrock agents, Lambda, EKS, Step Functions, EC2, ECS, SageMaker | `pip install 'agent-bom[aws]'` |
+| **AWS** | Bedrock agents, Lambda, EKS, Step Functions, EC2, ECS | `pip install 'agent-bom[aws]'` |
 | **Snowflake** | Cortex Agents, native MCP Servers, Search, Snowpark, Streamlit, query history | `pip install 'agent-bom[snowflake]'` |
 | **Databricks** | Cluster packages, model serving endpoints | `pip install 'agent-bom[databricks]'` |
 | **Azure** | AI Foundry agents, Container Apps | `pip install 'agent-bom[azure]'` |
@@ -407,7 +407,7 @@ cd ui && npm install && npm run dev   # http://localhost:3000
 | Vulnerabilities | CVE browser with severity/EPSS/KEV filters |
 | Agents | Fleet registry + lifecycle state management |
 | Compliance | 4-framework compliance posture (OWASP, ATLAS, NIST) |
-| Lineage Graph | Interactive supply chain graph — dagre layout, 6 node types, filter panel |
+| Lineage Graph | Interactive supply chain graph — dagre layout, 7 node types, filter panel |
 | Agent Mesh | Cross-agent topology — shared server detection, credential blast radius, tool overlap |
 | Gateway | Runtime MCP policy rules + audit log |
 | Registry | 427+ MCP server browser |
@@ -426,7 +426,7 @@ pip install 'agent-bom[api,snowflake]'
 |-----------|-------------|
 | Snowflake Table Storage | `SnowflakeJobStore`, `SnowflakeFleetStore`, `SnowflakePolicyStore` — auto-detect key-pair or password auth |
 | Snowpark Container Services | `Dockerfile.snowpark` + `snowflake/setup.sql` — run the API inside Snowflake |
-| Streamlit in Snowflake | `snowflake/streamlit_app.py` — 5-tab SiS dashboard reading from shared tables |
+| Streamlit in Snowflake | `snowflake/streamlit_app.py` — 6-tab SiS dashboard reading from shared tables |
 | Native App | `snowflake/native-app/` — Marketplace-distributable package |
 
 Set `SNOWFLAKE_ACCOUNT` + `SNOWFLAKE_USER` + auth (`SNOWFLAKE_PRIVATE_KEY_PATH` or `SNOWFLAKE_PASSWORD`) and the API auto-switches to Snowflake persistence.

@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 460" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 520" fill="none">
   <style>
     .title { font: 700 13px system-ui, -apple-system, sans-serif; fill: #e6edf3; }
     .section-title { font: 700 10px system-ui, sans-serif; letter-spacing: 0.06em; }
@@ -23,190 +23,222 @@
   </defs>
 
   <!-- Background -->
-  <rect width="880" height="460" rx="12" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="440" y="28" text-anchor="middle" class="title">How agent-bom works</text>
+  <rect width="960" height="520" rx="12" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="480" y="28" text-anchor="middle" class="title">How agent-bom works</text>
 
-  <!-- ═══ Phase 1: Discovery (left column) ═══ -->
-  <rect x="16" y="42" width="170" height="280" rx="8" fill="#161b22" stroke="#58a6ff" stroke-width="1" opacity="0.8"/>
-  <text x="101" y="58" text-anchor="middle" class="section-title" fill="#58a6ff">DISCOVERY</text>
+  <!-- ═══ Phase 1: Discovery (x=16, w=170) ═══ -->
+  <rect x="16" y="44" width="170" height="366" rx="8" fill="#161b22" stroke="#58a6ff" stroke-width="1" opacity="0.8"/>
+  <text x="101" y="60" text-anchor="middle" class="section-title" fill="#58a6ff">DISCOVERY</text>
 
-  <rect x="28" y="66" width="146" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="101" y="80" text-anchor="middle" class="box-label">MCP Configs</text>
-  <text x="101" y="90" text-anchor="middle" class="box-sub">18 clients · auto-detect</text>
+  <!-- Box 1: MCP Configs (y=68, h=32) -->
+  <rect x="28" y="68" width="146" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="101" y="84" text-anchor="middle" class="box-label">MCP Configs</text>
+  <text x="101" y="96" text-anchor="middle" class="box-sub">18 clients · auto-detect</text>
 
-  <rect x="28" y="100" width="146" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="101" y="114" text-anchor="middle" class="box-label">Cloud Providers</text>
-  <text x="101" y="124" text-anchor="middle" class="box-sub">AWS · Azure · GCP · Snowflake</text>
+  <!-- Box 2: Cloud Providers (y=106) -->
+  <rect x="28" y="106" width="146" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="101" y="122" text-anchor="middle" class="box-label">Cloud Providers</text>
+  <text x="101" y="134" text-anchor="middle" class="box-sub">AWS · Azure · GCP · Snowflake</text>
 
-  <rect x="28" y="134" width="146" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="101" y="148" text-anchor="middle" class="box-label">Docker Images</text>
-  <text x="101" y="158" text-anchor="middle" class="box-sub">Grype + Syft deep scan</text>
+  <!-- Box 3: Docker Images (y=144) -->
+  <rect x="28" y="144" width="146" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="101" y="160" text-anchor="middle" class="box-label">Docker Images</text>
+  <text x="101" y="172" text-anchor="middle" class="box-sub">Grype + Syft deep scan</text>
 
-  <rect x="28" y="168" width="146" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="101" y="182" text-anchor="middle" class="box-label">Kubernetes</text>
-  <text x="101" y="192" text-anchor="middle" class="box-sub">Multi-namespace pod scan</text>
+  <!-- Box 4: Kubernetes (y=182) -->
+  <rect x="28" y="182" width="146" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="101" y="198" text-anchor="middle" class="box-label">Kubernetes</text>
+  <text x="101" y="210" text-anchor="middle" class="box-sub">Multi-namespace pod scan</text>
 
-  <rect x="28" y="202" width="146" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="101" y="216" text-anchor="middle" class="box-label">Existing SBOMs</text>
-  <text x="101" y="226" text-anchor="middle" class="box-sub">CycloneDX + SPDX import</text>
+  <!-- Box 5: Existing SBOMs (y=220) -->
+  <rect x="28" y="220" width="146" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="101" y="236" text-anchor="middle" class="box-label">Existing SBOMs</text>
+  <text x="101" y="248" text-anchor="middle" class="box-sub">CycloneDX + SPDX import</text>
 
-  <rect x="28" y="236" width="146" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="101" y="250" text-anchor="middle" class="box-label">Agent Frameworks</text>
-  <text x="101" y="260" text-anchor="middle" class="box-sub">LangChain · CrewAI · ADK</text>
+  <!-- Box 6: Agent Frameworks (y=258) -->
+  <rect x="28" y="258" width="146" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="101" y="274" text-anchor="middle" class="box-label">Agent Frameworks</text>
+  <text x="101" y="286" text-anchor="middle" class="box-sub">LangChain · CrewAI · ADK</text>
 
-  <rect x="28" y="280" width="146" height="32" rx="5" fill="#0d1117" stroke="#58a6ff" stroke-width="1" opacity="0.4"/>
-  <text x="101" y="294" text-anchor="middle" class="box-sub">→ Agents · Servers</text>
-  <text x="101" y="306" text-anchor="middle" class="box-sub">→ Packages · Credentials · Tools</text>
+  <!-- Summary row (y=302, h=36) -->
+  <rect x="28" y="302" width="146" height="36" rx="5" fill="#0d1117" stroke="#58a6ff" stroke-width="1" opacity="0.4"/>
+  <text x="101" y="318" text-anchor="middle" class="box-sub">Agents · Servers</text>
+  <text x="101" y="332" text-anchor="middle" class="box-sub">Packages · Credentials · Tools</text>
 
-  <!-- Arrow: Discovery → Enrichment -->
-  <line x1="186" y1="180" x2="210" y2="180" stroke="#58a6ff" stroke-width="2" marker-end="url(#a1)"/>
+  <!-- Arrow: Discovery -> Enrichment -->
+  <line x1="186" y1="227" x2="212" y2="227" stroke="#58a6ff" stroke-width="2" marker-end="url(#a1)"/>
 
-  <!-- ═══ Phase 2: Enrichment (center-left) ═══ -->
-  <rect x="214" y="42" width="170" height="280" rx="8" fill="#161b22" stroke="#d29922" stroke-width="1" opacity="0.8"/>
-  <text x="299" y="58" text-anchor="middle" class="section-title" fill="#d29922">ENRICHMENT</text>
+  <!-- ═══ Phase 2: Enrichment (x=216, w=170) ═══ -->
+  <rect x="216" y="44" width="170" height="366" rx="8" fill="#161b22" stroke="#d29922" stroke-width="1" opacity="0.8"/>
+  <text x="301" y="60" text-anchor="middle" class="section-title" fill="#d29922">ENRICHMENT</text>
 
-  <rect x="226" y="66" width="146" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="299" y="80" text-anchor="middle" class="box-label">OSV.dev</text>
-  <text x="299" y="90" text-anchor="middle" class="box-sub">Batch CVE lookup · all ecosystems</text>
+  <!-- Box 1: OSV.dev (y=68) -->
+  <rect x="228" y="68" width="146" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="301" y="84" text-anchor="middle" class="box-label">OSV.dev</text>
+  <text x="301" y="96" text-anchor="middle" class="box-sub">Batch CVE lookup · all ecosystems</text>
 
-  <rect x="226" y="100" width="146" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="299" y="114" text-anchor="middle" class="box-label">NVD / NIST</text>
-  <text x="299" y="124" text-anchor="middle" class="box-sub">CVSS v3.1 + v4.0 scoring</text>
+  <!-- Box 2: NVD / NIST (y=106) -->
+  <rect x="228" y="106" width="146" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="301" y="122" text-anchor="middle" class="box-label">NVD / NIST</text>
+  <text x="301" y="134" text-anchor="middle" class="box-sub">CVSS v3.1 + v4.0 scoring</text>
 
-  <rect x="226" y="134" width="146" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="299" y="148" text-anchor="middle" class="box-label">FIRST EPSS</text>
-  <text x="299" y="158" text-anchor="middle" class="box-sub">Exploit probability scores</text>
+  <!-- Box 3: FIRST EPSS (y=144) -->
+  <rect x="228" y="144" width="146" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="301" y="160" text-anchor="middle" class="box-label">FIRST EPSS</text>
+  <text x="301" y="172" text-anchor="middle" class="box-sub">Exploit probability scores</text>
 
-  <rect x="226" y="168" width="146" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="299" y="182" text-anchor="middle" class="box-label">CISA KEV</text>
-  <text x="299" y="192" text-anchor="middle" class="box-sub">Known exploited vulns</text>
+  <!-- Box 4: CISA KEV (y=182) -->
+  <rect x="228" y="182" width="146" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="301" y="198" text-anchor="middle" class="box-label">CISA KEV</text>
+  <text x="301" y="210" text-anchor="middle" class="box-sub">Known exploited vulns</text>
 
-  <rect x="226" y="202" width="146" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="299" y="216" text-anchor="middle" class="box-label">GHSA + NVIDIA CSAF</text>
-  <text x="299" y="226" text-anchor="middle" class="box-sub">Supplemental advisories</text>
+  <!-- Box 5: GHSA + NVIDIA CSAF (y=220) -->
+  <rect x="228" y="220" width="146" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="301" y="236" text-anchor="middle" class="box-label">GHSA + NVIDIA CSAF</text>
+  <text x="301" y="248" text-anchor="middle" class="box-sub">Supplemental advisories</text>
 
-  <rect x="226" y="236" width="146" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="299" y="250" text-anchor="middle" class="box-label">MCP Registry</text>
-  <text x="299" y="260" text-anchor="middle" class="box-sub">427+ server provenance</text>
+  <!-- Box 6: MCP Registry (y=258) -->
+  <rect x="228" y="258" width="146" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="301" y="274" text-anchor="middle" class="box-label">MCP Registry</text>
+  <text x="301" y="286" text-anchor="middle" class="box-sub">427+ server provenance</text>
 
-  <rect x="226" y="280" width="146" height="32" rx="5" fill="#0d1117" stroke="#d29922" stroke-width="1" opacity="0.4"/>
-  <text x="299" y="294" text-anchor="middle" class="box-sub">→ CVEs with CVSS + EPSS</text>
-  <text x="299" y="306" text-anchor="middle" class="box-sub">→ KEV flags · Fixed versions</text>
+  <!-- Summary row (y=302, h=36) -->
+  <rect x="228" y="302" width="146" height="36" rx="5" fill="#0d1117" stroke="#d29922" stroke-width="1" opacity="0.4"/>
+  <text x="301" y="318" text-anchor="middle" class="box-sub">CVEs with CVSS + EPSS</text>
+  <text x="301" y="332" text-anchor="middle" class="box-sub">KEV flags · Fixed versions</text>
 
-  <!-- Arrow: Enrichment → Analysis -->
-  <line x1="384" y1="180" x2="408" y2="180" stroke="#d29922" stroke-width="2" marker-end="url(#a2)"/>
+  <!-- Arrow: Enrichment -> Analysis -->
+  <line x1="386" y1="227" x2="412" y2="227" stroke="#d29922" stroke-width="2" marker-end="url(#a2)"/>
 
-  <!-- ═══ Phase 3: Analysis (center-right) ═══ -->
-  <rect x="412" y="42" width="170" height="280" rx="8" fill="#161b22" stroke="#f47067" stroke-width="1" opacity="0.8"/>
-  <text x="497" y="58" text-anchor="middle" class="section-title" fill="#f47067">ANALYSIS</text>
+  <!-- ═══ Phase 3: Analysis (x=416, w=180) ═══ -->
+  <rect x="416" y="44" width="180" height="366" rx="8" fill="#161b22" stroke="#f47067" stroke-width="1" opacity="0.8"/>
+  <text x="506" y="60" text-anchor="middle" class="section-title" fill="#f47067">ANALYSIS</text>
 
-  <rect x="424" y="66" width="146" height="40" rx="5" fill="#0d1117" stroke="#f47067" stroke-width="1" opacity="0.6"/>
-  <text x="497" y="82" text-anchor="middle" class="box-label">Blast Radius</text>
-  <text x="497" y="96" text-anchor="middle" class="box-sub">CVE → pkg → server → agent → creds → tools</text>
+  <!-- Box 1: Blast Radius (y=68, h=40 - featured) -->
+  <rect x="428" y="68" width="156" height="40" rx="5" fill="#0d1117" stroke="#f47067" stroke-width="1" opacity="0.6"/>
+  <text x="506" y="84" text-anchor="middle" class="box-label">Blast Radius</text>
+  <text x="506" y="100" text-anchor="middle" class="box-sub">CVE -> pkg -> server -> agent -> creds -> tools</text>
 
-  <rect x="424" y="114" width="146" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="497" y="128" text-anchor="middle" class="box-label">OWASP LLM Top 10</text>
-  <text x="497" y="138" text-anchor="middle" class="box-sub">LLM02 · LLM05 · LLM06 · LLM08</text>
+  <!-- Box 2: OWASP LLM Top 10 (y=114) -->
+  <rect x="428" y="114" width="156" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="506" y="130" text-anchor="middle" class="box-label">OWASP LLM Top 10</text>
+  <text x="506" y="142" text-anchor="middle" class="box-sub">LLM02 · LLM05 · LLM06 · LLM08</text>
 
-  <rect x="424" y="148" width="146" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="497" y="162" text-anchor="middle" class="box-label">OWASP MCP Top 10</text>
-  <text x="497" y="172" text-anchor="middle" class="box-sub">MCP01–MCP10 tagging</text>
+  <!-- Box 3: OWASP MCP Top 10 (y=152) -->
+  <rect x="428" y="152" width="156" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="506" y="168" text-anchor="middle" class="box-label">OWASP MCP Top 10</text>
+  <text x="506" y="180" text-anchor="middle" class="box-sub">MCP01-MCP10 tagging</text>
 
-  <rect x="424" y="182" width="146" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="497" y="196" text-anchor="middle" class="box-label">MITRE ATLAS</text>
-  <text x="497" y="206" text-anchor="middle" class="box-sub">AI adversarial threat mapping</text>
+  <!-- Box 4: MITRE ATLAS (y=190) -->
+  <rect x="428" y="190" width="156" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="506" y="206" text-anchor="middle" class="box-label">MITRE ATLAS</text>
+  <text x="506" y="218" text-anchor="middle" class="box-sub">AI adversarial threat mapping</text>
 
-  <rect x="424" y="216" width="146" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="497" y="230" text-anchor="middle" class="box-label">NIST AI RMF</text>
-  <text x="497" y="240" text-anchor="middle" class="box-sub">Risk management framework</text>
+  <!-- Box 5: NIST AI RMF (y=228) -->
+  <rect x="428" y="228" width="156" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="506" y="244" text-anchor="middle" class="box-label">NIST AI RMF</text>
+  <text x="506" y="256" text-anchor="middle" class="box-sub">Risk management framework</text>
 
-  <rect x="424" y="250" width="146" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="497" y="264" text-anchor="middle" class="box-label">Enforcement Engine</text>
-  <text x="497" y="274" text-anchor="middle" class="box-sub">Tool poisoning + policy gates</text>
+  <!-- Box 6: Enforcement Engine (y=266) -->
+  <rect x="428" y="266" width="156" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="506" y="282" text-anchor="middle" class="box-label">Enforcement Engine</text>
+  <text x="506" y="294" text-anchor="middle" class="box-sub">Tool poisoning + policy gates</text>
 
-  <rect x="424" y="284" width="146" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="497" y="298" text-anchor="middle" class="box-label">Model Provenance</text>
-  <text x="497" y="308" text-anchor="middle" class="box-sub">SHA-256 · Sigstore · HuggingFace</text>
+  <!-- Box 7: Model Provenance (y=304) -->
+  <rect x="428" y="304" width="156" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="506" y="320" text-anchor="middle" class="box-label">Model Provenance</text>
+  <text x="506" y="332" text-anchor="middle" class="box-sub">SHA-256 · Sigstore · HuggingFace</text>
 
-  <!-- Arrow: Analysis → Output -->
-  <line x1="582" y1="180" x2="606" y2="180" stroke="#f47067" stroke-width="2" marker-end="url(#a3)"/>
+  <!-- Arrow: Analysis -> Output -->
+  <line x1="596" y1="227" x2="622" y2="227" stroke="#f47067" stroke-width="2" marker-end="url(#a3)"/>
 
-  <!-- ═══ Phase 4: Output (right) ═══ -->
-  <rect x="610" y="42" width="130" height="280" rx="8" fill="#161b22" stroke="#3fb950" stroke-width="1" opacity="0.8"/>
-  <text x="675" y="58" text-anchor="middle" class="section-title" fill="#3fb950">OUTPUT</text>
+  <!-- ═══ Phase 4: Output (x=626, w=140) ═══ -->
+  <rect x="626" y="44" width="140" height="366" rx="8" fill="#161b22" stroke="#3fb950" stroke-width="1" opacity="0.8"/>
+  <text x="696" y="60" text-anchor="middle" class="section-title" fill="#3fb950">OUTPUT</text>
 
-  <rect x="622" y="66" width="106" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="675" y="80" text-anchor="middle" class="box-label">Console + HTML</text>
-  <text x="675" y="90" text-anchor="middle" class="box-sub">Rich tables + dashboard</text>
+  <!-- Box 1: Console + HTML (y=68) -->
+  <rect x="638" y="68" width="116" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="696" y="84" text-anchor="middle" class="box-label">Console + HTML</text>
+  <text x="696" y="96" text-anchor="middle" class="box-sub">Rich tables + dashboard</text>
 
-  <rect x="622" y="100" width="106" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="675" y="114" text-anchor="middle" class="box-label">SARIF</text>
-  <text x="675" y="124" text-anchor="middle" class="box-sub">GitHub Security tab</text>
+  <!-- Box 2: SARIF (y=106) -->
+  <rect x="638" y="106" width="116" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="696" y="122" text-anchor="middle" class="box-label">SARIF</text>
+  <text x="696" y="134" text-anchor="middle" class="box-sub">GitHub Security tab</text>
 
-  <rect x="622" y="134" width="106" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="675" y="148" text-anchor="middle" class="box-label">CycloneDX 1.6</text>
-  <text x="675" y="158" text-anchor="middle" class="box-sub">AI-BOM standard</text>
+  <!-- Box 3: CycloneDX 1.6 (y=144) -->
+  <rect x="638" y="144" width="116" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="696" y="160" text-anchor="middle" class="box-label">CycloneDX 1.6</text>
+  <text x="696" y="172" text-anchor="middle" class="box-sub">AI-BOM standard</text>
 
-  <rect x="622" y="168" width="106" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="675" y="182" text-anchor="middle" class="box-label">SPDX 3.0</text>
-  <text x="675" y="192" text-anchor="middle" class="box-sub">License + provenance</text>
+  <!-- Box 4: SPDX 3.0 (y=182) -->
+  <rect x="638" y="182" width="116" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="696" y="198" text-anchor="middle" class="box-label">SPDX 3.0</text>
+  <text x="696" y="210" text-anchor="middle" class="box-sub">License + provenance</text>
 
-  <rect x="622" y="202" width="106" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="675" y="216" text-anchor="middle" class="box-label">JSON + Mermaid</text>
-  <text x="675" y="226" text-anchor="middle" class="box-sub">Machine-readable</text>
+  <!-- Box 5: JSON + Mermaid (y=220) -->
+  <rect x="638" y="220" width="116" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="696" y="236" text-anchor="middle" class="box-label">JSON + Mermaid</text>
+  <text x="696" y="248" text-anchor="middle" class="box-sub">Machine-readable</text>
 
-  <rect x="622" y="240" width="106" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="675" y="254" text-anchor="middle" class="box-label">REST API</text>
-  <text x="675" y="264" text-anchor="middle" class="box-sub">FastAPI on :8422</text>
+  <!-- Box 6: REST API (y=258) -->
+  <rect x="638" y="258" width="116" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="696" y="274" text-anchor="middle" class="box-label">REST API</text>
+  <text x="696" y="286" text-anchor="middle" class="box-sub">FastAPI on :8422</text>
 
-  <!-- ═══ Interfaces (far right) ═══ -->
-  <rect x="756" y="42" width="108" height="280" rx="8" fill="#161b22" stroke="#a371f7" stroke-width="1" opacity="0.8"/>
-  <text x="810" y="58" text-anchor="middle" class="section-title" fill="#a371f7">INTERFACES</text>
+  <!-- Arrow: Output -> Interfaces -->
+  <line x1="766" y1="227" x2="792" y2="227" stroke="#3fb950" stroke-width="2" marker-end="url(#a4)"/>
 
-  <rect x="764" y="70" width="92" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="810" y="84" text-anchor="middle" class="box-label">CLI</text>
-  <text x="810" y="94" text-anchor="middle" class="box-sub">pip install agent-bom</text>
+  <!-- ═══ Phase 5: Interfaces (x=796, w=148) ═══ -->
+  <rect x="796" y="44" width="148" height="366" rx="8" fill="#161b22" stroke="#a371f7" stroke-width="1" opacity="0.8"/>
+  <text x="870" y="60" text-anchor="middle" class="section-title" fill="#a371f7">INTERFACES</text>
 
-  <rect x="764" y="106" width="92" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="810" y="120" text-anchor="middle" class="box-label">MCP Server</text>
-  <text x="810" y="130" text-anchor="middle" class="box-sub">13 tools · stdio/SSE</text>
+  <!-- Box 1: CLI (y=68) -->
+  <rect x="808" y="68" width="124" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="870" y="84" text-anchor="middle" class="box-label">CLI</text>
+  <text x="870" y="96" text-anchor="middle" class="box-sub">pip install agent-bom</text>
 
-  <rect x="764" y="142" width="92" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="810" y="156" text-anchor="middle" class="box-label">GitHub Action</text>
-  <text x="810" y="166" text-anchor="middle" class="box-sub">CI/CD integration</text>
+  <!-- Box 2: MCP Server (y=106) -->
+  <rect x="808" y="106" width="124" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="870" y="122" text-anchor="middle" class="box-label">MCP Server</text>
+  <text x="870" y="134" text-anchor="middle" class="box-sub">13 tools · stdio/SSE</text>
 
-  <rect x="764" y="178" width="92" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="810" y="192" text-anchor="middle" class="box-label">Cloud UI</text>
-  <text x="810" y="202" text-anchor="middle" class="box-sub">Next.js dashboard</text>
+  <!-- Box 3: GitHub Action (y=144) -->
+  <rect x="808" y="144" width="124" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="870" y="160" text-anchor="middle" class="box-label">GitHub Action</text>
+  <text x="870" y="172" text-anchor="middle" class="box-sub">CI/CD integration</text>
 
-  <rect x="764" y="214" width="92" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="810" y="228" text-anchor="middle" class="box-label">Snowflake</text>
-  <text x="810" y="238" text-anchor="middle" class="box-sub">Streamlit + Native App</text>
+  <!-- Box 4: Cloud UI (y=182) -->
+  <rect x="808" y="182" width="124" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="870" y="198" text-anchor="middle" class="box-label">Cloud UI</text>
+  <text x="870" y="210" text-anchor="middle" class="box-sub">Next.js dashboard</text>
 
-  <!-- Arrow: Output → Interfaces -->
-  <line x1="740" y1="180" x2="752" y2="180" stroke="#3fb950" stroke-width="2" marker-end="url(#a4)"/>
+  <!-- Box 5: Snowflake (y=220) -->
+  <rect x="808" y="220" width="124" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="870" y="236" text-anchor="middle" class="box-label">Snowflake</text>
+  <text x="870" y="248" text-anchor="middle" class="box-sub">Streamlit + Native App</text>
 
-  <!-- ═══ Trust bar ═══ -->
-  <rect x="16" y="338" width="848" height="36" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1"/>
-  <text x="440" y="354" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9.5" font-weight="700" fill="#8b949e" letter-spacing="0.05em">TRUST PRINCIPLES</text>
-  <text x="440" y="368" text-anchor="middle" class="footer">Read-only  ·  Agentless  ·  Never writes configs  ·  Never runs MCP servers  ·  Never stores credentials  ·  Sigstore-signed releases</text>
+  <!-- ═══ Trust Principles bar (y=426) ═══ -->
+  <rect x="16" y="426" width="928" height="36" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+  <text x="480" y="442" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9.5" font-weight="700" fill="#8b949e" letter-spacing="0.05em">TRUST PRINCIPLES</text>
+  <text x="480" y="456" text-anchor="middle" class="footer">Read-only  ·  Agentless  ·  Never writes configs  ·  Never runs MCP servers  ·  Never stores credentials  ·  Sigstore-signed releases</text>
 
-  <!-- ═══ Data flow legend ═══ -->
-  <rect x="16" y="384" width="848" height="66" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1"/>
-  <text x="440" y="400" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9.5" font-weight="700" fill="#8b949e" letter-spacing="0.05em">DATA FLOW</text>
+  <!-- ═══ Data Flow legend bar (y=468) ═══ -->
+  <rect x="16" y="468" width="928" height="42" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+  <text x="480" y="483" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9.5" font-weight="700" fill="#8b949e" letter-spacing="0.05em">DATA FLOW</text>
 
   <!-- Flow arrows in legend -->
-  <line x1="80" y1="420" x2="110" y2="420" stroke="#58a6ff" stroke-width="2" marker-end="url(#a1)"/>
-  <text x="118" y="424" class="footer" fill="#58a6ff">Discover</text>
+  <line x1="100" y1="500" x2="130" y2="500" stroke="#58a6ff" stroke-width="2" marker-end="url(#a1)"/>
+  <text x="138" y="504" class="footer" fill="#58a6ff">Discover</text>
 
-  <line x1="200" y1="420" x2="230" y2="420" stroke="#d29922" stroke-width="2" marker-end="url(#a2)"/>
-  <text x="238" y="424" class="footer" fill="#d29922">Enrich</text>
+  <line x1="220" y1="500" x2="250" y2="500" stroke="#d29922" stroke-width="2" marker-end="url(#a2)"/>
+  <text x="258" y="504" class="footer" fill="#d29922">Enrich</text>
 
-  <line x1="310" y1="420" x2="340" y2="420" stroke="#f47067" stroke-width="2" marker-end="url(#a3)"/>
-  <text x="348" y="424" class="footer" fill="#f47067">Analyze</text>
+  <line x1="330" y1="500" x2="360" y2="500" stroke="#f47067" stroke-width="2" marker-end="url(#a3)"/>
+  <text x="368" y="504" class="footer" fill="#f47067">Analyze</text>
 
-  <line x1="420" y1="420" x2="450" y2="420" stroke="#3fb950" stroke-width="2" marker-end="url(#a4)"/>
-  <text x="458" y="424" class="footer" fill="#3fb950">Report</text>
+  <line x1="440" y1="500" x2="470" y2="500" stroke="#3fb950" stroke-width="2" marker-end="url(#a4)"/>
+  <text x="478" y="504" class="footer" fill="#3fb950">Report</text>
 
-  <text x="440" y="442" text-anchor="middle" class="footer">MCP Client Configs → Agents + Servers + Packages → OSV + NVD + EPSS + KEV + GHSA → Blast Radius + OWASP + ATLAS → SARIF / CycloneDX / SPDX / JSON</text>
+  <text x="740" y="504" text-anchor="middle" class="footer">MCP Configs -> OSV + NVD + EPSS + KEV -> OWASP + ATLAS -> SARIF / CycloneDX / SPDX</text>
 </svg>

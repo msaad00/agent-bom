@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 
 from .fleet_store import FleetAgent, FleetLifecycleState
 from .policy_store import GatewayPolicy, PolicyAuditEntry
-from .server import JobStatus, ScanJob
+from .server import ScanJob
 
 
 def _sf_connect(**kwargs):  # type: ignore[no-untyped-def]
@@ -60,7 +60,7 @@ class SnowflakeJobStore:
         self._conn_params = connection_params
         self._init_tables()
 
-    def _connect(self) -> snowflake.connector.SnowflakeConnection:
+    def _connect(self):  # type: ignore[no-untyped-def]
         return _sf_connect(**self._conn_params)
 
     def _init_tables(self) -> None:
@@ -164,7 +164,7 @@ class SnowflakeFleetStore:
         self._conn_params = connection_params
         self._init_tables()
 
-    def _connect(self) -> snowflake.connector.SnowflakeConnection:
+    def _connect(self):  # type: ignore[no-untyped-def]
         return _sf_connect(**self._conn_params)
 
     def _init_tables(self) -> None:
@@ -280,7 +280,7 @@ class SnowflakePolicyStore:
         self._conn_params = connection_params
         self._init_tables()
 
-    def _connect(self) -> snowflake.connector.SnowflakeConnection:
+    def _connect(self):  # type: ignore[no-untyped-def]
         return _sf_connect(**self._conn_params)
 
     def _init_tables(self) -> None:

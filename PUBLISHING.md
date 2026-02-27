@@ -16,7 +16,7 @@ Smithery requires a publicly accessible HTTP URL for the MCP server.
 
 ### Step 1: Deploy SSE server
 
-The SSE server is deployed on Railway at `https://agent-bom-mcp.up.railway.app` (automated via `deploy-mcp-sse.yml`).
+The SSE server is deployed on Railway at `https://trustworthy-solace-production-14a6.up.railway.app` (automated via `deploy-mcp-sse.yml`).
 
 ### Step 2: Publish to Smithery
 
@@ -24,7 +24,7 @@ The SSE server is deployed on Railway at `https://agent-bom-mcp.up.railway.app` 
 1. Go to https://smithery.ai/servers/new
 2. Namespace: `agent-bom`
 3. Server ID: `agent-bom`
-4. MCP Server URL: `https://agent-bom-mcp.up.railway.app/mcp`
+4. MCP Server URL: `https://trustworthy-solace-production-14a6.up.railway.app/mcp`
 5. Click **Continue**
 
 **Option B — Automated**:

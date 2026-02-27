@@ -14,5 +14,6 @@ venv/
 agent-bom-report.json
 agent-bom.cdx.json
 report.json
+report.html
 .DS_Store
 .claude/settings.local.json

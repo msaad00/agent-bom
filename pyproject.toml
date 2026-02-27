@@ -78,7 +78,7 @@ openai = ["openai>=1.12"]
 ai-enrich = ["litellm>=1.30"]
 watch = ["watchdog>=4.0"]
 mcp-server = [
-    "mcp>=1.0",
+    "mcp>=1.26",
     "smithery>=0.4",
 ]
 snyk = []  # Uses existing httpx dependency, no additional packages needed

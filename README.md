@@ -99,7 +99,7 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
 |----------|------|
 | PyPI | `pip install agent-bom` |
 | Docker | `docker run agentbom/agent-bom scan` |
-| GitHub Action | `uses: msaad00/agent-bom@v0.35.0 |
+| GitHub Action | `uses: msaad00/agent-bom@v0.35.0` |
 | MCP Registry | [server.json](integrations/mcp-registry/server.json) |
 | ToolHive | [registry entry](integrations/toolhive/server.json) |
 | OpenClaw | [SKILL.md](integrations/openclaw/SKILL.md) |
@@ -345,7 +345,7 @@ agent-bom scan --aws -f graph -o graph.json   # export graph data
 |------|---------|----------|
 | CLI | `agent-bom scan` | Local audit |
 | Pre-install check | `agent-bom check express@4.18.2 -e npm` | Before running MCP servers |
-| GitHub Action | `uses: msaad00/agent-bom@v0.35.0 | CI/CD + SARIF |
+| GitHub Action | `uses: msaad00/agent-bom@v0.35.0` | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated scans |
 | REST API | `agent-bom api` | Dashboards, SIEM |
 | Runtime proxy | `agent-bom proxy` | Live MCP traffic audit |
@@ -398,7 +398,7 @@ agent-bom mcp-server --transport sse    # remote
 cd ui && npm install && npm run dev   # http://localhost:3000
 ```
 
-16-page Next.js dashboard:
+13-section Next.js dashboard:
 
 | Page | Description |
 |------|-------------|
@@ -409,9 +409,12 @@ cd ui && npm install && npm run dev   # http://localhost:3000
 | Compliance | 4-framework compliance posture (OWASP, ATLAS, NIST) |
 | Lineage Graph | Interactive supply chain graph — dagre layout, 6 node types, filter panel |
 | Agent Mesh | Cross-agent topology — shared server detection, credential blast radius, tool overlap |
-| Attack Flow | Per-CVE blast radius visualization |
 | Gateway | Runtime MCP policy rules + audit log |
 | Registry | 427+ MCP server browser |
+| Fleet | Agent trust scoring + fleet management |
+| Activity | Agent activity timeline + AI observability |
+| Governance | Snowflake access, privileges, data classification |
+| Jobs | Background scan job management |
 
 ### Snowflake Deployment
 

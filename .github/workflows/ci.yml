@@ -135,9 +135,27 @@ jobs:
           print(data['version'])
           ")
 
+          # Extract Dockerfile.sse ARG VERSION
+          SSE_VER=$(python -c "
+          import re
+          text = open('Dockerfile.sse').read()
+          m = re.search(r'ARG VERSION=(\S+)', text)
+          print(m.group(1))
+          ")
+
+          # Extract Dockerfile.runtime ARG VERSION
+          RUNTIME_VER=$(python -c "
+          import re
+          text = open('Dockerfile.runtime').read()
+          m = re.search(r'ARG VERSION=(\S+)', text)
+          print(m.group(1))
+          ")
+
           echo "pyproject.toml:    $PYPROJECT_VER"
           echo "__init__.py:       $INIT_VER"
           echo "Dockerfile.mcp:    $DOCKER_VER"
+          echo "Dockerfile.sse:    $SSE_VER"
+          echo "Dockerfile.runtime: $RUNTIME_VER"
           echo "server.json:       $SERVER_VER"
 
           MISMATCH=0
@@ -147,6 +165,14 @@ jobs:
           fi
           if [ "$PYPROJECT_VER" != "$DOCKER_VER" ]; then
             echo "::error::Version mismatch: pyproject.toml ($PYPROJECT_VER) != Dockerfile.mcp ($DOCKER_VER)"
+            MISMATCH=1
+          fi
+          if [ "$PYPROJECT_VER" != "$SSE_VER" ]; then
+            echo "::error::Version mismatch: pyproject.toml ($PYPROJECT_VER) != Dockerfile.sse ($SSE_VER)"
+            MISMATCH=1
+          fi
+          if [ "$PYPROJECT_VER" != "$RUNTIME_VER" ]; then
+            echo "::error::Version mismatch: pyproject.toml ($PYPROJECT_VER) != Dockerfile.runtime ($RUNTIME_VER)"
             MISMATCH=1
           fi
           if [ "$PYPROJECT_VER" != "$SERVER_VER" ]; then

@@ -1,0 +1,15 @@
+spec:
+  containers:
+    - name: agent-bom
+      image: /db/schema/agent_bom_repo/agent-bom:latest
+      env:
+        SNOWFLAKE_ACCOUNT: "{{ snowflake_account }}"
+        SNOWFLAKE_DATABASE: "{{ database }}"
+        SNOWFLAKE_SCHEMA: "{{ schema }}"
+      readinessProbe:
+        port: 8422
+        path: /health
+  endpoints:
+    - name: api
+      port: 8422
+      public: false

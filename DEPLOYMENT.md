@@ -363,6 +363,65 @@ Resources:
 
 ---
 
+## ❄️ Snowflake Deployment
+
+### Architecture
+
+```
+              Snowflake Account
+┌─────────────────────────────────────┐
+│  Snowpark Container Service         │
+│  ┌─────────────────┐                │
+│  │ agent-bom API   │─writes─► Tables│
+│  │ (port 8422)     │                │
+│  └─────────────────┘                │
+│                                     │
+│  Streamlit in Snowflake             │
+│  ┌─────────────────┐                │
+│  │ SiS Dashboard   │─reads──► Tables│
+│  └─────────────────┘                │
+└─────────────────────────────────────┘
+```
+
+### Quick Start
+
+1. **Run setup SQL** — creates database, tables, image repo, compute pool, and service:
+   ```bash
+   snowsql -f snowflake/setup.sql
+   ```
+
+2. **Build and push the container image**:
+   ```bash
+   docker build -f Dockerfile.snowpark -t agent-bom-snowpark:latest .
+   docker tag agent-bom-snowpark:latest \
+     <account>.registry.snowflakecomputing.com/agent_bom/public/agent_bom_repo/agent-bom:latest
+   docker push <account>.registry.snowflakecomputing.com/agent_bom/public/agent_bom_repo/agent-bom:latest
+   ```
+
+3. **Deploy SiS dashboard** — upload `snowflake/streamlit_app.py` and `snowflake/environment.yml` via the Snowflake web UI (Streamlit > + Streamlit App).
+
+### Authentication
+
+The Snowflake stores auto-detect auth method:
+
+| Env Var | Method |
+|---------|--------|
+| `SNOWFLAKE_PRIVATE_KEY_PATH` | Key-pair auth (preferred for service accounts) |
+| `SNOWFLAKE_PASSWORD` | Password auth (fallback) |
+
+Additional env vars: `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_DATABASE` (default: `AGENT_BOM`), `SNOWFLAKE_SCHEMA` (default: `PUBLIC`).
+
+### Tables
+
+| Table | Purpose |
+|-------|---------|
+| `scan_jobs` | Scan job persistence (status, results as VARIANT) |
+| `fleet_agents` | Fleet agent lifecycle (trust scores, states) |
+| `gateway_policies` | Runtime MCP gateway policies |
+| `policy_audit_log` | Policy enforcement audit trail |
+
+---
+
 ## 🌐 Remote Scanning Architectures
 
 ### Scanning VMs and Remote Systems

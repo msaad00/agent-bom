@@ -1,0 +1,6 @@
+name: agent_bom_sis
+channels:
+  - snowflake
+dependencies:
+  - plotly
+  - pandas

@@ -1505,7 +1505,7 @@ def print_compact_agents(report: AIBOMReport) -> None:
     console.print(table)
 
 
-def print_compact_blast_radius(report: AIBOMReport, limit: int = 5) -> None:
+def print_compact_blast_radius(report: AIBOMReport, limit: int = 10) -> None:
     """Show top N blast radius findings in a compact table."""
     if not report.blast_radii:
         return
@@ -1517,8 +1517,11 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 5) -> None:
     table = Table(title=title, expand=True, padding=(0, 1))
     table.add_column("Vuln", no_wrap=True, ratio=2)
     table.add_column("Sev", no_wrap=True)
+    table.add_column("EPSS", justify="center", no_wrap=True)
     table.add_column("Package", ratio=2)
+    table.add_column("Agent", ratio=1)
     table.add_column("Blast", justify="center")
+    table.add_column("Frameworks", ratio=2)
     table.add_column("Fix", ratio=1)
 
     severity_colors = {
@@ -1538,11 +1541,37 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 5) -> None:
             blast += f"/[yellow]{n_creds}C[/yellow]"
         kev = " [red]KEV[/red]" if br.vulnerability.is_kev else ""
 
+        # EPSS score
+        epss_display = "[dim]—[/dim]"
+        if br.vulnerability.epss_score is not None:
+            epss_pct = int(br.vulnerability.epss_score * 100)
+            epss_style = "red bold" if epss_pct >= 70 else "yellow" if epss_pct >= 30 else "dim"
+            epss_display = f"[{epss_style}]{epss_pct}%[/{epss_style}]"
+
+        # Agent names (first agent + count)
+        agent_names = [a.name for a in br.affected_agents]
+        agent_display = agent_names[0] if agent_names else "—"
+        if len(agent_names) > 1:
+            agent_display += f" +{len(agent_names) - 1}"
+
+        # Framework tags (compact)
+        tags = []
+        if hasattr(br, "owasp_tags") and br.owasp_tags:
+            tags.append(f"[purple]{' '.join(list(br.owasp_tags)[:2])}[/purple]")
+        if hasattr(br, "owasp_mcp_tags") and br.owasp_mcp_tags:
+            tags.append(f"[yellow]{' '.join(list(br.owasp_mcp_tags)[:2])}[/yellow]")
+        if hasattr(br, "atlas_tags") and br.atlas_tags:
+            tags.append(f"[cyan]{' '.join(list(br.atlas_tags)[:1])}[/cyan]")
+        fw_display = " ".join(tags) if tags else "[dim]—[/dim]"
+
         table.add_row(
             f"{br.vulnerability.id}{kev}",
             f"[{sev_style}]{br.vulnerability.severity.value.upper()}[/{sev_style}]",
+            epss_display,
             f"{br.package.name}@{br.package.version}",
+            agent_display,
             blast,
+            fw_display,
             fix,
         )
 
@@ -1551,7 +1580,7 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 5) -> None:
         console.print(f"  [dim]... {total - limit} more (use --verbose for full list)[/dim]")
 
 
-def print_compact_remediation(report: AIBOMReport, limit: int = 3) -> None:
+def print_compact_remediation(report: AIBOMReport, limit: int = 5) -> None:
     """Top N remediation items, one-liner each."""
     if not report.blast_radii:
         return

@@ -860,6 +860,8 @@ def scan(
             skill_result = scan_skill_files(skill_file_list)
             if skill_result.servers or skill_result.packages or skill_result.credential_env_vars:
                 con.print(f"\n[bold blue]Scanning {len(skill_file_list)} skill file(s)...[/bold blue]\n")
+                for sf in skill_file_list:
+                    con.print(f"  [dim]•[/dim] {sf.name}  [dim]{sf.parent}[/dim]")
                 if skill_result.servers:
                     from agent_bom.models import Agent, AgentType
 
@@ -1595,7 +1597,7 @@ def scan(
             # Compact output (default)
             print_compact_summary(report)
             print_compact_agents(report)
-            print_compact_blast_radius(report, limit=5)
+            print_compact_blast_radius(report)
 
         # AI enrichment output (both modes)
         if report.executive_summary:
@@ -1646,7 +1648,7 @@ def scan(
             print_remediation_plan(report)
             print_export_hint(report)
         else:
-            print_compact_remediation(report, limit=3)
+            print_compact_remediation(report)
             print_compact_export_hint(report)
     elif output_format == "text" and not output:
         _print_text(report, blast_radii)

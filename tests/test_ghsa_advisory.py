@@ -117,3 +117,101 @@ def test_dedup_skips_existing_cve():
 def test_unknown_ecosystem_skipped():
     """Packages with unsupported ecosystems should not be queried."""
     assert "unknown_eco" not in _ECOSYSTEM_MAP
+
+
+def test_advisory_filtered_by_package_name():
+    """Advisories for different packages are filtered out (substring match fix).
+
+    The GitHub Advisory API returns substring matches — e.g., querying for
+    "express" returns advisories for "express-session", "express-validator",
+    etc.  The enrichment must only add advisories whose vulnerability entries
+    list the exact target package name.
+    """
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+
+    from agent_bom.scanners.ghsa_advisory import check_github_advisories
+
+    # Advisory that does NOT match our target package (express-session, not express)
+    wrong_advisory = {
+        "ghsa_id": "GHSA-aaaa-bbbb-cccc",
+        "cve_id": "CVE-2099-0001",
+        "severity": "high",
+        "cvss": {"score": 7.5},
+        "summary": "Session fixation in express-session",
+        "cwes": [],
+        "html_url": "https://github.com/advisories/GHSA-aaaa-bbbb-cccc",
+        "vulnerabilities": [
+            {
+                "package": {"name": "express-session", "ecosystem": "npm"},
+                "patched_versions": ">= 1.18.0",
+            }
+        ],
+    }
+    # Advisory that DOES match our target package
+    correct_advisory = {
+        "ghsa_id": "GHSA-dddd-eeee-ffff",
+        "cve_id": "CVE-2099-0002",
+        "severity": "critical",
+        "cvss": {"score": 9.8},
+        "summary": "RCE in express",
+        "cwes": [{"cwe_id": "CWE-94"}],
+        "html_url": "https://github.com/advisories/GHSA-dddd-eeee-ffff",
+        "vulnerabilities": [
+            {
+                "package": {"name": "express", "ecosystem": "npm"},
+                "patched_versions": ">= 4.19.0",
+            }
+        ],
+    }
+
+    pkg = Package(name="express", version="4.17.1", ecosystem="npm")
+
+    async def run():
+        with patch("agent_bom.scanners.ghsa_advisory._fetch_advisories_for_package", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = [wrong_advisory, correct_advisory]
+            count = await check_github_advisories([pkg])
+        return count
+
+    count = asyncio.run(run())
+
+    # Only the matching advisory should be added
+    assert count == 1
+    assert len(pkg.vulnerabilities) == 1
+    assert pkg.vulnerabilities[0].id == "CVE-2099-0002"
+    assert pkg.vulnerabilities[0].fixed_version == "4.19.0"
+
+
+def test_advisory_no_match_skipped():
+    """Advisory with no matching package is completely skipped."""
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+
+    from agent_bom.scanners.ghsa_advisory import check_github_advisories
+
+    unrelated_advisory = {
+        "ghsa_id": "GHSA-xxxx-yyyy-zzzz",
+        "cve_id": "CVE-2099-9999",
+        "severity": "critical",
+        "cvss": {"score": 10.0},
+        "summary": "Total chaos in some-other-package",
+        "cwes": [],
+        "vulnerabilities": [
+            {
+                "package": {"name": "some-other-package", "ecosystem": "npm"},
+                "patched_versions": ">= 2.0.0",
+            }
+        ],
+    }
+
+    pkg = Package(name="express", version="4.17.1", ecosystem="npm")
+
+    async def run():
+        with patch("agent_bom.scanners.ghsa_advisory._fetch_advisories_for_package", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = [unrelated_advisory]
+            count = await check_github_advisories([pkg])
+        return count
+
+    count = asyncio.run(run())
+    assert count == 0
+    assert len(pkg.vulnerabilities) == 0

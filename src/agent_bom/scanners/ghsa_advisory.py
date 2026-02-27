@@ -177,6 +177,13 @@ async def check_github_advisories(
                 refs = [advisory.get("html_url", "")] if advisory.get("html_url") else []
 
                 for target_pkg in target_pkgs:
+                    # Verify this advisory actually affects the target package
+                    # (GitHub API does substring matching, so "express" returns
+                    # advisories for "express-session", "express-validator", etc.)
+                    advisory_pkg_names = {v.get("package", {}).get("name", "").lower() for v in advisory.get("vulnerabilities", [])}
+                    if target_pkg.name.lower() not in advisory_pkg_names:
+                        continue
+
                     existing_ids = {v.id for v in target_pkg.vulnerabilities}
                     # Skip if CVE or GHSA ID already present
                     if vuln_id in existing_ids or (cve_id and cve_id in existing_ids) or (ghsa_id and ghsa_id in existing_ids):

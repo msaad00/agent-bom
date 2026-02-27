@@ -19,42 +19,12 @@
   <b>AI supply chain security scanner. Scan packages and images for CVEs. Assess config security — credential exposure, tool access, privilege escalation. Map blast radius from vulnerabilities to credentials and tools. OWASP LLM Top 10 + OWASP MCP Top 10 + MITRE ATLAS + NIST AI RMF.</b>
 </p>
 
-```mermaid
-graph LR
-    subgraph Discovery["1. Discovery"]
-        MCP["MCP Configs\n18 clients"]
-        Cloud["Cloud Providers\nAWS · Azure · GCP\nSnowflake · Databricks"]
-        Img["Docker Images\nGrype + Syft"]
-        K8s["Kubernetes\nPod scanning"]
-        SBOM_In["Existing SBOMs\nCycloneDX · SPDX"]
-    end
-
-    subgraph Enrichment["2. Enrichment"]
-        OSV["OSV.dev\nBatch CVE lookup"]
-        NVD["NVD\nCVSS v3/v4"]
-        EPSS["FIRST EPSS\nExploit probability"]
-        KEV["CISA KEV\nActive exploitation"]
-        GHSA["GHSA · NVIDIA CSAF\nSupplemental advisories"]
-        Reg["MCP Registry\n427+ servers"]
-    end
-
-    subgraph Analysis["3. Analysis"]
-        Blast["Blast Radius\nCVE → pkg → server →\nagent → creds → tools"]
-        OWASP["OWASP LLM Top 10\n+ MCP Top 10"]
-        ATLAS["MITRE ATLAS\n+ NIST AI RMF"]
-        Enforce["Enforcement\nPolicy gates"]
-    end
-
-    subgraph Output["4. Output"]
-        Console["Console · HTML"]
-        SARIF["SARIF"]
-        CDX["CycloneDX 1.6"]
-        SPDX["SPDX 3.0"]
-        JSON_Out["JSON · Mermaid"]
-    end
-
-    Discovery --> Enrichment --> Analysis --> Output
-```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-light.svg" alt="How agent-bom works" width="800" />
+  </picture>
+</p>
 
 ---
 
@@ -521,50 +491,12 @@ Set `SNOWFLAKE_ACCOUNT` + `SNOWFLAKE_USER` + auth (`SNOWFLAKE_PRIVATE_KEY_PATH` 
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for full Snowflake architecture and setup instructions.
 
-```mermaid
-graph TD
-    subgraph External["External Clients"]
-        MCP_C["MCP Clients\nClaude · Cursor · etc."]
-        NextJS["Next.js Dashboard"]
-        CLI_E["CLI\nagent-bom scan --snowflake"]
-    end
-
-    subgraph SF["Snowflake Account"]
-        subgraph Discover["Cortex Discovery"]
-            CA["Cortex Agents"]
-            MCP_SF["Native MCP Servers"]
-            CS["Cortex Search · RAG"]
-            SC["Snowpark Containers"]
-            QH["Query History · 365 days"]
-            GOV["Governance · Roles + Grants"]
-        end
-
-        subgraph Runtime["Snowpark Container Services"]
-            API["agent-bom API\nFastAPI :8422"]
-        end
-
-        subgraph Storage["Snowflake Tables"]
-            Jobs["SCAN_JOBS"]
-            Fleet["FLEET_AGENTS"]
-            Policies["GATEWAY_POLICIES"]
-            Audit["POLICY_AUDIT_LOG"]
-        end
-
-        subgraph SiS["Streamlit in Snowflake"]
-            Dash["6-Tab Dashboard\nJobs · Fleet · Policies\nVulns · Compliance · Audit"]
-        end
-
-        subgraph NativeApp["Native App"]
-            NA["Marketplace Distribution\nmanifest.yml + setup.sql"]
-        end
-    end
-
-    External --> API
-    Discover --> API
-    API --> Storage
-    SiS --> Storage
-    NA --> Storage
-```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/snowflake-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/snowflake-light.svg" alt="Snowflake Deployment Architecture" width="800" />
+  </picture>
+</p>
 
 <p align="center">
   <picture>

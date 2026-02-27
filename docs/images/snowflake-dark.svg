@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 520" fill="none">
+  <style>
+    .title { font: 700 13px system-ui, -apple-system, sans-serif; fill: #e6edf3; }
+    .section-title { font: 700 10px system-ui, sans-serif; fill: #8b949e; letter-spacing: 0.06em; }
+    .box-label { font: 600 10.5px system-ui, sans-serif; fill: #e6edf3; }
+    .box-sub { font: 400 9px system-ui, sans-serif; fill: #8b949e; }
+    .arrow-label { font: 500 8px system-ui, sans-serif; fill: #6e7681; }
+  </style>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#58a6ff" opacity="0.6"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#3fb950" opacity="0.6"/>
+    </marker>
+    <marker id="ao" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#d29922" opacity="0.6"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="880" height="520" rx="12" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+
+  <!-- Title -->
+  <text x="440" y="28" text-anchor="middle" class="title">Snowflake Deployment Architecture</text>
+
+  <!-- ═══ Snowflake Account Boundary ═══ -->
+  <rect x="200" y="42" width="660" height="432" rx="10" fill="none" stroke="#29b5e8" stroke-width="1.5" stroke-dasharray="6 3" opacity="0.5"/>
+  <text x="530" y="58" text-anchor="middle" class="section-title" fill="#29b5e8">SNOWFLAKE ACCOUNT</text>
+
+  <!-- ═══ External Clients (left) ═══ -->
+  <text x="100" y="60" text-anchor="middle" class="section-title">EXTERNAL CLIENTS</text>
+  <rect x="30" y="74" width="140" height="36" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+  <text x="100" y="90" text-anchor="middle" class="box-label">MCP Clients</text>
+  <text x="100" y="102" text-anchor="middle" class="box-sub">Claude · Cursor · Codex</text>
+
+  <rect x="30" y="120" width="140" height="36" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+  <text x="100" y="136" text-anchor="middle" class="box-label">Next.js Dashboard</text>
+  <text x="100" y="148" text-anchor="middle" class="box-sub">13-section cloud UI</text>
+
+  <rect x="30" y="166" width="140" height="36" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+  <text x="100" y="182" text-anchor="middle" class="box-label">CLI</text>
+  <text x="100" y="194" text-anchor="middle" class="box-sub">agent-bom scan --snowflake</text>
+
+  <!-- ═══ Cortex Discovery (top inside boundary) ═══ -->
+  <rect x="220" y="68" width="280" height="170" rx="8" fill="#161b22" stroke="#29b5e8" stroke-width="1" opacity="0.8"/>
+  <text x="360" y="84" text-anchor="middle" class="section-title" fill="#29b5e8">CORTEX DISCOVERY</text>
+
+  <rect x="234" y="94" width="118" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="293" y="112" text-anchor="middle" class="box-label">Cortex Agents</text>
+
+  <rect x="362" y="94" width="126" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="425" y="112" text-anchor="middle" class="box-label">Native MCP Servers</text>
+
+  <rect x="234" y="130" width="118" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="293" y="148" text-anchor="middle" class="box-label">Cortex Search</text>
+
+  <rect x="362" y="130" width="126" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="425" y="148" text-anchor="middle" class="box-label">Snowpark Containers</text>
+
+  <rect x="234" y="166" width="118" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="293" y="184" text-anchor="middle" class="box-label">Query History</text>
+
+  <rect x="362" y="166" width="126" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="425" y="184" text-anchor="middle" class="box-label">Governance</text>
+
+  <rect x="234" y="202" width="254" height="28" rx="5" fill="#0d1117" stroke="#29b5e8" stroke-width="1" opacity="0.4"/>
+  <text x="361" y="220" text-anchor="middle" class="box-sub">6 discovery sources → agents, servers, packages, tools</text>
+
+  <!-- ═══ agent-bom API (center) ═══ -->
+  <rect x="540" y="80" width="170" height="70" rx="8" fill="#161b22" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="625" y="104" text-anchor="middle" class="box-label" fill="#58a6ff">agent-bom API</text>
+  <text x="625" y="118" text-anchor="middle" class="box-sub">FastAPI :8422</text>
+  <text x="625" y="130" text-anchor="middle" class="box-sub">Scan · Registry · Compliance</text>
+
+  <!-- Arrow: Discovery → API -->
+  <line x1="500" y1="115" x2="536" y2="115" stroke="#29b5e8" stroke-width="1.5" marker-end="url(#ah)" opacity="0.6"/>
+
+  <!-- Arrow: External → API -->
+  <line x1="170" y1="92" x2="196" y2="92" stroke="#58a6ff" stroke-width="1" stroke-dasharray="4 2" opacity="0.4"/>
+  <line x1="170" y1="138" x2="196" y2="138" stroke="#58a6ff" stroke-width="1" stroke-dasharray="4 2" opacity="0.4"/>
+  <line x1="170" y1="184" x2="196" y2="184" stroke="#58a6ff" stroke-width="1" stroke-dasharray="4 2" opacity="0.4"/>
+  <!-- Vertical connector outside boundary → API -->
+  <path d="M196 92 L196 184" stroke="#58a6ff" stroke-width="1" stroke-dasharray="4 2" opacity="0.4"/>
+  <path d="M196 138 L540 115" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#ah)" opacity="0.5"/>
+
+  <!-- ═══ Snowflake Tables (center-bottom) ═══ -->
+  <rect x="310" y="274" width="300" height="120" rx="8" fill="#161b22" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="460" y="294" text-anchor="middle" class="section-title" fill="#3fb950">SNOWFLAKE TABLES</text>
+
+  <rect x="324" y="304" width="130" height="26" rx="5" fill="#0d1117" stroke="#3fb950" stroke-width="1" opacity="0.5"/>
+  <text x="389" y="321" text-anchor="middle" class="box-label">SCAN_JOBS</text>
+
+  <rect x="466" y="304" width="130" height="26" rx="5" fill="#0d1117" stroke="#3fb950" stroke-width="1" opacity="0.5"/>
+  <text x="531" y="321" text-anchor="middle" class="box-label">FLEET_AGENTS</text>
+
+  <rect x="324" y="338" width="130" height="26" rx="5" fill="#0d1117" stroke="#3fb950" stroke-width="1" opacity="0.5"/>
+  <text x="389" y="355" text-anchor="middle" class="box-label">GATEWAY_POLICIES</text>
+
+  <rect x="466" y="338" width="130" height="26" rx="5" fill="#0d1117" stroke="#3fb950" stroke-width="1" opacity="0.5"/>
+  <text x="531" y="355" text-anchor="middle" class="box-label">POLICY_AUDIT_LOG</text>
+
+  <rect x="324" y="370" width="272" height="16" rx="4" fill="#0d1117" stroke="#3fb950" stroke-width="1" opacity="0.3"/>
+  <text x="460" y="382" text-anchor="middle" class="box-sub">+ APP_CONFIG · GOVERNANCE_FINDINGS · ACTIVITY_EVENTS</text>
+
+  <!-- Arrow: API → Tables (writes) -->
+  <path d="M625 150 L625 200 L460 200 L460 270" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#ah)" fill="none"/>
+  <text x="555" y="196" class="arrow-label">writes scan results</text>
+
+  <!-- ═══ Streamlit in Snowflake (bottom-left) ═══ -->
+  <rect x="220" y="420" width="180" height="48" rx="8" fill="#161b22" stroke="#d29922" stroke-width="1.5"/>
+  <text x="310" y="440" text-anchor="middle" class="box-label" fill="#d29922">Streamlit Dashboard</text>
+  <text x="310" y="454" text-anchor="middle" class="box-sub">6 tabs · Jobs · Fleet · Policies · Vulns</text>
+
+  <!-- Arrow: Tables → Streamlit (reads) -->
+  <path d="M390 394 L390 406 L310 406 L310 416" stroke="#d29922" stroke-width="1.5" marker-end="url(#ao)" fill="none"/>
+  <text x="336" y="412" class="arrow-label">reads</text>
+
+  <!-- ═══ Native App (bottom-right) ═══ -->
+  <rect x="540" y="420" width="180" height="48" rx="8" fill="#161b22" stroke="#d29922" stroke-width="1.5"/>
+  <text x="630" y="440" text-anchor="middle" class="box-label" fill="#d29922">Native App</text>
+  <text x="630" y="454" text-anchor="middle" class="box-sub">Marketplace · manifest.yml + setup.sql</text>
+
+  <!-- Arrow: Tables → Native App (reads) -->
+  <path d="M530 394 L530 406 L630 406 L630 416" stroke="#d29922" stroke-width="1.5" marker-end="url(#ao)" fill="none"/>
+  <text x="594" y="412" class="arrow-label">reads</text>
+
+  <!-- ═══ Auth footer ═══ -->
+  <rect x="28" y="480" width="824" height="30" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+  <text x="440" y="496" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="600" fill="#8b949e" letter-spacing="0.03em">AUTH: SNOWFLAKE_ACCOUNT + SNOWFLAKE_USER + key-pair or password  ·  API auto-detects and switches to Snowflake persistence  ·  Tables auto-created on first scan</text>
+</svg>

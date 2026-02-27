@@ -297,6 +297,51 @@ export interface AgentLifecycleResponse {
   stats: Record<string, number>;
 }
 
+// ─── Fleet Types ─────────────────────────────────────────────────────────────
+
+export type FleetLifecycleState = "discovered" | "pending_review" | "approved" | "quarantined" | "decommissioned";
+
+export interface FleetAgent {
+  agent_id: string;
+  name: string;
+  agent_type: string;
+  config_path: string;
+  lifecycle_state: FleetLifecycleState;
+  owner: string | null;
+  environment: string | null;
+  tags: string[];
+  trust_score: number;
+  trust_factors: Record<string, number>;
+  server_count: number;
+  package_count: number;
+  credential_count: number;
+  vuln_count: number;
+  last_discovery: string | null;
+  last_scan: string | null;
+  created_at: string;
+  updated_at: string;
+  notes: string;
+}
+
+export interface FleetResponse {
+  agents: FleetAgent[];
+  count: number;
+}
+
+export interface FleetStatsResponse {
+  total: number;
+  by_state: Record<string, number>;
+  by_environment: Record<string, number>;
+  avg_trust_score: number;
+  low_trust_count: number;
+}
+
+export interface FleetSyncResult {
+  synced: number;
+  new: number;
+  updated: number;
+}
+
 // ─── Fetch helpers ────────────────────────────────────────────────────────────
 
 async function get<T>(path: string): Promise<T> {
@@ -388,6 +433,31 @@ export const api = {
 
   /** Compliance posture across all completed scans */
   getCompliance: () => get<ComplianceResponse>("/v1/compliance"),
+
+  /** Fleet management */
+  listFleet: (filters?: { state?: string; environment?: string; min_trust?: number }) => {
+    const params = new URLSearchParams();
+    if (filters?.state) params.set("state", filters.state);
+    if (filters?.environment) params.set("environment", filters.environment);
+    if (filters?.min_trust != null) params.set("min_trust", String(filters.min_trust));
+    const qs = params.toString();
+    return get<FleetResponse>(`/v1/fleet${qs ? `?${qs}` : ""}`);
+  },
+  getFleetAgent: (agentId: string) => get<FleetAgent>(`/v1/fleet/${agentId}`),
+  syncFleet: () => post<FleetSyncResult>("/v1/fleet/sync", {}),
+  updateFleetState: (agentId: string, state: string, reason?: string) =>
+    fetch(`${BASE}/v1/fleet/${agentId}/state`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ state, reason: reason ?? "" }),
+    }).then((r) => r.json()),
+  updateFleetAgent: (agentId: string, update: Partial<FleetAgent>) =>
+    fetch(`${BASE}/v1/fleet/${agentId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(update),
+    }).then((r) => r.json()),
+  getFleetStats: () => get<FleetStatsResponse>("/v1/fleet/stats"),
 };
 
 // ─── Threat Framework Catalogs ────────────────────────────────────────────────

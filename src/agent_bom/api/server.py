@@ -58,9 +58,13 @@ async def _lifespan(app_instance: FastAPI):
     """Start background cleanup task on startup, cancel on shutdown."""
     # Auto-configure SQLite when AGENT_BOM_DB env is set
     db_path = _os.environ.get("AGENT_BOM_DB")
-    if db_path and _store is None:
-        from agent_bom.api.store import SQLiteJobStore
-        set_job_store(SQLiteJobStore(db_path))
+    if db_path:
+        if _store is None:
+            from agent_bom.api.store import SQLiteJobStore
+            set_job_store(SQLiteJobStore(db_path))
+        if _fleet_store is None:
+            from agent_bom.api.fleet_store import SQLiteFleetStore
+            set_fleet_store(SQLiteFleetStore(db_path))
 
     global _cleanup_task
     _cleanup_task = asyncio.create_task(_cleanup_loop())
@@ -1394,3 +1398,188 @@ async def scorecard_lookup(ecosystem: str, package: str) -> dict:
         "repo": repo,
         "scorecard": data,
     }
+
+
+# ─── Fleet Management ────────────────────────────────────────────────────────
+
+_fleet_store: Any = None
+
+
+def _get_fleet_store():
+    """Get the active fleet store, creating InMemoryFleetStore if not set."""
+    global _fleet_store
+    if _fleet_store is None:
+        from agent_bom.api.fleet_store import InMemoryFleetStore
+        _fleet_store = InMemoryFleetStore()
+    return _fleet_store
+
+
+def set_fleet_store(store: Any) -> None:
+    """Switch the fleet store backend. Call before server startup."""
+    global _fleet_store
+    _fleet_store = store
+
+
+class StateUpdate(BaseModel):
+    state: str
+    reason: str = ""
+
+
+class FleetAgentUpdate(BaseModel):
+    owner: str | None = None
+    environment: str | None = None
+    tags: list[str] | None = None
+    notes: str | None = None
+
+
+@app.get("/v1/fleet", tags=["fleet"])
+async def list_fleet(
+    state: str | None = None,
+    environment: str | None = None,
+    min_trust: float | None = None,
+):
+    """List all agents in the fleet registry."""
+    agents = _get_fleet_store().list_all()
+    if state:
+        agents = [a for a in agents if a.lifecycle_state.value == state]
+    if environment:
+        agents = [a for a in agents if a.environment == environment]
+    if min_trust is not None:
+        agents = [a for a in agents if a.trust_score >= min_trust]
+    return {
+        "agents": [a.model_dump() for a in agents],
+        "count": len(agents),
+    }
+
+
+@app.get("/v1/fleet/stats", tags=["fleet"])
+async def fleet_stats():
+    """Fleet-wide statistics."""
+    agents = _get_fleet_store().list_all()
+    by_state: dict[str, int] = {}
+    by_env: dict[str, int] = {}
+    trust_scores: list[float] = []
+    for a in agents:
+        by_state[a.lifecycle_state.value] = by_state.get(a.lifecycle_state.value, 0) + 1
+        env = a.environment or "unset"
+        by_env[env] = by_env.get(env, 0) + 1
+        trust_scores.append(a.trust_score)
+    return {
+        "total": len(agents),
+        "by_state": by_state,
+        "by_environment": by_env,
+        "avg_trust_score": round(sum(trust_scores) / len(trust_scores), 1) if trust_scores else 0.0,
+        "low_trust_count": sum(1 for s in trust_scores if s < 50),
+    }
+
+
+@app.get("/v1/fleet/{agent_id}", tags=["fleet"])
+async def get_fleet_agent(agent_id: str):
+    """Get a single fleet agent with trust score breakdown."""
+    agent = _get_fleet_store().get(agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Fleet agent not found")
+    return agent.model_dump()
+
+
+@app.post("/v1/fleet/sync", tags=["fleet"])
+async def sync_fleet():
+    """Run discovery and sync results into the fleet registry.
+
+    New agents → state=DISCOVERED. Existing agents → counts updated.
+    Trust scores are recomputed for all synced agents.
+    """
+    from agent_bom.api.fleet_store import FleetAgent, FleetLifecycleState
+    from agent_bom.discovery import discover_all
+    from agent_bom.fleet.trust_scoring import compute_trust_score
+
+    discovered = discover_all()
+    store = _get_fleet_store()
+    now = datetime.now(timezone.utc).isoformat()
+    new_count = 0
+    updated_count = 0
+
+    for agent in discovered:
+        existing = store.get_by_name(agent.name)
+        server_count = len(agent.mcp_servers)
+        pkg_count = sum(len(s.packages) for s in agent.mcp_servers)
+        cred_count = sum(len(s.credential_names) for s in agent.mcp_servers)
+        vuln_count = sum(s.total_vulnerabilities for s in agent.mcp_servers)
+
+        score, factors = compute_trust_score(agent)
+
+        if existing:
+            existing.server_count = server_count
+            existing.package_count = pkg_count
+            existing.credential_count = cred_count
+            existing.vuln_count = vuln_count
+            existing.trust_score = score
+            existing.trust_factors = factors
+            existing.last_discovery = now
+            existing.updated_at = now
+            existing.config_path = agent.config_path or ""
+            store.put(existing)
+            updated_count += 1
+        else:
+            fleet_agent = FleetAgent(
+                agent_id=str(uuid.uuid4()),
+                name=agent.name,
+                agent_type=agent.agent_type.value if hasattr(agent.agent_type, "value") else str(agent.agent_type),
+                config_path=agent.config_path or "",
+                lifecycle_state=FleetLifecycleState.DISCOVERED,
+                trust_score=score,
+                trust_factors=factors,
+                server_count=server_count,
+                package_count=pkg_count,
+                credential_count=cred_count,
+                vuln_count=vuln_count,
+                last_discovery=now,
+                created_at=now,
+                updated_at=now,
+            )
+            store.put(fleet_agent)
+            new_count += 1
+
+    return {
+        "synced": new_count + updated_count,
+        "new": new_count,
+        "updated": updated_count,
+    }
+
+
+@app.put("/v1/fleet/{agent_id}/state", tags=["fleet"])
+async def update_fleet_state(agent_id: str, body: StateUpdate):
+    """Update agent lifecycle state."""
+    from agent_bom.api.fleet_store import FleetLifecycleState
+
+    try:
+        new_state = FleetLifecycleState(body.state)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid state: {body.state}. Valid: {[s.value for s in FleetLifecycleState]}",
+        )
+    store = _get_fleet_store()
+    if not store.update_state(agent_id, new_state):
+        raise HTTPException(status_code=404, detail="Fleet agent not found")
+    return {"agent_id": agent_id, "lifecycle_state": new_state.value}
+
+
+@app.put("/v1/fleet/{agent_id}", tags=["fleet"])
+async def update_fleet_agent(agent_id: str, body: FleetAgentUpdate):
+    """Update agent metadata (owner, environment, tags, notes)."""
+    store = _get_fleet_store()
+    agent = store.get(agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Fleet agent not found")
+    if body.owner is not None:
+        agent.owner = body.owner
+    if body.environment is not None:
+        agent.environment = body.environment
+    if body.tags is not None:
+        agent.tags = body.tags
+    if body.notes is not None:
+        agent.notes = body.notes
+    agent.updated_at = datetime.now(timezone.utc).isoformat()
+    store.put(agent)
+    return agent.model_dump()

@@ -3,13 +3,15 @@
 Generates Mermaid flowchart syntax suitable for embedding in markdown
 documents, GitHub issues/PRs, or rendering with any Mermaid-compatible tool.
 
-Two modes:
+Three modes:
   - **supply-chain** (default): Full hierarchy Provider → Agent → Server → Package
   - **attack-flow**: CVE-centric blast radius chains CVE → Package → Server → Agent
+  - **lifecycle**: Vulnerability lifecycle gantt timeline per package
 
 Usage:
-    agent-bom scan --format mermaid                          # supply-chain (default)
+    agent-bom scan --format mermaid                               # supply-chain (default)
     agent-bom scan --format mermaid --mermaid-mode attack-flow
+    agent-bom scan --format mermaid --mermaid-mode lifecycle
     agent-bom scan --format mermaid --output diagram.mmd
 """
 
@@ -151,9 +153,7 @@ def to_mermaid_supply_chain(report: AIBOMReport) -> str:
             edges.add(f'    {prov_node}["{_sanitize_label(prov_label)}"]')
 
         # Provider → Agent
-        edges.add(
-            f'    {prov_node} --> {agt_node}["{_sanitize_label(agent.name)}"]'
-        )
+        edges.add(f'    {prov_node} --> {agt_node}["{_sanitize_label(agent.name)}"]')
 
         for srv in agent.mcp_servers:
             srv_node = _sanitize_id(f"srv_{agent.name}_{srv.name}")
@@ -166,9 +166,7 @@ def to_mermaid_supply_chain(report: AIBOMReport) -> str:
             srv_label = f"{srv.name}{cred_badge}{pkg_badge}"
 
             # Agent → Server
-            edges.add(
-                f'    {agt_node} --> {srv_node}["{_sanitize_label(srv_label)}"]'
-            )
+            edges.add(f'    {agt_node} --> {srv_node}["{_sanitize_label(srv_label)}"]')
 
             # Server → Packages (show top 5 per server to avoid explosion)
             for pkg in srv.packages[:5]:
@@ -187,15 +185,11 @@ def to_mermaid_supply_chain(report: AIBOMReport) -> str:
                     if srv_node not in server_styles:
                         server_styles[srv_node] = "vuln"
 
-                edges.add(
-                    f'    {srv_node} --> {pkg_node}["{_sanitize_label(pkg_label)}"]'
-                )
+                edges.add(f'    {srv_node} --> {pkg_node}["{_sanitize_label(pkg_label)}"]')
 
             if len(srv.packages) > 5:
                 more_node = _sanitize_id(f"more_{agent.name}_{srv.name}")
-                edges.add(
-                    f'    {srv_node} -.-> {more_node}["{len(srv.packages) - 5} more..."]'
-                )
+                edges.add(f'    {srv_node} -.-> {more_node}["{len(srv.packages) - 5} more..."]')
 
     for edge in sorted(edges):
         lines.append(edge)
@@ -216,6 +210,76 @@ def to_mermaid_supply_chain(report: AIBOMReport) -> str:
             lines.append(f"    style {node} fill:#fff3e0,stroke:#e65100,stroke-width:2px")
         elif stype == "vuln":
             lines.append(f"    style {node} fill:#fbe9e7,stroke:#b71c1c,stroke-width:2px")
+
+    return "\n".join(lines) + "\n"
+
+
+def to_mermaid_lifecycle(report: AIBOMReport, blast_radii: list[BlastRadius]) -> str:
+    """Generate a Mermaid gantt chart showing vulnerability lifecycle timeline.
+
+    Shows per-package milestones: scan date → vuln discovered → fix available.
+
+    Args:
+        report: The AI-BOM report (used for scan date).
+        blast_radii: List of BlastRadius objects to visualize.
+
+    Returns:
+        Mermaid gantt chart as a string.
+    """
+    lines: list[str] = [
+        "gantt",
+        "    title Vulnerability Lifecycle Timeline",
+        "    dateFormat YYYY-MM-DD",
+        "    axisFormat %Y-%m",
+    ]
+
+    if not blast_radii:
+        lines.append("    section No vulnerabilities")
+        lines.append("    Clean scan :done, s0, 2025-01-01, 1d")
+        return "\n".join(lines) + "\n"
+
+    # Use report date as scan date
+    scan_date = getattr(report, "generated_at", None) or "2025-01-01"
+    if hasattr(scan_date, "strftime"):
+        scan_date = scan_date.strftime("%Y-%m-%d")
+    else:
+        scan_date = str(scan_date)[:10]
+
+    # Group blast radii by package
+    pkg_vulns: dict[str, list[BlastRadius]] = {}
+    for br in blast_radii:
+        pkg_label = f"{br.package.name}@{br.package.version}"
+        pkg_vulns.setdefault(pkg_label, []).append(br)
+
+    task_id = 0
+    for pkg_label, brs in sorted(pkg_vulns.items()):
+        safe_label = _sanitize_label(pkg_label)
+        lines.append(f"    section {safe_label}")
+
+        # Scanned milestone
+        lines.append(f"    Scanned :done, t{task_id}, {scan_date}, 1d")
+        prev_id = f"t{task_id}"
+        task_id += 1
+
+        for br in brs:
+            vuln = br.vulnerability
+            vuln_id = vuln.id
+
+            # Determine discovery date
+            discover_date = getattr(vuln, "nvd_published", None)
+            if discover_date:
+                discover_str = str(discover_date)[:10]
+                lines.append(f"    {vuln_id} :crit, t{task_id}, {discover_str}, 1d")
+            else:
+                lines.append(f"    {vuln_id} :crit, t{task_id}, after {prev_id}, 1d")
+            prev_id = f"t{task_id}"
+            task_id += 1
+
+            # Fixed version milestone
+            if vuln.fixed_version:
+                lines.append(f"    Fix → {vuln.fixed_version} :active, t{task_id}, after {prev_id}, 1d")
+                prev_id = f"t{task_id}"
+                task_id += 1
 
     return "\n".join(lines) + "\n"
 

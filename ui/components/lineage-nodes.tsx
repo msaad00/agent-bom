@@ -40,6 +40,8 @@ export type LineageNodeData = {
   // Package
   ecosystem?: string;
   version?: string;
+  versionSource?: string;
+  registryVersion?: string;
   // Vulnerability
   severity?: string;
   cvssScore?: number;

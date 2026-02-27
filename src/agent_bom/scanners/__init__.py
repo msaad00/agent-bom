@@ -374,6 +374,18 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
 
 async def scan_packages(packages: list[Package]) -> int:
     """Scan a list of packages for vulnerabilities. Returns count of vulns found."""
+    # Auto-resolve "latest"/"unknown" versions before OSV query
+    unresolved = [p for p in packages if p.version in ("latest", "unknown", "") and p.ecosystem in ("npm", "pypi")]
+    if unresolved:
+        try:
+            from agent_bom.resolver import resolve_all_versions
+
+            resolved_count = await resolve_all_versions(unresolved)
+            if resolved_count:
+                console.print(f"  [green]✓[/green] Auto-resolved {resolved_count} package version(s)")
+        except Exception as exc:
+            console.print(f"  [yellow]⚠[/yellow] Version resolution skipped: {exc}")
+
     scannable = [p for p in packages if p.version not in ("unknown", "latest")]
 
     if not scannable:
@@ -407,6 +419,18 @@ async def scan_packages(packages: list[Package]) -> int:
                 console.print(f"  [green]✓[/green] NVIDIA advisories: {nvidia_new} additional CVE(s)")
         except Exception as exc:
             console.print(f"  [yellow]⚠[/yellow] NVIDIA advisory check skipped: {exc}")
+
+    # Supplemental: check GitHub Security Advisories for all packages
+    if scannable:
+        try:
+            from agent_bom.scanners.ghsa_advisory import check_github_advisories
+
+            ghsa_new = await check_github_advisories(scannable)
+            if ghsa_new:
+                total_vulns += ghsa_new
+                console.print(f"  [green]✓[/green] GHSA advisories: {ghsa_new} additional CVE(s)")
+        except Exception as exc:
+            console.print(f"  [yellow]⚠[/yellow] GHSA advisory check skipped: {exc}")
 
     # Typosquat detection for all scanned packages
     for pkg in scannable:

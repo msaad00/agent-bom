@@ -633,6 +633,11 @@ def test_osv_empty_response_yields_no_blast_radii(monkeypatch):
 
     monkeypatch.setattr("agent_bom.scanners.query_osv_batch", _empty_osv)
 
+    async def _no_ghsa(packages, **kwargs):
+        return 0
+
+    monkeypatch.setattr("agent_bom.scanners.ghsa_advisory.check_github_advisories", _no_ghsa)
+
     pkg = Package(name="express", version="4.18.2", ecosystem="npm")
     server = MCPServer(name="srv", command="node", env={}, packages=[pkg])
     agent = Agent(name="agt", agent_type=AgentType.CUSTOM, config_path="/tmp", mcp_servers=[server])

@@ -56,9 +56,23 @@ from contextlib import asynccontextmanager  # noqa: E402
 @asynccontextmanager
 async def _lifespan(app_instance: FastAPI):
     """Start background cleanup task on startup, cancel on shutdown."""
-    # Auto-configure SQLite when AGENT_BOM_DB env is set
-    db_path = _os.environ.get("AGENT_BOM_DB")
-    if db_path:
+    # Priority: Snowflake > SQLite > InMemory (lazy default)
+    if _os.environ.get("SNOWFLAKE_ACCOUNT"):
+        from agent_bom.api.snowflake_store import (
+            SnowflakeFleetStore,
+            SnowflakeJobStore,
+            SnowflakePolicyStore,
+            build_connection_params,
+        )
+        sf = build_connection_params()
+        if _store is None:
+            set_job_store(SnowflakeJobStore(sf))
+        if _fleet_store is None:
+            set_fleet_store(SnowflakeFleetStore(sf))
+        if _policy_store is None:
+            set_policy_store(SnowflakePolicyStore(sf))
+    elif _os.environ.get("AGENT_BOM_DB"):
+        db_path = _os.environ["AGENT_BOM_DB"]
         if _store is None:
             from agent_bom.api.store import SQLiteJobStore
             set_job_store(SQLiteJobStore(db_path))

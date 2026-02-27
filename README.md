@@ -99,7 +99,7 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
 |----------|------|
 | PyPI | `pip install agent-bom` |
 | Docker | `docker run agentbom/agent-bom scan` |
-| GitHub Action | `uses: msaad00/agent-bom@v0.34.0` |
+| GitHub Action | `uses: msaad00/agent-bom@v0.35.0 |
 | MCP Registry | [server.json](integrations/mcp-registry/server.json) |
 | ToolHive | [registry entry](integrations/toolhive/server.json) |
 | OpenClaw | [SKILL.md](integrations/openclaw/SKILL.md) |
@@ -345,18 +345,19 @@ agent-bom scan --aws -f graph -o graph.json   # export graph data
 |------|---------|----------|
 | CLI | `agent-bom scan` | Local audit |
 | Pre-install check | `agent-bom check express@4.18.2 -e npm` | Before running MCP servers |
-| GitHub Action | `uses: msaad00/agent-bom@v0.34.0` | CI/CD + SARIF |
+| GitHub Action | `uses: msaad00/agent-bom@v0.35.0 | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated scans |
 | REST API | `agent-bom api` | Dashboards, SIEM |
 | Runtime proxy | `agent-bom proxy` | Live MCP traffic audit |
 | MCP Server | `agent-bom mcp-server` | Inside any MCP client |
 | Dashboard | `agent-bom serve` | API + Next.js dashboard |
+| Snowflake | `SNOWFLAKE_ACCOUNT=... agent-bom api` | Snowpark + SiS |
 | Prometheus | `--push-gateway` / `--otel-endpoint` | Monitoring |
 
 ### GitHub Action
 
 ```yaml
-- uses: msaad00/agent-bom@v0.34.0
+- uses: msaad00/agent-bom@v0.35.0
   with:
     severity-threshold: high
     upload-sarif: true
@@ -397,7 +398,37 @@ agent-bom mcp-server --transport sse    # remote
 cd ui && npm install && npm run dev   # http://localhost:3000
 ```
 
-Security posture dashboard, vulnerability explorer, attack flow diagrams, supply chain graph, registry browser, enterprise scan form.
+16-page Next.js dashboard:
+
+| Page | Description |
+|------|-------------|
+| Dashboard | Security posture summary + stat cards |
+| Scan | Enterprise scan form with cloud options |
+| Vulnerabilities | CVE browser with severity/EPSS/KEV filters |
+| Agents | Fleet registry + lifecycle state management |
+| Compliance | 4-framework compliance posture (OWASP, ATLAS, NIST) |
+| Lineage Graph | Interactive supply chain graph — dagre layout, 6 node types, filter panel |
+| Agent Mesh | Cross-agent topology — shared server detection, credential blast radius, tool overlap |
+| Attack Flow | Per-CVE blast radius visualization |
+| Gateway | Runtime MCP policy rules + audit log |
+| Registry | 427+ MCP server browser |
+
+### Snowflake Deployment
+
+```bash
+pip install 'agent-bom[api,snowflake]'
+```
+
+| Component | Description |
+|-----------|-------------|
+| Snowflake Table Storage | `SnowflakeJobStore`, `SnowflakeFleetStore`, `SnowflakePolicyStore` — auto-detect key-pair or password auth |
+| Snowpark Container Services | `Dockerfile.snowpark` + `snowflake/setup.sql` — run the API inside Snowflake |
+| Streamlit in Snowflake | `snowflake/streamlit_app.py` — 5-tab SiS dashboard reading from shared tables |
+| Native App | `snowflake/native-app/` — Marketplace-distributable package |
+
+Set `SNOWFLAKE_ACCOUNT` + `SNOWFLAKE_USER` + auth (`SNOWFLAKE_PRIVATE_KEY_PATH` or `SNOWFLAKE_PASSWORD`) and the API auto-switches to Snowflake persistence.
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for full Snowflake architecture and setup instructions.
 
 ---
 

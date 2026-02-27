@@ -135,15 +135,19 @@ def test_parse_empty_config():
 def test_parse_npm_package_json():
     with tempfile.TemporaryDirectory() as tmpdir:
         pkg_json = Path(tmpdir) / "package.json"
-        pkg_json.write_text(json.dumps({
-            "dependencies": {
-                "express": "^4.18.2",
-                "axios": "~1.6.0",
-            },
-            "devDependencies": {
-                "jest": "^29.0.0",
-            }
-        }))
+        pkg_json.write_text(
+            json.dumps(
+                {
+                    "dependencies": {
+                        "express": "^4.18.2",
+                        "axios": "~1.6.0",
+                    },
+                    "devDependencies": {
+                        "jest": "^29.0.0",
+                    },
+                }
+            )
+        )
 
         packages = parse_npm_packages(Path(tmpdir))
         assert len(packages) == 3
@@ -157,13 +161,7 @@ def test_parse_npm_package_json():
 def test_parse_pip_requirements():
     with tempfile.TemporaryDirectory() as tmpdir:
         req_file = Path(tmpdir) / "requirements.txt"
-        req_file.write_text(
-            "flask==3.0.0\n"
-            "requests>=2.31.0\n"
-            "# comment\n"
-            "numpy==1.26.0\n"
-            "-r other.txt\n"
-        )
+        req_file.write_text("flask==3.0.0\nrequests>=2.31.0\n# comment\nnumpy==1.26.0\n-r other.txt\n")
 
         packages = parse_pip_packages(Path(tmpdir))
         assert len(packages) == 3
@@ -180,6 +178,7 @@ def test_npx_package_detection():
         args=["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
     )
     from agent_bom.parsers import detect_npx_package
+
     packages = detect_npx_package(server)
     assert len(packages) == 1
     assert packages[0].name == "@modelcontextprotocol/server-filesystem"
@@ -193,6 +192,7 @@ def test_uvx_package_detection():
         args=["mcp-server-fetch"],
     )
     from agent_bom.parsers import detect_uvx_package
+
     packages = detect_uvx_package(server)
     assert len(packages) == 1
     assert packages[0].name == "mcp-server-fetch"
@@ -255,12 +255,14 @@ def empty_report():
 
 def test_version_sync():
     from agent_bom import __version__
-    assert __version__ == "0.34.0"
+
+    assert __version__ == "0.35.0"
 
 
 def test_report_version_matches():
     report = AIBOMReport()
     from agent_bom import __version__
+
     assert report.tool_version == __version__
 
 
@@ -355,6 +357,7 @@ def test_cli_help_shows_exit_codes():
 
 def test_history_save_and_load(tmp_path, monkeypatch):
     from agent_bom.history import load_report, save_report
+
     monkeypatch.setattr("agent_bom.history.HISTORY_DIR", tmp_path)
 
     data = {"ai_bom_version": "0.3.0", "generated_at": "2025-01-01T00:00:00", "summary": {}, "agents": [], "blast_radius": []}
@@ -506,9 +509,12 @@ def test_policy_warn_medium():
     server = MCPServer(name="api", command="uvx", env={})
     agent = Agent(name="bot", agent_type=AgentType.CUSTOM, config_path="/tmp/test")
     br = BlastRadius(
-        vulnerability=vuln, package=pkg,
-        affected_servers=[server], affected_agents=[agent],
-        exposed_credentials=[], exposed_tools=[],
+        vulnerability=vuln,
+        package=pkg,
+        affected_servers=[server],
+        affected_agents=[agent],
+        exposed_credentials=[],
+        exposed_tools=[],
     )
     br.calculate_risk_score()
 
@@ -550,8 +556,10 @@ def test_policy_has_credentials_filter():
     server = MCPServer(name="no-creds-server", command="node", env={})
     agent = Agent(name="agent", agent_type=AgentType.CUSTOM, config_path="/tmp")
     br = BlastRadius(
-        vulnerability=vuln, package=pkg,
-        affected_servers=[server], affected_agents=[agent],
+        vulnerability=vuln,
+        package=pkg,
+        affected_servers=[server],
+        affected_agents=[agent],
         exposed_credentials=[],  # no credentials
         exposed_tools=[],
     )
@@ -638,6 +646,7 @@ def test_osv_empty_response_yields_no_blast_radii(monkeypatch):
 
 def test_cortex_code_agent_type_exists():
     from agent_bom.models import AgentType
+
     assert AgentType.CORTEX_CODE == "cortex-code"
     assert AgentType.ZED == "zed"
     assert AgentType.CONTINUE == "continue"
@@ -646,6 +655,7 @@ def test_cortex_code_agent_type_exists():
 def test_cortex_code_in_discovery_locations():
     from agent_bom.discovery import CONFIG_LOCATIONS
     from agent_bom.models import AgentType
+
     assert AgentType.CORTEX_CODE in CONFIG_LOCATIONS
     paths = CONFIG_LOCATIONS[AgentType.CORTEX_CODE]
     # All platforms should point to ~/.snowflake/cortex/mcp.json
@@ -656,11 +666,13 @@ def test_cortex_code_in_discovery_locations():
 def test_vscode_copilot_in_discovery_locations():
     from agent_bom.discovery import CONFIG_LOCATIONS
     from agent_bom.models import AgentType
+
     assert AgentType.VSCODE_COPILOT in CONFIG_LOCATIONS
 
 
 def test_mcp_registry_loads():
     from agent_bom.parsers import _load_registry
+
     registry = _load_registry()
     assert len(registry) > 0
     assert "@modelcontextprotocol/server-filesystem" in registry
@@ -697,12 +709,7 @@ def test_continue_format_parsed(tmp_path):
     """Continue.dev uses array format for mcpServers."""
     from agent_bom.discovery import parse_mcp_config
 
-    config = {
-        "mcpServers": [
-            {"name": "filesystem", "command": "npx",
-             "args": ["-y", "@modelcontextprotocol/server-filesystem"]}
-        ]
-    }
+    config = {"mcpServers": [{"name": "filesystem", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem"]}]}
     servers = parse_mcp_config(config, str(tmp_path))
     assert len(servers) == 1
     assert servers[0].name == "filesystem"
@@ -713,16 +720,7 @@ def test_zed_format_parsed(tmp_path):
     """Zed uses context_servers with nested command object."""
     from agent_bom.discovery import parse_mcp_config
 
-    config = {
-        "context_servers": {
-            "postgres": {
-                "command": {
-                    "path": "npx",
-                    "args": ["-y", "@modelcontextprotocol/server-postgres"]
-                }
-            }
-        }
-    }
+    config = {"context_servers": {"postgres": {"command": {"path": "npx", "args": ["-y", "@modelcontextprotocol/server-postgres"]}}}}
     servers = parse_mcp_config(config, str(tmp_path))
     assert len(servers) == 1
     assert servers[0].name == "postgres"
@@ -739,10 +737,8 @@ def test_parse_cyclonedx_components():
         "bomFormat": "CycloneDX",
         "specVersion": "1.6",
         "components": [
-            {"name": "express", "version": "4.18.2",
-             "purl": "pkg:npm/express@4.18.2", "type": "library"},
-            {"name": "requests", "version": "2.28.0",
-             "purl": "pkg:pypi/requests@2.28.0", "type": "library"},
+            {"name": "express", "version": "4.18.2", "purl": "pkg:npm/express@4.18.2", "type": "library"},
+            {"name": "requests", "version": "2.28.0", "purl": "pkg:pypi/requests@2.28.0", "type": "library"},
         ],
     }
     packages = parse_cyclonedx(data)
@@ -784,8 +780,7 @@ def test_load_sbom_cyclonedx(tmp_path):
         "bomFormat": "CycloneDX",
         "specVersion": "1.6",
         "components": [
-            {"name": "flask", "version": "2.3.0",
-             "purl": "pkg:pypi/flask@2.3.0", "type": "library"},
+            {"name": "flask", "version": "2.3.0", "purl": "pkg:pypi/flask@2.3.0", "type": "library"},
         ],
     }
     p = tmp_path / "sbom.json"
@@ -854,19 +849,20 @@ def test_scan_with_syft_preferred(monkeypatch):
     monkeypatch.setattr(shutil, "which", lambda cmd: None if cmd == "grype" else "/usr/bin/" + cmd)
 
     # Return a minimal CycloneDX JSON from syft
-    fake_cdx = json.dumps({
-        "bomFormat": "CycloneDX",
-        "specVersion": "1.5",
-        "components": [
-            {"name": "requests", "version": "2.31.0", "purl": "pkg:pypi/requests@2.31.0", "type": "library"}
-        ],
-    })
+    fake_cdx = json.dumps(
+        {
+            "bomFormat": "CycloneDX",
+            "specVersion": "1.5",
+            "components": [{"name": "requests", "version": "2.31.0", "purl": "pkg:pypi/requests@2.31.0", "type": "library"}],
+        }
+    )
 
     def fake_run(cmd, **kwargs):
         class R:
             returncode = 0
             stdout = fake_cdx
             stderr = ""
+
         return R()
 
     monkeypatch.setattr(subprocess, "run", fake_run)
@@ -891,6 +887,7 @@ def test_scan_with_syft_error(monkeypatch):
             returncode = 1
             stdout = ""
             stderr = "image not found"
+
         return R()
 
     monkeypatch.setattr(subprocess, "run", fake_run)
@@ -956,6 +953,7 @@ def test_k8s_discover_parses_pods(monkeypatch):
             returncode = 0
             stdout = json.dumps(fake_pods)
             stderr = ""
+
         return R()
 
     monkeypatch.setattr(subprocess, "run", fake_run)
@@ -980,6 +978,7 @@ def test_k8s_discover_kubectl_error(monkeypatch):
             returncode = 1
             stdout = ""
             stderr = "Error from server: connection refused"
+
         return R()
 
     monkeypatch.setattr(subprocess, "run", fake_run)
@@ -1016,6 +1015,7 @@ def test_k8s_all_namespaces_flag(monkeypatch):
             returncode = 0
             stdout = json.dumps(fake_pods)
             stderr = ""
+
         return R()
 
     monkeypatch.setattr(subprocess, "run", fake_run)
@@ -1037,18 +1037,23 @@ def _make_report_with_vuln() -> tuple:
         fixed_version="2.0.0",
     )
     pkg = Package(
-        name="testpkg", version="1.0.0", ecosystem="npm",
+        name="testpkg",
+        version="1.0.0",
+        ecosystem="npm",
         vulnerabilities=[vuln],
     )
     server = MCPServer(
-        name="test-server", command="npx",
+        name="test-server",
+        command="npx",
         args=["testpkg"],
         env={"API_KEY": "secret"},
         packages=[pkg],
     )
     agent = Agent(
-        name="test-agent", agent_type=AgentType.CLAUDE_DESKTOP,
-        config_path="/tmp/config.json", mcp_servers=[server],
+        name="test-agent",
+        agent_type=AgentType.CLAUDE_DESKTOP,
+        config_path="/tmp/config.json",
+        mcp_servers=[server],
     )
     report = AIBOMReport(agents=[agent])
     br = BlastRadius(
@@ -1116,8 +1121,10 @@ def test_html_clean_report_shows_clean_status():
     pkg = Package(name="safe-pkg", version="1.0.0", ecosystem="npm")
     server = MCPServer(name="safe-server", command="npx", args=["safe-pkg"], packages=[pkg])
     agent = Agent(
-        name="safe-agent", agent_type=AgentType.CLAUDE_DESKTOP,
-        config_path="/tmp/config.json", mcp_servers=[server],
+        name="safe-agent",
+        agent_type=AgentType.CLAUDE_DESKTOP,
+        config_path="/tmp/config.json",
+        mcp_servers=[server],
     )
     report = AIBOMReport(agents=[agent])
     html = to_html(report, [])
@@ -1270,8 +1277,10 @@ def test_prometheus_clean_report_zero_vulns():
     pkg = Package(name="safe-pkg", version="1.0.0", ecosystem="npm")
     server = MCPServer(name="safe-server", command="npx", args=["safe-pkg"], packages=[pkg])
     agent = Agent(
-        name="safe-agent", agent_type=AgentType.CLAUDE_DESKTOP,
-        config_path="/tmp/config.json", mcp_servers=[server],
+        name="safe-agent",
+        agent_type=AgentType.CLAUDE_DESKTOP,
+        config_path="/tmp/config.json",
+        mcp_servers=[server],
     )
     report = AIBOMReport(agents=[agent])
     prom = to_prometheus(report, [])
@@ -1567,6 +1576,7 @@ def test_cli_serve_fails_without_uvicorn(monkeypatch):
 
 # ─── Python agent framework scanner tests ─────────────────────────────────────
 
+
 def test_python_agents_detects_openai_agents_sdk(tmp_path):
     """Detects openai-agents from requirements.txt and Agent() definition."""
     (tmp_path / "requirements.txt").write_text("openai-agents==0.0.11\nopenai>=1.0\n")
@@ -1576,6 +1586,7 @@ def test_python_agents_detects_openai_agents_sdk(tmp_path):
         "agent = Agent(name='support-bot', tools=[search_web], model='gpt-4o')\n"
     )
     from agent_bom.python_agents import scan_python_agents
+
     agents, warnings = scan_python_agents(str(tmp_path))
     assert any(a.name == "openai-agents:support-bot" for a in agents)
     agent = next(a for a in agents if "support-bot" in a.name)
@@ -1587,14 +1598,10 @@ def test_python_agents_detects_openai_agents_sdk(tmp_path):
 
 def test_python_agents_detects_google_adk(tmp_path):
     """Detects google-adk from pyproject.toml."""
-    (tmp_path / "pyproject.toml").write_text(
-        "[project]\ndependencies = [\n  \"google-adk>=0.3.0\",\n]\n"
-    )
-    (tmp_path / "main.py").write_text(
-        "from google.adk.agents import Agent\n"
-        "agent = Agent(name='researcher', tools=[])\n"
-    )
+    (tmp_path / "pyproject.toml").write_text('[project]\ndependencies = [\n  "google-adk>=0.3.0",\n]\n')
+    (tmp_path / "main.py").write_text("from google.adk.agents import Agent\nagent = Agent(name='researcher', tools=[])\n")
     from agent_bom.python_agents import scan_python_agents
+
     agents, warnings = scan_python_agents(str(tmp_path))
     assert len(agents) >= 1
     assert any("google-adk" in a.name or "researcher" in a.name for a in agents)
@@ -1609,6 +1616,7 @@ def test_python_agents_detects_langchain(tmp_path):
         "agent = AgentExecutor(name='qa-agent', tools=[], agent=None)\n"
     )
     from agent_bom.python_agents import scan_python_agents
+
     agents, warnings = scan_python_agents(str(tmp_path))
     assert len(agents) >= 1
     pkgs = [p.name for a in agents for s in a.mcp_servers for p in s.packages]
@@ -1619,11 +1627,10 @@ def test_python_agents_extracts_credential_refs(tmp_path):
     """Flags env var references that look like credentials."""
     (tmp_path / "requirements.txt").write_text("openai-agents==0.0.11\n")
     (tmp_path / "agent.py").write_text(
-        "import os\nfrom agents import Agent\n"
-        "key = os.environ.get('OPENAI_API_KEY')\n"
-        "agent = Agent(name='my-bot', tools=[])\n"
+        "import os\nfrom agents import Agent\nkey = os.environ.get('OPENAI_API_KEY')\nagent = Agent(name='my-bot', tools=[])\n"
     )
     from agent_bom.python_agents import scan_python_agents
+
     agents, warnings = scan_python_agents(str(tmp_path))
     assert len(agents) >= 1
     creds = {k for a in agents for s in a.mcp_servers for k in s.env}
@@ -1636,6 +1643,7 @@ def test_python_agents_no_framework_returns_empty(tmp_path):
     (tmp_path / "requirements.txt").write_text("requests==2.31.0\nflask==3.0.0\n")
     (tmp_path / "app.py").write_text("import requests\nprint('hello')\n")
     from agent_bom.python_agents import scan_python_agents
+
     agents, warnings = scan_python_agents(str(tmp_path))
     assert agents == []
 
@@ -1643,6 +1651,7 @@ def test_python_agents_no_framework_returns_empty(tmp_path):
 def test_python_agents_invalid_dir():
     """Returns error warning for nonexistent directory."""
     from agent_bom.python_agents import scan_python_agents
+
     agents, warnings = scan_python_agents("/nonexistent/path/xyz")
     assert agents == []
     assert len(warnings) == 1
@@ -1652,10 +1661,9 @@ def test_python_agents_invalid_dir():
 def test_python_agents_synthetic_entry_when_no_def(tmp_path):
     """Creates synthetic agent entry when framework in requirements but no Agent() found."""
     (tmp_path / "requirements.txt").write_text("crewai==0.51.0\n")
-    (tmp_path / "tasks.py").write_text(
-        "from crewai import Task\ntask = Task(description='do research')\n"
-    )
+    (tmp_path / "tasks.py").write_text("from crewai import Task\ntask = Task(description='do research')\n")
     from agent_bom.python_agents import scan_python_agents
+
     agents, warnings = scan_python_agents(str(tmp_path))
     # Should create a synthetic entry for crewai
     assert len(agents) >= 1
@@ -1699,6 +1707,7 @@ def test_api_import():
     """FastAPI server module imports cleanly when fastapi is available."""
     pytest.importorskip("fastapi", reason="fastapi not installed")
     from agent_bom.api.server import app  # noqa: F401
+
     assert app.title == "agent-bom API"
 
 
@@ -1708,6 +1717,7 @@ def test_api_health_endpoint():
     from fastapi.testclient import TestClient
 
     from agent_bom.api.server import app
+
     client = TestClient(app)
     resp = client.get("/health")
     assert resp.status_code == 200
@@ -1721,6 +1731,7 @@ def test_api_version_endpoint():
 
     from agent_bom import __version__
     from agent_bom.api.server import app
+
     client = TestClient(app)
     resp = client.get("/version")
     assert resp.status_code == 200
@@ -1733,6 +1744,7 @@ def test_api_scan_submit_and_poll():
     from fastapi.testclient import TestClient
 
     from agent_bom.api.server import app
+
     client = TestClient(app)
     # Submit a scan with no targets — completes quickly (done or failed: no agents on CI)
     resp = client.post("/v1/scan", json={})
@@ -1755,6 +1767,7 @@ def test_api_scan_not_found():
     from fastapi.testclient import TestClient
 
     from agent_bom.api.server import app
+
     client = TestClient(app)
     resp = client.get("/v1/scan/does-not-exist-12345")
     assert resp.status_code == 404
@@ -1766,6 +1779,7 @@ def test_api_jobs_list():
     from fastapi.testclient import TestClient
 
     from agent_bom.api.server import app
+
     client = TestClient(app)
     resp = client.get("/v1/jobs")
     assert resp.status_code == 200
@@ -1811,6 +1825,7 @@ def test_grype_scan_mock(monkeypatch, tmp_path):
             returncode = 0
             stdout = json.dumps(grype_output)
             stderr = ""
+
         return R()
 
     monkeypatch.setattr(subprocess, "run", fake_run)
@@ -1830,6 +1845,7 @@ def test_grype_scan_mock(monkeypatch, tmp_path):
 def test_owasp_lm05_always_present(sample_report):
     """Any blast radius entry must always include LLM05 (Supply Chain)."""
     from agent_bom.owasp import tag_blast_radius
+
     br = sample_report.blast_radii[0]
     br.owasp_tags = tag_blast_radius(br)
     assert "LLM05" in br.owasp_tags
@@ -1838,6 +1854,7 @@ def test_owasp_lm05_always_present(sample_report):
 def test_owasp_lm06_credential_exposure(sample_report):
     """Credential exposure triggers LLM06 tagging."""
     from agent_bom.owasp import tag_blast_radius
+
     br = sample_report.blast_radii[0]
     br.exposed_credentials = ["OPENAI_API_KEY"]
     br.owasp_tags = tag_blast_radius(br)
@@ -1848,6 +1865,7 @@ def test_owasp_lm08_excessive_agency(sample_report):
     """More than 5 exposed tools + HIGH/CRITICAL severity triggers LLM08."""
     from agent_bom.models import MCPTool, Severity
     from agent_bom.owasp import tag_blast_radius
+
     br = sample_report.blast_radii[0]
     br.vulnerability.severity = Severity.CRITICAL
     br.exposed_tools = [MCPTool(name=f"tool_{i}", description="") for i in range(6)]
@@ -1859,6 +1877,7 @@ def test_owasp_tags_in_json_output(sample_report):
     """to_json() includes 'owasp_tags' field in each blast radius entry."""
     from agent_bom.output import to_json
     from agent_bom.owasp import tag_blast_radius
+
     # Populate tags first (normally done by scanner)
     for br in sample_report.blast_radii:
         br.owasp_tags = tag_blast_radius(br)
@@ -1885,6 +1904,7 @@ def test_api_trust_headers():
     from fastapi.testclient import TestClient
 
     from agent_bom.api.server import app
+
     client = TestClient(app)
     response = client.get("/health")
     assert response.status_code == 200
@@ -1898,6 +1918,7 @@ def test_api_agents_endpoint():
     from fastapi.testclient import TestClient
 
     from agent_bom.api.server import app
+
     client = TestClient(app)
     resp = client.get("/v1/agents")
     assert resp.status_code == 200
@@ -1914,6 +1935,7 @@ def test_api_scan_completes_successfully():
     from fastapi.testclient import TestClient
 
     from agent_bom.api.server import app
+
     client = TestClient(app)
     resp = client.post("/v1/scan", json={})
     assert resp.status_code == 202
@@ -1921,6 +1943,7 @@ def test_api_scan_completes_successfully():
 
     # TestClient runs executor tasks synchronously, so poll should have result
     import time
+
     time.sleep(1)
     poll = client.get(f"/v1/scan/{job_id}")
     assert poll.status_code == 200
@@ -1938,6 +1961,7 @@ def test_registry_endpoint():
     from fastapi.testclient import TestClient
 
     from agent_bom.api.server import _load_registry, app
+
     _load_registry.cache_clear()  # clear cache so fresh load from disk
     client = TestClient(app)
     response = client.get("/v1/registry")
@@ -1956,6 +1980,7 @@ def test_api_skill_audit_endpoint():
     from fastapi.testclient import TestClient
 
     from agent_bom.api.server import JobStatus, ScanJob, ScanRequest, _get_store, app
+
     client = TestClient(app)
 
     # Create a fake completed job with skill_audit data
@@ -1992,6 +2017,7 @@ def test_api_skill_audit_empty():
     from fastapi.testclient import TestClient
 
     from agent_bom.api.server import JobStatus, ScanJob, ScanRequest, _get_store, app
+
     client = TestClient(app)
 
     job = ScanJob(
@@ -2014,21 +2040,25 @@ def test_api_skill_audit_empty():
 
 # ── Resilient HTTP client tests ──────────────────────────────────────
 
+
 def test_http_client_create():
     """create_client returns an httpx.AsyncClient with retry transport."""
     import httpx
 
     from agent_bom.http_client import create_client
+
     client = create_client(timeout=10.0)
     assert isinstance(client, httpx.AsyncClient)
     # Cleanup
     import asyncio
+
     asyncio.get_event_loop_policy().new_event_loop().run_until_complete(client.aclose())
 
 
 def test_http_client_retry_constants():
     """Retry configuration constants are sensible."""
     from agent_bom.http_client import INITIAL_BACKOFF, MAX_RETRIES, RETRYABLE_STATUS_CODES
+
     assert MAX_RETRIES >= 2
     assert INITIAL_BACKOFF >= 0.5
     assert 429 in RETRYABLE_STATUS_CODES
@@ -2036,6 +2066,7 @@ def test_http_client_retry_constants():
 
 
 # ── Integrity module tests ──────────────────────────────────────
+
 
 def test_integrity_module_imports():
     """integrity.py module imports without error and exposes expected API."""
@@ -2046,6 +2077,7 @@ def test_integrity_module_imports():
         check_package_provenance,
         verify_package_integrity,
     )
+
     assert asyncio.iscoroutinefunction(verify_package_integrity)
     assert asyncio.iscoroutinefunction(check_package_provenance)
 
@@ -2061,6 +2093,7 @@ def test_cli_scan_has_verify_integrity_flag():
 def test_credential_redaction_in_discovery():
     """sanitize_env_vars is applied when parsing MCP configs — secrets are redacted."""
     from agent_bom.discovery import parse_mcp_config
+
     config = {
         "mcpServers": {
             "test-server": {
@@ -2070,7 +2103,7 @@ def test_credential_redaction_in_discovery():
                     "API_KEY": "sk-super-secret-value",
                     "OPENAI_API_TOKEN": "sk-proj-abc123",
                     "NORMAL_VAR": "not-a-secret",
-                }
+                },
             }
         }
     }
@@ -2088,6 +2121,7 @@ def test_credential_redaction_in_discovery():
 def test_atlas_module_imports():
     """ATLAS module can be imported and has the expected catalog."""
     from agent_bom.atlas import ATLAS_TECHNIQUES
+
     assert "AML.T0010" in ATLAS_TECHNIQUES
     assert "AML.T0051" in ATLAS_TECHNIQUES
     assert "AML.T0062" in ATLAS_TECHNIQUES
@@ -2097,6 +2131,7 @@ def test_atlas_module_imports():
 def test_atlas_supply_chain_always_present():
     """AML.T0010 (ML Supply Chain Compromise) is always tagged on every blast radius."""
     from agent_bom.atlas import tag_blast_radius as tag_atlas
+
     br = BlastRadius(
         vulnerability=Vulnerability(id="CVE-2024-1234", summary="test", severity=Severity.LOW),
         package=Package(name="express", version="4.18.0", ecosystem="npm"),
@@ -2112,6 +2147,7 @@ def test_atlas_supply_chain_always_present():
 def test_atlas_exfiltration_via_agent_tool():
     """AML.T0062 is tagged when credentials are exposed."""
     from agent_bom.atlas import tag_blast_radius as tag_atlas
+
     br = BlastRadius(
         vulnerability=Vulnerability(id="CVE-2024-5678", summary="test", severity=Severity.HIGH),
         package=Package(name="lodash", version="4.17.0", ecosystem="npm"),
@@ -2128,6 +2164,7 @@ def test_atlas_agent_tools_broad_surface():
     """AML.T0061 is tagged when >3 tools are reachable."""
     from agent_bom.atlas import tag_blast_radius as tag_atlas
     from agent_bom.models import MCPTool
+
     tools = [MCPTool(name=f"tool_{i}", description="test") for i in range(5)]
     br = BlastRadius(
         vulnerability=Vulnerability(id="CVE-2024-9999", summary="test", severity=Severity.MEDIUM),
@@ -2145,6 +2182,7 @@ def test_atlas_prompt_injection_surface():
     """AML.T0051 is tagged when tools can access prompts/context."""
     from agent_bom.atlas import tag_blast_radius as tag_atlas
     from agent_bom.models import MCPTool
+
     br = BlastRadius(
         vulnerability=Vulnerability(id="CVE-2024-1111", summary="test", severity=Severity.HIGH),
         package=Package(name="test-pkg", version="1.0.0", ecosystem="npm"),
@@ -2161,6 +2199,7 @@ def test_atlas_craft_adversarial_data():
     """AML.T0043 is tagged when shell/exec tools are reachable."""
     from agent_bom.atlas import tag_blast_radius as tag_atlas
     from agent_bom.models import MCPTool
+
     br = BlastRadius(
         vulnerability=Vulnerability(id="CVE-2024-2222", summary="test", severity=Severity.CRITICAL),
         package=Package(name="vulnerable-pkg", version="0.1.0", ecosystem="npm"),
@@ -2177,6 +2216,7 @@ def test_atlas_meta_prompt_extraction():
     """AML.T0056 is tagged when file/data read tools are reachable."""
     from agent_bom.atlas import tag_blast_radius as tag_atlas
     from agent_bom.models import MCPTool
+
     br = BlastRadius(
         vulnerability=Vulnerability(id="CVE-2024-3333", summary="test", severity=Severity.MEDIUM),
         package=Package(name="some-pkg", version="2.0.0", ecosystem="npm"),
@@ -2192,6 +2232,7 @@ def test_atlas_meta_prompt_extraction():
 def test_atlas_poison_training_data():
     """AML.T0020 is tagged when AI framework has HIGH+ CVE."""
     from agent_bom.atlas import tag_blast_radius as tag_atlas
+
     br = BlastRadius(
         vulnerability=Vulnerability(id="CVE-2024-4444", summary="RCE in torch", severity=Severity.CRITICAL),
         package=Package(name="torch", version="2.0.0", ecosystem="pypi"),
@@ -2207,6 +2248,7 @@ def test_atlas_poison_training_data():
 def test_atlas_context_poisoning():
     """AML.T0058 is tagged when AI framework + creds + HIGH+ severity."""
     from agent_bom.atlas import tag_blast_radius as tag_atlas
+
     br = BlastRadius(
         vulnerability=Vulnerability(id="CVE-2024-5555", summary="RCE in langchain", severity=Severity.HIGH),
         package=Package(name="langchain", version="0.1.0", ecosystem="pypi"),
@@ -2223,6 +2265,7 @@ def test_atlas_context_poisoning():
 def test_atlas_label_formatting():
     """atlas_label() and atlas_labels() return human-readable strings."""
     from agent_bom.atlas import atlas_label, atlas_labels
+
     label = atlas_label("AML.T0010")
     assert "AML.T0010" in label
     assert "Supply Chain" in label
@@ -2265,24 +2308,28 @@ def test_scenario_enterprise_multi_agent():
         name="filesystem",
         command="npx",
         args=["-y", "@modelcontextprotocol/server-filesystem"],
-        packages=[Package(
-            name="glob",
-            version="7.1.6",
-            ecosystem="npm",
-            vulnerabilities=[Vulnerability(id="CVE-2024-GLOB", summary="ReDoS", severity=Severity.HIGH)],
-        )],
+        packages=[
+            Package(
+                name="glob",
+                version="7.1.6",
+                ecosystem="npm",
+                vulnerabilities=[Vulnerability(id="CVE-2024-GLOB", summary="ReDoS", severity=Severity.HIGH)],
+            )
+        ],
         tools=[MCPTool(name="read_file", description="Read file"), MCPTool(name="write_file", description="Write file")],
         env={"OPENAI_API_KEY": "***REDACTED***"},
     )
     srv2 = MCPServer(
         name="sqlite-mcp",
         command="uvx",
-        packages=[Package(
-            name="better-sqlite3",
-            version="9.0.0",
-            ecosystem="npm",
-            vulnerabilities=[Vulnerability(id="CVE-2024-SQL", summary="SQL injection", severity=Severity.CRITICAL)],
-        )],
+        packages=[
+            Package(
+                name="better-sqlite3",
+                version="9.0.0",
+                ecosystem="npm",
+                vulnerabilities=[Vulnerability(id="CVE-2024-SQL", summary="SQL injection", severity=Severity.CRITICAL)],
+            )
+        ],
         tools=[MCPTool(name="query_db", description="Execute SQL query")],
     )
     agent1 = Agent(name="Claude Desktop", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/test.json", mcp_servers=[srv1, srv2])
@@ -2354,8 +2401,12 @@ def test_scenario_individual_developer():
         name="weather-api",
         command="npx",
         packages=[
-            Package(name="axios", version="0.21.0", ecosystem="npm",
-                    vulnerabilities=[Vulnerability(id="CVE-2024-AXIOS", summary="SSRF", severity=Severity.MEDIUM)]),
+            Package(
+                name="axios",
+                version="0.21.0",
+                ecosystem="npm",
+                vulnerabilities=[Vulnerability(id="CVE-2024-AXIOS", summary="SSRF", severity=Severity.MEDIUM)],
+            ),
             Package(name="express", version="4.19.0", ecosystem="npm", vulnerabilities=[]),
         ],
     )
@@ -2386,10 +2437,18 @@ def test_scenario_docker_image_packages():
 
     # Simulating a Docker image with packages from npm + pypi + go
     packages = [
-        Package(name="express", version="4.17.0", ecosystem="npm",
-                vulnerabilities=[Vulnerability(id="CVE-2024-NPM1", summary="XSS", severity=Severity.HIGH)]),
-        Package(name="flask", version="2.3.0", ecosystem="pypi",
-                vulnerabilities=[Vulnerability(id="CVE-2024-PY1", summary="Path traversal", severity=Severity.MEDIUM)]),
+        Package(
+            name="express",
+            version="4.17.0",
+            ecosystem="npm",
+            vulnerabilities=[Vulnerability(id="CVE-2024-NPM1", summary="XSS", severity=Severity.HIGH)],
+        ),
+        Package(
+            name="flask",
+            version="2.3.0",
+            ecosystem="pypi",
+            vulnerabilities=[Vulnerability(id="CVE-2024-PY1", summary="Path traversal", severity=Severity.MEDIUM)],
+        ),
         Package(name="gin", version="1.9.0", ecosystem="go", vulnerabilities=[]),
     ]
 
@@ -2437,12 +2496,14 @@ def test_scenario_high_privilege_mcp_server():
     srv = MCPServer(
         name="super-server",
         command="npx",
-        packages=[Package(
-            name="langchain",
-            version="0.1.0",
-            ecosystem="pypi",
-            vulnerabilities=[Vulnerability(id="CVE-2024-LANG", summary="RCE in chains", severity=Severity.CRITICAL)],
-        )],
+        packages=[
+            Package(
+                name="langchain",
+                version="0.1.0",
+                ecosystem="pypi",
+                vulnerabilities=[Vulnerability(id="CVE-2024-LANG", summary="RCE in chains", severity=Severity.CRITICAL)],
+            )
+        ],
         tools=tools,
         env={"OPENAI_API_KEY": "***REDACTED***", "AWS_SECRET_ACCESS_KEY": "***REDACTED***", "DATABASE_URL": "***REDACTED***"},
     )
@@ -2510,6 +2571,7 @@ def test_scenario_clean_scan():
 def test_scenario_json_output_has_atlas_tags():
     """JSON output includes atlas_tags field in blast_radius entries."""
     from agent_bom.atlas import tag_blast_radius as tag_atlas
+
     vuln = Vulnerability(id="CVE-2024-0001", summary="test", severity=Severity.HIGH)
     pkg = Package(name="lodash", version="4.17.0", ecosystem="npm", vulnerabilities=[vuln])
     srv = MCPServer(name="test", command="npx", packages=[pkg])
@@ -2570,6 +2632,7 @@ def test_scenario_sarif_output_has_atlas_tags():
 def test_print_threat_frameworks_import():
     """print_threat_frameworks can be imported from output module."""
     from agent_bom.output import print_threat_frameworks
+
     assert callable(print_threat_frameworks)
 
 
@@ -2767,10 +2830,14 @@ def test_remediation_plan_owasp_atlas_tags():
     agent = Agent(name="my-agent", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/test.json", mcp_servers=[server])
     tool = MCPTool(name="run_shell", description="Execute commands")
     br = BlastRadius(
-        vulnerability=vuln, package=pkg,
-        affected_servers=[server], affected_agents=[agent],
-        exposed_credentials=["AWS_KEY"], exposed_tools=[tool],
-        owasp_tags=["LLM02", "LLM05"], atlas_tags=["AML.T0010"],
+        vulnerability=vuln,
+        package=pkg,
+        affected_servers=[server],
+        affected_agents=[agent],
+        exposed_credentials=["AWS_KEY"],
+        exposed_tools=[tool],
+        owasp_tags=["LLM02", "LLM05"],
+        atlas_tags=["AML.T0010"],
     )
     plan = build_remediation_plan([br])
     item = plan[0]
@@ -2838,10 +2905,11 @@ def test_toolhive_server_json_valid():
     """ToolHive server.json should be valid JSON with required fields."""
     import json as _json
     from pathlib import Path
+
     p = Path(__file__).parent.parent / "integrations" / "toolhive" / "server.json"
     data = _json.loads(p.read_text())
     assert data["name"] == "io.github.msaad00/agent-bom"
-    assert data["version"] == "0.34.0"
+    assert data["version"] == "0.35.0"
     assert "packages" in data
     assert data["packages"][0]["registryType"] == "oci"
 
@@ -2850,6 +2918,7 @@ def test_mcp_registry_server_json_valid():
     """MCP registry server.json should be valid JSON with required fields."""
     import json as _json
     from pathlib import Path
+
     p = Path(__file__).parent.parent / "integrations" / "mcp-registry" / "server.json"
     data = _json.loads(p.read_text())
     assert data["name"] == "io.github.msaad00/agent-bom"
@@ -2859,6 +2928,7 @@ def test_mcp_registry_server_json_valid():
 def test_openclaw_skill_exists():
     """OpenClaw SKILL.md should exist with agent-bom content."""
     from pathlib import Path
+
     p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
     assert p.exists()
     content = p.read_text()
@@ -2869,6 +2939,7 @@ def test_openclaw_skill_exists():
 def test_openclaw_skill_is_pure_mcp():
     """OpenClaw SKILL.md should be a pure MCP instruction skill — no binary requirements."""
     from pathlib import Path
+
     p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
     content = p.read_text()
     assert "bins: []" in content, "Should require no binaries"
@@ -2881,6 +2952,7 @@ def test_openclaw_skill_is_pure_mcp():
 def test_openclaw_skill_declares_mcp_endpoint():
     """OpenClaw SKILL.md should point to the Railway MCP server."""
     from pathlib import Path
+
     p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
     content = p.read_text()
     assert "network_endpoints:" in content
@@ -2891,17 +2963,31 @@ def test_openclaw_skill_declares_mcp_endpoint():
 def test_openclaw_skill_lists_tools():
     """OpenClaw SKILL.md should document all 13 MCP tools."""
     from pathlib import Path
+
     p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
     content = p.read_text()
-    for tool in ["scan", "check", "blast_radius", "policy_check", "registry_lookup",
-                 "generate_sbom", "compliance", "remediate", "verify", "where",
-                 "inventory", "diff", "skill_trust"]:
+    for tool in [
+        "scan",
+        "check",
+        "blast_radius",
+        "policy_check",
+        "registry_lookup",
+        "generate_sbom",
+        "compliance",
+        "remediate",
+        "verify",
+        "where",
+        "inventory",
+        "diff",
+        "skill_trust",
+    ]:
         assert tool in content, f"Tool '{tool}' should be documented in SKILL.md"
 
 
 def test_openclaw_skill_has_source_links():
     """OpenClaw SKILL.md should include source and verification links."""
     from pathlib import Path
+
     p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
     content = p.read_text()
     assert "github.com/msaad00/agent-bom" in content
@@ -2912,6 +2998,7 @@ def test_openclaw_skill_has_source_links():
 def test_openclaw_skill_no_binary_install():
     """OpenClaw SKILL.md must NOT require installing an external binary (ClawHub trust)."""
     from pathlib import Path
+
     p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
     content = p.read_text()
     assert "kind: pipx" not in content, "Should not have pipx install spec in metadata"
@@ -2938,6 +3025,7 @@ def test_cli_dry_run_shows_data_audit():
     from click.testing import CliRunner
 
     from agent_bom.cli import main
+
     runner = CliRunner()
     result = runner.invoke(main, ["scan", "--dry-run"])
     assert result.exit_code == 0
@@ -2951,6 +3039,7 @@ def test_cli_dry_run_shows_data_audit():
 def test_permissions_md_has_full_config_paths():
     """PERMISSIONS.md should list all 27 discovery config paths."""
     from pathlib import Path
+
     p = Path(__file__).parent.parent / "PERMISSIONS.md"
     content = p.read_text()
     assert "claude_desktop_config.json" in content
@@ -2967,6 +3056,7 @@ def test_permissions_md_has_full_config_paths():
 def test_openclaw_skill_describes_data_handling():
     """OpenClaw SKILL.md should describe data handling behavior."""
     from pathlib import Path
+
     p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
     content = p.read_text()
     assert "package names" in content.lower()
@@ -2978,6 +3068,7 @@ def test_svg_output_basic():
     """SVG output for an empty report should produce valid SVG."""
     from agent_bom.models import AIBOMReport
     from agent_bom.output.svg import to_svg
+
     report = AIBOMReport()
     svg = to_svg(report, [])
     assert svg.startswith("<svg")
@@ -2988,12 +3079,14 @@ def test_svg_output_basic():
 def test_svg_output_with_agents():
     """SVG output should include agent and server nodes."""
     from agent_bom.models import Agent, AgentType, AIBOMReport, MCPServer, Package
+
     report = AIBOMReport()
     pkg = Package(name="express", version="4.17.1", ecosystem="npm")
     server = MCPServer(name="filesystem", command="npx", packages=[pkg])
     agent = Agent(name="Claude", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/test.json", mcp_servers=[server])
     report.agents = [agent]
     from agent_bom.output.svg import to_svg
+
     svg = to_svg(report, [])
     assert "Claude" in svg
     assert "filesystem" in svg
@@ -3003,12 +3096,14 @@ def test_svg_output_with_agents():
 def test_mermaid_supply_chain():
     """Mermaid supply chain mode should produce provider-to-package hierarchy."""
     from agent_bom.models import Agent, AgentType, AIBOMReport, MCPServer, Package
+
     report = AIBOMReport()
     pkg = Package(name="express", version="4.17.1", ecosystem="npm")
     server = MCPServer(name="test-server", command="npx", packages=[pkg])
     agent = Agent(name="TestAgent", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/test.json", mcp_servers=[server])
     report.agents = [agent]
     from agent_bom.output.mermaid import to_mermaid_supply_chain
+
     result = to_mermaid_supply_chain(report)
     assert "graph LR" in result
     assert "TestAgent" in result
@@ -3022,6 +3117,7 @@ def test_graph_html_export():
 
     from agent_bom.models import AIBOMReport
     from agent_bom.output.graph import export_graph_html
+
     report = AIBOMReport()
     with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as f:
         export_graph_html(report, [], f.name)
@@ -3034,6 +3130,7 @@ def test_graph_html_export():
 def test_dockerfile_non_root():
     """All Dockerfiles should use a non-root USER directive."""
     from pathlib import Path
+
     root = Path(__file__).parent.parent
     dockerfiles = [
         root / "Dockerfile",
@@ -3051,6 +3148,7 @@ def test_cli_mermaid_mode_option():
     from click.testing import CliRunner
 
     from agent_bom.cli import main
+
     runner = CliRunner()
     result = runner.invoke(main, ["scan", "--dry-run", "--format", "mermaid", "--mermaid-mode", "supply-chain"])
     assert result.exit_code == 0
@@ -3060,6 +3158,7 @@ def test_badge_output_clean():
     """Badge output for a clean report should be green."""
     from agent_bom.models import AIBOMReport
     from agent_bom.output import to_badge
+
     report = AIBOMReport()
     badge = to_badge(report)
     assert badge["schemaVersion"] == 1
@@ -3071,6 +3170,7 @@ def test_badge_output_clean():
 def test_badge_output_with_vulns():
     """Badge output should reflect vulnerability severity."""
     from agent_bom.models import Agent, AgentType, AIBOMReport, MCPServer, Package, Severity, Vulnerability
+
     report = AIBOMReport()
     vuln = Vulnerability(id="CVE-2024-0001", severity=Severity.HIGH, summary="test")
     pkg = Package(name="test-pkg", version="1.0.0", ecosystem="npm", vulnerabilities=[vuln])
@@ -3078,6 +3178,7 @@ def test_badge_output_with_vulns():
     agent = Agent(name="Test Agent", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/test.json", mcp_servers=[server])
     report.agents = [agent]
     from agent_bom.output import to_badge
+
     badge = to_badge(report)
     assert "high" in badge["message"].lower()
     assert badge["color"] == "orange"
@@ -3086,6 +3187,7 @@ def test_badge_output_with_vulns():
 def test_mcp_registry_has_awm_entries():
     """MCP registry should include AWM ecosystem entries."""
     from agent_bom.parsers import _load_registry
+
     registry = _load_registry()
     # fastapi-mcp: auto-exposes FastAPI endpoints as MCP tools
     assert "fastapi-mcp" in registry
@@ -3157,8 +3259,8 @@ def test_html_vuln_rows_have_data_attributes():
     report, blast_radii = _make_report_with_vuln()
     html = to_html(report, blast_radii)
     assert 'data-severity="high"' in html
-    assert 'data-kev=' in html
-    assert 'data-cvss=' in html
+    assert "data-kev=" in html
+    assert "data-cvss=" in html
 
 
 # ─── HTML node detail sidebar tests ──────────────────────────────────────────
@@ -3221,6 +3323,7 @@ def test_cli_scan_has_no_color_flag():
 def test_make_console_no_color():
     """_make_console with no_color=True disables styling."""
     from agent_bom.cli import _make_console
+
     con = _make_console(no_color=True)
     assert con.no_color is True
 
@@ -3228,6 +3331,7 @@ def test_make_console_no_color():
 def test_make_console_default_has_color():
     """_make_console with default settings enables color."""
     from agent_bom.cli import _make_console
+
     con = _make_console()
     assert con.no_color is False
 
@@ -3235,6 +3339,7 @@ def test_make_console_default_has_color():
 def test_owasp_llm03_training_data_poisoning():
     """LLM03 is tagged when a training-data package has any CVE."""
     from agent_bom.owasp import tag_blast_radius as tag_owasp
+
     br = BlastRadius(
         vulnerability=Vulnerability(id="CVE-2024-9999", summary="Deserialization in datasets", severity=Severity.MEDIUM),
         package=Package(name="datasets", version="2.14.0", ecosystem="pypi"),
@@ -3251,6 +3356,7 @@ def test_owasp_llm03_training_data_poisoning():
 def test_owasp_llm03_for_transformers():
     """LLM03 is tagged for transformers (training framework)."""
     from agent_bom.owasp import tag_blast_radius as tag_owasp
+
     br = BlastRadius(
         vulnerability=Vulnerability(id="CVE-2024-8888", summary="RCE", severity=Severity.HIGH),
         package=Package(name="transformers", version="4.30.0", ecosystem="pypi"),
@@ -3268,6 +3374,7 @@ def test_owasp_llm03_for_transformers():
 def test_owasp_llm03_not_for_non_training_package():
     """LLM03 is NOT tagged for non-training packages like openai client."""
     from agent_bom.owasp import tag_blast_radius as tag_owasp
+
     br = BlastRadius(
         vulnerability=Vulnerability(id="CVE-2024-7777", summary="SSRF", severity=Severity.HIGH),
         package=Package(name="openai", version="1.0.0", ecosystem="pypi"),
@@ -3284,8 +3391,19 @@ def test_owasp_llm03_not_for_non_training_package():
 def test_rag_vector_stores_in_ai_packages():
     """Vector store packages are recognized as AI framework packages."""
     from agent_bom.scanners import _AI_FRAMEWORK_PACKAGES
-    rag_packages = {"chromadb", "pinecone-client", "weaviate-client", "qdrant-client",
-                    "faiss-cpu", "faiss-gpu", "pymilvus", "milvus", "pgvector", "lancedb"}
+
+    rag_packages = {
+        "chromadb",
+        "pinecone-client",
+        "weaviate-client",
+        "qdrant-client",
+        "faiss-cpu",
+        "faiss-gpu",
+        "pymilvus",
+        "milvus",
+        "pgvector",
+        "lancedb",
+    }
     for pkg in rag_packages:
         assert pkg in _AI_FRAMEWORK_PACKAGES, f"{pkg} missing from _AI_FRAMEWORK_PACKAGES"
 
@@ -3293,6 +3411,7 @@ def test_rag_vector_stores_in_ai_packages():
 def test_owasp_rag_packages_covered():
     """Vector store / RAG packages are in OWASP _AI_PACKAGES for LLM04 tagging."""
     from agent_bom.owasp import _AI_PACKAGES
+
     rag_packages = {"chromadb", "pymilvus", "qdrant-client", "sentence-transformers"}
     for pkg in rag_packages:
         assert pkg in _AI_PACKAGES, f"{pkg} missing from OWASP _AI_PACKAGES"
@@ -3301,6 +3420,7 @@ def test_owasp_rag_packages_covered():
 def test_atlas_rag_packages_covered():
     """Vector store / RAG packages are in ATLAS _AI_PACKAGES."""
     from agent_bom.atlas import _AI_PACKAGES
+
     rag_packages = {"chromadb", "pymilvus", "qdrant-client", "lancedb"}
     for pkg in rag_packages:
         assert pkg in _AI_PACKAGES, f"{pkg} missing from ATLAS _AI_PACKAGES"
@@ -3309,6 +3429,7 @@ def test_atlas_rag_packages_covered():
 def test_nist_rag_packages_covered():
     """Vector store / RAG packages are in NIST AI RMF _AI_PACKAGES."""
     from agent_bom.nist_ai_rmf import _AI_PACKAGES
+
     rag_packages = {"chromadb", "pymilvus", "pgvector"}
     for pkg in rag_packages:
         assert pkg in _AI_PACKAGES, f"{pkg} missing from NIST _AI_PACKAGES"
@@ -3317,7 +3438,7 @@ def test_nist_rag_packages_covered():
 def test_owasp_training_data_packages_set():
     """_TRAINING_DATA_PACKAGES contains expected training/fine-tuning packages."""
     from agent_bom.owasp import _TRAINING_DATA_PACKAGES
-    expected = {"datasets", "transformers", "torch", "accelerate", "trl",
-                "sentence-transformers", "peft", "safetensors"}
+
+    expected = {"datasets", "transformers", "torch", "accelerate", "trl", "sentence-transformers", "peft", "safetensors"}
     for pkg in expected:
         assert pkg in _TRAINING_DATA_PACKAGES, f"{pkg} missing from _TRAINING_DATA_PACKAGES"

@@ -12,6 +12,7 @@ import {
   GitBranch,
   Library,
   Shield,
+  Lock,
   Users,
 } from "lucide-react";
 import { api } from "@/lib/api";
@@ -22,6 +23,7 @@ const links = [
   { href: "/agents",     label: "Agents",      icon: Server },
   { href: "/vulns",      label: "Vulns",       icon: Bug },
   { href: "/fleet",      label: "Fleet",       icon: Users },
+  { href: "/gateway",    label: "Gateway",     icon: Lock },
   { href: "/compliance", label: "Compliance",  icon: Shield },
   { href: "/graph",      label: "Graph",       icon: GitBranch },
   { href: "/registry",   label: "Registry",    icon: Library },

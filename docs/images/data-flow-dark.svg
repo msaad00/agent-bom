@@ -158,7 +158,7 @@
   <rect x="330" y="346" width="536" height="64" rx="6" fill="#0d1117" stroke="#d29922" stroke-width="1"/>
   <text x="598" y="362" text-anchor="middle" class="badge" fill="#d29922">SUPPLY CHAIN VERIFICATION</text>
   <text x="598" y="378" text-anchor="middle" class="sub">Sigstore OIDC signing on every release · SLSA provenance via GitHub Actions</text>
-  <text x="598" y="392" text-anchor="middle" class="sub">cosign verify-blob · OpenSSF Scorecard · 1,279 automated tests · Apache 2.0 source</text>
+  <text x="598" y="392" text-anchor="middle" class="sub">cosign verify-blob · OpenSSF Scorecard · 1,554 automated tests · Apache 2.0 source</text>
   <text x="598" y="404" text-anchor="middle" class="data" fill="#d29922">agent-bom verify agent-bom  →  check integrity yourself</text>
 
   <!-- Arrow: engine → output -->
@@ -166,6 +166,6 @@
 
   <!-- Bottom callout -->
   <rect x="20" y="434" width="860" height="36" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1"/>
-  <text x="450" y="450" text-anchor="middle" class="badge" fill="#8b949e">CLAWHUB TRUST ASSESSMENT RESPONSE</text>
+  <text x="450" y="450" text-anchor="middle" class="badge" fill="#8b949e">TRUST VERIFICATION</text>
   <text x="450" y="462" text-anchor="middle" class="note">No binary install needed (SSE) · No file writes · No credential values read · Dry-run before any access · Sigstore + OpenSSF verified · 27 specific config paths (not wildcards)</text>
 </svg>

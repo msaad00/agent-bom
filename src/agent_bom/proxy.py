@@ -253,6 +253,22 @@ def check_policy(
 # ─── Proxy core ──────────────────────────────────────────────────────────────
 
 
+# ─── Gateway evaluator hook ──────────────────────────────────────────────────
+
+_gateway_evaluator = None  # type: ignore[var-annotated]
+
+
+def set_gateway_evaluator(fn) -> None:  # noqa: ANN001
+    """Register a gateway evaluator for runtime enforcement.
+
+    The callable signature must be
+    ``(agent_name: str, tool_name: str, arguments: dict) -> (allowed, reason)``
+    where *allowed* is a bool.
+    """
+    global _gateway_evaluator
+    _gateway_evaluator = fn
+
+
 async def _send_webhook(url: str, payload: dict) -> None:
     """Fire-and-forget POST to an alert webhook URL."""
     try:
@@ -388,6 +404,18 @@ async def run_proxy(
                             if log_file:
                                 log_tool_call(log_file, tool_name, arguments, "blocked", reason)
                             error_resp = make_error_response(msg.get("id"), -32600, reason)
+                            sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
+                            sys.stdout.buffer.flush()
+                            continue
+
+                    # Gateway policy evaluation
+                    if _gateway_evaluator is not None:
+                        gw_allowed, gw_reason = _gateway_evaluator(tool_name, arguments)
+                        if not gw_allowed:
+                            metrics.record_blocked("gateway_policy")
+                            if log_file:
+                                log_tool_call(log_file, tool_name, arguments, "blocked", gw_reason)
+                            error_resp = make_error_response(msg.get("id"), -32600, gw_reason)
                             sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
                             sys.stdout.buffer.flush()
                             continue

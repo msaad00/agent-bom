@@ -342,6 +342,77 @@ export interface FleetSyncResult {
   updated: number;
 }
 
+// ─── Gateway types ───────────────────────────────────────────────────────────
+
+export type PolicyMode = "audit" | "enforce";
+
+export interface GatewayRule {
+  id: string;
+  description: string;
+  action: string;
+  block_tools: string[];
+  tool_name: string | null;
+  tool_name_pattern: string | null;
+  arg_pattern: Record<string, string>;
+  rate_limit: number | null;
+  require_registry_verified: boolean;
+}
+
+export interface GatewayPolicy {
+  policy_id: string;
+  name: string;
+  description: string;
+  mode: PolicyMode;
+  rules: GatewayRule[];
+  bound_agents: string[];
+  bound_agent_types: string[];
+  bound_environments: string[];
+  created_at: string;
+  updated_at: string;
+  enabled: boolean;
+}
+
+export interface GatewayPolicyResponse {
+  policies: GatewayPolicy[];
+  count: number;
+}
+
+export interface PolicyAuditEntry {
+  entry_id: string;
+  policy_id: string;
+  policy_name: string;
+  rule_id: string;
+  agent_name: string;
+  tool_name: string;
+  arguments_preview: Record<string, unknown>;
+  action_taken: string;
+  reason: string;
+  timestamp: string;
+}
+
+export interface GatewayAuditResponse {
+  entries: PolicyAuditEntry[];
+  count: number;
+}
+
+export interface GatewayStatsResponse {
+  total_policies: number;
+  enforce_count: number;
+  audit_count: number;
+  enabled_count: number;
+  total_rules: number;
+  audit_entries: number;
+  blocked_count: number;
+  alerted_count: number;
+}
+
+export interface EvaluateResult {
+  allowed: boolean;
+  reason: string;
+  policy_id: string | null;
+  policies_evaluated: number;
+}
+
 // ─── Fetch helpers ────────────────────────────────────────────────────────────
 
 async function get<T>(path: string): Promise<T> {
@@ -353,6 +424,16 @@ async function get<T>(path: string): Promise<T> {
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json() as Promise<T>;
+}
+
+async function put<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
@@ -458,6 +539,19 @@ export const api = {
       body: JSON.stringify(update),
     }).then((r) => r.json()),
   getFleetStats: () => get<FleetStatsResponse>("/v1/fleet/stats"),
+
+  // ── Gateway ──
+  listGatewayPolicies: () => get<GatewayPolicyResponse>("/v1/gateway/policies"),
+  createGatewayPolicy: (body: Partial<GatewayPolicy>) =>
+    post<GatewayPolicy>("/v1/gateway/policies", body),
+  getGatewayPolicy: (id: string) => get<GatewayPolicy>(`/v1/gateway/policies/${id}`),
+  updateGatewayPolicy: (id: string, body: Partial<GatewayPolicy>) =>
+    put<GatewayPolicy>(`/v1/gateway/policies/${id}`, body),
+  deleteGatewayPolicy: (id: string) => del(`/v1/gateway/policies/${id}`),
+  evaluateGateway: (body: { agent_name?: string; tool_name: string; arguments?: Record<string, unknown> }) =>
+    post<EvaluateResult>("/v1/gateway/evaluate", body),
+  listGatewayAudit: () => get<GatewayAuditResponse>("/v1/gateway/audit"),
+  getGatewayStats: () => get<GatewayStatsResponse>("/v1/gateway/stats"),
 };
 
 // ─── Threat Framework Catalogs ────────────────────────────────────────────────

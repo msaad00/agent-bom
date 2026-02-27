@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { api, Agent, isConfigured } from "@/lib/api";
-import { Server, Package, Wrench, Key, AlertCircle, Shield, ChevronDown, ChevronRight } from "lucide-react";
+import { Server, Package, Wrench, Key, AlertCircle, Shield, ChevronDown, ChevronRight, ArrowRight } from "lucide-react";
 
 function useAgentStats(agents: Agent[]) {
   const configured = agents.filter(isConfigured);
@@ -155,9 +156,19 @@ export default function AgentsPage() {
                   <span className="text-xs text-zinc-600">{agent.source}</span>
                 )}
               </div>
-              <span className="text-xs font-mono bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-zinc-400">
-                {agent.mcp_servers.length} server{agent.mcp_servers.length !== 1 ? "s" : ""}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-zinc-400">
+                  {agent.mcp_servers.length} server{agent.mcp_servers.length !== 1 ? "s" : ""}
+                </span>
+                <Link
+                  href={`/agents/${encodeURIComponent(agent.name)}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-zinc-500 hover:text-emerald-400 transition-colors"
+                  title="View agent detail"
+                >
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+              </div>
             </button>
 
             {!collapsed.has(i) && (

@@ -264,13 +264,37 @@ export interface ComplianceResponse {
   scan_count: number;
   latest_scan: string | null;
   owasp_llm_top10: ComplianceControl[];
+  owasp_mcp_top10: ComplianceControl[];
   mitre_atlas: ComplianceControl[];
   nist_ai_rmf: ComplianceControl[];
   summary: {
     owasp_pass: number; owasp_warn: number; owasp_fail: number;
+    owasp_mcp_pass: number; owasp_mcp_warn: number; owasp_mcp_fail: number;
     atlas_pass: number; atlas_warn: number; atlas_fail: number;
     nist_pass: number;  nist_warn: number;  nist_fail: number;
   };
+}
+
+// ─── Agent Detail Types ──────────────────────────────────────────────────────
+
+export interface AgentDetailResponse {
+  agent: Agent;
+  summary: {
+    total_servers: number;
+    total_packages: number;
+    total_tools: number;
+    total_credentials: number;
+    total_vulnerabilities: number;
+    severity_breakdown: Record<string, number>;
+  };
+  blast_radius: BlastRadius[];
+  credentials: string[];
+}
+
+export interface AgentLifecycleResponse {
+  nodes: AttackFlowNode[];
+  edges: AttackFlowEdge[];
+  stats: Record<string, number>;
 }
 
 // ─── Fetch helpers ────────────────────────────────────────────────────────────
@@ -315,6 +339,12 @@ export const api = {
 
   /** Quick agent discovery (no CVE scan) */
   listAgents: () => get<AgentsResponse>("/v1/agents"),
+
+  /** Get detailed view of a single agent */
+  getAgentDetail: (name: string) => get<AgentDetailResponse>(`/v1/agents/${encodeURIComponent(name)}`),
+
+  /** Get React Flow lifecycle graph for an agent */
+  getAgentLifecycle: (name: string) => get<AgentLifecycleResponse>(`/v1/agents/${encodeURIComponent(name)}/lifecycle`),
 
   /** MCP registry catalog */
   listRegistry: () => get<RegistryResponse>("/v1/registry"),
@@ -374,6 +404,20 @@ export const OWASP_LLM_TOP10: Record<string, string> = {
   LLM08: "Excessive Agency",
   LLM09: "Misinformation",
   LLM10: "Unbounded Consumption",
+};
+
+/** OWASP MCP Top 10 — code → human-readable name */
+export const OWASP_MCP_TOP10: Record<string, string> = {
+  MCP01: "Token Mismanagement & Secret Exposure",
+  MCP02: "Privilege Escalation via Scope Creep",
+  MCP03: "Tool Poisoning",
+  MCP04: "Software Supply Chain Attacks",
+  MCP05: "Command Injection & Execution",
+  MCP06: "Intent Flow Subversion",
+  MCP07: "Insufficient Auth & Authorization",
+  MCP08: "Lack of Audit & Telemetry",
+  MCP09: "Shadow MCP Servers",
+  MCP10: "Context Injection & Over-Sharing",
 };
 
 /** MITRE ATLAS — technique ID → human-readable name */

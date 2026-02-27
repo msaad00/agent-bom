@@ -1,0 +1,54 @@
+version: "3.8"
+
+# Platform deployment: API + Dashboard
+# Usage: docker compose -f docker-compose.platform.yml up --build
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: agent-bom:latest
+    container_name: agent-bom-api
+    command: api --host 0.0.0.0 --port 8422
+    ports:
+      - "8422:8422"
+    environment:
+      - AGENT_BOM_DB=/data/jobs.db
+      - CORS_ORIGINS=http://localhost:3000,http://ui:3000
+      - NVD_API_KEY=${NVD_API_KEY:-}
+    volumes:
+      - api-data:/data
+      - ~/.config:/root/.config:ro
+      - ~/.claude:/root/.claude:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8422/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8422
+    image: agent-bom-ui:latest
+    container_name: agent-bom-ui
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8422
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  api-data:
+
+networks:
+  default:
+    name: agent-bom-platform

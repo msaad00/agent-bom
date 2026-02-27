@@ -56,6 +56,12 @@ from contextlib import asynccontextmanager  # noqa: E402
 @asynccontextmanager
 async def _lifespan(app_instance: FastAPI):
     """Start background cleanup task on startup, cancel on shutdown."""
+    # Auto-configure SQLite when AGENT_BOM_DB env is set
+    db_path = _os.environ.get("AGENT_BOM_DB")
+    if db_path and _store is None:
+        from agent_bom.api.store import SQLiteJobStore
+        set_job_store(SQLiteJobStore(db_path))
+
     global _cleanup_task
     _cleanup_task = asyncio.create_task(_cleanup_loop())
     yield
@@ -76,7 +82,15 @@ app = FastAPI(
 )
 
 # ── API hardening config ─────────────────────────────────────────────────
-_cors_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+import os as _os  # noqa: E402
+
+_default_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
+_cors_env = _os.environ.get("CORS_ORIGINS")
+_cors_origins: list[str] = (
+    [o.strip() for o in _cors_env.split(",") if o.strip()]
+    if _cors_env
+    else _default_origins
+)
 _api_key: str | None = None
 _rate_limit_rpm: int = 60
 

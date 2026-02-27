@@ -1,0 +1,24 @@
+FROM python:3.11-slim@sha256:fba6f3b73795df99960f4269b297420bdbe01a8631fc31ea3f121f2486d332d0
+
+LABEL maintainer="W S <34316639+msaad00@users.noreply.github.com>"
+LABEL description="agent-bom API for Snowpark Container Services"
+LABEL org.opencontainers.image.source="https://github.com/msaad00/agent-bom"
+
+WORKDIR /app
+
+COPY pyproject.toml README.md LICENSE ./
+COPY src/ ./src/
+
+RUN pip install --no-cache-dir -e ".[api,snowflake]"
+
+RUN addgroup --system abom && adduser --system --ingroup abom abom
+USER abom
+
+ENV PYTHONUNBUFFERED=1
+
+EXPOSE 8422
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8422/health')" || exit 1
+
+ENTRYPOINT ["agent-bom", "api", "--host", "0.0.0.0", "--port", "8422"]

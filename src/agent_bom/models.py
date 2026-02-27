@@ -70,6 +70,7 @@ class Vulnerability:
     nvd_published: Optional[str] = None  # NVD publish date
     nvd_modified: Optional[str] = None  # NVD last modified date
     cwe_ids: list[str] = field(default_factory=list)  # CWE weakness types
+    aliases: list[str] = field(default_factory=list)  # Cross-source aliases (e.g. GHSA↔CVE)
     exploitability: Optional[str] = None  # "HIGH", "MEDIUM", "LOW" based on EPSS
 
     @property

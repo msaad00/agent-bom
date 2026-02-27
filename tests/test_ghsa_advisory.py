@@ -215,3 +215,57 @@ def test_advisory_no_match_skipped():
     count = asyncio.run(run())
     assert count == 0
     assert len(pkg.vulnerabilities) == 0
+
+
+def test_alias_aware_dedup_skips_known_cve():
+    """GHSA dedup checks vulnerability aliases, not just primary IDs.
+
+    If OSV already returned a vuln under GHSA-xxxx with CVE-2024-1234 as alias,
+    GHSA enrichment returning CVE-2024-1234 should be deduplicated.
+    """
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+
+    from agent_bom.scanners.ghsa_advisory import check_github_advisories
+
+    # Package already has a vuln from OSV stored under CVE ID with GHSA alias
+    pkg = Package(
+        name="express",
+        version="4.17.1",
+        ecosystem="npm",
+        vulnerabilities=[
+            Vulnerability(
+                id="CVE-2099-5555",
+                summary="existing from OSV",
+                severity=Severity.HIGH,
+                aliases=["GHSA-aaaa-bbbb-cccc"],
+            )
+        ],
+    )
+
+    # GHSA returns the same vuln under the GHSA ID
+    ghsa_advisory = {
+        "ghsa_id": "GHSA-aaaa-bbbb-cccc",
+        "cve_id": "CVE-2099-5555",
+        "severity": "high",
+        "cvss": {"score": 7.5},
+        "summary": "Same vuln from GHSA",
+        "cwes": [],
+        "html_url": "https://github.com/advisories/GHSA-aaaa-bbbb-cccc",
+        "vulnerabilities": [
+            {
+                "package": {"name": "express", "ecosystem": "npm"},
+                "patched_versions": ">= 4.19.0",
+            }
+        ],
+    }
+
+    async def run():
+        with patch("agent_bom.scanners.ghsa_advisory._fetch_advisories_for_package", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = [ghsa_advisory]
+            count = await check_github_advisories([pkg])
+        return count
+
+    count = asyncio.run(run())
+    assert count == 0  # Should be deduped
+    assert len(pkg.vulnerabilities) == 1  # Only the original

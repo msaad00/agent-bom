@@ -39,8 +39,7 @@ def discover(
         import huggingface_hub  # noqa: F401
     except ImportError:
         raise CloudDiscoveryError(
-            "huggingface-hub is required for Hugging Face discovery. "
-            "Install with: pip install 'agent-bom[huggingface]'"
+            "huggingface-hub is required for Hugging Face discovery. Install with: pip install 'agent-bom[huggingface]'"
         )
 
     agents: list[Agent] = []
@@ -51,8 +50,7 @@ def discover(
     author = organization or username
     if not author and not resolved_token:
         warnings.append(
-            "HF_TOKEN not set and no --hf-username/--hf-organization provided. "
-            "Provide credentials to discover your models and spaces."
+            "HF_TOKEN not set and no --hf-username/--hf-organization provided. Provide credentials to discover your models and spaces."
         )
         return agents, warnings
 
@@ -119,10 +117,15 @@ def _discover_models(
 
         # Add tools based on pipeline tag
         if pipeline_tag:
-            server.tools.append(MCPTool(
-                name=pipeline_tag,
-                description=f"HF pipeline: {pipeline_tag}",
-            ))
+            server.tools.append(
+                MCPTool(
+                    name=pipeline_tag,
+                    description=f"HF pipeline: {pipeline_tag}",
+                )
+            )
+
+        # Parse model card metadata (YAML frontmatter)
+        card_meta = _parse_model_card(model)
 
         agent = Agent(
             name=f"hf-model:{model_id}",
@@ -131,6 +134,7 @@ def _discover_models(
             source="huggingface-model",
             version=library or pipeline_tag or None,
             mcp_servers=[server],
+            metadata=card_meta,
         )
         agents.append(agent)
 
@@ -228,6 +232,67 @@ def _discover_inference_endpoints(
         agents.append(agent)
 
     return agents, warnings
+
+
+def _parse_model_card(model_info: object) -> dict:
+    """Extract structured metadata from a HuggingFace model card.
+
+    Pulls license, datasets, language, tags, pipeline_tag, and evaluation
+    metrics from the model info object returned by ``HfApi.list_models()``.
+    """
+    meta: dict = {}
+
+    # card_data is a ModelCardData object (or None) with YAML frontmatter fields
+    card = getattr(model_info, "card_data", None)
+    if card is not None:
+        # License (SPDX identifier)
+        license_val = getattr(card, "license", None)
+        if license_val:
+            meta["license"] = license_val
+
+        # Training datasets
+        datasets = getattr(card, "datasets", None)
+        if datasets:
+            meta["datasets"] = list(datasets) if not isinstance(datasets, list) else datasets
+
+        # Languages
+        language = getattr(card, "language", None)
+        if language:
+            meta["language"] = list(language) if not isinstance(language, list) else language
+
+        # Evaluation metrics from model-index
+        model_index = getattr(card, "model_index", None)
+        if model_index:
+            metrics = []
+            for entry in model_index:
+                for result in getattr(entry, "results", []) or []:
+                    for m in getattr(result, "metrics", []) or []:
+                        name = getattr(m, "name", None) or getattr(m, "type", None)
+                        value = getattr(m, "value", None)
+                        if name and value is not None:
+                            metrics.append({"name": str(name), "value": value})
+            if metrics:
+                meta["eval_metrics"] = metrics
+
+    # Fields available directly on the model info object
+    pipeline_tag = getattr(model_info, "pipeline_tag", None)
+    if pipeline_tag:
+        meta["pipeline_tag"] = pipeline_tag
+
+    tags = getattr(model_info, "tags", None)
+    if tags:
+        meta["tags"] = list(tags) if not isinstance(tags, list) else tags
+
+    # Downloads and likes (popularity signals for risk assessment)
+    downloads = getattr(model_info, "downloads", None)
+    if downloads is not None:
+        meta["downloads"] = downloads
+
+    likes = getattr(model_info, "likes", None)
+    if likes is not None:
+        meta["likes"] = likes
+
+    return meta
 
 
 def _extract_framework_packages(

@@ -185,7 +185,9 @@ async def check_github_advisories(
                         continue
 
                     existing_ids = {v.id for v in target_pkg.vulnerabilities}
-                    # Skip if CVE or GHSA ID already present
+                    for v in target_pkg.vulnerabilities:
+                        existing_ids.update(v.aliases)
+                    # Skip if CVE or GHSA ID already present (including aliases)
                     if vuln_id in existing_ids or (cve_id and cve_id in existing_ids) or (ghsa_id and ghsa_id in existing_ids):
                         continue
 

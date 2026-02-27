@@ -165,22 +165,27 @@ async def fetch_nvidia_csaf(
     return None
 
 
+def _word_boundary_match(product: str, text: str) -> bool:
+    """Check if product name appears as a whole word/phrase in text."""
+    return bool(re.search(rf"\b{re.escape(product)}\b", text))
+
+
 def _csaf_affects_product(csaf: dict, product_names: set[str]) -> bool:
     """Check if a CSAF advisory affects any of the given NVIDIA product names."""
     title = (csaf.get("document", {}).get("title", "") or "").lower()
     for product in product_names:
-        if product in title:
+        if _word_boundary_match(product, title):
             return True
     # Also check product_tree branches
     for branch in csaf.get("product_tree", {}).get("branches", []):
         _name = (branch.get("name", "") or "").lower()
         for product in product_names:
-            if product in _name:
+            if _word_boundary_match(product, _name):
                 return True
         for sub in branch.get("branches", []):
             _sname = (sub.get("name", "") or "").lower()
             for product in product_names:
-                if product in _sname:
+                if _word_boundary_match(product, _sname):
                     return True
     return False
 
@@ -289,6 +294,8 @@ async def check_nvidia_advisories(
                     continue
                 for pkg in pkgs:
                     existing_ids = {v.id for v in pkg.vulnerabilities}
+                    for v in pkg.vulnerabilities:
+                        existing_ids.update(v.aliases)
                     for vuln in csaf_vulns:
                         if vuln.id not in existing_ids:
                             pkg.vulnerabilities.append(vuln)

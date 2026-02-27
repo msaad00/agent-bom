@@ -43,12 +43,26 @@ def discover_from_provider(
         CloudDiscoveryError: if the provider SDK is not installed or API fails.
     """
     if provider not in _PROVIDERS:
-        raise ValueError(
-            f"Unknown cloud provider '{provider}'. "
-            f"Available: {', '.join(sorted(_PROVIDERS))}"
-        )
+        raise ValueError(f"Unknown cloud provider '{provider}'. Available: {', '.join(sorted(_PROVIDERS))}")
     mod = importlib.import_module(_PROVIDERS[provider])
     return mod.discover(**kwargs)
 
 
-__all__ = ["CloudDiscoveryError", "discover_from_provider"]
+def discover_governance(
+    provider: str = "snowflake",
+    **kwargs: Any,
+) -> Any:
+    """Run governance discovery for the given provider.
+
+    Currently only Snowflake is supported.
+
+    Returns:
+        GovernanceReport with findings and raw data.
+    """
+    if provider != "snowflake":
+        raise ValueError(f"Governance discovery not supported for '{provider}'.")
+    mod = importlib.import_module(_PROVIDERS["snowflake"])
+    return mod.discover_governance(**kwargs)
+
+
+__all__ = ["CloudDiscoveryError", "discover_from_provider", "discover_governance"]

@@ -19,6 +19,8 @@ Endpoints:
     GET  /v1/proxy/status              runtime proxy metrics
     GET  /v1/proxy/alerts              recent runtime proxy alerts
     GET  /v1/scorecard/{eco}/{pkg}     OpenSSF Scorecard lookup
+    GET  /v1/governance                Snowflake governance report
+    GET  /v1/governance/findings       governance findings (filtered)
 """
 
 from __future__ import annotations
@@ -43,10 +45,7 @@ try:
     from fastapi.responses import RedirectResponse
     from pydantic import BaseModel
 except ImportError as exc:  # pragma: no cover
-    raise ImportError(
-        "agent-bom API requires extra dependencies.\n"
-        "Install with:  pip install 'agent-bom[api]'"
-    ) from exc
+    raise ImportError("agent-bom API requires extra dependencies.\nInstall with:  pip install 'agent-bom[api]'") from exc
 
 # ─── App ──────────────────────────────────────────────────────────────────────
 
@@ -64,6 +63,7 @@ async def _lifespan(app_instance: FastAPI):
             SnowflakePolicyStore,
             build_connection_params,
         )
+
         sf = build_connection_params()
         if _store is None:
             set_job_store(SnowflakeJobStore(sf))
@@ -75,12 +75,15 @@ async def _lifespan(app_instance: FastAPI):
         db_path = _os.environ["AGENT_BOM_DB"]
         if _store is None:
             from agent_bom.api.store import SQLiteJobStore
+
             set_job_store(SQLiteJobStore(db_path))
         if _fleet_store is None:
             from agent_bom.api.fleet_store import SQLiteFleetStore
+
             set_fleet_store(SQLiteFleetStore(db_path))
         if _policy_store is None:
             from agent_bom.api.policy_store import SQLitePolicyStore
+
             set_policy_store(SQLitePolicyStore(db_path))
 
     global _cleanup_task
@@ -92,10 +95,7 @@ async def _lifespan(app_instance: FastAPI):
 
 app = FastAPI(
     title="agent-bom API",
-    description=(
-        "AI Bill of Materials — map the full trust chain from AI agents and "
-        "MCP servers to CVEs, credentials, and blast radius."
-    ),
+    description=("AI Bill of Materials — map the full trust chain from AI agents and MCP servers to CVEs, credentials, and blast radius."),
     version=__version__,
     docs_url="/docs",
     redoc_url="/redoc",
@@ -107,11 +107,7 @@ import os as _os  # noqa: E402
 
 _default_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
 _cors_env = _os.environ.get("CORS_ORIGINS")
-_cors_origins: list[str] = (
-    [o.strip() for o in _cors_env.split(",") if o.strip()]
-    if _cors_env
-    else _default_origins
-)
+_cors_origins: list[str] = [o.strip() for o in _cors_env.split(",") if o.strip()] if _cors_env else _default_origins
 _api_key: str | None = None
 _rate_limit_rpm: int = 60
 
@@ -170,7 +166,9 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         if header_key and secrets.compare_digest(header_key, self._api_key):
             return await call_next(request)
 
-        return JSONResponse(status_code=401, content={"detail": "Unauthorized — provide API key via Authorization: Bearer <key> or X-API-Key header"})
+        return JSONResponse(
+            status_code=401, content={"detail": "Unauthorized — provide API key via Authorization: Bearer <key> or X-API-Key header"}
+        )
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -216,7 +214,7 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
         if content_length and int(content_length) > self._max_bytes:
             return JSONResponse(
                 status_code=413,
-                content={"detail": f"Request body too large (max {self._max_bytes // (1024*1024)}MB)"},
+                content={"detail": f"Request body too large (max {self._max_bytes // (1024 * 1024)}MB)"},
             )
         return await call_next(request)
 
@@ -266,6 +264,7 @@ def _get_store():
     global _store
     if _store is None:
         from agent_bom.api.store import InMemoryJobStore
+
         _store = InMemoryJobStore()
     return _store
 
@@ -281,6 +280,7 @@ _jobs: dict[str, "ScanJob"] = {}
 
 
 # ─── Models ───────────────────────────────────────────────────────────────────
+
 
 class JobStatus(str, Enum):
     PENDING = "pending"
@@ -356,6 +356,7 @@ class HealthResponse(BaseModel):
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -387,29 +388,35 @@ def _run_scan_sync(job: ScanJob) -> None:
             import json as _json
 
             from agent_bom.models import Agent, AgentType, MCPServer
+
             with open(req.inventory) as _f:
                 inv_data = _json.load(_f)
             for agent_data in inv_data.get("agents", []):
                 servers = []
                 for s in agent_data.get("mcp_servers", []):
-                    servers.append(MCPServer(
-                        name=s.get("name", "unknown"),
-                        command=s.get("command", ""),
-                        args=s.get("args", []),
-                        env=s.get("env", {}),
-                    ))
-                agents.append(Agent(
-                    name=agent_data.get("name", "unknown"),
-                    agent_type=AgentType.CUSTOM,
-                    config_path=req.inventory,
-                    mcp_servers=servers,
-                ))
+                    servers.append(
+                        MCPServer(
+                            name=s.get("name", "unknown"),
+                            command=s.get("command", ""),
+                            args=s.get("args", []),
+                            env=s.get("env", {}),
+                        )
+                    )
+                agents.append(
+                    Agent(
+                        name=agent_data.get("name", "unknown"),
+                        agent_type=AgentType.CUSTOM,
+                        config_path=req.inventory,
+                        mcp_servers=servers,
+                    )
+                )
             job.progress.append(f"Loaded {len(inv_data.get('agents', []))} agent(s) from inventory")
 
         # Step 3 — Docker images
         for image_ref in req.images:
             job.progress.append(f"Scanning image: {image_ref}")
             from agent_bom.image import scan_image
+
             img_agents, img_warnings = scan_image(image_ref)
             agents.extend(img_agents)
             warnings_all.extend(img_warnings)
@@ -418,10 +425,12 @@ def _run_scan_sync(job: ScanJob) -> None:
         if req.k8s:
             job.progress.append("Scanning Kubernetes pods...")
             from agent_bom.k8s import discover_images
+
             k8s_records = discover_images(namespace=req.k8s_namespace)
             # Convert discovered images to image scans
             for img, _pod, _ctr in k8s_records:
                 from agent_bom.image import scan_image
+
                 k8s_agents, k8s_warns = scan_image(img)
                 agents.extend(k8s_agents)
                 warnings_all.extend(k8s_warns)
@@ -430,6 +439,7 @@ def _run_scan_sync(job: ScanJob) -> None:
         for tf_dir in req.tf_dirs:
             job.progress.append(f"Scanning Terraform: {tf_dir}")
             from agent_bom.terraform import scan_terraform_dir
+
             tf_agents, tf_warnings = scan_terraform_dir(tf_dir)
             agents.extend(tf_agents)
             warnings_all.extend(tf_warnings)
@@ -438,6 +448,7 @@ def _run_scan_sync(job: ScanJob) -> None:
         if req.gha_path:
             job.progress.append(f"Scanning GitHub Actions: {req.gha_path}")
             from agent_bom.github_actions import scan_github_actions
+
             gha_agents, gha_warnings = scan_github_actions(req.gha_path)
             agents.extend(gha_agents)
             warnings_all.extend(gha_warnings)
@@ -446,6 +457,7 @@ def _run_scan_sync(job: ScanJob) -> None:
         for ap in req.agent_projects:
             job.progress.append(f"Scanning Python agent project: {ap}")
             from agent_bom.python_agents import scan_python_agents
+
             py_agents, py_warnings = scan_python_agents(ap)
             agents.extend(py_agents)
             warnings_all.extend(py_warnings)
@@ -454,6 +466,7 @@ def _run_scan_sync(job: ScanJob) -> None:
         for jdir in req.jupyter_dirs:
             job.progress.append(f"Scanning Jupyter notebooks: {jdir}")
             from agent_bom.jupyter import scan_jupyter_notebooks
+
             j_agents, j_warnings = scan_jupyter_notebooks(jdir)
             agents.extend(j_agents)
             warnings_all.extend(j_warnings)
@@ -462,10 +475,12 @@ def _run_scan_sync(job: ScanJob) -> None:
         if req.sbom:
             job.progress.append(f"Ingesting SBOM: {req.sbom}")
             from agent_bom.sbom import load_sbom
+
             sbom_packages, _fmt = load_sbom(req.sbom)
             # Attach SBOM packages to a synthetic agent
             if sbom_packages:
                 from agent_bom.models import Agent, AgentType, MCPServer
+
                 sbom_server = MCPServer(name=f"sbom:{req.sbom}")
                 sbom_server.packages = sbom_packages
                 sbom_agent = Agent(
@@ -502,6 +517,7 @@ def _run_scan_sync(job: ScanJob) -> None:
 
         # Build report and serialise
         from agent_bom.models import AIBOMReport
+
         report = AIBOMReport(agents=agents, blast_radii=blast_radii)
         report_json = to_json(report)
         report_json["warnings"] = warnings_all
@@ -530,6 +546,7 @@ async def _cleanup_loop():
 
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
+
 
 @app.get("/", include_in_schema=False)
 async def root() -> RedirectResponse:
@@ -644,13 +661,16 @@ async def get_skill_audit(job_id: str) -> dict:
     if job.status != JobStatus.DONE or not job.result:
         raise HTTPException(status_code=409, detail="Scan not completed yet")
 
-    return job.result.get("skill_audit", {
-        "findings": [],
-        "packages_checked": 0,
-        "servers_checked": 0,
-        "credentials_checked": 0,
-        "passed": True,
-    })
+    return job.result.get(
+        "skill_audit",
+        {
+            "findings": [],
+            "packages_checked": 0,
+            "servers_checked": 0,
+            "credentials_checked": 0,
+            "passed": True,
+        },
+    )
 
 
 @app.delete("/v1/scan/{job_id}", status_code=204, tags=["scan"])
@@ -807,38 +827,46 @@ async def get_agent_lifecycle(agent_name: str) -> dict:
     seen: set[str] = set()
 
     agent_id = f"agent:{agent_data['name']}"
-    nodes.append({
-        "id": agent_id,
-        "type": "lifecycleNode",
-        "position": {"x": 0, "y": 200},
-        "data": {
-            "nodeType": "agent",
-            "label": agent_data["name"],
-            "agent_type": agent_data.get("agent_type", ""),
-        },
-    })
+    nodes.append(
+        {
+            "id": agent_id,
+            "type": "lifecycleNode",
+            "position": {"x": 0, "y": 200},
+            "data": {
+                "nodeType": "agent",
+                "label": agent_data["name"],
+                "agent_type": agent_data.get("agent_type", ""),
+            },
+        }
+    )
 
     y_offset = 0
     for srv in agent_data.get("mcp_servers", []):
         srv_id = f"srv:{srv['name']}"
-        nodes.append({
-            "id": srv_id,
-            "type": "lifecycleNode",
-            "position": {"x": 350, "y": y_offset},
-            "data": {
-                "nodeType": "server",
-                "label": srv["name"],
-                "transport": srv.get("transport", "stdio"),
-                "package_count": len(srv.get("packages", [])),
-                "tool_count": len(srv.get("tools", [])),
-            },
-        })
-        edges.append({
-            "id": f"e:{agent_id}->{srv_id}",
-            "source": agent_id, "target": srv_id,
-            "type": "smoothstep", "animated": True,
-            "style": {"stroke": "#10b981"},
-        })
+        nodes.append(
+            {
+                "id": srv_id,
+                "type": "lifecycleNode",
+                "position": {"x": 350, "y": y_offset},
+                "data": {
+                    "nodeType": "server",
+                    "label": srv["name"],
+                    "transport": srv.get("transport", "stdio"),
+                    "package_count": len(srv.get("packages", [])),
+                    "tool_count": len(srv.get("tools", [])),
+                },
+            }
+        )
+        edges.append(
+            {
+                "id": f"e:{agent_id}->{srv_id}",
+                "source": agent_id,
+                "target": srv_id,
+                "type": "smoothstep",
+                "animated": True,
+                "style": {"stroke": "#10b981"},
+            }
+        )
 
         # Tools
         ty = y_offset - 40
@@ -846,16 +874,23 @@ async def get_agent_lifecycle(agent_name: str) -> dict:
             tid = f"tool:{srv['name']}:{tool['name']}"
             if tid not in seen:
                 seen.add(tid)
-                nodes.append({
-                    "id": tid, "type": "lifecycleNode",
-                    "position": {"x": 700, "y": ty},
-                    "data": {"nodeType": "tool", "label": tool["name"],
-                             "description": tool.get("description", "")},
-                })
-                edges.append({
-                    "id": f"e:{srv_id}->{tid}", "source": srv_id, "target": tid,
-                    "type": "smoothstep", "style": {"stroke": "#a855f7"},
-                })
+                nodes.append(
+                    {
+                        "id": tid,
+                        "type": "lifecycleNode",
+                        "position": {"x": 700, "y": ty},
+                        "data": {"nodeType": "tool", "label": tool["name"], "description": tool.get("description", "")},
+                    }
+                )
+                edges.append(
+                    {
+                        "id": f"e:{srv_id}->{tid}",
+                        "source": srv_id,
+                        "target": tid,
+                        "type": "smoothstep",
+                        "style": {"stroke": "#a855f7"},
+                    }
+                )
                 ty += 50
 
         # Credentials
@@ -867,16 +902,24 @@ async def get_agent_lifecycle(agent_name: str) -> dict:
             cid = f"cred:{cred}"
             if cid not in seen:
                 seen.add(cid)
-                nodes.append({
-                    "id": cid, "type": "lifecycleNode",
-                    "position": {"x": 700, "y": cy},
-                    "data": {"nodeType": "credential", "label": cred},
-                })
-                edges.append({
-                    "id": f"e:{srv_id}->{cid}", "source": srv_id, "target": cid,
-                    "type": "smoothstep", "animated": True,
-                    "style": {"stroke": "#eab308"},
-                })
+                nodes.append(
+                    {
+                        "id": cid,
+                        "type": "lifecycleNode",
+                        "position": {"x": 700, "y": cy},
+                        "data": {"nodeType": "credential", "label": cred},
+                    }
+                )
+                edges.append(
+                    {
+                        "id": f"e:{srv_id}->{cid}",
+                        "source": srv_id,
+                        "target": cid,
+                        "type": "smoothstep",
+                        "animated": True,
+                        "style": {"stroke": "#eab308"},
+                    }
+                )
                 cy += 50
 
         # Packages
@@ -887,18 +930,29 @@ async def get_agent_lifecycle(agent_name: str) -> dict:
             if pid not in seen:
                 seen.add(pid)
                 vulns = pkg.get("vulnerabilities", [])
-                nodes.append({
-                    "id": pid, "type": "lifecycleNode",
-                    "position": {"x": 1050, "y": py_},
-                    "data": {"nodeType": "package", "label": pkg["name"],
-                             "version": pkg.get("version", ""),
-                             "ecosystem": pkg.get("ecosystem", ""),
-                             "vuln_count": len(vulns)},
-                })
-                edges.append({
-                    "id": f"e:{srv_id}->{pid}", "source": srv_id, "target": pid,
-                    "type": "smoothstep", "style": {"stroke": "#3b82f6"},
-                })
+                nodes.append(
+                    {
+                        "id": pid,
+                        "type": "lifecycleNode",
+                        "position": {"x": 1050, "y": py_},
+                        "data": {
+                            "nodeType": "package",
+                            "label": pkg["name"],
+                            "version": pkg.get("version", ""),
+                            "ecosystem": pkg.get("ecosystem", ""),
+                            "vuln_count": len(vulns),
+                        },
+                    }
+                )
+                edges.append(
+                    {
+                        "id": f"e:{srv_id}->{pid}",
+                        "source": srv_id,
+                        "target": pid,
+                        "type": "smoothstep",
+                        "style": {"stroke": "#3b82f6"},
+                    }
+                )
 
                 # CVEs
                 vy = py_
@@ -908,19 +962,30 @@ async def get_agent_lifecycle(agent_name: str) -> dict:
                     if cvid not in seen:
                         seen.add(cvid)
                         sev = vuln.get("severity", "low")
-                        nodes.append({
-                            "id": cvid, "type": "lifecycleNode",
-                            "position": {"x": 1400, "y": vy},
-                            "data": {"nodeType": "cve", "label": vid,
-                                     "severity": sev,
-                                     "cvss_score": vuln.get("cvss_score"),
-                                     "fixed_version": vuln.get("fixed_version")},
-                        })
-                        edges.append({
-                            "id": f"e:{pid}->{cvid}", "source": pid, "target": cvid,
-                            "type": "smoothstep", "animated": True,
-                            "style": {"stroke": _severity_color(sev)},
-                        })
+                        nodes.append(
+                            {
+                                "id": cvid,
+                                "type": "lifecycleNode",
+                                "position": {"x": 1400, "y": vy},
+                                "data": {
+                                    "nodeType": "cve",
+                                    "label": vid,
+                                    "severity": sev,
+                                    "cvss_score": vuln.get("cvss_score"),
+                                    "fixed_version": vuln.get("fixed_version"),
+                                },
+                            }
+                        )
+                        edges.append(
+                            {
+                                "id": f"e:{pid}->{cvid}",
+                                "source": pid,
+                                "target": cvid,
+                                "type": "smoothstep",
+                                "animated": True,
+                                "style": {"stroke": _severity_color(sev)},
+                            }
+                        )
                         vy += 70
                 py_ += max(len(vulns) * 70, 60)
 
@@ -1000,15 +1065,17 @@ async def get_compliance() -> dict:
             else:
                 status = "warning"
 
-            controls.append({
-                id_key: code,
-                "name": name,
-                "findings": findings,
-                "status": status,
-                "severity_breakdown": sev_breakdown,
-                "affected_packages": sorted(affected_pkgs),
-                "affected_agents": sorted(affected_agents),
-            })
+            controls.append(
+                {
+                    id_key: code,
+                    "name": name,
+                    "findings": findings,
+                    "status": status,
+                    "severity_breakdown": sev_breakdown,
+                    "affected_packages": sorted(affected_pkgs),
+                    "affected_agents": sorted(affected_agents),
+                }
+            )
         return controls
 
     from agent_bom.owasp_mcp import OWASP_MCP_TOP10
@@ -1050,10 +1117,18 @@ async def get_compliance() -> dict:
         "mitre_atlas": atlas,
         "nist_ai_rmf": nist,
         "summary": {
-            "owasp_pass": op, "owasp_warn": ow, "owasp_fail": of_,
-            "owasp_mcp_pass": mp, "owasp_mcp_warn": mw, "owasp_mcp_fail": mf,
-            "atlas_pass": ap, "atlas_warn": aw, "atlas_fail": af,
-            "nist_pass": np_, "nist_warn": nw, "nist_fail": nf,
+            "owasp_pass": op,
+            "owasp_warn": ow,
+            "owasp_fail": of_,
+            "owasp_mcp_pass": mp,
+            "owasp_mcp_warn": mw,
+            "owasp_mcp_fail": mf,
+            "atlas_pass": ap,
+            "atlas_warn": aw,
+            "atlas_fail": af,
+            "nist_pass": np_,
+            "nist_warn": nw,
+            "nist_fail": nf,
         },
     }
 
@@ -1072,7 +1147,7 @@ def _derive_name(key: str) -> str:
     # Strip common prefixes
     for prefix in ("mcp-server-", "server-", "mcp-"):
         if name.startswith(prefix):
-            name = name[len(prefix):]
+            name = name[len(prefix) :]
             break
     # Title-case, replace hyphens with spaces
     return name.replace("-", " ").title()
@@ -1100,28 +1175,28 @@ def _load_registry() -> list[dict]:
     servers_dict = raw.get("servers", {})
     result = []
     for key, entry in servers_dict.items():
-        result.append({
-            "id": key,
-            "name": entry.get("name", _derive_name(key)),
-            "publisher": _infer_publisher(key),
-            "verified": entry.get("verified", False),
-            "transport": "stdio",
-            "risk_level": entry.get("risk_level", "low"),
-            "packages": [{"name": entry["package"], "ecosystem": entry["ecosystem"]}]
-            if entry.get("package")
-            else [],
-            "source_url": entry.get("source_url", ""),
-            "description": entry.get("description"),
-            "sigstore_bundle": None,
-            "tools": entry.get("tools", []),
-            "credential_env_vars": entry.get("credential_env_vars", []),
-            "category": entry.get("category"),
-            "license": entry.get("license"),
-            "latest_version": entry.get("latest_version"),
-            "known_cves": entry.get("known_cves", []),
-            "command_patterns": entry.get("command_patterns", []),
-            "risk_justification": entry.get("risk_justification"),
-        })
+        result.append(
+            {
+                "id": key,
+                "name": entry.get("name", _derive_name(key)),
+                "publisher": _infer_publisher(key),
+                "verified": entry.get("verified", False),
+                "transport": "stdio",
+                "risk_level": entry.get("risk_level", "low"),
+                "packages": [{"name": entry["package"], "ecosystem": entry["ecosystem"]}] if entry.get("package") else [],
+                "source_url": entry.get("source_url", ""),
+                "description": entry.get("description"),
+                "sigstore_bundle": None,
+                "tools": entry.get("tools", []),
+                "credential_env_vars": entry.get("credential_env_vars", []),
+                "category": entry.get("category"),
+                "license": entry.get("license"),
+                "latest_version": entry.get("latest_version"),
+                "known_cves": entry.get("known_cves", []),
+                "command_patterns": entry.get("command_patterns", []),
+                "risk_justification": entry.get("risk_justification"),
+            }
+        )
     return result
 
 
@@ -1396,7 +1471,7 @@ async def scorecard_lookup(ecosystem: str, package: str) -> dict:
             "ecosystem": ecosystem,
             "scorecard": None,
             "error": "Could not resolve GitHub repository for this package. "
-                     "Try providing the GitHub owner/repo directly (e.g., /v1/scorecard/github/expressjs/express).",
+            "Try providing the GitHub owner/repo directly (e.g., /v1/scorecard/github/expressjs/express).",
         }
 
     data = await fetch_scorecard(repo)
@@ -1427,6 +1502,7 @@ def _get_fleet_store():
     global _fleet_store
     if _fleet_store is None:
         from agent_bom.api.fleet_store import InMemoryFleetStore
+
         _fleet_store = InMemoryFleetStore()
     return _fleet_store
 
@@ -1445,6 +1521,7 @@ def _get_policy_store():
     global _policy_store
     if _policy_store is None:
         from agent_bom.api.policy_store import InMemoryPolicyStore
+
         _policy_store = InMemoryPolicyStore()
     return _policy_store
 
@@ -1753,7 +1830,9 @@ async def evaluate_gateway(body: EvaluateRequest):
     policies = _get_policy_store().list_policies()
     active = [p for p in policies if p.enabled]
     allowed, reason, policy_id = evaluate_gateway_policies(
-        active, body.tool_name, body.arguments,
+        active,
+        body.tool_name,
+        body.arguments,
     )
     return {
         "allowed": allowed,
@@ -1771,7 +1850,9 @@ async def list_gateway_audit(
 ):
     """Query the gateway policy audit log."""
     entries = _get_policy_store().list_audit_entries(
-        policy_id=policy_id, agent_name=agent_name, limit=limit,
+        policy_id=policy_id,
+        agent_name=agent_name,
+        limit=limit,
     )
     return {"entries": [e.model_dump() for e in entries], "count": len(entries)}
 
@@ -1795,3 +1876,65 @@ async def gateway_stats():
         "blocked_count": blocked,
         "alerted_count": alerted,
     }
+
+
+# ─── Governance ──────────────────────────────────────────────────────────────
+
+
+@app.get("/v1/governance", tags=["governance"])
+async def governance_report(days: int = 30):
+    """Run Snowflake governance discovery and return findings.
+
+    Mines ACCESS_HISTORY, GRANTS_TO_ROLES, TAG_REFERENCES, and
+    CORTEX_AGENT_USAGE_HISTORY. Requires SNOWFLAKE_ACCOUNT env var.
+    """
+    import os as _os
+
+    if not _os.environ.get("SNOWFLAKE_ACCOUNT"):
+        raise HTTPException(
+            status_code=400,
+            detail="SNOWFLAKE_ACCOUNT env var not set. Governance requires Snowflake.",
+        )
+
+    try:
+        from agent_bom.cloud import discover_governance
+
+        report = discover_governance(provider="snowflake", days=days)
+        return report.to_dict()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/v1/governance/findings", tags=["governance"])
+async def governance_findings(
+    days: int = 30,
+    severity: str | None = None,
+    category: str | None = None,
+):
+    """Return only governance findings, optionally filtered."""
+    import os as _os
+
+    if not _os.environ.get("SNOWFLAKE_ACCOUNT"):
+        raise HTTPException(
+            status_code=400,
+            detail="SNOWFLAKE_ACCOUNT env var not set.",
+        )
+
+    try:
+        from agent_bom.cloud import discover_governance
+
+        report = discover_governance(provider="snowflake", days=days)
+        findings = [f.to_dict() for f in report.findings]
+
+        if severity:
+            findings = [f for f in findings if f["severity"] == severity.lower()]
+        if category:
+            findings = [f for f in findings if f["category"] == category.lower()]
+
+        return {
+            "findings": findings,
+            "count": len(findings),
+            "warnings": report.warnings,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))

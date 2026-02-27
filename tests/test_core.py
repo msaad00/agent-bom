@@ -1547,8 +1547,8 @@ def test_cli_serve_command_exists():
     assert "--host" in result.output
 
 
-def test_cli_serve_fails_without_streamlit(monkeypatch):
-    """agent-bom serve exits with error when streamlit is not installed."""
+def test_cli_serve_fails_without_uvicorn(monkeypatch):
+    """agent-bom serve exits with error when uvicorn is not installed."""
     import builtins
 
     runner = CliRunner()
@@ -1556,13 +1556,13 @@ def test_cli_serve_fails_without_streamlit(monkeypatch):
     real_import = builtins.__import__
 
     def mock_import(name, *args, **kwargs):
-        if name == "streamlit":
-            raise ImportError("No module named 'streamlit'")
+        if name == "uvicorn":
+            raise ImportError("No module named 'uvicorn'")
         return real_import(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", mock_import)
     result = runner.invoke(main, ["serve"])
-    assert result.exit_code != 0 or "streamlit" in (result.output + str(result.exception)).lower()
+    assert result.exit_code != 0 or "uvicorn" in (result.output + str(result.exception)).lower()
 
 
 # ─── Python agent framework scanner tests ─────────────────────────────────────

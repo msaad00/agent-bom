@@ -739,7 +739,7 @@ def _mine_access_history(
             "SELECT query_id, user_name, role_name, query_start_time, "
             "       direct_objects_accessed, base_objects_accessed "
             "FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY "
-            f"WHERE query_start_time >= DATEADD(day, -{days}, CURRENT_TIMESTAMP()) "
+            f"WHERE query_start_time >= DATEADD(day, -{days}, CURRENT_TIMESTAMP()) "  # nosec B608 — days is int
             "ORDER BY query_start_time DESC "
             "LIMIT 1000"
         )
@@ -918,7 +918,7 @@ def _mine_cortex_agent_usage(
             "       input_tokens, output_tokens, total_tokens, "
             "       credits_used, model_name, tool_calls, status "
             "FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_AGENT_USAGE_HISTORY "
-            f"WHERE start_time >= DATEADD(day, -{days}, CURRENT_TIMESTAMP()) "
+            f"WHERE start_time >= DATEADD(day, -{days}, CURRENT_TIMESTAMP()) "  # nosec B608 — days is int
             "ORDER BY start_time DESC "
             "LIMIT 2000"
         )
@@ -1409,7 +1409,7 @@ def _mine_query_history_365(
             "       query_type, rows_produced, bytes_scanned, "
             "       total_elapsed_time "
             "FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY "
-            f"WHERE start_time >= DATEADD(day, -{min(days, 365)}, CURRENT_TIMESTAMP()) "
+            f"WHERE start_time >= DATEADD(day, -{min(days, 365)}, CURRENT_TIMESTAMP()) "  # nosec B608 — days is int
             "  AND (query_text ILIKE '%AGENT%' "
             "       OR query_text ILIKE '%MCP%SERVER%' "
             "       OR query_text ILIKE '%CORTEX%' "
@@ -1484,7 +1484,7 @@ def _mine_observability_events(
             "       tool_name, tool_input, tool_output_summary, "
             "       user_feedback, trace_id, parent_event_id "
             "FROM TABLE(SNOWFLAKE.LOCAL.AI_OBSERVABILITY_EVENTS("
-            f"  INTERVAL => '{min(days, 365)} days'"
+            f"  INTERVAL => '{min(days, 365)} days'"  # nosec B608 — days is int
             ")) "
             "ORDER BY timestamp DESC "
             "LIMIT 5000"

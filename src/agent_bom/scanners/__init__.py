@@ -358,6 +358,11 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
 
         summary = vuln_data.get("summary", vuln_data.get("details", "No description available"))[:200]
 
+        # Collect all aliases (original ID + OSV aliases, minus the canonical)
+        all_aliases = [a for a in aliases if a != canonical_id]
+        if vuln_id != canonical_id:
+            all_aliases.append(vuln_id)
+
         vulns.append(
             Vulnerability(
                 id=canonical_id,
@@ -366,6 +371,7 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
                 cvss_score=cvss_score,
                 fixed_version=fixed,
                 references=references,
+                aliases=all_aliases,
             )
         )
 

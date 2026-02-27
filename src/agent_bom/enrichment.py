@@ -40,7 +40,9 @@ async def fetch_nvd_data(cve_id: str, client: httpx.AsyncClient, api_key: Option
         headers["apiKey"] = api_key
 
     response = await request_with_retry(
-        client, "GET", NVD_API_URL,
+        client,
+        "GET",
+        NVD_API_URL,
         params={"cveId": cve_id},
         headers=headers,
     )
@@ -77,7 +79,9 @@ async def fetch_epss_scores(cve_ids: list[str], client: httpx.AsyncClient) -> di
     cve_param = ",".join(cve_ids[:100])  # Limit to 100 per request
 
     response = await request_with_retry(
-        client, "GET", EPSS_API_URL,
+        client,
+        "GET",
+        EPSS_API_URL,
         params={"cve": cve_param},
     )
 
@@ -149,15 +153,15 @@ async def fetch_cisa_kev_catalog(client: httpx.AsyncClient) -> dict:
 
 
 def extract_cve_ids(vulnerabilities: list[Vulnerability]) -> list[str]:
-    """Extract CVE IDs from vulnerability list."""
-    cve_ids = []
+    """Extract CVE IDs from vulnerability list (including aliases)."""
+    cve_ids: set[str] = set()
     for vuln in vulnerabilities:
-        # Check if ID is CVE format
         if vuln.id.startswith("CVE-"):
-            cve_ids.append(vuln.id)
-        # TODO: Could also check aliases in OSV data
-
-    return list(set(cve_ids))  # Deduplicate
+            cve_ids.add(vuln.id)
+        for alias in vuln.aliases:
+            if alias.startswith("CVE-"):
+                cve_ids.add(alias)
+    return list(cve_ids)
 
 
 def calculate_exploitability(epss_score: Optional[float]) -> Optional[str]:
@@ -232,7 +236,7 @@ async def enrich_vulnerabilities(
             sleep_secs = 1.0 if nvd_api_key else 6.0
 
             for batch_start in range(0, len(cve_ids), batch_size):
-                batch = cve_ids[batch_start:batch_start + batch_size]
+                batch = cve_ids[batch_start : batch_start + batch_size]
                 tasks = [fetch_nvd_data(cve_id, client, nvd_api_key) for cve_id in batch]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 for cve_id, result in zip(batch, results):
@@ -244,42 +248,57 @@ async def enrich_vulnerabilities(
             if nvd_data:
                 console.print(f"  [green]✓[/green] Retrieved NVD data for {len(nvd_data)}/{len(cve_ids)} CVE(s)")
 
-        # Enrich each vulnerability
+        # Enrich each vulnerability — match by primary ID or CVE aliases
         for vuln in vulnerabilities:
-            if not vuln.id.startswith("CVE-"):
+            # Collect all CVE IDs this vuln maps to (primary + aliases)
+            vuln_cve_ids = []
+            if vuln.id.startswith("CVE-"):
+                vuln_cve_ids.append(vuln.id)
+            for alias in vuln.aliases:
+                if alias.startswith("CVE-"):
+                    vuln_cve_ids.append(alias)
+
+            if not vuln_cve_ids:
                 continue
 
-            # Apply EPSS data
-            if vuln.id in epss_data:
-                epss = epss_data[vuln.id]
-                vuln.epss_score = epss["score"]
-                vuln.epss_percentile = epss["percentile"]
-                vuln.exploitability = calculate_exploitability(epss["score"])
-                enriched_count += 1
+            # Apply EPSS data (use first matching CVE)
+            for cve in vuln_cve_ids:
+                if cve in epss_data:
+                    epss = epss_data[cve]
+                    vuln.epss_score = epss["score"]
+                    vuln.epss_percentile = epss["percentile"]
+                    vuln.exploitability = calculate_exploitability(epss["score"])
+                    enriched_count += 1
+                    break
 
             # Apply CISA KEV data
-            if vuln.id in kev_data:
-                kev = kev_data[vuln.id]
-                vuln.is_kev = True
-                vuln.kev_date_added = kev["date_added"]
-                vuln.kev_due_date = kev["due_date"]
-                enriched_count += 1
+            for cve in vuln_cve_ids:
+                if cve in kev_data:
+                    kev = kev_data[cve]
+                    vuln.is_kev = True
+                    vuln.kev_date_added = kev["date_added"]
+                    vuln.kev_due_date = kev["due_date"]
+                    enriched_count += 1
+                    break
 
             # Apply NVD data
-            if enable_nvd and vuln.id in nvd_data:
-                nvd = nvd_data[vuln.id]
+            if enable_nvd:
+                for cve in vuln_cve_ids:
+                    if cve in nvd_data:
+                        nvd = nvd_data[cve]
 
-                # Extract CWE IDs
-                weaknesses = nvd.get("weaknesses", [])
-                for weakness in weaknesses:
-                    for desc in weakness.get("description", []):
-                        if desc.get("value", "").startswith("CWE-"):
-                            vuln.cwe_ids.append(desc["value"])
+                        # Extract CWE IDs
+                        weaknesses = nvd.get("weaknesses", [])
+                        for weakness in weaknesses:
+                            for desc in weakness.get("description", []):
+                                if desc.get("value", "").startswith("CWE-"):
+                                    vuln.cwe_ids.append(desc["value"])
 
-                # Extract dates
-                vuln.nvd_published = nvd.get("published")
-                vuln.nvd_modified = nvd.get("lastModified")
-                enriched_count += 1
+                        # Extract dates
+                        vuln.nvd_published = nvd.get("published")
+                        vuln.nvd_modified = nvd.get("lastModified")
+                        enriched_count += 1
+                        break
 
     console.print(f"\n  [bold]Enriched {enriched_count} vulnerability data points.[/bold]")
     return enriched_count
@@ -293,10 +312,12 @@ def enrich_vulnerabilities_sync(
     enable_kev: bool = True,
 ) -> int:
     """Synchronous wrapper for enrich_vulnerabilities."""
-    return asyncio.run(enrich_vulnerabilities(
-        vulnerabilities,
-        nvd_api_key,
-        enable_nvd,
-        enable_epss,
-        enable_kev,
-    ))
+    return asyncio.run(
+        enrich_vulnerabilities(
+            vulnerabilities,
+            nvd_api_key,
+            enable_nvd,
+            enable_epss,
+            enable_kev,
+        )
+    )

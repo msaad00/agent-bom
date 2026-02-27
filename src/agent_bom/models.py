@@ -23,18 +23,18 @@ class AgentType(str, Enum):
     WINDSURF = "windsurf"
     CLINE = "cline"
     VSCODE_COPILOT = "vscode-copilot"
-    CORTEX_CODE = "cortex-code"       # Snowflake Cortex Code CLI (CoCo)
-    CODEX_CLI = "codex-cli"           # OpenAI Codex CLI
-    GEMINI_CLI = "gemini-cli"         # Google Gemini CLI
-    GOOSE = "goose"                   # Block Goose AI agent
-    SNOWFLAKE_CLI = "snowflake-cli"   # Snowflake CLI (snow)
-    CONTINUE = "continue"             # Continue.dev
-    ZED = "zed"                       # Zed editor
-    OPENCLAW = "openclaw"             # OpenClaw AI agent
-    ROO_CODE = "roo-code"            # Roo Code (VS Code extension)
-    AMAZON_Q = "amazon-q"            # Amazon Q Developer (VS Code)
-    TOOLHIVE = "toolhive"            # ToolHive MCP server manager
-    DOCKER_MCP = "docker-mcp"        # Docker Desktop MCP Toolkit
+    CORTEX_CODE = "cortex-code"  # Snowflake Cortex Code CLI (CoCo)
+    CODEX_CLI = "codex-cli"  # OpenAI Codex CLI
+    GEMINI_CLI = "gemini-cli"  # Google Gemini CLI
+    GOOSE = "goose"  # Block Goose AI agent
+    SNOWFLAKE_CLI = "snowflake-cli"  # Snowflake CLI (snow)
+    CONTINUE = "continue"  # Continue.dev
+    ZED = "zed"  # Zed editor
+    OPENCLAW = "openclaw"  # OpenClaw AI agent
+    ROO_CODE = "roo-code"  # Roo Code (VS Code extension)
+    AMAZON_Q = "amazon-q"  # Amazon Q Developer (VS Code)
+    TOOLHIVE = "toolhive"  # ToolHive MCP server manager
+    DOCKER_MCP = "docker-mcp"  # Docker Desktop MCP Toolkit
     CUSTOM = "custom"
 
 
@@ -108,6 +108,8 @@ class Package:
     parent_package: Optional[str] = None  # Name of parent package (for transitive deps)
     dependency_depth: int = 0  # 0 for direct, 1+ for transitive
     resolved_from_registry: bool = False  # True if resolved dynamically vs from lock file
+    registry_version: Optional[str] = None  # Latest version from registry (for drift comparison)
+    version_source: str = "detected"  # "detected" | "manifest" | "registry_fallback"
     is_malicious: bool = False  # True if flagged as known malicious (MAL- prefix in OSV)
     malicious_reason: Optional[str] = None  # Why this package is flagged (e.g. "MAL-2024-1234")
 
@@ -171,12 +173,7 @@ class PermissionProfile:
     @property
     def is_elevated(self) -> bool:
         """True if server has any elevated privileges."""
-        return (
-            self.runs_as_root
-            or self.container_privileged
-            or self.shell_access
-            or bool(self.capabilities)
-        )
+        return self.runs_as_root or self.container_privileged or self.shell_access or bool(self.capabilities)
 
     @property
     def privilege_level(self) -> str:
@@ -222,27 +219,41 @@ class MCPServer:
     def has_credentials(self) -> bool:
         """Check if env vars suggest credentials are present."""
         sensitive_patterns = [
-        "key", "token", "secret", "password", "credential",
-        "api_key", "apikey", "auth", "private",
-        "connection", "conn_str", "database_url", "db_url",
+            "key",
+            "token",
+            "secret",
+            "password",
+            "credential",
+            "api_key",
+            "apikey",
+            "auth",
+            "private",
+            "connection",
+            "conn_str",
+            "database_url",
+            "db_url",
         ]
-        return any(
-            any(pat in k.lower() for pat in sensitive_patterns)
-            for k in self.env
-        )
+        return any(any(pat in k.lower() for pat in sensitive_patterns) for k in self.env)
 
     @property
     def credential_names(self) -> list[str]:
         """Return names of env vars that look like credentials."""
         sensitive_patterns = [
-            "key", "token", "secret", "password", "credential",
-            "api_key", "apikey", "auth", "private",
-            "connection", "conn_str", "database_url", "db_url",
+            "key",
+            "token",
+            "secret",
+            "password",
+            "credential",
+            "api_key",
+            "apikey",
+            "auth",
+            "private",
+            "connection",
+            "conn_str",
+            "database_url",
+            "db_url",
         ]
-        return [
-            k for k in self.env
-            if any(pat in k.lower() for pat in sensitive_patterns)
-        ]
+        return [k for k in self.env if any(pat in k.lower() for pat in sensitive_patterns)]
 
 
 @dataclass
@@ -351,6 +362,7 @@ class AIBOMReport:
     def __post_init__(self):
         if not self.tool_version:
             from agent_bom import __version__
+
             self.tool_version = __version__
 
     @property

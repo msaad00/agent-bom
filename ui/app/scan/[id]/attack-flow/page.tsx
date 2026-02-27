@@ -38,6 +38,7 @@ import {
   type BlastRadius,
   severityColor,
   OWASP_LLM_TOP10,
+  OWASP_MCP_TOP10,
   MITRE_ATLAS,
 } from "@/lib/api";
 import { SeverityBadge } from "@/components/severity-badge";
@@ -127,10 +128,15 @@ function AttackFlowNode({ data }: { data: AttackFlowNodeData }) {
       </div>
 
       {/* Framework tags (CVE nodes only) */}
-      {nodeType === "cve" && (data.owasp_tags?.length || data.atlas_tags?.length) ? (
+      {nodeType === "cve" && (data.owasp_tags?.length || data.atlas_tags?.length || data.owasp_mcp_tags?.length) ? (
         <div className="flex flex-wrap gap-0.5 mt-1">
           {data.owasp_tags?.slice(0, 2).map((tag) => (
             <span key={tag} className="text-[9px] font-mono bg-purple-950/60 border border-purple-800/50 text-purple-400 rounded px-1">
+              {tag}
+            </span>
+          ))}
+          {data.owasp_mcp_tags?.slice(0, 2).map((tag) => (
+            <span key={tag} className="text-[9px] font-mono bg-amber-950/60 border border-amber-800/50 text-amber-400 rounded px-1">
               {tag}
             </span>
           ))}
@@ -220,6 +226,18 @@ function DetailPanel({ data, onClose }: { data: AttackFlowNodeData; onClose: () 
                   {data.owasp_tags.map((tag) => (
                     <div key={tag} className="text-xs font-mono bg-purple-950/40 border border-purple-800/50 text-purple-400 rounded px-2 py-1">
                       {tag} <span className="text-purple-600 font-sans">{OWASP_LLM_TOP10[tag]}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {data.owasp_mcp_tags && data.owasp_mcp_tags.length > 0 && (
+              <div>
+                <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">OWASP MCP Top 10</div>
+                <div className="space-y-1">
+                  {data.owasp_mcp_tags.map((tag) => (
+                    <div key={tag} className="text-xs font-mono bg-amber-950/40 border border-amber-800/50 text-amber-400 rounded px-2 py-1">
+                      {tag} <span className="text-amber-600 font-sans">{OWASP_MCP_TOP10[tag]}</span>
                     </div>
                   ))}
                 </div>
@@ -369,6 +387,7 @@ function FilterBar({
     const tags = new Set<string>();
     for (const br of blastRadius) {
       for (const t of br.owasp_tags ?? []) tags.add(t);
+      for (const t of br.owasp_mcp_tags ?? []) tags.add(t);
       for (const t of br.atlas_tags ?? []) tags.add(t);
       for (const t of br.nist_ai_rmf_tags ?? []) tags.add(t);
     }
@@ -429,7 +448,7 @@ function FilterBar({
           <option value="">All Frameworks</option>
           {frameworkTags.map((tag) => (
             <option key={tag} value={tag}>
-              {tag} {OWASP_LLM_TOP10[tag] ? `- ${OWASP_LLM_TOP10[tag]}` : MITRE_ATLAS[tag] ? `- ${MITRE_ATLAS[tag]}` : ""}
+              {tag} {OWASP_LLM_TOP10[tag] ? `- ${OWASP_LLM_TOP10[tag]}` : OWASP_MCP_TOP10[tag] ? `- ${OWASP_MCP_TOP10[tag]}` : MITRE_ATLAS[tag] ? `- ${MITRE_ATLAS[tag]}` : ""}
             </option>
           ))}
         </select>

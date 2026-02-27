@@ -123,6 +123,7 @@ export interface BlastRadius {
   owasp_tags?: string[];
   atlas_tags?: string[];
   nist_ai_rmf_tags?: string[];
+  owasp_mcp_tags?: string[];
 }
 
 // ─── Attack Flow Types ───────────────────────────────────────────────────────
@@ -140,6 +141,7 @@ export interface AttackFlowNodeData {
   owasp_tags?: string[];
   atlas_tags?: string[];
   nist_ai_rmf_tags?: string[];
+  owasp_mcp_tags?: string[];
   version?: string;
   ecosystem?: string;
   agent_type?: string;

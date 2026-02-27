@@ -20,49 +20,105 @@ from agent_bom.owasp_mcp import tag_blast_radius as tag_owasp_mcp
 
 # Known AI/ML framework packages — vulnerabilities in these carry elevated risk
 # because they run inside AI agents that have credentials and tool access
-_AI_FRAMEWORK_PACKAGES = frozenset({
-    # LLM orchestration
-    "langchain", "langchain-core", "langchain-community", "langchain-openai",
-    "langgraph", "llama-index", "llama_index", "llama-hub",
-    "autogen", "pyautogen", "crewai", "agency-swarm",
-    "haystack-ai", "semantic-kernel",
-    # LLM clients
-    "openai", "anthropic", "mistralai", "cohere", "together",
-    "google-generativeai", "google-cloud-aiplatform", "boto3",
-    # Model inference
-    "transformers", "huggingface-hub", "diffusers", "accelerate",
-    "sentence-transformers", "optimum",
-    # Vector stores and RAG
-    "chromadb", "pinecone-client", "weaviate-client", "qdrant-client",
-    "faiss-cpu", "faiss-gpu", "pymilvus", "milvus",
-    "pgvector", "lancedb",
-    # MCP and agent infrastructure
-    "mcp", "fastmcp", "modelcontextprotocol",
-    # GPU / AI infrastructure — NVIDIA
-    "cuda-python", "cupy", "cupy-cuda11x", "cupy-cuda12x",
-    "nvidia-cublas-cu11", "nvidia-cublas-cu12",
-    "nvidia-cudnn-cu11", "nvidia-cudnn-cu12",
-    "nvidia-cufft-cu11", "nvidia-cufft-cu12",
-    "nvidia-cusolver-cu11", "nvidia-cusolver-cu12",
-    "nvidia-cusparse-cu11", "nvidia-cusparse-cu12",
-    "nvidia-nccl-cu11", "nvidia-nccl-cu12",
-    "nvidia-cuda-runtime-cu11", "nvidia-cuda-runtime-cu12",
-    "nvidia-cuda-nvrtc-cu11", "nvidia-cuda-nvrtc-cu12",
-    "tensorrt", "nvidia-tensorrt",
-    "triton", "tritonclient",
-    # GPU / AI infrastructure — AMD ROCm
-    "hip-python", "rocm-smi",
-    # ML frameworks with GPU backends
-    "torch", "torchvision", "torchaudio",
-    "tensorflow", "tensorflow-gpu", "tf-nightly",
-    "jax", "jaxlib",
-    # Inference servers
-    "vllm", "text-generation-inference",
-    "llama-cpp-python", "ctransformers",
-    # MLOps / experiment tracking
-    "mlflow", "wandb", "neptune", "clearml",
-    "ray", "ray[serve]",
-})
+_AI_FRAMEWORK_PACKAGES = frozenset(
+    {
+        # LLM orchestration
+        "langchain",
+        "langchain-core",
+        "langchain-community",
+        "langchain-openai",
+        "langgraph",
+        "llama-index",
+        "llama_index",
+        "llama-hub",
+        "autogen",
+        "pyautogen",
+        "crewai",
+        "agency-swarm",
+        "haystack-ai",
+        "semantic-kernel",
+        # LLM clients
+        "openai",
+        "anthropic",
+        "mistralai",
+        "cohere",
+        "together",
+        "google-generativeai",
+        "google-cloud-aiplatform",
+        "boto3",
+        # Model inference
+        "transformers",
+        "huggingface-hub",
+        "diffusers",
+        "accelerate",
+        "sentence-transformers",
+        "optimum",
+        # Vector stores and RAG
+        "chromadb",
+        "pinecone-client",
+        "weaviate-client",
+        "qdrant-client",
+        "faiss-cpu",
+        "faiss-gpu",
+        "pymilvus",
+        "milvus",
+        "pgvector",
+        "lancedb",
+        # MCP and agent infrastructure
+        "mcp",
+        "fastmcp",
+        "modelcontextprotocol",
+        # GPU / AI infrastructure — NVIDIA
+        "cuda-python",
+        "cupy",
+        "cupy-cuda11x",
+        "cupy-cuda12x",
+        "nvidia-cublas-cu11",
+        "nvidia-cublas-cu12",
+        "nvidia-cudnn-cu11",
+        "nvidia-cudnn-cu12",
+        "nvidia-cufft-cu11",
+        "nvidia-cufft-cu12",
+        "nvidia-cusolver-cu11",
+        "nvidia-cusolver-cu12",
+        "nvidia-cusparse-cu11",
+        "nvidia-cusparse-cu12",
+        "nvidia-nccl-cu11",
+        "nvidia-nccl-cu12",
+        "nvidia-cuda-runtime-cu11",
+        "nvidia-cuda-runtime-cu12",
+        "nvidia-cuda-nvrtc-cu11",
+        "nvidia-cuda-nvrtc-cu12",
+        "tensorrt",
+        "nvidia-tensorrt",
+        "triton",
+        "tritonclient",
+        # GPU / AI infrastructure — AMD ROCm
+        "hip-python",
+        "rocm-smi",
+        # ML frameworks with GPU backends
+        "torch",
+        "torchvision",
+        "torchaudio",
+        "tensorflow",
+        "tensorflow-gpu",
+        "tf-nightly",
+        "jax",
+        "jaxlib",
+        # Inference servers
+        "vllm",
+        "text-generation-inference",
+        "llama-cpp-python",
+        "ctransformers",
+        # MLOps / experiment tracking
+        "mlflow",
+        "wandb",
+        "neptune",
+        "clearml",
+        "ray",
+        "ray[serve]",
+    }
+)
 
 console = Console(stderr=True)
 
@@ -154,6 +210,7 @@ def parse_cvss_vector(vector: str) -> Optional[float]:
 
         # Roundup to one decimal (CVSS spec: ceiling to 1 decimal)
         import math
+
         return math.ceil(raw * 10) / 10.0
 
     except Exception:
@@ -222,13 +279,15 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
         if not osv_ecosystem or pkg.version in ("unknown", "latest"):
             continue
 
-        queries.append({
-            "version": pkg.version,
-            "package": {
-                "name": pkg.name,
-                "ecosystem": osv_ecosystem,
+        queries.append(
+            {
+                "version": pkg.version,
+                "package": {
+                    "name": pkg.name,
+                    "ecosystem": osv_ecosystem,
+                },
             }
-        })
+        )
         pkg_index[len(queries) - 1] = pkg
 
     if not queries:
@@ -240,11 +299,13 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
     batch_size = 1000
     async with create_client(timeout=30.0) as client:
         for batch_start in range(0, len(queries), batch_size):
-            batch = queries[batch_start:batch_start + batch_size]
+            batch = queries[batch_start : batch_start + batch_size]
 
             async with _api_semaphore:
                 response = await request_with_retry(
-                    client, "POST", OSV_BATCH_URL,
+                    client,
+                    "POST",
+                    OSV_BATCH_URL,
                     json={"queries": batch},
                 )
 
@@ -287,11 +348,7 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
         severity, cvss_score = parse_osv_severity(vuln_data)
         fixed = parse_fixed_version(vuln_data, package.name)
 
-        references = [
-            ref.get("url", "")
-            for ref in vuln_data.get("references", [])
-            if ref.get("url")
-        ][:5]  # Limit to 5 references
+        references = [ref.get("url", "") for ref in vuln_data.get("references", []) if ref.get("url")][:5]  # Limit to 5 references
 
         # Use aliases to surface CVE ID when primary ID is GHSA/OSV/RUSTSEC
         aliases = vuln_data.get("aliases", [])
@@ -301,14 +358,16 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
 
         summary = vuln_data.get("summary", vuln_data.get("details", "No description available"))[:200]
 
-        vulns.append(Vulnerability(
-            id=canonical_id,
-            summary=summary,
-            severity=severity,
-            cvss_score=cvss_score,
-            fixed_version=fixed,
-            references=references,
-        ))
+        vulns.append(
+            Vulnerability(
+                id=canonical_id,
+                summary=summary,
+                severity=severity,
+                cvss_score=cvss_score,
+                fixed_version=fixed,
+                references=references,
+            )
+        )
 
     return vulns
 
@@ -331,6 +390,23 @@ async def scan_packages(packages: list[Package]) -> int:
             total_vulns += len(pkg.vulnerabilities)
             # Flag packages with MAL- prefixed vulnerability IDs as malicious
             flag_malicious_from_vulns(pkg)
+
+    # Supplemental: check NVIDIA advisories for AI framework packages
+    nvidia_packages = [
+        p
+        for p in scannable
+        if p.name.lower().replace("-", "_") in _AI_FRAMEWORK_PACKAGES and p.name.lower().startswith(("nvidia", "cuda", "tensorrt", "nccl"))
+    ]
+    if nvidia_packages:
+        try:
+            from agent_bom.scanners.nvidia_advisory import check_nvidia_advisories
+
+            nvidia_new = await check_nvidia_advisories(nvidia_packages)
+            if nvidia_new:
+                total_vulns += nvidia_new
+                console.print(f"  [green]✓[/green] NVIDIA advisories: {nvidia_new} additional CVE(s)")
+        except Exception as exc:
+            console.print(f"  [yellow]⚠[/yellow] NVIDIA advisory check skipped: {exc}")
 
     # Typosquat detection for all scanned packages
     for pkg in scannable:
@@ -420,6 +496,7 @@ async def scan_agents(agents: list[Agent]) -> list[BlastRadius]:
                 if reg:
                     if not server_tools and reg.get("tools"):
                         from agent_bom.models import MCPTool
+
                         server_tools = [MCPTool(name=t, description="") for t in reg["tools"]]
                     if not server_creds and reg.get("credential_env_vars"):
                         server_creds = reg["credential_env_vars"]
@@ -428,9 +505,10 @@ async def scan_agents(agents: list[Agent]) -> list[BlastRadius]:
             exposed_tools.extend(server_tools)
 
         # AI-native risk context: elevated when an AI framework has creds + tools
-        is_ai_framework = pkg.name.lower().replace("-", "_") in {
-            n.replace("-", "_") for n in _AI_FRAMEWORK_PACKAGES
-        } or pkg.name.lower() in _AI_FRAMEWORK_PACKAGES
+        is_ai_framework = (
+            pkg.name.lower().replace("-", "_") in {n.replace("-", "_") for n in _AI_FRAMEWORK_PACKAGES}
+            or pkg.name.lower() in _AI_FRAMEWORK_PACKAGES
+        )
         has_creds = bool(exposed_creds)
         has_tools = bool(exposed_tools)
         if is_ai_framework and has_creds and has_tools:

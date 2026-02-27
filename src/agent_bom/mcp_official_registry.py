@@ -79,7 +79,9 @@ async def search_official_registry(
 
     async with create_client(timeout=15.0) as client:
         resp = await request_with_retry(
-            client, "GET", f"{_API_BASE}/v0/servers",
+            client,
+            "GET",
+            f"{_API_BASE}/v0/servers",
             params=params,
         )
 
@@ -92,14 +94,16 @@ async def search_official_registry(
         servers = []
         for entry in data.get("servers", []):
             s = entry.get("server", entry)
-            servers.append(OfficialRegistryServer(
-                qualified_name=s.get("name", s.get("qualifiedName", "")),
-                description=s.get("description", ""),
-                version=s.get("version", ""),
-                repository_url=s.get("repository", {}).get("url", "") if isinstance(s.get("repository"), dict) else "",
-                packages=s.get("packages", []),
-                status=entry.get("_meta", {}).get("status", "active") if "_meta" in entry else "active",
-            ))
+            servers.append(
+                OfficialRegistryServer(
+                    qualified_name=s.get("name", s.get("qualifiedName", "")),
+                    description=s.get("description", ""),
+                    version=s.get("version", ""),
+                    repository_url=s.get("repository", {}).get("url", "") if isinstance(s.get("repository"), dict) else "",
+                    packages=s.get("packages", []),
+                    status=entry.get("_meta", {}).get("status", "active") if "_meta" in entry else "active",
+                )
+            )
 
         metadata = data.get("metadata", {})
         return OfficialRegistrySearchResult(
@@ -110,7 +114,9 @@ async def search_official_registry(
 
 
 def search_official_registry_sync(
-    query: str, limit: int = 10, cursor: str | None = None,
+    query: str,
+    limit: int = 10,
+    cursor: str | None = None,
 ) -> OfficialRegistrySearchResult:
     """Sync wrapper for search_official_registry."""
     return asyncio.run(search_official_registry(query, limit, cursor))
@@ -142,19 +148,25 @@ async def official_registry_lookup(
 
     logger.info(
         "Official MCP Registry: resolved %s → %s (version=%s)",
-        server.name, best.qualified_name, best.version,
+        server.name,
+        best.qualified_name,
+        best.version,
     )
 
-    return [Package(
-        name=best.qualified_name,
-        version=best.version or "latest",
-        ecosystem="mcp-registry",
-        purl=f"pkg:mcp/{best.qualified_name}@{best.version or 'latest'}",
-        is_direct=True,
-        resolved_from_registry=True,
-        auto_risk_level="medium",
-        auto_risk_justification=f"Official MCP Registry: {best.qualified_name}",
-    )]
+    return [
+        Package(
+            name=best.qualified_name,
+            version=best.version or "latest",
+            ecosystem="mcp-registry",
+            purl=f"pkg:mcp/{best.qualified_name}@{best.version or 'latest'}",
+            is_direct=True,
+            resolved_from_registry=True,
+            registry_version=best.version or "latest",
+            version_source="registry_fallback",
+            auto_risk_level="medium",
+            auto_risk_justification=f"Official MCP Registry: {best.qualified_name}",
+        )
+    ]
 
 
 def official_registry_lookup_sync(server: MCPServer) -> list[Package]:
@@ -209,7 +221,9 @@ async def sync_from_official_registry(
                 params["cursor"] = cursor
 
             resp = await request_with_retry(
-                client, "GET", f"{_API_BASE}/v0/servers",
+                client,
+                "GET",
+                f"{_API_BASE}/v0/servers",
                 params=params,
             )
 
@@ -235,14 +249,12 @@ async def sync_from_official_registry(
 
                 # Extract tools and credentials from the entry
                 tools_data = s.get("tools", [])
-                tool_names = [
-                    (t.get("name", "") if isinstance(t, dict) else str(t))
-                    for t in tools_data
-                ] if tools_data else []
+                tool_names = [(t.get("name", "") if isinstance(t, dict) else str(t)) for t in tools_data] if tools_data else []
                 cred_vars = s.get("credential_env_vars", []) or []
 
                 # Auto-classify risk level based on tool capabilities
                 from agent_bom.permissions import _infer_category, classify_risk_level
+
                 risk = classify_risk_level(tool_names, cred_vars)
                 category = _infer_category(qn, (s.get("description", "") or ""))
 
@@ -266,11 +278,13 @@ async def sync_from_official_registry(
                     local_servers[qn] = reg_entry
 
                 result.added += 1
-                result.details.append({
-                    "server": qn,
-                    "version": s.get("version", ""),
-                    "status": "added",
-                })
+                result.details.append(
+                    {
+                        "server": qn,
+                        "version": s.get("version", ""),
+                        "status": "added",
+                    }
+                )
 
             metadata = data.get("metadata", {})
             cursor = metadata.get("nextCursor")
@@ -289,7 +303,9 @@ async def sync_from_official_registry(
 
 
 def sync_from_official_registry_sync(
-    max_pages: int = 10, page_size: int = 100, dry_run: bool = False,
+    max_pages: int = 10,
+    page_size: int = 100,
+    dry_run: bool = False,
 ) -> OfficialRegistrySyncResult:
     """Sync wrapper for sync_from_official_registry."""
     return asyncio.run(sync_from_official_registry(max_pages, page_size, dry_run))

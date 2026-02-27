@@ -1,0 +1,180 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 420" fill="none">
+  <style>
+    .title { font: 700 14px system-ui, -apple-system, sans-serif; fill: #e6edf3; }
+    .phase { font: 700 10px system-ui, sans-serif; letter-spacing: 0.08em; }
+    .item-label { font: 600 11px system-ui, sans-serif; fill: #e6edf3; }
+    .item-sub { font: 400 9.5px system-ui, sans-serif; fill: #8b949e; }
+    .footer { font: 500 9.5px system-ui, sans-serif; fill: #6e7681; }
+  </style>
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M1 1L9 5L1 9" stroke="#6e7681" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="880" height="420" rx="12" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+
+  <!-- Title -->
+  <text x="440" y="32" text-anchor="middle" class="title">How agent-bom works</text>
+
+  <!-- ── Phase 1: Discovery ── -->
+  <rect x="24" y="52" width="192" height="6" rx="3" fill="#58a6ff" opacity="0.7"/>
+  <text x="120" y="76" text-anchor="middle" class="phase" fill="#58a6ff">DISCOVERY</text>
+
+  <g transform="translate(36, 88)">
+    <circle cx="6" cy="6" r="3.5" fill="#58a6ff" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">MCP Configs (18 clients)</text>
+    <text x="16" y="22" class="item-sub">Claude, Cursor, Codex, Gemini, Goose, +13</text>
+  </g>
+  <g transform="translate(36, 118)">
+    <circle cx="6" cy="6" r="3.5" fill="#58a6ff" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">Cloud Providers</text>
+    <text x="16" y="22" class="item-sub">AWS, Azure, GCP, Snowflake, Databricks, Nebius</text>
+  </g>
+  <g transform="translate(36, 148)">
+    <circle cx="6" cy="6" r="3.5" fill="#58a6ff" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">Docker Images</text>
+    <text x="16" y="22" class="item-sub">Grype + Syft deep scanning</text>
+  </g>
+  <g transform="translate(36, 178)">
+    <circle cx="6" cy="6" r="3.5" fill="#58a6ff" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">Kubernetes Pods</text>
+    <text x="16" y="22" class="item-sub">kubectl multi-namespace</text>
+  </g>
+  <g transform="translate(36, 208)">
+    <circle cx="6" cy="6" r="3.5" fill="#58a6ff" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">Existing SBOMs</text>
+    <text x="16" y="22" class="item-sub">CycloneDX + SPDX import</text>
+  </g>
+  <g transform="translate(36, 238)">
+    <circle cx="6" cy="6" r="3.5" fill="#58a6ff" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">Agent Frameworks</text>
+    <text x="16" y="22" class="item-sub">LangChain, CrewAI, ADK</text>
+  </g>
+
+  <!-- Arrow 1 -->
+  <g transform="translate(226, 168)">
+    <path d="M0 0L14 16L0 32" stroke="#6e7681" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M10 0L24 16L10 32" stroke="#6e7681" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
+  </g>
+
+  <!-- ── Phase 2: Enrichment ── -->
+  <rect x="252" y="52" width="192" height="6" rx="3" fill="#d29922" opacity="0.7"/>
+  <text x="348" y="76" text-anchor="middle" class="phase" fill="#d29922">ENRICHMENT</text>
+
+  <g transform="translate(264, 90)">
+    <circle cx="6" cy="6" r="3.5" fill="#d29922" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">OSV.dev</text>
+    <text x="16" y="22" class="item-sub">Batch CVE lookup, all ecosystems</text>
+  </g>
+  <g transform="translate(264, 126)">
+    <circle cx="6" cy="6" r="3.5" fill="#d29922" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">NVD / NIST</text>
+    <text x="16" y="22" class="item-sub">CVSS v3.1 / v4.0 severity</text>
+  </g>
+  <g transform="translate(264, 162)">
+    <circle cx="6" cy="6" r="3.5" fill="#d29922" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">FIRST EPSS</text>
+    <text x="16" y="22" class="item-sub">Exploit probability scores</text>
+  </g>
+  <g transform="translate(264, 198)">
+    <circle cx="6" cy="6" r="3.5" fill="#d29922" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">CISA KEV</text>
+    <text x="16" y="22" class="item-sub">Known exploited vulns catalog</text>
+  </g>
+  <g transform="translate(264, 234)">
+    <circle cx="6" cy="6" r="3.5" fill="#d29922" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">MCP Registry</text>
+    <text x="16" y="22" class="item-sub">427+ server provenance checks</text>
+  </g>
+
+  <!-- Arrow 2 -->
+  <g transform="translate(454, 168)">
+    <path d="M0 0L14 16L0 32" stroke="#6e7681" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M10 0L24 16L10 32" stroke="#6e7681" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
+  </g>
+
+  <!-- ── Phase 3: Analysis ── -->
+  <rect x="480" y="52" width="192" height="6" rx="3" fill="#f47067" opacity="0.7"/>
+  <text x="576" y="76" text-anchor="middle" class="phase" fill="#f47067">ANALYSIS</text>
+
+  <g transform="translate(492, 90)">
+    <circle cx="6" cy="6" r="3.5" fill="#f47067" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">Blast Radius</text>
+    <text x="16" y="22" class="item-sub">Agent / credential / tool impact</text>
+  </g>
+  <g transform="translate(492, 126)">
+    <circle cx="6" cy="6" r="3.5" fill="#f47067" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">OWASP LLM Top 10</text>
+    <text x="16" y="22" class="item-sub">LLM02 / LLM05 / LLM06 / LLM08</text>
+  </g>
+  <g transform="translate(492, 162)">
+    <circle cx="6" cy="6" r="3.5" fill="#f47067" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">MITRE ATLAS</text>
+    <text x="16" y="22" class="item-sub">AI adversarial threat mapping</text>
+  </g>
+  <g transform="translate(492, 198)">
+    <circle cx="6" cy="6" r="3.5" fill="#f47067" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">Enforcement Engine</text>
+    <text x="16" y="22" class="item-sub">Tool poisoning + policy gates</text>
+  </g>
+  <g transform="translate(492, 234)">
+    <circle cx="6" cy="6" r="3.5" fill="#f47067" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">Model Provenance</text>
+    <text x="16" y="22" class="item-sub">SHA-256, Sigstore, HuggingFace</text>
+  </g>
+
+  <!-- Arrow 3 -->
+  <g transform="translate(682, 168)">
+    <path d="M0 0L14 16L0 32" stroke="#6e7681" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M10 0L24 16L10 32" stroke="#6e7681" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
+  </g>
+
+  <!-- ── Phase 4: Output ── -->
+  <rect x="708" y="52" width="148" height="6" rx="3" fill="#3fb950" opacity="0.7"/>
+  <text x="782" y="76" text-anchor="middle" class="phase" fill="#3fb950">OUTPUT</text>
+
+  <g transform="translate(720, 90)">
+    <circle cx="6" cy="6" r="3.5" fill="#3fb950" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">Console + HTML</text>
+    <text x="16" y="22" class="item-sub">Rich tables + dashboard</text>
+  </g>
+  <g transform="translate(720, 126)">
+    <circle cx="6" cy="6" r="3.5" fill="#3fb950" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">SARIF</text>
+    <text x="16" y="22" class="item-sub">GitHub Security tab</text>
+  </g>
+  <g transform="translate(720, 162)">
+    <circle cx="6" cy="6" r="3.5" fill="#3fb950" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">CycloneDX 1.6</text>
+    <text x="16" y="22" class="item-sub">AI-BOM standard</text>
+  </g>
+  <g transform="translate(720, 198)">
+    <circle cx="6" cy="6" r="3.5" fill="#3fb950" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">SPDX 3.0</text>
+    <text x="16" y="22" class="item-sub">License + provenance</text>
+  </g>
+  <g transform="translate(720, 234)">
+    <circle cx="6" cy="6" r="3.5" fill="#3fb950" opacity="0.5"/>
+    <text x="16" y="10" class="item-label">JSON + REST API</text>
+    <text x="16" y="22" class="item-sub">FastAPI on :8422</text>
+  </g>
+
+  <!-- Separator line -->
+  <line x1="40" y1="284" x2="840" y2="284" stroke="#30363d" stroke-width="1"/>
+
+  <!-- Trust bar -->
+  <g transform="translate(40, 300)">
+    <rect width="800" height="44" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+    <text x="400" y="18" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#8b949e" letter-spacing="0.05em">TRUST PRINCIPLES</text>
+    <text x="400" y="34" text-anchor="middle" class="footer">Read-only  ·  Agentless  ·  Never writes configs  ·  Never runs MCP servers  ·  Never stores credentials  ·  Sigstore-signed releases</text>
+  </g>
+
+  <!-- Integration row -->
+  <g transform="translate(40, 358)">
+    <rect width="800" height="44" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+    <text x="400" y="18" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#8b949e" letter-spacing="0.05em">INTERFACES</text>
+    <text x="400" y="34" text-anchor="middle" class="footer">CLI (pip install)  ·  REST API (FastAPI)  ·  GitHub Actions  ·  Cloud UI  ·  Skills  ·  Prometheus / OTLP</text>
+  </g>
+</svg>

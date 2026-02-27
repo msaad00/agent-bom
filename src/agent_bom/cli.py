@@ -91,7 +91,7 @@ def main():
       agent-bom scan -f html -o report.html open dashboard
       agent-bom scan --enrich               add NVD CVSS + EPSS + CISA KEV
       agent-bom api                         start REST API (port 8422)
-      agent-bom serve                       Streamlit dashboard (port 8501)
+      agent-bom serve                       API + dashboard (port 8422)
 
     \b
     Docs:  https://github.com/msaad00/agent-bom
@@ -104,20 +104,39 @@ def main():
 @click.option("--config-dir", type=click.Path(exists=True), help="Custom agent config directory to scan")
 @click.option("--inventory", type=click.Path(exists=True), help="Manual inventory JSON file")
 @click.option("--output", "-o", type=str, help="Output file path (use '-' for stdout)")
-@click.option("--open", "open_report", is_flag=True, default=False,
-              help="Auto-open HTML/graph-html report in default browser after generation")
 @click.option(
-    "--format", "-f", "output_format",
-    type=click.Choice(["console", "json", "cyclonedx", "sarif", "spdx", "text", "html", "prometheus", "graph", "graph-html", "mermaid", "svg", "badge"]),
+    "--open", "open_report", is_flag=True, default=False, help="Auto-open HTML/graph-html report in default browser after generation"
+)
+@click.option(
+    "--format",
+    "-f",
+    "output_format",
+    type=click.Choice(
+        ["console", "json", "cyclonedx", "sarif", "spdx", "text", "html", "prometheus", "graph", "graph-html", "mermaid", "svg", "badge"]
+    ),
     default="console",
     help="Output format",
 )
-@click.option("--mermaid-mode", type=click.Choice(["supply-chain", "attack-flow"]), default="supply-chain",
-              help="Mermaid diagram mode: supply-chain (full hierarchy) or attack-flow (CVE blast radius)")
-@click.option("--push-gateway", "push_gateway", default=None, metavar="URL",
-              help="Prometheus Pushgateway URL to push metrics after scan (e.g. http://localhost:9091)")
-@click.option("--otel-endpoint", "otel_endpoint", default=None, metavar="URL",
-              help="OpenTelemetry OTLP/HTTP collector endpoint (e.g. http://localhost:4318). Requires pip install 'agent-bom[otel]'")
+@click.option(
+    "--mermaid-mode",
+    type=click.Choice(["supply-chain", "attack-flow"]),
+    default="supply-chain",
+    help="Mermaid diagram mode: supply-chain (full hierarchy) or attack-flow (CVE blast radius)",
+)
+@click.option(
+    "--push-gateway",
+    "push_gateway",
+    default=None,
+    metavar="URL",
+    help="Prometheus Pushgateway URL to push metrics after scan (e.g. http://localhost:9091)",
+)
+@click.option(
+    "--otel-endpoint",
+    "otel_endpoint",
+    default=None,
+    metavar="URL",
+    help="OpenTelemetry OTLP/HTTP collector endpoint (e.g. http://localhost:4318). Requires pip install 'agent-bom[otel]'",
+)
 @click.option("--dry-run", is_flag=True, help="Show what files and APIs would be accessed without scanning, then exit 0")
 @click.option("--no-scan", is_flag=True, help="Skip vulnerability scanning (inventory only)")
 @click.option("--no-tree", is_flag=True, help="Skip dependency tree output")
@@ -137,47 +156,121 @@ def main():
 @click.option("--save", "save_report", is_flag=True, help="Save this scan to ~/.agent-bom/history/ for future diffing")
 @click.option("--baseline", type=click.Path(exists=True), help="Path to a baseline report JSON to diff against current scan")
 @click.option("--policy", type=click.Path(exists=True), help="Policy file (JSON/YAML) with declarative security rules")
-@click.option("--sbom", "sbom_file", type=click.Path(exists=True), help="Existing SBOM file to ingest (CycloneDX or SPDX JSON from Syft/Grype/Trivy)")
-@click.option("--image", "images", multiple=True, metavar="IMAGE", help="Docker image to scan (e.g. nginx:1.25). Repeatable for multiple images.")
+@click.option(
+    "--sbom", "sbom_file", type=click.Path(exists=True), help="Existing SBOM file to ingest (CycloneDX or SPDX JSON from Syft/Grype/Trivy)"
+)
+@click.option(
+    "--image", "images", multiple=True, metavar="IMAGE", help="Docker image to scan (e.g. nginx:1.25). Repeatable for multiple images."
+)
 @click.option("--k8s", is_flag=True, help="Discover container images from a Kubernetes cluster via kubectl")
 @click.option("--namespace", default="default", show_default=True, help="Kubernetes namespace (used with --k8s)")
 @click.option("--all-namespaces", "-A", is_flag=True, help="Scan all Kubernetes namespaces (used with --k8s)")
 @click.option("--context", "k8s_context", default=None, help="kubectl context to use (used with --k8s)")
-@click.option("--tf-dir", "tf_dirs", multiple=True, type=click.Path(exists=True), metavar="DIR",
-              help="Terraform directory to scan for AI resources, providers, and hardcoded secrets. Repeatable.")
-@click.option("--gha", "gha_path", type=click.Path(exists=True), metavar="REPO",
-              help="Repository root to scan GitHub Actions workflows for AI usage and credential exposure.")
-@click.option("--agent-project", "agent_projects", multiple=True, type=click.Path(exists=True), metavar="DIR",
-              help="Python project using an agent framework (OpenAI Agents SDK, Google ADK, LangChain, AutoGen, "
-                   "CrewAI, LlamaIndex, Pydantic AI, smolagents, Semantic Kernel, Haystack). Repeatable.")
-@click.option("--skill", "skill_paths", multiple=True, type=click.Path(exists=True), metavar="PATH",
-              help="Skill/instruction file to scan (CLAUDE.md, .cursorrules, skill.md). "
-                   "Extracts MCP server refs, packages, and credential env vars. Repeatable.")
+@click.option(
+    "--tf-dir",
+    "tf_dirs",
+    multiple=True,
+    type=click.Path(exists=True),
+    metavar="DIR",
+    help="Terraform directory to scan for AI resources, providers, and hardcoded secrets. Repeatable.",
+)
+@click.option(
+    "--gha",
+    "gha_path",
+    type=click.Path(exists=True),
+    metavar="REPO",
+    help="Repository root to scan GitHub Actions workflows for AI usage and credential exposure.",
+)
+@click.option(
+    "--agent-project",
+    "agent_projects",
+    multiple=True,
+    type=click.Path(exists=True),
+    metavar="DIR",
+    help="Python project using an agent framework (OpenAI Agents SDK, Google ADK, LangChain, AutoGen, "
+    "CrewAI, LlamaIndex, Pydantic AI, smolagents, Semantic Kernel, Haystack). Repeatable.",
+)
+@click.option(
+    "--skill",
+    "skill_paths",
+    multiple=True,
+    type=click.Path(exists=True),
+    metavar="PATH",
+    help="Skill/instruction file to scan (CLAUDE.md, .cursorrules, skill.md). "
+    "Extracts MCP server refs, packages, and credential env vars. Repeatable.",
+)
 @click.option("--no-skill", is_flag=True, help="Skip all skill/instruction file scanning (auto-discovery + explicit --skill paths)")
 @click.option("--skill-only", is_flag=True, help="Scan ONLY skill/instruction files; skip agent/package/CVE scanning")
 @click.option("--scan-prompts", is_flag=True, help="Scan prompt template files (.prompt, system_prompt.*, prompts/) for security risks")
-@click.option("--jupyter", "jupyter_dirs", multiple=True, type=click.Path(exists=True), metavar="DIR",
-              help="Scan Jupyter notebooks (.ipynb) for AI library imports, model references, and credentials. Repeatable.")
-@click.option("--model-files", "model_dirs", multiple=True, type=click.Path(exists=True), metavar="DIR",
-              help="Scan for ML model binary files (.gguf, .safetensors, .onnx, .pt, .pkl, etc.). Repeatable.")
+@click.option(
+    "--jupyter",
+    "jupyter_dirs",
+    multiple=True,
+    type=click.Path(exists=True),
+    metavar="DIR",
+    help="Scan Jupyter notebooks (.ipynb) for AI library imports, model references, and credentials. Repeatable.",
+)
+@click.option(
+    "--model-files",
+    "model_dirs",
+    multiple=True,
+    type=click.Path(exists=True),
+    metavar="DIR",
+    help="Scan for ML model binary files (.gguf, .safetensors, .onnx, .pt, .pkl, etc.). Repeatable.",
+)
 @click.option("--model-provenance", is_flag=True, help="Enable SHA-256 hash and Sigstore signature checks for --model-files scans")
-@click.option("--hf-model", "hf_models", multiple=True, metavar="NAME",
-              help="Check HuggingFace model provenance (org/model format, e.g. meta-llama/Llama-3.1-8B). Repeatable.")
-@click.option("--introspect", is_flag=True, help="Connect to live MCP servers to discover runtime tools/resources (read-only, requires mcp SDK)")
+@click.option(
+    "--hf-model",
+    "hf_models",
+    multiple=True,
+    metavar="NAME",
+    help="Check HuggingFace model provenance (org/model format, e.g. meta-llama/Llama-3.1-8B). Repeatable.",
+)
+@click.option(
+    "--introspect", is_flag=True, help="Connect to live MCP servers to discover runtime tools/resources (read-only, requires mcp SDK)"
+)
 @click.option("--introspect-timeout", type=float, default=10.0, show_default=True, help="Timeout per MCP server for --introspect (seconds)")
-@click.option("--enforce", is_flag=True, help="Run tool poisoning detection and enforcement checks (description injection, capability combos, CVE exposure, drift)")
+@click.option(
+    "--enforce",
+    is_flag=True,
+    help="Run tool poisoning detection and enforcement checks (description injection, capability combos, CVE exposure, drift)",
+)
 @click.option("--verify-integrity", is_flag=True, help="Verify package integrity (SHA256/SRI) and SLSA provenance against registries")
-@click.option("--ai-enrich", is_flag=True, help="Enrich findings with LLM-generated risk narratives, executive summary, and threat chains. Auto-detects Ollama (free, local) or uses litellm (pip install 'agent-bom[ai-enrich]')")
-@click.option("--ai-model", default="openai/gpt-4o-mini", show_default=True, metavar="MODEL",
-              help="LLM model for --ai-enrich. Auto-detects Ollama if running. Examples: ollama/llama3.2 (free, local), ollama/mistral, openai/gpt-4o-mini")
-@click.option("--remediate", "remediate_path", type=str, default=None, metavar="PATH",
-              help="Generate remediation.md with fix commands for all findings")
-@click.option("--remediate-sh", "remediate_sh_path", type=str, default=None, metavar="PATH",
-              help="Generate remediation.sh script with package upgrade commands")
-@click.option("--apply", "apply_fixes_flag", is_flag=True,
-              help="Auto-apply package version fixes to dependency files (package.json, requirements.txt)")
-@click.option("--apply-dry-run", is_flag=True,
-              help="Preview what --apply would change without modifying files")
+@click.option(
+    "--ai-enrich",
+    is_flag=True,
+    help="Enrich findings with LLM-generated risk narratives, executive summary, and threat chains. Auto-detects Ollama (free, local) or uses litellm (pip install 'agent-bom[ai-enrich]')",
+)
+@click.option(
+    "--ai-model",
+    default="openai/gpt-4o-mini",
+    show_default=True,
+    metavar="MODEL",
+    help="LLM model for --ai-enrich. Auto-detects Ollama if running. Examples: ollama/llama3.2 (free, local), ollama/mistral, openai/gpt-4o-mini",
+)
+@click.option(
+    "--remediate",
+    "remediate_path",
+    type=str,
+    default=None,
+    metavar="PATH",
+    help="Generate remediation.md with fix commands for all findings",
+)
+@click.option(
+    "--remediate-sh",
+    "remediate_sh_path",
+    type=str,
+    default=None,
+    metavar="PATH",
+    help="Generate remediation.sh script with package upgrade commands",
+)
+@click.option(
+    "--apply",
+    "apply_fixes_flag",
+    is_flag=True,
+    help="Auto-apply package version fixes to dependency files (package.json, requirements.txt)",
+)
+@click.option("--apply-dry-run", is_flag=True, help="Preview what --apply would change without modifying files")
 @click.option("--aws", is_flag=True, help="Discover AI agents from AWS Bedrock, Lambda, and ECS")
 @click.option("--aws-region", default=None, metavar="REGION", help="AWS region (default: AWS_DEFAULT_REGION)")
 @click.option("--aws-profile", default=None, metavar="PROFILE", help="AWS credential profile")
@@ -210,23 +303,49 @@ def main():
 @click.option("--openai-org-id", default=None, envvar="OPENAI_ORG_ID", metavar="ORG", help="OpenAI organization ID")
 @click.option("--ollama", "ollama_flag", is_flag=True, help="Discover locally downloaded Ollama models")
 @click.option("--ollama-host", default=None, envvar="OLLAMA_HOST", metavar="URL", help="Ollama API host (default: http://localhost:11434)")
-@click.option("--smithery", "smithery_flag", is_flag=True, help="Use Smithery.ai registry as fallback for unknown MCP servers (extends coverage from 112 to 2800+ servers)")
-@click.option("--smithery-token", default=None, envvar="SMITHERY_API_KEY", metavar="KEY", help="Smithery API key (or set SMITHERY_API_KEY env var)")
-@click.option("--mcp-registry", "mcp_registry_flag", is_flag=True, help="Use Official MCP Registry as fallback for unknown MCP servers (free, no auth)")
+@click.option(
+    "--smithery",
+    "smithery_flag",
+    is_flag=True,
+    help="Use Smithery.ai registry as fallback for unknown MCP servers (extends coverage from 112 to 2800+ servers)",
+)
+@click.option(
+    "--smithery-token", default=None, envvar="SMITHERY_API_KEY", metavar="KEY", help="Smithery API key (or set SMITHERY_API_KEY env var)"
+)
+@click.option(
+    "--mcp-registry",
+    "mcp_registry_flag",
+    is_flag=True,
+    help="Use Official MCP Registry as fallback for unknown MCP servers (free, no auth)",
+)
 @click.option("--snyk", "snyk_flag", is_flag=True, help="Enrich vulnerabilities with Snyk intelligence (requires SNYK_TOKEN)")
 @click.option("--snyk-token", default=None, envvar="SNYK_TOKEN", metavar="KEY", help="Snyk API token (or set SNYK_TOKEN env var)")
 @click.option("--snyk-org", default=None, envvar="SNYK_ORG_ID", metavar="ORG", help="Snyk organization ID (or set SNYK_ORG_ID env var)")
-@click.option("--jira-url", default=None, envvar="JIRA_URL", metavar="URL", help="Jira base URL for ticket creation (e.g. https://company.atlassian.net)")
+@click.option(
+    "--jira-url",
+    default=None,
+    envvar="JIRA_URL",
+    metavar="URL",
+    help="Jira base URL for ticket creation (e.g. https://company.atlassian.net)",
+)
 @click.option("--jira-user", default=None, envvar="JIRA_USER", metavar="EMAIL", help="Jira user email (or set JIRA_USER env var)")
 @click.option("--jira-token", default=None, envvar="JIRA_API_TOKEN", metavar="TOKEN", help="Jira API token (or set JIRA_API_TOKEN env var)")
 @click.option("--jira-project", default=None, envvar="JIRA_PROJECT", metavar="KEY", help="Jira project key (e.g. SEC)")
 @click.option("--slack-webhook", default=None, envvar="SLACK_WEBHOOK_URL", metavar="URL", help="Slack incoming webhook URL for scan alerts")
-@click.option("--vanta-token", default=None, envvar="VANTA_API_TOKEN", metavar="TOKEN", help="Vanta API token for compliance evidence upload")
+@click.option(
+    "--vanta-token", default=None, envvar="VANTA_API_TOKEN", metavar="TOKEN", help="Vanta API token for compliance evidence upload"
+)
 @click.option("--drata-token", default=None, envvar="DRATA_API_TOKEN", metavar="TOKEN", help="Drata API token for GRC evidence upload")
-@click.option("--verbose", "-v", is_flag=True, help="Full output — dependency tree, all findings, severity chart, threat frameworks, debug logging")
+@click.option(
+    "--verbose", "-v", is_flag=True, help="Full output — dependency tree, all findings, severity chart, threat frameworks, debug logging"
+)
 @click.option("--no-color", is_flag=True, help="Disable colored output (useful for piping, CI logs, accessibility)")
-@click.option("--preset", type=click.Choice(["ci", "enterprise", "quick"]), default=None,
-              help="Scan preset: ci (quiet, json, fail-on-critical), enterprise (enrich, introspect, transitive, verify-integrity), quick (no transitive, no enrich)")
+@click.option(
+    "--preset",
+    type=click.Choice(["ci", "enterprise", "quick"]),
+    default=None,
+    help="Scan preset: ci (quiet, json, fail-on-critical), enterprise (enrich, introspect, transitive, verify-integrity), quick (no transitive, no enrich)",
+)
 def scan(
     project: Optional[str],
     config_dir: Optional[str],
@@ -338,6 +457,7 @@ def scan(
     """
     import logging as _logging
     import time as _time
+
     _scan_start = _time.monotonic()
 
     # Verbose mode: set root logging to DEBUG
@@ -369,6 +489,7 @@ def scan(
 
     # Also set the output module's console so print_summary etc. route correctly
     import agent_bom.output as _out
+
     _out.console = con
 
     con.print(BANNER, style="bold blue")
@@ -385,6 +506,7 @@ def scan(
             reads.append(f"  [green]Would read:[/green]   {config_dir}  (config directory)")
         if not reads:
             from agent_bom.discovery import get_all_discovery_paths
+
             for client, path in get_all_discovery_paths():
                 reads.append(f"  [green]Would read:[/green]   {path}  ({client})")
         for tf_dir in tf_dirs:
@@ -439,7 +561,9 @@ def scan(
             _host = ollama_host or "http://localhost:11434"
             reads.append(f"  [green]Would query:[/green]  Ollama API ({_host}/api/tags) + ~/.ollama/models manifests")
         if mcp_registry_flag:
-            reads.append("  [green]Would query:[/green]  https://registry.modelcontextprotocol.io/v0/servers  (Official MCP Registry, no auth)")
+            reads.append(
+                "  [green]Would query:[/green]  https://registry.modelcontextprotocol.io/v0/servers  (Official MCP Registry, no auth)"
+            )
         if snyk_flag:
             reads.append("  [green]Would query:[/green]  https://api.snyk.io/rest/  (Snyk vulnerability enrichment)")
         for line in reads:
@@ -455,13 +579,13 @@ def scan(
         # ── Data audit: exactly what gets extracted and sent ──────────────
         con.print("[bold cyan]📋 Data Audit — what is extracted and transmitted[/bold cyan]\n")
         con.print("  [bold]Extracted from config files:[/bold]")
-        con.print("    • Server names (e.g. \"filesystem\", \"github\")")
-        con.print("    • Commands and arguments (e.g. \"npx @modelcontextprotocol/server-filesystem\")")
-        con.print("    • Environment variable [bold]NAMES only[/bold] (e.g. \"OPENAI_API_KEY\")")
+        con.print('    • Server names (e.g. "filesystem", "github")')
+        con.print('    • Commands and arguments (e.g. "npx @modelcontextprotocol/server-filesystem")')
+        con.print('    • Environment variable [bold]NAMES only[/bold] (e.g. "OPENAI_API_KEY")')
         con.print("    • [dim]Values are NEVER read, stored, or logged[/dim]")
         con.print()
         con.print("  [bold]Sent to vulnerability APIs:[/bold]")
-        con.print("    • Package name + version only (e.g. \"express@4.17.1\")")
+        con.print('    • Package name + version only (e.g. "express@4.17.1")')
         con.print("    • [dim]No file paths, config contents, env var values, hostnames, or IP addresses[/dim]")
         con.print()
         con.print("  [bold]Credential detection (name-only pattern matching):[/bold]")
@@ -471,11 +595,14 @@ def scan(
         con.print()
         con.print("  [bold green]✓ agent-bom is read-only.[/bold green] It never writes to configs or executes MCP servers.")
         con.print("  [bold green]✓ Credential values are never read.[/bold green] Only env var names appear in reports.")
-        con.print("  See [link=https://github.com/msaad00/agent-bom/blob/main/PERMISSIONS.md]PERMISSIONS.md[/link] for the full trust contract.")
+        con.print(
+            "  See [link=https://github.com/msaad00/agent-bom/blob/main/PERMISSIONS.md]PERMISSIONS.md[/link] for the full trust contract."
+        )
         return
 
     # Step 1: Discovery
     from rich.rule import Rule
+
     con.print(Rule("Discovery", style="blue"))
 
     if skill_only:
@@ -484,6 +611,7 @@ def scan(
     if not skill_only and inventory:
         con.print(f"\n[bold blue]Loading inventory from {inventory}...[/bold blue]\n")
         from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
+
         with open(inventory) as f:
             inventory_data = json.load(f)
 
@@ -497,11 +625,13 @@ def scan(
                     if isinstance(tool_data, str):
                         tools.append(MCPTool(name=tool_data, description=""))
                     elif isinstance(tool_data, dict):
-                        tools.append(MCPTool(
-                            name=tool_data.get("name", ""),
-                            description=tool_data.get("description", ""),
-                            input_schema=tool_data.get("input_schema"),
-                        ))
+                        tools.append(
+                            MCPTool(
+                                name=tool_data.get("name", ""),
+                                description=tool_data.get("description", ""),
+                                input_schema=tool_data.get("input_schema"),
+                            )
+                        )
 
                 # Parse pre-known packages (e.g. from cloud asset scan)
                 packages = []
@@ -514,12 +644,14 @@ def scan(
                             name, version = pkg_data, "unknown"
                         packages.append(Package(name=name, version=version, ecosystem="unknown"))
                     elif isinstance(pkg_data, dict):
-                        packages.append(Package(
-                            name=pkg_data.get("name", ""),
-                            version=pkg_data.get("version", "unknown"),
-                            ecosystem=pkg_data.get("ecosystem", "unknown"),
-                            purl=pkg_data.get("purl"),
-                        ))
+                        packages.append(
+                            Package(
+                                name=pkg_data.get("name", ""),
+                                version=pkg_data.get("version", "unknown"),
+                                ecosystem=pkg_data.get("ecosystem", "unknown"),
+                                purl=pkg_data.get("purl"),
+                            )
+                        )
 
                 server = MCPServer(
                     name=server_data.get("name", ""),
@@ -553,8 +685,31 @@ def scan(
     elif not skill_only:
         agents = discover_all(project_dir=project)
 
-    any_cloud = aws or azure_flag or gcp_flag or databricks_flag or snowflake_flag or nebius_flag or hf_flag or wandb_flag or mlflow_flag or openai_flag or ollama_flag
-    if not skill_only and not scan_prompts and not agents and not images and not k8s and not tf_dirs and not gha_path and not agent_projects and not jupyter_dirs and not any_cloud:
+    any_cloud = (
+        aws
+        or azure_flag
+        or gcp_flag
+        or databricks_flag
+        or snowflake_flag
+        or nebius_flag
+        or hf_flag
+        or wandb_flag
+        or mlflow_flag
+        or openai_flag
+        or ollama_flag
+    )
+    if (
+        not skill_only
+        and not scan_prompts
+        and not agents
+        and not images
+        and not k8s
+        and not tf_dirs
+        and not gha_path
+        and not agent_projects
+        and not jupyter_dirs
+        and not any_cloud
+    ):
         con.print("\n[yellow]No MCP configurations found.[/yellow]")
         con.print(
             "  Use --project, --config-dir, --inventory, --image, --k8s, "
@@ -568,12 +723,10 @@ def scan(
     sbom_packages: list = []
     if not skill_only and sbom_file:
         from agent_bom.sbom import load_sbom
+
         try:
             sbom_packages, sbom_fmt = load_sbom(sbom_file)
-            con.print(
-                f"\n[bold blue]Loaded SBOM ({sbom_fmt}): "
-                f"{len(sbom_packages)} package(s) from {sbom_file}[/bold blue]\n"
-            )
+            con.print(f"\n[bold blue]Loaded SBOM ({sbom_fmt}): {len(sbom_packages)} package(s) from {sbom_file}[/bold blue]\n")
         except (FileNotFoundError, ValueError) as e:
             con.print(f"\n  [red]SBOM error: {e}[/red]")
             sys.exit(1)
@@ -581,6 +734,7 @@ def scan(
     # Step 1c: Discover K8s container images (--k8s)
     if not skill_only and k8s:
         from agent_bom.k8s import K8sDiscoveryError, discover_images
+
         ns_label = "all namespaces" if all_namespaces else f"namespace '{namespace}'"
         con.print(f"\n[bold blue]Discovering container images from Kubernetes ({ns_label})...[/bold blue]\n")
         try:
@@ -608,10 +762,7 @@ def scan(
         for image_ref in images:
             try:
                 img_packages, strategy = scan_image(image_ref)
-                con.print(
-                    f"  [green]✓[/green] {image_ref}: {len(img_packages)} package(s) "
-                    f"[dim](via {strategy})[/dim]"
-                )
+                con.print(f"  [green]✓[/green] {image_ref}: {len(img_packages)} package(s) [dim](via {strategy})[/dim]")
                 # Represent the image as a synthetic agent → server
                 server = MCPServer(
                     name=image_ref,
@@ -633,6 +784,7 @@ def scan(
     # Step 1e: Terraform scan (--tf-dir)
     if not skill_only and tf_dirs:
         from agent_bom.terraform import scan_terraform_dir
+
         con.print(f"\n[bold blue]Scanning {len(tf_dirs)} Terraform director{'ies' if len(tf_dirs) > 1 else 'y'}...[/bold blue]\n")
         for tf_dir in tf_dirs:
             tf_agents, tf_warnings = scan_terraform_dir(tf_dir)
@@ -653,16 +805,14 @@ def scan(
     # Step 1f: GitHub Actions scan (--gha)
     if not skill_only and gha_path:
         from agent_bom.github_actions import scan_github_actions
+
         con.print(f"\n[bold blue]Scanning GitHub Actions workflows in {gha_path}...[/bold blue]\n")
         gha_agents, gha_warnings = scan_github_actions(gha_path)
         for w in gha_warnings:
             con.print(f"  [yellow]⚠[/yellow] {w}")
         if gha_agents:
             cred_count = sum(len(s.credential_names) for a in gha_agents for s in a.mcp_servers)
-            con.print(
-                f"  [green]✓[/green] {len(gha_agents)} workflow(s) with AI usage, "
-                f"{cred_count} credential(s) detected"
-            )
+            con.print(f"  [green]✓[/green] {len(gha_agents)} workflow(s) with AI usage, {cred_count} credential(s) detected")
             agents.extend(gha_agents)
         else:
             con.print("  [dim]  No AI-using workflows found[/dim]")
@@ -670,6 +820,7 @@ def scan(
     # Step 1g: Python agent framework scan (--agent-project)
     if not skill_only and agent_projects:
         from agent_bom.python_agents import scan_python_agents
+
         for ap in agent_projects:
             con.print(f"\n[bold blue]Scanning Python agent project: {ap}...[/bold blue]\n")
             ap_agents, ap_warnings = scan_python_agents(ap)
@@ -678,10 +829,7 @@ def scan(
             if ap_agents:
                 tool_count = sum(len(s.tools) for a in ap_agents for s in a.mcp_servers)
                 pkg_count = sum(len(s.packages) for a in ap_agents for s in a.mcp_servers)
-                con.print(
-                    f"  [green]✓[/green] {len(ap_agents)} agent(s) found, "
-                    f"{tool_count} tool(s), {pkg_count} package(s) to scan"
-                )
+                con.print(f"  [green]✓[/green] {len(ap_agents)} agent(s) found, {tool_count} tool(s), {pkg_count} package(s) to scan")
                 agents.extend(ap_agents)
             else:
                 con.print("  [dim]  No agent framework usage detected[/dim]")
@@ -689,10 +837,11 @@ def scan(
     # Step 1g2: Skill file scanning (--skill + auto-discovery)
     _skill_audit_data: dict | None = None  # will be set if skill audit runs
     _skill_result_obj = None  # SkillScanResult for AI enrichment
-    _skill_audit_obj = None   # SkillAuditResult for AI enrichment
+    _skill_audit_obj = None  # SkillAuditResult for AI enrichment
 
     if not no_skill:
         from agent_bom.parsers.skills import discover_skill_files, scan_skill_files
+
         skill_file_list: list[Path] = []
         for sp in skill_paths:
             p = Path(sp)
@@ -713,6 +862,7 @@ def scan(
                 con.print(f"\n[bold blue]Scanning {len(skill_file_list)} skill file(s)...[/bold blue]\n")
                 if skill_result.servers:
                     from agent_bom.models import Agent, AgentType
+
                     skill_agent = Agent(
                         name="skill-files",
                         agent_type=AgentType.CUSTOM,
@@ -724,6 +874,7 @@ def scan(
                 if skill_result.packages:
                     from agent_bom.models import Agent, AgentType
                     from agent_bom.models import MCPServer as _SkillSrv
+
                     skill_server = _SkillSrv(name="skill-packages", command="(from skill files)", packages=skill_result.packages)
                     skill_pkg_agent = Agent(
                         name="skill-packages",
@@ -734,13 +885,16 @@ def scan(
                     agents.append(skill_pkg_agent)
                     con.print(f"  [green]✓[/green] Found {len(skill_result.packages)} package(s) referenced in skill files")
                 if skill_result.credential_env_vars:
-                    con.print(f"  [yellow]⚠[/yellow] {len(skill_result.credential_env_vars)} credential env var(s) referenced in skill files")
+                    con.print(
+                        f"  [yellow]⚠[/yellow] {len(skill_result.credential_env_vars)} credential env var(s) referenced in skill files"
+                    )
 
                 # Step 1g3: Skill security audit
                 from agent_bom.parsers.skill_audit import audit_skill_result
+
                 skill_audit = audit_skill_result(skill_result)
                 _skill_result_obj = skill_result  # store for AI enrichment
-                _skill_audit_obj = skill_audit    # store for AI enrichment
+                _skill_audit_obj = skill_audit  # store for AI enrichment
                 _skill_audit_data = {
                     "findings": [
                         {
@@ -770,7 +924,9 @@ def scan(
 
                     audit_table = RichTable(
                         title=f"Skill Security Audit — {len(skill_audit.findings)} finding(s)",
-                        expand=True, padding=(0, 1), title_style="bold yellow",
+                        expand=True,
+                        padding=(0, 1),
+                        title_style="bold yellow",
                     )
                     audit_table.add_column("Sev", justify="center", no_wrap=True, width=10)
                     audit_table.add_column("Category", no_wrap=True, width=20)
@@ -810,6 +966,7 @@ def scan(
     _trust_assessment_data: dict | None = None
     if _skill_result_obj and _skill_audit_obj:
         from agent_bom.parsers.trust_assessment import TrustLevel, Verdict, assess_trust
+
         trust_result = assess_trust(_skill_result_obj, _skill_audit_obj)
         _trust_assessment_data = trust_result.to_dict()
 
@@ -838,17 +995,16 @@ def scan(
             trust_table.add_row(icon, f"[bold]{cat.name}[/bold]", cat.summary)
 
         vstyle = verdict_styles.get(trust_result.verdict, "white")
-        verdict_line = (
-            f"[{vstyle}]{trust_result.verdict.value.upper()}[/{vstyle}] "
-            f"({trust_result.confidence.value} confidence)"
-        )
+        verdict_line = f"[{vstyle}]{trust_result.verdict.value.upper()}[/{vstyle}] ({trust_result.confidence.value} confidence)"
         con.print()
-        con.print(TrustPanel(
-            trust_table,
-            title=f"[bold]Trust Assessment — {Path(trust_result.source_file).name}[/bold]",
-            subtitle=verdict_line,
-            border_style=vstyle,
-        ))
+        con.print(
+            TrustPanel(
+                trust_table,
+                title=f"[bold]Trust Assessment — {Path(trust_result.source_file).name}[/bold]",
+                subtitle=verdict_line,
+                border_style=vstyle,
+            )
+        )
 
         if trust_result.recommendations:
             for rec in trust_result.recommendations:
@@ -858,6 +1014,7 @@ def scan(
     _prompt_scan_data: dict | None = None
     if scan_prompts:
         from agent_bom.parsers.prompt_scanner import scan_prompt_files
+
         search_dir = Path(project) if project else Path.cwd()
         prompt_result = scan_prompt_files(root=search_dir)
         if prompt_result.files_scanned > 0:
@@ -891,7 +1048,9 @@ def scan(
 
                 prompt_table = RichTable(
                     title=f"Prompt Template Security Scan — {len(prompt_result.findings)} finding(s)",
-                    expand=True, padding=(0, 1), title_style="bold magenta",
+                    expand=True,
+                    padding=(0, 1),
+                    title_style="bold magenta",
                 )
                 prompt_table.add_column("Sev", justify="center", no_wrap=True, width=10)
                 prompt_table.add_column("Category", no_wrap=True, width=20)
@@ -925,6 +1084,7 @@ def scan(
     # Step 1g4: Jupyter notebook scan (--jupyter)
     if not skill_only and jupyter_dirs:
         from agent_bom.jupyter import scan_jupyter_notebooks
+
         for jdir in jupyter_dirs:
             con.print(f"\n[bold blue]Scanning Jupyter notebooks in {jdir}...[/bold blue]\n")
             j_agents, j_warnings = scan_jupyter_notebooks(jdir)
@@ -932,10 +1092,7 @@ def scan(
                 con.print(f"  [yellow]⚠[/yellow] {w}")
             if j_agents:
                 pkg_count = sum(len(s.packages) for a in j_agents for s in a.mcp_servers)
-                con.print(
-                    f"  [green]✓[/green] {len(j_agents)} notebook(s) with AI libraries found, "
-                    f"{pkg_count} package(s) to scan"
-                )
+                con.print(f"  [green]✓[/green] {len(j_agents)} notebook(s) with AI libraries found, {pkg_count} package(s) to scan")
                 agents.extend(j_agents)
             else:
                 con.print("  [dim]  No AI library usage detected in notebooks[/dim]")
@@ -979,6 +1136,7 @@ def scan(
 
     for provider_name, provider_kwargs in cloud_providers:
         from agent_bom.cloud import CloudDiscoveryError, discover_from_provider
+
         con.print(f"\n[bold blue]Discovering agents from {provider_name.upper()}...[/bold blue]\n")
         try:
             cloud_agents, cloud_warnings = discover_from_provider(provider_name, **provider_kwargs)
@@ -986,10 +1144,7 @@ def scan(
                 con.print(f"  [yellow]⚠[/yellow] {w}")
             if cloud_agents:
                 pkg_count = sum(a.total_packages for a in cloud_agents)
-                con.print(
-                    f"  [green]✓[/green] {len(cloud_agents)} agent(s) discovered, "
-                    f"{pkg_count} package(s) to scan"
-                )
+                con.print(f"  [green]✓[/green] {len(cloud_agents)} agent(s) discovered, {pkg_count} package(s) to scan")
                 agents.extend(cloud_agents)
             else:
                 con.print(f"  [dim]  No AI agents found in {provider_name.upper()}[/dim]")
@@ -1001,6 +1156,7 @@ def scan(
         sources = {a.source or "local" for a in agents}
         if len(sources) > 1:
             from agent_bom.correlate import correlate_agents
+
             agents, corr_result = correlate_agents(agents)
             if corr_result.cross_source_matches:
                 con.print(
@@ -1023,7 +1179,9 @@ def scan(
                 # Keep pre-populated packages from inventory, merge with discovered ones
                 pre_populated = list(server.packages)
                 _smithery_tok = smithery_token if smithery_flag else None
-                discovered = extract_packages(server, resolve_transitive=transitive, max_depth=max_depth, smithery_token=_smithery_tok, mcp_registry=mcp_registry_flag)
+                discovered = extract_packages(
+                    server, resolve_transitive=transitive, max_depth=max_depth, smithery_token=_smithery_tok, mcp_registry=mcp_registry_flag
+                )
 
                 # Merge: discovered + pre-populated + SBOM packages (deduplicated)
                 discovered_names = {(p.name, p.ecosystem) for p in discovered}
@@ -1054,6 +1212,7 @@ def scan(
         _intro_report = None
         if introspect:
             from agent_bom.mcp_introspect import IntrospectionError, enrich_servers, introspect_servers_sync
+
             all_servers = [s for a in agents for s in a.mcp_servers]
             con.print(f"\n[bold blue]Introspecting {len(all_servers)} MCP server(s)...[/bold blue]\n")
             try:
@@ -1074,11 +1233,7 @@ def scan(
                             if r.resources_removed:
                                 parts.append(f"-{len(r.resources_removed)} resources")
                             drift_str = f" [yellow]drift: {', '.join(parts)}[/yellow]"
-                        con.print(
-                            f"  [green]✓[/green] {r.server_name}: "
-                            f"{r.tool_count} tools, {r.resource_count} resources"
-                            f"{drift_str}"
-                        )
+                        con.print(f"  [green]✓[/green] {r.server_name}: {r.tool_count} tools, {r.resource_count} resources{drift_str}")
                     else:
                         con.print(f"  [dim]  {r.server_name}: {r.error}[/dim]")
                 enriched = enrich_servers(all_servers, intro_report)
@@ -1091,6 +1246,7 @@ def scan(
         # Step 2c: Tool poisoning detection + enforcement (--enforce)
         if enforce:
             from agent_bom.enforcement import run_enforcement
+
             all_enforce_servers = [s for a in agents for s in a.mcp_servers]
             con.print(f"\n[bold blue]Running enforcement checks on {len(all_enforce_servers)} server(s)...[/bold blue]\n")
             enforce_result = run_enforcement(
@@ -1101,6 +1257,7 @@ def scan(
             # Display findings
             if enforce_result.findings:
                 from rich.table import Table
+
                 etable = Table(title="Enforcement Findings", show_lines=False)
                 etable.add_column("Severity", width=10)
                 etable.add_column("Category", width=16)
@@ -1130,7 +1287,8 @@ def scan(
 
         # Step 3b: Auto-discover metadata for unknown packages
         unknown_pkgs = [
-            p for p in all_packages
+            p
+            for p in all_packages
             if not p.resolved_from_registry
             and not getattr(p, "auto_risk_level", None)
             and p.version not in ("unknown", "latest", "")
@@ -1140,6 +1298,7 @@ def scan(
             import asyncio as _asyncio_ad
 
             from agent_bom.autodiscover import enrich_unknown_packages
+
             con.print(f"\n[bold blue]Auto-discovering metadata for {len(unknown_pkgs)} package(s)...[/bold blue]\n")
             enriched_count = _asyncio_ad.run(enrich_unknown_packages(unknown_pkgs))
             con.print(f"  [green]✓[/green] Auto-discovered metadata for {enriched_count} package(s)")
@@ -1245,6 +1404,7 @@ def scan(
     # ── Step 1i: Model binary file scan ─────────────────────────────
     if not skill_only and model_dirs:
         from agent_bom.model_files import check_sigstore_signature, scan_model_files, verify_model_hash
+
         for mdir in model_dirs:
             con.print(f"  [cyan]>[/cyan] Scanning for model files in {mdir}...")
             mf_results, mf_warnings = scan_model_files(mdir)
@@ -1264,12 +1424,15 @@ def scan(
                 con.print(f"  [yellow]⚠[/yellow] {w}")
             if mf_results:
                 security_count = sum(1 for m in mf_results if m["security_flags"])
-                con.print(f"    [green]{len(mf_results)} model file(s) found[/green]"
-                         + (f" [red]({security_count} with security flags)[/red]" if security_count else ""))
+                con.print(
+                    f"    [green]{len(mf_results)} model file(s) found[/green]"
+                    + (f" [red]({security_count} with security flags)[/red]" if security_count else "")
+                )
 
     # ── Step 1j: HuggingFace model provenance ─────────────────────────
     if hf_models:
         from agent_bom.model_files import check_huggingface_provenance
+
         hf_provenance: list[dict] = []
         for hf_name in hf_models:
             con.print(f"  [cyan]>[/cyan] Checking HuggingFace provenance: {hf_name}...")
@@ -1287,6 +1450,7 @@ def scan(
     # Step 4c: AI-powered enrichment (optional)
     if ai_enrich:
         from agent_bom.ai_enrich import run_ai_enrichment_sync
+
         run_ai_enrichment_sync(
             report,
             model=ai_model,
@@ -1325,6 +1489,7 @@ def scan(
     # Step 4d: Generate remediation files (optional)
     if remediate_path or remediate_sh_path:
         from agent_bom.remediate import export_remediation_md, export_remediation_sh, generate_remediation
+
         remed_plan = generate_remediation(report, blast_radii)
         if remediate_path:
             export_remediation_md(remed_plan, remediate_path)
@@ -1382,22 +1547,27 @@ def scan(
             sys.stdout.write(json.dumps(to_spdx(report), indent=2))
         elif output_format == "html":
             from agent_bom.output import to_html
+
             sys.stdout.write(to_html(report, blast_radii))
         elif output_format == "prometheus":
             sys.stdout.write(to_prometheus(report, blast_radii))
         elif output_format == "graph":
             from agent_bom.output.graph import build_graph_elements
+
             elements = build_graph_elements(report, blast_radii)
             sys.stdout.write(json.dumps({"elements": elements, "format": "cytoscape"}, indent=2))
         elif output_format == "mermaid":
             if mermaid_mode == "attack-flow":
                 from agent_bom.output.mermaid import to_mermaid
+
                 sys.stdout.write(to_mermaid(report, blast_radii))
             else:
                 from agent_bom.output.mermaid import to_mermaid_supply_chain
+
                 sys.stdout.write(to_mermaid_supply_chain(report))
         elif output_format == "svg":
             from agent_bom.output.svg import to_svg
+
             sys.stdout.write(to_svg(report, blast_radii))
         elif output_format == "graph-html":
             click.echo("Error: --format graph-html requires --output/-o (cannot write HTML to stdout)", err=True)
@@ -1426,16 +1596,19 @@ def scan(
         # AI enrichment output (both modes)
         if report.executive_summary:
             from rich.panel import Panel
+
             con.print("\n[bold]Executive Summary (AI-Generated)[/bold]")
             con.print(Panel.fit(report.executive_summary, border_style="cyan"))
         if report.ai_threat_chains:
             from rich.panel import Panel
+
             con.print("\n[bold]Threat Chain Analysis (AI-Generated)[/bold]")
             for chain in report.ai_threat_chains:
                 con.print(Panel(chain, border_style="red dim"))
         # AI skill analysis output (if enriched)
         if _skill_audit_obj and _skill_audit_obj.ai_skill_summary:
             from rich.panel import Panel
+
             sev_colors = {"critical": "red bold", "high": "red", "medium": "yellow", "low": "dim", "safe": "green"}
             risk = _skill_audit_obj.ai_overall_risk_level or "unknown"
             risk_style = sev_colors.get(risk, "white")
@@ -1495,6 +1668,7 @@ def scan(
         con.print(f"\n  [green]✓[/green] HTML report: {out_path}")
         if open_report:
             import webbrowser
+
             webbrowser.open(f"file://{Path(out_path).resolve()}")
         else:
             con.print(f"  [dim]Open with:[/dim] open {out_path}")
@@ -1505,6 +1679,7 @@ def scan(
         con.print("  [dim]Scrape with node_exporter textfile or push via --push-gateway[/dim]")
     elif output_format == "graph":
         from agent_bom.output.graph import build_graph_elements
+
         out_path = output or "agent-bom-graph.json"
         elements = build_graph_elements(report, blast_radii)
         Path(out_path).write_text(json.dumps({"elements": elements, "format": "cytoscape"}, indent=2))
@@ -1514,25 +1689,30 @@ def scan(
         out_path = output or "agent-bom-diagram.mmd"
         if mermaid_mode == "attack-flow":
             from agent_bom.output.mermaid import to_mermaid
+
             Path(out_path).write_text(to_mermaid(report, blast_radii))
         else:
             from agent_bom.output.mermaid import to_mermaid_supply_chain
+
             Path(out_path).write_text(to_mermaid_supply_chain(report))
         con.print(f"\n  [green]✓[/green] Mermaid diagram ({mermaid_mode}): {out_path}")
         con.print("  [dim]Render with: mermaid-cli, GitHub markdown, or mermaid.live[/dim]")
     elif output_format == "svg":
         from agent_bom.output.svg import export_svg
+
         out_path = output or "agent-bom-supply-chain.svg"
         export_svg(report, blast_radii, out_path)
         con.print(f"\n  [green]✓[/green] SVG diagram: {out_path}")
         con.print("  [dim]Open in any browser or image viewer[/dim]")
     elif output_format == "graph-html":
         from agent_bom.output.graph import export_graph_html
+
         out_path = output or "agent-bom-graph.html"
         export_graph_html(report, blast_radii, out_path)
         con.print(f"\n  [green]✓[/green] Interactive graph: {out_path}")
         if open_report:
             import webbrowser
+
             webbrowser.open(f"file://{Path(out_path).resolve()}")
         else:
             con.print(f"  [dim]Open with:[/dim] open {out_path}")
@@ -1560,6 +1740,7 @@ def scan(
     # Step 5b: Push to Prometheus Pushgateway (if requested)
     if push_gateway:
         from agent_bom.output.prometheus import PushgatewayError
+
         try:
             push_to_gateway(push_gateway, report, blast_radii)
             con.print(f"\n  [green]✓[/green] Metrics pushed to Pushgateway: {push_gateway}")
@@ -1580,12 +1761,14 @@ def scan(
     current_report_json = to_json(report)
     if save_report:
         from agent_bom.history import save_report as _save
+
         saved_path = _save(current_report_json)
         con.print(f"\n  [green]✓[/green] Report saved to history: {saved_path}")
 
     # Step 7: Diff against baseline
     if baseline:
         from agent_bom.history import diff_reports, load_report
+
         baseline_data = load_report(Path(baseline))
         diff = diff_reports(baseline_data, current_report_json)
         print_diff(diff)
@@ -1594,6 +1777,7 @@ def scan(
     policy_passed = True
     if policy and blast_radii:
         from agent_bom.policy import evaluate_policy, load_policy
+
         try:
             policy_data = load_policy(policy)
             policy_result = evaluate_policy(policy_data, blast_radii)
@@ -1615,20 +1799,22 @@ def scan(
 
         findings = []
         for br in blast_radii:
-            findings.append({
-                "vulnerability_id": br.vulnerability.id,
-                "severity": br.vulnerability.severity.value.lower(),
-                "package": f"{br.package.name}@{br.package.version}",
-                "risk_score": br.risk_score,
-                "affected_agents": [a.name for a in br.affected_agents] if br.affected_agents else [],
-                "affected_servers": [s.name for s in br.affected_servers] if br.affected_servers else [],
-                "exposed_credentials": list(br.exposed_credentials) if br.exposed_credentials else [],
-                "fixed_version": br.vulnerability.fixed_version,
-                "owasp_tags": list(br.owasp_tags) if br.owasp_tags else [],
-                "owasp_mcp_tags": list(br.owasp_mcp_tags) if br.owasp_mcp_tags else [],
-                "atlas_tags": list(br.atlas_tags) if br.atlas_tags else [],
-                "nist_ai_rmf_tags": list(br.nist_ai_rmf_tags) if br.nist_ai_rmf_tags else [],
-            })
+            findings.append(
+                {
+                    "vulnerability_id": br.vulnerability.id,
+                    "severity": br.vulnerability.severity.value.lower(),
+                    "package": f"{br.package.name}@{br.package.version}",
+                    "risk_score": br.risk_score,
+                    "affected_agents": [a.name for a in br.affected_agents] if br.affected_agents else [],
+                    "affected_servers": [s.name for s in br.affected_servers] if br.affected_servers else [],
+                    "exposed_credentials": list(br.exposed_credentials) if br.exposed_credentials else [],
+                    "fixed_version": br.vulnerability.fixed_version,
+                    "owasp_tags": list(br.owasp_tags) if br.owasp_tags else [],
+                    "owasp_mcp_tags": list(br.owasp_mcp_tags) if br.owasp_mcp_tags else [],
+                    "atlas_tags": list(br.atlas_tags) if br.atlas_tags else [],
+                    "nist_ai_rmf_tags": list(br.nist_ai_rmf_tags) if br.nist_ai_rmf_tags else [],
+                }
+            )
 
         if slack_webhook and findings:
             try:
@@ -1689,10 +1875,7 @@ def scan(
             sev = br.vulnerability.severity.value.lower()
             if SEVERITY_ORDER.get(sev, 0) >= threshold:
                 if not quiet:
-                    con.print(
-                        f"\n  [red]Exiting with code 1: found {sev} vulnerability "
-                        f"({br.vulnerability.id})[/red]"
-                    )
+                    con.print(f"\n  [red]Exiting with code 1: found {sev} vulnerability ({br.vulnerability.id})[/red]")
                 exit_code = 1
                 break
 
@@ -1727,8 +1910,10 @@ def _format_text(report: AIBOMReport, blast_radii: list) -> str:
     """Plain text output for piping to grep/awk."""
     lines = []
     lines.append(f"agent-bom {report.tool_version}")
-    lines.append(f"agents={report.total_agents} servers={report.total_servers} "
-                 f"packages={report.total_packages} vulnerabilities={report.total_vulnerabilities}")
+    lines.append(
+        f"agents={report.total_agents} servers={report.total_servers} "
+        f"packages={report.total_packages} vulnerabilities={report.total_vulnerabilities}"
+    )
     lines.append("")
 
     for agent in report.agents:
@@ -1765,6 +1950,7 @@ def inventory(config: Optional[str], project: Optional[str], transitive: bool, m
     con = _make_console(quiet=quiet)
 
     import agent_bom.output as _out
+
     _out.console = con
 
     con.print(BANNER, style="bold blue")
@@ -1777,12 +1963,18 @@ def inventory(config: Optional[str], project: Optional[str], transitive: bool, m
             from agent_bom.models import Agent, AgentType
 
             servers = parse_mcp_config(config_data, str(config_path))
-            agents = [Agent(
-                name=f"custom:{config_path.stem}",
-                agent_type=AgentType.CUSTOM,
-                config_path=str(config_path),
-                mcp_servers=servers,
-            )] if servers else []
+            agents = (
+                [
+                    Agent(
+                        name=f"custom:{config_path.stem}",
+                        agent_type=AgentType.CUSTOM,
+                        config_path=str(config_path),
+                        mcp_servers=servers,
+                    )
+                ]
+                if servers
+                else []
+            )
         except Exception as e:
             con.print(f"[red]Error parsing config: {e}[/red]")
             sys.exit(1)
@@ -1829,6 +2021,7 @@ def validate(inventory_file: str):
     if not schema_path.exists():
         # Fallback: look relative to installed package
         import importlib.resources
+
         try:
             schema_path = Path(str(importlib.resources.files("agent_bom"))) / ".." / ".." / "schemas" / "inventory.schema.json"
         except Exception:
@@ -1854,11 +2047,7 @@ def validate(inventory_file: str):
     if not errors:
         agents = data.get("agents", [])
         total_servers = sum(len(a.get("mcp_servers", [])) for a in agents)
-        total_packages = sum(
-            len(s.get("packages", []))
-            for a in agents
-            for s in a.get("mcp_servers", [])
-        )
+        total_packages = sum(len(s.get("packages", [])) for a in agents for s in a.get("mcp_servers", []))
         console.print(f"\n  [green]✓ Valid[/green] — {len(agents)} agent(s), {total_servers} server(s), {total_packages} package(s)")
         console.print(f"\n  [dim]Scan with:[/dim] agent-bom scan --inventory {inventory_file}")
     else:
@@ -1896,15 +2085,18 @@ def where(as_json: bool):
 
     if as_json:
         import json as _json
+
         entries = []
         for client, path in get_all_discovery_paths(current_platform):
             expanded = str(expand_path(path)) if not path.startswith(".") else path
-            entries.append({
-                "client": client,
-                "path": path,
-                "expanded": expanded,
-                "exists": expand_path(path).exists() if not path.startswith(".") else Path(path).exists(),
-            })
+            entries.append(
+                {
+                    "client": client,
+                    "path": path,
+                    "expanded": expanded,
+                    "exists": expand_path(path).exists() if not path.startswith(".") else Path(path).exists(),
+                }
+            )
         click.echo(_json.dumps({"platform": current_platform, "paths": entries}, indent=2))
         return
 
@@ -1992,7 +2184,7 @@ def _parse_package_spec(
         name, version = spec.rsplit("@", 1)
     elif spec.startswith("@") and spec.count("@") > 1:
         last_at = spec.rindex("@")
-        name, version = spec[:last_at], spec[last_at + 1:]
+        name, version = spec[:last_at], spec[last_at + 1 :]
     else:
         name, version = spec, "unknown"
 
@@ -2008,12 +2200,14 @@ def _parse_package_spec(
 @main.command()
 @click.argument("package_spec")
 @click.option(
-    "--ecosystem", "-e",
+    "--ecosystem",
+    "-e",
     type=click.Choice(["npm", "pypi", "go", "cargo", "maven", "nuget"]),
     help="Package ecosystem (inferred from name/command if omitted)",
 )
 @click.option("--quiet", "-q", is_flag=True, help="Only print vuln count, no details")
-def check(package_spec: str, ecosystem: Optional[str], quiet: bool):
+@click.option("--no-color", is_flag=True, help="Disable colored output")
+def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bool):
     """Check a package for known vulnerabilities before installing.
 
     \b
@@ -2029,7 +2223,7 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool):
     """
     import asyncio
 
-    console = Console()
+    console = Console(no_color=no_color)
 
     name, version, ecosystem = _parse_package_spec(package_spec, ecosystem)
 
@@ -2075,6 +2269,7 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool):
 
     if not quiet:
         from rich.table import Table
+
         table = Table(title=f"{name}@{version} — {len(vulns)} vulnerability/ies found")
         table.add_column("ID", width=20)
         table.add_column("Severity", width=10)
@@ -2083,17 +2278,15 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool):
         table.add_column("Summary", max_width=50)
 
         severity_styles = {
-            "critical": "red bold", "high": "red",
-            "medium": "yellow", "low": "dim",
+            "critical": "red bold",
+            "high": "red",
+            "medium": "yellow",
+            "low": "dim",
         }
         for v in vulns:
             sev = v.severity.value.lower()
             style = severity_styles.get(sev, "white")
-            fix_display = (
-                f"[green]✓ {v.fixed_version}[/green]"
-                if v.fixed_version
-                else "[red dim]No fix[/red dim]"
-            )
+            fix_display = f"[green]✓ {v.fixed_version}[/green]" if v.fixed_version else "[red dim]No fix[/red dim]"
             table.add_row(
                 v.id,
                 f"[{style} reverse] {v.severity.value.upper()} [/{style} reverse]",
@@ -2111,7 +2304,8 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool):
 @main.command()
 @click.argument("package_spec", required=False, default=None)
 @click.option(
-    "--ecosystem", "-e",
+    "--ecosystem",
+    "-e",
     type=click.Choice(["npm", "pypi"]),
     help="Package ecosystem (default: pypi for self-verify)",
 )
@@ -2324,10 +2518,10 @@ def history_cmd(limit: int):
         console.print("\n  [dim]No saved scans yet. Run with --save to start tracking history.[/dim]\n")
         return
 
-    console.print(f"\n[bold blue]📂 Scan History[/bold blue]  "
-                  f"({len(reports)} total, showing {min(limit, len(reports))})\n")
+    console.print(f"\n[bold blue]📂 Scan History[/bold blue]  ({len(reports)} total, showing {min(limit, len(reports))})\n")
 
     from rich.table import Table
+
     table = Table()
     table.add_column("File", width=30)
     table.add_column("Generated", width=22)
@@ -2421,10 +2615,8 @@ def policy_template(output: str):
 @main.command("serve")
 @click.option("--host", default="127.0.0.1", show_default=True, help="Host to bind to (use 0.0.0.0 for LAN access)")
 @click.option("--port", default=8422, show_default=True, help="API server port")
-@click.option("--persist", default=None, metavar="DB_PATH",
-              help="Enable persistent job storage via SQLite (e.g. --persist jobs.db).")
-@click.option("--cors-allow-all", is_flag=True, default=False,
-              help="Allow all CORS origins (dev mode).")
+@click.option("--persist", default=None, metavar="DB_PATH", help="Enable persistent job storage via SQLite (e.g. --persist jobs.db).")
+@click.option("--cors-allow-all", is_flag=True, default=False, help="Allow all CORS origins (dev mode).")
 @click.option("--reload", is_flag=True, help="Auto-reload on code changes (development mode)")
 def serve_cmd(host: str, port: int, persist: Optional[str], cors_allow_all: bool, reload: bool):
     """Start the API server + Next.js dashboard.
@@ -2441,8 +2633,7 @@ def serve_cmd(host: str, port: int, persist: Optional[str], cors_allow_all: bool
         import uvicorn  # noqa: F401
     except ImportError:
         click.echo(
-            "ERROR: FastAPI + Uvicorn are required for `agent-bom serve`.\n"
-            "Install them with:  pip install 'agent-bom[ui]'",
+            "ERROR: FastAPI + Uvicorn are required for `agent-bom serve`.\nInstall them with:  pip install 'agent-bom[ui]'",
             err=True,
         )
         sys.exit(1)
@@ -2460,6 +2651,7 @@ def serve_cmd(host: str, port: int, persist: Optional[str], cors_allow_all: bool
     click.echo("  Press Ctrl+C to stop.\n")
 
     import uvicorn as _uvicorn
+
     _uvicorn.run(
         "agent_bom.api.server:app",
         host=host,
@@ -2473,19 +2665,37 @@ def serve_cmd(host: str, port: int, persist: Optional[str], cors_allow_all: bool
 @click.option("--port", default=8422, show_default=True, help="Port to listen on")
 @click.option("--reload", is_flag=True, help="Auto-reload on code changes (development mode)")
 @click.option("--workers", default=1, show_default=True, help="Number of worker processes")
-@click.option("--cors-origins", default=None, metavar="ORIGINS",
-              help="Comma-separated CORS origins (default: localhost:3000).")
-@click.option("--cors-allow-all", is_flag=True, default=False,
-              help="Allow all CORS origins (dev mode).")
-@click.option("--api-key", default=None, envvar="AGENT_BOM_API_KEY", metavar="KEY",
-              help="Require API key auth (Bearer token or X-API-Key header).")
-@click.option("--rate-limit", "rate_limit_rpm", default=60, show_default=True, type=int, metavar="RPM",
-              help="Rate limit for scan endpoints (requests/minute per IP).")
-@click.option("--persist", default=None, metavar="DB_PATH",
-              help="Enable persistent job storage via SQLite (e.g. --persist jobs.db). Jobs survive restarts.")
-def api_cmd(host: str, port: int, reload: bool, workers: int,
-            cors_origins: str | None, cors_allow_all: bool, api_key: str | None, rate_limit_rpm: int,
-            persist: str | None):
+@click.option("--cors-origins", default=None, metavar="ORIGINS", help="Comma-separated CORS origins (default: localhost:3000).")
+@click.option("--cors-allow-all", is_flag=True, default=False, help="Allow all CORS origins (dev mode).")
+@click.option(
+    "--api-key", default=None, envvar="AGENT_BOM_API_KEY", metavar="KEY", help="Require API key auth (Bearer token or X-API-Key header)."
+)
+@click.option(
+    "--rate-limit",
+    "rate_limit_rpm",
+    default=60,
+    show_default=True,
+    type=int,
+    metavar="RPM",
+    help="Rate limit for scan endpoints (requests/minute per IP).",
+)
+@click.option(
+    "--persist",
+    default=None,
+    metavar="DB_PATH",
+    help="Enable persistent job storage via SQLite (e.g. --persist jobs.db). Jobs survive restarts.",
+)
+def api_cmd(
+    host: str,
+    port: int,
+    reload: bool,
+    workers: int,
+    cors_origins: str | None,
+    cors_allow_all: bool,
+    api_key: str | None,
+    rate_limit_rpm: int,
+    persist: str | None,
+):
     """Start the agent-bom REST API server.
 
     \b
@@ -2513,8 +2723,7 @@ def api_cmd(host: str, port: int, reload: bool, workers: int,
         import uvicorn
     except ImportError:
         click.echo(
-            "ERROR: uvicorn is required for `agent-bom api`.\n"
-            "Install it with:  pip install 'agent-bom[api]'",
+            "ERROR: uvicorn is required for `agent-bom api`.\nInstall it with:  pip install 'agent-bom[api]'",
             err=True,
         )
         sys.exit(1)
@@ -2532,6 +2741,7 @@ def api_cmd(host: str, port: int, reload: bool, workers: int,
 
     if persist:
         from agent_bom.api.store import SQLiteJobStore
+
         set_job_store(SQLiteJobStore(db_path=persist))
 
     click.echo(f"  agent-bom API v{_ver}")
@@ -2554,8 +2764,13 @@ def api_cmd(host: str, port: int, reload: bool, workers: int,
 
 
 @main.command("mcp-server")
-@click.option("--transport", type=click.Choice(["stdio", "sse", "streamable-http"]), default="stdio",
-              show_default=True, help="MCP transport protocol.")
+@click.option(
+    "--transport",
+    type=click.Choice(["stdio", "sse", "streamable-http"]),
+    default="stdio",
+    show_default=True,
+    help="MCP transport protocol.",
+)
 @click.option("--port", default=8423, show_default=True, help="Port for HTTP/SSE transport.")
 @click.option("--host", default="127.0.0.1", show_default=True, help="Host for HTTP/SSE transport.")
 def mcp_server_cmd(transport: str, port: int, host: str):
@@ -2594,8 +2809,7 @@ def mcp_server_cmd(transport: str, port: int, host: str):
         from agent_bom.mcp_server import create_mcp_server
     except ImportError:
         click.echo(
-            "ERROR: mcp SDK is required for `agent-bom mcp-server`.\n"
-            "Install it with:  pip install 'agent-bom[mcp-server]'",
+            "ERROR: mcp SDK is required for `agent-bom mcp-server`.\nInstall it with:  pip install 'agent-bom[mcp-server]'",
             err=True,
         )
         sys.exit(1)
@@ -2604,6 +2818,7 @@ def mcp_server_cmd(transport: str, port: int, host: str):
 
     if transport in ("sse", "streamable-http"):
         from agent_bom import __version__ as _ver
+
         click.echo(f"  agent-bom MCP Server v{_ver}", err=True)
         click.echo(f"  Transport: {transport} on http://{host}:{port}", err=True)
         click.echo("  Press Ctrl+C to stop.\n", err=True)
@@ -2644,13 +2859,12 @@ def completions_cmd(shell: str):
         elif shell == "zsh":
             click.echo('eval "$(_AGENT_BOM_COMPLETE=zsh_source agent-bom)"')
         elif shell == "fish":
-            click.echo('eval (env _AGENT_BOM_COMPLETE=fish_source agent-bom)')
+            click.echo("eval (env _AGENT_BOM_COMPLETE=fish_source agent-bom)")
 
 
 @main.command("apply")
 @click.argument("scan_json", type=click.Path(exists=True))
-@click.option("--dir", "-d", "project_dir", type=click.Path(exists=True), default=".",
-              help="Project directory containing dependency files")
+@click.option("--dir", "-d", "project_dir", type=click.Path(exists=True), default=".", help="Project directory containing dependency files")
 @click.option("--dry-run", is_flag=True, help="Preview changes without modifying files")
 @click.option("--no-backup", is_flag=True, help="Skip creating backup files")
 def apply_command(scan_json, project_dir, dry_run, no_backup):
@@ -2817,7 +3031,9 @@ def registry_update(concurrency, dry_run):
         if len(failed) > 5:
             con.print(f"  ... and {len(failed) - 5} more")
 
-    con.print(f"\n[bold]Summary:[/bold] {result.updated} updated, {result.unchanged} unchanged, {result.failed} failed (of {result.total} total)")
+    con.print(
+        f"\n[bold]Summary:[/bold] {result.updated} updated, {result.unchanged} unchanged, {result.failed} failed (of {result.total} total)"
+    )
     if not dry_run and result.updated > 0:
         con.print("[green]Registry file updated.[/green]")
 
@@ -2954,7 +3170,9 @@ def registry_mcp_sync(max_pages, dry_run):
 @click.option("--detect-credentials", is_flag=True, help="Detect credential leaks in tool responses")
 @click.option("--rate-limit-threshold", type=int, default=0, help="Max calls per tool per 60s (0=disabled)")
 @click.option("--log-only", is_flag=True, help="Log alerts without blocking (advisory mode)")
-@click.option("--alert-webhook", default=None, envvar="AGENT_BOM_ALERT_WEBHOOK", help="Webhook URL for runtime alerts (Slack/Teams/PagerDuty)")
+@click.option(
+    "--alert-webhook", default=None, envvar="AGENT_BOM_ALERT_WEBHOOK", help="Webhook URL for runtime alerts (Slack/Teams/PagerDuty)"
+)
 @click.argument("server_cmd", nargs=-1, required=True)
 def proxy_cmd(policy, log_path, block_undeclared, detect_credentials, rate_limit_threshold, log_only, alert_webhook, server_cmd):
     """Run an MCP server through agent-bom's security proxy.
@@ -2990,16 +3208,18 @@ def proxy_cmd(policy, log_path, block_undeclared, detect_credentials, rate_limit
 
     from agent_bom.proxy import run_proxy
 
-    exit_code = asyncio.run(run_proxy(
-        server_cmd=list(server_cmd),
-        policy_path=policy,
-        log_path=log_path,
-        block_undeclared=block_undeclared,
-        detect_credentials=detect_credentials,
-        rate_limit_threshold=rate_limit_threshold,
-        log_only=log_only,
-        alert_webhook=alert_webhook,
-    ))
+    exit_code = asyncio.run(
+        run_proxy(
+            server_cmd=list(server_cmd),
+            policy_path=policy,
+            log_path=log_path,
+            block_undeclared=block_undeclared,
+            detect_credentials=detect_credentials,
+            rate_limit_threshold=rate_limit_threshold,
+            log_only=log_only,
+            alert_webhook=alert_webhook,
+        )
+    )
     sys.exit(exit_code)
 
 

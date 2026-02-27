@@ -20,7 +20,7 @@ from agent_bom.models import (
     TransportType,
     Vulnerability,
 )
-from agent_bom.output import export_sarif, to_cyclonedx, to_json, to_sarif
+from agent_bom.output import export_sarif, to_cyclonedx, to_json, to_sarif, to_spdx
 from agent_bom.parsers import parse_npm_packages, parse_pip_packages
 
 # ─── Model Tests ────────────────────────────────────────────────────────────
@@ -3447,3 +3447,52 @@ def test_owasp_training_data_packages_set():
     expected = {"datasets", "transformers", "torch", "accelerate", "trl", "sentence-transformers", "peft", "safetensors"}
     for pkg in expected:
         assert pkg in _TRAINING_DATA_PACKAGES, f"{pkg} missing from _TRAINING_DATA_PACKAGES"
+
+
+# ─── License in SBOM output ─────────────────────────────────────────────────
+
+
+def test_cyclonedx_includes_license():
+    """CycloneDX output includes license when package has one."""
+    pkg = Package(name="express", version="4.18.2", ecosystem="npm", license="MIT")
+    server = MCPServer(name="s", command="npx", args=["-y", "express"], packages=[pkg])
+    agent = Agent(name="a", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/c.json", mcp_servers=[server])
+    report = AIBOMReport(agents=[agent], blast_radii=[])
+    cdx = to_cyclonedx(report)
+    lib_components = [c for c in cdx["components"] if c["type"] == "library"]
+    assert len(lib_components) >= 1
+    assert lib_components[0]["licenses"] == [{"license": {"id": "MIT"}}]
+
+
+def test_cyclonedx_omits_license_when_none():
+    """CycloneDX output omits licenses key when package has no license."""
+    pkg = Package(name="express", version="4.18.2", ecosystem="npm")
+    server = MCPServer(name="s", command="npx", args=["-y", "express"], packages=[pkg])
+    agent = Agent(name="a", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/c.json", mcp_servers=[server])
+    report = AIBOMReport(agents=[agent], blast_radii=[])
+    cdx = to_cyclonedx(report)
+    lib_components = [c for c in cdx["components"] if c["type"] == "library"]
+    assert "licenses" not in lib_components[0]
+
+
+def test_spdx_includes_declared_license():
+    """SPDX output includes declaredLicense when package has one."""
+    pkg = Package(name="flask", version="3.0.0", ecosystem="pypi", license="BSD-3-Clause")
+    server = MCPServer(name="s", command="python", args=["-m", "flask"], packages=[pkg])
+    agent = Agent(name="a", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/c.json", mcp_servers=[server])
+    report = AIBOMReport(agents=[agent], blast_radii=[])
+    spdx = to_spdx(report)
+    pkg_elements = [e for e in spdx["elements"] if e.get("declaredLicense")]
+    assert len(pkg_elements) >= 1
+    assert pkg_elements[0]["declaredLicense"] == "BSD-3-Clause"
+
+
+def test_json_output_includes_license():
+    """JSON output includes license field in package data."""
+    pkg = Package(name="lodash", version="4.17.21", ecosystem="npm", license="MIT")
+    server = MCPServer(name="s", command="npx", args=["-y", "lodash"], packages=[pkg])
+    agent = Agent(name="a", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/c.json", mcp_servers=[server])
+    report = AIBOMReport(agents=[agent], blast_radii=[])
+    data = to_json(report)
+    pkgs = data["agents"][0]["mcp_servers"][0]["packages"]
+    assert pkgs[0]["license"] == "MIT"

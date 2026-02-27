@@ -189,6 +189,7 @@ def test_toolhive_thv_no_servers(monkeypatch):
             returncode = 0
             stdout = "[]"
             stderr = ""
+
         return R()
 
     monkeypatch.setattr(subprocess, "run", fake_run)
@@ -216,6 +217,7 @@ def test_toolhive_thv_with_servers(monkeypatch):
             returncode = 0
             stdout = json.dumps(fake_data)
             stderr = ""
+
         return R()
 
     monkeypatch.setattr(subprocess, "run", fake_run)
@@ -241,6 +243,7 @@ def test_toolhive_thv_error(monkeypatch):
             returncode = 1
             stdout = ""
             stderr = "daemon not running"
+
         return R()
 
     monkeypatch.setattr(subprocess, "run", fake_run)
@@ -301,11 +304,11 @@ def test_detect_skips_already_discovered(monkeypatch):
 
 def test_detect_no_binaries(monkeypatch):
     """detect_installed_agents returns empty when no agent binaries are on PATH."""
-    import shutil
-
+    import agent_bom.discovery as disc
     from agent_bom.discovery import detect_installed_agents
 
-    monkeypatch.setattr(shutil, "which", lambda _: None)
+    monkeypatch.setattr(disc, "_find_binary", lambda _: None)
+    monkeypatch.setattr(disc, "_INSTALL_SIGNALS", {})
     installed = detect_installed_agents(discovered_types=set())
     assert installed == []
 
@@ -419,8 +422,7 @@ def test_get_all_discovery_paths_returns_all_clients():
     paths = get_all_discovery_paths("Darwin")
     clients = {c for c, _ in paths}
     # Must include key clients
-    for expected in ["claude-desktop", "claude-code", "cursor", "windsurf",
-                     "Docker MCP Toolkit", "Project config", "Docker Compose"]:
+    for expected in ["claude-desktop", "claude-code", "cursor", "windsurf", "Docker MCP Toolkit", "Project config", "Docker Compose"]:
         assert expected in clients, f"Missing client: {expected}"
     # Must have a reasonable number of paths
     assert len(paths) >= 20
@@ -467,3 +469,85 @@ def test_where_shows_totals():
     assert result.exit_code == 0
     assert "Total:" in result.output
     assert "paths checked" in result.output
+
+
+# ── Binary fallback detection ────────────────────────────────────────────────
+
+
+def test_find_binary_on_path(monkeypatch):
+    """_find_binary returns result from shutil.which when binary is on PATH."""
+    import shutil
+
+    from agent_bom.discovery import _find_binary
+
+    monkeypatch.setattr(shutil, "which", lambda cmd: f"/usr/local/bin/{cmd}")
+    assert _find_binary("cortex") == "/usr/local/bin/cortex"
+
+
+def test_find_binary_in_local_bin(monkeypatch, tmp_path):
+    """_find_binary checks ~/.local/bin when shutil.which fails."""
+    import os
+    import shutil
+
+    import agent_bom.discovery as disc
+
+    monkeypatch.setattr(shutil, "which", lambda _: None)
+    # Create a fake binary in a temp dir that simulates ~/.local/bin
+    fake_bin = tmp_path / "cortex"
+    fake_bin.write_text("#!/bin/sh")
+    fake_bin.chmod(0o755)
+
+    def patched_find(binary_name):
+        found = shutil.which(binary_name)
+        if found:
+            return found
+        candidate = tmp_path / binary_name
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+        return None
+
+    monkeypatch.setattr(disc, "_find_binary", patched_find)
+    assert disc._find_binary("cortex") == str(fake_bin)
+
+
+def test_detect_installed_via_signal_file(monkeypatch, tmp_path):
+    """detect_installed_agents finds Cortex Code via install signal file."""
+    import shutil
+
+    from agent_bom.discovery import _INSTALL_SIGNALS, detect_installed_agents
+
+    monkeypatch.setattr(shutil, "which", lambda _: None)
+    # Make _find_binary always return None
+    import agent_bom.discovery as disc
+
+    monkeypatch.setattr(disc, "_find_binary", lambda _: None)
+
+    # Create a signal file
+    signal_file = tmp_path / "coco.log"
+    signal_file.write_text("log data")
+    monkeypatch.setitem(_INSTALL_SIGNALS, AgentType.CORTEX_CODE, [str(signal_file)])
+
+    installed = detect_installed_agents(discovered_types=set())
+    agent_types = {a.agent_type for a in installed}
+    assert AgentType.CORTEX_CODE in agent_types
+    cortex = next(a for a in installed if a.agent_type == AgentType.CORTEX_CODE)
+    assert cortex.status == AgentStatus.INSTALLED_NOT_CONFIGURED
+
+
+# ── License field on Package ─────────────────────────────────────────────────
+
+
+def test_package_license_field():
+    """Package model has a license field."""
+    from agent_bom.models import Package
+
+    pkg = Package(name="express", version="4.18.2", ecosystem="npm", license="MIT")
+    assert pkg.license == "MIT"
+
+
+def test_package_license_default_none():
+    """Package license defaults to None."""
+    from agent_bom.models import Package
+
+    pkg = Package(name="flask", version="3.0.0", ecosystem="pypi")
+    assert pkg.license is None

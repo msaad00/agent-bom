@@ -1,0 +1,32 @@
+manifest_version: 1
+
+version:
+  name: agent-bom
+  label: "agent-bom — AI Supply Chain Security"
+  comment: >-
+    Map the full trust chain from AI agents and MCP servers to CVEs,
+    credentials, and blast radius. Discover, scan, and secure your
+    AI infrastructure from a single Snowflake Native App.
+
+artifacts:
+  setup_script: scripts/setup.sql
+  default_streamlit: streamlit/dashboard.py
+  container_services:
+    images:
+      - /db/schema/agent_bom_repo/agent-bom:latest
+
+privileges:
+  - CREATE COMPUTE POOL:
+      description: Required to run the agent-bom API container
+  - CREATE SERVICE:
+      description: Required to deploy Snowpark Container Service
+  - BIND SERVICE ENDPOINT:
+      description: Required to expose the API endpoint internally
+
+configuration:
+  log_level:
+    type: STRING
+    default: INFO
+  scan_interval_hours:
+    type: NUMBER
+    default: 6

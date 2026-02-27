@@ -40,16 +40,12 @@ CONFIG_LOCATIONS: dict[AgentType, dict[str, list[str]]] = {
         "Windows": ["~/.claude/settings.json", "~/.claude.json"],
     },
     AgentType.CURSOR: {
-        "Darwin": ["~/Library/Application Support/Cursor/User/globalStorage/cursor.mcp/mcp.json",
-                    "~/.cursor/mcp.json"],
-        "Linux": ["~/.config/Cursor/User/globalStorage/cursor.mcp/mcp.json",
-                   "~/.cursor/mcp.json"],
-        "Windows": ["~/AppData/Roaming/Cursor/User/globalStorage/cursor.mcp/mcp.json",
-                     "~/.cursor/mcp.json"],
+        "Darwin": ["~/Library/Application Support/Cursor/User/globalStorage/cursor.mcp/mcp.json", "~/.cursor/mcp.json"],
+        "Linux": ["~/.config/Cursor/User/globalStorage/cursor.mcp/mcp.json", "~/.cursor/mcp.json"],
+        "Windows": ["~/AppData/Roaming/Cursor/User/globalStorage/cursor.mcp/mcp.json", "~/.cursor/mcp.json"],
     },
     AgentType.WINDSURF: {
-        "Darwin": ["~/.windsurf/mcp.json",
-                    "~/Library/Application Support/Windsurf/User/globalStorage/windsurf.mcp/mcp.json"],
+        "Darwin": ["~/.windsurf/mcp.json", "~/Library/Application Support/Windsurf/User/globalStorage/windsurf.mcp/mcp.json"],
         "Linux": ["~/.windsurf/mcp.json"],
         "Windows": ["~/.windsurf/mcp.json"],
     },
@@ -66,18 +62,24 @@ CONFIG_LOCATIONS: dict[AgentType, dict[str, list[str]]] = {
     },
     AgentType.CORTEX_CODE: {
         # Snowflake Cortex Code CLI (CoCo) — MCP servers, permissions, hooks, settings
-        "Darwin": ["~/.snowflake/cortex/mcp.json",
-                    "~/.snowflake/cortex/settings.json",
-                    "~/.snowflake/cortex/permissions.json",
-                    "~/.snowflake/cortex/hooks.json"],
-        "Linux": ["~/.snowflake/cortex/mcp.json",
-                   "~/.snowflake/cortex/settings.json",
-                   "~/.snowflake/cortex/permissions.json",
-                   "~/.snowflake/cortex/hooks.json"],
-        "Windows": ["~/.snowflake/cortex/mcp.json",
-                     "~/.snowflake/cortex/settings.json",
-                     "~/.snowflake/cortex/permissions.json",
-                     "~/.snowflake/cortex/hooks.json"],
+        "Darwin": [
+            "~/.snowflake/cortex/mcp.json",
+            "~/.snowflake/cortex/settings.json",
+            "~/.snowflake/cortex/permissions.json",
+            "~/.snowflake/cortex/hooks.json",
+        ],
+        "Linux": [
+            "~/.snowflake/cortex/mcp.json",
+            "~/.snowflake/cortex/settings.json",
+            "~/.snowflake/cortex/permissions.json",
+            "~/.snowflake/cortex/hooks.json",
+        ],
+        "Windows": [
+            "~/.snowflake/cortex/mcp.json",
+            "~/.snowflake/cortex/settings.json",
+            "~/.snowflake/cortex/permissions.json",
+            "~/.snowflake/cortex/hooks.json",
+        ],
     },
     AgentType.CODEX_CLI: {
         # OpenAI Codex CLI — TOML config with [mcp_servers.*] tables
@@ -99,21 +101,15 @@ CONFIG_LOCATIONS: dict[AgentType, dict[str, list[str]]] = {
     },
     AgentType.SNOWFLAKE_CLI: {
         # Snowflake CLI (snow) — TOML connection profiles
-        "Darwin": ["~/.snowflake/connections.toml",
-                    "~/.snowflake/config.toml"],
-        "Linux": ["~/.snowflake/connections.toml",
-                   "~/.snowflake/config.toml"],
-        "Windows": ["~/.snowflake/connections.toml",
-                     "~/.snowflake/config.toml"],
+        "Darwin": ["~/.snowflake/connections.toml", "~/.snowflake/config.toml"],
+        "Linux": ["~/.snowflake/connections.toml", "~/.snowflake/config.toml"],
+        "Windows": ["~/.snowflake/connections.toml", "~/.snowflake/config.toml"],
     },
     AgentType.CONTINUE: {
         # Continue.dev VS Code extension
-        "Darwin": ["~/.continue/config.json",
-                   "~/Library/Application Support/Code/User/globalStorage/continue.continue/config.json"],
-        "Linux": ["~/.continue/config.json",
-                  "~/.config/Code/User/globalStorage/continue.continue/config.json"],
-        "Windows": ["~/.continue/config.json",
-                    "~/AppData/Roaming/Code/User/globalStorage/continue.continue/config.json"],
+        "Darwin": ["~/.continue/config.json", "~/Library/Application Support/Code/User/globalStorage/continue.continue/config.json"],
+        "Linux": ["~/.continue/config.json", "~/.config/Code/User/globalStorage/continue.continue/config.json"],
+        "Windows": ["~/.continue/config.json", "~/AppData/Roaming/Code/User/globalStorage/continue.continue/config.json"],
     },
     AgentType.ZED: {
         # Zed editor MCP config
@@ -301,6 +297,7 @@ def parse_mcp_config(config_data: dict, config_path: str) -> list[MCPServer]:
         # Detect privilege indicators from command/args
         from agent_bom.models import PermissionProfile
         from agent_bom.permissions import command_is_shell, command_runs_as_root
+
         safe_args = server.args if isinstance(server.args, list) else [server.args]
         is_root = command_runs_as_root(command, safe_args)
         is_shell = command_is_shell(command, safe_args)
@@ -334,9 +331,7 @@ def parse_claude_json_projects(config_data: dict, config_path: str) -> list[MCPS
             continue
         mcp_servers = project_data.get("mcpServers", {})
         if mcp_servers and isinstance(mcp_servers, dict):
-            project_servers = parse_mcp_config(
-                {"mcpServers": mcp_servers}, config_path
-            )
+            project_servers = parse_mcp_config({"mcpServers": mcp_servers}, config_path)
             for s in project_servers:
                 s.working_dir = project_path
             servers.extend(project_servers)
@@ -623,6 +618,25 @@ def discover_toolhive() -> Optional[Agent]:
     )
 
 
+def _find_binary(binary_name: str) -> str | None:
+    """Find a binary on PATH or in common install locations."""
+    found = shutil.which(binary_name)
+    if found:
+        return found
+    # Check common locations not always in PATH
+    for extra_dir in ("~/.local/bin", "/usr/local/bin", "~/.cargo/bin"):
+        candidate = Path(extra_dir).expanduser() / binary_name
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return None
+
+
+# Additional install signals beyond binary detection
+_INSTALL_SIGNALS: dict[AgentType, list[str]] = {
+    AgentType.CORTEX_CODE: ["~/.snowflake/cortex/logs/coco.log"],
+}
+
+
 def detect_installed_agents(discovered_types: set[AgentType]) -> list[Agent]:
     """Detect agent CLIs on PATH that weren't found via config files.
 
@@ -634,13 +648,22 @@ def detect_installed_agents(discovered_types: set[AgentType]) -> list[Agent]:
             continue
         if agent_type == AgentType.TOOLHIVE:
             continue  # Handled by discover_toolhive()
-        if shutil.which(binary_name):
-            installed.append(Agent(
-                name=agent_type.value,
-                agent_type=agent_type,
-                config_path=f"{binary_name} (binary on PATH)",
-                status=AgentStatus.INSTALLED_NOT_CONFIGURED,
-            ))
+        found = _find_binary(binary_name)
+        if not found:
+            # Check install signal files (e.g. log files that prove installation)
+            for signal in _INSTALL_SIGNALS.get(agent_type, []):
+                if Path(signal).expanduser().exists():
+                    found = signal
+                    break
+        if found:
+            installed.append(
+                Agent(
+                    name=agent_type.value,
+                    agent_type=agent_type,
+                    config_path=f"{binary_name} ({found})",
+                    status=AgentStatus.INSTALLED_NOT_CONFIGURED,
+                )
+            )
     return installed
 
 
@@ -698,14 +721,9 @@ def discover_global_configs(agent_types: Optional[list[AgentType]] = None) -> li
                             mcp_servers=servers,
                         )
                         agents.append(agent)
-                        console.print(
-                            f"  [green]✓[/green] Found {agent_type.value} with "
-                            f"{len(servers)} MCP server(s): {config_path}"
-                        )
+                        console.print(f"  [green]✓[/green] Found {agent_type.value} with {len(servers)} MCP server(s): {config_path}")
                 except (json.JSONDecodeError, KeyError, TypeError, Exception) as e:
-                    console.print(
-                        f"  [yellow]⚠[/yellow] Error parsing {config_path}: {e}"
-                    )
+                    console.print(f"  [yellow]⚠[/yellow] Error parsing {config_path}: {e}")
 
     return agents
 
@@ -736,14 +754,9 @@ def discover_project_configs(project_dir: Optional[str] = None) -> list[Agent]:
                         mcp_servers=servers,
                     )
                     agents.append(agent)
-                    console.print(
-                        f"  [green]✓[/green] Found project config with "
-                        f"{len(servers)} MCP server(s): {config_path}"
-                    )
+                    console.print(f"  [green]✓[/green] Found project config with {len(servers)} MCP server(s): {config_path}")
             except (json.JSONDecodeError, KeyError, TypeError, Exception) as e:
-                console.print(
-                    f"  [yellow]⚠[/yellow] Error parsing {config_path}: {e}"
-                )
+                console.print(f"  [yellow]⚠[/yellow] Error parsing {config_path}: {e}")
 
     return agents
 
@@ -779,10 +792,12 @@ def _parse_docker_mcp_catalog(
         tools: list[MCPTool] = []
         for tool_entry in entry.get("tools", []):
             if isinstance(tool_entry, dict) and tool_entry.get("name"):
-                tools.append(MCPTool(
-                    name=tool_entry["name"],
-                    description=tool_entry.get("description", ""),
-                ))
+                tools.append(
+                    MCPTool(
+                        name=tool_entry["name"],
+                        description=tool_entry.get("description", ""),
+                    )
+                )
 
         # Map secrets to credential env vars (values redacted)
         cred_env: dict[str, str] = {}
@@ -798,12 +813,14 @@ def _parse_docker_mcp_catalog(
             pkg_version = image_ref.split(":")[-1]
 
         pkg_name = image_ref.split("@")[0] if "@" in image_ref else image_ref
-        packages = [Package(
-            name=pkg_name,
-            version=pkg_version,
-            ecosystem="docker",
-            is_direct=True,
-        )]
+        packages = [
+            Package(
+                name=pkg_name,
+                version=pkg_version,
+                ecosystem="docker",
+                is_direct=True,
+            )
+        ]
 
         server = MCPServer(
             name=name,
@@ -864,13 +881,15 @@ def discover_docker_mcp() -> Optional[Agent]:
     # For enabled servers not found in catalog, create minimal entries
     found_names = {s.name for s in servers}
     for name in enabled_names - found_names:
-        servers.append(MCPServer(
-            name=name,
-            command="docker",
-            args=[],
-            transport=TransportType.STDIO,
-            config_path=str(registry_path),
-        ))
+        servers.append(
+            MCPServer(
+                name=name,
+                command="docker",
+                args=[],
+                transport=TransportType.STDIO,
+                config_path=str(registry_path),
+            )
+        )
 
     return Agent(
         name="docker-mcp",
@@ -968,12 +987,14 @@ def discover_compose_mcp_servers(project_dir: Optional[str] = None) -> Optional[
         # Redact sensitive values
         env = sanitize_env_vars(env)
 
-        packages = [Package(
-            name=pkg_name,
-            version=pkg_version,
-            ecosystem="docker",
-            is_direct=True,
-        )]
+        packages = [
+            Package(
+                name=pkg_name,
+                version=pkg_version,
+                ecosystem="docker",
+                is_direct=True,
+            )
+        ]
 
         server = MCPServer(
             name=svc_name,
@@ -1012,8 +1033,7 @@ def discover_all(project_dir: Optional[str] = None) -> list[Agent]:
     compose_agent = discover_compose_mcp_servers(project_dir)
     if compose_agent:
         console.print(
-            f"  [green]✓[/green] Found {len(compose_agent.mcp_servers)} MCP "
-            f"server(s) in Docker Compose: {compose_agent.config_path}"
+            f"  [green]✓[/green] Found {len(compose_agent.mcp_servers)} MCP server(s) in Docker Compose: {compose_agent.config_path}"
         )
         agents.append(compose_agent)
 
@@ -1021,14 +1041,9 @@ def discover_all(project_dir: Optional[str] = None) -> list[Agent]:
     thv_agent = discover_toolhive()
     if thv_agent:
         if thv_agent.mcp_servers:
-            console.print(
-                f"  [green]✓[/green] Found toolhive with "
-                f"{len(thv_agent.mcp_servers)} MCP server(s) (via thv list)"
-            )
+            console.print(f"  [green]✓[/green] Found toolhive with {len(thv_agent.mcp_servers)} MCP server(s) (via thv list)")
         else:
-            console.print(
-                "  [dim]  toolhive: installed but not configured[/dim]"
-            )
+            console.print("  [dim]  toolhive: installed but not configured[/dim]")
         agents.append(thv_agent)
 
     # Docker Desktop MCP Toolkit discovery
@@ -1042,18 +1057,14 @@ def discover_all(project_dir: Optional[str] = None) -> list[Agent]:
                 f"{total_tools} tool(s) (via Docker Desktop MCP Toolkit)"
             )
         else:
-            console.print(
-                "  [dim]  docker-mcp: installed but not configured[/dim]"
-            )
+            console.print("  [dim]  docker-mcp: installed but not configured[/dim]")
         agents.append(docker_agent)
 
     # Detect installed-but-not-configured agents
     discovered_types = {a.agent_type for a in agents}
     installed_agents = detect_installed_agents(discovered_types)
     for ia in installed_agents:
-        console.print(
-            f"  [dim]  {ia.name}: installed but not configured[/dim]"
-        )
+        console.print(f"  [dim]  {ia.name}: installed but not configured[/dim]")
     agents.extend(installed_agents)
 
     configured = [a for a in agents if a.status == AgentStatus.CONFIGURED]
@@ -1061,14 +1072,8 @@ def discover_all(project_dir: Optional[str] = None) -> list[Agent]:
         console.print("  [yellow]No MCP configurations found.[/yellow]")
     else:
         total_servers = sum(len(a.mcp_servers) for a in configured)
-        console.print(
-            f"\n  [bold]Found {len(configured)} configured agent(s) with "
-            f"{total_servers} MCP server(s) total.[/bold]"
-        )
+        console.print(f"\n  [bold]Found {len(configured)} configured agent(s) with {total_servers} MCP server(s) total.[/bold]")
         if installed_agents:
-            console.print(
-                f"  [dim]{len(installed_agents)} additional agent(s) installed "
-                f"but not configured.[/dim]"
-            )
+            console.print(f"  [dim]{len(installed_agents)} additional agent(s) installed but not configured.[/dim]")
 
     return agents

@@ -554,6 +554,20 @@ export const api = {
     post<EvaluateResult>("/v1/gateway/evaluate", body),
   listGatewayAudit: () => get<GatewayAuditResponse>("/v1/gateway/audit"),
   getGatewayStats: () => get<GatewayStatsResponse>("/v1/gateway/stats"),
+
+  // Governance
+  getGovernance: (days = 30) => get<GovernanceReport>(`/v1/governance?days=${days}`),
+  getGovernanceFindings: (days = 30, severity?: string, category?: string) => {
+    const params = new URLSearchParams({ days: String(days) });
+    if (severity) params.set("severity", severity);
+    if (category) params.set("category", category);
+    return get<{ findings: GovernanceFinding[]; count: number; warnings: string[] }>(
+      `/v1/governance/findings?${params}`
+    );
+  },
+
+  // Activity Timeline
+  getActivity: (days = 30) => get<ActivityTimeline>(`/v1/activity?days=${days}`),
 };
 
 // ─── Threat Framework Catalogs ────────────────────────────────────────────────
@@ -620,6 +634,109 @@ export const NIST_AI_RMF: Record<string, string> = {
   "MANAGE-2.4": "Risk treatments including remediation applied",
   "MANAGE-4.1": "Post-deployment monitoring plans implemented",
 };
+
+// ─── Governance types ────────────────────────────────────────────────────────
+
+export interface GovernanceFinding {
+  category: string;
+  severity: string;
+  title: string;
+  description: string;
+  agent_or_role: string;
+  object_name: string;
+  details: Record<string, unknown>;
+}
+
+export interface GovernanceReport {
+  account: string;
+  discovered_at: string;
+  summary: {
+    access_records: number;
+    privilege_grants: number;
+    data_classifications: number;
+    agent_usage_records: number;
+    findings: number;
+    critical_findings: number;
+    high_findings: number;
+  };
+  findings: GovernanceFinding[];
+  access_records: Array<{
+    query_id: string;
+    user_name: string;
+    role_name: string;
+    query_start: string;
+    object_name: string;
+    object_type: string;
+    columns: string[];
+    operation: string;
+    is_write: boolean;
+  }>;
+  privilege_grants: Array<{
+    grantee: string;
+    grantee_type: string;
+    privilege: string;
+    granted_on: string;
+    object_name: string;
+    is_elevated: boolean;
+  }>;
+  data_classifications: Array<{
+    object_name: string;
+    object_type: string;
+    column_name: string | null;
+    tag_name: string;
+    tag_value: string;
+  }>;
+  agent_usage: Array<{
+    agent_name: string;
+    user_name: string;
+    role_name: string;
+    start_time: string;
+    total_tokens: number;
+    credits_used: number;
+    model_name: string;
+    tool_calls: number;
+    status: string;
+  }>;
+  warnings: string[];
+}
+
+export interface ActivityTimeline {
+  account: string;
+  discovered_at: string;
+  summary: {
+    total_queries: number;
+    agent_queries: number;
+    observability_events: number;
+    unique_agents: number;
+    tool_calls: number;
+  };
+  query_history: Array<{
+    query_id: string;
+    query_text: string;
+    user_name: string;
+    role_name: string;
+    start_time: string;
+    execution_status: string;
+    query_type: string;
+    is_agent_query: boolean;
+    agent_pattern: string;
+    execution_time_ms: number;
+  }>;
+  observability_events: Array<{
+    event_id: string;
+    event_type: string;
+    agent_name: string;
+    timestamp: string;
+    duration_ms: number;
+    status: string;
+    model_name: string;
+    tool_name: string;
+    trace_id: string;
+    input_tokens: number;
+    output_tokens: number;
+  }>;
+  warnings: string[];
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

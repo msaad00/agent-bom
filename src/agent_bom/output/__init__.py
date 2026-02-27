@@ -1400,6 +1400,191 @@ def export_sarif(report: AIBOMReport, output_path: str) -> None:
     Path(output_path).write_text(json.dumps(data, indent=2))
 
 
+# ─── Compact Output (default mode) ───────────────────────────────────────────
+
+
+def print_compact_summary(report: AIBOMReport) -> None:
+    """Compact summary — posture + key metrics in ~8 lines."""
+    from collections import Counter
+
+    sev_counts: Counter[str] = Counter()
+    for br in report.blast_radii:
+        sev_counts[br.vulnerability.severity.value.upper()] += 1
+
+    if report.total_vulnerabilities == 0:
+        posture = "[bold green]CLEAN[/bold green]"
+        border_style = "green"
+    elif sev_counts.get("CRITICAL", 0) > 0:
+        parts = [f"{sev_counts[s]} {s}" for s in ("CRITICAL", "HIGH", "MEDIUM", "LOW") if sev_counts.get(s)]
+        posture = "[bold red]" + ", ".join(parts) + "[/bold red]"
+        border_style = "red"
+    else:
+        parts = [f"{sev_counts[s]} {s}" for s in ("HIGH", "MEDIUM", "LOW") if sev_counts.get(s)]
+        posture = "[bold yellow]" + ", ".join(parts) + "[/bold yellow]"
+        border_style = "yellow"
+
+    # Credential count
+    cred_names: list[str] = []
+    for a in report.agents:
+        for s in a.mcp_servers:
+            cred_names.extend(s.credential_names)
+    cred_names = sorted(set(cred_names))
+
+    # Privilege count
+    elevated = sum(
+        1 for a in report.agents for s in a.mcp_servers
+        if s.permission_profile and s.permission_profile.is_elevated
+    )
+
+    lines = [
+        f"  [bold]SECURITY POSTURE:[/bold]  {posture}",
+        "",
+        f"  Agents  [bold]{report.total_agents}[/bold]    "
+        f"Servers  [bold]{report.total_servers}[/bold]    "
+        f"Packages  [bold]{report.total_packages}[/bold]    "
+        f"Vulns  [bold]{report.total_vulnerabilities}[/bold]",
+    ]
+    if cred_names:
+        names = ", ".join(cred_names[:3])
+        more = f" +{len(cred_names) - 3}" if len(cred_names) > 3 else ""
+        lines.append(f"  [yellow]Credentials:[/yellow]  {names}{more}")
+    if elevated:
+        lines.append(f"  [red]Privileges:[/red]  {elevated} server(s) elevated")
+
+    console.print(Panel(
+        "\n".join(lines),
+        title=f"[bold]AI-BOM Report[/bold]  v{report.tool_version}",
+        border_style=border_style,
+        padding=(0, 1),
+    ))
+
+
+def print_compact_agents(report: AIBOMReport) -> None:
+    """One-line-per-agent table."""
+    configured = [a for a in report.agents if a.status == AgentStatus.CONFIGURED]
+    if not configured:
+        return
+
+    table = Table(box=None, padding=(0, 2), show_header=True, header_style="bold dim")
+    table.add_column("Agent")
+    table.add_column("Type", style="dim")
+    table.add_column("Servers", justify="right")
+    table.add_column("Pkgs", justify="right")
+    table.add_column("Creds", justify="right")
+    table.add_column("Vulns", justify="right")
+
+    for a in configured:
+        n_servers = len(a.mcp_servers)
+        n_pkgs = sum(len(s.packages) for s in a.mcp_servers)
+        n_creds = sum(len(s.credential_names) for s in a.mcp_servers)
+        n_vulns = sum(s.total_vulnerabilities for s in a.mcp_servers)
+        vuln_style = "red" if n_vulns > 0 else "dim"
+        cred_style = "yellow" if n_creds > 0 else "dim"
+        table.add_row(
+            f"[bold]{a.name}[/bold]",
+            a.agent_type.value if hasattr(a.agent_type, "value") else str(a.agent_type),
+            str(n_servers),
+            str(n_pkgs),
+            f"[{cred_style}]{n_creds}[/{cred_style}]",
+            f"[{vuln_style}]{n_vulns}[/{vuln_style}]",
+        )
+
+    console.print(table)
+
+
+def print_compact_blast_radius(report: AIBOMReport, limit: int = 5) -> None:
+    """Show top N blast radius findings in a compact table."""
+    if not report.blast_radii:
+        return
+
+    console.print()
+    total = len(report.blast_radii)
+    title = f"Top Findings ({min(limit, total)} of {total})" if total > limit else f"Findings ({total})"
+
+    table = Table(title=title, expand=True, padding=(0, 1))
+    table.add_column("Vuln", no_wrap=True, ratio=2)
+    table.add_column("Sev", no_wrap=True)
+    table.add_column("Package", ratio=2)
+    table.add_column("Blast", justify="center")
+    table.add_column("Fix", ratio=1)
+
+    severity_colors = {
+        Severity.CRITICAL: "red bold", Severity.HIGH: "red",
+        Severity.MEDIUM: "yellow", Severity.LOW: "dim",
+    }
+
+    for br in report.blast_radii[:limit]:
+        sev_style = severity_colors.get(br.vulnerability.severity, "white")
+        fix = f"[green]{br.vulnerability.fixed_version}[/green]" if br.vulnerability.fixed_version else "[red dim]—[/red dim]"
+        n_agents = len(br.affected_agents)
+        n_creds = len(br.exposed_credentials)
+        blast = f"{n_agents}A"
+        if n_creds:
+            blast += f"/[yellow]{n_creds}C[/yellow]"
+        kev = " [red]KEV[/red]" if br.vulnerability.is_kev else ""
+
+        table.add_row(
+            f"{br.vulnerability.id}{kev}",
+            f"[{sev_style}]{br.vulnerability.severity.value.upper()}[/{sev_style}]",
+            f"{br.package.name}@{br.package.version}",
+            blast,
+            fix,
+        )
+
+    console.print(table)
+    if total > limit:
+        console.print(f"  [dim]... {total - limit} more (use --verbose for full list)[/dim]")
+
+
+def print_compact_remediation(report: AIBOMReport, limit: int = 3) -> None:
+    """Top N remediation items, one-liner each."""
+    if not report.blast_radii:
+        return
+
+    plan = build_remediation_plan(report.blast_radii)
+    fixable = [p for p in plan if p["fix"]]
+    if not fixable:
+        return
+
+    console.print()
+    total = len(fixable)
+    title = f"Remediation (top {min(limit, total)} of {total})" if total > limit else f"Remediation ({total})"
+    console.print(f"  [bold]{title}[/bold]")
+
+    sev_style = {
+        Severity.CRITICAL: "red bold", Severity.HIGH: "red",
+        Severity.MEDIUM: "yellow", Severity.LOW: "dim", Severity.NONE: "white",
+    }
+
+    for i, item in enumerate(fixable[:limit], 1):
+        style = sev_style.get(item["max_severity"], "white")
+        kev = " [red]KEV[/red]" if item["has_kev"] else ""
+        console.print(
+            f"  [{style}]{i}.[/{style}] [bold]{item['package']}[/bold] "
+            f"[dim]{item['current']}[/dim] → [green]{item['fix']}[/green]{kev}  "
+            f"[dim]clears {len(item['vulns'])} vuln(s), {len(item['agents'])} agent(s)[/dim]"
+        )
+
+    if total > limit:
+        console.print(f"  [dim]... {total - limit} more (use --verbose for full plan)[/dim]")
+    console.print()
+
+
+def print_compact_export_hint(report: AIBOMReport) -> None:
+    """Minimal 3-line export hint."""
+    lines = [
+        f"\n  [bold]{report.total_agents} agents[/bold] · "
+        f"[bold]{report.total_servers} servers[/bold] · "
+        f"[bold]{report.total_packages} packages[/bold] · "
+        f"[bold]{report.total_vulnerabilities} vulns[/bold]",
+        "",
+        "  [green]agent-bom scan -f[/green] json | cyclonedx | sarif | spdx | html",
+        "  [green]agent-bom serve[/green]  [dim]API + dashboard[/dim]    "
+        "[green]--verbose[/green]  [dim]full tree & details[/dim]",
+    ]
+    console.print(Panel("\n".join(lines), border_style="blue", padding=(0, 1)))
+
+
 # ─── Diff Output ─────────────────────────────────────────────────────────────
 
 

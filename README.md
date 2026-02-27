@@ -350,7 +350,7 @@ agent-bom scan --aws -f graph -o graph.json   # export graph data
 | REST API | `agent-bom api` | Dashboards, SIEM |
 | Runtime proxy | `agent-bom proxy` | Live MCP traffic audit |
 | MCP Server | `agent-bom mcp-server` | Inside any MCP client |
-| Dashboard | `agent-bom serve` | Team UI |
+| Dashboard | `agent-bom serve` | API + Next.js dashboard |
 | Prometheus | `--push-gateway` / `--otel-endpoint` | Monitoring |
 
 ### GitHub Action

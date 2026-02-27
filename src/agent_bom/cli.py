@@ -2401,12 +2401,15 @@ def policy_template(output: str):
 
 
 @main.command("serve")
-@click.option("--port", default=8501, show_default=True, help="Streamlit server port")
-@click.option("--host", default="localhost", show_default=True, help="Streamlit server host")
-@click.option("--inventory", default=None, type=click.Path(exists=True),
-              help="Pre-load an inventory JSON file in the dashboard")
-def serve_cmd(port: int, host: str, inventory: Optional[str]):
-    """Launch the interactive Streamlit dashboard.
+@click.option("--host", default="127.0.0.1", show_default=True, help="Host to bind to (use 0.0.0.0 for LAN access)")
+@click.option("--port", default=8422, show_default=True, help="API server port")
+@click.option("--persist", default=None, metavar="DB_PATH",
+              help="Enable persistent job storage via SQLite (e.g. --persist jobs.db).")
+@click.option("--cors-allow-all", is_flag=True, default=False,
+              help="Allow all CORS origins (dev mode).")
+@click.option("--reload", is_flag=True, help="Auto-reload on code changes (development mode)")
+def serve_cmd(host: str, port: int, persist: Optional[str], cors_allow_all: bool, reload: bool):
+    """Start the API server + Next.js dashboard.
 
     \b
     Requires:  pip install 'agent-bom[ui]'
@@ -2414,45 +2417,37 @@ def serve_cmd(port: int, host: str, inventory: Optional[str]):
     \b
     Usage:
       agent-bom serve
-      agent-bom serve --port 8502
-      agent-bom serve --inventory agents.json
+      agent-bom serve --port 8422 --persist jobs.db
     """
     try:
-        import streamlit  # noqa: F401
+        import uvicorn  # noqa: F401
     except ImportError:
         click.echo(
-            "ERROR: Streamlit is required for `agent-bom serve`.\n"
-            "Install it with:  pip install 'agent-bom[ui]'",
+            "ERROR: FastAPI + Uvicorn are required for `agent-bom serve`.\n"
+            "Install them with:  pip install 'agent-bom[ui]'",
             err=True,
         )
         sys.exit(1)
 
-    import subprocess
-    app_path = Path(__file__).parent / "serve_app.py"
+    import os as _os
 
-    env: dict = {}
-    if inventory:
-        import os as _os
-        env = {**_os.environ, "AGENT_BOM_INVENTORY": str(Path(inventory).resolve())}
-    else:
-        import os as _os
-        env = dict(_os.environ)
+    if persist:
+        _os.environ["AGENT_BOM_DB"] = str(Path(persist).resolve())
+    if cors_allow_all:
+        _os.environ["AGENT_BOM_CORS_ALL"] = "1"
 
-    click.echo(f"🛡️  agent-bom dashboard → http://{host}:{port}")
-    click.echo("   Press Ctrl+C to stop.")
+    click.echo(f"\n  API server  →  http://{host}:{port}")
+    click.echo(f"  API docs    →  http://{host}:{port}/docs")
+    click.echo("  Dashboard   →  http://localhost:3000  (run: cd ui && npm run dev)")
+    click.echo("  Press Ctrl+C to stop.\n")
 
-    cmd = [
-        sys.executable, "-m", "streamlit", "run",
-        str(app_path),
-        "--server.port", str(port),
-        "--server.address", host,
-        "--server.headless", "true",
-        "--browser.gatherUsageStats", "false",
-    ]
-    try:
-        subprocess.run(cmd, env=env, check=False)
-    except KeyboardInterrupt:
-        pass
+    import uvicorn as _uvicorn
+    _uvicorn.run(
+        "agent_bom.api.server:app",
+        host=host,
+        port=port,
+        reload=reload,
+    )
 
 
 @main.command("api")

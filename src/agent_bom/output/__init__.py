@@ -837,9 +837,8 @@ def print_export_hint(report: AIBOMReport) -> None:
 
     # ── Explore ──
     lines.append("[bold]Explore & Analyze[/bold]")
-    lines.append("  [green]agent-bom serve[/green]                              [dim]Interactive dashboard (graphs, detail pages)[/dim]")
+    lines.append("  [green]agent-bom serve[/green]                              [dim]API server + Next.js dashboard[/dim]")
     lines.append("  [green]agent-bom scan -f html -o report.html[/green]        [dim]Self-contained HTML report[/dim]")
-    lines.append("  [green]agent-bom api[/green]                                [dim]REST API for CI/CD integration[/dim]")
     lines.append("")
 
     # ── Runtime ──

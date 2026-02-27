@@ -24,6 +24,11 @@ from agent_bom.output import (
     print_agent_tree,
     print_attack_flow_tree,
     print_blast_radius,
+    print_compact_agents,
+    print_compact_blast_radius,
+    print_compact_export_hint,
+    print_compact_remediation,
+    print_compact_summary,
     print_diff,
     print_export_hint,
     print_policy_results,
@@ -218,7 +223,7 @@ def main():
 @click.option("--slack-webhook", default=None, envvar="SLACK_WEBHOOK_URL", metavar="URL", help="Slack incoming webhook URL for scan alerts")
 @click.option("--vanta-token", default=None, envvar="VANTA_API_TOKEN", metavar="TOKEN", help="Vanta API token for compliance evidence upload")
 @click.option("--drata-token", default=None, envvar="DRATA_API_TOKEN", metavar="TOKEN", help="Drata API token for GRC evidence upload")
-@click.option("--verbose", "-v", is_flag=True, help="Enable verbose/debug output (show API calls, timing, parse details)")
+@click.option("--verbose", "-v", is_flag=True, help="Full output — dependency tree, all findings, severity chart, threat frameworks, debug logging")
 @click.option("--no-color", is_flag=True, help="Disable colored output (useful for piping, CI logs, accessibility)")
 @click.option("--preset", type=click.Choice(["ci", "enterprise", "quick"]), default=None,
               help="Scan preset: ci (quiet, json, fail-on-critical), enterprise (enrich, introspect, transitive, verify-integrity), quick (no transitive, no enrich)")
@@ -1401,16 +1406,24 @@ def scan(
             sys.stdout.write(json.dumps(to_json(report), indent=2))
         sys.stdout.write("\n")
     elif output_format == "console" and not output:
-        print_summary(report)
-        print_posture_summary(report)
-        if not no_tree:
-            print_agent_tree(report)
-        print_severity_chart(report)
-        print_blast_radius(report)
-        if not no_tree:
-            print_attack_flow_tree(report)
-        print_threat_frameworks(report)
-        # AI enrichment output (if enriched)
+        if verbose:
+            # Full output (--verbose)
+            print_summary(report)
+            print_posture_summary(report)
+            if not no_tree:
+                print_agent_tree(report)
+            print_severity_chart(report)
+            print_blast_radius(report)
+            if not no_tree:
+                print_attack_flow_tree(report)
+            print_threat_frameworks(report)
+        else:
+            # Compact output (default)
+            print_compact_summary(report)
+            print_compact_agents(report)
+            print_compact_blast_radius(report, limit=5)
+
+        # AI enrichment output (both modes)
         if report.executive_summary:
             from rich.panel import Panel
             con.print("\n[bold]Executive Summary (AI-Generated)[/bold]")
@@ -1451,8 +1464,13 @@ def scan(
                     con.print(f"      [dim]{f.detail}[/dim]")
                     if f.recommendation:
                         con.print(f"      [green]→ {f.recommendation}[/green]")
-        print_remediation_plan(report)
-        print_export_hint(report)
+
+        if verbose:
+            print_remediation_plan(report)
+            print_export_hint(report)
+        else:
+            print_compact_remediation(report, limit=3)
+            print_compact_export_hint(report)
     elif output_format == "text" and not output:
         _print_text(report, blast_radii)
     elif output_format == "json":

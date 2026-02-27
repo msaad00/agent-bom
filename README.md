@@ -21,8 +21,8 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/workflow-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/workflow-light.svg" alt="How agent-bom works" width="800" style="padding: 20px 0" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-light.svg" alt="How agent-bom works" width="800" style="padding: 20px 0" />
   </picture>
 </p>
 
@@ -58,10 +58,17 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 | **Malicious package detection** | — | OSV MAL- prefix + typosquat heuristics (57 popular packages) |
 | **OpenSSF Scorecard enrichment** | — | Package health scores from api.securityscorecards.dev |
 | **Tool poisoning detection** | — | Description injection, capability combos, CVE exposure, drift |
-| **Model weight provenance** | — | SHA-256 hash, Sigstore signature, HuggingFace metadata |
+| **Model weight provenance** | — | SHA-256 hash, Sigstore file detection, HuggingFace metadata |
 | **Policy-as-code** | — | Block unverified servers, enforce thresholds in CI/CD |
-| **GPU infrastructure scanning** | — | NVIDIA CUDA, AMD ROCm, TensorRT, Triton, vLLM |
+| **AI framework recognition** | — | GPU/ML packages flagged as high-risk in image scans (via Grype/Syft) |
 | **427+ server MCP registry** | — | Risk levels, tool inventories, auto-synced weekly |
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-light.svg" alt="Blast Radius — How a CVE propagates through the AI stack" width="800" />
+  </picture>
+</p>
 
 <table>
 <tr>
@@ -305,7 +312,7 @@ agent-bom scan --enforce --introspect          # + drift detection against live 
 <details>
 <summary><b>Model weight provenance</b></summary>
 
-SHA-256 hash verification, Sigstore signature detection (.sig/.sigstore/.bundle), and HuggingFace model metadata (author, license, model card, gated status, download count).
+SHA-256 hash verification, Sigstore signature file detection (`.sig`/`.sigstore`/`.bundle` presence — not cryptographic verification), and HuggingFace model metadata (author, license, model card, gated status, download count).
 
 ```bash
 agent-bom scan --model-files ./models --model-provenance   # hash + signature checks
@@ -348,11 +355,18 @@ agent-bom scan --aws -f graph -o graph.json   # export graph data
 | GitHub Action | `uses: msaad00/agent-bom@v0.35.0` | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated scans |
 | REST API | `agent-bom api` | Dashboards, SIEM |
-| Runtime proxy | `agent-bom proxy` | Live MCP traffic audit |
+| Runtime proxy | `agent-bom proxy` | Opt-in MCP traffic audit (per-server) |
 | MCP Server | `agent-bom mcp-server` | Inside any MCP client |
 | Dashboard | `agent-bom serve` | API + Next.js dashboard |
 | Snowflake | `SNOWFLAKE_ACCOUNT=... agent-bom api` | Snowpark + SiS |
 | Prometheus | `--push-gateway` / `--otel-endpoint` | Monitoring |
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scan-workflow-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scan-workflow-light.svg" alt="Enterprise Scan Workflow" width="800" />
+  </picture>
+</p>
 
 ### GitHub Action
 
@@ -433,6 +447,20 @@ Set `SNOWFLAKE_ACCOUNT` + `SNOWFLAKE_USER` + auth (`SNOWFLAKE_PRIVATE_KEY_PATH` 
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for full Snowflake architecture and setup instructions.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/snowflake-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/snowflake-light.svg" alt="Snowflake Deployment Architecture" width="800" />
+  </picture>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/deployment-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/deployment-light.svg" alt="Enterprise Deployment Topology" width="800" />
+  </picture>
+</p>
+
 ---
 
 ## MCP Server Registry (427+ servers)
@@ -447,10 +475,10 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 
 | Layer | Coverage | Examples |
 |-------|----------|----------|
-| **GPU infrastructure** | `--image` + dependency scan | NVIDIA CUDA, cuDNN, NCCL, TensorRT, AMD ROCm, HIP |
-| **GPU clouds** | `--k8s` | CoreWeave, Lambda Labs, Nebius, Paperspace |
+| **GPU/ML packages** | `--image` via Grype/Syft | NVIDIA CUDA, cuDNN, TensorRT, AMD ROCm — flagged by package name matching |
+| **GPU clouds** | `--k8s` pod discovery | CoreWeave, Lambda Labs, Nebius, Paperspace — image-level scanning |
 | **AI platforms** | Cloud modules | Bedrock, Vertex AI, Snowflake Cortex, Databricks |
-| **Containers** | `--image` | NVIDIA NGC, ROCm, vLLM, Triton, Ollama, any OCI image |
+| **Containers** | `--image` via Grype/Syft | NVIDIA NGC, ROCm, vLLM, Triton, Ollama — any OCI image |
 | **AI frameworks** | Dependency scan | LangChain, LlamaIndex, AutoGen, PyTorch, JAX, TensorFlow |
 | **Inference servers** | `--image` | vLLM, Triton, TGI, llama.cpp |
 | **MLOps** | Dependency scan | MLflow, W&B, Ray, ClearML |
@@ -465,10 +493,10 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 ## Trust & permissions
 
 - **`--dry-run`** — preview every file and API URL before access, then exit without reading anything
-- **[PERMISSIONS.md](PERMISSIONS.md)** — auditable trust contract with all 27 config paths enumerated
+- **[PERMISSIONS.md](PERMISSIONS.md)** — auditable trust contract with all config paths enumerated
 - **Read-only** — never writes configs, runs servers, provisions resources, or stores secrets
 - **Credential redaction** — only env var **names** in reports; values, tokens, passwords never read
-- **Sigstore signed** — releases v0.7.0+ signed via cosign OIDC; verify with `agent-bom verify agent-bom`
+- **Sigstore signed** — releases v0.7.0+ signed via cosign OIDC; verify PyPI integrity with `agent-bom verify agent-bom@0.35.0` (SHA-256 + SLSA provenance)
 - **No binary needed (MCP)** — SSE transport requires zero local install; local CLI available for air-gapped use
 - **OpenSSF Scorecard** — [automated supply chain scoring](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom)
 
@@ -479,14 +507,14 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 **Shipped:**
 - [x] Cloud AI inventory — AWS Bedrock, Azure AI Foundry, GCP Vertex, Snowflake Cortex, Databricks, Nebius
 - [x] Tool poisoning / prompt injection detection — `--enforce` with description injection, capability combos, CVE exposure, drift
-- [x] Model weight provenance — SHA-256 hash, Sigstore signatures, HuggingFace metadata (`--model-provenance`, `--hf-model`)
+- [x] Model weight provenance — SHA-256 hash, Sigstore file detection, HuggingFace metadata (`--model-provenance`, `--hf-model`)
 - [x] 18 MCP client discovery — Codex CLI, Gemini CLI, Goose, Snowflake CLI, full Cortex Code (CoCo) coverage
 - [x] K8s AI workload discovery — `--k8s --all-namespaces` with pod-level scanning
-- [x] OWASP MCP Top 10 compliance mapping — first scanner to map MCP-specific risks (MCP01–MCP10)
+- [x] OWASP MCP Top 10 compliance mapping — MCP01–MCP10 risk tagging
 - [x] Malicious package detection — OSV MAL- prefix flagging + typosquat heuristics
 - [x] OpenSSF Scorecard enrichment — `--scorecard` for package health scoring
-- [x] GPU infrastructure coverage — NVIDIA CUDA, AMD ROCm, TensorRT, Triton, vLLM, JAX
-- [x] Runtime MCP traffic monitoring — live tool call analysis, anomaly detection, credential leak detection
+- [x] AI framework package recognition — GPU/ML packages (CUDA, ROCm, vLLM, JAX, etc.) flagged as high-risk in image scans
+- [x] Runtime MCP proxy — opt-in stdio proxy (`agent-bom proxy`) wraps individual MCP server commands for traffic interception; requires per-server client reconfiguration
 - [x] Enterprise integrations — Jira, Slack, Vanta, Drata
 - [x] Runtime sidecar Docker container — `Dockerfile.runtime` + Docker Compose for MCP proxy deployment
 

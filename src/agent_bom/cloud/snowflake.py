@@ -736,7 +736,7 @@ def _mine_access_history(
             "SELECT query_id, user_name, role_name, query_start_time, "
             "       direct_objects_accessed, base_objects_accessed "
             "FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY "
-            f"WHERE query_start_time >= DATEADD(day, -{days}, CURRENT_TIMESTAMP()) "
+            f"WHERE query_start_time >= DATEADD(day, -{days}, CURRENT_TIMESTAMP()) "  # nosec B608 — days is int
             "ORDER BY query_start_time DESC "
             "LIMIT 1000"
         )
@@ -915,7 +915,7 @@ def _mine_cortex_agent_usage(
             "       input_tokens, output_tokens, total_tokens, "
             "       credits_used, model_name, tool_calls, status "
             "FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_AGENT_USAGE_HISTORY "
-            f"WHERE start_time >= DATEADD(day, -{days}, CURRENT_TIMESTAMP()) "
+            f"WHERE start_time >= DATEADD(day, -{days}, CURRENT_TIMESTAMP()) "  # nosec B608 — days is int
             "ORDER BY start_time DESC "
             "LIMIT 2000"
         )

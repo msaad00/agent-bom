@@ -6,6 +6,7 @@ import {
   ComplianceResponse,
   ComplianceControl,
   OWASP_LLM_TOP10,
+  OWASP_MCP_TOP10,
   MITRE_ATLAS,
   NIST_AI_RMF,
   formatDate,
@@ -327,7 +328,7 @@ export default function CompliancePage() {
         </div>
 
         {/* Framework mini-cards */}
-        <div className="grid grid-cols-3 gap-4 mt-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
           <div className="bg-zinc-950 rounded-xl p-4 border border-zinc-800">
             <div className="text-xs text-zinc-500 mb-1">OWASP LLM Top 10</div>
             <div className="flex items-baseline gap-2">
@@ -337,6 +338,17 @@ export default function CompliancePage() {
             <div className="flex gap-2 mt-2 text-xs">
               {s.owasp_fail > 0 && <span className="text-red-400">{s.owasp_fail} fail</span>}
               {s.owasp_warn > 0 && <span className="text-yellow-400">{s.owasp_warn} warn</span>}
+            </div>
+          </div>
+          <div className="bg-zinc-950 rounded-xl p-4 border border-zinc-800">
+            <div className="text-xs text-amber-500/80 mb-1">OWASP MCP Top 10</div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold text-zinc-100">{s.owasp_mcp_pass}</span>
+              <span className="text-sm text-zinc-500">/ 10 pass</span>
+            </div>
+            <div className="flex gap-2 mt-2 text-xs">
+              {s.owasp_mcp_fail > 0 && <span className="text-red-400">{s.owasp_mcp_fail} fail</span>}
+              {s.owasp_mcp_warn > 0 && <span className="text-yellow-400">{s.owasp_mcp_warn} warn</span>}
             </div>
           </div>
           <div className="bg-zinc-950 rounded-xl p-4 border border-zinc-800">
@@ -369,6 +381,7 @@ export default function CompliancePage() {
         <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">Framework Coverage</h2>
         <FrameworkBar label="OWASP LLM Top 10" pass={s.owasp_pass} warn={s.owasp_warn} fail={s.owasp_fail} total={10} />
         <FrameworkBar label="MITRE ATLAS" pass={s.atlas_pass} warn={s.atlas_warn} fail={s.atlas_fail} total={data.mitre_atlas.length} />
+        <FrameworkBar label="OWASP MCP Top 10" pass={s.owasp_mcp_pass} warn={s.owasp_mcp_warn} fail={s.owasp_mcp_fail} total={10} />
         <FrameworkBar label="NIST AI RMF" pass={s.nist_pass} warn={s.nist_warn} fail={s.nist_fail} total={data.nist_ai_rmf.length} />
       </div>
 
@@ -382,6 +395,20 @@ export default function CompliancePage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {data.owasp_llm_top10.map((c) => (
             <ControlCard key={c.code} control={c} catalog={OWASP_LLM_TOP10} />
+          ))}
+        </div>
+      </section>
+
+      {/* ── OWASP MCP Top 10 ─────────────────────────────────────────── */}
+      <section>
+        <div className="flex items-center gap-2 mb-4">
+          <Shield className="w-5 h-5 text-amber-400" />
+          <h2 className="text-lg font-semibold text-zinc-200">OWASP MCP Top 10</h2>
+          <span className="text-xs text-zinc-500 ml-2">MCP Security Risks</span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {data.owasp_mcp_top10.map((c) => (
+            <ControlCard key={c.code} control={c} catalog={OWASP_MCP_TOP10} />
           ))}
         </div>
       </section>

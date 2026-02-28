@@ -240,8 +240,7 @@ class ReplayDetector:
 
         # Evict stale entries when approaching the cap
         if len(self._seen) >= self.max_entries:
-            cutoff = now - self.window_seconds
-            self._seen = {k: v for k, v in self._seen.items() if v > cutoff}
+            self._seen = {k: v for k, v in self._seen.items() if (now - v) < self.window_seconds}
 
         if h in self._seen and (now - self._seen[h]) < self.window_seconds:
             return True

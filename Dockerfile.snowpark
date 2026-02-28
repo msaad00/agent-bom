@@ -1,4 +1,4 @@
-FROM python:3.11-slim@sha256:8f64a67710a42a7c7e57fa67e9e12d9ae36e85d011e3370074b1e0e31ef9b865
+FROM python:3.11-slim@sha256:c8271b1f627d0068857dce5b53e14a9558603b527e46f1f901722f935b786a39
 
 LABEL maintainer="W S <34316639+msaad00@users.noreply.github.com>"
 LABEL description="agent-bom API for Snowpark Container Services"

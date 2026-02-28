@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from typing import Optional
 
@@ -142,6 +143,25 @@ MAX_CONCURRENT_REQUESTS = 10
 BATCH_DELAY_SECONDS = 0.5  # 500ms between OSV batch calls
 _api_semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
+_logger = logging.getLogger(__name__)
+
+# ── Scan cache (optional, lazy-initialised) ────────────────────────────────
+
+_scan_cache_instance = None  # type: ignore[var-annotated]
+
+
+def _get_scan_cache():  # noqa: ANN202
+    """Return the shared ScanCache singleton, or *None* if unavailable."""
+    global _scan_cache_instance  # noqa: PLW0603
+    if _scan_cache_instance is None:
+        try:
+            from agent_bom.scan_cache import ScanCache
+
+            _scan_cache_instance = ScanCache()
+        except Exception:  # noqa: BLE001
+            _scan_cache_instance = False  # mark as attempted, don't retry
+    return _scan_cache_instance if _scan_cache_instance is not False else None
+
 
 # Map CVSS scores to severity
 def cvss_to_severity(score: Optional[float]) -> Severity:
@@ -267,14 +287,39 @@ def parse_fixed_version(vuln_data: dict, package_name: str) -> Optional[str]:
 
 
 async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
-    """Query OSV API for vulnerabilities in batch."""
+    """Query OSV API for vulnerabilities in batch.
+
+    Uses an optional SQLite cache (``ScanCache``) to skip packages that were
+    already queried within the last 24 hours.
+    """
     if not packages:
         return {}
+
+    cache = _get_scan_cache()
+    results: dict[str, list[dict]] = {}
+    packages_to_query: list[Package] = []
+
+    # Check cache first
+    for pkg in packages:
+        osv_ecosystem = ECOSYSTEM_MAP.get(pkg.ecosystem)
+        if not osv_ecosystem or pkg.version in ("unknown", "latest"):
+            continue
+        if cache:
+            cached = cache.get(pkg.ecosystem, pkg.name, pkg.version)
+            if cached is not None:
+                if cached:  # non-empty vuln list
+                    key = f"{pkg.ecosystem}:{pkg.name}@{pkg.version}"
+                    results[key] = cached
+                continue  # skip API call (cached hit or cached "clean")
+        packages_to_query.append(pkg)
+
+    if not packages_to_query:
+        return results
 
     queries = []
     pkg_index = {}  # Map query index to package
 
-    for i, pkg in enumerate(packages):
+    for pkg in packages_to_query:
         osv_ecosystem = ECOSYSTEM_MAP.get(pkg.ecosystem)
         if not osv_ecosystem or pkg.version in ("unknown", "latest"):
             continue
@@ -291,9 +336,10 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
         pkg_index[len(queries) - 1] = pkg
 
     if not queries:
-        return {}
+        return results
 
-    results = {}
+    # Track which queried packages got vulns (to cache "clean" results too)
+    queried_keys_with_vulns: set[str] = set()
 
     # OSV batch API accepts up to 1000 queries; rate-limited with retries
     batch_size = 1000
@@ -320,6 +366,7 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
                                 if pkg:
                                     key = f"{pkg.ecosystem}:{pkg.name}@{pkg.version}"
                                     results[key] = vulns
+                                    queried_keys_with_vulns.add(key)
                     except (ValueError, KeyError) as e:
                         console.print(f"  [red]✗[/red] OSV response parse error: {e}")
                 elif response:
@@ -330,6 +377,15 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
             # Rate limit: delay between batches
             if batch_start + batch_size < len(queries):
                 await asyncio.sleep(BATCH_DELAY_SECONDS)
+
+    # Populate cache with fresh results (including "clean" packages)
+    if cache:
+        for pkg in packages_to_query:
+            key = f"{pkg.ecosystem}:{pkg.name}@{pkg.version}"
+            if key in queried_keys_with_vulns:
+                cache.put(pkg.ecosystem, pkg.name, pkg.version, results[key])
+            else:
+                cache.put(pkg.ecosystem, pkg.name, pkg.version, [])
 
     return results
 
@@ -628,12 +684,31 @@ async def scan_agents_with_enrichment(
                 enable_kev=True,
             )
 
-            # Recalculate blast radius with enriched data
-            for br in blast_radii:
-                br.calculate_risk_score()
+        # Scorecard enrichment — adds supply-chain quality signal
+        try:
+            from agent_bom.scorecard import enrich_packages_with_scorecard
 
-            # Re-sort by updated risk scores
-            blast_radii.sort(key=lambda br: br.risk_score, reverse=True)
+            # Deduplicate packages across all agents
+            seen_keys: set[str] = set()
+            unique_pkgs: list[Package] = []
+            for agent in agents:
+                for server in agent.mcp_servers:
+                    for pkg in server.packages:
+                        pk = f"{pkg.ecosystem}:{pkg.name}@{pkg.version}"
+                        if pk not in seen_keys:
+                            seen_keys.add(pk)
+                            unique_pkgs.append(pkg)
+            if unique_pkgs:
+                await enrich_packages_with_scorecard(unique_pkgs)
+        except Exception as exc:  # noqa: BLE001
+            _logger.debug("Scorecard auto-enrichment skipped: %s", exc)
+
+        # Recalculate blast radius with all enriched data
+        for br in blast_radii:
+            br.calculate_risk_score()
+
+        # Re-sort by updated risk scores
+        blast_radii.sort(key=lambda br: br.risk_score, reverse=True)
 
     return blast_radii
 

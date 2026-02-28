@@ -1,0 +1,175 @@
+{
+  "agents": [
+    {
+      "name": "orchestrator-agent",
+      "agent_type": "custom",
+      "source": "agent-mesh-example",
+      "mcp_servers": [
+        {
+          "name": "gateway-server",
+          "command": "npx @mesh/gateway-mcp",
+          "transport": "stdio",
+          "packages": [
+            {"name": "express", "version": "4.17.1", "ecosystem": "npm"},
+            {"name": "jsonwebtoken", "version": "8.5.1", "ecosystem": "npm"},
+            {"name": "helmet", "version": "7.1.0", "ecosystem": "npm"}
+          ],
+          "env": {"GATEWAY_API_KEY": "***", "JWT_SECRET": "***"},
+          "tools": [
+            {"name": "route_request"},
+            {"name": "aggregate_results"},
+            {"name": "health_check"},
+            {"name": "rate_limit"}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "data-worker-agent",
+      "agent_type": "custom",
+      "source": "agent-mesh-example",
+      "mcp_servers": [
+        {
+          "name": "postgres-mcp",
+          "command": "npx @mesh/postgres-mcp",
+          "transport": "stdio",
+          "packages": [
+            {"name": "pg", "version": "8.11.0", "ecosystem": "npm"},
+            {"name": "knex", "version": "2.5.1", "ecosystem": "npm"},
+            {"name": "lodash", "version": "4.17.20", "ecosystem": "npm"}
+          ],
+          "env": {"DATABASE_URL": "***", "DB_PASSWORD": "***"},
+          "tools": [
+            {"name": "query_database"},
+            {"name": "insert_record"},
+            {"name": "update_record"},
+            {"name": "run_migration"}
+          ]
+        },
+        {
+          "name": "redis-mcp",
+          "command": "python -m redis_mcp_server",
+          "transport": "stdio",
+          "packages": [
+            {"name": "redis", "version": "4.5.4", "ecosystem": "pypi"},
+            {"name": "hiredis", "version": "2.2.3", "ecosystem": "pypi"},
+            {"name": "pydantic", "version": "1.10.7", "ecosystem": "pypi"}
+          ],
+          "env": {"REDIS_URL": "***", "REDIS_PASSWORD": "***"},
+          "tools": [
+            {"name": "cache_get"},
+            {"name": "cache_set"},
+            {"name": "cache_invalidate"},
+            {"name": "publish_event"}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "search-worker-agent",
+      "agent_type": "custom",
+      "source": "agent-mesh-example",
+      "mcp_servers": [
+        {
+          "name": "web-search-mcp",
+          "command": "npx @anthropic/web-search-mcp",
+          "transport": "stdio",
+          "packages": [
+            {"name": "node-fetch", "version": "2.6.1", "ecosystem": "npm"},
+            {"name": "cheerio", "version": "1.0.0-rc.12", "ecosystem": "npm"},
+            {"name": "axios", "version": "1.4.0", "ecosystem": "npm"}
+          ],
+          "env": {"SEARCH_API_KEY": "***"},
+          "tools": [
+            {"name": "web_search"},
+            {"name": "fetch_page"},
+            {"name": "extract_content"}
+          ]
+        },
+        {
+          "name": "vector-db-mcp",
+          "command": "python -m chromadb_mcp",
+          "transport": "stdio",
+          "packages": [
+            {"name": "chromadb", "version": "0.4.22", "ecosystem": "pypi"},
+            {"name": "sentence-transformers", "version": "2.2.2", "ecosystem": "pypi"},
+            {"name": "numpy", "version": "1.24.3", "ecosystem": "pypi"},
+            {"name": "requests", "version": "2.28.0", "ecosystem": "pypi"}
+          ],
+          "env": {"CHROMA_HOST": "***", "EMBEDDING_API_KEY": "***"},
+          "tools": [
+            {"name": "semantic_search"},
+            {"name": "index_document"},
+            {"name": "delete_collection"}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "monitor-agent",
+      "agent_type": "custom",
+      "source": "agent-mesh-example",
+      "mcp_servers": [
+        {
+          "name": "prometheus-mcp",
+          "command": "python -m prometheus_mcp",
+          "transport": "stdio",
+          "packages": [
+            {"name": "prometheus-client", "version": "0.17.1", "ecosystem": "pypi"},
+            {"name": "flask", "version": "2.2.0", "ecosystem": "pypi"},
+            {"name": "werkzeug", "version": "2.2.2", "ecosystem": "pypi"},
+            {"name": "aiohttp", "version": "3.8.4", "ecosystem": "pypi"}
+          ],
+          "env": {"PROMETHEUS_URL": "***", "ALERTMANAGER_TOKEN": "***"},
+          "tools": [
+            {"name": "query_metrics"},
+            {"name": "list_alerts"},
+            {"name": "create_alert_rule"},
+            {"name": "get_targets"}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "deployer-agent",
+      "agent_type": "custom",
+      "source": "agent-mesh-example",
+      "mcp_servers": [
+        {
+          "name": "github-mcp",
+          "command": "npx @modelcontextprotocol/server-github",
+          "transport": "stdio",
+          "packages": [
+            {"name": "@octokit/rest", "version": "19.0.13", "ecosystem": "npm"},
+            {"name": "semver", "version": "7.5.2", "ecosystem": "npm"},
+            {"name": "minimatch", "version": "3.0.4", "ecosystem": "npm"}
+          ],
+          "env": {"GITHUB_TOKEN": "***"},
+          "tools": [
+            {"name": "create_pull_request"},
+            {"name": "merge_branch"},
+            {"name": "list_workflows"},
+            {"name": "trigger_deployment"}
+          ]
+        },
+        {
+          "name": "docker-mcp",
+          "command": "python -m docker_mcp_server",
+          "transport": "stdio",
+          "packages": [
+            {"name": "docker", "version": "6.1.3", "ecosystem": "pypi"},
+            {"name": "cryptography", "version": "39.0.0", "ecosystem": "pypi"},
+            {"name": "paramiko", "version": "3.2.0", "ecosystem": "pypi"}
+          ],
+          "env": {"DOCKER_HOST": "***", "REGISTRY_TOKEN": "***"},
+          "tools": [
+            {"name": "build_image"},
+            {"name": "push_image"},
+            {"name": "deploy_container"},
+            {"name": "rollback_deployment"}
+          ]
+        }
+      ]
+    }
+  ]
+}

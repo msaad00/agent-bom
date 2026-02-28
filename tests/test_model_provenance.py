@@ -7,14 +7,11 @@ import urllib.error
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from agent_bom.model_files import (
     check_huggingface_provenance,
     check_sigstore_signature,
     verify_model_hash,
 )
-
 
 # ── verify_model_hash ───────────────────────────────────────────
 
@@ -36,6 +33,7 @@ class TestVerifyModelHash:
         model.write_bytes(content)
         # Compute expected
         import hashlib
+
         expected = hashlib.sha256(content).hexdigest()
         result = verify_model_hash(model, expected_sha256=expected)
         assert result["match"] is True
@@ -61,6 +59,7 @@ class TestVerifyModelHash:
         content = b"onnx data"
         model.write_bytes(content)
         import hashlib
+
         expected = hashlib.sha256(content).hexdigest().upper()
         result = verify_model_hash(model, expected_sha256=expected)
         assert result["match"] is True
@@ -127,16 +126,18 @@ class TestCheckHuggingFaceProvenance:
 
     @patch("agent_bom.model_files.urllib.request.urlopen")
     def test_success_full_metadata(self, mock_urlopen):
-        mock_urlopen.return_value = self._mock_response({
-            "author": "meta-llama",
-            "cardData": {"license": "llama3.1"},
-            "gated": True,
-            "downloads": 500000,
-            "tags": ["text-generation", "llama"],
-            "siblings": [
-                {"rfilename": "model.safetensors", "lfs": {"sha256": "abc123"}},
-            ],
-        })
+        mock_urlopen.return_value = self._mock_response(
+            {
+                "author": "meta-llama",
+                "cardData": {"license": "llama3.1"},
+                "gated": True,
+                "downloads": 500000,
+                "tags": ["text-generation", "llama"],
+                "siblings": [
+                    {"rfilename": "model.safetensors", "lfs": {"sha256": "abc123"}},
+                ],
+            }
+        )
         result = check_huggingface_provenance("meta-llama/Llama-3.1-8B")
         assert result["author"] == "meta-llama"
         assert result["license"] == "llama3.1"
@@ -148,13 +149,15 @@ class TestCheckHuggingFaceProvenance:
 
     @patch("agent_bom.model_files.urllib.request.urlopen")
     def test_no_model_card_flags(self, mock_urlopen):
-        mock_urlopen.return_value = self._mock_response({
-            "author": "someone",
-            "gated": False,
-            "downloads": 10,
-            "tags": [],
-            "siblings": [],
-        })
+        mock_urlopen.return_value = self._mock_response(
+            {
+                "author": "someone",
+                "gated": False,
+                "downloads": 10,
+                "tags": [],
+                "siblings": [],
+            }
+        )
         result = check_huggingface_provenance("someone/model")
         assert result["has_model_card"] is False
         flag_types = [f["type"] for f in result["security_flags"]]
@@ -162,13 +165,15 @@ class TestCheckHuggingFaceProvenance:
 
     @patch("agent_bom.model_files.urllib.request.urlopen")
     def test_no_author_flags(self, mock_urlopen):
-        mock_urlopen.return_value = self._mock_response({
-            "cardData": {"license": "mit"},
-            "gated": False,
-            "downloads": 5,
-            "tags": [],
-            "siblings": [],
-        })
+        mock_urlopen.return_value = self._mock_response(
+            {
+                "cardData": {"license": "mit"},
+                "gated": False,
+                "downloads": 5,
+                "tags": [],
+                "siblings": [],
+            }
+        )
         result = check_huggingface_provenance("unknown/model")
         assert result["author"] is None
         flag_types = [f["type"] for f in result["security_flags"]]
@@ -210,16 +215,18 @@ class TestCheckHuggingFaceProvenance:
 
     @patch("agent_bom.model_files.urllib.request.urlopen")
     def test_sha256_not_available(self, mock_urlopen):
-        mock_urlopen.return_value = self._mock_response({
-            "author": "test",
-            "cardData": {"license": "mit"},
-            "gated": False,
-            "downloads": 100,
-            "tags": [],
-            "siblings": [
-                {"rfilename": "model.bin"},  # no lfs sha256
-            ],
-        })
+        mock_urlopen.return_value = self._mock_response(
+            {
+                "author": "test",
+                "cardData": {"license": "mit"},
+                "gated": False,
+                "downloads": 100,
+                "tags": [],
+                "siblings": [
+                    {"rfilename": "model.bin"},  # no lfs sha256
+                ],
+            }
+        )
         result = check_huggingface_provenance("test/model")
         assert result["sha256_available"] is False
 
@@ -270,14 +277,18 @@ class TestScanWithProvenance:
 class TestCLIFlags:
     def test_model_provenance_in_help(self):
         from click.testing import CliRunner
+
         from agent_bom.cli import scan
+
         runner = CliRunner()
         result = runner.invoke(scan, ["--help"])
         assert "--model-provenance" in result.output
 
     def test_hf_model_in_help(self):
         from click.testing import CliRunner
+
         from agent_bom.cli import scan
+
         runner = CliRunner()
         result = runner.invoke(scan, ["--help"])
         assert "--hf-model" in result.output

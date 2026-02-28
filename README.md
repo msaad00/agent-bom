@@ -236,16 +236,18 @@ agent-bom scan --k8s --context=coreweave-cluster   # CoreWeave / any K8s
 <details>
 <summary><b>Cloud provider details</b></summary>
 
-| Provider | What's discovered | Install |
-|----------|------------------|---------|
-| **AWS** | Bedrock agents, Lambda, EKS, Step Functions, EC2, ECS | `pip install 'agent-bom[aws]'` |
-| **Snowflake** | Cortex Agents, native MCP Servers, Search, Snowpark, Streamlit, query history | `pip install 'agent-bom[snowflake]'` |
-| **Databricks** | Cluster packages, model serving endpoints | `pip install 'agent-bom[databricks]'` |
-| **Azure** | AI Foundry agents, Container Apps | `pip install 'agent-bom[azure]'` |
-| **GCP** | Vertex AI endpoints, Cloud Run | `pip install 'agent-bom[gcp]'` |
-| **Nebius** | Managed K8s, container services | `pip install 'agent-bom[nebius]'` |
-| **CoreWeave** | K8s-native — `--k8s --context=coreweave-cluster` | (core CLI) |
-| **Ollama** | Local model inventory via API + manifests | (core CLI) |
+| Provider | Depth | What's discovered | Install |
+|----------|-------|------------------|---------|
+| **Snowflake** | **Deep** | Cortex Agents, native MCP Servers, Search, Snowpark, Streamlit, query history, governance, activity, observability | `pip install 'agent-bom[snowflake]'` |
+| **AWS** | **Standard** | Bedrock agents, Lambda package extraction, EKS, ECS, Step Functions, EC2, SageMaker | `pip install 'agent-bom[aws]'` |
+| **Databricks** | Preview | Cluster packages, model serving endpoints | `pip install 'agent-bom[databricks]'` |
+| **Azure** | **Standard** | OpenAI deployments, Functions, Container Instances, ML endpoints, AI Foundry workspaces, Container Apps | `pip install 'agent-bom[azure]'` |
+| **GCP** | **Standard** | Vertex AI endpoints, Cloud Functions, GKE, Cloud Run | `pip install 'agent-bom[gcp]'` |
+| **Nebius** | Preview | Managed K8s, container services | `pip install 'agent-bom[nebius]'` |
+| **CoreWeave** | Via K8s | K8s-native — `--k8s --context=coreweave-cluster` | (core CLI) |
+| **Ollama** | Standard | Local model inventory via API + manifests | (core CLI) |
+
+> **Snowflake** is the deepest integration — includes governance audit (access history, privilege grants, data classification), agent activity timeline, and Cortex observability. Other providers have functional discovery at varying depth. PRs welcome.
 
 </details>
 

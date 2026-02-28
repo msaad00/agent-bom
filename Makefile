@@ -1,4 +1,4 @@
-.PHONY: help install test lint docker-build docker-run scan clean
+.PHONY: help install test lint docker-build docker-run scan clean build-ui
 
 help:  ## Show this help message
 	@echo 'Usage: make [target]'
@@ -43,6 +43,9 @@ docker-compose-up:  ## Start Docker Compose services
 
 docker-compose-down:  ## Stop Docker Compose services
 	docker-compose down -v
+
+build-ui:  ## Build Next.js dashboard and bundle into package
+	bash scripts/build-ui.sh
 
 clean:  ## Clean build artifacts
 	rm -rf build/ dist/ *.egg-info

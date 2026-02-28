@@ -11,12 +11,11 @@ from agent_bom.discovery import (
     PROJECT_CONFIG_FILES,
     get_all_discovery_paths,
     parse_codex_config,
+    parse_cortex_code_metadata,
     parse_goose_config,
     parse_snowflake_connections,
-    parse_cortex_code_metadata,
 )
 from agent_bom.models import AgentType, TransportType
-
 
 # ── 1. AgentType enum existence ────────────────────────────────────────────
 
@@ -456,10 +455,12 @@ def test_parse_cortex_hooks(tmp_path):
     """Cortex Code hooks.json parsed as metadata."""
     hooks = {
         "hooks": {
-            "PreToolUse": [{
-                "matcher": "Bash",
-                "hooks": [{"type": "command", "command": "validate.sh"}],
-            }]
+            "PreToolUse": [
+                {
+                    "matcher": "Bash",
+                    "hooks": [{"type": "command", "command": "validate.sh"}],
+                }
+            ]
         }
     }
     hooks_file = tmp_path / "hooks.json"
@@ -514,6 +515,7 @@ def test_total_agent_types_is_18():
 def test_detect_cortex_binary(monkeypatch):
     """Cortex binary on PATH detected as installed-not-configured."""
     import shutil
+
     from agent_bom.discovery import detect_installed_agents
 
     monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/local/bin/cortex" if cmd == "cortex" else None)
@@ -526,6 +528,7 @@ def test_detect_cortex_binary(monkeypatch):
 def test_detect_codex_binary(monkeypatch):
     """Codex binary on PATH detected as installed-not-configured."""
     import shutil
+
     from agent_bom.discovery import detect_installed_agents
 
     monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/local/bin/codex" if cmd == "codex" else None)
@@ -538,6 +541,7 @@ def test_detect_codex_binary(monkeypatch):
 def test_detect_goose_binary(monkeypatch):
     """Goose binary on PATH detected as installed-not-configured."""
     import shutil
+
     from agent_bom.discovery import detect_installed_agents
 
     monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/local/bin/goose" if cmd == "goose" else None)
@@ -550,6 +554,7 @@ def test_detect_goose_binary(monkeypatch):
 def test_detect_snow_binary(monkeypatch):
     """snow binary on PATH detected as installed-not-configured."""
     import shutil
+
     from agent_bom.discovery import detect_installed_agents
 
     monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/local/bin/snow" if cmd == "snow" else None)

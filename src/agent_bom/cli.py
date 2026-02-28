@@ -346,6 +346,7 @@ def main():
     default=None,
     help="Scan preset: ci (quiet, json, fail-on-critical), enterprise (enrich, introspect, transitive, verify-integrity), quick (no transitive, no enrich)",
 )
+@click.option("--demo", is_flag=True, default=False, help="Run a demo scan with bundled inventory containing known-vulnerable packages.")
 def scan(
     project: Optional[str],
     config_dir: Optional[str],
@@ -446,6 +447,7 @@ def scan(
     no_color: bool,
     preset: Optional[str],
     open_report: bool,
+    demo: bool,
 ):
     """Discover agents, extract dependencies, scan for vulnerabilities.
 
@@ -478,6 +480,20 @@ def scan(
         transitive = False
         enrich = False
 
+    # ── Demo mode: load bundled inventory with known-vulnerable packages ──
+    if demo:
+        import json as _json
+        import os as _os
+        import tempfile as _tempfile
+
+        from agent_bom.demo import DEMO_INVENTORY
+
+        _demo_fd, _demo_path = _tempfile.mkstemp(suffix=".json", prefix="agent-bom-demo-")
+        with _os.fdopen(_demo_fd, "w") as _df:
+            _json.dump(DEMO_INVENTORY, _df)
+        inventory = _demo_path
+        enrich = True
+
     # Mutual exclusivity: --no-skill and --skill-only cannot be used together
     if no_skill and skill_only:
         click.echo("Error: --no-skill and --skill-only are mutually exclusive.", err=True)
@@ -493,6 +509,9 @@ def scan(
     _out.console = con
 
     con.print(BANNER, style="bold blue")
+
+    if demo:
+        con.print("\n[bold yellow]Demo mode[/bold yellow] — scanning bundled inventory with known-vulnerable packages.\n")
 
     # ── Dry-run: show access plan without scanning ────────────────────────────
     if dry_run:
@@ -2655,9 +2674,13 @@ def serve_cmd(host: str, port: int, persist: Optional[str], cors_allow_all: bool
     if cors_allow_all:
         _os.environ["AGENT_BOM_CORS_ALL"] = "1"
 
+    _ui_dist = Path(__file__).parent / "ui_dist"
     click.echo(f"\n  API server  →  http://{host}:{port}")
     click.echo(f"  API docs    →  http://{host}:{port}/docs")
-    click.echo("  Dashboard   →  http://localhost:3000  (run: cd ui && npm run dev)")
+    if (_ui_dist / "index.html").exists():
+        click.echo(f"  Dashboard   →  http://{host}:{port}")
+    else:
+        click.echo("  Dashboard   →  not bundled (run: make build-ui)")
     click.echo("  Press Ctrl+C to stop.\n")
 
     import uvicorn as _uvicorn

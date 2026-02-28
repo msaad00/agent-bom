@@ -2024,3 +2024,87 @@ async def activity_timeline(days: int = 30):
         return timeline.to_dict()
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/v1/agents/mesh", tags=["discovery"])
+async def get_agent_mesh() -> dict:
+    """Get a ReactFlow-compatible mesh topology of all discovered agents.
+
+    Shows agents, their MCP servers, tools, and vulnerability overlay
+    as an interactive graph.
+    """
+    try:
+        from dataclasses import asdict
+
+        from agent_bom.discovery import discover_all
+        from agent_bom.output.agent_mesh import build_agent_mesh
+        from agent_bom.parsers import extract_packages
+
+        agents = discover_all()
+        for agent in agents:
+            for server in agent.mcp_servers:
+                if not server.packages:
+                    server.packages = extract_packages(server)
+
+        agents_data = [asdict(a) for a in agents]
+
+        # Gather blast radius from completed scans for vuln overlay
+        all_blast: list[dict] = []
+        for job in _get_store().list_all():
+            if job.status == JobStatus.DONE and job.result:
+                all_blast.extend(job.result.get("blast_radius", []))
+
+        return build_agent_mesh(agents_data, all_blast)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+# ── Dashboard static file serving ────────────────────────────────────────────
+# Must be registered LAST so API routes take precedence.
+
+
+def _mount_dashboard(application: FastAPI) -> None:
+    """Mount pre-built Next.js dashboard if ui_dist/ exists in the package."""
+    from pathlib import Path as _DashPath  # noqa: N814
+
+    ui_dist = _DashPath(__file__).parent / "ui_dist"
+    if not ui_dist.is_dir() or not (ui_dist / "index.html").exists():
+        return
+
+    from starlette.responses import FileResponse
+    from starlette.staticfiles import StaticFiles
+
+    # Hashed JS/CSS assets
+    next_static = ui_dist / "_next"
+    if next_static.is_dir():
+        application.mount("/_next", StaticFiles(directory=str(next_static)), name="next-static")
+
+    # Override root to serve dashboard instead of redirect to /docs
+    @application.get("/", include_in_schema=False)
+    async def _dashboard_root():
+        return FileResponse(str(ui_dist / "index.html"))
+
+    # Pre-build a whitelist of static files at startup so the catch-all
+    # handler never constructs filesystem paths from user input.
+    _static_file_map: dict[str, str] = {}
+    for _f in ui_dist.rglob("*"):
+        if _f.is_file() and not str(_f.relative_to(ui_dist)).startswith("_next"):
+            _static_file_map[str(_f.relative_to(ui_dist))] = str(_f.resolve())
+    _index_html = str((ui_dist / "index.html").resolve())
+
+    # SPA catch-all for client-side routing
+    @application.get("/{path:path}", include_in_schema=False)
+    async def _spa_catch_all(path: str):
+        # Skip API and docs paths
+        if path.startswith(("v1/", "docs", "redoc", "openapi.json", "health", "version")):
+            raise HTTPException(status_code=404)
+        # Look up the pre-resolved path — user input is only a dict key,
+        # never used in any filesystem operation (no path-injection risk).
+        resolved = _static_file_map.get(path)
+        if resolved:
+            return FileResponse(resolved)
+        # SPA fallback — serve index.html for client-side routing
+        return FileResponse(_index_html)
+
+
+_mount_dashboard(app)

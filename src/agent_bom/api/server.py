@@ -2026,6 +2026,39 @@ async def activity_timeline(days: int = 30):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+@app.get("/v1/agents/mesh", tags=["discovery"])
+async def get_agent_mesh() -> dict:
+    """Get a ReactFlow-compatible mesh topology of all discovered agents.
+
+    Shows agents, their MCP servers, tools, and vulnerability overlay
+    as an interactive graph.
+    """
+    try:
+        from dataclasses import asdict
+
+        from agent_bom.discovery import discover_all
+        from agent_bom.output.agent_mesh import build_agent_mesh
+        from agent_bom.parsers import extract_packages
+
+        agents = discover_all()
+        for agent in agents:
+            for server in agent.mcp_servers:
+                if not server.packages:
+                    server.packages = extract_packages(server)
+
+        agents_data = [asdict(a) for a in agents]
+
+        # Gather blast radius from completed scans for vuln overlay
+        all_blast: list[dict] = []
+        for job in _get_store().list_all():
+            if job.status == JobStatus.DONE and job.result:
+                all_blast.extend(job.result.get("blast_radius", []))
+
+        return build_agent_mesh(agents_data, all_blast)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 # ── Dashboard static file serving ────────────────────────────────────────────
 # Must be registered LAST so API routes take precedence.
 
@@ -2057,9 +2090,19 @@ def _mount_dashboard(application: FastAPI) -> None:
         # Skip API and docs paths
         if path.startswith(("v1/", "docs", "redoc", "openapi.json", "health", "version")):
             raise HTTPException(status_code=404)
-        file_path = ui_dist / path
-        if file_path.is_file() and ui_dist in file_path.resolve().parents:
-            return FileResponse(str(file_path))
+        # Reject path traversal attempts before any filesystem access
+        if ".." in path or path.startswith("/"):
+            raise HTTPException(status_code=400)
+        # Resolve both paths to absolute and verify containment via string prefix
+        ui_root = str(ui_dist.resolve())
+        candidate = str((ui_dist / path).resolve())
+        if not candidate.startswith(ui_root):
+            raise HTTPException(status_code=400)
+        from pathlib import Path as _FPath
+
+        resolved = _FPath(candidate)
+        if resolved.is_file():
+            return FileResponse(candidate)
         # SPA fallback — serve index.html for client-side routing
         return FileResponse(str(ui_dist / "index.html"))
 

@@ -1,11 +1,11 @@
 # ── Stage 1: Install dependencies ─────────────────────────────────────────────
-FROM node:20-slim AS deps
+FROM node:20-slim@sha256:2d07db07a2df6830718ae2a47db6fedce6745f5bcd174c398f2acdda90a11c03 AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci --ignore-scripts
 
 # ── Stage 2: Build ────────────────────────────────────────────────────────────
-FROM node:20-slim AS builder
+FROM node:20-slim@sha256:2d07db07a2df6830718ae2a47db6fedce6745f5bcd174c398f2acdda90a11c03 AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -17,7 +17,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # ── Stage 3: Run ──────────────────────────────────────────────────────────────
-FROM node:20-slim AS runner
+FROM node:20-slim@sha256:2d07db07a2df6830718ae2a47db6fedce6745f5bcd174c398f2acdda90a11c03 AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production

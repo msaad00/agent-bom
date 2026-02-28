@@ -25,6 +25,7 @@ from agent_bom.models import (
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
+
 def _install_mock_boto3():
     """Install a mock boto3/botocore in sys.modules so we can patch it.
 
@@ -126,12 +127,14 @@ def test_aws_missing_boto3():
     """Helpful error when boto3 is not installed."""
     with patch.dict(sys.modules, {"boto3": None, "botocore": None, "botocore.exceptions": None}):
         import agent_bom.cloud.aws as aws_mod
+
         try:
             importlib.reload(aws_mod)
         except Exception:
             pass
         with pytest.raises(CloudDiscoveryError, match="boto3 is required"):
             from agent_bom.cloud.aws import discover
+
             discover()
 
 
@@ -144,9 +147,7 @@ def test_aws_bedrock_agents_discovered():
 
     mock_paginator = MagicMock()
     mock_paginator.paginate.return_value = [
-        {"agentSummaries": [
-            {"agentId": "ABC123", "agentName": "prod-agent", "agentStatus": "PREPARED"}
-        ]}
+        {"agentSummaries": [{"agentId": "ABC123", "agentName": "prod-agent", "agentStatus": "PREPARED"}]}
     ]
     mock_ag_paginator = MagicMock()
     mock_ag_paginator.paginate.return_value = [{"actionGroupSummaries": []}]
@@ -157,9 +158,11 @@ def test_aws_bedrock_agents_discovered():
     }[op]
     mock_bedrock.get_agent.return_value = {
         "agent": {
-            "agentId": "ABC123", "agentName": "prod-agent",
+            "agentId": "ABC123",
+            "agentName": "prod-agent",
             "agentArn": "arn:aws:bedrock:us-east-1:123456:agent/ABC123",
-            "foundationModel": "anthropic.claude-3-sonnet", "agentStatus": "PREPARED",
+            "foundationModel": "anthropic.claude-3-sonnet",
+            "agentStatus": "PREPARED",
         }
     }
 
@@ -171,6 +174,7 @@ def test_aws_bedrock_agents_discovered():
     with patch("boto3.Session", return_value=mock_session):
         importlib.reload(importlib.import_module("agent_bom.cloud.aws"))
         from agent_bom.cloud.aws import discover
+
         agents, warnings = discover(region="us-east-1")
 
     assert len(agents) >= 1
@@ -196,6 +200,7 @@ def test_aws_no_credentials_returns_warning():
     with patch("boto3.Session", return_value=mock_session):
         importlib.reload(importlib.import_module("agent_bom.cloud.aws"))
         from agent_bom.cloud.aws import discover
+
         agents, warnings = discover()
 
     assert agents == []
@@ -211,7 +216,8 @@ def test_aws_access_denied_returns_warning():
     mock_bedrock = MagicMock()
     mock_paginator = MagicMock()
     mock_paginator.paginate.side_effect = botocore_exc.ClientError(
-        {"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "ListAgents",
+        {"Error": {"Code": "AccessDeniedException", "Message": "denied"}},
+        "ListAgents",
     )
     mock_bedrock.get_paginator.return_value = mock_paginator
     mock_ecs = MagicMock()
@@ -221,6 +227,7 @@ def test_aws_access_denied_returns_warning():
     with patch("boto3.Session", return_value=mock_session):
         importlib.reload(importlib.import_module("agent_bom.cloud.aws"))
         from agent_bom.cloud.aws import discover
+
         agents, warnings = discover()
 
     assert any("access denied" in w.lower() or "bedrockagentreadonly" in w.lower() for w in warnings)
@@ -248,6 +255,7 @@ def test_aws_ecs_images_collected():
     with patch("boto3.Session", return_value=mock_session):
         importlib.reload(importlib.import_module("agent_bom.cloud.aws"))
         from agent_bom.cloud.aws import discover
+
         agents, warnings = discover(region="us-east-1")
 
     ecs_agents = [a for a in agents if a.source == "aws-ecs"]
@@ -263,6 +271,7 @@ def test_databricks_missing_sdk():
     with patch.dict(sys.modules, {"databricks": None, "databricks.sdk": None, "databricks.sdk.errors": None}):
         with pytest.raises(CloudDiscoveryError, match="databricks-sdk is required"):
             import agent_bom.cloud.databricks as db_mod
+
             importlib.reload(db_mod)
             db_mod.discover()
 
@@ -294,6 +303,7 @@ def test_databricks_cluster_packages():
     with patch("databricks.sdk.WorkspaceClient", return_value=mock_ws):
         importlib.reload(importlib.import_module("agent_bom.cloud.databricks"))
         from agent_bom.cloud.databricks import discover
+
         agents, warnings = discover(host="https://my.databricks.com", token="fake")
 
     assert len(agents) == 1
@@ -341,6 +351,7 @@ def test_snowflake_missing_connector():
     with patch.dict(sys.modules, {"snowflake": None, "snowflake.connector": None, "snowflake.connector.errors": None}):
         with pytest.raises(CloudDiscoveryError, match="snowflake-connector-python is required"):
             import agent_bom.cloud.snowflake as sf_mod
+
             importlib.reload(sf_mod)
             sf_mod.discover()
 
@@ -362,6 +373,7 @@ def test_snowflake_cortex_agents():
     with patch.object(mock_sf, "connect", return_value=mock_conn):
         importlib.reload(importlib.import_module("agent_bom.cloud.snowflake"))
         from agent_bom.cloud.snowflake import discover
+
         agents, warnings = discover(account="myorg.us-east-1", user="test_user")
 
     cortex_agents = [a for a in agents if a.source == "snowflake-cortex"]
@@ -403,19 +415,27 @@ def _make_sample_report():
     vuln = Vulnerability(id="CVE-2024-1234", summary="Test vuln", severity=Severity.HIGH)
     pkg = Package(name="express", version="4.18.0", ecosystem="npm", vulnerabilities=[vuln])
     server = MCPServer(
-        name="api-server", command="npx", packages=[pkg],
+        name="api-server",
+        command="npx",
+        packages=[pkg],
         env={"API_KEY": "***REDACTED***"},
     )
     agent = Agent(
-        name="test-agent", agent_type=AgentType.CUSTOM,
+        name="test-agent",
+        agent_type=AgentType.CUSTOM,
         config_path="arn:aws:bedrock:us-east-1:123:agent/ABC",
-        source="aws-bedrock", mcp_servers=[server],
+        source="aws-bedrock",
+        mcp_servers=[server],
     )
     report = AIBOMReport(agents=[agent])
     br = BlastRadius(
-        vulnerability=vuln, package=pkg,
-        affected_servers=[server], affected_agents=[agent],
-        exposed_credentials=["API_KEY"], exposed_tools=[], risk_score=7.5,
+        vulnerability=vuln,
+        package=pkg,
+        affected_servers=[server],
+        affected_agents=[agent],
+        exposed_credentials=["API_KEY"],
+        exposed_tools=[],
+        risk_score=7.5,
     )
     return report, [br]
 
@@ -423,6 +443,7 @@ def _make_sample_report():
 def test_graph_elements_include_provider_nodes():
     """Cloud-sourced agents get a provider parent node."""
     from agent_bom.output.graph import build_graph_elements
+
     report, blast_radii = _make_sample_report()
     elements = build_graph_elements(report, blast_radii)
     provider_nodes = [e for e in elements if e.get("data", {}).get("type") == "provider"]
@@ -433,6 +454,7 @@ def test_graph_elements_include_provider_nodes():
 def test_graph_cve_nodes():
     """Blast radii produce CVE leaf nodes connected to packages."""
     from agent_bom.output.graph import build_graph_elements
+
     report, blast_radii = _make_sample_report()
     elements = build_graph_elements(report, blast_radii, include_cve_nodes=True)
     cve_nodes = [e for e in elements if "cve:" in e.get("data", {}).get("id", "")]
@@ -445,6 +467,7 @@ def test_graph_cve_nodes():
 def test_graph_no_cve_nodes_when_disabled():
     """CVE nodes can be excluded."""
     from agent_bom.output.graph import build_graph_elements
+
     report, blast_radii = _make_sample_report()
     elements = build_graph_elements(report, blast_radii, include_cve_nodes=False)
     cve_nodes = [e for e in elements if "cve:" in e.get("data", {}).get("id", "")]
@@ -454,6 +477,7 @@ def test_graph_no_cve_nodes_when_disabled():
 def test_graph_json_format():
     """Graph output produces valid JSON with elements list."""
     from agent_bom.output.graph import build_graph_elements
+
     report, blast_radii = _make_sample_report()
     elements = build_graph_elements(report, blast_radii)
     result = json.dumps({"elements": elements, "format": "cytoscape"})
@@ -466,12 +490,14 @@ def test_graph_json_format():
 def test_attack_flow_empty_when_no_vulns():
     """Attack flow returns empty list when no blast radii."""
     from agent_bom.output.graph import build_attack_flow_elements
+
     assert build_attack_flow_elements([]) == []
 
 
 def test_attack_flow_elements_structure():
     """Attack flow builds correct node/edge types for CVE → impact propagation."""
     from agent_bom.output.graph import build_attack_flow_elements
+
     _, blast_radii = _make_sample_report()
     elements = build_attack_flow_elements(blast_radii)
     assert len(elements) > 0
@@ -492,6 +518,7 @@ def test_attack_flow_elements_structure():
 def test_attack_flow_deduplicates_nodes():
     """Attack flow doesn't create duplicate nodes for shared packages."""
     from agent_bom.output.graph import build_attack_flow_elements
+
     _, blast_radii = _make_sample_report()
     elements = build_attack_flow_elements(blast_radii)
     nodes = [e for e in elements if "source" not in e["data"]]
@@ -502,6 +529,7 @@ def test_attack_flow_deduplicates_nodes():
 def test_html_contains_attack_flow():
     """HTML output includes attack flow section when vulns exist."""
     from agent_bom.output.html import to_html
+
     report, blast_radii = _make_sample_report()
     html = to_html(report, blast_radii)
     assert 'id="attackflow"' in html
@@ -710,24 +738,31 @@ def test_aws_lambda_direct_discovery():
 
     mock_lambda = MagicMock()
     mock_lambda_paginator = MagicMock()
-    mock_lambda_paginator.paginate.return_value = [{
-        "Functions": [
-            {"FunctionName": "ai-inference", "FunctionArn": "arn:aws:lambda:us-east-1:123:function:ai-inference",
-             "Runtime": "python3.12"},
-            {"FunctionName": "java-util", "FunctionArn": "arn:aws:lambda:us-east-1:123:function:java-util",
-             "Runtime": "java17"},
-        ]
-    }]
+    mock_lambda_paginator.paginate.return_value = [
+        {
+            "Functions": [
+                {
+                    "FunctionName": "ai-inference",
+                    "FunctionArn": "arn:aws:lambda:us-east-1:123:function:ai-inference",
+                    "Runtime": "python3.12",
+                },
+                {"FunctionName": "java-util", "FunctionArn": "arn:aws:lambda:us-east-1:123:function:java-util", "Runtime": "java17"},
+            ]
+        }
+    ]
     mock_lambda.get_paginator.return_value = mock_lambda_paginator
     mock_lambda.get_function.return_value = {"Configuration": {"Runtime": "python3.12", "Layers": []}}
 
     mock_session.client.side_effect = lambda svc, **kw: {
-        "bedrock-agent": mock_bedrock, "ecs": mock_ecs, "lambda": mock_lambda,
+        "bedrock-agent": mock_bedrock,
+        "ecs": mock_ecs,
+        "lambda": mock_lambda,
     }[svc]
 
     with patch("boto3.Session", return_value=mock_session):
         importlib.reload(importlib.import_module("agent_bom.cloud.aws"))
         from agent_bom.cloud.aws import discover
+
         agents, warnings = discover(region="us-east-1", include_lambda=True)
 
     lambda_agents = [a for a in agents if a.source == "aws-lambda"]
@@ -750,21 +785,27 @@ def test_aws_step_functions_parsing():
             },
             "ParallelStep": {
                 "Type": "Parallel",
-                "Branches": [{"States": {
-                    "Branch1": {
-                        "Type": "Task",
-                        "Resource": "arn:aws:sagemaker:us-east-1:123:endpoint/my-ep",
+                "Branches": [
+                    {
+                        "States": {
+                            "Branch1": {
+                                "Type": "Task",
+                                "Resource": "arn:aws:sagemaker:us-east-1:123:endpoint/my-ep",
+                            }
+                        }
                     }
-                }}],
+                ],
             },
             "MapStep": {
                 "Type": "Map",
-                "Iterator": {"States": {
-                    "MapTask": {
-                        "Type": "Task",
-                        "Resource": "arn:aws:lambda:us-east-1:123:function:map-func",
+                "Iterator": {
+                    "States": {
+                        "MapTask": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:lambda:us-east-1:123:function:map-func",
+                        }
                     }
-                }},
+                },
             },
         }
     }
@@ -800,16 +841,22 @@ def test_aws_ec2_tag_discovery():
     mock_session.client.return_value = mock_ec2
 
     mock_paginator = MagicMock()
-    mock_paginator.paginate.return_value = [{
-        "Reservations": [{
-            "Instances": [{
-                "InstanceId": "i-12345",
-                "InstanceType": "p4d.24xlarge",
-                "ImageId": "ami-abc123",
-                "Tags": [{"Key": "Name", "Value": "gpu-training"}],
-            }]
-        }]
-    }]
+    mock_paginator.paginate.return_value = [
+        {
+            "Reservations": [
+                {
+                    "Instances": [
+                        {
+                            "InstanceId": "i-12345",
+                            "InstanceType": "p4d.24xlarge",
+                            "ImageId": "ami-abc123",
+                            "Tags": [{"Key": "Name", "Value": "gpu-training"}],
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
     mock_ec2.get_paginator.return_value = mock_paginator
 
     agents, warnings = _discover_ec2_instances(mock_session, "us-east-1", {"Environment": "ai-prod"})
@@ -834,6 +881,7 @@ def test_aws_eks_reuses_k8s():
     with patch("agent_bom.k8s.discover_images") as mock_discover:
         mock_discover.return_value = [("nginx:1.25", "web-pod", "nginx")]
         from agent_bom.cloud.aws import _discover_eks_images
+
         agents, warnings = _discover_eks_images(mock_session, "us-east-1")
 
     eks_agents = [a for a in agents if a.source == "aws-eks"]
@@ -845,47 +893,85 @@ def test_aws_eks_reuses_k8s():
 # ─── Nebius Provider Tests ──────────────────────────────────────────────────
 
 
-def _install_mock_nebius():
-    """Install a mock nebius SDK in sys.modules."""
-    nebius = types.ModuleType("nebius")
-    nebius.Client = MagicMock
-    sys.modules.setdefault("nebius", nebius)
-    return nebius
-
-
-def test_nebius_missing_sdk():
-    """Helpful error when nebius is not installed."""
-    with patch.dict(sys.modules, {"nebius": None}):
+def test_nebius_missing_requests():
+    """Helpful error when requests is not installed."""
+    with patch.dict(sys.modules, {"requests": None}):
         import agent_bom.cloud.nebius as nb_mod
+
         try:
             importlib.reload(nb_mod)
         except Exception:
             pass
-        with pytest.raises(CloudDiscoveryError, match="nebius is required"):
+        with pytest.raises(CloudDiscoveryError, match="requests is required"):
             from agent_bom.cloud.nebius import discover
+
             discover()
 
 
-def test_nebius_k8s_clusters():
-    """Nebius K8s clusters are discovered as agents."""
-    _install_mock_nebius()
-    importlib.reload(importlib.import_module("agent_bom.cloud.nebius"))
+def test_nebius_ai_studio_discovery():
+    """Nebius AI Studio models are discovered as agents."""
     from agent_bom.cloud.nebius import discover
 
-    mock_client = MagicMock()
-    mock_cluster = MagicMock()
-    mock_cluster.id = "cluster-abc"
-    mock_cluster.name = "gpu-cluster"
-    mock_cluster.status = "RUNNING"
-    mock_client.kubernetes.clusters.list.return_value = [mock_cluster]
-    mock_client.containers = None  # No container service
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "models": [
+            {"id": "model-1", "name": "llama-3-70b", "version": "1.0", "status": "RUNNING"},
+            {"id": "model-2", "name": "qwen-2-7b", "version": "2.1", "status": "STOPPED"},
+        ]
+    }
+    mock_response.raise_for_status = MagicMock()
 
-    with patch("nebius.Client", return_value=mock_client):
+    with patch("requests.get", return_value=mock_response):
         agents, warnings = discover(api_key="fake-key", project_id="proj-123")
 
-    k8s_agents = [a for a in agents if a.source == "nebius-k8s"]
-    assert len(k8s_agents) == 1
-    assert "gpu-cluster" in k8s_agents[0].name
+    ai_agents = [a for a in agents if a.source == "nebius-ai-studio"]
+    assert len(ai_agents) == 2
+    assert "llama-3-70b" in ai_agents[0].name
+
+
+def test_nebius_gpu_instance_discovery():
+    """Nebius GPU compute instances are discovered as agents."""
+    from agent_bom.cloud.nebius import discover
+
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+
+    def side_effect(url, **kwargs):
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        if "compute.api" in url:
+            resp.json.return_value = {
+                "instances": [
+                    {
+                        "id": "inst-gpu-1",
+                        "name": "training-node",
+                        "platform_id": "gpu-h100",
+                        "status": "RUNNING",
+                        "resources": {"gpus": 8, "gpu_type": "H100"},
+                        "boot_disk": {"image_id": "img-1", "image_name": "nvidia-pytorch-24.01"},
+                    },
+                    {
+                        "id": "inst-cpu-1",
+                        "name": "web-server",
+                        "platform_id": "standard-v3",
+                        "status": "RUNNING",
+                        "resources": {"gpus": 0},
+                        "boot_disk": {"image_id": "img-2", "image_name": "ubuntu-22.04"},
+                    },
+                ]
+            }
+        else:
+            resp.json.return_value = {}
+        return resp
+
+    with patch("requests.get", side_effect=side_effect):
+        agents, warnings = discover(api_key="fake-key", project_id="proj-123")
+
+    gpu_agents = [a for a in agents if a.source == "nebius-gpu"]
+    assert len(gpu_agents) == 1
+    assert "training-node" in gpu_agents[0].name
+    assert gpu_agents[0].metadata["ai_workload"] is True
 
 
 # ─── CLI Deep Flag Tests ────────────────────────────────────────────────────
@@ -927,6 +1013,7 @@ def test_hf_missing_sdk():
     with patch.dict(sys.modules, {"huggingface_hub": None}):
         with pytest.raises(CloudDiscoveryError, match="huggingface-hub is required"):
             import agent_bom.cloud.huggingface as hf_mod
+
             importlib.reload(hf_mod)
             hf_mod.discover()
 
@@ -1021,6 +1108,7 @@ def test_wandb_missing_sdk():
     with patch.dict(sys.modules, {"wandb": None}):
         with pytest.raises(CloudDiscoveryError, match="wandb is required"):
             import agent_bom.cloud.wandb_provider as wb_mod
+
             importlib.reload(wb_mod)
             wb_mod.discover()
 
@@ -1079,6 +1167,7 @@ def test_mlflow_missing_sdk():
     with patch.dict(sys.modules, {"mlflow": None}):
         with pytest.raises(CloudDiscoveryError, match="mlflow is required"):
             import agent_bom.cloud.mlflow_provider as ml_mod
+
             importlib.reload(ml_mod)
             ml_mod.discover()
 
@@ -1132,6 +1221,7 @@ def test_openai_missing_sdk():
     with patch.dict(sys.modules, {"openai": None}):
         with pytest.raises(CloudDiscoveryError, match="openai is required"):
             import agent_bom.cloud.openai_provider as oa_mod
+
             importlib.reload(oa_mod)
             oa_mod.discover()
 
@@ -1259,6 +1349,7 @@ def test_azure_missing_sdk():
     with patch.dict(sys.modules, {"azure.identity": None, "azure": None}):
         with pytest.raises(CloudDiscoveryError, match="azure-identity is required"):
             import agent_bom.cloud.azure as az_mod
+
             importlib.reload(az_mod)
             az_mod.discover(subscription_id="sub-123")
 
@@ -1299,8 +1390,10 @@ def test_azure_container_apps_discovered():
 
     mock_client.container_apps.list_by_subscription.return_value = [mock_app]
 
-    with patch("azure.identity.DefaultAzureCredential", return_value=mock_credential), \
-         patch("azure.mgmt.appcontainers.ContainerAppsAPIClient", return_value=mock_client):
+    with (
+        patch("azure.identity.DefaultAzureCredential", return_value=mock_credential),
+        patch("azure.mgmt.appcontainers.ContainerAppsAPIClient", return_value=mock_client),
+    ):
         agents, warnings = discover(subscription_id="sub-123")
 
     ca_agents = [a for a in agents if a.source == "azure-container-apps"]
@@ -1325,9 +1418,11 @@ def test_azure_ai_foundry_discovered():
     mock_workspace.id = "/subscriptions/sub-123/resourceGroups/rg-ai/providers/Microsoft.MachineLearningServices/workspaces/my-ml-workspace"
     mock_rm_client.resources.list.return_value = [mock_workspace]
 
-    with patch("azure.identity.DefaultAzureCredential", return_value=mock_credential), \
-         patch("azure.mgmt.appcontainers.ContainerAppsAPIClient", return_value=mock_ca_client), \
-         patch("azure.mgmt.resource.ResourceManagementClient", return_value=mock_rm_client):
+    with (
+        patch("azure.identity.DefaultAzureCredential", return_value=mock_credential),
+        patch("azure.mgmt.appcontainers.ContainerAppsAPIClient", return_value=mock_ca_client),
+        patch("azure.mgmt.resource.ResourceManagementClient", return_value=mock_rm_client),
+    ):
         agents, warnings = discover(subscription_id="sub-123")
 
     ai_agents = [a for a in agents if a.source == "azure-ai-foundry"]
@@ -1356,8 +1451,10 @@ def test_azure_container_apps_by_resource_group():
 
     mock_client.container_apps.list_by_resource_group.return_value = [mock_app]
 
-    with patch("azure.identity.DefaultAzureCredential", return_value=mock_credential), \
-         patch("azure.mgmt.appcontainers.ContainerAppsAPIClient", return_value=mock_client):
+    with (
+        patch("azure.identity.DefaultAzureCredential", return_value=mock_credential),
+        patch("azure.mgmt.appcontainers.ContainerAppsAPIClient", return_value=mock_client),
+    ):
         agents, warnings = discover(subscription_id="sub-123", resource_group="rg-ai")
 
     assert len(agents) >= 1
@@ -1381,6 +1478,14 @@ def _install_mock_gcp():
     google_cloud_run_v2.ServicesClient = MagicMock
     google_cloud.run_v2 = google_cloud_run_v2
 
+    google_cloud_functions_v2 = types.ModuleType("google.cloud.functions_v2")
+    google_cloud_functions_v2.FunctionServiceClient = MagicMock
+    google_cloud.functions_v2 = google_cloud_functions_v2
+
+    google_cloud_container_v1 = types.ModuleType("google.cloud.container_v1")
+    google_cloud_container_v1.ClusterManagerClient = MagicMock
+    google_cloud.container_v1 = google_cloud_container_v1
+
     google_auth = types.ModuleType("google.auth")
     google.auth = google_auth
     google.cloud = google_cloud
@@ -1390,14 +1495,27 @@ def _install_mock_gcp():
     sys.modules.setdefault("google.cloud", google_cloud)
     sys.modules.setdefault("google.cloud.aiplatform", google_cloud_aiplatform)
     sys.modules.setdefault("google.cloud.run_v2", google_cloud_run_v2)
+    sys.modules.setdefault("google.cloud.functions_v2", google_cloud_functions_v2)
+    sys.modules.setdefault("google.cloud.container_v1", google_cloud_container_v1)
     return google
 
 
 def test_gcp_missing_sdk():
-    """Helpful error when google-cloud-aiplatform is not installed."""
-    with patch.dict(sys.modules, {"google.cloud.aiplatform": None, "google.cloud": None, "google": None}):
-        with pytest.raises(CloudDiscoveryError, match="google-cloud-aiplatform is required"):
+    """Helpful error when no GCP SDK packages are installed."""
+    with patch.dict(
+        sys.modules,
+        {
+            "google.cloud.aiplatform": None,
+            "google.cloud.functions_v2": None,
+            "google.cloud.container_v1": None,
+            "google.cloud.run_v2": None,
+            "google.cloud": None,
+            "google": None,
+        },
+    ):
+        with pytest.raises(CloudDiscoveryError, match="At least one GCP SDK is required"):
             import agent_bom.cloud.gcp as gcp_mod
+
             importlib.reload(gcp_mod)
             gcp_mod.discover(project_id="my-project")
 
@@ -1432,8 +1550,7 @@ def test_gcp_vertex_ai_endpoints_discovered():
     mock_endpoint.resource_name = "projects/123/locations/us-central1/endpoints/456"
     mock_endpoint.gca_resource = mock_gca
 
-    with patch("google.cloud.aiplatform.init"), \
-         patch("google.cloud.aiplatform.Endpoint.list", return_value=[mock_endpoint]):
+    with patch("google.cloud.aiplatform.init"), patch("google.cloud.aiplatform.Endpoint.list", return_value=[mock_endpoint]):
         agents, warnings = discover(project_id="my-project", region="us-central1")
 
     vertex_agents = [a for a in agents if a.source == "gcp-vertex-ai"]
@@ -1462,9 +1579,11 @@ def test_gcp_cloud_run_services_discovered():
     mock_client = MagicMock()
     mock_client.list_services.return_value = [mock_service]
 
-    with patch("google.cloud.aiplatform.init"), \
-         patch("google.cloud.aiplatform.Endpoint.list", return_value=[]), \
-         patch("google.cloud.run_v2.ServicesClient", return_value=mock_client):
+    with (
+        patch("google.cloud.aiplatform.init"),
+        patch("google.cloud.aiplatform.Endpoint.list", return_value=[]),
+        patch("google.cloud.run_v2.ServicesClient", return_value=mock_client),
+    ):
         agents, warnings = discover(project_id="my-project", region="us-central1")
 
     run_agents = [a for a in agents if a.source == "gcp-cloud-run"]
@@ -1501,9 +1620,11 @@ def test_gcp_vertex_and_cloud_run_combined():
     mock_run_client = MagicMock()
     mock_run_client.list_services.return_value = [mock_svc]
 
-    with patch("google.cloud.aiplatform.init"), \
-         patch("google.cloud.aiplatform.Endpoint.list", return_value=[mock_ep]), \
-         patch("google.cloud.run_v2.ServicesClient", return_value=mock_run_client):
+    with (
+        patch("google.cloud.aiplatform.init"),
+        patch("google.cloud.aiplatform.Endpoint.list", return_value=[mock_ep]),
+        patch("google.cloud.run_v2.ServicesClient", return_value=mock_run_client),
+    ):
         agents, warnings = discover(project_id="proj", region="us-central1")
 
     assert len([a for a in agents if a.source == "gcp-vertex-ai"]) == 1
@@ -1567,6 +1688,7 @@ def test_dry_run_lists_openai_apis():
 def test_clickhouse_in_mcp_registry():
     """ClickHouse MCP server should be in the registry with real data."""
     from pathlib import Path
+
     registry_path = Path(__file__).parent.parent / "src" / "agent_bom" / "mcp_registry.json"
     data = json.loads(registry_path.read_text())
     assert "mcp-clickhouse" in data["servers"]
@@ -1607,6 +1729,7 @@ def test_ollama_discover_via_api():
 
     with patch("agent_bom.cloud.ollama._discover_via_api", return_value=api_response["models"]):
         from agent_bom.cloud.ollama import discover
+
         agents, warnings = discover(host="http://localhost:11434")
 
     assert len(agents) == 2
@@ -1631,9 +1754,12 @@ def test_ollama_discover_via_manifests(tmp_path):
     (lib_dir / "phi3").mkdir(parents=True, exist_ok=True)
     (lib_dir / "phi3" / "mini").write_text("{}")
 
-    with patch("agent_bom.cloud.ollama._discover_via_api", return_value=None), \
-         patch("agent_bom.cloud.ollama._MANIFEST_DIR", lib_dir.parent):
+    with (
+        patch("agent_bom.cloud.ollama._discover_via_api", return_value=None),
+        patch("agent_bom.cloud.ollama._MANIFEST_DIR", lib_dir.parent),
+    ):
         from agent_bom.cloud.ollama import discover
+
         agents, warnings = discover()
 
     assert len(agents) == 3
@@ -1645,10 +1771,10 @@ def test_ollama_discover_via_manifests(tmp_path):
 
 def test_ollama_discover_no_api_no_manifests():
     """Ollama returns warning when neither API nor manifests are available."""
-    with patch("agent_bom.cloud.ollama._discover_via_api", return_value=None), \
-         patch("agent_bom.cloud.ollama._MANIFEST_DIR") as mock_dir:
+    with patch("agent_bom.cloud.ollama._discover_via_api", return_value=None), patch("agent_bom.cloud.ollama._MANIFEST_DIR") as mock_dir:
         mock_dir.is_dir.return_value = False
         from agent_bom.cloud.ollama import discover
+
         agents, warnings = discover()
 
     assert len(agents) == 0
@@ -1659,6 +1785,7 @@ def test_ollama_api_returns_empty():
     """Ollama API with no models returns empty list, no warnings."""
     with patch("agent_bom.cloud.ollama._discover_via_api", return_value=[]):
         from agent_bom.cloud.ollama import discover
+
         agents, warnings = discover()
 
     assert len(agents) == 0
@@ -1668,6 +1795,7 @@ def test_ollama_api_returns_empty():
 def test_ollama_provider_registered():
     """Ollama should be in the cloud provider registry."""
     from agent_bom.cloud import _PROVIDERS
+
     assert "ollama" in _PROVIDERS
     assert _PROVIDERS["ollama"] == "agent_bom.cloud.ollama"
 
@@ -1697,6 +1825,7 @@ def test_ollama_tool_metadata():
 
     with patch("agent_bom.cloud.ollama._discover_via_api", return_value=api_response):
         from agent_bom.cloud.ollama import discover
+
         agents, _ = discover()
 
     assert len(agents) == 1

@@ -241,8 +241,8 @@ agent-bom scan --k8s --context=coreweave-cluster   # CoreWeave / any K8s
 | **Snowflake** | **Deep** | Cortex Agents, native MCP Servers, Search, Snowpark, Streamlit, query history, governance, activity, observability | `pip install 'agent-bom[snowflake]'` |
 | **AWS** | **Standard** | Bedrock agents, Lambda package extraction, EKS, ECS, Step Functions, EC2, SageMaker | `pip install 'agent-bom[aws]'` |
 | **Databricks** | Preview | Cluster packages, model serving endpoints | `pip install 'agent-bom[databricks]'` |
-| **Azure** | Preview | AI Foundry workspaces, Container Apps | `pip install 'agent-bom[azure]'` |
-| **GCP** | Preview | Vertex AI endpoints, Cloud Run | `pip install 'agent-bom[gcp]'` |
+| **Azure** | **Standard** | OpenAI deployments, Functions, Container Instances, ML endpoints, AI Foundry workspaces, Container Apps | `pip install 'agent-bom[azure]'` |
+| **GCP** | **Standard** | Vertex AI endpoints, Cloud Functions, GKE, Cloud Run | `pip install 'agent-bom[gcp]'` |
 | **Nebius** | Preview | Managed K8s, container services | `pip install 'agent-bom[nebius]'` |
 | **CoreWeave** | Via K8s | K8s-native — `--k8s --context=coreweave-cluster` | (core CLI) |
 | **Ollama** | Standard | Local model inventory via API + manifests | (core CLI) |

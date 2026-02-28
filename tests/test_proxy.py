@@ -7,7 +7,9 @@ import json
 
 from agent_bom.proxy import (
     ProxyMetrics,
+    ReplayDetector,
     check_policy,
+    compute_payload_hash,
     extract_tool_name,
     is_tools_call,
     log_tool_call,
@@ -212,3 +214,180 @@ def test_proxy_cli_help():
     result = runner.invoke(main, ["proxy", "--help"])
     assert result.exit_code == 0
     assert "security proxy" in result.output
+
+
+# ── compute_payload_hash ────────────────────────────────────────────────────
+
+
+def test_payload_hash_deterministic():
+    """Same payload always produces the same SHA-256 hash."""
+    msg = {"jsonrpc": "2.0", "method": "tools/call", "id": 1, "params": {"name": "scan"}}
+    h1 = compute_payload_hash(msg)
+    h2 = compute_payload_hash(msg)
+    assert h1 == h2
+    assert len(h1) == 64  # SHA-256 hex digest
+
+
+def test_payload_hash_differs_for_different_payloads():
+    """Different payloads produce different hashes."""
+    msg_a = {"jsonrpc": "2.0", "method": "tools/call", "id": 1}
+    msg_b = {"jsonrpc": "2.0", "method": "tools/call", "id": 2}
+    assert compute_payload_hash(msg_a) != compute_payload_hash(msg_b)
+
+
+def test_payload_hash_canonical_key_order():
+    """Hash is the same regardless of dict key insertion order."""
+    msg_a = {"b": 2, "a": 1}
+    msg_b = {"a": 1, "b": 2}
+    assert compute_payload_hash(msg_a) == compute_payload_hash(msg_b)
+
+
+# ── ReplayDetector ──────────────────────────────────────────────────────────
+
+
+def test_replay_detector_first_message_not_replay():
+    """First occurrence of a message is not a replay."""
+    detector = ReplayDetector()
+    msg = {"jsonrpc": "2.0", "method": "tools/call", "id": 1}
+    assert detector.check(msg) is False
+
+
+def test_replay_detector_duplicate_within_window():
+    """Same message within the window is detected as replay."""
+    detector = ReplayDetector(window_seconds=300.0)
+    msg = {"jsonrpc": "2.0", "method": "tools/call", "id": 1}
+    detector.check(msg)  # First — not a replay
+    assert detector.check(msg) is True  # Second — replay
+
+
+def test_replay_detector_different_messages_not_replay():
+    """Different messages are not replays of each other."""
+    detector = ReplayDetector()
+    msg_a = {"jsonrpc": "2.0", "method": "tools/call", "id": 1}
+    msg_b = {"jsonrpc": "2.0", "method": "tools/call", "id": 2}
+    detector.check(msg_a)
+    assert detector.check(msg_b) is False
+
+
+def test_replay_detector_eviction_on_overflow():
+    """When max_entries is reached, stale entries are evicted."""
+    detector = ReplayDetector(max_entries=2, window_seconds=300.0)
+    # Fill with 2 entries
+    detector.check({"id": 1})
+    detector.check({"id": 2})
+    # Manually expire them
+    for k in list(detector._seen):
+        detector._seen[k] = 0.0  # Pretend they're from the past
+    # This should trigger eviction and NOT be a replay
+    msg_new = {"id": 3}
+    assert detector.check(msg_new) is False
+    # Stale entries should be gone
+    assert len(detector._seen) <= 2
+
+
+# ── log_tool_call with integrity fields ─────────────────────────────────────
+
+
+def test_log_tool_call_with_integrity_fields():
+    """log_tool_call includes payload_sha256 and message_id when provided."""
+    buf = io.StringIO()
+    log_tool_call(
+        buf,
+        "scan",
+        {"target": "test"},
+        policy_result="allowed",
+        payload_sha256="abc123def456",
+        message_id=42,
+    )
+    buf.seek(0)
+    record = json.loads(buf.readline())
+    assert record["payload_sha256"] == "abc123def456"
+    assert record["message_id"] == 42
+
+
+def test_log_tool_call_omits_empty_integrity_fields():
+    """Integrity fields are omitted when not provided."""
+    buf = io.StringIO()
+    log_tool_call(buf, "check", {}, policy_result="allowed")
+    buf.seek(0)
+    record = json.loads(buf.readline())
+    assert "payload_sha256" not in record
+    assert "message_id" not in record
+
+
+# ── ProxyMetrics replay_rejections ──────────────────────────────────────────
+
+
+def test_proxy_metrics_replay_rejections():
+    """replay_rejections counter starts at zero and increments."""
+    m = ProxyMetrics()
+    assert m.replay_rejections == 0
+    m.replay_rejections += 1
+    m.replay_rejections += 1
+    assert m.replay_rejections == 2
+    s = m.summary()
+    assert s["replay_rejections"] == 2
+
+
+# ── check_policy allowlist mode ─────────────────────────────────────────────
+
+
+def test_check_policy_allowlist_permits_listed_tool():
+    """Allowlist rule permits a tool that is in the allow_tools list."""
+    policy = {
+        "rules": [
+            {"id": "prod-allow", "action": "block", "mode": "allowlist", "allow_tools": ["read_file", "search"]},
+        ],
+    }
+    allowed, reason = check_policy(policy, "read_file", {})
+    assert allowed is True
+    assert reason == ""
+
+
+def test_check_policy_allowlist_blocks_unlisted_tool():
+    """Allowlist rule blocks a tool not in the allow_tools list."""
+    policy = {
+        "rules": [
+            {"id": "prod-allow", "action": "block", "mode": "allowlist", "allow_tools": ["read_file", "search"]},
+        ],
+    }
+    allowed, reason = check_policy(policy, "write_file", {})
+    assert allowed is False
+    assert "allowlist" in reason
+    assert "prod-allow" in reason
+
+
+def test_check_policy_allowlist_empty_blocks_everything():
+    """Allowlist rule with empty allow_tools blocks all tools."""
+    policy = {
+        "rules": [
+            {"id": "lockdown", "action": "block", "mode": "allowlist", "allow_tools": []},
+        ],
+    }
+    allowed, reason = check_policy(policy, "read_file", {})
+    assert allowed is False
+
+
+def test_check_policy_allowlist_with_arg_pattern_defense_in_depth():
+    """Tool in allowlist can still be blocked by arg_pattern (defense-in-depth)."""
+    policy = {
+        "rules": [
+            {"id": "allow-reads", "action": "block", "mode": "allowlist", "allow_tools": ["read_file"]},
+            {"id": "no-etc", "action": "block", "arg_pattern": {"path": "/etc/.*"}},
+        ],
+    }
+    # Tool is in allowlist BUT arg matches blocklist pattern
+    allowed, reason = check_policy(policy, "read_file", {"path": "/etc/passwd"})
+    assert allowed is False
+    assert "/etc/.*" in reason
+
+
+def test_check_policy_allowlist_warn_does_not_enforce():
+    """Allowlist rule with action='warn' does not block (advisory only)."""
+    policy = {
+        "rules": [
+            {"id": "audit-only", "action": "warn", "mode": "allowlist", "allow_tools": ["read_file"]},
+        ],
+    }
+    allowed, reason = check_policy(policy, "write_file", {})
+    assert allowed is True  # warn rules are not enforced at runtime

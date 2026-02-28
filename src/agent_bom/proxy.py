@@ -12,6 +12,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
@@ -41,6 +42,7 @@ class ProxyMetrics:
     latencies_ms: list[float] = field(default_factory=list)
     total_messages_client_to_server: int = 0
     total_messages_server_to_client: int = 0
+    replay_rejections: int = 0
 
     def record_call(self, tool_name: str) -> None:
         """Record an allowed tool call."""
@@ -83,6 +85,7 @@ class ProxyMetrics:
             "latency": latency_stats,
             "messages_client_to_server": self.total_messages_client_to_server,
             "messages_server_to_client": self.total_messages_server_to_client,
+            "replay_rejections": self.replay_rejections,
         }
 
 
@@ -161,6 +164,8 @@ def log_tool_call(
     arguments: dict,
     policy_result: str = "allowed",
     reason: str = "",
+    payload_sha256: str = "",
+    message_id: int | str | None = None,
 ) -> None:
     """Append a tool call record to the audit JSONL log.
 
@@ -170,8 +175,10 @@ def log_tool_call(
         arguments: Tool call arguments.
         policy_result: "allowed" or "blocked".
         reason: Reason for blocking (if blocked).
+        payload_sha256: SHA-256 hash of the full JSON-RPC payload.
+        message_id: JSON-RPC ``id`` field for correlation.
     """
-    record = {
+    record: dict = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "type": "tools/call",
         "tool": tool_name,
@@ -180,6 +187,10 @@ def log_tool_call(
     }
     if reason:
         record["reason"] = reason
+    if payload_sha256:
+        record["payload_sha256"] = payload_sha256
+    if message_id is not None:
+        record["message_id"] = message_id
 
     log_file.write(json.dumps(record) + "\n")  # type: ignore[union-attr]
     log_file.flush()  # type: ignore[union-attr]
@@ -194,6 +205,49 @@ def _truncate_args(args: dict, max_value_len: int = 200) -> dict:
         else:
             result[k] = v
     return result
+
+
+# ─── Payload integrity ───────────────────────────────────────────────────────
+
+
+def compute_payload_hash(payload: dict) -> str:
+    """SHA-256 hash of the canonical JSON representation of a payload.
+
+    Uses sorted keys and compact separators so identical payloads always
+    produce the same digest regardless of dict ordering.
+    """
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+@dataclass
+class ReplayDetector:
+    """Detect replayed JSON-RPC messages by tracking payload hashes.
+
+    Maintains a bounded dict of ``hash → timestamp`` with a sliding time
+    window.  Messages whose hash was already seen within the window are
+    flagged as replays.
+    """
+
+    window_seconds: float = 300.0  # 5-minute sliding window
+    max_entries: int = 10_000
+    _seen: dict[str, float] = field(default_factory=dict)
+
+    def check(self, msg: dict) -> bool:
+        """Return *True* if *msg* is a replay (duplicate within the window)."""
+        h = compute_payload_hash(msg)
+        now = time.monotonic()
+
+        # Evict stale entries when approaching the cap
+        if len(self._seen) >= self.max_entries:
+            cutoff = now - self.window_seconds
+            self._seen = {k: v for k, v in self._seen.items() if v > cutoff}
+
+        if h in self._seen and (now - self._seen[h]) < self.window_seconds:
+            return True
+
+        self._seen[h] = now
+        return False
 
 
 # ─── Policy checking ─────────────────────────────────────────────────────────
@@ -215,10 +269,29 @@ def check_policy(
         (allowed, reason) tuple. If blocked, reason explains why.
     """
     rules = policy.get("rules", [])
+
+    # Allowlist mode: if a rule has mode=allowlist, only listed tools pass.
+    # Checked first — allowlist takes precedence over blocklist rules.
+    for rule in rules:
+        if rule.get("mode") != "allowlist":
+            continue
+        action = rule.get("action", "warn")
+        if action not in ("fail", "block"):
+            continue
+        allowed_tools = rule.get("allow_tools", [])
+        if tool_name not in allowed_tools:
+            return False, f"Tool '{tool_name}' not in allowlist for rule '{rule.get('id', '?')}'"
+        # Tool is in the allowlist — still fall through to arg_pattern checks
+        break
+
     for rule in rules:
         action = rule.get("action", "warn")
         if action not in ("fail", "block"):
             continue  # Only enforce blocking rules at runtime
+
+        # Skip allowlist rules in the blocklist loop (already handled above)
+        if rule.get("mode") == "allowlist":
+            continue
 
         # block_tools: list of tool names to block entirely
         blocked = rule.get("block_tools", [])
@@ -333,6 +406,7 @@ async def run_proxy(
     cred_detector = CredentialLeakDetector() if detect_credentials else None
     rate_tracker = RateLimitTracker(threshold=rate_limit_threshold) if rate_limit_threshold > 0 else None
     seq_analyzer = SequenceAnalyzer()
+    replay_detector = ReplayDetector()
     runtime_alerts: list[dict] = []
 
     def _handle_alerts(alerts, log_f=None):
@@ -391,15 +465,49 @@ async def run_proxy(
                 if is_tools_call(msg):
                     tool_name = extract_tool_name(msg) or "unknown"
                     arguments = extract_tool_arguments(msg)
+                    msg_id = msg.get("id")
+
+                    # Payload integrity: hash the full message
+                    p_hash = compute_payload_hash(msg)
+
+                    # Replay detection
+                    if replay_detector.check(msg):
+                        metrics.replay_rejections += 1
+                        reason = "Replayed payload detected"
+                        if not log_only:
+                            metrics.record_blocked("replay")
+                            if log_file:
+                                log_tool_call(
+                                    log_file,
+                                    tool_name,
+                                    arguments,
+                                    "blocked",
+                                    reason,
+                                    payload_sha256=p_hash,
+                                    message_id=msg_id,
+                                )
+                            error_resp = make_error_response(msg_id, -32600, reason)
+                            sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
+                            sys.stdout.buffer.flush()
+                            continue
+                        # log_only: warn but don't block
+                        logger.warning("Replay detected (advisory): %s", tool_name)
 
                     # Check if tool is declared
                     if block_undeclared and declared_tools and tool_name not in declared_tools:
                         reason = f"Tool '{tool_name}' not in declared tools/list"
                         metrics.record_blocked("undeclared")
                         if log_file:
-                            log_tool_call(log_file, tool_name, arguments, "blocked", reason)
-                        # Send error back to client
-                        error_resp = make_error_response(msg.get("id"), -32600, reason)
+                            log_tool_call(
+                                log_file,
+                                tool_name,
+                                arguments,
+                                "blocked",
+                                reason,
+                                payload_sha256=p_hash,
+                                message_id=msg_id,
+                            )
+                        error_resp = make_error_response(msg_id, -32600, reason)
                         sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
                         sys.stdout.buffer.flush()
                         continue
@@ -410,7 +518,15 @@ async def run_proxy(
                         if not allowed:
                             metrics.record_blocked("policy")
                             if log_file:
-                                log_tool_call(log_file, tool_name, arguments, "blocked", reason)
+                                log_tool_call(
+                                    log_file,
+                                    tool_name,
+                                    arguments,
+                                    "blocked",
+                                    reason,
+                                    payload_sha256=p_hash,
+                                    message_id=msg_id,
+                                )
                             error_resp = make_error_response(msg.get("id"), -32600, reason)
                             sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
                             sys.stdout.buffer.flush()
@@ -422,7 +538,15 @@ async def run_proxy(
                         if not gw_allowed:
                             metrics.record_blocked("gateway_policy")
                             if log_file:
-                                log_tool_call(log_file, tool_name, arguments, "blocked", gw_reason)
+                                log_tool_call(
+                                    log_file,
+                                    tool_name,
+                                    arguments,
+                                    "blocked",
+                                    gw_reason,
+                                    payload_sha256=p_hash,
+                                    message_id=msg_id,
+                                )
                             error_resp = make_error_response(msg.get("id"), -32600, gw_reason)
                             sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
                             sys.stdout.buffer.flush()
@@ -446,9 +570,16 @@ async def run_proxy(
                     if "id" in msg:
                         pending_calls[msg["id"]] = (tool_name, time.monotonic())
 
-                    # Log allowed call
+                    # Log allowed call with integrity fields
                     if log_file:
-                        log_tool_call(log_file, tool_name, arguments, "allowed")
+                        log_tool_call(
+                            log_file,
+                            tool_name,
+                            arguments,
+                            "allowed",
+                            payload_sha256=p_hash,
+                            message_id=msg_id,
+                        )
 
             # Forward to server
             if process.stdin:

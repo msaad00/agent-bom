@@ -37,6 +37,8 @@ from typing import Annotated, Optional
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
+from agent_bom.security import sanitize_error
+
 logger = logging.getLogger(__name__)
 
 # Maximum file size for SBOM/skill file reads (50 MB)
@@ -88,8 +90,7 @@ def _truncate_response(response_str: str) -> str:
 def _safe_path(path_str: str) -> Path:
     """Resolve a user-provided path and validate against directory traversal."""
     p = Path(path_str).expanduser().resolve()
-    home = str(Path.home())
-    if not str(p).startswith(home):
+    if not p.is_relative_to(Path.home()):
         raise ValueError(f"Path {path_str!r} resolves outside home directory")
     return p
 
@@ -358,7 +359,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                 result["warnings"] = scan_warnings
             return _truncate_response(json.dumps(result, indent=2, default=str))
         except Exception as exc:
-            return json.dumps({"error": str(exc)})
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
 
     # ── Tool 2: check ────────────────────────────────────────────────
 
@@ -405,7 +407,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             try:
                 eco = _validate_ecosystem(ecosystem)
             except ValueError as exc:
-                return json.dumps({"error": str(exc)})
+                logger.exception("MCP tool error")
+                return json.dumps({"error": sanitize_error(exc)})
             pkg = Pkg(name=name, version=version, ecosystem=eco)
 
             # Resolve "latest" via registry
@@ -465,7 +468,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                 default=str,
             )
         except Exception as exc:
-            return json.dumps({"error": str(exc)})
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
 
     # ── Tool 3: blast_radius ──────────────────────────────────────────
 
@@ -491,7 +495,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         try:
             validated_cve = _validate_cve_id(cve_id)
         except ValueError as exc:
-            return json.dumps({"error": str(exc)})
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
 
         try:
             _agents, blast_radii, _warnings = await _run_scan_pipeline()
@@ -526,7 +531,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                 )
             return _truncate_response(json.dumps({"cve_id": cve_id, "found": True, "blast_radii": results}, indent=2, default=str))
         except Exception as exc:
-            return json.dumps({"error": str(exc)})
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
 
     # ── Tool 4: policy_check ──────────────────────────────────────────
 
@@ -566,9 +572,11 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         except json.JSONDecodeError as exc:
             return json.dumps({"error": f"Invalid JSON: {exc}"})
         except ValueError as exc:
-            return json.dumps({"error": str(exc)})
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
         except Exception as exc:
-            return json.dumps({"error": str(exc)})
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
 
     # ── Tool 5: registry_lookup ───────────────────────────────────────
 
@@ -608,7 +616,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         try:
             data = _get_registry_data()
         except Exception as exc:
-            return json.dumps({"error": f"Failed to read registry: {exc}"})
+            logger.exception("Registry read failed")
+            return json.dumps({"error": f"Failed to read registry: {sanitize_error(exc)}"})
 
         servers = data.get("servers", {})
         search_lower = search_term.lower()
@@ -677,7 +686,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             else:
                 return _truncate_response(json.dumps(to_cyclonedx(report), indent=2, default=str))
         except Exception as exc:
-            return json.dumps({"error": str(exc)})
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
 
     # ── Tool 7: compliance ───────────────────────────────────────────
 
@@ -783,7 +793,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                 )
             )
         except Exception as exc:
-            return json.dumps({"error": str(exc)})
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
 
     # ── Tool 8: remediate ────────────────────────────────────────────
 
@@ -857,7 +868,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                 )
             )
         except Exception as exc:
-            return json.dumps({"error": str(exc)})
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
 
     # ── Tool 9: skill_trust ──────────────────────────────────────────
 
@@ -889,7 +901,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             try:
                 p = _safe_path(skill_path)
             except ValueError as exc:
-                return json.dumps({"error": str(exc)})
+                logger.exception("MCP tool error")
+                return json.dumps({"error": sanitize_error(exc)})
             if not p.is_file():
                 return json.dumps({"error": f"File not found: {skill_path}"})
             if p.stat().st_size > _MAX_FILE_SIZE:
@@ -901,7 +914,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
             return json.dumps(trust.to_dict(), indent=2)
         except Exception as exc:
-            return json.dumps({"error": str(exc)})
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
 
     # ── Tool 10: verify ─────────────────────────────────────────────
 
@@ -932,7 +946,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             try:
                 eco = _validate_ecosystem(ecosystem)
             except ValueError as exc:
-                return json.dumps({"error": str(exc)})
+                logger.exception("MCP tool error")
+                return json.dumps({"error": sanitize_error(exc)})
 
             # Parse name@version or name==version
             if eco == "pypi" and "==" in spec:
@@ -960,7 +975,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             }
             return json.dumps(result, indent=2, default=str)
         except Exception as exc:
-            return json.dumps({"error": str(exc)})
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
 
     # ── Tool 11: where ────────────────────────────────────────────
 
@@ -1005,7 +1021,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                 )
             return json.dumps({"clients": clients, "platform": current_os}, indent=2)
         except Exception as exc:
-            return json.dumps({"error": str(exc)})
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
 
     # ── Tool 12: inventory ────────────────────────────────────────
 
@@ -1057,7 +1074,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                 )
             return _truncate_response(json.dumps({"agents": result, "total_agents": len(result)}, indent=2))
         except Exception as exc:
-            return json.dumps({"error": str(exc)})
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
 
     # ── Tool 13: diff ─────────────────────────────────────────────
 
@@ -1108,7 +1126,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             save_report(current)
             return _truncate_response(json.dumps(result, indent=2, default=str))
         except Exception as exc:
-            return json.dumps({"error": str(exc)})
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
 
     # ── Resources ────────────────────────────────────────────────
 
@@ -1122,7 +1141,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         try:
             return _get_registry_data_raw()
         except Exception as exc:
-            return json.dumps({"error": f"Failed to read registry: {exc}"})
+            logger.exception("Registry read failed")
+            return json.dumps({"error": f"Failed to read registry: {sanitize_error(exc)}"})
 
     @mcp.resource("policy://template")
     def policy_template_resource() -> str:

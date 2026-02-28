@@ -35,6 +35,16 @@ from .base import CloudDiscoveryError
 
 logger = logging.getLogger(__name__)
 
+# Snowflake identifier safety: only allow alphanumeric, underscore, dot, dollar
+_SAFE_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.$]*$")
+
+
+def _validate_sf_identifier(name: str) -> str:
+    """Validate a Snowflake identifier against injection."""
+    if not _SAFE_IDENT_RE.match(name):
+        raise ValueError(f"Unsafe Snowflake identifier: {name!r}")
+    return name
+
 
 def discover(
     account: str | None = None,
@@ -433,8 +443,13 @@ def _describe_mcp_server_tools(
     cursor = conn.cursor()
 
     try:
+        # Validate identifiers to prevent SQL injection
+        _validate_sf_identifier(server_name)
+        if db_name:
+            _validate_sf_identifier(db_name)
+            _validate_sf_identifier(schema_name)
         fqn = f"{db_name}.{schema_name}.{server_name}" if db_name else server_name
-        cursor.execute(f"DESCRIBE MCP SERVER {fqn}")
+        cursor.execute(f"DESCRIBE MCP SERVER {fqn}")  # nosec B608 — identifiers validated above
         rows = cursor.fetchall()
         columns = [desc[0].lower() for desc in cursor.description] if cursor.description else []
 

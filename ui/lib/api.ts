@@ -419,8 +419,14 @@ export interface EvaluateResult {
 
 // ─── Fetch helpers ────────────────────────────────────────────────────────────
 
+const FETCH_TIMEOUT_MS = 30_000;
+
+function withTimeout(): AbortSignal {
+  return AbortSignal.timeout(FETCH_TIMEOUT_MS);
+}
+
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { next: { revalidate: 0 } });
+  const res = await fetch(`${BASE}${path}`, { signal: withTimeout() });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json() as Promise<T>;
 }
@@ -430,6 +436,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal: withTimeout(),
   });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json() as Promise<T>;
@@ -440,13 +447,15 @@ async function put<T>(path: string, body: unknown): Promise<T> {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal: withTimeout(),
   });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json() as Promise<T>;
 }
 
 async function del(path: string): Promise<void> {
-  await fetch(`${BASE}${path}`, { method: "DELETE" });
+  const res = await fetch(`${BASE}${path}`, { method: "DELETE", signal: withTimeout() });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
 }
 
 // ─── API functions ────────────────────────────────────────────────────────────
@@ -531,17 +540,9 @@ export const api = {
   getFleetAgent: (agentId: string) => get<FleetAgent>(`/v1/fleet/${agentId}`),
   syncFleet: () => post<FleetSyncResult>("/v1/fleet/sync", {}),
   updateFleetState: (agentId: string, state: string, reason?: string) =>
-    fetch(`${BASE}/v1/fleet/${agentId}/state`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ state, reason: reason ?? "" }),
-    }).then((r) => r.json()),
+    put<unknown>(`/v1/fleet/${agentId}/state`, { state, reason: reason ?? "" }),
   updateFleetAgent: (agentId: string, update: Partial<FleetAgent>) =>
-    fetch(`${BASE}/v1/fleet/${agentId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(update),
-    }).then((r) => r.json()),
+    put<unknown>(`/v1/fleet/${agentId}`, update),
   getFleetStats: () => get<FleetStatsResponse>("/v1/fleet/stats"),
 
   // ── Gateway ──

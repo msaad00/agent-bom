@@ -338,43 +338,24 @@ agent-bom scan --model-files ./models
 </details>
 
 <details>
-<summary><b>Attack flow & supply chain visualization</b></summary>
+<summary><b>Interactive security graph visualization</b></summary>
 
-Multiple visualization modes: CLI attack flow tree, Mermaid diagrams, interactive HTML (Cytoscape.js), React Flow graphs via REST API.
+The dashboard (`agent-bom api`) serves interactive [React Flow](https://reactflow.dev/) graphs — the same rendering approach used by enterprise security platforms:
+
+- **Agent Mesh** (`/mesh`) — cross-agent topology with vulnerability overlay, shared server detection, credential blast analysis, severity filtering, and search
+- **Attack Flow** (`/scan?view=attack-flow`) — CVE-centric blast radius graph: CVE → Package → Server → Agent → Credentials → Tools
+- **Supply Chain Lineage** (`/graph`) — full dependency lineage with hover highlighting and detail panels
+
+All graph views include: dagre auto-layout, hover highlighting (BFS connected nodes), click-to-inspect detail panels, minimap, OWASP LLM Top 10 + OWASP MCP Top 10 + MITRE ATLAS + NIST AI RMF framework tagging on every node.
+
+CLI output formats for CI/CD and automation:
 
 ```bash
-agent-bom scan -f mermaid                              # supply chain diagram
-agent-bom scan -f mermaid --mermaid-mode attack-flow   # CVE blast radius
-agent-bom scan -f mermaid --mermaid-mode lifecycle     # vulnerability lifecycle gantt
-agent-bom scan -f graph -o graph.json                  # Cytoscape-compatible JSON
-agent-bom scan -f html -o report.html                  # interactive HTML report
+agent-bom scan -f graph -o graph.json    # Cytoscape-compatible JSON
+agent-bom scan -f html -o report.html    # standalone interactive HTML report
+agent-bom scan -f mermaid                # Mermaid text (for docs/markdown)
+agent-bom scan -f sarif -o results.sarif # GitHub Security tab integration
 ```
-
-Example Mermaid output:
-
-```mermaid
-graph TD
-    A["Cursor IDE"] --> S1["filesystem-server"]
-    A --> S2["github-server"]
-    S1 --> P1["@modelcontextprotocol/server-filesystem@2025.3.28"]
-    S2 --> P2["@modelcontextprotocol/server-github@2025.3.28"]
-    P1 -->|"GHSA-xxxx"| V1["CVE-2025-1234 CRITICAL"]
-    V1 -.->|"MCP04"| F1["Supply Chain Attack"]
-```
-
-Example lifecycle gantt output:
-
-```mermaid
-gantt
-    title Vulnerability Lifecycle Timeline
-    dateFormat YYYY-MM-DD
-    section express@4.17.1
-        Scanned        :done, t0, 2025-06-15, 1d
-        CVE-2024-1234  :crit, t1, after t0, 1d
-        Fix → 4.18.0   :active, t2, after t1, 1d
-```
-
-The REST API (`agent-bom api`) serves interactive React Flow attack-flow graphs with OWASP LLM Top 10, OWASP MCP Top 10, and MITRE ATLAS framework tagging on every CVE node.
 
 </details>
 

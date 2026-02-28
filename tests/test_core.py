@@ -1847,11 +1847,17 @@ def test_grype_scan_mock(monkeypatch, tmp_path):
     assert vuln.fixed_version == "2.31.0"
 
 
-def test_owasp_lm05_always_present(sample_report):
-    """Any blast radius entry must always include LLM05 (Supply Chain)."""
+def test_owasp_lm05_ai_package_only(sample_report):
+    """LLM05 should only apply to AI/ML framework packages, not generic ones."""
     from agent_bom.owasp import tag_blast_radius
 
     br = sample_report.blast_radii[0]
+    # sample_report uses "test-pkg" (generic) — should NOT get LLM05
+    br.owasp_tags = tag_blast_radius(br)
+    assert "LLM05" not in br.owasp_tags
+
+    # AI framework package — should get LLM05
+    br.package = Package(name="langchain", version="0.1.0", ecosystem="pypi")
     br.owasp_tags = tag_blast_radius(br)
     assert "LLM05" in br.owasp_tags
 
@@ -2377,8 +2383,8 @@ def test_scenario_enterprise_multi_agent():
     assert br1.risk_score > 0
     assert br2.risk_score > br1.risk_score  # CRITICAL > HIGH
 
-    # OWASP: supply chain + credential + file tools
-    assert "LLM05" in br1.owasp_tags
+    # OWASP: credential + file tools (no LLM05 — glob is not an AI package)
+    assert "LLM05" not in br1.owasp_tags
     assert "LLM06" in br1.owasp_tags  # credentials exposed
     assert "LLM07" in br1.owasp_tags  # read_file tool
 
@@ -2696,18 +2702,31 @@ def test_json_framework_summary_structure(sample_report):
         assert "triggered" in entry
 
 
-def test_json_framework_lm05_always_triggered(sample_report):
-    """LLM05 (Supply Chain Vulnerabilities) is always triggered when there are findings."""
+def test_json_framework_lm05_ai_package_only(sample_report):
+    """LLM05 only triggers for AI/ML packages, not generic packages."""
     from agent_bom.owasp import tag_blast_radius as tag_owasp
 
+    # sample_report uses 'test-pkg' (npm) — not an AI package
     for br in sample_report.blast_radii:
         br.owasp_tags = tag_owasp(br)
         br.atlas_tags = []
 
     data = to_json(sample_report)
     owasp_entries = {e["code"]: e for e in data["threat_framework_summary"]["owasp_llm_top10"]}
-    assert owasp_entries["LLM05"]["triggered"] is True
-    assert owasp_entries["LLM05"]["findings"] > 0
+    assert owasp_entries["LLM05"]["triggered"] is False
+
+    # Now test with an AI package — should trigger LLM05
+    ai_br = BlastRadius(
+        vulnerability=Vulnerability(id="CVE-2024-AI", summary="AI vuln", severity=Severity.HIGH),
+        package=Package(name="langchain", version="0.1.0", ecosystem="pypi"),
+        affected_servers=[],
+        affected_agents=[],
+        exposed_credentials=[],
+        exposed_tools=[],
+    )
+    ai_br.calculate_risk_score()
+    ai_br.owasp_tags = tag_owasp(ai_br)
+    assert "LLM05" in ai_br.owasp_tags
 
 
 def test_json_framework_lm06_with_credentials(sample_report):

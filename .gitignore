@@ -17,3 +17,6 @@ report.json
 report.html
 .DS_Store
 .claude/settings.local.json
+src/agent_bom/ui_dist/
+ui/out/
+ui/.next/

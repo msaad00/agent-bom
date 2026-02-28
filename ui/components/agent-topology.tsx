@@ -139,7 +139,7 @@ export function AgentTopology({ agents }: { agents: Agent[] }) {
 
   const handleAgentClick = useCallback(
     (name: string) => {
-      router.push(`/agents/${encodeURIComponent(name)}`);
+      router.push(`/agents?name=${encodeURIComponent(name)}`);
     },
     [router],
   );

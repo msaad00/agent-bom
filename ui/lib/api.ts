@@ -1,9 +1,9 @@
 /**
  * agent-bom API client
- * Connects to the FastAPI backend at NEXT_PUBLIC_API_URL (default: http://localhost:8422)
+ * Connects to the FastAPI backend at NEXT_PUBLIC_API_URL (default: same origin)
  */
 
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8422";
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

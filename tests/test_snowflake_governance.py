@@ -816,6 +816,58 @@ class TestHelpers:
         assert _is_write_operation(read_obj) is False
 
 
+# ─── Governance edge-case tests ──────────────────────────────────────────────
+
+
+class TestGovernanceEdgeCases:
+    def test_tag_references_error(self):
+        """_mine_tag_references returns empty list + warning on cursor error."""
+        from agent_bom.cloud.snowflake import _mine_tag_references
+
+        conn = _make_mock_conn()
+        cursor = MagicMock()
+        cursor.execute.side_effect = Exception("TAG_REFERENCES not available")
+        conn.cursor.return_value = cursor
+        tags, warnings = _mine_tag_references(conn)
+        assert len(tags) == 0
+        assert len(warnings) == 1
+
+    def test_derive_findings_empty_report(self):
+        """_derive_findings with empty GovernanceReport returns empty list."""
+        from agent_bom.cloud.snowflake import _derive_findings
+
+        report = GovernanceReport(account="empty")
+        findings = _derive_findings(report)
+        assert findings == []
+
+    def test_governance_finding_severity_filter(self):
+        """GovernanceReport.to_dict correctly counts findings by severity."""
+        report = GovernanceReport(account="test")
+        report.findings = [
+            GovernanceFinding(
+                category=GovernanceCategory.ACCESS,
+                severity=GovernanceSeverity.HIGH,
+                title="high",
+                description="d",
+            ),
+            GovernanceFinding(
+                category=GovernanceCategory.ACCESS,
+                severity=GovernanceSeverity.LOW,
+                title="low",
+                description="d",
+            ),
+            GovernanceFinding(
+                category=GovernanceCategory.ACCESS,
+                severity=GovernanceSeverity.CRITICAL,
+                title="crit",
+                description="d",
+            ),
+        ]
+        d = report.to_dict()
+        assert d["summary"]["critical_findings"] == 1
+        assert d["summary"]["findings"] == 3
+
+
 # ─── Cloud __init__ integration test ─────────────────────────────────────────
 
 

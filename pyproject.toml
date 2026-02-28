@@ -120,7 +120,7 @@ Documentation = "https://github.com/msaad00/agent-bom#readme"
 where = ["src"]
 
 [tool.setuptools.package-data]
-agent_bom = ["mcp_registry.json"]
+agent_bom = ["mcp_registry.json", "ui_dist/**"]
 
 [tool.smithery]
 server = "agent_bom.mcp_server:create_smithery_server"

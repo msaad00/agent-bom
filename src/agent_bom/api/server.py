@@ -2024,3 +2024,44 @@ async def activity_timeline(days: int = 30):
         return timeline.to_dict()
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ── Dashboard static file serving ────────────────────────────────────────────
+# Must be registered LAST so API routes take precedence.
+
+
+def _mount_dashboard(application: FastAPI) -> None:
+    """Mount pre-built Next.js dashboard if ui_dist/ exists in the package."""
+    from pathlib import Path as _DashPath  # noqa: N814
+
+    ui_dist = _DashPath(__file__).parent / "ui_dist"
+    if not ui_dist.is_dir() or not (ui_dist / "index.html").exists():
+        return
+
+    from starlette.responses import FileResponse
+    from starlette.staticfiles import StaticFiles
+
+    # Hashed JS/CSS assets
+    next_static = ui_dist / "_next"
+    if next_static.is_dir():
+        application.mount("/_next", StaticFiles(directory=str(next_static)), name="next-static")
+
+    # Override root to serve dashboard instead of redirect to /docs
+    @application.get("/", include_in_schema=False)
+    async def _dashboard_root():
+        return FileResponse(str(ui_dist / "index.html"))
+
+    # SPA catch-all for client-side routing
+    @application.get("/{path:path}", include_in_schema=False)
+    async def _spa_catch_all(path: str):
+        # Skip API and docs paths
+        if path.startswith(("v1/", "docs", "redoc", "openapi.json", "health", "version")):
+            raise HTTPException(status_code=404)
+        file_path = ui_dist / path
+        if file_path.is_file() and ui_dist in file_path.resolve().parents:
+            return FileResponse(str(file_path))
+        # SPA fallback — serve index.html for client-side routing
+        return FileResponse(str(ui_dist / "index.html"))
+
+
+_mount_dashboard(app)

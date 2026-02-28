@@ -519,7 +519,7 @@ function JobRow({ job }: { job: ScanJob }) {
 
   return (
     <Link
-      href={`/scan/${job.job_id}`}
+      href={`/scan?id=${job.job_id}`}
       className="flex items-center gap-4 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl p-4 transition-colors group"
     >
       <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusColors[job.status] ?? "bg-zinc-500"}`} />

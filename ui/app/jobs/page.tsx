@@ -114,7 +114,7 @@ export default function JobsPage() {
                 <tr
                   key={job.job_id}
                   className="hover:bg-zinc-900 transition-colors cursor-pointer group"
-                  onClick={() => window.location.href = `/scan/${job.job_id}`}
+                  onClick={() => window.location.href = `/scan?id=${job.job_id}`}
                 >
                   <td className="px-4 py-3">
                     <span className="font-mono text-xs text-zinc-300">

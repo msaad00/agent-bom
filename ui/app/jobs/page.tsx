@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { api, JobStatus, formatDate } from "@/lib/api";
 import { ShieldAlert, Clock, CheckCircle2, XCircle, Loader2, Trash2 } from "lucide-react";
 
@@ -42,6 +43,7 @@ function statusColor(s: JobStatus) {
 }
 
 export default function JobsPage() {
+  const router = useRouter();
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -114,7 +116,7 @@ export default function JobsPage() {
                 <tr
                   key={job.job_id}
                   className="hover:bg-zinc-900 transition-colors cursor-pointer group"
-                  onClick={() => window.location.href = `/scan?id=${job.job_id}`}
+                  onClick={() => router.push(`/scan?id=${job.job_id}`)}
                 >
                   <td className="px-4 py-3">
                     <span className="font-mono text-xs text-zinc-300">

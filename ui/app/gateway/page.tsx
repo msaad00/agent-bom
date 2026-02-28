@@ -21,6 +21,7 @@ import {
   Trash2,
   Play,
   FileText,
+  AlertTriangle,
 } from "lucide-react";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -37,6 +38,7 @@ export default function GatewayPage() {
   const [stats, setStats] = useState<GatewayStatsResponse | null>(null);
   const [audit, setAudit] = useState<PolicyAuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [tab, setTab] = useState<"policies" | "audit" | "evaluate">("policies");
 
@@ -54,6 +56,7 @@ export default function GatewayPage() {
 
   const load = () => {
     setLoading(true);
+    setError(null);
     Promise.all([
       api.listGatewayPolicies(),
       api.getGatewayStats(),
@@ -64,7 +67,7 @@ export default function GatewayPage() {
         setStats(s);
         setAudit(a.entries);
       })
-      .catch(() => {})
+      .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   };
 
@@ -172,6 +175,15 @@ export default function GatewayPage() {
       {loading && (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-6 h-6 animate-spin text-zinc-500" />
+        </div>
+      )}
+
+      {/* Error state */}
+      {error && !loading && (
+        <div className="text-center py-16 border border-dashed border-red-900/50 rounded-xl">
+          <AlertTriangle className="w-8 h-8 text-red-500 mx-auto mb-3" />
+          <p className="text-red-400 text-sm">Failed to load gateway data</p>
+          <p className="text-zinc-500 text-xs mt-1">{error}</p>
         </div>
       )}
 

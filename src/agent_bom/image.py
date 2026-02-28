@@ -34,6 +34,7 @@ from typing import Optional
 
 from agent_bom.models import Package, PermissionProfile, Severity, Vulnerability
 from agent_bom.sbom import parse_cyclonedx
+from agent_bom.security import validate_image_ref
 
 
 class ImageScanError(Exception):
@@ -210,9 +211,7 @@ def _docker_inspect(image_ref: str) -> dict:
             timeout=300,
         )
         if pull.returncode != 0:
-            raise ImageScanError(
-                f"Image not found locally and pull failed: {image_ref}"
-            )
+            raise ImageScanError(f"Image not found locally and pull failed: {image_ref}")
         result = subprocess.run(
             ["docker", "inspect", "--type", "image", image_ref],
             capture_output=True,
@@ -270,7 +269,9 @@ def detect_container_privileges(container_id: str) -> PermissionProfile:
     try:
         result = subprocess.run(
             ["docker", "inspect", container_id],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return PermissionProfile()
@@ -325,14 +326,16 @@ def _packages_from_tar(tar_path: Path) -> list[Package]:
         key = (name, ecosystem)
         if key not in seen:
             seen.add(key)
-            packages.append(Package(
-                name=name,
-                version=version,
-                ecosystem=ecosystem,
-                purl=purl or f"pkg:{ecosystem}/{name}@{version}",
-                is_direct=False,
-                resolved_from_registry=False,
-            ))
+            packages.append(
+                Package(
+                    name=name,
+                    version=version,
+                    ecosystem=ecosystem,
+                    purl=purl or f"pkg:{ecosystem}/{name}@{version}",
+                    is_direct=False,
+                    resolved_from_registry=False,
+                )
+            )
 
     try:
         with tarfile.open(tar_path, "r") as tf:
@@ -362,11 +365,7 @@ def _packages_from_tar(tar_path: Path) -> list[Package]:
 
             # --- Node: node_modules/*/package.json ---
             for member_name in names:
-                if (
-                    "/node_modules/" in member_name
-                    and member_name.endswith("package.json")
-                    and member_name.count("/node_modules/") == 1
-                ):
+                if "/node_modules/" in member_name and member_name.endswith("package.json") and member_name.count("/node_modules/") == 1:
                     try:
                         member = tf.getmember(member_name)
                         f = tf.extractfile(member)
@@ -395,8 +394,7 @@ def _packages_from_tar(tar_path: Path) -> list[Package]:
                             elif line.startswith("Version:"):
                                 pkg_version = line.split(":", 1)[1].strip()
                             elif line == "" and pkg_name and pkg_version:
-                                _add(pkg_name, pkg_version, "deb",
-                                     f"pkg:deb/debian/{pkg_name}@{pkg_version}")
+                                _add(pkg_name, pkg_version, "deb", f"pkg:deb/debian/{pkg_name}@{pkg_version}")
                                 pkg_name = pkg_version = ""
                 except Exception:
                     pass
@@ -467,6 +465,8 @@ def scan_image(image_ref: str) -> tuple[list[Package], str]:
         ImageScanError: If no scanner is available or the image cannot
                         be found/pulled.
     """
+    validate_image_ref(image_ref)
+
     if _grype_available():
         packages = _scan_with_grype(image_ref)
         return packages, "grype"
@@ -480,8 +480,7 @@ def scan_image(image_ref: str) -> tuple[list[Package], str]:
         return packages, "docker"
 
     raise ImageScanError(
-        "Neither 'grype', 'syft', nor 'docker' found on PATH. "
-        "Install Grype (https://github.com/anchore/grype) to enable image scanning."
+        "Neither 'grype', 'syft', nor 'docker' found on PATH. Install Grype (https://github.com/anchore/grype) to enable image scanning."
     )
 
 

@@ -21,6 +21,7 @@ import {
   Package,
   KeyRound,
   Bug,
+  AlertTriangle,
 } from "lucide-react";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -67,18 +68,20 @@ export default function FleetPage() {
   const [agents, setAgents] = useState<FleetAgent[]>([]);
   const [stats, setStats] = useState<FleetStatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [stateFilter, setStateFilter] = useState<string>("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const load = () => {
     setLoading(true);
+    setError(null);
     Promise.all([api.listFleet(), api.getFleetStats()])
       .then(([fleet, s]) => {
         setAgents(fleet.agents);
         setStats(s);
       })
-      .catch(() => {})
+      .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   };
 
@@ -180,8 +183,17 @@ export default function FleetPage() {
         </div>
       )}
 
+      {/* Error state */}
+      {error && !loading && (
+        <div className="text-center py-16 border border-dashed border-red-900/50 rounded-xl">
+          <AlertTriangle className="w-8 h-8 text-red-500 mx-auto mb-3" />
+          <p className="text-red-400 text-sm">Failed to load fleet data</p>
+          <p className="text-zinc-500 text-xs mt-1">{error}</p>
+        </div>
+      )}
+
       {/* Empty state */}
-      {!loading && agents.length === 0 && (
+      {!loading && !error && agents.length === 0 && (
         <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
           <Users className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
           <p className="text-zinc-500 text-sm">No agents in fleet yet.</p>

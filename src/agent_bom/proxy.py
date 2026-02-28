@@ -23,6 +23,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from agent_bom.security import validate_arguments, validate_command
+
 logger = logging.getLogger(__name__)
 
 
@@ -273,6 +275,7 @@ async def _send_webhook(url: str, payload: dict) -> None:
     """Fire-and-forget POST to an alert webhook URL."""
     try:
         import httpx
+
         async with httpx.AsyncClient(timeout=10.0) as client:
             await client.post(url, json=payload)
     except Exception:  # noqa: BLE001
@@ -349,6 +352,11 @@ async def run_proxy(
     tools_list_request_ids: set[int | str] = set()
     # Track in-flight tool calls for latency measurement
     pending_calls: dict[int | str, tuple[str, float]] = {}  # id → (tool_name, start_time)
+
+    # Validate the server command before spawning
+    validate_command(server_cmd[0])
+    if len(server_cmd) > 1:
+        validate_arguments(list(server_cmd[1:]))
 
     # Spawn the actual MCP server
     process = await asyncio.create_subprocess_exec(

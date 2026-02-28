@@ -27,6 +27,7 @@ Endpoints:
 from __future__ import annotations
 
 import asyncio
+import logging
 import secrets
 import time
 import uuid
@@ -37,6 +38,9 @@ from enum import Enum
 from typing import Any
 
 from agent_bom import __version__
+from agent_bom.security import sanitize_error
+
+_logger = logging.getLogger(__name__)
 
 # ─── Dependency check ─────────────────────────────────────────────────────────
 
@@ -116,9 +120,9 @@ _rate_limit_rpm: int = 60
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials="*" not in _cors_origins,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-API-Key"],
 )
 
 
@@ -173,26 +177,43 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Per-IP sliding window rate limiter."""
+    """Per-IP sliding window rate limiter with bounded memory."""
+
+    _MAX_ENTRIES = 10_000
 
     def __init__(self, app: ASGIApp, scan_rpm: int = 60, read_rpm: int = 300):
         super().__init__(app)
         self._scan_rpm = scan_rpm
         self._read_rpm = read_rpm
+        self._window = 60
         self._hits: dict[str, list[float]] = defaultdict(list)
+        self._last_cleanup = time.time()
+
+    def _cleanup(self, now: float) -> None:
+        """Prune stale entries to prevent unbounded memory growth."""
+        if now - self._last_cleanup < self._window:
+            return
+        self._last_cleanup = now
+        stale = [k for k, v in self._hits.items() if not v or v[-1] < now - self._window]
+        for k in stale:
+            del self._hits[k]
+        if len(self._hits) > self._MAX_ENTRIES:
+            self._hits.clear()
 
     async def dispatch(self, request: StarletteRequest, call_next):
         client_ip = request.client.host if request.client else "unknown"
         now = time.time()
 
+        self._cleanup(now)
+
         is_scan = request.url.path.startswith("/v1/scan") and request.method == "POST"
         limit = self._scan_rpm if is_scan else self._read_rpm
 
         key = f"{client_ip}:{'scan' if is_scan else 'read'}"
-        self._hits[key] = [t for t in self._hits[key] if now - t < 60]
+        self._hits[key] = [t for t in self._hits[key] if now - t < self._window]
 
         if len(self._hits[key]) >= limit:
-            retry_after = max(int(60 - (now - self._hits[key][0])), 1)
+            retry_after = max(int(self._window - (now - self._hits[key][0])), 1)
             return JSONResponse(
                 status_code=429,
                 content={"detail": "Rate limit exceeded"},
@@ -804,7 +825,8 @@ async def list_agents() -> dict:
             "warnings": [],
         }
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        _logger.exception("Agent discovery failed")
+        raise HTTPException(status_code=500, detail=sanitize_error(exc)) from exc
 
 
 @app.get("/v1/agents/{agent_name}", tags=["discovery"])
@@ -867,7 +889,8 @@ async def get_agent_detail(agent_name: str) -> dict:
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        _logger.exception("Agent detail failed")
+        raise HTTPException(status_code=500, detail=sanitize_error(exc)) from exc
 
 
 @app.get("/v1/agents/{agent_name}/lifecycle", tags=["discovery"])
@@ -1961,7 +1984,8 @@ async def governance_report(days: int = 30):
         report = discover_governance(provider="snowflake", days=days)
         return report.to_dict()
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        _logger.exception("Request failed")
+        raise HTTPException(status_code=500, detail=sanitize_error(exc))
 
 
 @app.get("/v1/governance/findings", tags=["governance"])
@@ -1996,7 +2020,8 @@ async def governance_findings(
             "warnings": report.warnings,
         }
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        _logger.exception("Request failed")
+        raise HTTPException(status_code=500, detail=sanitize_error(exc))
 
 
 # ─── Activity Timeline ──────────────────────────────────────────────────────
@@ -2023,7 +2048,8 @@ async def activity_timeline(days: int = 30):
         timeline = discover_activity(provider="snowflake", days=days)
         return timeline.to_dict()
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        _logger.exception("Request failed")
+        raise HTTPException(status_code=500, detail=sanitize_error(exc))
 
 
 @app.get("/v1/agents/mesh", tags=["discovery"])
@@ -2056,7 +2082,8 @@ async def get_agent_mesh() -> dict:
 
         return build_agent_mesh(agents_data, all_blast)
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        _logger.exception("Request failed")
+        raise HTTPException(status_code=500, detail=sanitize_error(exc)) from exc
 
 
 # ── Dashboard static file serving ────────────────────────────────────────────

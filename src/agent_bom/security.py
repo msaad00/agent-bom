@@ -49,6 +49,7 @@ SENSITIVE_PATTERNS = [
 
 class SecurityError(Exception):
     """Raised when a security validation fails."""
+
     pass
 
 
@@ -63,10 +64,7 @@ def validate_command(command: str) -> None:
         SecurityError: If command is not allowed
     """
     if command not in ALLOWED_COMMANDS:
-        raise SecurityError(
-            f"Command '{command}' is not in the allowed list. "
-            f"Allowed commands: {', '.join(sorted(ALLOWED_COMMANDS))}"
-        )
+        raise SecurityError(f"Command '{command}' is not in the allowed list. Allowed commands: {', '.join(sorted(ALLOWED_COMMANDS))}")
     logger.debug(f"Command '{command}' validated successfully")
 
 
@@ -83,9 +81,7 @@ def validate_arguments(args: list[str]) -> None:
     for arg in args:
         for char in SHELL_METACHARACTERS:
             if char in arg:
-                raise SecurityError(
-                    f"Dangerous character '{char}' found in argument: {arg}"
-                )
+                raise SecurityError(f"Dangerous character '{char}' found in argument: {arg}")
     logger.debug(f"Validated {len(args)} argument(s) successfully")
 
 
@@ -101,9 +97,7 @@ def validate_environment(env: dict[str, str]) -> None:
     """
     for var in env:
         if var in DANGEROUS_ENV_VARS:
-            raise SecurityError(
-                f"Dangerous environment variable '{var}' not allowed"
-            )
+            raise SecurityError(f"Dangerous environment variable '{var}' not allowed")
     logger.debug(f"Validated {len(env)} environment variable(s)")
 
 
@@ -155,10 +149,7 @@ def sanitize_env_vars(env: dict[str, Any]) -> dict[str, str]:
     sanitized = {}
     for key, value in env.items():
         # Check if key matches sensitive pattern
-        is_sensitive = any(
-            re.search(pattern, key.lower())
-            for pattern in SENSITIVE_PATTERNS
-        )
+        is_sensitive = any(re.search(pattern, key.lower()) for pattern in SENSITIVE_PATTERNS)
 
         if is_sensitive:
             sanitized[key] = "***REDACTED***"
@@ -182,9 +173,7 @@ def validate_file_size(path: Path, max_size_bytes: int = 10 * 1024 * 1024) -> No
     try:
         size = os.path.getsize(path)
         if size > max_size_bytes:
-            raise SecurityError(
-                f"File too large: {size} bytes (max: {max_size_bytes} bytes)"
-            )
+            raise SecurityError(f"File too large: {size} bytes (max: {max_size_bytes} bytes)")
         logger.debug(f"File size OK: {size} bytes")
     except OSError as e:
         raise SecurityError(f"Cannot check file size: {e}")
@@ -213,7 +202,7 @@ def validate_json_file(path: Path) -> dict:
 
     # Load JSON safely (json.load is safe, doesn't execute code)
     try:
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         logger.debug(f"Successfully loaded JSON from {path}")
         return data
@@ -241,16 +230,12 @@ def validate_url(url: str) -> None:
         raise SecurityError(f"Invalid URL '{url}': {e}")
 
     # Only allow HTTPS (not HTTP or other protocols)
-    if parsed.scheme not in ('https',):
-        raise SecurityError(
-            f"Only HTTPS URLs are allowed, got: {parsed.scheme}"
-        )
+    if parsed.scheme not in ("https",):
+        raise SecurityError(f"Only HTTPS URLs are allowed, got: {parsed.scheme}")
 
     # Validate domain is not localhost or internal IP
-    if parsed.hostname in ('localhost', '127.0.0.1', '0.0.0.0', '::1'):  # nosec B104 - checking FOR these values to reject them, not binding to them
-        raise SecurityError(
-            f"Cannot connect to localhost/internal IPs: {parsed.hostname}"
-        )
+    if parsed.hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1"):  # nosec B104 - checking FOR these values to reject them, not binding to them
+        raise SecurityError(f"Cannot connect to localhost/internal IPs: {parsed.hostname}")
 
     logger.debug(f"URL validated: {url}")
 
@@ -272,22 +257,22 @@ def validate_package_name(name: str, ecosystem: str) -> None:
     # Ecosystem-specific validation
     if ecosystem == "npm":
         # npm: lowercase, alphanumeric, hyphens, underscores, @ for scoped
-        if not re.match(r'^(@[a-z0-9-_]+/)?[a-z0-9-_]+$', name.lower()):
+        if not re.match(r"^(@[a-z0-9-_]+/)?[a-z0-9-_]+$", name.lower()):
             raise SecurityError(f"Invalid npm package name: {name}")
 
     elif ecosystem == "pypi":
         # PyPI: alphanumeric, hyphens, underscores, dots
-        if not re.match(r'^[a-zA-Z0-9-_.]+$', name):
+        if not re.match(r"^[a-zA-Z0-9-_.]+$", name):
             raise SecurityError(f"Invalid PyPI package name: {name}")
 
     elif ecosystem == "go":
         # Go: domain/path format
-        if not re.match(r'^[a-zA-Z0-9-_.\/]+$', name):
+        if not re.match(r"^[a-zA-Z0-9-_.\/]+$", name):
             raise SecurityError(f"Invalid Go package name: {name}")
 
     elif ecosystem == "cargo":
         # Rust: alphanumeric, hyphens, underscores
-        if not re.match(r'^[a-zA-Z0-9-_]+$', name):
+        if not re.match(r"^[a-zA-Z0-9-_]+$", name):
             raise SecurityError(f"Invalid Cargo package name: {name}")
 
     logger.debug(f"Package name validated: {name} ({ecosystem})")
@@ -345,6 +330,41 @@ def validate_mcp_server_config(server_config: dict) -> None:
     logger.info(f"MCP server config validated: {command or server_config.get('url', 'unknown')}")
 
 
+# Docker/OCI image reference pattern — must start with alphanum, no shell metacharacters
+_IMAGE_REF_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._\-/:@]+$")
+
+
+def validate_image_ref(ref: str) -> str:
+    """Validate a Docker/OCI image reference.
+
+    Rejects references starting with ``-`` (argument injection) and those
+    containing shell metacharacters.
+
+    Returns:
+        The validated reference string.
+
+    Raises:
+        SecurityError: If the reference is invalid.
+    """
+    if not ref or not _IMAGE_REF_RE.match(ref):
+        raise SecurityError(f"Invalid image reference: {ref!r}")
+    return ref
+
+
+def sanitize_error(exc: Exception) -> str:
+    """Return a safe error message with internal details stripped.
+
+    Removes file paths, URLs, and truncates to 200 chars so that
+    internal implementation details are never leaked to API consumers.
+    """
+    msg = str(exc)
+    # Strip URLs first (before path regex matches the path portion)
+    msg = re.sub(r"https?://[^\s\"']+", "<url>", msg)
+    # Strip absolute file paths
+    msg = re.sub(r"(/[^\s:\"']+)+", "<path>", msg)
+    return msg[:200] if len(msg) > 200 else msg
+
+
 # Export all validation functions
 __all__ = [
     "SecurityError",
@@ -359,4 +379,6 @@ __all__ = [
     "validate_package_name",
     "create_safe_subprocess_env",
     "validate_mcp_server_config",
+    "validate_image_ref",
+    "sanitize_error",
 ]

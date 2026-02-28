@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import logging
+import time
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 import httpx
@@ -13,6 +17,7 @@ from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.models import Vulnerability
 
 console = Console(stderr=True)
+_logger = logging.getLogger(__name__)
 
 # API Endpoints
 NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
@@ -23,9 +28,52 @@ CISA_KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_v
 _kev_cache: Optional[dict] = None
 _kev_cache_time: Optional[datetime] = None
 
+# ─── Persistent enrichment cache (NVD + EPSS) ──────────────────────────────
+
+_ENRICHMENT_CACHE_DIR = Path.home() / ".agent-bom"
+_ENRICHMENT_TTL = 604_800  # 7 days
+
+# Module-level in-memory mirrors (loaded lazily from disk)
+_nvd_file_cache: dict[str, dict] = {}
+_epss_file_cache: dict[str, dict] = {}
+_enrichment_cache_loaded = False
+
+
+def _load_enrichment_cache() -> None:
+    """Load NVD + EPSS caches from disk (once)."""
+    global _nvd_file_cache, _epss_file_cache, _enrichment_cache_loaded  # noqa: PLW0603
+    if _enrichment_cache_loaded:
+        return
+    _enrichment_cache_loaded = True
+    now = time.time()
+    for name, target in [("nvd_cache.json", "_nvd"), ("epss_cache.json", "_epss")]:
+        path = _ENRICHMENT_CACHE_DIR / name
+        if not path.exists():
+            continue
+        try:
+            raw = json.loads(path.read_text())
+            # Expire entries older than TTL
+            fresh = {k: v for k, v in raw.items() if isinstance(v, dict) and (now - v.get("_cached_at", 0)) < _ENRICHMENT_TTL}
+            if target == "_nvd":
+                _nvd_file_cache.update(fresh)
+            else:
+                _epss_file_cache.update(fresh)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _save_enrichment_cache() -> None:
+    """Persist NVD + EPSS caches to disk."""
+    _ENRICHMENT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    for name, data in [("nvd_cache.json", _nvd_file_cache), ("epss_cache.json", _epss_file_cache)]:
+        try:
+            (_ENRICHMENT_CACHE_DIR / name).write_text(json.dumps(data))
+        except Exception:  # noqa: BLE001
+            _logger.debug("Failed to save %s cache", name)
+
 
 async def fetch_nvd_data(cve_id: str, client: httpx.AsyncClient, api_key: Optional[str] = None) -> Optional[dict]:
-    """Fetch CVE data from NVD API.
+    """Fetch CVE data from NVD API (with persistent file cache).
 
     Args:
         cve_id: CVE identifier (e.g., "CVE-2024-1234")
@@ -35,6 +83,14 @@ async def fetch_nvd_data(cve_id: str, client: httpx.AsyncClient, api_key: Option
     Returns:
         NVD vulnerability data or None if not found
     """
+    _load_enrichment_cache()
+
+    # Check persistent cache
+    if cve_id in _nvd_file_cache:
+        cached = _nvd_file_cache[cve_id]
+        data = {k: v for k, v in cached.items() if k != "_cached_at"}
+        return data if data else None
+
     headers = {}
     if api_key:
         headers["apiKey"] = api_key
@@ -52,7 +108,10 @@ async def fetch_nvd_data(cve_id: str, client: httpx.AsyncClient, api_key: Option
             data = response.json()
             vulnerabilities = data.get("vulnerabilities", [])
             if vulnerabilities:
-                return vulnerabilities[0].get("cve", {})
+                result = vulnerabilities[0].get("cve", {})
+                # Store in persistent cache
+                _nvd_file_cache[cve_id] = {**result, "_cached_at": time.time()}
+                return result
         except (ValueError, KeyError) as e:
             console.print(f"  [dim yellow]NVD parse error for {cve_id}: {e}[/dim yellow]")
 
@@ -60,7 +119,7 @@ async def fetch_nvd_data(cve_id: str, client: httpx.AsyncClient, api_key: Option
 
 
 async def fetch_epss_scores(cve_ids: list[str], client: httpx.AsyncClient) -> dict[str, dict]:
-    """Fetch EPSS scores for multiple CVEs.
+    """Fetch EPSS scores for multiple CVEs (with persistent file cache).
 
     EPSS (Exploit Prediction Scoring System) provides probability that a CVE
     will be exploited in the wild within the next 30 days.
@@ -75,8 +134,24 @@ async def fetch_epss_scores(cve_ids: list[str], client: httpx.AsyncClient) -> di
     if not cve_ids:
         return {}
 
+    _load_enrichment_cache()
+
+    scores: dict[str, dict] = {}
+    uncached: list[str] = []
+
+    # Check persistent cache first
+    for cve_id in cve_ids:
+        if cve_id in _epss_file_cache:
+            cached = _epss_file_cache[cve_id]
+            scores[cve_id] = {k: v for k, v in cached.items() if k != "_cached_at"}
+        else:
+            uncached.append(cve_id)
+
+    if not uncached:
+        return scores
+
     # EPSS API accepts comma-separated CVE list
-    cve_param = ",".join(cve_ids[:100])  # Limit to 100 per request
+    cve_param = ",".join(uncached[:100])  # Limit to 100 per request
 
     response = await request_with_retry(
         client,
@@ -88,20 +163,20 @@ async def fetch_epss_scores(cve_ids: list[str], client: httpx.AsyncClient) -> di
     if response and response.status_code == 200:
         try:
             data = response.json()
-            scores = {}
             for item in data.get("data", []):
                 cve = item.get("cve")
                 if cve:
-                    scores[cve] = {
+                    entry = {
                         "score": float(item.get("epss", 0.0)),
                         "percentile": float(item.get("percentile", 0.0)),
                         "date": item.get("date"),
                     }
-            return scores
+                    scores[cve] = entry
+                    _epss_file_cache[cve] = {**entry, "_cached_at": time.time()}
         except (ValueError, KeyError) as e:
             console.print(f"  [dim yellow]EPSS parse error: {e}[/dim yellow]")
 
-    return {}
+    return scores
 
 
 async def fetch_cisa_kev_catalog(client: httpx.AsyncClient) -> dict:
@@ -299,6 +374,9 @@ async def enrich_vulnerabilities(
                         vuln.nvd_modified = nvd.get("lastModified")
                         enriched_count += 1
                         break
+
+    # Persist enrichment caches to disk
+    _save_enrichment_cache()
 
     console.print(f"\n  [bold]Enriched {enriched_count} vulnerability data points.[/bold]")
     return enriched_count

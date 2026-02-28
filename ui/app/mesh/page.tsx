@@ -8,285 +8,105 @@ import {
   MiniMap,
   type Node,
   type Edge,
-  MarkerType,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { ShieldAlert, Loader2, AlertTriangle } from "lucide-react";
-import { api, type ScanJob, type ScanResult, type MCPServer } from "@/lib/api";
+import { ShieldAlert, Loader2, AlertTriangle, Search, SlidersHorizontal } from "lucide-react";
+import { api, type ScanJob } from "@/lib/api";
 import { applyDagreLayout } from "@/lib/dagre-layout";
 import { lineageNodeTypes, type LineageNodeData, type LineageNodeType } from "@/components/lineage-nodes";
 import { LineageDetailPanel } from "@/components/lineage-detail";
-import { MeshStats, type MeshStatsData } from "@/components/mesh-stats";
+import { MeshStats } from "@/components/mesh-stats";
+import {
+  buildMeshGraph,
+  getConnectedIds,
+  searchNodes,
+  type NodeTypeFilter,
+  type SeverityFilter,
+  type MeshStatsData,
+} from "@/lib/mesh-graph";
 
-// ─── Credential detection ────────────────────────────────────────────────────
+// ─── Filter Toolbar ─────────────────────────────────────────────────────────
 
-const CRED_RE = /key|token|secret|password|credential|auth/i;
+function MeshToolbar({
+  nodeFilter,
+  setNodeFilter,
+  severityFilter,
+  setSeverityFilter,
+  searchQuery,
+  setSearchQuery,
+}: {
+  nodeFilter: NodeTypeFilter;
+  setNodeFilter: (f: NodeTypeFilter) => void;
+  severityFilter: SeverityFilter;
+  setSeverityFilter: (f: SeverityFilter) => void;
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
+}) {
+  const toggles: { key: keyof NodeTypeFilter; label: string; color: string }[] = [
+    { key: "packages", label: "Packages", color: "text-zinc-400" },
+    { key: "vulnerabilities", label: "Vulns", color: "text-red-400" },
+    { key: "credentials", label: "Creds", color: "text-amber-400" },
+    { key: "tools", label: "Tools", color: "text-purple-400" },
+  ];
 
-function getCredKeys(server: MCPServer): string[] {
-  return server.env ? Object.keys(server.env).filter((k) => CRED_RE.test(k)) : [];
-}
+  return (
+    <div className="flex items-center gap-3 px-4 py-2 border-b border-zinc-800 text-xs">
+      <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
 
-// ─── Shared Server Detection ─────────────────────────────────────────────────
+      {/* Node type toggles */}
+      {toggles.map((t) => (
+        <label key={t.key} className="flex items-center gap-1 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={nodeFilter[t.key]}
+            onChange={() => setNodeFilter({ ...nodeFilter, [t.key]: !nodeFilter[t.key] })}
+            className="w-3 h-3 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-0 focus:ring-offset-0"
+          />
+          <span className={nodeFilter[t.key] ? t.color : "text-zinc-600"}>{t.label}</span>
+        </label>
+      ))}
 
-interface ServerGroup {
-  name: string;
-  agents: Set<string>;
-  servers: MCPServer[];
-  totalTools: number;
-  totalCreds: number;
-  totalPackages: number;
-  credNames: Set<string>;
-}
+      <div className="w-px h-4 bg-zinc-700" />
 
-function detectSharedServers(result: ScanResult): Map<string, ServerGroup> {
-  const groups = new Map<string, ServerGroup>();
+      {/* Severity filter */}
+      <select
+        value={severityFilter}
+        onChange={(e) => setSeverityFilter(e.target.value as SeverityFilter)}
+        className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-300 focus:outline-none focus:border-emerald-600"
+      >
+        <option value="all">All Severities</option>
+        <option value="critical">Critical Only</option>
+        <option value="high">High+</option>
+        <option value="medium">Medium+</option>
+        <option value="low">Low+</option>
+      </select>
 
-  for (const agent of result.agents) {
-    for (const server of agent.mcp_servers) {
-      const key = server.name;
-      const existing = groups.get(key);
-      const creds = getCredKeys(server);
-      if (existing) {
-        existing.agents.add(agent.name);
-        existing.servers.push(server);
-        existing.totalTools += server.tools?.length ?? 0;
-        existing.totalCreds += creds.length;
-        existing.totalPackages += server.packages.length;
-        creds.forEach((c) => existing.credNames.add(c));
-      } else {
-        groups.set(key, {
-          name: server.name,
-          agents: new Set([agent.name]),
-          servers: [server],
-          totalTools: server.tools?.length ?? 0,
-          totalCreds: creds.length,
-          totalPackages: server.packages.length,
-          credNames: new Set(creds),
-        });
-      }
-    }
-  }
+      <div className="w-px h-4 bg-zinc-700" />
 
-  return groups;
-}
-
-// ─── Graph Builder ───────────────────────────────────────────────────────────
-
-function buildMeshGraph(result: ScanResult): {
-  nodes: Node[];
-  edges: Edge[];
-  stats: MeshStatsData;
-} {
-  const nodes: Node[] = [];
-  const edges: Edge[] = [];
-  const seen = new Set<string>();
-
-  const serverGroups = detectSharedServers(result);
-  const sharedServerNames = new Set(
-    [...serverGroups.entries()]
-      .filter(([, g]) => g.agents.size > 1)
-      .map(([name]) => name)
+      {/* Search */}
+      <div className="relative flex-1 max-w-xs">
+        <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2 top-1/2 -translate-y-1/2" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search nodes, CVEs, packages..."
+          className="w-full bg-zinc-900 border border-zinc-700 rounded pl-7 pr-2 py-1 text-xs text-zinc-300 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-600"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery("")}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+          >
+            ×
+          </button>
+        )}
+      </div>
+    </div>
   );
-
-  // Credential blast: creds exposed to multiple agents
-  const credAgentMap = new Map<string, Set<string>>();
-  for (const [, group] of serverGroups) {
-    for (const cred of group.credNames) {
-      const existing = credAgentMap.get(cred) ?? new Set<string>();
-      group.agents.forEach((a) => existing.add(a));
-      credAgentMap.set(cred, existing);
-    }
-  }
-  const credentialBlast = [...credAgentMap.entries()]
-    .filter(([, agents]) => agents.size > 1)
-    .map(([cred, agents]) => `${cred} → ${agents.size} agents`);
-
-  // Stats
-  const allCreds = new Set<string>();
-  for (const [, g] of serverGroups) g.credNames.forEach((c) => allCreds.add(c));
-
-  // Tool overlap: tools available to >1 agent
-  const toolAgentMap = new Map<string, Set<string>>();
-  for (const agent of result.agents) {
-    for (const server of agent.mcp_servers) {
-      for (const tool of server.tools ?? []) {
-        const existing = toolAgentMap.get(tool.name) ?? new Set<string>();
-        existing.add(agent.name);
-        toolAgentMap.set(tool.name, existing);
-      }
-    }
-  }
-  const toolOverlap = [...toolAgentMap.values()].filter((a) => a.size > 1).length;
-
-  const stats: MeshStatsData = {
-    totalAgents: result.agents.length,
-    sharedServers: sharedServerNames.size,
-    uniqueCredentials: allCreds.size,
-    toolOverlap,
-    credentialBlast,
-  };
-
-  // Agent nodes
-  for (const agent of result.agents) {
-    const agentId = `agent:${agent.name}`;
-    const totalVulns = agent.mcp_servers.reduce(
-      (s, srv) => s + srv.packages.reduce((vs, p) => vs + (p.vulnerabilities?.length ?? 0), 0),
-      0
-    );
-    nodes.push({
-      id: agentId,
-      type: "agentNode",
-      position: { x: 0, y: 0 },
-      data: {
-        label: agent.name,
-        nodeType: "agent",
-        agentType: agent.agent_type,
-        agentStatus: agent.status,
-        serverCount: agent.mcp_servers.length,
-        packageCount: agent.mcp_servers.reduce((s, srv) => s + srv.packages.length, 0),
-        vulnCount: totalVulns,
-      } satisfies LineageNodeData,
-    });
-  }
-
-  // Server nodes (shared vs regular)
-  for (const [name, group] of serverGroups) {
-    const isShared = group.agents.size > 1;
-    const serverId = `server:${name}`;
-    const firstServer = group.servers[0];
-
-    nodes.push({
-      id: serverId,
-      type: isShared ? "sharedServerNode" : "serverNode",
-      position: { x: 0, y: 0 },
-      data: {
-        label: name,
-        nodeType: isShared ? "sharedServer" : "server",
-        command: firstServer.command || firstServer.transport || "",
-        toolCount: group.totalTools,
-        credentialCount: group.totalCreds,
-        packageCount: group.totalPackages,
-        sharedBy: group.agents.size,
-        sharedAgents: [...group.agents],
-      } satisfies LineageNodeData,
-    });
-
-    // Agent → Server edges
-    for (const agentName of group.agents) {
-      const edgeId = `agent:${agentName}->server:${name}`;
-      if (!seen.has(edgeId)) {
-        seen.add(edgeId);
-        edges.push({
-          id: edgeId,
-          source: `agent:${agentName}`,
-          target: serverId,
-          type: "smoothstep",
-          animated: isShared,
-          style: {
-            stroke: isShared ? "#22d3ee" : "#10b981",
-            strokeWidth: isShared ? 2.5 : 1.5,
-          },
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            color: isShared ? "#22d3ee" : "#10b981",
-          },
-        });
-      }
-    }
-
-    // Credential nodes
-    for (const cred of group.credNames) {
-      const credId = `cred:${name}:${cred}`;
-      if (!seen.has(credId)) {
-        seen.add(credId);
-        const multiAgent = (credAgentMap.get(cred)?.size ?? 0) > 1;
-        nodes.push({
-          id: credId,
-          type: "credentialNode",
-          position: { x: 0, y: 0 },
-          data: {
-            label: cred,
-            nodeType: "credential",
-            serverName: name,
-            sharedBy: credAgentMap.get(cred)?.size,
-          } satisfies LineageNodeData,
-        });
-        edges.push({
-          id: `${serverId}->${credId}`,
-          source: serverId,
-          target: credId,
-          type: "smoothstep",
-          style: {
-            stroke: multiAgent ? "#f59e0b" : "#92400e",
-            strokeWidth: multiAgent ? 2 : 1,
-            strokeDasharray: "5 3",
-          },
-          markerEnd: { type: MarkerType.ArrowClosed, color: "#f59e0b" },
-        });
-      }
-    }
-
-    // Tool nodes (limit 5 per server for mesh readability)
-    const allTools = group.servers.flatMap((s) => s.tools ?? []);
-    const uniqueTools = [...new Map(allTools.map((t) => [t.name, t])).values()].slice(0, 5);
-    for (const tool of uniqueTools) {
-      const toolId = `tool:${name}:${tool.name}`;
-      if (!seen.has(toolId)) {
-        seen.add(toolId);
-        const multiAgent = (toolAgentMap.get(tool.name)?.size ?? 0) > 1;
-        nodes.push({
-          id: toolId,
-          type: "toolNode",
-          position: { x: 0, y: 0 },
-          data: {
-            label: tool.name,
-            nodeType: "tool",
-            description: tool.description,
-          } satisfies LineageNodeData,
-        });
-        edges.push({
-          id: `${serverId}->${toolId}`,
-          source: serverId,
-          target: toolId,
-          type: "smoothstep",
-          style: {
-            stroke: multiAgent ? "#a855f7" : "#6b21a8",
-            strokeWidth: multiAgent ? 1.5 : 1,
-          },
-          markerEnd: { type: MarkerType.ArrowClosed, color: "#a855f7" },
-        });
-      }
-    }
-  }
-
-  return { nodes, edges, stats };
 }
 
-// ─── Hover Highlighting ──────────────────────────────────────────────────────
-
-function getConnectedIds(nodeId: string, edges: Edge[]): Set<string> {
-  const connected = new Set<string>([nodeId]);
-  const queue = [nodeId];
-  const visited = new Set<string>([nodeId]);
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    for (const e of edges) {
-      if (e.source === current && !visited.has(e.target)) {
-        visited.add(e.target);
-        connected.add(e.target);
-        queue.push(e.target);
-      }
-      if (e.target === current && !visited.has(e.source)) {
-        visited.add(e.source);
-        connected.add(e.source);
-        queue.push(e.source);
-      }
-    }
-  }
-  return connected;
-}
-
-// ─── Page ────────────────────────────────────────────────────────────────────
+// ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function MeshPage() {
   const [jobs, setJobs] = useState<ScanJob[]>([]);
@@ -295,6 +115,16 @@ export default function MeshPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<LineageNodeData | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+
+  // Filters
+  const [nodeFilter, setNodeFilter] = useState<NodeTypeFilter>({
+    packages: true,
+    vulnerabilities: true,
+    credentials: true,
+    tools: true,
+  });
+  const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     api
@@ -324,10 +154,15 @@ export default function MeshPage() {
   );
 
   const { rawNodes, rawEdges, stats } = useMemo(() => {
-    if (!activeResult) return { rawNodes: [], rawEdges: [], stats: { totalAgents: 0, sharedServers: 0, uniqueCredentials: 0, toolOverlap: 0, credentialBlast: [] } };
-    const { nodes, edges, stats } = buildMeshGraph(activeResult);
+    const empty: MeshStatsData = {
+      totalAgents: 0, sharedServers: 0, uniqueCredentials: 0, toolOverlap: 0,
+      credentialBlast: [], totalPackages: 0, totalVulnerabilities: 0,
+      criticalCount: 0, highCount: 0, mediumCount: 0, lowCount: 0, kevCount: 0,
+    };
+    if (!activeResult) return { rawNodes: [] as Node[], rawEdges: [] as Edge[], stats: empty };
+    const { nodes, edges, stats } = buildMeshGraph(activeResult, nodeFilter, severityFilter);
     return { rawNodes: nodes, rawEdges: edges, stats };
-  }, [activeResult]);
+  }, [activeResult, nodeFilter, severityFilter]);
 
   const { nodes: layoutNodes, edges: layoutEdges } = useMemo(
     () =>
@@ -336,36 +171,50 @@ export default function MeshPage() {
             direction: "LR",
             nodeWidth: 200,
             nodeHeight: 70,
-            rankSep: 120,
-            nodeSep: 30,
+            rankSep: 140,
+            nodeSep: 25,
           })
-        : { nodes: [], edges: [] },
+        : { nodes: [] as Node[], edges: [] as Edge[] },
     [rawNodes, rawEdges]
   );
 
+  // Search highlighting
+  const searchMatches = useMemo(
+    () => (searchQuery ? searchNodes(layoutNodes, searchQuery) : null),
+    [layoutNodes, searchQuery]
+  );
+
+  // Hover highlighting
   const connectedIds = useMemo(
     () => (hoveredNodeId ? getConnectedIds(hoveredNodeId, layoutEdges) : null),
     [hoveredNodeId, layoutEdges]
   );
 
   const displayNodes = useMemo(() => {
+    if (searchMatches && searchMatches.size > 0) {
+      return layoutNodes.map((n) => ({
+        ...n,
+        data: { ...n.data, dimmed: !searchMatches.has(n.id), highlighted: searchMatches.has(n.id) },
+      }));
+    }
     if (!connectedIds) return layoutNodes;
     return layoutNodes.map((n) => ({
       ...n,
       data: { ...n.data, dimmed: !connectedIds.has(n.id), highlighted: connectedIds.has(n.id) },
     }));
-  }, [layoutNodes, connectedIds]);
+  }, [layoutNodes, connectedIds, searchMatches]);
 
   const displayEdges = useMemo(() => {
-    if (!connectedIds) return layoutEdges;
+    const activeSet = searchMatches && searchMatches.size > 0 ? searchMatches : connectedIds;
+    if (!activeSet) return layoutEdges;
     return layoutEdges.map((e) => ({
       ...e,
       style: {
         ...e.style,
-        opacity: connectedIds.has(e.source) && connectedIds.has(e.target) ? 1 : 0.12,
+        opacity: activeSet.has(e.source) && activeSet.has(e.target) ? 1 : 0.12,
       },
     }));
-  }, [layoutEdges, connectedIds]);
+  }, [layoutEdges, connectedIds, searchMatches]);
 
   const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
     setSelectedNode(node.data as LineageNodeData);
@@ -416,7 +265,7 @@ export default function MeshPage() {
         <div>
           <h1 className="text-lg font-semibold text-zinc-100">Agent Mesh</h1>
           <p className="text-xs text-zinc-500">
-            Cross-agent topology — shared servers, credential blast, tool overlap
+            Cross-agent topology — packages, vulnerabilities, credentials, tools
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -442,6 +291,12 @@ export default function MeshPage() {
               <span className="w-2 h-2 rounded-full bg-blue-500" /> Server
             </span>
             <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-zinc-500" /> Package
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-red-500" /> Vuln
+            </span>
+            <span className="flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-amber-500" /> Cred
             </span>
             <span className="flex items-center gap-1">
@@ -453,6 +308,16 @@ export default function MeshPage() {
 
       {/* Stats bar */}
       <MeshStats stats={stats} />
+
+      {/* Filter toolbar */}
+      <MeshToolbar
+        nodeFilter={nodeFilter}
+        setNodeFilter={setNodeFilter}
+        severityFilter={severityFilter}
+        setSeverityFilter={setSeverityFilter}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+      />
 
       {/* Graph */}
       <div className="flex-1 relative">

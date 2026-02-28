@@ -271,13 +271,14 @@ def test_replay_detector_different_messages_not_replay():
 
 def test_replay_detector_eviction_on_overflow():
     """When max_entries is reached, stale entries are evicted."""
-    detector = ReplayDetector(max_entries=2, window_seconds=300.0)
+    detector = ReplayDetector(max_entries=2, window_seconds=0.001)
     # Fill with 2 entries
     detector.check({"id": 1})
     detector.check({"id": 2})
-    # Manually expire them
+    # Manually expire them — set to 0.0 which is always > 0.001s in the past
+    # because time.monotonic() returns seconds since an arbitrary epoch (boot).
     for k in list(detector._seen):
-        detector._seen[k] = 0.0  # Pretend they're from the past
+        detector._seen[k] = 0.0
     # This should trigger eviction and NOT be a replay
     msg_new = {"id": 3}
     assert detector.check(msg_new) is False

@@ -417,32 +417,6 @@ export interface EvaluateResult {
   policies_evaluated: number;
 }
 
-export interface AgentMeshResponse {
-  nodes: Array<{
-    id: string;
-    type: string;
-    position: { x: number; y: number };
-    data: Record<string, unknown>;
-  }>;
-  edges: Array<{
-    id: string;
-    source: string;
-    target: string;
-    type: string;
-    animated?: boolean;
-    style?: Record<string, string>;
-    label?: string;
-  }>;
-  stats: {
-    total_agents: number;
-    total_servers: number;
-    total_packages: number;
-    total_tools: number;
-    total_credentials: number;
-    total_vulnerabilities: number;
-  };
-}
-
 // ─── Fetch helpers ────────────────────────────────────────────────────────────
 
 async function get<T>(path: string): Promise<T> {
@@ -501,9 +475,6 @@ export const api = {
 
   /** Get React Flow lifecycle graph for an agent */
   getAgentLifecycle: (name: string) => get<AgentLifecycleResponse>(`/v1/agents/${encodeURIComponent(name)}/lifecycle`),
-
-  /** Get agent mesh topology graph */
-  getAgentMesh: () => get<AgentMeshResponse>("/v1/agents/mesh"),
 
   /** MCP registry catalog */
   listRegistry: () => get<RegistryResponse>("/v1/registry"),

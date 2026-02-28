@@ -9,14 +9,12 @@ import {
   isConfigured,
   type AgentDetailResponse,
   type AgentLifecycleResponse,
-  type AgentMeshResponse,
   type BlastRadius,
   type AttackFlowNodeData,
   severityColor,
   OWASP_LLM_TOP10,
   MITRE_ATLAS,
 } from "@/lib/api";
-import { AgentMesh } from "@/components/agent-mesh";
 import { SeverityBadge } from "@/components/severity-badge";
 import {
   ReactFlow,
@@ -130,7 +128,7 @@ function AgentsList() {
           </p>
         </div>
         <Link
-          href="/agents?view=mesh"
+          href="/mesh"
           className="flex items-center gap-2 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-sm text-zinc-300 transition-colors"
         >
           <Network className="w-4 h-4" />
@@ -881,58 +879,12 @@ function AgentLifecycle({ agentName }: { agentName: string }) {
   );
 }
 
-// ─── Agent Mesh View ─────────────────────────────────────────────────────────
-
-function AgentMeshView() {
-  const [data, setData] = useState<AgentMeshResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    api.getAgentMesh()
-      .then(setData)
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="h-screen bg-zinc-950 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-zinc-500" />
-      </div>
-    );
-  }
-
-  if (error || !data) {
-    return (
-      <div className="p-8">
-        <Link href="/agents" className="text-zinc-400 hover:text-zinc-200 flex items-center gap-1 mb-6">
-          <ArrowLeft className="w-4 h-4" /> Back to agents
-        </Link>
-        <div className="text-red-400 bg-red-950 border border-red-800 rounded-lg p-4">
-          {error || "Failed to load agent mesh"}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="h-screen w-screen bg-zinc-950">
-      <AgentMesh data={data} />
-    </div>
-  );
-}
-
 // ─── Router Component ───────────────────────────────────────────────────────
 
 function AgentsRouter() {
   const searchParams = useSearchParams();
   const name = searchParams.get("name") || "";
   const view = searchParams.get("view") || "";
-
-  if (!name && view === "mesh") {
-    return <AgentMeshView />;
-  }
 
   if (name && view === "lifecycle") {
     return <AgentLifecycle agentName={name} />;

@@ -2084,27 +2084,27 @@ def _mount_dashboard(application: FastAPI) -> None:
     async def _dashboard_root():
         return FileResponse(str(ui_dist / "index.html"))
 
+    # Pre-build a whitelist of static files at startup so the catch-all
+    # handler never constructs filesystem paths from user input.
+    _static_file_map: dict[str, str] = {}
+    for _f in ui_dist.rglob("*"):
+        if _f.is_file() and not str(_f.relative_to(ui_dist)).startswith("_next"):
+            _static_file_map[str(_f.relative_to(ui_dist))] = str(_f.resolve())
+    _index_html = str((ui_dist / "index.html").resolve())
+
     # SPA catch-all for client-side routing
     @application.get("/{path:path}", include_in_schema=False)
     async def _spa_catch_all(path: str):
         # Skip API and docs paths
         if path.startswith(("v1/", "docs", "redoc", "openapi.json", "health", "version")):
             raise HTTPException(status_code=404)
-        # Reject path traversal attempts before any filesystem access
-        if ".." in path or path.startswith("/"):
-            raise HTTPException(status_code=400)
-        # Resolve both paths to absolute and verify containment via string prefix
-        ui_root = str(ui_dist.resolve())
-        candidate = str((ui_dist / path).resolve())
-        if not candidate.startswith(ui_root):
-            raise HTTPException(status_code=400)
-        from pathlib import Path as _FPath
-
-        resolved = _FPath(candidate)
-        if resolved.is_file():
-            return FileResponse(candidate)
+        # Look up the pre-resolved path — user input is only a dict key,
+        # never used in any filesystem operation (no path-injection risk).
+        resolved = _static_file_map.get(path)
+        if resolved:
+            return FileResponse(resolved)
         # SPA fallback — serve index.html for client-side routing
-        return FileResponse(str(ui_dist / "index.html"))
+        return FileResponse(_index_html)
 
 
 _mount_dashboard(app)

@@ -157,7 +157,7 @@
 
   <text x="584" y="392" font-family="system-ui, sans-serif" font-size="24" font-weight="700" fill="#a78bfa">6</text>
   <text x="608" y="388" class="node-name" fill="#8b949e">threat categories</text>
-  <text x="608" y="400" class="node-detail">4 OWASP LLM + 2 MITRE ATLAS</text>
+  <text x="608" y="400" class="node-detail">4 OWASP LLM + 2 ATLAS + ASI + EU</text>
 
   <!-- Remediation callout -->
   <rect x="580" y="406" width="260" height="2" rx="1" fill="#3fb950" opacity="0.5"/>

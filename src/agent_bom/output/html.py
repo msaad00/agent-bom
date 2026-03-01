@@ -47,13 +47,7 @@ def _sev_badge(sev: str) -> str:
 
 
 def _esc(s: object) -> str:
-    return (
-        str(s)
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-    )
+    return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
 
 # ─── Data builders ────────────────────────────────────────────────────────────
@@ -74,18 +68,20 @@ def _chart_data(blast_radii: list["BlastRadius"]) -> str:
     blast_scores = [round(br.risk_score, 2) for br in top10]
     blast_colors = [_SEV_COLOR.get(br.vulnerability.severity.value.lower(), "#6b7280") for br in top10]
 
-    return json.dumps({
-        "sev": {
-            "labels": [k.capitalize() for k in sev_counts],
-            "data": list(sev_counts.values()),
-            "colors": [_SEV_COLOR[k] for k in sev_counts],
-        },
-        "blast": {
-            "labels": blast_labels,
-            "scores": blast_scores,
-            "colors": blast_colors,
-        },
-    })
+    return json.dumps(
+        {
+            "sev": {
+                "labels": [k.capitalize() for k in sev_counts],
+                "data": list(sev_counts.values()),
+                "colors": [_SEV_COLOR[k] for k in sev_counts],
+            },
+            "blast": {
+                "labels": blast_labels,
+                "scores": blast_scores,
+                "colors": blast_colors,
+            },
+        }
+    )
 
 
 def _cytoscape_elements(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str:
@@ -120,43 +116,38 @@ def _summary_cards(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> s
             f'<div class="stat-icon">{icon}</div>'
             f'<div class="stat-value" style="color:{accent}">{_esc(value)}</div>'
             f'<div class="stat-label">{label}</div>'
-            f'{sub_html}'
-            f'</div>'
+            f"{sub_html}"
+            f"</div>"
         )
 
-    return '<div class="stat-grid">' + "".join([
-        card("&#x1f916;", str(report.total_agents),   "Agents",          "#60a5fa",
-             f"{report.total_servers} servers"),
-        card("&#x1f4e6;", str(report.total_packages), "Packages",        "#38bdf8",
-             "direct + transitive"),
-        card("&#x26a0;&#xfe0f;",  str(total_vulns),           "Vulnerabilities", "#f87171" if total_vulns else "#34d399",
-             "across all agents"),
-        card("&#x1f511;", str(cred_servers),          "Servers w/ Creds", "#fbbf24" if cred_servers else "#34d399",
-             "credential exposure"),
-        card("&#x1f6a8;", str(crit),                  "Critical",        "#ef4444" if crit else "#34d399",
-             "needs immediate fix"),
-        card("&#x1f9a0;", str(kev_count),             "CISA KEV",        "#a855f7" if kev_count else "#34d399",
-             "actively exploited"),
-    ]) + "</div>"
+    return (
+        '<div class="stat-grid">'
+        + "".join(
+            [
+                card("&#x1f916;", str(report.total_agents), "Agents", "#60a5fa", f"{report.total_servers} servers"),
+                card("&#x1f4e6;", str(report.total_packages), "Packages", "#38bdf8", "direct + transitive"),
+                card("&#x26a0;&#xfe0f;", str(total_vulns), "Vulnerabilities", "#f87171" if total_vulns else "#34d399", "across all agents"),
+                card("&#x1f511;", str(cred_servers), "Servers w/ Creds", "#fbbf24" if cred_servers else "#34d399", "credential exposure"),
+                card("&#x1f6a8;", str(crit), "Critical", "#ef4444" if crit else "#34d399", "needs immediate fix"),
+                card("&#x1f9a0;", str(kev_count), "CISA KEV", "#a855f7" if kev_count else "#34d399", "actively exploited"),
+            ]
+        )
+        + "</div>"
+    )
 
 
 def _vuln_table(blast_radii: list["BlastRadius"]) -> str:
     if not blast_radii:
-        return (
-            '<div class="empty-state">&#x2705; No vulnerabilities found in scanned packages.</div>'
-        )
+        return '<div class="empty-state">&#x2705; No vulnerabilities found in scanned packages.</div>'
 
-    has_missing = any(
-        not br.vulnerability.cvss_score or not br.vulnerability.summary
-        for br in blast_radii
-    )
+    has_missing = any(not br.vulnerability.cvss_score or not br.vulnerability.summary for br in blast_radii)
     hint = ""
     if has_missing:
         hint = (
             '<div class="hint-box">'
-            '&#x1f4a1; <strong>Some entries are missing CVSS scores or descriptions.</strong> '
-            'Run with <code>--enrich</code> to fetch full NVD metadata, CVSS 3.x vectors, EPSS, and CISA KEV status.'
-            '</div>'
+            "&#x1f4a1; <strong>Some entries are missing CVSS scores or descriptions.</strong> "
+            "Run with <code>--enrich</code> to fetch full NVD metadata, CVSS 3.x vectors, EPSS, and CISA KEV status."
+            "</div>"
         )
 
     sorted_brs = sorted(
@@ -180,14 +171,12 @@ def _vuln_table(blast_radii: list["BlastRadius"]) -> str:
             )
         else:
             cvss_bar = '<span style="color:#334155">&mdash;</span>'
-        epss = f'{v.epss_score:.1%}' if v.epss_score else '<span style="color:#334155">&mdash;</span>'
-        kev = (
-            '<span class="badge-kev">KEV</span>'
-            if v.is_kev else '<span style="color:#334155">&mdash;</span>'
-        )
+        epss = f"{v.epss_score:.1%}" if v.epss_score else '<span style="color:#334155">&mdash;</span>'
+        kev = '<span class="badge-kev">KEV</span>' if v.is_kev else '<span style="color:#334155">&mdash;</span>'
         fix = (
             f'<code style="color:#4ade80">{_esc(v.fixed_version)}</code>'
-            if v.fixed_version else '<span style="color:#475569">No fix</span>'
+            if v.fixed_version
+            else '<span style="color:#475569">No fix</span>'
         )
         summary_text = (v.summary or "")[:90]
         summary = _esc(summary_text) if summary_text else '<span style="color:#475569;font-style:italic">Run --enrich</span>'
@@ -200,21 +189,20 @@ def _vuln_table(blast_radii: list["BlastRadius"]) -> str:
             f'<tr data-severity="{sev}" data-kev="{"1" if v.is_kev else "0"}" '
             f'data-cvss="{v.cvss_score if v.cvss_score else 0}">'
             f'<td><code class="vuln-id">{_esc(v.id)}</code></td>'
-            f'<td>{_sev_badge(sev)}</td>'
+            f"<td>{_sev_badge(sev)}</td>"
             f'<td><strong style="color:#e2e8f0">{_esc(br.package.name)}</strong>'
             f'<span style="color:#475569;font-size:.78rem">@{_esc(br.package.version)}</span></td>'
-            f'<td>{cvss_bar}</td>'
+            f"<td>{cvss_bar}</td>"
             f'<td style="text-align:center;font-size:.82rem;color:#94a3b8">{epss}</td>'
             f'<td style="text-align:center">{kev}</td>'
-            f'<td>{fix}</td>'
+            f"<td>{fix}</td>"
             f'<td style="font-size:.78rem;color:#94a3b8">{agents_s}</td>'
             f'<td style="font-size:.78rem">{creds_s}</td>'
             f'<td style="font-size:.75rem;color:#64748b;max-width:180px">{summary}</td>'
-            f'</tr>'
+            f"</tr>"
         )
 
-    headers = ["Vuln ID", "Severity", "Package", "CVSS", "EPSS", "KEV", "Fix",
-               "Affected Agents", "Exposed Creds", "Summary"]
+    headers = ["Vuln ID", "Severity", "Package", "CVSS", "EPSS", "KEV", "Fix", "Affected Agents", "Exposed Creds", "Summary"]
 
     filter_bar = (
         '<div class="vuln-filter-bar" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;'
@@ -235,17 +223,17 @@ def _vuln_table(blast_radii: list["BlastRadius"]) -> str:
         '<input type="text" id="vulnSearch" placeholder="Search vulns&hellip;" '
         'style="padding:6px 10px;background:#1e293b;border:1px solid #334155;border-radius:6px;'
         'color:#e2e8f0;font-size:.78rem;width:160px;outline:none">'
-        '</div>'
+        "</div>"
     )
 
     return (
         hint
         + filter_bar
         + '<div class="table-wrap"><table class="data-table sortable" id="vulnTable">'
-        + '<thead><tr>'
+        + "<thead><tr>"
         + "".join(f'<th data-col="{i}">{h} <span class="sort-arrow"></span></th>' for i, h in enumerate(headers))
-        + '</tr></thead>'
-        + f'<tbody>{"".join(rows)}</tbody></table></div>'
+        + "</tr></thead>"
+        + f"<tbody>{''.join(rows)}</tbody></table></div>"
     )
 
 
@@ -259,41 +247,37 @@ def _blast_table(blast_radii: list["BlastRadius"]) -> str:
         sev = v.severity.value.lower()
         color = _SEV_COLOR.get(sev, "#6b7280")
         bar_w = int(br.risk_score * 9)
-        ai_badge = (
-            '<span class="badge-ai">AI</span>' if br.ai_risk_context else ""
-        )
-        kev_badge = (
-            '<span class="badge-kev">KEV</span>' if v.is_kev else ""
-        )
+        ai_badge = '<span class="badge-ai">AI</span>' if br.ai_risk_context else ""
+        kev_badge = '<span class="badge-kev">KEV</span>' if v.is_kev else ""
         fix = (
             f'<code style="color:#4ade80;font-size:.8rem">{_esc(v.fixed_version)}</code>'
-            if v.fixed_version else '<span style="color:#475569">&mdash;</span>'
+            if v.fixed_version
+            else '<span style="color:#475569">&mdash;</span>'
         )
         rows.append(
-            f'<tr>'
+            f"<tr>"
             f'<td style="color:#475569;font-weight:600">#{i}</td>'
             f'<td><code class="vuln-id">{_esc(v.id)}</code></td>'
-            f'<td>{_sev_badge(sev)}</td>'
-            f'<td>'
+            f"<td>{_sev_badge(sev)}</td>"
+            f"<td>"
             f'<div style="display:flex;align-items:center;gap:8px">'
             f'<div style="background:#0f172a;border-radius:3px;height:5px;width:90px">'
             f'<div style="background:{color};border-radius:3px;height:5px;width:{bar_w}px"></div></div>'
             f'<strong style="color:{color}">{br.risk_score:.1f}</strong></div>'
-            f'</td>'
+            f"</td>"
             f'<td style="text-align:center;color:#e2e8f0">{len(br.affected_agents)}</td>'
             f'<td style="text-align:center;color:#fbbf24">{len(br.exposed_credentials)}</td>'
             f'<td style="text-align:center;color:#94a3b8">{len(br.exposed_tools)}</td>'
-            f'<td>{ai_badge}{kev_badge}</td>'
-            f'<td>{fix}</td>'
-            f'</tr>'
+            f"<td>{ai_badge}{kev_badge}</td>"
+            f"<td>{fix}</td>"
+            f"</tr>"
         )
-    headers = ["#", "Vuln ID", "Severity", "Blast Score (0&ndash;10)",
-               "Agents Hit", "Creds Exposed", "Tools Reachable", "Flags", "Fix"]
+    headers = ["#", "Vuln ID", "Severity", "Blast Score (0&ndash;10)", "Agents Hit", "Creds Exposed", "Tools Reachable", "Flags", "Fix"]
     return (
         '<div class="table-wrap"><table class="data-table sortable">'
-        + '<thead><tr>'
+        + "<thead><tr>"
         + "".join(f'<th data-col="{i}">{h} <span class="sort-arrow"></span></th>' for i, h in enumerate(headers))
-        + f'</tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
+        + f"</tr></thead><tbody>{''.join(rows)}</tbody></table></div>"
     )
 
 
@@ -311,7 +295,8 @@ def _remediation_list(blast_radii: list["BlastRadius"]) -> str:
         v = br.vulnerability
         creds_note = (
             f' &middot; frees <strong style="color:#fbbf24">{len(br.exposed_credentials)}</strong> credential(s)'
-            if br.exposed_credentials else ""
+            if br.exposed_credentials
+            else ""
         )
         items.append(
             f'<div class="remediation-item">'
@@ -322,27 +307,23 @@ def _remediation_list(blast_radii: list["BlastRadius"]) -> str:
             f'<div style="font-size:.8rem;color:#64748b;margin-top:3px">'
             f'<code class="vuln-id">{_esc(v.id)}</code>'
             f' &middot; upgrade to <code style="color:#4ade80">{_esc(v.fixed_version)}</code>'
-            f' &middot; protects <strong>{len(br.affected_agents)}</strong> agent(s)'
-            f'{creds_note}'
-            f'</div></div>'
+            f" &middot; protects <strong>{len(br.affected_agents)}</strong> agent(s)"
+            f"{creds_note}"
+            f"</div></div>"
             f'<div style="flex-shrink:0;color:#475569;font-size:.78rem;padding-top:3px">score&nbsp;{br.risk_score:.1f}</div>'
-            f'</div>'
+            f"</div>"
         )
     nf_html = ""
     if no_fix:
         nf_rows = "".join(
             f'<div style="padding:9px 0;border-bottom:1px solid #1e293b;font-size:.82rem">'
-            f'{_sev_badge(b.vulnerability.severity.value.lower())} '
+            f"{_sev_badge(b.vulnerability.severity.value.lower())} "
             f'<code class="vuln-id">{_esc(b.vulnerability.id)}</code> &mdash; '
             f'<strong style="color:#e2e8f0">{_esc(b.package.name)}</strong>@{_esc(b.package.version)}'
             f' &mdash; <span style="color:#475569">no fix available &mdash; monitor upstream</span></div>'
             for b in no_fix
         )
-        nf_html = (
-            '<div style="margin-top:20px">'
-            '<div class="subsection-label">No Fix Available</div>'
-            + nf_rows + '</div>'
-        )
+        nf_html = '<div style="margin-top:20px"><div class="subsection-label">No Fix Available</div>' + nf_rows + "</div>"
     return "".join(items) + nf_html
 
 
@@ -368,17 +349,21 @@ def _skill_audit_section(report: "AIBOMReport") -> str:
         summary_html = (
             f'<div class="hint-box" style="border-color:#818cf840;background:#1e1b4b40">'
             f'<strong style="color:#c7d2fe">AI Analysis:</strong> {_esc(ai_summary)}'
-            f'</div>'
+            f"</div>"
         )
 
     stats_html = (
         f'<div style="display:flex;gap:24px;margin-bottom:16px;font-size:.82rem;color:#94a3b8">'
         f'<span>Status: <strong style="color:{status_color}">{status_text}</strong></span>'
-        f'<span>Packages checked: <strong>{pkgs_checked}</strong></span>'
-        f'<span>Servers checked: <strong>{servers_checked}</strong></span>'
-        f'<span>Credentials checked: <strong>{creds_checked}</strong></span>'
-        + (f'<span>AI risk level: <strong style="color:{_SEV_COLOR.get(ai_risk, "#64748b")}">{_esc(ai_risk).upper()}</strong></span>' if ai_risk else "")
-        + '</div>'
+        f"<span>Packages checked: <strong>{pkgs_checked}</strong></span>"
+        f"<span>Servers checked: <strong>{servers_checked}</strong></span>"
+        f"<span>Credentials checked: <strong>{creds_checked}</strong></span>"
+        + (
+            f'<span>AI risk level: <strong style="color:{_SEV_COLOR.get(ai_risk, "#64748b")}">{_esc(ai_risk).upper()}</strong></span>'
+            if ai_risk
+            else ""
+        )
+        + "</div>"
     )
 
     if not findings:
@@ -387,30 +372,30 @@ def _skill_audit_section(report: "AIBOMReport") -> str:
             f'<div class="sec-title">&#x1f6e1;&#xfe0f; Skill File Audit</div>'
             f'<div class="panel">{stats_html}{summary_html}'
             f'<div class="empty-state">&#x2705; No security findings in skill files.</div>'
-            f'</div></section>'
+            f"</div></section>"
         )
 
     rows = []
     for f in findings:
         sev = f.get("severity", "low")
         rows.append(
-            f'<tr>'
-            f'<td>{_sev_badge(sev)}</td>'
+            f"<tr>"
+            f"<td>{_sev_badge(sev)}</td>"
             f'<td style="color:#e2e8f0;font-weight:600;font-size:.85rem">{_esc(f.get("title", ""))}</td>'
             f'<td><code style="color:#94a3b8;font-size:.75rem">{_esc(f.get("category", ""))}</code></td>'
             f'<td style="font-size:.78rem;color:#94a3b8;max-width:300px">{_esc(f.get("detail", ""))}</td>'
             f'<td style="font-size:.75rem;color:#64748b">{_esc(f.get("source_file", ""))}</td>'
             f'<td style="font-size:.75rem;color:#4ade80">{_esc(f.get("recommendation", ""))}</td>'
-            f'</tr>'
+            f"</tr>"
         )
 
     headers = ["Severity", "Finding", "Category", "Detail", "Source", "Recommendation"]
     table_html = (
         '<div class="table-wrap"><table class="data-table sortable">'
-        + '<thead><tr>'
+        + "<thead><tr>"
         + "".join(f'<th data-col="{i}">{h} <span class="sort-arrow"></span></th>' for i, h in enumerate(headers))
-        + '</tr></thead>'
-        + f'<tbody>{"".join(rows)}</tbody></table></div>'
+        + "</tr></thead>"
+        + f"<tbody>{''.join(rows)}</tbody></table></div>"
     )
 
     return (
@@ -418,7 +403,7 @@ def _skill_audit_section(report: "AIBOMReport") -> str:
         f'<div class="sec-title">&#x1f6e1;&#xfe0f; Skill File Audit'
         f'<sup style="font-size:.7rem;color:#475569;margin-left:6px">{len(findings)}</sup></div>'
         f'<div class="panel">{stats_html}{summary_html}{table_html}</div>'
-        f'</section>'
+        f"</section>"
     )
 
 
@@ -447,12 +432,12 @@ def _trust_assessment_section(report: "AIBOMReport") -> str:
         icon = level_icons.get(level, "?")
         color = level_colors.get(level, "#6b7280")
         cat_rows.append(
-            f'<tr>'
+            f"<tr>"
             f'<td style="text-align:center;color:{color};font-size:1.1rem">{icon}</td>'
             f'<td style="color:#e2e8f0;font-weight:600;font-size:.85rem">{_esc(cat.get("name", ""))}</td>'
-            f'<td>{_sev_badge(level)}</td>'
+            f"<td>{_sev_badge(level)}</td>"
             f'<td style="font-size:.78rem;color:#94a3b8">{_esc(cat.get("summary", ""))}</td>'
-            f'</tr>'
+            f"</tr>"
         )
 
     verdict_badge = (
@@ -462,7 +447,9 @@ def _trust_assessment_section(report: "AIBOMReport") -> str:
     )
 
     title_suffix = f" &mdash; {skill_name}" if skill_name else ""
-    source_note = f'<div style="font-size:.72rem;color:#475569;margin-bottom:12px">Source: <code>{source_file}</code></div>' if source_file else ""
+    source_note = (
+        f'<div style="font-size:.72rem;color:#475569;margin-bottom:12px">Source: <code>{source_file}</code></div>' if source_file else ""
+    )
 
     rec_html = ""
     if recommendations:
@@ -472,21 +459,21 @@ def _trust_assessment_section(report: "AIBOMReport") -> str:
     headers = ["", "Category", "Level", "Summary"]
     table_html = (
         '<div class="table-wrap"><table class="data-table">'
-        + '<thead><tr>'
-        + "".join(f'<th>{h}</th>' for h in headers)
-        + '</tr></thead>'
-        + f'<tbody>{"".join(cat_rows)}</tbody></table></div>'
+        + "<thead><tr>"
+        + "".join(f"<th>{h}</th>" for h in headers)
+        + "</tr></thead>"
+        + f"<tbody>{''.join(cat_rows)}</tbody></table></div>"
     )
 
     return (
         f'<section id="trust">'
         f'<div class="sec-title">&#x1f50d; Trust Assessment{title_suffix}</div>'
         f'<div class="panel">'
-        f'{source_note}'
+        f"{source_note}"
         f'<div style="margin-bottom:16px">{verdict_badge}</div>'
-        f'{table_html}'
-        f'{rec_html}'
-        f'</div></section>'
+        f"{table_html}"
+        f"{rec_html}"
+        f"</div></section>"
     )
 
 
@@ -509,11 +496,11 @@ def _enforcement_section(report: "AIBOMReport") -> str:
     stats_html = (
         f'<div style="display:flex;gap:24px;margin-bottom:16px;font-size:.82rem;color:#94a3b8">'
         f'<span>Status: <strong style="color:{status_color}">{status_text}</strong></span>'
-        f'<span>Servers checked: <strong>{servers_checked}</strong></span>'
-        f'<span>Tools checked: <strong>{tools_checked}</strong></span>'
+        f"<span>Servers checked: <strong>{servers_checked}</strong></span>"
+        f"<span>Tools checked: <strong>{tools_checked}</strong></span>"
         f'<span>Critical: <strong style="color:#dc2626">{critical_count}</strong></span>'
         f'<span>High: <strong style="color:#ea580c">{high_count}</strong></span>'
-        f'</div>'
+        f"</div>"
     )
 
     if not findings:
@@ -522,30 +509,30 @@ def _enforcement_section(report: "AIBOMReport") -> str:
             f'<div class="sec-title">&#x1f6a8; Enforcement</div>'
             f'<div class="panel">{stats_html}'
             f'<div class="empty-state">&#x2705; No enforcement findings — all checks passed.</div>'
-            f'</div></section>'
+            f"</div></section>"
         )
 
     rows = []
     for f in findings:
         sev = f.get("severity", "low")
         rows.append(
-            f'<tr>'
-            f'<td>{_sev_badge(sev)}</td>'
+            f"<tr>"
+            f"<td>{_sev_badge(sev)}</td>"
             f'<td><code style="color:#94a3b8;font-size:.75rem">{_esc(f.get("category", ""))}</code></td>'
             f'<td style="color:#e2e8f0;font-weight:600;font-size:.85rem">{_esc(f.get("server_name", ""))}</td>'
             f'<td style="font-size:.78rem;color:#94a3b8">{_esc(f.get("tool_name", "") or "—")}</td>'
             f'<td style="font-size:.78rem;color:#94a3b8;max-width:350px">{_esc(f.get("reason", ""))}</td>'
             f'<td style="font-size:.75rem;color:#4ade80">{_esc(f.get("recommendation", ""))}</td>'
-            f'</tr>'
+            f"</tr>"
         )
 
     headers = ["Severity", "Category", "Server", "Tool", "Reason", "Recommendation"]
     table_html = (
         '<div class="table-wrap"><table class="data-table sortable">'
-        + '<thead><tr>'
+        + "<thead><tr>"
         + "".join(f'<th data-col="{i}">{h} <span class="sort-arrow"></span></th>' for i, h in enumerate(headers))
-        + '</tr></thead>'
-        + f'<tbody>{"".join(rows)}</tbody></table></div>'
+        + "</tr></thead>"
+        + f"<tbody>{''.join(rows)}</tbody></table></div>"
     )
 
     return (
@@ -553,7 +540,7 @@ def _enforcement_section(report: "AIBOMReport") -> str:
         f'<div class="sec-title">&#x1f6a8; Enforcement'
         f'<sup style="font-size:.7rem;color:#475569;margin-left:6px">{len(findings)}</sup></div>'
         f'<div class="panel">{stats_html}{table_html}</div>'
-        f'</section>'
+        f"</section>"
     )
 
 
@@ -570,17 +557,17 @@ def _attack_flow_section(blast_radii: list["BlastRadius"]) -> str:
         '<section id="attackflow">'
         '<div class="sec-title">&#x1f525; CVE Attack Flow'
         '<span style="font-size:.68rem;font-weight:400;opacity:.5;margin-left:8px">'
-        f'{len(blast_radii)} CVEs &#x2192; {total_agents} agents &#x2192; '
-        f'{total_creds} credentials &#x2192; {total_tools} tools at risk'
-        '</span></div>'
+        f"{len(blast_radii)} CVEs &#x2192; {total_agents} agents &#x2192; "
+        f"{total_creds} credentials &#x2192; {total_tools} tools at risk"
+        "</span></div>"
         '<div class="graph-container">'
         '<div id="cyAttack" class="cy-graph"></div>'
         '<div class="graph-controls" style="top:12px;right:12px">'
         '<button class="graph-btn" id="afZoomIn" title="Zoom in">+</button>'
         '<button class="graph-btn" id="afZoomOut" title="Zoom out">&minus;</button>'
         '<button class="graph-btn" id="afFitBtn" title="Fit to view">&#x2922;</button>'
-        '</div>'
-        '</div>'
+        "</div>"
+        "</div>"
         '<div class="legend">'
         '<span><i class="diamond" style="background:#f87171"></i>CVE</span>'
         '<span><i style="background:#dc2626"></i>Vulnerable Package</span>'
@@ -588,8 +575,8 @@ def _attack_flow_section(blast_radii: list["BlastRadius"]) -> str:
         '<span><i style="background:#fbbf24"></i>Credential</span>'
         '<span><i style="background:#818cf8"></i>Tool</span>'
         '<span><i style="background:#3b82f6"></i>Agent</span>'
-        '</div>'
-        '</section>'
+        "</div>"
+        "</section>"
     )
 
 
@@ -600,13 +587,9 @@ def _inventory_cards(report: "AIBOMReport") -> str:
         total_creds = sum(len(s.credential_names) for s in agent.mcp_servers)
         agent_badges = []
         if total_vulns:
-            agent_badges.append(
-                f'<span class="badge-vuln">{total_vulns} vuln{"s" if total_vulns != 1 else ""}</span>'
-            )
+            agent_badges.append(f'<span class="badge-vuln">{total_vulns} vuln{"s" if total_vulns != 1 else ""}</span>')
         if total_creds:
-            agent_badges.append(
-                f'<span class="badge-cred">{total_creds} credential{"s" if total_creds != 1 else ""}</span>'
-            )
+            agent_badges.append(f'<span class="badge-cred">{total_creds} credential{"s" if total_creds != 1 else ""}</span>')
         badges_html = " ".join(agent_badges)
 
         servers_html = []
@@ -624,7 +607,7 @@ def _inventory_cards(report: "AIBOMReport") -> str:
                 cmd_parts = [srv.command] + srv.args[:3]
                 cmd = _esc(" ".join(cmd_parts))
                 if srv.args and len(srv.args) > 3:
-                    cmd += f' <span style="color:#334155">&hellip;+{len(srv.args)-3} args</span>'
+                    cmd += f' <span style="color:#334155">&hellip;+{len(srv.args) - 3} args</span>'
 
             # Credentials section
             creds_html = ""
@@ -632,8 +615,7 @@ def _inventory_cards(report: "AIBOMReport") -> str:
                 creds_html = (
                     '<div style="margin-top:8px">'
                     + "".join(
-                        f'<div style="font-size:.74rem;color:#fbbf24;padding:2px 0">'
-                        f'&#x1f511; <code>{_esc(c)}</code></div>'
+                        f'<div style="font-size:.74rem;color:#fbbf24;padding:2px 0">&#x1f511; <code>{_esc(c)}</code></div>'
                         for c in srv.credential_names
                     )
                     + "</div>"
@@ -647,6 +629,7 @@ def _inventory_cards(report: "AIBOMReport") -> str:
 
             def pkg_row(p: object) -> str:
                 from agent_bom.models import Package
+
                 if not isinstance(p, Package):
                     return ""
                 color = "#f87171" if p.has_vulnerabilities else "#38bdf8"
@@ -656,7 +639,7 @@ def _inventory_cards(report: "AIBOMReport") -> str:
                     f'<span><code style="color:{color};font-size:.72rem">{_esc(p.ecosystem)}</code>'
                     f' <span class="pkg-name">{_esc(p.name)}</span></span>'
                     f'<span class="pkg-ver">{_esc(p.version)}{vuln_mark}</span>'
-                    f'</div>'
+                    f"</div>"
                 )
 
             pkg_html = ""
@@ -667,11 +650,11 @@ def _inventory_cards(report: "AIBOMReport") -> str:
                     rest_rows = "".join(pkg_row(p) for p in rest)
                     pkg_html = (
                         f'<div style="margin-top:8px">'
-                        f'{preview_rows}'
+                        f"{preview_rows}"
                         f'<div id="{uid}" style="display:none">{rest_rows}</div>'
                         f'<button class="toggle-btn" onclick="togglePkgs(\'{uid}\',this)">'
-                        f'Show {len(rest)} more packages &#x25bc;</button>'
-                        f'</div>'
+                        f"Show {len(rest)} more packages &#x25bc;</button>"
+                        f"</div>"
                     )
                 else:
                     pkg_html = f'<div style="margin-top:8px">{preview_rows}</div>'
@@ -681,42 +664,40 @@ def _inventory_cards(report: "AIBOMReport") -> str:
                 f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
                 f'<div style="font-weight:600;color:#e2e8f0;font-size:.9rem">&#x2699;&#xfe0f; {_esc(srv.name)} {srv_badges_html}</div>'
                 f'<div style="font-size:.72rem;color:#475569">{pkg_count} pkg{"s" if pkg_count != 1 else ""}</div>'
-                f'</div>'
+                f"</div>"
             )
             cmd_html = (
-                f'<div style="font-size:.72rem;color:#475569;font-family:monospace;'
-                f'margin-bottom:6px;word-break:break-all">{cmd}</div>'
-                if cmd else ""
+                f'<div style="font-size:.72rem;color:#475569;font-family:monospace;margin-bottom:6px;word-break:break-all">{cmd}</div>'
+                if cmd
+                else ""
             )
 
             servers_html.append(
-                f'<div class="server-card" style="border-left-color:{accent}">'
-                f'{srv_header}{cmd_html}{creds_html}{pkg_html}'
-                f'</div>'
+                f'<div class="server-card" style="border-left-color:{accent}">{srv_header}{cmd_html}{creds_html}{pkg_html}</div>'
             )
 
-        servers_content = "".join(servers_html) if servers_html else (
-            '<p style="color:#334155;font-size:.85rem">No MCP servers configured.</p>'
+        servers_content = (
+            "".join(servers_html) if servers_html else ('<p style="color:#334155;font-size:.85rem">No MCP servers configured.</p>')
         )
 
         cards.append(
             f'<details class="agent-card" open>'
             f'<summary class="agent-summary">'
-            f'<span>&#x1f916; {_esc(agent.name)}</span>'
+            f"<span>&#x1f916; {_esc(agent.name)}</span>"
             f'<span style="display:flex;align-items:center;gap:8px">'
-            f'{badges_html}'
+            f"{badges_html}"
             f'<span style="font-size:.72rem;color:#475569">'
-            f'{len(agent.mcp_servers)} server(s) &middot; {agent.total_packages} pkg(s)'
-            f'</span>'
-            f'</span>'
-            f'</summary>'
+            f"{len(agent.mcp_servers)} server(s) &middot; {agent.total_packages} pkg(s)"
+            f"</span>"
+            f"</span>"
+            f"</summary>"
             f'<div class="agent-detail">'
             f'<div style="font-size:.72rem;color:#475569;margin-bottom:12px">'
-            f'{_esc(agent.agent_type.value)} &middot; {_esc(agent.config_path or "")}'
-            f'</div>'
-            f'{servers_content}'
-            f'</div>'
-            f'</details>'
+            f"{_esc(agent.agent_type.value)} &middot; {_esc(agent.config_path or '')}"
+            f"</div>"
+            f"{servers_content}"
+            f"</div>"
+            f"</details>"
         )
     return "".join(cards)
 
@@ -734,19 +715,25 @@ def _compliance_section(blast_radii: list["BlastRadius"]) -> str:
     """Build OWASP/ATLAS/NIST compliance tables from blast radius tags."""
     try:
         from agent_bom.atlas import ATLAS_TECHNIQUES
+        from agent_bom.eu_ai_act import EU_AI_ACT
         from agent_bom.nist_ai_rmf import NIST_AI_RMF
         from agent_bom.owasp import OWASP_LLM_TOP10
+        from agent_bom.owasp_agentic import OWASP_AGENTIC_TOP10
     except ImportError:
         return ""
 
     br_dicts = []
     for br in blast_radii:
-        br_dicts.append({
-            "severity": br.vulnerability.severity.value,
-            "owasp_tags": list(br.owasp_tags),
-            "atlas_tags": list(br.atlas_tags),
-            "nist_ai_rmf_tags": list(br.nist_ai_rmf_tags),
-        })
+        br_dicts.append(
+            {
+                "severity": br.vulnerability.severity.value,
+                "owasp_tags": list(br.owasp_tags),
+                "atlas_tags": list(br.atlas_tags),
+                "nist_ai_rmf_tags": list(br.nist_ai_rmf_tags),
+                "owasp_agentic_tags": list(br.owasp_agentic_tags),
+                "eu_ai_act_tags": list(br.eu_ai_act_tags),
+            }
+        )
 
     def _build_rows(catalog: dict, tag_field: str) -> tuple[str, int, int, int]:
         rows = []
@@ -778,12 +765,14 @@ def _compliance_section(blast_radii: list["BlastRadius"]) -> str:
     owasp_rows, op, of, ow = _build_rows(OWASP_LLM_TOP10, "owasp_tags")
     atlas_rows, ap, af, aw = _build_rows(ATLAS_TECHNIQUES, "atlas_tags")
     nist_rows, np_, nf, nw = _build_rows(NIST_AI_RMF, "nist_ai_rmf_tags")
+    agentic_rows, oap, oaf, oaw = _build_rows(OWASP_AGENTIC_TOP10, "owasp_agentic_tags")
+    eu_rows, ep, ef_, ew = _build_rows(EU_AI_ACT, "eu_ai_act_tags")
 
-    total = (op + of + ow) + (ap + af + aw) + (np_ + nf + nw)
-    total_pass = op + ap + np_
+    total = (op + of + ow) + (ap + af + aw) + (np_ + nf + nw) + (oap + oaf + oaw) + (ep + ef_ + ew)
+    total_pass = op + ap + np_ + oap + ep
     score = round((total_pass / total) * 100, 1) if total > 0 else 100.0
-    has_fail = (of + af + nf) > 0
-    has_warn = (ow + aw + nw) > 0
+    has_fail = (of + af + nf + oaf + ef_) > 0
+    has_warn = (ow + aw + nw + oaw + ew) > 0
     overall = "fail" if has_fail else ("warning" if has_warn else "pass")
     overall_badge = _STATUS_BADGE[overall]
 
@@ -794,20 +783,22 @@ def _compliance_section(blast_radii: list["BlastRadius"]) -> str:
             f'<summary style="cursor:pointer;font-weight:600;padding:6px 0">'
             f'{title} <span style="font-size:.8rem;color:#94a3b8">({p}/{sub_total} pass)</span></summary>'
             f'<table class="vtable" style="margin-top:8px"><thead><tr>'
-            f'<th>Code</th><th>Control</th><th>Findings</th><th>Status</th></tr></thead>'
-            f'<tbody>{rows}</tbody></table></details>'
+            f"<th>Code</th><th>Control</th><th>Findings</th><th>Status</th></tr></thead>"
+            f"<tbody>{rows}</tbody></table></details>"
         )
 
     return (
         f'<section id="compliance">'
         f'<div class="sec-title">&#x1f6e1;&#xfe0f; Compliance Posture'
         f'<sup style="font-size:.7rem;color:#475569;margin-left:6px">'
-        f'Score: {score}% {overall_badge}</sup></div>'
+        f"Score: {score}% {overall_badge}</sup></div>"
         f'<div class="panel">'
-        f'{_framework_table("OWASP LLM Top 10", owasp_rows, op, of, ow)}'
-        f'{_framework_table("MITRE ATLAS", atlas_rows, ap, af, aw)}'
-        f'{_framework_table("NIST AI RMF", nist_rows, np_, nf, nw)}'
-        f'</div></section>'
+        f"{_framework_table('OWASP LLM Top 10', owasp_rows, op, of, ow)}"
+        f"{_framework_table('OWASP Agentic Top 10', agentic_rows, oap, oaf, oaw)}"
+        f"{_framework_table('MITRE ATLAS', atlas_rows, ap, af, aw)}"
+        f"{_framework_table('NIST AI RMF', nist_rows, np_, nf, nw)}"
+        f"{_framework_table('EU AI Act', eu_rows, ep, ef_, ew)}"
+        f"</div></section>"
     )
 
 
@@ -837,20 +828,20 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
             f'<section id="vulns">'
             f'<div class="sec-title">&#x26a0;&#xfe0f; Vulnerabilities'
             f'<sup style="font-size:.7rem;color:#475569;margin-left:6px">{len(blast_radii)}</sup>'
-            f'</div>'
+            f"</div>"
             f'<div class="panel">{_vuln_table(blast_radii)}</div>'
-            f'</section>'
+            f"</section>"
             f'<section id="blast">'
             f'<div class="sec-title">&#x1f4a5; Blast Radius'
             f'<sup style="font-size:.65rem;color:#475569;margin-left:6px;font-weight:400">'
-            f'risk = CVSS + agents + creds + tools + KEV/EPSS boosts (max 10)'
-            f'</sup></div>'
+            f"risk = CVSS + agents + creds + tools + KEV/EPSS boosts (max 10)"
+            f"</sup></div>"
             f'<div class="panel">{_blast_table(blast_radii)}</div>'
-            f'</section>'
+            f"</section>"
             f'<section id="remediation">'
             f'<div class="sec-title">&#x1f527; Remediation Plan</div>'
             f'<div class="panel">{_remediation_list(blast_radii)}</div>'
-            f'</section>'
+            f"</section>"
         )
 
     vuln_nav = (
@@ -858,7 +849,8 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
         '<a href="#vulns">Vulnerabilities</a>'
         '<a href="#blast">Blast Radius</a>'
         '<a href="#remediation">Remediation</a>'
-        if blast_radii else ""
+        if blast_radii
+        else ""
     )
 
     # Compliance section
@@ -880,8 +872,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     # Determine node counts for graph subtitle
     vuln_node_count = len({(br.package.name, br.package.ecosystem) for br in blast_radii})
     graph_note = (
-        f"agents + servers + {vuln_node_count} vulnerable pkg(s) only — "
-        f"{report.total_packages - vuln_node_count} clean packages hidden"
+        f"agents + servers + {vuln_node_count} vulnerable pkg(s) only — {report.total_packages - vuln_node_count} clean packages hidden"
         if report.total_packages > vuln_node_count
         else "agents + servers + packages"
     )

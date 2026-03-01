@@ -109,7 +109,7 @@
     </g>
     <!-- Tag pill -->
     <rect x="16" y="158" width="132" height="22" rx="11" fill="#bc8cff" opacity="0.12"/>
-    <text x="82" y="173" text-anchor="middle" class="engine-tag" fill="#bc8cff">4 compliance frameworks</text>
+    <text x="82" y="173" text-anchor="middle" class="engine-tag" fill="#bc8cff">6 compliance frameworks</text>
   </g>
 
   <!-- Arrow 3→4 -->
@@ -197,7 +197,7 @@
   <g transform="translate(40, 362)">
     <rect width="800" height="36" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1"/>
     <text x="400" y="15" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#8b949e" letter-spacing="0.06em">COMPLIANCE</text>
-    <text x="400" y="28" text-anchor="middle" class="footer">OWASP LLM Top 10  ·  OWASP MCP Top 10  ·  MITRE ATLAS  ·  NIST AI RMF</text>
+    <text x="400" y="28" text-anchor="middle" class="footer">OWASP LLM  ·  OWASP MCP  ·  OWASP Agentic  ·  MITRE ATLAS  ·  NIST AI RMF  ·  EU AI Act</text>
   </g>
 
   <!-- Footer -->

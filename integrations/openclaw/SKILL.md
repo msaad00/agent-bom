@@ -33,7 +33,7 @@ An MCP server that provides security scanning tools for AI infrastructure:
 - **CVE lookup** — check any package against OSV.dev, NVD, EPSS, CISA KEV
 - **MCP registry** — look up any MCP server in the 427+ server threat intelligence registry
 - **Blast radius** — map how a CVE reaches credentials and tools
-- **Compliance** — OWASP LLM Top 10, MITRE ATLAS, NIST AI RMF
+- **Compliance** — OWASP LLM Top 10, OWASP Agentic Top 10, EU AI Act, MITRE ATLAS, NIST AI RMF
 
 ## Security Boundaries
 
@@ -93,7 +93,7 @@ For OpenClaw, add this to `~/.openclaw/openclaw.json`. For other MCP clients
 
 ## Available MCP Tools
 
-Once connected, the agent-bom MCP server provides **13 tools**:
+Once connected, the agent-bom MCP server provides **14 tools**:
 
 ### Tools that work fully via remote server (no local access needed)
 
@@ -102,13 +102,14 @@ Once connected, the agent-bom MCP server provides **13 tools**:
 | `check` | Check a specific package for known vulnerabilities (you provide package name + ecosystem) |
 | `blast_radius` | Map the impact chain of a CVE across agents, servers, credentials, and tools |
 | `registry_lookup` | Look up an MCP server in the 427+ server threat intelligence registry |
-| `compliance` | Check OWASP LLM Top 10, MITRE ATLAS, and NIST AI RMF compliance |
+| `compliance` | Check OWASP LLM Top 10, OWASP Agentic Top 10, EU AI Act, MITRE ATLAS, and NIST AI RMF compliance |
 | `remediate` | Generate a prioritized remediation plan for discovered vulnerabilities |
 | `verify` | Check package integrity and SLSA provenance |
 | `skill_trust` | Assess trust level of a skill file (5-category analysis with verdict) |
 | `generate_sbom` | Generate a Software Bill of Materials (CycloneDX or SPDX) |
 | `policy_check` | Evaluate scan results against a security policy |
 | `diff` | Compare two scan reports to see what changed |
+| `marketplace_check` | Pre-install marketplace trust check with registry cross-reference |
 
 ### Tools that scan the server's own environment (not your machine)
 

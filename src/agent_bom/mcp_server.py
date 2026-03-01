@@ -1339,7 +1339,7 @@ _SERVER_CARD_TOOLS = [
     {"name": "generate_sbom", "description": "Generate CycloneDX or SPDX SBOM", "annotations": {"readOnlyHint": True}},
     {
         "name": "compliance",
-        "description": "OWASP LLM + OWASP MCP + MITRE ATLAS + NIST AI RMF posture",
+        "description": "6-framework compliance posture (OWASP LLM + MCP + Agentic, ATLAS, NIST, EU AI Act)",
         "annotations": {"readOnlyHint": True},
     },
     {"name": "remediate", "description": "Generate actionable remediation plan", "annotations": {"readOnlyHint": True}},
@@ -1348,6 +1348,11 @@ _SERVER_CARD_TOOLS = [
     {"name": "where", "description": "Show all MCP discovery paths + existence status", "annotations": {"readOnlyHint": True}},
     {"name": "inventory", "description": "List agents/servers without CVE scanning", "annotations": {"readOnlyHint": True}},
     {"name": "diff", "description": "Compare scan against baseline for new/resolved vulns", "annotations": {"readOnlyHint": True}},
+    {
+        "name": "marketplace_check",
+        "description": "Pre-install marketplace trust check with registry cross-reference",
+        "annotations": {"readOnlyHint": True},
+    },
 ]
 
 _SERVER_CARD_PROMPTS = [

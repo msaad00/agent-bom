@@ -125,11 +125,19 @@
   <text x="506" y="256" text-anchor="middle" class="box-sub">Risk management framework</text>
 
   <rect x="428" y="266" width="156" height="32" rx="5" fill="#ffffff" stroke="#d1d9e0" stroke-width="1"/>
-  <text x="506" y="282" text-anchor="middle" class="box-label">Enforcement Engine</text>
-  <text x="506" y="294" text-anchor="middle" class="box-sub">Tool poisoning + policy gates</text>
+  <text x="506" y="282" text-anchor="middle" class="box-label">OWASP Agentic Top 10</text>
+  <text x="506" y="294" text-anchor="middle" class="box-sub">ASI01-ASI10 agent risks</text>
 
   <rect x="428" y="304" width="156" height="32" rx="5" fill="#ffffff" stroke="#d1d9e0" stroke-width="1"/>
-  <text x="506" y="320" text-anchor="middle" class="box-label">Model Provenance</text>
+  <text x="506" y="320" text-anchor="middle" class="box-label">EU AI Act</text>
+  <text x="506" y="332" text-anchor="middle" class="box-sub">ART-5 through ART-17</text>
+
+  <rect x="428" y="342" width="156" height="32" rx="5" fill="#ffffff" stroke="#d1d9e0" stroke-width="1"/>
+  <text x="506" y="358" text-anchor="middle" class="box-label">Enforcement Engine</text>
+  <text x="506" y="370" text-anchor="middle" class="box-sub">Tool poisoning + policy gates</text>
+
+  <rect x="428" y="380" width="156" height="32" rx="5" fill="#ffffff" stroke="#d1d9e0" stroke-width="1"/>
+  <text x="506" y="396" text-anchor="middle" class="box-label">Model Provenance</text>
   <text x="506" y="332" text-anchor="middle" class="box-sub">SHA-256 · Sigstore · HuggingFace</text>
 
   <line x1="596" y1="227" x2="622" y2="227" stroke="#cf222e" stroke-width="2" marker-end="url(#a3)"/>
@@ -174,7 +182,7 @@
 
   <rect x="808" y="106" width="124" height="32" rx="5" fill="#ffffff" stroke="#d1d9e0" stroke-width="1"/>
   <text x="870" y="122" text-anchor="middle" class="box-label">MCP Server</text>
-  <text x="870" y="134" text-anchor="middle" class="box-sub">13 tools · stdio/SSE</text>
+  <text x="870" y="134" text-anchor="middle" class="box-sub">14 tools · stdio/SSE</text>
 
   <rect x="808" y="144" width="124" height="32" rx="5" fill="#ffffff" stroke="#d1d9e0" stroke-width="1"/>
   <text x="870" y="160" text-anchor="middle" class="box-label">GitHub Action</text>
@@ -221,7 +229,7 @@
   <text x="470" y="530" text-anchor="middle" class="flow-zone" fill="#bf8700">AGENT-BOM ENGINE</text>
   <text x="470" y="546" text-anchor="middle" class="flow-detail">Sends to APIs: package names + versions only</text>
   <text x="470" y="560" text-anchor="middle" class="flow-detail">Blast radius · Threat models · Enforcement</text>
-  <text x="470" y="574" text-anchor="middle" class="flow-detail">OWASP + ATLAS + NIST framework tagging</text>
+  <text x="470" y="574" text-anchor="middle" class="flow-detail">OWASP + ATLAS + NIST + EU AI Act framework tagging</text>
   <text x="470" y="586" text-anchor="middle" class="flow-detail" fill="#cf222e">No credentials leave your machine</text>
 
   <line x1="614" y1="553" x2="644" y2="553" stroke="#bf8700" stroke-width="2" marker-end="url(#a2)"/>

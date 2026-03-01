@@ -62,6 +62,7 @@ class FleetStore(Protocol):
     def list_all(self) -> list[FleetAgent]: ...
     def list_summary(self) -> list[dict]: ...
     def update_state(self, agent_id: str, state: FleetLifecycleState) -> bool: ...
+    def batch_put(self, agents: list[FleetAgent]) -> int: ...
 
 
 # ─── In-Memory ───────────────────────────────────────────────────────────────
@@ -114,6 +115,12 @@ class InMemoryFleetStore:
         agent.updated_at = datetime.now(timezone.utc).isoformat()
         return True
 
+    def batch_put(self, agents: list[FleetAgent]) -> int:
+        """Upsert multiple agents at once."""
+        for agent in agents:
+            self._agents[agent.agent_id] = agent
+        return len(agents)
+
 
 # ─── SQLite ──────────────────────────────────────────────────────────────────
 
@@ -147,12 +154,8 @@ class SQLiteFleetStore:
                 data TEXT NOT NULL
             )
         """)
-        self._conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_fleet_name ON fleet_agents(name)"
-        )
-        self._conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_fleet_state ON fleet_agents(lifecycle_state)"
-        )
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_name ON fleet_agents(name)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_state ON fleet_agents(lifecycle_state)")
         self._conn.commit()
 
     def put(self, agent: FleetAgent) -> None:
@@ -172,38 +175,29 @@ class SQLiteFleetStore:
         self._conn.commit()
 
     def get(self, agent_id: str) -> FleetAgent | None:
-        row = self._conn.execute(
-            "SELECT data FROM fleet_agents WHERE agent_id = ?", (agent_id,)
-        ).fetchone()
+        row = self._conn.execute("SELECT data FROM fleet_agents WHERE agent_id = ?", (agent_id,)).fetchone()
         if row is None:
             return None
         return FleetAgent.model_validate_json(row[0])
 
     def get_by_name(self, name: str) -> FleetAgent | None:
-        row = self._conn.execute(
-            "SELECT data FROM fleet_agents WHERE name = ?", (name,)
-        ).fetchone()
+        row = self._conn.execute("SELECT data FROM fleet_agents WHERE name = ?", (name,)).fetchone()
         if row is None:
             return None
         return FleetAgent.model_validate_json(row[0])
 
     def delete(self, agent_id: str) -> bool:
-        cursor = self._conn.execute(
-            "DELETE FROM fleet_agents WHERE agent_id = ?", (agent_id,)
-        )
+        cursor = self._conn.execute("DELETE FROM fleet_agents WHERE agent_id = ?", (agent_id,))
         self._conn.commit()
         return cursor.rowcount > 0
 
     def list_all(self) -> list[FleetAgent]:
-        rows = self._conn.execute(
-            "SELECT data FROM fleet_agents ORDER BY name"
-        ).fetchall()
+        rows = self._conn.execute("SELECT data FROM fleet_agents ORDER BY name").fetchall()
         return [FleetAgent.model_validate_json(r[0]) for r in rows]
 
     def list_summary(self) -> list[dict]:
         rows = self._conn.execute(
-            "SELECT agent_id, name, lifecycle_state, trust_score, updated_at "
-            "FROM fleet_agents ORDER BY name"
+            "SELECT agent_id, name, lifecycle_state, trust_score, updated_at FROM fleet_agents ORDER BY name"
         ).fetchall()
         return [
             {
@@ -225,3 +219,26 @@ class SQLiteFleetStore:
         agent.updated_at = now
         self.put(agent)
         return True
+
+    def batch_put(self, agents: list[FleetAgent]) -> int:
+        """Upsert multiple agents in a single transaction."""
+        if not agents:
+            return 0
+        self._conn.executemany(
+            """INSERT OR REPLACE INTO fleet_agents
+               (agent_id, name, lifecycle_state, trust_score, updated_at, data)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            [
+                (
+                    a.agent_id,
+                    a.name,
+                    a.lifecycle_state.value,
+                    a.trust_score,
+                    a.updated_at,
+                    a.model_dump_json(),
+                )
+                for a in agents
+            ],
+        )
+        self._conn.commit()
+        return len(agents)

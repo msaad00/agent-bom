@@ -26,7 +26,9 @@ from .server import ScanJob
 def _sf_connect(**kwargs):  # type: ignore[no-untyped-def]
     """Lazy import of snowflake.connector.connect."""
     import snowflake.connector  # type: ignore[import-untyped]
+
     return snowflake.connector.connect(**kwargs)
+
 
 _JOB_TTL_SECONDS = 3600
 
@@ -88,10 +90,14 @@ class SnowflakeJobStore:
                      VALUES (%s, %s, %s, %s, PARSE_JSON(%s))""",
                 (
                     job.job_id,
-                    job.status.value, job.created_at, job.completed_at,
+                    job.status.value,
+                    job.created_at,
+                    job.completed_at,
                     job.model_dump_json(),
                     job.job_id,
-                    job.status.value, job.created_at, job.completed_at,
+                    job.status.value,
+                    job.created_at,
+                    job.completed_at,
                     job.model_dump_json(),
                 ),
             )
@@ -103,9 +109,7 @@ class SnowflakeJobStore:
             row = cur.fetchone()
             if row is None:
                 return None
-            return ScanJob.model_validate_json(
-                row[0] if isinstance(row[0], str) else json.dumps(row[0])
-            )
+            return ScanJob.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0]))
 
     def delete(self, job_id: str) -> bool:
         with self._connect() as conn:
@@ -117,20 +121,12 @@ class SnowflakeJobStore:
         with self._connect() as conn:
             cur = conn.cursor()
             cur.execute("SELECT data FROM scan_jobs ORDER BY created_at DESC")
-            return [
-                ScanJob.model_validate_json(
-                    r[0] if isinstance(r[0], str) else json.dumps(r[0])
-                )
-                for r in cur.fetchall()
-            ]
+            return [ScanJob.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in cur.fetchall()]
 
     def list_summary(self) -> list[dict]:
         with self._connect() as conn:
             cur = conn.cursor()
-            cur.execute(
-                "SELECT job_id, status, created_at, completed_at "
-                "FROM scan_jobs ORDER BY created_at DESC"
-            )
+            cur.execute("SELECT job_id, status, created_at, completed_at FROM scan_jobs ORDER BY created_at DESC")
             return [
                 {
                     "job_id": r[0],
@@ -194,11 +190,16 @@ class SnowflakeFleetStore:
                      VALUES (%s, %s, %s, %s, %s, PARSE_JSON(%s))""",
                 (
                     agent.agent_id,
-                    agent.name, agent.lifecycle_state.value,
-                    agent.trust_score, agent.updated_at,
+                    agent.name,
+                    agent.lifecycle_state.value,
+                    agent.trust_score,
+                    agent.updated_at,
                     agent.model_dump_json(),
-                    agent.agent_id, agent.name, agent.lifecycle_state.value,
-                    agent.trust_score, agent.updated_at,
+                    agent.agent_id,
+                    agent.name,
+                    agent.lifecycle_state.value,
+                    agent.trust_score,
+                    agent.updated_at,
                     agent.model_dump_json(),
                 ),
             )
@@ -210,9 +211,7 @@ class SnowflakeFleetStore:
             row = cur.fetchone()
             if row is None:
                 return None
-            return FleetAgent.model_validate_json(
-                row[0] if isinstance(row[0], str) else json.dumps(row[0])
-            )
+            return FleetAgent.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0]))
 
     def get_by_name(self, name: str) -> FleetAgent | None:
         with self._connect() as conn:
@@ -221,9 +220,7 @@ class SnowflakeFleetStore:
             row = cur.fetchone()
             if row is None:
                 return None
-            return FleetAgent.model_validate_json(
-                row[0] if isinstance(row[0], str) else json.dumps(row[0])
-            )
+            return FleetAgent.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0]))
 
     def delete(self, agent_id: str) -> bool:
         with self._connect() as conn:
@@ -235,20 +232,12 @@ class SnowflakeFleetStore:
         with self._connect() as conn:
             cur = conn.cursor()
             cur.execute("SELECT data FROM fleet_agents ORDER BY name")
-            return [
-                FleetAgent.model_validate_json(
-                    r[0] if isinstance(r[0], str) else json.dumps(r[0])
-                )
-                for r in cur.fetchall()
-            ]
+            return [FleetAgent.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in cur.fetchall()]
 
     def list_summary(self) -> list[dict]:
         with self._connect() as conn:
             cur = conn.cursor()
-            cur.execute(
-                "SELECT agent_id, name, lifecycle_state, trust_score, updated_at "
-                "FROM fleet_agents ORDER BY name"
-            )
+            cur.execute("SELECT agent_id, name, lifecycle_state, trust_score, updated_at FROM fleet_agents ORDER BY name")
             return [
                 {
                     "agent_id": r[0],
@@ -268,6 +257,54 @@ class SnowflakeFleetStore:
         agent.updated_at = datetime.now(timezone.utc).isoformat()
         self.put(agent)
         return True
+
+    def batch_put(self, agents: list[FleetAgent], batch_size: int = 100) -> int:
+        """Upsert multiple agents in batched MERGE statements.
+
+        Uses multi-row source via UNION ALL for fewer round-trips to Snowflake.
+        """
+        if not agents:
+            return 0
+
+        total = 0
+        for i in range(0, len(agents), batch_size):
+            batch = agents[i : i + batch_size]
+            # Build parameterised multi-row source
+            source_parts: list[str] = []
+            params: list = []
+            for agent in batch:
+                source_parts.append(
+                    "SELECT %s AS agent_id, %s AS name, %s AS lifecycle_state, %s AS trust_score, %s AS updated_at, PARSE_JSON(%s) AS data"
+                )
+                params.extend(
+                    [
+                        agent.agent_id,
+                        agent.name,
+                        agent.lifecycle_state.value,
+                        agent.trust_score,
+                        agent.updated_at,
+                        agent.model_dump_json(),
+                    ]
+                )
+
+            source_sql = " UNION ALL ".join(source_parts)
+            merge_sql = (
+                f"MERGE INTO fleet_agents t USING ({source_sql}) s "  # nosec B608
+                "ON t.agent_id = s.agent_id "
+                "WHEN MATCHED THEN UPDATE SET "
+                "  name = s.name, lifecycle_state = s.lifecycle_state, "
+                "  trust_score = s.trust_score, updated_at = s.updated_at, data = s.data "
+                "WHEN NOT MATCHED THEN INSERT "
+                "  (agent_id, name, lifecycle_state, trust_score, updated_at, data) "
+                "  VALUES (s.agent_id, s.name, s.lifecycle_state, s.trust_score, "
+                "          s.updated_at, s.data)"
+            )
+
+            with self._connect() as conn:
+                conn.cursor().execute(merge_sql, params)
+            total += len(batch)
+
+        return total
 
 
 # ─── Policy Store ─────────────────────────────────────────────────────────────
@@ -322,10 +359,16 @@ class SnowflakePolicyStore:
                      VALUES (%s, %s, %s, %s, %s, PARSE_JSON(%s))""",
                 (
                     policy.policy_id,
-                    policy.name, policy.mode.value, policy.enabled,
-                    policy.updated_at, policy.model_dump_json(),
-                    policy.policy_id, policy.name, policy.mode.value,
-                    policy.enabled, policy.updated_at,
+                    policy.name,
+                    policy.mode.value,
+                    policy.enabled,
+                    policy.updated_at,
+                    policy.model_dump_json(),
+                    policy.policy_id,
+                    policy.name,
+                    policy.mode.value,
+                    policy.enabled,
+                    policy.updated_at,
                     policy.model_dump_json(),
                 ),
             )
@@ -340,9 +383,7 @@ class SnowflakePolicyStore:
             row = cur.fetchone()
             if row is None:
                 return None
-            return GatewayPolicy.model_validate_json(
-                row[0] if isinstance(row[0], str) else json.dumps(row[0])
-            )
+            return GatewayPolicy.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0]))
 
     def delete_policy(self, policy_id: str) -> bool:
         with self._connect() as conn:
@@ -357,12 +398,7 @@ class SnowflakePolicyStore:
         with self._connect() as conn:
             cur = conn.cursor()
             cur.execute("SELECT data FROM gateway_policies ORDER BY name")
-            return [
-                GatewayPolicy.model_validate_json(
-                    r[0] if isinstance(r[0], str) else json.dumps(r[0])
-                )
-                for r in cur.fetchall()
-            ]
+            return [GatewayPolicy.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in cur.fetchall()]
 
     def get_policies_for_agent(
         self,
@@ -419,9 +455,4 @@ class SnowflakePolicyStore:
             params.append(limit)
             cur = conn.cursor()
             cur.execute(sql, params)
-            return [
-                PolicyAuditEntry.model_validate_json(
-                    r[0] if isinstance(r[0], str) else json.dumps(r[0])
-                )
-                for r in cur.fetchall()
-            ]
+            return [PolicyAuditEntry.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in cur.fetchall()]

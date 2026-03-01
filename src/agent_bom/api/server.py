@@ -107,11 +107,14 @@ async def _lifespan(app_instance: FastAPI):
     # ── Schedule store ──
     global _schedule_store
     if _schedule_store is None:
-        db_path = _os.environ.get("AGENT_BOM_DB")
-        if db_path:
+        if _os.environ.get("AGENT_BOM_POSTGRES_URL"):
+            from agent_bom.api.postgres_store import PostgresScheduleStore
+
+            _schedule_store = PostgresScheduleStore()
+        elif _os.environ.get("AGENT_BOM_DB"):
             from agent_bom.api.schedule_store import SQLiteScheduleStore
 
-            _schedule_store = SQLiteScheduleStore(db_path)
+            _schedule_store = SQLiteScheduleStore(_os.environ["AGENT_BOM_DB"])
         else:
             from agent_bom.api.schedule_store import InMemoryScheduleStore
 

@@ -332,6 +332,13 @@ def main():
 @click.option("--jira-token", default=None, envvar="JIRA_API_TOKEN", metavar="TOKEN", help="Jira API token (or set JIRA_API_TOKEN env var)")
 @click.option("--jira-project", default=None, envvar="JIRA_PROJECT", metavar="KEY", help="Jira project key (e.g. SEC)")
 @click.option("--slack-webhook", default=None, envvar="SLACK_WEBHOOK_URL", metavar="URL", help="Slack incoming webhook URL for scan alerts")
+@click.option("--jira-discover", is_flag=True, help="Discover AI agents from Jira automation rules and installed apps")
+@click.option("--servicenow", "servicenow_flag", is_flag=True, help="Discover AI agents from ServiceNow Flow Designer and IntegrationHub")
+@click.option("--servicenow-instance", default=None, envvar="SERVICENOW_INSTANCE", metavar="URL", help="ServiceNow instance URL")
+@click.option("--servicenow-user", default=None, envvar="SERVICENOW_USER", metavar="USER", help="ServiceNow username")
+@click.option("--servicenow-password", default=None, envvar="SERVICENOW_PASSWORD", metavar="PWD", help="ServiceNow password")
+@click.option("--slack-discover", is_flag=True, help="Discover installed Slack apps and bots in workspace")
+@click.option("--slack-bot-token", default=None, envvar="SLACK_BOT_TOKEN", metavar="TOKEN", help="Slack bot token for app discovery")
 @click.option(
     "--vanta-token", default=None, envvar="VANTA_API_TOKEN", metavar="TOKEN", help="Vanta API token for compliance evidence upload"
 )
@@ -448,6 +455,13 @@ def scan(
     jira_token: Optional[str],
     jira_project: Optional[str],
     slack_webhook: Optional[str],
+    jira_discover: bool,
+    servicenow_flag: bool,
+    servicenow_instance: Optional[str],
+    servicenow_user: Optional[str],
+    servicenow_password: Optional[str],
+    slack_discover: bool,
+    slack_bot_token: Optional[str],
     vanta_token: Optional[str],
     drata_token: Optional[str],
     verbose: bool,
@@ -1179,6 +1193,33 @@ def scan(
                 con.print(f"  [dim]  No AI agents found in {provider_name.upper()}[/dim]")
         except CloudDiscoveryError as exc:
             con.print(f"\n  [red]{provider_name.upper()} discovery error: {exc}[/red]")
+
+    # Step 1y: SaaS connector discovery
+    saas_connectors: list[tuple[str, dict]] = []
+    if not skill_only and jira_discover:
+        saas_connectors.append(("jira", {"jira_url": jira_url, "email": jira_user, "api_token": jira_token}))
+    if not skill_only and servicenow_flag:
+        saas_connectors.append(
+            ("servicenow", {"instance_url": servicenow_instance, "username": servicenow_user, "password": servicenow_password})
+        )
+    if not skill_only and slack_discover:
+        saas_connectors.append(("slack", {"bot_token": slack_bot_token}))
+
+    for connector_name, connector_kwargs in saas_connectors:
+        from agent_bom.connectors import ConnectorError, discover_from_connector
+
+        con.print(f"\n[bold blue]Discovering agents from {connector_name.upper()} connector...[/bold blue]\n")
+        try:
+            con_agents, con_warnings = discover_from_connector(connector_name, **connector_kwargs)
+            for w in con_warnings:
+                con.print(f"  [yellow]![/yellow] {w}")
+            if con_agents:
+                con.print(f"  [green]v[/green] {len(con_agents)} agent(s) discovered from {connector_name.upper()}")
+                agents.extend(con_agents)
+            else:
+                con.print(f"  [dim]  No AI agents found in {connector_name.upper()}[/dim]")
+        except ConnectorError as exc:
+            con.print(f"\n  [red]{connector_name.upper()} connector error: {exc}[/red]")
 
     # Step 1z: Multi-source correlation (dedup + merge across sources)
     if not skill_only and agents:

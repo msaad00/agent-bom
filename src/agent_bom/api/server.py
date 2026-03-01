@@ -345,6 +345,12 @@ class ScanRequest(BaseModel):
     enrich: bool = False
     """Enrich with NVD CVSS, EPSS, and CISA KEV data."""
 
+    connectors: list[str] = []
+    """SaaS connectors to discover from (e.g. ['jira', 'servicenow', 'slack'])."""
+
+    filesystem_paths: list[str] = []
+    """Filesystem directories or tar archives to scan via Syft."""
+
     format: str = "json"
     """Output format: json | cyclonedx | sarif | spdx | html | text."""
 
@@ -564,6 +570,43 @@ def _run_scan_sync(job: ScanJob) -> None:
                     mcp_servers=[sbom_server],
                 )
                 agents.append(sbom_agent)
+
+        # Step 9a — SaaS connectors
+        for connector_name in req.connectors:
+            job.progress.append(f"Discovering from connector: {connector_name}")
+            try:
+                from agent_bom.connectors import discover_from_connector
+
+                con_agents, con_warnings = discover_from_connector(connector_name)
+                agents.extend(con_agents)
+                warnings_all.extend(con_warnings)
+            except Exception as con_exc:  # noqa: BLE001
+                warnings_all.append(f"{connector_name} connector error: {con_exc}")
+
+        # Step 9b — Filesystem / disk snapshot scanning
+        for fs_path in req.filesystem_paths:
+            job.progress.append(f"Scanning filesystem: {fs_path}")
+            try:
+                from agent_bom.filesystem import scan_filesystem
+                from agent_bom.models import Agent, AgentType, MCPServer
+
+                fs_pkgs, fs_strat = scan_filesystem(fs_path)
+                if fs_pkgs:
+                    from pathlib import Path as _Path
+
+                    fs_server = MCPServer(name=f"fs:{fs_path}")
+                    fs_server.packages = fs_pkgs
+                    fs_agent = Agent(
+                        name=f"filesystem:{_Path(fs_path).name}",
+                        agent_type=AgentType.CUSTOM,
+                        config_path=fs_path,
+                        source="filesystem",
+                        mcp_servers=[fs_server],
+                    )
+                    agents.append(fs_agent)
+                    job.progress.append(f"Filesystem {fs_path}: {len(fs_pkgs)} packages via {fs_strat}")
+            except Exception as fs_exc:  # noqa: BLE001
+                warnings_all.append(f"Filesystem scan error for {fs_path}: {fs_exc}")
 
         if not agents:
             job.progress.append("No agents found.")
@@ -1294,6 +1337,32 @@ def _load_registry() -> list[dict]:
             }
         )
     return result
+
+
+# ── Connectors ─────────────────────────────────────────────────────────────
+
+
+@app.get("/v1/connectors", tags=["connectors"])
+async def list_available_connectors() -> dict:
+    """List available SaaS connectors for AI agent discovery."""
+    from agent_bom.connectors import list_connectors
+
+    return {"connectors": list_connectors()}
+
+
+@app.get("/v1/connectors/{name}/health", tags=["connectors"])
+async def connector_health(name: str) -> dict:
+    """Check connectivity for a SaaS connector."""
+    try:
+        from agent_bom.connectors import check_connector_health
+
+        status = check_connector_health(name)
+        return {"connector": status.connector, "state": status.state.value, "message": status.message, "api_version": status.api_version}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+# ── Registry ───────────────────────────────────────────────────────────────
 
 
 @app.get("/v1/registry", tags=["registry"])

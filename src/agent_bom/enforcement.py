@@ -412,6 +412,106 @@ def check_claude_config(config_path: str) -> list[EnforcementFinding]:
             )
         )
 
+    # 4. permissions.allow — overly broad permission grants
+    permissions = data.get("permissions", {})
+    allow_list = permissions.get("allow", [])
+    deny_list = permissions.get("deny", [])
+
+    # Dangerous permission patterns — only match truly broad grants
+    # "Bash(*)" or "Bash" or "Bash()" = unrestricted (bad)
+    # "Bash(git status:*)" = scoped to specific command (ok)
+    _broad_bash_re = re.compile(r"^Bash(?:\(\s*\*\s*\)|\(\s*\)|)$")
+    _broad_read_re = re.compile(r"^Read(?:\(\s*//\*\*\s*\)|\(\s*\*\s*\)|\(\s*\)|)$")
+    _broad_edit_re = re.compile(r"^(?:Edit|Write)(?:\(\s*//\*\*\s*\)|\(\s*\*\s*\)|\(\s*\)|)$")
+    _webfetch_re = re.compile(r"WebFetch\(domain:([^)]+)\)")
+
+    broad_bash = [p for p in allow_list if _broad_bash_re.search(str(p))]
+    broad_read = [p for p in allow_list if _broad_read_re.search(str(p))]
+    broad_edit = [p for p in allow_list if _broad_edit_re.search(str(p))]
+    webfetch_domains = []
+    for p in allow_list:
+        m = _webfetch_re.search(str(p))
+        if m:
+            webfetch_domains.append(m.group(1))
+
+    if broad_bash:
+        findings.append(
+            EnforcementFinding(
+                severity="critical",
+                category="claude_permissions",
+                server_name=str(settings_path),
+                reason=f"Unrestricted Bash permission in allow list: {broad_bash[0]}",
+                recommendation="Scope Bash permissions to specific commands (e.g., Bash(git status:*)).",
+            )
+        )
+
+    if broad_read:
+        findings.append(
+            EnforcementFinding(
+                severity="high",
+                category="claude_permissions",
+                server_name=str(settings_path),
+                reason=f"Overly broad Read permission: {broad_read[0]}",
+                recommendation="Restrict Read to specific directories or file patterns.",
+            )
+        )
+
+    if broad_edit:
+        findings.append(
+            EnforcementFinding(
+                severity="high",
+                category="claude_permissions",
+                server_name=str(settings_path),
+                reason=f"Overly broad Edit/Write permission: {broad_edit[0]}",
+                recommendation="Restrict Edit/Write to project directories only.",
+            )
+        )
+
+    if len(webfetch_domains) > 10:
+        findings.append(
+            EnforcementFinding(
+                severity="medium",
+                category="claude_permissions",
+                server_name=str(settings_path),
+                reason=f"Large WebFetch domain allowlist ({len(webfetch_domains)} domains) — expanded exfiltration surface",
+                recommendation="Reduce allowed domains to only those actively needed.",
+            )
+        )
+
+    # Default-allow posture: has allow entries but no deny entries
+    if allow_list and not deny_list:
+        total_perms = len(allow_list)
+        if total_perms > 20:
+            findings.append(
+                EnforcementFinding(
+                    severity="medium",
+                    category="claude_permissions",
+                    server_name=str(settings_path),
+                    reason=f"Default-allow posture with {total_perms} allowed permissions and no deny list",
+                    recommendation="Add explicit deny rules for dangerous operations (e.g., Bash(rm -rf:*)).",
+                )
+            )
+
+    # 5. mcpServers — inline server definitions with env vars
+    mcp_servers = data.get("mcpServers", {})
+    for srv_name, srv_config in mcp_servers.items():
+        srv_env = srv_config.get("env", {})
+        for env_key, env_val in srv_env.items():
+            val_str = str(env_val)
+            if any(
+                secret_hint in env_key.upper() for secret_hint in ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL")
+            ) and not val_str.startswith("${"):
+                findings.append(
+                    EnforcementFinding(
+                        severity="high",
+                        category="claude_permissions",
+                        server_name=f"{settings_path} → mcpServers.{srv_name}",
+                        reason=f"Hardcoded secret in MCP server env: {env_key}",
+                        recommendation=f"Use environment variable reference: {env_key}=${{env:{env_key}}}",
+                    )
+                )
+                break  # one finding per server
+
     return findings
 
 

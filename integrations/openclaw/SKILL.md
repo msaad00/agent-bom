@@ -1,7 +1,7 @@
 ---
 name: agent-bom
 description: AI supply chain security scanner — check packages for CVEs, look up MCP servers in the threat registry, assess blast radius, generate SBOMs, enforce compliance
-version: 0.35.0
+version: 0.36.0
 metadata:
   openclaw:
     requires:

@@ -256,7 +256,7 @@ def empty_report():
 def test_version_sync():
     from agent_bom import __version__
 
-    assert __version__ == "0.35.0"
+    assert __version__ == "0.36.0"
 
 
 def test_report_version_matches():
@@ -2933,7 +2933,7 @@ def test_toolhive_server_json_valid():
     p = Path(__file__).parent.parent / "integrations" / "toolhive" / "server.json"
     data = _json.loads(p.read_text())
     assert data["name"] == "io.github.msaad00/agent-bom"
-    assert data["version"] == "0.35.0"
+    assert data["version"] == "0.36.0"
     assert "packages" in data
     assert data["packages"][0]["registryType"] == "oci"
 

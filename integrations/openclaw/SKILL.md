@@ -33,7 +33,7 @@ An MCP server that provides security scanning tools for AI infrastructure:
 - **CVE lookup** — check any package against OSV.dev, NVD, EPSS, CISA KEV
 - **MCP registry** — look up any MCP server in the 427+ server threat intelligence registry
 - **Blast radius** — map how a CVE reaches credentials and tools
-- **Compliance** — OWASP LLM Top 10, MITRE ATLAS, NIST AI RMF
+- **Compliance** — OWASP LLM + MCP + Agentic Top 10, MITRE ATLAS, NIST AI RMF, EU AI Act
 
 ## Security Boundaries
 
@@ -93,7 +93,7 @@ For OpenClaw, add this to `~/.openclaw/openclaw.json`. For other MCP clients
 
 ## Available MCP Tools
 
-Once connected, the agent-bom MCP server provides **13 tools**:
+Once connected, the agent-bom MCP server provides **14 tools**:
 
 ### Tools that work fully via remote server (no local access needed)
 
@@ -109,6 +109,7 @@ Once connected, the agent-bom MCP server provides **13 tools**:
 | `generate_sbom` | Generate a Software Bill of Materials (CycloneDX or SPDX) |
 | `policy_check` | Evaluate scan results against a security policy |
 | `diff` | Compare two scan reports to see what changed |
+| `marketplace_check` | Pre-install trust check — cross-references npm/PyPI against threat registry |
 
 ### Tools that scan the server's own environment (not your machine)
 

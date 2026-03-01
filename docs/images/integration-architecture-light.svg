@@ -197,7 +197,7 @@
   <g transform="translate(40, 362)">
     <rect width="800" height="36" rx="8" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="1"/>
     <text x="400" y="15" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#656d76" letter-spacing="0.06em">COMPLIANCE</text>
-    <text x="400" y="28" text-anchor="middle" class="footer">OWASP LLM Top 10  ·  OWASP MCP Top 10  ·  MITRE ATLAS  ·  NIST AI RMF</text>
+    <text x="400" y="28" text-anchor="middle" class="footer">OWASP LLM · MCP · Agentic Top 10  ·  MITRE ATLAS  ·  NIST AI RMF  ·  EU AI Act</text>
   </g>
 
   <!-- Footer -->

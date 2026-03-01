@@ -16,7 +16,7 @@
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center">
-  <b>AI supply chain security scanner. Scan packages and images for CVEs. Assess config security — credential exposure, tool access, privilege escalation. Map blast radius from vulnerabilities to credentials and tools. OWASP LLM Top 10 + OWASP MCP Top 10 + MITRE ATLAS + NIST AI RMF.</b>
+  <b>AI supply chain security scanner. Scan packages and images for CVEs. Assess config security — credential exposure, tool access, privilege escalation. Map blast radius from vulnerabilities to credentials and tools. 6-framework compliance: OWASP LLM + MCP + Agentic Top 10, MITRE ATLAS, NIST AI RMF, EU AI Act.</b>
 </p>
 
 <p align="center">
@@ -54,7 +54,7 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 | **MCP tool reachability** | — | Which tools an attacker reaches post-exploit |
 | **Privilege detection** | — | runs_as_root, shell_access, container_privileged, per-tool permissions |
 | **Enterprise remediation** | — | Named assets, impact percentages, risk narratives |
-| **Quad-framework compliance** | — | OWASP LLM Top 10 + OWASP MCP Top 10 + MITRE ATLAS + NIST AI RMF |
+| **6-framework compliance** | — | OWASP LLM + MCP + Agentic Top 10, MITRE ATLAS, NIST AI RMF, EU AI Act |
 | **Malicious package detection** | — | OSV MAL- prefix + typosquat heuristics (57 popular packages) |
 | **OpenSSF Scorecard enrichment** | — | Package health scores from api.securityscorecards.dev |
 | **Tool poisoning detection** | — | Description injection, capability combos, CVE exposure, drift |
@@ -124,7 +124,7 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
 1. **Discover** — auto-detect MCP configs across 18 clients (Claude Desktop, Cursor, Codex CLI, Gemini CLI, Goose, etc.)
 2. **Extract** — pull server names, package names, env var **names**, and tool lists. Credential **values** are never read.
 3. **Scan** — send only package names + versions to public APIs (OSV.dev, NVD, EPSS, CISA KEV). No hostnames, no secrets, no auth tokens.
-4. **Analyze** — CVE blast radius mapping, tool poisoning detection (`--enforce`), OWASP/ATLAS/NIST threat models, model provenance (`--hf-model`)
+4. **Analyze** — CVE blast radius mapping, tool poisoning detection (`--enforce`), 6-framework compliance mapping, Claude config security checks, over-permission analysis, model provenance (`--hf-model`)
 5. **Report** — JSON, SARIF, CycloneDX, SPDX, HTML, or console output. Nothing stored server-side.
 
 **Trust guarantees:** Read-only (no file writes, no config changes, no servers started). `--dry-run` previews all files and API calls then exits. Every release is Sigstore-signed. Run `agent-bom verify agent-bom` to check integrity. See [PERMISSIONS.md](PERMISSIONS.md) for the full auditable trust contract.
@@ -145,6 +145,7 @@ agent-bom scan --image myapp:latest                # Docker image scanning
 agent-bom scan --k8s --all-namespaces              # K8s cluster
 agent-bom scan --aws --snowflake --databricks      # Multi-cloud
 agent-bom scan --hf-model meta-llama/Llama-3.1-8B  # model provenance
+agent-bom scan --compliance-export cmmc -o audit.zip # compliance evidence bundle
 ```
 
 Auto-discovers Claude Desktop, Claude Code, Cursor, Windsurf, Cline, VS Code Copilot, Continue, Zed, Cortex Code (CoCo), Codex CLI, Gemini CLI, Goose, Snowflake CLI, OpenClaw, Roo Code, Amazon Q, ToolHive, and Docker MCP Toolkit.
@@ -192,14 +193,16 @@ Every MCP server is assessed for privilege escalation risk:
 
 Privilege levels: **critical** (privileged container, CAP_SYS_ADMIN) → **high** (root, shell) → **medium** (fs write, network) → **low** (read-only).
 
-### Quad-framework compliance mapping
+### 6-framework compliance mapping
 
-Every finding is tagged against four frameworks simultaneously:
+Every finding is tagged against six frameworks simultaneously:
 
 - **OWASP LLM Top 10** — LLM01 through LLM10 (7 categories triggered)
 - **OWASP MCP Top 10** — MCP01 through MCP10 (8 categories triggered) — token exposure, tool poisoning, supply chain, shadow servers
+- **OWASP Agentic Top 10** — ASI01 through ASI10 — excessive agency, tool misuse, privilege abuse, supply chain, code execution, memory poisoning, inter-agent comms, cascading hallucination, trust exploitation, rogue persistence
 - **MITRE ATLAS** — AML.T0010, AML.T0043, AML.T0051, etc. (9 techniques mapped)
 - **NIST AI RMF 1.0** — Govern, Map, Measure, Manage (12 subcategories mapped)
+- **EU AI Act** — Articles 5, 6, 9, 10, 15, 17 — prohibited practices, high-risk classification, risk management, data governance, cybersecurity, quality management
 
 ### Enterprise remediation
 
@@ -346,7 +349,7 @@ The dashboard (`agent-bom api`) serves interactive [React Flow](https://reactflo
 - **Attack Flow** (`/scan?view=attack-flow`) — CVE-centric blast radius graph: CVE → Package → Server → Agent → Credentials → Tools
 - **Supply Chain Lineage** (`/graph`) — full dependency lineage with hover highlighting and detail panels
 
-All graph views include: dagre auto-layout, hover highlighting (BFS connected nodes), click-to-inspect detail panels, minimap, OWASP LLM Top 10 + OWASP MCP Top 10 + MITRE ATLAS + NIST AI RMF framework tagging on every node.
+All graph views include: dagre auto-layout, hover highlighting (BFS connected nodes), click-to-inspect detail panels, minimap, 6-framework compliance tagging on every node, and animated pulse effects on critical/KEV nodes.
 
 CLI output formats for CI/CD and automation:
 
@@ -419,8 +422,9 @@ agent-bom api --api-key $SECRET --rate-limit 30   # http://127.0.0.1:8422/docs
 | `GET /v1/scan/{id}` | Results + status |
 | `GET /v1/scan/{id}/attack-flow` | Per-CVE blast radius graph |
 | `GET /v1/registry` | 427+ server registry |
-| `GET /v1/compliance` | Full 4-framework compliance posture |
-| `GET /v1/compliance/{framework}` | Single framework (owasp-llm, owasp-mcp, atlas, nist) |
+| `GET /v1/compliance` | Full 6-framework compliance posture |
+| `GET /v1/compliance/{framework}` | Single framework (owasp-llm, owasp-mcp, owasp-agentic, atlas, nist, eu-ai-act) |
+| `POST /v1/traces` | Ingest OpenTelemetry traces, flag vulnerable tool calls |
 | `GET /v1/malicious/check` | Malicious package / typosquat check |
 
 ### MCP Server
@@ -431,7 +435,7 @@ agent-bom mcp-server                    # stdio
 agent-bom mcp-server --transport sse    # remote
 ```
 
-13 tools: `scan`, `check`, `blast_radius`, `policy_check`, `registry_lookup`, `generate_sbom`, `compliance`, `remediate`, `verify`, `where`, `inventory`, `diff`, `skill_trust`
+14 tools: `scan`, `check`, `blast_radius`, `policy_check`, `registry_lookup`, `generate_sbom`, `compliance`, `remediate`, `verify`, `where`, `inventory`, `diff`, `skill_trust`, `marketplace_check`
 
 ### Cloud UI
 
@@ -439,17 +443,17 @@ agent-bom mcp-server --transport sse    # remote
 cd ui && npm install && npm run dev   # http://localhost:3000
 ```
 
-13-section Next.js dashboard:
+14-section Next.js dashboard:
 
 | Page | Description |
 |------|-------------|
-| Dashboard | Security posture summary + stat cards |
+| Dashboard | Security posture summary + stat cards + AI Agent Trust Stack |
 | Scan | Enterprise scan form with cloud options |
 | Vulnerabilities | CVE browser with severity/EPSS/KEV filters |
 | Agents | Fleet registry + lifecycle state management |
-| Compliance | 4-framework compliance posture (OWASP, ATLAS, NIST) |
-| Lineage Graph | Interactive supply chain graph — dagre layout, 7 node types, filter panel |
-| Agent Mesh | Cross-agent topology — shared server detection, credential blast radius, tool overlap |
+| Compliance | 6-framework compliance posture + heatmap toggle |
+| Lineage Graph | Interactive supply chain graph — dagre layout, 7 node types, blast radius animation |
+| Agent Mesh | Cross-agent topology + spawn tree toggle (topology vs delegation chains) |
 | Gateway | Runtime MCP policy rules + audit log |
 | Registry | 427+ MCP server browser |
 | Fleet | Agent trust scoring + fleet management |
@@ -544,9 +548,21 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 - [x] Runtime MCP proxy — opt-in stdio proxy (`agent-bom proxy`) wraps individual MCP server commands for traffic interception; requires per-server client reconfiguration
 - [x] Enterprise integrations — Jira, Slack, Vanta, Drata
 - [x] Runtime sidecar Docker container — `Dockerfile.runtime` + Docker Compose for MCP proxy deployment
+- [x] OWASP Agentic Top 10 — ASI01–ASI10 autonomous agent risk tagging
+- [x] EU AI Act compliance mapping — Articles 5, 6, 9, 10, 15, 17
+- [x] Claude Code config scanner — enableAllProjectMcpServers, SessionStart hooks, API redirect detection
+- [x] Agentic search content risk — web search tools flagged as indirect prompt injection vectors
+- [x] Over-permission analyzer — mission profile enforcement per agent type
+- [x] Anthropic RSP v3.0 alignment badge — supply chain status badge for Claude agents
+- [x] CMMC/FedRAMP/NIST evidence export — `--compliance-export cmmc` generates audit-ready ZIP bundle
+- [x] Marketplace pre-install trust check — 14th MCP tool: cross-references npm/PyPI against threat registry
+- [x] OpenTelemetry trace ingestion — `POST /v1/traces` flags vulnerable tool calls from adk.tool.* spans
+- [x] Agent spawn tree visualization — parent-child delegation chains with top-down layout
+- [x] Trust layer stack diagram — Barr Moses 4-layer AI Agent Stack on dashboard
+- [x] Compliance heatmap — 6 frameworks × N controls grid with pass/warn/fail color coding
+- [x] Blast radius animation — CSS keyframe pulse for critical/KEV nodes in lineage graph
 
 **Planned:**
-- [ ] EU AI Act compliance mapping
 - [ ] CIS AI benchmarks
 - [ ] License compliance engine
 - [ ] Workflow engine scanning (n8n, Zapier, Make)

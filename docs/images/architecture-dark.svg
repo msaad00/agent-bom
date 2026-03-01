@@ -108,29 +108,33 @@
   <text x="506" y="84" text-anchor="middle" class="box-label">Blast Radius</text>
   <text x="506" y="100" text-anchor="middle" class="box-sub">CVE → pkg → server → agent → creds → tools</text>
 
-  <rect x="428" y="114" width="156" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="506" y="130" text-anchor="middle" class="box-label">OWASP LLM Top 10</text>
-  <text x="506" y="142" text-anchor="middle" class="box-sub">LLM02 · LLM05 · LLM06 · LLM08</text>
+  <rect x="428" y="114" width="156" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="506" y="128" text-anchor="middle" class="box-label">OWASP LLM Top 10</text>
+  <text x="506" y="139" text-anchor="middle" class="box-sub">LLM02 · LLM05 · LLM06 · LLM08</text>
 
-  <rect x="428" y="152" width="156" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="506" y="168" text-anchor="middle" class="box-label">OWASP MCP Top 10</text>
-  <text x="506" y="180" text-anchor="middle" class="box-sub">MCP01-MCP10 tagging</text>
+  <rect x="428" y="146" width="156" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="506" y="160" text-anchor="middle" class="box-label">OWASP MCP Top 10</text>
+  <text x="506" y="171" text-anchor="middle" class="box-sub">MCP01-MCP10 tagging</text>
 
-  <rect x="428" y="190" width="156" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="506" y="206" text-anchor="middle" class="box-label">MITRE ATLAS</text>
-  <text x="506" y="218" text-anchor="middle" class="box-sub">AI adversarial threat mapping</text>
+  <rect x="428" y="178" width="156" height="28" rx="5" fill="#0d1117" stroke="#d2a8ff" stroke-width="1" opacity="0.6"/>
+  <text x="506" y="192" text-anchor="middle" class="box-label">OWASP Agentic Top 10</text>
+  <text x="506" y="203" text-anchor="middle" class="box-sub">ASI01-ASI10 autonomy risks</text>
 
-  <rect x="428" y="228" width="156" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="506" y="244" text-anchor="middle" class="box-label">NIST AI RMF</text>
-  <text x="506" y="256" text-anchor="middle" class="box-sub">Risk management framework</text>
+  <rect x="428" y="210" width="156" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="506" y="224" text-anchor="middle" class="box-label">MITRE ATLAS</text>
+  <text x="506" y="235" text-anchor="middle" class="box-sub">AI adversarial threat mapping</text>
 
-  <rect x="428" y="266" width="156" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="506" y="282" text-anchor="middle" class="box-label">Enforcement Engine</text>
-  <text x="506" y="294" text-anchor="middle" class="box-sub">Tool poisoning + policy gates</text>
+  <rect x="428" y="242" width="156" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="506" y="256" text-anchor="middle" class="box-label">NIST AI RMF</text>
+  <text x="506" y="267" text-anchor="middle" class="box-sub">Risk management framework</text>
 
-  <rect x="428" y="304" width="156" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-  <text x="506" y="320" text-anchor="middle" class="box-label">Model Provenance</text>
-  <text x="506" y="332" text-anchor="middle" class="box-sub">SHA-256 · Sigstore · HuggingFace</text>
+  <rect x="428" y="274" width="156" height="28" rx="5" fill="#0d1117" stroke="#79c0ff" stroke-width="1" opacity="0.6"/>
+  <text x="506" y="288" text-anchor="middle" class="box-label">EU AI Act</text>
+  <text x="506" y="299" text-anchor="middle" class="box-sub">Articles 5-17 classification</text>
+
+  <rect x="428" y="306" width="156" height="28" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="506" y="320" text-anchor="middle" class="box-label">Enforcement Engine</text>
+  <text x="506" y="331" text-anchor="middle" class="box-sub">Tool poisoning + policy gates</text>
 
   <line x1="596" y1="227" x2="622" y2="227" stroke="#f47067" stroke-width="2" marker-end="url(#a3)"/>
 
@@ -174,7 +178,7 @@
 
   <rect x="808" y="106" width="124" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
   <text x="870" y="122" text-anchor="middle" class="box-label">MCP Server</text>
-  <text x="870" y="134" text-anchor="middle" class="box-sub">13 tools · stdio/SSE</text>
+  <text x="870" y="134" text-anchor="middle" class="box-sub">14 tools · stdio/SSE</text>
 
   <rect x="808" y="144" width="124" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
   <text x="870" y="160" text-anchor="middle" class="box-label">GitHub Action</text>
@@ -225,7 +229,7 @@
   <text x="470" y="530" text-anchor="middle" class="flow-zone" fill="#d29922">AGENT-BOM ENGINE</text>
   <text x="470" y="546" text-anchor="middle" class="flow-detail" fill="#8b949e">Sends to APIs: package names + versions only</text>
   <text x="470" y="560" text-anchor="middle" class="flow-detail" fill="#8b949e">Blast radius · Threat models · Enforcement</text>
-  <text x="470" y="574" text-anchor="middle" class="flow-detail" fill="#8b949e">OWASP + ATLAS + NIST framework tagging</text>
+  <text x="470" y="574" text-anchor="middle" class="flow-detail" fill="#8b949e">6-framework compliance tagging</text>
   <text x="470" y="586" text-anchor="middle" class="flow-detail" fill="#f47067">No credentials leave your machine</text>
 
   <!-- Arrow: Engine → APIs -->

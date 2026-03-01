@@ -94,7 +94,7 @@
 
   <rect x="330" y="132" width="118" height="34" rx="5" fill="#0d1117" stroke="#a371f7" stroke-width="1"/>
   <text x="389" y="146" text-anchor="middle" class="label" fill="#a371f7">Threat Model</text>
-  <text x="389" y="158" text-anchor="middle" class="sub">OWASP + ATLAS</text>
+  <text x="389" y="158" text-anchor="middle" class="sub">6-framework compliance</text>
 
   <rect x="454" y="132" width="118" height="34" rx="5" fill="#0d1117" stroke="#3fb950" stroke-width="1"/>
   <text x="513" y="146" text-anchor="middle" class="label" fill="#3fb950">Enforcement</text>

@@ -135,7 +135,7 @@
     <g transform="translate(12, 98)">
       <rect width="136" height="42" rx="5" fill="#1c1917" stroke="#a371f7" stroke-width="1"/>
       <text x="68" y="17" text-anchor="middle" class="node-label" fill="#a371f7">Threat Frameworks</text>
-      <text x="68" y="33" text-anchor="middle" class="node-sub">OWASP + ATLAS + NIST</text>
+      <text x="68" y="33" text-anchor="middle" class="node-sub">6-framework compliance</text>
     </g>
     <g transform="translate(162, 98)">
       <rect width="136" height="42" rx="5" fill="#1c1917" stroke="#3fb950" stroke-width="1"/>

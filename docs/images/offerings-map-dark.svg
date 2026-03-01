@@ -57,7 +57,7 @@
   <rect x="630" y="78" width="170" height="56" rx="12" fill="#161b22" stroke="#bc8cff" stroke-width="1.5"/>
   <rect x="630" y="78" width="170" height="4" rx="2" fill="#bc8cff" opacity="0.6"/>
   <text x="715" y="102" text-anchor="middle" class="spoke-title" fill="#bc8cff">MCP Server</text>
-  <text x="715" y="116" text-anchor="middle" class="spoke-line1">13 tools for AI agents</text>
+  <text x="715" y="116" text-anchor="middle" class="spoke-line1">14 tools for AI agents</text>
   <text x="715" y="128" text-anchor="middle" class="spoke-line2">stdio + SSE transport</text>
 
   <!-- ── Spoke 4: Docker (right) ── -->

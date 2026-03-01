@@ -171,5 +171,5 @@
   <!-- Footer: key differentiators -->
   <rect x="32" y="504" width="840" height="44" rx="8" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
   <text x="450" y="522" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#475569" letter-spacing="0.05em">WHY agent-bom vs Wiz / Snyk / Prisma</text>
-  <text x="450" y="538" text-anchor="middle" class="note">Free &amp; open source  ·  AI-native threat models (OWASP LLM + ATLAS)  ·  MCP supply chain focus  ·  No cloud access needed  ·  Runs in your CI, your laptop, your air-gap</text>
+  <text x="450" y="538" text-anchor="middle" class="note">Free &amp; open source  ·  6-framework compliance (OWASP + ATLAS + NIST + EU AI Act)  ·  MCP supply chain focus  ·  No cloud access needed  ·  Runs in your CI, your laptop, your air-gap</text>
 </svg>

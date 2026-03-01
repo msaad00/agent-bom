@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agent-bom"
-version = "0.36.1"
+version = "0.37.0"
 description = "AI supply chain security scanner — scan packages and images for CVEs, assess credential exposure and tool access risks, map blast radius, generate SBOMs. OWASP LLM + OWASP MCP + MITRE ATLAS + NIST AI RMF. GPU infrastructure (NVIDIA/AMD) coverage."
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -82,6 +82,7 @@ wandb = ["wandb>=0.16"]
 mlflow = ["mlflow>=2.10"]
 openai = ["openai>=1.12"]
 ai-enrich = ["litellm>=1.30"]
+postgres = ["psycopg[binary]>=3.1", "psycopg-pool>=3.1"]
 watch = ["watchdog>=4.0"]
 mcp-server = [
     "mcp>=1.26",

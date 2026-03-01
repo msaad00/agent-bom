@@ -271,6 +271,14 @@ def main():
     help="Auto-apply package version fixes to dependency files (package.json, requirements.txt)",
 )
 @click.option("--apply-dry-run", is_flag=True, help="Preview what --apply would change without modifying files")
+@click.option(
+    "--filesystem",
+    "filesystem_paths",
+    multiple=True,
+    type=click.Path(exists=True),
+    metavar="PATH",
+    help="Filesystem directory or tar archive to scan for packages via Syft (e.g. mounted VM disk snapshot). Repeatable.",
+)
 @click.option("--aws", is_flag=True, help="Discover AI agents from AWS Bedrock, Lambda, and ECS")
 @click.option("--aws-region", default=None, metavar="REGION", help="AWS region (default: AWS_DEFAULT_REGION)")
 @click.option("--aws-profile", default=None, metavar="PROFILE", help="AWS credential profile")
@@ -332,6 +340,15 @@ def main():
 @click.option("--jira-token", default=None, envvar="JIRA_API_TOKEN", metavar="TOKEN", help="Jira API token (or set JIRA_API_TOKEN env var)")
 @click.option("--jira-project", default=None, envvar="JIRA_PROJECT", metavar="KEY", help="Jira project key (e.g. SEC)")
 @click.option("--slack-webhook", default=None, envvar="SLACK_WEBHOOK_URL", metavar="URL", help="Slack incoming webhook URL for scan alerts")
+@click.option("--jira-discover", is_flag=True, help="Discover AI agents from Jira automation rules and installed apps")
+@click.option("--servicenow", "servicenow_flag", is_flag=True, help="Discover AI agents from ServiceNow Flow Designer and IntegrationHub")
+@click.option("--servicenow-instance", default=None, envvar="SERVICENOW_INSTANCE", metavar="URL", help="ServiceNow instance URL")
+@click.option("--servicenow-user", default=None, envvar="SERVICENOW_USER", metavar="USER", help="ServiceNow username")
+@click.option("--servicenow-password", default=None, envvar="SERVICENOW_PASSWORD", metavar="PWD", help="ServiceNow password")
+@click.option("--slack-discover", is_flag=True, help="Discover installed Slack apps and bots in workspace")
+@click.option("--slack-bot-token", default=None, envvar="SLACK_BOT_TOKEN", metavar="TOKEN", help="Slack bot token for app discovery")
+@click.option("--push-url", default=None, envvar="AGENT_BOM_PUSH_URL", metavar="URL", help="Push scan results to central dashboard URL")
+@click.option("--push-api-key", default=None, envvar="AGENT_BOM_PUSH_API_KEY", metavar="KEY", help="API key for push authentication")
 @click.option(
     "--vanta-token", default=None, envvar="VANTA_API_TOKEN", metavar="TOKEN", help="Vanta API token for compliance evidence upload"
 )
@@ -443,11 +460,21 @@ def scan(
     remediate_sh_path: Optional[str],
     apply_fixes_flag: bool,
     apply_dry_run: bool,
+    filesystem_paths: tuple,
     jira_url: Optional[str],
     jira_user: Optional[str],
     jira_token: Optional[str],
     jira_project: Optional[str],
     slack_webhook: Optional[str],
+    jira_discover: bool,
+    servicenow_flag: bool,
+    servicenow_instance: Optional[str],
+    servicenow_user: Optional[str],
+    servicenow_password: Optional[str],
+    slack_discover: bool,
+    slack_bot_token: Optional[str],
+    push_url: Optional[str],
+    push_api_key: Optional[str],
     vanta_token: Optional[str],
     drata_token: Optional[str],
     verbose: bool,
@@ -807,6 +834,29 @@ def scan(
                 agents.append(image_agent)
             except ImageScanError as e:
                 con.print(f"  [yellow]⚠[/yellow] {image_ref}: {e}")
+
+    # Step 1d2: Filesystem / disk snapshot scan (--filesystem)
+    if not skill_only and filesystem_paths:
+        from agent_bom.filesystem import FilesystemScanError, scan_filesystem
+        from agent_bom.models import Agent, AgentType, MCPServer
+
+        con.print(f"\n[bold blue]Scanning {len(filesystem_paths)} filesystem path(s) via Syft...[/bold blue]\n")
+        for fs_path in filesystem_paths:
+            try:
+                fs_packages, fs_strategy = scan_filesystem(fs_path)
+                con.print(f"  [green]v[/green] {fs_path}: {len(fs_packages)} package(s) [dim](via {fs_strategy})[/dim]")
+                server = MCPServer(name=f"fs:{fs_path}")
+                server.packages = fs_packages
+                fs_agent = Agent(
+                    name=f"filesystem:{Path(fs_path).name}",
+                    agent_type=AgentType.CUSTOM,
+                    config_path=fs_path,
+                    source="filesystem",
+                    mcp_servers=[server],
+                )
+                agents.append(fs_agent)
+            except FilesystemScanError as e:
+                con.print(f"  [yellow]![/yellow] {fs_path}: {e}")
 
     # Step 1e: Terraform scan (--tf-dir)
     if not skill_only and tf_dirs:
@@ -1179,6 +1229,33 @@ def scan(
                 con.print(f"  [dim]  No AI agents found in {provider_name.upper()}[/dim]")
         except CloudDiscoveryError as exc:
             con.print(f"\n  [red]{provider_name.upper()} discovery error: {exc}[/red]")
+
+    # Step 1y: SaaS connector discovery
+    saas_connectors: list[tuple[str, dict]] = []
+    if not skill_only and jira_discover:
+        saas_connectors.append(("jira", {"jira_url": jira_url, "email": jira_user, "api_token": jira_token}))
+    if not skill_only and servicenow_flag:
+        saas_connectors.append(
+            ("servicenow", {"instance_url": servicenow_instance, "username": servicenow_user, "password": servicenow_password})
+        )
+    if not skill_only and slack_discover:
+        saas_connectors.append(("slack", {"bot_token": slack_bot_token}))
+
+    for connector_name, connector_kwargs in saas_connectors:
+        from agent_bom.connectors import ConnectorError, discover_from_connector
+
+        con.print(f"\n[bold blue]Discovering agents from {connector_name.upper()} connector...[/bold blue]\n")
+        try:
+            con_agents, con_warnings = discover_from_connector(connector_name, **connector_kwargs)
+            for w in con_warnings:
+                con.print(f"  [yellow]![/yellow] {w}")
+            if con_agents:
+                con.print(f"  [green]v[/green] {len(con_agents)} agent(s) discovered from {connector_name.upper()}")
+                agents.extend(con_agents)
+            else:
+                con.print(f"  [dim]  No AI agents found in {connector_name.upper()}[/dim]")
+        except ConnectorError as exc:
+            con.print(f"\n  [red]{connector_name.upper()} connector error: {exc}[/red]")
 
     # Step 1z: Multi-source correlation (dedup + merge across sources)
     if not skill_only and agents:
@@ -1948,6 +2025,21 @@ def scan(
 
     if not policy_passed:
         exit_code = 1
+
+    # ── Push results to central dashboard ──
+    if push_url and report:
+        try:
+            from agent_bom.push import push_results as _push
+
+            report_data = to_json(report)
+            ok = _push(push_url, report_data, api_key=push_api_key)
+            if ok and not quiet:
+                con.print(f"\n  [green]Results pushed to {push_url}[/green]")
+            elif not ok and not quiet:
+                con.print(f"\n  [yellow]Push to {push_url} failed[/yellow]")
+        except Exception as push_err:
+            if not quiet:
+                con.print(f"\n  [yellow]Push failed: {push_err}[/yellow]")
 
     if exit_code:
         sys.exit(exit_code)
@@ -2962,6 +3054,95 @@ def apply_command(scan_json, project_dir, dry_run, no_backup):
         con.print(f"\n  Backups: {', '.join(result.backed_up)}")
 
     con.print(f"\n  Applied: {len(result.applied)}, Skipped: {len(result.skipped)}")
+
+
+@main.group()
+def schedule():
+    """Manage recurring scan schedules."""
+
+
+@schedule.command("add")
+@click.option("--name", "-n", required=True, help="Schedule name")
+@click.option("--cron", "-c", required=True, help="Cron expression (e.g. '0 */6 * * *')")
+@click.option("--config", "-f", type=click.Path(exists=True), default=None, help="Scan config JSON file")
+def schedule_add(name: str, cron: str, config: Optional[str]):
+    """Add a recurring scan schedule."""
+    import uuid as _uuid
+
+    from agent_bom.api.schedule_store import InMemoryScheduleStore, ScanSchedule, SQLiteScheduleStore
+    from agent_bom.api.scheduler import parse_cron_next
+
+    console = Console()
+
+    scan_config: dict = {}
+    if config:
+        scan_config = json.loads(Path(config).read_text())
+
+    import os as _os
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    next_run = parse_cron_next(cron, now)
+
+    db_path = _os.environ.get("AGENT_BOM_DB")
+    store = SQLiteScheduleStore(db_path) if db_path else InMemoryScheduleStore()
+
+    sched = ScanSchedule(
+        schedule_id=str(_uuid.uuid4()),
+        name=name,
+        cron_expression=cron,
+        scan_config=scan_config,
+        enabled=True,
+        next_run=next_run.isoformat() if next_run else None,
+        created_at=now.isoformat(),
+        updated_at=now.isoformat(),
+    )
+    store.put(sched)
+    console.print(f"[green]Schedule created:[/green] {sched.schedule_id}")
+    if next_run:
+        console.print(f"  Next run: {next_run.isoformat()}")
+    else:
+        console.print("  [yellow]Warning: could not compute next run from cron expression[/yellow]")
+
+
+@schedule.command("list")
+def schedule_list():
+    """List all scan schedules."""
+    import os as _os
+
+    from agent_bom.api.schedule_store import InMemoryScheduleStore, SQLiteScheduleStore
+
+    console = Console()
+    db_path = _os.environ.get("AGENT_BOM_DB")
+    store = SQLiteScheduleStore(db_path) if db_path else InMemoryScheduleStore()
+
+    schedules = store.list_all()
+    if not schedules:
+        console.print("[dim]No schedules found.[/dim]")
+        return
+
+    for s in schedules:
+        status = "[green]enabled[/green]" if s.enabled else "[red]disabled[/red]"
+        console.print(f"  {s.schedule_id[:8]}  {s.name}  {s.cron_expression}  {status}  next={s.next_run or 'n/a'}")
+
+
+@schedule.command("remove")
+@click.argument("schedule_id")
+def schedule_remove(schedule_id: str):
+    """Remove a scan schedule by ID."""
+    import os as _os
+
+    from agent_bom.api.schedule_store import InMemoryScheduleStore, SQLiteScheduleStore
+
+    console = Console()
+    db_path = _os.environ.get("AGENT_BOM_DB")
+    store = SQLiteScheduleStore(db_path) if db_path else InMemoryScheduleStore()
+
+    if store.delete(schedule_id):
+        console.print(f"[green]Deleted schedule {schedule_id}[/green]")
+    else:
+        console.print(f"[red]Schedule {schedule_id} not found[/red]")
+        sys.exit(1)
 
 
 @main.group()

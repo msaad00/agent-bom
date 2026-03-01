@@ -76,6 +76,19 @@ async def _lifespan(app_instance: FastAPI):
             set_fleet_store(SnowflakeFleetStore(sf))
         if _policy_store is None:
             set_policy_store(SnowflakePolicyStore(sf))
+    elif _os.environ.get("AGENT_BOM_POSTGRES_URL"):
+        from agent_bom.api.postgres_store import (
+            PostgresFleetStore,
+            PostgresJobStore,
+            PostgresPolicyStore,
+        )
+
+        if _store is None:
+            set_job_store(PostgresJobStore())
+        if _fleet_store is None:
+            set_fleet_store(PostgresFleetStore())
+        if _policy_store is None:
+            set_policy_store(PostgresPolicyStore())
     elif _os.environ.get("AGENT_BOM_DB"):
         db_path = _os.environ["AGENT_BOM_DB"]
         if _store is None:
@@ -91,9 +104,44 @@ async def _lifespan(app_instance: FastAPI):
 
             set_policy_store(SQLitePolicyStore(db_path))
 
+    # ── Schedule store ──
+    global _schedule_store
+    if _schedule_store is None:
+        db_path = _os.environ.get("AGENT_BOM_DB")
+        if db_path:
+            from agent_bom.api.schedule_store import SQLiteScheduleStore
+
+            _schedule_store = SQLiteScheduleStore(db_path)
+        else:
+            from agent_bom.api.schedule_store import InMemoryScheduleStore
+
+            _schedule_store = InMemoryScheduleStore()
+
     global _cleanup_task
     _cleanup_task = asyncio.create_task(_cleanup_loop())
+
+    # Start scheduler background loop
+    global _scheduler_task
+    from agent_bom.api.scheduler import scheduler_loop
+
+    def _schedule_scan(scan_config: dict) -> str:
+        """Trigger a scan from a schedule."""
+        job = ScanJob(
+            job_id=str(uuid.uuid4()),
+            created_at=_now(),
+            request=ScanRequest(**scan_config) if isinstance(scan_config, dict) else scan_config,
+        )
+        _get_store().put(job)
+        _jobs[job.job_id] = job
+        loop = asyncio.get_event_loop()
+        loop.run_in_executor(_executor, _run_scan_sync, job)
+        return job.job_id
+
+    _scheduler_task = asyncio.create_task(scheduler_loop(_schedule_store, _schedule_scan))
+
     yield
+    if _scheduler_task:
+        _scheduler_task.cancel()
     if _cleanup_task:
         _cleanup_task.cancel()
 
@@ -345,6 +393,12 @@ class ScanRequest(BaseModel):
     enrich: bool = False
     """Enrich with NVD CVSS, EPSS, and CISA KEV data."""
 
+    connectors: list[str] = []
+    """SaaS connectors to discover from (e.g. ['jira', 'servicenow', 'slack'])."""
+
+    filesystem_paths: list[str] = []
+    """Filesystem directories or tar archives to scan via Syft."""
+
     format: str = "json"
     """Output format: json | cyclonedx | sarif | spdx | html | text."""
 
@@ -565,6 +619,43 @@ def _run_scan_sync(job: ScanJob) -> None:
                 )
                 agents.append(sbom_agent)
 
+        # Step 9a — SaaS connectors
+        for connector_name in req.connectors:
+            job.progress.append(f"Discovering from connector: {connector_name}")
+            try:
+                from agent_bom.connectors import discover_from_connector
+
+                con_agents, con_warnings = discover_from_connector(connector_name)
+                agents.extend(con_agents)
+                warnings_all.extend(con_warnings)
+            except Exception as con_exc:  # noqa: BLE001
+                warnings_all.append(f"{connector_name} connector error: {con_exc}")
+
+        # Step 9b — Filesystem / disk snapshot scanning
+        for fs_path in req.filesystem_paths:
+            job.progress.append(f"Scanning filesystem: {fs_path}")
+            try:
+                from agent_bom.filesystem import scan_filesystem
+                from agent_bom.models import Agent, AgentType, MCPServer
+
+                fs_pkgs, fs_strat = scan_filesystem(fs_path)
+                if fs_pkgs:
+                    from pathlib import Path as _Path
+
+                    fs_server = MCPServer(name=f"fs:{fs_path}")
+                    fs_server.packages = fs_pkgs
+                    fs_agent = Agent(
+                        name=f"filesystem:{_Path(fs_path).name}",
+                        agent_type=AgentType.CUSTOM,
+                        config_path=fs_path,
+                        source="filesystem",
+                        mcp_servers=[fs_server],
+                    )
+                    agents.append(fs_agent)
+                    job.progress.append(f"Filesystem {fs_path}: {len(fs_pkgs)} packages via {fs_strat}")
+            except Exception as fs_exc:  # noqa: BLE001
+                warnings_all.append(f"Filesystem scan error for {fs_path}: {fs_exc}")
+
         if not agents:
             job.progress.append("No agents found.")
             job.result = {"agents": [], "vulnerabilities": [], "blast_radius": [], "warnings": warnings_all}
@@ -616,6 +707,8 @@ def _run_scan_sync(job: ScanJob) -> None:
 
 
 _cleanup_task: asyncio.Task | None = None
+_scheduler_task: asyncio.Task | None = None
+_schedule_store = None
 
 
 async def _cleanup_loop():
@@ -1294,6 +1387,32 @@ def _load_registry() -> list[dict]:
             }
         )
     return result
+
+
+# ── Connectors ─────────────────────────────────────────────────────────────
+
+
+@app.get("/v1/connectors", tags=["connectors"])
+async def list_available_connectors() -> dict:
+    """List available SaaS connectors for AI agent discovery."""
+    from agent_bom.connectors import list_connectors
+
+    return {"connectors": list_connectors()}
+
+
+@app.get("/v1/connectors/{name}/health", tags=["connectors"])
+async def connector_health(name: str) -> dict:
+    """Check connectivity for a SaaS connector."""
+    try:
+        from agent_bom.connectors import check_connector_health
+
+        status = check_connector_health(name)
+        return {"connector": status.connector, "state": status.state.value, "message": status.message, "api_version": status.api_version}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+# ── Registry ───────────────────────────────────────────────────────────────
 
 
 @app.get("/v1/registry", tags=["registry"])
@@ -2151,6 +2270,108 @@ async def ingest_traces(body: dict) -> dict:
     except Exception as exc:  # noqa: BLE001
         _logger.exception("Request failed")
         raise HTTPException(status_code=500, detail=sanitize_error(exc)) from exc
+
+
+# ── Hybrid Push — receive results from CLI ────────────────────────────────────
+
+
+class PushPayload(BaseModel):
+    source_id: str = ""
+    agents: list = []
+    blast_radii: list = []
+    warnings: list = []
+
+
+@app.post("/v1/results/push", tags=["push"], status_code=201)
+async def receive_push(body: PushPayload) -> dict:
+    """Receive pushed scan results from a CLI instance.
+
+    Stores as a completed ScanJob with source metadata.
+    """
+    job = ScanJob(
+        job_id=str(uuid.uuid4()),
+        created_at=_now(),
+        request=ScanRequest(),
+    )
+    job.status = JobStatus.DONE
+    job.result = {
+        "agents": body.agents,
+        "blast_radii": body.blast_radii,
+        "warnings": body.warnings,
+        "source_id": body.source_id,
+        "pushed": True,
+    }
+    job.progress.append(f"Received via push from source={body.source_id}")
+    _get_store().put(job)
+    return {"job_id": job.job_id, "source_id": body.source_id, "status": "stored"}
+
+
+# ── Scheduled Scanning ───────────────────────────────────────────────────────
+
+
+class ScheduleCreate(BaseModel):
+    name: str
+    cron_expression: str
+    scan_config: dict = {}
+    enabled: bool = True
+    tenant_id: str = "default"
+
+
+@app.post("/v1/schedules", tags=["schedules"], status_code=201)
+async def create_schedule(body: ScheduleCreate) -> dict:
+    """Create a recurring scan schedule."""
+    from agent_bom.api.schedule_store import ScanSchedule
+    from agent_bom.api.scheduler import parse_cron_next
+
+    now = datetime.now(timezone.utc)
+    next_run = parse_cron_next(body.cron_expression, now)
+    schedule = ScanSchedule(
+        schedule_id=str(uuid.uuid4()),
+        name=body.name,
+        cron_expression=body.cron_expression,
+        scan_config=body.scan_config,
+        enabled=body.enabled,
+        next_run=next_run.isoformat() if next_run else None,
+        created_at=now.isoformat(),
+        updated_at=now.isoformat(),
+        tenant_id=body.tenant_id,
+    )
+    _schedule_store.put(schedule)
+    return schedule.model_dump()
+
+
+@app.get("/v1/schedules", tags=["schedules"])
+async def list_schedules() -> list[dict]:
+    """List all scan schedules."""
+    return [s.model_dump() for s in _schedule_store.list_all()]
+
+
+@app.get("/v1/schedules/{schedule_id}", tags=["schedules"])
+async def get_schedule(schedule_id: str) -> dict:
+    """Get a specific schedule."""
+    s = _schedule_store.get(schedule_id)
+    if s is None:
+        raise HTTPException(status_code=404, detail=f"Schedule {schedule_id} not found")
+    return s.model_dump()
+
+
+@app.delete("/v1/schedules/{schedule_id}", tags=["schedules"], status_code=204)
+async def delete_schedule(schedule_id: str):
+    """Delete a schedule."""
+    if not _schedule_store.delete(schedule_id):
+        raise HTTPException(status_code=404, detail=f"Schedule {schedule_id} not found")
+
+
+@app.put("/v1/schedules/{schedule_id}/toggle", tags=["schedules"])
+async def toggle_schedule(schedule_id: str) -> dict:
+    """Enable or disable a schedule."""
+    s = _schedule_store.get(schedule_id)
+    if s is None:
+        raise HTTPException(status_code=404, detail=f"Schedule {schedule_id} not found")
+    s.enabled = not s.enabled
+    s.updated_at = datetime.now(timezone.utc).isoformat()
+    _schedule_store.put(s)
+    return s.model_dump()
 
 
 # ── Dashboard static file serving ────────────────────────────────────────────

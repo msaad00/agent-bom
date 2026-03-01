@@ -1,7 +1,7 @@
 ---
 name: agent-bom
 description: AI supply chain security scanner — check packages for CVEs, look up MCP servers in the threat registry, assess blast radius, generate SBOMs, enforce compliance
-version: 0.36.1
+version: 0.37.0
 metadata:
   openclaw:
     requires:
@@ -210,7 +210,7 @@ It extracts server names, package names, and env var **names** only — never va
 - **Source code**: https://github.com/msaad00/agent-bom (Apache-2.0, fully auditable)
 - **PyPI**: https://pypi.org/project/agent-bom/
 - **Smithery**: https://smithery.ai/server/agent-bom/agent-bom (99/100 quality score)
-- **Sigstore signed**: Every release is signed with Sigstore OIDC — verify with `agent-bom verify agent-bom@0.36.1`
+- **Sigstore signed**: Every release is signed with Sigstore OIDC — verify with `agent-bom verify agent-bom@0.37.0`
 - **1,800 tests**: Every commit passes automated security scanning (CodeQL + OpenSSF Scorecard)
 - **OpenSSF Scorecard**: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
 - **Self-hostable**: Run your own instance with `docker build -f Dockerfile.sse` — no vendor dependency required

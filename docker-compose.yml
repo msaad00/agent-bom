@@ -7,6 +7,8 @@ services:
     image: agent-bom:latest
     container_name: agent-bom-scanner
     environment:
+      # PostgreSQL — single env var, picks up all 5 store backends
+      - AGENT_BOM_POSTGRES_URL=postgresql://${POSTGRES_USER:-agent_bom}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-agent_bom}
       # API keys (load from .env file or set here)
       - NVD_API_KEY=${NVD_API_KEY:-}
       # Cloud credentials
@@ -25,8 +27,11 @@ services:
       # Mount test configs
       - ./tests:/workspace/tests:ro
     command: scan --enrich --format json --output /workspace/reports/ai-bom.json
+    depends_on:
+      postgres:
+        condition: service_healthy
 
-  # Redis cache for distributed scanning (future)
+  # Redis cache for distributed scanning
   redis:
     image: redis:7-alpine
     container_name: agent-bom-cache
@@ -36,18 +41,37 @@ services:
       - redis-data:/data
     command: redis-server --appendonly yes
 
-  # PostgreSQL for result storage (future)
+  # PostgreSQL for persistent storage
   postgres:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     container_name: agent-bom-db
     environment:
-      - POSTGRES_DB=agent_bom
-      - POSTGRES_USER=agent_bom
-      - POSTGRES_PASSWORD=changeme
+      POSTGRES_DB: ${POSTGRES_DB:-agent_bom}
+      POSTGRES_USER: ${POSTGRES_USER:-agent_bom}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      # scram-sha-256 is the strongest built-in auth method
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-agent_bom} -d ${POSTGRES_DB:-agent_bom}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    # Hardened Postgres settings
+    command: >
+      postgres
+        -c password_encryption=scram-sha-256
+        -c log_connections=on
+        -c log_disconnections=on
+        -c log_statement=ddl
+        -c max_connections=100
+        -c shared_buffers=128MB
+        -c work_mem=4MB
 
 volumes:
   redis-data:

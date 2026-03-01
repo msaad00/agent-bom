@@ -1,9 +1,38 @@
 version: "3.8"
 
-# Platform deployment: API + Dashboard
-# Usage: docker compose -f docker-compose.platform.yml up --build
+# Platform deployment: API + Dashboard + PostgreSQL
+# Usage:
+#   cp .env.example .env   # then set POSTGRES_PASSWORD
+#   docker compose -f docker-compose.platform.yml up --build
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: agent-bom-platform-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-agent_bom}
+      POSTGRES_USER: ${POSTGRES_USER:-agent_bom}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-agent_bom} -d ${POSTGRES_DB:-agent_bom}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    command: >
+      postgres
+        -c password_encryption=scram-sha-256
+        -c log_connections=on
+        -c log_disconnections=on
+        -c log_statement=ddl
+        -c max_connections=100
+        -c shared_buffers=128MB
+    restart: unless-stopped
+
   api:
     build:
       context: .
@@ -14,13 +43,12 @@ services:
     ports:
       - "8422:8422"
     environment:
-      - AGENT_BOM_DB=/data/jobs.db
+      - AGENT_BOM_POSTGRES_URL=postgresql://${POSTGRES_USER:-agent_bom}:${POSTGRES_PASSWORD:?err}@postgres:5432/${POSTGRES_DB:-agent_bom}
       - CORS_ORIGINS=http://localhost:3000,http://ui:3000
       - NVD_API_KEY=${NVD_API_KEY:-}
-    volumes:
-      - api-data:/data
-      - ~/.config:/root/.config:ro
-      - ~/.claude:/root/.claude:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8422/health"]
       interval: 15s
@@ -47,7 +75,7 @@ services:
     restart: unless-stopped
 
 volumes:
-  api-data:
+  postgres-data:
 
 networks:
   default:

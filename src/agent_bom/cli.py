@@ -3038,6 +3038,95 @@ def apply_command(scan_json, project_dir, dry_run, no_backup):
 
 
 @main.group()
+def schedule():
+    """Manage recurring scan schedules."""
+
+
+@schedule.command("add")
+@click.option("--name", "-n", required=True, help="Schedule name")
+@click.option("--cron", "-c", required=True, help="Cron expression (e.g. '0 */6 * * *')")
+@click.option("--config", "-f", type=click.Path(exists=True), default=None, help="Scan config JSON file")
+def schedule_add(name: str, cron: str, config: Optional[str]):
+    """Add a recurring scan schedule."""
+    import uuid as _uuid
+
+    from agent_bom.api.schedule_store import InMemoryScheduleStore, ScanSchedule, SQLiteScheduleStore
+    from agent_bom.api.scheduler import parse_cron_next
+
+    console = Console()
+
+    scan_config: dict = {}
+    if config:
+        scan_config = json.loads(Path(config).read_text())
+
+    import os as _os
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    next_run = parse_cron_next(cron, now)
+
+    db_path = _os.environ.get("AGENT_BOM_DB")
+    store = SQLiteScheduleStore(db_path) if db_path else InMemoryScheduleStore()
+
+    sched = ScanSchedule(
+        schedule_id=str(_uuid.uuid4()),
+        name=name,
+        cron_expression=cron,
+        scan_config=scan_config,
+        enabled=True,
+        next_run=next_run.isoformat() if next_run else None,
+        created_at=now.isoformat(),
+        updated_at=now.isoformat(),
+    )
+    store.put(sched)
+    console.print(f"[green]Schedule created:[/green] {sched.schedule_id}")
+    if next_run:
+        console.print(f"  Next run: {next_run.isoformat()}")
+    else:
+        console.print("  [yellow]Warning: could not compute next run from cron expression[/yellow]")
+
+
+@schedule.command("list")
+def schedule_list():
+    """List all scan schedules."""
+    import os as _os
+
+    from agent_bom.api.schedule_store import InMemoryScheduleStore, SQLiteScheduleStore
+
+    console = Console()
+    db_path = _os.environ.get("AGENT_BOM_DB")
+    store = SQLiteScheduleStore(db_path) if db_path else InMemoryScheduleStore()
+
+    schedules = store.list_all()
+    if not schedules:
+        console.print("[dim]No schedules found.[/dim]")
+        return
+
+    for s in schedules:
+        status = "[green]enabled[/green]" if s.enabled else "[red]disabled[/red]"
+        console.print(f"  {s.schedule_id[:8]}  {s.name}  {s.cron_expression}  {status}  next={s.next_run or 'n/a'}")
+
+
+@schedule.command("remove")
+@click.argument("schedule_id")
+def schedule_remove(schedule_id: str):
+    """Remove a scan schedule by ID."""
+    import os as _os
+
+    from agent_bom.api.schedule_store import InMemoryScheduleStore, SQLiteScheduleStore
+
+    console = Console()
+    db_path = _os.environ.get("AGENT_BOM_DB")
+    store = SQLiteScheduleStore(db_path) if db_path else InMemoryScheduleStore()
+
+    if store.delete(schedule_id):
+        console.print(f"[green]Deleted schedule {schedule_id}[/green]")
+    else:
+        console.print(f"[red]Schedule {schedule_id} not found[/red]")
+        sys.exit(1)
+
+
+@main.group()
 def registry():
     """Manage the MCP server registry."""
 

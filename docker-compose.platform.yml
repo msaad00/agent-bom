@@ -1,9 +1,50 @@
 version: "3.8"
 
-# Platform deployment: API + Dashboard
-# Usage: docker compose -f docker-compose.platform.yml up --build
+# Production-like platform deployment: API + Dashboard + PostgreSQL
+#
+# Defense in depth:
+#   - Postgres on internal 'backend' network only — not reachable from host or internet
+#   - API bridges backend + frontend networks
+#   - UI on frontend only — cannot reach Postgres directly
+#   - App connects as agent_bom_app (DML only, no DDL) when POSTGRES_APP_PASSWORD is set
+#
+# Usage:
+#   cp .env.example .env   # set POSTGRES_PASSWORD + POSTGRES_APP_PASSWORD
+#   docker compose -f docker-compose.platform.yml up --build
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: agent-bom-platform-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-agent_bom}
+      POSTGRES_USER: ${POSTGRES_USER:-agent_bom}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:-}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init-wrapper.sh:/docker-entrypoint-initdb.d/00-init-wrapper.sh:ro
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-agent_bom} -d ${POSTGRES_DB:-agent_bom}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    command: >
+      postgres
+        -c password_encryption=scram-sha-256
+        -c log_connections=on
+        -c log_disconnections=on
+        -c log_statement=ddl
+        -c max_connections=100
+        -c shared_buffers=128MB
+    # NO ports exposed — only reachable from backend network
+    networks:
+      - backend
+    restart: unless-stopped
+
   api:
     build:
       context: .
@@ -14,19 +55,23 @@ services:
     ports:
       - "8422:8422"
     environment:
-      - AGENT_BOM_DB=/data/jobs.db
+      # Use app user (DML only) when available, fall back to admin for dev
+      - AGENT_BOM_POSTGRES_URL=postgresql://${POSTGRES_APP_USER:-${POSTGRES_USER:-agent_bom}}:${POSTGRES_APP_PASSWORD:-${POSTGRES_PASSWORD:?err}}@postgres:5432/${POSTGRES_DB:-agent_bom}
       - CORS_ORIGINS=http://localhost:3000,http://ui:3000
       - NVD_API_KEY=${NVD_API_KEY:-}
-    volumes:
-      - api-data:/data
-      - ~/.config:/root/.config:ro
-      - ~/.claude:/root/.claude:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8422/health"]
       interval: 15s
       timeout: 5s
       retries: 3
       start_period: 10s
+    # API bridges both networks: talks to Postgres on backend, serves UI on frontend
+    networks:
+      - backend
+      - frontend
     restart: unless-stopped
 
   ui:
@@ -44,11 +89,18 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    # UI on frontend only — cannot reach Postgres directly
+    networks:
+      - frontend
     restart: unless-stopped
 
 volumes:
-  api-data:
+  postgres-data:
 
 networks:
-  default:
-    name: agent-bom-platform
+  backend:
+    name: agent-bom-backend
+    # Internal: not routable from host — only containers on this network can reach Postgres
+    internal: true
+  frontend:
+    name: agent-bom-frontend

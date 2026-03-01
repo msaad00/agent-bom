@@ -1,9 +1,11 @@
 """PostgreSQL-backed storage backends for agent-bom.
 
-Provides pluggable PostgreSQL persistence for all three store protocols:
-- ``PostgresJobStore``    — scan job persistence
-- ``PostgresFleetStore``  — fleet agent lifecycle
-- ``PostgresPolicyStore`` — gateway policies + audit log
+Provides pluggable PostgreSQL persistence for all store protocols:
+- ``PostgresJobStore``       — scan job persistence
+- ``PostgresFleetStore``     — fleet agent lifecycle
+- ``PostgresPolicyStore``    — gateway policies + audit log
+- ``PostgresScheduleStore``  — recurring scan schedules
+- ``PostgresScanCache``      — OSV vulnerability scan cache
 
 Requires ``pip install 'agent-bom[postgres]'``.
 
@@ -16,6 +18,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -340,3 +343,150 @@ class PostgresPolicyStore:
                 except Exception:
                     results.append(json.loads(raw))
             return results
+
+
+# ── PostgresScheduleStore ─────────────────────────────────────────────────
+
+
+class PostgresScheduleStore:
+    """PostgreSQL-backed recurring scan schedule persistence."""
+
+    def __init__(self, pool=None) -> None:
+        self._pool = pool or _get_pool()
+        self._init_tables()
+
+    def _init_tables(self) -> None:
+        with self._pool.connection() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS scan_schedules (
+                    schedule_id TEXT PRIMARY KEY,
+                    enabled INTEGER DEFAULT 1,
+                    next_run TEXT,
+                    data JSONB NOT NULL
+                )
+            """)
+            conn.commit()
+
+    def put(self, schedule) -> None:
+        data = schedule.model_dump_json()
+        with self._pool.connection() as conn:
+            conn.execute(
+                """INSERT INTO scan_schedules (schedule_id, enabled, next_run, data)
+                   VALUES (%s, %s, %s, %s)
+                   ON CONFLICT (schedule_id) DO UPDATE SET
+                     enabled = EXCLUDED.enabled,
+                     next_run = EXCLUDED.next_run,
+                     data = EXCLUDED.data""",
+                (schedule.schedule_id, int(schedule.enabled), schedule.next_run, data),
+            )
+            conn.commit()
+
+    def get(self, schedule_id: str):
+        from .schedule_store import ScanSchedule
+
+        with self._pool.connection() as conn:
+            row = conn.execute("SELECT data FROM scan_schedules WHERE schedule_id = %s", (schedule_id,)).fetchone()
+            if row is None:
+                return None
+            raw = row[0] if isinstance(row[0], str) else json.dumps(row[0])
+            return ScanSchedule.model_validate_json(raw)
+
+    def delete(self, schedule_id: str) -> bool:
+        with self._pool.connection() as conn:
+            cursor = conn.execute("DELETE FROM scan_schedules WHERE schedule_id = %s", (schedule_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def list_all(self) -> list:
+        from .schedule_store import ScanSchedule
+
+        with self._pool.connection() as conn:
+            rows = conn.execute("SELECT data FROM scan_schedules ORDER BY schedule_id").fetchall()
+            return [ScanSchedule.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in rows]
+
+    def list_due(self, now_iso: str) -> list:
+        from .schedule_store import ScanSchedule
+
+        with self._pool.connection() as conn:
+            rows = conn.execute(
+                "SELECT data FROM scan_schedules WHERE enabled = 1 AND next_run IS NOT NULL AND next_run <= %s",
+                (now_iso,),
+            ).fetchall()
+            return [ScanSchedule.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in rows]
+
+
+# ── PostgresScanCache ─────────────────────────────────────────────────────
+
+
+class PostgresScanCache:
+    """PostgreSQL-backed OSV vulnerability scan cache.
+
+    Drop-in replacement for the SQLite ``ScanCache`` — same public API,
+    backed by PostgreSQL for multi-instance deployments.
+    """
+
+    def __init__(self, pool=None, ttl_seconds: int = 86_400) -> None:
+        self._pool = pool or _get_pool()
+        self._ttl = ttl_seconds
+        self._init_tables()
+
+    def _init_tables(self) -> None:
+        with self._pool.connection() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS osv_cache (
+                    cache_key  TEXT PRIMARY KEY,
+                    vulns_json TEXT NOT NULL,
+                    cached_at  REAL NOT NULL
+                )
+            """)
+            conn.commit()
+
+    def get(self, ecosystem: str, name: str, version: str) -> list[dict] | None:
+        key = self._key(ecosystem, name, version)
+        with self._pool.connection() as conn:
+            row = conn.execute(
+                "SELECT vulns_json, cached_at FROM osv_cache WHERE cache_key = %s",
+                (key,),
+            ).fetchone()
+            if row is None:
+                return None
+            if time.time() - float(row[1]) > self._ttl:
+                conn.execute("DELETE FROM osv_cache WHERE cache_key = %s", (key,))
+                conn.commit()
+                return None
+            return json.loads(row[0])
+
+    def put(self, ecosystem: str, name: str, version: str, vulns: list[dict]) -> None:
+        key = self._key(ecosystem, name, version)
+        with self._pool.connection() as conn:
+            conn.execute(
+                """INSERT INTO osv_cache (cache_key, vulns_json, cached_at)
+                   VALUES (%s, %s, %s)
+                   ON CONFLICT (cache_key) DO UPDATE SET
+                     vulns_json = EXCLUDED.vulns_json,
+                     cached_at = EXCLUDED.cached_at""",
+                (key, json.dumps(vulns), time.time()),
+            )
+            conn.commit()
+
+    def cleanup_expired(self) -> int:
+        cutoff = time.time() - self._ttl
+        with self._pool.connection() as conn:
+            cursor = conn.execute("DELETE FROM osv_cache WHERE cached_at < %s", (cutoff,))
+            conn.commit()
+            return cursor.rowcount or 0
+
+    def clear(self) -> None:
+        with self._pool.connection() as conn:
+            conn.execute("DELETE FROM osv_cache")
+            conn.commit()
+
+    @property
+    def size(self) -> int:
+        with self._pool.connection() as conn:
+            row = conn.execute("SELECT COUNT(*) FROM osv_cache").fetchone()
+            return row[0] if row else 0
+
+    @staticmethod
+    def _key(ecosystem: str, name: str, version: str) -> str:
+        return f"{ecosystem}:{name}@{version}"

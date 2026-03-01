@@ -2871,6 +2871,8 @@ def api_cmd(
         )
         sys.exit(1)
 
+    import os as _os
+
     from agent_bom import __version__ as _ver
     from agent_bom.api.server import configure_api, set_job_store
 
@@ -2882,7 +2884,13 @@ def api_cmd(
         rate_limit_rpm=rate_limit_rpm,
     )
 
-    if persist:
+    pg_url = _os.environ.get("AGENT_BOM_POSTGRES_URL")
+    if pg_url and not persist:
+        # Postgres takes priority when no explicit --persist flag
+        from agent_bom.api.postgres_store import PostgresJobStore
+
+        set_job_store(PostgresJobStore())
+    elif persist:
         from agent_bom.api.store import SQLiteJobStore
 
         set_job_store(SQLiteJobStore(db_path=persist))
@@ -2892,7 +2900,9 @@ def api_cmd(
     click.echo(f"  Docs:         http://{host}:{port}/docs")
     if api_key:
         click.echo("  Auth:         API key required (Bearer / X-API-Key)")
-    if persist:
+    if pg_url and not persist:
+        click.echo("  Storage:      PostgreSQL")
+    elif persist:
         click.echo(f"  Storage:      SQLite ({persist})")
     click.echo("  Press Ctrl+C to stop.\n")
 

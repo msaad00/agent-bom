@@ -51,17 +51,31 @@ class MockConnection:
                     table = "gateway_policies"
                 elif "policy_audit_log" in sql:
                     table = "audit"
+                elif "scan_schedules" in sql:
+                    table = "scan_schedules"
+                elif "osv_cache" in sql:
+                    table = "osv_cache"
                 if table not in self._store:
                     self._store[table] = {}
                 self._store[table][params[0]] = params
         elif sql_lower.startswith("select"):
-            # Return stored data
-            if params:
+            if "group by" in sql_lower:
+                # Aggregate query — return empty list
+                cursor.rows = []
+            elif "count(*)" in sql_lower:
+                # COUNT query
+                total = sum(len(td) for td in self._store.values())
+                cursor.rows = [(total,)]
+            elif params:
                 for table_data in self._store.values():
                     for pk, row in table_data.items():
                         if pk == params[0]:
-                            # Return the last element (data column)
-                            cursor.rows = [(row[-1],)]
+                            if "osv_cache" in sql and "vulns_json" in sql:
+                                # Cache query returns (vulns_json, cached_at)
+                                cursor.rows = [(row[1], row[2])]
+                            else:
+                                # Return the last element (data column)
+                                cursor.rows = [(row[-1],)]
                             break
             else:
                 # List all
@@ -467,3 +481,178 @@ def test_server_lifespan_postgres_env_var():
 
     source = inspect.getsource(server._lifespan)
     assert "AGENT_BOM_POSTGRES_URL" in source
+
+
+# ─── PostgresScheduleStore ───────────────────────────────────────────────────
+
+
+def test_schedule_store_init(mock_pool):
+    from agent_bom.api.postgres_store import PostgresScheduleStore
+
+    store = PostgresScheduleStore(pool=mock_pool)
+    assert store is not None
+
+
+def test_schedule_store_put_get(mock_pool):
+    from agent_bom.api.postgres_store import PostgresScheduleStore
+    from agent_bom.api.schedule_store import ScanSchedule
+
+    store = PostgresScheduleStore(pool=mock_pool)
+    schedule = ScanSchedule(
+        schedule_id="sched-1",
+        name="nightly-scan",
+        cron_expression="0 */6 * * *",
+        scan_config={"images": ["nginx:latest"]},
+        enabled=True,
+        next_run="2025-01-01T00:00:00+00:00",
+        created_at="2025-01-01T00:00:00+00:00",
+        updated_at="2025-01-01T00:00:00+00:00",
+    )
+    store.put(schedule)
+
+    mock_pool._conn._store.setdefault("scan_schedules", {})["sched-1"] = (
+        "sched-1",
+        1,
+        "2025-01-01T00:00:00+00:00",
+        schedule.model_dump_json(),
+    )
+
+    retrieved = store.get("sched-1")
+    assert retrieved is not None
+    assert retrieved.schedule_id == "sched-1"
+    assert retrieved.name == "nightly-scan"
+
+
+def test_schedule_store_get_nonexistent(mock_pool):
+    from agent_bom.api.postgres_store import PostgresScheduleStore
+
+    store = PostgresScheduleStore(pool=mock_pool)
+    assert store.get("nonexistent") is None
+
+
+def test_schedule_store_delete(mock_pool):
+    from agent_bom.api.postgres_store import PostgresScheduleStore
+
+    store = PostgresScheduleStore(pool=mock_pool)
+    mock_pool._conn._store.setdefault("scan_schedules", {})["sched-1"] = ("sched-1", 1, None, "{}")
+    assert store.delete("sched-1") is True
+
+
+def test_schedule_store_delete_nonexistent(mock_pool):
+    from agent_bom.api.postgres_store import PostgresScheduleStore
+
+    store = PostgresScheduleStore(pool=mock_pool)
+    assert store.delete("nonexistent") is False
+
+
+def test_schedule_store_list_all(mock_pool):
+    from agent_bom.api.postgres_store import PostgresScheduleStore
+
+    store = PostgresScheduleStore(pool=mock_pool)
+    result = store.list_all()
+    assert isinstance(result, list)
+
+
+def test_schedule_store_list_due(mock_pool):
+    from agent_bom.api.postgres_store import PostgresScheduleStore
+
+    store = PostgresScheduleStore(pool=mock_pool)
+    result = store.list_due("2025-06-15T12:00:00+00:00")
+    assert isinstance(result, list)
+
+
+# ─── PostgresScanCache ───────────────────────────────────────────────────────
+
+
+def test_scan_cache_init(mock_pool):
+    from agent_bom.api.postgres_store import PostgresScanCache
+
+    cache = PostgresScanCache(pool=mock_pool)
+    assert cache is not None
+
+
+def test_scan_cache_put_get(mock_pool):
+    from agent_bom.api.postgres_store import PostgresScanCache
+
+    cache = PostgresScanCache(pool=mock_pool)
+    vulns = [{"id": "CVE-2024-1234", "severity": "HIGH"}]
+    cache.put("pypi", "requests", "2.31.0", vulns)
+
+    # Set up mock data for retrieval — (key, vulns_json, cached_at)
+    import time
+
+    key = "pypi:requests@2.31.0"
+    mock_pool._conn._store.setdefault("osv_cache", {})[key] = (
+        key,
+        json.dumps(vulns),
+        time.time(),
+    )
+
+    result = cache.get("pypi", "requests", "2.31.0")
+    assert result is not None
+    assert len(result) == 1
+    assert result[0]["id"] == "CVE-2024-1234"
+
+
+def test_scan_cache_get_miss(mock_pool):
+    from agent_bom.api.postgres_store import PostgresScanCache
+
+    cache = PostgresScanCache(pool=mock_pool)
+    assert cache.get("pypi", "nonexistent", "0.0.0") is None
+
+
+def test_scan_cache_get_expired(mock_pool):
+    from agent_bom.api.postgres_store import PostgresScanCache
+
+    cache = PostgresScanCache(pool=mock_pool, ttl_seconds=1)
+
+    key = "pypi:old@1.0.0"
+    mock_pool._conn._store.setdefault("osv_cache", {})[key] = (
+        key,
+        json.dumps([]),
+        0.0,  # epoch — definitely expired
+    )
+
+    result = cache.get("pypi", "old", "1.0.0")
+    assert result is None
+
+
+def test_scan_cache_cleanup(mock_pool):
+    from agent_bom.api.postgres_store import PostgresScanCache
+
+    cache = PostgresScanCache(pool=mock_pool)
+    count = cache.cleanup_expired()
+    assert isinstance(count, int)
+
+
+def test_scan_cache_clear(mock_pool):
+    from agent_bom.api.postgres_store import PostgresScanCache
+
+    cache = PostgresScanCache(pool=mock_pool)
+    cache.clear()  # should not raise
+
+
+def test_scan_cache_size(mock_pool):
+    from agent_bom.api.postgres_store import PostgresScanCache
+
+    cache = PostgresScanCache(pool=mock_pool)
+    assert isinstance(cache.size, int)
+
+
+def test_scan_cache_key():
+    from agent_bom.api.postgres_store import PostgresScanCache
+
+    assert PostgresScanCache._key("pypi", "requests", "2.31.0") == "pypi:requests@2.31.0"
+
+
+# ─── Lifespan schedule store Postgres path ───────────────────────────────────
+
+
+def test_server_lifespan_postgres_schedule_store():
+    """PostgresScheduleStore is referenced in server lifespan."""
+    import inspect
+
+    from agent_bom.api import server
+
+    source = inspect.getsource(server._lifespan)
+    assert "PostgresScheduleStore" in source

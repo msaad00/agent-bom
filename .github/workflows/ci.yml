@@ -34,7 +34,7 @@ jobs:
         run: pip-audit --ignore-vuln CVE-2025-14009  # nltk transitive via safety; no fix released yet
 
       - name: Trivy filesystem scan
-        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2 # 0.28.0
+        uses: aquasecurity/trivy-action@e368e328979b113139d6f9068e03accaed98a518 # 0.34.1
         with:
           scan-type: fs
           scan-ref: .
@@ -227,7 +227,7 @@ jobs:
         run: docker run --rm agent-bom:test --version
 
       - name: Trivy image scan
-        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2 # 0.28.0
+        uses: aquasecurity/trivy-action@e368e328979b113139d6f9068e03accaed98a518 # 0.34.1
         with:
           image-ref: agent-bom:test
           format: table

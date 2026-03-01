@@ -288,8 +288,8 @@ class SnowflakeFleetStore:
                 )
 
             source_sql = " UNION ALL ".join(source_parts)
-            merge_sql = (  # nosec B608 — structure is static, all values are bind params
-                f"MERGE INTO fleet_agents t USING ({source_sql}) s "
+            merge_sql = (
+                f"MERGE INTO fleet_agents t USING ({source_sql}) s "  # nosec B608
                 "ON t.agent_id = s.agent_id "
                 "WHEN MATCHED THEN UPDATE SET "
                 "  name = s.name, lifecycle_state = s.lifecycle_state, "

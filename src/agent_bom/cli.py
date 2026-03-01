@@ -271,6 +271,14 @@ def main():
     help="Auto-apply package version fixes to dependency files (package.json, requirements.txt)",
 )
 @click.option("--apply-dry-run", is_flag=True, help="Preview what --apply would change without modifying files")
+@click.option(
+    "--filesystem",
+    "filesystem_paths",
+    multiple=True,
+    type=click.Path(exists=True),
+    metavar="PATH",
+    help="Filesystem directory or tar archive to scan for packages via Syft (e.g. mounted VM disk snapshot). Repeatable.",
+)
 @click.option("--aws", is_flag=True, help="Discover AI agents from AWS Bedrock, Lambda, and ECS")
 @click.option("--aws-region", default=None, metavar="REGION", help="AWS region (default: AWS_DEFAULT_REGION)")
 @click.option("--aws-profile", default=None, metavar="PROFILE", help="AWS credential profile")
@@ -450,6 +458,7 @@ def scan(
     remediate_sh_path: Optional[str],
     apply_fixes_flag: bool,
     apply_dry_run: bool,
+    filesystem_paths: tuple,
     jira_url: Optional[str],
     jira_user: Optional[str],
     jira_token: Optional[str],
@@ -821,6 +830,29 @@ def scan(
                 agents.append(image_agent)
             except ImageScanError as e:
                 con.print(f"  [yellow]⚠[/yellow] {image_ref}: {e}")
+
+    # Step 1d2: Filesystem / disk snapshot scan (--filesystem)
+    if not skill_only and filesystem_paths:
+        from agent_bom.filesystem import FilesystemScanError, scan_filesystem
+        from agent_bom.models import Agent, AgentType, MCPServer
+
+        con.print(f"\n[bold blue]Scanning {len(filesystem_paths)} filesystem path(s) via Syft...[/bold blue]\n")
+        for fs_path in filesystem_paths:
+            try:
+                fs_packages, fs_strategy = scan_filesystem(fs_path)
+                con.print(f"  [green]v[/green] {fs_path}: {len(fs_packages)} package(s) [dim](via {fs_strategy})[/dim]")
+                server = MCPServer(name=f"fs:{fs_path}")
+                server.packages = fs_packages
+                fs_agent = Agent(
+                    name=f"filesystem:{Path(fs_path).name}",
+                    agent_type=AgentType.CUSTOM,
+                    config_path=fs_path,
+                    source="filesystem",
+                    mcp_servers=[server],
+                )
+                agents.append(fs_agent)
+            except FilesystemScanError as e:
+                con.print(f"  [yellow]![/yellow] {fs_path}: {e}")
 
     # Step 1e: Terraform scan (--tf-dir)
     if not skill_only and tf_dirs:

@@ -21,8 +21,8 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-light.svg" alt="How agent-bom works" width="800" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/enterprise-overview-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/enterprise-overview-light.svg" alt="agent-bom enterprise overview" width="800" />
   </picture>
 </p>
 
@@ -106,7 +106,7 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
 |----------|------|
 | PyPI | `pip install agent-bom` |
 | Docker | `docker run agentbom/agent-bom scan` |
-| GitHub Action | `uses: msaad00/agent-bom@v0.36.0` |
+| GitHub Action | `uses: msaad00/agent-bom@v0.36.1` |
 | MCP Registry | [server.json](integrations/mcp-registry/server.json) |
 | ToolHive | [registry entry](integrations/toolhive/server.json) |
 | OpenClaw | [SKILL.md](integrations/openclaw/SKILL.md) |
@@ -381,7 +381,7 @@ Both sources deduplicate by CVE ID against OSV results. Packages without a pinne
 |------|---------|----------|
 | CLI | `agent-bom scan` | Local audit |
 | Pre-install check | `agent-bom check express@4.18.2 -e npm` | Before running MCP servers |
-| GitHub Action | `uses: msaad00/agent-bom@v0.36.0` | CI/CD + SARIF |
+| GitHub Action | `uses: msaad00/agent-bom@v0.36.1` | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated scans |
 | REST API | `agent-bom api` | Dashboards, SIEM |
 | Runtime proxy | `agent-bom proxy` | Opt-in MCP traffic audit (per-server) |
@@ -400,7 +400,7 @@ Both sources deduplicate by CVE ID against OSV results. Packages without a pinne
 ### GitHub Action
 
 ```yaml
-- uses: msaad00/agent-bom@v0.36.0
+- uses: msaad00/agent-bom@v0.36.1
   with:
     severity-threshold: high
     upload-sarif: true
@@ -527,7 +527,7 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 - **[PERMISSIONS.md](PERMISSIONS.md)** — auditable trust contract with all config paths enumerated
 - **Read-only** — never writes configs, runs servers, provisions resources, or stores secrets
 - **Credential redaction** — only env var **names** in reports; values, tokens, passwords never read
-- **Sigstore signed** — releases v0.7.0+ signed via cosign OIDC; verify PyPI integrity with `agent-bom verify agent-bom@0.36.0` (SHA-256 + SLSA provenance)
+- **Sigstore signed** — releases v0.7.0+ signed via cosign OIDC; verify PyPI integrity with `agent-bom verify agent-bom@0.36.1` (SHA-256 + SLSA provenance)
 - **No binary needed (MCP)** — SSE transport requires zero local install; local CLI available for air-gapped use
 - **OpenSSF Scorecard** — [automated supply chain scoring](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom)
 
@@ -557,6 +557,9 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 - [x] RSP v3.0 alignment badge — Anthropic Responsible Scaling Policy compliance indicator
 - [x] Claude Code config security scanner — Check Point CVE vector detection
 - [x] Over-permission analyzer — mission profile enforcement per agent type
+- [x] Alert pipeline — AlertDispatcher with Slack, webhook, and in-memory channels; auto-trigger on scan
+- [x] Runtime protection engine — unified 5-detector orchestration with OTel trace ingestion
+- [x] Multi-tenant fleet — tenant_id scoping, X-Tenant-ID header, per-tenant stats
 
 **Planned:**
 - [ ] CIS AI benchmarks

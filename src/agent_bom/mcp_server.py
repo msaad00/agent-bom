@@ -4,7 +4,7 @@ Start with:
     agent-bom mcp-server              # stdio (for Claude Desktop, Cursor, etc.)
     agent-bom mcp-server --sse        # SSE transport (for remote clients)
 
-Tools (13):
+Tools (14):
     scan              — Full discovery → scan → output pipeline
     check             — Check a specific package for CVEs before installing
     blast_radius      — Look up blast radius for a specific CVE
@@ -18,6 +18,7 @@ Tools (13):
     where             — Show all MCP discovery paths + existence status
     inventory         — List agents/servers without CVE scanning
     diff              — Compare scan against baseline for new/resolved vulns
+    marketplace_check — Pre-install trust check with registry cross-reference
 
 Resources (2):
     registry://servers  — Browse 427+ server threat intel registry
@@ -1125,6 +1126,131 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             result = diff_reports(baseline, current)
             save_report(current)
             return _truncate_response(json.dumps(result, indent=2, default=str))
+        except Exception as exc:
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
+
+    # ── Tool 14: marketplace_check ───────────────────────────────
+
+    @mcp.tool(annotations=_READ_ONLY)
+    async def marketplace_check(
+        package: Annotated[str, Field(description="Package name, e.g. 'express', 'langchain'.")],
+        ecosystem: Annotated[str, Field(description="Package ecosystem: 'npm' or 'pypi'.")] = "npm",
+    ) -> str:
+        """Pre-install trust check for an MCP server package.
+
+        Queries the package registry (npm or PyPI) for metadata and
+        cross-references against the agent-bom MCP threat intelligence registry.
+        Returns trust signals including download count, CVE status, and
+        registry verification.
+
+        Args:
+            package: Package name to check.
+            ecosystem: 'npm' or 'pypi'. Defaults to 'npm'.
+
+        Returns:
+            JSON with name, version, ecosystem, cve_count, download_count,
+            registry_verified, and trust_signals.
+        """
+        try:
+            name = package.strip()
+            if not name or len(name) > 200:
+                return json.dumps({"error": "Invalid package name"})
+
+            try:
+                eco = _validate_ecosystem(ecosystem)
+            except ValueError as exc:
+                logger.exception("MCP tool error")
+                return json.dumps({"error": sanitize_error(exc)})
+
+            # Fetch package metadata from registry
+            from agent_bom.http_client import create_client
+
+            version = "unknown"
+            download_count = 0
+            license_info = None
+
+            async with create_client(timeout=15.0) as client:
+                if eco == "npm":
+                    try:
+                        resp = await client.get(f"https://registry.npmjs.org/{name}")
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            dist_tags = data.get("dist-tags", {})
+                            version = dist_tags.get("latest", "unknown")
+                            license_info = data.get("license")
+                    except Exception:
+                        pass
+                    # npm download count
+                    try:
+                        resp = await client.get(f"https://api.npmjs.org/downloads/point/last-week/{name}")
+                        if resp.status_code == 200:
+                            download_count = resp.json().get("downloads", 0)
+                    except Exception:
+                        pass
+                elif eco == "pypi":
+                    try:
+                        resp = await client.get(f"https://pypi.org/pypi/{name}/json")
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            version = data.get("info", {}).get("version", "unknown")
+                            license_info = data.get("info", {}).get("license")
+                    except Exception:
+                        pass
+
+            # Check CVEs
+            from agent_bom.models import Package as Pkg
+            from agent_bom.scanners import build_vulnerabilities, query_osv_batch
+
+            pkg = Pkg(name=name, version=version, ecosystem=eco)
+            results = await query_osv_batch([pkg])
+            key = f"{eco}:{name}@{version}"
+            vuln_data = results.get(key, [])
+            vulns = build_vulnerabilities(vuln_data, pkg) if vuln_data else []
+
+            # Cross-reference MCP registry
+            registry_verified = False
+            try:
+                data_raw = _get_registry_data_raw()
+                registry = json.loads(data_raw)
+                if isinstance(registry, dict):
+                    servers = registry.get("servers", registry)
+                    for _k, v in servers.items() if isinstance(servers, dict) else []:
+                        pkgs = v.get("packages", [])
+                        if name in pkgs or any(name in p for p in pkgs):
+                            registry_verified = True
+                            break
+            except Exception:
+                pass
+
+            # Build trust signals
+            trust_signals = []
+            if len(vulns) == 0:
+                trust_signals.append("no-known-cves")
+            if registry_verified:
+                trust_signals.append("registry-verified")
+            if download_count > 100_000:
+                trust_signals.append("high-adoption")
+            elif download_count > 10_000:
+                trust_signals.append("moderate-adoption")
+            if license_info:
+                trust_signals.append(f"license:{license_info}")
+
+            return json.dumps(
+                {
+                    "package": name,
+                    "version": version,
+                    "ecosystem": eco,
+                    "cve_count": len(vulns),
+                    "download_count": download_count,
+                    "registry_verified": registry_verified,
+                    "license": license_info,
+                    "trust_signals": trust_signals,
+                    "vulnerabilities": [{"id": v.id, "severity": v.severity.value} for v in vulns[:10]],
+                },
+                indent=2,
+                default=str,
+            )
         except Exception as exc:
             logger.exception("MCP tool error")
             return json.dumps({"error": sanitize_error(exc)})

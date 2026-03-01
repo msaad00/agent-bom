@@ -7,6 +7,8 @@ import {
   ComplianceControl,
   OWASP_LLM_TOP10,
   OWASP_MCP_TOP10,
+  OWASP_AGENTIC_TOP10,
+  EU_AI_ACT,
   MITRE_ATLAS,
   NIST_AI_RMF,
   formatDate,
@@ -25,8 +27,11 @@ import {
   ChevronRight,
   Loader2,
   Scan,
+  Grid3X3,
+  List,
 } from "lucide-react";
 import Link from "next/link";
+import { ComplianceHeatmap } from "@/components/compliance-heatmap";
 
 // ─── Status helpers ──────────────────────────────────────────────────────────
 
@@ -264,6 +269,7 @@ export default function CompliancePage() {
   const [data, setData] = useState<ComplianceResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"detail" | "heatmap">("detail");
 
   useEffect(() => {
     api
@@ -328,7 +334,7 @@ export default function CompliancePage() {
         </div>
 
         {/* Framework mini-cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-6">
           <div className="bg-zinc-950 rounded-xl p-4 border border-zinc-800">
             <div className="text-xs text-zinc-500 mb-1">OWASP LLM Top 10</div>
             <div className="flex items-baseline gap-2">
@@ -373,8 +379,63 @@ export default function CompliancePage() {
               {s.nist_warn > 0 && <span className="text-yellow-400">{s.nist_warn} warn</span>}
             </div>
           </div>
+          <div className="bg-zinc-950 rounded-xl p-4 border border-zinc-800">
+            <div className="text-xs text-fuchsia-500/80 mb-1">OWASP Agentic Top 10</div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold text-zinc-100">{s.owasp_agentic_pass}</span>
+              <span className="text-sm text-zinc-500">/ 10 pass</span>
+            </div>
+            <div className="flex gap-2 mt-2 text-xs">
+              {s.owasp_agentic_fail > 0 && <span className="text-red-400">{s.owasp_agentic_fail} fail</span>}
+              {s.owasp_agentic_warn > 0 && <span className="text-yellow-400">{s.owasp_agentic_warn} warn</span>}
+            </div>
+          </div>
+          <div className="bg-zinc-950 rounded-xl p-4 border border-zinc-800">
+            <div className="text-xs text-blue-500/80 mb-1">EU AI Act</div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold text-zinc-100">{s.eu_ai_act_pass}</span>
+              <span className="text-sm text-zinc-500">/ {data.eu_ai_act.length} pass</span>
+            </div>
+            <div className="flex gap-2 mt-2 text-xs">
+              {s.eu_ai_act_fail > 0 && <span className="text-red-400">{s.eu_ai_act_fail} fail</span>}
+              {s.eu_ai_act_warn > 0 && <span className="text-yellow-400">{s.eu_ai_act_warn} warn</span>}
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* ── View Toggle ────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setViewMode("detail")}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            viewMode === "detail"
+              ? "bg-emerald-600 text-white"
+              : "bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-700"
+          }`}
+        >
+          <List className="w-3.5 h-3.5" />
+          Detail
+        </button>
+        <button
+          onClick={() => setViewMode("heatmap")}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            viewMode === "heatmap"
+              ? "bg-emerald-600 text-white"
+              : "bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-700"
+          }`}
+        >
+          <Grid3X3 className="w-3.5 h-3.5" />
+          Heatmap
+        </button>
+      </div>
+
+      {/* ── Heatmap View ──────────────────────────────────────────────── */}
+      {viewMode === "heatmap" && <ComplianceHeatmap data={data} />}
+
+      {/* ── Detail View ───────────────────────────────────────────────── */}
+      {viewMode === "detail" && (
+      <>
 
       {/* ── Framework Coverage Bars ────────────────────────────────────── */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 space-y-5">
@@ -383,6 +444,8 @@ export default function CompliancePage() {
         <FrameworkBar label="MITRE ATLAS" pass={s.atlas_pass} warn={s.atlas_warn} fail={s.atlas_fail} total={data.mitre_atlas.length} />
         <FrameworkBar label="OWASP MCP Top 10" pass={s.owasp_mcp_pass} warn={s.owasp_mcp_warn} fail={s.owasp_mcp_fail} total={10} />
         <FrameworkBar label="NIST AI RMF" pass={s.nist_pass} warn={s.nist_warn} fail={s.nist_fail} total={data.nist_ai_rmf.length} />
+        <FrameworkBar label="OWASP Agentic Top 10" pass={s.owasp_agentic_pass} warn={s.owasp_agentic_warn} fail={s.owasp_agentic_fail} total={10} />
+        <FrameworkBar label="EU AI Act" pass={s.eu_ai_act_pass} warn={s.eu_ai_act_warn} fail={s.eu_ai_act_fail} total={data.eu_ai_act.length} />
       </div>
 
       {/* ── OWASP LLM Top 10 ──────────────────────────────────────────── */}
@@ -440,6 +503,37 @@ export default function CompliancePage() {
           ))}
         </div>
       </section>
+
+      {/* ── OWASP Agentic Top 10 ─────────────────────────────────────── */}
+      <section>
+        <div className="flex items-center gap-2 mb-4">
+          <Shield className="w-5 h-5 text-fuchsia-400" />
+          <h2 className="text-lg font-semibold text-zinc-200">OWASP Agentic Top 10</h2>
+          <span className="text-xs text-zinc-500 ml-2">2026 Edition</span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {data.owasp_agentic_top10.map((c) => (
+            <ControlCard key={c.code} control={c} catalog={OWASP_AGENTIC_TOP10} />
+          ))}
+        </div>
+      </section>
+
+      {/* ── EU AI Act ────────────────────────────────────────────────── */}
+      <section>
+        <div className="flex items-center gap-2 mb-4">
+          <Shield className="w-5 h-5 text-blue-400" />
+          <h2 className="text-lg font-semibold text-zinc-200">EU AI Act</h2>
+          <span className="text-xs text-zinc-500 ml-2">Regulation (EU) 2024/1689</span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {data.eu_ai_act.map((c) => (
+            <ControlCard key={c.code} control={c} catalog={EU_AI_ACT} />
+          ))}
+        </div>
+      </section>
+
+      </>
+      )}
 
       {/* ── Empty state ───────────────────────────────────────────────── */}
       {data.scan_count === 0 && (

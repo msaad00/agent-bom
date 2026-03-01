@@ -182,3 +182,58 @@ def build_agent_mesh(agents_data: list[dict], blast_radius: list[dict] | None = 
             "total_vulnerabilities": total_vulns,
         },
     }
+
+
+def build_spawn_tree(agents_data: list[dict], blast_radius: list[dict] | None = None) -> dict:
+    """Build a hierarchical spawn tree for multi-agent delegation chains.
+
+    Uses parent_agent field to determine delegation relationships.
+    Returns ReactFlow-compatible nodes/edges with top-down layout.
+    """
+    nodes = []
+    edges = []
+    agent_ids: dict[str, str] = {}  # name -> node_id
+
+    for i, agent in enumerate(agents_data):
+        name = agent.get("name", f"agent-{i}")
+        agent_type = agent.get("agent_type", "custom")
+        servers = agent.get("mcp_servers", [])
+        node_id = f"spawn-{name}-{i}"
+        agent_ids[name] = node_id
+
+        vuln_count = sum(len(s.get("packages", [])) for s in servers if any(p.get("vulnerabilities") for p in s.get("packages", [])))
+
+        nodes.append(
+            {
+                "id": node_id,
+                "type": "agentNode",
+                "position": {"x": i * 280, "y": 0},
+                "data": {
+                    "label": name,
+                    "agentType": agent_type,
+                    "serverCount": len(servers),
+                    "vulnCount": vuln_count,
+                    "color": _vuln_color(vuln_count),
+                },
+            }
+        )
+
+    # Build delegation edges from parent_agent
+    for agent in agents_data:
+        name = agent.get("name", "")
+        parent = agent.get("parent_agent")
+        if parent and parent in agent_ids and name in agent_ids:
+            edges.append(
+                {
+                    "id": f"delegate-{parent}-{name}",
+                    "source": agent_ids[parent],
+                    "target": agent_ids[name],
+                    "type": "smoothstep",
+                    "animated": True,
+                    "style": {"stroke": "#34d399", "strokeDasharray": "5 5"},
+                    "label": "delegates",
+                    "data": {"edgeType": "delegation"},
+                }
+            )
+
+    return {"nodes": nodes, "edges": edges}

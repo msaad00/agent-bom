@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { api, ScanJob, ScanResult, BlastRadius, Agent, formatDate, OWASP_LLM_TOP10, MITRE_ATLAS } from "@/lib/api";
 import { AgentTopology } from "@/components/agent-topology";
+import { TrustStack } from "@/components/trust-stack";
 import { SeverityBadge } from "@/components/severity-badge";
 import {
   ShieldAlert, Server, Package, Bug, Zap, ArrowRight, Clock,
@@ -217,6 +218,16 @@ export default function Dashboard() {
         <StatCard icon={Bug} label="Unique CVEs" value={loading ? "—" : String(uniqueCVEs)} color="orange" />
         <StatCard icon={Zap} label="Critical" value={loading ? "—" : String(severity.critical)} color="red" />
       </div>
+
+      {/* AI Agent Trust Stack */}
+      {!loading && (
+        <section>
+          <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest mb-3">
+            AI Agent Trust Stack
+          </h2>
+          <TrustStack />
+        </section>
+      )}
 
       {/* Severity distribution + Sources — side by side */}
       {!loading && allBlast.length > 0 && (

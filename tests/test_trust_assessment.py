@@ -87,6 +87,7 @@ def _make_scan(
     )
     # Extract bins and install methods from frontmatter
     import re
+
     bins_match = re.search(r"requires:\s*\n\s+bins:\s*\n((?:\s+-\s+\S+\n?)+)", frontmatter)
     if bins_match:
         meta.required_bins = re.findall(r"^\s+-\s+(.+)$", bins_match.group(1), re.MULTILINE)
@@ -103,6 +104,7 @@ def _make_scan(
 def _extract_yaml(raw: str, key: str) -> str:
     """Extract a simple key: value from YAML-ish text."""
     import re
+
     m = re.search(rf"^\s*{key}:\s*(.+)$", raw, re.MULTILINE)
     return m.group(1).strip().strip("'\"") if m else ""
 
@@ -163,8 +165,12 @@ def test_trust_assessment_result_to_dict():
     result = TrustAssessmentResult(
         categories=[
             TrustCategoryResult(
-                name="Test", key="test", level=TrustLevel.PASS,
-                summary="All good", details=["detail1"], evidence=["ev1"],
+                name="Test",
+                key="test",
+                level=TrustLevel.PASS,
+                summary="All good",
+                details=["detail1"],
+                evidence=["ev1"],
             )
         ],
         verdict=Verdict.BENIGN,
@@ -376,62 +382,89 @@ def test_persistence_privilege_fail_escalation():
 
 def _cats(*levels: TrustLevel) -> list[TrustCategoryResult]:
     """Build minimal categories with given levels."""
-    return [
-        TrustCategoryResult(name=f"Cat{i}", key=f"cat{i}", level=lv, summary="")
-        for i, lv in enumerate(levels)
-    ]
+    return [TrustCategoryResult(name=f"Cat{i}", key=f"cat{i}", level=lv, summary="") for i, lv in enumerate(levels)]
 
 
 def test_verdict_all_pass_is_benign_high():
-    verdict, conf = _compute_verdict(_cats(
-        TrustLevel.PASS, TrustLevel.PASS, TrustLevel.PASS,
-        TrustLevel.PASS, TrustLevel.PASS,
-    ))
+    verdict, conf = _compute_verdict(
+        _cats(
+            TrustLevel.PASS,
+            TrustLevel.PASS,
+            TrustLevel.PASS,
+            TrustLevel.PASS,
+            TrustLevel.PASS,
+        )
+    )
     assert verdict == Verdict.BENIGN
     assert conf == Confidence.HIGH
 
 
 def test_verdict_pass_plus_info_is_benign_medium():
-    verdict, conf = _compute_verdict(_cats(
-        TrustLevel.PASS, TrustLevel.PASS, TrustLevel.PASS,
-        TrustLevel.INFO, TrustLevel.INFO,
-    ))
+    verdict, conf = _compute_verdict(
+        _cats(
+            TrustLevel.PASS,
+            TrustLevel.PASS,
+            TrustLevel.PASS,
+            TrustLevel.INFO,
+            TrustLevel.INFO,
+        )
+    )
     assert verdict == Verdict.BENIGN
     assert conf == Confidence.MEDIUM
 
 
 def test_verdict_one_warn_is_suspicious_low():
-    verdict, conf = _compute_verdict(_cats(
-        TrustLevel.PASS, TrustLevel.PASS, TrustLevel.PASS,
-        TrustLevel.PASS, TrustLevel.WARN,
-    ))
+    verdict, conf = _compute_verdict(
+        _cats(
+            TrustLevel.PASS,
+            TrustLevel.PASS,
+            TrustLevel.PASS,
+            TrustLevel.PASS,
+            TrustLevel.WARN,
+        )
+    )
     assert verdict == Verdict.SUSPICIOUS
     assert conf == Confidence.LOW
 
 
 def test_verdict_three_warns_is_suspicious_medium():
-    verdict, conf = _compute_verdict(_cats(
-        TrustLevel.PASS, TrustLevel.PASS, TrustLevel.WARN,
-        TrustLevel.WARN, TrustLevel.WARN,
-    ))
+    verdict, conf = _compute_verdict(
+        _cats(
+            TrustLevel.PASS,
+            TrustLevel.PASS,
+            TrustLevel.WARN,
+            TrustLevel.WARN,
+            TrustLevel.WARN,
+        )
+    )
     assert verdict == Verdict.SUSPICIOUS
     assert conf == Confidence.MEDIUM
 
 
 def test_verdict_one_fail_is_suspicious_medium():
-    verdict, conf = _compute_verdict(_cats(
-        TrustLevel.PASS, TrustLevel.PASS, TrustLevel.PASS,
-        TrustLevel.PASS, TrustLevel.FAIL,
-    ))
+    verdict, conf = _compute_verdict(
+        _cats(
+            TrustLevel.PASS,
+            TrustLevel.PASS,
+            TrustLevel.PASS,
+            TrustLevel.PASS,
+            TrustLevel.FAIL,
+        )
+    )
     assert verdict == Verdict.SUSPICIOUS
     assert conf == Confidence.MEDIUM
 
 
 def test_verdict_two_fails_is_malicious_high():
-    verdict, conf = _compute_verdict(_cats(
-        TrustLevel.PASS, TrustLevel.PASS, TrustLevel.PASS,
-        TrustLevel.FAIL, TrustLevel.FAIL,
-    ))
+    verdict, conf = _compute_verdict(
+        _cats(
+            TrustLevel.PASS,
+            TrustLevel.PASS,
+            TrustLevel.PASS,
+            TrustLevel.FAIL,
+            TrustLevel.FAIL,
+        )
+    )
     assert verdict == Verdict.MALICIOUS
     assert conf == Confidence.HIGH
 
@@ -442,10 +475,15 @@ def test_verdict_two_fails_is_malicious_high():
 
 
 def test_no_recommendations_when_all_pass():
-    recs = _generate_recommendations(_cats(
-        TrustLevel.PASS, TrustLevel.PASS, TrustLevel.PASS,
-        TrustLevel.PASS, TrustLevel.PASS,
-    ))
+    recs = _generate_recommendations(
+        _cats(
+            TrustLevel.PASS,
+            TrustLevel.PASS,
+            TrustLevel.PASS,
+            TrustLevel.PASS,
+            TrustLevel.PASS,
+        )
+    )
     assert recs == []
 
 
@@ -453,8 +491,10 @@ def test_recommendations_for_warn():
     """WARN categories generate recommendations."""
     cats = [
         TrustCategoryResult(
-            name="Install Mechanism", key="install_mechanism",
-            level=TrustLevel.WARN, summary="No source",
+            name="Install Mechanism",
+            key="install_mechanism",
+            level=TrustLevel.WARN,
+            summary="No source",
         ),
     ]
     recs = _generate_recommendations(cats)
@@ -466,8 +506,10 @@ def test_recommendations_for_fail():
     """FAIL categories generate recommendations."""
     cats = [
         TrustCategoryResult(
-            name="Persistence & Privilege", key="persistence_privilege",
-            level=TrustLevel.FAIL, summary="Privilege escalation",
+            name="Persistence & Privilege",
+            key="persistence_privilege",
+            level=TrustLevel.FAIL,
+            summary="Privilege escalation",
         ),
     ]
     recs = _generate_recommendations(cats)
@@ -520,8 +562,7 @@ def test_assess_trust_agent_bom_skill():
     from agent_bom.parsers.skills import parse_skill_file
 
     scan = parse_skill_file(skill_path)
-    with patch("agent_bom.parsers.skill_audit._batch_verify_packages_sync",
-               return_value={}):
+    with patch("agent_bom.parsers.skill_audit._batch_verify_packages_sync", return_value={}):
         audit = audit_skill_result(scan)
     result = assess_trust(scan, audit)
 
@@ -568,8 +609,8 @@ def test_mcp_skill_trust_tool_exists():
     assert "skill_trust" in tool_names
 
 
-def test_mcp_server_card_has_13_tools():
-    """Server card lists 13 tools."""
+def test_mcp_server_card_has_14_tools():
+    """Server card lists 14 tools."""
     from agent_bom.mcp_server import _SERVER_CARD_TOOLS
 
-    assert len(_SERVER_CARD_TOOLS) == 13
+    assert len(_SERVER_CARD_TOOLS) == 14

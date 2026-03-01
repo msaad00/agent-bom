@@ -150,7 +150,7 @@
 
   <text x="584" y="392" font-family="system-ui, sans-serif" font-size="24" font-weight="700" fill="#8250df">6</text>
   <text x="608" y="388" class="node-name" fill="#656d76">threat categories</text>
-  <text x="608" y="400" class="node-detail">4 OWASP LLM + 2 MITRE ATLAS</text>
+  <text x="608" y="400" class="node-detail">4 OWASP LLM + 2 ATLAS + ASI + EU</text>
 
   <rect x="580" y="406" width="260" height="2" rx="1" fill="#1a7f37" opacity="0.4"/>
   <text x="710" y="424" text-anchor="middle" font-family="'SF Mono', monospace" font-size="9" font-weight="600" fill="#1a7f37">FIX: upgrade better-sqlite3 → 11.7.0</text>

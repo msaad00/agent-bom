@@ -55,6 +55,8 @@ def build_attack_flow(
             or framework in br.get("atlas_tags", [])
             or framework in br.get("nist_ai_rmf_tags", [])
             or framework in br.get("owasp_mcp_tags", [])
+            or framework in br.get("owasp_agentic_tags", [])
+            or framework in br.get("eu_ai_act_tags", [])
         ]
     if agent_name:
         filtered = [br for br in filtered if agent_name in br.get("affected_agents", [])]
@@ -135,6 +137,8 @@ def build_attack_flow(
                         "atlas_tags": br.get("atlas_tags", []),
                         "nist_ai_rmf_tags": br.get("nist_ai_rmf_tags", []),
                         "owasp_mcp_tags": br.get("owasp_mcp_tags", []),
+                        "owasp_agentic_tags": br.get("owasp_agentic_tags", []),
+                        "eu_ai_act_tags": br.get("eu_ai_act_tags", []),
                     },
                 }
             )

@@ -54,7 +54,7 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 | **MCP tool reachability** | — | Which tools an attacker reaches post-exploit |
 | **Privilege detection** | — | runs_as_root, shell_access, container_privileged, per-tool permissions |
 | **Enterprise remediation** | — | Named assets, impact percentages, risk narratives |
-| **Quad-framework compliance** | — | OWASP LLM Top 10 + OWASP MCP Top 10 + MITRE ATLAS + NIST AI RMF |
+| **6-framework compliance** | — | OWASP Agentic Top 10 + OWASP LLM Top 10 + OWASP MCP Top 10 + MITRE ATLAS + NIST AI RMF + EU AI Act |
 | **Malicious package detection** | — | OSV MAL- prefix + typosquat heuristics (57 popular packages) |
 | **OpenSSF Scorecard enrichment** | — | Package health scores from api.securityscorecards.dev |
 | **Tool poisoning detection** | — | Description injection, capability combos, CVE exposure, drift |
@@ -192,14 +192,16 @@ Every MCP server is assessed for privilege escalation risk:
 
 Privilege levels: **critical** (privileged container, CAP_SYS_ADMIN) → **high** (root, shell) → **medium** (fs write, network) → **low** (read-only).
 
-### Quad-framework compliance mapping
+### 6-framework compliance mapping
 
-Every finding is tagged against four frameworks simultaneously:
+Every finding is tagged against six frameworks simultaneously:
 
+- **OWASP Agentic Top 10** — ASI01 through ASI10 (agent autonomy, tool misuse, spawn persistence)
 - **OWASP LLM Top 10** — LLM01 through LLM10 (7 categories triggered)
 - **OWASP MCP Top 10** — MCP01 through MCP10 (8 categories triggered) — token exposure, tool poisoning, supply chain, shadow servers
 - **MITRE ATLAS** — AML.T0010, AML.T0043, AML.T0051, etc. (9 techniques mapped)
 - **NIST AI RMF 1.0** — Govern, Map, Measure, Manage (12 subcategories mapped)
+- **EU AI Act** — ART-5 through ART-17 (prohibited practices, high-risk classification, cybersecurity)
 
 ### Enterprise remediation
 
@@ -419,8 +421,9 @@ agent-bom api --api-key $SECRET --rate-limit 30   # http://127.0.0.1:8422/docs
 | `GET /v1/scan/{id}` | Results + status |
 | `GET /v1/scan/{id}/attack-flow` | Per-CVE blast radius graph |
 | `GET /v1/registry` | 427+ server registry |
-| `GET /v1/compliance` | Full 4-framework compliance posture |
-| `GET /v1/compliance/{framework}` | Single framework (owasp-llm, owasp-mcp, atlas, nist) |
+| `GET /v1/compliance` | Full 6-framework compliance posture |
+| `GET /v1/compliance/{framework}` | Single framework (owasp-llm, owasp-mcp, owasp-agentic, atlas, nist, eu-ai-act) |
+| `POST /v1/traces` | OpenTelemetry trace ingestion + vulnerable tool call flagging |
 | `GET /v1/malicious/check` | Malicious package / typosquat check |
 
 ### MCP Server
@@ -431,7 +434,7 @@ agent-bom mcp-server                    # stdio
 agent-bom mcp-server --transport sse    # remote
 ```
 
-13 tools: `scan`, `check`, `blast_radius`, `policy_check`, `registry_lookup`, `generate_sbom`, `compliance`, `remediate`, `verify`, `where`, `inventory`, `diff`, `skill_trust`
+14 tools: `scan`, `check`, `blast_radius`, `policy_check`, `registry_lookup`, `generate_sbom`, `compliance`, `remediate`, `verify`, `where`, `inventory`, `diff`, `skill_trust`, `marketplace_check`
 
 ### Cloud UI
 
@@ -439,7 +442,7 @@ agent-bom mcp-server --transport sse    # remote
 cd ui && npm install && npm run dev   # http://localhost:3000
 ```
 
-13-section Next.js dashboard:
+14-section Next.js dashboard:
 
 | Page | Description |
 |------|-------------|
@@ -447,7 +450,7 @@ cd ui && npm install && npm run dev   # http://localhost:3000
 | Scan | Enterprise scan form with cloud options |
 | Vulnerabilities | CVE browser with severity/EPSS/KEV filters |
 | Agents | Fleet registry + lifecycle state management |
-| Compliance | 4-framework compliance posture (OWASP, ATLAS, NIST) |
+| Compliance | 6-framework compliance posture (OWASP Agentic, OWASP LLM, OWASP MCP, ATLAS, NIST, EU AI Act) |
 | Lineage Graph | Interactive supply chain graph — dagre layout, 7 node types, filter panel |
 | Agent Mesh | Cross-agent topology — shared server detection, credential blast radius, tool overlap |
 | Gateway | Runtime MCP policy rules + audit log |
@@ -455,6 +458,7 @@ cd ui && npm install && npm run dev   # http://localhost:3000
 | Fleet | Agent trust scoring + fleet management |
 | Activity | Agent activity timeline + AI observability |
 | Governance | Snowflake access, privileges, data classification |
+| Traces | OpenTelemetry trace ingestion + vulnerable tool call flagging |
 | Jobs | Background scan job management |
 
 ### Snowflake Deployment
@@ -544,9 +548,17 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 - [x] Runtime MCP proxy — opt-in stdio proxy (`agent-bom proxy`) wraps individual MCP server commands for traffic interception; requires per-server client reconfiguration
 - [x] Enterprise integrations — Jira, Slack, Vanta, Drata
 - [x] Runtime sidecar Docker container — `Dockerfile.runtime` + Docker Compose for MCP proxy deployment
+- [x] EU AI Act compliance mapping — ART-5 through ART-17 risk classification
+- [x] OWASP Agentic Top 10 — ASI01 through ASI10 agent-specific risk tagging
+- [x] Marketplace trust check — `marketplace_check` MCP tool for pre-install validation
+- [x] OpenTelemetry trace ingestion — `POST /v1/traces` for vulnerable tool call flagging
+- [x] CMMC/FedRAMP compliance evidence export — `--compliance-export` ZIP bundles
+- [x] Agent spawn tree visualization — parent-child delegation chains
+- [x] RSP v3.0 alignment badge — Anthropic Responsible Scaling Policy compliance indicator
+- [x] Claude Code config security scanner — Check Point CVE vector detection
+- [x] Over-permission analyzer — mission profile enforcement per agent type
 
 **Planned:**
-- [ ] EU AI Act compliance mapping
 - [ ] CIS AI benchmarks
 - [ ] License compliance engine
 - [ ] Workflow engine scanning (n8n, Zapier, Make)

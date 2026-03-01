@@ -166,7 +166,7 @@
       <rect width="286" height="48" rx="5" fill="#ffffff" stroke="#d0d7de" stroke-width="1" stroke-dasharray="4,3"/>
       <text x="143" y="17" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="600" fill="#94a3b8">PIPELINE FLOW</text>
       <text x="143" y="32" text-anchor="middle" class="node-sub">Ingest -> Parse -> Scan -> Enrich -> Assess -> Remediate</text>
-      <text x="143" y="43" text-anchor="middle" class="node-sub">13 MCP tools  |  100% async  |  streaming output</text>
+      <text x="143" y="43" text-anchor="middle" class="node-sub">14 MCP tools  |  100% async  |  streaming output</text>
     </g>
   </g>
 

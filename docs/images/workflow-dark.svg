@@ -81,9 +81,9 @@
   <line x1="568" y1="98" x2="668" y2="98" stroke="#30363d" stroke-width="0.5"/>
   <text x="618" y="116" text-anchor="middle" class="step-detail">Blast radius mapping</text>
   <text x="618" y="130" text-anchor="middle" class="step-detail">OWASP LLM Top 10</text>
-  <text x="618" y="144" text-anchor="middle" class="step-detail">OWASP MCP Top 10</text>
+  <text x="618" y="144" text-anchor="middle" class="step-detail">OWASP MCP + Agentic</text>
   <text x="618" y="158" text-anchor="middle" class="step-detail">MITRE ATLAS</text>
-  <text x="618" y="172" text-anchor="middle" class="step-detail">Tool poisoning</text>
+  <text x="618" y="172" text-anchor="middle" class="step-detail">NIST AI RMF + EU AI Act</text>
   <text x="618" y="186" text-anchor="middle" class="step-detail">Malicious packages</text>
   <line x1="568" y1="196" x2="668" y2="196" stroke="#30363d" stroke-width="0.5"/>
   <text x="618" y="212" text-anchor="middle" class="example">--enforce --policy</text>

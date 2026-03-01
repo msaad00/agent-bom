@@ -82,6 +82,7 @@ wandb = ["wandb>=0.16"]
 mlflow = ["mlflow>=2.10"]
 openai = ["openai>=1.12"]
 ai-enrich = ["litellm>=1.30"]
+postgres = ["psycopg[binary]>=3.1", "psycopg-pool>=3.1"]
 watch = ["watchdog>=4.0"]
 mcp-server = [
     "mcp>=1.26",

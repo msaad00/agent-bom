@@ -76,6 +76,19 @@ async def _lifespan(app_instance: FastAPI):
             set_fleet_store(SnowflakeFleetStore(sf))
         if _policy_store is None:
             set_policy_store(SnowflakePolicyStore(sf))
+    elif _os.environ.get("AGENT_BOM_POSTGRES_URL"):
+        from agent_bom.api.postgres_store import (
+            PostgresFleetStore,
+            PostgresJobStore,
+            PostgresPolicyStore,
+        )
+
+        if _store is None:
+            set_job_store(PostgresJobStore())
+        if _fleet_store is None:
+            set_fleet_store(PostgresFleetStore())
+        if _policy_store is None:
+            set_policy_store(PostgresPolicyStore())
     elif _os.environ.get("AGENT_BOM_DB"):
         db_path = _os.environ["AGENT_BOM_DB"]
         if _store is None:

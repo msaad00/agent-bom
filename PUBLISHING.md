@@ -102,7 +102,7 @@ npm install -g clawhub@latest
 clawhub login --token "$CLAWHUB_TOKEN"
 clawhub publish integrations/openclaw \
   --slug agent-bom --name "agent-bom" \
-  --version "0.36.1"
+  --version "0.37.0"
 ```
 
 ### Verification
@@ -138,8 +138,8 @@ Images published:
 Tag push triggers the full pipeline automatically:
 
 ```bash
-git tag v0.36.1
-git push origin v0.36.1
+git tag v0.37.0
+git push origin v0.37.0
 ```
 
 This triggers:

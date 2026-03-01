@@ -42,6 +42,7 @@ class FleetAgent(BaseModel):
     package_count: int = 0
     credential_count: int = 0
     vuln_count: int = 0
+    tenant_id: str = "default"
     last_discovery: str | None = None
     last_scan: str | None = None
     created_at: str = ""
@@ -61,6 +62,8 @@ class FleetStore(Protocol):
     def delete(self, agent_id: str) -> bool: ...
     def list_all(self) -> list[FleetAgent]: ...
     def list_summary(self) -> list[dict]: ...
+    def list_by_tenant(self, tenant_id: str) -> list[FleetAgent]: ...
+    def list_tenants(self) -> list[dict]: ...
     def update_state(self, agent_id: str, state: FleetLifecycleState) -> bool: ...
     def batch_put(self, agents: list[FleetAgent]) -> int: ...
 
@@ -106,6 +109,15 @@ class InMemoryFleetStore:
             }
             for a in self._agents.values()
         ]
+
+    def list_by_tenant(self, tenant_id: str) -> list[FleetAgent]:
+        return [a for a in self._agents.values() if a.tenant_id == tenant_id]
+
+    def list_tenants(self) -> list[dict]:
+        counts: dict[str, int] = {}
+        for a in self._agents.values():
+            counts[a.tenant_id] = counts.get(a.tenant_id, 0) + 1
+        return [{"tenant_id": tid, "agent_count": cnt} for tid, cnt in sorted(counts.items())]
 
     def update_state(self, agent_id: str, state: FleetLifecycleState) -> bool:
         agent = self._agents.get(agent_id)
@@ -209,6 +221,22 @@ class SQLiteFleetStore:
             }
             for r in rows
         ]
+
+    def list_by_tenant(self, tenant_id: str) -> list[FleetAgent]:
+        rows = self._conn.execute(
+            "SELECT data FROM fleet_agents WHERE json_extract(data, '$.tenant_id') = ? ORDER BY name",
+            (tenant_id,),
+        ).fetchall()
+        return [FleetAgent.model_validate_json(r[0]) for r in rows]
+
+    def list_tenants(self) -> list[dict]:
+        rows = self._conn.execute(
+            """SELECT COALESCE(json_extract(data, '$.tenant_id'), 'default') as tid,
+                      COUNT(*) as cnt
+               FROM fleet_agents
+               GROUP BY tid ORDER BY tid"""
+        ).fetchall()
+        return [{"tenant_id": r[0], "agent_count": r[1]} for r in rows]
 
     def update_state(self, agent_id: str, state: FleetLifecycleState) -> bool:
         now = datetime.now(timezone.utc).isoformat()

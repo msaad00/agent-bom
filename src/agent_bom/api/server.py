@@ -2272,6 +2272,40 @@ async def ingest_traces(body: dict) -> dict:
         raise HTTPException(status_code=500, detail=sanitize_error(exc)) from exc
 
 
+# ── Hybrid Push — receive results from CLI ────────────────────────────────────
+
+
+class PushPayload(BaseModel):
+    source_id: str = ""
+    agents: list = []
+    blast_radii: list = []
+    warnings: list = []
+
+
+@app.post("/v1/results/push", tags=["push"], status_code=201)
+async def receive_push(body: PushPayload) -> dict:
+    """Receive pushed scan results from a CLI instance.
+
+    Stores as a completed ScanJob with source metadata.
+    """
+    job = ScanJob(
+        job_id=str(uuid.uuid4()),
+        created_at=_now(),
+        request=ScanRequest(),
+    )
+    job.status = JobStatus.DONE
+    job.result = {
+        "agents": body.agents,
+        "blast_radii": body.blast_radii,
+        "warnings": body.warnings,
+        "source_id": body.source_id,
+        "pushed": True,
+    }
+    job.progress.append(f"Received via push from source={body.source_id}")
+    _get_store().put(job)
+    return {"job_id": job.job_id, "source_id": body.source_id, "status": "stored"}
+
+
 # ── Scheduled Scanning ───────────────────────────────────────────────────────
 
 

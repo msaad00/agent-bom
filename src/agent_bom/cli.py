@@ -347,6 +347,8 @@ def main():
 @click.option("--servicenow-password", default=None, envvar="SERVICENOW_PASSWORD", metavar="PWD", help="ServiceNow password")
 @click.option("--slack-discover", is_flag=True, help="Discover installed Slack apps and bots in workspace")
 @click.option("--slack-bot-token", default=None, envvar="SLACK_BOT_TOKEN", metavar="TOKEN", help="Slack bot token for app discovery")
+@click.option("--push-url", default=None, envvar="AGENT_BOM_PUSH_URL", metavar="URL", help="Push scan results to central dashboard URL")
+@click.option("--push-api-key", default=None, envvar="AGENT_BOM_PUSH_API_KEY", metavar="KEY", help="API key for push authentication")
 @click.option(
     "--vanta-token", default=None, envvar="VANTA_API_TOKEN", metavar="TOKEN", help="Vanta API token for compliance evidence upload"
 )
@@ -471,6 +473,8 @@ def scan(
     servicenow_password: Optional[str],
     slack_discover: bool,
     slack_bot_token: Optional[str],
+    push_url: Optional[str],
+    push_api_key: Optional[str],
     vanta_token: Optional[str],
     drata_token: Optional[str],
     verbose: bool,
@@ -2021,6 +2025,21 @@ def scan(
 
     if not policy_passed:
         exit_code = 1
+
+    # ── Push results to central dashboard ──
+    if push_url and report:
+        try:
+            from agent_bom.push import push_results as _push
+
+            report_data = to_json(report)
+            ok = _push(push_url, report_data, api_key=push_api_key)
+            if ok and not quiet:
+                con.print(f"\n  [green]Results pushed to {push_url}[/green]")
+            elif not ok and not quiet:
+                con.print(f"\n  [yellow]Push to {push_url} failed[/yellow]")
+        except Exception as push_err:
+            if not quiet:
+                con.print(f"\n  [yellow]Push failed: {push_err}[/yellow]")
 
     if exit_code:
         sys.exit(exit_code)

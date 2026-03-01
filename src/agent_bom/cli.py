@@ -346,6 +346,13 @@ def main():
     default=None,
     help="Scan preset: ci (quiet, json, fail-on-critical), enterprise (enrich, introspect, transitive, verify-integrity), quick (no transitive, no enrich)",
 )
+@click.option(
+    "--compliance-export",
+    "compliance_export",
+    type=click.Choice(["cmmc", "fedramp", "nist-ai-rmf"]),
+    default=None,
+    help="Export compliance evidence bundle (ZIP) for CMMC, FedRAMP, or NIST AI RMF audits",
+)
 @click.option("--demo", is_flag=True, default=False, help="Run a demo scan with bundled inventory containing known-vulnerable packages.")
 def scan(
     project: Optional[str],
@@ -447,6 +454,7 @@ def scan(
     no_color: bool,
     preset: Optional[str],
     open_report: bool,
+    compliance_export: Optional[str],
     demo: bool,
 ):
     """Discover agents, extract dependencies, scan for vulnerabilities.
@@ -1785,6 +1793,16 @@ def scan(
             con.print(f"\n  [yellow]⚠[/yellow] OTel export skipped: {e}")
         except Exception as e:  # noqa: BLE001
             con.print(f"\n  [yellow]⚠[/yellow] OTLP export failed: {e}")
+
+    # Step 5d: Compliance evidence export (if requested)
+    if compliance_export:
+        from agent_bom.output import export_compliance_bundle
+
+        ce_path = output or f"compliance-{compliance_export}.zip"
+        if not ce_path.endswith(".zip"):
+            ce_path += ".zip"
+        export_compliance_bundle(report, compliance_export, ce_path)
+        con.print(f"\n  [green]✓[/green] Compliance bundle: {ce_path}")
 
     # Step 6: Save report to history
     current_report_json = to_json(report)

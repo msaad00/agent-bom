@@ -269,6 +269,7 @@ class Agent:
     version: Optional[str] = None
     source: Optional[str] = None  # Inventory source (e.g. "snowflake", "aws", "local")
     status: AgentStatus = AgentStatus.CONFIGURED
+    parent_agent: Optional[str] = None  # Parent agent name (for spawn tree / delegation)
     metadata: dict = field(default_factory=dict)  # Extra config data (permissions, hooks, etc.)
 
     @property
@@ -304,6 +305,8 @@ class BlastRadius:
     atlas_tags: list[str] = field(default_factory=list)  # MITRE ATLAS technique IDs, e.g. ["AML.T0010"]
     nist_ai_rmf_tags: list[str] = field(default_factory=list)  # NIST AI RMF subcategories, e.g. ["MAP-3.5"]
     owasp_mcp_tags: list[str] = field(default_factory=list)  # OWASP MCP Top 10 codes, e.g. ["MCP04", "MCP01"]
+    owasp_agentic_tags: list[str] = field(default_factory=list)  # OWASP Agentic Top 10, e.g. ["ASI04"]
+    eu_ai_act_tags: list[str] = field(default_factory=list)  # EU AI Act articles, e.g. ["ART-15"]
     ai_summary: Optional[str] = None  # LLM-generated contextual risk narrative
 
     def calculate_risk_score(self) -> float:

@@ -57,6 +57,8 @@ export type LineageNodeData = {
   // Highlighting
   dimmed?: boolean;
   highlighted?: boolean;
+  // Critical / KEV animation flag
+  isCritical?: boolean;
 };
 
 // ─── Agent Node ──────────────────────────────────────────────────────────────
@@ -174,6 +176,7 @@ function VulnNode({ data }: { data: LineageNodeData }) {
       className={`rounded-lg border-2 px-3 py-2 min-w-[140px] max-w-[220px] backdrop-blur transition-opacity ${borderColor} ${bgColor} ${glowColor} ${
         data.dimmed ? "opacity-25" : ""
       } ${data.highlighted ? "ring-2 ring-white/50" : ""}`}
+      style={data.isCritical ? { boxShadow: "0 0 12px rgba(239, 68, 68, 0.6)" } : undefined}
     >
       <Handle type="target" position={Position.Left} className="!bg-red-500 !w-2 !h-2" />
       <div className="flex items-center gap-1.5 mb-0.5">

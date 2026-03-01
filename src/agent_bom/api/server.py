@@ -13,8 +13,8 @@ Endpoints:
     GET  /v1/scan/{job_id}/stream      SSE — real-time scan progress
     GET  /v1/agents                    quick agent discovery (no CVE scan)
     DELETE /v1/scan/{job_id}           cancel / discard a job
-    GET  /v1/compliance                full 4-framework compliance posture
-    GET  /v1/compliance/{framework}    single framework (owasp-llm, owasp-mcp, atlas, nist)
+    GET  /v1/compliance                full 6-framework compliance posture
+    GET  /v1/compliance/{framework}    single framework (owasp-llm, owasp-mcp, atlas, nist, owasp-agentic, eu-ai-act)
     GET  /v1/malicious/check           malicious package / typosquat check
     GET  /v1/proxy/status              runtime proxy metrics
     GET  /v1/proxy/alerts              recent runtime proxy alerts
@@ -1091,8 +1091,8 @@ async def list_jobs() -> dict:
 
 @app.get("/v1/compliance", tags=["compliance"])
 async def get_compliance() -> dict:
-    """Aggregate OWASP LLM Top 10, MITRE ATLAS, and NIST AI RMF compliance
-    posture across all completed scans.
+    """Aggregate OWASP LLM Top 10, OWASP MCP Top 10, MITRE ATLAS, NIST AI RMF,
+    OWASP Agentic Top 10, and EU AI Act compliance posture across all completed scans.
 
     Returns per-control pass/warning/fail status and an overall compliance score.
     """
@@ -1160,12 +1160,16 @@ async def get_compliance() -> dict:
             )
         return controls
 
+    from agent_bom.eu_ai_act import EU_AI_ACT
+    from agent_bom.owasp_agentic import OWASP_AGENTIC_TOP10
     from agent_bom.owasp_mcp import OWASP_MCP_TOP10
 
     owasp = _build_controls(OWASP_LLM_TOP10, "owasp_tags", "code")
     owasp_mcp = _build_controls(OWASP_MCP_TOP10, "owasp_mcp_tags", "code")
     atlas = _build_controls(ATLAS_TECHNIQUES, "atlas_tags", "code")
     nist = _build_controls(NIST_AI_RMF, "nist_ai_rmf_tags", "code")
+    owasp_agentic = _build_controls(OWASP_AGENTIC_TOP10, "owasp_agentic_tags", "code")
+    eu_ai_act = _build_controls(EU_AI_ACT, "eu_ai_act_tags", "code")
 
     def _count_statuses(controls: list[dict]) -> tuple[int, int, int]:
         p = sum(1 for c in controls if c["status"] == "pass")
@@ -1177,14 +1181,16 @@ async def get_compliance() -> dict:
     mp, mw, mf = _count_statuses(owasp_mcp)
     ap, aw, af = _count_statuses(atlas)
     np_, nw, nf = _count_statuses(nist)
+    oap, oaw, oaf = _count_statuses(owasp_agentic)
+    eup, euw, euf = _count_statuses(eu_ai_act)
 
-    total_controls = len(owasp) + len(owasp_mcp) + len(atlas) + len(nist)
-    total_pass = op + mp + ap + np_
+    total_controls = len(owasp) + len(owasp_mcp) + len(atlas) + len(nist) + len(owasp_agentic) + len(eu_ai_act)
+    total_pass = op + mp + ap + np_ + oap + eup
     overall_score = round((total_pass / total_controls) * 100, 1) if total_controls > 0 else 100.0
 
-    if of_ > 0 or mf > 0 or af > 0 or nf > 0:
+    if of_ > 0 or mf > 0 or af > 0 or nf > 0 or oaf > 0 or euf > 0:
         overall_status = "fail"
-    elif ow > 0 or mw > 0 or aw > 0 or nw > 0:
+    elif ow > 0 or mw > 0 or aw > 0 or nw > 0 or oaw > 0 or euw > 0:
         overall_status = "warning"
     else:
         overall_status = "pass"
@@ -1198,6 +1204,8 @@ async def get_compliance() -> dict:
         "owasp_mcp_top10": owasp_mcp,
         "mitre_atlas": atlas,
         "nist_ai_rmf": nist,
+        "owasp_agentic_top10": owasp_agentic,
+        "eu_ai_act": eu_ai_act,
         "summary": {
             "owasp_pass": op,
             "owasp_warn": ow,
@@ -1211,6 +1219,12 @@ async def get_compliance() -> dict:
             "nist_pass": np_,
             "nist_warn": nw,
             "nist_fail": nf,
+            "owasp_agentic_pass": oap,
+            "owasp_agentic_warn": oaw,
+            "owasp_agentic_fail": oaf,
+            "eu_ai_act_pass": eup,
+            "eu_ai_act_warn": euw,
+            "eu_ai_act_fail": euf,
         },
     }
 
@@ -1328,7 +1342,7 @@ async def check_malicious(name: str, ecosystem: str = "npm") -> dict:
 async def get_compliance_by_framework(framework: str) -> dict:
     """Get compliance posture for a single framework.
 
-    Supported frameworks: owasp-llm, owasp-mcp, atlas, nist
+    Supported frameworks: owasp-llm, owasp-mcp, atlas, nist, owasp-agentic, eu-ai-act
     """
     full = await get_compliance()
 
@@ -1337,6 +1351,8 @@ async def get_compliance_by_framework(framework: str) -> dict:
         "owasp-mcp": "owasp_mcp_top10",
         "atlas": "mitre_atlas",
         "nist": "nist_ai_rmf",
+        "owasp-agentic": "owasp_agentic_top10",
+        "eu-ai-act": "eu_ai_act",
     }
 
     key = framework_map.get(framework.lower())
@@ -2081,6 +2097,57 @@ async def get_agent_mesh() -> dict:
                 all_blast.extend(job.result.get("blast_radius", []))
 
         return build_agent_mesh(agents_data, all_blast)
+    except Exception as exc:  # noqa: BLE001
+        _logger.exception("Request failed")
+        raise HTTPException(status_code=500, detail=sanitize_error(exc)) from exc
+
+
+# ── OpenTelemetry Trace Ingestion ────────────────────────────────────────────
+
+
+@app.post("/v1/traces", tags=["observability"])
+async def ingest_traces(body: dict) -> dict:
+    """Ingest OpenTelemetry trace data and flag vulnerable tool calls.
+
+    Accepts OTLP JSON format traces containing `adk.tool.*` spans.
+    Cross-references tool calls against completed scan results to flag
+    any calls that touch packages with known CVEs.
+    """
+    try:
+        from agent_bom.otel_ingest import flag_vulnerable_tool_calls, parse_otel_traces
+
+        traces = parse_otel_traces(body)
+        if not traces:
+            return {"traces": 0, "flagged": [], "message": "No tool call traces found"}
+
+        # Gather vulnerable packages and servers from scan history
+        vuln_packages: list[str] = []
+        vuln_servers: list[str] = []
+        for job in _get_store().list_all():
+            if job.status == JobStatus.DONE and job.result:
+                for br in job.result.get("blast_radius", []):
+                    pkg = br.get("package", "")
+                    if pkg:
+                        vuln_packages.append(pkg)
+                    for srv in br.get("affected_servers", []):
+                        name = srv if isinstance(srv, str) else srv.get("name", "")
+                        if name:
+                            vuln_servers.append(name)
+
+        flagged = flag_vulnerable_tool_calls(traces, vuln_packages, vuln_servers)
+
+        return {
+            "traces": len(traces),
+            "flagged": [
+                {
+                    "tool_name": f.trace.tool_name,
+                    "reason": f.reason,
+                    "severity": f.severity,
+                    "span_id": f.trace.span_id,
+                }
+                for f in flagged
+            ],
+        }
     except Exception as exc:  # noqa: BLE001
         _logger.exception("Request failed")
         raise HTTPException(status_code=500, detail=sanitize_error(exc)) from exc

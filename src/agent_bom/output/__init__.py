@@ -374,6 +374,14 @@ def print_blast_radius(report: AIBOMReport) -> None:
             tags = sorted(br.owasp_mcp_tags)[:3]
             extra = f" +{len(br.owasp_mcp_tags) - 3}" if len(br.owasp_mcp_tags) > 3 else ""
             threat_lines.append(f"[yellow]{' '.join(tags)}{extra}[/yellow]")
+        if br.owasp_agentic_tags:
+            tags = sorted(br.owasp_agentic_tags)[:3]
+            extra = f" +{len(br.owasp_agentic_tags) - 3}" if len(br.owasp_agentic_tags) > 3 else ""
+            threat_lines.append(f"[magenta]{' '.join(tags)}{extra}[/magenta]")
+        if br.eu_ai_act_tags:
+            tags = sorted(br.eu_ai_act_tags)[:3]
+            extra = f" +{len(br.eu_ai_act_tags) - 3}" if len(br.eu_ai_act_tags) > 3 else ""
+            threat_lines.append(f"[blue]{' '.join(tags)}{extra}[/blue]")
         threats_display = "\n".join(threat_lines) if threat_lines else "—"
 
         table.add_row(
@@ -504,6 +512,8 @@ def print_threat_frameworks(report: AIBOMReport) -> None:
     atlas_counts: Counter[str] = Counter()
     nist_counts: Counter[str] = Counter()
     owasp_mcp_counts: Counter[str] = Counter()
+    owasp_agentic_counts: Counter[str] = Counter()
+    eu_ai_act_counts: Counter[str] = Counter()
     for br in report.blast_radii:
         for tag in br.owasp_tags:
             owasp_counts[tag] += 1
@@ -513,8 +523,19 @@ def print_threat_frameworks(report: AIBOMReport) -> None:
             nist_counts[tag] += 1
         for tag in br.owasp_mcp_tags:
             owasp_mcp_counts[tag] += 1
+        for tag in br.owasp_agentic_tags:
+            owasp_agentic_counts[tag] += 1
+        for tag in br.eu_ai_act_tags:
+            eu_ai_act_counts[tag] += 1
 
-    if not owasp_counts and not atlas_counts and not nist_counts and not owasp_mcp_counts:
+    if (
+        not owasp_counts
+        and not atlas_counts
+        and not nist_counts
+        and not owasp_mcp_counts
+        and not owasp_agentic_counts
+        and not eu_ai_act_counts
+    ):
         return
 
     console.print()
@@ -602,6 +623,50 @@ def print_threat_frameworks(report: AIBOMReport) -> None:
                 mcp_table.add_row(f"[dim]{code}[/dim]", f"[dim]{name}[/dim]", "[dim]—[/dim]", "")
 
         console.print(mcp_table)
+
+    # OWASP Agentic Top 10 table
+    if owasp_agentic_counts:
+        from agent_bom.owasp_agentic import OWASP_AGENTIC_TOP10
+
+        agentic_table = Table(title="OWASP Agentic Top 10", title_style="bold magenta", border_style="dim")
+        agentic_table.add_column("Code", width=7, style="bold magenta")
+        agentic_table.add_column("Risk", width=42)
+        agentic_table.add_column("Findings", width=9, justify="right")
+        agentic_table.add_column("", width=20)
+
+        for code in sorted(OWASP_AGENTIC_TOP10.keys()):
+            count = owasp_agentic_counts.get(code, 0)
+            name = OWASP_AGENTIC_TOP10[code]
+            if count > 0:
+                bar_len = min(count, 16)
+                bar = "[red]" + "█" * bar_len + "[/red]"
+                agentic_table.add_row(code, name, f"[bold]{count}[/bold]", bar)
+            else:
+                agentic_table.add_row(f"[dim]{code}[/dim]", f"[dim]{name}[/dim]", "[dim]—[/dim]", "")
+
+        console.print(agentic_table)
+
+    # EU AI Act table
+    if eu_ai_act_counts:
+        from agent_bom.eu_ai_act import EU_AI_ACT
+
+        eu_table = Table(title="EU AI Act", title_style="bold blue", border_style="dim")
+        eu_table.add_column("Article", width=9, style="bold blue")
+        eu_table.add_column("Description", width=42)
+        eu_table.add_column("Findings", width=9, justify="right")
+        eu_table.add_column("", width=20)
+
+        for code in sorted(EU_AI_ACT.keys()):
+            count = eu_ai_act_counts.get(code, 0)
+            name = EU_AI_ACT[code]
+            if count > 0:
+                bar_len = min(count, 16)
+                bar = "[red]" + "█" * bar_len + "[/red]"
+                eu_table.add_row(code, name, f"[bold]{count}[/bold]", bar)
+            else:
+                eu_table.add_row(f"[dim]{code}[/dim]", f"[dim]{name}[/dim]", "[dim]—[/dim]", "")
+
+        console.print(eu_table)
     console.print()
 
 
@@ -630,6 +695,8 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
             "atlas": set(),
             "nist": set(),
             "owasp_mcp": set(),
+            "owasp_agentic": set(),
+            "eu_ai_act": set(),
             "max_severity": Severity.NONE,
             "has_kev": False,
             "ai_risk": False,
@@ -653,6 +720,8 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
         g["atlas"].update(br.atlas_tags)
         g["nist"].update(br.nist_ai_rmf_tags)
         g["owasp_mcp"].update(br.owasp_mcp_tags)
+        g["owasp_agentic"].update(br.owasp_agentic_tags)
+        g["eu_ai_act"].update(br.eu_ai_act_tags)
         if severity_order.get(br.vulnerability.severity, 0) > severity_order.get(g["max_severity"], 0):
             g["max_severity"] = br.vulnerability.severity
         if br.vulnerability.is_kev:
@@ -670,6 +739,8 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
         g["atlas"] = sorted(g["atlas"])
         g["nist"] = sorted(g["nist"])
         g["owasp_mcp"] = sorted(g["owasp_mcp"])
+        g["owasp_agentic"] = sorted(g["owasp_agentic"])
+        g["eu_ai_act"] = sorted(g["eu_ai_act"])
         g["impact"] = (
             len(g["agents"]) * 10 + len(g["creds"]) * 3 + len(g["vulns"]) + (5 if g["has_kev"] else 0) + (3 if g["ai_risk"] else 0)
         )
@@ -794,18 +865,26 @@ def print_export_hint(report: AIBOMReport) -> None:
     atlas_hit: set[str] = set()
     nist_hit: set[str] = set()
     owasp_mcp_hit: set[str] = set()
+    owasp_agentic_hit: set[str] = set()
+    eu_ai_act_hit: set[str] = set()
     for br in report.blast_radii:
         owasp_hit.update(br.owasp_tags)
         atlas_hit.update(br.atlas_tags)
         nist_hit.update(br.nist_ai_rmf_tags)
         owasp_mcp_hit.update(br.owasp_mcp_tags)
+        owasp_agentic_hit.update(br.owasp_agentic_tags)
+        eu_ai_act_hit.update(br.eu_ai_act_tags)
 
+    from agent_bom.eu_ai_act import EU_AI_ACT as _EU_AI_ACT
+    from agent_bom.owasp_agentic import OWASP_AGENTIC_TOP10 as _OWASP_AGENTIC
     from agent_bom.owasp_mcp import OWASP_MCP_TOP10
 
     owasp_total = len(OWASP_LLM_TOP10)
     atlas_total = len(ATLAS_TECHNIQUES)
     nist_total = len(NIST_AI_RMF)
     owasp_mcp_total = len(OWASP_MCP_TOP10)
+    owasp_agentic_total = len(_OWASP_AGENTIC)
+    eu_ai_act_total = len(_EU_AI_ACT)
 
     if report.blast_radii:
         lines.append("[bold]AI Threat Framework Coverage[/bold]")
@@ -833,6 +912,20 @@ def print_export_hint(report: AIBOMReport) -> None:
         owasp_mcp_bar = _coverage_bar(len(owasp_mcp_hit), owasp_mcp_total, "yellow")
         lines.append(
             f"  [bold yellow]OWASP MCP Top 10 [/bold yellow]  {owasp_mcp_bar}  [yellow]{len(owasp_mcp_hit)}/{owasp_mcp_total}[/yellow] ({owasp_mcp_pct}%)"
+        )
+
+        # OWASP Agentic bar
+        owasp_agentic_pct = int(len(owasp_agentic_hit) / owasp_agentic_total * 100) if owasp_agentic_total else 0
+        owasp_agentic_bar = _coverage_bar(len(owasp_agentic_hit), owasp_agentic_total, "magenta")
+        lines.append(
+            f"  [bold magenta]OWASP Agentic T10[/bold magenta]  {owasp_agentic_bar}  [magenta]{len(owasp_agentic_hit)}/{owasp_agentic_total}[/magenta] ({owasp_agentic_pct}%)"
+        )
+
+        # EU AI Act bar
+        eu_ai_act_pct = int(len(eu_ai_act_hit) / eu_ai_act_total * 100) if eu_ai_act_total else 0
+        eu_ai_act_bar = _coverage_bar(len(eu_ai_act_hit), eu_ai_act_total, "blue")
+        lines.append(
+            f"  [bold blue]EU AI Act         [/bold blue]  {eu_ai_act_bar}  [blue]{len(eu_ai_act_hit)}/{eu_ai_act_total}[/blue] ({eu_ai_act_pct}%)"
         )
 
         lines.append("")
@@ -919,6 +1012,8 @@ def _build_remediation_json(report: AIBOMReport) -> list[dict]:
                 "atlas_tags": item["atlas"],
                 "nist_ai_rmf_tags": item["nist"],
                 "owasp_mcp_tags": item["owasp_mcp"],
+                "owasp_agentic_tags": item["owasp_agentic"],
+                "eu_ai_act_tags": item["eu_ai_act"],
                 "risk_narrative": _risk_narrative(item),
             }
         )
@@ -949,14 +1044,18 @@ def _build_framework_summary(blast_radii: list[BlastRadius]) -> dict:
     from collections import Counter
 
     from agent_bom.atlas import ATLAS_TECHNIQUES
+    from agent_bom.eu_ai_act import EU_AI_ACT
     from agent_bom.nist_ai_rmf import NIST_AI_RMF
     from agent_bom.owasp import OWASP_LLM_TOP10
+    from agent_bom.owasp_agentic import OWASP_AGENTIC_TOP10
     from agent_bom.owasp_mcp import OWASP_MCP_TOP10
 
     owasp_counts: Counter[str] = Counter()
     atlas_counts: Counter[str] = Counter()
     nist_counts: Counter[str] = Counter()
     owasp_mcp_counts: Counter[str] = Counter()
+    owasp_agentic_counts: Counter[str] = Counter()
+    eu_ai_act_counts: Counter[str] = Counter()
     for br in blast_radii:
         for tag in br.owasp_tags:
             owasp_counts[tag] += 1
@@ -966,6 +1065,10 @@ def _build_framework_summary(blast_radii: list[BlastRadius]) -> dict:
             nist_counts[tag] += 1
         for tag in br.owasp_mcp_tags:
             owasp_mcp_counts[tag] += 1
+        for tag in br.owasp_agentic_tags:
+            owasp_agentic_counts[tag] += 1
+        for tag in br.eu_ai_act_tags:
+            eu_ai_act_counts[tag] += 1
 
     return {
         "owasp_llm_top10": [
@@ -1004,10 +1107,30 @@ def _build_framework_summary(blast_radii: list[BlastRadius]) -> dict:
             }
             for code in sorted(OWASP_MCP_TOP10.keys())
         ],
+        "owasp_agentic_top10": [
+            {
+                "code": code,
+                "name": OWASP_AGENTIC_TOP10[code],
+                "findings": owasp_agentic_counts.get(code, 0),
+                "triggered": code in owasp_agentic_counts,
+            }
+            for code in sorted(OWASP_AGENTIC_TOP10.keys())
+        ],
+        "eu_ai_act": [
+            {
+                "code": code,
+                "name": EU_AI_ACT[code],
+                "findings": eu_ai_act_counts.get(code, 0),
+                "triggered": code in eu_ai_act_counts,
+            }
+            for code in sorted(EU_AI_ACT.keys())
+        ],
         "total_owasp_triggered": sum(1 for c in owasp_counts if owasp_counts[c] > 0),
         "total_atlas_triggered": sum(1 for c in atlas_counts if atlas_counts[c] > 0),
         "total_nist_triggered": sum(1 for c in nist_counts if nist_counts[c] > 0),
         "total_owasp_mcp_triggered": sum(1 for c in owasp_mcp_counts if owasp_mcp_counts[c] > 0),
+        "total_owasp_agentic_triggered": sum(1 for c in owasp_agentic_counts if owasp_agentic_counts[c] > 0),
+        "total_eu_ai_act_triggered": sum(1 for c in eu_ai_act_counts if eu_ai_act_counts[c] > 0),
     }
 
 
@@ -1123,6 +1246,8 @@ def to_json(report: AIBOMReport) -> dict:
                 "atlas_tags": br.atlas_tags,
                 "nist_ai_rmf_tags": br.nist_ai_rmf_tags,
                 "owasp_mcp_tags": br.owasp_mcp_tags,
+                "owasp_agentic_tags": br.owasp_agentic_tags,
+                "eu_ai_act_tags": br.eu_ai_act_tags,
             }
             for br in report.blast_radii
         ],
@@ -1378,12 +1503,14 @@ def to_sarif(report: AIBOMReport) -> dict:
                 }
             ],
         }
-        if br.owasp_tags or br.atlas_tags or br.nist_ai_rmf_tags or br.owasp_mcp_tags:
+        if br.owasp_tags or br.atlas_tags or br.nist_ai_rmf_tags or br.owasp_mcp_tags or br.owasp_agentic_tags or br.eu_ai_act_tags:
             result["properties"] = {
                 "owasp_tags": br.owasp_tags,
                 "atlas_tags": br.atlas_tags,
                 "nist_ai_rmf_tags": br.nist_ai_rmf_tags,
                 "owasp_mcp_tags": br.owasp_mcp_tags,
+                "owasp_agentic_tags": br.owasp_agentic_tags,
+                "eu_ai_act_tags": br.eu_ai_act_tags,
                 "blast_score": br.risk_score,
                 "exposed_credentials": br.exposed_credentials,
             }
@@ -1560,6 +1687,10 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10) -> None:
             tags.append(f"[purple]{' '.join(list(br.owasp_tags)[:2])}[/purple]")
         if hasattr(br, "owasp_mcp_tags") and br.owasp_mcp_tags:
             tags.append(f"[yellow]{' '.join(list(br.owasp_mcp_tags)[:2])}[/yellow]")
+        if hasattr(br, "owasp_agentic_tags") and br.owasp_agentic_tags:
+            tags.append(f"[magenta]{' '.join(list(br.owasp_agentic_tags)[:2])}[/magenta]")
+        if hasattr(br, "eu_ai_act_tags") and br.eu_ai_act_tags:
+            tags.append(f"[blue]{' '.join(list(br.eu_ai_act_tags)[:2])}[/blue]")
         if hasattr(br, "atlas_tags") and br.atlas_tags:
             tags.append(f"[cyan]{' '.join(list(br.atlas_tags)[:1])}[/cyan]")
         fw_display = " ".join(tags) if tags else "[dim]—[/dim]"
@@ -2052,3 +2183,136 @@ def export_badge(report: AIBOMReport, output_path: str) -> None:
     """Export shields.io endpoint badge JSON to file."""
     data = to_badge(report)
     Path(output_path).write_text(json.dumps(data, indent=2))
+
+
+def to_rsp_badge(report: AIBOMReport) -> dict:
+    """Generate Anthropic RSP v3.0 alignment badge (shields.io JSON endpoint format).
+
+    Checks whether any Claude agents are present and whether they have
+    critical/high vulnerabilities in their supply chain.
+    """
+    from agent_bom.models import AgentType
+
+    claude_types = {AgentType.CLAUDE_DESKTOP, AgentType.CLAUDE_CODE}
+    claude_agents = [a for a in report.agents if a.agent_type in claude_types]
+
+    if not claude_agents:
+        return {
+            "schemaVersion": 1,
+            "label": "Anthropic RSP",
+            "message": "RSP n/a",
+            "color": "lightgrey",
+        }
+
+    has_vulns = any(br.vulnerability.severity in (Severity.CRITICAL, Severity.HIGH) for br in report.blast_radii)
+
+    if has_vulns:
+        return {
+            "schemaVersion": 1,
+            "label": "Anthropic RSP",
+            "message": "RSP review needed",
+            "color": "orange",
+        }
+
+    return {
+        "schemaVersion": 1,
+        "label": "Anthropic RSP",
+        "message": "RSP v3.0 aligned",
+        "color": "brightgreen",
+    }
+
+
+def export_compliance_bundle(
+    report: AIBOMReport,
+    framework: str,
+    output_path: str,
+) -> str:
+    """Export CMMC/FedRAMP/NIST-AI-RMF compliance evidence bundle as ZIP.
+
+    Returns the path to the written ZIP file.
+    """
+    import zipfile
+
+    cmmc_control_map = {
+        "CM-8": "Configuration Management — Component Inventory",
+        "SI-2": "System & Information Integrity — Flaw Remediation",
+        "SR-3": "Supply Chain Risk Management — Supply Chain Controls",
+        "RA-3": "Risk Assessment — Risk Assessment",
+        "AU-2": "Audit & Accountability — Event Logging",
+    }
+
+    # Build SBOM (CycloneDX)
+    sbom_data = to_cyclonedx(report)
+
+    # Build vulnerability report
+    vuln_entries = []
+    for br in report.blast_radii:
+        vuln_entries.append(
+            {
+                "id": br.vulnerability.id,
+                "severity": br.vulnerability.severity.value,
+                "package": br.package.name,
+                "version": br.package.version,
+                "fixed_version": br.vulnerability.fixed_version,
+                "risk_score": br.risk_score,
+                "affected_agents": [a.name for a in br.affected_agents],
+                "affected_servers": [s.name for s in br.affected_servers],
+            }
+        )
+
+    # Build policy results
+    policy_results = {
+        "framework": framework,
+        "scan_date": report.generated_at.isoformat(),
+        "tool_version": report.tool_version,
+        "total_agents": report.total_agents,
+        "total_servers": report.total_servers,
+        "total_packages": report.total_packages,
+        "total_vulnerabilities": report.total_vulnerabilities,
+        "critical_count": len(report.critical_vulns),
+    }
+
+    # Build control mapping
+    control_mapping = {}
+    for ctrl_id, ctrl_desc in cmmc_control_map.items():
+        findings = []
+        if ctrl_id == "CM-8":
+            findings = [{"type": "inventory", "count": report.total_packages}]
+        elif ctrl_id == "SI-2":
+            findings = [{"type": "vulnerabilities", "count": report.total_vulnerabilities}]
+        elif ctrl_id == "SR-3":
+            findings = [{"type": "supply_chain", "servers": report.total_servers}]
+        elif ctrl_id == "RA-3":
+            findings = [{"type": "risk_assessment", "blast_radii": len(report.blast_radii)}]
+        elif ctrl_id == "AU-2":
+            findings = [{"type": "audit_trail", "scan_date": report.generated_at.isoformat()}]
+        control_mapping[ctrl_id] = {
+            "description": ctrl_desc,
+            "status": "pass" if not findings or report.total_vulnerabilities == 0 else "review",
+            "findings": findings,
+        }
+
+    # Executive summary text
+    summary_lines = [
+        f"Compliance Evidence Bundle — {framework.upper()}",
+        f"Generated: {report.generated_at.isoformat()}",
+        f"Tool: agent-bom v{report.tool_version}",
+        "",
+        f"Agents scanned: {report.total_agents}",
+        f"MCP servers: {report.total_servers}",
+        f"Packages inventoried: {report.total_packages}",
+        f"Vulnerabilities found: {report.total_vulnerabilities}",
+        f"Critical findings: {len(report.critical_vulns)}",
+        "",
+        "Controls mapped: " + ", ".join(cmmc_control_map.keys()),
+    ]
+
+    zip_path = output_path if output_path.endswith(".zip") else output_path + ".zip"
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("sbom.cdx.json", json.dumps(sbom_data, indent=2, default=str))
+        zf.writestr("vulnerability_report.json", json.dumps(vuln_entries, indent=2, default=str))
+        zf.writestr("policy_results.json", json.dumps(policy_results, indent=2, default=str))
+        zf.writestr("compliance_mapping.json", json.dumps(control_mapping, indent=2, default=str))
+        zf.writestr("summary.txt", "\n".join(summary_lines))
+
+    return zip_path

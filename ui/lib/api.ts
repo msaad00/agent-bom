@@ -124,6 +124,8 @@ export interface BlastRadius {
   atlas_tags?: string[];
   nist_ai_rmf_tags?: string[];
   owasp_mcp_tags?: string[];
+  owasp_agentic_tags?: string[];
+  eu_ai_act_tags?: string[];
 }
 
 // ─── Attack Flow Types ───────────────────────────────────────────────────────
@@ -142,6 +144,8 @@ export interface AttackFlowNodeData {
   atlas_tags?: string[];
   nist_ai_rmf_tags?: string[];
   owasp_mcp_tags?: string[];
+  owasp_agentic_tags?: string[];
+  eu_ai_act_tags?: string[];
   version?: string;
   ecosystem?: string;
   agent_type?: string;
@@ -271,11 +275,15 @@ export interface ComplianceResponse {
   owasp_mcp_top10: ComplianceControl[];
   mitre_atlas: ComplianceControl[];
   nist_ai_rmf: ComplianceControl[];
+  owasp_agentic_top10: ComplianceControl[];
+  eu_ai_act: ComplianceControl[];
   summary: {
     owasp_pass: number; owasp_warn: number; owasp_fail: number;
     owasp_mcp_pass: number; owasp_mcp_warn: number; owasp_mcp_fail: number;
     atlas_pass: number; atlas_warn: number; atlas_fail: number;
     nist_pass: number;  nist_warn: number;  nist_fail: number;
+    owasp_agentic_pass: number; owasp_agentic_warn: number; owasp_agentic_fail: number;
+    eu_ai_act_pass: number; eu_ai_act_warn: number; eu_ai_act_fail: number;
   };
 }
 
@@ -618,6 +626,30 @@ export const MITRE_ATLAS: Record<string, string> = {
   "AML.T0060": "Data from AI Services",
   "AML.T0061": "AI Agent Tools",
   "AML.T0062": "Exfiltration via AI Agent Tool Invocation",
+};
+
+/** OWASP Agentic Top 10 (2026) — code → human-readable name */
+export const OWASP_AGENTIC_TOP10: Record<string, string> = {
+  ASI01: "Excessive Agency & Autonomy",
+  ASI02: "Tool Misuse & Exploitation",
+  ASI03: "Identity & Privilege Abuse",
+  ASI04: "Agentic Supply Chain Vulnerabilities",
+  ASI05: "Unexpected Code Execution",
+  ASI06: "Memory & Context Poisoning",
+  ASI07: "Insecure Inter-Agent Communication",
+  ASI08: "Cascading Hallucination Failures",
+  ASI09: "Human-Agent Trust Exploitation",
+  ASI10: "Rogue Agent Persistence",
+};
+
+/** EU AI Act — article code → human-readable name */
+export const EU_AI_ACT: Record<string, string> = {
+  "ART-5": "Prohibited AI Practices",
+  "ART-6": "High-Risk AI System Classification",
+  "ART-9": "Risk Management System",
+  "ART-10": "Data & Data Governance",
+  "ART-15": "Accuracy, Robustness & Cybersecurity",
+  "ART-17": "Quality Management System",
 };
 
 /** NIST AI RMF 1.0 — subcategory ID → human-readable name */

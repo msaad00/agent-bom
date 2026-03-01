@@ -22,6 +22,22 @@ import { lineageNodeTypes, type LineageNodeData, type LineageNodeType } from "@/
 import { FilterPanel, DEFAULT_FILTERS, type FilterState } from "@/components/lineage-filter";
 import { LineageDetailPanel } from "@/components/lineage-detail";
 
+// ─── Pulse Animation Styles ──────────────────────────────────────────────────
+
+function PulseStyles() {
+  return (
+    <style jsx global>{`
+      @keyframes pulse-critical {
+        0%, 100% { box-shadow: 0 0 8px rgba(239, 68, 68, 0.4); }
+        50% { box-shadow: 0 0 20px rgba(239, 68, 68, 0.8); }
+      }
+      .node-critical-pulse {
+        animation: pulse-critical 2s ease-in-out infinite;
+      }
+    `}</style>
+  );
+}
+
 // ─── Graph Builder ───────────────────────────────────────────────────────────
 
 function buildLineageGraph(
@@ -256,6 +272,7 @@ function buildLineageGraph(
               seen.add(vulnId);
               // Find blast radius info
               const br = result.blast_radius?.find((b) => b.vulnerability_id === vuln.id);
+              const isCriticalNode = vuln.severity === "critical" || vuln.cisa_kev === true || br?.is_kev === true;
               nodes.push({
                 id: vulnId,
                 type: "vulnNode",
@@ -270,7 +287,9 @@ function buildLineageGraph(
                   fixedVersion: vuln.fixed_version ?? br?.fixed_version,
                   owaspTags: br?.owasp_tags,
                   atlasTags: br?.atlas_tags,
+                  isCritical: isCriticalNode,
                 } satisfies LineageNodeData,
+                className: isCriticalNode ? "node-critical-pulse" : undefined,
               });
             }
 
@@ -469,6 +488,7 @@ export default function GraphPage() {
 
   return (
     <div className="h-[calc(100vh-3.5rem)] flex flex-col">
+      <PulseStyles />
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
         <div>

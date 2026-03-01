@@ -47,48 +47,86 @@ const nodeTypes = { agentNode: AgentNode, serverNode: ServerNode };
 
 // ─── Graph builder ──────────────────────────────────────────────────────────
 
-function buildGraph(agents: Agent[]): { nodes: Node[]; edges: Edge[] } {
+function buildGraph(agents: Agent[], direction: "LR" | "TB" = "LR"): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
-  const Y_GAP = 100;
-  const X_GAP = 280;
+  const GAP = 100;
+  const OFFSET = 280;
 
-  let agentY = 0;
+  let cursor = 0;
 
   for (const agent of agents) {
     const agentId = `agent-${agent.name}`;
-    nodes.push({
-      id: agentId,
-      type: "agentNode",
-      position: { x: 0, y: agentY },
-      data: { label: agent.name, type: agent.agent_type },
-    });
 
-    const servers = agent.mcp_servers;
-    const serverStartY = agentY - ((servers.length - 1) * Y_GAP) / 2;
-
-    servers.forEach((srv, i) => {
-      const srvId = `srv-${agent.name}-${srv.name}`;
+    if (direction === "TB") {
+      // Top-down: agents along the X axis, servers below
       nodes.push({
-        id: srvId,
-        type: "serverNode",
-        position: { x: X_GAP, y: serverStartY + i * Y_GAP },
-        data: {
-          label: srv.name,
-          pkgCount: srv.packages.length,
-          toolCount: srv.tools?.length ?? 0,
-        },
+        id: agentId,
+        type: "agentNode",
+        position: { x: cursor, y: 0 },
+        data: { label: agent.name, type: agent.agent_type },
       });
-      edges.push({
-        id: `e-${agentId}-${srvId}`,
-        source: agentId,
-        target: srvId,
-        type: "smoothstep",
-        style: { stroke: "#10b981" },
-      });
-    });
 
-    agentY += Math.max(servers.length, 1) * Y_GAP + 40;
+      const servers = agent.mcp_servers;
+      const serverStartX = cursor - ((servers.length - 1) * GAP) / 2;
+
+      servers.forEach((srv, i) => {
+        const srvId = `srv-${agent.name}-${srv.name}`;
+        nodes.push({
+          id: srvId,
+          type: "serverNode",
+          position: { x: serverStartX + i * GAP, y: OFFSET },
+          data: {
+            label: srv.name,
+            pkgCount: srv.packages.length,
+            toolCount: srv.tools?.length ?? 0,
+          },
+        });
+        edges.push({
+          id: `e-${agentId}-${srvId}`,
+          source: agentId,
+          target: srvId,
+          type: "smoothstep",
+          style: { stroke: "#10b981" },
+        });
+      });
+
+      cursor += Math.max(servers.length, 1) * GAP + 80;
+    } else {
+      // Left-right (default): agents along the Y axis, servers to the right
+      nodes.push({
+        id: agentId,
+        type: "agentNode",
+        position: { x: 0, y: cursor },
+        data: { label: agent.name, type: agent.agent_type },
+      });
+
+      const servers = agent.mcp_servers;
+      const serverStartY = cursor - ((servers.length - 1) * GAP) / 2;
+
+      servers.forEach((srv, i) => {
+        const srvId = `srv-${agent.name}-${srv.name}`;
+        nodes.push({
+          id: srvId,
+          type: "serverNode",
+          position: { x: OFFSET, y: serverStartY + i * GAP },
+          data: {
+            label: srv.name,
+            pkgCount: srv.packages.length,
+            toolCount: srv.tools?.length ?? 0,
+          },
+        });
+        edges.push({
+          id: `e-${agentId}-${srvId}`,
+          source: agentId,
+          target: srvId,
+          type: "smoothstep",
+          style: { stroke: "#10b981" },
+        });
+      });
+
+      cursor += Math.max(servers.length, 1) * GAP + 40;
+    }
   }
 
   return { nodes, edges };
@@ -96,9 +134,9 @@ function buildGraph(agents: Agent[]): { nodes: Node[]; edges: Edge[] } {
 
 // ─── Inner flow (needs ReactFlowProvider) ───────────────────────────────────
 
-function TopologyFlow({ agents, onAgentClick }: { agents: Agent[]; onAgentClick: (name: string) => void }) {
+function TopologyFlow({ agents, onAgentClick, direction = "LR" }: { agents: Agent[]; onAgentClick: (name: string) => void; direction?: "LR" | "TB" }) {
   const { fitView } = useReactFlow();
-  const { nodes, edges } = useMemo(() => buildGraph(agents), [agents]);
+  const { nodes, edges } = useMemo(() => buildGraph(agents, direction), [agents, direction]);
 
   useEffect(() => {
     setTimeout(() => fitView({ padding: 0.3 }), 100);
@@ -134,7 +172,7 @@ function TopologyFlow({ agents, onAgentClick }: { agents: Agent[]; onAgentClick:
 
 // ─── Public component ───────────────────────────────────────────────────────
 
-export function AgentTopology({ agents }: { agents: Agent[] }) {
+export function AgentTopology({ agents, direction = "LR" }: { agents: Agent[]; direction?: "LR" | "TB" }) {
   const router = useRouter();
 
   const handleAgentClick = useCallback(
@@ -149,7 +187,7 @@ export function AgentTopology({ agents }: { agents: Agent[] }) {
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden" style={{ height: 320 }}>
       <ReactFlowProvider>
-        <TopologyFlow agents={agents} onAgentClick={handleAgentClick} />
+        <TopologyFlow agents={agents} onAgentClick={handleAgentClick} direction={direction} />
       </ReactFlowProvider>
     </div>
   );

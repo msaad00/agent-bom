@@ -2596,6 +2596,216 @@ async def toggle_schedule(schedule_id: str) -> dict:
     return s.model_dump()
 
 
+# ── Enterprise: Audit Log ────────────────────────────────────────────────────
+
+_audit_log_store: Any = None
+
+
+@app.get("/v1/audit", tags=["enterprise"])
+async def list_audit_entries(
+    action: str | None = None,
+    resource: str | None = None,
+    since: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> dict:
+    """List audit log entries with optional filters."""
+    from agent_bom.api.audit_log import get_audit_log
+
+    store = get_audit_log()
+    entries = store.list_entries(action=action, resource=resource, since=since, limit=limit, offset=offset)
+    return {
+        "entries": [e.to_dict() for e in entries],
+        "total": store.count(action=action),
+    }
+
+
+@app.get("/v1/audit/integrity", tags=["enterprise"])
+async def audit_integrity(limit: int = 1000) -> dict:
+    """Verify HMAC integrity of audit log entries."""
+    from agent_bom.api.audit_log import get_audit_log
+
+    verified, tampered = get_audit_log().verify_integrity(limit=limit)
+    return {"verified": verified, "tampered": tampered, "checked": verified + tampered}
+
+
+# ── Enterprise: Exception / Waiver Management ───────────────────────────────
+
+_exception_store: Any = None
+
+
+def _get_exception_store():
+    global _exception_store
+    if _exception_store is None:
+        from agent_bom.api.exception_store import InMemoryExceptionStore
+
+        _exception_store = InMemoryExceptionStore()
+    return _exception_store
+
+
+class ExceptionRequest(BaseModel):
+    vuln_id: str
+    package_name: str
+    server_name: str = ""
+    reason: str = ""
+    requested_by: str = ""
+    expires_at: str = ""
+    tenant_id: str = "default"
+
+
+@app.post("/v1/exceptions", tags=["enterprise"], status_code=201)
+async def create_exception(req: ExceptionRequest) -> dict:
+    """Request a vulnerability exception / waiver."""
+    from agent_bom.api.audit_log import log_action
+    from agent_bom.api.exception_store import VulnException
+
+    exc = VulnException(
+        vuln_id=req.vuln_id,
+        package_name=req.package_name,
+        server_name=req.server_name,
+        reason=req.reason,
+        requested_by=req.requested_by,
+        expires_at=req.expires_at,
+        tenant_id=req.tenant_id,
+    )
+    _get_exception_store().put(exc)
+    log_action(
+        "exception_create", actor=req.requested_by, resource=f"exception/{exc.exception_id}", vuln_id=req.vuln_id, package=req.package_name
+    )
+    return exc.to_dict()
+
+
+@app.get("/v1/exceptions", tags=["enterprise"])
+async def list_exceptions(status: str | None = None, tenant_id: str = "default") -> dict:
+    """List all vulnerability exceptions."""
+    exceptions = _get_exception_store().list_all(status=status, tenant_id=tenant_id)
+    return {"exceptions": [e.to_dict() for e in exceptions], "total": len(exceptions)}
+
+
+@app.get("/v1/exceptions/{exception_id}", tags=["enterprise"])
+async def get_exception(exception_id: str) -> dict:
+    """Get a specific exception."""
+    exc = _get_exception_store().get(exception_id)
+    if exc is None:
+        raise HTTPException(status_code=404, detail=f"Exception {exception_id} not found")
+    return exc.to_dict()
+
+
+@app.put("/v1/exceptions/{exception_id}/approve", tags=["enterprise"])
+async def approve_exception(exception_id: str, approved_by: str = "") -> dict:
+    """Approve a pending exception (admin only)."""
+    from agent_bom.api.audit_log import log_action
+    from agent_bom.api.exception_store import ExceptionStatus
+
+    store = _get_exception_store()
+    exc = store.get(exception_id)
+    if exc is None:
+        raise HTTPException(status_code=404, detail=f"Exception {exception_id} not found")
+    if exc.status != ExceptionStatus.PENDING:
+        raise HTTPException(status_code=409, detail=f"Cannot approve exception in {exc.status.value} state")
+    exc.status = ExceptionStatus.ACTIVE
+    exc.approved_by = approved_by
+    exc.approved_at = datetime.now(timezone.utc).isoformat()
+    store.put(exc)
+    log_action("exception_approve", actor=approved_by, resource=f"exception/{exception_id}")
+    return exc.to_dict()
+
+
+@app.put("/v1/exceptions/{exception_id}/revoke", tags=["enterprise"])
+async def revoke_exception(exception_id: str, revoked_by: str = "") -> dict:
+    """Revoke an active exception."""
+    from agent_bom.api.audit_log import log_action
+    from agent_bom.api.exception_store import ExceptionStatus
+
+    store = _get_exception_store()
+    exc = store.get(exception_id)
+    if exc is None:
+        raise HTTPException(status_code=404, detail=f"Exception {exception_id} not found")
+    exc.status = ExceptionStatus.REVOKED
+    exc.revoked_at = datetime.now(timezone.utc).isoformat()
+    store.put(exc)
+    log_action("exception_revoke", actor=revoked_by, resource=f"exception/{exception_id}")
+    return exc.to_dict()
+
+
+@app.delete("/v1/exceptions/{exception_id}", tags=["enterprise"], status_code=204)
+async def delete_exception(exception_id: str) -> None:
+    """Delete an exception."""
+    ok = _get_exception_store().delete(exception_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail=f"Exception {exception_id} not found")
+
+
+# ── Enterprise: Baseline Comparison & Trends ─────────────────────────────────
+
+_trend_store: Any = None
+_last_scan_report: dict | None = None
+
+
+def _get_trend_store():
+    global _trend_store
+    if _trend_store is None:
+        from agent_bom.baseline import InMemoryTrendStore
+
+        _trend_store = InMemoryTrendStore()
+    return _trend_store
+
+
+@app.post("/v1/baseline/compare", tags=["enterprise"])
+async def compare_baseline(previous_job_id: str = "", current_job_id: str = "") -> dict:
+    """Compare two scan results to show new, resolved, and persistent vulnerabilities."""
+    from agent_bom.baseline import compare_reports
+
+    store = _get_store()
+    prev_job = store.get(previous_job_id) if previous_job_id else None
+    curr_job = store.get(current_job_id) if current_job_id else None
+
+    prev_report = prev_job.result if prev_job and prev_job.result else {}
+    curr_report = curr_job.result if curr_job and curr_job.result else {}
+
+    if not prev_report and not curr_report:
+        raise HTTPException(status_code=404, detail="At least one valid job_id required")
+
+    diff = compare_reports(prev_report, curr_report)
+    return diff.to_dict()
+
+
+@app.get("/v1/trends", tags=["enterprise"])
+async def get_trends(limit: int = 30) -> dict:
+    """Get historical trend data — posture score and vuln counts over time."""
+    history = _get_trend_store().get_history(limit=limit)
+    return {
+        "data_points": [p.to_dict() for p in history],
+        "count": len(history),
+    }
+
+
+# ── Enterprise: SIEM Connectors ─────────────────────────────────────────────
+
+
+@app.get("/v1/siem/connectors", tags=["enterprise"])
+async def list_siem_connectors() -> dict:
+    """List available SIEM connector types."""
+    from agent_bom.siem import list_connectors
+
+    return {"connectors": list_connectors()}
+
+
+@app.post("/v1/siem/test", tags=["enterprise"])
+async def test_siem_connection(siem_type: str = "", url: str = "", token: str = "") -> dict:
+    """Test SIEM connectivity."""
+    from agent_bom.siem import SIEMConfig, create_connector
+
+    try:
+        connector = create_connector(siem_type, SIEMConfig(name=siem_type, url=url, token=token))
+        healthy = connector.health_check()
+        return {"siem_type": siem_type, "healthy": healthy}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        return {"siem_type": siem_type, "healthy": False, "error": sanitize_error(str(exc))}
+
+
 # ── Dashboard static file serving ────────────────────────────────────────────
 # Must be registered LAST so API routes take precedence.
 

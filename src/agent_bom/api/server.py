@@ -455,6 +455,12 @@ class ScanRequest(BaseModel):
     format: str = "json"
     """Output format: json | cyclonedx | sarif | spdx | html | text."""
 
+    dynamic_discovery: bool = False
+    """Enable dynamic content-based MCP config discovery."""
+
+    dynamic_max_depth: int = 4
+    """Max directory depth for dynamic discovery."""
+
 
 class ScanJob(BaseModel):
     """Represents a running or completed scan job."""
@@ -580,7 +586,10 @@ def _run_scan_sync(job: ScanJob) -> None:
 
         # Step 1 — auto-discover local MCP configs
         job.progress.append("Discovering local MCP configurations...")
-        local_agents = discover_all()
+        local_agents = discover_all(
+            dynamic=req.dynamic_discovery,
+            dynamic_max_depth=req.dynamic_max_depth,
+        )
         agents.extend(local_agents)
 
         # Step 2 — inventory file

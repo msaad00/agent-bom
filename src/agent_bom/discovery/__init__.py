@@ -1018,8 +1018,18 @@ def discover_compose_mcp_servers(project_dir: Optional[str] = None) -> Optional[
     )
 
 
-def discover_all(project_dir: Optional[str] = None) -> list[Agent]:
-    """Run full discovery: global configs + project configs + CLI agents."""
+def discover_all(
+    project_dir: Optional[str] = None,
+    dynamic: bool = False,
+    dynamic_max_depth: int = 4,
+) -> list[Agent]:
+    """Run full discovery: global configs + project configs + CLI agents.
+
+    Args:
+        project_dir: Optional project directory to scan.
+        dynamic: Enable dynamic content-based discovery layer.
+        dynamic_max_depth: Maximum depth for dynamic filesystem scanning.
+    """
     console.print("\n[bold blue]🔍 Discovering MCP configurations...[/bold blue]\n")
 
     agents = discover_global_configs()
@@ -1066,6 +1076,26 @@ def discover_all(project_dir: Optional[str] = None) -> list[Agent]:
     for ia in installed_agents:
         console.print(f"  [dim]  {ia.name}: installed but not configured[/dim]")
     agents.extend(installed_agents)
+
+    # Dynamic content-based discovery layer (opt-in)
+    if dynamic:
+        from pathlib import Path as _DynPath
+
+        from agent_bom.discovery.dynamic import discover_dynamic, merge_discoveries
+
+        console.print("\n  [bold cyan]🔎 Running dynamic discovery...[/bold cyan]")
+        known_paths = {a.config_path for a in agents if a.config_path}
+        dyn_result = discover_dynamic(
+            root=_DynPath(project_dir) if project_dir else _DynPath.cwd(),
+            max_depth=dynamic_max_depth,
+            exclude_paths=known_paths,
+        )
+        if dyn_result.agents:
+            console.print(
+                f"  [green]✓[/green] Dynamic discovery found {len(dyn_result.agents)} additional config(s) "
+                f"({dyn_result.scanned_paths} files scanned, {dyn_result.elapsed_ms:.0f}ms)"
+            )
+        agents = merge_discoveries(agents, dyn_result.agents)
 
     configured = [a for a in agents if a.status == AgentStatus.CONFIGURED]
     if not configured and not installed_agents:

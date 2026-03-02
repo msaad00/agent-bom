@@ -242,6 +242,18 @@ def main():
     help="Verify instruction file provenance (CLAUDE.md, .cursorrules, SKILL.md) via Sigstore bundles",
 )
 @click.option(
+    "--dynamic-discovery",
+    is_flag=True,
+    help="Enable dynamic content-based MCP config discovery beyond known clients",
+)
+@click.option(
+    "--dynamic-max-depth",
+    type=int,
+    default=4,
+    show_default=True,
+    help="Max directory depth for dynamic discovery filesystem scanning",
+)
+@click.option(
     "--ai-enrich",
     is_flag=True,
     help="Enrich findings with LLM-generated risk narratives, executive summary, and threat chains. Auto-detects Ollama (free, local) or uses litellm (pip install 'agent-bom[ai-enrich]')",
@@ -423,6 +435,8 @@ def scan(
     enforce: bool,
     verify_integrity: bool,
     verify_instructions: bool,
+    dynamic_discovery: bool,
+    dynamic_max_depth: int,
     ai_enrich: bool,
     ai_model: str,
     aws: bool,
@@ -520,6 +534,7 @@ def scan(
         transitive = True
         verify_integrity = True
         verify_instructions = True
+        dynamic_discovery = True
     elif preset == "quick":
         transitive = False
         enrich = False
@@ -744,9 +759,9 @@ def scan(
         con.print(f"  [green]✓[/green] Loaded {len(agents)} agent(s) from inventory")
     elif not skill_only and config_dir:
         con.print(f"\n[bold blue]Scanning config directory: {config_dir}...[/bold blue]\n")
-        agents = discover_all(project_dir=config_dir)
+        agents = discover_all(project_dir=config_dir, dynamic=dynamic_discovery, dynamic_max_depth=dynamic_max_depth)
     elif not skill_only:
-        agents = discover_all(project_dir=project)
+        agents = discover_all(project_dir=project, dynamic=dynamic_discovery, dynamic_max_depth=dynamic_max_depth)
 
     any_cloud = (
         aws

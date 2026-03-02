@@ -351,25 +351,20 @@ def validate_image_ref(ref: str) -> str:
     return ref
 
 
-def sanitize_error(exc: Exception) -> str:
-    """Return a generic, client-safe error message and log details server-side.
+def sanitize_error(exc: Exception | str) -> str:
+    """Return a safe error message with internal details stripped.
 
-    The original exception message is redacted (URLs and paths removed,
-    truncated to 200 chars) and logged, but a constant, non-sensitive
-    message is returned to API consumers so internal details are not leaked.
+    Removes file paths, URLs, and truncates to 200 chars so that
+    internal implementation details are never leaked to API consumers.
+    The sanitized (not generic) message is returned — useful for
+    validation errors where the client needs actionable feedback.
     """
     msg = str(exc)
     # Strip URLs first (before path regex matches the path portion)
     msg = re.sub(r"https?://[^\s\"']+", "<url>", msg)
     # Strip absolute file paths
     msg = re.sub(r"(/[^\s:\"']+)+", "<path>", msg)
-    redacted = msg[:200] if len(msg) > 200 else msg
-
-    # Log the redacted error and full traceback on the server for debugging
-    logger.error("Internal error occurred: %s", redacted, exc_info=True)
-
-    # Return a generic message that does not reveal implementation details
-    return "An internal error occurred while processing the request."
+    return msg[:200] if len(msg) > 200 else msg
 
 
 # Export all validation functions

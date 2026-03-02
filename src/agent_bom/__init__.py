@@ -5,4 +5,4 @@ from importlib.metadata import PackageNotFoundError, version
 try:
     __version__ = version("agent-bom")
 except PackageNotFoundError:
-    __version__ = "0.37.0"
+    __version__ = "0.38.0"

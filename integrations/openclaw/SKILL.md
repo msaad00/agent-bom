@@ -19,6 +19,10 @@ metadata:
   smithery: https://smithery.ai/server/agent-bom/agent-bom
   scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
   tests: 2099
+  install:
+    pipx: agent-bom
+    pip: agent-bom
+    docker: ghcr.io/msaad00/agent-bom:0.38.1
   openclaw:
     requires:
       bins: []

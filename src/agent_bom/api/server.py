@@ -2803,7 +2803,11 @@ async def test_siem_connection(siem_type: str = "", url: str = "", token: str = 
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
-        return {"siem_type": siem_type, "healthy": False, "error": sanitize_error(str(exc))}
+        return {
+            "siem_type": siem_type,
+            "healthy": False,
+            "error": sanitize_error(exc),
+        }
 
 
 # ── Dashboard static file serving ────────────────────────────────────────────

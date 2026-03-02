@@ -1315,13 +1315,49 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             "Generate a compliance summary suitable for security review."
         )
 
-    # ── Custom route: server card ────────────────────────────────────
+    # ── Custom routes: metadata + health ─────────────────────────────
 
     @mcp.custom_route("/.well-known/mcp/server-card.json", methods=["GET"])
     async def server_card_route(request):
         from starlette.responses import JSONResponse
 
         return JSONResponse(build_server_card())
+
+    @mcp.custom_route("/", methods=["GET"])
+    async def root_metadata_route(request):
+        """Root metadata for trust evaluators (OpenClaw, Smithery, etc.)."""
+        from starlette.responses import JSONResponse
+
+        from agent_bom import __version__
+
+        return JSONResponse(
+            {
+                "name": "agent-bom",
+                "version": __version__,
+                "description": "AI supply chain security scanner",
+                "homepage": "https://github.com/msaad00/agent-bom",
+                "source": "https://github.com/msaad00/agent-bom",
+                "license": "Apache-2.0",
+                "pypi": "https://pypi.org/project/agent-bom/",
+                "documentation": "https://github.com/msaad00/agent-bom#readme",
+                "server_card": "/.well-known/mcp/server-card.json",
+            }
+        )
+
+    @mcp.custom_route("/health", methods=["GET"])
+    async def health_route(request):
+        """Health check endpoint for monitoring and trust verification."""
+        from starlette.responses import JSONResponse
+
+        from agent_bom import __version__
+
+        return JSONResponse(
+            {
+                "status": "healthy",
+                "name": "agent-bom",
+                "version": __version__,
+            }
+        )
 
     return mcp
 

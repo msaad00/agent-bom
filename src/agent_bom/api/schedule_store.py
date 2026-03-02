@@ -88,6 +88,7 @@ class SQLiteScheduleStore:
                 data TEXT NOT NULL
             )
         """)
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_sched_due ON schedules(enabled, next_run)")
         self._conn.commit()
 
     def put(self, schedule: ScanSchedule) -> None:

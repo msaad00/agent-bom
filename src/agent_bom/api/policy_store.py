@@ -170,9 +170,7 @@ class SQLitePolicyStore:
                 data TEXT NOT NULL
             )"""
         )
-        c.execute(
-            "CREATE INDEX IF NOT EXISTS idx_gp_name ON gateway_policies(name)"
-        )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_gp_name ON gateway_policies(name)")
         c.execute(
             """CREATE TABLE IF NOT EXISTS policy_audit_log (
                 entry_id TEXT PRIMARY KEY,
@@ -183,12 +181,9 @@ class SQLitePolicyStore:
                 data TEXT NOT NULL
             )"""
         )
-        c.execute(
-            "CREATE INDEX IF NOT EXISTS idx_pal_policy ON policy_audit_log(policy_id)"
-        )
-        c.execute(
-            "CREATE INDEX IF NOT EXISTS idx_pal_agent ON policy_audit_log(agent_name)"
-        )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_pal_policy ON policy_audit_log(policy_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_pal_agent ON policy_audit_log(agent_name)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_pal_ts ON policy_audit_log(timestamp)")
         c.commit()
 
     # ── policies ──
@@ -227,9 +222,7 @@ class SQLitePolicyStore:
         return cur.rowcount > 0
 
     def list_policies(self) -> list[GatewayPolicy]:
-        rows = self._conn.execute(
-            "SELECT data FROM gateway_policies ORDER BY name"
-        ).fetchall()
+        rows = self._conn.execute("SELECT data FROM gateway_policies ORDER BY name").fetchall()
         return [GatewayPolicy.model_validate_json(r[0]) for r in rows]
 
     def get_policies_for_agent(
@@ -286,3 +279,16 @@ class SQLitePolicyStore:
         params.append(str(limit))
         rows = self._conn.execute(sql, params).fetchall()
         return [PolicyAuditEntry.model_validate_json(r[0]) for r in rows]
+
+    def cleanup_audit_log(self, max_entries: int = 50_000) -> int:
+        """Remove oldest audit log entries when exceeding retention limit."""
+        count = self._conn.execute("SELECT COUNT(*) FROM policy_audit_log").fetchone()[0]
+        if count <= max_entries:
+            return 0
+        to_delete = count - max_entries
+        cursor = self._conn.execute(
+            "DELETE FROM policy_audit_log WHERE entry_id IN (SELECT entry_id FROM policy_audit_log ORDER BY timestamp ASC LIMIT ?)",
+            (to_delete,),
+        )
+        self._conn.commit()
+        return cursor.rowcount

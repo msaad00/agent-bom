@@ -298,11 +298,16 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: StarletteRequest, call_next):
         content_length = request.headers.get("content-length")
-        if content_length and int(content_length) > self._max_bytes:
-            return JSONResponse(
-                status_code=413,
-                content={"detail": f"Request body too large (max {self._max_bytes // (1024 * 1024)}MB)"},
-            )
+        if content_length:
+            try:
+                cl = int(content_length)
+            except (ValueError, OverflowError):
+                return JSONResponse(status_code=400, content={"detail": "Invalid Content-Length header"})
+            if cl > self._max_bytes:
+                return JSONResponse(
+                    status_code=413,
+                    content={"detail": f"Request body too large (max {self._max_bytes // (1024 * 1024)}MB)"},
+                )
         return await call_next(request)
 
 
@@ -340,7 +345,7 @@ def configure_api(
 
 
 # Thread pool for running blocking scan functions without blocking the event loop
-_executor = ThreadPoolExecutor(max_workers=4)
+_executor = ThreadPoolExecutor(max_workers=min(8, (_os.cpu_count() or 4) + 2))
 
 # ─── Lazy-init lock (protects _store, _fleet_store, _policy_store) ───────────
 _store_lock = threading.Lock()
@@ -585,8 +590,11 @@ def _run_scan_sync(job: ScanJob) -> None:
 
             from agent_bom.models import Agent, AgentType, MCPServer
 
-            with open(req.inventory) as _f:
-                inv_data = _json.load(_f)
+            try:
+                with open(req.inventory) as _f:
+                    inv_data = _json.load(_f)
+            except (_json.JSONDecodeError, OSError) as parse_err:
+                raise RuntimeError(f"Failed to load inventory file: {parse_err}") from parse_err
             for agent_data in inv_data.get("agents", []):
                 servers = []
                 for s in agent_data.get("mcp_servers", []):
@@ -779,11 +787,32 @@ _scheduler_task: asyncio.Task | None = None
 _schedule_store = None
 
 
+_STUCK_JOB_TIMEOUT = 1800  # 30 minutes — mark RUNNING jobs as FAILED
+
+
 async def _cleanup_loop():
-    """Background task that removes expired jobs every 5 minutes."""
+    """Background task that removes expired jobs and unsticks RUNNING jobs."""
     while True:
         await asyncio.sleep(300)
         _get_store().cleanup_expired(_JOB_TTL_SECONDS)
+        # Unstick jobs that have been RUNNING for too long
+        try:
+            from datetime import datetime, timezone
+
+            now = datetime.now(timezone.utc)
+            with _jobs_lock:
+                for job in list(_jobs.values()):
+                    if job.status == JobStatus.RUNNING and job.created_at:
+                        try:
+                            created = datetime.fromisoformat(job.created_at.replace("Z", "+00:00"))
+                            if (now - created).total_seconds() > _STUCK_JOB_TIMEOUT:
+                                job.status = JobStatus.FAILED
+                                job.error = "Timed out (stuck in RUNNING state)"
+                                job.completed_at = now.isoformat()
+                        except (ValueError, TypeError):
+                            pass
+        except Exception:  # noqa: BLE001
+            pass
 
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
@@ -1439,7 +1468,10 @@ def _load_registry() -> list[dict]:
     registry_path = _Path(__file__).parent.parent / "mcp_registry.json"
     if not registry_path.exists():
         return []
-    raw = _json.loads(registry_path.read_text())
+    try:
+        raw = _json.loads(registry_path.read_text())
+    except (_json.JSONDecodeError, OSError):
+        return []
     servers_dict = raw.get("servers", {})
     result = []
     for key, entry in servers_dict.items():
@@ -1614,21 +1646,30 @@ def _get_configured_log_path() -> _Path | None:
     return path
 
 
+_MAX_LOG_LINES = 50_000  # Cap log parsing to prevent memory issues
+
+
 def _read_alerts_from_log(path: _Path) -> list[dict]:
     """Read runtime_alert records from a JSONL audit log."""
     import json as _json
 
-    alerts = []
-    for line in path.read_text().splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            record = _json.loads(line)
-            if record.get("type") == "runtime_alert":
-                alerts.append(record)
-        except (ValueError, KeyError):
-            continue
+    alerts: list[dict] = []
+    try:
+        with open(path) as f:
+            for i, raw_line in enumerate(f):
+                if i >= _MAX_LOG_LINES:
+                    break
+                line = raw_line.strip()
+                if not line:
+                    continue
+                try:
+                    record = _json.loads(line)
+                    if record.get("type") == "runtime_alert":
+                        alerts.append(record)
+                except (ValueError, KeyError):
+                    continue
+    except OSError:
+        pass
     return alerts
 
 
@@ -1637,16 +1678,22 @@ def _read_metrics_from_log(path: _Path) -> dict | None:
     import json as _json
 
     last_summary = None
-    for line in path.read_text().splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            record = _json.loads(line)
-            if record.get("type") == "proxy_summary":
-                last_summary = record
-        except (ValueError, KeyError):
-            continue
+    try:
+        with open(path) as f:
+            for i, raw_line in enumerate(f):
+                if i >= _MAX_LOG_LINES:
+                    break
+                line = raw_line.strip()
+                if not line:
+                    continue
+                try:
+                    record = _json.loads(line)
+                    if record.get("type") == "proxy_summary":
+                        last_summary = record
+                except (ValueError, KeyError):
+                    continue
+    except OSError:
+        pass
     return last_summary
 
 

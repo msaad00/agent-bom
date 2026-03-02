@@ -63,7 +63,8 @@ class InMemoryJobStore:
     def cleanup_expired(self, ttl_seconds: int = _JOB_TTL_SECONDS) -> int:
         now = datetime.now(timezone.utc)
         expired = [
-            jid for jid, job in self._jobs.items()
+            jid
+            for jid, job in self._jobs.items()
             if job.status in (JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED)
             and job.completed_at
             and (now - datetime.fromisoformat(job.completed_at)).total_seconds() > ttl_seconds
@@ -107,6 +108,8 @@ class SQLiteJobStore:
                 data TEXT NOT NULL
             )
         """)
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_completed ON jobs(completed_at)")
         self._conn.commit()
 
     @staticmethod
@@ -126,9 +129,7 @@ class SQLiteJobStore:
         self._conn.commit()
 
     def get(self, job_id: str) -> ScanJob | None:
-        row = self._conn.execute(
-            "SELECT data FROM jobs WHERE job_id = ?", (job_id,)
-        ).fetchone()
+        row = self._conn.execute("SELECT data FROM jobs WHERE job_id = ?", (job_id,)).fetchone()
         if row is None:
             return None
         return self._deserialize(row[0])
@@ -143,13 +144,8 @@ class SQLiteJobStore:
         return [self._deserialize(r[0]) for r in rows]
 
     def list_summary(self) -> list[dict]:
-        rows = self._conn.execute(
-            "SELECT job_id, status, created_at, completed_at FROM jobs ORDER BY created_at DESC"
-        ).fetchall()
-        return [
-            {"job_id": r[0], "status": r[1], "created_at": r[2], "completed_at": r[3]}
-            for r in rows
-        ]
+        rows = self._conn.execute("SELECT job_id, status, created_at, completed_at FROM jobs ORDER BY created_at DESC").fetchall()
+        return [{"job_id": r[0], "status": r[1], "created_at": r[2], "completed_at": r[3]} for r in rows]
 
     def cleanup_expired(self, ttl_seconds: int = _JOB_TTL_SECONDS) -> int:
         now = datetime.now(timezone.utc).isoformat()

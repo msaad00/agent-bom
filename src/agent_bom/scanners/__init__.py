@@ -436,8 +436,20 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
     return vulns
 
 
+def _strip_extras(name: str) -> str:
+    """Strip pip extras notation: ``requests[security]`` → ``requests``."""
+    import re as _re
+
+    return _re.sub(r"\[.*?\]$", "", name)
+
+
 async def scan_packages(packages: list[Package]) -> int:
     """Scan a list of packages for vulnerabilities. Returns count of vulns found."""
+    # Strip pip extras notation before OSV queries (OSV doesn't understand extras)
+    for pkg in packages:
+        if pkg.ecosystem == "pypi" and "[" in pkg.name:
+            pkg.name = _strip_extras(pkg.name)
+
     # Auto-resolve "latest"/"unknown" versions before OSV query
     unresolved = [p for p in packages if p.version in ("latest", "unknown", "") and p.ecosystem in ("npm", "pypi")]
     if unresolved:

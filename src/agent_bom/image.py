@@ -25,6 +25,7 @@ Usage from cli.py::
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import subprocess
 import tarfile
@@ -35,6 +36,8 @@ from typing import Optional
 from agent_bom.models import Package, PermissionProfile, Severity, Vulnerability
 from agent_bom.sbom import parse_cyclonedx
 from agent_bom.security import validate_image_ref
+
+_logger = logging.getLogger(__name__)
 
 
 class ImageScanError(Exception):
@@ -361,6 +364,7 @@ def _packages_from_tar(tar_path: Path) -> list[Package]:
                         if pkg_name and pkg_version:
                             _add(pkg_name, pkg_version, "pypi")
                     except Exception:
+                        _logger.debug("Skipped Python package in %s: %s", member_name, Exception)
                         continue
 
             # --- Node: node_modules/*/package.json ---
@@ -377,6 +381,7 @@ def _packages_from_tar(tar_path: Path) -> list[Package]:
                         if pkg_name:
                             _add(pkg_name, pkg_version, "npm")
                     except Exception:
+                        _logger.debug("Skipped Node package in %s", member_name)
                         continue
 
             # --- Debian/Ubuntu: dpkg status ---
@@ -397,7 +402,7 @@ def _packages_from_tar(tar_path: Path) -> list[Package]:
                                 _add(pkg_name, pkg_version, "deb", f"pkg:deb/debian/{pkg_name}@{pkg_version}")
                                 pkg_name = pkg_version = ""
                 except Exception:
-                    pass
+                    _logger.debug("Failed to parse dpkg status from container")
     except tarfile.TarError as e:
         raise ImageScanError(f"Failed to read container filesystem: {e}")
 
@@ -437,11 +442,25 @@ def _scan_with_docker(image_ref: str) -> list[Package]:
 
     finally:
         if container_id:
-            subprocess.run(
-                ["docker", "rm", container_id],
-                capture_output=True,
-                timeout=30,
-            )
+            try:
+                rm_result = subprocess.run(
+                    ["docker", "rm", container_id],
+                    capture_output=True,
+                    timeout=30,
+                )
+                if rm_result.returncode != 0:
+                    import logging as _logging
+
+                    _logging.getLogger(__name__).warning(
+                        "docker rm %s failed (exit %d): %s",
+                        container_id,
+                        rm_result.returncode,
+                        rm_result.stderr.strip()[:100],
+                    )
+            except (subprocess.TimeoutExpired, OSError) as cleanup_err:
+                import logging as _logging
+
+                _logging.getLogger(__name__).warning("docker rm %s error: %s", container_id, cleanup_err)
 
 
 # ─── Public API ───────────────────────────────────────────────────────────────

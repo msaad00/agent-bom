@@ -1180,14 +1180,14 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                             version = dist_tags.get("latest", "unknown")
                             license_info = data.get("license")
                     except Exception:
-                        pass
+                        logger.debug("npm registry lookup failed for %s", name)
                     # npm download count
                     try:
                         resp = await client.get(f"https://api.npmjs.org/downloads/point/last-week/{name}")
                         if resp.status_code == 200:
                             download_count = resp.json().get("downloads", 0)
                     except Exception:
-                        pass
+                        logger.debug("npm download count lookup failed for %s", name)
                 elif eco == "pypi":
                     try:
                         resp = await client.get(f"https://pypi.org/pypi/{name}/json")
@@ -1196,7 +1196,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                             version = data.get("info", {}).get("version", "unknown")
                             license_info = data.get("info", {}).get("license")
                     except Exception:
-                        pass
+                        logger.debug("PyPI metadata lookup failed for %s", name)
 
             # Check CVEs
             from agent_bom.models import Package as Pkg
@@ -1221,7 +1221,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                             registry_verified = True
                             break
             except Exception:
-                pass
+                logger.debug("MCP registry verification failed for %s", name)
 
             # Build trust signals
             trust_signals = []

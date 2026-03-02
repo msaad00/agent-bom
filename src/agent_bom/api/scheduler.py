@@ -79,15 +79,22 @@ async def scheduler_loop(
     schedule_store,
     run_scan_fn,
     interval_seconds: int = 60,
+    max_backoff: int = 900,
 ):
     """Background loop that checks for due schedules and triggers scans.
+
+    Uses exponential backoff on consecutive failures (up to *max_backoff*
+    seconds) to avoid hammering a broken store.
 
     Args:
         schedule_store: ScheduleStore instance.
         run_scan_fn: Callable to trigger a scan (receives scan_config dict).
         interval_seconds: Check interval in seconds.
+        max_backoff: Maximum backoff delay in seconds (default 15 min).
     """
     import asyncio
+
+    consecutive_failures = 0
 
     while True:
         try:
@@ -111,7 +118,18 @@ async def scheduler_loop(
                     schedule_store.put(schedule)
                 except Exception:
                     logger.exception("Failed to trigger scheduled scan: %s", schedule.name)
+
+            # Success — reset backoff counter
+            consecutive_failures = 0
         except Exception:
-            logger.exception("Scheduler loop error")
+            consecutive_failures += 1
+            backoff = min(interval_seconds * (2**consecutive_failures), max_backoff)
+            logger.exception(
+                "Scheduler loop error (attempt %d, next retry in %ds)",
+                consecutive_failures,
+                backoff,
+            )
+            await asyncio.sleep(backoff)
+            continue
 
         await asyncio.sleep(interval_seconds)

@@ -39,7 +39,7 @@ metadata:
     file_reads: []
     file_writes: []
     network_endpoints:
-      - url: "https://trustworthy-solace-production-14a6.up.railway.app/sse"
+      - url: "https://agent-bom-mcp.up.railway.app/sse"
         purpose: "Optional remote MCP endpoint — queries public vulnerability databases (OSV, NVD, EPSS, KEV) and the bundled registry. Local-first scanning recommended."
         auth: false
     telemetry: false
@@ -148,7 +148,7 @@ configurations), a convenience endpoint is available:
   "mcpServers": {
     "agent-bom": {
       "type": "sse",
-      "url": "https://trustworthy-solace-production-14a6.up.railway.app/sse"
+      "url": "https://agent-bom-mcp.up.railway.app/sse"
     }
   }
 }

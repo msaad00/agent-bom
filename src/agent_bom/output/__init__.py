@@ -1283,6 +1283,9 @@ def to_json(report: AIBOMReport) -> dict:
     if report.enforcement_data:
         result["enforcement"] = report.enforcement_data
 
+    if report.context_graph_data:
+        result["context_graph"] = report.context_graph_data
+
     # Posture scorecard
     from agent_bom.posture import (
         compute_credential_risk_ranking,

@@ -389,3 +389,116 @@ class TestEdgeCases:
         graph = build_context_graph(agents, [])
         assert graph.nodes
         assert len(graph.edges) > 0
+
+
+# ---------------------------------------------------------------------------
+# TestIntegration — CLI flag and API endpoint
+# ---------------------------------------------------------------------------
+
+
+class TestOutputIntegration:
+    def test_context_graph_in_to_json(self):
+        """to_json() includes context_graph when set on report."""
+        from agent_bom.output import to_json
+
+        # Build minimal report with context_graph_data
+        agents_data = [
+            _agent(name="a1", servers=[_server(name="shared")]),
+            _agent(name="a2", servers=[_server(name="shared")]),
+        ]
+        graph = build_context_graph(agents_data, [])
+        paths = find_lateral_paths(graph, "agent:a1")
+        risks = compute_interaction_risks(graph)
+        cg_data = to_serializable(graph, paths, risks)
+
+        from agent_bom.models import AIBOMReport
+
+        report = AIBOMReport()
+        report.context_graph_data = cg_data
+
+        data = to_json(report)
+        assert "context_graph" in data
+        assert data["context_graph"]["stats"]["agent_count"] == 2
+        assert data["context_graph"]["stats"]["shared_server_count"] >= 1
+
+
+class TestAPIContextGraph:
+    @staticmethod
+    def _make_job(job_id, agents_data, blast_data=None):
+        from datetime import datetime, timezone
+
+        from agent_bom.api.server import JobStatus, ScanJob, ScanRequest
+
+        return ScanJob(
+            job_id=job_id,
+            status=JobStatus.DONE,
+            created_at=datetime.now(timezone.utc).isoformat(),
+            completed_at=datetime.now(timezone.utc).isoformat(),
+            request=ScanRequest(),
+            result={
+                "agents": agents_data,
+                "blast_radius": blast_data or [],
+            },
+        )
+
+    def test_api_endpoint_returns_graph(self):
+        """GET /v1/scan/{id}/context-graph returns valid graph structure."""
+        import asyncio
+
+        from agent_bom.api.server import _get_store, app
+
+        store = _get_store()
+        job_id = "test-cg-api"
+        job = self._make_job(
+            job_id,
+            [
+                _agent(name="a1", servers=[_server(name="shared")]),
+                _agent(name="a2", servers=[_server(name="shared")]),
+            ],
+        )
+        store.put(job)
+
+        from httpx import ASGITransport, AsyncClient
+
+        async def _call():
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                return await client.get(f"/v1/scan/{job_id}/context-graph")
+
+        resp = asyncio.run(_call())
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "nodes" in data
+        assert "stats" in data
+        assert data["stats"]["agent_count"] == 2
+
+    def test_api_agent_filter(self):
+        """GET /v1/scan/{id}/context-graph?agent=a1 filters lateral paths."""
+        import asyncio
+
+        from agent_bom.api.server import _get_store, app
+
+        store = _get_store()
+        job_id = "test-cg-filter"
+        job = self._make_job(
+            job_id,
+            [
+                _agent(name="a1", servers=[_server(name="shared")]),
+                _agent(name="a2", servers=[_server(name="shared")]),
+            ],
+        )
+        store.put(job)
+
+        from httpx import ASGITransport, AsyncClient
+
+        async def _call():
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                return await client.get(f"/v1/scan/{job_id}/context-graph?agent=a1")
+
+        resp = asyncio.run(_call())
+        assert resp.status_code == 200
+        data = resp.json()
+        # Lateral paths should only originate from a1
+        for p in data["lateral_paths"]:
+            assert p["source"] == "agent:a1"

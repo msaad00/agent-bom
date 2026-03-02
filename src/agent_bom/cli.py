@@ -241,6 +241,7 @@ def main():
     is_flag=True,
     help="Verify instruction file provenance (CLAUDE.md, .cursorrules, SKILL.md) via Sigstore bundles",
 )
+@click.option("--context-graph", "context_graph_flag", is_flag=True, help="Compute agent context graph with lateral movement analysis")
 @click.option(
     "--dynamic-discovery",
     is_flag=True,
@@ -435,6 +436,7 @@ def scan(
     enforce: bool,
     verify_integrity: bool,
     verify_instructions: bool,
+    context_graph_flag: bool,
     dynamic_discovery: bool,
     dynamic_max_depth: int,
     ai_enrich: bool,
@@ -535,6 +537,7 @@ def scan(
         verify_integrity = True
         verify_instructions = True
         dynamic_discovery = True
+        context_graph_flag = True
     elif preset == "quick":
         transitive = False
         enrich = False
@@ -1589,6 +1592,27 @@ def scan(
         report.prompt_scan_data = _prompt_scan_data
     if _enforcement_data:
         report.enforcement_data = _enforcement_data
+
+    # ── Context graph: lateral movement analysis ────────────────────
+    if context_graph_flag and report.blast_radii:
+        from agent_bom.context_graph import (
+            build_context_graph,
+            compute_interaction_risks,
+            find_lateral_paths,
+            to_serializable,
+        )
+        from agent_bom.output import to_json as _to_json_for_graph
+
+        _graph_json = _to_json_for_graph(report)
+        _cg = build_context_graph(_graph_json["agents"], _graph_json.get("blast_radius", []))
+        _all_paths = []
+        for _a in agents:
+            _all_paths.extend(find_lateral_paths(_cg, f"agent:{_a.name}"))
+        _cg_risks = compute_interaction_risks(_cg)
+        report.context_graph_data = to_serializable(_cg, _all_paths, _cg_risks)
+        _n_paths = len(_all_paths)
+        _n_risks = len(_cg_risks)
+        con.print(f"  [green]✓[/green] Context graph: {len(_cg.nodes)} nodes, {_n_paths} lateral path(s), {_n_risks} risk pattern(s)")
 
     # ── Step 1i: Model binary file scan ─────────────────────────────
     if not skill_only and model_dirs:

@@ -1028,6 +1028,47 @@ async def get_attack_flow(
     )
 
 
+@app.get("/v1/scan/{job_id}/context-graph", tags=["scan"])
+async def get_context_graph(job_id: str, agent: str | None = None) -> dict:
+    """Get the agent context graph with lateral movement analysis.
+
+    Returns nodes, edges, lateral paths, interaction risks, and stats for
+    a completed scan.  Optionally filter lateral paths to a single agent.
+
+    Query params:
+      ?agent=claude-desktop  - only compute lateral paths from this agent
+    """
+    job = _jobs_get(job_id) or _get_store().get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    if job.status != JobStatus.DONE or not job.result:
+        raise HTTPException(status_code=409, detail="Scan not completed yet")
+
+    from agent_bom.context_graph import (
+        NodeKind,
+        build_context_graph,
+        compute_interaction_risks,
+        find_lateral_paths,
+        to_serializable,
+    )
+
+    graph = build_context_graph(
+        job.result.get("agents", []),
+        job.result.get("blast_radius", []),
+    )
+    paths: list = []
+    if agent:
+        node_id = f"agent:{agent}"
+        if node_id in graph.nodes:
+            paths = find_lateral_paths(graph, node_id)
+    else:
+        for nid, node in graph.nodes.items():
+            if node.kind == NodeKind.AGENT:
+                paths.extend(find_lateral_paths(graph, nid))
+    risks = compute_interaction_risks(graph)
+    return to_serializable(graph, paths, risks)
+
+
 @app.get("/v1/scan/{job_id}/skill-audit", tags=["scan"])
 async def get_skill_audit(job_id: str) -> dict:
     """Get the skill security audit results for a completed scan.

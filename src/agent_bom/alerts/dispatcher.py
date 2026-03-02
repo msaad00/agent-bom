@@ -103,29 +103,64 @@ class SlackChannel:
 
 
 def _build_slack_payload(alert: dict) -> dict:
-    """Convert an alert dict into Slack Block Kit format."""
+    """Convert an alert dict into Slack Block Kit format.
+
+    Enriches scan alerts with blast radius details (affected agents,
+    credentials, risk score) when available in the alert's ``details`` dict.
+    """
     severity = alert.get("severity", "info").upper()
     message = alert.get("message", "")
     detector = alert.get("detector", "")
     ts = alert.get("ts", "")
     emoji = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🔵"}.get(severity, "ℹ️")
-    return {
-        "blocks": [
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f"{emoji} *{severity}* — {message}",
-                },
+
+    blocks: list[dict] = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"{emoji} *{severity}* — {message}",
             },
-            {
-                "type": "context",
-                "elements": [
-                    {"type": "mrkdwn", "text": f"Detector: `{detector}` | {ts}"},
-                ],
-            },
-        ],
-    }
+        },
+    ]
+
+    # Enrich with blast radius details when present
+    details = alert.get("details", {})
+    if details and isinstance(details, dict):
+        enrichment_parts: list[str] = []
+        risk_score = details.get("risk_score")
+        if risk_score is not None:
+            enrichment_parts.append(f"Risk Score: *{risk_score:.1f}/10*")
+        agents = details.get("affected_agents", [])
+        if agents:
+            enrichment_parts.append(f"Agents: {', '.join(agents[:5])}")
+        creds = details.get("credentials_exposed", [])
+        if creds:
+            enrichment_parts.append(f"Credentials: `{'`, `'.join(creds[:3])}`")
+        fixed = details.get("fixed_version")
+        if fixed:
+            enrichment_parts.append(f"Fix: upgrade to `{fixed}`")
+        if enrichment_parts:
+            blocks.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "\n".join(enrichment_parts),
+                    },
+                }
+            )
+
+    blocks.append(
+        {
+            "type": "context",
+            "elements": [
+                {"type": "mrkdwn", "text": f"Detector: `{detector}` | {ts}"},
+            ],
+        }
+    )
+
+    return {"blocks": blocks}
 
 
 # ─── Generic Webhook Channel ─────────────────────────────────────────────────

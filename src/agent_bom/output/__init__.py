@@ -1283,6 +1283,18 @@ def to_json(report: AIBOMReport) -> dict:
     if report.enforcement_data:
         result["enforcement"] = report.enforcement_data
 
+    # Posture scorecard
+    from agent_bom.posture import (
+        compute_credential_risk_ranking,
+        compute_incident_correlation,
+        compute_posture_scorecard,
+    )
+
+    scorecard = compute_posture_scorecard(report)
+    result["posture_scorecard"] = scorecard.to_dict()
+    result["credential_risk_ranking"] = compute_credential_risk_ranking(report)
+    result["incident_correlation"] = compute_incident_correlation(report)
+
     return result
 
 

@@ -39,6 +39,18 @@ def alerts_from_scan_result(report_dict: dict) -> list[dict]:
         package_name = vuln.get("package", {}).get("name", "") if isinstance(vuln.get("package"), dict) else vuln.get("package_name", "")
         risk_score = vuln.get("risk_score", 0)
 
+        # Common enrichment details for blast radius context
+        alert_details = {
+            "vuln_id": vuln_id,
+            "package": package_name,
+            "risk_score": risk_score,
+            "affected_agents": vuln.get("affected_agents", []),
+            "credentials_exposed": vuln.get("exposed_credentials", []),
+            "fixed_version": vuln.get("fixed_version"),
+            "cvss_score": vuln.get("cvss_score"),
+            "epss_score": vuln.get("epss_score"),
+        }
+
         # CISA KEV — actively exploited
         if is_kev:
             alerts.append(
@@ -47,7 +59,7 @@ def alerts_from_scan_result(report_dict: dict) -> list[dict]:
                     "detector": "scan_kev",
                     "severity": "critical",
                     "message": f"Actively exploited vulnerability {vuln_id} in {package_name} (CISA KEV)",
-                    "details": {"vuln_id": vuln_id, "package": package_name, "risk_score": risk_score},
+                    "details": alert_details,
                     "ts": ts,
                 }
             )
@@ -60,7 +72,7 @@ def alerts_from_scan_result(report_dict: dict) -> list[dict]:
                     "detector": "scan_cve",
                     "severity": severity,
                     "message": f"{severity.upper()} vulnerability {vuln_id} in {package_name}",
-                    "details": {"vuln_id": vuln_id, "package": package_name, "risk_score": risk_score},
+                    "details": alert_details,
                     "ts": ts,
                 }
             )

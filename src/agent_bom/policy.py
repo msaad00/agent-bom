@@ -123,6 +123,7 @@ def load_policy(path: str) -> dict:
     if p.suffix in (".yaml", ".yml"):
         try:
             import yaml
+
             data = yaml.safe_load(text)
         except ImportError:
             raise ImportError("PyYAML is required for YAML policy files: pip install pyyaml")
@@ -201,6 +202,7 @@ def _rule_matches(rule: dict, br) -> bool:
     # unverified_server: package must come from an unverified registry entry
     if rule.get("unverified_server"):
         from agent_bom.parsers import get_registry_entry
+
         is_unverified = False
         for server in br.affected_servers:
             reg = get_registry_entry(server)
@@ -213,6 +215,7 @@ def _rule_matches(rule: dict, br) -> bool:
     # registry_risk_gte: registry risk level must be >= threshold (low < medium < high)
     if "registry_risk_gte" in rule:
         from agent_bom.parsers import get_registry_entry
+
         threshold = RISK_LEVEL_ORDER.get(rule["registry_risk_gte"].lower(), 0)
         any_match = False
         for server in br.affected_servers:
@@ -242,6 +245,24 @@ def _rule_matches(rule: dict, br) -> bool:
         if not getattr(br.package, "is_malicious", False):
             return False
 
+    # min_scorecard_score: package's OpenSSF Scorecard score must be below threshold
+    # (i.e. rule triggers when scorecard is WORSE than threshold)
+    if "min_scorecard_score" in rule:
+        pkg_score = getattr(br.package, "scorecard_score", None)
+        if pkg_score is None or pkg_score >= rule["min_scorecard_score"]:
+            return False
+
+    # max_epss_score: vulnerability EPSS must be above threshold to trigger
+    if "max_epss_score" in rule:
+        epss = br.vulnerability.epss_score
+        if epss is None or epss < rule["max_epss_score"]:
+            return False
+
+    # has_kev_with_no_fix: KEV vulnerabilities without a known fix
+    if rule.get("has_kev_with_no_fix"):
+        if not br.vulnerability.is_kev or br.vulnerability.fixed_version:
+            return False
+
     return True
 
 
@@ -260,19 +281,21 @@ def evaluate_policy(policy: dict, blast_radii: list) -> dict:
         action = rule.get("action", "fail")
         for br in blast_radii:
             if _rule_matches(rule, br):
-                violations.append({
-                    "rule_id": rule["id"],
-                    "rule_description": rule.get("description", ""),
-                    "action": action,
-                    "vulnerability_id": br.vulnerability.id,
-                    "severity": br.vulnerability.severity.value,
-                    "package": f"{br.package.name}@{br.package.version}",
-                    "ecosystem": br.package.ecosystem,
-                    "affected_agents": [a.name for a in br.affected_agents],
-                    "exposed_credentials": br.exposed_credentials,
-                    "is_kev": br.vulnerability.is_kev,
-                    "ai_risk_context": br.ai_risk_context,
-                })
+                violations.append(
+                    {
+                        "rule_id": rule["id"],
+                        "rule_description": rule.get("description", ""),
+                        "action": action,
+                        "vulnerability_id": br.vulnerability.id,
+                        "severity": br.vulnerability.severity.value,
+                        "package": f"{br.package.name}@{br.package.version}",
+                        "ecosystem": br.package.ecosystem,
+                        "affected_agents": [a.name for a in br.affected_agents],
+                        "exposed_credentials": br.exposed_credentials,
+                        "is_kev": br.vulnerability.is_kev,
+                        "ai_risk_context": br.ai_risk_context,
+                    }
+                )
 
     failures = [v for v in violations if v["action"] == "fail"]
     warnings = [v for v in violations if v["action"] == "warn"]

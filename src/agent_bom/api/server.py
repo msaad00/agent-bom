@@ -1605,6 +1605,86 @@ async def get_compliance_by_framework(framework: str) -> dict:
     }
 
 
+# ─── Posture Scorecard ─────────────────────────────────────────────────────
+
+
+@app.get("/v1/posture", tags=["compliance"])
+async def get_posture_scorecard() -> dict:
+    """Compute enterprise posture scorecard from the latest completed scan.
+
+    Returns a letter grade (A-F), numeric score (0-100), and per-dimension
+    breakdown covering vulnerability posture, credential hygiene, supply
+    chain quality, compliance coverage, active exploitation, and configuration.
+    """
+    latest_result = None
+    for job in _get_store().list_all():
+        if job.status != JobStatus.DONE or not job.result:
+            continue
+        latest_result = job.result
+        break  # list_all returns newest first
+
+    if latest_result is None:
+        return {
+            "grade": "N/A",
+            "score": 0,
+            "summary": "No completed scans available",
+            "dimensions": {},
+        }
+
+    scorecard = latest_result.get("posture_scorecard")
+    if scorecard:
+        return scorecard
+
+    return {
+        "grade": "N/A",
+        "score": 0,
+        "summary": "Scorecard not computed for this scan",
+        "dimensions": {},
+    }
+
+
+@app.get("/v1/posture/credentials", tags=["compliance"])
+async def get_credential_risk_ranking() -> dict:
+    """Rank credentials by blast radius exposure from the latest scan.
+
+    Returns credentials sorted by risk tier (critical to low) with
+    associated vulnerability counts and affected agents.
+    """
+    latest_result = None
+    for job in _get_store().list_all():
+        if job.status != JobStatus.DONE or not job.result:
+            continue
+        latest_result = job.result
+        break
+
+    if latest_result is None:
+        return {"credentials": [], "count": 0}
+
+    ranking = latest_result.get("credential_risk_ranking", [])
+    return {"credentials": ranking, "count": len(ranking)}
+
+
+@app.get("/v1/posture/incidents", tags=["compliance"])
+async def get_incident_correlation() -> dict:
+    """Group vulnerabilities by agent for SOC incident correlation.
+
+    Returns agent-centric incident summaries with priority (P1-P4),
+    severity counts, credential exposure, and recommended actions.
+    """
+    latest_result = None
+    for job in _get_store().list_all():
+        if job.status != JobStatus.DONE or not job.result:
+            continue
+        latest_result = job.result
+        break
+
+    if latest_result is None:
+        return {"incidents": [], "count": 0}
+
+    incidents = latest_result.get("incident_correlation", [])
+    return {"incidents": incidents, "count": len(incidents)}
+
+
 # ─── Proxy Status & Alerts ──────────────────────────────────────────────────
 
 # In-process ring buffer for proxy alerts/metrics.  The proxy (when running

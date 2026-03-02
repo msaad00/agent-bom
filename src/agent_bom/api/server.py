@@ -29,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import secrets
+import threading
 import time
 import uuid
 from collections import defaultdict
@@ -135,7 +136,7 @@ async def _lifespan(app_instance: FastAPI):
             request=ScanRequest(**scan_config) if isinstance(scan_config, dict) else scan_config,
         )
         _get_store().put(job)
-        _jobs[job.job_id] = job
+        _jobs_put(job.job_id, job)
         loop = asyncio.get_event_loop()
         loop.run_in_executor(_executor, _run_scan_sync, job)
         return job.job_id
@@ -143,10 +144,23 @@ async def _lifespan(app_instance: FastAPI):
     _scheduler_task = asyncio.create_task(scheduler_loop(_schedule_store, _schedule_scan))
 
     yield
+
+    # ── Graceful shutdown ──
     if _scheduler_task:
         _scheduler_task.cancel()
     if _cleanup_task:
         _cleanup_task.cancel()
+    # Shut down thread pool (wait for in-flight scans, 30s timeout)
+    _executor.shutdown(wait=True, cancel_futures=True)
+    # Close Postgres connection pool if active
+    try:
+        if _os.environ.get("AGENT_BOM_POSTGRES_URL"):
+            from agent_bom.api.postgres_store import _pool as _pg_pool
+
+            if _pg_pool is not None:
+                _pg_pool.close()
+    except Exception:
+        _logger.debug("Postgres pool close skipped")
 
 
 app = FastAPI(
@@ -294,6 +308,7 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
 
 _MAX_CONCURRENT_JOBS = 10
 _JOB_TTL_SECONDS = 3600  # 1 hour
+_MAX_IN_MEMORY_JOBS = 200  # Bounded eviction ceiling for _jobs dict
 
 
 def configure_api(
@@ -327,6 +342,9 @@ def configure_api(
 # Thread pool for running blocking scan functions without blocking the event loop
 _executor = ThreadPoolExecutor(max_workers=4)
 
+# ─── Lazy-init lock (protects _store, _fleet_store, _policy_store) ───────────
+_store_lock = threading.Lock()
+
 # ─── Job store (pluggable) ────────────────────────────────────────────────────
 # Import lazily to avoid circular import at module level
 _store: Any = None  # Initialized on first use
@@ -336,9 +354,11 @@ def _get_store():
     """Get the active job store, creating InMemoryJobStore if not yet set."""
     global _store
     if _store is None:
-        from agent_bom.api.store import InMemoryJobStore
+        with _store_lock:
+            if _store is None:
+                from agent_bom.api.store import InMemoryJobStore
 
-        _store = InMemoryJobStore()
+                _store = InMemoryJobStore()
     return _store
 
 
@@ -348,8 +368,33 @@ def set_job_store(store: Any) -> None:
     _store = store
 
 
-# Legacy alias for direct dict access (read-only compatibility)
+# In-memory job refs for SSE streaming (bounded, thread-safe)
 _jobs: dict[str, "ScanJob"] = {}
+_jobs_lock = threading.Lock()
+
+
+def _jobs_put(job_id: str, job: "ScanJob") -> None:
+    """Add a job to _jobs with bounded eviction."""
+    with _jobs_lock:
+        _jobs[job_id] = job
+        if len(_jobs) > _MAX_IN_MEMORY_JOBS:
+            # Evict oldest completed jobs first
+            completed = [(jid, j) for jid, j in _jobs.items() if j.status in (JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED)]
+            completed.sort(key=lambda x: x[1].completed_at or "")
+            for jid, _ in completed[: len(_jobs) - _MAX_IN_MEMORY_JOBS]:
+                _jobs.pop(jid, None)
+
+
+def _jobs_get(job_id: str) -> "ScanJob | None":
+    """Thread-safe get from _jobs."""
+    with _jobs_lock:
+        return _jobs.get(job_id)
+
+
+def _jobs_pop(job_id: str) -> "ScanJob | None":
+    """Thread-safe pop from _jobs."""
+    with _jobs_lock:
+        return _jobs.pop(job_id, None)
 
 
 # ─── Models ───────────────────────────────────────────────────────────────────
@@ -503,10 +548,24 @@ def _run_scan_sync(job: ScanJob) -> None:
         from agent_bom.output import to_json
         from agent_bom.parsers import extract_packages
         from agent_bom.scanners import scan_agents_sync
+        from agent_bom.security import validate_path
 
         req = job.request
         agents = []
         warnings_all: list[str] = []
+
+        # ── Path validation (prevent path traversal via API) ──
+        path_fields = (
+            ([req.inventory] if req.inventory else [])
+            + req.tf_dirs
+            + ([req.gha_path] if req.gha_path else [])
+            + req.agent_projects
+            + req.jupyter_dirs
+            + ([req.sbom] if req.sbom else [])
+            + req.filesystem_paths
+        )
+        for p in path_fields:
+            validate_path(p, must_exist=True)
 
         # Step 1 — auto-discover local MCP configs
         job.progress.append("Discovering local MCP configurations...")
@@ -762,7 +821,7 @@ async def create_scan(request: ScanRequest) -> ScanJob:
     )
     store.put(job)
     # Keep in-memory ref for SSE streaming (progress list updates in real-time)
-    _jobs[job.job_id] = job
+    _jobs_put(job.job_id, job)
 
     loop = asyncio.get_event_loop()
     loop.run_in_executor(_executor, _run_scan_sync, job)
@@ -774,8 +833,9 @@ async def create_scan(request: ScanRequest) -> ScanJob:
 async def get_scan(job_id: str) -> ScanJob:
     """Poll scan status and results."""
     # Check in-memory first (for in-progress jobs with live progress)
-    if job_id in _jobs:
-        return _jobs[job_id]
+    in_mem = _jobs_get(job_id)
+    if in_mem is not None:
+        return in_mem
     job = _get_store().get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
@@ -801,7 +861,7 @@ async def get_attack_flow(
       ?framework=LLM05       - filter by OWASP/ATLAS/NIST tag
       ?agent=claude-desktop  - filter to a specific agent
     """
-    job = _jobs.get(job_id) or _get_store().get(job_id)
+    job = _jobs_get(job_id) or _get_store().get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
     if job.status != JobStatus.DONE or not job.result:
@@ -830,7 +890,7 @@ async def get_skill_audit(job_id: str) -> dict:
     typosquat detection, unverified servers, shell access, and more.
     Empty results if no skill files were scanned.
     """
-    job = _jobs.get(job_id) or _get_store().get(job_id)
+    job = _jobs_get(job_id) or _get_store().get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
@@ -852,7 +912,7 @@ async def get_skill_audit(job_id: str) -> dict:
 @app.delete("/v1/scan/{job_id}", status_code=204, tags=["scan"])
 async def delete_scan(job_id: str) -> None:
     """Discard a job record."""
-    in_memory = _jobs.pop(job_id, None)
+    in_memory = _jobs_pop(job_id)
     in_store = _get_store().delete(job_id)
     if not in_memory and not in_store:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
@@ -874,7 +934,7 @@ async def stream_scan(job_id: str):
             detail="SSE requires sse-starlette. Install: pip install 'agent-bom[api]'",
         ) from exc
 
-    if job_id not in _jobs:
+    if _jobs_get(job_id) is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
     import json as _json
@@ -882,7 +942,7 @@ async def stream_scan(job_id: str):
     async def event_generator():
         sent = 0
         while True:
-            current = _jobs.get(job_id)
+            current = _jobs_get(job_id)
             if current is None:
                 break
             # Send any new progress lines
@@ -1173,12 +1233,22 @@ async def get_agent_lifecycle(agent_name: str) -> dict:
 
 
 @app.get("/v1/jobs", tags=["scan"])
-async def list_jobs() -> dict:
-    """List all scan jobs (for the UI job history panel)."""
+async def list_jobs(limit: int = 50, offset: int = 0) -> dict:
+    """List all scan jobs (for the UI job history panel).
+
+    Supports pagination via ``limit`` (default 50, max 200) and ``offset``.
+    """
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
     summary = _get_store().list_summary()
+    total = len(summary)
+    page = summary[offset : offset + limit]
     return {
-        "jobs": summary,
-        "count": len(summary),
+        "jobs": page,
+        "count": len(page),
+        "total": total,
+        "limit": limit,
+        "offset": offset,
     }
 
 
@@ -1721,9 +1791,11 @@ def _get_fleet_store():
     """Get the active fleet store, creating InMemoryFleetStore if not set."""
     global _fleet_store
     if _fleet_store is None:
-        from agent_bom.api.fleet_store import InMemoryFleetStore
+        with _store_lock:
+            if _fleet_store is None:
+                from agent_bom.api.fleet_store import InMemoryFleetStore
 
-        _fleet_store = InMemoryFleetStore()
+                _fleet_store = InMemoryFleetStore()
     return _fleet_store
 
 
@@ -1740,9 +1812,11 @@ def _get_policy_store():
     """Get the active policy store, creating InMemoryPolicyStore if not set."""
     global _policy_store
     if _policy_store is None:
-        from agent_bom.api.policy_store import InMemoryPolicyStore
+        with _store_lock:
+            if _policy_store is None:
+                from agent_bom.api.policy_store import InMemoryPolicyStore
 
-        _policy_store = InMemoryPolicyStore()
+                _policy_store = InMemoryPolicyStore()
     return _policy_store
 
 
@@ -1769,8 +1843,15 @@ async def list_fleet(
     state: str | None = None,
     environment: str | None = None,
     min_trust: float | None = None,
+    limit: int = 50,
+    offset: int = 0,
 ):
-    """List all agents in the fleet registry."""
+    """List all agents in the fleet registry.
+
+    Supports pagination via ``limit`` (default 50, max 200) and ``offset``.
+    """
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
     agents = _get_fleet_store().list_all()
     if state:
         agents = [a for a in agents if a.lifecycle_state.value == state]
@@ -1778,9 +1859,14 @@ async def list_fleet(
         agents = [a for a in agents if a.environment == environment]
     if min_trust is not None:
         agents = [a for a in agents if a.trust_score >= min_trust]
+    total = len(agents)
+    page = agents[offset : offset + limit]
     return {
-        "agents": [a.model_dump() for a in agents],
-        "count": len(agents),
+        "agents": [a.model_dump() for a in page],
+        "count": len(page),
+        "total": total,
+        "limit": limit,
+        "offset": offset,
     }
 
 

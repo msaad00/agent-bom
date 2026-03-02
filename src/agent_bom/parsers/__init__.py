@@ -16,6 +16,22 @@ from agent_bom.models import MCPServer, Package
 
 # Path to bundled MCP registry (parsers/ is a subdir of agent_bom/)
 _REGISTRY_PATH = Path(__file__).parent.parent / "mcp_registry.json"
+
+
+def _npm_purl(name: str, version: str) -> str:
+    """Build a PURL for an npm package, correctly encoding scoped names.
+
+    Per the PURL spec, ``@scope/name`` becomes ``pkg:npm/%40scope/name@version``.
+    """
+    from urllib.parse import quote
+
+    if name.startswith("@"):
+        # Encode the '@' in the scope per PURL spec
+        scope, _, pkg_name = name[1:].partition("/")
+        return f"pkg:npm/{quote('@' + scope, safe='')}/{pkg_name}@{version}"
+    return f"pkg:npm/{name}@{version}"
+
+
 _registry_cache: Optional[dict] = None
 
 
@@ -204,7 +220,7 @@ def parse_npm_packages(directory: Path) -> list[Package]:
                         name=clean_name,
                         version=version,
                         ecosystem="npm",
-                        purl=f"pkg:npm/{clean_name}@{version}",
+                        purl=_npm_purl(clean_name, version),
                         is_direct=clean_name in direct_deps,
                     )
                 )
@@ -223,7 +239,7 @@ def parse_npm_packages(directory: Path) -> list[Package]:
                             name=name,
                             version=version,
                             ecosystem="npm",
-                            purl=f"pkg:npm/{name}@{version}",
+                            purl=_npm_purl(name, version),
                             is_direct=True,
                         )
                     )
@@ -394,7 +410,7 @@ def detect_npx_package(server: MCPServer) -> list[Package]:
                     name=name,
                     version=version,
                     ecosystem="npm",
-                    purl=f"pkg:npm/{name}@{version}",
+                    purl=_npm_purl(name, version),
                     is_direct=True,
                 )
             )

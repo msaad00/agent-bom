@@ -4,8 +4,9 @@ import { Suspense, useState, useRef, useEffect, useCallback, useMemo } from "rea
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { api, ScanRequest, ScanJob, ScanResult, BlastRadius, RemediationItem, formatDate, OWASP_LLM_TOP10, MITRE_ATLAS, severityColor } from "@/lib/api";
-import type { AttackFlowNodeData, AttackFlowResponse } from "@/lib/api";
+import type { AttackFlowNodeData, AttackFlowResponse, StepEvent, SSEEvent } from "@/lib/api";
 import { OWASP_MCP_TOP10 } from "@/lib/api";
+import { ScanPipeline } from "@/components/scan-pipeline";
 import { SeverityBadge } from "@/components/severity-badge";
 import {
   ArrowRight,
@@ -443,6 +444,7 @@ function ScanResultView({ id }: { id: string }) {
   const [job, setJob] = useState<ScanJob | null>(null);
   const [messages, setMessages] = useState<string[]>([]);
   const [streaming, setStreaming] = useState(true);
+  const [pipelineSteps, setPipelineSteps] = useState<Map<string, StepEvent>>(new Map());
   const logRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -452,13 +454,24 @@ function ScanResultView({ id }: { id: string }) {
     // Subscribe to SSE stream
     const cleanup = api.streamScan(
       id,
-      (data) => {
-        const d = data as { type: string; message?: string };
-        if (d.type === "progress" && d.message) {
-          setMessages((m) => [...m, d.message!]);
-          // Also refresh job state
-          api.getScan(id).then(setJob).catch(() => {});
+      (data: SSEEvent) => {
+        if (data.type === "step") {
+          const step = data as StepEvent;
+          setPipelineSteps((prev) => {
+            const next = new Map(prev);
+            next.set(step.step_id, step);
+            return next;
+          });
+          // Also add readable message to legacy log
+          setMessages((m) => [...m, step.message]);
+        } else if (data.type === "progress") {
+          const d = data as { message?: string };
+          if (d.message) {
+            setMessages((m) => [...m, d.message!]);
+          }
         }
+        // Refresh job state
+        api.getScan(id).then(setJob).catch(() => {});
       },
       () => {
         setStreaming(false);
@@ -506,8 +519,8 @@ function ScanResultView({ id }: { id: string }) {
         </div>
       </div>
 
-      {/* Live log */}
-      {(streaming || messages.length > 0) && (
+      {/* Scan Pipeline DAG */}
+      {(streaming || pipelineSteps.size > 0) && (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-3">
             {streaming ? (
@@ -519,15 +532,26 @@ function ScanResultView({ id }: { id: string }) {
               {streaming ? "Scanning..." : "Complete"}
             </span>
           </div>
-          <div ref={logRef} className="max-h-48 overflow-y-auto space-y-1">
+          {pipelineSteps.size > 0 ? (
+            <ScanPipeline steps={pipelineSteps} />
+          ) : (
+            <p className="text-xs font-mono text-zinc-600 animate-pulse">Waiting for scan to start...</p>
+          )}
+        </div>
+      )}
+
+      {/* Collapsible raw log */}
+      {messages.length > 0 && (
+        <details className="bg-zinc-900 border border-zinc-800 rounded-xl">
+          <summary className="px-4 py-3 text-xs font-semibold text-zinc-500 cursor-pointer hover:text-zinc-400">
+            Raw log ({messages.length} messages)
+          </summary>
+          <div ref={logRef} className="max-h-48 overflow-y-auto px-4 pb-3 space-y-1">
             {messages.map((m, i) => (
               <p key={i} className="text-xs font-mono text-zinc-400">{m}</p>
             ))}
-            {streaming && messages.length === 0 && (
-              <p className="text-xs font-mono text-zinc-600 animate-pulse">Waiting for scan to start...</p>
-            )}
           </div>
-        </div>
+        </details>
       )}
 
       {/* Error */}

@@ -15,6 +15,7 @@ import {
   Lock,
   Users,
   Network,
+  Waypoints,
   Eye,
   Clock,
 } from "lucide-react";
@@ -30,6 +31,7 @@ const links = [
   { href: "/compliance", label: "Compliance",  icon: Shield },
   { href: "/graph",      label: "Graph",       icon: GitBranch },
   { href: "/mesh",       label: "Mesh",        icon: Network },
+  { href: "/context",    label: "Context",     icon: Waypoints },
   { href: "/governance", label: "Governance",  icon: Eye },
   { href: "/activity",   label: "Activity",    icon: Clock },
   { href: "/registry",   label: "Registry",    icon: Library },

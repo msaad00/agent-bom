@@ -913,7 +913,35 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             audit = audit_skill_result(scan)
             trust = assess_trust(scan, audit)
 
-            return json.dumps(trust.to_dict(), indent=2)
+            result = trust.to_dict()
+
+            # Instruction file provenance check (Sigstore)
+            try:
+                from agent_bom.integrity import verify_instruction_file
+
+                provenance = verify_instruction_file(p)
+                if provenance.verified:
+                    result["provenance"] = {
+                        "status": "verified",
+                        "signer": provenance.signer_identity,
+                        "rekor_index": provenance.rekor_log_index,
+                        "sha256": provenance.sha256,
+                    }
+                elif provenance.has_sigstore_bundle:
+                    result["provenance"] = {
+                        "status": "bundle_found_but_invalid",
+                        "reason": provenance.reason,
+                        "sha256": provenance.sha256,
+                    }
+                else:
+                    result["provenance"] = {
+                        "status": "unsigned",
+                        "sha256": provenance.sha256,
+                    }
+            except Exception:
+                result["provenance"] = {"status": "check_failed"}
+
+            return json.dumps(result, indent=2)
         except Exception as exc:
             logger.exception("MCP tool error")
             return json.dumps({"error": sanitize_error(exc)})

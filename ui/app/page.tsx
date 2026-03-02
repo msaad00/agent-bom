@@ -6,6 +6,7 @@ import { api, ScanJob, ScanResult, BlastRadius, Agent, formatDate, OWASP_LLM_TOP
 import { AgentTopology } from "@/components/agent-topology";
 import { TrustStack } from "@/components/trust-stack";
 import { SeverityBadge } from "@/components/severity-badge";
+import { ActivityFeed } from "@/components/activity-feed";
 import {
   ShieldAlert, Server, Package, Bug, Zap, ArrowRight, Clock,
   AlertTriangle, Container, Layers, FileText, ExternalLink,
@@ -212,11 +213,11 @@ export default function Dashboard() {
 
       {/* Fleet stats */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <StatCard icon={Layers} label="Total scans" value={loading ? "—" : String(doneJobs.length)} color="zinc" />
-        <StatCard icon={Server} label="Agents" value={loading ? "—" : String(agentCount)} color="emerald" />
-        <StatCard icon={Package} label="Packages" value={loading ? "—" : String(totalPackages)} color="blue" />
-        <StatCard icon={Bug} label="Unique CVEs" value={loading ? "—" : String(uniqueCVEs)} color="orange" />
-        <StatCard icon={Zap} label="Critical" value={loading ? "—" : String(severity.critical)} color="red" />
+        <StatCard icon={Layers} label="Total scans" value={loading ? "—" : String(doneJobs.length)} color="zinc" href="/jobs" />
+        <StatCard icon={Server} label="Agents" value={loading ? "—" : String(agentCount)} color="emerald" href="/agents" />
+        <StatCard icon={Package} label="Packages" value={loading ? "—" : String(totalPackages)} color="blue" href="/vulns" />
+        <StatCard icon={Bug} label="Unique CVEs" value={loading ? "—" : String(uniqueCVEs)} color="orange" href="/vulns" />
+        <StatCard icon={Zap} label="Critical" value={loading ? "—" : String(severity.critical)} color="red" href="/vulns?severity=critical" />
       </div>
 
       {/* AI Agent Trust Stack */}
@@ -328,36 +329,47 @@ export default function Dashboard() {
               .sort((a, b) => b.blast_score - a.blast_score)
               .slice(0, 5)
               .map((b) => (
-                <BlastCard key={b.vulnerability_id} blast={b} />
+                <Link key={b.vulnerability_id} href={`/vulns?cve=${b.vulnerability_id}`}>
+                  <BlastCard blast={b} />
+                </Link>
               ))}
           </div>
         </section>
       )}
 
-      {/* Recent scans */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest">
-            Recent scans
-          </h2>
-          {jobs.length > 8 && (
-            <Link href="/jobs" className="text-xs text-emerald-500 hover:text-emerald-400 flex items-center gap-1">
-              View all <ArrowRight className="w-3 h-3" />
-            </Link>
-          )}
-        </div>
-        {loading ? (
-          <div className="text-zinc-500 text-sm">Loading...</div>
-        ) : jobs.length === 0 ? (
-          <EmptyState />
-        ) : (
-          <div className="space-y-2">
-            {jobs.slice(0, 8).map((job) => (
-              <JobRow key={job.job_id} job={job} />
-            ))}
+      {/* Recent scans + Activity feed */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <section className="lg:col-span-2">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest">
+              Recent scans
+            </h2>
+            {jobs.length > 8 && (
+              <Link href="/jobs" className="text-xs text-emerald-500 hover:text-emerald-400 flex items-center gap-1">
+                View all <ArrowRight className="w-3 h-3" />
+              </Link>
+            )}
           </div>
-        )}
-      </section>
+          {loading ? (
+            <div className="text-zinc-500 text-sm">Loading...</div>
+          ) : jobs.length === 0 ? (
+            <EmptyState />
+          ) : (
+            <div className="space-y-2">
+              {jobs.slice(0, 8).map((job) => (
+                <JobRow key={job.job_id} job={job} />
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section>
+          <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest mb-3">
+            Activity
+          </h2>
+          <ActivityFeed maxItems={15} />
+        </section>
+      </div>
     </div>
   );
 }
@@ -369,11 +381,13 @@ function StatCard({
   label,
   value,
   color,
+  href,
 }: {
   icon: React.ElementType;
   label: string;
   value: string;
   color: "emerald" | "blue" | "orange" | "red" | "zinc";
+  href?: string;
 }) {
   const colors = {
     emerald: "text-emerald-400",
@@ -382,13 +396,15 @@ function StatCard({
     red: "text-red-400",
     zinc: "text-zinc-400",
   };
-  return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+  const inner = (
+    <div className={`bg-zinc-900 border border-zinc-800 rounded-xl p-4 ${href ? "hover:border-zinc-600 transition-colors cursor-pointer" : ""}`}>
       <Icon className={`w-4 h-4 mb-2 ${colors[color]}`} />
       <div className="text-2xl font-bold font-mono">{value}</div>
       <div className="text-xs text-zinc-500 mt-0.5">{label}</div>
     </div>
   );
+  if (href) return <Link href={href}>{inner}</Link>;
+  return inner;
 }
 
 function SeverityChart({ severity }: { severity: SeverityCounts }) {
@@ -408,9 +424,10 @@ function SeverityChart({ severity }: { severity: SeverityCounts }) {
       <div className="flex h-4 rounded-full overflow-hidden bg-zinc-800 mb-4">
         {bars.map((b) =>
           b.count > 0 ? (
-            <div
+            <Link
               key={b.label}
-              className={`${b.color} transition-all duration-500`}
+              href={`/vulns?severity=${b.label.toLowerCase()}`}
+              className={`${b.color} transition-all duration-500 hover:brightness-110`}
               style={{ width: `${(b.count / total) * 100}%` }}
               title={`${b.label}: ${b.count}`}
             />
@@ -421,11 +438,11 @@ function SeverityChart({ severity }: { severity: SeverityCounts }) {
       {/* Legend */}
       <div className="grid grid-cols-4 gap-2">
         {bars.map((b) => (
-          <div key={b.label} className="text-center">
+          <Link key={b.label} href={`/vulns?severity=${b.label.toLowerCase()}`} className="text-center hover:bg-zinc-800 rounded-lg py-1 transition-colors">
             <div className={`text-lg font-bold font-mono ${b.text}`}>{b.count}</div>
             <div className="text-xs text-zinc-500">{b.label}</div>
             <div className="text-xs text-zinc-600">{total > 0 ? Math.round((b.count / total) * 100) : 0}%</div>
-          </div>
+          </Link>
         ))}
       </div>
     </div>

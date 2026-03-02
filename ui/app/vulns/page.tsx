@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { Suspense, useEffect, useState, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { api, Vulnerability, ScanJob, ScanResult, severityColor, severityDot, OWASP_LLM_TOP10, MITRE_ATLAS } from "@/lib/api";
 import { Bug, ExternalLink, ChevronDown, ChevronUp, Layers, Package, Server } from "lucide-react";
 
@@ -59,14 +60,31 @@ function SortButton({
   );
 }
 
-export default function VulnsPage() {
+export default function VulnsPageWrapper() {
+  return (
+    <Suspense fallback={<p className="text-zinc-500 text-sm">Loading vulnerabilities…</p>}>
+      <VulnsPage />
+    </Suspense>
+  );
+}
+
+function VulnsPage() {
+  const searchParams = useSearchParams();
+  const paramSeverity = searchParams.get("severity");
+  const paramCve = searchParams.get("cve");
+  const paramAgent = searchParams.get("agent");
+
   const [vulns, setVulns] = useState<EnrichedVuln[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [filter, setFilter] = useState<SeverityFilter>("all");
+  const [filter, setFilter] = useState<SeverityFilter>(
+    paramSeverity && ["critical", "high", "medium", "low"].includes(paramSeverity)
+      ? (paramSeverity as SeverityFilter)
+      : "all"
+  );
   const [sortKey, setSortKey] = useState<SortKey>("severity");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(paramCve ?? paramAgent ?? "");
   const [groupBy, setGroupBy] = useState<GroupKey>("none");
 
   useEffect(() => {

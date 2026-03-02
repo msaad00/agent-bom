@@ -16,7 +16,7 @@
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center">
-  <b>AI supply chain security scanner. Scan packages and images for CVEs. Assess config security — credential exposure, tool access, privilege escalation. Map blast radius from vulnerabilities to credentials and tools. OWASP LLM Top 10 + OWASP MCP Top 10 + MITRE ATLAS + NIST AI RMF.</b>
+  <b>AI supply chain security scanner. Scan packages and images for CVEs. Assess config security — credential exposure, tool access, privilege escalation. Map blast radius from vulnerabilities to credentials and tools. Enterprise posture scoring, incident correlation, credential risk ranking. OWASP LLM Top 10 + OWASP MCP Top 10 + MITRE ATLAS + NIST AI RMF + EU AI Act.</b>
 </p>
 
 <p align="center">
@@ -59,7 +59,10 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 | **OpenSSF Scorecard enrichment** | — | Package health scores from api.securityscorecards.dev |
 | **Tool poisoning detection** | — | Description injection, capability combos, CVE exposure, drift |
 | **Model weight provenance** | — | SHA-256 hash, Sigstore file detection, HuggingFace metadata |
-| **Policy-as-code** | — | Block unverified servers, enforce thresholds in CI/CD |
+| **Policy-as-code** | — | Block unverified servers, enforce thresholds in CI/CD, EPSS/scorecard conditions |
+| **Posture scorecard** | — | Letter grade (A–F), 6-dimension scoring, weighted enterprise posture |
+| **Incident correlation** | — | Group vulns by agent, P1–P4 priority, SOC-ready incident summaries |
+| **Credential risk ranking** | — | Rank exposed credentials by blast radius severity tier |
 | **AI framework recognition** | — | GPU/ML packages flagged as high-risk in image scans (via Grype/Syft) |
 | **427+ server MCP registry** | — | Risk levels, tool inventories, auto-synced weekly |
 
@@ -125,9 +128,62 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
 2. **Extract** — pull server names, package names, env var **names**, and tool lists. Credential **values** are never read.
 3. **Scan** — send only package names + versions to public APIs (OSV.dev, NVD, EPSS, CISA KEV). No hostnames, no secrets, no auth tokens.
 4. **Analyze** — CVE blast radius mapping, tool poisoning detection (`--enforce`), OWASP/ATLAS/NIST threat models, model provenance (`--hf-model`)
-5. **Report** — JSON, SARIF, CycloneDX, SPDX, HTML, or console output. Nothing stored server-side.
+5. **Score** — posture scorecard (grade A–F), credential risk ranking, incident correlation by agent (P1–P4)
+6. **Report** — JSON, SARIF, CycloneDX, SPDX, HTML, or console output. Alert dispatch to Slack/webhooks. Nothing stored server-side.
 
 **Trust guarantees:** Read-only (no file writes, no config changes, no servers started). `--dry-run` previews all files and API calls then exits. Every release is Sigstore-signed. Run `agent-bom verify agent-bom` to check integrity. See [PERMISSIONS.md](PERMISSIONS.md) for the full auditable trust contract.
+
+<details>
+<summary><b>Architecture data flow</b></summary>
+
+```
+                        ┌─────────────────────┐
+                        │   Input Sources      │
+                        ├─────────────────────┤
+                        │ MCP configs (18)     │
+                        │ Docker images        │
+                        │ K8s clusters         │
+                        │ Cloud APIs           │
+                        │ SBOMs (CDX/SPDX)     │
+                        │ SaaS connectors      │
+                        └────────┬────────────┘
+                                 │
+                    ┌────────────▼────────────┐
+                    │    Discovery Engine      │
+                    │  Agents → Servers →      │
+                    │  Packages → Tools        │
+                    └────────────┬────────────┘
+                                 │
+              ┌──────────────────▼──────────────────┐
+              │         Vulnerability Scanner        │
+              │  OSV batch, NVD, EPSS, KEV, GHSA    │
+              │  OpenSSF Scorecard, NVIDIA CSAF      │
+              └──────────────────┬──────────────────┘
+                                 │
+              ┌──────────────────▼──────────────────┐
+              │        Blast Radius Analysis         │
+              │  CVE → pkg → server → agent →        │
+              │  credentials → tools → risk score    │
+              │  6-framework threat tagging           │
+              └──────────────────┬──────────────────┘
+                                 │
+         ┌───────────────────────▼───────────────────────┐
+         │          Enterprise Analytics                  │
+         │  Posture scorecard (A–F, 6 dimensions)        │
+         │  Incident correlation (P1–P4 by agent)        │
+         │  Credential risk ranking (severity tiers)      │
+         │  Policy evaluation (16 rule conditions)        │
+         └───────────────────────┬───────────────────────┘
+                                 │
+     ┌───────────┬───────────┬───▼───┬────────────┬──────────┐
+     │ Console   │ JSON/SBOM │  API  │ Alerts     │ Fleet    │
+     │ HTML      │ CDX/SPDX  │ REST  │ Slack      │ Trust    │
+     │ Graphs    │ SARIF     │ MCP   │ Webhook    │ Scoring  │
+     │ Badges    │ Prometheus│ SSE   │ PagerDuty  │ Tenants  │
+     └───────────┴───────────┴───────┴────────────┴──────────┘
+```
+
+</details>
 
 ---
 
@@ -224,6 +280,29 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible graph 
 ```bash
 agent-bom scan --policy policy.json --fail-on-severity high
 ```
+
+Supported policy conditions: `severity_gte`, `is_kev`, `ai_risk`, `has_credentials`, `ecosystem`, `package_name_contains`, `min_agents`, `min_tools`, `unverified_server`, `registry_risk_gte`, `owasp_tag`, `owasp_mcp_tag`, `is_malicious`, `min_scorecard_score`, `max_epss_score`, `has_kev_with_no_fix`
+
+### Enterprise security operations
+
+**Posture scorecard** — letter grade (A–F), numeric score (0–100), 6-dimension breakdown:
+
+| Dimension | Weight | Measures |
+|-----------|--------|----------|
+| Vulnerability Posture | 30% | Severity distribution, fix availability |
+| Credential Hygiene | 20% | Credential exposure footprint |
+| Supply Chain Quality | 15% | OpenSSF Scorecard coverage |
+| Compliance Coverage | 15% | Threat framework tag mapping |
+| Active Exploitation | 10% | KEV, high-EPSS presence |
+| Configuration Quality | 10% | Registry verification, tool declarations |
+
+**Incident correlation** — group vulnerabilities by agent for SOC workflows:
+- Priority levels: P1 (KEV/multi-critical) → P2 (critical+creds) → P3 (high) → P4 (monitor)
+- Per-agent: unique CVEs, KEV IDs, exposed credentials, affected packages, recommended actions
+
+**Credential risk ranking** — rank all exposed credentials by blast radius:
+- Risk tiers: critical (critical CVE exposure) → high → medium → low
+- Aggregated across all agents and servers per credential
 
 ### Cloud provider discovery
 
@@ -423,6 +502,9 @@ agent-bom api --api-key $SECRET --rate-limit 30   # http://127.0.0.1:8422/docs
 | `GET /v1/registry` | 427+ server registry |
 | `GET /v1/compliance` | Full 6-framework compliance posture |
 | `GET /v1/compliance/{framework}` | Single framework (owasp-llm, owasp-mcp, owasp-agentic, atlas, nist, eu-ai-act) |
+| `GET /v1/posture` | Enterprise posture scorecard (grade A–F, 6 dimensions) |
+| `GET /v1/posture/credentials` | Credential risk ranking by blast radius |
+| `GET /v1/posture/incidents` | Incident correlation by agent (P1–P4) |
 | `POST /v1/traces` | OpenTelemetry trace ingestion + vulnerable tool call flagging |
 | `GET /v1/malicious/check` | Malicious package / typosquat check |
 
@@ -560,6 +642,12 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 - [x] Alert pipeline — AlertDispatcher with Slack, webhook, and in-memory channels; auto-trigger on scan
 - [x] Runtime protection engine — unified 5-detector orchestration with OTel trace ingestion
 - [x] Multi-tenant fleet — tenant_id scoping, X-Tenant-ID header, per-tenant stats
+- [x] Enterprise posture scorecard — letter grade (A–F), 6-dimension breakdown, auto-computed in scan output
+- [x] Incident correlation — per-agent vulnerability grouping with P1–P4 priority for SOC workflows
+- [x] Credential risk ranking — blast radius severity ranking for all exposed credentials
+- [x] Slack blast radius enrichment — webhook payloads include risk score, agents, credentials, fix versions
+- [x] Advanced policy conditions — `min_scorecard_score`, `max_epss_score`, `has_kev_with_no_fix`
+- [x] Enterprise hardening — bounded caches, SQLite indexes, stuck job cleanup, Content-Length validation
 
 **Planned:**
 - [ ] CIS AI benchmarks

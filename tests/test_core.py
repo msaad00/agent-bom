@@ -2980,7 +2980,7 @@ def test_openclaw_skill_declares_mcp_endpoint():
     p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
     content = p.read_text()
     assert "network_endpoints:" in content
-    assert "Remote MCP server" in content
+    assert "remote mcp" in content.lower()
     assert "sse" in content.lower()
 
 
@@ -3086,7 +3086,8 @@ def test_openclaw_skill_describes_data_handling():
     content = p.read_text()
     assert "package names" in content.lower()
     assert "credentials" in content.lower()
-    assert "does not read your local files" in content.lower() or "does NOT read your local files" in content
+    # Restructured SKILL.md uses "Security Boundaries" section with safe/never-send lists
+    assert "never send" in content.lower() or "does not read your local files" in content.lower()
 
 
 def test_svg_output_basic():

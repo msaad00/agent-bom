@@ -2409,6 +2409,114 @@ async def activity_timeline(days: int = 30):
         raise HTTPException(status_code=500, detail=sanitize_error(exc))
 
 
+# ─── Cortex Agent Observability ─────────────────────────────────────────────
+
+
+@app.get("/v1/cortex/telemetry", tags=["governance"])
+async def cortex_telemetry(hours: int = 24):
+    """Aggregated Cortex agent telemetry with health assessments.
+
+    Combines CORTEX_AGENT_USAGE_HISTORY and AI_OBSERVABILITY_EVENTS
+    into per-agent metrics, error rates, latency percentiles, and
+    health status.
+    """
+    import os as _os
+
+    if not _os.environ.get("SNOWFLAKE_ACCOUNT"):
+        raise HTTPException(
+            status_code=400,
+            detail="SNOWFLAKE_ACCOUNT env var not set.",
+        )
+
+    try:
+        from agent_bom.cloud.snowflake import _get_connection
+        from agent_bom.cloud.snowflake_observability import get_cortex_telemetry
+
+        conn = _get_connection()
+        result = get_cortex_telemetry(conn, hours=hours)
+        conn.close()
+        return result
+    except Exception as exc:
+        _logger.exception("Request failed")
+        raise HTTPException(status_code=500, detail=sanitize_error(exc))
+
+
+@app.get("/v1/cortex/agents/{name}/telemetry", tags=["governance"])
+async def cortex_agent_telemetry(name: str, hours: int = 24):
+    """Telemetry for a specific Cortex agent."""
+    import os as _os
+
+    if not _os.environ.get("SNOWFLAKE_ACCOUNT"):
+        raise HTTPException(
+            status_code=400,
+            detail="SNOWFLAKE_ACCOUNT env var not set.",
+        )
+
+    try:
+        from agent_bom.cloud.snowflake import _get_connection
+        from agent_bom.cloud.snowflake_observability import get_cortex_telemetry
+
+        conn = _get_connection()
+        result = get_cortex_telemetry(conn, agent_name=name, hours=hours)
+        conn.close()
+        return result
+    except Exception as exc:
+        _logger.exception("Request failed")
+        raise HTTPException(status_code=500, detail=sanitize_error(exc))
+
+
+@app.get("/v1/cortex/health", tags=["governance"])
+async def cortex_health():
+    """Health status for all Cortex agents."""
+    import os as _os
+
+    if not _os.environ.get("SNOWFLAKE_ACCOUNT"):
+        raise HTTPException(
+            status_code=400,
+            detail="SNOWFLAKE_ACCOUNT env var not set.",
+        )
+
+    try:
+        from agent_bom.cloud.snowflake import _get_connection, _mine_cortex_agent_usage
+        from agent_bom.cloud.snowflake_observability import (
+            aggregate_agent_metrics,
+            assess_agent_health,
+        )
+
+        conn = _get_connection()
+        records, warnings = _mine_cortex_agent_usage(conn, days=1)
+        conn.close()
+
+        metrics = aggregate_agent_metrics(records, hours=24)
+        health = [assess_agent_health(m) for m in metrics]
+
+        return {
+            "agents": [
+                {
+                    "name": h.agent_name,
+                    "status": h.status,
+                    "issues": h.issues,
+                }
+                for h in health
+            ],
+            "warnings": warnings,
+        }
+    except Exception as exc:
+        _logger.exception("Request failed")
+        raise HTTPException(status_code=500, detail=sanitize_error(exc))
+
+
+# ─── SIEM Formats ──────────────────────────────────────────────────────────
+
+
+@app.get("/v1/siem/formats", tags=["siem"])
+async def siem_formats():
+    """List supported SIEM event formats."""
+    from agent_bom.siem import list_formats
+
+    return {"formats": list_formats()}
+
+
 @app.get("/v1/agents/mesh", tags=["discovery"])
 async def get_agent_mesh() -> dict:
     """Get a ReactFlow-compatible mesh topology of all discovered agents.

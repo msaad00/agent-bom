@@ -293,6 +293,7 @@ def main():
 @click.option("--gcp-project", default=None, metavar="PROJECT", envvar="GOOGLE_CLOUD_PROJECT", help="GCP project ID")
 @click.option("--databricks", "databricks_flag", is_flag=True, help="Discover agents from Databricks clusters and model serving")
 @click.option("--snowflake", "snowflake_flag", is_flag=True, help="Discover Cortex agents and Snowpark apps from Snowflake")
+@click.option("--cortex-observability", is_flag=True, help="Include Cortex agent observability telemetry (requires --snowflake)")
 @click.option("--nebius", "nebius_flag", is_flag=True, help="Discover AI workloads from Nebius GPU cloud")
 @click.option("--nebius-api-key", default=None, envvar="NEBIUS_API_KEY", metavar="KEY", help="Nebius API key")
 @click.option("--nebius-project-id", default=None, envvar="NEBIUS_PROJECT_ID", metavar="ID", help="Nebius project ID")
@@ -433,6 +434,7 @@ def scan(
     gcp_project: Optional[str],
     databricks_flag: bool,
     snowflake_flag: bool,
+    cortex_observability: bool,
     nebius_flag: bool,
     nebius_api_key: Optional[str],
     nebius_project_id: Optional[str],
@@ -1536,6 +1538,31 @@ def scan(
                     )
             else:
                 con.print("\n  [dim]No instruction files found to verify.[/dim]")
+
+        # Step 4e: Cortex agent observability (optional)
+        _cortex_telemetry_data = None
+        if cortex_observability and snowflake_flag:
+            try:
+                from agent_bom.cloud.snowflake import _get_connection
+                from agent_bom.cloud.snowflake_observability import get_cortex_telemetry
+
+                con.print("\n[bold blue]📊 Fetching Cortex agent observability telemetry...[/bold blue]\n")
+                sf_conn = _get_connection()
+                _cortex_telemetry_data = get_cortex_telemetry(sf_conn, hours=24)
+                sf_conn.close()
+
+                agent_count = len(_cortex_telemetry_data.get("agents", []))
+                if agent_count:
+                    con.print(f"  [green]✓[/green] {agent_count} Cortex agent(s) with telemetry")
+                    for ag in _cortex_telemetry_data["agents"]:
+                        status_color = {"healthy": "green", "degraded": "yellow", "unhealthy": "red"}.get(ag["health"]["status"], "dim")
+                        con.print(
+                            f"    [{status_color}]●[/{status_color}] {ag['name']}: {ag['total_calls']} calls, {ag['health']['status']}"
+                        )
+                else:
+                    con.print("  [dim]No Cortex agent telemetry found.[/dim]")
+            except Exception as exc:
+                con.print(f"  [yellow]⚠[/yellow] Cortex observability failed: {exc}")
 
     # Build report
     report = AIBOMReport(agents=agents, blast_radii=blast_radii)

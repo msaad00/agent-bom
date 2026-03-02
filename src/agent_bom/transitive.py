@@ -22,10 +22,19 @@ _npm_cache: dict[str, dict] = {}
 _pypi_cache: dict[str, dict] = {}
 
 
+def _is_prerelease(version_str: str) -> bool:
+    """Check if an npm version string is a pre-release (e.g., 1.0.0-beta.1)."""
+    # Semver pre-release: anything with a hyphen after the version core
+    # e.g., "1.0.0-alpha", "2.1.0-rc.1", "3.0.0-beta"
+    base = version_str.split("+")[0]  # strip build metadata
+    return "-" in base
+
+
 def _resolve_npm_version(version_range: str, pkg_data: dict) -> str:
     """Pick the best npm version satisfying a semver range.
 
     Uses a simplified semver matcher sufficient for most ^X.Y.Z / ~X.Y.Z / >=X patterns.
+    Excludes pre-release versions (e.g., 1.0.0-beta) unless no stable match is found.
     Falls back to dist-tags.latest if no match found.
     """
     latest = pkg_data.get("dist-tags", {}).get("latest", "")
@@ -51,6 +60,8 @@ def _resolve_npm_version(version_range: str, pkg_data: dict) -> str:
         major = min_parts[0] if min_parts else 0
         candidates = []
         for v in available:
+            if _is_prerelease(v):
+                continue
             try:
                 parts = tuple(int(x) for x in v.split(".") if x.isdigit())
                 if parts[0] == major and parts >= min_parts:
@@ -65,6 +76,8 @@ def _resolve_npm_version(version_range: str, pkg_data: dict) -> str:
         minor = min_parts[1] if len(min_parts) > 1 else 0
         candidates = []
         for v in available:
+            if _is_prerelease(v):
+                continue
             try:
                 parts = tuple(int(x) for x in v.split(".") if x.isdigit())
                 if len(parts) >= 2 and parts[0] == major and parts[1] == minor and parts >= min_parts:
@@ -76,6 +89,8 @@ def _resolve_npm_version(version_range: str, pkg_data: dict) -> str:
     elif ">=" in version_range:
         candidates = []
         for v in available:
+            if _is_prerelease(v):
+                continue
             try:
                 parts = tuple(int(x) for x in v.split(".") if x.isdigit())
                 if parts >= min_parts:
@@ -117,11 +132,7 @@ def _resolve_pip_version(version_spec: str, releases: dict) -> str:
     return re.sub(r"[^0-9.]", "", version_spec.split(",")[0]) or "unknown"
 
 
-async def fetch_npm_metadata(
-    package_name: str,
-    version: str,
-    client: httpx.AsyncClient
-) -> Optional[dict]:
+async def fetch_npm_metadata(package_name: str, version: str, client: httpx.AsyncClient) -> Optional[dict]:
     """Fetch package metadata from npm registry, resolving ranges to exact versions."""
     cache_key = f"{package_name}@{version}"
     if cache_key in _npm_cache:
@@ -132,7 +143,9 @@ async def fetch_npm_metadata(
 
     if is_range:
         response = await request_with_retry(
-            client, "GET", f"{NPM_REGISTRY}/{encoded_name}",
+            client,
+            "GET",
+            f"{NPM_REGISTRY}/{encoded_name}",
         )
         if response and response.status_code == 200:
             try:
@@ -146,7 +159,9 @@ async def fetch_npm_metadata(
                 pass
     else:
         response = await request_with_retry(
-            client, "GET", f"{NPM_REGISTRY}/{encoded_name}/{version}",
+            client,
+            "GET",
+            f"{NPM_REGISTRY}/{encoded_name}/{version}",
         )
         if response and response.status_code == 200:
             try:
@@ -159,11 +174,7 @@ async def fetch_npm_metadata(
     return None
 
 
-async def fetch_pypi_metadata(
-    package_name: str,
-    version: str,
-    client: httpx.AsyncClient
-) -> Optional[dict]:
+async def fetch_pypi_metadata(package_name: str, version: str, client: httpx.AsyncClient) -> Optional[dict]:
     """Fetch package metadata from PyPI, resolving version specifiers to exact versions."""
     cache_key = f"{package_name}@{version}"
     if cache_key in _pypi_cache:
@@ -173,7 +184,9 @@ async def fetch_pypi_metadata(
 
     if is_range:
         response = await request_with_retry(
-            client, "GET", f"{PYPI_API}/{package_name}/json",
+            client,
+            "GET",
+            f"{PYPI_API}/{package_name}/json",
         )
         if response and response.status_code == 200:
             try:
@@ -182,7 +195,9 @@ async def fetch_pypi_metadata(
                 resolved = _resolve_pip_version(version if version not in ("latest", "unknown", "") else "", releases)
                 if resolved and resolved != "unknown":
                     version_data = await request_with_retry(
-                        client, "GET", f"{PYPI_API}/{package_name}/{resolved}/json",
+                        client,
+                        "GET",
+                        f"{PYPI_API}/{package_name}/{resolved}/json",
                     )
                     if version_data and version_data.status_code == 200:
                         data = version_data.json()
@@ -194,7 +209,9 @@ async def fetch_pypi_metadata(
                 pass
     else:
         response = await request_with_retry(
-            client, "GET", f"{PYPI_API}/{package_name}/{version}/json",
+            client,
+            "GET",
+            f"{PYPI_API}/{package_name}/{version}/json",
         )
         if response and response.status_code == 200:
             try:
@@ -306,7 +323,7 @@ async def resolve_pypi_dependencies(
             continue  # Skip optional dependencies
 
         # Extract package name and version
-        match = re.match(r'^([a-zA-Z0-9_.-]+)\s*([<>=!~]+)?\s*([a-zA-Z0-9_.*+-]+)?', dep_spec)
+        match = re.match(r"^([a-zA-Z0-9_.-]+)\s*([<>=!~]+)?\s*([a-zA-Z0-9_.*+-]+)?", dep_spec)
         if not match:
             continue
 

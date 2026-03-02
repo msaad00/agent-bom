@@ -499,6 +499,9 @@ def _sync_scan_agents_to_fleet(agents: list) -> None:
     store = _get_fleet_store()
     now = _now()
 
+    # Collect all agents for a single batch upsert (atomicity)
+    to_upsert: list[FleetAgent] = []
+
     for agent in agents:
         existing = store.get_by_name(agent.name)
         server_count = len(agent.mcp_servers)
@@ -516,7 +519,7 @@ def _sync_scan_agents_to_fleet(agents: list) -> None:
             existing.trust_score = score
             existing.trust_factors = factors
             existing.updated_at = now
-            store.put(existing)
+            to_upsert.append(existing)
         else:
             fleet_agent = FleetAgent(
                 agent_id=str(uuid.uuid4()),
@@ -534,7 +537,10 @@ def _sync_scan_agents_to_fleet(agents: list) -> None:
                 created_at=now,
                 updated_at=now,
             )
-            store.put(fleet_agent)
+            to_upsert.append(fleet_agent)
+
+    if to_upsert:
+        store.batch_put(to_upsert)
 
 
 def _run_scan_sync(job: ScanJob) -> None:

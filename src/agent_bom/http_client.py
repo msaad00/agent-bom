@@ -51,17 +51,22 @@ def _safe_url(url: str) -> str:  # noqa: PLW0108
         return "<redacted-url>"
 
 
-def create_client(timeout: float = 30.0) -> httpx.AsyncClient:
+def create_client(timeout: float = 30.0, max_redirects: int = 5) -> httpx.AsyncClient:
     """Create an httpx.AsyncClient with connection-level retries.
 
     Uses httpx's built-in transport retry for connection failures (DNS, TCP reset).
-    Application-level retries (429, 5xx) are handled by `request_with_retry`.
+    Application-level retries (429, 5xx) are handled by ``request_with_retry``.
+
+    Args:
+        timeout: Per-request timeout in seconds.
+        max_redirects: Maximum number of HTTP redirects to follow (default 5).
     """
     transport = httpx.AsyncHTTPTransport(retries=2)
     return httpx.AsyncClient(
         timeout=timeout,
         transport=transport,
         follow_redirects=True,
+        max_redirects=max_redirects,
     )
 
 

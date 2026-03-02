@@ -403,6 +403,66 @@ def _packages_from_tar(tar_path: Path) -> list[Package]:
                                 pkg_name = pkg_version = ""
                 except Exception:
                     _logger.debug("Failed to parse dpkg status from container")
+
+            # --- Alpine: apk installed ---
+            apk_installed = "lib/apk/db/installed"
+            if apk_installed in names:
+                try:
+                    member = tf.getmember(apk_installed)
+                    f = tf.extractfile(member)
+                    if f:
+                        content = f.read().decode("utf-8", errors="ignore")
+                        pkg_name = pkg_version = ""
+                        for line in content.splitlines():
+                            if line.startswith("P:"):
+                                pkg_name = line[2:].strip()
+                            elif line.startswith("V:"):
+                                pkg_version = line[2:].strip()
+                            elif line == "" and pkg_name and pkg_version:
+                                _add(pkg_name, pkg_version, "apk", f"pkg:apk/alpine/{pkg_name}@{pkg_version}")
+                                pkg_name = pkg_version = ""
+                        # Handle last entry if file doesn't end with blank line
+                        if pkg_name and pkg_version:
+                            _add(pkg_name, pkg_version, "apk", f"pkg:apk/alpine/{pkg_name}@{pkg_version}")
+                except Exception:
+                    _logger.debug("Failed to parse Alpine apk db from container")
+
+            # --- RHEL/Fedora: rpm database ---
+            # rpm stores a plain text list at /var/lib/rpm/Packages or rpmdb.sqlite
+            # Fallback: look for rpm manifest written by some base images
+            for rpm_path in ("var/lib/rpm/rpmdb.sqlite", "var/lib/rpm/Packages"):
+                if rpm_path in names:
+                    # Can't easily parse binary rpm db from tar; skip to
+                    # installed-rpms manifest if present
+                    break
+
+            rpm_manifest = "var/log/installed-rpms"
+            if rpm_manifest in names:
+                try:
+                    member = tf.getmember(rpm_manifest)
+                    f = tf.extractfile(member)
+                    if f:
+                        for raw_line in f:
+                            line = raw_line.decode("utf-8", errors="ignore").strip()
+                            if not line:
+                                continue
+                            # Format: name-version-release.arch (e.g. bash-5.2.26-4.el9.x86_64)
+                            # Split from right at the second-to-last hyphen
+                            parts = line.split()
+                            nvr = parts[0] if parts else line
+                            # Find the last two hyphens to split name from version-release
+                            idx2 = nvr.rfind("-")
+                            if idx2 > 0:
+                                idx1 = nvr.rfind("-", 0, idx2)
+                                if idx1 > 0:
+                                    rpm_name = nvr[:idx1]
+                                    if rpm_name == "gpg-pubkey":
+                                        continue
+                                    rpm_ver = nvr[idx1 + 1 : idx2]
+                                    _add(rpm_name, rpm_ver, "rpm", f"pkg:rpm/redhat/{rpm_name}@{rpm_ver}")
+                except Exception:
+                    _logger.debug("Failed to parse rpm manifest from container")
+
     except tarfile.TarError as e:
         raise ImageScanError(f"Failed to read container filesystem: {e}")
 

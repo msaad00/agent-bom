@@ -249,11 +249,14 @@ def parse_osv_severity(vuln_data: dict) -> tuple[Severity, Optional[float]]:
         if sev.get("type") in ("CVSS_V3", "CVSS_V3_1"):
             score_str = sev.get("score", "")
             try:
-                cvss_score = float(score_str)
+                parsed = float(score_str)
+                # CVSS scores must be 0.0–10.0
+                if 0.0 <= parsed <= 10.0:
+                    cvss_score = parsed
             except ValueError:
                 # It's a CVSS vector string — compute the base score
                 computed = parse_cvss_vector(score_str)
-                if computed is not None:
+                if computed is not None and 0.0 <= computed <= 10.0:
                     cvss_score = computed
 
     # Check database_specific for severity label (reliable fallback)
@@ -277,15 +280,32 @@ def parse_osv_severity(vuln_data: dict) -> tuple[Severity, Optional[float]]:
 
 
 def parse_fixed_version(vuln_data: dict, package_name: str) -> Optional[str]:
-    """Extract fixed version from OSV affected data."""
+    """Extract fixed version from OSV affected data.
+
+    Prefers stable releases over pre-release versions.
+    """
+    prerelease_candidate: Optional[str] = None
+
     for affected in vuln_data.get("affected", []):
         pkg = affected.get("package", {})
         if pkg.get("name", "").lower() == package_name.lower():
             for rng in affected.get("ranges", []):
                 for event in rng.get("events", []):
                     if "fixed" in event:
-                        return event["fixed"]
-    return None
+                        fixed = event["fixed"]
+                        try:
+                            from packaging.version import Version
+
+                            pv = Version(fixed)
+                            if not pv.is_prerelease:
+                                return fixed
+                            # Remember pre-release as fallback
+                            if prerelease_candidate is None:
+                                prerelease_candidate = fixed
+                        except Exception:  # noqa: BLE001
+                            # Can't parse (e.g. non-PEP440 npm version) — return as-is
+                            return fixed
+    return prerelease_candidate
 
 
 async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:

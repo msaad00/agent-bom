@@ -37,6 +37,18 @@ _ENRICHMENT_TTL = 604_800  # 7 days
 _nvd_file_cache: dict[str, dict] = {}
 _epss_file_cache: dict[str, dict] = {}
 _enrichment_cache_loaded = False
+_MAX_ENRICHMENT_CACHE_ENTRIES = 10_000  # Prevent unbounded memory growth
+
+
+def _evict_oldest(cache: dict[str, dict], max_entries: int) -> None:
+    """Evict oldest entries when cache exceeds max_entries."""
+    if len(cache) <= max_entries:
+        return
+    # Sort by _cached_at and remove oldest
+    by_age = sorted(cache.items(), key=lambda kv: kv[1].get("_cached_at", 0))
+    to_remove = len(cache) - max_entries
+    for key, _ in by_age[:to_remove]:
+        del cache[key]
 
 
 def _load_enrichment_cache() -> None:
@@ -111,6 +123,7 @@ async def fetch_nvd_data(cve_id: str, client: httpx.AsyncClient, api_key: Option
                 result = vulnerabilities[0].get("cve", {})
                 # Store in persistent cache
                 _nvd_file_cache[cve_id] = {**result, "_cached_at": time.time()}
+                _evict_oldest(_nvd_file_cache, _MAX_ENRICHMENT_CACHE_ENTRIES)
                 return result
         except (ValueError, KeyError) as e:
             console.print(f"  [dim yellow]NVD parse error for {cve_id}: {e}[/dim yellow]")
@@ -173,6 +186,7 @@ async def fetch_epss_scores(cve_ids: list[str], client: httpx.AsyncClient) -> di
                     }
                     scores[cve] = entry
                     _epss_file_cache[cve] = {**entry, "_cached_at": time.time()}
+            _evict_oldest(_epss_file_cache, _MAX_ENRICHMENT_CACHE_ENTRIES)
         except (ValueError, KeyError) as e:
             console.print(f"  [dim yellow]EPSS parse error: {e}[/dim yellow]")
 

@@ -215,6 +215,11 @@ class SyslogConnector:
             sock = socket.create_connection((self.host, self.port), timeout=10)
             if self.use_tls:
                 ctx = ssl.create_default_context()
+                # Enforce TLS 1.2+ — disable legacy TLS 1.0/1.1
+                if hasattr(ssl, "TLSVersion"):
+                    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+                else:
+                    ctx.options |= getattr(ssl, "OP_NO_TLSv1", 0) | getattr(ssl, "OP_NO_TLSv1_1", 0)
                 sock = ctx.wrap_socket(sock, server_hostname=self.host)
             # RFC 5425: octet-counting framing
             payload = msg.encode("utf-8")

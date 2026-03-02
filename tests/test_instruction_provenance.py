@@ -160,7 +160,7 @@ class TestParseSigstoreBundle:
         parsed = _parse_sigstore_bundle(bundle_path)
         assert parsed["subject_digest"] == sha
         assert parsed["rekor_log_index"] == 99
-        assert "github.com" in parsed["signer_identity"]
+        assert parsed["signer_identity"] == "https://github.com/org/repo"
 
     def test_empty_bundle(self, tmp_path):
         bundle_path = tmp_path / "empty.sigstore"

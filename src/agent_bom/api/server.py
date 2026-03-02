@@ -2803,10 +2803,15 @@ async def test_siem_connection(siem_type: str = "", url: str = "", token: str = 
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=sanitize_error(str(exc)))
     except Exception as exc:
+        # Log sanitized details server-side, but return a generic error to the client
+        _logger.exception(
+            "Unexpected error while testing SIEM connection: %s",
+            sanitize_error(exc),
+        )
         return {
             "siem_type": siem_type,
             "healthy": False,
-            "error": sanitize_error(exc),
+            "error": "Failed to test SIEM connection",
         }
 
 

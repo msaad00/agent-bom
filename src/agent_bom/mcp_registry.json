@@ -1,7 +1,7 @@
 {
   "_comment": "agent-bom MCP Server Registry \u2014 threat intelligence database for known MCP servers",
   "_schema_version": "2.0",
-  "_updated": "2026-02-24",
+  "_updated": "2026-03-02",
   "_total_servers": 427,
   "_differentiator": "Threat intelligence database \u2014 not just a catalog. Each entry has risk_level, tools, credential_env_vars for blast radius pre-computation.",
   "_source": "https://github.com/msaad00/agent-bom/blob/main/data/mcp-registry.yaml",
@@ -576,7 +576,7 @@
     "mcp-atlassian": {
       "package": "mcp-atlassian",
       "ecosystem": "pypi",
-      "latest_version": "0.16.1",
+      "latest_version": "0.21.0",
       "description": "Jira and Confluence integration",
       "name": "Atlassian",
       "risk_justification": "Read/write access to Jira and Confluence via ATLASSIAN_API_TOKEN. Token exposure enables workspace-wide access.",
@@ -771,7 +771,7 @@
     "mongodb-mcp-server": {
       "package": "mongodb-mcp-server",
       "ecosystem": "npm",
-      "latest_version": "1.6.0",
+      "latest_version": "1.7.0",
       "description": "Query and modify MongoDB collections",
       "name": "MongoDB",
       "risk_justification": "Executes arbitrary MongoDB queries via MONGODB_URI. Full data read/write/delete possible across all collections.",
@@ -918,7 +918,7 @@
     "mcp-server-kubernetes": {
       "package": "mcp-server-kubernetes",
       "ecosystem": "npm",
-      "latest_version": "3.2.1",
+      "latest_version": "3.3.0",
       "description": "Kubernetes cluster management",
       "name": "Kubernetes",
       "risk_justification": "Full Kubernetes cluster management via KUBECONFIG. Can apply manifests, scale deployments, and delete resources.",
@@ -979,7 +979,7 @@
     "@notionhq/notion-mcp-server": {
       "package": "@notionhq/notion-mcp-server",
       "ecosystem": "npm",
-      "latest_version": "2.1.0",
+      "latest_version": "2.2.0",
       "description": "Read and write Notion pages, databases, blocks",
       "name": "Notion",
       "risk_justification": "Read/write access to Notion pages and databases via NOTION_API_KEY. Token exposure enables workspace-wide content manipulation.",
@@ -1112,7 +1112,7 @@
     "mcp-grafana": {
       "package": "mcp-grafana",
       "ecosystem": "pypi",
-      "latest_version": "0.1.2",
+      "latest_version": "0.11.2",
       "description": "Query Grafana dashboards and alerts",
       "name": "Grafana",
       "risk_justification": "Read/write access to Grafana dashboards and alerts via GRAFANA_API_KEY. Token exposure enables dashboard and alert rule manipulation.",
@@ -1297,7 +1297,7 @@
     "langsmith-mcp-server": {
       "package": "langsmith-mcp-server",
       "ecosystem": "pypi",
-      "latest_version": "0.1.0",
+      "latest_version": "0.1.1",
       "description": "Query LangSmith traces and evaluations",
       "name": "LangSmith",
       "risk_justification": "Read-only access to LangSmith traces and evaluations via LANGSMITH_API_KEY. No write capability.",
@@ -2689,7 +2689,7 @@
     "openclaw": {
       "package": "openclaw",
       "ecosystem": "npm",
-      "latest_version": "2026.2.22-2",
+      "latest_version": "2026.3.1",
       "description": "OpenClaw personal AI assistant \u2014 multi-channel gateway (WhatsApp, Telegram, Slack, Discord, iMessage, Teams) with 214k+ GitHub stars",
       "name": "OpenClaw",
       "risk_justification": "Full system access including filesystem, browser, code execution, and multi-channel messaging via OPENAI_API_KEY and ANTHROPIC_API_KEY. Credential exposure enables complete agent takeover.",
@@ -2895,7 +2895,7 @@
     "resend-mcp": {
       "package": "resend-mcp",
       "ecosystem": "npm",
-      "latest_version": "2.0.1",
+      "latest_version": "2.1.0",
       "description": "Send transactional emails via Resend API",
       "name": "Resend",
       "risk_justification": "Sends emails from your Resend-verified domains via RESEND_API_KEY. Key exposure enables email spoofing from your domain.",

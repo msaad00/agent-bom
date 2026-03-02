@@ -20,7 +20,47 @@ export interface ScanRequest {
   sbom?: string;
   enrich?: boolean;
   format?: string;
+  dynamic_discovery?: boolean;
+  dynamic_max_depth?: number;
 }
+
+// ── Scan Pipeline Step Types ────────────────────────────────────────────────
+
+export type StepStatus = "pending" | "running" | "done" | "failed" | "skipped";
+
+export interface StepEvent {
+  type: "step";
+  step_id: string;
+  status: StepStatus;
+  message: string;
+  started_at?: string;
+  completed_at?: string;
+  stats?: Record<string, number>;
+  sub_step?: string;
+  progress_pct?: number;
+}
+
+export interface ProgressEvent {
+  type: "progress";
+  message: string;
+}
+
+export interface DoneEvent {
+  type: "done";
+  status: string;
+  job_id: string;
+}
+
+export type SSEEvent = StepEvent | ProgressEvent | DoneEvent;
+
+export const PIPELINE_STEPS = [
+  { id: "discovery", label: "Discovery", icon: "Search" },
+  { id: "extraction", label: "Extraction", icon: "Package" },
+  { id: "scanning", label: "Scanning", icon: "Bug" },
+  { id: "enrichment", label: "Enrichment", icon: "Zap" },
+  { id: "analysis", label: "Analysis", icon: "Shield" },
+  { id: "output", label: "Report", icon: "FileText" },
+] as const;
 
 export interface ScanJob {
   job_id: string;
@@ -512,7 +552,7 @@ export const api = {
   },
 
   /** Connect to SSE stream for real-time progress */
-  streamScan: (jobId: string, onMessage: (data: unknown) => void, onDone: () => void) => {
+  streamScan: (jobId: string, onMessage: (data: SSEEvent) => void, onDone: () => void) => {
     const es = new EventSource(`${BASE}/v1/scan/${jobId}/stream`);
     es.onmessage = (e) => {
       try {

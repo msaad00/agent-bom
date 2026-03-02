@@ -478,6 +478,98 @@ class ScanJob(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
 
+# ─── Scan Pipeline (structured SSE events) ────────────────────────────────────
+
+
+class StepStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+PIPELINE_STEPS = ["discovery", "extraction", "scanning", "enrichment", "analysis", "output"]
+
+
+class ScanPipeline:
+    """Track scan pipeline steps and emit structured events to job.progress."""
+
+    def __init__(self, job: ScanJob) -> None:
+        self._job = job
+        self._steps: dict[str, dict[str, Any]] = {}
+        for step_id in PIPELINE_STEPS:
+            self._steps[step_id] = {
+                "type": "step",
+                "step_id": step_id,
+                "status": StepStatus.PENDING,
+                "message": f"Pending: {step_id}",
+                "started_at": None,
+                "completed_at": None,
+                "stats": {},
+                "sub_step": None,
+                "progress_pct": None,
+            }
+
+    def start_step(self, step_id: str, message: str, sub_step: str | None = None) -> None:
+        """Mark a step as running and emit event."""
+        event = self._steps[step_id]
+        event["status"] = StepStatus.RUNNING
+        event["message"] = message
+        event["started_at"] = _now()
+        event["sub_step"] = sub_step
+        self._emit(event)
+
+    def update_step(
+        self,
+        step_id: str,
+        message: str,
+        stats: dict[str, int] | None = None,
+        progress_pct: int | None = None,
+    ) -> None:
+        """Update a running step with new message/stats."""
+        event = self._steps[step_id]
+        event["message"] = message
+        if stats:
+            event["stats"].update(stats)
+        if progress_pct is not None:
+            event["progress_pct"] = progress_pct
+        self._emit(event)
+
+    def complete_step(self, step_id: str, message: str, stats: dict[str, int] | None = None) -> None:
+        """Mark a step as done."""
+        event = self._steps[step_id]
+        event["status"] = StepStatus.DONE
+        event["message"] = message
+        event["completed_at"] = _now()
+        if stats:
+            event["stats"].update(stats)
+        self._emit(event)
+
+    def fail_step(self, step_id: str, message: str) -> None:
+        """Mark a step as failed."""
+        event = self._steps[step_id]
+        event["status"] = StepStatus.FAILED
+        event["message"] = message
+        event["completed_at"] = _now()
+        self._emit(event)
+
+    def skip_step(self, step_id: str, message: str) -> None:
+        """Mark a step as skipped."""
+        event = self._steps[step_id]
+        event["status"] = StepStatus.SKIPPED
+        event["message"] = message
+        self._emit(event)
+
+    def _emit(self, event: dict[str, Any]) -> None:
+        """Serialize step event to job.progress for SSE pickup."""
+        import json as _json_mod
+
+        # Convert enum values to strings for JSON serialization
+        serializable = {k: (v.value if isinstance(v, Enum) else v) for k, v in event.items()}
+        self._job.progress.append(_json_mod.dumps(serializable))
+
+
 class VersionInfo(BaseModel):
     version: str
     api_version: str = "v1"
@@ -558,7 +650,7 @@ def _run_scan_sync(job: ScanJob) -> None:
     """Run the full scan pipeline in a thread (blocking). Updates job in-place."""
     job.status = JobStatus.RUNNING
     job.started_at = _now()
-    job.progress.append("Starting scan...")
+    pipeline = ScanPipeline(job)
 
     try:
         from agent_bom.discovery import discover_all
@@ -584,17 +676,16 @@ def _run_scan_sync(job: ScanJob) -> None:
         for p in path_fields:
             validate_path(p, must_exist=True)
 
-        # Step 1 — auto-discover local MCP configs
-        job.progress.append("Discovering local MCP configurations...")
+        # ── Discovery phase ──
+        pipeline.start_step("discovery", "Discovering local MCP configurations...")
         local_agents = discover_all(
             dynamic=req.dynamic_discovery,
             dynamic_max_depth=req.dynamic_max_depth,
         )
         agents.extend(local_agents)
 
-        # Step 2 — inventory file
         if req.inventory:
-            job.progress.append(f"Loading inventory: {req.inventory}")
+            pipeline.update_step("discovery", f"Loading inventory: {req.inventory}")
             import json as _json
 
             from agent_bom.models import Agent, AgentType, MCPServer
@@ -623,24 +714,20 @@ def _run_scan_sync(job: ScanJob) -> None:
                         mcp_servers=servers,
                     )
                 )
-            job.progress.append(f"Loaded {len(inv_data.get('agents', []))} agent(s) from inventory")
 
-        # Step 3 — Docker images
         for image_ref in req.images:
-            job.progress.append(f"Scanning image: {image_ref}")
+            pipeline.update_step("discovery", f"Scanning image: {image_ref}", sub_step=image_ref)
             from agent_bom.image import scan_image
 
             img_agents, img_warnings = scan_image(image_ref)
             agents.extend(img_agents)
             warnings_all.extend(img_warnings)
 
-        # Step 4 — Kubernetes
         if req.k8s:
-            job.progress.append("Scanning Kubernetes pods...")
+            pipeline.update_step("discovery", "Scanning Kubernetes pods...")
             from agent_bom.k8s import discover_images
 
             k8s_records = discover_images(namespace=req.k8s_namespace)
-            # Convert discovered images to image scans
             for img, _pod, _ctr in k8s_records:
                 from agent_bom.image import scan_image
 
@@ -648,49 +735,43 @@ def _run_scan_sync(job: ScanJob) -> None:
                 agents.extend(k8s_agents)
                 warnings_all.extend(k8s_warns)
 
-        # Step 5 — Terraform
         for tf_dir in req.tf_dirs:
-            job.progress.append(f"Scanning Terraform: {tf_dir}")
+            pipeline.update_step("discovery", f"Scanning Terraform: {tf_dir}")
             from agent_bom.terraform import scan_terraform_dir
 
             tf_agents, tf_warnings = scan_terraform_dir(tf_dir)
             agents.extend(tf_agents)
             warnings_all.extend(tf_warnings)
 
-        # Step 6 — GitHub Actions
         if req.gha_path:
-            job.progress.append(f"Scanning GitHub Actions: {req.gha_path}")
+            pipeline.update_step("discovery", f"Scanning GitHub Actions: {req.gha_path}")
             from agent_bom.github_actions import scan_github_actions
 
             gha_agents, gha_warnings = scan_github_actions(req.gha_path)
             agents.extend(gha_agents)
             warnings_all.extend(gha_warnings)
 
-        # Step 7 — Python agent projects
         for ap in req.agent_projects:
-            job.progress.append(f"Scanning Python agent project: {ap}")
+            pipeline.update_step("discovery", f"Scanning Python agent project: {ap}")
             from agent_bom.python_agents import scan_python_agents
 
             py_agents, py_warnings = scan_python_agents(ap)
             agents.extend(py_agents)
             warnings_all.extend(py_warnings)
 
-        # Step 7b — Jupyter notebooks
         for jdir in req.jupyter_dirs:
-            job.progress.append(f"Scanning Jupyter notebooks: {jdir}")
+            pipeline.update_step("discovery", f"Scanning Jupyter notebooks: {jdir}")
             from agent_bom.jupyter import scan_jupyter_notebooks
 
             j_agents, j_warnings = scan_jupyter_notebooks(jdir)
             agents.extend(j_agents)
             warnings_all.extend(j_warnings)
 
-        # Step 8 — existing SBOM
         if req.sbom:
-            job.progress.append(f"Ingesting SBOM: {req.sbom}")
+            pipeline.update_step("discovery", f"Ingesting SBOM: {req.sbom}")
             from agent_bom.sbom import load_sbom
 
             sbom_packages, _fmt = load_sbom(req.sbom)
-            # Attach SBOM packages to a synthetic agent
             if sbom_packages:
                 from agent_bom.models import Agent, AgentType, MCPServer
 
@@ -704,9 +785,8 @@ def _run_scan_sync(job: ScanJob) -> None:
                 )
                 agents.append(sbom_agent)
 
-        # Step 9a — SaaS connectors
         for connector_name in req.connectors:
-            job.progress.append(f"Discovering from connector: {connector_name}")
+            pipeline.update_step("discovery", f"Discovering from connector: {connector_name}")
             try:
                 from agent_bom.connectors import discover_from_connector
 
@@ -716,9 +796,8 @@ def _run_scan_sync(job: ScanJob) -> None:
             except Exception as con_exc:  # noqa: BLE001
                 warnings_all.append(f"{connector_name} connector error: {con_exc}")
 
-        # Step 9b — Filesystem / disk snapshot scanning
         for fs_path in req.filesystem_paths:
-            job.progress.append(f"Scanning filesystem: {fs_path}")
+            pipeline.update_step("discovery", f"Scanning filesystem: {fs_path}")
             try:
                 from agent_bom.filesystem import scan_filesystem
                 from agent_bom.models import Agent, AgentType, MCPServer
@@ -737,35 +816,52 @@ def _run_scan_sync(job: ScanJob) -> None:
                         mcp_servers=[fs_server],
                     )
                     agents.append(fs_agent)
-                    job.progress.append(f"Filesystem {fs_path}: {len(fs_pkgs)} packages via {fs_strat}")
             except Exception as fs_exc:  # noqa: BLE001
                 warnings_all.append(f"Filesystem scan error for {fs_path}: {fs_exc}")
 
+        pipeline.complete_step("discovery", f"Found {len(agents)} agent(s)", {"agents": len(agents)})
+
         if not agents:
-            job.progress.append("No agents found.")
+            pipeline.skip_step("extraction", "No agents to extract")
+            pipeline.skip_step("scanning", "No packages to scan")
+            pipeline.skip_step("enrichment", "Skipped")
+            pipeline.skip_step("analysis", "Skipped")
+            pipeline.skip_step("output", "No results")
             job.result = {"agents": [], "vulnerabilities": [], "blast_radius": [], "warnings": warnings_all}
             job.status = JobStatus.DONE
             job.completed_at = _now()
             return
 
-        # Extract packages for all discovered agents
-        job.progress.append(f"Found {len(agents)} agent(s). Extracting packages...")
+        # ── Extraction phase ──
+        pipeline.start_step("extraction", f"Extracting packages from {len(agents)} agent(s)...")
+        total_pkgs = 0
         for agent in agents:
             for server in agent.mcp_servers:
                 if not server.packages:
                     server.packages = extract_packages(server)
+                total_pkgs += len(server.packages)
+        pipeline.complete_step("extraction", f"Extracted {total_pkgs} packages", {"packages": total_pkgs})
 
-        job.progress.append("Querying OSV.dev for CVEs...")
-
-        # Step 9 — CVE scan + blast radius
+        # ── Scanning phase ──
+        pipeline.start_step("scanning", "Querying OSV.dev for CVEs...")
         blast_radii = scan_agents_sync(agents, enable_enrichment=req.enrich)
+        total_vulns = sum(len(p.vulnerabilities) for a in agents for s in a.mcp_servers for p in s.packages)
+        pipeline.complete_step("scanning", f"Found {total_vulns} vulnerabilities", {"vulnerabilities": total_vulns})
 
+        # ── Enrichment phase ──
         if req.enrich:
-            job.progress.append("Enriching with NVD CVSS, EPSS, CISA KEV...")
+            pipeline.start_step("enrichment", "Enriching with NVD CVSS, EPSS, CISA KEV...")
+            # Enrichment happens inside scan_agents_sync, so just mark done
+            pipeline.complete_step("enrichment", "Enrichment complete")
+        else:
+            pipeline.skip_step("enrichment", "Enrichment not requested")
 
-        job.progress.append("Computing blast radius...")
+        # ── Analysis phase ──
+        pipeline.start_step("analysis", "Computing blast radius...")
+        pipeline.complete_step("analysis", f"Computed {len(blast_radii)} blast radius entries", {"blast_radius": len(blast_radii)})
 
-        # Build report and serialise
+        # ── Output phase ──
+        pipeline.start_step("output", "Building report...")
         from agent_bom.models import AIBOMReport
 
         report = AIBOMReport(agents=agents, blast_radii=blast_radii)
@@ -773,7 +869,7 @@ def _run_scan_sync(job: ScanJob) -> None:
         report_json["warnings"] = warnings_all
         job.result = report_json
         job.status = JobStatus.DONE
-        job.progress.append("Scan complete.")
+        pipeline.complete_step("output", "Report ready")
 
         # Auto-sync discovered agents to fleet registry
         try:
@@ -784,7 +880,13 @@ def _run_scan_sync(job: ScanJob) -> None:
     except Exception as exc:  # noqa: BLE001
         job.status = JobStatus.FAILED
         job.error = str(exc)
-        job.progress.append(f"Error: {exc}")
+        # Mark whichever step was running as failed
+        for step_id in PIPELINE_STEPS:
+            if pipeline._steps[step_id]["status"] == StepStatus.RUNNING:
+                pipeline.fail_step(step_id, str(exc))
+                break
+        else:
+            job.progress.append(f"Error: {exc}")
     finally:
         job.completed_at = _now()
         # Persist final state
@@ -989,9 +1091,16 @@ async def stream_scan(job_id: str):
             current = _jobs_get(job_id)
             if current is None:
                 break
-            # Send any new progress lines
+            # Send any new progress lines (structured steps or legacy strings)
             for line in current.progress[sent:]:
-                yield {"data": _json.dumps({"type": "progress", "message": line})}
+                try:
+                    parsed = _json.loads(line)
+                    if isinstance(parsed, dict) and parsed.get("type") == "step":
+                        yield {"data": _json.dumps(parsed)}
+                    else:
+                        yield {"data": _json.dumps({"type": "progress", "message": line})}
+                except (_json.JSONDecodeError, ValueError):
+                    yield {"data": _json.dumps({"type": "progress", "message": line})}
                 sent += 1
             if current.status in (JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED):
                 yield {"data": _json.dumps({"type": "done", "status": current.status, "job_id": job_id})}

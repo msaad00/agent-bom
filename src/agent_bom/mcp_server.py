@@ -4,7 +4,7 @@ Start with:
     agent-bom mcp-server              # stdio (for Claude Desktop, Cursor, etc.)
     agent-bom mcp-server --sse        # SSE transport (for remote clients)
 
-Tools (14):
+Tools (15):
     scan              — Full discovery → scan → output pipeline
     check             — Check a specific package for CVEs before installing
     blast_radius      — Look up blast radius for a specific CVE
@@ -19,6 +19,7 @@ Tools (14):
     inventory         — List agents/servers without CVE scanning
     diff              — Compare scan against baseline for new/resolved vulns
     marketplace_check — Pre-install trust check with registry cross-reference
+    context_graph     — Agent context graph with lateral movement analysis
 
 Resources (2):
     registry://servers  — Browse 427+ server threat intel registry
@@ -1279,6 +1280,72 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                 indent=2,
                 default=str,
             )
+        except Exception as exc:
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
+
+    # ── Tool 15: context_graph ──────────────────────────────────
+
+    @mcp.tool(annotations=_READ_ONLY)
+    async def context_graph(
+        config_path: Annotated[
+            str | None,
+            Field(description="Path to MCP config directory. Omit to auto-discover."),
+        ] = None,
+        source_agent: Annotated[
+            str | None,
+            Field(description="Agent name to compute lateral paths from. Omit for all agents."),
+        ] = None,
+        max_depth: Annotated[
+            int,
+            Field(description="Max BFS depth for lateral path discovery (1-6, default 4)."),
+        ] = 4,
+    ) -> str:
+        """Build an agent context graph with lateral movement analysis.
+
+        Models reachability between agents, servers, credentials, tools,
+        and vulnerabilities.  Answers: "If agent X is compromised, what
+        else becomes reachable?"
+
+        Returns:
+            JSON with nodes, edges, lateral_paths, interaction_risks, and stats.
+        """
+        try:
+            from agent_bom.context_graph import (
+                NodeKind,
+                build_context_graph,
+                compute_interaction_risks,
+                find_lateral_paths,
+                to_serializable,
+            )
+            from agent_bom.models import AIBOMReport
+            from agent_bom.output import to_json
+
+            agents, blast_radii, _warnings = await _run_scan_pipeline(config_path)
+            if not agents:
+                return json.dumps({"error": "No agents found"})
+
+            report = AIBOMReport(agents=agents, blast_radii=blast_radii)
+            report_json = to_json(report)
+            graph = build_context_graph(
+                report_json["agents"],
+                report_json.get("blast_radius", []),
+            )
+
+            paths: list = []
+            depth = max(1, min(max_depth, 6))
+            if source_agent:
+                node_id = f"agent:{source_agent}"
+                if node_id in graph.nodes:
+                    paths = find_lateral_paths(graph, node_id, max_depth=depth)
+            else:
+                for nid, node in graph.nodes.items():
+                    if node.kind == NodeKind.AGENT:
+                        paths.extend(find_lateral_paths(graph, nid, max_depth=depth))
+
+            risks = compute_interaction_risks(graph)
+            result = to_serializable(graph, paths, risks)
+            return _truncate_response(json.dumps(result, indent=2, default=str))
         except Exception as exc:
             logger.exception("MCP tool error")
             return json.dumps({"error": sanitize_error(exc)})

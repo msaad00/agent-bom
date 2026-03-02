@@ -225,6 +225,53 @@ export interface AttackFlowResponse {
   stats: AttackFlowStats;
 }
 
+// ─── Context Graph Types ────────────────────────────────────────────────────
+
+export interface ContextGraphResponse {
+  nodes: Array<{
+    id: string;
+    kind: string;
+    label: string;
+    metadata: Record<string, unknown>;
+  }>;
+  edges: Array<{
+    source: string;
+    target: string;
+    kind: string;
+    weight: number;
+    metadata: Record<string, unknown>;
+  }>;
+  lateral_paths: Array<{
+    source: string;
+    target: string;
+    hops: string[];
+    edges: string[];
+    composite_risk: number;
+    summary: string;
+    credential_exposure: string[];
+    tool_exposure: string[];
+    vuln_ids: string[];
+  }>;
+  interaction_risks: Array<{
+    pattern: string;
+    agents: string[];
+    risk_score: number;
+    description: string;
+    owasp_agentic_tag?: string;
+  }>;
+  stats: {
+    total_nodes: number;
+    total_edges: number;
+    agent_count: number;
+    shared_server_count: number;
+    shared_credential_count: number;
+    lateral_path_count: number;
+    max_lateral_depth: number;
+    highest_path_risk: number;
+    interaction_risk_count: number;
+  };
+}
+
 export interface Tool {
   name: string;
   description?: string;
@@ -549,6 +596,14 @@ export const api = {
     if (filters?.agent) params.set("agent", filters.agent);
     const qs = params.toString();
     return get<AttackFlowResponse>(`/v1/scan/${jobId}/attack-flow${qs ? `?${qs}` : ""}`);
+  },
+
+  /** Get context graph with lateral movement analysis */
+  getContextGraph: (jobId: string, agent?: string) => {
+    const params = new URLSearchParams();
+    if (agent) params.set("agent", agent);
+    const qs = params.toString();
+    return get<ContextGraphResponse>(`/v1/scan/${jobId}/context-graph${qs ? `?${qs}` : ""}`);
   },
 
   /** Connect to SSE stream for real-time progress */

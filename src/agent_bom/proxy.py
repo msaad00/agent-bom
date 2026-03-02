@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from agent_bom.proxy_scanner import ScanConfig, load_scan_config, scan_tool_call, scan_tool_response
 from agent_bom.security import validate_arguments, validate_command
 
 logger = logging.getLogger(__name__)
@@ -411,6 +412,7 @@ async def run_proxy(
     rate_tracker = RateLimitTracker(threshold=rate_limit_threshold) if rate_limit_threshold > 0 else None
     seq_analyzer = SequenceAnalyzer()
     replay_detector = ReplayDetector()
+    scan_config = load_scan_config(policy) if policy else ScanConfig()
     runtime_alerts: list[dict] = []
 
     def _handle_alerts(alerts, log_f=None):
@@ -570,6 +572,40 @@ async def run_proxy(
                     seq_alerts = seq_analyzer.record(tool_name)
                     _handle_alerts(seq_alerts, log_file)
 
+                    # Inline content scanning (prompt injection, PII, secrets, payload vuln)
+                    if scan_config.enabled:
+                        from agent_bom.runtime.detectors import Alert, AlertSeverity
+
+                        s_results = scan_tool_call(tool_name, arguments, scan_config)
+                        for sr in s_results:
+                            alert = Alert(
+                                detector=f"scanner:{sr.scanner}",
+                                severity=AlertSeverity.CRITICAL
+                                if sr.severity == "critical"
+                                else (AlertSeverity.HIGH if sr.severity == "high" else AlertSeverity.MEDIUM),
+                                message=f"Inline scan: {sr.scanner}/{sr.rule_id} in tool '{tool_name}'",
+                                details={"rule_id": sr.rule_id, "excerpt": sr.excerpt, "confidence": sr.confidence},
+                            )
+                            _handle_alerts([alert], log_file)
+                        if scan_config.mode == "enforce" and any(sr.blocked for sr in s_results):
+                            first = next(sr for sr in s_results if sr.blocked)
+                            reason = f"Blocked by inline scanner: {first.scanner}/{first.rule_id}"
+                            metrics.record_blocked(f"scanner:{first.scanner}")
+                            if log_file:
+                                log_tool_call(
+                                    log_file,
+                                    tool_name,
+                                    arguments,
+                                    "blocked",
+                                    reason,
+                                    payload_sha256=p_hash,
+                                    message_id=msg_id,
+                                )
+                            error_resp = make_error_response(msg_id, -32600, reason)
+                            sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
+                            sys.stdout.buffer.flush()
+                            continue
+
                     # Record allowed call + start latency timer
                     metrics.record_call(tool_name)
                     if "id" in msg:
@@ -625,6 +661,34 @@ async def run_proxy(
                         tool_for_resp = pending_calls[resp_id][0]
                     cred_alerts = cred_detector.check(tool_for_resp or "unknown", result_text)
                     _handle_alerts(cred_alerts, log_file)
+
+                # Inline response scanning (PII, secrets, payload vuln)
+                if scan_config.enabled and "result" in msg:
+                    resp_text = json.dumps(msg.get("result", ""))
+                    resp_id_scan = msg.get("id")
+                    tool_for_scan = ""
+                    if resp_id_scan is not None and resp_id_scan in pending_calls:
+                        tool_for_scan = pending_calls[resp_id_scan][0]
+
+                    from agent_bom.runtime.detectors import Alert, AlertSeverity
+
+                    resp_results = scan_tool_response(resp_text, scan_config)
+                    for sr in resp_results:
+                        alert = Alert(
+                            detector=f"scanner:{sr.scanner}",
+                            severity=AlertSeverity.CRITICAL
+                            if sr.severity == "critical"
+                            else (AlertSeverity.HIGH if sr.severity == "high" else AlertSeverity.MEDIUM),
+                            message=f"Inline scan (response): {sr.scanner}/{sr.rule_id} from '{tool_for_scan or 'unknown'}'",
+                            details={"rule_id": sr.rule_id, "excerpt": sr.excerpt, "confidence": sr.confidence},
+                        )
+                        _handle_alerts([alert], log_file)
+                    if scan_config.mode == "enforce" and any(sr.blocked for sr in resp_results):
+                        # Replace response with safe content
+                        msg["result"] = {
+                            "content": [{"type": "text", "text": "[BLOCKED: security scanner detected sensitive content in response]"}]
+                        }
+                        line = (json.dumps(msg) + "\n").encode()
 
                 # Complete latency tracking for tool call responses
                 resp_id = msg.get("id")

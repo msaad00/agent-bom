@@ -42,8 +42,18 @@ if TYPE_CHECKING:
 console = Console(stderr=True)
 logger = logging.getLogger(__name__)
 
-# Simple in-memory cache: hash(prompt) -> response
+# Simple in-memory cache: hash(prompt) -> response (bounded)
+_MAX_AI_CACHE = 1_000
 _cache: dict[str, str] = {}
+
+
+def _ai_cache_put(key: str, value: str) -> None:
+    """Insert into bounded AI response cache."""
+    _cache[key] = value
+    if len(_cache) > _MAX_AI_CACHE:
+        for k in list(_cache.keys())[: len(_cache) - _MAX_AI_CACHE]:
+            del _cache[k]
+
 
 DEFAULT_MODEL = "openai/gpt-4o-mini"
 OLLAMA_BASE_URL = "http://localhost:11434"
@@ -70,6 +80,7 @@ def _check_litellm() -> bool:
     """Check if litellm is installed."""
     try:
         import litellm  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -79,6 +90,7 @@ def _check_huggingface() -> bool:
     """Check if huggingface-hub is installed with InferenceClient."""
     try:
         from huggingface_hub import InferenceClient  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -179,7 +191,7 @@ async def _call_ollama_direct(prompt: str, model: str, max_tokens: int = 500) ->
                 data = resp.json()
                 text = data.get("message", {}).get("content", "").strip()
                 if text:
-                    _cache[key] = text
+                    _ai_cache_put(key, text)
                     return text
             logger.warning("Ollama returned status %d", resp.status_code)
             return None
@@ -207,7 +219,7 @@ async def _call_llm_via_litellm(prompt: str, model: str, max_tokens: int = 500) 
             temperature=0.3,
         )
         text = response.choices[0].message.content.strip()
-        _cache[key] = text
+        _ai_cache_put(key, text)
         return text
     except ImportError:
         logger.warning("litellm not installed. Install with: pip install 'agent-bom[ai-enrich]'")
@@ -218,7 +230,9 @@ async def _call_llm_via_litellm(prompt: str, model: str, max_tokens: int = 500) 
 
 
 async def _call_huggingface(
-    prompt: str, model: str = HF_DEFAULT_MODEL, max_tokens: int = 500,
+    prompt: str,
+    model: str = HF_DEFAULT_MODEL,
+    max_tokens: int = 500,
 ) -> Optional[str]:
     """Call HuggingFace Inference API (free tier available).
 
@@ -245,7 +259,7 @@ async def _call_huggingface(
         )
         text = response.choices[0].message.content.strip()
         if text:
-            _cache[key] = text
+            _ai_cache_put(key, text)
             return text
         return None
     except ImportError:
@@ -265,7 +279,7 @@ async def _call_llm(prompt: str, model: str, max_tokens: int = 500) -> Optional[
     - Other models → litellm
     """
     if model.startswith("ollama/"):
-        bare_model = model[len("ollama/"):]
+        bare_model = model[len("ollama/") :]
         result = await _call_ollama_direct(prompt, bare_model, max_tokens)
         if result is not None:
             return result
@@ -280,7 +294,7 @@ async def _call_llm(prompt: str, model: str, max_tokens: int = 500) -> Optional[
         return None
 
     if model.startswith("huggingface/"):
-        hf_model = model[len("huggingface/"):]
+        hf_model = model[len("huggingface/") :]
         return await _call_huggingface(prompt, model=hf_model, max_tokens=max_tokens)
 
     return await _call_llm_via_litellm(prompt, model, max_tokens)
@@ -335,7 +349,10 @@ def _parse_json_response(response: str) -> dict | None:
 
 
 async def _call_ollama_structured(
-    prompt: str, model: str, schema_cls: type, max_tokens: int = 500,
+    prompt: str,
+    model: str,
+    schema_cls: type,
+    max_tokens: int = 500,
 ) -> Optional[object]:
     """Call Ollama with structured output via the ``format`` parameter.
 
@@ -369,7 +386,7 @@ async def _call_ollama_structured(
                 data = resp.json()
                 text = data.get("message", {}).get("content", "").strip()
                 if text:
-                    _cache[key] = text
+                    _ai_cache_put(key, text)
                     return schema_cls.model_validate_json(text)
         return None
     except Exception as exc:
@@ -378,7 +395,10 @@ async def _call_ollama_structured(
 
 
 async def _call_llm_structured(
-    prompt: str, model: str, schema_cls: type, max_tokens: int = 500,
+    prompt: str,
+    model: str,
+    schema_cls: type,
+    max_tokens: int = 500,
 ) -> Optional[object]:
     """Call LLM with structured output, falling back to unstructured + parse.
 
@@ -387,7 +407,7 @@ async def _call_llm_structured(
     2. Fallback: unstructured call + ``schema.model_validate_json()``
     """
     if model.startswith("ollama/"):
-        bare_model = model[len("ollama/"):]
+        bare_model = model[len("ollama/") :]
         result = await _call_ollama_structured(prompt, bare_model, schema_cls, max_tokens)
         if result is not None:
             return result
@@ -443,10 +463,7 @@ def _build_blast_radius_prompt(br: BlastRadius) -> str:
 
 def _build_executive_summary_prompt(report: AIBOMReport) -> str:
     """Build a prompt for generating an executive summary."""
-    critical_ids = [
-        br.vulnerability.id for br in report.blast_radii[:5]
-        if br.vulnerability.severity.value == "critical"
-    ]
+    critical_ids = [br.vulnerability.id for br in report.blast_radii[:5] if br.vulnerability.severity.value == "critical"]
     cred_count = len({c for br in report.blast_radii for c in br.exposed_credentials})
     tool_count = len({t.name for br in report.blast_radii for t in br.exposed_tools})
 
@@ -476,8 +493,7 @@ def _build_threat_chain_prompt(report: AIBOMReport) -> str:
         tools = ", ".join(t.name for t in br.exposed_tools[:3])
         creds = ", ".join(br.exposed_credentials[:3])
         chains.append(
-            f"- {br.vulnerability.id} in {br.package.name}@{br.package.version} "
-            f"| agents: {agents} | tools: {tools} | creds: {creds}"
+            f"- {br.vulnerability.id} in {br.package.name}@{br.package.version} | agents: {agents} | tools: {tools} | creds: {creds}"
         )
 
     return (
@@ -805,22 +821,20 @@ def _apply_skill_analysis(audit: "SkillAuditResult", ai_data: dict) -> None:
         source_file = next(iter(audit.findings), None)
         source = source_file.source_file if source_file else "unknown"
 
-        audit.findings.append(SkillFinding(
-            severity=severity,
-            category=new.get("category", "ai_detected"),
-            title=new.get("title", "AI-detected finding"),
-            detail=new.get("detail", ""),
-            source_file=source,
-            recommendation=new.get("recommendation", ""),
-            context="ai_analysis",
-        ))
+        audit.findings.append(
+            SkillFinding(
+                severity=severity,
+                category=new.get("category", "ai_detected"),
+                title=new.get("title", "AI-detected finding"),
+                detail=new.get("detail", ""),
+                source_file=source,
+                recommendation=new.get("recommendation", ""),
+                context="ai_analysis",
+            )
+        )
 
     # Recalculate passed status: false_positive findings don't count
-    audit.passed = not any(
-        f.severity in ("critical", "high")
-        and f.ai_adjusted_severity != "false_positive"
-        for f in audit.findings
-    )
+    audit.passed = not any(f.severity in ("critical", "high") and f.ai_adjusted_severity != "false_positive" for f in audit.findings)
 
 
 async def enrich_skill_audit(

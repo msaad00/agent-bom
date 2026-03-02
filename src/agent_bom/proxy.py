@@ -52,9 +52,14 @@ class ProxyMetrics:
         """Record a blocked tool call by reason category."""
         self.blocked_calls[reason] += 1
 
+    _MAX_LATENCY_ENTRIES = 10_000
+
     def record_latency(self, duration_ms: float) -> None:
-        """Record tool call round-trip latency in milliseconds."""
+        """Record tool call round-trip latency in milliseconds (bounded)."""
         self.latencies_ms.append(duration_ms)
+        if len(self.latencies_ms) > self._MAX_LATENCY_ENTRIES:
+            # Keep only the most recent half
+            self.latencies_ms = self.latencies_ms[self._MAX_LATENCY_ENTRIES // 2 :]
 
     def summary(self) -> dict:
         """Generate a metrics summary dict for JSONL export."""
@@ -423,8 +428,9 @@ async def run_proxy(
     # Track declared tools from tools/list responses
     declared_tools: set[str] = set()
     tools_list_request_ids: set[int | str] = set()
-    # Track in-flight tool calls for latency measurement
+    # Track in-flight tool calls for latency measurement (with TTL cleanup)
     pending_calls: dict[int | str, tuple[str, float]] = {}  # id → (tool_name, start_time)
+    pending_call_ttl = 300.0  # 5 minutes — evict orphaned entries
 
     # Validate the server command before spawning
     validate_command(server_cmd[0])
@@ -625,6 +631,12 @@ async def run_proxy(
                 if resp_id is not None and resp_id in pending_calls:
                     _tool_name, start = pending_calls.pop(resp_id)
                     metrics.record_latency((time.monotonic() - start) * 1000)
+
+                # Evict orphaned pending_calls older than TTL
+                now_mono = time.monotonic()
+                stale = [k for k, (_, t) in pending_calls.items() if now_mono - t > pending_call_ttl]
+                for k in stale:
+                    pending_calls.pop(k, None)
 
             # Forward to client
             sys.stdout.buffer.write(line)

@@ -71,7 +71,7 @@ def _load_enrichment_cache() -> None:
             else:
                 _epss_file_cache.update(fresh)
         except Exception:  # noqa: BLE001
-            pass
+            _logger.debug("Failed to load enrichment cache %s", name)
 
 
 def _save_enrichment_cache() -> None:

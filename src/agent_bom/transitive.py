@@ -17,9 +17,18 @@ console = Console(stderr=True)
 NPM_REGISTRY = "https://registry.npmjs.org"
 PYPI_API = "https://pypi.org/pypi"
 
-# Cache to avoid re-fetching the same package metadata
+# Cache to avoid re-fetching the same package metadata (bounded)
+_MAX_TRANSITIVE_CACHE = 5_000
 _npm_cache: dict[str, dict] = {}
 _pypi_cache: dict[str, dict] = {}
+
+
+def _cache_put(cache: dict[str, dict], key: str, value: dict) -> None:
+    """Insert into a bounded cache, evicting oldest entries when full."""
+    cache[key] = value
+    if len(cache) > _MAX_TRANSITIVE_CACHE:
+        for k in list(cache.keys())[: len(cache) - _MAX_TRANSITIVE_CACHE]:
+            del cache[k]
 
 
 def _is_prerelease(version_str: str) -> bool:
@@ -153,7 +162,7 @@ async def fetch_npm_metadata(package_name: str, version: str, client: httpx.Asyn
                 resolved = _resolve_npm_version(version, pkg_data)
                 metadata = pkg_data.get("versions", {}).get(resolved)
                 if metadata:
-                    _npm_cache[cache_key] = metadata
+                    _cache_put(_npm_cache, cache_key, metadata)
                     return metadata
             except (ValueError, KeyError):
                 pass
@@ -166,7 +175,7 @@ async def fetch_npm_metadata(package_name: str, version: str, client: httpx.Asyn
         if response and response.status_code == 200:
             try:
                 metadata = response.json()
-                _npm_cache[cache_key] = metadata
+                _cache_put(_npm_cache, cache_key, metadata)
                 return metadata
             except (ValueError, KeyError):
                 pass
@@ -201,9 +210,9 @@ async def fetch_pypi_metadata(package_name: str, version: str, client: httpx.Asy
                     )
                     if version_data and version_data.status_code == 200:
                         data = version_data.json()
-                        _pypi_cache[cache_key] = data
+                        _cache_put(_pypi_cache, cache_key, data)
                         return data
-                _pypi_cache[cache_key] = pkg_data
+                _cache_put(_pypi_cache, cache_key, pkg_data)
                 return pkg_data
             except (ValueError, KeyError):
                 pass
@@ -216,7 +225,7 @@ async def fetch_pypi_metadata(package_name: str, version: str, client: httpx.Asy
         if response and response.status_code == 200:
             try:
                 data = response.json()
-                _pypi_cache[cache_key] = data
+                _cache_put(_pypi_cache, cache_key, data)
                 return data
             except (ValueError, KeyError):
                 pass

@@ -1520,7 +1520,7 @@ async def connector_health(name: str) -> dict:
         status = check_connector_health(name)
         return {"connector": status.connector, "state": status.state.value, "message": status.message, "api_version": status.api_version}
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=404, detail=sanitize_error(str(exc))) from exc
 
 
 # ── Registry ───────────────────────────────────────────────────────────────
@@ -2801,7 +2801,7 @@ async def test_siem_connection(siem_type: str = "", url: str = "", token: str = 
         healthy = connector.health_check()
         return {"siem_type": siem_type, "healthy": healthy}
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=sanitize_error(str(exc)))
     except Exception as exc:
         return {
             "siem_type": siem_type,

@@ -226,7 +226,7 @@ class SQLiteExceptionStore:
             params.append(status)
         where = " AND ".join(clauses)
         rows = self._conn.execute(
-            f"SELECT exception_id, vuln_id, package_name, server_name, reason, requested_by, "
+            f"SELECT exception_id, vuln_id, package_name, server_name, reason, requested_by, "  # nosec B608 — clauses are static strings, values are parameterized
             f"approved_by, status, created_at, expires_at, approved_at, revoked_at, tenant_id "
             f"FROM exceptions WHERE {where} ORDER BY created_at DESC",
             params,

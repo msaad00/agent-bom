@@ -198,8 +198,8 @@ class SQLiteAuditLog:
             clauses.append("timestamp >= ?")
             params.append(since)
 
-        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-        sql = f"SELECT entry_id, timestamp, action, actor, resource, details, hmac_signature FROM audit_log {where} ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""  # nosec B608 — clauses are static strings, values are parameterized
+        sql = f"SELECT entry_id, timestamp, action, actor, resource, details, hmac_signature FROM audit_log {where} ORDER BY timestamp DESC LIMIT ? OFFSET ?"  # nosec B608
         params.extend([limit, offset])
 
         rows = self._conn.execute(sql, params).fetchall()

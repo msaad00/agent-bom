@@ -4,6 +4,7 @@ Supported targets:
     - Splunk (HEC — HTTP Event Collector)
     - Datadog (Log API)
     - Elasticsearch / OpenSearch
+    - Syslog (RFC 5424 over TCP/TLS with OCSF formatting)
 
 Each connector implements the SIEMConnector protocol and is registered
 in the _CONNECTORS dict for dynamic dispatch.
@@ -196,6 +197,13 @@ class ElasticsearchConnector:
 
 # ── Registry ────────────────────────────────────────────────────────
 
+
+def _lazy_syslog():
+    from agent_bom.siem.ocsf import SyslogConnector
+
+    return SyslogConnector
+
+
 _CONNECTORS: dict[str, type] = {
     "splunk": SplunkHEC,
     "datadog": DatadogLogs,
@@ -206,14 +214,37 @@ _CONNECTORS: dict[str, type] = {
 
 def create_connector(name: str, config: SIEMConfig) -> SIEMConnector:
     """Create a SIEM connector by name."""
+    if name == "syslog":
+        cls = _lazy_syslog()
+        return cls(config)
     cls = _CONNECTORS.get(name)
     if cls is None:
-        raise ValueError(f"Unknown SIEM connector: {name!r}. Available: {sorted(_CONNECTORS)}")
+        available = sorted(list(_CONNECTORS) + ["syslog"])
+        raise ValueError(f"Unknown SIEM connector: {name!r}. Available: {available}")
     return cls(config)
 
 
 def list_connectors() -> list[str]:
-    return sorted(_CONNECTORS.keys())
+    return sorted(list(_CONNECTORS.keys()) + ["syslog"])
+
+
+def format_event(event: dict, fmt: str = "raw") -> dict:
+    """Format an alert event for SIEM export.
+
+    Args:
+        event: The raw alert dict.
+        fmt: ``"raw"`` for passthrough, ``"ocsf"`` for OCSF Detection Finding.
+    """
+    if fmt == "ocsf":
+        from agent_bom.siem.ocsf import to_ocsf_detection_finding
+
+        return to_ocsf_detection_finding(event)
+    return event
+
+
+def list_formats() -> list[str]:
+    """Return supported SIEM event formats."""
+    return ["raw", "ocsf"]
 
 
 def create_from_env() -> SIEMConnector | None:

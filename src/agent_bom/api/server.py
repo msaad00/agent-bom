@@ -22,6 +22,11 @@ Endpoints:
     GET  /v1/governance                Snowflake governance report
     GET  /v1/governance/findings       governance findings (filtered)
     GET  /v1/activity                  agent activity timeline
+    POST /v1/auth/keys                 create RBAC API key
+    GET  /v1/auth/keys                 list API keys
+    DELETE /v1/auth/keys/{id}          revoke an API key
+    GET  /v1/audit                     query audit log
+    GET  /v1/audit/integrity           verify audit log HMAC integrity
 """
 
 from __future__ import annotations
@@ -219,30 +224,100 @@ app.add_middleware(TrustHeadersMiddleware)
 
 
 class APIKeyMiddleware(BaseHTTPMiddleware):
-    """Optional API key authentication via Bearer token or X-API-Key header."""
+    """Optional API key authentication via Bearer token or X-API-Key header.
+
+    Supports two modes:
+    - Simple mode: single static API key (backward compatible)
+    - RBAC mode: role-based access control via KeyStore with per-endpoint role checks
+    """
 
     _EXEMPT_PATHS = {"/", "/health", "/version", "/docs", "/redoc", "/openapi.json"}
+
+    # Endpoints requiring ADMIN role (mutating / destructive operations)
+    _ADMIN_PATHS: set[tuple[str, str]] = {
+        ("DELETE", "/v1/scan/"),
+        ("POST", "/v1/gateway/policies"),
+        ("PUT", "/v1/gateway/policies/"),
+        ("DELETE", "/v1/gateway/policies/"),
+        ("POST", "/v1/fleet/sync"),
+        ("PUT", "/v1/fleet/"),
+        ("POST", "/v1/auth/keys"),
+        ("DELETE", "/v1/auth/keys/"),
+        ("POST", "/v1/exceptions"),
+        ("PUT", "/v1/exceptions/"),
+        ("DELETE", "/v1/exceptions/"),
+    }
+
+    # Endpoints requiring ANALYST role (scan + write operations)
+    _ANALYST_PATHS: set[tuple[str, str]] = {
+        ("POST", "/v1/scan"),
+        ("POST", "/v1/gateway/evaluate"),
+        ("POST", "/v1/traces"),
+        ("POST", "/v1/results/push"),
+        ("POST", "/v1/schedules"),
+        ("DELETE", "/v1/schedules/"),
+        ("PUT", "/v1/schedules/"),
+    }
 
     def __init__(self, app: ASGIApp, api_key: str):
         super().__init__(app)
         self._api_key = api_key
 
+    def _required_role(self, method: str, path: str) -> str:
+        """Determine the minimum role required for a request."""
+        for m, p in self._ADMIN_PATHS:
+            if method == m and path.startswith(p):
+                return "admin"
+        for m, p in self._ANALYST_PATHS:
+            if method == m and path.startswith(p):
+                return "analyst"
+        return "viewer"
+
     async def dispatch(self, request: StarletteRequest, call_next):
         if request.url.path in self._EXEMPT_PATHS:
             return await call_next(request)
 
-        # Check Authorization: Bearer <key>
+        # Extract raw key from headers
+        raw_key = ""
         auth = request.headers.get("authorization", "")
-        if auth.startswith("Bearer ") and secrets.compare_digest(auth[7:], self._api_key):
+        if auth.startswith("Bearer "):
+            raw_key = auth[7:]
+        if not raw_key:
+            raw_key = request.headers.get("x-api-key", "")
+
+        if not raw_key:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Unauthorized — provide API key via Authorization: Bearer <key> or X-API-Key header"},
+            )
+
+        # Simple mode: single static key (backward compatible, all access)
+        if secrets.compare_digest(raw_key, self._api_key):
+            request.state.api_key_name = "static-key"
+            request.state.api_key_role = "admin"
             return await call_next(request)
 
-        # Check X-API-Key header
-        header_key = request.headers.get("x-api-key", "")
-        if header_key and secrets.compare_digest(header_key, self._api_key):
-            return await call_next(request)
+        # RBAC mode: check against KeyStore
+        from agent_bom.api.auth import Role, get_key_store
+
+        store = get_key_store()
+        if store.has_keys():
+            api_key = store.verify(raw_key)
+            if api_key:
+                required = self._required_role(request.method, request.url.path)
+                required_role = Role(required)
+                if not api_key.has_role(required_role):
+                    return JSONResponse(
+                        status_code=403,
+                        content={"detail": f"Forbidden — requires {required} role, you have {api_key.role.value}"},
+                    )
+                request.state.api_key_name = api_key.name
+                request.state.api_key_role = api_key.role.value
+                return await call_next(request)
 
         return JSONResponse(
-            status_code=401, content={"detail": "Unauthorized — provide API key via Authorization: Bearer <key> or X-API-Key header"}
+            status_code=401,
+            content={"detail": "Unauthorized — invalid API key"},
         )
 
 
@@ -2968,6 +3043,70 @@ async def toggle_schedule(schedule_id: str) -> dict:
     s.updated_at = datetime.now(timezone.utc).isoformat()
     _schedule_store.put(s)
     return s.model_dump()
+
+
+# ── Enterprise: API Key Management (RBAC) ──────────────────────────────────
+
+
+class CreateKeyRequest(BaseModel):
+    name: str
+    role: str = "viewer"
+    expires_at: str | None = None
+    scopes: list[str] = []
+
+
+@app.post("/v1/auth/keys", tags=["enterprise"], status_code=201)
+async def create_key(req: CreateKeyRequest) -> dict:
+    """Create a new API key. Returns the raw key once — store it securely."""
+    from agent_bom.api.audit_log import log_action
+    from agent_bom.api.auth import Role, create_api_key, get_key_store
+
+    try:
+        role = Role(req.role)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid role: {req.role}. Must be admin, analyst, or viewer")
+
+    raw_key, api_key = create_api_key(
+        name=req.name,
+        role=role,
+        expires_at=req.expires_at,
+        scopes=req.scopes,
+    )
+    get_key_store().add(api_key)
+
+    log_action("auth.key_created", actor=req.name, resource=f"key/{api_key.key_id}", role=req.role)
+
+    return {
+        "raw_key": raw_key,
+        "key_id": api_key.key_id,
+        "key_prefix": api_key.key_prefix,
+        "name": api_key.name,
+        "role": api_key.role.value,
+        "created_at": api_key.created_at,
+        "expires_at": api_key.expires_at,
+        "message": "Store the raw_key securely — it will not be shown again.",
+    }
+
+
+@app.get("/v1/auth/keys", tags=["enterprise"])
+async def list_keys() -> dict:
+    """List all API keys (without hashes or raw values)."""
+    from agent_bom.api.auth import get_key_store
+
+    keys = get_key_store().list_keys()
+    return {"keys": [k.to_dict() for k in keys]}
+
+
+@app.delete("/v1/auth/keys/{key_id}", tags=["enterprise"], status_code=204)
+async def delete_key(key_id: str) -> None:
+    """Revoke an API key."""
+    from agent_bom.api.audit_log import log_action
+    from agent_bom.api.auth import get_key_store
+
+    if not get_key_store().remove(key_id):
+        raise HTTPException(status_code=404, detail=f"Key {key_id} not found")
+
+    log_action("auth.key_revoked", resource=f"key/{key_id}")
 
 
 # ── Enterprise: Audit Log ────────────────────────────────────────────────────

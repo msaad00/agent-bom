@@ -12,14 +12,18 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from agent_bom.atlas import tag_blast_radius as tag_atlas_techniques
+from agent_bom.cis_controls import tag_blast_radius as tag_cis_controls
 from agent_bom.eu_ai_act import tag_blast_radius as tag_eu_ai_act
 from agent_bom.http_client import create_client, request_with_retry
+from agent_bom.iso_27001 import tag_blast_radius as tag_iso_27001
 from agent_bom.malicious import check_typosquat, flag_malicious_from_vulns
 from agent_bom.models import Agent, BlastRadius, MCPServer, Package, Severity, Vulnerability
 from agent_bom.nist_ai_rmf import tag_blast_radius as tag_nist_ai_rmf
+from agent_bom.nist_csf import tag_blast_radius as tag_nist_csf
 from agent_bom.owasp import tag_blast_radius
 from agent_bom.owasp_agentic import tag_blast_radius as tag_owasp_agentic
 from agent_bom.owasp_mcp import tag_blast_radius as tag_owasp_mcp
+from agent_bom.soc2 import tag_blast_radius as tag_soc2
 
 # Known AI/ML framework packages — vulnerabilities in these carry elevated risk
 # because they run inside AI agents that have credentials and tool access
@@ -688,6 +692,10 @@ async def scan_agents(agents: list[Agent]) -> list[BlastRadius]:
             br.owasp_mcp_tags = tag_owasp_mcp(br)
             br.owasp_agentic_tags = tag_owasp_agentic(br)
             br.eu_ai_act_tags = tag_eu_ai_act(br)
+            br.nist_csf_tags = tag_nist_csf(br)
+            br.iso_27001_tags = tag_iso_27001(br)
+            br.soc2_tags = tag_soc2(br)
+            br.cis_tags = tag_cis_controls(br)
             blast_radii.append(br)
 
     # Sort by risk score descending

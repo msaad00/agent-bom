@@ -382,6 +382,22 @@ def print_blast_radius(report: AIBOMReport) -> None:
             tags = sorted(br.eu_ai_act_tags)[:3]
             extra = f" +{len(br.eu_ai_act_tags) - 3}" if len(br.eu_ai_act_tags) > 3 else ""
             threat_lines.append(f"[blue]{' '.join(tags)}{extra}[/blue]")
+        if br.nist_csf_tags:
+            tags = sorted(br.nist_csf_tags)[:3]
+            extra = f" +{len(br.nist_csf_tags) - 3}" if len(br.nist_csf_tags) > 3 else ""
+            threat_lines.append(f"[bright_green]{' '.join(tags)}{extra}[/bright_green]")
+        if br.iso_27001_tags:
+            tags = sorted(br.iso_27001_tags)[:3]
+            extra = f" +{len(br.iso_27001_tags) - 3}" if len(br.iso_27001_tags) > 3 else ""
+            threat_lines.append(f"[bright_cyan]{' '.join(tags)}{extra}[/bright_cyan]")
+        if br.soc2_tags:
+            tags = sorted(br.soc2_tags)[:3]
+            extra = f" +{len(br.soc2_tags) - 3}" if len(br.soc2_tags) > 3 else ""
+            threat_lines.append(f"[bright_yellow]{' '.join(tags)}{extra}[/bright_yellow]")
+        if br.cis_tags:
+            tags = sorted(br.cis_tags)[:3]
+            extra = f" +{len(br.cis_tags) - 3}" if len(br.cis_tags) > 3 else ""
+            threat_lines.append(f"[bright_magenta]{' '.join(tags)}{extra}[/bright_magenta]")
         threats_display = "\n".join(threat_lines) if threat_lines else "—"
 
         table.add_row(
@@ -514,6 +530,10 @@ def print_threat_frameworks(report: AIBOMReport) -> None:
     owasp_mcp_counts: Counter[str] = Counter()
     owasp_agentic_counts: Counter[str] = Counter()
     eu_ai_act_counts: Counter[str] = Counter()
+    nist_csf_counts: Counter[str] = Counter()
+    iso_27001_counts: Counter[str] = Counter()
+    soc2_counts: Counter[str] = Counter()
+    cis_counts: Counter[str] = Counter()
     for br in report.blast_radii:
         for tag in br.owasp_tags:
             owasp_counts[tag] += 1
@@ -527,6 +547,14 @@ def print_threat_frameworks(report: AIBOMReport) -> None:
             owasp_agentic_counts[tag] += 1
         for tag in br.eu_ai_act_tags:
             eu_ai_act_counts[tag] += 1
+        for tag in br.nist_csf_tags:
+            nist_csf_counts[tag] += 1
+        for tag in br.iso_27001_tags:
+            iso_27001_counts[tag] += 1
+        for tag in br.soc2_tags:
+            soc2_counts[tag] += 1
+        for tag in br.cis_tags:
+            cis_counts[tag] += 1
 
     if (
         not owasp_counts
@@ -535,6 +563,10 @@ def print_threat_frameworks(report: AIBOMReport) -> None:
         and not owasp_mcp_counts
         and not owasp_agentic_counts
         and not eu_ai_act_counts
+        and not nist_csf_counts
+        and not iso_27001_counts
+        and not soc2_counts
+        and not cis_counts
     ):
         return
 
@@ -667,6 +699,94 @@ def print_threat_frameworks(report: AIBOMReport) -> None:
                 eu_table.add_row(f"[dim]{code}[/dim]", f"[dim]{name}[/dim]", "[dim]—[/dim]", "")
 
         console.print(eu_table)
+
+    # NIST CSF 2.0 table
+    if nist_csf_counts:
+        from agent_bom.nist_csf import NIST_CSF
+
+        csf_table = Table(title="NIST CSF 2.0", title_style="bold bright_green", border_style="dim")
+        csf_table.add_column("Category", width=12, style="bold bright_green")
+        csf_table.add_column("Description", width=42)
+        csf_table.add_column("Findings", width=9, justify="right")
+        csf_table.add_column("", width=20)
+
+        for code in sorted(NIST_CSF.keys()):
+            count = nist_csf_counts.get(code, 0)
+            name = NIST_CSF[code]
+            if count > 0:
+                bar_len = min(count, 16)
+                bar = "[red]" + "\u2588" * bar_len + "[/red]"
+                csf_table.add_row(code, name, f"[bold]{count}[/bold]", bar)
+            else:
+                csf_table.add_row(f"[dim]{code}[/dim]", f"[dim]{name}[/dim]", "[dim]\u2014[/dim]", "")
+
+        console.print(csf_table)
+
+    # ISO 27001:2022 table
+    if iso_27001_counts:
+        from agent_bom.iso_27001 import ISO_27001
+
+        iso_table = Table(title="ISO 27001:2022", title_style="bold bright_cyan", border_style="dim")
+        iso_table.add_column("Control", width=9, style="bold bright_cyan")
+        iso_table.add_column("Description", width=42)
+        iso_table.add_column("Findings", width=9, justify="right")
+        iso_table.add_column("", width=20)
+
+        for code in sorted(ISO_27001.keys()):
+            count = iso_27001_counts.get(code, 0)
+            name = ISO_27001[code]
+            if count > 0:
+                bar_len = min(count, 16)
+                bar = "[red]" + "\u2588" * bar_len + "[/red]"
+                iso_table.add_row(code, name, f"[bold]{count}[/bold]", bar)
+            else:
+                iso_table.add_row(f"[dim]{code}[/dim]", f"[dim]{name}[/dim]", "[dim]\u2014[/dim]", "")
+
+        console.print(iso_table)
+
+    # SOC 2 TSC table
+    if soc2_counts:
+        from agent_bom.soc2 import SOC2_TSC
+
+        soc2_table = Table(title="SOC 2 TSC", title_style="bold bright_yellow", border_style="dim")
+        soc2_table.add_column("Criteria", width=9, style="bold bright_yellow")
+        soc2_table.add_column("Description", width=42)
+        soc2_table.add_column("Findings", width=9, justify="right")
+        soc2_table.add_column("", width=20)
+
+        for code in sorted(SOC2_TSC.keys()):
+            count = soc2_counts.get(code, 0)
+            name = SOC2_TSC[code]
+            if count > 0:
+                bar_len = min(count, 16)
+                bar = "[red]" + "\u2588" * bar_len + "[/red]"
+                soc2_table.add_row(code, name, f"[bold]{count}[/bold]", bar)
+            else:
+                soc2_table.add_row(f"[dim]{code}[/dim]", f"[dim]{name}[/dim]", "[dim]\u2014[/dim]", "")
+
+        console.print(soc2_table)
+
+    # CIS Controls v8 table
+    if cis_counts:
+        from agent_bom.cis_controls import CIS_CONTROLS
+
+        cis_table = Table(title="CIS Controls v8", title_style="bold bright_magenta", border_style="dim")
+        cis_table.add_column("Safeguard", width=12, style="bold bright_magenta")
+        cis_table.add_column("Description", width=42)
+        cis_table.add_column("Findings", width=9, justify="right")
+        cis_table.add_column("", width=20)
+
+        for code in sorted(CIS_CONTROLS.keys()):
+            count = cis_counts.get(code, 0)
+            name = CIS_CONTROLS[code]
+            if count > 0:
+                bar_len = min(count, 16)
+                bar = "[red]" + "\u2588" * bar_len + "[/red]"
+                cis_table.add_row(code, name, f"[bold]{count}[/bold]", bar)
+            else:
+                cis_table.add_row(f"[dim]{code}[/dim]", f"[dim]{name}[/dim]", "[dim]\u2014[/dim]", "")
+
+        console.print(cis_table)
     console.print()
 
 
@@ -697,6 +817,10 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
             "owasp_mcp": set(),
             "owasp_agentic": set(),
             "eu_ai_act": set(),
+            "nist_csf": set(),
+            "iso_27001": set(),
+            "soc2": set(),
+            "cis": set(),
             "max_severity": Severity.NONE,
             "has_kev": False,
             "ai_risk": False,
@@ -722,6 +846,10 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
         g["owasp_mcp"].update(br.owasp_mcp_tags)
         g["owasp_agentic"].update(br.owasp_agentic_tags)
         g["eu_ai_act"].update(br.eu_ai_act_tags)
+        g["nist_csf"].update(br.nist_csf_tags)
+        g["iso_27001"].update(br.iso_27001_tags)
+        g["soc2"].update(br.soc2_tags)
+        g["cis"].update(br.cis_tags)
         if severity_order.get(br.vulnerability.severity, 0) > severity_order.get(g["max_severity"], 0):
             g["max_severity"] = br.vulnerability.severity
         if br.vulnerability.is_kev:
@@ -741,6 +869,10 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
         g["owasp_mcp"] = sorted(g["owasp_mcp"])
         g["owasp_agentic"] = sorted(g["owasp_agentic"])
         g["eu_ai_act"] = sorted(g["eu_ai_act"])
+        g["nist_csf"] = sorted(g["nist_csf"])
+        g["iso_27001"] = sorted(g["iso_27001"])
+        g["soc2"] = sorted(g["soc2"])
+        g["cis"] = sorted(g["cis"])
         g["impact"] = (
             len(g["agents"]) * 10 + len(g["creds"]) * 3 + len(g["vulns"]) + (5 if g["has_kev"] else 0) + (3 if g["ai_risk"] else 0)
         )
@@ -867,6 +999,10 @@ def print_export_hint(report: AIBOMReport) -> None:
     owasp_mcp_hit: set[str] = set()
     owasp_agentic_hit: set[str] = set()
     eu_ai_act_hit: set[str] = set()
+    nist_csf_hit: set[str] = set()
+    iso_27001_hit: set[str] = set()
+    soc2_hit: set[str] = set()
+    cis_hit: set[str] = set()
     for br in report.blast_radii:
         owasp_hit.update(br.owasp_tags)
         atlas_hit.update(br.atlas_tags)
@@ -874,10 +1010,18 @@ def print_export_hint(report: AIBOMReport) -> None:
         owasp_mcp_hit.update(br.owasp_mcp_tags)
         owasp_agentic_hit.update(br.owasp_agentic_tags)
         eu_ai_act_hit.update(br.eu_ai_act_tags)
+        nist_csf_hit.update(br.nist_csf_tags)
+        iso_27001_hit.update(br.iso_27001_tags)
+        soc2_hit.update(br.soc2_tags)
+        cis_hit.update(br.cis_tags)
 
+    from agent_bom.cis_controls import CIS_CONTROLS as _CIS_CONTROLS
     from agent_bom.eu_ai_act import EU_AI_ACT as _EU_AI_ACT
+    from agent_bom.iso_27001 import ISO_27001 as _ISO_27001
+    from agent_bom.nist_csf import NIST_CSF as _NIST_CSF
     from agent_bom.owasp_agentic import OWASP_AGENTIC_TOP10 as _OWASP_AGENTIC
     from agent_bom.owasp_mcp import OWASP_MCP_TOP10
+    from agent_bom.soc2 import SOC2_TSC as _SOC2_TSC
 
     owasp_total = len(OWASP_LLM_TOP10)
     atlas_total = len(ATLAS_TECHNIQUES)
@@ -885,6 +1029,10 @@ def print_export_hint(report: AIBOMReport) -> None:
     owasp_mcp_total = len(OWASP_MCP_TOP10)
     owasp_agentic_total = len(_OWASP_AGENTIC)
     eu_ai_act_total = len(_EU_AI_ACT)
+    nist_csf_total = len(_NIST_CSF)
+    iso_27001_total = len(_ISO_27001)
+    soc2_total = len(_SOC2_TSC)
+    cis_total = len(_CIS_CONTROLS)
 
     if report.blast_radii:
         lines.append("[bold]AI Threat Framework Coverage[/bold]")
@@ -926,6 +1074,34 @@ def print_export_hint(report: AIBOMReport) -> None:
         eu_ai_act_bar = _coverage_bar(len(eu_ai_act_hit), eu_ai_act_total, "blue")
         lines.append(
             f"  [bold blue]EU AI Act         [/bold blue]  {eu_ai_act_bar}  [blue]{len(eu_ai_act_hit)}/{eu_ai_act_total}[/blue] ({eu_ai_act_pct}%)"
+        )
+
+        # NIST CSF 2.0 bar
+        nist_csf_pct = int(len(nist_csf_hit) / nist_csf_total * 100) if nist_csf_total else 0
+        nist_csf_bar = _coverage_bar(len(nist_csf_hit), nist_csf_total, "bright_green")
+        lines.append(
+            f"  [bold bright_green]NIST CSF 2.0      [/bold bright_green]  {nist_csf_bar}  [bright_green]{len(nist_csf_hit)}/{nist_csf_total}[/bright_green] ({nist_csf_pct}%)"
+        )
+
+        # ISO 27001:2022 bar
+        iso_27001_pct = int(len(iso_27001_hit) / iso_27001_total * 100) if iso_27001_total else 0
+        iso_27001_bar = _coverage_bar(len(iso_27001_hit), iso_27001_total, "bright_cyan")
+        lines.append(
+            f"  [bold bright_cyan]ISO 27001:2022    [/bold bright_cyan]  {iso_27001_bar}  [bright_cyan]{len(iso_27001_hit)}/{iso_27001_total}[/bright_cyan] ({iso_27001_pct}%)"
+        )
+
+        # SOC 2 TSC bar
+        soc2_pct = int(len(soc2_hit) / soc2_total * 100) if soc2_total else 0
+        soc2_bar = _coverage_bar(len(soc2_hit), soc2_total, "bright_yellow")
+        lines.append(
+            f"  [bold bright_yellow]SOC 2 TSC         [/bold bright_yellow]  {soc2_bar}  [bright_yellow]{len(soc2_hit)}/{soc2_total}[/bright_yellow] ({soc2_pct}%)"
+        )
+
+        # CIS Controls v8 bar
+        cis_pct = int(len(cis_hit) / cis_total * 100) if cis_total else 0
+        cis_bar = _coverage_bar(len(cis_hit), cis_total, "bright_magenta")
+        lines.append(
+            f"  [bold bright_magenta]CIS Controls v8   [/bold bright_magenta]  {cis_bar}  [bright_magenta]{len(cis_hit)}/{cis_total}[/bright_magenta] ({cis_pct}%)"
         )
 
         lines.append("")
@@ -1014,6 +1190,10 @@ def _build_remediation_json(report: AIBOMReport) -> list[dict]:
                 "owasp_mcp_tags": item["owasp_mcp"],
                 "owasp_agentic_tags": item["owasp_agentic"],
                 "eu_ai_act_tags": item["eu_ai_act"],
+                "nist_csf_tags": item["nist_csf"],
+                "iso_27001_tags": item["iso_27001"],
+                "soc2_tags": item["soc2"],
+                "cis_tags": item["cis"],
                 "risk_narrative": _risk_narrative(item),
             }
         )
@@ -1044,11 +1224,15 @@ def _build_framework_summary(blast_radii: list[BlastRadius]) -> dict:
     from collections import Counter
 
     from agent_bom.atlas import ATLAS_TECHNIQUES
+    from agent_bom.cis_controls import CIS_CONTROLS
     from agent_bom.eu_ai_act import EU_AI_ACT
+    from agent_bom.iso_27001 import ISO_27001
     from agent_bom.nist_ai_rmf import NIST_AI_RMF
+    from agent_bom.nist_csf import NIST_CSF
     from agent_bom.owasp import OWASP_LLM_TOP10
     from agent_bom.owasp_agentic import OWASP_AGENTIC_TOP10
     from agent_bom.owasp_mcp import OWASP_MCP_TOP10
+    from agent_bom.soc2 import SOC2_TSC
 
     owasp_counts: Counter[str] = Counter()
     atlas_counts: Counter[str] = Counter()
@@ -1056,6 +1240,10 @@ def _build_framework_summary(blast_radii: list[BlastRadius]) -> dict:
     owasp_mcp_counts: Counter[str] = Counter()
     owasp_agentic_counts: Counter[str] = Counter()
     eu_ai_act_counts: Counter[str] = Counter()
+    nist_csf_counts: Counter[str] = Counter()
+    iso_27001_counts: Counter[str] = Counter()
+    soc2_counts: Counter[str] = Counter()
+    cis_counts: Counter[str] = Counter()
     for br in blast_radii:
         for tag in br.owasp_tags:
             owasp_counts[tag] += 1
@@ -1069,6 +1257,14 @@ def _build_framework_summary(blast_radii: list[BlastRadius]) -> dict:
             owasp_agentic_counts[tag] += 1
         for tag in br.eu_ai_act_tags:
             eu_ai_act_counts[tag] += 1
+        for tag in br.nist_csf_tags:
+            nist_csf_counts[tag] += 1
+        for tag in br.iso_27001_tags:
+            iso_27001_counts[tag] += 1
+        for tag in br.soc2_tags:
+            soc2_counts[tag] += 1
+        for tag in br.cis_tags:
+            cis_counts[tag] += 1
 
     return {
         "owasp_llm_top10": [
@@ -1125,12 +1321,52 @@ def _build_framework_summary(blast_radii: list[BlastRadius]) -> dict:
             }
             for code in sorted(EU_AI_ACT.keys())
         ],
+        "nist_csf": [
+            {
+                "code": code,
+                "name": NIST_CSF[code],
+                "findings": nist_csf_counts.get(code, 0),
+                "triggered": code in nist_csf_counts,
+            }
+            for code in sorted(NIST_CSF.keys())
+        ],
+        "iso_27001": [
+            {
+                "code": code,
+                "name": ISO_27001[code],
+                "findings": iso_27001_counts.get(code, 0),
+                "triggered": code in iso_27001_counts,
+            }
+            for code in sorted(ISO_27001.keys())
+        ],
+        "soc2_tsc": [
+            {
+                "code": code,
+                "name": SOC2_TSC[code],
+                "findings": soc2_counts.get(code, 0),
+                "triggered": code in soc2_counts,
+            }
+            for code in sorted(SOC2_TSC.keys())
+        ],
+        "cis_controls": [
+            {
+                "code": code,
+                "name": CIS_CONTROLS[code],
+                "findings": cis_counts.get(code, 0),
+                "triggered": code in cis_counts,
+            }
+            for code in sorted(CIS_CONTROLS.keys())
+        ],
         "total_owasp_triggered": sum(1 for c in owasp_counts if owasp_counts[c] > 0),
         "total_atlas_triggered": sum(1 for c in atlas_counts if atlas_counts[c] > 0),
         "total_nist_triggered": sum(1 for c in nist_counts if nist_counts[c] > 0),
         "total_owasp_mcp_triggered": sum(1 for c in owasp_mcp_counts if owasp_mcp_counts[c] > 0),
         "total_owasp_agentic_triggered": sum(1 for c in owasp_agentic_counts if owasp_agentic_counts[c] > 0),
         "total_eu_ai_act_triggered": sum(1 for c in eu_ai_act_counts if eu_ai_act_counts[c] > 0),
+        "total_nist_csf_triggered": sum(1 for c in nist_csf_counts if nist_csf_counts[c] > 0),
+        "total_iso_27001_triggered": sum(1 for c in iso_27001_counts if iso_27001_counts[c] > 0),
+        "total_soc2_triggered": sum(1 for c in soc2_counts if soc2_counts[c] > 0),
+        "total_cis_triggered": sum(1 for c in cis_counts if cis_counts[c] > 0),
     }
 
 
@@ -1252,6 +1488,10 @@ def to_json(report: AIBOMReport) -> dict:
                 "owasp_mcp_tags": br.owasp_mcp_tags,
                 "owasp_agentic_tags": br.owasp_agentic_tags,
                 "eu_ai_act_tags": br.eu_ai_act_tags,
+                "nist_csf_tags": br.nist_csf_tags,
+                "iso_27001_tags": br.iso_27001_tags,
+                "soc2_tags": br.soc2_tags,
+                "cis_tags": br.cis_tags,
             }
             for br in report.blast_radii
         ],
@@ -1548,7 +1788,18 @@ def to_sarif(report: AIBOMReport) -> dict:
                 }
             ],
         }
-        if br.owasp_tags or br.atlas_tags or br.nist_ai_rmf_tags or br.owasp_mcp_tags or br.owasp_agentic_tags or br.eu_ai_act_tags:
+        if (
+            br.owasp_tags
+            or br.atlas_tags
+            or br.nist_ai_rmf_tags
+            or br.owasp_mcp_tags
+            or br.owasp_agentic_tags
+            or br.eu_ai_act_tags
+            or br.nist_csf_tags
+            or br.iso_27001_tags
+            or br.soc2_tags
+            or br.cis_tags
+        ):
             result["properties"] = {
                 "owasp_tags": br.owasp_tags,
                 "atlas_tags": br.atlas_tags,
@@ -1556,6 +1807,10 @@ def to_sarif(report: AIBOMReport) -> dict:
                 "owasp_mcp_tags": br.owasp_mcp_tags,
                 "owasp_agentic_tags": br.owasp_agentic_tags,
                 "eu_ai_act_tags": br.eu_ai_act_tags,
+                "nist_csf_tags": br.nist_csf_tags,
+                "iso_27001_tags": br.iso_27001_tags,
+                "soc2_tags": br.soc2_tags,
+                "cis_tags": br.cis_tags,
                 "blast_score": br.risk_score,
                 "exposed_credentials": br.exposed_credentials,
             }
@@ -1736,6 +1991,14 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10) -> None:
             tags.append(f"[magenta]{' '.join(list(br.owasp_agentic_tags)[:2])}[/magenta]")
         if hasattr(br, "eu_ai_act_tags") and br.eu_ai_act_tags:
             tags.append(f"[blue]{' '.join(list(br.eu_ai_act_tags)[:2])}[/blue]")
+        if hasattr(br, "nist_csf_tags") and br.nist_csf_tags:
+            tags.append(f"[bright_green]{' '.join(list(br.nist_csf_tags)[:2])}[/bright_green]")
+        if hasattr(br, "iso_27001_tags") and br.iso_27001_tags:
+            tags.append(f"[bright_cyan]{' '.join(list(br.iso_27001_tags)[:2])}[/bright_cyan]")
+        if hasattr(br, "soc2_tags") and br.soc2_tags:
+            tags.append(f"[bright_yellow]{' '.join(list(br.soc2_tags)[:2])}[/bright_yellow]")
+        if hasattr(br, "cis_tags") and br.cis_tags:
+            tags.append(f"[bright_magenta]{' '.join(list(br.cis_tags)[:2])}[/bright_magenta]")
         if hasattr(br, "atlas_tags") and br.atlas_tags:
             tags.append(f"[cyan]{' '.join(list(br.atlas_tags)[:1])}[/cyan]")
         fw_display = " ".join(tags) if tags else "[dim]—[/dim]"

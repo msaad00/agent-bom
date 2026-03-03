@@ -285,6 +285,10 @@ class BlastRadius:
     owasp_mcp_tags: list[str] = field(default_factory=list)  # OWASP MCP Top 10 codes, e.g. ["MCP04", "MCP01"]
     owasp_agentic_tags: list[str] = field(default_factory=list)  # OWASP Agentic Top 10, e.g. ["ASI04"]
     eu_ai_act_tags: list[str] = field(default_factory=list)  # EU AI Act articles, e.g. ["ART-15"]
+    nist_csf_tags: list[str] = field(default_factory=list)  # NIST CSF 2.0, e.g. ["ID.RA-01"]
+    iso_27001_tags: list[str] = field(default_factory=list)  # ISO 27001:2022, e.g. ["A.8.8"]
+    soc2_tags: list[str] = field(default_factory=list)  # SOC 2 TSC, e.g. ["CC7.1"]
+    cis_tags: list[str] = field(default_factory=list)  # CIS Controls v8, e.g. ["CIS-07.1"]
     ai_summary: Optional[str] = None  # LLM-generated contextual risk narrative
 
     def calculate_risk_score(self) -> float:

@@ -19,7 +19,7 @@ jobs:
           - agentbom/agent-bom:latest
     steps:
       - name: Trivy scan ${{ matrix.image }}
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@e368e328979b113139d6f9068e03accaed98a518 # 0.34.1
         with:
           image-ref: ${{ matrix.image }}
           format: table

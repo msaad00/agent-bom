@@ -366,6 +366,7 @@ class AIBOMReport:
     model_provenance: list[dict] = field(default_factory=list)  # HuggingFace provenance results
     enforcement_data: Optional[dict] = None  # Serialized EnforcementReport (set by CLI)
     context_graph_data: Optional[dict] = None  # Serialized context graph (set by CLI)
+    license_report: Optional[dict] = None  # Serialized license compliance report
 
     def __post_init__(self):
         if not self.tool_version:

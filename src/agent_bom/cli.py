@@ -145,6 +145,12 @@ def main():
 @click.option(
     "--deps-dev", "deps_dev", is_flag=True, help="Use deps.dev for transitive dependency resolution and license enrichment (all ecosystems)"
 )
+@click.option(
+    "--license-check",
+    "license_check",
+    is_flag=True,
+    help="Evaluate package licenses against compliance policy (block GPL/AGPL, warn copyleft)",
+)
 @click.option("--enrich", is_flag=True, help="Enrich vulnerabilities with NVD, EPSS, and CISA KEV data")
 @click.option("--nvd-api-key", envvar="NVD_API_KEY", help="NVD API key for higher rate limits")
 @click.option("--scorecard", "scorecard_flag", is_flag=True, help="Enrich packages with OpenSSF Scorecard scores")
@@ -405,6 +411,7 @@ def scan(
     transitive: bool,
     max_depth: int,
     deps_dev: bool,
+    license_check: bool,
     enrich: bool,
     nvd_api_key: Optional[str],
     scorecard_flag: bool,
@@ -539,6 +546,7 @@ def scan(
         introspect = True
         transitive = True
         deps_dev = True
+        license_check = True
         verify_integrity = True
         verify_instructions = True
         dynamic_discovery = True
@@ -1651,6 +1659,30 @@ def scan(
         _n_paths = len(_all_paths)
         _n_risks = len(_cg_risks)
         con.print(f"  [green]✓[/green] Context graph: {len(_cg.nodes)} nodes, {_n_paths} lateral path(s), {_n_risks} risk pattern(s)")
+
+    # ── License compliance check ─────────────────────────────────────
+    if license_check and agents:
+        from agent_bom.license_policy import evaluate_license_policy, print_license_report
+        from agent_bom.license_policy import to_serializable as _lic_to_ser
+
+        _lic_policy = None
+        if policy:
+            import json as _lic_json
+
+            try:
+                with open(policy) as _pf:
+                    _raw_policy = _lic_json.load(_pf)
+                    _lic_policy = {k: v for k, v in _raw_policy.items() if k.startswith("license_")}
+            except Exception:
+                pass  # Use default policy
+        _lic_report = evaluate_license_policy(agents, policy=_lic_policy if _lic_policy else None)
+        report.license_report = _lic_to_ser(_lic_report)
+        if not quiet and output_format == "console":
+            print_license_report(_lic_report, con)
+        elif not quiet:
+            _f_count = len(_lic_report.findings)
+            _status = "[green]compliant[/green]" if _lic_report.compliant else "[red]non-compliant[/red]"
+            con.print(f"  [green]✓[/green] License check: {_lic_report.total_packages} packages, {_f_count} finding(s), {_status}")
 
     # ── Step 1i: Model binary file scan ─────────────────────────────
     if not skill_only and model_dirs:

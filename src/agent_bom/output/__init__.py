@@ -1296,6 +1296,12 @@ def to_json(report: AIBOMReport) -> dict:
     if report.vex_data:
         result["vex"] = report.vex_data
 
+    if report.toxic_combinations:
+        result["toxic_combinations"] = report.toxic_combinations
+
+    if report.prioritized_findings:
+        result["prioritized_findings"] = report.prioritized_findings
+
     # Posture scorecard
     from agent_bom.posture import (
         compute_credential_risk_ranking,

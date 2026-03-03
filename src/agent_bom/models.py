@@ -370,6 +370,8 @@ class AIBOMReport:
     context_graph_data: Optional[dict] = None  # Serialized context graph (set by CLI)
     license_report: Optional[dict] = None  # Serialized license compliance report
     vex_data: Optional[dict] = None  # Serialized VEX document
+    toxic_combinations: Optional[list] = None  # Serialized ToxicCombination list
+    prioritized_findings: Optional[list] = None  # Priority-ordered findings
 
     def __post_init__(self):
         if not self.tool_version:

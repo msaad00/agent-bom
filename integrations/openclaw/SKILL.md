@@ -6,7 +6,7 @@ description: >-
   compliance (OWASP, MITRE ATLAS, EU AI Act, NIST AI RMF). Use when the user
   mentions vulnerability scanning, dependency security, SBOM generation, MCP server
   trust, or AI supply chain risk.
-version: 0.46.0
+version: 0.48.0
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. Optional: Docker for container
@@ -22,7 +22,7 @@ metadata:
   install:
     pipx: agent-bom
     pip: agent-bom
-    docker: ghcr.io/msaad00/agent-bom:0.46.0
+    docker: ghcr.io/msaad00/agent-bom:0.48.0
   openclaw:
     requires:
       bins: []
@@ -82,7 +82,7 @@ agent-bom where             # show all discovery paths
 ### As a Docker Container
 
 ```bash
-docker run --rm ghcr.io/msaad00/agent-bom:0.46.0 scan
+docker run --rm ghcr.io/msaad00/agent-bom:0.48.0 scan
 ```
 
 ### Self-Hosted SSE Server
@@ -181,7 +181,7 @@ installation or self-host your own instance.
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
 - **PyPI**: [pypi.org/project/agent-bom](https://pypi.org/project/agent-bom/)
 - **Smithery**: 99/100 quality score
-- **Sigstore signed**: `agent-bom verify agent-bom@0.46.0`
+- **Sigstore signed**: `agent-bom verify agent-bom@0.48.0`
 - **2,099 tests** with automated security scanning (CodeQL + OpenSSF Scorecard)
 - **OpenSSF Scorecard**: [securityscorecards.dev](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom)
 - **No telemetry**: Zero tracking, zero analytics

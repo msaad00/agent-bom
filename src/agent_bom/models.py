@@ -72,6 +72,8 @@ class Vulnerability:
     cwe_ids: list[str] = field(default_factory=list)  # CWE weakness types
     aliases: list[str] = field(default_factory=list)  # Cross-source aliases (e.g. GHSA↔CVE)
     exploitability: Optional[str] = None  # "HIGH", "MEDIUM", "LOW" based on EPSS
+    vex_status: Optional[str] = None  # VEX status: affected, not_affected, fixed, under_investigation
+    vex_justification: Optional[str] = None  # VEX justification when not_affected
 
     @property
     def is_actively_exploited(self) -> bool:
@@ -367,6 +369,7 @@ class AIBOMReport:
     enforcement_data: Optional[dict] = None  # Serialized EnforcementReport (set by CLI)
     context_graph_data: Optional[dict] = None  # Serialized context graph (set by CLI)
     license_report: Optional[dict] = None  # Serialized license compliance report
+    vex_data: Optional[dict] = None  # Serialized VEX document
 
     def __post_init__(self):
         if not self.tool_version:

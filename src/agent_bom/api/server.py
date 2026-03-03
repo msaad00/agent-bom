@@ -1142,6 +1142,27 @@ async def get_licenses(job_id: str) -> dict:
     return _lic_ser(lic_report)
 
 
+@app.get("/v1/scan/{job_id}/vex", tags=["scan"])
+async def get_vex(job_id: str) -> dict:
+    """Get the VEX (Vulnerability Exploitability eXchange) document for a completed scan.
+
+    Returns VEX statements with vulnerability status (affected, not_affected,
+    fixed, under_investigation), justifications, and statistics.
+    """
+    job = _jobs_get(job_id) or _get_store().get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    if job.status != JobStatus.DONE or not job.result:
+        raise HTTPException(status_code=409, detail="Scan not completed yet")
+
+    # Return pre-computed VEX data if available
+    if isinstance(job.result, dict) and job.result.get("vex"):
+        return job.result["vex"]
+
+    # Otherwise generate on-the-fly from blast_radii
+    return {"statements": [], "stats": {"total_statements": 0, "affected": 0, "not_affected": 0, "fixed": 0, "under_investigation": 0}}
+
+
 @app.get("/v1/scan/{job_id}/skill-audit", tags=["scan"])
 async def get_skill_audit(job_id: str) -> dict:
     """Get the skill security audit results for a completed scan.

@@ -150,7 +150,7 @@
   <text x="602" y="233" class="step-num" fill="#d29922">⑤</text>
   <text x="622" y="233" class="step-label">Analyze</text>
   <text x="661" y="252" text-anchor="middle" class="step-detail">Blast radius mapping</text>
-  <text x="661" y="264" text-anchor="middle" class="step-detail">6 compliance frameworks</text>
+  <text x="661" y="264" text-anchor="middle" class="step-detail">10 compliance frameworks</text>
   <text x="661" y="276" text-anchor="middle" class="step-detail">Risk scoring (0-10)</text>
 
   <!-- Flow arrow: engine → outputs -->
@@ -191,13 +191,17 @@
   <text x="278" y="473" class="box-sub">Snowflake · CMMC export · Audit trail · SBOM archive</text>
 
   <!-- Compliance badges row -->
-  <rect x="36" y="488" width="456" height="26" rx="4" fill="#0d1117" stroke="#30363d" stroke-width="0.6"/>
-  <text x="48" y="505" class="badge" fill="#3fb950">OWASP LLM</text>
-  <text x="120" y="505" class="badge" fill="#3fb950">OWASP MCP</text>
-  <text x="195" y="505" class="badge" fill="#3fb950">OWASP Agentic</text>
-  <text x="288" y="505" class="badge" fill="#3fb950">MITRE ATLAS</text>
-  <text x="370" y="505" class="badge" fill="#3fb950">NIST AI RMF</text>
-  <text x="448" y="505" class="badge" fill="#3fb950">EU AI Act</text>
+  <rect x="36" y="488" width="456" height="38" rx="4" fill="#0d1117" stroke="#30363d" stroke-width="0.6"/>
+  <text x="48" y="501" class="badge" fill="#3fb950">OWASP LLM</text>
+  <text x="120" y="501" class="badge" fill="#3fb950">OWASP MCP</text>
+  <text x="195" y="501" class="badge" fill="#3fb950">OWASP Agentic</text>
+  <text x="288" y="501" class="badge" fill="#3fb950">MITRE ATLAS</text>
+  <text x="370" y="501" class="badge" fill="#3fb950">NIST AI RMF</text>
+  <text x="448" y="501" class="badge" fill="#3fb950">EU AI Act</text>
+  <text x="48" y="517" class="badge" fill="#3fb950">NIST CSF</text>
+  <text x="106" y="517" class="badge" fill="#3fb950">ISO 27001</text>
+  <text x="174" y="517" class="badge" fill="#3fb950">SOC 2</text>
+  <text x="222" y="517" class="badge" fill="#3fb950">CIS Controls v8</text>
 
   <!-- ═══ RUNTIME + FLEET (right side panel) ═══ -->
   <rect x="756" y="58" width="186" height="464" rx="8" fill="#161b22" stroke="#bc8cff" stroke-width="0.8" opacity="0.9"/>

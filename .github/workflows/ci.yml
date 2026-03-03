@@ -89,7 +89,26 @@ jobs:
       - name: Run tests
         run: pytest tests/ -v --tb=short
 
-  # 3b. Version Alignment Check
+  # 3b. PR Base Branch Guard — prevent stacked PRs targeting feature branches
+  base-branch-check:
+    name: PR Base Branch Guard
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Verify PR targets main
+        run: |
+          BASE="${{ github.event.pull_request.base.ref }}"
+          if [ "$BASE" != "main" ]; then
+            echo "::error::PR targets '$BASE' instead of 'main'. All PRs must target main to prevent merge-order issues and lost code."
+            echo ""
+            echo "If you have dependent PRs, rebase each onto main independently."
+            echo "Do NOT use stacked PR base branches — they cause cascading conflicts"
+            echo "and code loss when parent branches are deleted after merge."
+            exit 1
+          fi
+          echo "✓ PR correctly targets main"
+
+  # 3c. Version Alignment Check
   version-check:
     name: Version Alignment
     runs-on: ubuntu-latest

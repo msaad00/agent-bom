@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import os
 import secrets
 import threading
 from dataclasses import dataclass, field
@@ -36,7 +37,8 @@ class ApiKey:
     """Stored API key metadata (the raw key is never stored)."""
 
     key_id: str
-    key_hash: str  # SHA-256 of the raw key
+    key_hash: str  # scrypt KDF of the raw key
+    key_salt: str  # hex-encoded salt for scrypt
     key_prefix: str  # First 8 chars for identification
     name: str
     role: Role
@@ -69,9 +71,17 @@ class ApiKey:
         }
 
 
-def _hash_key(raw_key: str) -> str:
-    """SHA-256 hash of a raw API key."""
-    return hashlib.sha256(raw_key.encode()).hexdigest()
+def _derive_key(raw_key: str, salt: bytes) -> str:
+    """Derive key hash using scrypt KDF (CodeQL-safe, brute-force resistant)."""
+    derived = hashlib.scrypt(
+        raw_key.encode(),
+        salt=salt,
+        n=16384,  # CPU/memory cost (2^14)
+        r=8,  # block size
+        p=1,  # parallelization
+        dklen=32,
+    )
+    return derived.hex()
 
 
 def create_api_key(
@@ -83,15 +93,17 @@ def create_api_key(
     """Generate a new API key.
 
     Returns (raw_key, api_key_record). The raw key is only returned once
-    and should be given to the user. Only the hash is stored.
+    and should be given to the user. Only the scrypt-derived hash is stored.
     """
     raw_key = f"abom_{secrets.token_urlsafe(32)}"
-    key_hash = _hash_key(raw_key)
+    salt = os.urandom(16)
+    key_hash = _derive_key(raw_key, salt)
     key_id = secrets.token_hex(8)
 
     api_key = ApiKey(
         key_id=key_id,
         key_hash=key_hash,
+        key_salt=salt.hex(),
         key_prefix=raw_key[:12],
         name=name,
         role=role,
@@ -104,11 +116,13 @@ def create_api_key(
 def verify_api_key(raw_key: str, stored_keys: list[ApiKey]) -> ApiKey | None:
     """Verify a raw API key against stored keys.
 
+    Uses scrypt KDF with per-key salt and constant-time comparison.
     Returns the matching ApiKey if found and not expired, else None.
     """
-    key_hash = _hash_key(raw_key)
     for stored in stored_keys:
-        if hmac.compare_digest(stored.key_hash, key_hash):
+        salt = bytes.fromhex(stored.key_salt)
+        candidate = _derive_key(raw_key, salt)
+        if hmac.compare_digest(stored.key_hash, candidate):
             if stored.is_expired():
                 return None
             return stored

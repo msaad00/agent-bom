@@ -55,9 +55,10 @@ class TestCreateApiKey:
         raw, key = create_api_key("pfx", Role.VIEWER)
         assert key.key_prefix == raw[:12]
 
-    def test_key_hash_is_sha256(self):
+    def test_key_hash_is_scrypt_derived(self):
         _, key = create_api_key("hash-test", Role.ADMIN)
-        assert len(key.key_hash) == 64  # SHA-256 hex length
+        assert len(key.key_hash) == 64  # scrypt dklen=32 → 64 hex chars
+        assert len(key.key_salt) == 32  # 16 random bytes → 32 hex chars
 
     def test_key_id_generated(self):
         _, key = create_api_key("id-test", Role.VIEWER)
@@ -154,6 +155,7 @@ class TestApiKeyToDict:
         assert d["role"] == "analyst"
         assert d["scopes"] == ["scan"]
         assert "key_hash" not in d  # Hash should NOT be exposed
+        assert "key_salt" not in d  # Salt should NOT be exposed
 
 
 # ---------------------------------------------------------------------------

@@ -5,6 +5,11 @@ Controls v8 safeguards relevant to software supply chain security.  Every
 finding triggers at minimum CIS-02 (Software Asset Inventory) and CIS-07
 (Vulnerability Management) since any CVE requires both.
 
+NOTE: These are the generic CIS Controls v8 (cross-platform).  CIS also
+publishes platform-specific Benchmarks (e.g., CIS AWS Foundations, CIS GCP,
+CIS Azure, CIS Snowflake) which apply additional host/cloud hardening checks.
+Platform-specific CIS Benchmark mapping is planned for a future release.
+
 Reference: https://www.cisecurity.org/controls/v8
 """
 

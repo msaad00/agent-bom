@@ -6,6 +6,7 @@ from agent_bom.constants import (
     AI_PACKAGES,
     SENSITIVE_PATTERNS,
     TRAINING_DATA_PACKAGES,
+    critical_severities,
     high_risk_severities,
     is_credential_key,
 )
@@ -85,6 +86,38 @@ class TestHighRiskSeverities:
 
 
 # ---------------------------------------------------------------------------
+# critical_severities
+# ---------------------------------------------------------------------------
+
+
+class TestCriticalSeverities:
+    def test_returns_frozenset(self):
+        result = critical_severities()
+        assert isinstance(result, frozenset)
+
+    def test_contains_only_critical(self):
+        from agent_bom.models import Severity
+
+        result = critical_severities()
+        assert Severity.CRITICAL in result
+        assert len(result) == 1
+
+    def test_excludes_high_medium_low_none(self):
+        from agent_bom.models import Severity
+
+        result = critical_severities()
+        assert Severity.HIGH not in result
+        assert Severity.MEDIUM not in result
+        assert Severity.LOW not in result
+        assert Severity.NONE not in result
+
+    def test_is_strict_subset_of_high_risk(self):
+        crit = critical_severities()
+        high = high_risk_severities()
+        assert crit < high  # proper subset
+
+
+# ---------------------------------------------------------------------------
 # SENSITIVE_PATTERNS / is_credential_key
 # ---------------------------------------------------------------------------
 
@@ -142,3 +175,8 @@ class TestCrossModuleConsistency:
         from agent_bom.owasp_agentic import _AI_PACKAGES
 
         assert _AI_PACKAGES is AI_PACKAGES
+
+    def test_eu_ai_act_uses_critical_severities(self):
+        from agent_bom.eu_ai_act import _CRITICAL
+
+        assert _CRITICAL == critical_severities()

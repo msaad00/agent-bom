@@ -82,13 +82,24 @@ TRAINING_DATA_PACKAGES: frozenset[str] = frozenset(
 
 
 def high_risk_severities() -> frozenset:
-    """Return severity levels considered high-risk.
+    """Return severity levels considered high-risk (CRITICAL + HIGH).
 
     Lazy import to avoid circular dependency with models.Severity.
     """
     from agent_bom.models import Severity
 
     return frozenset({Severity.CRITICAL, Severity.HIGH})
+
+
+def critical_severities() -> frozenset:
+    """Return CRITICAL-only severity set.
+
+    Use for controls that should only trigger on the most severe findings
+    (e.g., EU AI Act ART-5 Prohibited Practices).
+    """
+    from agent_bom.models import Severity
+
+    return frozenset({Severity.CRITICAL})
 
 
 # ── Credential Detection Patterns ───────────────────────────────────────────

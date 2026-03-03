@@ -13,8 +13,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from agent_bom.constants import AI_PACKAGES as _AI_PACKAGES
-from agent_bom.models import Severity
+from agent_bom.constants import critical_severities
 from agent_bom.risk_analyzer import ToolCapability, classify_tool
+
+_CRITICAL = critical_severities()
 
 if TYPE_CHECKING:
     from agent_bom.models import BlastRadius
@@ -63,7 +65,7 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     is_ai_pkg = br.package.name.lower() in _AI_PACKAGES
 
     # ART-5 — prohibited practices: credentials + exec + critical (autonomous harm)
-    if br.exposed_credentials and has_exec and br.vulnerability.severity == Severity.CRITICAL:
+    if br.exposed_credentials and has_exec and br.vulnerability.severity in _CRITICAL:
         tags.add("ART-5")
 
     # ART-6 — high-risk classification: AI framework package

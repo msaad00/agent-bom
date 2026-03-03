@@ -40,6 +40,9 @@ import {
   type LateralPath,
   type InteractionRisk,
 } from "@/lib/context-graph";
+import { CONTROLS_CLASS, MINIMAP_CLASS, BACKGROUND_COLOR, BACKGROUND_GAP, minimapNodeColor } from "@/lib/graph-utils";
+import { FullscreenButton, GraphLegend } from "@/components/graph-chrome";
+import { CONTEXT_LEGEND } from "@/lib/graph-utils";
 
 // ─── Stats Bar ──────────────────────────────────────────────────────────────
 
@@ -420,28 +423,8 @@ export default function ContextPage() {
             />
           </div>
 
-          {/* Legend */}
-          <div className="flex items-center gap-2.5 text-[10px] text-zinc-500">
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" /> Agent
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-cyan-400" /> Shared
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-amber-500" /> Cred
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-purple-500" /> Tool
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-red-500" /> Vuln
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-orange-500 border border-dashed border-orange-300" />{" "}
-              Lateral
-            </span>
-          </div>
+          <FullscreenButton />
+          <GraphLegend items={CONTEXT_LEGEND} />
         </div>
       </div>
 
@@ -475,24 +458,9 @@ export default function ContextPage() {
                 setHoveredNodeId(null);
               }}
             >
-              <Background color="#27272a" gap={20} />
-              <Controls className="!bg-zinc-900 !border-zinc-700 !rounded-lg [&>button]:!bg-zinc-800 [&>button]:!border-zinc-700 [&>button]:!text-zinc-300 [&>button:hover]:!bg-zinc-700" />
-              <MiniMap
-                nodeColor={(n) => {
-                  const d = n.data as LineageNodeData;
-                  const colors: Record<LineageNodeType, string> = {
-                    agent: "#10b981",
-                    server: "#3b82f6",
-                    sharedServer: "#22d3ee",
-                    package: "#52525b",
-                    vulnerability: "#ef4444",
-                    credential: "#f59e0b",
-                    tool: "#a855f7",
-                  };
-                  return colors[d.nodeType] ?? "#52525b";
-                }}
-                className="!bg-zinc-900 !border-zinc-700 !rounded-lg"
-              />
+              <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
+              <Controls className={CONTROLS_CLASS} />
+              <MiniMap nodeColor={minimapNodeColor} className={MINIMAP_CLASS} />
             </ReactFlow>
           )}
 

@@ -24,6 +24,9 @@ import {
   type SeverityFilter,
   type MeshStatsData,
 } from "@/lib/mesh-graph";
+import { CONTROLS_CLASS, MINIMAP_CLASS, BACKGROUND_COLOR, BACKGROUND_GAP, minimapNodeColor } from "@/lib/graph-utils";
+import { FullscreenButton, GraphLegend } from "@/components/graph-chrome";
+import { MESH_LEGEND } from "@/lib/graph-utils";
 
 // ─── Filter Toolbar ─────────────────────────────────────────────────────────
 
@@ -309,29 +312,8 @@ export default function MeshPage() {
               </option>
             ))}
           </select>
-          <div className="flex items-center gap-2.5 text-[10px] text-zinc-500">
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" /> Agent
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400" /> Shared
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-blue-500" /> Server
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-zinc-500" /> Package
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-red-500" /> Vuln
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-amber-500" /> Cred
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-purple-500" /> Tool
-            </span>
-          </div>
+          <FullscreenButton />
+          <GraphLegend items={MESH_LEGEND} />
         </div>
       </div>
 
@@ -364,26 +346,9 @@ export default function MeshPage() {
           onNodeMouseLeave={onNodeMouseLeave}
           onPaneClick={() => { setSelectedNode(null); setHoveredNodeId(null); }}
         >
-          <Background color="#27272a" gap={20} />
-          <Controls
-            className="!bg-zinc-900 !border-zinc-700 !rounded-lg [&>button]:!bg-zinc-800 [&>button]:!border-zinc-700 [&>button]:!text-zinc-300 [&>button:hover]:!bg-zinc-700"
-          />
-          <MiniMap
-            nodeColor={(n) => {
-              const d = n.data as LineageNodeData;
-              const colors: Record<LineageNodeType, string> = {
-                agent: "#10b981",
-                server: "#3b82f6",
-                sharedServer: "#22d3ee",
-                package: "#52525b",
-                vulnerability: "#ef4444",
-                credential: "#f59e0b",
-                tool: "#a855f7",
-              };
-              return colors[d.nodeType] ?? "#52525b";
-            }}
-            className="!bg-zinc-900 !border-zinc-700 !rounded-lg"
-          />
+          <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
+          <Controls className={CONTROLS_CLASS} />
+          <MiniMap nodeColor={minimapNodeColor} className={MINIMAP_CLASS} />
         </ReactFlow>
 
         {selectedNode && (

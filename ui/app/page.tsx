@@ -382,25 +382,40 @@ function StatCard({
   value,
   color,
   href,
+  trend,
 }: {
   icon: React.ElementType;
   label: string;
   value: string;
   color: "emerald" | "blue" | "orange" | "red" | "zinc";
   href?: string;
+  trend?: { direction: "up" | "down" | "flat"; label: string };
 }) {
   const colors = {
-    emerald: "text-emerald-400",
-    blue: "text-blue-400",
-    orange: "text-orange-400",
-    red: "text-red-400",
-    zinc: "text-zinc-400",
+    emerald: { text: "text-emerald-400", glow: "shadow-emerald-500/5", accent: "bg-emerald-500" },
+    blue: { text: "text-blue-400", glow: "shadow-blue-500/5", accent: "bg-blue-500" },
+    orange: { text: "text-orange-400", glow: "shadow-orange-500/5", accent: "bg-orange-500" },
+    red: { text: "text-red-400", glow: "shadow-red-500/5", accent: "bg-red-500" },
+    zinc: { text: "text-zinc-400", glow: "shadow-zinc-500/5", accent: "bg-zinc-500" },
   };
+  const c = colors[color];
   const inner = (
-    <div className={`bg-zinc-900 border border-zinc-800 rounded-xl p-4 ${href ? "hover:border-zinc-600 transition-colors cursor-pointer" : ""}`}>
-      <Icon className={`w-4 h-4 mb-2 ${colors[color]}`} />
-      <div className="text-2xl font-bold font-mono">{value}</div>
-      <div className="text-xs text-zinc-500 mt-0.5">{label}</div>
+    <div className={`bg-zinc-900 border border-zinc-800 rounded-xl p-4 ${href ? "hover:border-zinc-600 transition-all cursor-pointer" : ""} shadow-lg ${c.glow}`}>
+      <div className="flex items-center justify-between mb-2">
+        <Icon className={`w-4 h-4 ${c.text}`} />
+        {trend && (
+          <span className={`text-[10px] font-medium ${
+            trend.direction === "down" ? "text-emerald-400" : trend.direction === "up" ? "text-red-400" : "text-zinc-500"
+          }`}>
+            {trend.direction === "up" ? "\u2191" : trend.direction === "down" ? "\u2193" : "\u2022"} {trend.label}
+          </span>
+        )}
+      </div>
+      <div className="text-2xl font-bold font-mono tracking-tight">{value}</div>
+      <div className="flex items-center justify-between mt-1">
+        <div className="text-xs text-zinc-500">{label}</div>
+        <div className={`w-8 h-1 rounded-full ${c.accent} opacity-30`} />
+      </div>
     </div>
   );
   if (href) return <Link href={href}>{inner}</Link>;
@@ -410,24 +425,27 @@ function StatCard({
 function SeverityChart({ severity }: { severity: SeverityCounts }) {
   const total = severity.total || 1;
   const bars = [
-    { label: "Critical", count: severity.critical, color: "bg-red-500", text: "text-red-400" },
-    { label: "High", count: severity.high, color: "bg-orange-500", text: "text-orange-400" },
-    { label: "Medium", count: severity.medium, color: "bg-yellow-500", text: "text-yellow-400" },
-    { label: "Low", count: severity.low, color: "bg-blue-500", text: "text-blue-400" },
+    { label: "Critical", count: severity.critical, color: "bg-red-500", text: "text-red-400", ring: "ring-red-500/20" },
+    { label: "High", count: severity.high, color: "bg-orange-500", text: "text-orange-400", ring: "ring-orange-500/20" },
+    { label: "Medium", count: severity.medium, color: "bg-yellow-500", text: "text-yellow-400", ring: "ring-yellow-500/20" },
+    { label: "Low", count: severity.low, color: "bg-blue-500", text: "text-blue-400", ring: "ring-blue-500/20" },
   ];
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-      <h3 className="text-sm font-semibold text-zinc-300 mb-4">Severity Distribution</h3>
+    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 shadow-lg shadow-zinc-950/50">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold text-zinc-300">Severity Distribution</h3>
+        <span className="text-xs text-zinc-600 font-mono">{total} total</span>
+      </div>
 
       {/* Stacked bar */}
-      <div className="flex h-4 rounded-full overflow-hidden bg-zinc-800 mb-4">
+      <div className="flex h-3 rounded-full overflow-hidden bg-zinc-800/50 mb-5">
         {bars.map((b) =>
           b.count > 0 ? (
             <Link
               key={b.label}
               href={`/vulns?severity=${b.label.toLowerCase()}`}
-              className={`${b.color} transition-all duration-500 hover:brightness-110`}
+              className={`${b.color} transition-all duration-500 hover:brightness-125`}
               style={{ width: `${(b.count / total) * 100}%` }}
               title={`${b.label}: ${b.count}`}
             />
@@ -435,13 +453,13 @@ function SeverityChart({ severity }: { severity: SeverityCounts }) {
         )}
       </div>
 
-      {/* Legend */}
+      {/* Legend with hover rings */}
       <div className="grid grid-cols-4 gap-2">
         {bars.map((b) => (
-          <Link key={b.label} href={`/vulns?severity=${b.label.toLowerCase()}`} className="text-center hover:bg-zinc-800 rounded-lg py-1 transition-colors">
-            <div className={`text-lg font-bold font-mono ${b.text}`}>{b.count}</div>
-            <div className="text-xs text-zinc-500">{b.label}</div>
-            <div className="text-xs text-zinc-600">{total > 0 ? Math.round((b.count / total) * 100) : 0}%</div>
+          <Link key={b.label} href={`/vulns?severity=${b.label.toLowerCase()}`} className={`text-center hover:bg-zinc-800/50 rounded-lg py-2 transition-all hover:ring-1 ${b.ring}`}>
+            <div className={`text-xl font-bold font-mono ${b.text}`}>{b.count}</div>
+            <div className="text-[10px] text-zinc-500 font-medium uppercase tracking-wide">{b.label}</div>
+            <div className="text-[10px] text-zinc-600 font-mono">{total > 0 ? Math.round((b.count / total) * 100) : 0}%</div>
           </Link>
         ))}
       </div>
@@ -451,14 +469,14 @@ function SeverityChart({ severity }: { severity: SeverityCounts }) {
 
 function SourceBreakdown({ sources }: { sources: ScanSource[] }) {
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 shadow-lg shadow-zinc-950/50">
       <h3 className="text-sm font-semibold text-zinc-300 mb-4">Scan Sources</h3>
       {sources.length === 0 ? (
         <p className="text-zinc-600 text-sm">No completed scans yet.</p>
       ) : (
         <div className="space-y-3">
           {sources.map((s) => (
-            <div key={s.label} className="flex items-center gap-3">
+            <div key={s.label} className="flex items-center gap-3 bg-zinc-800/30 rounded-lg px-3 py-2.5 border border-zinc-800/50">
               <s.icon className="w-4 h-4 text-zinc-400 flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">

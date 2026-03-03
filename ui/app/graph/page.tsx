@@ -21,6 +21,9 @@ import { applyDagreLayout } from "@/lib/dagre-layout";
 import { lineageNodeTypes, type LineageNodeData, type LineageNodeType } from "@/components/lineage-nodes";
 import { FilterPanel, DEFAULT_FILTERS, type FilterState } from "@/components/lineage-filter";
 import { LineageDetailPanel } from "@/components/lineage-detail";
+import { CONTROLS_CLASS, MINIMAP_CLASS, BACKGROUND_COLOR, BACKGROUND_GAP, minimapNodeColor } from "@/lib/graph-utils";
+import { FullscreenButton, GraphLegend } from "@/components/graph-chrome";
+import { STANDARD_LEGEND } from "@/lib/graph-utils";
 
 // ─── Pulse Animation Styles ──────────────────────────────────────────────────
 
@@ -149,8 +152,8 @@ function buildLineageGraph(
             target: serverId,
             type: "smoothstep",
             animated: true,
-            style: { stroke: "#10b981", strokeWidth: 2 },
-            markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
+            style: { stroke: "#10b981", strokeWidth: 2.5, opacity: 0.85 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981", width: 16, height: 12 },
           });
         }
       }
@@ -180,8 +183,9 @@ function buildLineageGraph(
               source: serverId,
               target: credId,
               type: "smoothstep",
-              style: { stroke: "#f59e0b", strokeWidth: 1.5, strokeDasharray: "5 3" },
-              markerEnd: { type: MarkerType.ArrowClosed, color: "#f59e0b" },
+              animated: true,
+              style: { stroke: "#f59e0b", strokeWidth: 1.8, strokeDasharray: "6 3", opacity: 0.9 },
+              markerEnd: { type: MarkerType.ArrowClosed, color: "#f59e0b", width: 14, height: 10 },
             });
           }
         }
@@ -213,8 +217,8 @@ function buildLineageGraph(
               source: serverId,
               target: toolId,
               type: "smoothstep",
-              style: { stroke: "#a855f7", strokeWidth: 1 },
-              markerEnd: { type: MarkerType.ArrowClosed, color: "#a855f7" },
+              style: { stroke: "#a855f7", strokeWidth: 1.2, opacity: 0.8 },
+              markerEnd: { type: MarkerType.ArrowClosed, color: "#a855f7", width: 12, height: 8 },
             });
           }
         }
@@ -255,8 +259,8 @@ function buildLineageGraph(
               source: serverId,
               target: pkgId,
               type: "smoothstep",
-              style: { stroke: "#3b82f6", strokeWidth: 1.5 },
-              markerEnd: { type: MarkerType.ArrowClosed, color: "#3b82f6" },
+              style: { stroke: "#3b82f6", strokeWidth: 1.8, opacity: 0.8 },
+              markerEnd: { type: MarkerType.ArrowClosed, color: "#3b82f6", width: 14, height: 10 },
             });
           }
         }
@@ -302,15 +306,16 @@ function buildLineageGraph(
                   vuln.severity === "critical" ? "#ef4444" :
                   vuln.severity === "high" ? "#f97316" :
                   vuln.severity === "medium" ? "#eab308" : "#3b82f6";
-                // Thicker edges for higher blast radius
                 const brCount = result.blast_radius?.find((b) => b.vulnerability_id === vuln.id)?.affected_agents.length ?? 1;
+                const isCritical = vuln.severity === "critical" || vuln.severity === "high";
                 edges.push({
                   id: vulnEdgeId,
                   source: pkgId,
                   target: vulnId,
                   type: "smoothstep",
-                  style: { stroke: color, strokeWidth: Math.min(1 + brCount, 4) },
-                  markerEnd: { type: MarkerType.ArrowClosed, color },
+                  animated: isCritical,
+                  style: { stroke: color, strokeWidth: Math.min(1.5 + brCount, 4.5), opacity: isCritical ? 1 : 0.75 },
+                  markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 12 },
                 });
               }
             }
@@ -509,26 +514,8 @@ export default function GraphPage() {
               </option>
             ))}
           </select>
-          <div className="flex items-center gap-2.5 text-[10px] text-zinc-500">
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" /> Agent
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-blue-500" /> Server
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-zinc-500" /> Package
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-red-500" /> CVE
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-amber-500" /> Cred
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-purple-500" /> Tool
-            </span>
-          </div>
+          <FullscreenButton />
+          <GraphLegend items={STANDARD_LEGEND} />
         </div>
       </div>
 
@@ -555,26 +542,9 @@ export default function GraphPage() {
             onNodeMouseLeave={onNodeMouseLeave}
             onPaneClick={() => { setSelectedNode(null); setHoveredNodeId(null); }}
           >
-            <Background color="#27272a" gap={20} />
-            <Controls
-              className="!bg-zinc-900 !border-zinc-700 !rounded-lg [&>button]:!bg-zinc-800 [&>button]:!border-zinc-700 [&>button]:!text-zinc-300 [&>button:hover]:!bg-zinc-700"
-            />
-            <MiniMap
-              nodeColor={(n) => {
-                const d = n.data as LineageNodeData;
-                const colors: Record<LineageNodeType, string> = {
-                  agent: "#10b981",
-                  server: "#3b82f6",
-                  sharedServer: "#22d3ee",
-                  package: "#52525b",
-                  vulnerability: "#ef4444",
-                  credential: "#f59e0b",
-                  tool: "#a855f7",
-                };
-                return colors[d.nodeType] ?? "#52525b";
-              }}
-              className="!bg-zinc-900 !border-zinc-700 !rounded-lg"
-            />
+            <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
+            <Controls className={CONTROLS_CLASS} />
+            <MiniMap nodeColor={minimapNodeColor} className={MINIMAP_CLASS} />
           </ReactFlow>
 
           {selectedNode && (

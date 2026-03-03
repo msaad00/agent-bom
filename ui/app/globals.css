@@ -14,7 +14,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
+    --background: #0a0a0b;
     --foreground: #ededed;
   }
 }
@@ -22,4 +22,37 @@
 body {
   background: var(--background);
   color: var(--foreground);
+}
+
+/* Smooth scrollbar for dark theme */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
+
+/* React Flow edge animation refinement */
+.react-flow__edge-path {
+  transition: stroke-opacity 0.2s ease;
+}
+
+/* Fullscreen mode styles */
+:fullscreen {
+  background: #0a0a0b;
+}
+:fullscreen nav {
+  display: none;
+}
+:fullscreen main {
+  max-width: 100%;
+  padding: 0;
 }

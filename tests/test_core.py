@@ -3435,39 +3435,39 @@ def test_rag_vector_stores_in_ai_packages():
 
 
 def test_owasp_rag_packages_covered():
-    """Vector store / RAG packages are in OWASP _AI_PACKAGES for LLM04 tagging."""
-    from agent_bom.owasp import _AI_PACKAGES
+    """Vector store / RAG packages are in shared AI_PACKAGES for LLM04 tagging."""
+    from agent_bom.constants import AI_PACKAGES
 
     rag_packages = {"chromadb", "pymilvus", "qdrant-client", "sentence-transformers"}
     for pkg in rag_packages:
-        assert pkg in _AI_PACKAGES, f"{pkg} missing from OWASP _AI_PACKAGES"
+        assert pkg in AI_PACKAGES, f"{pkg} missing from AI_PACKAGES"
 
 
 def test_atlas_rag_packages_covered():
-    """Vector store / RAG packages are in ATLAS _AI_PACKAGES."""
-    from agent_bom.atlas import _AI_PACKAGES
+    """Vector store / RAG packages are in shared AI_PACKAGES."""
+    from agent_bom.constants import AI_PACKAGES
 
     rag_packages = {"chromadb", "pymilvus", "qdrant-client", "lancedb"}
     for pkg in rag_packages:
-        assert pkg in _AI_PACKAGES, f"{pkg} missing from ATLAS _AI_PACKAGES"
+        assert pkg in AI_PACKAGES, f"{pkg} missing from AI_PACKAGES"
 
 
 def test_nist_rag_packages_covered():
-    """Vector store / RAG packages are in NIST AI RMF _AI_PACKAGES."""
-    from agent_bom.nist_ai_rmf import _AI_PACKAGES
+    """Vector store / RAG packages are in shared AI_PACKAGES."""
+    from agent_bom.constants import AI_PACKAGES
 
     rag_packages = {"chromadb", "pymilvus", "pgvector"}
     for pkg in rag_packages:
-        assert pkg in _AI_PACKAGES, f"{pkg} missing from NIST _AI_PACKAGES"
+        assert pkg in AI_PACKAGES, f"{pkg} missing from AI_PACKAGES"
 
 
 def test_owasp_training_data_packages_set():
-    """_TRAINING_DATA_PACKAGES contains expected training/fine-tuning packages."""
-    from agent_bom.owasp import _TRAINING_DATA_PACKAGES
+    """TRAINING_DATA_PACKAGES contains expected training/fine-tuning packages."""
+    from agent_bom.constants import TRAINING_DATA_PACKAGES
 
     expected = {"datasets", "transformers", "torch", "accelerate", "trl", "sentence-transformers", "peft", "safetensors"}
     for pkg in expected:
-        assert pkg in _TRAINING_DATA_PACKAGES, f"{pkg} missing from _TRAINING_DATA_PACKAGES"
+        assert pkg in TRAINING_DATA_PACKAGES, f"{pkg} missing from TRAINING_DATA_PACKAGES"
 
 
 # ─── License in SBOM output ─────────────────────────────────────────────────

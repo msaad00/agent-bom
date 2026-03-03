@@ -12,7 +12,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from agent_bom.models import Severity
+from agent_bom.constants import AI_PACKAGES as _AI_PACKAGES
+from agent_bom.constants import high_risk_severities
 from agent_bom.risk_analyzer import ToolCapability, classify_tool
 
 if TYPE_CHECKING:
@@ -37,31 +38,7 @@ ATLAS_TECHNIQUES: dict[str, str] = {
     "AML.T0062": "Exfiltration via AI Agent Tool Invocation",
 }
 
-# AI/ML framework packages — CVEs here enable model-level attacks
-_AI_PACKAGES: frozenset[str] = frozenset({
-    "torch", "torchvision", "torchaudio",
-    "transformers", "diffusers", "tokenizers",
-    "langchain", "langchain-core", "langchain-community",
-    "langchain-openai", "langchain-anthropic",
-    "openai", "anthropic", "google-generativeai",
-    "crewai", "autogen", "pyautogen",
-    "haystack", "haystack-ai",
-    "llama-index", "llama-cpp-python",
-    "dspy-ai", "guidance",
-    "semantic-kernel",
-    "pydantic-ai",
-    # Vector stores / RAG backends
-    "chromadb", "pinecone-client", "weaviate-client", "qdrant-client",
-    "faiss-cpu", "faiss-gpu", "pymilvus", "milvus",
-    "pgvector", "lancedb",
-    "sentence-transformers",
-})
-
-# Severity levels considered high-risk
-_HIGH_RISK: frozenset[Severity] = frozenset({
-    Severity.CRITICAL,
-    Severity.HIGH,
-})
+_HIGH_RISK = high_risk_severities()
 
 
 # ─── Tagger ───────────────────────────────────────────────────────────────────

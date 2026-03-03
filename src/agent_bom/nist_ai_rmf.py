@@ -12,7 +12,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from agent_bom.models import Severity
+from agent_bom.constants import AI_PACKAGES as _AI_PACKAGES
+from agent_bom.constants import high_risk_severities
 from agent_bom.risk_analyzer import ToolCapability, classify_tool
 
 if TYPE_CHECKING:
@@ -42,31 +43,7 @@ NIST_AI_RMF: dict[str, str] = {
     "MANAGE-4.1": "Post-deployment monitoring plans implemented",
 }
 
-# AI/ML framework packages — vulnerabilities here map to security testing subcategories
-_AI_PACKAGES: frozenset[str] = frozenset({
-    "torch", "torchvision", "torchaudio",
-    "transformers", "diffusers", "tokenizers",
-    "langchain", "langchain-core", "langchain-community",
-    "langchain-openai", "langchain-anthropic",
-    "openai", "anthropic", "google-generativeai",
-    "crewai", "autogen", "pyautogen",
-    "haystack", "haystack-ai",
-    "llama-index", "llama-cpp-python",
-    "dspy-ai", "guidance",
-    "semantic-kernel",
-    "pydantic-ai",
-    # Vector stores / RAG backends
-    "chromadb", "pinecone-client", "weaviate-client", "qdrant-client",
-    "faiss-cpu", "faiss-gpu", "pymilvus", "milvus",
-    "pgvector", "lancedb",
-    "sentence-transformers",
-})
-
-# Severity levels considered high-risk
-_HIGH_RISK: frozenset[Severity] = frozenset({
-    Severity.CRITICAL,
-    Severity.HIGH,
-})
+_HIGH_RISK = high_risk_severities()
 
 
 # ─── Tagger ───────────────────────────────────────────────────────────────────
@@ -91,7 +68,7 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     """
     tags: set[str] = {
         "GOVERN-1.7",  # always — third-party AI component risk
-        "MAP-3.5",     # always — supply chain risk assessed
+        "MAP-3.5",  # always — supply chain risk assessed
     }
 
     has_exec = False

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from agent_bom.models import Severity
+from agent_bom.constants import high_risk_severities
 from agent_bom.risk_analyzer import ToolCapability, classify_tool
 
 if TYPE_CHECKING:
@@ -34,11 +34,7 @@ OWASP_MCP_TOP10: dict[str, str] = {
     "MCP10": "Context Injection & Over-Sharing",
 }
 
-# Severity levels considered high-risk for privilege/poisoning checks
-_HIGH_RISK_SEVERITIES: frozenset[Severity] = frozenset({
-    Severity.CRITICAL,
-    Severity.HIGH,
-})
+_HIGH_RISK_SEVERITIES = high_risk_severities()
 
 
 # ─── Tagger ───────────────────────────────────────────────────────────────────
@@ -74,16 +70,11 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
         tags.add("MCP02")
 
     # Many tools + high severity = scope creep even without explicit elevation
-    if (
-        len(br.exposed_tools) > 5
-        and br.vulnerability.severity in _HIGH_RISK_SEVERITIES
-    ):
+    if len(br.exposed_tools) > 5 and br.vulnerability.severity in _HIGH_RISK_SEVERITIES:
         tags.add("MCP02")
 
     # MCP03 — tool poisoning: unverified server with high-severity CVE
-    has_unverified = any(
-        not s.registry_verified for s in br.affected_servers
-    )
+    has_unverified = any(not s.registry_verified for s in br.affected_servers)
     if has_unverified and br.vulnerability.severity in _HIGH_RISK_SEVERITIES:
         tags.add("MCP03")
 
@@ -110,10 +101,8 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
 
     # MCP07 — insufficient auth: unverified server with stdio (no auth layer)
     from agent_bom.models import TransportType
-    has_no_auth = any(
-        not s.registry_verified and s.transport == TransportType.STDIO
-        for s in br.affected_servers
-    )
+
+    has_no_auth = any(not s.registry_verified and s.transport == TransportType.STDIO for s in br.affected_servers)
     if has_no_auth:
         tags.add("MCP07")
 

@@ -12,7 +12,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from agent_bom.models import Severity
+from agent_bom.constants import (
+    AI_PACKAGES as _AI_PACKAGES,
+)
+from agent_bom.constants import (
+    TRAINING_DATA_PACKAGES as _TRAINING_DATA_PACKAGES,
+)
+from agent_bom.constants import (
+    high_risk_severities,
+)
 from agent_bom.risk_analyzer import ToolCapability, classify_tool
 
 if TYPE_CHECKING:
@@ -34,80 +42,7 @@ OWASP_LLM_TOP10: dict[str, str] = {
     "LLM10": "Unbounded Consumption",
 }
 
-# Package names associated with AI/ML frameworks
-_AI_PACKAGES: frozenset[str] = frozenset(
-    {
-        "torch",
-        "torchvision",
-        "torchaudio",
-        "transformers",
-        "diffusers",
-        "tokenizers",
-        "langchain",
-        "langchain-core",
-        "langchain-community",
-        "langchain-openai",
-        "langchain-anthropic",
-        "openai",
-        "anthropic",
-        "google-generativeai",
-        "crewai",
-        "autogen",
-        "pyautogen",
-        "haystack",
-        "haystack-ai",
-        "llama-index",
-        "llama-cpp-python",
-        "dspy-ai",
-        "guidance",
-        "semantic-kernel",
-        "pydantic-ai",
-        # Vector stores / RAG backends
-        "chromadb",
-        "pinecone-client",
-        "weaviate-client",
-        "qdrant-client",
-        "faiss-cpu",
-        "faiss-gpu",
-        "pymilvus",
-        "milvus",
-        "pgvector",
-        "lancedb",
-        # Embedding models
-        "sentence-transformers",
-    }
-)
-
-# Packages directly involved in training data handling and fine-tuning.
-# CVEs here risk training data poisoning (LLM03).
-_TRAINING_DATA_PACKAGES: frozenset[str] = frozenset(
-    {
-        "datasets",
-        "huggingface-hub",
-        "tokenizers",
-        "transformers",
-        "diffusers",
-        "accelerate",
-        "trl",
-        "sentence-transformers",
-        "peft",
-        "torch",
-        "torchvision",
-        "torchaudio",
-        "tensorflow",
-        "tensorflow-gpu",
-        "safetensors",
-        "optimum",
-    }
-)
-
-# Severity levels considered high-risk for agency/AI-poisoning checks
-_HIGH_RISK_SEVERITIES: frozenset[Severity] = frozenset(
-    {
-        Severity.CRITICAL,
-        Severity.HIGH,
-    }
-)
+_HIGH_RISK_SEVERITIES = high_risk_severities()
 
 
 # ─── Tagger ───────────────────────────────────────────────────────────────────

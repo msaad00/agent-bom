@@ -74,6 +74,19 @@ async def resolve_package_version(pkg: Package, client: httpx.AsyncClient) -> bo
         version, lic = await resolve_npm_metadata(pkg.name, client)
     elif pkg.ecosystem == "pypi":
         version, lic = await resolve_pypi_metadata(pkg.name, client)
+    elif pkg.ecosystem == "go":
+        from agent_bom.version_utils import resolve_go_metadata
+
+        version, lic = await resolve_go_metadata(pkg.name, client)
+    elif pkg.ecosystem == "cargo":
+        from agent_bom.version_utils import resolve_cargo_metadata
+
+        version, lic = await resolve_cargo_metadata(pkg.name, client)
+    elif pkg.ecosystem == "maven" and ":" in pkg.name:
+        from agent_bom.version_utils import resolve_maven_metadata
+
+        group, artifact = pkg.name.split(":", 1)
+        version, lic = await resolve_maven_metadata(group, artifact, client)
     if version:
         pkg.version = version
         pkg.purl = f"pkg:{pkg.ecosystem}/{pkg.name}@{version}"

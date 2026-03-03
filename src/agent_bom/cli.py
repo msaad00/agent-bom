@@ -151,6 +151,28 @@ def main():
     is_flag=True,
     help="Evaluate package licenses against compliance policy (block GPL/AGPL, warn copyleft)",
 )
+@click.option(
+    "--vex",
+    "vex_path",
+    type=click.Path(exists=True),
+    default=None,
+    metavar="PATH",
+    help="Apply a VEX document (OpenVEX JSON) to suppress resolved vulnerabilities",
+)
+@click.option(
+    "--generate-vex",
+    "generate_vex_flag",
+    is_flag=True,
+    help="Auto-generate a VEX document from scan results (KEV → affected, rest → under_investigation)",
+)
+@click.option(
+    "--vex-output",
+    "vex_output_path",
+    type=str,
+    default=None,
+    metavar="PATH",
+    help="Write generated VEX document to this file (default: agent-bom.vex.json)",
+)
 @click.option("--enrich", is_flag=True, help="Enrich vulnerabilities with NVD, EPSS, and CISA KEV data")
 @click.option("--nvd-api-key", envvar="NVD_API_KEY", help="NVD API key for higher rate limits")
 @click.option("--scorecard", "scorecard_flag", is_flag=True, help="Enrich packages with OpenSSF Scorecard scores")
@@ -412,6 +434,9 @@ def scan(
     max_depth: int,
     deps_dev: bool,
     license_check: bool,
+    vex_path: Optional[str],
+    generate_vex_flag: bool,
+    vex_output_path: Optional[str],
     enrich: bool,
     nvd_api_key: Optional[str],
     scorecard_flag: bool,
@@ -1683,6 +1708,32 @@ def scan(
             _f_count = len(_lic_report.findings)
             _status = "[green]compliant[/green]" if _lic_report.compliant else "[red]non-compliant[/red]"
             con.print(f"  [green]✓[/green] License check: {_lic_report.total_packages} packages, {_f_count} finding(s), {_status}")
+
+    # ── VEX support ──────────────────────────────────────────────────
+    if vex_path and agents:
+        from agent_bom.vex import apply_vex, load_vex
+        from agent_bom.vex import to_serializable as _vex_to_ser
+
+        _vex_doc = load_vex(vex_path)
+        _vex_count = apply_vex(report, _vex_doc)
+        report.vex_data = _vex_to_ser(_vex_doc)
+        if not quiet:
+            con.print(f"  [green]✓[/green] VEX applied: {_vex_count} vulnerabilities updated from {vex_path}")
+
+    if generate_vex_flag and report.blast_radii:
+        from agent_bom.vex import export_openvex, generate_vex
+        from agent_bom.vex import to_serializable as _vex_to_ser
+
+        _vex_doc = generate_vex(report, auto_triage=True)
+        report.vex_data = _vex_to_ser(_vex_doc)
+        _vex_out = vex_output_path or "agent-bom.vex.json"
+        import json as _vex_json
+
+        with open(_vex_out, "w") as _vf:
+            _vex_json.dump(export_openvex(_vex_doc), _vf, indent=2)
+        if not quiet:
+            _n_stmts = len(_vex_doc.statements)
+            con.print(f"  [green]✓[/green] VEX generated: {_n_stmts} statements → {_vex_out}")
 
     # ── Step 1i: Model binary file scan ─────────────────────────────
     if not skill_only and model_dirs:

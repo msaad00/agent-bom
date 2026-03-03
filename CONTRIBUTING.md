@@ -73,6 +73,13 @@ When preparing a release, update the version in all of these files:
 
 Only document and claim features that are actually implemented and tested. Do not add stubs, placeholders, or roadmap items as if they are shipping features.
 
+## Developer Certificate of Origin (DCO)
+
+All contributions must include a `Signed-off-by` line in the commit message
+(use `git commit -s`). By signing off, you certify that you have the right
+to submit the work under this project's license per the
+[Developer Certificate of Origin v1.1](https://developercertificate.org/).
+
 ## Reporting Security Issues
 
 If you discover a security vulnerability, please use [GitHub Security Advisories](https://github.com/msaad00/agent-bom/security/advisories) or email andwgdysaad@gmail.com instead of opening a public issue.

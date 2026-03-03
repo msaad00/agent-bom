@@ -114,6 +114,8 @@ class Package:
     is_malicious: bool = False  # True if flagged as known malicious (MAL- prefix in OSV)
     malicious_reason: Optional[str] = None  # Why this package is flagged (e.g. "MAL-2024-1234")
     license: Optional[str] = None  # SPDX license identifier (e.g. "MIT", "Apache-2.0")
+    license_expression: Optional[str] = None  # Full SPDX expression (e.g. "Apache-2.0 AND MIT")
+    deps_dev_resolved: bool = False  # True if resolved via deps.dev API
 
     # OpenSSF Scorecard enrichment (populated by --scorecard flag)
     scorecard_score: Optional[float] = None  # 0.0-10.0 overall score

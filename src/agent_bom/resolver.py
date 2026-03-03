@@ -84,20 +84,49 @@ async def resolve_package_version(pkg: Package, client: httpx.AsyncClient) -> bo
 
 
 async def enrich_licenses(packages: list[Package], client: httpx.AsyncClient) -> int:
-    """Fetch license info for packages that already have a version but no license."""
+    """Fetch license info for packages that already have a version but no license.
+
+    Tries npm/PyPI registries first, then falls back to deps.dev for other ecosystems.
+    """
     need_license = [p for p in packages if not p.license and p.version not in ("latest", "unknown", "")]
     if not need_license:
         return 0
     count = 0
+    deps_dev_batch = []
     for pkg in need_license:
         _, lic = None, None
         if pkg.ecosystem == "npm":
             _, lic = await resolve_npm_metadata(pkg.name, client)
         elif pkg.ecosystem == "pypi":
             _, lic = await resolve_pypi_metadata(pkg.name, client)
+        else:
+            # Queue for deps.dev fallback (go, cargo, maven, nuget)
+            deps_dev_batch.append(pkg)
+            continue
         if lic:
             pkg.license = lic
             count += 1
+
+    # deps.dev fallback for non-npm/non-pypi ecosystems
+    if deps_dev_batch:
+        try:
+            from agent_bom.deps_dev import get_package_info
+
+            for pkg in deps_dev_batch:
+                info = await get_package_info(pkg.ecosystem, pkg.name, pkg.version, client)
+                if info:
+                    licenses = info.get("licenses", [])
+                    spdx_ids = [lic for lic in licenses if isinstance(lic, str) and lic]
+                    if spdx_ids:
+                        pkg.license = spdx_ids[0]
+                        if len(spdx_ids) > 1:
+                            pkg.license_expression = " AND ".join(spdx_ids)
+                        else:
+                            pkg.license_expression = spdx_ids[0]
+                        count += 1
+        except ImportError:
+            pass  # deps_dev module not available — skip gracefully
+
     return count
 
 

@@ -1179,6 +1179,8 @@ def to_json(report: AIBOMReport) -> dict:
                                 "version_source": pkg.version_source,
                                 "registry_version": pkg.registry_version,
                                 "license": pkg.license,
+                                "license_expression": pkg.license_expression,
+                                "deps_dev_resolved": pkg.deps_dev_resolved,
                                 "scorecard_score": pkg.scorecard_score,
                                 "scorecard_checks": pkg.scorecard_checks or None,
                                 "vulnerabilities": [
@@ -1386,8 +1388,9 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                     "purl": pkg.purl,
                     "properties": pkg_properties,
                 }
-                if pkg.license:
-                    pkg_component["licenses"] = [{"license": {"id": pkg.license}}]
+                if pkg.license_expression or pkg.license:
+                    lic_id = pkg.license_expression or pkg.license
+                    pkg_component["licenses"] = [{"license": {"id": lic_id}}]
                 components.append(pkg_component)
                 server_deps.append(pkg_ref)
                 bom_ref_map[f"{pkg.ecosystem}:{pkg.name}@{pkg.version}"] = pkg_ref
@@ -2025,8 +2028,8 @@ def to_spdx(report: AIBOMReport) -> dict:
                     }
                     if pkg.purl:
                         pkg_element["externalIdentifier"] = [{"type": "PackageURL", "identifier": pkg.purl}]
-                    if pkg.license:
-                        pkg_element["declaredLicense"] = pkg.license
+                    if pkg.license_expression or pkg.license:
+                        pkg_element["declaredLicense"] = pkg.license_expression or pkg.license
                     elements.append(pkg_element)
 
                 pkg_id = pkg_ref_map[pkg_key]

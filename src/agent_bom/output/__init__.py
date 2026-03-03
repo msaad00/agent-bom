@@ -1198,6 +1198,8 @@ def to_json(report: AIBOMReport) -> dict:
                                         "references": v.references,
                                         "nvd_published": v.nvd_published,
                                         "nvd_modified": v.nvd_modified,
+                                        "vex_status": v.vex_status,
+                                        "vex_justification": v.vex_justification,
                                     }
                                     for v in pkg.vulnerabilities
                                 ],
@@ -1290,6 +1292,9 @@ def to_json(report: AIBOMReport) -> dict:
 
     if report.license_report:
         result["license_report"] = report.license_report
+
+    if report.vex_data:
+        result["vex"] = report.vex_data
 
     # Posture scorecard
     from agent_bom.posture import (
@@ -1423,6 +1428,19 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                         )
                     if vuln.fixed_version:
                         vuln_entry["recommendation"] = f"Upgrade to {vuln.fixed_version}"
+                    if vuln.vex_status:
+                        # CycloneDX VEX analysis mapping
+                        _cdx_state_map = {
+                            "affected": "exploitable",
+                            "not_affected": "not_affected",
+                            "fixed": "resolved",
+                            "under_investigation": "in_triage",
+                        }
+                        vuln_entry["analysis"] = {
+                            "state": _cdx_state_map.get(vuln.vex_status, "in_triage"),
+                        }
+                        if vuln.vex_justification:
+                            vuln_entry["analysis"]["justification"] = vuln.vex_justification
                     vulnerabilities_cdx.append(vuln_entry)
 
             dependencies.append({"ref": server_ref, "dependsOn": server_deps})

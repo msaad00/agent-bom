@@ -16,29 +16,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
-# ── Credential detection (mirrors models.MCPServer.credential_names) ──────
-
-_SENSITIVE_PATTERNS = [
-    "key",
-    "token",
-    "secret",
-    "password",
-    "credential",
-    "api_key",
-    "apikey",
-    "auth",
-    "private",
-    "connection",
-    "conn_str",
-    "database_url",
-    "db_url",
-]
-
-
-def _is_credential_key(name: str) -> bool:
-    low = name.lower()
-    return any(pat in low for pat in _SENSITIVE_PATTERNS)
-
+from agent_bom.constants import is_credential_key as _is_credential_key
 
 # ── Enums ─────────────────────────────────────────────────────────────────
 

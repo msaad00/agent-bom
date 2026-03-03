@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from agent_bom.constants import AI_PACKAGES as _AI_PACKAGES
 from agent_bom.models import Severity
 from agent_bom.risk_analyzer import ToolCapability, classify_tool
 
@@ -29,48 +30,6 @@ EU_AI_ACT: dict[str, str] = {
     "ART-15": "Accuracy, Robustness & Cybersecurity",
     "ART-17": "Quality Management System",
 }
-
-# AI/ML framework packages
-_AI_PACKAGES: frozenset[str] = frozenset(
-    {
-        "torch",
-        "torchvision",
-        "torchaudio",
-        "transformers",
-        "diffusers",
-        "tokenizers",
-        "langchain",
-        "langchain-core",
-        "langchain-community",
-        "langchain-openai",
-        "langchain-anthropic",
-        "openai",
-        "anthropic",
-        "google-generativeai",
-        "crewai",
-        "autogen",
-        "pyautogen",
-        "haystack",
-        "haystack-ai",
-        "llama-index",
-        "llama-cpp-python",
-        "dspy-ai",
-        "guidance",
-        "semantic-kernel",
-        "pydantic-ai",
-        "chromadb",
-        "pinecone-client",
-        "weaviate-client",
-        "qdrant-client",
-        "faiss-cpu",
-        "faiss-gpu",
-        "pymilvus",
-        "milvus",
-        "pgvector",
-        "lancedb",
-        "sentence-transformers",
-    }
-)
 
 
 # ─── Tagger ───────────────────────────────────────────────────────────────────

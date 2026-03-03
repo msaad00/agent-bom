@@ -12,7 +12,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from agent_bom.models import Severity
+from agent_bom.constants import AI_PACKAGES as _AI_PACKAGES
+from agent_bom.constants import high_risk_severities
 from agent_bom.risk_analyzer import ToolCapability, classify_tool
 
 if TYPE_CHECKING:
@@ -34,49 +35,7 @@ OWASP_AGENTIC_TOP10: dict[str, str] = {
     "ASI10": "Rogue Agent Persistence",
 }
 
-# AI/ML framework packages (reused from owasp.py for consistency)
-_AI_PACKAGES: frozenset[str] = frozenset(
-    {
-        "torch",
-        "torchvision",
-        "torchaudio",
-        "transformers",
-        "diffusers",
-        "tokenizers",
-        "langchain",
-        "langchain-core",
-        "langchain-community",
-        "langchain-openai",
-        "langchain-anthropic",
-        "openai",
-        "anthropic",
-        "google-generativeai",
-        "crewai",
-        "autogen",
-        "pyautogen",
-        "haystack",
-        "haystack-ai",
-        "llama-index",
-        "llama-cpp-python",
-        "dspy-ai",
-        "guidance",
-        "semantic-kernel",
-        "pydantic-ai",
-        "chromadb",
-        "pinecone-client",
-        "weaviate-client",
-        "qdrant-client",
-        "faiss-cpu",
-        "faiss-gpu",
-        "pymilvus",
-        "milvus",
-        "pgvector",
-        "lancedb",
-        "sentence-transformers",
-    }
-)
-
-_HIGH_RISK: frozenset[Severity] = frozenset({Severity.CRITICAL, Severity.HIGH})
+_HIGH_RISK = high_risk_severities()
 
 
 # ─── Tagger ───────────────────────────────────────────────────────────────────

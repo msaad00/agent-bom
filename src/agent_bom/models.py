@@ -224,42 +224,16 @@ class MCPServer:
     @property
     def has_credentials(self) -> bool:
         """Check if env vars suggest credentials are present."""
-        sensitive_patterns = [
-            "key",
-            "token",
-            "secret",
-            "password",
-            "credential",
-            "api_key",
-            "apikey",
-            "auth",
-            "private",
-            "connection",
-            "conn_str",
-            "database_url",
-            "db_url",
-        ]
-        return any(any(pat in k.lower() for pat in sensitive_patterns) for k in self.env)
+        from agent_bom.constants import SENSITIVE_PATTERNS
+
+        return any(any(pat in k.lower() for pat in SENSITIVE_PATTERNS) for k in self.env)
 
     @property
     def credential_names(self) -> list[str]:
         """Return names of env vars that look like credentials."""
-        sensitive_patterns = [
-            "key",
-            "token",
-            "secret",
-            "password",
-            "credential",
-            "api_key",
-            "apikey",
-            "auth",
-            "private",
-            "connection",
-            "conn_str",
-            "database_url",
-            "db_url",
-        ]
-        return [k for k in self.env if any(pat in k.lower() for pat in sensitive_patterns)]
+        from agent_bom.constants import SENSITIVE_PATTERNS
+
+        return [k for k in self.env if any(pat in k.lower() for pat in SENSITIVE_PATTERNS)]
 
 
 @dataclass

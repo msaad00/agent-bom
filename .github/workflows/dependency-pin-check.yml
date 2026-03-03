@@ -1,0 +1,21 @@
+name: Action Pin Freshness
+
+on:
+  schedule:
+    - cron: "0 10 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-pins:
+    name: Check GitHub Action SHA freshness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: List action references
+        run: |
+          echo "=== GitHub Action references across workflows ==="
+          grep -rh 'uses:' .github/workflows/*.yml | grep '@' | sort -u
+          echo "=== Review monthly for updates ==="

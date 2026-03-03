@@ -1,0 +1,27 @@
+name: Container Re-Scan
+
+on:
+  schedule:
+    - cron: "0 8 * * 3"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  rescan:
+    name: Re-scan published containers
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image:
+          - agentbom/agent-bom:latest
+    steps:
+      - name: Trivy scan ${{ matrix.image }}
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ matrix.image }}
+          format: table
+          severity: HIGH,CRITICAL
+          exit-code: "0"

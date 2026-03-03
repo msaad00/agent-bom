@@ -1096,6 +1096,52 @@ async def get_context_graph(job_id: str, agent: str | None = None) -> dict:
     return to_serializable(graph, paths, risks)
 
 
+@app.get("/v1/scan/{job_id}/licenses", tags=["scan"])
+async def get_licenses(job_id: str) -> dict:
+    """Get the license compliance report for a completed scan.
+
+    Returns license findings, summary, compliance status, and per-package
+    license categorization (permissive, copyleft, commercial risk, unknown).
+    """
+    job = _jobs_get(job_id) or _get_store().get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    if job.status != JobStatus.DONE or not job.result:
+        raise HTTPException(status_code=409, detail="Scan not completed yet")
+
+    # If the scan already computed license_report, return it
+    if isinstance(job.result, dict) and job.result.get("license_report"):
+        return job.result["license_report"]
+
+    # Otherwise compute on-the-fly from scan result agents
+    from agent_bom.license_policy import evaluate_license_policy as _eval_lic
+    from agent_bom.license_policy import to_serializable as _lic_ser
+    from agent_bom.models import Agent as _AgentModel
+    from agent_bom.models import MCPServer as _ServerModel
+    from agent_bom.models import Package as _PkgModel
+
+    agents_data = job.result.get("agents", []) if isinstance(job.result, dict) else []
+    model_agents = []
+    for ad in agents_data:
+        servers = []
+        for sd in ad.get("mcp_servers", []):
+            pkgs = [
+                _PkgModel(
+                    name=p.get("name", ""),
+                    version=p.get("version", ""),
+                    ecosystem=p.get("ecosystem", ""),
+                    license=p.get("license"),
+                    license_expression=p.get("license_expression"),
+                )
+                for p in sd.get("packages", [])
+            ]
+            servers.append(_ServerModel(name=sd.get("name", ""), command=sd.get("command", ""), packages=pkgs))
+        model_agents.append(_AgentModel(name=ad.get("name", ""), agent_type=ad.get("type", ""), mcp_servers=servers))
+
+    lic_report = _eval_lic(model_agents)
+    return _lic_ser(lic_report)
+
+
 @app.get("/v1/scan/{job_id}/skill-audit", tags=["scan"])
 async def get_skill_audit(job_id: str) -> dict:
     """Get the skill security audit results for a completed scan.

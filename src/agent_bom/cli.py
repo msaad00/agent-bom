@@ -1735,6 +1735,20 @@ def scan(
             _n_stmts = len(_vex_doc.statements)
             con.print(f"  [green]✓[/green] VEX generated: {_n_stmts} statements → {_vex_out}")
 
+    # ── Toxic combination detection ──────────────────────────────────
+    if report.blast_radii and (enrich or preset == "enterprise"):
+        from agent_bom.toxic_combos import detect_toxic_combinations as _detect_toxic
+        from agent_bom.toxic_combos import prioritize_findings as _prioritize
+        from agent_bom.toxic_combos import to_serializable as _toxic_ser
+
+        _toxic = _detect_toxic(report, context_graph_data=report.context_graph_data)
+        report.toxic_combinations = _toxic_ser(_toxic)
+        report.prioritized_findings = _prioritize(report.blast_radii, _toxic)
+        if not quiet and _toxic:
+            _n_crit = sum(1 for t in _toxic if t.severity == "critical")
+            _n_high = sum(1 for t in _toxic if t.severity == "high")
+            con.print(f"  [red]![/red] Toxic combinations: {len(_toxic)} detected ({_n_crit} critical, {_n_high} high)")
+
     # ── Step 1i: Model binary file scan ─────────────────────────────
     if not skill_only and model_dirs:
         from agent_bom.model_files import check_sigstore_signature, scan_model_files, verify_model_hash

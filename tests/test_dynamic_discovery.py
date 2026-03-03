@@ -1,4 +1,4 @@
-"""Tests for dynamic MCP configuration discovery (v0.44.0)."""
+"""Tests for dynamic MCP configuration discovery (v0.45.0)."""
 
 from __future__ import annotations
 

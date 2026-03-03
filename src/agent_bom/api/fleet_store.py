@@ -72,66 +72,77 @@ class FleetStore(Protocol):
 
 
 class InMemoryFleetStore:
-    """Dict-based in-memory fleet store."""
+    """Dict-based in-memory fleet store. Thread-safe via lock."""
 
     def __init__(self) -> None:
         self._agents: dict[str, FleetAgent] = {}
+        self._lock = threading.Lock()
 
     def put(self, agent: FleetAgent) -> None:
-        self._agents[agent.agent_id] = agent
+        with self._lock:
+            self._agents[agent.agent_id] = agent
 
     def get(self, agent_id: str) -> FleetAgent | None:
-        return self._agents.get(agent_id)
+        with self._lock:
+            return self._agents.get(agent_id)
 
     def get_by_name(self, name: str) -> FleetAgent | None:
-        for a in self._agents.values():
-            if a.name == name:
-                return a
-        return None
+        with self._lock:
+            for a in self._agents.values():
+                if a.name == name:
+                    return a
+            return None
 
     def delete(self, agent_id: str) -> bool:
-        if agent_id in self._agents:
-            del self._agents[agent_id]
-            return True
-        return False
+        with self._lock:
+            if agent_id in self._agents:
+                del self._agents[agent_id]
+                return True
+            return False
 
     def list_all(self) -> list[FleetAgent]:
-        return list(self._agents.values())
+        with self._lock:
+            return list(self._agents.values())
 
     def list_summary(self) -> list[dict]:
-        return [
-            {
-                "agent_id": a.agent_id,
-                "name": a.name,
-                "lifecycle_state": a.lifecycle_state,
-                "trust_score": a.trust_score,
-                "updated_at": a.updated_at,
-            }
-            for a in self._agents.values()
-        ]
+        with self._lock:
+            return [
+                {
+                    "agent_id": a.agent_id,
+                    "name": a.name,
+                    "lifecycle_state": a.lifecycle_state,
+                    "trust_score": a.trust_score,
+                    "updated_at": a.updated_at,
+                }
+                for a in self._agents.values()
+            ]
 
     def list_by_tenant(self, tenant_id: str) -> list[FleetAgent]:
-        return [a for a in self._agents.values() if a.tenant_id == tenant_id]
+        with self._lock:
+            return [a for a in self._agents.values() if a.tenant_id == tenant_id]
 
     def list_tenants(self) -> list[dict]:
-        counts: dict[str, int] = {}
-        for a in self._agents.values():
-            counts[a.tenant_id] = counts.get(a.tenant_id, 0) + 1
-        return [{"tenant_id": tid, "agent_count": cnt} for tid, cnt in sorted(counts.items())]
+        with self._lock:
+            counts: dict[str, int] = {}
+            for a in self._agents.values():
+                counts[a.tenant_id] = counts.get(a.tenant_id, 0) + 1
+            return [{"tenant_id": tid, "agent_count": cnt} for tid, cnt in sorted(counts.items())]
 
     def update_state(self, agent_id: str, state: FleetLifecycleState) -> bool:
-        agent = self._agents.get(agent_id)
-        if agent is None:
-            return False
-        agent.lifecycle_state = state
-        agent.updated_at = datetime.now(timezone.utc).isoformat()
-        return True
+        with self._lock:
+            agent = self._agents.get(agent_id)
+            if agent is None:
+                return False
+            agent.lifecycle_state = state
+            agent.updated_at = datetime.now(timezone.utc).isoformat()
+            return True
 
     def batch_put(self, agents: list[FleetAgent]) -> int:
         """Upsert multiple agents at once."""
-        for agent in agents:
-            self._agents[agent.agent_id] = agent
-        return len(agents)
+        with self._lock:
+            for agent in agents:
+                self._agents[agent.agent_id] = agent
+            return len(agents)
 
 
 # ─── SQLite ──────────────────────────────────────────────────────────────────

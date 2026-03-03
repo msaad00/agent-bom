@@ -107,12 +107,12 @@ def resolve_role(api_key: str | None = None, role_header: str | None = None) -> 
         except ValueError:
             pass
 
-    # Default role
-    default = os.environ.get("AGENT_BOM_DEFAULT_ROLE", "admin")
+    # Default role — least privilege (viewer) unless explicitly overridden
+    default = os.environ.get("AGENT_BOM_DEFAULT_ROLE", "viewer")
     try:
         return Role(default)
     except ValueError:
-        return Role.ADMIN
+        return Role.VIEWER
 
 
 def check_permission(role: Role, action: str) -> bool:

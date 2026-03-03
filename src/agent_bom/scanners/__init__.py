@@ -143,7 +143,16 @@ ECOSYSTEM_MAP = {
 # Rate limiting: max concurrent API requests + delay between batches
 MAX_CONCURRENT_REQUESTS = 10
 BATCH_DELAY_SECONDS = 0.5  # 500ms between OSV batch calls
-_api_semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+
+
+def _get_api_semaphore() -> asyncio.Semaphore:
+    """Create a semaphore bound to the current event loop.
+
+    Module-level semaphores can bind to the wrong event loop when called from
+    different threads (e.g. concurrent scans via ThreadPoolExecutor + asyncio.run()).
+    """
+    return asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+
 
 _logger = logging.getLogger(__name__)
 
@@ -365,11 +374,12 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
 
     # OSV batch API accepts up to 1000 queries; rate-limited with retries
     batch_size = 1000
+    semaphore = _get_api_semaphore()
     async with create_client(timeout=30.0) as client:
         for batch_start in range(0, len(queries), batch_size):
             batch = queries[batch_start : batch_start + batch_size]
 
-            async with _api_semaphore:
+            async with semaphore:
                 response = await request_with_retry(
                     client,
                     "POST",

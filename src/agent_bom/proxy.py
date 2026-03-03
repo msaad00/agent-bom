@@ -451,7 +451,7 @@ async def run_proxy(
         """Read from our stdin, forward to server stdin."""
         reader = asyncio.StreamReader()
         protocol = asyncio.StreamReaderProtocol(reader)
-        await asyncio.get_event_loop().connect_read_pipe(lambda: protocol, sys.stdin.buffer)
+        await asyncio.get_running_loop().connect_read_pipe(lambda: protocol, sys.stdin.buffer)
 
         while True:
             line = await reader.readline()

@@ -509,7 +509,7 @@ def parse_snowflake_connections(config_path: str) -> list[MCPServer]:
         if conn_def.get("password"):
             env["password"] = "***REDACTED***"
         if conn_def.get("private_key_file"):
-            env["private_key_file"] = conn_def["private_key_file"]
+            env["private_key_file"] = "***KEY_FILE_PRESENT***"
 
         server = MCPServer(
             name=f"sf-connection:{name}",

@@ -137,7 +137,7 @@ async def _lifespan(app_instance: FastAPI):
         )
         _get_store().put(job)
         _jobs_put(job.job_id, job)
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         loop.run_in_executor(_executor, _run_scan_sync, job)
         return job.job_id
 
@@ -200,13 +200,18 @@ from starlette.types import ASGIApp  # noqa: E402
 
 
 class TrustHeadersMiddleware(BaseHTTPMiddleware):
-    """Add read-only + no-credential-storage trust headers to every response."""
+    """Add trust + standard security headers to every response."""
 
     async def dispatch(self, request: StarletteRequest, call_next):
         response = await call_next(request)
         response.headers["X-Agent-Bom-Read-Only"] = "true"
         response.headers["X-Agent-Bom-No-Credential-Storage"] = "true"
         response.headers["X-Agent-Bom-Version"] = __version__
+        # Standard security headers
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Content-Security-Policy"] = "default-src 'self'"
         return response
 
 
@@ -376,6 +381,15 @@ def set_job_store(store: Any) -> None:
 # In-memory job refs for SSE streaming (bounded, thread-safe)
 _jobs: dict[str, "ScanJob"] = {}
 _jobs_lock = threading.Lock()
+_job_locks: dict[str, threading.Lock] = {}  # per-job locks for thread-safe field access
+
+
+def _job_lock(job_id: str) -> threading.Lock:
+    """Get or create a per-job lock for thread-safe field access."""
+    with _jobs_lock:
+        if job_id not in _job_locks:
+            _job_locks[job_id] = threading.Lock()
+        return _job_locks[job_id]
 
 
 def _jobs_put(job_id: str, job: "ScanJob") -> None:
@@ -495,8 +509,9 @@ PIPELINE_STEPS = ["discovery", "extraction", "scanning", "enrichment", "analysis
 class ScanPipeline:
     """Track scan pipeline steps and emit structured events to job.progress."""
 
-    def __init__(self, job: ScanJob) -> None:
+    def __init__(self, job: ScanJob, lock: threading.Lock | None = None) -> None:
         self._job = job
+        self._lock = lock
         self._steps: dict[str, dict[str, Any]] = {}
         for step_id in PIPELINE_STEPS:
             self._steps[step_id] = {
@@ -562,12 +577,17 @@ class ScanPipeline:
         self._emit(event)
 
     def _emit(self, event: dict[str, Any]) -> None:
-        """Serialize step event to job.progress for SSE pickup."""
+        """Serialize step event to job.progress for SSE pickup (thread-safe)."""
         import json as _json_mod
 
         # Convert enum values to strings for JSON serialization
         serializable = {k: (v.value if isinstance(v, Enum) else v) for k, v in event.items()}
-        self._job.progress.append(_json_mod.dumps(serializable))
+        line = _json_mod.dumps(serializable)
+        if self._lock:
+            with self._lock:
+                self._job.progress.append(line)
+        else:
+            self._job.progress.append(line)
 
 
 class VersionInfo(BaseModel):
@@ -648,9 +668,11 @@ def _sync_scan_agents_to_fleet(agents: list) -> None:
 
 def _run_scan_sync(job: ScanJob) -> None:
     """Run the full scan pipeline in a thread (blocking). Updates job in-place."""
-    job.status = JobStatus.RUNNING
-    job.started_at = _now()
-    pipeline = ScanPipeline(job)
+    lock = _job_lock(job.job_id)
+    with lock:
+        job.status = JobStatus.RUNNING
+        job.started_at = _now()
+    pipeline = ScanPipeline(job, lock)
 
     try:
         from agent_bom.discovery import discover_all
@@ -867,28 +889,33 @@ def _run_scan_sync(job: ScanJob) -> None:
         report = AIBOMReport(agents=agents, blast_radii=blast_radii)
         report_json = to_json(report)
         report_json["warnings"] = warnings_all
-        job.result = report_json
-        job.status = JobStatus.DONE
+        with lock:
+            job.result = report_json
+            job.status = JobStatus.DONE
         pipeline.complete_step("output", "Report ready")
 
         # Auto-sync discovered agents to fleet registry
         try:
             _sync_scan_agents_to_fleet(agents)
         except Exception as fleet_exc:  # noqa: BLE001
-            job.progress.append(f"Fleet sync skipped: {fleet_exc}")
+            with lock:
+                job.progress.append(f"Fleet sync skipped: {fleet_exc}")
 
     except Exception as exc:  # noqa: BLE001
-        job.status = JobStatus.FAILED
-        job.error = str(exc)
+        with lock:
+            job.status = JobStatus.FAILED
+            job.error = sanitize_error(exc)
         # Mark whichever step was running as failed
         for step_id in PIPELINE_STEPS:
             if pipeline._steps[step_id]["status"] == StepStatus.RUNNING:
-                pipeline.fail_step(step_id, str(exc))
+                pipeline.fail_step(step_id, sanitize_error(exc))
                 break
         else:
-            job.progress.append(f"Error: {exc}")
+            with lock:
+                job.progress.append(f"Error: {sanitize_error(exc)}")
     finally:
-        job.completed_at = _now()
+        with lock:
+            job.completed_at = _now()
         # Persist final state
         _get_store().put(job)
 
@@ -969,7 +996,7 @@ async def create_scan(request: ScanRequest) -> ScanJob:
     # Keep in-memory ref for SSE streaming (progress list updates in real-time)
     _jobs_put(job.job_id, job)
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     loop.run_in_executor(_executor, _run_scan_sync, job)
 
     return job
@@ -1128,12 +1155,17 @@ async def stream_scan(job_id: str):
 
     async def event_generator():
         sent = 0
-        while True:
+        lock = _job_lock(job_id)
+        start = time.monotonic()
+        while time.monotonic() - start < 2100:  # 35 min max (exceeds stuck-job timeout)
             current = _jobs_get(job_id)
             if current is None:
                 break
-            # Send any new progress lines (structured steps or legacy strings)
-            for line in current.progress[sent:]:
+            # Thread-safe snapshot of new progress lines and status
+            with lock:
+                new_lines = list(current.progress[sent:])
+                status = current.status
+            for line in new_lines:
                 try:
                     parsed = _json.loads(line)
                     if isinstance(parsed, dict) and parsed.get("type") == "step":
@@ -1143,8 +1175,8 @@ async def stream_scan(job_id: str):
                 except (_json.JSONDecodeError, ValueError):
                     yield {"data": _json.dumps({"type": "progress", "message": line})}
                 sent += 1
-            if current.status in (JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED):
-                yield {"data": _json.dumps({"type": "done", "status": current.status, "job_id": job_id})}
+            if status in (JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED):
+                yield {"data": _json.dumps({"type": "done", "status": status, "job_id": job_id})}
                 break
             await asyncio.sleep(0.25)
 
@@ -2488,6 +2520,8 @@ async def governance_report(days: int = 30):
     """
     import os as _os
 
+    days = max(1, min(days, 365))
+
     if not _os.environ.get("SNOWFLAKE_ACCOUNT"):
         raise HTTPException(
             status_code=400,
@@ -2512,6 +2546,8 @@ async def governance_findings(
 ):
     """Return only governance findings, optionally filtered."""
     import os as _os
+
+    days = max(1, min(days, 365))
 
     if not _os.environ.get("SNOWFLAKE_ACCOUNT"):
         raise HTTPException(
@@ -2552,6 +2588,8 @@ async def activity_timeline(days: int = 30):
     """
     import os as _os
 
+    days = max(1, min(days, 365))
+
     if not _os.environ.get("SNOWFLAKE_ACCOUNT"):
         raise HTTPException(
             status_code=400,
@@ -2580,6 +2618,8 @@ async def cortex_telemetry(hours: int = 24):
     health status.
     """
     import os as _os
+
+    hours = max(1, min(hours, 8760))
 
     if not _os.environ.get("SNOWFLAKE_ACCOUNT"):
         raise HTTPException(
@@ -3061,7 +3101,15 @@ async def list_siem_connectors() -> dict:
 @app.post("/v1/siem/test", tags=["enterprise"])
 async def test_siem_connection(siem_type: str = "", url: str = "", token: str = "") -> dict:
     """Test SIEM connectivity."""
+    from agent_bom.security import validate_url
     from agent_bom.siem import SIEMConfig, create_connector
+
+    # Validate URL to prevent SSRF
+    if url:
+        try:
+            validate_url(url)
+        except Exception as url_exc:
+            raise HTTPException(status_code=400, detail=f"Invalid URL: {sanitize_error(url_exc)}")
 
     try:
         connector = create_connector(siem_type, SIEMConfig(name=siem_type, url=url, token=token))

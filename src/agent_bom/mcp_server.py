@@ -156,6 +156,28 @@ async def _run_scan_pipeline(
     from agent_bom.scanners import scan_agents, scan_agents_with_enrichment
 
     warnings: list[str] = []
+
+    # Validate user-provided paths against directory traversal
+    if config_path:
+        try:
+            config_path = str(_safe_path(config_path))
+        except ValueError as exc:
+            return json.dumps({"error": sanitize_error(exc)})
+
+    if sbom_path:
+        try:
+            sbom_path = str(_safe_path(sbom_path))
+        except ValueError as exc:
+            return json.dumps({"error": sanitize_error(exc)})
+
+    if image:
+        try:
+            from agent_bom.security import validate_image_ref
+
+            validate_image_ref(image)
+        except Exception as exc:
+            return json.dumps({"error": sanitize_error(exc)})
+
     agents = discover_all(project_dir=config_path)
 
     # Docker image scanning
@@ -166,7 +188,7 @@ async def _run_scan_pipeline(
             img_agents, _warnings = scan_image(image)
             agents.extend(img_agents)
         except Exception as exc:
-            msg = f"Image scan failed for {image}: {exc}"
+            msg = f"Image scan failed for {image}: {sanitize_error(exc)}"
             logger.warning(msg)
             warnings.append(msg)
 

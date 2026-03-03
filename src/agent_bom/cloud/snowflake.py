@@ -30,6 +30,7 @@ from agent_bom.governance import (
     QueryHistoryRecord,
 )
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
+from agent_bom.security import sanitize_error
 
 from .base import CloudDiscoveryError
 
@@ -101,7 +102,7 @@ def discover(
     try:
         conn = snowflake.connector.connect(**conn_kwargs)
     except (DatabaseError, Exception) as exc:
-        warnings.append(f"Could not connect to Snowflake: {exc}")
+        warnings.append(f"Could not connect to Snowflake: {sanitize_error(exc)}")
         return agents, warnings
 
     try:
@@ -228,7 +229,7 @@ def _discover_cortex_services(
 
     except Exception as exc:
         # Cortex Search Services may not be available in all accounts
-        warnings.append(f"Could not list Cortex Search Services: {exc}")
+        warnings.append(f"Could not list Cortex Search Services: {sanitize_error(exc)}")
 
     finally:
         cursor.close()
@@ -257,7 +258,7 @@ def _discover_snowpark_packages(
 
     except Exception as exc:
         # INFORMATION_SCHEMA.PACKAGES may not exist or may not be accessible
-        warnings.append(f"Could not query Snowpark packages: {exc}")
+        warnings.append(f"Could not query Snowpark packages: {sanitize_error(exc)}")
 
     finally:
         cursor.close()
@@ -300,7 +301,7 @@ def _discover_streamlit_apps(
             agents.append(agent)
 
     except Exception as exc:
-        warnings.append(f"Could not list Streamlit apps: {exc}")
+        warnings.append(f"Could not list Streamlit apps: {sanitize_error(exc)}")
 
     finally:
         cursor.close()
@@ -366,7 +367,7 @@ def _discover_cortex_agents(
             agents.append(agent)
 
     except Exception as exc:
-        warnings.append(f"Could not list Cortex Agents: {exc}")
+        warnings.append(f"Could not list Cortex Agents: {sanitize_error(exc)}")
 
     finally:
         cursor.close()
@@ -420,7 +421,7 @@ def _discover_mcp_servers(
             agents.append(agent)
 
     except Exception as exc:
-        warnings.append(f"Could not list Snowflake MCP Servers: {exc}")
+        warnings.append(f"Could not list Snowflake MCP Servers: {sanitize_error(exc)}")
 
     finally:
         cursor.close()
@@ -477,7 +478,7 @@ def _describe_mcp_server_tools(
                     pass
 
     except Exception as exc:
-        warnings.append(f"Could not describe MCP Server {server_name}: {exc}")
+        warnings.append(f"Could not describe MCP Server {server_name}: {sanitize_error(exc)}")
 
     finally:
         cursor.close()
@@ -535,7 +536,7 @@ def _discover_from_query_history(
             agents.append(agent)
 
     except Exception as exc:
-        warnings.append(f"Could not query Snowflake query history: {exc}")
+        warnings.append(f"Could not query Snowflake query history: {sanitize_error(exc)}")
 
     finally:
         cursor.close()
@@ -593,7 +594,7 @@ def _discover_custom_tools(
                 )
             )
     except Exception as exc:
-        warnings.append(f"Could not query custom functions: {exc}")
+        warnings.append(f"Could not query custom functions: {sanitize_error(exc)}")
     finally:
         cursor.close()
 
@@ -624,7 +625,7 @@ def _discover_custom_tools(
                 )
             )
     except Exception as exc:
-        warnings.append(f"Could not query stored procedures: {exc}")
+        warnings.append(f"Could not query stored procedures: {sanitize_error(exc)}")
     finally:
         proc_cursor.close()
 
@@ -704,7 +705,7 @@ def discover_governance(
     try:
         conn = snowflake.connector.connect(**conn_kwargs)
     except (DatabaseError, Exception) as exc:
-        report.warnings.append(f"Could not connect to Snowflake: {exc}")
+        report.warnings.append(f"Could not connect to Snowflake: {sanitize_error(exc)}")
         return report
 
     try:
@@ -792,7 +793,7 @@ def _mine_access_history(
         if "access_history" in msg.lower() or "enterprise" in msg.lower():
             warnings.append("ACCESS_HISTORY requires Enterprise edition or higher. Skipping access pattern analysis.")
         else:
-            warnings.append(f"Could not query ACCESS_HISTORY: {exc}")
+            warnings.append(f"Could not query ACCESS_HISTORY: {sanitize_error(exc)}")
 
     finally:
         cursor.close()
@@ -849,7 +850,7 @@ def _mine_grants_to_roles(
             )
 
     except Exception as exc:
-        warnings.append(f"Could not query GRANTS_TO_ROLES: {exc}")
+        warnings.append(f"Could not query GRANTS_TO_ROLES: {sanitize_error(exc)}")
 
     finally:
         cursor.close()
@@ -905,7 +906,7 @@ def _mine_tag_references(
         if "tag_references" in msg.lower():
             warnings.append("TAG_REFERENCES not accessible. Data classification analysis skipped.")
         else:
-            warnings.append(f"Could not query TAG_REFERENCES: {exc}")
+            warnings.append(f"Could not query TAG_REFERENCES: {sanitize_error(exc)}")
 
     finally:
         cursor.close()
@@ -965,7 +966,7 @@ def _mine_cortex_agent_usage(
         if "cortex_agent_usage" in msg.lower() or "does not exist" in msg.lower():
             warnings.append("CORTEX_AGENT_USAGE_HISTORY not available. Requires Cortex Agents (GA Feb 2026). Skipping agent telemetry.")
         else:
-            warnings.append(f"Could not query CORTEX_AGENT_USAGE_HISTORY: {exc}")
+            warnings.append(f"Could not query CORTEX_AGENT_USAGE_HISTORY: {sanitize_error(exc)}")
 
     finally:
         cursor.close()
@@ -1382,7 +1383,7 @@ def discover_activity(
     try:
         conn = snowflake.connector.connect(**conn_kwargs)
     except (DatabaseError, Exception) as exc:
-        timeline.warnings.append(f"Could not connect to Snowflake: {exc}")
+        timeline.warnings.append(f"Could not connect to Snowflake: {sanitize_error(exc)}")
         return timeline
 
     try:
@@ -1470,7 +1471,7 @@ def _mine_query_history_365(
                 "ACCOUNT_USAGE.QUERY_HISTORY not accessible. Requires ACCOUNTADMIN or IMPORTED PRIVILEGES on SNOWFLAKE database."
             )
         else:
-            warnings.append(f"Could not query QUERY_HISTORY: {exc}")
+            warnings.append(f"Could not query QUERY_HISTORY: {sanitize_error(exc)}")
 
     finally:
         cursor.close()
@@ -1533,7 +1534,7 @@ def _mine_observability_events(
         if "ai_observability" in msg.lower() or "does not exist" in msg.lower():
             warnings.append("AI_OBSERVABILITY_EVENTS not available. Enable AI observability in Snowflake to capture agent traces.")
         else:
-            warnings.append(f"Could not query AI_OBSERVABILITY_EVENTS: {exc}")
+            warnings.append(f"Could not query AI_OBSERVABILITY_EVENTS: {sanitize_error(exc)}")
 
     finally:
         cursor.close()

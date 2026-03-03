@@ -27,7 +27,10 @@ from uuid import uuid4
 
 logger = logging.getLogger(__name__)
 
-_HMAC_KEY = os.environ.get("AGENT_BOM_AUDIT_HMAC_KEY", "agent-bom-default-audit-key").encode()
+_HMAC_DEFAULT = "agent-bom-default-audit-key"
+_HMAC_KEY = os.environ.get("AGENT_BOM_AUDIT_HMAC_KEY", _HMAC_DEFAULT).encode()
+if os.environ.get("AGENT_BOM_AUDIT_HMAC_KEY") is None:
+    logger.warning("AGENT_BOM_AUDIT_HMAC_KEY not set — audit log HMAC uses default key (not tamper-proof in production)")
 
 
 @dataclass

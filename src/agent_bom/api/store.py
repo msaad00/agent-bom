@@ -29,49 +29,56 @@ class JobStore(Protocol):
 
 
 class InMemoryJobStore:
-    """Dict-based in-memory store (original behavior)."""
+    """Dict-based in-memory store (original behavior). Thread-safe via lock."""
 
     def __init__(self) -> None:
         self._jobs: dict[str, ScanJob] = {}
+        self._lock = threading.Lock()
 
     def put(self, job: ScanJob) -> None:
-        self._jobs[job.job_id] = job
+        with self._lock:
+            self._jobs[job.job_id] = job
 
     def get(self, job_id: str) -> ScanJob | None:
-        return self._jobs.get(job_id)
+        with self._lock:
+            return self._jobs.get(job_id)
 
     def delete(self, job_id: str) -> bool:
-        if job_id in self._jobs:
-            del self._jobs[job_id]
-            return True
-        return False
+        with self._lock:
+            if job_id in self._jobs:
+                del self._jobs[job_id]
+                return True
+            return False
 
     def list_all(self) -> list[ScanJob]:
-        return list(self._jobs.values())
+        with self._lock:
+            return list(self._jobs.values())
 
     def list_summary(self) -> list[dict]:
-        return [
-            {
-                "job_id": j.job_id,
-                "status": j.status,
-                "created_at": j.created_at,
-                "completed_at": j.completed_at,
-            }
-            for j in self._jobs.values()
-        ]
+        with self._lock:
+            return [
+                {
+                    "job_id": j.job_id,
+                    "status": j.status,
+                    "created_at": j.created_at,
+                    "completed_at": j.completed_at,
+                }
+                for j in self._jobs.values()
+            ]
 
     def cleanup_expired(self, ttl_seconds: int = _JOB_TTL_SECONDS) -> int:
-        now = datetime.now(timezone.utc)
-        expired = [
-            jid
-            for jid, job in self._jobs.items()
-            if job.status in (JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED)
-            and job.completed_at
-            and (now - datetime.fromisoformat(job.completed_at)).total_seconds() > ttl_seconds
-        ]
-        for jid in expired:
-            del self._jobs[jid]
-        return len(expired)
+        with self._lock:
+            now = datetime.now(timezone.utc)
+            expired = [
+                jid
+                for jid, job in self._jobs.items()
+                if job.status in (JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED)
+                and job.completed_at
+                and (now - datetime.fromisoformat(job.completed_at)).total_seconds() > ttl_seconds
+            ]
+            for jid in expired:
+                del self._jobs[jid]
+            return len(expired)
 
 
 class SQLiteJobStore:

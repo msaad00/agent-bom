@@ -77,7 +77,7 @@ class TestRBAC:
         from agent_bom.rbac import resolve_role
 
         role = resolve_role()
-        assert role.value == "admin"  # backward compatible
+        assert role.value == "viewer"  # least privilege default
 
     @patch.dict(os.environ, {"AGENT_BOM_DEFAULT_ROLE": "viewer"})
     def test_resolve_role_env_default(self):

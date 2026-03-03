@@ -3206,7 +3206,7 @@ def mcp_server_cmd(transport: str, port: int, host: str):
       policy_check      Evaluate policy rules against scan findings
       registry_lookup   Query the MCP server threat intelligence registry
       generate_sbom     Generate CycloneDX or SPDX SBOM
-      compliance        6-framework compliance posture
+      compliance        10-framework compliance posture
       remediate         Generate actionable remediation plan
       skill_trust       ClawHub-style trust assessment for SKILL.md files
       verify            Package integrity + SLSA provenance verification

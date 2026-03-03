@@ -13,8 +13,8 @@ Endpoints:
     GET  /v1/scan/{job_id}/stream      SSE — real-time scan progress
     GET  /v1/agents                    quick agent discovery (no CVE scan)
     DELETE /v1/scan/{job_id}           cancel / discard a job
-    GET  /v1/compliance                full 6-framework compliance posture
-    GET  /v1/compliance/{framework}    single framework (owasp-llm, owasp-mcp, atlas, nist, owasp-agentic, eu-ai-act)
+    GET  /v1/compliance                full 10-framework compliance posture
+    GET  /v1/compliance/{framework}    single framework (owasp-llm, owasp-mcp, owasp-agentic, atlas, nist, eu-ai-act, nist-csf, iso-27001, soc2, cis)
     GET  /v1/malicious/check           malicious package / typosquat check
     GET  /v1/proxy/status              runtime proxy metrics
     GET  /v1/proxy/alerts              recent runtime proxy alerts

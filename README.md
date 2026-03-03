@@ -137,52 +137,53 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
 <details>
 <summary><b>Architecture data flow</b></summary>
 
+```mermaid
+graph TB
+    subgraph Input["Input Sources"]
+        MCP["MCP Configs\n18 Clients"]
+        Docker["Docker Images"]
+        K8s["Kubernetes"]
+        Cloud["Cloud APIs\nAWS / Azure / GCP / Snowflake"]
+        SBOM["Existing SBOMs\nCycloneDX / SPDX"]
+        AI["AI Platforms\nHuggingFace / W&B / MLflow"]
+    end
+
+    subgraph Core["Core Engine"]
+        Discovery["Discovery Engine"]
+        Parser["Package Parser"]
+        Scanner["Vulnerability Scanner\nOSV + NVD + EPSS + KEV"]
+        Blast["Blast Radius Analyzer"]
+        Compliance["Compliance Tagger\n10 Frameworks"]
+        Posture["Posture Scorer"]
+    end
+
+    subgraph Output["Output Channels"]
+        Console["Console / HTML"]
+        SBOM_Out["CycloneDX / SPDX / SARIF"]
+        API["REST API + MCP Server"]
+        Alerts["Slack / Webhook / Jira"]
+    end
+
+    MCP --> Discovery
+    Docker --> Discovery
+    K8s --> Discovery
+    Cloud --> Discovery
+    SBOM --> Discovery
+    AI --> Discovery
+
+    Discovery --> Parser
+    Parser --> Scanner
+    Scanner --> Blast
+    Blast --> Compliance
+    Compliance --> Posture
+
+    Posture --> Console
+    Posture --> SBOM_Out
+    Posture --> API
+    Posture --> Alerts
 ```
-                        ┌─────────────────────┐
-                        │   Input Sources      │
-                        ├─────────────────────┤
-                        │ MCP configs (18)     │
-                        │ Docker images        │
-                        │ K8s clusters         │
-                        │ Cloud APIs           │
-                        │ SBOMs (CDX/SPDX)     │
-                        │ SaaS connectors      │
-                        └────────┬────────────┘
-                                 │
-                    ┌────────────▼────────────┐
-                    │    Discovery Engine      │
-                    │  Agents → Servers →      │
-                    │  Packages → Tools        │
-                    └────────────┬────────────┘
-                                 │
-              ┌──────────────────▼──────────────────┐
-              │         Vulnerability Scanner        │
-              │  OSV batch, NVD, EPSS, KEV, GHSA    │
-              │  OpenSSF Scorecard, NVIDIA CSAF      │
-              └──────────────────┬──────────────────┘
-                                 │
-              ┌──────────────────▼──────────────────┐
-              │        Blast Radius Analysis         │
-              │  CVE → pkg → server → agent →        │
-              │  credentials → tools → risk score    │
-              │  6-framework threat tagging           │
-              └──────────────────┬──────────────────┘
-                                 │
-         ┌───────────────────────▼───────────────────────┐
-         │          Enterprise Analytics                  │
-         │  Posture scorecard (A–F, 6 dimensions)        │
-         │  Incident correlation (P1–P4 by agent)        │
-         │  Credential risk ranking (severity tiers)      │
-         │  Policy evaluation (16 rule conditions)        │
-         └───────────────────────┬───────────────────────┘
-                                 │
-     ┌───────────┬───────────┬───▼───┬────────────┬──────────┐
-     │ Console   │ JSON/SBOM │  API  │ Alerts     │ Fleet    │
-     │ HTML      │ CDX/SPDX  │ REST  │ Slack      │ Trust    │
-     │ Graphs    │ SARIF     │ MCP   │ Webhook    │ Scoring  │
-     │ Badges    │ Prometheus│ SSE   │ Jira       │ Tenants  │
-     └───────────┴───────────┴───────┴────────────┴──────────┘
-```
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full set of architecture diagrams including data flow pipeline, blast radius propagation, compliance framework mapping, and integration architecture.
 
 </details>
 

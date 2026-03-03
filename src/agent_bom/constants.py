@@ -109,6 +109,26 @@ SENSITIVE_PATTERNS: list[str] = [
     "conn_str",
     "database_url",
     "db_url",
+    # SSH key management
+    "ssh_key",
+    "ssh_private",
+    "id_rsa",
+    "id_ed25519",
+    # OAuth / OIDC
+    "client_secret",
+    "oauth",
+    "refresh_token",
+    "access_token",
+    "bearer",
+    # PKI / certificates
+    "certificate",
+    "tls_key",
+    "ssl_key",
+    "ca_cert",
+    "client_cert",
+    # SCIM / provisioning
+    "scim_token",
+    "provisioning_key",
 ]
 
 

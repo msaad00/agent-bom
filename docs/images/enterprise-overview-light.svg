@@ -236,6 +236,6 @@
   <text x="528" y="440" class="box-sub">✓ AI-native · MCP-first · runs anywhere</text>
 
   <rect x="516" y="454" width="228" height="40" rx="6" fill="#ffffff" stroke="#0969da" stroke-width="0.6" opacity="0.7"/>
-  <text x="528" y="471" class="side-label" fill="#0969da">15 MCP Tools · 6 Frameworks</text>
+  <text x="528" y="471" class="side-label" fill="#0969da">15 MCP Tools · 10 Frameworks</text>
   <text x="528" y="484" class="box-sub">2,335 tests · Sigstore signed · OpenSSF scored</text>
 </svg>

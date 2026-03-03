@@ -1492,7 +1492,7 @@ _SERVER_CARD_TOOLS = [
     {"name": "generate_sbom", "description": "Generate CycloneDX or SPDX SBOM", "annotations": {"readOnlyHint": True}},
     {
         "name": "compliance",
-        "description": "6-framework compliance posture (OWASP LLM + MCP + Agentic, ATLAS, NIST, EU AI Act)",
+        "description": "10-framework compliance posture (OWASP LLM + MCP + Agentic, ATLAS, NIST AI RMF, EU AI Act, NIST CSF, ISO 27001, SOC 2, CIS)",
         "annotations": {"readOnlyHint": True},
     },
     {"name": "remediate", "description": "Generate actionable remediation plan", "annotations": {"readOnlyHint": True}},

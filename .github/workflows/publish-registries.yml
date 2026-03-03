@@ -130,7 +130,7 @@ jobs:
 
           echo "Publishing agent-bom v${VERSION} to ClawHub..."
 
-          npm install -g clawhub@latest
+          npm install -g clawhub@0.7.0  # pinned — update periodically
           clawhub login --token "${CLAWHUB_TOKEN}"
           if clawhub publish integrations/openclaw \
             --slug agent-bom \

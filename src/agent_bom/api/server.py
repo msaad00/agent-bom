@@ -1694,9 +1694,13 @@ async def get_compliance() -> dict:
             )
         return controls
 
+    from agent_bom.cis_controls import CIS_CONTROLS
     from agent_bom.eu_ai_act import EU_AI_ACT
+    from agent_bom.iso_27001 import ISO_27001
+    from agent_bom.nist_csf import NIST_CSF
     from agent_bom.owasp_agentic import OWASP_AGENTIC_TOP10
     from agent_bom.owasp_mcp import OWASP_MCP_TOP10
+    from agent_bom.soc2 import SOC2_TSC
 
     owasp = _build_controls(OWASP_LLM_TOP10, "owasp_tags", "code")
     owasp_mcp = _build_controls(OWASP_MCP_TOP10, "owasp_mcp_tags", "code")
@@ -1704,6 +1708,10 @@ async def get_compliance() -> dict:
     nist = _build_controls(NIST_AI_RMF, "nist_ai_rmf_tags", "code")
     owasp_agentic = _build_controls(OWASP_AGENTIC_TOP10, "owasp_agentic_tags", "code")
     eu_ai_act = _build_controls(EU_AI_ACT, "eu_ai_act_tags", "code")
+    nist_csf = _build_controls(NIST_CSF, "nist_csf_tags", "code")
+    iso27001 = _build_controls(ISO_27001, "iso_27001_tags", "code")
+    soc2 = _build_controls(SOC2_TSC, "soc2_tags", "code")
+    cis = _build_controls(CIS_CONTROLS, "cis_tags", "code")
 
     def _count_statuses(controls: list[dict]) -> tuple[int, int, int]:
         p = sum(1 for c in controls if c["status"] == "pass")
@@ -1711,23 +1719,30 @@ async def get_compliance() -> dict:
         f = sum(1 for c in controls if c["status"] == "fail")
         return p, w, f
 
+    all_frameworks = [owasp, owasp_mcp, atlas, nist, owasp_agentic, eu_ai_act, nist_csf, iso27001, soc2, cis]
+    total_controls = sum(len(fw) for fw in all_frameworks)
+    total_pass = sum(_count_statuses(fw)[0] for fw in all_frameworks)
+    any_fail = any(_count_statuses(fw)[2] > 0 for fw in all_frameworks)
+    any_warn = any(_count_statuses(fw)[1] > 0 for fw in all_frameworks)
+    overall_score = round((total_pass / total_controls) * 100, 1) if total_controls > 0 else 100.0
+
+    if any_fail:
+        overall_status = "fail"
+    elif any_warn:
+        overall_status = "warning"
+    else:
+        overall_status = "pass"
+
     op, ow, of_ = _count_statuses(owasp)
     mp, mw, mf = _count_statuses(owasp_mcp)
     ap, aw, af = _count_statuses(atlas)
     np_, nw, nf = _count_statuses(nist)
     oap, oaw, oaf = _count_statuses(owasp_agentic)
     eup, euw, euf = _count_statuses(eu_ai_act)
-
-    total_controls = len(owasp) + len(owasp_mcp) + len(atlas) + len(nist) + len(owasp_agentic) + len(eu_ai_act)
-    total_pass = op + mp + ap + np_ + oap + eup
-    overall_score = round((total_pass / total_controls) * 100, 1) if total_controls > 0 else 100.0
-
-    if of_ > 0 or mf > 0 or af > 0 or nf > 0 or oaf > 0 or euf > 0:
-        overall_status = "fail"
-    elif ow > 0 or mw > 0 or aw > 0 or nw > 0 or oaw > 0 or euw > 0:
-        overall_status = "warning"
-    else:
-        overall_status = "pass"
+    ncp, ncw, ncf = _count_statuses(nist_csf)
+    ip, iw, if2 = _count_statuses(iso27001)
+    sp, sw, sf = _count_statuses(soc2)
+    cp, cw, cf = _count_statuses(cis)
 
     return {
         "overall_score": overall_score,
@@ -1740,6 +1755,10 @@ async def get_compliance() -> dict:
         "nist_ai_rmf": nist,
         "owasp_agentic_top10": owasp_agentic,
         "eu_ai_act": eu_ai_act,
+        "nist_csf": nist_csf,
+        "iso_27001": iso27001,
+        "soc2": soc2,
+        "cis_controls": cis,
         "summary": {
             "owasp_pass": op,
             "owasp_warn": ow,
@@ -1759,6 +1778,18 @@ async def get_compliance() -> dict:
             "eu_ai_act_pass": eup,
             "eu_ai_act_warn": euw,
             "eu_ai_act_fail": euf,
+            "nist_csf_pass": ncp,
+            "nist_csf_warn": ncw,
+            "nist_csf_fail": ncf,
+            "iso_27001_pass": ip,
+            "iso_27001_warn": iw,
+            "iso_27001_fail": if2,
+            "soc2_pass": sp,
+            "soc2_warn": sw,
+            "soc2_fail": sf,
+            "cis_pass": cp,
+            "cis_warn": cw,
+            "cis_fail": cf,
         },
     }
 
@@ -1905,7 +1936,8 @@ async def check_malicious(name: str, ecosystem: str = "npm") -> dict:
 async def get_compliance_by_framework(framework: str) -> dict:
     """Get compliance posture for a single framework.
 
-    Supported frameworks: owasp-llm, owasp-mcp, atlas, nist, owasp-agentic, eu-ai-act
+    Supported frameworks: owasp-llm, owasp-mcp, atlas, nist, owasp-agentic, eu-ai-act,
+    nist-csf, iso-27001, soc2, cis
     """
     full = await get_compliance()
 
@@ -1916,6 +1948,10 @@ async def get_compliance_by_framework(framework: str) -> dict:
         "nist": "nist_ai_rmf",
         "owasp-agentic": "owasp_agentic_top10",
         "eu-ai-act": "eu_ai_act",
+        "nist-csf": "nist_csf",
+        "iso-27001": "iso_27001",
+        "soc2": "soc2",
+        "cis": "cis_controls",
     }
 
     key = framework_map.get(framework.lower())

@@ -79,11 +79,11 @@ class TestOCSFFormat:
         assert isinstance(fi["types"], list)
 
     def test_metadata_product(self):
-        ocsf = to_ocsf_detection_finding(_sample_alert(), product_version="0.41.0")
+        ocsf = to_ocsf_detection_finding(_sample_alert(), product_version="0.42.0")
         meta = ocsf["metadata"]
         assert meta["product"]["name"] == "agent-bom"
         assert meta["product"]["vendor_name"] == "msaad00"
-        assert meta["product"]["version"] == "0.41.0"
+        assert meta["product"]["version"] == "0.42.0"
         assert meta["version"] == "1.1.0"
 
     def test_evidences(self):
@@ -136,7 +136,7 @@ class TestSeverityMapping:
 class TestOCSFBatch:
     def test_batch_converts_all(self):
         alerts = [_sample_alert(severity=s) for s in ("critical", "high", "low")]
-        batch = to_ocsf_batch(alerts, "0.41.0")
+        batch = to_ocsf_batch(alerts, "0.42.0")
         assert len(batch) == 3
         assert all(b["class_uid"] == 2004 for b in batch)
 

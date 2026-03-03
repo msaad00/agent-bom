@@ -142,6 +142,9 @@ def main():
 @click.option("--no-tree", is_flag=True, help="Skip dependency tree output")
 @click.option("--transitive", is_flag=True, help="Resolve transitive dependencies for npx/uvx packages")
 @click.option("--max-depth", type=int, default=3, help="Maximum depth for transitive dependency resolution")
+@click.option(
+    "--deps-dev", "deps_dev", is_flag=True, help="Use deps.dev for transitive dependency resolution and license enrichment (all ecosystems)"
+)
 @click.option("--enrich", is_flag=True, help="Enrich vulnerabilities with NVD, EPSS, and CISA KEV data")
 @click.option("--nvd-api-key", envvar="NVD_API_KEY", help="NVD API key for higher rate limits")
 @click.option("--scorecard", "scorecard_flag", is_flag=True, help="Enrich packages with OpenSSF Scorecard scores")
@@ -401,6 +404,7 @@ def scan(
     no_tree: bool,
     transitive: bool,
     max_depth: int,
+    deps_dev: bool,
     enrich: bool,
     nvd_api_key: Optional[str],
     scorecard_flag: bool,
@@ -534,6 +538,7 @@ def scan(
         enrich = True
         introspect = True
         transitive = True
+        deps_dev = True
         verify_integrity = True
         verify_instructions = True
         dynamic_discovery = True
@@ -1339,6 +1344,39 @@ def scan(
                     con.print(f"  [dim]  {server.name}: no local packages found[/dim]")
 
         con.print(f"\n  [bold]{total_packages} total packages.[/bold]")
+
+        # Step 2a: deps.dev transitive resolution + license enrichment (--deps-dev)
+        if deps_dev:
+            import asyncio as _asyncio_dd
+
+            from agent_bom.deps_dev import enrich_licenses_deps_dev, resolve_transitive_deps_dev
+
+            all_pkgs = [pkg for agent in agents for server in agent.mcp_servers for pkg in server.packages]
+            direct_pkgs = [p for p in all_pkgs if p.is_direct]
+            if direct_pkgs:
+                con.print("\n  [cyan]deps.dev: resolving transitive dependencies...[/cyan]")
+                transitive_pkgs = _asyncio_dd.run(resolve_transitive_deps_dev(direct_pkgs, max_depth=max_depth))
+                if transitive_pkgs:
+                    # Distribute transitive packages to their origin servers
+                    pkg_parent_map: dict[str, list] = {}
+                    for tp in transitive_pkgs:
+                        pkg_parent_map.setdefault(tp.parent_package or "", []).append(tp)
+                    for agent in agents:
+                        for server in agent.mcp_servers:
+                            existing_names = {(p.name, p.version, p.ecosystem) for p in server.packages}
+                            for sp in server.packages:
+                                if sp.is_direct and sp.name in pkg_parent_map:
+                                    for tp in pkg_parent_map[sp.name]:
+                                        if (tp.name, tp.version, tp.ecosystem) not in existing_names:
+                                            server.packages.append(tp)
+                                            existing_names.add((tp.name, tp.version, tp.ecosystem))
+                    con.print(f"  [green]✓[/green] deps.dev: {len(transitive_pkgs)} transitive dependencies resolved")
+
+                # Enrich licenses for all packages
+                all_pkgs_updated = [pkg for agent in agents for server in agent.mcp_servers for pkg in server.packages]
+                lic_count = _asyncio_dd.run(enrich_licenses_deps_dev(all_pkgs_updated))
+                if lic_count:
+                    con.print(f"  [green]✓[/green] deps.dev: {lic_count} package license(s) enriched")
 
         # Step 2b: MCP Runtime Introspection (--introspect)
         _enforcement_data: dict | None = None

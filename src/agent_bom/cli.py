@@ -274,6 +274,14 @@ def main():
 )
 @click.option("--context-graph", "context_graph_flag", is_flag=True, help="Compute agent context graph with lateral movement analysis")
 @click.option(
+    "--graph-backend",
+    "graph_backend",
+    type=click.Choice(["auto", "memory", "networkx"]),
+    default="auto",
+    show_default=True,
+    help="Graph backend for context graph analysis (auto tries networkx, falls back to memory)",
+)
+@click.option(
     "--dynamic-discovery",
     is_flag=True,
     help="Enable dynamic content-based MCP config discovery beyond known clients",
@@ -473,6 +481,7 @@ def scan(
     verify_integrity: bool,
     verify_instructions: bool,
     context_graph_flag: bool,
+    graph_backend: str,
     dynamic_discovery: bool,
     dynamic_max_depth: int,
     ai_enrich: bool,
@@ -1681,9 +1690,24 @@ def scan(
             _all_paths.extend(find_lateral_paths(_cg, f"agent:{_a.name}"))
         _cg_risks = compute_interaction_risks(_cg)
         report.context_graph_data = to_serializable(_cg, _all_paths, _cg_risks)
+
+        # Centrality analysis via graph backend
+        from agent_bom.graph_backend import from_context_graph as _from_cg
+
+        _gb = _from_cg(report.context_graph_data, backend=graph_backend)
+        _centrality = _gb.centrality_scores()
+        _bottlenecks = _gb.bottleneck_nodes(top_n=5)
+        report.context_graph_data["centrality"] = _centrality
+        report.context_graph_data["bottleneck_nodes"] = [{"id": nid, "score": score} for nid, score in _bottlenecks]
+        report.context_graph_data["stats"]["graph_backend"] = type(_gb).__name__
+
         _n_paths = len(_all_paths)
         _n_risks = len(_cg_risks)
-        con.print(f"  [green]✓[/green] Context graph: {len(_cg.nodes)} nodes, {_n_paths} lateral path(s), {_n_risks} risk pattern(s)")
+        _n_bottlenecks = len(_bottlenecks)
+        con.print(
+            f"  [green]✓[/green] Context graph: {len(_cg.nodes)} nodes, {_n_paths} lateral path(s), "
+            f"{_n_risks} risk pattern(s), {_n_bottlenecks} bottleneck(s)"
+        )
 
     # ── License compliance check ─────────────────────────────────────
     if license_check and agents:

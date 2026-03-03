@@ -64,6 +64,7 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 | **Incident correlation** | — | Group vulns by agent, P1–P4 priority, SOC-ready incident summaries |
 | **Credential risk ranking** | — | Rank exposed credentials by blast radius severity tier |
 | **AI framework recognition** | — | GPU/ML packages flagged as high-risk in image scans (via Grype/Syft) |
+| **Lateral movement analysis** | — | Agent context graph, shared server/credential detection, BFS attack paths |
 | **427+ server MCP registry** | — | Risk levels, tool inventories, auto-synced weekly |
 
 <p align="center">
@@ -179,7 +180,7 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
      │ Console   │ JSON/SBOM │  API  │ Alerts     │ Fleet    │
      │ HTML      │ CDX/SPDX  │ REST  │ Slack      │ Trust    │
      │ Graphs    │ SARIF     │ MCP   │ Webhook    │ Scoring  │
-     │ Badges    │ Prometheus│ SSE   │ PagerDuty  │ Tenants  │
+     │ Badges    │ Prometheus│ SSE   │ Jira       │ Tenants  │
      └───────────┴───────────┴───────┴────────────┴──────────┘
 ```
 
@@ -426,6 +427,7 @@ The dashboard (`agent-bom api`) serves interactive [React Flow](https://reactflo
 - **Agent Mesh** (`/mesh`) — cross-agent topology with vulnerability overlay, shared server detection, credential blast analysis, severity filtering, and search
 - **Attack Flow** (`/scan?view=attack-flow`) — CVE-centric blast radius graph: CVE → Package → Server → Agent → Credentials → Tools
 - **Supply Chain Lineage** (`/graph`) — full dependency lineage with hover highlighting and detail panels
+- **Context Graph** (`/context`) — lateral movement analysis: agent-to-agent attack paths via shared servers, credentials, and tools
 
 All graph views include: dagre auto-layout, hover highlighting (BFS connected nodes), click-to-inspect detail panels, minimap, OWASP LLM Top 10 + OWASP MCP Top 10 + MITRE ATLAS + NIST AI RMF framework tagging on every node.
 
@@ -506,6 +508,7 @@ agent-bom api --api-key $SECRET --rate-limit 30   # http://127.0.0.1:8422/docs
 | `GET /v1/posture/credentials` | Credential risk ranking by blast radius |
 | `GET /v1/posture/incidents` | Incident correlation by agent (P1–P4) |
 | `POST /v1/traces` | OpenTelemetry trace ingestion + vulnerable tool call flagging |
+| `GET /v1/scan/{id}/context-graph` | Agent context graph + lateral movement paths |
 | `GET /v1/malicious/check` | Malicious package / typosquat check |
 
 ### MCP Server
@@ -516,7 +519,7 @@ agent-bom mcp-server                    # stdio
 agent-bom mcp-server --transport sse    # remote
 ```
 
-14 tools: `scan`, `check`, `blast_radius`, `policy_check`, `registry_lookup`, `generate_sbom`, `compliance`, `remediate`, `verify`, `where`, `inventory`, `diff`, `skill_trust`, `marketplace_check`
+15 tools: `scan`, `check`, `blast_radius`, `policy_check`, `registry_lookup`, `generate_sbom`, `compliance`, `remediate`, `verify`, `where`, `inventory`, `diff`, `skill_trust`, `marketplace_check`, `context_graph`
 
 ### Cloud UI
 
@@ -524,7 +527,7 @@ agent-bom mcp-server --transport sse    # remote
 cd ui && npm install && npm run dev   # http://localhost:3000
 ```
 
-14-section Next.js dashboard:
+15-section Next.js dashboard:
 
 | Page | Description |
 |------|-------------|
@@ -541,6 +544,7 @@ cd ui && npm install && npm run dev   # http://localhost:3000
 | Activity | Agent activity timeline + AI observability |
 | Governance | Snowflake access, privileges, data classification |
 | Traces | OpenTelemetry trace ingestion + vulnerable tool call flagging |
+| Context Graph | Lateral movement analysis — agent-to-agent attack paths, shared credentials, tool overlap |
 | Jobs | Background scan job management |
 
 ### Snowflake Deployment
@@ -648,6 +652,8 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 - [x] Slack blast radius enrichment — webhook payloads include risk score, agents, credentials, fix versions
 - [x] Advanced policy conditions — `min_scorecard_score`, `max_epss_score`, `has_kev_with_no_fix`
 - [x] Enterprise hardening — bounded caches, SQLite indexes, stuck job cleanup, Content-Length validation
+- [x] Agent context graph — lateral movement analysis via shared servers, credentials, and tools; BFS attack path discovery
+- [x] Enterprise security hardening — per-job thread locks, SSRF protection, error sanitization, RBAC least privilege, path traversal guards
 
 **Planned:**
 - [ ] CIS AI benchmarks

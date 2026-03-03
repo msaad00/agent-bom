@@ -182,7 +182,7 @@
 
   <rect x="808" y="106" width="124" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
   <text x="870" y="122" text-anchor="middle" class="box-label">MCP Server</text>
-  <text x="870" y="134" text-anchor="middle" class="box-sub">14 tools · stdio/SSE</text>
+  <text x="870" y="134" text-anchor="middle" class="box-sub">15 tools · stdio/SSE</text>
 
   <rect x="808" y="144" width="124" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
   <text x="870" y="160" text-anchor="middle" class="box-label">GitHub Action</text>

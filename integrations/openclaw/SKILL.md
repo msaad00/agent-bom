@@ -93,7 +93,7 @@ docker run -p 8080:8080 agent-bom-sse
 # Connect: { "type": "sse", "url": "http://localhost:8080/sse" }
 ```
 
-## Available MCP Tools (14 tools)
+## Available MCP Tools (15 tools)
 
 | Tool | Description |
 |------|-------------|
@@ -111,6 +111,7 @@ docker run -p 8080:8080 agent-bom-sse
 | `marketplace_check` | Pre-install trust check with registry cross-reference |
 | `where` | Show MCP client config discovery paths |
 | `inventory` | List discovered agents, servers, packages |
+| `context_graph` | Agent context graph with lateral movement analysis |
 
 ## MCP Resources
 

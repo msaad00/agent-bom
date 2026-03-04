@@ -46,7 +46,7 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 
 | | Grype / Syft / Trivy | agent-bom |
 |---|---|---|
-| Package CVE detection | Yes | Yes — OSV + NVD CVSS v4 + EPSS + CISA KEV + GHSA + NVIDIA CSAF |
+| Package CVE detection | Yes | Yes — OSV + NVD CVSS v4 + EPSS + CISA KEV + GHSA + NVIDIA CSAF + NVD status tracking |
 | SBOM generation | Yes (Syft) | Yes — CycloneDX 1.6, SPDX 3.0, SARIF |
 | **AI agent discovery** | — | 18 MCP clients + Docker Compose auto-discovered |
 | **Blast radius mapping** | — | CVE → package → server → agent → credentials → tools |
@@ -55,6 +55,8 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 | **Privilege detection** | — | runs_as_root, shell_access, container_privileged, per-tool permissions |
 | **Enterprise remediation** | — | Named assets, impact percentages, risk narratives |
 | **10-framework compliance** | — | OWASP Agentic + OWASP LLM + OWASP MCP + MITRE ATLAS + NIST AI RMF + EU AI Act + NIST CSF 2.0 + ISO 27001 + SOC 2 + CIS Controls v8 |
+| **CVE-level compliance tags** | — | Per-vulnerability framework mapping (severity, KEV, EPSS, CWE, AI package, fix availability) |
+| **SAST code scanning** | — | Semgrep wrapper with CWE-based compliance mapping across all 10 frameworks |
 | **Malicious package detection** | — | OSV MAL- prefix + typosquat heuristics (57 popular packages) |
 | **OpenSSF Scorecard enrichment** | — | Package health scores from api.securityscorecards.dev |
 | **Tool poisoning detection** | — | Description injection, capability combos, CVE exposure, drift |
@@ -93,6 +95,7 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 | Skill files | CLAUDE.md, .cursorrules, AGENTS.md |
 | Prompt templates | .prompt, .promptfile, prompt.yaml |
 | Ollama models | Local inventory via API + manifests |
+| Source code (SAST) | Semgrep wrapper with CWE mapping |
 | Existing SBOMs | CycloneDX / SPDX import |
 
 </td>
@@ -127,8 +130,8 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
 
 1. **Discover** — auto-detect MCP configs across 18 clients (Claude Desktop, Cursor, Codex CLI, Gemini CLI, Goose, etc.)
 2. **Extract** — pull server names, package names, env var **names**, and tool lists. Credential **values** are never read.
-3. **Scan** — send only package names + versions to public APIs (OSV.dev, NVD, EPSS, CISA KEV). No hostnames, no secrets, no auth tokens.
-4. **Analyze** — CVE blast radius mapping, tool poisoning detection (`--enforce`), 10-framework threat model tagging, model provenance (`--hf-model`)
+3. **Scan** — send only package names + versions to public APIs (OSV.dev, NVD, EPSS, CISA KEV). No hostnames, no secrets, no auth tokens. NVD status tracking (Analyzed/Modified/Rejected) with remediation links.
+4. **Analyze** — CVE blast radius mapping, per-CVE compliance tagging across 10 frameworks, tool poisoning detection (`--enforce`), model provenance (`--hf-model`)
 5. **Score** — posture scorecard (grade A–F), credential risk ranking, incident correlation by agent (P1–P4)
 6. **Report** — JSON, SARIF, CycloneDX, SPDX, HTML, or console output. Alert dispatch to Slack/webhooks. Nothing stored server-side.
 
@@ -244,7 +247,7 @@ Auto-discovers Claude Desktop, Claude Code, Cursor, Windsurf, Cline, VS Code Cop
 
 Every vulnerability is mapped through your AI stack: **which agents** are affected, **which credentials** are exposed, **which MCP tools** an attacker can reach, and **what to fix first**.
 
-Enrichment sources: OSV batch (primary), NVD CVSS v4, FIRST EPSS exploit probability, CISA KEV active exploitation catalog.
+Enrichment sources: OSV batch (primary), NVD CVSS v4 + status tracking (Analyzed/Modified/Rejected), FIRST EPSS exploit probability, CISA KEV active exploitation catalog, GHSA, NVIDIA CSAF. Each CVE includes remediation source links from NVD references.
 
 ### Guided remediation
 
@@ -332,7 +335,7 @@ agent-bom scan --model-files ./models      # model file scanning
 
 ### 10-framework compliance mapping
 
-Every finding is tagged against ten frameworks simultaneously:
+Every finding is tagged against ten frameworks simultaneously — both at the blast radius level (deployment context) and at the individual CVE level (severity, KEV, EPSS, CWE, AI package, fix availability):
 
 | Category | Frameworks |
 |----------|-----------|
@@ -673,6 +676,9 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 - [x] CIS Controls v8 (10 safeguards, CIS-02/CIS-07/CIS-16)
 - [x] Critical-only severity triggers (EU AI Act ART-5 Prohibited Practices)
 - [x] SSH/OAuth/PKI/SCIM credential detection
+- [x] SAST code scanning — Semgrep wrapper with CWE-based compliance mapping across all 10 frameworks (`code_scan` MCP tool)
+- [x] NVD vulnerability status tracking — Analyzed/Modified/Rejected status per CVE + remediation source links from NVD references
+- [x] CVE-level compliance tagging — per-vulnerability framework mapping across all 10 frameworks (severity, KEV, EPSS, CWE, AI package, fix availability)
 
 **Planned:**
 - [ ] Platform-specific CIS Benchmarks:

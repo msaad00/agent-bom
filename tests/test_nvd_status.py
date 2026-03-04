@@ -497,11 +497,11 @@ class TestMarkdownExport:
         export_remediation_md(plan, str(out))
         content = out.read_text()
 
-        # Only 3 refs should appear
-        assert content.count("https://ref") == 3
-        assert "https://ref0.com" in content
-        assert "https://ref2.com" in content
-        assert "https://ref3.com" not in content
+        # Only 3 refs should appear (capped) — use line matching to avoid CodeQL URL-in-string false positives
+        ref_lines = [line for line in content.splitlines() if line.strip().startswith("- https://ref")]
+        assert len(ref_lines) == 3
+        assert ref_lines[0].strip() == "- https://ref0.com"
+        assert ref_lines[2].strip() == "- https://ref2.com"
 
 
 # ═══════════════════════════════════════════════════════════════════════════

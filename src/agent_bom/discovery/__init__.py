@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import glob as glob_mod
 import json
 import logging
 import os
@@ -149,6 +150,29 @@ CONFIG_LOCATIONS: dict[AgentType, dict[str, list[str]]] = {
         "Linux": [],
         "Windows": [],
     },
+    AgentType.JETBRAINS_AI: {
+        # JetBrains AI Assistant MCP — global config across all JetBrains IDEs
+        # Paths contain version-specific dirs (IntelliJIdea2025.2, PyCharm2025.2, etc.)
+        # Also supports ~/.config/github-copilot/intellij/mcp.json for Copilot in JetBrains
+        "Darwin": [
+            "~/Library/Application Support/JetBrains/*/mcp.json",
+            "~/.config/github-copilot/intellij/mcp.json",
+        ],
+        "Linux": [
+            "~/.config/JetBrains/*/mcp.json",
+            "~/.config/github-copilot/intellij/mcp.json",
+        ],
+        "Windows": [
+            "~/AppData/Roaming/JetBrains/*/mcp.json",
+            "~/.config/github-copilot/intellij/mcp.json",
+        ],
+    },
+    AgentType.JUNIE: {
+        # JetBrains Junie coding agent — clean, stable paths
+        "Darwin": ["~/.junie/mcp/mcp.json"],
+        "Linux": ["~/.junie/mcp/mcp.json"],
+        "Windows": ["~/.junie/mcp/mcp.json"],
+    },
 }
 
 # Map agent types to their CLI binary names for installed-but-not-configured detection
@@ -164,6 +188,7 @@ AGENT_BINARIES: dict[AgentType, str] = {
     AgentType.GEMINI_CLI: "gemini",
     AgentType.GOOSE: "goose",
     AgentType.SNOWFLAKE_CLI: "snow",
+    AgentType.JUNIE: "junie",
 }
 
 # Project-level config files to search for
@@ -175,6 +200,7 @@ PROJECT_CONFIG_FILES = [
     ".openclaw/openclaw.json",
     ".codex/config.toml",
     ".gemini/settings.json",
+    ".junie/mcp/mcp.json",
 ]
 
 
@@ -680,8 +706,16 @@ def discover_global_configs(agent_types: Optional[list[AgentType]] = None) -> li
         platform_paths = locations.get(sys_platform, [])
 
         for path_str in platform_paths:
-            config_path = expand_path(path_str)
-            if config_path.exists():
+            # Handle glob patterns (e.g., JetBrains ~/Library/.../JetBrains/*/mcp.json)
+            expanded_base = os.path.expanduser(path_str)
+            if "*" in expanded_base:
+                resolved_paths = [Path(p).resolve() for p in glob_mod.glob(expanded_base)]
+            else:
+                resolved_paths = [expand_path(path_str)]
+
+            for config_path in resolved_paths:
+                if not config_path.exists():
+                    continue
                 try:
                     servers: list[MCPServer] = []
                     metadata: dict = {}

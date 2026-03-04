@@ -505,8 +505,8 @@ def test_discovery_paths_include_new_clients():
 
 
 def test_total_agent_types_is_18():
-    """AgentType enum should now have 18 values (14 original + 4 new)."""
-    assert len(AgentType) == 19  # 14 + 4 new + CUSTOM
+    """AgentType enum should now have 20 client types + CUSTOM."""
+    assert len(AgentType) == 21  # 20 clients + CUSTOM
 
 
 # ── 11. Binary detection ──────────────────────────────────────────────────

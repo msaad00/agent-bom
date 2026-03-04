@@ -3801,6 +3801,143 @@ def proxy_cmd(policy, log_path, block_undeclared, detect_credentials, rate_limit
     sys.exit(exit_code)
 
 
+@main.command("protect")
+@click.option(
+    "--mode",
+    type=click.Choice(["stdin", "http"]),
+    default="stdin",
+    show_default=True,
+    help="Input mode: stdin (line-delimited JSON) or http (HTTP endpoint)",
+)
+@click.option("--port", default=8423, show_default=True, help="HTTP listen port (used with --mode http)")
+@click.option("--host", default="127.0.0.1", show_default=True, help="HTTP bind address (used with --mode http)")
+@click.option("--detectors", default="all", show_default=True, help="Comma-separated detector list: drift,args,creds,rate,sequence")
+@click.option("--alert-file", default=None, help="Write alerts to JSONL file")
+@click.option(
+    "--alert-webhook", default=None, envvar="AGENT_BOM_ALERT_WEBHOOK", help="Webhook URL for runtime alerts (Slack/Teams/PagerDuty)"
+)
+def protect_cmd(mode, port, host, detectors, alert_file, alert_webhook):
+    """Run the runtime protection engine as a standalone monitor.
+
+    \b
+    Analyzes tool calls through 5 security detectors:
+    - Tool drift detection (rug pull / capability changes)
+    - Argument analysis (shell injection, path traversal)
+    - Credential leak detection (API keys, tokens in responses)
+    - Rate limiting (abnormal call frequency)
+    - Sequence analysis (suspicious multi-step patterns)
+
+    \b
+    stdin mode (default) — pipe line-delimited JSON:
+      echo '{"tool_name":"exec","arguments":{"cmd":"rm -rf /"}}' | agent-bom protect
+      cat otel-export.jsonl | agent-bom protect --alert-file alerts.jsonl
+
+    \b
+    http mode — start an HTTP endpoint:
+      agent-bom protect --mode http --port 8423
+      # POST /tool-call, /tool-response, /drift-check; GET /status
+
+    \b
+    Input JSON formats:
+      Tool call:     {"tool_name": "read_file", "arguments": {"path": "/etc/passwd"}}
+      Response:      {"type": "response", "tool_name": "read_file", "text": "..."}
+      Drift check:   {"type": "drift", "tools": ["read_file", "exec_cmd"]}
+    """
+    import asyncio
+    import signal
+
+    from agent_bom.alerts.dispatcher import AlertDispatcher
+    from agent_bom.runtime.protection import ProtectionEngine
+    from agent_bom.runtime.server import run_http_mode, run_stdin_mode
+
+    # Build dispatcher with configured channels
+    dispatcher = AlertDispatcher()
+
+    if alert_webhook:
+        dispatcher.add_webhook(alert_webhook)
+
+    # File channel: append alerts as JSONL
+    if alert_file:
+
+        class _FileChannel:
+            def __init__(self, path: str) -> None:
+                self._path = path
+
+            async def send(self, alert: dict) -> bool:
+                import json as _json
+
+                with open(self._path, "a") as f:
+                    f.write(_json.dumps(alert) + "\n")
+                return True
+
+        dispatcher.add_channel(_FileChannel(alert_file))
+
+    # Build engine
+    engine = ProtectionEngine(dispatcher=dispatcher)
+
+    # Configure detectors based on selection
+    if detectors != "all":
+        enabled = {d.strip().lower() for d in detectors.split(",")}
+        detector_map = {
+            "drift": "drift_detector",
+            "args": "arg_analyzer",
+            "creds": "cred_detector",
+            "rate": "rate_tracker",
+            "sequence": "seq_analyzer",
+        }
+        active_count = 0
+        for name, attr in detector_map.items():
+            if name not in enabled:
+                # Replace with a no-op stub
+                setattr(engine, attr, _NoOpDetector())
+            else:
+                active_count += 1
+        engine._stats.detectors_active = active_count
+
+    console = Console(stderr=True)
+    console.print(f"[bold green]Runtime protection engine starting ({mode} mode)[/bold green]")
+
+    async def _run() -> None:
+        loop = asyncio.get_event_loop()
+        stop_event = asyncio.Event()
+
+        def _signal_handler() -> None:
+            console.print("\n[yellow]Shutting down...[/yellow]")
+            stop_event.set()
+
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, _signal_handler)
+
+        if mode == "http":
+            task = asyncio.create_task(run_http_mode(engine, host, port))
+        else:
+            task = asyncio.create_task(run_stdin_mode(engine))
+
+        # Wait for stop signal or task completion
+        done = asyncio.create_task(stop_event.wait())
+        await asyncio.wait([task, done], return_when=asyncio.FIRST_COMPLETED)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        engine.stop()
+        stats = engine.status()
+        console.print(f"[dim]Tool calls analyzed: {stats['tool_calls_analyzed']}, Alerts: {stats['alerts_generated']}[/dim]")
+
+    asyncio.run(_run())
+
+
+class _NoOpDetector:
+    """Stub detector that does nothing — used when a detector is disabled."""
+
+    def check(self, *args, **kwargs):  # noqa: N805
+        return []
+
+    def record(self, *args, **kwargs):
+        return []
+
+
 @main.command("watch")
 @click.option("--webhook", default=None, help="Webhook URL for alerts (Slack/Teams/PagerDuty)")
 @click.option("--log", "alert_log", default=None, help="Alert log file (JSONL)")

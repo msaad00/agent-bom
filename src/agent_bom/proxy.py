@@ -189,7 +189,7 @@ class ProxyMetricsServer:
             finally:
                 writer.close()
 
-        self._server = await asyncio.start_server(handle, "0.0.0.0", self.port)
+        self._server = await asyncio.start_server(handle, "0.0.0.0", self.port)  # nosec B104 — container/K8s metrics endpoint must bind all interfaces
         logger.info("Prometheus metrics server listening on port %d", self.port)
 
     async def stop(self) -> None:

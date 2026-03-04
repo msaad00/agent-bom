@@ -69,6 +69,9 @@ class Vulnerability:
     kev_due_date: Optional[str] = None  # Remediation due date
     nvd_published: Optional[str] = None  # NVD publish date
     nvd_modified: Optional[str] = None  # NVD last modified date
+    nvd_status: Optional[str] = (
+        None  # NVD review status: RECEIVED, AWAITING_ANALYSIS, UNDERGOING_ANALYSIS, ANALYZED, MODIFIED, DEFERRED, REJECTED
+    )
     cwe_ids: list[str] = field(default_factory=list)  # CWE weakness types
     aliases: list[str] = field(default_factory=list)  # Cross-source aliases (e.g. GHSA↔CVE)
     exploitability: Optional[str] = None  # "HIGH", "MEDIUM", "LOW" based on EPSS

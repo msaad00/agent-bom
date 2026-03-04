@@ -824,6 +824,7 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
             "max_severity": Severity.NONE,
             "has_kev": False,
             "ai_risk": False,
+            "references": set(),
         }
     )
     severity_order = {Severity.CRITICAL: 4, Severity.HIGH: 3, Severity.MEDIUM: 2, Severity.LOW: 1, Severity.NONE: 0}
@@ -850,6 +851,8 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
         g["iso_27001"].update(br.iso_27001_tags)
         g["soc2"].update(br.soc2_tags)
         g["cis"].update(br.cis_tags)
+        for ref in br.vulnerability.references:
+            g["references"].add(ref)
         if severity_order.get(br.vulnerability.severity, 0) > severity_order.get(g["max_severity"], 0):
             g["max_severity"] = br.vulnerability.severity
         if br.vulnerability.is_kev:
@@ -873,6 +876,7 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
         g["iso_27001"] = sorted(g["iso_27001"])
         g["soc2"] = sorted(g["soc2"])
         g["cis"] = sorted(g["cis"])
+        g["references"] = sorted(g["references"])
         g["impact"] = (
             len(g["agents"]) * 10 + len(g["creds"]) * 3 + len(g["vulns"]) + (5 if g["has_kev"] else 0) + (3 if g["ai_risk"] else 0)
         )
@@ -1194,6 +1198,7 @@ def _build_remediation_json(report: AIBOMReport) -> list[dict]:
                 "iso_27001_tags": item["iso_27001"],
                 "soc2_tags": item["soc2"],
                 "cis_tags": item["cis"],
+                "references": item.get("references", []),
                 "risk_narrative": _risk_narrative(item),
             }
         )
@@ -1434,6 +1439,7 @@ def to_json(report: AIBOMReport) -> dict:
                                         "references": v.references,
                                         "nvd_published": v.nvd_published,
                                         "nvd_modified": v.nvd_modified,
+                                        "nvd_status": v.nvd_status,
                                         "vex_status": v.vex_status,
                                         "vex_justification": v.vex_justification,
                                     }
@@ -1470,6 +1476,7 @@ def to_json(report: AIBOMReport) -> dict:
                 "cvss_score": br.vulnerability.cvss_score,
                 "epss_score": br.vulnerability.epss_score,
                 "is_kev": br.vulnerability.is_kev,
+                "nvd_status": br.vulnerability.nvd_status,
                 "package": f"{br.package.name}@{br.package.version}",
                 "ecosystem": br.package.ecosystem,
                 "is_malicious": br.package.is_malicious,

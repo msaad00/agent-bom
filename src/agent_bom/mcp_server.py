@@ -869,6 +869,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                                 "command": f.command,
                                 "vulns": f.vulns[:5],
                                 "agents": f.agents[:5],
+                                "references": f.references[:10],
                             }
                             for f in plan.package_fixes
                         ],

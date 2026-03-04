@@ -222,7 +222,7 @@
 
   <!-- ─── FOOTER ─── -->
   <rect x="20" y="652" width="920" height="2" rx="1" fill="#e2e8f0"/>
-  <text x="480" y="672" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" font-weight="600" fill="#64748b">18 MCP clients  |  11 providers  |  10 agent frameworks  |  12 model formats  |  7 ecosystems  |  427+ registry  |  9 vuln sources  |  10 frameworks  |  107 modules  |  2,868+ tests</text>
+  <text x="480" y="672" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" font-weight="600" fill="#64748b">20 MCP clients  |  11 providers  |  10 agent frameworks  |  12 model formats  |  7 ecosystems  |  427+ registry  |  9 vuln sources  |  10 frameworks  |  107 modules  |  2,868+ tests</text>
   <text x="480" y="694" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#94a3b8">Read-only  |  Agentless  |  Never stores credentials  |  Sigstore signed  |  SLSA provenance  |  OpenSSF scored  |  Apache 2.0</text>
   <text x="480" y="716" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="600" fill="#059669">OWASP LLM + MCP + Agentic  |  MITRE ATLAS  |  NIST AI RMF + CSF 2.0  |  EU AI Act  |  ISO 27001  |  SOC 2  |  CIS v8</text>
 

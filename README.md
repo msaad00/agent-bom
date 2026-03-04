@@ -66,7 +66,7 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
   </picture>
 </p>
 
-1. **Discover** — auto-detect MCP configs across 18 clients (Claude Desktop, Cursor, Codex CLI, Gemini CLI, Goose, etc.)
+1. **Discover** — auto-detect MCP configs across 20 clients (Claude Desktop, Cursor, JetBrains AI, Junie, Codex CLI, Gemini CLI, Goose, etc.)
 2. **Extract** — pull server names, package names, env var **names**, and tool lists. Credential **values** are never read.
 3. **Scan** — send only package names + versions to public APIs (OSV.dev, NVD, EPSS, CISA KEV). NVD status tracking (Analyzed/Modified/Rejected) with remediation links.
 4. **Analyze** — CVE blast radius mapping, per-CVE compliance tagging across 10 frameworks, tool poisoning detection (`--enforce`), model provenance
@@ -94,7 +94,7 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 ```mermaid
 graph TB
     subgraph Input["Input Sources"]
-        MCP["MCP Configs\n18 Clients"]
+        MCP["MCP Configs\n20 Clients"]
         Docker["Docker Images"]
         K8s["Kubernetes"]
         Cloud["Cloud APIs\nAWS / Azure / GCP / Snowflake"]
@@ -148,7 +148,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full set of architectur
 |---|---|---|
 | Package CVE detection | Yes | Yes — OSV + NVD CVSS v4 + EPSS + CISA KEV + GHSA + NVIDIA CSAF + NVD status tracking |
 | SBOM generation | Yes (Syft) | Yes — CycloneDX 1.6, SPDX 3.0, SARIF |
-| **AI agent discovery** | — | 18 MCP clients + Docker Compose auto-discovered |
+| **AI agent discovery** | — | 20 MCP clients + Docker Compose auto-discovered |
 | **Blast radius mapping** | — | CVE → package → server → agent → credentials → tools |
 | **Credential exposure** | — | Which secrets leak per vulnerability, per agent |
 | **MCP tool reachability** | — | Which tools an attacker reaches post-exploit |
@@ -199,7 +199,7 @@ Auto-discovers Claude Desktop, Claude Code, Cursor, Windsurf, Cline, VS Code Cop
 
 | Source | How |
 |--------|-----|
-| MCP configs | Auto-discover (18 clients + Docker Compose) |
+| MCP configs | Auto-discover (20 clients + Docker Compose) |
 | Docker images | Grype / Syft / Docker CLI fallback |
 | Kubernetes | kubectl across namespaces |
 | Cloud providers | AWS, Azure, GCP, Databricks, Snowflake, Nebius |
@@ -228,7 +228,7 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
 |----------|------|
 | PyPI | `pip install agent-bom` |
 | Docker | `docker run agentbom/agent-bom scan` |
-| GitHub Action | `uses: msaad00/agent-bom@v0.50.0` |
+| GitHub Action | `uses: msaad00/agent-bom@v0.51.0` |
 | MCP Registry | [server.json](integrations/mcp-registry/server.json) |
 | ToolHive | [registry entry](integrations/toolhive/server.json) |
 | OpenClaw | [SKILL.md](integrations/openclaw/SKILL.md) |
@@ -490,7 +490,7 @@ Both sources deduplicate by CVE ID against OSV results.
 |------|---------|----------|
 | CLI | `agent-bom scan` | Local audit |
 | Pre-install check | `agent-bom check express@4.18.2 -e npm` | Before running MCP servers |
-| GitHub Action | `uses: msaad00/agent-bom@v0.50.0` | CI/CD + SARIF |
+| GitHub Action | `uses: msaad00/agent-bom@v0.51.0` | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated scans |
 | REST API | `agent-bom api` | Dashboards, SIEM |
 | Runtime proxy | `agent-bom proxy` | Opt-in MCP traffic audit (per-server) |
@@ -502,7 +502,7 @@ Both sources deduplicate by CVE ID against OSV results.
 ### GitHub Action
 
 ```yaml
-- uses: msaad00/agent-bom@v0.50.0
+- uses: msaad00/agent-bom@v0.51.0
   with:
     severity-threshold: high
     upload-sarif: true
@@ -630,7 +630,7 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 | **AI frameworks** | Dependency scan | LangChain, LlamaIndex, AutoGen, PyTorch, JAX, TensorFlow |
 | **Inference servers** | `--image` | vLLM, Triton, TGI, llama.cpp |
 | **MLOps** | Dependency scan | MLflow, W&B, Ray, ClearML |
-| **MCP ecosystem** | Auto-discovery + registry | 18 clients, 427+ servers |
+| **MCP ecosystem** | Auto-discovery + registry | 20 clients, 427+ servers |
 | **LLM providers** | API key + SDK detection | OpenAI, Anthropic, Cohere, Mistral |
 | **IaC + CI/CD** | `--tf-dir`, `--gha` | Terraform AI resources, GitHub Actions |
 
@@ -644,7 +644,7 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 - **[PERMISSIONS.md](PERMISSIONS.md)** — auditable trust contract with all config paths enumerated
 - **Read-only** — never writes configs, runs servers, provisions resources, or stores secrets
 - **Credential redaction** — only env var **names** in reports; values, tokens, passwords never read
-- **Sigstore signed** — releases v0.7.0+ signed via cosign OIDC; verify PyPI integrity with `agent-bom verify agent-bom@0.50.0` (SHA-256 + SLSA provenance)
+- **Sigstore signed** — releases v0.7.0+ signed via cosign OIDC; verify PyPI integrity with `agent-bom verify agent-bom@0.51.0` (SHA-256 + SLSA provenance)
 - **No binary needed (MCP)** — SSE transport requires zero local install; local CLI available for air-gapped use
 - **OpenSSF Scorecard** — [automated supply chain scoring](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom)
 
@@ -656,7 +656,7 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 - [x] Cloud AI inventory — AWS Bedrock, Azure AI Foundry, GCP Vertex, Snowflake Cortex, Databricks, Nebius
 - [x] Tool poisoning / prompt injection detection — `--enforce` with description injection, capability combos, CVE exposure, drift
 - [x] Model weight provenance — SHA-256 hash, Sigstore file detection, HuggingFace metadata (`--model-provenance`, `--hf-model`)
-- [x] 18 MCP client discovery — Codex CLI, Gemini CLI, Goose, Snowflake CLI, full Cortex Code (CoCo) coverage
+- [x] 20 MCP client discovery — JetBrains AI, Junie, Codex CLI, Gemini CLI, Goose, Snowflake CLI, full Cortex Code (CoCo) coverage
 - [x] K8s AI workload discovery — `--k8s --all-namespaces` with pod-level scanning
 - [x] OWASP MCP Top 10 compliance mapping — MCP01–MCP10 risk tagging
 - [x] Malicious package detection — OSV MAL- prefix flagging + typosquat heuristics

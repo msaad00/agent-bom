@@ -1,4 +1,4 @@
-"""Tests for structured scan pipeline SSE events (v0.50.0)."""
+"""Tests for structured scan pipeline SSE events (v0.51.0)."""
 
 from __future__ import annotations
 

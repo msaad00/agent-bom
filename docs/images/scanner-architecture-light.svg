@@ -1,0 +1,260 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" fill="none">
+  <style>
+    .title { font: 700 14px system-ui, -apple-system, sans-serif; fill: #0f172a; }
+    .subtitle { font: 400 9px system-ui, sans-serif; fill: #64748b; }
+    .phase { font: 700 8px system-ui, sans-serif; letter-spacing: 0.08em; }
+    .label { font: 600 10px system-ui, sans-serif; fill: #1f2328; }
+    .sub { font: 400 8px system-ui, sans-serif; fill: #656d76; }
+    .badge { font: 600 7px system-ui, sans-serif; }
+    .api-label { font: 500 7.5px system-ui, sans-serif; fill: #6e7781; }
+    .note { font: 400 8px system-ui, sans-serif; fill: #94a3b8; }
+    .num { font: 700 11px system-ui, sans-serif; }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 8 6" refX="8" refY="3" markerWidth="6" markerHeight="4" orient="auto">
+      <path d="M0 0L8 3L0 6Z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrow-b" viewBox="0 0 8 6" refX="8" refY="3" markerWidth="6" markerHeight="4" orient="auto">
+      <path d="M0 0L8 3L0 6Z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrow-p" viewBox="0 0 8 6" refX="8" refY="3" markerWidth="6" markerHeight="4" orient="auto">
+      <path d="M0 0L8 3L0 6Z" fill="#7c3aed"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="960" height="540" rx="12" fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+
+  <!-- Title -->
+  <text x="480" y="28" text-anchor="middle" class="title">agent-bom — Scanner Architecture</text>
+  <text x="480" y="42" text-anchor="middle" class="subtitle">7-stage pipeline: discover → extract → scan → enrich → analyze → comply → output</text>
+
+  <!-- ═══ STAGE 1: DISCOVER ═══ -->
+  <rect x="16" y="56" width="118" height="210" rx="6" fill="#eff6ff" stroke="#2563eb" stroke-width="0.8"/>
+  <rect x="16" y="56" width="118" height="20" rx="6" fill="#2563eb" opacity="0.1"/>
+  <text x="30" y="70" class="num" fill="#2563eb">①</text>
+  <text x="46" y="70" class="phase" fill="#2563eb">DISCOVER</text>
+  <text x="28" y="90" class="label">18 MCP clients</text>
+  <text x="28" y="102" class="sub">Claude · Cursor · Codex</text>
+  <text x="28" y="112" class="sub">Windsurf · Goose · Zed</text>
+  <text x="28" y="128" class="label">Containers</text>
+  <text x="28" y="140" class="sub">Docker · K8s · OCI</text>
+  <text x="28" y="156" class="label">Cloud providers</text>
+  <text x="28" y="168" class="sub">AWS · Azure · GCP</text>
+  <text x="28" y="178" class="sub">Snowflake · Databricks</text>
+  <text x="28" y="194" class="label">SBOMs</text>
+  <text x="28" y="206" class="sub">CycloneDX · SPDX</text>
+  <text x="28" y="222" class="label">AI frameworks</text>
+  <text x="28" y="234" class="sub">70+ packages tracked</text>
+  <text x="28" y="250" class="label">Lock files</text>
+  <text x="28" y="260" class="sub">npm · pip · go · cargo</text>
+
+  <!-- Arrow 1→2 -->
+  <line x1="134" y1="160" x2="146" y2="160" stroke="#94a3b8" stroke-width="1" marker-end="url(#arrow)"/>
+
+  <!-- ═══ STAGE 2: EXTRACT ═══ -->
+  <rect x="150" y="56" width="118" height="210" rx="6" fill="#eff6ff" stroke="#2563eb" stroke-width="0.8"/>
+  <rect x="150" y="56" width="118" height="20" rx="6" fill="#2563eb" opacity="0.1"/>
+  <text x="164" y="70" class="num" fill="#2563eb">②</text>
+  <text x="180" y="70" class="phase" fill="#2563eb">EXTRACT</text>
+  <text x="162" y="90" class="label">Lock file parsing</text>
+  <text x="162" y="102" class="sub">package-lock.json</text>
+  <text x="162" y="112" class="sub">requirements.txt</text>
+  <text x="162" y="122" class="sub">go.sum · Cargo.lock</text>
+  <text x="162" y="138" class="label">Registry lookup</text>
+  <text x="162" y="150" class="sub">MCP Registry (427+)</text>
+  <text x="162" y="160" class="sub">Smithery · Official</text>
+  <text x="162" y="176" class="label">Transitive resolution</text>
+  <text x="162" y="188" class="sub">npm/PyPI deps tree</text>
+  <text x="162" y="198" class="sub">3-level depth</text>
+  <text x="162" y="214" class="label">Version detection</text>
+  <text x="162" y="226" class="sub">npx/uvx pin extraction</text>
+  <text x="162" y="236" class="sub">Auto-resolve "latest"</text>
+  <text x="162" y="252" class="label">Deduplication</text>
+  <text x="162" y="262" class="sub">Cross-server normalize</text>
+
+  <!-- Arrow 2→3 -->
+  <line x1="268" y1="160" x2="280" y2="160" stroke="#94a3b8" stroke-width="1" marker-end="url(#arrow)"/>
+
+  <!-- ═══ STAGE 3: SCAN ═══ -->
+  <rect x="284" y="56" width="118" height="210" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="0.8"/>
+  <rect x="284" y="56" width="118" height="20" rx="6" fill="#d97706" opacity="0.1"/>
+  <text x="298" y="70" class="num" fill="#d97706">③</text>
+  <text x="314" y="70" class="phase" fill="#d97706">SCAN</text>
+  <text x="296" y="90" class="label">OSV batch API</text>
+  <text x="296" y="102" class="sub">1000 pkg/batch</text>
+  <text x="296" y="112" class="sub">SQLite cache (24h)</text>
+  <text x="296" y="128" class="label">Grype (images)</text>
+  <text x="296" y="140" class="sub">Syft → Docker fallback</text>
+  <text x="296" y="156" class="label">GHSA advisories</text>
+  <text x="296" y="168" class="sub">GitHub GraphQL API</text>
+  <text x="296" y="184" class="label">NVIDIA advisories</text>
+  <text x="296" y="196" class="sub">CUDA/TensorRT CVEs</text>
+  <text x="296" y="212" class="label">Typosquat detection</text>
+  <text x="296" y="224" class="sub">57 popular packages</text>
+  <text x="296" y="240" class="label">Malicious pkg detect</text>
+  <text x="296" y="252" class="sub">OSV MAL- prefix</text>
+
+  <!-- Arrow 3→4 -->
+  <line x1="402" y1="160" x2="414" y2="160" stroke="#94a3b8" stroke-width="1" marker-end="url(#arrow)"/>
+
+  <!-- ═══ STAGE 4: ENRICH ═══ -->
+  <rect x="418" y="56" width="118" height="210" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="0.8"/>
+  <rect x="418" y="56" width="118" height="20" rx="6" fill="#d97706" opacity="0.1"/>
+  <text x="432" y="70" class="num" fill="#d97706">④</text>
+  <text x="448" y="70" class="phase" fill="#d97706">ENRICH</text>
+  <text x="430" y="90" class="label">NVD CVSS</text>
+  <text x="430" y="102" class="sub">Base score computation</text>
+  <text x="430" y="112" class="sub">CWE classification</text>
+  <text x="430" y="128" class="label">FIRST EPSS</text>
+  <text x="430" y="140" class="sub">Exploit probability %</text>
+  <text x="430" y="150" class="sub">Percentile ranking</text>
+  <text x="430" y="166" class="label">CISA KEV</text>
+  <text x="430" y="178" class="sub">Known exploited CVEs</text>
+  <text x="430" y="188" class="sub">Due date tracking</text>
+  <text x="430" y="204" class="label">OpenSSF Scorecard</text>
+  <text x="430" y="216" class="sub">Supply chain quality</text>
+  <text x="430" y="232" class="label">Persistent cache</text>
+  <text x="430" y="244" class="sub">7-day TTL · SQLite</text>
+
+  <!-- Arrow 4→5 -->
+  <line x1="536" y1="160" x2="548" y2="160" stroke="#94a3b8" stroke-width="1" marker-end="url(#arrow)"/>
+
+  <!-- ═══ STAGE 5: ANALYZE ═══ -->
+  <rect x="552" y="56" width="118" height="210" rx="6" fill="#fef2f2" stroke="#dc2626" stroke-width="0.8"/>
+  <rect x="552" y="56" width="118" height="20" rx="6" fill="#dc2626" opacity="0.1"/>
+  <text x="566" y="70" class="num" fill="#dc2626">⑤</text>
+  <text x="582" y="70" class="phase" fill="#dc2626">ANALYZE</text>
+  <text x="564" y="90" class="label">Blast radius</text>
+  <text x="564" y="102" class="sub">CVE → server → agent</text>
+  <text x="564" y="112" class="sub">→ credentials → tools</text>
+  <text x="564" y="128" class="label">Tool capabilities</text>
+  <text x="564" y="140" class="sub">READ · WRITE · EXEC</text>
+  <text x="564" y="150" class="sub">DELETE · NET · AUTH</text>
+  <text x="564" y="166" class="label">Dangerous combos</text>
+  <text x="564" y="178" class="sub">EXEC+WRITE = RCE</text>
+  <text x="564" y="188" class="sub">NET+READ = exfiltrate</text>
+  <text x="564" y="204" class="label">AI risk elevation</text>
+  <text x="564" y="216" class="sub">AI pkg + creds + tools</text>
+  <text x="564" y="232" class="label">Risk score (0–10)</text>
+  <text x="564" y="244" class="sub">CVSS × capability weight</text>
+
+  <!-- Arrow 5→6 -->
+  <line x1="670" y1="160" x2="682" y2="160" stroke="#94a3b8" stroke-width="1" marker-end="url(#arrow)"/>
+
+  <!-- ═══ STAGE 6: COMPLIANCE ═══ -->
+  <rect x="686" y="56" width="118" height="210" rx="6" fill="#f5f3ff" stroke="#7c3aed" stroke-width="0.8"/>
+  <rect x="686" y="56" width="118" height="20" rx="6" fill="#7c3aed" opacity="0.1"/>
+  <text x="700" y="70" class="num" fill="#7c3aed">⑥</text>
+  <text x="716" y="70" class="phase" fill="#7c3aed">COMPLIANCE</text>
+  <text x="698" y="88" class="sub" fill="#7c3aed">AI-specific</text>
+  <text x="698" y="100" class="badge" fill="#7c3aed">OWASP LLM Top 10</text>
+  <text x="698" y="112" class="badge" fill="#7c3aed">OWASP MCP Top 10</text>
+  <text x="698" y="124" class="badge" fill="#7c3aed">OWASP Agentic Top 10</text>
+  <text x="698" y="136" class="badge" fill="#7c3aed">MITRE ATLAS</text>
+  <text x="698" y="148" class="badge" fill="#7c3aed">NIST AI RMF</text>
+  <text x="698" y="160" class="badge" fill="#7c3aed">EU AI Act</text>
+  <text x="698" y="176" class="sub" fill="#7c3aed">Enterprise GRC</text>
+  <text x="698" y="188" class="badge" fill="#7c3aed">NIST CSF 2.0</text>
+  <text x="698" y="200" class="badge" fill="#7c3aed">ISO 27001:2022</text>
+  <text x="698" y="212" class="badge" fill="#7c3aed">SOC 2</text>
+  <text x="698" y="224" class="badge" fill="#7c3aed">CIS Controls v8</text>
+  <text x="698" y="242" class="sub">10 frameworks in parallel</text>
+  <text x="698" y="252" class="sub">112+ controls mapped</text>
+
+  <!-- Arrow 6→7 -->
+  <line x1="804" y1="160" x2="816" y2="160" stroke="#94a3b8" stroke-width="1" marker-end="url(#arrow)"/>
+
+  <!-- ═══ STAGE 7: OUTPUT ═══ -->
+  <rect x="820" y="56" width="124" height="210" rx="6" fill="#f0fdf4" stroke="#16a34a" stroke-width="0.8"/>
+  <rect x="820" y="56" width="124" height="20" rx="6" fill="#16a34a" opacity="0.1"/>
+  <text x="834" y="70" class="num" fill="#16a34a">⑦</text>
+  <text x="850" y="70" class="phase" fill="#16a34a">OUTPUT</text>
+  <text x="832" y="90" class="label">Report formats</text>
+  <text x="832" y="102" class="sub">JSON · SARIF · HTML</text>
+  <text x="832" y="118" class="label">SBOM export</text>
+  <text x="832" y="130" class="sub">CycloneDX · SPDX</text>
+  <text x="832" y="146" class="label">API + streaming</text>
+  <text x="832" y="158" class="sub">REST · SSE · MCP</text>
+  <text x="832" y="174" class="label">Integrations</text>
+  <text x="832" y="186" class="sub">Slack · Jira · Webhooks</text>
+  <text x="832" y="202" class="label">Monitoring</text>
+  <text x="832" y="214" class="sub">Prometheus · OTel</text>
+  <text x="832" y="230" class="label">Visualization</text>
+  <text x="832" y="242" class="sub">SVG · Badge · Graph</text>
+  <text x="832" y="258" class="sub">15-section dashboard</text>
+
+  <!-- ═══ EXTERNAL APIs & DATABASES (bottom panel) ═══ -->
+  <rect x="16" y="290" width="928" height="88" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="0.8"/>
+  <text x="480" y="310" text-anchor="middle" class="phase" fill="#64748b">EXTERNAL APIs &amp; DATABASES</text>
+
+  <!-- Row 1: Vulnerability DBs -->
+  <text x="36" y="330" class="sub" fill="#475569">Vulnerability:</text>
+  <rect x="108" y="320" width="60" height="16" rx="3" fill="#dbeafe" stroke="#93c5fd" stroke-width="0.5"/>
+  <text x="138" y="331" text-anchor="middle" class="badge" fill="#2563eb">OSV.dev</text>
+  <rect x="174" y="320" width="42" height="16" rx="3" fill="#dbeafe" stroke="#93c5fd" stroke-width="0.5"/>
+  <text x="195" y="331" text-anchor="middle" class="badge" fill="#2563eb">NVD</text>
+  <rect x="222" y="320" width="70" height="16" rx="3" fill="#dbeafe" stroke="#93c5fd" stroke-width="0.5"/>
+  <text x="257" y="331" text-anchor="middle" class="badge" fill="#2563eb">FIRST EPSS</text>
+  <rect x="298" y="320" width="64" height="16" rx="3" fill="#dbeafe" stroke="#93c5fd" stroke-width="0.5"/>
+  <text x="330" y="331" text-anchor="middle" class="badge" fill="#2563eb">CISA KEV</text>
+  <rect x="368" y="320" width="70" height="16" rx="3" fill="#dbeafe" stroke="#93c5fd" stroke-width="0.5"/>
+  <text x="403" y="331" text-anchor="middle" class="badge" fill="#2563eb">Grype DB</text>
+  <rect x="444" y="320" width="80" height="16" rx="3" fill="#dbeafe" stroke="#93c5fd" stroke-width="0.5"/>
+  <text x="484" y="331" text-anchor="middle" class="badge" fill="#2563eb">GitHub GHSA</text>
+
+  <!-- Row 2: Registry + Quality -->
+  <text x="36" y="358" class="sub" fill="#475569">Registry:</text>
+  <rect x="92" y="348" width="82" height="16" rx="3" fill="#f3e8ff" stroke="#c4b5fd" stroke-width="0.5"/>
+  <text x="133" y="359" text-anchor="middle" class="badge" fill="#7c3aed">MCP Registry</text>
+  <rect x="180" y="348" width="62" height="16" rx="3" fill="#f3e8ff" stroke="#c4b5fd" stroke-width="0.5"/>
+  <text x="211" y="359" text-anchor="middle" class="badge" fill="#7c3aed">Smithery</text>
+  <rect x="248" y="348" width="80" height="16" rx="3" fill="#f3e8ff" stroke="#c4b5fd" stroke-width="0.5"/>
+  <text x="288" y="359" text-anchor="middle" class="badge" fill="#7c3aed">HuggingFace</text>
+
+  <text x="360" y="358" class="sub" fill="#475569">Quality:</text>
+  <rect x="405" y="348" width="100" height="16" rx="3" fill="#dcfce7" stroke="#86efac" stroke-width="0.5"/>
+  <text x="455" y="359" text-anchor="middle" class="badge" fill="#16a34a">OpenSSF Scorecard</text>
+
+  <text x="540" y="358" class="sub" fill="#475569">Container:</text>
+  <rect x="596" y="348" width="48" height="16" rx="3" fill="#fef3c7" stroke="#fcd34d" stroke-width="0.5"/>
+  <text x="620" y="359" text-anchor="middle" class="badge" fill="#d97706">Grype</text>
+  <rect x="650" y="348" width="40" height="16" rx="3" fill="#fef3c7" stroke="#fcd34d" stroke-width="0.5"/>
+  <text x="670" y="359" text-anchor="middle" class="badge" fill="#d97706">Syft</text>
+  <rect x="696" y="348" width="58" height="16" rx="3" fill="#fef3c7" stroke="#fcd34d" stroke-width="0.5"/>
+  <text x="725" y="359" text-anchor="middle" class="badge" fill="#d97706">Docker CLI</text>
+
+  <!-- Dashed lines from APIs up to stages -->
+  <line x1="138" y1="320" x2="343" y2="270" stroke="#93c5fd" stroke-width="0.6" stroke-dasharray="3 2" opacity="0.4"/>
+  <line x1="257" y1="320" x2="477" y2="270" stroke="#93c5fd" stroke-width="0.6" stroke-dasharray="3 2" opacity="0.4"/>
+  <line x1="133" y1="348" x2="209" y2="270" stroke="#c4b5fd" stroke-width="0.6" stroke-dasharray="3 2" opacity="0.4"/>
+
+  <!-- ═══ KEY METRICS (bottom bar) ═══ -->
+  <rect x="16" y="394" width="928" height="36" rx="6" fill="#f1f5f9" stroke="#e2e8f0" stroke-width="0.6"/>
+  <text x="36" y="416" class="badge" fill="#475569">18 MCP clients</text>
+  <text x="120" y="416" class="badge" fill="#475569">·</text>
+  <text x="132" y="416" class="badge" fill="#475569">10+ cloud providers</text>
+  <text x="240" y="416" class="badge" fill="#475569">·</text>
+  <text x="252" y="416" class="badge" fill="#475569">11 package ecosystems</text>
+  <text x="376" y="416" class="badge" fill="#475569">·</text>
+  <text x="388" y="416" class="badge" fill="#475569">8 vulnerability sources</text>
+  <text x="510" y="416" class="badge" fill="#475569">·</text>
+  <text x="522" y="416" class="badge" fill="#475569">10 compliance frameworks</text>
+  <text x="660" y="416" class="badge" fill="#475569">·</text>
+  <text x="672" y="416" class="badge" fill="#475569">13 output formats</text>
+  <text x="780" y="416" class="badge" fill="#475569">·</text>
+  <text x="792" y="416" class="badge" fill="#475569">15 MCP tools</text>
+
+  <!-- ═══ ARCHITECTURE NOTE ═══ -->
+  <text x="480" y="456" text-anchor="middle" class="note">Read-only analysis · No agents deployed · No code execution · Local or CI/CD</text>
+
+  <!-- ═══ KEY FILES ═══ -->
+  <rect x="16" y="470" width="928" height="58" rx="6" fill="#fafafa" stroke="#e2e8f0" stroke-width="0.5"/>
+  <text x="480" y="487" text-anchor="middle" class="phase" fill="#94a3b8">KEY SOURCE MODULES</text>
+  <text x="36" y="504" class="api-label">discovery/ → 18 platforms</text>
+  <text x="180" y="504" class="api-label">parsers/ → extraction</text>
+  <text x="310" y="504" class="api-label">scanners/ → OSV + blast radius</text>
+  <text x="490" y="504" class="api-label">enrichment.py → NVD/EPSS/KEV</text>
+  <text x="660" y="504" class="api-label">risk_analyzer.py → tool caps</text>
+  <text x="36" y="520" class="api-label">owasp.py · nist_ai_rmf.py · eu_ai_act.py · nist_csf.py · iso_27001.py · soc2.py · cis_controls.py · atlas.py · owasp_mcp.py · owasp_agentic.py</text>
+</svg>

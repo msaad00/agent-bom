@@ -136,6 +136,11 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
 
 **Trust guarantees:** Read-only (no file writes, no config changes, no servers started). `--dry-run` previews all files and API calls then exits. Every release is Sigstore-signed. Run `agent-bom verify agent-bom` to check integrity. See [PERMISSIONS.md](PERMISSIONS.md) for the full auditable trust contract.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scanner-architecture-dark.svg">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scanner-architecture-light.svg" alt="Scanner Architecture — 7-stage pipeline" width="800" />
+</picture>
+
 <details>
 <summary><b>Architecture data flow</b></summary>
 

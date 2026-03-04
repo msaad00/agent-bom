@@ -1,387 +1,209 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 700" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 560" fill="none">
   <defs>
-    <marker id="eo-arr" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="9" markerHeight="7" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#484f58"/></marker>
-    <marker id="eo-arr-b" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="9" markerHeight="7" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#1f6feb"/></marker>
-    <marker id="eo-arr-a" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="9" markerHeight="7" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#d29922"/></marker>
-    <marker id="eo-arr-r" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="9" markerHeight="7" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#f85149"/></marker>
-    <marker id="eo-arr-g" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="9" markerHeight="7" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#3fb950"/></marker>
-    <marker id="eo-arr-p" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="9" markerHeight="7" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#a371f7"/></marker>
+    <marker id="eo-ah" viewBox="0 0 12 8" refX="11" refY="4" markerWidth="10" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L12 4 L0 8 Z" fill="#484f58"/></marker>
+    <marker id="eo-ah-b" viewBox="0 0 12 8" refX="11" refY="4" markerWidth="10" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L12 4 L0 8 Z" fill="#1f6feb"/></marker>
+    <marker id="eo-ah-p" viewBox="0 0 12 8" refX="11" refY="4" markerWidth="10" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L12 4 L0 8 Z" fill="#a371f7"/></marker>
+
+    <!-- Icon: Search/Discover -->
+    <symbol id="eo-search" viewBox="0 0 24 24">
+      <circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="2" fill="none"/>
+      <line x1="15" y1="15" x2="21" y2="21" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+    </symbol>
+    <!-- Icon: Shield -->
+    <symbol id="eo-shield" viewBox="0 0 24 24">
+      <path d="M12 2L3 7V12C3 17.5 7 21.5 12 23C17 21.5 21 17.5 21 12V7L12 2Z" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/>
+      <path d="M8 12L11 15L16 9" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <!-- Icon: Graph -->
+    <symbol id="eo-graph" viewBox="0 0 24 24">
+      <circle cx="12" cy="5" r="3" stroke="currentColor" stroke-width="2" fill="none"/>
+      <circle cx="5" cy="19" r="3" stroke="currentColor" stroke-width="2" fill="none"/>
+      <circle cx="19" cy="19" r="3" stroke="currentColor" stroke-width="2" fill="none"/>
+      <line x1="12" y1="8" x2="5" y2="16" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="12" y1="8" x2="19" y2="16" stroke="currentColor" stroke-width="1.5"/>
+    </symbol>
+    <!-- Icon: Document -->
+    <symbol id="eo-doc" viewBox="0 0 24 24">
+      <rect x="4" y="2" width="16" height="20" rx="2" stroke="currentColor" stroke-width="2" fill="none"/>
+      <line x1="8" y1="8" x2="16" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="8" y1="12" x2="14" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="8" y1="16" x2="12" y2="16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    </symbol>
+    <!-- Icon: Lock -->
+    <symbol id="eo-lock" viewBox="0 0 24 24">
+      <rect x="5" y="11" width="14" height="10" rx="2" stroke="currentColor" stroke-width="2" fill="none"/>
+      <path d="M8 11V7C8 4.8 9.8 3 12 3S16 4.8 16 7V11" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
+    </symbol>
   </defs>
 
-  <rect width="960" height="700" rx="16" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/>
+  <rect width="1200" height="560" rx="16" fill="#0d1117"/>
 
   <!-- Title -->
-  <text x="480" y="24" text-anchor="middle" font-family="system-ui, sans-serif" font-size="15" font-weight="700" fill="#e6edf3">Enterprise Architecture — 4-Layer System Overview</text>
-  <text x="480" y="40" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#8b949e">Multi-source discovery → analysis → output with runtime protection sidecar</text>
+  <text x="600" y="36" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="20" font-weight="700" fill="#e6edf3">Enterprise Architecture</text>
+  <text x="600" y="56" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" fill="#8b949e">4-layer system — multi-source discovery through analysis to actionable output</text>
 
-  <!-- ═══════════════════════════════════════════════════════════════════════ -->
-  <!--  LAYER 1: MULTI-SOURCE DISCOVERY (8 input nodes → merge node)        -->
-  <!-- ═══════════════════════════════════════════════════════════════════════ -->
-  <rect x="14" y="52" width="750" height="120" rx="10" fill="#161b22" stroke="#1f6feb" stroke-width="1"/>
-  <text x="389" y="68" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#58a6ff" letter-spacing="0.08em">LAYER 1 — MULTI-SOURCE DISCOVERY</text>
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!--  LAYER 1: DISCOVER (top row of input blocks)                      -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <rect x="40" y="76" width="900" height="96" rx="12" fill="#161b22" stroke="#1f3a5f" stroke-width="2"/>
+  <use href="#eo-search" x="56" y="86" width="24" height="24" color="#58a6ff"/>
+  <text x="94" y="102" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="14" font-weight="700" fill="#58a6ff">Discovery Layer</text>
+  <text x="260" y="102" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#58a6ff">8 source types · auto-detected · agentless</text>
 
-  <!-- Input nodes row 1 -->
-  <rect x="24" y="78" width="88" height="36" rx="6" fill="#0d1117" stroke="#1f6feb" stroke-width="1.2"/>
-  <text x="68" y="93" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#58a6ff">MCP Agents</text>
-  <text x="68" y="107" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#1f6feb">20 clients</text>
+  <!-- Input blocks -->
+  <rect x="56" y="116" width="120" height="42" rx="8" fill="#21262d" stroke="#1f4a7f" stroke-width="1.5"/>
+  <text x="116" y="134" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#58a6ff">MCP Agents</text>
+  <text x="116" y="150" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#58a6ff">20 clients</text>
 
-  <rect x="118" y="78" width="88" height="36" rx="6" fill="#0d1117" stroke="#1f6feb" stroke-width="1.2"/>
-  <text x="162" y="93" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#58a6ff">Docker / K8s</text>
-  <text x="162" y="107" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#1f6feb">Images + Pods</text>
+  <rect x="186" y="116" width="120" height="42" rx="8" fill="#21262d" stroke="#1f4a7f" stroke-width="1.5"/>
+  <text x="246" y="134" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#58a6ff">Containers</text>
+  <text x="246" y="150" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#58a6ff">Docker · K8s</text>
 
-  <rect x="212" y="78" width="88" height="36" rx="6" fill="#0d1117" stroke="#1f6feb" stroke-width="1.2"/>
-  <text x="256" y="93" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#58a6ff">Cloud / AI</text>
-  <text x="256" y="107" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#1f6feb">11 providers</text>
+  <rect x="316" y="116" width="120" height="42" rx="8" fill="#21262d" stroke="#1f4a7f" stroke-width="1.5"/>
+  <text x="376" y="134" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#58a6ff">Cloud + AI</text>
+  <text x="376" y="150" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#58a6ff">11 providers</text>
 
-  <rect x="306" y="78" width="88" height="36" rx="6" fill="#0d1117" stroke="#1f6feb" stroke-width="1.2"/>
-  <text x="350" y="93" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#58a6ff">AI/ML Models</text>
-  <text x="350" y="107" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#1f6feb">10 fwks · 12 fmts</text>
+  <rect x="446" y="116" width="120" height="42" rx="8" fill="#21262d" stroke="#1f4a7f" stroke-width="1.5"/>
+  <text x="506" y="134" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#58a6ff">Code / Pkgs</text>
+  <text x="506" y="150" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#58a6ff">7 ecosystems</text>
 
-  <!-- Input nodes row 2 -->
-  <rect x="24" y="122" width="88" height="36" rx="6" fill="#0d1117" stroke="#1f6feb" stroke-width="1.2"/>
-  <text x="68" y="137" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#58a6ff">Code / Pkgs</text>
-  <text x="68" y="151" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#1f6feb">7 ecosystems</text>
+  <rect x="576" y="116" width="120" height="42" rx="8" fill="#21262d" stroke="#1f4a7f" stroke-width="1.5"/>
+  <text x="636" y="134" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#58a6ff">AI/ML Models</text>
+  <text x="636" y="150" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#58a6ff">12 formats</text>
 
-  <rect x="118" y="122" width="88" height="36" rx="6" fill="#0d1117" stroke="#1f6feb" stroke-width="1.2"/>
-  <text x="162" y="137" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#58a6ff">SBOM Ingest</text>
-  <text x="162" y="151" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#1f6feb">CDX + SPDX</text>
+  <rect x="706" y="116" width="120" height="42" rx="8" fill="#21262d" stroke="#1f4a7f" stroke-width="1.5"/>
+  <text x="766" y="134" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#58a6ff">SBOMs</text>
+  <text x="766" y="150" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#58a6ff">CDX · SPDX</text>
 
-  <rect x="212" y="122" width="88" height="36" rx="6" fill="#0d1117" stroke="#1f6feb" stroke-width="1.2"/>
-  <text x="256" y="137" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#58a6ff">Integrity</text>
-  <text x="256" y="151" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#1f6feb">SHA · SLSA · PEP 740</text>
+  <rect x="836" y="116" width="92" height="42" rx="8" fill="#21262d" stroke="#1f4a7f" stroke-width="1.5"/>
+  <text x="882" y="140" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#58a6ff">Filesystem</text>
 
-  <rect x="306" y="122" width="88" height="36" rx="6" fill="#0d1117" stroke="#1f6feb" stroke-width="1.2"/>
-  <text x="350" y="137" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#58a6ff">Filesystem</text>
-  <text x="350" y="151" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#1f6feb">Lockfiles + AST</text>
+  <!-- Arrow Layer 1 → Layer 2 -->
+  <path d="M490 172 L490 196" stroke="#484f58" stroke-width="3" fill="none" marker-end="url(#eo-ah)"/>
 
-  <!-- Merge/Extract node -->
-  <rect x="430" y="90" width="110" height="54" rx="8" fill="#1f6feb" stroke="#58a6ff" stroke-width="1.5"/>
-  <text x="485" y="112" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#fff">Extract +</text>
-  <text x="485" y="126" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#fff">Parse</text>
-  <text x="485" y="140" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#a5d8ff">Syft · Semgrep ext</text>
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!--  RUNTIME PROTECTION SIDEBAR                                       -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <rect x="960" y="76" width="200" height="276" rx="12" fill="#150e1a" stroke="#3f1f5f" stroke-width="2"/>
+  <use href="#eo-lock" x="976" y="86" width="24" height="24" color="#d2a8ff"/>
+  <text x="1014" y="102" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="14" font-weight="700" fill="#d2a8ff">Runtime</text>
+  <text x="1014" y="118" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="14" font-weight="700" fill="#d2a8ff">Protection</text>
 
-  <!-- Converging arrows from 8 nodes to Extract -->
-  <path d="M112 96 L430 110" stroke="#1f6feb" stroke-width="1.2" fill="none" marker-end="url(#eo-arr-b)"/>
-  <path d="M206 96 L430 112" stroke="#1f6feb" stroke-width="1.2" fill="none" marker-end="url(#eo-arr-b)"/>
-  <path d="M300 96 L430 114" stroke="#1f6feb" stroke-width="1.2" fill="none" marker-end="url(#eo-arr-b)"/>
-  <path d="M394 96 L430 116" stroke="#1f6feb" stroke-width="1.2" fill="none" marker-end="url(#eo-arr-b)"/>
-  <path d="M112 140 L430 120" stroke="#1f6feb" stroke-width="1.2" fill="none" marker-end="url(#eo-arr-b)"/>
-  <path d="M206 140 L430 122" stroke="#1f6feb" stroke-width="1.2" fill="none" marker-end="url(#eo-arr-b)"/>
-  <path d="M300 140 L430 124" stroke="#1f6feb" stroke-width="1.2" fill="none" marker-end="url(#eo-arr-b)"/>
-  <path d="M394 140 L430 126" stroke="#1f6feb" stroke-width="1.2" fill="none" marker-end="url(#eo-arr-b)"/>
+  <rect x="976" y="132" width="168" height="32" rx="6" fill="#21262d" stroke="#4f1f7f" stroke-width="1.5"/>
+  <text x="1060" y="152" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600" fill="#d2a8ff">MCP Stdio Proxy</text>
 
-  <!-- Extract output arrow down to Layer 2 -->
-  <path d="M485 144 L485 180" stroke="#484f58" stroke-width="2.5" fill="none" marker-end="url(#eo-arr)"/>
+  <text x="1060" y="180" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#a371f7">4 Inline Scanners</text>
+  <text x="1060" y="196" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#a371f7">Injection · PII · Secrets · Payloads</text>
 
-  <!-- ═══════════════════════════════════════════════════════════════════════ -->
-  <!--  RUNTIME PROTECTION SIDEBAR (right column, spans layers 1-2)         -->
-  <!-- ═══════════════════════════════════════════════════════════════════════ -->
-  <rect x="776" y="52" width="170" height="304" rx="10" fill="#161b22" stroke="#a371f7" stroke-width="1.5"/>
-  <text x="861" y="70" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#d2a8ff" letter-spacing="0.06em">RUNTIME PROTECTION</text>
+  <text x="1060" y="220" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#a371f7">5 Detectors</text>
+  <text x="1060" y="236" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#a371f7">Drift · Creds · Rate · Seq · Args</text>
 
-  <rect x="786" y="80" width="150" height="36" rx="6" fill="#0d1117" stroke="#a371f7" stroke-width="1.2"/>
-  <text x="861" y="96" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#d2a8ff">MCP Stdio Proxy</text>
-  <text x="861" y="108" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#a371f7">JSON-RPC intercept · audit</text>
+  <rect x="976" y="252" width="80" height="26" rx="6" fill="#1f0f3f" stroke="#3f1f5f" stroke-width="1"/>
+  <text x="1016" y="269" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#d2a8ff">Fleet Mgmt</text>
 
-  <!-- Arrow down inside sidebar -->
-  <path d="M861 116 L861 126" stroke="#a371f7" stroke-width="1.5" fill="none" marker-end="url(#eo-arr-p)"/>
+  <rect x="1064" y="252" width="80" height="26" rx="6" fill="#1f0f3f" stroke="#3f1f5f" stroke-width="1"/>
+  <text x="1104" y="269" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#d2a8ff">Trust Score</text>
 
-  <rect x="786" y="130" width="72" height="28" rx="5" fill="#0d1117" stroke="#a371f7" stroke-width="1"/>
-  <text x="822" y="148" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" font-weight="600" fill="#d2a8ff">Injection</text>
-  <rect x="864" y="130" width="72" height="28" rx="5" fill="#0d1117" stroke="#a371f7" stroke-width="1"/>
-  <text x="900" y="148" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" font-weight="600" fill="#d2a8ff">PII</text>
-  <rect x="786" y="164" width="72" height="28" rx="5" fill="#0d1117" stroke="#a371f7" stroke-width="1"/>
-  <text x="822" y="182" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" font-weight="600" fill="#d2a8ff">Secrets</text>
-  <rect x="864" y="164" width="72" height="28" rx="5" fill="#0d1117" stroke="#a371f7" stroke-width="1"/>
-  <text x="900" y="182" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" font-weight="600" fill="#d2a8ff">Payloads</text>
+  <text x="1060" y="298" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#a371f7">Replay Protect · Alert Pipeline</text>
+  <text x="1060" y="314" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#a371f7">Dedup · Payload Integrity</text>
 
-  <!-- Arrow down to detectors -->
-  <path d="M861 192 L861 202" stroke="#a371f7" stroke-width="1.5" fill="none" marker-end="url(#eo-arr-p)"/>
-
-  <rect x="786" y="206" width="150" height="28" rx="5" fill="#0d1117" stroke="#a371f7" stroke-width="1"/>
-  <text x="861" y="224" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" font-weight="700" fill="#d2a8ff">5 Detectors</text>
-
-  <rect x="786" y="240" width="46" height="20" rx="4" fill="#161b22" stroke="#a371f7" stroke-width="0.8"/>
-  <text x="809" y="254" text-anchor="middle" font-family="system-ui, sans-serif" font-size="6.5" fill="#d2a8ff">Drift</text>
-  <rect x="836" y="240" width="46" height="20" rx="4" fill="#161b22" stroke="#a371f7" stroke-width="0.8"/>
-  <text x="859" y="254" text-anchor="middle" font-family="system-ui, sans-serif" font-size="6.5" fill="#d2a8ff">Creds</text>
-  <rect x="886" y="240" width="46" height="20" rx="4" fill="#161b22" stroke="#a371f7" stroke-width="0.8"/>
-  <text x="909" y="254" text-anchor="middle" font-family="system-ui, sans-serif" font-size="6.5" fill="#d2a8ff">Rate</text>
-  <rect x="806" y="264" width="46" height="20" rx="4" fill="#161b22" stroke="#a371f7" stroke-width="0.8"/>
-  <text x="829" y="278" text-anchor="middle" font-family="system-ui, sans-serif" font-size="6.5" fill="#d2a8ff">Seq</text>
-  <rect x="856" y="264" width="46" height="20" rx="4" fill="#161b22" stroke="#a371f7" stroke-width="0.8"/>
-  <text x="879" y="278" text-anchor="middle" font-family="system-ui, sans-serif" font-size="6.5" fill="#d2a8ff">Args</text>
-
-  <!-- Arrow down to fleet/trust -->
-  <path d="M861 284 L861 294" stroke="#a371f7" stroke-width="1.5" fill="none" marker-end="url(#eo-arr-p)"/>
-
-  <rect x="786" y="298" width="72" height="22" rx="5" fill="#0d1117" stroke="#a371f7" stroke-width="1.2"/>
-  <text x="822" y="313" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" font-weight="700" fill="#d2a8ff">Fleet Mgmt</text>
-  <rect x="864" y="298" width="72" height="22" rx="5" fill="#0d1117" stroke="#a371f7" stroke-width="1.2"/>
-  <text x="900" y="313" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" font-weight="700" fill="#d2a8ff">Trust Score</text>
-
-  <rect x="786" y="326" width="150" height="20" rx="4" fill="#a371f7" opacity="0.2"/>
-  <text x="861" y="340" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" font-weight="600" fill="#d2a8ff">Slack · Jira · Webhooks</text>
+  <text x="1060" y="340" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#484f58">Slack · Jira · ServiceNow</text>
 
   <!-- Dashed arrow from sidebar into Layer 2 -->
-  <path d="M776 240 L764 240" stroke="#a371f7" stroke-width="1.2" fill="none" stroke-dasharray="4 3" marker-end="url(#eo-arr-p)"/>
+  <path d="M960 280 L940 280" stroke="#a371f7" stroke-width="2" fill="none" stroke-dasharray="6 4" marker-end="url(#eo-ah-p)"/>
 
-  <!-- ═══════════════════════════════════════════════════════════════════════ -->
-  <!--  LAYER 2: PROPRIETARY ANALYSIS ENGINE (3 rows of connected nodes)    -->
-  <!-- ═══════════════════════════════════════════════════════════════════════ -->
-  <rect x="14" y="182" width="750" height="174" rx="10" fill="#161b22" stroke="#d29922" stroke-width="1"/>
-  <text x="389" y="198" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#e3b341" letter-spacing="0.08em">LAYER 2 — PROPRIETARY ANALYSIS ENGINE (70+ modules)</text>
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!--  LAYER 2: ANALYSIS ENGINE (hero block)                            -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <rect x="40" y="200" width="900" height="152" rx="12" fill="#1a1a0e" stroke="#5f4a1f" stroke-width="2"/>
+  <use href="#eo-graph" x="56" y="210" width="24" height="24" color="#d29922"/>
+  <text x="94" y="226" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="14" font-weight="700" fill="#e3b341">Proprietary Analysis Engine</text>
+  <text x="360" y="226" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#d29922">70+ modules · 9 vuln sources · 6 enrichments · deep risk intelligence</text>
 
-  <!-- Row 2a: Scan + Enrich pipeline -->
-  <rect x="24" y="208" width="88" height="36" rx="6" fill="#0d1117" stroke="#d29922" stroke-width="1.2"/>
-  <text x="68" y="223" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#e3b341">Vuln Scan</text>
-  <text x="68" y="237" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#d29922">9 sources</text>
+  <!-- Analysis row 1: Scan + Enrich -->
+  <rect x="56" y="242" width="140" height="36" rx="8" fill="#21262d" stroke="#7f5a1f" stroke-width="1.5"/>
+  <text x="126" y="265" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#e3b341">Vuln Scan (9 src)</text>
+  <path d="M196 260 L210 260" stroke="#d29922" stroke-width="2" fill="none" marker-end="url(#eo-ah)"/>
+  <rect x="216" y="242" width="140" height="36" rx="8" fill="#21262d" stroke="#7f5a1f" stroke-width="1.5"/>
+  <text x="286" y="265" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#e3b341">CVSS · EPSS · KEV</text>
+  <path d="M356 260 L370 260" stroke="#d29922" stroke-width="2" fill="none" marker-end="url(#eo-ah)"/>
+  <rect x="376" y="242" width="140" height="36" rx="8" fill="#21262d" stroke="#7f5a1f" stroke-width="1.5"/>
+  <text x="446" y="265" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#e3b341">AI Risk + FP Reduce</text>
 
-  <path d="M112 226 L126 226" stroke="#d29922" stroke-width="1.5" fill="none" marker-end="url(#eo-arr-a)"/>
+  <!-- Analysis row 2: Deep analysis -->
+  <rect x="56" y="290" width="134" height="36" rx="8" fill="#21262d" stroke="#7f1f1f" stroke-width="1.5"/>
+  <text x="123" y="313" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#ff7b72">Blast Radius</text>
+  <path d="M190 308 L204 308" stroke="#f85149" stroke-width="2" fill="none" marker-end="url(#eo-ah)"/>
+  <rect x="210" y="290" width="134" height="36" rx="8" fill="#21262d" stroke="#7f1f1f" stroke-width="1.5"/>
+  <text x="277" y="313" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#ff7b72">Context Graph</text>
+  <path d="M344 308 L358 308" stroke="#f85149" stroke-width="2" fill="none" marker-end="url(#eo-ah)"/>
+  <rect x="364" y="290" width="134" height="36" rx="8" fill="#21262d" stroke="#7f1f1f" stroke-width="1.5"/>
+  <text x="431" y="313" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#ff7b72">Toxic Combos</text>
+  <path d="M498 308 L512 308" stroke="#f85149" stroke-width="2" fill="none" marker-end="url(#eo-ah)"/>
+  <rect x="518" y="290" width="134" height="36" rx="8" fill="#21262d" stroke="#7f1f1f" stroke-width="1.5"/>
+  <text x="585" y="313" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#ff7b72">Posture A-F</text>
 
-  <rect x="130" y="208" width="88" height="36" rx="6" fill="#0d1117" stroke="#d29922" stroke-width="1.2"/>
-  <text x="174" y="223" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#e3b341">CVSS 3.1</text>
-  <text x="174" y="237" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#d29922">Compute</text>
+  <!-- Compliance nodes -->
+  <rect x="680" y="242" width="120" height="36" rx="8" fill="#21262d" stroke="#4f1f7f" stroke-width="1.5"/>
+  <text x="740" y="265" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#d2a8ff">10 Frameworks</text>
+  <rect x="810" y="242" width="120" height="36" rx="8" fill="#8b5cf6"/>
+  <text x="870" y="265" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#fff">Policy Engine</text>
 
-  <path d="M218 226 L232 226" stroke="#d29922" stroke-width="1.5" fill="none" marker-end="url(#eo-arr-a)"/>
+  <rect x="680" y="290" width="250" height="36" rx="8" fill="#21262d" stroke="#7f1f1f" stroke-width="1.5"/>
+  <text x="805" y="313" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#ff7b72">Incidents (P1-P4) · OCSF Events</text>
 
-  <rect x="236" y="208" width="74" height="36" rx="6" fill="#0d1117" stroke="#d29922" stroke-width="1.2"/>
-  <text x="273" y="223" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#e3b341">EPSS</text>
-  <text x="273" y="237" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#d29922">Scores</text>
+  <text x="490" y="344" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#484f58">OWASP LLM+MCP · MITRE ATLAS · NIST AI RMF · EU AI Act · SOC 2 · CIS v8 · ISO 27001</text>
 
-  <path d="M310 226 L322 226" stroke="#d29922" stroke-width="1.5" fill="none" marker-end="url(#eo-arr-a)"/>
+  <!-- Arrow Layer 2 → Layer 3 -->
+  <path d="M490 352 L490 376" stroke="#484f58" stroke-width="3" fill="none" marker-end="url(#eo-ah)"/>
 
-  <rect x="326" y="208" width="74" height="36" rx="6" fill="#0d1117" stroke="#d29922" stroke-width="1.2"/>
-  <text x="363" y="223" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#e3b341">KEV</text>
-  <text x="363" y="237" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#d29922">CISA</text>
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!--  LAYER 3: OUTPUT + DELIVERY                                       -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <rect x="40" y="380" width="1120" height="84" rx="12" fill="#0e1a14" stroke="#1f5f3a" stroke-width="2"/>
+  <use href="#eo-doc" x="56" y="394" width="24" height="24" color="#3fb950"/>
+  <text x="94" y="410" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="14" font-weight="700" fill="#7ee787">Output + Deployment</text>
+  <text x="290" y="410" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#3fb950">13+ formats · 6 delivery channels</text>
 
-  <path d="M400 226 L412 226" stroke="#d29922" stroke-width="1.5" fill="none" marker-end="url(#eo-arr-a)"/>
+  <!-- Format pills -->
+  <rect x="56" y="424" width="56" height="24" rx="12" fill="#0f3f1f" stroke="#1f7f3a" stroke-width="1"/>
+  <text x="84" y="440" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#7ee787">JSON</text>
+  <rect x="118" y="424" width="56" height="24" rx="12" fill="#0f3f1f" stroke="#1f7f3a" stroke-width="1"/>
+  <text x="146" y="440" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#7ee787">SARIF</text>
+  <rect x="180" y="424" width="56" height="24" rx="12" fill="#0f3f1f" stroke="#1f7f3a" stroke-width="1"/>
+  <text x="208" y="440" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#7ee787">CDX</text>
+  <rect x="242" y="424" width="56" height="24" rx="12" fill="#0f3f1f" stroke="#1f7f3a" stroke-width="1"/>
+  <text x="270" y="440" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#7ee787">SPDX</text>
+  <rect x="304" y="424" width="56" height="24" rx="12" fill="#0f3f1f" stroke="#1f7f3a" stroke-width="1"/>
+  <text x="332" y="440" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#7ee787">HTML</text>
+  <rect x="366" y="424" width="56" height="24" rx="12" fill="#0f3f1f" stroke="#1f7f3a" stroke-width="1"/>
+  <text x="394" y="440" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#7ee787">OCSF</text>
 
-  <rect x="416" y="208" width="88" height="36" rx="6" fill="#0d1117" stroke="#d29922" stroke-width="1.5"/>
-  <text x="460" y="223" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#e3b341">AI Risk</text>
-  <text x="460" y="237" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#d29922">Classify</text>
-
-  <path d="M504 226 L516 226" stroke="#d29922" stroke-width="1.5" fill="none" marker-end="url(#eo-arr-a)"/>
-
-  <rect x="520" y="208" width="100" height="36" rx="6" fill="#0d1117" stroke="#d29922" stroke-width="1.5"/>
-  <text x="570" y="223" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#e3b341">FP Reduction</text>
-  <text x="570" y="237" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#d29922">Malware · Typosquat</text>
-
-  <path d="M620 226 L636 226" stroke="#d29922" stroke-width="1.5" fill="none" marker-end="url(#eo-arr-a)"/>
-
-  <rect x="640" y="208" width="112" height="36" rx="6" fill="#0d1117" stroke="#d29922" stroke-width="1.5"/>
-  <text x="696" y="223" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#e3b341">OpenSSF Score</text>
-  <text x="696" y="237" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#d29922">Health metrics</text>
-
-  <!-- Row 2b: Deep Analysis (connected with arrows) -->
-  <rect x="24" y="256" width="110" height="36" rx="6" fill="#0d1117" stroke="#f85149" stroke-width="1.5"/>
-  <text x="79" y="271" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#ff7b72">Blast Radius</text>
-  <text x="79" y="285" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#f85149">6-hop chain</text>
-
-  <path d="M134 274 L148 274" stroke="#f85149" stroke-width="1.5" fill="none" marker-end="url(#eo-arr-r)"/>
-
-  <rect x="152" y="256" width="110" height="36" rx="6" fill="#0d1117" stroke="#f85149" stroke-width="1.5"/>
-  <text x="207" y="271" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#ff7b72">Context Graph</text>
-  <text x="207" y="285" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#f85149">BFS · PageRank</text>
-
-  <path d="M262 274 L276 274" stroke="#f85149" stroke-width="1.5" fill="none" marker-end="url(#eo-arr-r)"/>
-
-  <rect x="280" y="256" width="98" height="36" rx="6" fill="#0d1117" stroke="#f85149" stroke-width="1.5"/>
-  <text x="329" y="271" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#ff7b72">Risk Analyzer</text>
-  <text x="329" y="285" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#f85149">7 capabilities</text>
-
-  <path d="M378 274 L392 274" stroke="#f85149" stroke-width="1.5" fill="none" marker-end="url(#eo-arr-r)"/>
-
-  <rect x="396" y="256" width="98" height="36" rx="6" fill="#0d1117" stroke="#f85149" stroke-width="1.5"/>
-  <text x="445" y="271" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#ff7b72">Toxic Combos</text>
-  <text x="445" y="285" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#f85149">8 patterns</text>
-
-  <path d="M494 274 L508 274" stroke="#f85149" stroke-width="1.5" fill="none" marker-end="url(#eo-arr-r)"/>
-
-  <rect x="512" y="256" width="110" height="36" rx="6" fill="#0d1117" stroke="#f85149" stroke-width="1.5"/>
-  <text x="567" y="271" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#ff7b72">Posture Score</text>
-  <text x="567" y="285" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#f85149">A-F · 6 dims</text>
-
-  <path d="M622 274 L636 274" stroke="#f85149" stroke-width="1.5" fill="none" marker-end="url(#eo-arr-r)"/>
-
-  <rect x="640" y="256" width="112" height="36" rx="6" fill="#0d1117" stroke="#f85149" stroke-width="1.5"/>
-  <text x="696" y="271" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#ff7b72">Incidents</text>
-  <text x="696" y="285" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#f85149">P1-P4 · OCSF</text>
-
-  <!-- Vertical arrows from scan row to analysis row -->
-  <path d="M68 244 L68 256" stroke="#484f58" stroke-width="1" fill="none" stroke-dasharray="3 2"/>
-  <path d="M460 244 L445 256" stroke="#484f58" stroke-width="1" fill="none" stroke-dasharray="3 2"/>
-  <path d="M570 244 L567 256" stroke="#484f58" stroke-width="1" fill="none" stroke-dasharray="3 2"/>
-
-  <!-- Row 2c: Compliance & Policy -->
-  <rect x="24" y="304" width="100" height="36" rx="6" fill="#0d1117" stroke="#a371f7" stroke-width="1.2"/>
-  <text x="74" y="319" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" font-weight="700" fill="#d2a8ff">OWASP LLM</text>
-  <text x="74" y="333" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#a371f7">+ MCP + Agentic</text>
-
-  <path d="M124 322 L136 322" stroke="#a371f7" stroke-width="1.2" fill="none" marker-end="url(#eo-arr-p)"/>
-
-  <rect x="140" y="304" width="82" height="36" rx="6" fill="#0d1117" stroke="#a371f7" stroke-width="1.2"/>
-  <text x="181" y="319" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" font-weight="700" fill="#d2a8ff">MITRE ATLAS</text>
-  <text x="181" y="333" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#a371f7">Tactics</text>
-
-  <path d="M222 322 L234 322" stroke="#a371f7" stroke-width="1.2" fill="none" marker-end="url(#eo-arr-p)"/>
-
-  <rect x="238" y="304" width="74" height="36" rx="6" fill="#0d1117" stroke="#a371f7" stroke-width="1.2"/>
-  <text x="275" y="319" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" font-weight="700" fill="#d2a8ff">NIST</text>
-  <text x="275" y="333" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#a371f7">AI RMF · CSF</text>
-
-  <path d="M312 322 L324 322" stroke="#a371f7" stroke-width="1.2" fill="none" marker-end="url(#eo-arr-p)"/>
-
-  <rect x="328" y="304" width="68" height="36" rx="6" fill="#0d1117" stroke="#a371f7" stroke-width="1.2"/>
-  <text x="362" y="319" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" font-weight="700" fill="#d2a8ff">EU AI</text>
-  <text x="362" y="333" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#a371f7">Act</text>
-
-  <path d="M396 322 L408 322" stroke="#a371f7" stroke-width="1.2" fill="none" marker-end="url(#eo-arr-p)"/>
-
-  <rect x="412" y="304" width="68" height="36" rx="6" fill="#0d1117" stroke="#a371f7" stroke-width="1.2"/>
-  <text x="446" y="319" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" font-weight="700" fill="#d2a8ff">SOC 2</text>
-  <text x="446" y="333" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#a371f7">CIS v8</text>
-
-  <path d="M480 322 L492 322" stroke="#a371f7" stroke-width="1.2" fill="none" marker-end="url(#eo-arr-p)"/>
-
-  <rect x="496" y="304" width="90" height="36" rx="6" fill="#0d1117" stroke="#a371f7" stroke-width="1.2"/>
-  <text x="541" y="319" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" font-weight="700" fill="#d2a8ff">License Policy</text>
-  <text x="541" y="333" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#a371f7">SPDX rules</text>
-
-  <path d="M586 322 L598 322" stroke="#a371f7" stroke-width="1.2" fill="none" marker-end="url(#eo-arr-p)"/>
-
-  <rect x="602" y="304" width="150" height="36" rx="6" fill="#a371f7" stroke="#d2a8ff" stroke-width="1.5"/>
-  <text x="677" y="319" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#fff">Policy-as-Code Engine</text>
-  <text x="677" y="333" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#e9d5ff">YAML rules · pass/fail/warn</text>
-
-  <!-- Vertical arrow from analysis to compliance -->
-  <path d="M696 292 L696 304" stroke="#484f58" stroke-width="1" fill="none" stroke-dasharray="3 2"/>
-
-  <!-- Arrow down from Layer 2 to Layer 3 -->
-  <path d="M389 356 L389 380" stroke="#484f58" stroke-width="2.5" fill="none" marker-end="url(#eo-arr)"/>
-
-  <!-- ═══════════════════════════════════════════════════════════════════════ -->
-  <!--  LAYER 3: DEPLOYMENT & OUTPUT (output nodes connected to delivery)   -->
-  <!-- ═══════════════════════════════════════════════════════════════════════ -->
-  <rect x="14" y="382" width="932" height="140" rx="10" fill="#161b22" stroke="#3fb950" stroke-width="1"/>
-  <text x="480" y="398" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#7ee787" letter-spacing="0.08em">LAYER 3 — OUTPUT &amp; DEPLOYMENT (13+ formats)</text>
-
-  <!-- Output format nodes -->
-  <rect x="24" y="408" width="72" height="30" rx="5" fill="#0d1117" stroke="#3fb950" stroke-width="1.2"/>
-  <text x="60" y="427" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#7ee787">JSON</text>
-
-  <rect x="102" y="408" width="72" height="30" rx="5" fill="#0d1117" stroke="#3fb950" stroke-width="1.2"/>
-  <text x="138" y="427" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#7ee787">SARIF</text>
-
-  <rect x="180" y="408" width="72" height="30" rx="5" fill="#0d1117" stroke="#3fb950" stroke-width="1.2"/>
-  <text x="216" y="427" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#7ee787">CycloneDX</text>
-
-  <rect x="258" y="408" width="72" height="30" rx="5" fill="#0d1117" stroke="#3fb950" stroke-width="1.2"/>
-  <text x="294" y="427" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#7ee787">SPDX</text>
-
-  <rect x="336" y="408" width="72" height="30" rx="5" fill="#0d1117" stroke="#3fb950" stroke-width="1.2"/>
-  <text x="372" y="427" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#7ee787">HTML</text>
-
-  <rect x="414" y="408" width="72" height="30" rx="5" fill="#0d1117" stroke="#3fb950" stroke-width="1.2"/>
-  <text x="450" y="427" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#7ee787">SVG</text>
-
-  <rect x="492" y="408" width="72" height="30" rx="5" fill="#0d1117" stroke="#3fb950" stroke-width="1.2"/>
-  <text x="528" y="427" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#7ee787">OCSF</text>
-
-  <rect x="570" y="408" width="88" height="30" rx="5" fill="#0d1117" stroke="#3fb950" stroke-width="1.2"/>
-  <text x="614" y="427" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#7ee787">Prometheus</text>
-
-  <!-- Delivery channel nodes -->
-  <rect x="24" y="452" width="96" height="30" rx="5" fill="#3fb950" stroke="#7ee787" stroke-width="1.5"/>
-  <text x="72" y="471" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#fff">CLI</text>
-
-  <path d="M120 467 L134 467" stroke="#3fb950" stroke-width="1.5" fill="none" marker-end="url(#eo-arr-g)"/>
-
-  <rect x="138" y="452" width="96" height="30" rx="5" fill="#3fb950" stroke="#7ee787" stroke-width="1.5"/>
-  <text x="186" y="465" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#fff">REST API</text>
-  <text x="186" y="477" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#d1fae5">25+ endpoints</text>
-
-  <path d="M234 467 L248 467" stroke="#3fb950" stroke-width="1.5" fill="none" marker-end="url(#eo-arr-g)"/>
-
-  <rect x="252" y="452" width="96" height="30" rx="5" fill="#3fb950" stroke="#7ee787" stroke-width="1.5"/>
-  <text x="300" y="465" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#fff">MCP Server</text>
-  <text x="300" y="477" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#d1fae5">16 tools</text>
-
-  <path d="M348 467 L362 467" stroke="#3fb950" stroke-width="1.5" fill="none" marker-end="url(#eo-arr-g)"/>
-
-  <rect x="366" y="452" width="96" height="30" rx="5" fill="#3fb950" stroke="#7ee787" stroke-width="1.5"/>
-  <text x="414" y="465" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#fff">Dashboard</text>
-  <text x="414" y="477" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#d1fae5">15 sections</text>
-
-  <path d="M462 467 L476 467" stroke="#3fb950" stroke-width="1.5" fill="none" marker-end="url(#eo-arr-g)"/>
-
-  <rect x="480" y="452" width="96" height="30" rx="5" fill="#3fb950" stroke="#7ee787" stroke-width="1.5"/>
-  <text x="528" y="471" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#fff">GH Action</text>
-
-  <path d="M576 467 L590 467" stroke="#3fb950" stroke-width="1.5" fill="none" marker-end="url(#eo-arr-g)"/>
-
-  <rect x="594" y="452" width="96" height="30" rx="5" fill="#3fb950" stroke="#7ee787" stroke-width="1.5"/>
-  <text x="642" y="471" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#fff">Docker / Helm</text>
-
-  <!-- Vertical arrows from formats to delivery -->
-  <path d="M60 438 L72 452" stroke="#484f58" stroke-width="1" fill="none" stroke-dasharray="3 2"/>
-  <path d="M216 438 L300 452" stroke="#484f58" stroke-width="1" fill="none" stroke-dasharray="3 2"/>
-  <path d="M450 438 L528 452" stroke="#484f58" stroke-width="1" fill="none" stroke-dasharray="3 2"/>
+  <!-- Delivery channels -->
+  <rect x="470" y="424" width="76" height="24" rx="12" fill="#238636"/>
+  <text x="508" y="440" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#fff">CLI</text>
+  <rect x="554" y="424" width="76" height="24" rx="12" fill="#238636"/>
+  <text x="592" y="440" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#fff">REST API</text>
+  <rect x="638" y="424" width="94" height="24" rx="12" fill="#238636"/>
+  <text x="685" y="440" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#fff">MCP Server</text>
+  <rect x="740" y="424" width="94" height="24" rx="12" fill="#238636"/>
+  <text x="787" y="440" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#fff">Dashboard</text>
+  <rect x="842" y="424" width="94" height="24" rx="12" fill="#238636"/>
+  <text x="889" y="440" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#fff">GH Action</text>
+  <rect x="944" y="424" width="102" height="24" rx="12" fill="#238636"/>
+  <text x="995" y="440" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#fff">Docker/Helm</text>
 
   <!-- Alert delivery -->
-  <rect x="710" y="452" width="226" height="30" rx="5" fill="#0d1117" stroke="#3fb950" stroke-width="1"/>
-  <text x="823" y="465" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#7ee787">Alert Channels</text>
-  <text x="823" y="477" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#3fb950">Slack · Jira · ServiceNow · Drata · Vanta · Webhooks</text>
+  <text x="700" y="460" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#3fb950">Slack · Jira · ServiceNow · Drata · Vanta · Webhooks · Prometheus</text>
 
-  <!-- Delivery to alerts arrow -->
-  <path d="M690 467 L710 467" stroke="#3fb950" stroke-width="1.5" fill="none" marker-end="url(#eo-arr-g)"/>
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!--  LAYER 4: INFRASTRUCTURE                                          -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <rect x="40" y="478" width="1120" height="36" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+  <text x="600" y="500" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600" fill="#8b949e">SQLite (WAL) · PostgreSQL · Snowflake  |  RBAC + scrypt KDF  |  HMAC-SHA256 audit  |  Scheduler · Cache  |  Docker Hub · GHCR · Railway SSE · Helm</text>
 
-  <!-- Arrow: runtime protection to alert channels -->
-  <path d="M861 346 L861 370 L823 370 L823 452" stroke="#a371f7" stroke-width="1.2" fill="none" stroke-dasharray="4 3" marker-end="url(#eo-arr-p)"/>
-
-  <!-- Pipeline arrow down from format row -->
-  <path d="M389 496 L389 520" stroke="#484f58" stroke-width="2.5" fill="none" marker-end="url(#eo-arr)"/>
-
-  <!-- ═══════════════════════════════════════════════════════════════════════ -->
-  <!--  EXTERNAL INTELLIGENCE FEEDS (dashed bottom band)                    -->
-  <!-- ═══════════════════════════════════════════════════════════════════════ -->
-  <rect x="14" y="522" width="932" height="52" rx="8" fill="#161b22" stroke="#484f58" stroke-width="1" stroke-dasharray="5 3"/>
-  <text x="480" y="540" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#8b949e" letter-spacing="0.06em">EXTERNAL INTELLIGENCE FEEDS — 9 sources feed into Layer 2</text>
-
-  <rect x="28" y="550" width="80" height="16" rx="3" fill="#0d1117" stroke="#484f58" stroke-width="1" stroke-dasharray="3 2"/>
-  <text x="68" y="562" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#8b949e">OSV.dev</text>
-  <rect x="116" y="550" width="65" height="16" rx="3" fill="#0d1117" stroke="#484f58" stroke-width="1" stroke-dasharray="3 2"/>
-  <text x="148" y="562" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#8b949e">GHSA</text>
-  <rect x="189" y="550" width="75" height="16" rx="3" fill="#0d1117" stroke="#484f58" stroke-width="1" stroke-dasharray="3 2"/>
-  <text x="226" y="562" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#8b949e">NVD/NIST</text>
-  <rect x="272" y="550" width="65" height="16" rx="3" fill="#0d1117" stroke="#484f58" stroke-width="1" stroke-dasharray="3 2"/>
-  <text x="304" y="562" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#8b949e">EPSS</text>
-  <rect x="345" y="550" width="65" height="16" rx="3" fill="#0d1117" stroke="#484f58" stroke-width="1" stroke-dasharray="3 2"/>
-  <text x="377" y="562" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#8b949e">CISA KEV</text>
-  <rect x="418" y="550" width="90" height="16" rx="3" fill="#0d1117" stroke="#484f58" stroke-width="1" stroke-dasharray="3 2"/>
-  <text x="463" y="562" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#8b949e">NVIDIA CSAF</text>
-  <rect x="516" y="550" width="70" height="16" rx="3" fill="#0d1117" stroke="#484f58" stroke-width="1" stroke-dasharray="3 2"/>
-  <text x="551" y="562" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#8b949e">Grype DB</text>
-  <rect x="594" y="550" width="70" height="16" rx="3" fill="#0d1117" stroke="#484f58" stroke-width="1" stroke-dasharray="3 2"/>
-  <text x="629" y="562" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#8b949e">OpenSSF</text>
-  <rect x="672" y="550" width="90" height="16" rx="3" fill="#0d1117" stroke="#484f58" stroke-width="1" stroke-dasharray="3 2"/>
-  <text x="717" y="562" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#8b949e">MCP Registry</text>
-
-  <!-- Dashed arrows from external feeds up to Layer 2 -->
-  <path d="M300 522 L300 356" stroke="#484f58" stroke-width="1" stroke-dasharray="3 2" marker-end="url(#eo-arr)"/>
-  <path d="M500 522 L500 356" stroke="#484f58" stroke-width="1" stroke-dasharray="3 2" marker-end="url(#eo-arr)"/>
-
-  <!-- ═══════════════════════════════════════════════════════════════════════ -->
-  <!--  LAYER 4: INFRASTRUCTURE BAR                                         -->
-  <!-- ═══════════════════════════════════════════════════════════════════════ -->
-  <rect x="14" y="586" width="932" height="46" rx="10" fill="#161b22" stroke="#3fb950" stroke-width="1"/>
-  <text x="480" y="604" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#7ee787" letter-spacing="0.06em">LAYER 4 — INFRASTRUCTURE</text>
-  <text x="480" y="622" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8.5" fill="#3fb950">SQLite (WAL) · PostgreSQL · Snowflake  |  RBAC + scrypt KDF  |  HMAC-SHA256 audit  |  Scheduler · Cache  |  Docker Hub · GHCR · Railway SSE · Helm</text>
-
-  <!-- ═══════════════════════════════════════════════════════════════════════ -->
-  <!--  FOOTER                                                               -->
-  <!-- ═══════════════════════════════════════════════════════════════════════ -->
-  <text x="480" y="654" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="600" fill="#8b949e">20 MCP clients · 11 providers · 10 agent fwks · 12 model formats · 7 ecosystems · 427+ registry · 107 modules · 2,900+ tests</text>
-  <text x="480" y="672" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#484f58">Read-only · Agentless · Never stores credentials · Only package names sent to APIs · Sigstore signed · Apache 2.0</text>
-  <text x="480" y="690" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8.5" font-weight="600" fill="#d29922">~70 proprietary · ~15 hybrid · ~22 external · 0 runtime deps</text>
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!--  FOOTER                                                           -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <text x="600" y="540" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#8b949e">20 MCP clients · 11 providers · 10 agent fwks · 7 ecosystems · 12 model formats · 427+ registry · 107 modules · 2,900+ tests · 0 runtime deps</text>
 </svg>

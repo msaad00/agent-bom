@@ -1,157 +1,95 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 440" fill="none">
-  <style>
-    .title { font: 700 15px system-ui, -apple-system, sans-serif; fill: #1f2328; }
-    .subtitle { font: 400 11px system-ui, sans-serif; fill: #656d76; }
-    .phase-label { font: 700 9px system-ui, sans-serif; letter-spacing: 0.1em; }
-    .node-name { font: 600 11px system-ui, sans-serif; }
-    .node-detail { font: 400 9px system-ui, sans-serif; fill: #656d76; }
-    .badge { font: 700 8px 'SF Mono', monospace; }
-    .tag { font: 600 8.5px 'SF Mono', monospace; }
-    .flow-line { stroke-width: 2; fill: none; }
-    .dim-line { stroke: #d1d9e0; stroke-width: 1; fill: none; }
-  </style>
-  <defs>
-    <marker id="arr-red" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto">
-      <path d="M0 0L10 3.5L0 7Z" fill="#cf222e"/>
-    </marker>
-    <linearGradient id="glow-red" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#cf222e" stop-opacity="0.1"/>
-      <stop offset="100%" stop-color="#cf222e" stop-opacity="0"/>
-    </linearGradient>
-  </defs>
-
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 360" fill="none">
   <!-- Background -->
-  <rect width="880" height="440" rx="12" fill="#ffffff" stroke="#d1d9e0" stroke-width="1"/>
+  <rect width="880" height="360" rx="16" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5"/>
 
   <!-- Title -->
-  <text x="440" y="30" text-anchor="middle" class="title">Blast Radius — How a CVE propagates through the AI stack</text>
-  <text x="440" y="48" text-anchor="middle" class="subtitle">agent-bom traces every vulnerability to the agents, credentials, and tools it can reach</text>
+  <text x="440" y="32" text-anchor="middle" font-family="system-ui, sans-serif" font-size="16" font-weight="700" fill="#0f172a">How a CVE propagates through your AI stack</text>
 
-  <!-- ═══ CVE Origin ═══ -->
-  <text x="90" y="80" text-anchor="middle" class="phase-label" fill="#cf222e">VULNERABILITY</text>
+  <!-- ─── CHAIN: CVE → Package → Server → Agent ─── -->
 
-  <rect x="24" y="92" width="132" height="64" rx="10" fill="#ffebe9" stroke="#cf222e" stroke-width="2"/>
-  <text x="90" y="112" text-anchor="middle" font-family="'SF Mono', monospace" font-size="11" font-weight="700" fill="#a40e26">CVE-2025-1234</text>
-  <text x="90" y="128" text-anchor="middle" class="node-detail">better-sqlite3@9.0</text>
-  <text x="90" y="144" text-anchor="middle" class="badge" fill="#cf222e">CRITICAL 9.8 · KEV</text>
+  <!-- Node 1: CVE -->
+  <rect x="30" y="56" width="160" height="80" rx="14" fill="#fef2f2" stroke="#ef4444" stroke-width="2.5"/>
+  <text x="110" y="88" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#dc2626" letter-spacing="0.08em">VULNERABILITY</text>
+  <text x="110" y="112" text-anchor="middle" font-family="monospace" font-size="13" font-weight="700" fill="#991b1b">CVE-2025-1234</text>
+  <text x="110" y="128" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#b91c1c">CRITICAL 9.8 | KEV</text>
 
-  <line x1="156" y1="124" x2="192" y2="124" class="flow-line" stroke="#cf222e" marker-end="url(#arr-red)"/>
+  <!-- Arrow -->
+  <path d="M190 96 L220 96" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/>
+  <path d="M214 90 L224 96 L214 102" fill="#ef4444"/>
 
-  <!-- ═══ Package ═══ -->
-  <text x="274" y="80" text-anchor="middle" class="phase-label" fill="#1a7f37">PACKAGE</text>
+  <!-- Node 2: Package -->
+  <rect x="228" y="56" width="160" height="80" rx="14" fill="#f0fdf4" stroke="#22c55e" stroke-width="2"/>
+  <text x="308" y="88" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#16a34a" letter-spacing="0.08em">PACKAGE</text>
+  <text x="308" y="112" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" font-weight="700" fill="#15803d">better-sqlite3</text>
+  <text x="308" y="128" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#166534">npm v9.0.0</text>
 
-  <rect x="200" y="92" width="148" height="64" rx="10" fill="#dafbe1" stroke="#1a7f37" stroke-width="1.5"/>
-  <text x="274" y="112" text-anchor="middle" class="node-name" fill="#116329">better-sqlite3</text>
-  <text x="274" y="128" text-anchor="middle" class="node-detail">npm · v9.0.0</text>
-  <rect x="236" y="134" width="76" height="14" rx="3" fill="#ffebe9" stroke="#cf222e" stroke-width="0.8"/>
-  <text x="274" y="144" text-anchor="middle" class="badge" fill="#cf222e">1 CRITICAL</text>
+  <!-- Arrow -->
+  <path d="M388 96 L418 96" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/>
+  <path d="M412 90 L422 96 L412 102" fill="#ef4444"/>
 
-  <line x1="348" y1="124" x2="384" y2="124" class="flow-line" stroke="#cf222e" marker-end="url(#arr-red)"/>
+  <!-- Node 3: MCP Server -->
+  <rect x="426" y="56" width="160" height="80" rx="14" fill="#faf5ff" stroke="#8b5cf6" stroke-width="2"/>
+  <text x="506" y="88" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#7c3aed" letter-spacing="0.08em">MCP SERVER</text>
+  <text x="506" y="112" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" font-weight="700" fill="#6d28d9">sqlite-mcp</text>
+  <text x="506" y="128" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#7c3aed">unverified | 3 tools</text>
 
-  <!-- ═══ MCP Server ═══ -->
-  <text x="466" y="80" text-anchor="middle" class="phase-label" fill="#8250df">MCP SERVER</text>
+  <!-- Arrow -->
+  <path d="M586 96 L616 96" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/>
+  <path d="M610 90 L620 96 L610 102" fill="#ef4444"/>
 
-  <rect x="392" y="92" width="148" height="64" rx="10" fill="#fbefff" stroke="#8250df" stroke-width="1.5"/>
-  <text x="466" y="112" text-anchor="middle" class="node-name" fill="#6639ba">sqlite-mcp</text>
-  <text x="466" y="128" text-anchor="middle" class="node-detail">Unverified · 3 tools</text>
-  <rect x="422" y="134" width="88" height="14" rx="3" fill="#ffebe9" stroke="#cf222e" stroke-width="0.8"/>
-  <text x="466" y="144" text-anchor="middle" class="badge" fill="#cf222e">COMPROMISED</text>
+  <!-- Node 4: Agent -->
+  <rect x="624" y="56" width="160" height="80" rx="14" fill="#eff6ff" stroke="#3b82f6" stroke-width="2"/>
+  <text x="704" y="88" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#2563eb" letter-spacing="0.08em">AI AGENT</text>
+  <text x="704" y="112" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" font-weight="700" fill="#1d4ed8">Cursor IDE</text>
+  <text x="704" y="128" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#2563eb">4 servers | 12 tools</text>
 
-  <line x1="540" y1="124" x2="576" y2="124" class="flow-line" stroke="#cf222e" marker-end="url(#arr-red)"/>
+  <!-- Red propagation glow line -->
+  <rect x="30" y="142" width="754" height="3" rx="1.5" fill="#ef4444" opacity="0.15"/>
 
-  <!-- ═══ AI Agent ═══ -->
-  <text x="658" y="80" text-anchor="middle" class="phase-label" fill="#0969da">AI AGENT</text>
+  <!-- ─── IMPACT: What attacker reaches ─── -->
+  <text x="440" y="176" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" font-weight="700" fill="#0f172a">What an attacker can reach</text>
 
-  <rect x="584" y="92" width="148" height="64" rx="10" fill="#ddf4ff" stroke="#0969da" stroke-width="1.5"/>
-  <text x="658" y="112" text-anchor="middle" class="node-name" fill="#0550ae">Cursor IDE</text>
-  <text x="658" y="128" text-anchor="middle" class="node-detail">4 servers · 12 tools</text>
-  <rect x="614" y="134" width="88" height="14" rx="3" fill="#ffebe9" stroke="#cf222e" stroke-width="0.8"/>
-  <text x="658" y="144" text-anchor="middle" class="badge" fill="#cf222e">AT RISK</text>
+  <!-- Credentials row -->
+  <text x="48" y="210" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#d97706" letter-spacing="0.08em">CREDENTIALS EXPOSED</text>
 
-  <!-- Propagation glow -->
-  <rect x="24" y="166" width="708" height="4" rx="2" fill="url(#glow-red)"/>
-  <rect x="24" y="166" width="708" height="4" rx="2" fill="#cf222e" opacity="0.06"/>
+  <rect x="48" y="220" width="136" height="40" rx="8" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="116" y="245" text-anchor="middle" font-family="monospace" font-size="12" font-weight="700" fill="#92400e">ANTHROPIC_KEY</text>
 
-  <!-- ═══ What attacker reaches ═══ -->
-  <text x="440" y="200" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#1f2328">What an attacker can reach</text>
+  <rect x="196" y="220" width="136" height="40" rx="8" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="264" y="245" text-anchor="middle" font-family="monospace" font-size="12" font-weight="700" fill="#92400e">DB_URL</text>
 
-  <!-- Credentials -->
-  <text x="60" y="236" class="phase-label" fill="#bf8700">CREDENTIALS EXPOSED</text>
+  <rect x="344" y="220" width="136" height="40" rx="8" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="412" y="245" text-anchor="middle" font-family="monospace" font-size="12" font-weight="700" fill="#92400e">AWS_SECRET</text>
 
-  <rect x="60" y="246" width="120" height="38" rx="7" fill="#fff8c5" stroke="#bf8700" stroke-width="1.2"/>
-  <text x="120" y="262" text-anchor="middle" class="node-name" fill="#7d4e00">ANTHROPIC_KEY</text>
-  <text x="120" y="276" text-anchor="middle" class="node-detail">API access</text>
+  <!-- Tools row -->
+  <text x="48" y="288" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#78716c" letter-spacing="0.08em">TOOLS REACHABLE</text>
 
-  <rect x="196" y="246" width="120" height="38" rx="7" fill="#fff8c5" stroke="#bf8700" stroke-width="1.2"/>
-  <text x="256" y="262" text-anchor="middle" class="node-name" fill="#7d4e00">DB_URL</text>
-  <text x="256" y="276" text-anchor="middle" class="node-detail">Database connection</text>
+  <rect x="48" y="298" width="100" height="36" rx="8" fill="#f8fafc" stroke="#d1d5db" stroke-width="1.2"/>
+  <text x="98" y="321" text-anchor="middle" font-family="monospace" font-size="12" font-weight="600" fill="#374151">query_db</text>
 
-  <rect x="332" y="246" width="120" height="38" rx="7" fill="#fff8c5" stroke="#bf8700" stroke-width="1.2"/>
-  <text x="392" y="262" text-anchor="middle" class="node-name" fill="#7d4e00">AWS_SECRET</text>
-  <text x="392" y="276" text-anchor="middle" class="node-detail">Cloud access</text>
+  <rect x="160" y="298" width="100" height="36" rx="8" fill="#f8fafc" stroke="#d1d5db" stroke-width="1.2"/>
+  <text x="210" y="321" text-anchor="middle" font-family="monospace" font-size="12" font-weight="600" fill="#374151">read_file</text>
 
-  <!-- Tools -->
-  <text x="60" y="310" class="phase-label" fill="#9a6700">TOOLS REACHABLE</text>
+  <rect x="272" y="298" width="100" height="36" rx="8" fill="#f8fafc" stroke="#d1d5db" stroke-width="1.2"/>
+  <text x="322" y="321" text-anchor="middle" font-family="monospace" font-size="12" font-weight="600" fill="#374151">write_file</text>
 
-  <rect x="60" y="320" width="90" height="32" rx="6" fill="#f6f8fa" stroke="#9a6700" stroke-width="1"/>
-  <text x="105" y="340" text-anchor="middle" class="tag" fill="#7d4e00">query_db</text>
+  <rect x="384" y="298" width="100" height="36" rx="8" fill="#fef2f2" stroke="#ef4444" stroke-width="2"/>
+  <text x="434" y="321" text-anchor="middle" font-family="monospace" font-size="12" font-weight="700" fill="#dc2626">run_shell</text>
 
-  <rect x="164" y="320" width="90" height="32" rx="6" fill="#f6f8fa" stroke="#9a6700" stroke-width="1"/>
-  <text x="209" y="340" text-anchor="middle" class="tag" fill="#7d4e00">read_file</text>
+  <!-- Impact summary box -->
+  <rect x="560" y="196" width="290" height="146" rx="14" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="705" y="222" text-anchor="middle" font-family="system-ui, sans-serif" font-size="13" font-weight="700" fill="#0f172a">Impact Summary</text>
 
-  <rect x="268" y="320" width="90" height="32" rx="6" fill="#f6f8fa" stroke="#9a6700" stroke-width="1"/>
-  <text x="313" y="340" text-anchor="middle" class="tag" fill="#7d4e00">write_file</text>
+  <text x="588" y="250" font-family="system-ui, sans-serif" font-size="28" font-weight="800" fill="#ef4444">1</text>
+  <text x="616" y="248" font-family="system-ui, sans-serif" font-size="12" font-weight="500" fill="#64748b">agent compromised</text>
 
-  <rect x="372" y="320" width="90" height="32" rx="6" fill="#ffebe9" stroke="#cf222e" stroke-width="1.5"/>
-  <text x="417" y="340" text-anchor="middle" class="tag" fill="#a40e26">run_shell</text>
+  <text x="588" y="280" font-family="system-ui, sans-serif" font-size="28" font-weight="800" fill="#f59e0b">3</text>
+  <text x="616" y="278" font-family="system-ui, sans-serif" font-size="12" font-weight="500" fill="#64748b">credentials exposed</text>
 
-  <!-- Threat tags -->
-  <text x="60" y="376" class="phase-label" fill="#8250df">THREAT FRAMEWORKS TRIGGERED</text>
+  <text x="588" y="310" font-family="system-ui, sans-serif" font-size="28" font-weight="800" fill="#78716c">4</text>
+  <text x="616" y="308" font-family="system-ui, sans-serif" font-size="12" font-weight="500" fill="#64748b">tools reachable (incl. RCE)</text>
 
-  <rect x="60" y="386" width="60" height="20" rx="4" fill="#fbefff" stroke="#8250df" stroke-width="0.8"/>
-  <text x="90" y="400" text-anchor="middle" class="tag" fill="#6639ba">LLM02</text>
-
-  <rect x="130" y="386" width="60" height="20" rx="4" fill="#fbefff" stroke="#8250df" stroke-width="0.8"/>
-  <text x="160" y="400" text-anchor="middle" class="tag" fill="#6639ba">LLM05</text>
-
-  <rect x="200" y="386" width="60" height="20" rx="4" fill="#fbefff" stroke="#8250df" stroke-width="0.8"/>
-  <text x="230" y="400" text-anchor="middle" class="tag" fill="#6639ba">LLM06</text>
-
-  <rect x="270" y="386" width="60" height="20" rx="4" fill="#fbefff" stroke="#8250df" stroke-width="0.8"/>
-  <text x="300" y="400" text-anchor="middle" class="tag" fill="#6639ba">LLM08</text>
-
-  <rect x="348" y="386" width="82" height="20" rx="4" fill="#ddf4ff" stroke="#0969da" stroke-width="0.8"/>
-  <text x="389" y="400" text-anchor="middle" class="tag" fill="#0550ae">AML.T0010</text>
-
-  <rect x="440" y="386" width="82" height="20" rx="4" fill="#ddf4ff" stroke="#0969da" stroke-width="0.8"/>
-  <text x="481" y="400" text-anchor="middle" class="tag" fill="#0550ae">AML.T0062</text>
-
-  <!-- ═══ Impact Summary ═══ -->
-  <rect x="560" y="220" width="296" height="196" rx="10" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="1"/>
-  <text x="708" y="244" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#1f2328">Impact Summary</text>
-
-  <text x="584" y="272" font-family="system-ui, sans-serif" font-size="24" font-weight="700" fill="#cf222e">1</text>
-  <text x="608" y="268" class="node-name" fill="#656d76">agent affected</text>
-  <text x="608" y="280" class="node-detail">Cursor IDE (100% of env)</text>
-
-  <line x1="580" y1="290" x2="840" y2="290" class="dim-line"/>
-
-  <text x="584" y="312" font-family="system-ui, sans-serif" font-size="24" font-weight="700" fill="#bf8700">3</text>
-  <text x="608" y="308" class="node-name" fill="#656d76">credentials exposed</text>
-  <text x="608" y="320" class="node-detail">ANTHROPIC_KEY, DB_URL, AWS_SECRET</text>
-
-  <line x1="580" y1="330" x2="840" y2="330" class="dim-line"/>
-
-  <text x="584" y="352" font-family="system-ui, sans-serif" font-size="24" font-weight="700" fill="#9a6700">4</text>
-  <text x="608" y="348" class="node-name" fill="#656d76">tools reachable</text>
-  <text x="608" y="360" class="node-detail">incl. run_shell (RCE risk)</text>
-
-  <line x1="580" y1="370" x2="840" y2="370" class="dim-line"/>
-
-  <text x="584" y="392" font-family="system-ui, sans-serif" font-size="24" font-weight="700" fill="#8250df">6</text>
-  <text x="608" y="388" class="node-name" fill="#656d76">threat categories</text>
-  <text x="608" y="400" class="node-detail">4 OWASP LLM + 2 ATLAS + ASI + EU</text>
-
-  <rect x="580" y="406" width="260" height="2" rx="1" fill="#1a7f37" opacity="0.4"/>
-  <text x="710" y="424" text-anchor="middle" font-family="'SF Mono', monospace" font-size="9" font-weight="600" fill="#1a7f37">FIX: upgrade better-sqlite3 → 11.7.0</text>
+  <!-- Fix footer -->
+  <rect x="560" y="324" width="290" height="2" rx="1" fill="#22c55e" opacity="0.4"/>
+  <text x="705" y="344" text-anchor="middle" font-family="monospace" font-size="11" font-weight="700" fill="#16a34a">FIX: upgrade better-sqlite3 to 11.7.0</text>
 </svg>

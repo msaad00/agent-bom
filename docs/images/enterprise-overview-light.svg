@@ -1,245 +1,116 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" fill="none">
-  <style>
-    .title { font: 700 14px system-ui, -apple-system, sans-serif; fill: #1f2328; }
-    .subtitle { font: 400 10px system-ui, sans-serif; fill: #656d76; }
-    .section-title { font: 700 9px system-ui, sans-serif; letter-spacing: 0.08em; }
-    .box-label { font: 600 10px system-ui, sans-serif; fill: #1f2328; }
-    .box-sub { font: 400 8px system-ui, sans-serif; fill: #656d76; }
-    .step-num { font: 700 11px system-ui, sans-serif; }
-    .step-label { font: 600 10px system-ui, sans-serif; fill: #1f2328; }
-    .step-detail { font: 400 8px system-ui, sans-serif; fill: #656d76; }
-    .badge { font: 600 8px system-ui, sans-serif; }
-    .side-title { font: 700 9px system-ui, sans-serif; letter-spacing: 0.06em; }
-    .side-label { font: 500 8.5px system-ui, sans-serif; fill: #1f2328; }
-    .side-sub { font: 400 7.5px system-ui, sans-serif; fill: #656d76; }
-  </style>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 420" fill="none">
   <defs>
-    <marker id="arr-blue" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto">
-      <polygon points="0 0, 10 3.5, 0 7" fill="#0969da" opacity="0.7"/>
-    </marker>
-    <marker id="arr-amber" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto">
-      <polygon points="0 0, 10 3.5, 0 7" fill="#bf8700" opacity="0.7"/>
-    </marker>
-    <marker id="arr-green" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto">
-      <polygon points="0 0, 10 3.5, 0 7" fill="#1a7f37" opacity="0.7"/>
+    <marker id="arrow-down" viewBox="0 0 10 10" refX="5" refY="10" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0L5 10L10 0" fill="none" stroke="#94a3b8" stroke-width="2"/>
     </marker>
   </defs>
 
   <!-- Background -->
-  <rect width="960" height="540" rx="12" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
+  <rect width="880" height="420" rx="16" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5"/>
 
-  <!-- Title -->
-  <text x="480" y="28" text-anchor="middle" class="title">agent-bom — AI Supply Chain Security Scanner</text>
-  <text x="480" y="42" text-anchor="middle" class="subtitle">Read-only analysis · No agents deployed · No code execution · Local or CI/CD</text>
+  <!-- ─── ROW 1: INPUT SOURCES ─── -->
+  <rect x="30" y="24" width="820" height="90" rx="12" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.2"/>
+  <text x="440" y="46" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#3b82f6" letter-spacing="0.1em">INPUT SOURCES</text>
 
-  <!-- ═══ INPUT SOURCES (top lane) ═══ -->
-  <rect x="24" y="58" width="720" height="110" rx="8" fill="#f6f8fa" stroke="#0969da" stroke-width="0.8" opacity="0.9"/>
-  <text x="40" y="74" class="section-title" fill="#0969da">INPUT SOURCES</text>
+  <!-- Source pills -->
+  <rect x="52" y="56" width="120" height="44" rx="10" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="112" y="83" text-anchor="middle" font-family="system-ui, sans-serif" font-size="13" font-weight="600" fill="#1e40af">MCP Configs</text>
 
-  <!-- Input box 1: MCP Configs -->
-  <rect x="36" y="82" width="108" height="76" rx="6" fill="#ffffff" stroke="#d0d7de" stroke-width="0.8"/>
-  <circle cx="90" cy="104" r="12" fill="none" stroke="#0969da" stroke-width="1.2" opacity="0.7"/>
-  <text x="90" y="108" text-anchor="middle" class="step-num" fill="#0969da">⚙</text>
-  <text x="90" y="126" text-anchor="middle" class="box-label">MCP Configs</text>
-  <text x="90" y="137" text-anchor="middle" class="box-sub">18 clients · auto-detect</text>
-  <text x="90" y="148" text-anchor="middle" class="box-sub">Claude · Cursor · Codex</text>
+  <rect x="184" y="56" width="120" height="44" rx="10" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="244" y="83" text-anchor="middle" font-family="system-ui, sans-serif" font-size="13" font-weight="600" fill="#1e40af">Containers</text>
 
-  <!-- Input box 2: Containers -->
-  <rect x="152" y="82" width="108" height="76" rx="6" fill="#ffffff" stroke="#d0d7de" stroke-width="0.8"/>
-  <circle cx="206" cy="104" r="12" fill="none" stroke="#0969da" stroke-width="1.2" opacity="0.7"/>
-  <text x="206" y="108" text-anchor="middle" class="step-num" fill="#0969da">🐳</text>
-  <text x="206" y="126" text-anchor="middle" class="box-label">Containers</text>
-  <text x="206" y="137" text-anchor="middle" class="box-sub">Docker Hub · ECR · GCR</text>
-  <text x="206" y="148" text-anchor="middle" class="box-sub">OCI deep scan</text>
+  <rect x="316" y="56" width="120" height="44" rx="10" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="376" y="83" text-anchor="middle" font-family="system-ui, sans-serif" font-size="13" font-weight="600" fill="#1e40af">Kubernetes</text>
 
-  <!-- Input box 3: Kubernetes -->
-  <rect x="268" y="82" width="108" height="76" rx="6" fill="#ffffff" stroke="#d0d7de" stroke-width="0.8"/>
-  <circle cx="322" cy="104" r="12" fill="none" stroke="#0969da" stroke-width="1.2" opacity="0.7"/>
-  <text x="322" y="108" text-anchor="middle" class="step-num" fill="#0969da">☸</text>
-  <text x="322" y="126" text-anchor="middle" class="box-label">Kubernetes</text>
-  <text x="322" y="137" text-anchor="middle" class="box-sub">Multi-namespace</text>
-  <text x="322" y="148" text-anchor="middle" class="box-sub">Pod image discovery</text>
+  <rect x="448" y="56" width="120" height="44" rx="10" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="508" y="83" text-anchor="middle" font-family="system-ui, sans-serif" font-size="13" font-weight="600" fill="#1e40af">Cloud APIs</text>
 
-  <!-- Input box 4: SBOMs -->
-  <rect x="384" y="82" width="108" height="76" rx="6" fill="#ffffff" stroke="#d0d7de" stroke-width="0.8"/>
-  <circle cx="438" cy="104" r="12" fill="none" stroke="#0969da" stroke-width="1.2" opacity="0.7"/>
-  <text x="438" y="108" text-anchor="middle" class="step-num" fill="#0969da">📋</text>
-  <text x="438" y="126" text-anchor="middle" class="box-label">SBOMs</text>
-  <text x="438" y="137" text-anchor="middle" class="box-sub">CycloneDX · SPDX</text>
-  <text x="438" y="148" text-anchor="middle" class="box-sub">Vendor-provided</text>
+  <rect x="580" y="56" width="120" height="44" rx="10" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="640" y="83" text-anchor="middle" font-family="system-ui, sans-serif" font-size="13" font-weight="600" fill="#1e40af">SBOMs</text>
 
-  <!-- Input box 5: Cloud -->
-  <rect x="500" y="82" width="108" height="76" rx="6" fill="#ffffff" stroke="#d0d7de" stroke-width="0.8"/>
-  <circle cx="554" cy="104" r="12" fill="none" stroke="#0969da" stroke-width="1.2" opacity="0.7"/>
-  <text x="554" y="108" text-anchor="middle" class="step-num" fill="#0969da">☁</text>
-  <text x="554" y="126" text-anchor="middle" class="box-label">Cloud</text>
-  <text x="554" y="137" text-anchor="middle" class="box-sub">Snowflake · AWS</text>
-  <text x="554" y="148" text-anchor="middle" class="box-sub">Azure · GCP</text>
+  <rect x="712" y="56" width="126" height="44" rx="10" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="775" y="83" text-anchor="middle" font-family="system-ui, sans-serif" font-size="13" font-weight="600" fill="#1e40af">AI Frameworks</text>
 
-  <!-- Input box 6: AI Frameworks -->
-  <rect x="616" y="82" width="116" height="76" rx="6" fill="#ffffff" stroke="#d0d7de" stroke-width="0.8"/>
-  <circle cx="674" cy="104" r="12" fill="none" stroke="#0969da" stroke-width="1.2" opacity="0.7"/>
-  <text x="674" y="108" text-anchor="middle" class="step-num" fill="#0969da">🤖</text>
-  <text x="674" y="126" text-anchor="middle" class="box-label">AI Frameworks</text>
-  <text x="674" y="137" text-anchor="middle" class="box-sub">LangChain · CrewAI</text>
-  <text x="674" y="148" text-anchor="middle" class="box-sub">70+ packages tracked</text>
+  <!-- Arrow down -->
+  <path d="M440 114 L440 136" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M434 130 L440 140 L446 130" fill="#94a3b8"/>
 
-  <!-- Flow arrow: inputs → engine -->
-  <line x1="384" y1="170" x2="384" y2="192" stroke="#0969da" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arr-blue)" opacity="0.6"/>
+  <!-- ─── ROW 2: SCANNER ENGINE ─── -->
+  <rect x="30" y="144" width="620" height="110" rx="12" fill="#fffbeb" stroke="#fcd34d" stroke-width="1.2"/>
+  <text x="340" y="166" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#d97706" letter-spacing="0.1em">SCANNER ENGINE</text>
 
-  <!-- ═══ SCANNER ENGINE (middle lane) ═══ -->
-  <rect x="24" y="196" width="720" height="108" rx="8" fill="#f6f8fa" stroke="#bf8700" stroke-width="0.8" opacity="0.9"/>
-  <text x="40" y="212" class="section-title" fill="#bf8700">SCANNER ENGINE</text>
-  <text x="280" y="212" class="subtitle">read-only · no agents · local execution</text>
+  <!-- Pipeline stages -->
+  <rect x="46" y="178" width="90" height="60" rx="8" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="91" y="200" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" font-weight="700" fill="#92400e">Discover</text>
+  <text x="91" y="216" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#a16207">18 clients</text>
 
-  <!-- Step 1: Discover -->
-  <rect x="36" y="220" width="128" height="72" rx="6" fill="#ffffff" stroke="#bf8700" stroke-width="0.8" opacity="0.7"/>
-  <rect x="36" y="220" width="128" height="18" rx="6" fill="#bf8700" opacity="0.08"/>
-  <text x="48" y="233" class="step-num" fill="#bf8700">①</text>
-  <text x="68" y="233" class="step-label">Discover</text>
-  <text x="100" y="252" text-anchor="middle" class="step-detail">Auto-detect configs</text>
-  <text x="100" y="264" text-anchor="middle" class="step-detail">18 MCP clients</text>
-  <text x="100" y="276" text-anchor="middle" class="step-detail">Docker · Compose · K8s</text>
+  <path d="M140 208 L152 208" stroke="#d97706" stroke-width="2" stroke-linecap="round"/>
+  <path d="M148 204 L155 208 L148 212" fill="#d97706"/>
 
-  <line x1="166" y1="256" x2="178" y2="256" stroke="#bf8700" stroke-width="1.2" marker-end="url(#arr-amber)" opacity="0.5"/>
+  <rect x="160" y="178" width="90" height="60" rx="8" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="205" y="200" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" font-weight="700" fill="#92400e">Extract</text>
+  <text x="205" y="216" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#a16207">packages</text>
 
-  <!-- Step 2: Extract -->
-  <rect x="182" y="220" width="118" height="72" rx="6" fill="#ffffff" stroke="#bf8700" stroke-width="0.8" opacity="0.7"/>
-  <rect x="182" y="220" width="118" height="18" rx="6" fill="#bf8700" opacity="0.08"/>
-  <text x="194" y="233" class="step-num" fill="#bf8700">②</text>
-  <text x="214" y="233" class="step-label">Extract</text>
-  <text x="241" y="252" text-anchor="middle" class="step-detail">Packages + versions</text>
-  <text x="241" y="264" text-anchor="middle" class="step-detail">Lock files · registries</text>
-  <text x="241" y="276" text-anchor="middle" class="step-detail">PURLs · credentials</text>
+  <path d="M254 208 L266 208" stroke="#d97706" stroke-width="2" stroke-linecap="round"/>
+  <path d="M262 204 L269 208 L262 212" fill="#d97706"/>
 
-  <line x1="302" y1="256" x2="314" y2="256" stroke="#bf8700" stroke-width="1.2" marker-end="url(#arr-amber)" opacity="0.5"/>
+  <rect x="274" y="178" width="90" height="60" rx="8" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="319" y="200" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" font-weight="700" fill="#92400e">Scan</text>
+  <text x="319" y="216" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#a16207">OSV + Grype</text>
 
-  <!-- Step 3: Scan -->
-  <rect x="318" y="220" width="118" height="72" rx="6" fill="#ffffff" stroke="#bf8700" stroke-width="0.8" opacity="0.7"/>
-  <rect x="318" y="220" width="118" height="18" rx="6" fill="#bf8700" opacity="0.08"/>
-  <text x="330" y="233" class="step-num" fill="#bf8700">③</text>
-  <text x="350" y="233" class="step-label">Scan</text>
-  <text x="377" y="252" text-anchor="middle" class="step-detail">OSV.dev batch API</text>
-  <text x="377" y="264" text-anchor="middle" class="step-detail">Grype for images</text>
-  <text x="377" y="276" text-anchor="middle" class="step-detail">Typosquat detection</text>
+  <path d="M368 208 L380 208" stroke="#d97706" stroke-width="2" stroke-linecap="round"/>
+  <path d="M376 204 L383 208 L376 212" fill="#d97706"/>
 
-  <line x1="438" y1="256" x2="450" y2="256" stroke="#bf8700" stroke-width="1.2" marker-end="url(#arr-amber)" opacity="0.5"/>
+  <rect x="388" y="178" width="90" height="60" rx="8" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="433" y="200" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" font-weight="700" fill="#92400e">Enrich</text>
+  <text x="433" y="216" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#a16207">NVD + EPSS</text>
 
-  <!-- Step 4: Enrich -->
-  <rect x="454" y="220" width="118" height="72" rx="6" fill="#ffffff" stroke="#bf8700" stroke-width="0.8" opacity="0.7"/>
-  <rect x="454" y="220" width="118" height="18" rx="6" fill="#bf8700" opacity="0.08"/>
-  <text x="466" y="233" class="step-num" fill="#bf8700">④</text>
-  <text x="486" y="233" class="step-label">Enrich</text>
-  <text x="513" y="252" text-anchor="middle" class="step-detail">NVD CVSS scores</text>
-  <text x="513" y="264" text-anchor="middle" class="step-detail">FIRST EPSS probability</text>
-  <text x="513" y="276" text-anchor="middle" class="step-detail">CISA KEV + CWEs</text>
+  <path d="M482 208 L494 208" stroke="#d97706" stroke-width="2" stroke-linecap="round"/>
+  <path d="M490 204 L497 208 L490 212" fill="#d97706"/>
 
-  <line x1="574" y1="256" x2="586" y2="256" stroke="#bf8700" stroke-width="1.2" marker-end="url(#arr-amber)" opacity="0.5"/>
+  <rect x="502" y="178" width="90" height="60" rx="8" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="547" y="200" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" font-weight="700" fill="#92400e">Analyze</text>
+  <text x="547" y="216" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#a16207">blast radius</text>
 
-  <!-- Step 5: Analyze -->
-  <rect x="590" y="220" width="142" height="72" rx="6" fill="#ffffff" stroke="#bf8700" stroke-width="0.8" opacity="0.7"/>
-  <rect x="590" y="220" width="142" height="18" rx="6" fill="#bf8700" opacity="0.08"/>
-  <text x="602" y="233" class="step-num" fill="#bf8700">⑤</text>
-  <text x="622" y="233" class="step-label">Analyze</text>
-  <text x="661" y="252" text-anchor="middle" class="step-detail">Blast radius mapping</text>
-  <text x="661" y="264" text-anchor="middle" class="step-detail">10 compliance frameworks</text>
-  <text x="661" y="276" text-anchor="middle" class="step-detail">Risk scoring (0-10)</text>
+  <!-- ─── SIDEBAR: RUNTIME ─── -->
+  <rect x="666" y="144" width="184" height="110" rx="12" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <text x="758" y="166" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#7c3aed" letter-spacing="0.1em">RUNTIME</text>
 
-  <!-- Flow arrow: engine → outputs -->
-  <line x1="384" y1="306" x2="384" y2="328" stroke="#bf8700" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arr-green)" opacity="0.6"/>
+  <text x="688" y="190" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#6d28d9">MCP Proxy</text>
+  <text x="688" y="208" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#6d28d9">Protection Engine</text>
+  <text x="688" y="226" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#6d28d9">Fleet Management</text>
+  <text x="688" y="244" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#6d28d9">Alert Pipeline</text>
 
-  <!-- ═══ OUTPUTS (bottom-left lane) ═══ -->
-  <rect x="24" y="332" width="480" height="190" rx="8" fill="#f6f8fa" stroke="#1a7f37" stroke-width="0.8" opacity="0.9"/>
-  <text x="40" y="348" class="section-title" fill="#1a7f37">OUTPUTS + INTEGRATIONS</text>
+  <!-- Dotted connector to runtime -->
+  <path d="M596 208 L666 208" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="6 4"/>
 
-  <rect x="36" y="356" width="222" height="38" rx="5" fill="#ffffff" stroke="#d0d7de" stroke-width="0.8"/>
-  <text x="48" y="373" class="box-label">Report Formats</text>
-  <text x="48" y="385" class="box-sub">JSON · SARIF · CycloneDX · SPDX · HTML · SVG · Badge</text>
+  <!-- Arrow down from engine -->
+  <path d="M340 254 L340 276" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M334 270 L340 280 L346 270" fill="#94a3b8"/>
 
-  <rect x="266" y="356" width="228" height="38" rx="5" fill="#ffffff" stroke="#d0d7de" stroke-width="0.8"/>
-  <text x="278" y="373" class="box-label">Security Dashboard</text>
-  <text x="278" y="385" class="box-sub">13-page Next.js UI · REST API · SSE streaming</text>
+  <!-- ─── ROW 3: OUTPUTS ─── -->
+  <rect x="30" y="284" width="820" height="108" rx="12" fill="#ecfdf5" stroke="#6ee7b7" stroke-width="1.2"/>
+  <text x="440" y="306" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#059669" letter-spacing="0.1em">OUTPUTS</text>
 
-  <rect x="36" y="400" width="222" height="38" rx="5" fill="#ffffff" stroke="#d0d7de" stroke-width="0.8"/>
-  <text x="48" y="417" class="box-label">CI/CD Pipeline Gates</text>
-  <text x="48" y="429" class="box-sub">GitHub Actions · GitLab CI · SARIF upload · fail gates</text>
+  <rect x="46" y="318" width="110" height="44" rx="10" fill="#ffffff" stroke="#6ee7b7" stroke-width="1.2"/>
+  <text x="101" y="345" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#065f46">JSON / SARIF</text>
 
-  <rect x="266" y="400" width="228" height="38" rx="5" fill="#ffffff" stroke="#d0d7de" stroke-width="0.8"/>
-  <text x="278" y="417" class="box-label">Observability</text>
-  <text x="278" y="429" class="box-sub">Prometheus · OpenTelemetry · Grafana · Pushgateway</text>
+  <rect x="168" y="318" width="110" height="44" rx="10" fill="#ffffff" stroke="#6ee7b7" stroke-width="1.2"/>
+  <text x="223" y="345" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#065f46">CycloneDX</text>
 
-  <rect x="36" y="444" width="222" height="38" rx="5" fill="#ffffff" stroke="#d0d7de" stroke-width="0.8"/>
-  <text x="48" y="461" class="box-label">Alert Pipeline</text>
-  <text x="48" y="473" class="box-sub">Slack · Jira · Webhooks · auto-trigger on scan</text>
+  <rect x="290" y="318" width="110" height="44" rx="10" fill="#ffffff" stroke="#6ee7b7" stroke-width="1.2"/>
+  <text x="345" y="345" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#065f46">Dashboard</text>
 
-  <rect x="266" y="444" width="228" height="38" rx="5" fill="#ffffff" stroke="#d0d7de" stroke-width="0.8"/>
-  <text x="278" y="461" class="box-label">Governance</text>
-  <text x="278" y="473" class="box-sub">Snowflake · CMMC export · Audit trail · SBOM archive</text>
+  <rect x="412" y="318" width="110" height="44" rx="10" fill="#ffffff" stroke="#6ee7b7" stroke-width="1.2"/>
+  <text x="467" y="345" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#065f46">REST API</text>
 
-  <rect x="36" y="488" width="456" height="38" rx="4" fill="#ffffff" stroke="#d0d7de" stroke-width="0.6"/>
-  <text x="48" y="501" class="badge" fill="#1a7f37">OWASP LLM</text>
-  <text x="120" y="501" class="badge" fill="#1a7f37">OWASP MCP</text>
-  <text x="195" y="501" class="badge" fill="#1a7f37">OWASP Agentic</text>
-  <text x="288" y="501" class="badge" fill="#1a7f37">MITRE ATLAS</text>
-  <text x="370" y="501" class="badge" fill="#1a7f37">NIST AI RMF</text>
-  <text x="448" y="501" class="badge" fill="#1a7f37">EU AI Act</text>
-  <text x="48" y="517" class="badge" fill="#1a7f37">NIST CSF</text>
-  <text x="106" y="517" class="badge" fill="#1a7f37">ISO 27001</text>
-  <text x="174" y="517" class="badge" fill="#1a7f37">SOC 2</text>
-  <text x="222" y="517" class="badge" fill="#1a7f37">CIS Controls v8</text>
+  <rect x="534" y="318" width="110" height="44" rx="10" fill="#ffffff" stroke="#6ee7b7" stroke-width="1.2"/>
+  <text x="589" y="345" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#065f46">MCP Server</text>
 
-  <!-- ═══ RUNTIME + FLEET (right side panel) ═══ -->
-  <rect x="756" y="58" width="186" height="464" rx="8" fill="#f6f8fa" stroke="#8250df" stroke-width="0.8" opacity="0.9"/>
-  <text x="772" y="74" class="section-title" fill="#8250df">RUNTIME + FLEET</text>
+  <rect x="656" y="318" width="110" height="44" rx="10" fill="#ffffff" stroke="#6ee7b7" stroke-width="1.2"/>
+  <text x="711" y="345" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#065f46">Slack / Jira</text>
 
-  <rect x="768" y="82" width="162" height="72" rx="6" fill="#ffffff" stroke="#8250df" stroke-width="0.6" opacity="0.8"/>
-  <text x="780" y="100" class="side-label" fill="#8250df">⛨ Runtime Protection</text>
-  <text x="780" y="114" class="side-sub">Tool drift detector</text>
-  <text x="780" y="125" class="side-sub">Argument analyzer</text>
-  <text x="780" y="136" class="side-sub">Credential leak detector</text>
-  <text x="780" y="147" class="side-sub">Rate limiter · Sequence analyzer</text>
-
-  <rect x="768" y="162" width="162" height="68" rx="6" fill="#ffffff" stroke="#8250df" stroke-width="0.6" opacity="0.8"/>
-  <text x="780" y="180" class="side-label" fill="#8250df">🏢 Fleet Management</text>
-  <text x="780" y="194" class="side-sub">Multi-tenant agent registry</text>
-  <text x="780" y="205" class="side-sub">Trust scoring per agent</text>
-  <text x="780" y="216" class="side-sub">Lifecycle: discover → approve</text>
-
-  <rect x="768" y="238" width="162" height="56" rx="6" fill="#ffffff" stroke="#8250df" stroke-width="0.6" opacity="0.8"/>
-  <text x="780" y="256" class="side-label" fill="#8250df">🔔 Alert Pipeline</text>
-  <text x="780" y="270" class="side-sub">Webhook · Slack · in-memory</text>
-  <text x="780" y="281" class="side-sub">Auto-trigger on scan + runtime</text>
-
-  <rect x="768" y="302" width="162" height="56" rx="6" fill="#ffffff" stroke="#8250df" stroke-width="0.6" opacity="0.8"/>
-  <text x="780" y="320" class="side-label" fill="#8250df">🕸 Agent Mesh</text>
-  <text x="780" y="334" class="side-sub">Cross-agent topology map</text>
-  <text x="780" y="345" class="side-sub">Shared server detection</text>
-
-  <rect x="768" y="366" width="162" height="56" rx="6" fill="#ffffff" stroke="#8250df" stroke-width="0.6" opacity="0.8"/>
-  <text x="780" y="384" class="side-label" fill="#8250df">🛡 MCP Proxy</text>
-  <text x="780" y="398" class="side-sub">Stdio intercept · policy enforce</text>
-  <text x="780" y="409" class="side-sub">Replay detection · audit log</text>
-
-  <rect x="768" y="430" width="162" height="56" rx="6" fill="#ffffff" stroke="#8250df" stroke-width="0.6" opacity="0.8"/>
-  <text x="780" y="448" class="side-label" fill="#8250df">🔒 Enforcement</text>
-  <text x="780" y="462" class="side-sub">Tool poisoning detection</text>
-  <text x="780" y="473" class="side-sub">Permission scanning · drift</text>
-
-  <line x1="744" y1="250" x2="756" y2="250" stroke="#8250df" stroke-width="1.2" stroke-dasharray="3 3" opacity="0.5"/>
-
-  <!-- External data sources -->
-  <rect x="516" y="332" width="228" height="62" rx="6" fill="#f6f8fa" stroke="#afb8c1" stroke-width="0.6" opacity="0.7"/>
-  <text x="528" y="348" class="section-title" fill="#656d76">PUBLIC DATA SOURCES</text>
-  <text x="528" y="364" class="box-sub">OSV.dev · NVD/NIST · FIRST EPSS</text>
-  <text x="528" y="376" class="box-sub">CISA KEV · MCP Registry (427+) · Grype DB</text>
-  <text x="528" y="388" class="box-sub">No auth required · No user data sent</text>
-
-  <rect x="516" y="400" width="228" height="48" rx="6" fill="#ffffff" stroke="#d0d7de" stroke-width="0.6"/>
-  <text x="528" y="416" class="side-label" fill="#1f2328">vs Wiz / Snyk / Prisma</text>
-  <text x="528" y="429" class="box-sub">✓ Free + open source (Apache-2.0)</text>
-  <text x="528" y="440" class="box-sub">✓ AI-native · MCP-first · runs anywhere</text>
-
-  <rect x="516" y="454" width="228" height="40" rx="6" fill="#ffffff" stroke="#0969da" stroke-width="0.6" opacity="0.7"/>
-  <text x="528" y="471" class="side-label" fill="#0969da">16 MCP Tools · 10 Frameworks</text>
-  <text x="528" y="484" class="box-sub">2,800+ tests · Sigstore signed · OpenSSF scored</text>
+  <!-- ─── FOOTER: COMPLIANCE ─── -->
+  <rect x="30" y="396" width="820" height="2" rx="1" fill="#e2e8f0"/>
+  <text x="440" y="415" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" font-weight="600" fill="#64748b" letter-spacing="0.05em">OWASP LLM + MCP + Agentic  |  MITRE ATLAS  |  NIST AI RMF + CSF 2.0  |  EU AI Act  |  ISO 27001  |  SOC 2  |  CIS v8</text>
 </svg>

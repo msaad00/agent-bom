@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import subprocess
 import tarfile
@@ -65,19 +66,48 @@ def _grype_available() -> bool:
     return shutil.which("grype") is not None
 
 
-def _scan_with_grype(image_ref: str) -> list[Package]:
+def _build_scanner_env(
+    registry_user: Optional[str] = None,
+    registry_pass: Optional[str] = None,
+    user_env_prefix: str = "GRYPE",
+) -> dict[str, str] | None:
+    """Build subprocess env dict with registry auth credentials.
+
+    Returns None (inherit parent env) when no auth is configured.
+    """
+    user = registry_user or os.environ.get("AGENT_BOM_REGISTRY_USER")
+    passwd = registry_pass or os.environ.get("AGENT_BOM_REGISTRY_PASS")
+    if not user or not passwd:
+        return None
+    env = dict(os.environ)
+    env[f"{user_env_prefix}_REGISTRY_AUTH_USERNAME"] = user
+    env[f"{user_env_prefix}_REGISTRY_AUTH_PASSWORD"] = passwd
+    return env
+
+
+def _scan_with_grype(
+    image_ref: str,
+    registry_user: Optional[str] = None,
+    registry_pass: Optional[str] = None,
+    platform: Optional[str] = None,
+) -> list[Package]:
     """Run Grype and return packages with vulnerabilities pre-populated.
 
     Grype returns packages + CVEs in a single call, covering all ecosystems
     (npm, cargo, go modules, maven, gems, .NET, deb, rpm, apk, Python).
     No secondary OSV query is needed for image packages.
     """
+    cmd = ["grype", image_ref, "-o", "json", "--quiet"]
+    if platform:
+        cmd += ["--platform", platform]
+    env = _build_scanner_env(registry_user, registry_pass, "GRYPE")
     try:
         result = subprocess.run(
-            ["grype", image_ref, "-o", "json", "--quiet"],
+            cmd,
             capture_output=True,
             text=True,
             timeout=300,
+            env=env,
         )
     except FileNotFoundError:
         raise ImageScanError("grype not found")
@@ -160,14 +190,24 @@ def _syft_available() -> bool:
     return shutil.which("syft") is not None
 
 
-def _scan_with_syft(image_ref: str) -> list[Package]:
+def _scan_with_syft(
+    image_ref: str,
+    registry_user: Optional[str] = None,
+    registry_pass: Optional[str] = None,
+    platform: Optional[str] = None,
+) -> list[Package]:
     """Run Syft and parse its CycloneDX JSON output."""
+    cmd = ["syft", image_ref, "-o", "cyclonedx-json", "--quiet"]
+    if platform:
+        cmd += ["--platform", platform]
+    env = _build_scanner_env(registry_user, registry_pass, "SYFT")
     try:
         result = subprocess.run(
-            ["syft", image_ref, "-o", "cyclonedx-json", "--quiet"],
+            cmd,
             capture_output=True,
             text=True,
             timeout=300,
+            env=env,
         )
     except FileNotFoundError:
         raise ImageScanError("syft not found")
@@ -193,7 +233,7 @@ def _docker_available() -> bool:
     return shutil.which("docker") is not None
 
 
-def _docker_inspect(image_ref: str) -> dict:
+def _docker_inspect(image_ref: str, platform: Optional[str] = None) -> dict:
     """Return docker inspect output for the image (pulls if needed)."""
     try:
         result = subprocess.run(
@@ -207,8 +247,12 @@ def _docker_inspect(image_ref: str) -> dict:
 
     if result.returncode != 0:
         # Try pulling first
+        pull_cmd = ["docker", "pull"]
+        if platform:
+            pull_cmd += ["--platform", platform]
+        pull_cmd.append(image_ref)
         pull = subprocess.run(
-            ["docker", "pull", image_ref],
+            pull_cmd,
             capture_output=True,
             text=True,
             timeout=300,
@@ -469,10 +513,10 @@ def _packages_from_tar(tar_path: Path) -> list[Package]:
     return packages
 
 
-def _scan_with_docker(image_ref: str) -> list[Package]:
+def _scan_with_docker(image_ref: str, platform: Optional[str] = None) -> list[Package]:
     """Export container filesystem and scan package manager files."""
     # Confirm image exists / pull it
-    _docker_inspect(image_ref)
+    _docker_inspect(image_ref, platform=platform)
 
     container_id: Optional[str] = None
     try:
@@ -526,7 +570,53 @@ def _scan_with_docker(image_ref: str) -> list[Package]:
 # ─── Public API ───────────────────────────────────────────────────────────────
 
 
-def scan_image(image_ref: str) -> tuple[list[Package], str]:
+def detect_multi_arch(image_ref: str) -> list[str]:
+    """Detect platforms available in a multi-arch manifest list.
+
+    Uses ``docker manifest inspect`` to list available platforms.
+    Returns list of platform strings like ``["linux/amd64", "linux/arm64"]``.
+    Returns empty list if not a manifest list or docker is unavailable.
+    """
+    if not _docker_available():
+        return []
+    try:
+        result = subprocess.run(
+            ["docker", "manifest", "inspect", image_ref],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return []
+
+    if result.returncode != 0:
+        return []
+
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return []
+
+    platforms: list[str] = []
+    for manifest in data.get("manifests", []):
+        p = manifest.get("platform", {})
+        os_name = p.get("os", "")
+        arch = p.get("architecture", "")
+        if os_name and arch:
+            variant = p.get("variant", "")
+            platform_str = f"{os_name}/{arch}"
+            if variant:
+                platform_str += f"/{variant}"
+            platforms.append(platform_str)
+    return platforms
+
+
+def scan_image(
+    image_ref: str,
+    registry_user: Optional[str] = None,
+    registry_pass: Optional[str] = None,
+    platform: Optional[str] = None,
+) -> tuple[list[Package], str]:
     """Scan a Docker image and return (packages, strategy_used).
 
     Tries Grype first (packages + CVEs in one call), then Syft (packages
@@ -535,6 +625,9 @@ def scan_image(image_ref: str) -> tuple[list[Package], str]:
     Args:
         image_ref: Docker image reference, e.g. ``myapp:latest``,
                    ``ghcr.io/org/image:sha256-abc``, ``nginx:1.25``
+        registry_user: Username for private registry authentication.
+        registry_pass: Password for private registry authentication.
+        platform: Target platform for multi-arch images (e.g. ``linux/amd64``).
 
     Returns:
         A tuple ``(packages, strategy)`` where strategy is one of
@@ -547,15 +640,15 @@ def scan_image(image_ref: str) -> tuple[list[Package], str]:
     validate_image_ref(image_ref)
 
     if _grype_available():
-        packages = _scan_with_grype(image_ref)
+        packages = _scan_with_grype(image_ref, registry_user, registry_pass, platform)
         return packages, "grype"
 
     if _syft_available():
-        packages = _scan_with_syft(image_ref)
+        packages = _scan_with_syft(image_ref, registry_user, registry_pass, platform)
         return packages, "syft"
 
     if _docker_available():
-        packages = _scan_with_docker(image_ref)
+        packages = _scan_with_docker(image_ref, platform)
         return packages, "docker"
 
     raise ImageScanError(

@@ -31,14 +31,14 @@ jobs:
           cp -r out ../src/agent_bom/ui_dist
 
       - name: Install build tools
-        run: pip install build
+        run: pip install build==1.4.0  # pinned — update periodically
 
       - name: Build package
         run: python -m build
 
       - name: Verify package
         run: |
-          pip install twine
+          pip install twine==6.2.0  # pinned — update periodically
           twine check dist/*
 
       - name: Upload dist artifacts
@@ -118,7 +118,7 @@ jobs:
       - name: Install package and cyclonedx-bom
         run: |
           pip install -e ".[dev]"
-          pip install cyclonedx-bom
+          pip install cyclonedx-bom==7.2.2  # pinned — update periodically
 
       - name: Generate CycloneDX SBOM
         run: cyclonedx-py environment -o agent-bom-sbom.cdx.json

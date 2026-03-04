@@ -19,6 +19,10 @@
   <b>AI supply chain security scanner. Scan packages and images for CVEs. Assess config security — credential exposure, tool access, privilege escalation. Map blast radius from vulnerabilities to credentials and tools. Enterprise posture scoring, incident correlation, credential risk ranking. 10-framework compliance: OWASP LLM + OWASP MCP + OWASP Agentic + MITRE ATLAS + NIST AI RMF + EU AI Act + NIST CSF 2.0 + ISO 27001 + SOC 2 + CIS Controls v8.</b>
 </p>
 
+---
+
+## Architecture
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/enterprise-overview-dark.svg">
@@ -28,10 +32,17 @@
 
 ---
 
-## Why agent-bom?
+## How a CVE propagates through your AI stack
 
 > **Traditional scanners tell you a package has a CVE.**
 > **agent-bom tells you which AI agents are compromised, which credentials leak, which tools an attacker reaches, and what the business impact is.**
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-light.svg" alt="Blast Radius — How a CVE propagates through the AI stack" width="800" />
+  </picture>
+</p>
 
 ```
 CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
@@ -44,108 +55,41 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
  Fix: upgrade better-sqlite3 → 11.7.0
 ```
 
-| | Grype / Syft / Trivy | agent-bom |
-|---|---|---|
-| Package CVE detection | Yes | Yes — OSV + NVD CVSS v4 + EPSS + CISA KEV + GHSA + NVIDIA CSAF + NVD status tracking |
-| SBOM generation | Yes (Syft) | Yes — CycloneDX 1.6, SPDX 3.0, SARIF |
-| **AI agent discovery** | — | 18 MCP clients + Docker Compose auto-discovered |
-| **Blast radius mapping** | — | CVE → package → server → agent → credentials → tools |
-| **Credential exposure** | — | Which secrets leak per vulnerability, per agent |
-| **MCP tool reachability** | — | Which tools an attacker reaches post-exploit |
-| **Privilege detection** | — | runs_as_root, shell_access, container_privileged, per-tool permissions |
-| **Enterprise remediation** | — | Named assets, impact percentages, risk narratives |
-| **10-framework compliance** | — | OWASP Agentic + OWASP LLM + OWASP MCP + MITRE ATLAS + NIST AI RMF + EU AI Act + NIST CSF 2.0 + ISO 27001 + SOC 2 + CIS Controls v8 |
-| **CVE-level compliance tags** | — | Per-vulnerability framework mapping (severity, KEV, EPSS, CWE, AI package, fix availability) |
-| **SAST code scanning** | — | Semgrep wrapper with CWE-based compliance mapping across all 10 frameworks |
-| **Malicious package detection** | — | OSV MAL- prefix + typosquat heuristics (57 popular packages) |
-| **OpenSSF Scorecard enrichment** | — | Package health scores from api.securityscorecards.dev |
-| **Tool poisoning detection** | — | Description injection, capability combos, CVE exposure, drift |
-| **Model weight provenance** | — | SHA-256 hash, Sigstore file detection, HuggingFace metadata |
-| **Policy-as-code** | — | Block unverified servers, enforce thresholds in CI/CD, EPSS/scorecard conditions |
-| **Posture scorecard** | — | Letter grade (A–F), 6-dimension scoring, weighted enterprise posture |
-| **Incident correlation** | — | Group vulns by agent, P1–P4 priority, SOC-ready incident summaries |
-| **Credential risk ranking** | — | Rank exposed credentials by blast radius severity tier |
-| **AI framework recognition** | — | GPU/ML packages flagged as high-risk in image scans (via Grype/Syft) |
-| **Lateral movement analysis** | — | Agent context graph, shared server/credential detection, BFS attack paths |
-| **427+ server MCP registry** | — | Risk levels, tool inventories, auto-synced weekly |
+---
+
+## Scanner pipeline
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-light.svg" alt="Blast Radius — How a CVE propagates through the AI stack" width="800" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scanner-architecture-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scanner-architecture-light.svg" alt="Scanner Architecture — 7-stage pipeline" width="800" />
   </picture>
 </p>
 
-<table>
-<tr>
-<td width="50%" valign="top">
-
-**What it scans:**
-
-| Source | How |
-|--------|-----|
-| MCP configs | Auto-discover (18 clients + Docker Compose) |
-| Docker images | Grype / Syft / Docker CLI fallback |
-| Kubernetes | kubectl across namespaces |
-| Cloud providers | AWS, Azure, GCP, Databricks, Snowflake, Nebius |
-| Terraform / GitHub Actions | AI resources + env vars |
-| AI platforms | HuggingFace, W&B, MLflow, OpenAI |
-| Jupyter notebooks | AI library imports + model refs |
-| Model files | 13 formats (.gguf, .safetensors, .pkl, ...) |
-| Skill files | CLAUDE.md, .cursorrules, AGENTS.md |
-| Prompt templates | .prompt, .promptfile, prompt.yaml |
-| Ollama models | Local inventory via API + manifests |
-| Source code (SAST) | Semgrep wrapper with CWE mapping |
-| Existing SBOMs | CycloneDX / SPDX import |
-
-</td>
-<td width="50%" valign="top">
-
-**What it outputs:**
-
-Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON, REST API
-
-**Read-only guarantee:** Never writes configs, never runs servers, never stores secrets. All API calls are read-only. See [PERMISSIONS.md](PERMISSIONS.md).
-
-**Ecosystem:**
-
-| Platform | Link |
-|----------|------|
-| PyPI | `pip install agent-bom` |
-| Docker | `docker run agentbom/agent-bom scan` |
-| GitHub Action | `uses: msaad00/agent-bom@v0.49.0` |
-| MCP Registry | [server.json](integrations/mcp-registry/server.json) |
-| ToolHive | [registry entry](integrations/toolhive/server.json) |
-| OpenClaw | [SKILL.md](integrations/openclaw/SKILL.md) |
-| Smithery | [smithery.yaml](smithery.yaml) |
-| Railway | [Dockerfile.sse](Dockerfile.sse) |
-
-</td>
-</tr>
-</table>
-
----
-
-## How it works
-
 1. **Discover** — auto-detect MCP configs across 18 clients (Claude Desktop, Cursor, Codex CLI, Gemini CLI, Goose, etc.)
 2. **Extract** — pull server names, package names, env var **names**, and tool lists. Credential **values** are never read.
-3. **Scan** — send only package names + versions to public APIs (OSV.dev, NVD, EPSS, CISA KEV). No hostnames, no secrets, no auth tokens. NVD status tracking (Analyzed/Modified/Rejected) with remediation links.
-4. **Analyze** — CVE blast radius mapping, per-CVE compliance tagging across 10 frameworks, tool poisoning detection (`--enforce`), model provenance (`--hf-model`)
+3. **Scan** — send only package names + versions to public APIs (OSV.dev, NVD, EPSS, CISA KEV). NVD status tracking (Analyzed/Modified/Rejected) with remediation links.
+4. **Analyze** — CVE blast radius mapping, per-CVE compliance tagging across 10 frameworks, tool poisoning detection (`--enforce`), model provenance
 5. **Score** — posture scorecard (grade A–F), credential risk ranking, incident correlation by agent (P1–P4)
 6. **Report** — JSON, SARIF, CycloneDX, SPDX, HTML, or console output. Alert dispatch to Slack/webhooks. Nothing stored server-side.
 
 > **Individual developers:** Steps 1–4 are automatic. Enterprise features (steps 5–6) activate with `--enrich`, `--posture`, or the REST API.
 
+---
+
+## Enterprise scan workflow
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scan-workflow-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scan-workflow-light.svg" alt="Enterprise Scan Workflow — Architecture & Data Flow" width="800" />
+  </picture>
+</p>
+
 **Trust guarantees:** Read-only (no file writes, no config changes, no servers started). `--dry-run` previews all files and API calls then exits. Every release is Sigstore-signed. Run `agent-bom verify agent-bom` to check integrity. See [PERMISSIONS.md](PERMISSIONS.md) for the full auditable trust contract.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scanner-architecture-dark.svg">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scanner-architecture-light.svg" alt="Scanner Architecture — 7-stage pipeline" width="800" />
-</picture>
-
 <details>
-<summary><b>Architecture data flow</b></summary>
+<summary><b>Architecture data flow (Mermaid)</b></summary>
 
 ```mermaid
 graph TB
@@ -197,6 +141,36 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full set of architectur
 
 </details>
 
+<details>
+<summary><b>Full feature comparison vs Grype / Syft / Trivy</b></summary>
+
+| | Grype / Syft / Trivy | agent-bom |
+|---|---|---|
+| Package CVE detection | Yes | Yes — OSV + NVD CVSS v4 + EPSS + CISA KEV + GHSA + NVIDIA CSAF + NVD status tracking |
+| SBOM generation | Yes (Syft) | Yes — CycloneDX 1.6, SPDX 3.0, SARIF |
+| **AI agent discovery** | — | 18 MCP clients + Docker Compose auto-discovered |
+| **Blast radius mapping** | — | CVE → package → server → agent → credentials → tools |
+| **Credential exposure** | — | Which secrets leak per vulnerability, per agent |
+| **MCP tool reachability** | — | Which tools an attacker reaches post-exploit |
+| **Privilege detection** | — | runs_as_root, shell_access, container_privileged, per-tool permissions |
+| **Enterprise remediation** | — | Named assets, impact percentages, risk narratives |
+| **10-framework compliance** | — | OWASP Agentic + OWASP LLM + OWASP MCP + MITRE ATLAS + NIST AI RMF + EU AI Act + NIST CSF 2.0 + ISO 27001 + SOC 2 + CIS Controls v8 |
+| **CVE-level compliance tags** | — | Per-vulnerability framework mapping (severity, KEV, EPSS, CWE, AI package, fix availability) |
+| **SAST code scanning** | — | Semgrep wrapper with CWE-based compliance mapping across all 10 frameworks |
+| **Malicious package detection** | — | OSV MAL- prefix + typosquat heuristics (57 popular packages) |
+| **OpenSSF Scorecard enrichment** | — | Package health scores from api.securityscorecards.dev |
+| **Tool poisoning detection** | — | Description injection, capability combos, CVE exposure, drift |
+| **Model weight provenance** | — | SHA-256 hash, Sigstore file detection, HuggingFace metadata |
+| **Policy-as-code** | — | Block unverified servers, enforce thresholds in CI/CD, EPSS/scorecard conditions |
+| **Posture scorecard** | — | Letter grade (A–F), 6-dimension scoring, weighted enterprise posture |
+| **Incident correlation** | — | Group vulns by agent, P1–P4 priority, SOC-ready incident summaries |
+| **Credential risk ranking** | — | Rank exposed credentials by blast radius severity tier |
+| **AI framework recognition** | — | GPU/ML packages flagged as high-risk in image scans (via Grype/Syft) |
+| **Lateral movement analysis** | — | Agent context graph, shared server/credential detection, BFS attack paths |
+| **427+ server MCP registry** | — | Risk levels, tool inventories, auto-synced weekly |
+
+</details>
+
 ---
 
 ## Get started
@@ -216,6 +190,54 @@ agent-bom scan --hf-model meta-llama/Llama-3.1-8B  # model provenance
 ```
 
 Auto-discovers Claude Desktop, Claude Code, Cursor, Windsurf, Cline, VS Code Copilot, Continue, Zed, Cortex Code (CoCo), Codex CLI, Gemini CLI, Goose, Snowflake CLI, OpenClaw, Roo Code, Amazon Q, ToolHive, and Docker MCP Toolkit.
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+**What it scans:**
+
+| Source | How |
+|--------|-----|
+| MCP configs | Auto-discover (18 clients + Docker Compose) |
+| Docker images | Grype / Syft / Docker CLI fallback |
+| Kubernetes | kubectl across namespaces |
+| Cloud providers | AWS, Azure, GCP, Databricks, Snowflake, Nebius |
+| Terraform / GitHub Actions | AI resources + env vars |
+| AI platforms | HuggingFace, W&B, MLflow, OpenAI |
+| Jupyter notebooks | AI library imports + model refs |
+| Model files | 13 formats (.gguf, .safetensors, .pkl, ...) |
+| Skill files | CLAUDE.md, .cursorrules, AGENTS.md |
+| Prompt templates | .prompt, .promptfile, prompt.yaml |
+| Ollama models | Local inventory via API + manifests |
+| Source code (SAST) | Semgrep wrapper with CWE mapping |
+| Existing SBOMs | CycloneDX / SPDX import |
+
+</td>
+<td width="50%" valign="top">
+
+**What it outputs:**
+
+Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON, REST API
+
+**Read-only guarantee:** Never writes configs, never runs servers, never stores secrets. All API calls are read-only. See [PERMISSIONS.md](PERMISSIONS.md).
+
+**Ecosystem:**
+
+| Platform | Link |
+|----------|------|
+| PyPI | `pip install agent-bom` |
+| Docker | `docker run agentbom/agent-bom scan` |
+| GitHub Action | `uses: msaad00/agent-bom@v0.49.0` |
+| MCP Registry | [server.json](integrations/mcp-registry/server.json) |
+| ToolHive | [registry entry](integrations/toolhive/server.json) |
+| OpenClaw | [SKILL.md](integrations/openclaw/SKILL.md) |
+| Smithery | [smithery.yaml](smithery.yaml) |
+| Railway | [Dockerfile.sse](Dockerfile.sse) |
+
+</td>
+</tr>
+</table>
 
 <details>
 <summary><b>Install extras</b></summary>
@@ -476,13 +498,6 @@ Both sources deduplicate by CVE ID against OSV results.
 | Dashboard | `agent-bom serve` | API + Next.js dashboard |
 | Snowflake | `SNOWFLAKE_ACCOUNT=... agent-bom api` | Snowpark + SiS |
 | Prometheus | `--push-gateway` / `--otel-endpoint` | Monitoring |
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scan-workflow-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scan-workflow-light.svg" alt="Enterprise Scan Workflow" width="800" />
-  </picture>
-</p>
 
 ### GitHub Action
 

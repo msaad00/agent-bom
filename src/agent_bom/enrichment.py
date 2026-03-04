@@ -392,6 +392,25 @@ async def enrich_vulnerabilities(
                         # Extract dates
                         vuln.nvd_published = nvd.get("published")
                         vuln.nvd_modified = nvd.get("lastModified")
+
+                        # Extract NVD vulnerability review status
+                        vuln.nvd_status = nvd.get("vulnStatus")
+
+                        # Merge NVD references with existing OSV references (deduplicated)
+                        nvd_refs = nvd.get("references", [])
+                        existing_urls = set(vuln.references)
+                        for ref in nvd_refs:
+                            url = ref.get("url")
+                            if url and url not in existing_urls:
+                                vuln.references.append(url)
+                                existing_urls.add(url)
+
+                        # Always include canonical NVD link as first reference
+                        if cve.startswith("CVE-"):
+                            canonical = f"https://nvd.nist.gov/vuln/detail/{cve}"
+                            if canonical not in existing_urls:
+                                vuln.references.insert(0, canonical)
+
                         enriched_count += 1
                         break
 

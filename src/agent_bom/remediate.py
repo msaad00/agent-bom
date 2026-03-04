@@ -35,6 +35,7 @@ class PackageFix:
     command: str
     vulns: list[str] = field(default_factory=list)
     agents: list[str] = field(default_factory=list)
+    references: list[str] = field(default_factory=list)  # Advisory links for trust/validation
 
 
 @dataclass
@@ -87,27 +88,33 @@ def generate_package_fixes(plan_items: list[dict]) -> tuple[list[PackageFix], li
 
     for item in plan_items:
         if not item.get("fix"):
-            unfixable.append({
-                "package": item["package"],
-                "ecosystem": item["ecosystem"],
-                "current_version": item["current"],
-                "vulns": item["vulns"],
-                "agents": item["agents"],
-            })
+            unfixable.append(
+                {
+                    "package": item["package"],
+                    "ecosystem": item["ecosystem"],
+                    "current_version": item["current"],
+                    "vulns": item["vulns"],
+                    "agents": item["agents"],
+                    "references": item.get("references", []),
+                }
+            )
             continue
 
         template = _ECOSYSTEM_COMMANDS.get(item["ecosystem"], "# Upgrade {package} to {version}")
         command = template.format(package=item["package"], version=item["fix"])
 
-        fixable.append(PackageFix(
-            package=item["package"],
-            ecosystem=item["ecosystem"],
-            current_version=item["current"],
-            fixed_version=item["fix"],
-            command=command,
-            vulns=item["vulns"],
-            agents=item["agents"],
-        ))
+        fixable.append(
+            PackageFix(
+                package=item["package"],
+                ecosystem=item["ecosystem"],
+                current_version=item["current"],
+                fixed_version=item["fix"],
+                command=command,
+                vulns=item["vulns"],
+                agents=item["agents"],
+                references=item.get("references", []),
+            )
+        )
 
     return fixable, unfixable
 
@@ -147,8 +154,8 @@ _CREDENTIAL_TEMPLATES: dict[str, dict] = {
         "commands": [
             "# Create read-only role (run as superuser):",
             "psql -c \"CREATE ROLE mcp_readonly WITH LOGIN PASSWORD 'change-me';\"",
-            "psql -c \"GRANT CONNECT ON DATABASE mydb TO mcp_readonly;\"",
-            "psql -c \"GRANT SELECT ON ALL TABLES IN SCHEMA public TO mcp_readonly;\"",
+            'psql -c "GRANT CONNECT ON DATABASE mydb TO mcp_readonly;"',
+            'psql -c "GRANT SELECT ON ALL TABLES IN SCHEMA public TO mcp_readonly;"',
         ],
         "url": "https://www.postgresql.org/docs/current/sql-grant.html",
     },
@@ -246,44 +253,50 @@ def generate_credential_fixes(cred_map: dict[str, list[str]]) -> list[Credential
         # Check exact template match first
         if cred_name in _CREDENTIAL_TEMPLATES:
             tmpl = _CREDENTIAL_TEMPLATES[cred_name]
-            fixes.append(CredentialFix(
-                credential_name=cred_name,
-                locations=locations,
-                risk_description=tmpl["risk"],
-                fix_steps=tmpl["steps"],
-                fix_commands=tmpl.get("commands", []),
-                reference_url=tmpl.get("url", ""),
-            ))
-            continue
-
-        # Pattern-based fallback
-        matched = False
-        for patterns, tmpl in _CREDENTIAL_PATTERNS:
-            if any(pat in cred_name.upper() for pat in patterns):
-                fixes.append(CredentialFix(
+            fixes.append(
+                CredentialFix(
                     credential_name=cred_name,
                     locations=locations,
                     risk_description=tmpl["risk"],
                     fix_steps=tmpl["steps"],
                     fix_commands=tmpl.get("commands", []),
                     reference_url=tmpl.get("url", ""),
-                ))
+                )
+            )
+            continue
+
+        # Pattern-based fallback
+        matched = False
+        for patterns, tmpl in _CREDENTIAL_PATTERNS:
+            if any(pat in cred_name.upper() for pat in patterns):
+                fixes.append(
+                    CredentialFix(
+                        credential_name=cred_name,
+                        locations=locations,
+                        risk_description=tmpl["risk"],
+                        fix_steps=tmpl["steps"],
+                        fix_commands=tmpl.get("commands", []),
+                        reference_url=tmpl.get("url", ""),
+                    )
+                )
                 matched = True
                 break
 
         if not matched:
             # Generic fallback
-            fixes.append(CredentialFix(
-                credential_name=cred_name,
-                locations=locations,
-                risk_description="Credential scope is unknown — review and restrict permissions.",
-                fix_steps=[
-                    "Review the credential's permissions in the issuing service",
-                    "Regenerate with minimum required scopes",
-                    "Store in a secrets manager instead of plain config files",
-                    "Rotate on a regular schedule",
-                ],
-            ))
+            fixes.append(
+                CredentialFix(
+                    credential_name=cred_name,
+                    locations=locations,
+                    risk_description="Credential scope is unknown — review and restrict permissions.",
+                    fix_steps=[
+                        "Review the credential's permissions in the issuing service",
+                        "Regenerate with minimum required scopes",
+                        "Store in a secrets manager instead of plain config files",
+                        "Rotate on a regular schedule",
+                    ],
+                )
+            )
 
     return fixes
 
@@ -340,6 +353,10 @@ def export_remediation_md(plan: RemediationPlan, path: str) -> None:
             lines.append("  ```bash")
             lines.append(f"  {fix.command}")
             lines.append("  ```")
+            if fix.references:
+                lines.append("- **Advisories:**")
+                for ref in fix.references[:3]:
+                    lines.append(f"  - {ref}")
             lines.append("")
 
     # Priority 2: Credential scope reduction
@@ -532,7 +549,7 @@ def _apply_pip_fixes(
             continue
 
         # Parse package name from line (handles ==, >=, ~=, etc.)
-        match = re.match(r'^([a-zA-Z0-9_.-]+)', stripped)
+        match = re.match(r"^([a-zA-Z0-9_.-]+)", stripped)
         if not match:
             new_lines.append(line)
             continue
@@ -589,10 +606,7 @@ def apply_fixes(
     # Split fixes by ecosystem
     npm_fixes = [f for f in plan.package_fixes if f.ecosystem == "npm" and f.fixed_version]
     pip_fixes = [f for f in plan.package_fixes if f.ecosystem in ("pypi", "PyPI") and f.fixed_version]
-    other_fixes = [
-        f for f in plan.package_fixes
-        if f.ecosystem not in ("npm", "pypi", "PyPI") or not f.fixed_version
-    ]
+    other_fixes = [f for f in plan.package_fixes if f.ecosystem not in ("npm", "pypi", "PyPI") or not f.fixed_version]
 
     # Skip unsupported ecosystems
     result.skipped.extend(other_fixes)
@@ -644,15 +658,17 @@ def apply_fixes_from_json(
         eco = item.get("ecosystem", "")
         template = _ECOSYSTEM_COMMANDS.get(eco, "# Upgrade {package} to {version}")
         command = template.format(package=item["package"], version=fixed)
-        fixable.append(PackageFix(
-            package=item["package"],
-            ecosystem=eco,
-            current_version=item.get("current_version", "unknown"),
-            fixed_version=fixed,
-            command=command,
-            vulns=item.get("vulnerabilities", []),
-            agents=item.get("affected_agents", []),
-        ))
+        fixable.append(
+            PackageFix(
+                package=item["package"],
+                ecosystem=eco,
+                current_version=item.get("current_version", "unknown"),
+                fixed_version=fixed,
+                command=command,
+                vulns=item.get("vulnerabilities", []),
+                agents=item.get("affected_agents", []),
+            )
+        )
 
     plan = RemediationPlan(package_fixes=fixable)
     return apply_fixes(plan, [Path(project_dir)], dry_run=dry_run, backup=backup)

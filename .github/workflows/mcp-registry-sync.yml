@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Install httpx for version lookups
-        run: pip install httpx
+        run: pip install httpx==0.28.1  # pinned — update periodically
 
       - name: Fetch official MCP server list
         id: fetch

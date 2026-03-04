@@ -147,3 +147,62 @@ def is_credential_key(name: str) -> bool:
     """Check if an environment variable name matches credential patterns."""
     low = name.lower()
     return any(pat in low for pat in SENSITIVE_PATTERNS)
+
+
+# ── CWE-to-Compliance Mapping (for SAST findings) ──────────────────────────
+# Maps CWE weakness IDs to applicable compliance framework tags.
+# Used by compliance taggers when processing SAST findings (ecosystem="sast").
+
+SAST_CWE_MAP: dict[str, dict[str, list[str]]] = {
+    "CWE-78": {  # OS Command Injection
+        "owasp_llm": ["LLM02"],
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+        "cis": ["CIS-16.1"],
+    },
+    "CWE-79": {  # Cross-Site Scripting (XSS)
+        "owasp_llm": ["LLM02"],
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+    },
+    "CWE-89": {  # SQL Injection
+        "owasp_llm": ["LLM02"],
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+        "cis": ["CIS-16.1"],
+    },
+    "CWE-22": {  # Path Traversal
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+    },
+    "CWE-327": {  # Broken/Risky Crypto Algorithm
+        "iso_27001": ["A.8.24"],
+        "nist_csf": ["PR.DS-01", "PR.DS-02"],
+        "soc2": ["CC6.1"],
+    },
+    "CWE-502": {  # Deserialization of Untrusted Data
+        "owasp_llm": ["LLM02"],
+        "iso_27001": ["A.8.28"],
+    },
+    "CWE-798": {  # Hardcoded Credentials
+        "owasp_llm": ["LLM06"],
+        "iso_27001": ["A.8.9", "A.8.24"],
+        "nist_csf": ["PR.AA-01"],
+        "soc2": ["CC6.1"],
+        "cis": ["CIS-16.1"],
+    },
+    "CWE-918": {  # Server-Side Request Forgery (SSRF)
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["DE.CM-01"],
+    },
+    "CWE-611": {  # XXE (XML External Entity)
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+    },
+    "CWE-94": {  # Code Injection
+        "owasp_llm": ["LLM02"],
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+        "cis": ["CIS-16.1"],
+    },
+}

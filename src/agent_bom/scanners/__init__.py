@@ -496,7 +496,8 @@ async def scan_packages(packages: list[Package]) -> int:
         except Exception as exc:
             console.print(f"  [yellow]⚠[/yellow] Version resolution skipped: {exc}")
 
-    scannable = [p for p in packages if p.version not in ("unknown", "latest")]
+    # SAST packages already carry vulns from Semgrep — skip OSV query for them
+    scannable = [p for p in packages if p.version not in ("unknown", "latest") and p.ecosystem != "sast"]
 
     if not scannable:
         return 0

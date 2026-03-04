@@ -93,6 +93,14 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     if br.vulnerability.fixed_version:
         tags.add("A.8.28")
 
+    # CWE-based tagging for SAST findings
+    if br.package.ecosystem == "sast" and br.vulnerability.cwe_ids:
+        from agent_bom.constants import SAST_CWE_MAP
+
+        for cwe in br.vulnerability.cwe_ids:
+            for tag in SAST_CWE_MAP.get(cwe.upper(), {}).get("iso_27001", []):
+                tags.add(tag)
+
     return sorted(tags)
 
 

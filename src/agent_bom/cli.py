@@ -329,6 +329,21 @@ def main():
 )
 @click.option("--apply-dry-run", is_flag=True, help="Preview what --apply would change without modifying files")
 @click.option(
+    "--code",
+    "code_paths",
+    multiple=True,
+    type=click.Path(exists=True),
+    metavar="PATH",
+    help="Source code directory to scan for security flaws via Semgrep (SAST). Repeatable.",
+)
+@click.option(
+    "--sast-config",
+    default="auto",
+    show_default=True,
+    metavar="CONFIG",
+    help="Semgrep config for --code scans (e.g. 'p/security-audit'). Default: auto.",
+)
+@click.option(
     "--filesystem",
     "filesystem_paths",
     multiple=True,
@@ -529,6 +544,8 @@ def scan(
     remediate_sh_path: Optional[str],
     apply_fixes_flag: bool,
     apply_dry_run: bool,
+    code_paths: tuple,
+    sast_config: str,
     filesystem_paths: tuple,
     jira_url: Optional[str],
     jira_user: Optional[str],
@@ -637,6 +654,8 @@ def scan(
 
             for client, path in get_all_discovery_paths():
                 reads.append(f"  [green]Would read:[/green]   {path}  ({client})")
+        for cp in code_paths:
+            reads.append(f"  [green]Would scan:[/green]   {cp}  (SAST via semgrep)")
         for tf_dir in tf_dirs:
             reads.append(f"  [green]Would read:[/green]   {tf_dir}  (Terraform .tf files)")
         for ap in agent_projects:
@@ -832,6 +851,7 @@ def scan(
         and not agents
         and not images
         and not k8s
+        and not code_paths
         and not tf_dirs
         and not gha_path
         and not agent_projects
@@ -840,7 +860,7 @@ def scan(
     ):
         con.print("\n[yellow]No MCP configurations found.[/yellow]")
         con.print(
-            "  Use --project, --config-dir, --inventory, --image, --k8s, "
+            "  Use --project, --config-dir, --inventory, --image, --k8s, --code, "
             "--tf-dir, --gha, --agent-project, --jupyter, --aws, --azure, --gcp, "
             "--databricks, --snowflake, --nebius, --huggingface, --wandb, "
             "--mlflow, --openai, --ollama, or --scan-prompts to specify a target."
@@ -931,6 +951,34 @@ def scan(
                 agents.append(fs_agent)
             except FilesystemScanError as e:
                 con.print(f"  [yellow]![/yellow] {fs_path}: {e}")
+
+    # Step 1d3: SAST code scan (--code)
+    _sast_data: dict | None = None
+    if not skill_only and code_paths:
+        from agent_bom.sast import SASTScanError, scan_code
+
+        con.print(f"\n[bold blue]Running SAST scan on {len(code_paths)} path(s) via Semgrep...[/bold blue]\n")
+        for code_path in code_paths:
+            try:
+                sast_packages, sast_result = scan_code(code_path, config=sast_config)
+                con.print(
+                    f"  [green]v[/green] {code_path}: {sast_result.total_findings} finding(s) "
+                    f"in {sast_result.files_scanned} file(s) [dim]({sast_result.scan_time_seconds}s)[/dim]"
+                )
+                if sast_packages:
+                    server = MCPServer(name=f"sast:{Path(code_path).name}")
+                    server.packages = sast_packages
+                    sast_agent = Agent(
+                        name=f"code:{Path(code_path).name}",
+                        agent_type=AgentType.CUSTOM,
+                        config_path=code_path,
+                        source="sast",
+                        mcp_servers=[server],
+                    )
+                    agents.append(sast_agent)
+                _sast_data = sast_result.to_dict()
+            except SASTScanError as e:
+                con.print(f"  [yellow]![/yellow] {code_path}: {e}")
 
     # Step 1e: Terraform scan (--tf-dir)
     if not skill_only and tf_dirs:
@@ -1672,6 +1720,8 @@ def scan(
         report.prompt_scan_data = _prompt_scan_data
     if _enforcement_data:
         report.enforcement_data = _enforcement_data
+    if _sast_data:
+        report.sast_data = _sast_data
 
     # ── Context graph: lateral movement analysis ────────────────────
     if context_graph_flag and report.blast_radii:

@@ -1542,6 +1542,9 @@ def to_json(report: AIBOMReport) -> dict:
     if report.prioritized_findings:
         result["prioritized_findings"] = report.prioritized_findings
 
+    if report.sast_data:
+        result["sast"] = report.sast_data
+
     # Posture scorecard
     from agent_bom.posture import (
         compute_credential_risk_ranking,

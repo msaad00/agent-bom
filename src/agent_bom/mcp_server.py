@@ -1306,7 +1306,41 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             logger.exception("MCP tool error")
             return json.dumps({"error": sanitize_error(exc)})
 
-    # ── Tool 15: context_graph ──────────────────────────────────
+    # ── Tool 16: code_scan ────────────────────────────────────────
+
+    @mcp.tool(annotations=_READ_ONLY)
+    async def code_scan(
+        path: Annotated[str, Field(description="Path to source code directory to scan.")],
+        config: Annotated[
+            str,
+            Field(description="Semgrep config. 'auto' = Semgrep Registry rules. Can be a path or registry string."),
+        ] = "auto",
+    ) -> str:
+        """Run SAST (Static Application Security Testing) on source code via Semgrep.
+
+        Scans for security flaws: SQL injection, XSS, command injection,
+        hardcoded credentials, insecure deserialization, path traversal, etc.
+        Returns findings with CWE classifications and severity levels.
+
+        Requires ``semgrep`` on PATH (``pip install semgrep``).
+        """
+        try:
+            scan_path = _safe_path(path)
+        except ValueError as exc:
+            return json.dumps({"error": sanitize_error(exc)})
+
+        try:
+            from agent_bom.sast import SASTScanError, scan_code
+
+            _packages, sast_result = scan_code(str(scan_path), config=config)
+            return _truncate_response(json.dumps(sast_result.to_dict(), indent=2))
+        except SASTScanError as exc:
+            return json.dumps({"error": sanitize_error(exc)})
+        except Exception as exc:
+            logger.error("code_scan error: %s", exc)
+            return json.dumps({"error": sanitize_error(exc)})
+
+    # ── Tool 17: context_graph ──────────────────────────────────
 
     @mcp.tool(annotations=_READ_ONLY)
     async def context_graph(

@@ -373,7 +373,7 @@ def parse_codex_config(config_path: str) -> list[MCPServer]:
     """
     try:
         data = toml.load(config_path)
-    except Exception:
+    except Exception:  # noqa: BLE001 — toml libraries raise varied error types
         return []
 
     mcp_section = data.get("mcp_servers", {})
@@ -426,7 +426,7 @@ def parse_goose_config(config_path: str) -> list[MCPServer]:
     try:
         with open(config_path) as f:
             data = yaml.safe_load(f)
-    except Exception:
+    except (OSError, ValueError):
         return []
 
     if not isinstance(data, dict):
@@ -479,7 +479,7 @@ def parse_snowflake_connections(config_path: str) -> list[MCPServer]:
     """
     try:
         data = toml.load(config_path)
-    except Exception:
+    except Exception:  # noqa: BLE001 — toml libraries raise varied error types
         return []
 
     if not isinstance(data, dict):
@@ -532,7 +532,7 @@ def parse_cortex_code_metadata(config_path: str) -> dict:
     try:
         with open(config_path) as f:
             data = json.load(f)
-    except Exception:
+    except (json.JSONDecodeError, OSError, ValueError):
         return {}
 
     if not isinstance(data, dict):
@@ -775,7 +775,7 @@ def _parse_docker_mcp_catalog(
 
     try:
         catalog_data = yaml.safe_load(catalog_path.read_text())
-    except Exception:
+    except (OSError, ValueError):
         return []
 
     registry = catalog_data.get("registry", {})
@@ -852,7 +852,7 @@ def discover_docker_mcp() -> Optional[Agent]:
 
     try:
         registry_data = yaml.safe_load(registry_path.read_text())
-    except Exception:
+    except (OSError, ValueError):
         return None
 
     if not registry_data or not isinstance(registry_data, dict):
@@ -937,7 +937,7 @@ def discover_compose_mcp_servers(project_dir: Optional[str] = None) -> Optional[
 
     try:
         compose_data = yaml.safe_load(compose_path.read_text())
-    except Exception:
+    except (OSError, ValueError):
         return None
 
     if not compose_data or not isinstance(compose_data, dict):

@@ -13,6 +13,8 @@ import hashlib
 import logging
 import platform
 
+import httpx
+
 logger = logging.getLogger(__name__)
 
 
@@ -70,7 +72,7 @@ async def _push_async(push_url: str, results: dict, api_key: str | None = None) 
                 return True
             logger.warning("Push failed: HTTP %d — %s", resp.status_code, resp.text[:200])
             return False
-        except Exception:
+        except (httpx.HTTPError, ValueError, OSError):
             logger.exception("Push to %s failed", push_url)
             return False
 

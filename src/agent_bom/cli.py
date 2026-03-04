@@ -77,6 +77,75 @@ def _make_console(quiet: bool = False, output_format: str = "console", no_color:
     return Console(no_color=no_color)
 
 
+def _build_agents_from_inventory(inventory_data: dict, source_path: str) -> list:
+    """Build Agent objects from parsed inventory dict (JSON or CSV)."""
+    from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
+
+    agents = []
+    for agent_data in inventory_data.get("agents", []):
+        mcp_servers = []
+        for server_data in agent_data.get("mcp_servers", []):
+            # Parse pre-populated tools (e.g. from Snowflake/cloud inventory)
+            tools = []
+            for tool_data in server_data.get("tools", []):
+                if isinstance(tool_data, str):
+                    tools.append(MCPTool(name=tool_data, description=""))
+                elif isinstance(tool_data, dict):
+                    tools.append(
+                        MCPTool(
+                            name=tool_data.get("name", ""),
+                            description=tool_data.get("description", ""),
+                            input_schema=tool_data.get("input_schema"),
+                        )
+                    )
+
+            # Parse pre-known packages (e.g. from cloud asset scan)
+            packages = []
+            for pkg_data in server_data.get("packages", []):
+                if isinstance(pkg_data, str):
+                    if "@" in pkg_data:
+                        name, version = pkg_data.rsplit("@", 1)
+                    else:
+                        name, version = pkg_data, "unknown"
+                    packages.append(Package(name=name, version=version, ecosystem="unknown"))
+                elif isinstance(pkg_data, dict):
+                    packages.append(
+                        Package(
+                            name=pkg_data.get("name", ""),
+                            version=pkg_data.get("version", "unknown"),
+                            ecosystem=pkg_data.get("ecosystem", "unknown"),
+                            purl=pkg_data.get("purl"),
+                        )
+                    )
+
+            server = MCPServer(
+                name=server_data.get("name", ""),
+                command=server_data.get("command", ""),
+                args=server_data.get("args", []),
+                env=sanitize_env_vars(server_data.get("env", {})),
+                transport=TransportType(server_data.get("transport", "stdio")),
+                url=server_data.get("url"),
+                config_path=agent_data.get("config_path"),
+                working_dir=server_data.get("working_dir"),
+                mcp_version=server_data.get("mcp_version"),
+                tools=tools,
+                packages=packages,
+            )
+            mcp_servers.append(server)
+
+        agent = Agent(
+            name=agent_data.get("name", "unknown"),
+            agent_type=AgentType(agent_data.get("agent_type", agent_data.get("type", "custom"))),
+            config_path=agent_data.get("config_path", source_path),
+            mcp_servers=mcp_servers,
+            version=agent_data.get("version"),
+            source=agent_data.get("source", inventory_data.get("source")),
+        )
+        agents.append(agent)
+
+    return agents
+
+
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
 @click.version_option(version=__version__, prog_name="agent-bom", message="agent-bom %(version)s")
 def main():
@@ -102,7 +171,7 @@ def main():
 @main.command()
 @click.option("--project", "-p", type=click.Path(exists=True), help="Project directory to scan")
 @click.option("--config-dir", type=click.Path(exists=True), help="Custom agent config directory to scan")
-@click.option("--inventory", type=click.Path(exists=True), help="Manual inventory JSON file")
+@click.option("--inventory", type=str, default=None, help="Inventory file (JSON or CSV). Use '-' for stdin.")
 @click.option("--output", "-o", type=str, help="Output file path (use '-' for stdout)")
 @click.option(
     "--open", "open_report", is_flag=True, default=False, help="Auto-open HTML/graph-html report in default browser after generation"
@@ -756,74 +825,13 @@ def scan(
         agents = []  # skill-only: no agent discovery
 
     if not skill_only and inventory:
-        con.print(f"\n[bold blue]Loading inventory from {inventory}...[/bold blue]\n")
-        from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
+        label = "stdin" if inventory == "-" else inventory
+        con.print(f"\n[bold blue]Loading inventory from {label}...[/bold blue]\n")
 
-        with open(inventory) as f:
-            inventory_data = json.load(f)
+        from agent_bom.inventory import load_inventory
 
-        agents = []
-        for agent_data in inventory_data.get("agents", []):
-            mcp_servers = []
-            for server_data in agent_data.get("mcp_servers", []):
-                # Parse pre-populated tools (e.g. from Snowflake/cloud inventory)
-                tools = []
-                for tool_data in server_data.get("tools", []):
-                    if isinstance(tool_data, str):
-                        tools.append(MCPTool(name=tool_data, description=""))
-                    elif isinstance(tool_data, dict):
-                        tools.append(
-                            MCPTool(
-                                name=tool_data.get("name", ""),
-                                description=tool_data.get("description", ""),
-                                input_schema=tool_data.get("input_schema"),
-                            )
-                        )
-
-                # Parse pre-known packages (e.g. from cloud asset scan)
-                packages = []
-                for pkg_data in server_data.get("packages", []):
-                    if isinstance(pkg_data, str):
-                        # Accept "name@version" shorthand
-                        if "@" in pkg_data:
-                            name, version = pkg_data.rsplit("@", 1)
-                        else:
-                            name, version = pkg_data, "unknown"
-                        packages.append(Package(name=name, version=version, ecosystem="unknown"))
-                    elif isinstance(pkg_data, dict):
-                        packages.append(
-                            Package(
-                                name=pkg_data.get("name", ""),
-                                version=pkg_data.get("version", "unknown"),
-                                ecosystem=pkg_data.get("ecosystem", "unknown"),
-                                purl=pkg_data.get("purl"),
-                            )
-                        )
-
-                server = MCPServer(
-                    name=server_data.get("name", ""),
-                    command=server_data.get("command", ""),
-                    args=server_data.get("args", []),
-                    env=sanitize_env_vars(server_data.get("env", {})),
-                    transport=TransportType(server_data.get("transport", "stdio")),
-                    url=server_data.get("url"),
-                    config_path=agent_data.get("config_path"),
-                    working_dir=server_data.get("working_dir"),
-                    mcp_version=server_data.get("mcp_version"),
-                    tools=tools,
-                    packages=packages,
-                )
-                mcp_servers.append(server)
-
-            agent = Agent(
-                name=agent_data.get("name", "unknown"),
-                agent_type=AgentType(agent_data.get("agent_type", agent_data.get("type", "custom"))),
-                config_path=agent_data.get("config_path", inventory),
-                mcp_servers=mcp_servers,
-                version=agent_data.get("version"),
-                source=agent_data.get("source", inventory_data.get("source")),
-            )
-            agents.append(agent)
+        inventory_data = load_inventory(inventory)
+        agents = _build_agents_from_inventory(inventory_data, inventory)
 
         con.print(f"  [green]✓[/green] Loaded {len(agents)} agent(s) from inventory")
     elif not skill_only and config_dir:

@@ -27,10 +27,21 @@ from uuid import uuid4
 
 logger = logging.getLogger(__name__)
 
-_HMAC_DEFAULT = "agent-bom-default-audit-key"
-_HMAC_KEY = os.environ.get("AGENT_BOM_AUDIT_HMAC_KEY", _HMAC_DEFAULT).encode()
-if os.environ.get("AGENT_BOM_AUDIT_HMAC_KEY") is None:
-    logger.warning("AGENT_BOM_AUDIT_HMAC_KEY not set — audit log HMAC uses default key (not tamper-proof in production)")
+# HMAC key for audit log tamper detection.  When unset, an ephemeral
+# per-process key is generated — signatures verify within the same process
+# but provide no cross-restart integrity.  Production deployments MUST set
+# AGENT_BOM_AUDIT_HMAC_KEY for meaningful tamper detection.
+_HMAC_ENV_KEY = os.environ.get("AGENT_BOM_AUDIT_HMAC_KEY")
+if _HMAC_ENV_KEY is not None:
+    _HMAC_KEY = _HMAC_ENV_KEY.encode()
+else:
+    import secrets as _secrets
+
+    _HMAC_KEY = _secrets.token_bytes(32)
+    logger.warning(
+        "AGENT_BOM_AUDIT_HMAC_KEY not set — audit log HMAC uses ephemeral key "
+        "(signatures will not survive process restart; set env var for production)"
+    )
 
 
 @dataclass

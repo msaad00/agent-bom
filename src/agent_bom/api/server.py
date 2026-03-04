@@ -44,6 +44,9 @@ from enum import Enum
 from typing import Any
 
 from agent_bom import __version__
+from agent_bom.config import API_JOB_TTL_SECONDS as _JOB_TTL_SECONDS
+from agent_bom.config import API_MAX_CONCURRENT_JOBS as _MAX_CONCURRENT_JOBS
+from agent_bom.config import API_MAX_IN_MEMORY_JOBS as _MAX_IN_MEMORY_JOBS
 from agent_bom.security import sanitize_error
 
 _logger = logging.getLogger(__name__)
@@ -389,11 +392,6 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
                     content={"detail": f"Request body too large (max {self._max_bytes // (1024 * 1024)}MB)"},
                 )
         return await call_next(request)
-
-
-_MAX_CONCURRENT_JOBS = 10
-_JOB_TTL_SECONDS = 3600  # 1 hour
-_MAX_IN_MEMORY_JOBS = 200  # Bounded eviction ceiling for _jobs dict
 
 
 def configure_api(

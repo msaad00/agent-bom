@@ -44,7 +44,7 @@ def _load_registry() -> dict:
     """Load the bundled MCP registry JSON."""
     try:
         return json.loads(_REGISTRY_PATH.read_text()).get("servers", {})
-    except Exception:
+    except (json.JSONDecodeError, OSError):
         return {}
 
 
@@ -52,7 +52,7 @@ def _load_registry_full() -> dict:
     """Load the full registry JSON (including metadata keys)."""
     try:
         return json.loads(_REGISTRY_PATH.read_text())
-    except Exception:
+    except (json.JSONDecodeError, OSError):
         return {"servers": {}}
 
 

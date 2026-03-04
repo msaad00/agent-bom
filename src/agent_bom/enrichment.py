@@ -13,6 +13,8 @@ from typing import Optional
 import httpx
 from rich.console import Console
 
+from agent_bom.config import ENRICHMENT_MAX_CACHE_ENTRIES as _MAX_ENRICHMENT_CACHE_ENTRIES
+from agent_bom.config import ENRICHMENT_TTL_SECONDS as _ENRICHMENT_TTL
 from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.models import Vulnerability
 
@@ -31,13 +33,11 @@ _kev_cache_time: Optional[datetime] = None
 # ─── Persistent enrichment cache (NVD + EPSS) ──────────────────────────────
 
 _ENRICHMENT_CACHE_DIR = Path.home() / ".agent-bom"
-_ENRICHMENT_TTL = 604_800  # 7 days
 
 # Module-level in-memory mirrors (loaded lazily from disk)
 _nvd_file_cache: dict[str, dict] = {}
 _epss_file_cache: dict[str, dict] = {}
 _enrichment_cache_loaded = False
-_MAX_ENRICHMENT_CACHE_ENTRIES = 10_000  # Prevent unbounded memory growth
 
 
 def _evict_oldest(cache: dict[str, dict], max_entries: int) -> None:
@@ -70,7 +70,7 @@ def _load_enrichment_cache() -> None:
                 _nvd_file_cache.update(fresh)
             else:
                 _epss_file_cache.update(fresh)
-        except Exception:  # noqa: BLE001
+        except (OSError, json.JSONDecodeError, ValueError):
             _logger.debug("Failed to load enrichment cache %s", name)
 
 
@@ -80,7 +80,7 @@ def _save_enrichment_cache() -> None:
     for name, data in [("nvd_cache.json", _nvd_file_cache), ("epss_cache.json", _epss_file_cache)]:
         try:
             (_ENRICHMENT_CACHE_DIR / name).write_text(json.dumps(data))
-        except Exception:  # noqa: BLE001
+        except OSError:
             _logger.debug("Failed to save %s cache", name)
 
 

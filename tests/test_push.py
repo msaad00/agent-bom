@@ -161,7 +161,7 @@ class TestPushResults:
 
     def test_push_network_error(self):
         mock_client = AsyncMock()
-        mock_client.post = AsyncMock(side_effect=Exception("Connection refused"))
+        mock_client.post = AsyncMock(side_effect=OSError("Connection refused"))
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 

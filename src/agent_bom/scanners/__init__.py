@@ -13,11 +13,17 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from agent_bom.atlas import tag_blast_radius as tag_atlas_techniques
 from agent_bom.cis_controls import tag_blast_radius as tag_cis_controls
+from agent_bom.config import (
+    SCANNER_BATCH_DELAY as BATCH_DELAY_SECONDS,
+)
+from agent_bom.config import (
+    SCANNER_MAX_CONCURRENT as MAX_CONCURRENT_REQUESTS,
+)
 
 # Single source of truth for AI/ML package catalog — imported from constants.
 # Vulnerabilities in these carry elevated risk because they run inside AI
 # agents that have credentials and tool access.
-from agent_bom.constants import AI_PACKAGES as _AI_FRAMEWORK_PACKAGES  # noqa: E402
+from agent_bom.constants import AI_PACKAGES as _AI_FRAMEWORK_PACKAGES
 from agent_bom.eu_ai_act import tag_blast_radius as tag_eu_ai_act
 from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.iso_27001 import tag_blast_radius as tag_iso_27001
@@ -46,10 +52,6 @@ ECOSYSTEM_MAP = {
     "nuget": "NuGet",
     "rubygems": "RubyGems",
 }
-
-# Rate limiting: max concurrent API requests + delay between batches
-MAX_CONCURRENT_REQUESTS = 10
-BATCH_DELAY_SECONDS = 0.5  # 500ms between OSV batch calls
 
 
 def _get_api_semaphore() -> asyncio.Semaphore:

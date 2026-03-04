@@ -8,12 +8,18 @@ from typing import Any, Optional
 
 import httpx
 
+from agent_bom.config import (
+    HTTP_INITIAL_BACKOFF as INITIAL_BACKOFF,
+)
+from agent_bom.config import (
+    HTTP_MAX_BACKOFF as MAX_BACKOFF,
+)
+from agent_bom.config import (
+    HTTP_MAX_RETRIES as MAX_RETRIES,
+)
+
 logger = logging.getLogger(__name__)
 
-# Retry configuration
-MAX_RETRIES = 3
-INITIAL_BACKOFF = 1.0  # seconds
-MAX_BACKOFF = 30.0
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
 
@@ -47,11 +53,11 @@ def _safe_url(url: str) -> str:  # noqa: PLW0108
             )
         )
         return _sanitize_for_log(safe)
-    except Exception:
+    except (ValueError, AttributeError):
         return "<redacted-url>"
 
 
-def create_client(timeout: float = 30.0, max_redirects: int = 5) -> httpx.AsyncClient:
+def create_client(timeout: float | None = None, max_redirects: int = 5) -> httpx.AsyncClient:
     """Create an httpx.AsyncClient with connection-level retries.
 
     Uses httpx's built-in transport retry for connection failures (DNS, TCP reset).
@@ -61,6 +67,10 @@ def create_client(timeout: float = 30.0, max_redirects: int = 5) -> httpx.AsyncC
         timeout: Per-request timeout in seconds.
         max_redirects: Maximum number of HTTP redirects to follow (default 5).
     """
+    from agent_bom.config import HTTP_DEFAULT_TIMEOUT
+
+    if timeout is None:
+        timeout = HTTP_DEFAULT_TIMEOUT
     transport = httpx.AsyncHTTPTransport(retries=2)
     return httpx.AsyncClient(
         timeout=timeout,

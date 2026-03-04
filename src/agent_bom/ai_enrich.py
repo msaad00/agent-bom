@@ -33,6 +33,9 @@ from typing import TYPE_CHECKING, Optional
 import httpx
 from rich.console import Console
 
+from agent_bom.config import AI_CACHE_MAX_ENTRIES as _MAX_AI_CACHE
+from agent_bom.config import OLLAMA_BASE_URL
+
 if TYPE_CHECKING:
     from agent_bom.ai_schemas import MCPConfigSecurityAnalysis
     from agent_bom.models import AIBOMReport, BlastRadius
@@ -43,7 +46,6 @@ console = Console(stderr=True)
 logger = logging.getLogger(__name__)
 
 # Simple in-memory cache: hash(prompt) -> response (bounded)
-_MAX_AI_CACHE = 1_000
 _cache: dict[str, str] = {}
 
 
@@ -56,7 +58,6 @@ def _ai_cache_put(key: str, value: str) -> None:
 
 
 DEFAULT_MODEL = "openai/gpt-4o-mini"
-OLLAMA_BASE_URL = "http://localhost:11434"
 OLLAMA_DEFAULT_MODEL = "llama3.2"
 HF_DEFAULT_MODEL = "meta-llama/Llama-3.1-8B-Instruct"
 
@@ -112,7 +113,7 @@ def _get_ollama_models() -> list[str]:
         if resp.status_code == 200:
             data = resp.json()
             return [m["name"] for m in data.get("models", [])]
-    except Exception:
+    except (httpx.HTTPError, ValueError, KeyError):
         pass
     return []
 
@@ -363,7 +364,7 @@ async def _call_ollama_structured(
     if key in _cache:
         try:
             return schema_cls.model_validate_json(_cache[key])
-        except Exception:
+        except (json.JSONDecodeError, ValueError, AttributeError):
             pass
 
     try:
@@ -418,14 +419,14 @@ async def _call_llm_structured(
         # Try direct JSON parse
         try:
             return schema_cls.model_validate_json(raw)
-        except Exception:
+        except (json.JSONDecodeError, ValueError):
             pass
         # Try extracting from markdown/braces
         parsed = _parse_json_response(raw)
         if parsed:
             try:
                 return schema_cls.model_validate(parsed)
-            except Exception:
+            except (ValueError, TypeError):
                 pass
     return None
 

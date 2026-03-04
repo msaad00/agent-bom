@@ -39,12 +39,11 @@ from typing import Annotated, Optional
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
+from agent_bom.config import MCP_MAX_FILE_SIZE as _MAX_FILE_SIZE
+from agent_bom.config import MCP_MAX_RESPONSE_CHARS as _MAX_RESPONSE_CHARS
 from agent_bom.security import sanitize_error
 
 logger = logging.getLogger(__name__)
-
-# Maximum file size for SBOM/skill file reads (50 MB)
-_MAX_FILE_SIZE = 50 * 1024 * 1024
 
 # ---------------------------------------------------------------------------
 # Input validation helpers
@@ -54,10 +53,6 @@ _VALID_ECOSYSTEMS = frozenset({"npm", "pypi", "go", "cargo", "maven", "nuget", "
 
 _CVE_RE = re.compile(r"^CVE-\d{4}-\d{4,}$", re.IGNORECASE)
 _GHSA_RE = re.compile(r"^GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}$", re.IGNORECASE)
-
-# Max chars in a tool response — prevents multi-MB payloads from overwhelming
-# MCP clients with limited context windows.
-_MAX_RESPONSE_CHARS = 500_000
 
 
 def _validate_ecosystem(ecosystem: str) -> str:

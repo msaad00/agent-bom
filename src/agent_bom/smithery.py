@@ -99,8 +99,11 @@ async def search_smithery(
 
     async with create_client(timeout=15.0) as client:
         resp = await request_with_retry(
-            client, "GET", f"{_API_BASE}/servers",
-            headers=headers, params=params,
+            client,
+            "GET",
+            f"{_API_BASE}/servers",
+            headers=headers,
+            params=params,
         )
 
         if resp is None:
@@ -113,16 +116,18 @@ async def search_smithery(
         data = resp.json()
         servers = []
         for s in data.get("servers", []):
-            servers.append(SmitheryServer(
-                qualified_name=s.get("qualifiedName", ""),
-                display_name=s.get("displayName", ""),
-                description=s.get("description", ""),
-                verified=s.get("verified", False),
-                use_count=s.get("useCount", 0),
-                remote=s.get("remote", False),
-                is_deployed=s.get("isDeployed", False),
-                homepage=s.get("homepage", ""),
-            ))
+            servers.append(
+                SmitheryServer(
+                    qualified_name=s.get("qualifiedName", ""),
+                    display_name=s.get("displayName", ""),
+                    description=s.get("description", ""),
+                    verified=s.get("verified", False),
+                    use_count=s.get("useCount", 0),
+                    remote=s.get("remote", False),
+                    is_deployed=s.get("isDeployed", False),
+                    homepage=s.get("homepage", ""),
+                )
+            )
 
         pagination = data.get("pagination", {})
         return SmitherySearchResult(
@@ -158,7 +163,9 @@ async def get_smithery_server(
 
     async with create_client(timeout=15.0) as client:
         resp = await request_with_retry(
-            client, "GET", f"{_REGISTRY_BASE}/servers/{qualified_name}",
+            client,
+            "GET",
+            f"{_REGISTRY_BASE}/servers/{qualified_name}",
             headers=headers,
         )
 
@@ -225,23 +232,27 @@ async def smithery_lookup(
 
     logger.info(
         "Smithery: resolved %s → %s (verified=%s, uses=%d)",
-        server.name, best.display_name, best.verified, best.use_count,
+        server.name,
+        best.display_name,
+        best.verified,
+        best.use_count,
     )
 
-    return [Package(
-        name=best.qualified_name,
-        version="latest",
-        ecosystem="smithery",
-        purl=f"pkg:smithery/{best.qualified_name}",
-        is_direct=True,
-        resolved_from_registry=True,
-        auto_risk_level=risk_level,
-        auto_risk_justification=(
-            f"Smithery: {'verified' if best.verified else 'unverified'}, "
-            f"{best.use_count} installs"
-            + (", security scan FAILED" if best.security_scan_passed is False else "")
-        ),
-    )]
+    return [
+        Package(
+            name=best.qualified_name,
+            version="latest",
+            ecosystem="smithery",
+            purl=f"pkg:smithery/{best.qualified_name}",
+            is_direct=True,
+            resolved_from_registry=True,
+            auto_risk_level=risk_level,
+            auto_risk_justification=(
+                f"Smithery: {'verified' if best.verified else 'unverified'}, "
+                f"{best.use_count} installs" + (", security scan FAILED" if best.security_scan_passed is False else "")
+            ),
+        )
+    ]
 
 
 def smithery_lookup_sync(
@@ -282,7 +293,7 @@ async def sync_from_smithery(
     # Load local registry
     try:
         local_data = json.loads(_REGISTRY_PATH.read_text())
-    except Exception:
+    except (json.JSONDecodeError, OSError):
         local_data = {"servers": {}}
 
     local_servers = local_data.get("servers", {})
@@ -294,7 +305,9 @@ async def sync_from_smithery(
     async with create_client(timeout=30.0) as client:
         for page in range(1, max_pages + 1):
             resp = await request_with_retry(
-                client, "GET", f"{_API_BASE}/servers",
+                client,
+                "GET",
+                f"{_API_BASE}/servers",
                 headers=headers,
                 params={"page": page, "pageSize": page_size},
             )
@@ -354,14 +367,16 @@ async def sync_from_smithery(
                     local_servers[qn] = entry
 
                 result.added += 1
-                result.details.append({
-                    "server": qn,
-                    "display_name": display,
-                    "verified": verified,
-                    "use_count": use_count,
-                    "risk_level": risk,
-                    "status": "added",
-                })
+                result.details.append(
+                    {
+                        "server": qn,
+                        "display_name": display,
+                        "verified": verified,
+                        "use_count": use_count,
+                        "risk_level": risk,
+                        "status": "added",
+                    }
+                )
 
             pagination = data.get("pagination", {})
             if page >= pagination.get("totalPages", 1):

@@ -35,6 +35,11 @@ def _int(env_key: str, default: int) -> int:
         return default
 
 
+def _str(env_key: str, default: str) -> str:
+    """Read a string from *env_key*, falling back to *default*."""
+    return os.environ.get(env_key, default)
+
+
 # ── EPSS Thresholds ─────────────────────────────────────────────────────────
 # EPSS (Exploit Prediction Scoring System) probability thresholds.
 # Source: https://www.first.org/epss/
@@ -128,3 +133,70 @@ SERVER_RISK_REGISTRY_MEDIUM_FLOOR = _float("AGENT_BOM_SERVER_REG_MEDIUM", 3.0)
 SERVER_RISK_CRITICAL_THRESHOLD = _float("AGENT_BOM_SERVER_CRITICAL", 9.0)
 SERVER_RISK_HIGH_THRESHOLD = _float("AGENT_BOM_SERVER_HIGH", 7.0)
 SERVER_RISK_MEDIUM_THRESHOLD = _float("AGENT_BOM_SERVER_MEDIUM", 4.0)
+
+
+# ── HTTP Client ───────────────────────────────────────────────────────────
+# Used by http_client.create_client() and request_with_retry().
+#
+# Defaults: 3 retries with 1s initial backoff (doubles each retry, capped
+# at 30s).  30s per-request timeout covers most external APIs; NVD can be
+# slow so operators may raise this.
+
+HTTP_MAX_RETRIES = _int("AGENT_BOM_HTTP_MAX_RETRIES", 3)
+HTTP_INITIAL_BACKOFF = _float("AGENT_BOM_HTTP_INITIAL_BACKOFF", 1.0)
+HTTP_MAX_BACKOFF = _float("AGENT_BOM_HTTP_MAX_BACKOFF", 30.0)
+HTTP_DEFAULT_TIMEOUT = _float("AGENT_BOM_HTTP_DEFAULT_TIMEOUT", 30.0)
+
+
+# ── Scanner Batching ──────────────────────────────────────────────────────
+# Used by scanners/__init__.py for OSV batch API concurrency.
+#
+# 10 concurrent requests with 500ms delay between batches keeps us well
+# under OSV.dev's rate limit while still being fast for large inventories.
+
+SCANNER_MAX_CONCURRENT = _int("AGENT_BOM_SCANNER_MAX_CONCURRENT", 10)
+SCANNER_BATCH_DELAY = _float("AGENT_BOM_SCANNER_BATCH_DELAY", 0.5)
+
+
+# ── AI Enrichment ─────────────────────────────────────────────────────────
+# Used by ai_enrich.py for LLM-powered risk narratives.
+#
+# Cache bounded at 1,000 entries (sha256 keyed) to prevent unbounded memory
+# growth during large scans.  Ollama default URL assumes local Docker/native
+# install.
+
+AI_CACHE_MAX_ENTRIES = _int("AGENT_BOM_AI_CACHE_MAX", 1_000)
+OLLAMA_BASE_URL = _str("AGENT_BOM_OLLAMA_URL", "http://localhost:11434")
+
+
+# ── Enrichment Cache ──────────────────────────────────────────────────────
+# Used by enrichment.py for persistent NVD + EPSS disk cache.
+#
+# 7-day TTL balances freshness vs. API rate limits.  10,000 entries covers
+# most enterprise scans without unbounded disk/memory growth.
+
+ENRICHMENT_TTL_SECONDS = _int("AGENT_BOM_ENRICHMENT_TTL", 604_800)
+ENRICHMENT_MAX_CACHE_ENTRIES = _int("AGENT_BOM_ENRICHMENT_MAX_CACHE", 10_000)
+
+
+# ── API Server Limits ─────────────────────────────────────────────────────
+# Used by api/server.py for the REST API job queue.
+#
+# 10 concurrent scan jobs prevents resource exhaustion on shared hosts.
+# 1-hour TTL auto-cleans completed jobs.  200 in-memory ceiling triggers
+# LRU eviction for long-running API instances.
+
+API_MAX_CONCURRENT_JOBS = _int("AGENT_BOM_API_MAX_JOBS", 10)
+API_JOB_TTL_SECONDS = _int("AGENT_BOM_API_JOB_TTL", 3_600)
+API_MAX_IN_MEMORY_JOBS = _int("AGENT_BOM_API_MAX_MEMORY_JOBS", 200)
+
+
+# ── MCP Server Limits ────────────────────────────────────────────────────
+# Used by mcp_server.py for file-size and response-size guards.
+#
+# 50 MB max file size prevents accidental ingestion of large binaries.
+# 500,000 char response cap keeps MCP tool responses within typical
+# LLM context windows.
+
+MCP_MAX_FILE_SIZE = _int("AGENT_BOM_MCP_MAX_FILE_SIZE", 50 * 1024 * 1024)
+MCP_MAX_RESPONSE_CHARS = _int("AGENT_BOM_MCP_MAX_RESPONSE", 500_000)

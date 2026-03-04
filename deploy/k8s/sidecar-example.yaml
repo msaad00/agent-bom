@@ -1,0 +1,74 @@
+# Example: agent-bom proxy as a sidecar to an MCP server.
+#
+# The proxy intercepts all JSON-RPC traffic, logs tool calls,
+# detects credential leaks, and enforces security policy.
+#
+# Deploy: kubectl apply -f sidecar-example.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-server-with-proxy
+  labels:
+    app.kubernetes.io/name: mcp-server
+    app.kubernetes.io/component: sidecar-example
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-server
+  template:
+    metadata:
+      labels:
+        app: mcp-server
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8422"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        # Primary MCP server
+        - name: mcp-server
+          image: node:20-slim
+          command:
+            - "npx"
+            - "-y"
+            - "@modelcontextprotocol/server-filesystem"
+            - "/workspace"
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+
+        # agent-bom proxy sidecar
+        - name: agent-bom-proxy
+          image: msaad02/agent-bom-runtime:latest
+          args:
+            - "--log"
+            - "/var/log/agent-bom/audit.jsonl"
+            - "--detect-credentials"
+            - "--block-undeclared"
+            - "--"
+            - "npx"
+            - "-y"
+            - "@modelcontextprotocol/server-filesystem"
+            - "/workspace"
+          ports:
+            - containerPort: 8422
+              name: metrics
+              protocol: TCP
+          volumeMounts:
+            - name: audit-logs
+              mountPath: /var/log/agent-bom
+            - name: workspace
+              mountPath: /workspace
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "25m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+      volumes:
+        - name: workspace
+          emptyDir: {}
+        - name: audit-logs
+          emptyDir: {}

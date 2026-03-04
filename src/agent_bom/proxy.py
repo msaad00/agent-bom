@@ -95,6 +95,110 @@ class ProxyMetrics:
         }
 
 
+# ─── Prometheus metrics server ────────────────────────────────────────────────
+
+
+class ProxyMetricsServer:
+    """Lightweight HTTP server exposing Prometheus text exposition format on /metrics."""
+
+    def __init__(self, metrics: ProxyMetrics, port: int = 8422) -> None:
+        self.metrics = metrics
+        self.port = port
+        self._server: Optional[asyncio.AbstractServer] = None
+
+    def render_metrics(self) -> str:
+        """Render ProxyMetrics as Prometheus text exposition format."""
+        summary = self.metrics.summary()
+        lines: list[str] = []
+
+        # Tool call counters
+        lines.append("# HELP agent_bom_proxy_tool_calls_total Total tool calls proxied")
+        lines.append("# TYPE agent_bom_proxy_tool_calls_total counter")
+        for tool, count in summary.get("calls_by_tool", {}).items():
+            lines.append(f'agent_bom_proxy_tool_calls_total{{tool="{tool}"}} {count}')
+
+        # Blocked counters
+        lines.append("# HELP agent_bom_proxy_blocked_total Total blocked tool calls")
+        lines.append("# TYPE agent_bom_proxy_blocked_total counter")
+        for reason, count in summary.get("blocked_by_reason", {}).items():
+            lines.append(f'agent_bom_proxy_blocked_total{{reason="{reason}"}} {count}')
+
+        # Uptime
+        lines.append("# HELP agent_bom_proxy_uptime_seconds Proxy uptime in seconds")
+        lines.append("# TYPE agent_bom_proxy_uptime_seconds gauge")
+        lines.append(f"agent_bom_proxy_uptime_seconds {summary.get('uptime_seconds', 0)}")
+
+        # Totals
+        lines.append("# HELP agent_bom_proxy_total_tool_calls Total tool calls")
+        lines.append("# TYPE agent_bom_proxy_total_tool_calls counter")
+        lines.append(f"agent_bom_proxy_total_tool_calls {summary.get('total_tool_calls', 0)}")
+
+        lines.append("# HELP agent_bom_proxy_total_blocked Total blocked calls")
+        lines.append("# TYPE agent_bom_proxy_total_blocked counter")
+        lines.append(f"agent_bom_proxy_total_blocked {summary.get('total_blocked', 0)}")
+
+        # Latency
+        latency = summary.get("latency", {})
+        if latency:
+            lines.append("# HELP agent_bom_proxy_latency_ms Tool call round-trip latency")
+            lines.append("# TYPE agent_bom_proxy_latency_ms summary")
+            if "p50_ms" in latency:
+                lines.append(f'agent_bom_proxy_latency_ms{{quantile="0.5"}} {latency["p50_ms"]}')
+            if "p95_ms" in latency:
+                lines.append(f'agent_bom_proxy_latency_ms{{quantile="0.95"}} {latency["p95_ms"]}')
+
+        # Replay rejections
+        lines.append("# HELP agent_bom_proxy_replay_rejections_total Replay attack rejections")
+        lines.append("# TYPE agent_bom_proxy_replay_rejections_total counter")
+        lines.append(f"agent_bom_proxy_replay_rejections_total {summary.get('replay_rejections', 0)}")
+
+        # Messages
+        lines.append("# HELP agent_bom_proxy_messages_total Total JSON-RPC messages")
+        lines.append("# TYPE agent_bom_proxy_messages_total counter")
+        lines.append(f'agent_bom_proxy_messages_total{{direction="client_to_server"}} {summary.get("messages_client_to_server", 0)}')
+        lines.append(f'agent_bom_proxy_messages_total{{direction="server_to_client"}} {summary.get("messages_server_to_client", 0)}')
+
+        return "\n".join(lines) + "\n"
+
+    async def start(self) -> None:
+        """Start the metrics HTTP server."""
+        if self.port <= 0:
+            return
+
+        async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+            try:
+                request_line = await asyncio.wait_for(reader.readline(), timeout=10)
+                # Read remaining headers
+                while True:
+                    header = await asyncio.wait_for(reader.readline(), timeout=5)
+                    if not header or header == b"\r\n":
+                        break
+
+                body = self.render_metrics()
+                response = (
+                    "HTTP/1.1 200 OK\r\n"
+                    "Content-Type: text/plain; version=0.0.4; charset=utf-8\r\n"
+                    f"Content-Length: {len(body)}\r\n"
+                    "\r\n"
+                    f"{body}"
+                )
+                writer.write(response.encode())
+                await writer.drain()
+            except (asyncio.TimeoutError, ConnectionResetError):
+                pass
+            finally:
+                writer.close()
+
+        self._server = await asyncio.start_server(handle, "0.0.0.0", self.port)
+        logger.info("Prometheus metrics server listening on port %d", self.port)
+
+    async def stop(self) -> None:
+        """Stop the metrics server."""
+        if self._server:
+            self._server.close()
+            await self._server.wait_closed()
+
+
 # ─── JSON-RPC parsing ────────────────────────────────────────────────────────
 
 
@@ -369,6 +473,7 @@ async def run_proxy(
     rate_limit_threshold: int = 0,
     log_only: bool = False,
     alert_webhook: Optional[str] = None,
+    metrics_port: int = 8422,
 ) -> int:
     """Main proxy loop. Spawns server subprocess, relays JSON-RPC.
 
@@ -396,6 +501,10 @@ async def run_proxy(
 
     # Metrics
     metrics = ProxyMetrics()
+
+    # Prometheus metrics server
+    metrics_server = ProxyMetricsServer(metrics, port=metrics_port)
+    await metrics_server.start()
 
     # Runtime detectors
     from agent_bom.runtime.detectors import (
@@ -734,6 +843,7 @@ async def run_proxy(
             summary_line = json.dumps(summary) + "\n"
             log_file.write(summary_line)
             log_file.close()
+        await metrics_server.stop()
         if process.returncode is None:
             process.terminate()
             try:

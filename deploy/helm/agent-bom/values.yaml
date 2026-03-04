@@ -1,0 +1,37 @@
+image:
+  repository: msaad02/agent-bom
+  tag: "0.49.0"
+  pullPolicy: IfNotPresent
+
+runtimeImage:
+  repository: msaad02/agent-bom-runtime
+  tag: "0.49.0"
+  pullPolicy: IfNotPresent
+
+scanner:
+  enabled: true
+  schedule: "0 */6 * * *"
+  allNamespaces: true
+  outputFormat: json
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+
+monitor:
+  enabled: false
+  mode: http
+  port: 8423
+
+rbac:
+  create: true
+
+serviceAccount:
+  create: true
+  name: agent-bom
+
+resources:
+  requests:
+    memory: "64Mi"
+    cpu: "50m"
+  limits:
+    memory: "256Mi"
+    cpu: "500m"

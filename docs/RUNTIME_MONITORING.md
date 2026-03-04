@@ -309,3 +309,118 @@ Use the runtime container directly from Claude Desktop:
   }
 }
 ```
+
+---
+
+## Kubernetes Deployment Manifests
+
+Pre-built K8s manifests are available in `deploy/k8s/`:
+
+| Manifest | Purpose |
+|----------|---------|
+| `namespace.yaml` | Creates the `agent-bom` namespace |
+| `rbac.yaml` | ServiceAccount + ClusterRole (pod/namespace read) + ClusterRoleBinding |
+| `cronjob.yaml` | Scheduled vulnerability scan every 6 hours across all namespaces |
+| `daemonset.yaml` | Runtime protection monitor on every node via `agent-bom protect --mode http` |
+| `sidecar-example.yaml` | MCP server + agent-bom proxy sidecar deployment example |
+
+### Quick start
+
+```bash
+kubectl apply -f deploy/k8s/namespace.yaml
+kubectl apply -f deploy/k8s/rbac.yaml
+kubectl apply -f deploy/k8s/cronjob.yaml
+```
+
+To enable runtime monitoring on all nodes:
+
+```bash
+kubectl apply -f deploy/k8s/daemonset.yaml
+```
+
+---
+
+## Helm Chart
+
+A Helm chart is provided in `deploy/helm/agent-bom/` for customizable deployments:
+
+```bash
+# Install with defaults (scheduled scanner only)
+helm install agent-bom deploy/helm/agent-bom/ -n agent-bom --create-namespace
+
+# Enable runtime monitoring DaemonSet
+helm install agent-bom deploy/helm/agent-bom/ -n agent-bom --create-namespace \
+  --set monitor.enabled=true
+
+# Custom scan schedule (every 2 hours)
+helm install agent-bom deploy/helm/agent-bom/ -n agent-bom --create-namespace \
+  --set scanner.schedule="0 */2 * * *"
+```
+
+### Key values
+
+| Value | Default | Description |
+|-------|---------|-------------|
+| `scanner.enabled` | `true` | Deploy the CronJob scanner |
+| `scanner.schedule` | `0 */6 * * *` | Cron schedule for scans |
+| `scanner.allNamespaces` | `true` | Scan all namespaces |
+| `monitor.enabled` | `false` | Deploy the DaemonSet runtime monitor |
+| `monitor.port` | `8423` | HTTP port for the protect endpoint |
+| `rbac.create` | `true` | Create ClusterRole + ClusterRoleBinding |
+
+---
+
+## Sidecar Injection
+
+To run the agent-bom proxy as a sidecar alongside your MCP server pod, see `deploy/k8s/sidecar-example.yaml`. The sidecar:
+
+- Intercepts all JSON-RPC traffic between client and server
+- Logs tool calls to `/var/log/agent-bom/audit.jsonl`
+- Detects credential leaks and blocks undeclared tools
+- Exposes Prometheus metrics on port 8422
+
+Apply the example:
+
+```bash
+kubectl apply -f deploy/k8s/sidecar-example.yaml
+```
+
+---
+
+## Prometheus Metrics
+
+The proxy exposes Prometheus-compatible metrics on port 8422 (configurable via `--metrics-port`):
+
+```bash
+agent-bom proxy --metrics-port 8422 --log audit.jsonl -- npx @mcp/server-filesystem /tmp
+```
+
+### Metrics endpoint
+
+`GET http://localhost:8422/metrics` returns:
+
+```
+agent_bom_proxy_tool_calls_total{tool="read_file"} 42
+agent_bom_proxy_blocked_total{reason="policy"} 3
+agent_bom_proxy_uptime_seconds 300.5
+agent_bom_proxy_total_tool_calls 45
+agent_bom_proxy_total_blocked 3
+agent_bom_proxy_latency_ms{quantile="0.5"} 15.0
+agent_bom_proxy_latency_ms{quantile="0.95"} 120.0
+agent_bom_proxy_replay_rejections_total 0
+agent_bom_proxy_messages_total{direction="client_to_server"} 50
+agent_bom_proxy_messages_total{direction="server_to_client"} 48
+```
+
+### Prometheus scrape config
+
+The sidecar example includes Prometheus annotations for auto-discovery:
+
+```yaml
+annotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8422"
+  prometheus.io/path: "/metrics"
+```
+
+To disable metrics, set `--metrics-port 0`.

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agent-bom
+  labels:
+    app.kubernetes.io/name: agent-bom
+    app.kubernetes.io/part-of: agent-bom

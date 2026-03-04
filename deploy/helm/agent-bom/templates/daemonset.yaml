@@ -1,0 +1,47 @@
+{{- if .Values.monitor.enabled }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "agent-bom.name" . }}-monitor
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-bom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: monitor
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "agent-bom.name" . }}
+      app.kubernetes.io/component: monitor
+  template:
+    metadata:
+      labels:
+        {{- include "agent-bom.labels" . | nindent 8 }}
+        app.kubernetes.io/component: monitor
+    spec:
+      serviceAccountName: {{ include "agent-bom.serviceAccountName" . }}
+      containers:
+        - name: monitor
+          image: "{{ .Values.runtimeImage.repository }}:{{ .Values.runtimeImage.tag }}"
+          imagePullPolicy: {{ .Values.runtimeImage.pullPolicy }}
+          command: ["agent-bom"]
+          args:
+            - "protect"
+            - "--mode"
+            - {{ .Values.monitor.mode | quote }}
+            - "--host"
+            - "0.0.0.0"
+            - "--port"
+            - {{ .Values.monitor.port | quote }}
+          ports:
+            - containerPort: {{ .Values.monitor.port }}
+              name: protect
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /status
+              port: protect
+            initialDelaySeconds: 5
+            periodSeconds: 30
+{{- end }}

@@ -3740,8 +3740,11 @@ def registry_mcp_sync(max_pages, dry_run):
 @click.option(
     "--alert-webhook", default=None, envvar="AGENT_BOM_ALERT_WEBHOOK", help="Webhook URL for runtime alerts (Slack/Teams/PagerDuty)"
 )
+@click.option("--metrics-port", default=8422, show_default=True, help="Prometheus metrics port (0 to disable)")
 @click.argument("server_cmd", nargs=-1, required=True)
-def proxy_cmd(policy, log_path, block_undeclared, detect_credentials, rate_limit_threshold, log_only, alert_webhook, server_cmd):
+def proxy_cmd(
+    policy, log_path, block_undeclared, detect_credentials, rate_limit_threshold, log_only, alert_webhook, metrics_port, server_cmd
+):
     """Run an MCP server through agent-bom's security proxy.
 
     \b
@@ -3785,6 +3788,7 @@ def proxy_cmd(policy, log_path, block_undeclared, detect_credentials, rate_limit
             rate_limit_threshold=rate_limit_threshold,
             log_only=log_only,
             alert_webhook=alert_webhook,
+            metrics_port=metrics_port,
         )
     )
     sys.exit(exit_code)

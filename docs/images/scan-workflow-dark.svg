@@ -212,7 +212,7 @@
 
   <rect x="720" y="346" width="186" height="42" rx="6" fill="#0d1117" stroke="#3fb950" stroke-width="0.8"/>
   <text x="813" y="364" text-anchor="middle" class="label" fill="#3fb950">MCP Server</text>
-  <text x="813" y="378" text-anchor="middle" class="sub">15 tools · stdio + SSE transport</text>
+  <text x="813" y="378" text-anchor="middle" class="sub">16 tools · stdio + SSE transport</text>
 
   <rect x="720" y="396" width="186" height="42" rx="6" fill="#0d1117" stroke="#3fb950" stroke-width="0.8"/>
   <text x="813" y="414" text-anchor="middle" class="label" fill="#3fb950">Observability</text>
@@ -230,5 +230,5 @@
   <!-- ═══ Bottom Bar: Trust + Data Flow ═══ -->
   <rect x="20" y="570" width="900" height="38" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1"/>
   <text x="470" y="586" text-anchor="middle" class="badge" fill="#8b949e">TRUST MODEL</text>
-  <text x="470" y="600" text-anchor="middle" class="note">Read-only · Agentless · Never stores credentials · Only package names sent to APIs · --dry-run preview · Sigstore signed · 2,335 tests</text>
+  <text x="470" y="600" text-anchor="middle" class="note">Read-only · Agentless · Never stores credentials · Only package names sent to APIs · --dry-run preview · Sigstore signed · 2,700+ tests</text>
 </svg>

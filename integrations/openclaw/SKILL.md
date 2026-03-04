@@ -18,7 +18,7 @@ metadata:
   pypi: https://pypi.org/project/agent-bom/
   smithery: https://smithery.ai/server/agent-bom/agent-bom
   scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
-  tests: 2099
+  tests: 2700
   install:
     pipx: agent-bom
     pip: agent-bom
@@ -93,7 +93,7 @@ docker run -p 8080:8080 agent-bom-sse
 # Connect: { "type": "sse", "url": "http://localhost:8080/sse" }
 ```
 
-## Available MCP Tools (15 tools)
+## Available MCP Tools (16 tools)
 
 | Tool | Description |
 |------|-------------|
@@ -109,6 +109,7 @@ docker run -p 8080:8080 agent-bom-sse
 | `policy_check` | Evaluate results against security policy |
 | `diff` | Compare two scan reports (new/resolved/persistent) |
 | `marketplace_check` | Pre-install trust check with registry cross-reference |
+| `code_scan` | SAST scanning via Semgrep with CWE-based compliance mapping |
 | `where` | Show MCP client config discovery paths |
 | `inventory` | List discovered agents, servers, packages |
 | `context_graph` | Agent context graph with lateral movement analysis |
@@ -182,6 +183,6 @@ installation or self-host your own instance.
 - **PyPI**: [pypi.org/project/agent-bom](https://pypi.org/project/agent-bom/)
 - **Smithery**: 99/100 quality score
 - **Sigstore signed**: `agent-bom verify agent-bom@0.49.0`
-- **2,099 tests** with automated security scanning (CodeQL + OpenSSF Scorecard)
+- **2,700+ tests** with automated security scanning (CodeQL + OpenSSF Scorecard)
 - **OpenSSF Scorecard**: [securityscorecards.dev](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom)
 - **No telemetry**: Zero tracking, zero analytics

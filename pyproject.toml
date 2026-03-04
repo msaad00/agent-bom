@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agent-bom"
-version = "0.49.0"
+version = "0.50.0"
 description = "AI supply chain security scanner — CVEs, blast radius, credential exposure, 10-framework compliance (OWASP LLM/MCP/Agentic + MITRE ATLAS + NIST AI RMF + EU AI Act + NIST CSF + ISO 27001 + SOC 2 + CIS). 18 MCP clients, 16 tools, GPU/container/K8s scanning."
 readme = "README.md"
 license = {text = "Apache-2.0"}

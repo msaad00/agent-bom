@@ -51,15 +51,15 @@
   <text x="560" y="93" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#fff">4</text>
 
   <!-- Stage 5 -->
-  <circle cx="720" cy="88" r="14" fill="#f85149"/>
+  <circle cx="720" cy="88" r="14" fill="#da3633"/>
   <text x="720" y="93" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#fff">5</text>
 
   <!-- Stage 6 -->
-  <circle cx="900" cy="88" r="14" fill="#a371f7"/>
+  <circle cx="900" cy="88" r="14" fill="#8b5cf6"/>
   <text x="900" y="93" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#fff">6</text>
 
   <!-- Stage 7 -->
-  <circle cx="1080" cy="88" r="14" fill="#3fb950"/>
+  <circle cx="1080" cy="88" r="14" fill="#238636"/>
   <text x="1080" y="93" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#fff">7</text>
 
   <!-- Connecting line between stage numbers -->
@@ -75,15 +75,15 @@
   <!-- ═══════════════════════════════════════════════════════════════════ -->
 
   <!-- Stage 1: Discover -->
-  <rect x="20" y="115" width="120" height="200" rx="10" fill="#161b22" stroke="#1f6feb" stroke-width="2"/>
+  <rect x="20" y="115" width="120" height="200" rx="10" fill="#161b22" stroke="#1f3a5f" stroke-width="2"/>
   <text x="80" y="138" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#58a6ff">Discover</text>
-  <text x="80" y="160" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#1f6feb">MCP (20)</text>
-  <text x="80" y="178" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#1f6feb">Docker/K8s</text>
-  <text x="80" y="196" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#1f6feb">Cloud (11)</text>
-  <text x="80" y="214" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#1f6feb">AI/ML (10)</text>
-  <text x="80" y="232" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#1f6feb">Code (7)</text>
-  <text x="80" y="250" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#1f6feb">Filesystem</text>
-  <rect x="32" y="266" width="96" height="16" rx="8" fill="#1f6feb" fill-opacity="0.2"/>
+  <text x="80" y="160" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#58a6ff">MCP (20)</text>
+  <text x="80" y="178" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#58a6ff">Docker/K8s</text>
+  <text x="80" y="196" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#58a6ff">Cloud (11)</text>
+  <text x="80" y="214" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#58a6ff">AI/ML (10)</text>
+  <text x="80" y="232" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#58a6ff">Code (7)</text>
+  <text x="80" y="250" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#58a6ff">Filesystem</text>
+  <rect x="32" y="266" width="96" height="16" rx="8" fill="#1f3a5f"/>
   <text x="80" y="278" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="8" font-weight="600" fill="#58a6ff">PROPRIETARY</text>
   <text x="80" y="306" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="9" fill="#8b949e">8 source types</text>
 
@@ -91,21 +91,21 @@
   <path d="M140 215 C165 215, 165 215, 180 215" stroke="#484f58" stroke-width="3" fill="none" marker-end="url(#sa-ah)"/>
 
   <!-- Stage 2: Extract -->
-  <rect x="186" y="135" width="108" height="160" rx="10" fill="#161b22" stroke="#1f6feb" stroke-width="2"/>
+  <rect x="186" y="135" width="108" height="160" rx="10" fill="#161b22" stroke="#1f3a5f" stroke-width="2"/>
   <text x="240" y="158" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#58a6ff">Extract</text>
-  <text x="240" y="182" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#1f6feb">Pkg Parser</text>
-  <text x="240" y="200" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#1f6feb">AST Detect</text>
-  <text x="240" y="218" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#1f6feb">Model Inspect</text>
-  <text x="240" y="236" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#1f6feb">SBOM Ingest</text>
-  <text x="240" y="260" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="9" fill="#8b949e" font-style="italic">Syft · Semgrep</text>
-  <rect x="198" y="270" width="84" height="16" rx="8" fill="#1f6feb" fill-opacity="0.2"/>
+  <text x="240" y="182" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#58a6ff">Pkg Parser</text>
+  <text x="240" y="200" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#58a6ff">AST Detect</text>
+  <text x="240" y="218" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#58a6ff">Model Inspect</text>
+  <text x="240" y="236" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#58a6ff">SBOM Ingest</text>
+  <text x="240" y="260" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="9" fill="#484f58" font-style="italic">Syft · Semgrep</text>
+  <rect x="198" y="270" width="84" height="16" rx="8" fill="#1f3a5f"/>
   <text x="240" y="282" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="8" font-weight="600" fill="#58a6ff">PROP + ext</text>
 
   <!-- Arrow -->
   <path d="M294 215 C319 215, 319 215, 340 215" stroke="#484f58" stroke-width="3" fill="none" marker-end="url(#sa-ah)"/>
 
   <!-- Stage 3: Scan -->
-  <rect x="346" y="115" width="108" height="200" rx="10" fill="#161b22" stroke="#d29922" stroke-width="2"/>
+  <rect x="346" y="115" width="108" height="200" rx="10" fill="#1a1a0e" stroke="#5f4a1f" stroke-width="2"/>
   <text x="400" y="138" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#e3b341">Scan</text>
   <text x="400" y="160" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#d29922">OSV.dev</text>
   <text x="400" y="178" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#d29922">GHSA</text>
@@ -114,14 +114,14 @@
   <text x="400" y="232" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#d29922">Snyk</text>
   <text x="400" y="250" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#e3b341">Malware Detect</text>
   <text x="400" y="268" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#e3b341">Typosquat</text>
-  <rect x="358" y="280" width="84" height="16" rx="8" fill="#d29922" fill-opacity="0.2"/>
+  <rect x="358" y="280" width="84" height="16" rx="8" fill="#3f2a0f"/>
   <text x="400" y="292" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="8" font-weight="600" fill="#d29922">9 SOURCES</text>
 
   <!-- Arrow -->
   <path d="M454 215 C479 215, 479 215, 500 215" stroke="#484f58" stroke-width="3" fill="none" marker-end="url(#sa-ah)"/>
 
   <!-- Stage 4: Enrich -->
-  <rect x="506" y="135" width="108" height="160" rx="10" fill="#161b22" stroke="#d29922" stroke-width="2"/>
+  <rect x="506" y="135" width="108" height="160" rx="10" fill="#1a1a0e" stroke="#5f4a1f" stroke-width="2"/>
   <text x="560" y="158" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#e3b341">Enrich</text>
   <text x="560" y="182" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#d29922">CVSS 3.1</text>
   <text x="560" y="200" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#d29922">EPSS Scores</text>
@@ -134,8 +134,8 @@
   <path d="M614 215 C639 215, 639 215, 660 215" stroke="#484f58" stroke-width="3" fill="none" marker-end="url(#sa-ah)"/>
 
   <!-- Stage 5: Analyze -->
-  <rect x="666" y="115" width="108" height="200" rx="10" fill="#161b22" stroke="#f85149" stroke-width="2"/>
-  <rect x="676" y="122" width="68" height="16" rx="8" fill="#f85149"/>
+  <rect x="666" y="115" width="108" height="200" rx="10" fill="#1a0e0e" stroke="#5f1f1f" stroke-width="2"/>
+  <rect x="676" y="122" width="68" height="16" rx="8" fill="#da3633"/>
   <text x="710" y="134" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="7" font-weight="700" fill="#fff" letter-spacing="0.04em">PROPRIETARY</text>
   <text x="720" y="158" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#ff7b72">Analyze</text>
   <text x="720" y="180" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#f85149">Blast Radius</text>
@@ -144,15 +144,15 @@
   <text x="720" y="234" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#f85149">Toxic Combos</text>
   <text x="720" y="252" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#f85149">Posture A-F</text>
   <text x="720" y="270" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#f85149">Incidents</text>
-  <rect x="678" y="282" width="84" height="16" rx="8" fill="#f85149" fill-opacity="0.2"/>
+  <rect x="678" y="282" width="84" height="16" rx="8" fill="#3f0f0f"/>
   <text x="720" y="294" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="8" font-weight="600" fill="#f85149">100% PROP</text>
 
   <!-- Arrow -->
   <path d="M774 215 C799 215, 799 215, 840 215" stroke="#484f58" stroke-width="3" fill="none" marker-end="url(#sa-ah)"/>
 
   <!-- Stage 6: Comply -->
-  <rect x="846" y="135" width="108" height="160" rx="10" fill="#161b22" stroke="#a371f7" stroke-width="2"/>
-  <rect x="856" y="142" width="68" height="16" rx="8" fill="#a371f7"/>
+  <rect x="846" y="135" width="108" height="160" rx="10" fill="#150e1a" stroke="#3f1f5f" stroke-width="2"/>
+  <rect x="856" y="142" width="68" height="16" rx="8" fill="#8b5cf6"/>
   <text x="890" y="154" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="7" font-weight="700" fill="#fff" letter-spacing="0.04em">PROPRIETARY</text>
   <text x="900" y="178" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#d2a8ff">Comply</text>
   <text x="900" y="200" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#a371f7">OWASP LLM+MCP</text>
@@ -165,7 +165,7 @@
   <path d="M954 215 C979 215, 979 215, 1020 215" stroke="#484f58" stroke-width="3" fill="none" marker-end="url(#sa-ah)"/>
 
   <!-- Stage 7: Output -->
-  <rect x="1026" y="115" width="134" height="200" rx="10" fill="#161b22" stroke="#3fb950" stroke-width="2"/>
+  <rect x="1026" y="115" width="134" height="200" rx="10" fill="#0e1a14" stroke="#1f5f3a" stroke-width="2"/>
   <text x="1093" y="138" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#7ee787">Output</text>
   <text x="1093" y="160" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#3fb950">JSON · SARIF</text>
   <text x="1093" y="178" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#3fb950">CDX · SPDX</text>
@@ -174,13 +174,13 @@
   <text x="1093" y="238" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#7ee787">MCP Server (16)</text>
   <text x="1093" y="256" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#7ee787">Dashboard (15)</text>
   <text x="1093" y="274" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#3fb950">Prometheus · OCSF</text>
-  <rect x="1041" y="286" width="104" height="16" rx="8" fill="#3fb950" fill-opacity="0.2"/>
+  <rect x="1041" y="286" width="104" height="16" rx="8" fill="#0f3f1f"/>
   <text x="1093" y="298" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="8" font-weight="600" fill="#3fb950">13+ FORMATS</text>
 
   <!-- ═══════════════════════════════════════════════════════════════════ -->
   <!--  RUNTIME PROTECTION BAR                                           -->
   <!-- ═══════════════════════════════════════════════════════════════════ -->
-  <rect x="20" y="340" width="1160" height="52" rx="10" fill="#161b22" stroke="#a371f7" stroke-width="2"/>
+  <rect x="20" y="340" width="1160" height="52" rx="10" fill="#150e1a" stroke="#3f1f5f" stroke-width="2"/>
   <use href="#icon-shield" x="40" y="352" width="28" height="28" color="#a371f7"/>
   <text x="82" y="368" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#d2a8ff">Runtime Protection</text>
   <text x="82" y="384" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#a371f7">MCP Stdio Proxy · 4 Inline Scanners · 5 Detectors · Fleet Mgmt · Trust Score · Alert Pipeline</text>
@@ -188,7 +188,7 @@
   <!-- ═══════════════════════════════════════════════════════════════════ -->
   <!--  INFRASTRUCTURE BAR                                               -->
   <!-- ═══════════════════════════════════════════════════════════════════ -->
-  <rect x="20" y="404" width="1160" height="36" rx="10" fill="#161b22" stroke="#3fb950" stroke-width="1.5"/>
+  <rect x="20" y="404" width="1160" height="36" rx="10" fill="#0e1a14" stroke="#1f5f3a" stroke-width="1.5"/>
   <use href="#icon-db" x="40" y="410" width="24" height="24" color="#3fb950"/>
   <text x="78" y="428" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600" fill="#7ee787">Infrastructure</text>
   <text x="192" y="428" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#3fb950">SQLite · PostgreSQL · Snowflake · RBAC · HMAC audit · Docker Hub · GHCR · Railway SSE · Helm</text>

@@ -35,6 +35,7 @@ from agent_bom.owasp import tag_blast_radius
 from agent_bom.owasp_agentic import tag_blast_radius as tag_owasp_agentic
 from agent_bom.owasp_mcp import tag_blast_radius as tag_owasp_mcp
 from agent_bom.soc2 import tag_blast_radius as tag_soc2
+from agent_bom.vuln_compliance import tag_vulnerability as _tag_vuln
 
 console = Console(stderr=True)
 
@@ -418,6 +419,9 @@ async def scan_packages(packages: list[Package]) -> int:
         if vuln_data:
             pkg.vulnerabilities = build_vulnerabilities(vuln_data, pkg)
             total_vulns += len(pkg.vulnerabilities)
+            # Tag each CVE with compliance framework codes (pre-enrichment)
+            for v in pkg.vulnerabilities:
+                v.compliance_tags = _tag_vuln(v, pkg)
             # Flag packages with MAL- prefixed vulnerability IDs as malicious
             flag_malicious_from_vulns(pkg)
 
@@ -645,6 +649,13 @@ async def scan_agents_with_enrichment(
                 enable_epss=True,
                 enable_kev=True,
             )
+
+            # Refresh CVE-level compliance tags now that CWE/KEV/EPSS data is populated
+            for agent in agents:
+                for server in agent.mcp_servers:
+                    for pkg in server.packages:
+                        for v in pkg.vulnerabilities:
+                            v.compliance_tags = _tag_vuln(v, pkg)
 
         # Scorecard enrichment — adds supply-chain quality signal
         try:

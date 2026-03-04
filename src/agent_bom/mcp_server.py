@@ -480,6 +480,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                             "cvss_score": v.cvss_score,
                             "fixed_version": v.fixed_version,
                             "summary": (v.summary or "")[:200],
+                            "compliance_tags": v.compliance_tags,
                         }
                         for v in vulns
                     ],

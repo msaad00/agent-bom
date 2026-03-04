@@ -1442,6 +1442,7 @@ def to_json(report: AIBOMReport) -> dict:
                                         "nvd_status": v.nvd_status,
                                         "vex_status": v.vex_status,
                                         "vex_justification": v.vex_justification,
+                                        "compliance_tags": v.compliance_tags,
                                     }
                                     for v in pkg.vulnerabilities
                                 ],
@@ -1477,6 +1478,7 @@ def to_json(report: AIBOMReport) -> dict:
                 "epss_score": br.vulnerability.epss_score,
                 "is_kev": br.vulnerability.is_kev,
                 "nvd_status": br.vulnerability.nvd_status,
+                "compliance_tags": br.vulnerability.compliance_tags,
                 "package": f"{br.package.name}@{br.package.version}",
                 "ecosystem": br.package.ecosystem,
                 "is_malicious": br.package.is_malicious,

@@ -77,6 +77,9 @@ class Vulnerability:
     exploitability: Optional[str] = None  # "HIGH", "MEDIUM", "LOW" based on EPSS
     vex_status: Optional[str] = None  # VEX status: affected, not_affected, fixed, under_investigation
     vex_justification: Optional[str] = None  # VEX justification when not_affected
+    compliance_tags: dict[str, list[str]] = field(
+        default_factory=dict
+    )  # CVE-level framework tags, e.g. {"nist_csf": ["ID.RA-01"], "cis": ["CIS-02.3"]}
 
     @property
     def is_actively_exploited(self) -> bool:

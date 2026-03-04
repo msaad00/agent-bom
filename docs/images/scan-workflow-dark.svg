@@ -1,262 +1,228 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 680" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 520" fill="none">
   <defs>
-    <marker id="d-arrow-gray" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#484f58"/></marker>
-    <marker id="d-arrow-blue" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#58a6ff"/></marker>
-    <marker id="d-arrow-amber" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#e3b341"/></marker>
-    <marker id="d-arrow-red" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#f85149"/></marker>
-    <marker id="d-arrow-green" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#3fb950"/></marker>
+    <marker id="ah" viewBox="0 0 12 8" refX="11" refY="4" markerWidth="10" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L12 4 L0 8 Z" fill="#484f58"/></marker>
+    <marker id="ah-b" viewBox="0 0 12 8" refX="11" refY="4" markerWidth="10" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L12 4 L0 8 Z" fill="#1f6feb"/></marker>
+    <marker id="ah-a" viewBox="0 0 12 8" refX="11" refY="4" markerWidth="10" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L12 4 L0 8 Z" fill="#d29922"/></marker>
+    <marker id="ah-r" viewBox="0 0 12 8" refX="11" refY="4" markerWidth="10" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L12 4 L0 8 Z" fill="#f85149"/></marker>
+    <marker id="ah-g" viewBox="0 0 12 8" refX="11" refY="4" markerWidth="10" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L12 4 L0 8 Z" fill="#3fb950"/></marker>
+    <marker id="ah-p" viewBox="0 0 12 8" refX="11" refY="4" markerWidth="10" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L12 4 L0 8 Z" fill="#a371f7"/></marker>
+
+    <!-- Icon: Magnifying glass (Discover) -->
+    <symbol id="icon-discover" viewBox="0 0 24 24">
+      <circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="2" fill="none"/>
+      <line x1="15" y1="15" x2="21" y2="21" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+    </symbol>
+
+    <!-- Icon: Package/Box (Extract) -->
+    <symbol id="icon-extract" viewBox="0 0 24 24">
+      <path d="M3 8L12 3L21 8V16L12 21L3 16V8Z" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/>
+      <line x1="12" y1="12" x2="12" y2="21" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="3" y1="8" x2="12" y2="12" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="21" y1="8" x2="12" y2="12" stroke="currentColor" stroke-width="1.5"/>
+    </symbol>
+
+    <!-- Icon: Shield with check (Scan) -->
+    <symbol id="icon-scan" viewBox="0 0 24 24">
+      <path d="M12 2L3 7V12C3 17.5 7 21.5 12 23C17 21.5 21 17.5 21 12V7L12 2Z" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/>
+      <path d="M8 12L11 15L16 9" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+
+    <!-- Icon: Graph/Network (Analyze) -->
+    <symbol id="icon-analyze" viewBox="0 0 24 24">
+      <circle cx="12" cy="5" r="3" stroke="currentColor" stroke-width="2" fill="none"/>
+      <circle cx="5" cy="19" r="3" stroke="currentColor" stroke-width="2" fill="none"/>
+      <circle cx="19" cy="19" r="3" stroke="currentColor" stroke-width="2" fill="none"/>
+      <line x1="12" y1="8" x2="5" y2="16" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="12" y1="8" x2="19" y2="16" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="8" y1="19" x2="16" y2="19" stroke="currentColor" stroke-width="1.5"/>
+    </symbol>
+
+    <!-- Icon: Clipboard/Output -->
+    <symbol id="icon-output" viewBox="0 0 24 24">
+      <rect x="4" y="4" width="16" height="18" rx="2" stroke="currentColor" stroke-width="2" fill="none"/>
+      <line x1="8" y1="10" x2="16" y2="10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="8" y1="14" x2="14" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="8" y1="18" x2="12" y2="18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      <path d="M9 2H15V4C15 5 14 6 12 6C10 6 9 5 9 4V2Z" stroke="currentColor" stroke-width="1.5" fill="none"/>
+    </symbol>
   </defs>
 
-  <rect width="960" height="680" rx="16" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/>
+  <!-- Background -->
+  <rect width="1200" height="520" rx="16" fill="#0d1117"/>
 
   <!-- Title -->
-  <text x="480" y="24" text-anchor="middle" font-family="system-ui, sans-serif" font-size="15" font-weight="700" fill="#e6edf3">Scan Workflow — End-to-End Data Flow</text>
-  <text x="480" y="40" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#8b949e">Proprietary analysis engine · 70+ modules · 20 MCP clients · 11 cloud providers · zero runtime deps</text>
+  <text x="600" y="36" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="20" font-weight="700" fill="#e6edf3">How Agent-BOM Works</text>
+  <text x="600" y="56" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" fill="#8b949e">End-to-end scan workflow — from discovery to actionable output</text>
 
-  <!-- ═══ COLUMN 1: DISCOVERY ═══ -->
-  <rect x="14" y="52" width="148" height="418" rx="10" fill="#161b22" stroke="#1f6feb" stroke-width="1" stroke-dasharray="4 2"/>
-  <text x="88" y="68" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#58a6ff" letter-spacing="0.08em">DISCOVERY</text>
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!--  BLOCK 1: DISCOVER                                                -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <rect x="40" y="90" width="200" height="280" rx="12" fill="#161b22" stroke="#1f3a5f" stroke-width="2"/>
+  <use href="#icon-discover" x="120" y="108" width="32" height="32" color="#1f6feb"/>
+  <text x="140" y="162" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="16" font-weight="700" fill="#58a6ff">Discover</text>
+  <text x="140" y="180" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#58a6ff">8 source types · 20 MCP clients</text>
 
-  <rect x="24" y="80" width="128" height="38" rx="8" fill="#0d1117" stroke="#1f6feb" stroke-width="1.5"/>
-  <text x="88" y="96" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#58a6ff">MCP Agents</text>
-  <text x="88" y="110" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#8b949e">20 clients · 427+ registry</text>
+  <!-- Sub-items -->
+  <rect x="56" y="198" width="168" height="28" rx="6" fill="#21262d" stroke="#1f4a7f" stroke-width="1.5"/>
+  <text x="140" y="217" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600" fill="#58a6ff">MCP Agent Configs</text>
 
-  <rect x="24" y="128" width="128" height="38" rx="8" fill="#0d1117" stroke="#1f6feb" stroke-width="1.5"/>
-  <text x="88" y="144" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#58a6ff">Containers</text>
-  <text x="88" y="158" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#8b949e">Docker · K8s · Terraform</text>
+  <rect x="56" y="234" width="168" height="28" rx="6" fill="#21262d" stroke="#1f4a7f" stroke-width="1.5"/>
+  <text x="140" y="253" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600" fill="#58a6ff">Docker · K8s · Terraform</text>
 
-  <rect x="24" y="176" width="128" height="38" rx="8" fill="#0d1117" stroke="#1f6feb" stroke-width="1.5"/>
-  <text x="88" y="192" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#58a6ff">Cloud + AI</text>
-  <text x="88" y="206" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#8b949e">11 providers · 10 frameworks</text>
+  <rect x="56" y="270" width="168" height="28" rx="6" fill="#21262d" stroke="#1f4a7f" stroke-width="1.5"/>
+  <text x="140" y="289" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600" fill="#58a6ff">11 Cloud + AI Providers</text>
 
-  <rect x="24" y="224" width="128" height="38" rx="8" fill="#0d1117" stroke="#1f6feb" stroke-width="1.5"/>
-  <text x="88" y="240" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#58a6ff">Code + Supply Chain</text>
-  <text x="88" y="254" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#8b949e">7 ecosystems · SBOM · SAST</text>
+  <rect x="56" y="306" width="168" height="28" rx="6" fill="#21262d" stroke="#1f4a7f" stroke-width="1.5"/>
+  <text x="140" y="325" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600" fill="#58a6ff">Code · SBOMs · Models</text>
 
-  <rect x="24" y="272" width="128" height="38" rx="8" fill="#0d1117" stroke="#1f6feb" stroke-width="1.5"/>
-  <text x="88" y="288" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#58a6ff">AI/ML Models</text>
-  <text x="88" y="302" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#8b949e">12 formats · Jupyter · GH Actions</text>
+  <text x="140" y="358" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#8b949e">7 ecosystems · 12 model formats</text>
 
-  <rect x="24" y="320" width="128" height="38" rx="8" fill="#0d1117" stroke="#1f6feb" stroke-width="1.5"/>
-  <text x="88" y="336" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#58a6ff">SBOM Ingest</text>
-  <text x="88" y="350" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#8b949e">CycloneDX · SPDX</text>
+  <!-- ═══ Arrow 1→2 (bezier) ═══ -->
+  <path d="M240 230 C275 230, 275 230, 310 230" stroke="#484f58" stroke-width="3" fill="none" marker-end="url(#ah)"/>
 
-  <rect x="24" y="368" width="128" height="38" rx="8" fill="#0d1117" stroke="#1f6feb" stroke-width="1.5"/>
-  <text x="88" y="384" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#58a6ff">Integrity Verify</text>
-  <text x="88" y="398" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#8b949e">cosign · Sigstore · SHA-256</text>
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!--  BLOCK 2: EXTRACT + PARSE                                         -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <rect x="320" y="130" width="180" height="200" rx="12" fill="#161b22" stroke="#1f3a5f" stroke-width="2"/>
+  <use href="#icon-extract" x="390" y="148" width="32" height="32" color="#1f6feb"/>
+  <text x="410" y="202" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="16" font-weight="700" fill="#58a6ff">Extract</text>
+  <text x="410" y="220" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#58a6ff">Parse + normalize</text>
 
-  <rect x="24" y="416" width="128" height="38" rx="8" fill="#0d1117" stroke="#1f6feb" stroke-width="1.5"/>
-  <text x="88" y="432" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#58a6ff">Filesystem</text>
-  <text x="88" y="446" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#8b949e">Lockfiles · node_modules</text>
+  <rect x="336" y="238" width="148" height="26" rx="6" fill="#21262d" stroke="#1f4a7f" stroke-width="1.5"/>
+  <text x="410" y="256" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#58a6ff">Package Parser</text>
 
-  <!-- Arrows: Discovery → Extract -->
-  <path d="M152 99 L170 99 L170 240 L186 240" stroke="#1f6feb" stroke-width="1.5" fill="none" marker-end="url(#d-arrow-blue)"/>
-  <path d="M152 147 L174 147 L174 240 L186 240" stroke="#1f6feb" stroke-width="1.5" fill="none"/>
-  <path d="M152 195 L178 195 L178 240 L186 240" stroke="#1f6feb" stroke-width="1.5" fill="none"/>
-  <path d="M152 243 L186 243" stroke="#1f6feb" stroke-width="1.5" fill="none"/>
-  <path d="M152 291 L178 291 L178 246 L186 246" stroke="#1f6feb" stroke-width="1.5" fill="none"/>
-  <path d="M152 339 L174 339 L174 248 L186 248" stroke="#1f6feb" stroke-width="1.5" fill="none"/>
-  <path d="M152 387 L170 387 L170 250 L186 250" stroke="#1f6feb" stroke-width="1.5" fill="none"/>
-  <path d="M152 435 L166 435 L166 252 L186 252" stroke="#1f6feb" stroke-width="1.5" fill="none"/>
+  <rect x="336" y="270" width="148" height="26" rx="6" fill="#21262d" stroke="#1f4a7f" stroke-width="1.5"/>
+  <text x="410" y="288" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#58a6ff">Model Inspector</text>
 
-  <!-- ═══ COLUMN 2: EXTRACT ═══ -->
-  <rect x="188" y="175" width="140" height="142" rx="10" fill="#161b22" stroke="#1f6feb" stroke-width="1.5"/>
-  <text x="258" y="192" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#58a6ff" letter-spacing="0.06em">EXTRACT + PARSE</text>
-  <text x="258" y="204" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" fill="#58a6ff">PROPRIETARY</text>
+  <text x="410" y="318" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#8b949e" font-style="italic">+ Syft · Semgrep (optional)</text>
 
-  <rect x="198" y="212" width="120" height="24" rx="6" fill="#0d1117" stroke="#1f6feb" stroke-width="1"/>
-  <text x="258" y="228" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" fill="#58a6ff">Package Parser (7 eco)</text>
+  <!-- ═══ Arrow 2→3 (bezier) ═══ -->
+  <path d="M500 230 C535 230, 535 230, 570 230" stroke="#484f58" stroke-width="3" fill="none" marker-end="url(#ah)"/>
 
-  <rect x="198" y="242" width="120" height="24" rx="6" fill="#0d1117" stroke="#1f6feb" stroke-width="1"/>
-  <text x="258" y="258" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" fill="#58a6ff">AST Framework Detect</text>
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!--  BLOCK 3: SCAN + ENRICH (hero block — larger)                     -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <rect x="580" y="90" width="220" height="280" rx="12" fill="#1a1a0e" stroke="#5f4a1f" stroke-width="2"/>
+  <use href="#icon-scan" x="670" y="108" width="32" height="32" color="#d29922"/>
+  <text x="690" y="162" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="16" font-weight="700" fill="#e3b341">Scan + Enrich</text>
+  <text x="690" y="180" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#d29922">9 vuln sources · 6 enrichments</text>
 
-  <rect x="198" y="272" width="120" height="24" rx="6" fill="#0d1117" stroke="#1f6feb" stroke-width="1"/>
-  <text x="258" y="288" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" fill="#58a6ff">Model File Inspector</text>
+  <rect x="596" y="198" width="188" height="28" rx="6" fill="#21262d" stroke="#7f5a1f" stroke-width="1.5"/>
+  <text x="690" y="217" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600" fill="#e3b341">OSV · GHSA · NVD · Grype</text>
 
-  <path d="M328 246 L352 246" stroke="#484f58" stroke-width="2" fill="none" marker-end="url(#d-arrow-gray)"/>
+  <rect x="596" y="234" width="188" height="28" rx="6" fill="#21262d" stroke="#7f5a1f" stroke-width="1.5"/>
+  <text x="690" y="253" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600" fill="#e3b341">CVSS 3.1 · EPSS · KEV</text>
 
-  <!-- ═══ COLUMN 3: SCAN + ENRICH ═══ -->
-  <rect x="354" y="80" width="178" height="330" rx="10" fill="#161b22" stroke="#d29922" stroke-width="1.5"/>
-  <text x="443" y="97" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#e3b341" letter-spacing="0.06em">SCAN + ENRICH</text>
+  <rect x="596" y="270" width="188" height="28" rx="6" fill="#21262d" stroke="#7f5a1f" stroke-width="1.5"/>
+  <text x="690" y="289" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600" fill="#e3b341">AI Risk Classification</text>
 
-  <rect x="364" y="106" width="158" height="28" rx="6" fill="#0d1117" stroke="#d29922" stroke-width="1.5"/>
-  <text x="443" y="124" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#e3b341">Vuln Scanner</text>
+  <rect x="596" y="306" width="188" height="28" rx="6" fill="#21262d" stroke="#7f5a1f" stroke-width="1.5"/>
+  <text x="690" y="325" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600" fill="#e3b341">Malware + Typosquat Detect</text>
 
-  <rect x="364" y="142" width="75" height="22" rx="5" fill="#1c1917" stroke="#d29922" stroke-width="1"/>
-  <text x="401" y="157" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#e3b341">OSV.dev batch</text>
-  <rect x="447" y="142" width="75" height="22" rx="5" fill="#1c1917" stroke="#d29922" stroke-width="1"/>
-  <text x="484" y="157" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#e3b341">GHSA</text>
-  <rect x="364" y="170" width="75" height="22" rx="5" fill="#1c1917" stroke="#d29922" stroke-width="1"/>
-  <text x="401" y="185" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#e3b341">NVD / NIST</text>
-  <rect x="447" y="170" width="75" height="22" rx="5" fill="#1c1917" stroke="#d29922" stroke-width="1"/>
-  <text x="484" y="185" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#e3b341">Grype DB</text>
-  <rect x="364" y="198" width="75" height="22" rx="5" fill="#1c1917" stroke="#d29922" stroke-width="1"/>
-  <text x="401" y="213" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#e3b341">NVIDIA CSAF</text>
-  <rect x="447" y="198" width="75" height="22" rx="5" fill="#1c1917" stroke="#d29922" stroke-width="1"/>
-  <text x="484" y="213" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#e3b341">Snyk</text>
+  <text x="690" y="358" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#8b949e">OWASP tagging · FP reduction</text>
 
-  <rect x="364" y="232" width="158" height="28" rx="6" fill="#0d1117" stroke="#d29922" stroke-width="1.5"/>
-  <text x="443" y="250" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#e3b341">Enrichment Pipeline</text>
+  <!-- ═══ Arrow 3→4 (bezier) ═══ -->
+  <path d="M800 230 C835 230, 835 230, 870 230" stroke="#484f58" stroke-width="3" fill="none" marker-end="url(#ah)"/>
 
-  <rect x="364" y="268" width="75" height="22" rx="5" fill="#1c1917" stroke="#d29922" stroke-width="1"/>
-  <text x="401" y="283" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#e3b341">CVSS 3.1</text>
-  <rect x="447" y="268" width="75" height="22" rx="5" fill="#1c1917" stroke="#d29922" stroke-width="1"/>
-  <text x="484" y="283" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#e3b341">EPSS scores</text>
-  <rect x="364" y="296" width="75" height="22" rx="5" fill="#1c1917" stroke="#d29922" stroke-width="1"/>
-  <text x="401" y="311" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#e3b341">CISA KEV</text>
-  <rect x="447" y="296" width="75" height="22" rx="5" fill="#1c1917" stroke="#d29922" stroke-width="1"/>
-  <text x="484" y="311" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#e3b341">OpenSSF</text>
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!--  BLOCK 4: ANALYZE (hero block — proprietary)                      -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <rect x="880" y="90" width="280" height="280" rx="12" fill="#1a0e0e" stroke="#5f1f1f" stroke-width="2"/>
 
-  <rect x="364" y="326" width="158" height="28" rx="6" fill="#0d1117" stroke="#d29922" stroke-width="1.5"/>
-  <text x="443" y="344" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#e3b341">AI Risk + FP Reduction</text>
+  <!-- Proprietary badge -->
+  <rect x="900" y="100" width="100" height="20" rx="10" fill="#da3633"/>
+  <text x="950" y="114" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="9" font-weight="700" fill="#fff" letter-spacing="0.06em">PROPRIETARY</text>
 
-  <rect x="364" y="362" width="75" height="22" rx="5" fill="#1c1917" stroke="#d29922" stroke-width="1"/>
-  <text x="401" y="377" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#e3b341">OWASP tags</text>
-  <rect x="447" y="362" width="75" height="22" rx="5" fill="#1c1917" stroke="#d29922" stroke-width="1"/>
-  <text x="484" y="377" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#e3b341">VEX engine</text>
+  <use href="#icon-analyze" x="1000" y="108" width="32" height="32" color="#f85149"/>
+  <text x="1020" y="162" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="16" font-weight="700" fill="#ff7b72">Analyze</text>
+  <text x="1020" y="180" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#f85149">Deep risk intelligence</text>
 
-  <line x1="443" y1="134" x2="443" y2="142" stroke="#d29922" stroke-width="1" marker-end="url(#d-arrow-amber)"/>
-  <line x1="443" y1="220" x2="443" y2="232" stroke="#d29922" stroke-width="1" marker-end="url(#d-arrow-amber)"/>
-  <line x1="443" y1="260" x2="443" y2="268" stroke="#d29922" stroke-width="1" marker-end="url(#d-arrow-amber)"/>
-  <line x1="443" y1="318" x2="443" y2="326" stroke="#d29922" stroke-width="1" marker-end="url(#d-arrow-amber)"/>
-  <line x1="443" y1="354" x2="443" y2="362" stroke="#d29922" stroke-width="1" marker-end="url(#d-arrow-amber)"/>
+  <!-- Analysis nodes with arrows between them -->
+  <rect x="896" y="198" width="128" height="28" rx="6" fill="#21262d" stroke="#7f1f1f" stroke-width="1.5"/>
+  <text x="960" y="217" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600" fill="#ff7b72">Blast Radius</text>
 
-  <path d="M532 246 L556 246" stroke="#484f58" stroke-width="2" fill="none" marker-end="url(#d-arrow-gray)"/>
+  <path d="M1024 212 L1036 212" stroke="#f85149" stroke-width="1.5" fill="none" marker-end="url(#ah-r)"/>
 
-  <!-- ═══ COLUMN 4: ANALYSIS ═══ -->
-  <rect x="558" y="80" width="170" height="330" rx="10" fill="#161b22" stroke="#f85149" stroke-width="1.5"/>
-  <text x="643" y="97" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#f85149" letter-spacing="0.06em">PROPRIETARY ANALYSIS</text>
+  <rect x="1040" y="198" width="108" height="28" rx="6" fill="#21262d" stroke="#7f1f1f" stroke-width="1.5"/>
+  <text x="1094" y="217" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600" fill="#ff7b72">Context Graph</text>
 
-  <rect x="568" y="106" width="150" height="36" rx="7" fill="#0d1117" stroke="#f85149" stroke-width="1.5"/>
-  <text x="643" y="121" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#f85149">Blast Radius Engine</text>
-  <text x="643" y="133" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#8b949e">CVE → pkg → server → agent → creds</text>
+  <rect x="896" y="238" width="128" height="28" rx="6" fill="#21262d" stroke="#7f1f1f" stroke-width="1.5"/>
+  <text x="960" y="257" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600" fill="#ff7b72">Toxic Combos</text>
 
-  <rect x="568" y="150" width="150" height="36" rx="7" fill="#0d1117" stroke="#f85149" stroke-width="1.5"/>
-  <text x="643" y="165" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#f85149">Context Graph + BFS</text>
-  <text x="643" y="177" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#8b949e">Lateral movement · attack paths</text>
+  <path d="M1024 252 L1036 252" stroke="#f85149" stroke-width="1.5" fill="none" marker-end="url(#ah-r)"/>
 
-  <rect x="568" y="194" width="150" height="36" rx="7" fill="#0d1117" stroke="#f85149" stroke-width="1.5"/>
-  <text x="643" y="209" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#f85149">Risk Analyzer</text>
-  <text x="643" y="221" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#8b949e">7 caps · 8 dangerous combos</text>
+  <rect x="1040" y="238" width="108" height="28" rx="6" fill="#21262d" stroke="#7f1f1f" stroke-width="1.5"/>
+  <text x="1094" y="257" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600" fill="#ff7b72">Posture A-F</text>
 
-  <rect x="568" y="238" width="150" height="28" rx="7" fill="#0d1117" stroke="#f85149" stroke-width="1.5"/>
-  <text x="643" y="256" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#f85149">Toxic Combo Detector</text>
+  <rect x="896" y="278" width="252" height="28" rx="6" fill="#21262d" stroke="#4f1f7f" stroke-width="1.5"/>
+  <text x="1022" y="297" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600" fill="#d2a8ff">10 Compliance Frameworks</text>
 
-  <rect x="568" y="274" width="150" height="28" rx="7" fill="#0d1117" stroke="#f85149" stroke-width="1.5"/>
-  <text x="643" y="292" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#f85149">Posture Scorecard A-F</text>
+  <rect x="896" y="314" width="252" height="28" rx="6" fill="#21262d" stroke="#4f1f7f" stroke-width="1.5"/>
+  <text x="1022" y="333" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600" fill="#d2a8ff">Policy-as-Code Engine</text>
 
-  <rect x="568" y="310" width="150" height="36" rx="7" fill="#0d1117" stroke="#a371f7" stroke-width="1.5"/>
-  <text x="643" y="325" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#a371f7">Compliance (10 fwks)</text>
-  <text x="643" y="337" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7" fill="#8b949e">OWASP · MITRE · NIST · EU AI Act</text>
+  <text x="1022" y="360" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#8b949e">OWASP · MITRE · NIST · EU AI Act</text>
 
-  <rect x="568" y="354" width="150" height="28" rx="7" fill="#0d1117" stroke="#a371f7" stroke-width="1.5"/>
-  <text x="643" y="372" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#a371f7">Policy-as-Code Engine</text>
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!--  OUTPUT BAR (below main pipeline)                                 -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <rect x="40" y="400" width="1120" height="80" rx="12" fill="#0e1a14" stroke="#1f5f3a" stroke-width="2"/>
+  <use href="#icon-output" x="56" y="418" width="28" height="28" color="#3fb950"/>
+  <text x="105" y="436" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="15" font-weight="700" fill="#7ee787">Output</text>
+  <text x="105" y="454" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#3fb950">13+ formats · 6 delivery channels</text>
 
-  <text x="643" y="400" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#f85149">Fleet trust scoring · Incidents</text>
+  <!-- Output format pills -->
+  <rect x="340" y="414" width="62" height="24" rx="12" fill="#0f3f1f" stroke="#1f7f3a" stroke-width="1"/>
+  <text x="371" y="430" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#7ee787">JSON</text>
 
-  <line x1="643" y1="142" x2="643" y2="150" stroke="#f85149" stroke-width="1" marker-end="url(#d-arrow-red)"/>
-  <line x1="643" y1="186" x2="643" y2="194" stroke="#f85149" stroke-width="1" marker-end="url(#d-arrow-red)"/>
-  <line x1="643" y1="230" x2="643" y2="238" stroke="#f85149" stroke-width="1" marker-end="url(#d-arrow-red)"/>
-  <line x1="643" y1="266" x2="643" y2="274" stroke="#f85149" stroke-width="1" marker-end="url(#d-arrow-red)"/>
-  <line x1="643" y1="302" x2="643" y2="310" stroke="#f85149" stroke-width="1" marker-end="url(#d-arrow-red)"/>
-  <line x1="643" y1="346" x2="643" y2="354" stroke="#a371f7" stroke-width="1"/>
+  <rect x="410" y="414" width="62" height="24" rx="12" fill="#0f3f1f" stroke="#1f7f3a" stroke-width="1"/>
+  <text x="441" y="430" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#7ee787">SARIF</text>
 
-  <path d="M728 246 L748 246" stroke="#484f58" stroke-width="2" fill="none" marker-end="url(#d-arrow-gray)"/>
+  <rect x="480" y="414" width="62" height="24" rx="12" fill="#0f3f1f" stroke="#1f7f3a" stroke-width="1"/>
+  <text x="511" y="430" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#7ee787">CDX</text>
 
-  <!-- ═══ COLUMN 5: OUTPUTS ═══ -->
-  <rect x="750" y="80" width="196" height="382" rx="10" fill="#161b22" stroke="#3fb950" stroke-width="1.5"/>
-  <text x="848" y="97" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#3fb950" letter-spacing="0.06em">OUTPUTS + DELIVERY</text>
+  <rect x="550" y="414" width="62" height="24" rx="12" fill="#0f3f1f" stroke="#1f7f3a" stroke-width="1"/>
+  <text x="581" y="430" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#7ee787">SPDX</text>
 
-  <rect x="760" y="106" width="90" height="24" rx="6" fill="#0d1117" stroke="#3fb950" stroke-width="1.2"/>
-  <text x="805" y="122" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="600" fill="#3fb950">JSON</text>
-  <rect x="856" y="106" width="80" height="24" rx="6" fill="#0d1117" stroke="#3fb950" stroke-width="1.2"/>
-  <text x="896" y="122" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="600" fill="#3fb950">Console</text>
-  <rect x="760" y="136" width="90" height="24" rx="6" fill="#0d1117" stroke="#3fb950" stroke-width="1.2"/>
-  <text x="805" y="152" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="600" fill="#3fb950">CycloneDX</text>
-  <rect x="856" y="136" width="80" height="24" rx="6" fill="#0d1117" stroke="#3fb950" stroke-width="1.2"/>
-  <text x="896" y="152" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="600" fill="#3fb950">SPDX</text>
-  <rect x="760" y="166" width="90" height="24" rx="6" fill="#0d1117" stroke="#3fb950" stroke-width="1.2"/>
-  <text x="805" y="182" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="600" fill="#3fb950">SARIF</text>
-  <rect x="856" y="166" width="80" height="24" rx="6" fill="#0d1117" stroke="#3fb950" stroke-width="1.2"/>
-  <text x="896" y="182" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="600" fill="#3fb950">HTML</text>
-  <rect x="760" y="196" width="90" height="24" rx="6" fill="#0d1117" stroke="#3fb950" stroke-width="1.2"/>
-  <text x="805" y="212" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="600" fill="#3fb950">Mermaid</text>
-  <rect x="856" y="196" width="80" height="24" rx="6" fill="#0d1117" stroke="#3fb950" stroke-width="1.2"/>
-  <text x="896" y="212" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="600" fill="#3fb950">SVG badges</text>
-  <rect x="760" y="226" width="90" height="24" rx="6" fill="#0d1117" stroke="#3fb950" stroke-width="1.2"/>
-  <text x="805" y="242" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="600" fill="#3fb950">ReactFlow</text>
-  <rect x="856" y="226" width="80" height="24" rx="6" fill="#0d1117" stroke="#3fb950" stroke-width="1.2"/>
-  <text x="896" y="242" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="600" fill="#3fb950">Cytoscape</text>
+  <rect x="620" y="414" width="62" height="24" rx="12" fill="#0f3f1f" stroke="#1f7f3a" stroke-width="1"/>
+  <text x="651" y="430" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#7ee787">HTML</text>
 
-  <line x1="760" y1="262" x2="936" y2="262" stroke="#238636" stroke-width="1"/>
+  <rect x="690" y="414" width="62" height="24" rx="12" fill="#0f3f1f" stroke="#1f7f3a" stroke-width="1"/>
+  <text x="721" y="430" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#7ee787">OCSF</text>
 
-  <rect x="760" y="270" width="176" height="28" rx="6" fill="#0d1117" stroke="#3fb950" stroke-width="1.5"/>
-  <text x="848" y="288" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#3fb950">REST API — 25+ endpoints</text>
-  <rect x="760" y="304" width="176" height="28" rx="6" fill="#0d1117" stroke="#3fb950" stroke-width="1.5"/>
-  <text x="848" y="322" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#3fb950">MCP Server — 16 tools</text>
-  <rect x="760" y="338" width="176" height="28" rx="6" fill="#0d1117" stroke="#3fb950" stroke-width="1.5"/>
-  <text x="848" y="356" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="#3fb950">Dashboard — 15 sections</text>
+  <!-- Delivery channels -->
+  <rect x="340" y="446" width="82" height="24" rx="12" fill="#238636"/>
+  <text x="381" y="462" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#fff">CLI</text>
 
-  <rect x="760" y="372" width="85" height="24" rx="6" fill="#0d1117" stroke="#3fb950" stroke-width="1.2"/>
-  <text x="802" y="388" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="600" fill="#3fb950">GH Action</text>
-  <rect x="851" y="372" width="85" height="24" rx="6" fill="#0d1117" stroke="#3fb950" stroke-width="1.2"/>
-  <text x="893" y="388" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="600" fill="#3fb950">Docker/Helm</text>
-  <rect x="760" y="402" width="85" height="24" rx="6" fill="#0d1117" stroke="#3fb950" stroke-width="1.2"/>
-  <text x="802" y="418" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="600" fill="#3fb950">Prometheus</text>
-  <rect x="851" y="402" width="85" height="24" rx="6" fill="#0d1117" stroke="#3fb950" stroke-width="1.2"/>
-  <text x="893" y="418" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="600" fill="#3fb950">OCSF/OTLP</text>
-  <rect x="760" y="432" width="176" height="24" rx="6" fill="#0d1117" stroke="#3fb950" stroke-width="1.2"/>
-  <text x="848" y="448" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="600" fill="#3fb950">Slack · Jira · ServiceNow · Drata · Vanta</text>
+  <rect x="430" y="446" width="82" height="24" rx="12" fill="#238636"/>
+  <text x="471" y="462" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#fff">REST API</text>
 
-  <!-- ═══ EXTERNAL APIs ═══ -->
-  <rect x="354" y="420" width="374" height="54" rx="8" fill="#0d1117" stroke="#484f58" stroke-width="1" stroke-dasharray="5 3"/>
-  <text x="541" y="436" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#8b949e" letter-spacing="0.06em">EXTERNAL INTELLIGENCE (9 sources)</text>
-  <text x="541" y="450" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" fill="#8b949e">OSV.dev · GHSA · NVD · EPSS · KEV · NVIDIA CSAF · Grype · OpenSSF · MCP Registry</text>
-  <path d="M443 420 L443 410" stroke="#484f58" stroke-width="1" stroke-dasharray="3 2" marker-end="url(#d-arrow-gray)"/>
+  <rect x="520" y="446" width="100" height="24" rx="12" fill="#238636"/>
+  <text x="570" y="462" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#fff">MCP Server</text>
 
-  <!-- ═══ RUNTIME BAR ═══ -->
-  <rect x="14" y="490" width="932" height="82" rx="10" fill="#161b22" stroke="#a371f7" stroke-width="1.5"/>
-  <text x="480" y="508" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#a371f7" letter-spacing="0.06em">RUNTIME PROTECTION — MCP STDIO PROXY</text>
+  <rect x="628" y="446" width="96" height="24" rx="12" fill="#238636"/>
+  <text x="676" y="462" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#fff">Dashboard</text>
 
-  <rect x="28" y="516" width="130" height="22" rx="5" fill="#0d1117" stroke="#a371f7" stroke-width="1"/>
-  <text x="93" y="531" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#a371f7">Prompt Injection</text>
-  <rect x="166" y="516" width="90" height="22" rx="5" fill="#0d1117" stroke="#a371f7" stroke-width="1"/>
-  <text x="211" y="531" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#a371f7">PII Detection</text>
-  <rect x="264" y="516" width="100" height="22" rx="5" fill="#0d1117" stroke="#a371f7" stroke-width="1"/>
-  <text x="314" y="531" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#a371f7">Secret Scanner</text>
-  <rect x="372" y="516" width="112" height="22" rx="5" fill="#0d1117" stroke="#a371f7" stroke-width="1"/>
-  <text x="428" y="531" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#a371f7">Payload Scanner</text>
-  <rect x="492" y="516" width="80" height="22" rx="5" fill="#0d1117" stroke="#a371f7" stroke-width="1"/>
-  <text x="532" y="531" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#a371f7">Drift Detect</text>
-  <rect x="580" y="516" width="80" height="22" rx="5" fill="#0d1117" stroke="#a371f7" stroke-width="1"/>
-  <text x="620" y="531" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#a371f7">Rate Limit</text>
-  <rect x="668" y="516" width="80" height="22" rx="5" fill="#0d1117" stroke="#a371f7" stroke-width="1"/>
-  <text x="708" y="531" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#a371f7">Sequence</text>
-  <rect x="756" y="516" width="80" height="22" rx="5" fill="#0d1117" stroke="#a371f7" stroke-width="1"/>
-  <text x="796" y="531" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#a371f7">Args Guard</text>
-  <rect x="844" y="516" width="92" height="22" rx="5" fill="#0d1117" stroke="#a371f7" stroke-width="1"/>
-  <text x="890" y="531" text-anchor="middle" font-family="system-ui, sans-serif" font-size="7.5" fill="#a371f7">Cred Detect</text>
+  <rect x="732" y="446" width="96" height="24" rx="12" fill="#238636"/>
+  <text x="780" y="462" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#fff">GH Action</text>
 
-  <text x="480" y="558" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8.5" fill="#a371f7">Fleet Management · Trust Scoring (5 dims) · Alert Pipeline · Replay Protection</text>
+  <rect x="836" y="446" width="102" height="24" rx="12" fill="#238636"/>
+  <text x="887" y="462" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#fff">Docker/Helm</text>
 
-  <!-- ═══ INFRA BAR ═══ -->
-  <rect x="14" y="584" width="932" height="40" rx="10" fill="#161b22" stroke="#3fb950" stroke-width="1"/>
-  <rect x="28" y="594" width="110" height="20" rx="5" fill="#0d1117" stroke="#238636" stroke-width="1"/>
-  <text x="83" y="608" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" fill="#3fb950">SQLite (WAL)</text>
-  <rect x="146" y="594" width="100" height="20" rx="5" fill="#0d1117" stroke="#238636" stroke-width="1"/>
-  <text x="196" y="608" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" fill="#3fb950">PostgreSQL</text>
-  <rect x="254" y="594" width="100" height="20" rx="5" fill="#0d1117" stroke="#238636" stroke-width="1"/>
-  <text x="304" y="608" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" fill="#3fb950">Snowflake</text>
-  <rect x="380" y="594" width="130" height="20" rx="5" fill="#0d1117" stroke="#238636" stroke-width="1"/>
-  <text x="445" y="608" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" fill="#3fb950">RBAC + scrypt KDF</text>
-  <rect x="518" y="594" width="160" height="20" rx="5" fill="#0d1117" stroke="#238636" stroke-width="1"/>
-  <text x="598" y="608" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" fill="#3fb950">HMAC-SHA256 audit log</text>
-  <rect x="686" y="594" width="90" height="20" rx="5" fill="#0d1117" stroke="#238636" stroke-width="1"/>
-  <text x="731" y="608" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" fill="#3fb950">Scheduler</text>
-  <rect x="784" y="594" width="148" height="20" rx="5" fill="#0d1117" stroke="#238636" stroke-width="1"/>
-  <text x="858" y="608" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" fill="#3fb950">Cache · Rate Limiter</text>
+  <!-- Arrow from Analyze down to Output -->
+  <path d="M1020 370 L1020 400" stroke="#484f58" stroke-width="3" fill="none" marker-end="url(#ah)"/>
+  <!-- Arrow from Discover down to Output -->
+  <path d="M140 370 L140 400" stroke="#484f58" stroke-width="2" fill="none" stroke-dasharray="6 4"/>
 
-  <!-- Footer -->
-  <text x="480" y="648" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="600" fill="#8b949e">~70 proprietary modules · ~15 hybrid · ~22 external · 107 total · 2,900+ tests · 0 runtime deps</text>
-  <text x="480" y="666" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#484f58">Read-only · Agentless · Never stores credentials · Only package names sent to APIs · Sigstore signed · Apache 2.0</text>
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!--  EXTERNAL FEEDS (subtle dashed underline)                         -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <text x="690" y="390" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" font-weight="600" fill="#484f58">External: OSV.dev · GHSA · NVD · EPSS · KEV · NVIDIA CSAF · Grype DB · OpenSSF · MCP Registry</text>
+
+  <!-- Dashed arrows from external label up to Scan block -->
+  <path d="M690 380 L690 372" stroke="#484f58" stroke-width="1" stroke-dasharray="3 3" marker-end="url(#ah)"/>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!--  FOOTER                                                           -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <text x="600" y="504" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#8b949e">~70 proprietary modules · 107 total · 2,900+ tests · zero runtime deps · read-only · agentless</text>
 </svg>

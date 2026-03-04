@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 420" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 400" fill="none">
   <style>
     .title { font: 700 15px system-ui, -apple-system, sans-serif; fill: #e6edf3; }
     .subtitle { font: 400 10px system-ui, sans-serif; fill: #8b949e; }
@@ -7,172 +7,164 @@
     .sub { font: 400 8.5px system-ui, sans-serif; fill: #8b949e; }
     .badge { font: 600 7.5px system-ui, sans-serif; }
     .note { font: 400 8.5px system-ui, sans-serif; fill: #6e7681; }
-    .num { font: 700 18px system-ui, sans-serif; }
+    .num { font: 700 20px system-ui, sans-serif; }
   </style>
   <defs>
     <marker id="arr" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="7" markerHeight="5" orient="auto">
-      <path d="M0 0L10 4L0 8Z" fill="#6e7681"/>
+      <path d="M0 0L10 4L0 8Z" fill="#30363d"/>
     </marker>
   </defs>
 
   <!-- Background -->
-  <rect width="960" height="420" rx="12" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <rect width="960" height="400" rx="12" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
 
   <!-- Title -->
   <text x="480" y="30" text-anchor="middle" class="title">Scanner Architecture</text>
   <text x="480" y="46" text-anchor="middle" class="subtitle">7-stage pipeline from discovery to actionable output</text>
 
-  <!-- ═══ PIPELINE STAGES ═══ -->
+  <!-- ═══ PIPELINE STAGES — equal width 114px, gap 12px ═══ -->
 
   <!-- Stage 1: DISCOVER -->
-  <rect x="16" y="68" width="118" height="150" rx="8" fill="#0d1117" stroke="#58a6ff" stroke-width="1"/>
-  <rect x="16" y="68" width="118" height="26" rx="8" fill="#58a6ff"/>
-  <rect x="16" y="82" width="118" height="12" fill="#58a6ff"/>
-  <text x="75" y="86" text-anchor="middle" class="phase" fill="#ffffff">DISCOVER</text>
-  <text x="75" y="114" text-anchor="middle" class="num" fill="#58a6ff">18</text>
-  <text x="75" y="128" text-anchor="middle" class="label">MCP clients</text>
-  <text x="75" y="144" text-anchor="middle" class="sub">Containers · Cloud</text>
-  <text x="75" y="158" text-anchor="middle" class="sub">SBOMs · Lock files</text>
-  <text x="75" y="172" text-anchor="middle" class="sub">AI frameworks</text>
+  <rect x="22" y="66" width="114" height="148" rx="8" fill="#0d1117" stroke="#58a6ff" stroke-width="1"/>
+  <rect x="22" y="66" width="114" height="26" rx="8" fill="#58a6ff"/>
+  <rect x="22" y="80" width="114" height="12" fill="#58a6ff"/>
+  <text x="79" y="84" text-anchor="middle" class="phase" fill="#ffffff">DISCOVER</text>
+  <text x="79" y="114" text-anchor="middle" class="num" fill="#58a6ff">18</text>
+  <text x="79" y="130" text-anchor="middle" class="label">MCP clients</text>
+  <text x="79" y="148" text-anchor="middle" class="sub">Containers · Cloud</text>
+  <text x="79" y="162" text-anchor="middle" class="sub">SBOMs · Lock files</text>
+  <text x="79" y="176" text-anchor="middle" class="sub">AI frameworks</text>
 
   <!-- Arrow 1→2 -->
-  <line x1="134" y1="142" x2="150" y2="142" stroke="#6e7681" stroke-width="1.2" marker-end="url(#arr)"/>
+  <line x1="136" y1="140" x2="152" y2="140" stroke="#30363d" stroke-width="1.5" marker-end="url(#arr)"/>
 
   <!-- Stage 2: EXTRACT -->
-  <rect x="156" y="68" width="118" height="150" rx="8" fill="#0d1117" stroke="#58a6ff" stroke-width="1"/>
-  <rect x="156" y="68" width="118" height="26" rx="8" fill="#58a6ff"/>
-  <rect x="156" y="82" width="118" height="12" fill="#58a6ff"/>
-  <text x="215" y="86" text-anchor="middle" class="phase" fill="#ffffff">EXTRACT</text>
+  <rect x="158" y="66" width="114" height="148" rx="8" fill="#0d1117" stroke="#58a6ff" stroke-width="1"/>
+  <rect x="158" y="66" width="114" height="26" rx="8" fill="#58a6ff"/>
+  <rect x="158" y="80" width="114" height="12" fill="#58a6ff"/>
+  <text x="215" y="84" text-anchor="middle" class="phase" fill="#ffffff">EXTRACT</text>
   <text x="215" y="114" text-anchor="middle" class="num" fill="#58a6ff">11</text>
-  <text x="215" y="128" text-anchor="middle" class="label">ecosystems</text>
-  <text x="215" y="144" text-anchor="middle" class="sub">Lock files · Registries</text>
-  <text x="215" y="158" text-anchor="middle" class="sub">Transitive resolution</text>
-  <text x="215" y="172" text-anchor="middle" class="sub">Deduplication</text>
+  <text x="215" y="130" text-anchor="middle" class="label">ecosystems</text>
+  <text x="215" y="148" text-anchor="middle" class="sub">Lock files · Registries</text>
+  <text x="215" y="162" text-anchor="middle" class="sub">Transitive resolution</text>
+  <text x="215" y="176" text-anchor="middle" class="sub">Deduplication</text>
 
   <!-- Arrow 2→3 -->
-  <line x1="274" y1="142" x2="290" y2="142" stroke="#6e7681" stroke-width="1.2" marker-end="url(#arr)"/>
+  <line x1="272" y1="140" x2="288" y2="140" stroke="#30363d" stroke-width="1.5" marker-end="url(#arr)"/>
 
   <!-- Stage 3: SCAN -->
-  <rect x="296" y="68" width="118" height="150" rx="8" fill="#0d1117" stroke="#d29922" stroke-width="1"/>
-  <rect x="296" y="68" width="118" height="26" rx="8" fill="#d29922"/>
-  <rect x="296" y="82" width="118" height="12" fill="#d29922"/>
-  <text x="355" y="86" text-anchor="middle" class="phase" fill="#ffffff">SCAN</text>
-  <text x="355" y="114" text-anchor="middle" class="num" fill="#d29922">8</text>
-  <text x="355" y="128" text-anchor="middle" class="label">vuln sources</text>
-  <text x="355" y="144" text-anchor="middle" class="sub">OSV · Grype · GHSA</text>
-  <text x="355" y="158" text-anchor="middle" class="sub">Typosquat detection</text>
-  <text x="355" y="172" text-anchor="middle" class="sub">Malicious pkg detect</text>
+  <rect x="294" y="66" width="114" height="148" rx="8" fill="#0d1117" stroke="#d29922" stroke-width="1"/>
+  <rect x="294" y="66" width="114" height="26" rx="8" fill="#d29922"/>
+  <rect x="294" y="80" width="114" height="12" fill="#d29922"/>
+  <text x="351" y="84" text-anchor="middle" class="phase" fill="#ffffff">SCAN</text>
+  <text x="351" y="114" text-anchor="middle" class="num" fill="#d29922">8</text>
+  <text x="351" y="130" text-anchor="middle" class="label">vuln sources</text>
+  <text x="351" y="148" text-anchor="middle" class="sub">OSV · Grype · GHSA</text>
+  <text x="351" y="162" text-anchor="middle" class="sub">Typosquat detection</text>
+  <text x="351" y="176" text-anchor="middle" class="sub">Malicious pkg detect</text>
 
   <!-- Arrow 3→4 -->
-  <line x1="414" y1="142" x2="430" y2="142" stroke="#6e7681" stroke-width="1.2" marker-end="url(#arr)"/>
+  <line x1="408" y1="140" x2="424" y2="140" stroke="#30363d" stroke-width="1.5" marker-end="url(#arr)"/>
 
   <!-- Stage 4: ENRICH -->
-  <rect x="436" y="68" width="118" height="150" rx="8" fill="#0d1117" stroke="#d29922" stroke-width="1"/>
-  <rect x="436" y="68" width="118" height="26" rx="8" fill="#d29922"/>
-  <rect x="436" y="82" width="118" height="12" fill="#d29922"/>
-  <text x="495" y="86" text-anchor="middle" class="phase" fill="#ffffff">ENRICH</text>
-  <text x="495" y="114" text-anchor="middle" class="num" fill="#d29922">5</text>
-  <text x="495" y="128" text-anchor="middle" class="label">enrichment APIs</text>
-  <text x="495" y="144" text-anchor="middle" class="sub">NVD CVSS · EPSS</text>
-  <text x="495" y="158" text-anchor="middle" class="sub">CISA KEV · CWE</text>
-  <text x="495" y="172" text-anchor="middle" class="sub">OpenSSF Scorecard</text>
+  <rect x="430" y="66" width="114" height="148" rx="8" fill="#0d1117" stroke="#d29922" stroke-width="1"/>
+  <rect x="430" y="66" width="114" height="26" rx="8" fill="#d29922"/>
+  <rect x="430" y="80" width="114" height="12" fill="#d29922"/>
+  <text x="487" y="84" text-anchor="middle" class="phase" fill="#ffffff">ENRICH</text>
+  <text x="487" y="114" text-anchor="middle" class="num" fill="#d29922">5</text>
+  <text x="487" y="130" text-anchor="middle" class="label">enrichment APIs</text>
+  <text x="487" y="148" text-anchor="middle" class="sub">NVD CVSS · EPSS</text>
+  <text x="487" y="162" text-anchor="middle" class="sub">CISA KEV · CWE</text>
+  <text x="487" y="176" text-anchor="middle" class="sub">OpenSSF Scorecard</text>
 
   <!-- Arrow 4→5 -->
-  <line x1="554" y1="142" x2="570" y2="142" stroke="#6e7681" stroke-width="1.2" marker-end="url(#arr)"/>
+  <line x1="544" y1="140" x2="560" y2="140" stroke="#30363d" stroke-width="1.5" marker-end="url(#arr)"/>
 
   <!-- Stage 5: ANALYZE -->
-  <rect x="576" y="68" width="118" height="150" rx="8" fill="#0d1117" stroke="#f85149" stroke-width="1"/>
-  <rect x="576" y="68" width="118" height="26" rx="8" fill="#f85149"/>
-  <rect x="576" y="82" width="118" height="12" fill="#f85149"/>
-  <text x="635" y="86" text-anchor="middle" class="phase" fill="#ffffff">ANALYZE</text>
-  <text x="635" y="112" text-anchor="middle" class="label">Blast radius mapping</text>
-  <text x="635" y="128" text-anchor="middle" class="sub">CVE → server → creds</text>
-  <text x="635" y="144" text-anchor="middle" class="sub">Tool capability scoring</text>
-  <text x="635" y="160" text-anchor="middle" class="sub">AI risk elevation</text>
-  <text x="635" y="176" text-anchor="middle" class="sub">Risk score 0-10</text>
+  <rect x="566" y="66" width="114" height="148" rx="8" fill="#0d1117" stroke="#f85149" stroke-width="1"/>
+  <rect x="566" y="66" width="114" height="26" rx="8" fill="#f85149"/>
+  <rect x="566" y="80" width="114" height="12" fill="#f85149"/>
+  <text x="623" y="84" text-anchor="middle" class="phase" fill="#ffffff">ANALYZE</text>
+  <text x="623" y="112" text-anchor="middle" class="label">Blast radius mapping</text>
+  <text x="623" y="130" text-anchor="middle" class="sub">CVE → server → creds</text>
+  <text x="623" y="148" text-anchor="middle" class="sub">Tool capability scoring</text>
+  <text x="623" y="162" text-anchor="middle" class="sub">AI risk elevation</text>
+  <text x="623" y="176" text-anchor="middle" class="sub">Risk score 0–10</text>
 
   <!-- Arrow 5→6 -->
-  <line x1="694" y1="142" x2="710" y2="142" stroke="#6e7681" stroke-width="1.2" marker-end="url(#arr)"/>
+  <line x1="680" y1="140" x2="696" y2="140" stroke="#30363d" stroke-width="1.5" marker-end="url(#arr)"/>
 
   <!-- Stage 6: COMPLY -->
-  <rect x="716" y="68" width="118" height="150" rx="8" fill="#0d1117" stroke="#bc8cff" stroke-width="1"/>
-  <rect x="716" y="68" width="118" height="26" rx="8" fill="#bc8cff"/>
-  <rect x="716" y="82" width="118" height="12" fill="#bc8cff"/>
-  <text x="775" y="86" text-anchor="middle" class="phase" fill="#ffffff">COMPLY</text>
-  <text x="775" y="114" text-anchor="middle" class="num" fill="#bc8cff">10</text>
-  <text x="775" y="128" text-anchor="middle" class="label">frameworks</text>
-  <text x="775" y="144" text-anchor="middle" class="sub">OWASP LLM/MCP/Agent</text>
-  <text x="775" y="158" text-anchor="middle" class="sub">ATLAS · NIST AI · EU AI</text>
-  <text x="775" y="172" text-anchor="middle" class="sub">CSF · ISO · SOC 2 · CIS</text>
+  <rect x="702" y="66" width="114" height="148" rx="8" fill="#0d1117" stroke="#bc8cff" stroke-width="1"/>
+  <rect x="702" y="66" width="114" height="26" rx="8" fill="#bc8cff"/>
+  <rect x="702" y="80" width="114" height="12" fill="#bc8cff"/>
+  <text x="759" y="84" text-anchor="middle" class="phase" fill="#ffffff">COMPLY</text>
+  <text x="759" y="114" text-anchor="middle" class="num" fill="#bc8cff">10</text>
+  <text x="759" y="130" text-anchor="middle" class="label">frameworks</text>
+  <text x="759" y="148" text-anchor="middle" class="sub">OWASP LLM/MCP/Agent</text>
+  <text x="759" y="162" text-anchor="middle" class="sub">ATLAS · NIST AI · EU AI</text>
+  <text x="759" y="176" text-anchor="middle" class="sub">CSF · ISO · SOC 2 · CIS</text>
 
   <!-- Arrow 6→7 -->
-  <line x1="834" y1="142" x2="850" y2="142" stroke="#6e7681" stroke-width="1.2" marker-end="url(#arr)"/>
+  <line x1="816" y1="140" x2="832" y2="140" stroke="#30363d" stroke-width="1.5" marker-end="url(#arr)"/>
 
   <!-- Stage 7: OUTPUT -->
-  <rect x="856" y="68" width="88" height="150" rx="8" fill="#0d1117" stroke="#3fb950" stroke-width="1"/>
-  <rect x="856" y="68" width="88" height="26" rx="8" fill="#3fb950"/>
-  <rect x="856" y="82" width="88" height="12" fill="#3fb950"/>
-  <text x="900" y="86" text-anchor="middle" class="phase" fill="#ffffff">OUTPUT</text>
-  <text x="900" y="112" text-anchor="middle" class="label">Reports</text>
-  <text x="900" y="128" text-anchor="middle" class="sub">JSON · SARIF · HTML</text>
-  <text x="900" y="144" text-anchor="middle" class="sub">CycloneDX · SPDX</text>
-  <text x="900" y="160" text-anchor="middle" class="sub">REST · SSE · MCP</text>
-  <text x="900" y="176" text-anchor="middle" class="sub">Slack · Jira</text>
+  <rect x="838" y="66" width="106" height="148" rx="8" fill="#0d1117" stroke="#3fb950" stroke-width="1"/>
+  <rect x="838" y="66" width="106" height="26" rx="8" fill="#3fb950"/>
+  <rect x="838" y="80" width="106" height="12" fill="#3fb950"/>
+  <text x="891" y="84" text-anchor="middle" class="phase" fill="#ffffff">OUTPUT</text>
+  <text x="891" y="112" text-anchor="middle" class="label">Reports &amp; APIs</text>
+  <text x="891" y="130" text-anchor="middle" class="sub">JSON · SARIF · HTML</text>
+  <text x="891" y="148" text-anchor="middle" class="sub">CycloneDX · SPDX</text>
+  <text x="891" y="162" text-anchor="middle" class="sub">REST · SSE · MCP</text>
+  <text x="891" y="176" text-anchor="middle" class="sub">Slack · Jira · Webhooks</text>
 
-  <!-- ═══ EXTERNAL APIs (bottom panel) ═══ -->
-  <rect x="16" y="248" width="928" height="72" rx="8" fill="#161b22" stroke="#30363d" stroke-width="0.8"/>
-  <text x="480" y="268" text-anchor="middle" class="phase" fill="#8b949e">EXTERNAL APIs &amp; DATABASES</text>
+  <!-- ═══ EXTERNAL APIs (bottom panel) — no connector lines ═══ -->
+  <rect x="22" y="238" width="922" height="64" rx="8" fill="#161b22" stroke="#30363d" stroke-width="0.8"/>
+  <text x="483" y="258" text-anchor="middle" class="phase" fill="#8b949e">EXTERNAL APIs &amp; DATABASES</text>
 
-  <!-- Vulnerability sources -->
-  <rect x="36" y="278" width="56" height="18" rx="4" fill="#0d1117" stroke="#58a6ff" stroke-width="0.6"/>
-  <text x="64" y="290" text-anchor="middle" class="badge" fill="#58a6ff">OSV.dev</text>
-  <rect x="100" y="278" width="42" height="18" rx="4" fill="#0d1117" stroke="#58a6ff" stroke-width="0.6"/>
-  <text x="121" y="290" text-anchor="middle" class="badge" fill="#58a6ff">NVD</text>
-  <rect x="150" y="278" width="66" height="18" rx="4" fill="#0d1117" stroke="#58a6ff" stroke-width="0.6"/>
-  <text x="183" y="290" text-anchor="middle" class="badge" fill="#58a6ff">FIRST EPSS</text>
-  <rect x="224" y="278" width="60" height="18" rx="4" fill="#0d1117" stroke="#58a6ff" stroke-width="0.6"/>
-  <text x="254" y="290" text-anchor="middle" class="badge" fill="#58a6ff">CISA KEV</text>
-  <rect x="292" y="278" width="62" height="18" rx="4" fill="#0d1117" stroke="#58a6ff" stroke-width="0.6"/>
-  <text x="323" y="290" text-anchor="middle" class="badge" fill="#58a6ff">Grype DB</text>
-  <rect x="362" y="278" width="72" height="18" rx="4" fill="#0d1117" stroke="#58a6ff" stroke-width="0.6"/>
-  <text x="398" y="290" text-anchor="middle" class="badge" fill="#58a6ff">GitHub GHSA</text>
+  <!-- Badges row -->
+  <rect x="36" y="268" width="56" height="18" rx="4" fill="#0d1117" stroke="#58a6ff" stroke-width="0.6"/>
+  <text x="64" y="280" text-anchor="middle" class="badge" fill="#58a6ff">OSV.dev</text>
+  <rect x="100" y="268" width="42" height="18" rx="4" fill="#0d1117" stroke="#58a6ff" stroke-width="0.6"/>
+  <text x="121" y="280" text-anchor="middle" class="badge" fill="#58a6ff">NVD</text>
+  <rect x="150" y="268" width="66" height="18" rx="4" fill="#0d1117" stroke="#58a6ff" stroke-width="0.6"/>
+  <text x="183" y="280" text-anchor="middle" class="badge" fill="#58a6ff">FIRST EPSS</text>
+  <rect x="224" y="268" width="60" height="18" rx="4" fill="#0d1117" stroke="#58a6ff" stroke-width="0.6"/>
+  <text x="254" y="280" text-anchor="middle" class="badge" fill="#58a6ff">CISA KEV</text>
+  <rect x="292" y="268" width="62" height="18" rx="4" fill="#0d1117" stroke="#58a6ff" stroke-width="0.6"/>
+  <text x="323" y="280" text-anchor="middle" class="badge" fill="#58a6ff">Grype DB</text>
+  <rect x="362" y="268" width="72" height="18" rx="4" fill="#0d1117" stroke="#58a6ff" stroke-width="0.6"/>
+  <text x="398" y="280" text-anchor="middle" class="badge" fill="#58a6ff">GitHub GHSA</text>
 
-  <!-- Registries -->
-  <rect x="466" y="278" width="78" height="18" rx="4" fill="#0d1117" stroke="#bc8cff" stroke-width="0.6"/>
-  <text x="505" y="290" text-anchor="middle" class="badge" fill="#bc8cff">MCP Registry</text>
-  <rect x="552" y="278" width="62" height="18" rx="4" fill="#0d1117" stroke="#bc8cff" stroke-width="0.6"/>
-  <text x="583" y="290" text-anchor="middle" class="badge" fill="#bc8cff">Smithery</text>
-  <rect x="622" y="278" width="76" height="18" rx="4" fill="#0d1117" stroke="#bc8cff" stroke-width="0.6"/>
-  <text x="660" y="290" text-anchor="middle" class="badge" fill="#bc8cff">HuggingFace</text>
+  <rect x="462" y="268" width="78" height="18" rx="4" fill="#0d1117" stroke="#bc8cff" stroke-width="0.6"/>
+  <text x="501" y="280" text-anchor="middle" class="badge" fill="#bc8cff">MCP Registry</text>
+  <rect x="548" y="268" width="62" height="18" rx="4" fill="#0d1117" stroke="#bc8cff" stroke-width="0.6"/>
+  <text x="579" y="280" text-anchor="middle" class="badge" fill="#bc8cff">Smithery</text>
+  <rect x="618" y="268" width="76" height="18" rx="4" fill="#0d1117" stroke="#bc8cff" stroke-width="0.6"/>
+  <text x="656" y="280" text-anchor="middle" class="badge" fill="#bc8cff">HuggingFace</text>
 
-  <!-- Container tools -->
-  <rect x="730" y="278" width="50" height="18" rx="4" fill="#0d1117" stroke="#d29922" stroke-width="0.6"/>
-  <text x="755" y="290" text-anchor="middle" class="badge" fill="#d29922">Grype</text>
-  <rect x="788" y="278" width="40" height="18" rx="4" fill="#0d1117" stroke="#d29922" stroke-width="0.6"/>
-  <text x="808" y="290" text-anchor="middle" class="badge" fill="#d29922">Syft</text>
-  <rect x="836" y="278" width="88" height="18" rx="4" fill="#0d1117" stroke="#3fb950" stroke-width="0.6"/>
-  <text x="880" y="290" text-anchor="middle" class="badge" fill="#3fb950">OpenSSF</text>
-
-  <!-- Connector lines from API panel up to pipeline stages -->
-  <line x1="200" y1="278" x2="355" y2="218" stroke="#30363d" stroke-width="0.8" stroke-dasharray="4 3"/>
-  <line x1="400" y1="278" x2="495" y2="218" stroke="#30363d" stroke-width="0.8" stroke-dasharray="4 3"/>
-  <line x1="583" y1="278" x2="215" y2="218" stroke="#30363d" stroke-width="0.8" stroke-dasharray="4 3"/>
-  <line x1="808" y1="278" x2="355" y2="218" stroke="#30363d" stroke-width="0.8" stroke-dasharray="4 3"/>
+  <rect x="722" y="268" width="50" height="18" rx="4" fill="#0d1117" stroke="#d29922" stroke-width="0.6"/>
+  <text x="747" y="280" text-anchor="middle" class="badge" fill="#d29922">Grype</text>
+  <rect x="780" y="268" width="40" height="18" rx="4" fill="#0d1117" stroke="#d29922" stroke-width="0.6"/>
+  <text x="800" y="280" text-anchor="middle" class="badge" fill="#d29922">Syft</text>
+  <rect x="828" y="268" width="96" height="18" rx="4" fill="#0d1117" stroke="#3fb950" stroke-width="0.6"/>
+  <text x="876" y="280" text-anchor="middle" class="badge" fill="#3fb950">OpenSSF Scorecard</text>
 
   <!-- ═══ KEY METRICS BAR ═══ -->
-  <rect x="16" y="340" width="928" height="32" rx="6" fill="#161b22" stroke="#30363d" stroke-width="0.6"/>
-  <text x="86" y="360" text-anchor="middle" class="badge" fill="#8b949e">18 MCP clients</text>
-  <text x="165" y="360" text-anchor="middle" class="badge" fill="#30363d">|</text>
-  <text x="252" y="360" text-anchor="middle" class="badge" fill="#8b949e">11 package ecosystems</text>
-  <text x="345" y="360" text-anchor="middle" class="badge" fill="#30363d">|</text>
-  <text x="432" y="360" text-anchor="middle" class="badge" fill="#8b949e">8 vulnerability sources</text>
-  <text x="525" y="360" text-anchor="middle" class="badge" fill="#30363d">|</text>
-  <text x="622" y="360" text-anchor="middle" class="badge" fill="#8b949e">10 compliance frameworks</text>
-  <text x="725" y="360" text-anchor="middle" class="badge" fill="#30363d">|</text>
-  <text x="808" y="360" text-anchor="middle" class="badge" fill="#8b949e">15 MCP tools</text>
-  <text x="882" y="360" text-anchor="middle" class="badge" fill="#30363d">|</text>
-  <text x="930" y="360" text-anchor="middle" class="badge" fill="#8b949e">13 formats</text>
+  <rect x="22" y="322" width="922" height="30" rx="6" fill="#161b22" stroke="#30363d" stroke-width="0.6"/>
+  <text x="90" y="341" text-anchor="middle" class="badge" fill="#8b949e">18 MCP clients</text>
+  <text x="175" y="341" text-anchor="middle" class="badge" fill="#30363d">|</text>
+  <text x="265" y="341" text-anchor="middle" class="badge" fill="#8b949e">11 package ecosystems</text>
+  <text x="360" y="341" text-anchor="middle" class="badge" fill="#30363d">|</text>
+  <text x="450" y="341" text-anchor="middle" class="badge" fill="#8b949e">8 vulnerability sources</text>
+  <text x="540" y="341" text-anchor="middle" class="badge" fill="#30363d">|</text>
+  <text x="640" y="341" text-anchor="middle" class="badge" fill="#8b949e">10 compliance frameworks</text>
+  <text x="740" y="341" text-anchor="middle" class="badge" fill="#30363d">|</text>
+  <text x="815" y="341" text-anchor="middle" class="badge" fill="#8b949e">15 MCP tools</text>
+  <text x="870" y="341" text-anchor="middle" class="badge" fill="#30363d">|</text>
+  <text x="920" y="341" text-anchor="middle" class="badge" fill="#8b949e">13 formats</text>
 
   <!-- ═══ FOOTER NOTE ═══ -->
-  <text x="480" y="400" text-anchor="middle" class="note">Read-only analysis · No agents deployed · No code execution · Local or CI/CD</text>
+  <text x="480" y="378" text-anchor="middle" class="note">Read-only analysis · No agents deployed · No code execution · Runs locally or in CI/CD</text>
 </svg>

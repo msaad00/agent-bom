@@ -266,6 +266,9 @@ def main():
 @click.option("--namespace", default="default", show_default=True, help="Kubernetes namespace (used with --k8s)")
 @click.option("--all-namespaces", "-A", is_flag=True, help="Scan all Kubernetes namespaces (used with --k8s)")
 @click.option("--context", "k8s_context", default=None, help="kubectl context to use (used with --k8s)")
+@click.option("--registry-user", default=None, envvar="AGENT_BOM_REGISTRY_USER", help="Registry username for private image scanning")
+@click.option("--registry-pass", default=None, envvar="AGENT_BOM_REGISTRY_PASS", help="Registry password for private image scanning")
+@click.option("--platform", "image_platform", default=None, help="Image platform for multi-arch manifests (e.g. linux/amd64, linux/arm64)")
 @click.option(
     "--tf-dir",
     "tf_dirs",
@@ -545,6 +548,9 @@ def scan(
     namespace: str,
     all_namespaces: bool,
     k8s_context: Optional[str],
+    registry_user: Optional[str],
+    registry_pass: Optional[str],
+    image_platform: Optional[str],
     mermaid_mode: str,
     push_gateway: Optional[str],
     otel_endpoint: Optional[str],
@@ -917,7 +923,12 @@ def scan(
         con.print(f"\n[bold blue]Scanning {len(images)} container image(s)...[/bold blue]\n")
         for image_ref in images:
             try:
-                img_packages, strategy = scan_image(image_ref)
+                img_packages, strategy = scan_image(
+                    image_ref,
+                    registry_user=registry_user,
+                    registry_pass=registry_pass,
+                    platform=image_platform,
+                )
                 con.print(f"  [green]✓[/green] {image_ref}: {len(img_packages)} package(s) [dim](via {strategy})[/dim]")
                 # Represent the image as a synthetic agent → server
                 server = MCPServer(

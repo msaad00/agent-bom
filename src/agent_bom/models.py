@@ -77,19 +77,28 @@ class Vulnerability:
 
     @property
     def is_actively_exploited(self) -> bool:
-        """Check if vulnerability is being actively exploited."""
-        return self.is_kev or (self.epss_score is not None and self.epss_score > 0.5)
+        """Check if vulnerability is being actively exploited.
+
+        True when in CISA KEV catalog or EPSS score exceeds the active
+        exploitation threshold (default 0.5, configurable via
+        AGENT_BOM_EPSS_ACTIVE_THRESHOLD).
+        """
+        from agent_bom.config import EPSS_ACTIVE_EXPLOITATION_THRESHOLD
+
+        return self.is_kev or (self.epss_score is not None and self.epss_score > EPSS_ACTIVE_EXPLOITATION_THRESHOLD)
 
     @property
     def risk_level(self) -> str:
-        """Calculate overall risk level."""
+        """Calculate overall risk level using configurable EPSS thresholds."""
+        from agent_bom.config import EPSS_CRITICAL_THRESHOLD, EPSS_HIGH_LIKELY_THRESHOLD
+
         if self.is_kev:
             return "CRITICAL - Active Exploitation"
-        if self.epss_score and self.epss_score > 0.7:
+        if self.epss_score and self.epss_score > EPSS_CRITICAL_THRESHOLD:
             return "CRITICAL - High Exploit Probability"
         if self.severity == Severity.CRITICAL:
             return "CRITICAL"
-        if self.severity == Severity.HIGH and self.epss_score and self.epss_score > 0.3:
+        if self.severity == Severity.HIGH and self.epss_score and self.epss_score > EPSS_HIGH_LIKELY_THRESHOLD:
             return "HIGH - Likely Exploitable"
         if self.severity == Severity.HIGH:
             return "HIGH"
@@ -292,39 +301,69 @@ class BlastRadius:
     ai_summary: Optional[str] = None  # LLM-generated contextual risk narrative
 
     def calculate_risk_score(self) -> float:
-        """Calculate contextual risk score based on blast radius."""
-        # Severity base score
+        """Calculate contextual risk score based on blast radius.
+
+        All weights and thresholds are configurable via ``AGENT_BOM_RISK_*``
+        environment variables.  See :mod:`agent_bom.config` for defaults and
+        documentation.
+        """
+        from agent_bom.config import (
+            EPSS_CRITICAL_THRESHOLD,
+            RISK_AGENT_CAP,
+            RISK_AGENT_WEIGHT,
+            RISK_AI_BOOST,
+            RISK_BASE_CRITICAL,
+            RISK_BASE_HIGH,
+            RISK_BASE_LOW,
+            RISK_BASE_MEDIUM,
+            RISK_CRED_CAP,
+            RISK_CRED_WEIGHT,
+            RISK_EPSS_BOOST,
+            RISK_KEV_BOOST,
+            RISK_SCORECARD_TIER1_BOOST,
+            RISK_SCORECARD_TIER1_THRESHOLD,
+            RISK_SCORECARD_TIER2_BOOST,
+            RISK_SCORECARD_TIER2_THRESHOLD,
+            RISK_SCORECARD_TIER3_BOOST,
+            RISK_SCORECARD_TIER3_THRESHOLD,
+            RISK_TOOL_CAP,
+            RISK_TOOL_WEIGHT,
+        )
+
         severity_scores = {
-            Severity.CRITICAL: 8.0,
-            Severity.HIGH: 6.0,
-            Severity.MEDIUM: 4.0,
-            Severity.LOW: 2.0,
+            Severity.CRITICAL: RISK_BASE_CRITICAL,
+            Severity.HIGH: RISK_BASE_HIGH,
+            Severity.MEDIUM: RISK_BASE_MEDIUM,
+            Severity.LOW: RISK_BASE_LOW,
         }
         base = severity_scores.get(self.vulnerability.severity, 0.0)
 
-        # Reach factors
-        agent_factor = min(len(self.affected_agents) * 0.5, 2.0)
-        cred_factor = min(len(self.exposed_credentials) * 0.3, 1.5)
-        tool_factor = min(len(self.exposed_tools) * 0.1, 1.0)
+        # Reach factors — each dimension is weight × count, capped
+        agent_factor = min(len(self.affected_agents) * RISK_AGENT_WEIGHT, RISK_AGENT_CAP)
+        cred_factor = min(len(self.exposed_credentials) * RISK_CRED_WEIGHT, RISK_CRED_CAP)
+        tool_factor = min(len(self.exposed_tools) * RISK_TOOL_WEIGHT, RISK_TOOL_CAP)
 
-        # Boost for AI framework packages with full attack surface
-        ai_boost = 0.5 if self.ai_risk_context and self.exposed_credentials and self.exposed_tools else 0.0
+        # AI framework boost: only when full attack surface (creds + tools + AI context)
+        ai_boost = RISK_AI_BOOST if self.ai_risk_context and self.exposed_credentials and self.exposed_tools else 0.0
 
-        # Boost for actively exploited (KEV) or high EPSS
-        kev_boost = 1.0 if self.vulnerability.is_kev else 0.0
-        epss_boost = 0.5 if (self.vulnerability.epss_score or 0) >= 0.7 else 0.0
+        # Actively exploited (KEV) and high exploit probability (EPSS) boosts
+        kev_boost = RISK_KEV_BOOST if self.vulnerability.is_kev else 0.0
+        epss_boost = RISK_EPSS_BOOST if (self.vulnerability.epss_score or 0) >= EPSS_CRITICAL_THRESHOLD else 0.0
 
-        # Boost for low OpenSSF Scorecard (score < 4.0 = poorly maintained)
+        # Poorly-maintained package boost (low OpenSSF Scorecard)
         scorecard_boost = 0.0
         if self.package.scorecard_score is not None:
-            if self.package.scorecard_score < 3.0:
-                scorecard_boost = 0.75
-            elif self.package.scorecard_score < 5.0:
-                scorecard_boost = 0.5
-            elif self.package.scorecard_score < 7.0:
-                scorecard_boost = 0.25
+            if self.package.scorecard_score < RISK_SCORECARD_TIER1_THRESHOLD:
+                scorecard_boost = RISK_SCORECARD_TIER1_BOOST
+            elif self.package.scorecard_score < RISK_SCORECARD_TIER2_THRESHOLD:
+                scorecard_boost = RISK_SCORECARD_TIER2_BOOST
+            elif self.package.scorecard_score < RISK_SCORECARD_TIER3_THRESHOLD:
+                scorecard_boost = RISK_SCORECARD_TIER3_BOOST
 
-        self.risk_score = min(base + agent_factor + cred_factor + tool_factor + ai_boost + kev_boost + epss_boost + scorecard_boost, 10.0)
+        self.risk_score = min(
+            base + agent_factor + cred_factor + tool_factor + ai_boost + kev_boost + epss_boost + scorecard_boost,
+            10.0,
+        )
         return self.risk_score
 
 

@@ -254,13 +254,19 @@ def extract_cve_ids(vulnerabilities: list[Vulnerability]) -> list[str]:
 
 
 def calculate_exploitability(epss_score: Optional[float]) -> Optional[str]:
-    """Calculate exploitability level from EPSS score."""
+    """Calculate exploitability level from EPSS score.
+
+    Thresholds configurable via ``AGENT_BOM_EPSS_CRITICAL_THRESHOLD``
+    and ``AGENT_BOM_EPSS_HIGH_THRESHOLD``.
+    """
     if epss_score is None:
         return None
 
-    if epss_score >= 0.7:
+    from agent_bom.config import EPSS_CRITICAL_THRESHOLD, EPSS_HIGH_LIKELY_THRESHOLD
+
+    if epss_score >= EPSS_CRITICAL_THRESHOLD:
         return "HIGH"
-    elif epss_score >= 0.3:
+    elif epss_score >= EPSS_HIGH_LIKELY_THRESHOLD:
         return "MEDIUM"
     else:
         return "LOW"

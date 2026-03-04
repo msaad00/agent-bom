@@ -8,6 +8,7 @@ exposure.
 
 from __future__ import annotations
 
+import re as _re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Optional
@@ -41,36 +42,118 @@ CAPABILITY_WEIGHTS: dict[ToolCapability, float] = {
 
 CAPABILITY_PATTERNS: dict[ToolCapability, list[str]] = {
     ToolCapability.READ: [
-        "read", "get", "list", "search", "query", "describe",
-        "show", "view", "find", "lookup", "inspect", "cat", "head",
-        "select", "browse", "scan", "check", "status",
+        "read",
+        "get",
+        "list",
+        "search",
+        "query",
+        "describe",
+        "show",
+        "view",
+        "find",
+        "lookup",
+        "inspect",
+        "cat",
+        "head",
+        "select",
+        "browse",
+        "scan",
+        "check",
+        "status",
     ],
     ToolCapability.WRITE: [
-        "write", "create", "add", "insert", "update", "set", "put",
-        "post", "send", "upload", "push", "modify", "edit", "append",
-        "save", "store", "move", "rename", "copy", "patch",
+        "write",
+        "create",
+        "add",
+        "insert",
+        "update",
+        "set",
+        "put",
+        "post",
+        "send",
+        "upload",
+        "push",
+        "modify",
+        "edit",
+        "append",
+        "save",
+        "store",
+        "move",
+        "rename",
+        "copy",
+        "patch",
     ],
     ToolCapability.DELETE: [
-        "delete", "remove", "drop", "destroy", "clear", "purge",
-        "truncate", "revoke", "unlink", "rm", "wipe", "reset",
+        "delete",
+        "remove",
+        "drop",
+        "destroy",
+        "clear",
+        "purge",
+        "truncate",
+        "revoke",
+        "unlink",
+        "rm",
+        "wipe",
+        "reset",
     ],
     ToolCapability.EXECUTE: [
-        "exec", "execute", "run", "shell", "bash", "eval", "spawn",
-        "invoke", "subprocess", "command", "script", "deploy",
-        "popen", "terminal", "cmd",
+        "exec",
+        "execute",
+        "run",
+        "shell",
+        "bash",
+        "eval",
+        "spawn",
+        "invoke",
+        "subprocess",
+        "command",
+        "script",
+        "deploy",
+        "popen",
+        "terminal",
+        "cmd",
     ],
     ToolCapability.NETWORK: [
-        "fetch", "request", "http", "curl", "download", "scrape",
-        "browse", "navigate", "connect", "webhook", "api_call",
-        "socket", "tcp", "udp",
+        "fetch",
+        "request",
+        "http",
+        "curl",
+        "download",
+        "scrape",
+        "browse",
+        "navigate",
+        "connect",
+        "webhook",
+        "api_call",
+        "socket",
+        "tcp",
+        "udp",
     ],
     ToolCapability.AUTH: [
-        "login", "auth", "token", "credential", "password", "secret",
-        "oauth", "session", "key", "certificate", "sign",
+        "login",
+        "auth",
+        "token",
+        "credential",
+        "password",
+        "secret",
+        "oauth",
+        "session",
+        "key",
+        "certificate",
+        "sign",
     ],
     ToolCapability.ADMIN: [
-        "config", "permission", "role", "grant", "admin", "manage",
-        "install", "migrate", "provision", "scale",
+        "config",
+        "permission",
+        "role",
+        "grant",
+        "admin",
+        "manage",
+        "install",
+        "migrate",
+        "provision",
+        "scale",
     ],
 }
 
@@ -114,17 +197,41 @@ DANGEROUS_COMBOS: list[tuple[set[ToolCapability], str]] = [
 # ─── Classification ──────────────────────────────────────────────────────────
 
 
+def _tokenize(text: str) -> set[str]:
+    """Split tool name + description into semantic tokens.
+
+    Handles: snake_case, kebab-case, camelCase, PascalCase, spaces.
+    Returns a lowercase token set.
+
+    Examples::
+
+        "preset_config"      → {"preset", "config"}
+        "readFile"           → {"read", "file"}
+        "delete-record"      → {"delete", "record"}
+        "MyAdminTool"        → {"my", "admin", "tool"}
+    """
+    # Insert space before uppercase in camelCase: "readFile" → "read File"
+    spaced = _re.sub(r"([a-z])([A-Z])", r"\1 \2", text)
+    # Split on non-alphanumeric characters (underscore, hyphen, space, etc.)
+    return {t.lower() for t in _re.split(r"[^a-zA-Z0-9]+", spaced) if t}
+
+
 def classify_tool(tool_name: str, description: str = "") -> list[ToolCapability]:
     """Classify a tool into capability categories based on name and description.
 
-    Returns a deduplicated list of ToolCapability values.
+    Uses token-level prefix matching to avoid false positives from
+    substring matching (e.g., ``preset_config`` no longer matches DELETE
+    via "reset") while still matching morphological variants (``reader``
+    matches the READ keyword ``read``).
+
+    Returns a deduplicated, sorted list of ToolCapability values.
     """
-    combined = (tool_name + " " + description).lower()
+    tokens = _tokenize(tool_name + " " + description)
     caps: set[ToolCapability] = set()
 
     for capability, patterns in CAPABILITY_PATTERNS.items():
         for pattern in patterns:
-            if pattern in combined:
+            if any(token.startswith(pattern) for token in tokens):
                 caps.add(capability)
                 break  # One match per capability is enough
 
@@ -133,10 +240,7 @@ def classify_tool(tool_name: str, description: str = "") -> list[ToolCapability]
 
 def has_capability(tools: list[MCPTool], capability: ToolCapability) -> bool:
     """Check if any tool in the list has the given capability."""
-    return any(
-        capability in classify_tool(t.name, t.description)
-        for t in tools
-    )
+    return any(capability in classify_tool(t.name, t.description) for t in tools)
 
 
 def get_capabilities(tools: list[MCPTool]) -> dict[ToolCapability, list[str]]:
@@ -172,13 +276,24 @@ def score_server_risk(
 ) -> ServerRiskProfile:
     """Compute holistic risk profile for an MCP server.
 
-    Factors:
-    - Tool capability weights (EXECUTE=5, DELETE=4, WRITE=3, etc.)
-    - Number of tools (more surface = more risk)
-    - Credential exposure (amplifies tool risk)
-    - Dangerous capability combinations
-    - Registry-provided risk level (if available)
+    All weights and thresholds are configurable via ``AGENT_BOM_SERVER_*``
+    environment variables.  See :mod:`agent_bom.config` for defaults.
     """
+    from agent_bom.config import (
+        SERVER_RISK_BASE_CEILING,
+        SERVER_RISK_COMBO_CAP,
+        SERVER_RISK_COMBO_WEIGHT,
+        SERVER_RISK_CRED_CAP,
+        SERVER_RISK_CRED_WEIGHT,
+        SERVER_RISK_CRITICAL_THRESHOLD,
+        SERVER_RISK_HIGH_THRESHOLD,
+        SERVER_RISK_MEDIUM_THRESHOLD,
+        SERVER_RISK_REGISTRY_HIGH_FLOOR,
+        SERVER_RISK_REGISTRY_MEDIUM_FLOOR,
+        SERVER_RISK_TOOL_CAP,
+        SERVER_RISK_TOOL_WEIGHT,
+    )
+
     credentials = credentials or []
     profile = ServerRiskProfile(
         tool_count=len(tools),
@@ -206,40 +321,39 @@ def score_server_risk(
 
     # Normalize: 0-10 scale based on max possible (all 7 caps)
     max_weight = sum(CAPABILITY_WEIGHTS.values())
-    base_score = min((weighted_score / max_weight) * 7.0, 7.0)
+    base_score = min((weighted_score / max_weight) * SERVER_RISK_BASE_CEILING, SERVER_RISK_BASE_CEILING)
 
     # Tool count factor: more tools = more surface area
-    tool_factor = min(len(tools) * 0.15, 1.5)
+    tool_factor = min(len(tools) * SERVER_RISK_TOOL_WEIGHT, SERVER_RISK_TOOL_CAP)
 
     # Credential amplification
-    cred_factor = min(len(credentials) * 0.5, 2.0)
+    cred_factor = min(len(credentials) * SERVER_RISK_CRED_WEIGHT, SERVER_RISK_CRED_CAP)
 
     # Dangerous combinations
     combos_found: list[str] = []
     for required_caps, description in DANGEROUS_COMBOS:
-        # Check if server has all caps in the combo
         if required_caps.issubset(present_caps):
             combos_found.append(description)
 
-    combo_factor = min(len(combos_found) * 0.3, 1.5)
+    combo_factor = min(len(combos_found) * SERVER_RISK_COMBO_WEIGHT, SERVER_RISK_COMBO_CAP)
     profile.dangerous_combinations = combos_found
 
-    # Registry override: if registry says high, minimum floor
+    # Registry override: if registry says high, enforce minimum floor
     registry_floor = 0.0
     if registry_entry:
         rl = registry_entry.get("risk_level", "")
         if rl == "high":
-            registry_floor = 6.0
+            registry_floor = SERVER_RISK_REGISTRY_HIGH_FLOOR
         elif rl == "medium":
-            registry_floor = 3.0
+            registry_floor = SERVER_RISK_REGISTRY_MEDIUM_FLOOR
 
     raw_score = base_score + tool_factor + cred_factor + combo_factor
     profile.risk_score = min(max(raw_score, registry_floor), 10.0)
 
-    # Risk level
-    if profile.risk_score >= 7.0:
-        profile.risk_level = "critical" if profile.risk_score >= 9.0 else "high"
-    elif profile.risk_score >= 4.0:
+    # Risk level thresholds
+    if profile.risk_score >= SERVER_RISK_HIGH_THRESHOLD:
+        profile.risk_level = "critical" if profile.risk_score >= SERVER_RISK_CRITICAL_THRESHOLD else "high"
+    elif profile.risk_score >= SERVER_RISK_MEDIUM_THRESHOLD:
         profile.risk_level = "medium"
     else:
         profile.risk_level = "low"

@@ -13,6 +13,11 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from agent_bom.atlas import tag_blast_radius as tag_atlas_techniques
 from agent_bom.cis_controls import tag_blast_radius as tag_cis_controls
+
+# Single source of truth for AI/ML package catalog — imported from constants.
+# Vulnerabilities in these carry elevated risk because they run inside AI
+# agents that have credentials and tool access.
+from agent_bom.constants import AI_PACKAGES as _AI_FRAMEWORK_PACKAGES  # noqa: E402
 from agent_bom.eu_ai_act import tag_blast_radius as tag_eu_ai_act
 from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.iso_27001 import tag_blast_radius as tag_iso_27001
@@ -24,108 +29,6 @@ from agent_bom.owasp import tag_blast_radius
 from agent_bom.owasp_agentic import tag_blast_radius as tag_owasp_agentic
 from agent_bom.owasp_mcp import tag_blast_radius as tag_owasp_mcp
 from agent_bom.soc2 import tag_blast_radius as tag_soc2
-
-# Known AI/ML framework packages — vulnerabilities in these carry elevated risk
-# because they run inside AI agents that have credentials and tool access
-_AI_FRAMEWORK_PACKAGES = frozenset(
-    {
-        # LLM orchestration
-        "langchain",
-        "langchain-core",
-        "langchain-community",
-        "langchain-openai",
-        "langgraph",
-        "llama-index",
-        "llama_index",
-        "llama-hub",
-        "autogen",
-        "pyautogen",
-        "crewai",
-        "agency-swarm",
-        "haystack-ai",
-        "semantic-kernel",
-        # LLM clients
-        "openai",
-        "anthropic",
-        "mistralai",
-        "cohere",
-        "together",
-        "google-generativeai",
-        "google-cloud-aiplatform",
-        "boto3",
-        # Model inference
-        "transformers",
-        "huggingface-hub",
-        "diffusers",
-        "accelerate",
-        "sentence-transformers",
-        "optimum",
-        # Vector stores and RAG
-        "chromadb",
-        "pinecone-client",
-        "weaviate-client",
-        "qdrant-client",
-        "faiss-cpu",
-        "faiss-gpu",
-        "pymilvus",
-        "milvus",
-        "pgvector",
-        "lancedb",
-        # MCP and agent infrastructure
-        "mcp",
-        "fastmcp",
-        "modelcontextprotocol",
-        # GPU / AI infrastructure — NVIDIA
-        "cuda-python",
-        "cupy",
-        "cupy-cuda11x",
-        "cupy-cuda12x",
-        "nvidia-cublas-cu11",
-        "nvidia-cublas-cu12",
-        "nvidia-cudnn-cu11",
-        "nvidia-cudnn-cu12",
-        "nvidia-cufft-cu11",
-        "nvidia-cufft-cu12",
-        "nvidia-cusolver-cu11",
-        "nvidia-cusolver-cu12",
-        "nvidia-cusparse-cu11",
-        "nvidia-cusparse-cu12",
-        "nvidia-nccl-cu11",
-        "nvidia-nccl-cu12",
-        "nvidia-cuda-runtime-cu11",
-        "nvidia-cuda-runtime-cu12",
-        "nvidia-cuda-nvrtc-cu11",
-        "nvidia-cuda-nvrtc-cu12",
-        "tensorrt",
-        "nvidia-tensorrt",
-        "triton",
-        "tritonclient",
-        # GPU / AI infrastructure — AMD ROCm
-        "hip-python",
-        "rocm-smi",
-        # ML frameworks with GPU backends
-        "torch",
-        "torchvision",
-        "torchaudio",
-        "tensorflow",
-        "tensorflow-gpu",
-        "tf-nightly",
-        "jax",
-        "jaxlib",
-        # Inference servers
-        "vllm",
-        "text-generation-inference",
-        "llama-cpp-python",
-        "ctransformers",
-        # MLOps / experiment tracking
-        "mlflow",
-        "wandb",
-        "neptune",
-        "clearml",
-        "ray",
-        "ray[serve]",
-    }
-)
 
 console = Console(stderr=True)
 
@@ -193,13 +96,15 @@ def cvss_to_severity(score: Optional[float]) -> Severity:
     return Severity.NONE
 
 
-# CVSS 3.x metric weights
-_CVSS3_AV = {"N": 0.85, "A": 0.62, "L": 0.55, "P": 0.20}
-_CVSS3_AC = {"L": 0.77, "H": 0.44}
-_CVSS3_PR_U = {"N": 0.85, "L": 0.62, "H": 0.27}  # Scope Unchanged
-_CVSS3_PR_C = {"N": 0.85, "L": 0.68, "H": 0.50}  # Scope Changed
-_CVSS3_UI = {"N": 0.85, "R": 0.62}
-_CVSS3_CIA = {"N": 0.00, "L": 0.22, "H": 0.56}
+# CVSS 3.1 Base Score metric weights.
+# Reference: FIRST CVSS v3.1 Specification, Section 7.4 — Metric Values
+# https://www.first.org/cvss/v3.1/specification-document#7-4-Metric-Values
+_CVSS3_AV = {"N": 0.85, "A": 0.62, "L": 0.55, "P": 0.20}  # Attack Vector
+_CVSS3_AC = {"L": 0.77, "H": 0.44}  # Attack Complexity
+_CVSS3_PR_U = {"N": 0.85, "L": 0.62, "H": 0.27}  # Privileges Required (Scope Unchanged)
+_CVSS3_PR_C = {"N": 0.85, "L": 0.68, "H": 0.50}  # Privileges Required (Scope Changed)
+_CVSS3_UI = {"N": 0.85, "R": 0.62}  # User Interaction
+_CVSS3_CIA = {"N": 0.00, "L": 0.22, "H": 0.56}  # Confidentiality / Integrity / Availability
 
 
 def parse_cvss_vector(vector: str) -> Optional[float]:

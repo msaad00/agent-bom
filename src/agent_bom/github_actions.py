@@ -30,21 +30,21 @@ from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, Tran
 # ─── AI-related env var name patterns ────────────────────────────────────────
 
 _AI_ENV_NAMES = re.compile(
-    r'(?:OPENAI|ANTHROPIC|COHERE|MISTRAL|GROQ|GEMINI|PERPLEXITY|'
-    r'HUGGINGFACE|HF_TOKEN|LANGCHAIN|LLAMA|TOGETHER|REPLICATE|'
-    r'AI21|DEEPMIND|VERTEX|BEDROCK|SAGEMAKER|AZURE_OPENAI|'
-    r'GOOGLE_AI|GOOGLE_GENERATIVE)',
+    r"(?:OPENAI|ANTHROPIC|COHERE|MISTRAL|GROQ|GEMINI|PERPLEXITY|"
+    r"HUGGINGFACE|HF_TOKEN|LANGCHAIN|LLAMA|TOGETHER|REPLICATE|"
+    r"AI21|DEEPMIND|VERTEX|BEDROCK|SAGEMAKER|AZURE_OPENAI|"
+    r"GOOGLE_AI|GOOGLE_GENERATIVE)",
     re.IGNORECASE,
 )
 
 # ─── Third-party AI GitHub Actions ────────────────────────────────────────────
 
 _AI_ACTIONS: dict[str, str] = {
-    "anthropic/":             "Anthropic action",
-    "openai/":                "OpenAI action",
-    "huggingface/":           "HuggingFace action",
-    "langchain-ai/":          "LangChain action",
-    "run-llama/":             "LlamaIndex action",
+    "anthropic/": "Anthropic action",
+    "openai/": "OpenAI action",
+    "huggingface/": "HuggingFace action",
+    "langchain-ai/": "LangChain action",
+    "run-llama/": "LlamaIndex action",
     "aws-actions/amazon-bedrock": "AWS Bedrock action",
     "google-github-actions/vertex": "Vertex AI action",
 }
@@ -52,33 +52,63 @@ _AI_ACTIONS: dict[str, str] = {
 # ─── AI SDK patterns in run: steps ────────────────────────────────────────────
 
 _AI_RUN_PATTERNS = [
-    (re.compile(r'\bopenai\b', re.IGNORECASE),       "OpenAI SDK"),
-    (re.compile(r'\banthropics?\b', re.IGNORECASE),  "Anthropic SDK"),
-    (re.compile(r'\blangchain\b', re.IGNORECASE),    "LangChain"),
-    (re.compile(r'\bllamaindex\b|llama.index', re.IGNORECASE), "LlamaIndex"),
-    (re.compile(r'\btransformers\b', re.IGNORECASE), "HuggingFace Transformers"),
-    (re.compile(r'\bcohere\b', re.IGNORECASE),       "Cohere SDK"),
-    (re.compile(r'\bmistralai\b', re.IGNORECASE),    "Mistral SDK"),
-    (re.compile(r'\bgroq\b', re.IGNORECASE),         "Groq SDK"),
-    (re.compile(r'\bbedrock\b', re.IGNORECASE),      "AWS Bedrock"),
-    (re.compile(r'\bvertexai\b|vertex.ai', re.IGNORECASE), "Vertex AI"),
+    (re.compile(r"\bopenai\b", re.IGNORECASE), "OpenAI SDK"),
+    (re.compile(r"\banthropics?\b", re.IGNORECASE), "Anthropic SDK"),
+    (re.compile(r"\blangchain\b", re.IGNORECASE), "LangChain"),
+    (re.compile(r"\bllamaindex\b|llama.index", re.IGNORECASE), "LlamaIndex"),
+    (re.compile(r"\btransformers\b", re.IGNORECASE), "HuggingFace Transformers"),
+    (re.compile(r"\bcohere\b", re.IGNORECASE), "Cohere SDK"),
+    (re.compile(r"\bmistralai\b", re.IGNORECASE), "Mistral SDK"),
+    (re.compile(r"\bgroq\b", re.IGNORECASE), "Groq SDK"),
+    (re.compile(r"\bbedrock\b", re.IGNORECASE), "AWS Bedrock"),
+    (re.compile(r"\bvertexai\b|vertex.ai", re.IGNORECASE), "Vertex AI"),
 ]
 
 # pip install / npm install AI packages in run steps
-_PIP_RE  = re.compile(r'pip\s+install\s+([^\n&;]+)', re.IGNORECASE)
-_NPM_RE  = re.compile(r'npm\s+(?:install|i)\s+([^\n&;]+)', re.IGNORECASE)
+_PIP_RE = re.compile(r"pip\s+install\s+([^\n&;]+)", re.IGNORECASE)
+_NPM_RE = re.compile(r"npm\s+(?:install|i)\s+([^\n&;]+)", re.IGNORECASE)
 
-_AI_PACKAGES_PIP = frozenset([
-    "openai", "anthropic", "langchain", "langchain-openai", "langchain-anthropic",
-    "llama-index", "llama_index", "transformers", "cohere", "mistralai",
-    "groq", "google-generativeai", "boto3", "amazon-bedrock", "vertexai",
-    "google-cloud-aiplatform", "together", "replicate", "ai21",
-])
-_AI_PACKAGES_NPM = frozenset([
-    "openai", "@anthropic-ai/sdk", "langchain", "@langchain/core",
-    "@langchain/openai", "cohere-ai", "mistral-ai", "groq-sdk",
-    "@google/generative-ai", "replicate",
-])
+# NOTE: These are *ecosystem-specific* package lists for detecting AI SDK
+# installs in GitHub Actions workflow run-steps.  They are intentionally
+# separate from constants.AI_PACKAGES which is ecosystem-agnostic and used
+# for vulnerability risk tagging.
+_AI_PACKAGES_PIP = frozenset(
+    [
+        "openai",
+        "anthropic",
+        "langchain",
+        "langchain-openai",
+        "langchain-anthropic",
+        "llama-index",
+        "llama_index",
+        "transformers",
+        "cohere",
+        "mistralai",
+        "groq",
+        "google-generativeai",
+        "boto3",
+        "amazon-bedrock",
+        "vertexai",
+        "google-cloud-aiplatform",
+        "together",
+        "replicate",
+        "ai21",
+    ]
+)
+_AI_PACKAGES_NPM = frozenset(
+    [
+        "openai",
+        "@anthropic-ai/sdk",
+        "langchain",
+        "@langchain/core",
+        "@langchain/openai",
+        "cohere-ai",
+        "mistral-ai",
+        "groq-sdk",
+        "@google/generative-ai",
+        "replicate",
+    ]
+)
 
 
 # ─── Simple YAML line-level parser ────────────────────────────────────────────
@@ -91,11 +121,11 @@ def _extract_workflow_info(content: str) -> dict:
     env var names, ``uses:`` references, and ``run:`` block content.
     """
     result: dict = {
-        "env_vars": [],          # env var names (not values)
-        "used_actions": [],      # "uses: owner/action@version"
-        "run_blocks": [],        # content of run: steps
-        "pip_packages": [],      # packages from pip install lines
-        "npm_packages": [],      # packages from npm install lines
+        "env_vars": [],  # env var names (not values)
+        "used_actions": [],  # "uses: owner/action@version"
+        "run_blocks": [],  # content of run: steps
+        "pip_packages": [],  # packages from pip install lines
+        "npm_packages": [],  # packages from npm install lines
     }
 
     lines = content.splitlines()
@@ -109,32 +139,32 @@ def _extract_workflow_info(content: str) -> dict:
         stripped = raw_line.strip()
 
         # Track env: block — collect key names
-        env_m = re.match(r'\s*env\s*:', raw_line)
-        if env_m and not stripped.startswith('#'):
+        env_m = re.match(r"\s*env\s*:", raw_line)
+        if env_m and not stripped.startswith("#"):
             # Read following lines while indented deeper
             env_indent = len(raw_line) - len(raw_line.lstrip())
             j = i + 1
             while j < len(lines):
                 env_line = lines[j]
-                if not env_line.strip() or env_line.strip().startswith('#'):
+                if not env_line.strip() or env_line.strip().startswith("#"):
                     j += 1
                     continue
                 cur_indent = len(env_line) - len(env_line.lstrip())
                 if cur_indent <= env_indent and env_line.strip():
                     break
                 # Key: value pattern
-                key_m = re.match(r'\s*([A-Z_][A-Z0-9_]+)\s*:', env_line)
+                key_m = re.match(r"\s*([A-Z_][A-Z0-9_]+)\s*:", env_line)
                 if key_m:
                     result["env_vars"].append(key_m.group(1))
                 j += 1
 
         # uses: action references
-        uses_m = re.match(r'\s*-?\s*uses\s*:\s*(.+)', raw_line)
+        uses_m = re.match(r"\s*-?\s*uses\s*:\s*(.+)", raw_line)
         if uses_m:
             result["used_actions"].append(uses_m.group(1).strip())
 
         # run: blocks
-        run_m = re.match(r'(\s*)-?\s*run\s*:\s*\|?\s*(.*)', raw_line)
+        run_m = re.match(r"(\s*)-?\s*run\s*:\s*\|?\s*(.*)", raw_line)
         if run_m:
             run_indent = len(run_m.group(1)) + 2
             inline = run_m.group(2).strip()
@@ -161,11 +191,12 @@ def _extract_workflow_info(content: str) -> dict:
     # Extract pip/npm packages from run blocks
     for run_text in result["run_blocks"]:
         for pip_m in _PIP_RE.finditer(run_text):
-            pkgs = re.split(r'\s+', pip_m.group(1).strip())
-            result["pip_packages"].extend(p.split("==")[0].split(">=")[0].split("[")[0].strip()
-                                          for p in pkgs if p and not p.startswith("-"))
+            pkgs = re.split(r"\s+", pip_m.group(1).strip())
+            result["pip_packages"].extend(
+                p.split("==")[0].split(">=")[0].split("[")[0].strip() for p in pkgs if p and not p.startswith("-")
+            )
         for npm_m in _NPM_RE.finditer(run_text):
-            pkgs = re.split(r'\s+', npm_m.group(1).strip())
+            pkgs = re.split(r"\s+", npm_m.group(1).strip())
             result["npm_packages"].extend(p.strip() for p in pkgs if p and not p.startswith("-"))
 
     return result
@@ -202,9 +233,7 @@ def scan_github_actions(repo_path: str) -> tuple[list[Agent], list[str]]:
     if not workflows_dir.is_dir():
         return [], []
 
-    workflow_files = sorted(
-        list(workflows_dir.glob("*.yml")) + list(workflows_dir.glob("*.yaml"))
-    )
+    workflow_files = sorted(list(workflows_dir.glob("*.yml")) + list(workflows_dir.glob("*.yaml")))
     if not workflow_files:
         return [], []
 
@@ -220,9 +249,7 @@ def scan_github_actions(repo_path: str) -> tuple[list[Agent], list[str]]:
         info = _extract_workflow_info(content)
 
         # ── Check AI env vars ────────────────────────────────────────────────
-        ai_env_keys: list[str] = [
-            k for k in info["env_vars"] if _AI_ENV_NAMES.search(k)
-        ]
+        ai_env_keys: list[str] = [k for k in info["env_vars"] if _AI_ENV_NAMES.search(k)]
 
         # ── Check used actions ────────────────────────────────────────────────
         ai_action_refs: list[str] = []
@@ -243,27 +270,29 @@ def scan_github_actions(repo_path: str) -> tuple[list[Agent], list[str]]:
         ai_packages: list[Package] = []
         for pkg_name in info["pip_packages"]:
             if pkg_name.lower() in _AI_PACKAGES_PIP:
-                ai_packages.append(Package(
-                    name=pkg_name,
-                    version="unknown",
-                    ecosystem="pypi",
-                ))
+                ai_packages.append(
+                    Package(
+                        name=pkg_name,
+                        version="unknown",
+                        ecosystem="pypi",
+                    )
+                )
         for pkg_name in info["npm_packages"]:
             if pkg_name.lower() in _AI_PACKAGES_NPM or pkg_name.startswith("@anthropic") or pkg_name.startswith("@langchain"):
-                ai_packages.append(Package(
-                    name=pkg_name,
-                    version="unknown",
-                    ecosystem="npm",
-                ))
+                ai_packages.append(
+                    Package(
+                        name=pkg_name,
+                        version="unknown",
+                        ecosystem="npm",
+                    )
+                )
 
         # ── Only create an agent if something AI-related was found ─────────────
         if not (ai_env_keys or ai_action_refs or ai_sdk_uses or ai_packages):
             continue
 
         # Build tools list from AI actions + SDK usage found
-        tools: list[MCPTool] = [
-            MCPTool(name=ref, description="GitHub Action") for ref in ai_action_refs
-        ] + [
+        tools: list[MCPTool] = [MCPTool(name=ref, description="GitHub Action") for ref in ai_action_refs] + [
             MCPTool(name=sdk, description="AI SDK used in run step") for sdk in ai_sdk_uses
         ]
 
@@ -271,10 +300,7 @@ def scan_github_actions(repo_path: str) -> tuple[list[Agent], list[str]]:
         cred_env: dict[str, str] = {k: "***REDACTED***" for k in ai_env_keys}
 
         if ai_env_keys:
-            warnings.append(
-                f"AI credentials exposed in {wf_path.name}: "
-                + ", ".join(ai_env_keys)
-            )
+            warnings.append(f"AI credentials exposed in {wf_path.name}: " + ", ".join(ai_env_keys))
 
         server = MCPServer(
             name=f"gha:{wf_path.stem}",

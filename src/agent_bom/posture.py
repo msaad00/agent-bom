@@ -202,7 +202,9 @@ def compute_posture_scorecard(report: "AIBOMReport") -> PostureScorecard:
 
     # ── 5. Active Exploitation (10%) ──
     kev_count = sum(1 for br in report.blast_radii if br.vulnerability.is_kev)
-    high_epss = sum(1 for br in report.blast_radii if (br.vulnerability.epss_score or 0) >= 0.7)
+    from agent_bom.config import EPSS_CRITICAL_THRESHOLD
+
+    high_epss = sum(1 for br in report.blast_radii if (br.vulnerability.epss_score or 0) >= EPSS_CRITICAL_THRESHOLD)
 
     if kev_count == 0 and high_epss == 0:
         exploit_score = 100.0

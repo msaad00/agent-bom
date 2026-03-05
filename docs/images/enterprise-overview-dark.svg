@@ -194,5 +194,5 @@
   <!-- ════════════════════════════════════════════════════════ -->
   <!--  FOOTER                                                 -->
   <!-- ════════════════════════════════════════════════════════ -->
-  <text x="600" y="680" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="500" fill="#484f58">20 MCP clients · 12 providers · 7 ecosystems · 12 model formats · 427+ registry · 107 modules · 2,900+ tests · 0 runtime deps</text>
+  <text x="600" y="680" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="500" fill="#484f58">20 MCP clients · 12 providers · 7 ecosystems · 12 model formats · 427+ registry · 107 modules · 2,950+ tests · 0 runtime deps</text>
 </svg>

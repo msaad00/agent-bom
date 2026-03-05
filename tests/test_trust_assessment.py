@@ -609,11 +609,12 @@ def test_mcp_skill_trust_tool_exists():
     assert "skill_trust" in tool_names
 
 
-def test_mcp_server_card_has_16_tools():
-    """Server card lists 16 tools (including code_scan and context_graph)."""
+def test_mcp_server_card_has_17_tools():
+    """Server card lists 17 tools (including code_scan, context_graph, analytics_query)."""
     from agent_bom.mcp_server import _SERVER_CARD_TOOLS
 
-    assert len(_SERVER_CARD_TOOLS) == 16
+    assert len(_SERVER_CARD_TOOLS) == 17
     tool_names = {t["name"] for t in _SERVER_CARD_TOOLS}
     assert "code_scan" in tool_names
     assert "context_graph" in tool_names
+    assert "analytics_query" in tool_names

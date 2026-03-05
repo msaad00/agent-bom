@@ -92,7 +92,7 @@ databases (OSV, NVD, EPSS, KEV) are queried directly from your machine.
 
 ```bash
 pipx install agent-bom
-agent-bom scan              # auto-discover 18 MCP clients + scan
+agent-bom scan              # auto-discover 20 MCP clients + scan
 agent-bom check langchain   # check a specific package
 agent-bom where             # show all discovery paths
 ```
@@ -124,7 +124,7 @@ docker run -p 8080:8080 agent-bom-sse
 # Connect: { "type": "sse", "url": "http://localhost:8080/sse" }
 ```
 
-## Available MCP Tools (16 tools)
+## Available MCP Tools (17 tools)
 
 | Tool | Description |
 |------|-------------|
@@ -144,6 +144,7 @@ docker run -p 8080:8080 agent-bom-sse
 | `where` | Show MCP client config discovery paths |
 | `inventory` | List discovered agents, servers, packages |
 | `context_graph` | Agent context graph with lateral movement analysis |
+| `analytics_query` | Query vulnerability trends, posture history, and runtime events from ClickHouse |
 
 ## MCP Resources
 
@@ -214,6 +215,6 @@ installation or self-host your own instance.
 - **PyPI**: [pypi.org/project/agent-bom](https://pypi.org/project/agent-bom/)
 - **Smithery**: [smithery.ai/server/agent-bom](https://smithery.ai/server/agent-bom/agent-bom)
 - **Sigstore signed**: `agent-bom verify agent-bom@0.52.0`
-- **2,900+ tests** with automated security scanning (CodeQL + OpenSSF Scorecard)
+- **2,950+ tests** with automated security scanning (CodeQL + OpenSSF Scorecard)
 - **OpenSSF Scorecard**: [securityscorecards.dev](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom)
 - **No telemetry**: Zero tracking, zero analytics

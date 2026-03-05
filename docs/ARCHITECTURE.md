@@ -275,13 +275,13 @@ graph TB
 | Module | Path | Responsibility |
 |--------|------|----------------|
 | CLI | `src/agent_bom/cli.py` | Click entry point, flag parsing |
-| Discovery | `src/agent_bom/discovery/__init__.py` | MCP client config discovery (18 clients) |
+| Discovery | `src/agent_bom/discovery/__init__.py` | MCP client config discovery (20 clients) |
 | Parsers | `src/agent_bom/parsers/__init__.py` | Package extraction + MCP registry lookup |
 | Scanners | `src/agent_bom/scanners/__init__.py` | OSV batch scan + CVSS + AI risk tagging |
 | Output | `src/agent_bom/output/__init__.py` | JSON, CycloneDX, SARIF, SPDX, console output |
 | Policy | `src/agent_bom/policy.py` | Policy-as-code engine |
 | SBOM | `src/agent_bom/sbom.py` | SBOM ingestion (CycloneDX, SPDX) |
 | Image | `src/agent_bom/image.py` | Docker image scanning |
-| MCP Server | `src/agent_bom/mcp_server.py` | FastMCP server (16 tools) |
+| MCP Server | `src/agent_bom/mcp_server.py` | FastMCP server (17 tools) |
 | Context Graph | `src/agent_bom/context_graph.py` | Lateral movement analysis |
 | Cloud | `src/agent_bom/cloud/` | AWS, Azure, GCP, Snowflake, Databricks, Nebius |

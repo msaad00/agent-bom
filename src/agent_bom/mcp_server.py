@@ -1596,6 +1596,11 @@ _SERVER_CARD_TOOLS = [
         "annotations": {"readOnlyHint": True},
     },
     {"name": "context_graph", "description": "Agent context graph with lateral movement analysis", "annotations": {"readOnlyHint": True}},
+    {
+        "name": "analytics_query",
+        "description": "Query vulnerability trends, posture history, and runtime events from ClickHouse",
+        "annotations": {"readOnlyHint": True},
+    },
 ]
 
 _SERVER_CARD_PROMPTS = [

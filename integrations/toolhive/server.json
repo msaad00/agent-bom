@@ -52,7 +52,11 @@
             "verify",
             "where",
             "inventory",
-            "diff"
+            "diff",
+            "marketplace_check",
+            "code_scan",
+            "context_graph",
+            "analytics_query"
           ]
         }
       }

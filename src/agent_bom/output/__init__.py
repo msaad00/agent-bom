@@ -1557,6 +1557,9 @@ def to_json(report: AIBOMReport) -> dict:
     if report.cis_benchmark_data:
         result["cis_benchmark"] = report.cis_benchmark_data
 
+    if report.snowflake_cis_benchmark_data:
+        result["snowflake_cis_benchmark"] = report.snowflake_cis_benchmark_data
+
     # Posture scorecard
     from agent_bom.posture import (
         compute_credential_risk_ranking,

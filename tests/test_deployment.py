@@ -117,14 +117,14 @@ def test_smithery_yaml_exists():
 
 
 def test_server_card_has_all_tools():
-    """Server card should list all 16 MCP tools."""
+    """Server card should list all 17 MCP tools."""
     from agent_bom.mcp_server import build_server_card
 
     card = build_server_card()
     assert card["name"] == "agent-bom"
     assert "version" in card
     tool_names = [t["name"] for t in card["tools"]]
-    assert len(tool_names) == 16
+    assert len(tool_names) == 17
     assert "scan" in tool_names
     assert "check" in tool_names
     assert "blast_radius" in tool_names
@@ -140,6 +140,22 @@ def test_server_card_has_all_tools():
     assert "diff" in tool_names
     assert "code_scan" in tool_names
     assert "context_graph" in tool_names
+    assert "analytics_query" in tool_names
+
+
+def test_server_card_tool_count_matches_decorators():
+    """_SERVER_CARD_TOOLS must list every @mcp.tool in create_mcp_server."""
+    import inspect
+    import re
+
+    from agent_bom.mcp_server import _SERVER_CARD_TOOLS, create_mcp_server
+
+    source = inspect.getsource(create_mcp_server)
+    decorator_count = len(re.findall(r"@mcp\.tool", source))
+    card_count = len(_SERVER_CARD_TOOLS)
+    assert card_count == decorator_count, (
+        f"_SERVER_CARD_TOOLS has {card_count} entries but create_mcp_server has {decorator_count} @mcp.tool decorators"
+    )
 
 
 def test_server_card_capabilities():

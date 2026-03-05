@@ -38,7 +38,7 @@
 
   <rect x="28" y="68" width="146" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
   <text x="101" y="84" text-anchor="middle" class="box-label">MCP Configs</text>
-  <text x="101" y="96" text-anchor="middle" class="box-sub">18 clients · auto-detect</text>
+  <text x="101" y="96" text-anchor="middle" class="box-sub">20 clients · auto-detect</text>
 
   <rect x="28" y="106" width="146" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
   <text x="101" y="122" text-anchor="middle" class="box-label">Cloud Providers</text>
@@ -182,7 +182,7 @@
 
   <rect x="808" y="106" width="124" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
   <text x="870" y="122" text-anchor="middle" class="box-label">MCP Server</text>
-  <text x="870" y="134" text-anchor="middle" class="box-sub">16 tools · stdio/SSE</text>
+  <text x="870" y="134" text-anchor="middle" class="box-sub">17 tools · stdio/SSE</text>
 
   <rect x="808" y="144" width="124" height="32" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
   <text x="870" y="160" text-anchor="middle" class="box-label">GitHub Action</text>

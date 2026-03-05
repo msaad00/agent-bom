@@ -1,11 +1,11 @@
 image:
   repository: msaad02/agent-bom
-  tag: "0.54.0"
+  tag: "0.55.0"
   pullPolicy: IfNotPresent
 
 runtimeImage:
   repository: msaad02/agent-bom-runtime
-  tag: "0.54.0"
+  tag: "0.55.0"
   pullPolicy: IfNotPresent
 
 scanner:

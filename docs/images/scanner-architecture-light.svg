@@ -84,7 +84,7 @@
   <text x="100" y="298" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#3b82f6">Code (7 eco)</text>
   <text x="100" y="318" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#3b82f6">Filesystem</text>
   <rect x="48" y="330" width="104" height="16" rx="8" fill="#dbeafe"/>
-  <text x="100" y="342" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="8" font-weight="700" fill="#1e40af">PROPRIETARY</text>
+  <text x="100" y="342" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="8" font-weight="700" fill="#1e40af">BUILT-IN</text>
 
   <!-- Card 2: Extract -->
   <rect x="197" y="190" width="140" height="160" rx="14" fill="#eff6ff" stroke="#dbeafe" stroke-width="1.5"/>
@@ -94,7 +94,7 @@
   <text x="267" y="278" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#3b82f6">SBOM Ingest</text>
   <text x="267" y="306" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#94a3b8" font-style="italic">+ Syft · Semgrep</text>
   <rect x="215" y="318" width="104" height="16" rx="8" fill="#dbeafe"/>
-  <text x="267" y="330" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="8" font-weight="700" fill="#1e40af">PROP + ext</text>
+  <text x="267" y="330" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="8" font-weight="700" fill="#1e40af">BUILT-IN + ext</text>
 
   <!-- Card 3: Scan -->
   <rect x="364" y="190" width="140" height="160" rx="14" fill="#fffbeb" stroke="#fde68a" stroke-width="1.5"/>
@@ -119,19 +119,19 @@
   <!-- Card 5: Analyze -->
   <rect x="697" y="190" width="140" height="160" rx="14" fill="#fef2f2" stroke="#fecaca" stroke-width="1.5"/>
   <rect x="712" y="198" width="68" height="16" rx="8" fill="#dc2626"/>
-  <text x="746" y="210" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="7" font-weight="700" fill="#fff" letter-spacing="0.04em">PROPRIETARY</text>
+  <text x="746" y="210" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="7" font-weight="700" fill="#fff" letter-spacing="0.04em">BUILT-IN</text>
   <text x="767" y="238" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#dc2626">Blast Radius</text>
   <text x="767" y="258" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#dc2626">Context Graph</text>
   <text x="767" y="278" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#dc2626">Toxic Combos</text>
   <text x="767" y="298" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#dc2626">Posture A-F</text>
   <text x="767" y="318" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#dc2626">Incidents</text>
   <rect x="715" y="330" width="104" height="16" rx="8" fill="#fee2e2"/>
-  <text x="767" y="342" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="8" font-weight="700" fill="#dc2626">100% PROP</text>
+  <text x="767" y="342" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="8" font-weight="700" fill="#dc2626">DEEP ANALYSIS</text>
 
   <!-- Card 6: Comply -->
   <rect x="863" y="190" width="140" height="160" rx="14" fill="#faf5ff" stroke="#e9d5ff" stroke-width="1.5"/>
   <rect x="878" y="198" width="68" height="16" rx="8" fill="#8b5cf6"/>
-  <text x="912" y="210" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="7" font-weight="700" fill="#fff" letter-spacing="0.04em">PROPRIETARY</text>
+  <text x="912" y="210" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="7" font-weight="700" fill="#fff" letter-spacing="0.04em">BUILT-IN</text>
   <text x="933" y="238" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#7c3aed">OWASP LLM+MCP</text>
   <text x="933" y="258" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#7c3aed">MITRE ATLAS</text>
   <text x="933" y="278" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#7c3aed">NIST · EU AI Act</text>
@@ -169,5 +169,5 @@
   <text x="600" y="572" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#94a3b8">External feeds: OSV.dev · GHSA · NVD · EPSS · KEV · NVIDIA CSAF · Grype DB · OpenSSF · MCP Registry</text>
 
   <!-- Footer -->
-  <text x="600" y="612" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="500" fill="#94a3b8">~70 proprietary  ·  ~15 hybrid  ·  ~22 external  ·  107 modules  ·  2,900+ tests  ·  0 runtime deps</text>
+  <text x="600" y="612" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="500" fill="#94a3b8">~70 built-in  ·  ~15 hybrid  ·  ~22 external  ·  107 modules  ·  2,900+ tests  ·  0 runtime deps</text>
 </svg>

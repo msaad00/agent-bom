@@ -64,7 +64,7 @@ azure = [
     "azure-mgmt-cognitiveservices>=13.5",
     "azure-mgmt-web>=7.2",
     "azure-mgmt-containerinstance>=10.1",
-    "azure-mgmt-machinelearningservices>=2.0",
+    "azure-mgmt-machinelearningservices>=1.0",
     "azure-mgmt-containerservice>=30.0",
     "azure-mgmt-resource>=23.0",
 ]

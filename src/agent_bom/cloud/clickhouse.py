@@ -147,4 +147,21 @@ CREATE TABLE IF NOT EXISTS posture_scores (
 ORDER BY (measured_at, agent_name)
 PARTITION BY toYYYYMM(measured_at)
 TTL measured_at + INTERVAL 2 YEAR""",
+    # 4. Scan metadata (one row per scan run)
+    """\
+CREATE TABLE IF NOT EXISTS scan_metadata (
+    scan_id String,
+    scan_timestamp DateTime DEFAULT now(),
+    agent_count UInt32,
+    package_count UInt32,
+    vuln_count UInt32,
+    critical_count UInt32,
+    high_count UInt32,
+    posture_grade LowCardinality(String),
+    scan_duration_ms UInt32,
+    source LowCardinality(String)
+) ENGINE = MergeTree()
+ORDER BY (scan_timestamp, scan_id)
+PARTITION BY toYYYYMM(scan_timestamp)
+TTL scan_timestamp + INTERVAL 2 YEAR""",
 ]

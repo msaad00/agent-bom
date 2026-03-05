@@ -376,8 +376,11 @@ def test_cli_registry_search_no_match():
 
 def test_version_drift_dataclass():
     d = VersionDrift(
-        package="test", ecosystem="npm",
-        installed="1.0.0", latest="2.0.0", status="outdated",
+        package="test",
+        ecosystem="npm",
+        installed="1.0.0",
+        latest="2.0.0",
+        status="outdated",
     )
     assert d.package == "test"
     assert d.status == "outdated"
@@ -455,3 +458,170 @@ def test_new_servers_present():
     ]
     for key in expected_new:
         assert key in ids, f"Missing new server: {key}"
+
+
+# ── CVE enrichment ─────────────────────────────────────────────────────────
+
+
+def test_cve_enrich_result_dataclass():
+    from agent_bom.registry import CVEEnrichResult
+
+    r = CVEEnrichResult(total=10, scannable=5, enriched=2, total_cves=3)
+    assert r.total == 10
+    assert r.scannable == 5
+    assert r.enriched == 2
+    assert r.total_cves == 3
+    assert r.total_critical == 0
+    assert r.total_kev == 0
+    assert r.details == []
+
+
+@pytest.mark.asyncio
+async def test_enrich_registry_with_cves_empty_registry():
+    """Enrichment returns zero results on empty registry."""
+    from agent_bom.registry import enrich_registry_with_cves
+
+    with patch("agent_bom.registry._load_registry_full", return_value={"servers": {}}):
+        result = await enrich_registry_with_cves(dry_run=True)
+    assert result.total == 0
+    assert result.scannable == 0
+    assert result.enriched == 0
+
+
+@pytest.mark.asyncio
+async def test_enrich_registry_with_cves_no_scannable():
+    """Entries with unsupported ecosystems are skipped."""
+    from agent_bom.registry import enrich_registry_with_cves
+
+    registry = {
+        "servers": {
+            "test-server": {
+                "package": "test",
+                "ecosystem": "mcp-registry",
+                "latest_version": "1.0.0",
+            }
+        }
+    }
+    with patch("agent_bom.registry._load_registry_full", return_value=registry):
+        result = await enrich_registry_with_cves(dry_run=True)
+    assert result.total == 1
+    assert result.scannable == 0
+
+
+@pytest.mark.asyncio
+async def test_enrich_registry_with_cves_with_vulns():
+    """Entries with OSV results get CVE data populated."""
+    from agent_bom.registry import enrich_registry_with_cves
+
+    registry = {
+        "servers": {
+            "vuln-server": {
+                "package": "vuln-pkg",
+                "ecosystem": "npm",
+                "latest_version": "1.0.0",
+            }
+        }
+    }
+    osv_vulns = {
+        "npm:vuln-pkg@1.0.0": [
+            {
+                "id": "GHSA-xxxx-yyyy-zzzz",
+                "aliases": ["CVE-2024-12345"],
+                "severity": [{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}],
+                "affected": [
+                    {
+                        "ranges": [
+                            {
+                                "type": "SEMVER",
+                                "events": [{"introduced": "0"}, {"fixed": "1.0.1"}],
+                            }
+                        ]
+                    }
+                ],
+            }
+        ],
+    }
+
+    with (
+        patch("agent_bom.registry._load_registry_full", return_value=registry),
+        patch("agent_bom.scanners.query_osv_batch", new_callable=AsyncMock, return_value=osv_vulns),
+        patch(
+            "agent_bom.enrichment.fetch_epss_scores",
+            new_callable=AsyncMock,
+            return_value={
+                "CVE-2024-12345": {"score": 0.85, "percentile": 0.95, "date": "2024-01-01"},
+            },
+        ),
+        patch("agent_bom.enrichment.fetch_cisa_kev_catalog", new_callable=AsyncMock, return_value={}),
+    ):
+        result = await enrich_registry_with_cves(dry_run=True)
+
+    assert result.enriched == 1
+    assert result.total_cves == 1
+    assert result.total_critical == 1  # EPSS >= 0.7
+    assert result.details[0]["cves"] == ["CVE-2024-12345"]
+
+
+@pytest.mark.asyncio
+async def test_enrich_registry_with_cves_kev_detection():
+    """CVEs in CISA KEV catalog are flagged."""
+    from agent_bom.registry import enrich_registry_with_cves
+
+    registry = {
+        "servers": {
+            "kev-server": {
+                "package": "kev-pkg",
+                "ecosystem": "pypi",
+                "latest_version": "2.0.0",
+            }
+        }
+    }
+    osv_vulns = {
+        "pypi:kev-pkg@2.0.0": [
+            {"id": "CVE-2024-99999", "aliases": [], "severity": [], "affected": []},
+        ],
+    }
+
+    with (
+        patch("agent_bom.registry._load_registry_full", return_value=registry),
+        patch("agent_bom.scanners.query_osv_batch", new_callable=AsyncMock, return_value=osv_vulns),
+        patch("agent_bom.enrichment.fetch_epss_scores", new_callable=AsyncMock, return_value={}),
+        patch(
+            "agent_bom.enrichment.fetch_cisa_kev_catalog",
+            new_callable=AsyncMock,
+            return_value={
+                "CVE-2024-99999": {"date_added": "2024-06-01"},
+            },
+        ),
+    ):
+        result = await enrich_registry_with_cves(dry_run=True)
+
+    assert result.enriched == 1
+    assert result.total_kev == 1
+    assert result.total_critical == 1  # KEV = critical
+
+
+@pytest.mark.asyncio
+async def test_enrich_registry_with_cves_no_vulns():
+    """Clean packages result in zero enrichment."""
+    from agent_bom.registry import enrich_registry_with_cves
+
+    registry = {
+        "servers": {
+            "clean-server": {
+                "package": "clean-pkg",
+                "ecosystem": "npm",
+                "latest_version": "3.0.0",
+            }
+        }
+    }
+
+    with (
+        patch("agent_bom.registry._load_registry_full", return_value=registry),
+        patch("agent_bom.scanners.query_osv_batch", new_callable=AsyncMock, return_value={}),
+    ):
+        result = await enrich_registry_with_cves(dry_run=True)
+
+    assert result.scannable == 1
+    assert result.enriched == 0
+    assert result.total_cves == 0

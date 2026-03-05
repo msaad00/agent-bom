@@ -125,36 +125,61 @@ jobs:
           asyncio.run(main())
           EOF
 
+      - name: Enrich registry with CVE data (OSV + EPSS + KEV)
+        id: cve
+        run: |
+          python - <<'EOF'
+          import asyncio, json, sys
+          from pathlib import Path
+
+          sys.path.insert(0, "src")
+          REGISTRY_PATH = Path("src/agent_bom/mcp_registry.json")
+
+          async def main():
+              from agent_bom.registry import enrich_registry_with_cves
+              result = await enrich_registry_with_cves(dry_run=False)
+              print(f"Scannable: {result.scannable}, With CVEs: {result.enriched}")
+              print(f"Total CVEs: {result.total_cves}, Critical: {result.total_critical}, KEV: {result.total_kev}")
+              for d in result.details[:10]:
+                  print(f"  {d['server']}: {d['cve_count']} CVEs")
+              Path("/tmp/cve_count").write_text(str(result.enriched))
+
+          asyncio.run(main())
+          EOF
+
       - name: Read counts
         id: count
         run: |
           echo "new_count=$(cat /tmp/new_count)" >> "$GITHUB_OUTPUT"
           echo "version_count=$(cat /tmp/version_count 2>/dev/null || echo 0)" >> "$GITHUB_OUTPUT"
+          echo "cve_count=$(cat /tmp/cve_count 2>/dev/null || echo 0)" >> "$GITHUB_OUTPUT"
 
       - name: Create PR if registry changed
-        if: steps.count.outputs.new_count != '0' || steps.count.outputs.version_count != '0'
+        if: steps.count.outputs.new_count != '0' || steps.count.outputs.version_count != '0' || steps.count.outputs.cve_count != '0'
         env:
           GH_TOKEN: ${{ github.token }}
           NEW_COUNT: ${{ steps.count.outputs.new_count }}
           VERSION_COUNT: ${{ steps.count.outputs.version_count }}
+          CVE_COUNT: ${{ steps.count.outputs.cve_count }}
         run: |
           BRANCH="chore/mcp-registry-$(date +%Y%m%d)"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
           git add src/agent_bom/mcp_registry.json
-          git commit -m "chore: sync MCP registry — ${NEW_COUNT} new server(s), ${VERSION_COUNT} version update(s)"
+          git commit -m "chore: sync MCP registry — ${NEW_COUNT} new, ${VERSION_COUNT} versions, ${CVE_COUNT} with CVEs"
           git push origin "$BRANCH"
           gh pr create \
-            --title "chore: MCP registry sync — ${NEW_COUNT} new, ${VERSION_COUNT} version updates" \
+            --title "chore: MCP registry sync — ${NEW_COUNT} new, ${VERSION_COUNT} versions, ${CVE_COUNT} CVE-enriched" \
             --body "Automated weekly sync from the official MCP server registry.
 
           **New servers added:** ${NEW_COUNT}
           **Versions refreshed:** ${VERSION_COUNT}
+          **Servers with CVE data:** ${CVE_COUNT}
 
           Please review the changes in \`src/agent_bom/mcp_registry.json\` before merging." \
             --base main
 
       - name: No changes
-        if: steps.count.outputs.new_count == '0' && steps.count.outputs.version_count == '0'
-        run: echo "MCP registry is up to date — no new servers or version changes found."
+        if: steps.count.outputs.new_count == '0' && steps.count.outputs.version_count == '0' && steps.count.outputs.cve_count == '0'
+        run: echo "MCP registry is up to date — no new servers, version changes, or CVE updates found."

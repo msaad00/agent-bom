@@ -56,7 +56,8 @@
             "marketplace_check",
             "code_scan",
             "context_graph",
-            "analytics_query"
+            "analytics_query",
+            "cis_benchmark"
           ]
         }
       }

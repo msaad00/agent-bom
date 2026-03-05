@@ -117,14 +117,14 @@ def test_smithery_yaml_exists():
 
 
 def test_server_card_has_all_tools():
-    """Server card should list all 17 MCP tools."""
+    """Server card should list all 18 MCP tools."""
     from agent_bom.mcp_server import build_server_card
 
     card = build_server_card()
     assert card["name"] == "agent-bom"
     assert "version" in card
     tool_names = [t["name"] for t in card["tools"]]
-    assert len(tool_names) == 17
+    assert len(tool_names) == 18
     assert "scan" in tool_names
     assert "check" in tool_names
     assert "blast_radius" in tool_names

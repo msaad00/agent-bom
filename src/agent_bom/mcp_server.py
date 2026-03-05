@@ -1457,6 +1457,55 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             logger.exception("MCP tool error")
             return json.dumps({"error": sanitize_error(exc)})
 
+    @mcp.tool(annotations=_READ_ONLY)
+    async def cis_benchmark(
+        provider: Annotated[
+            str,
+            Field(description="Cloud provider: 'aws' or 'snowflake'."),
+        ],
+        checks: Annotated[
+            str | None,
+            Field(description="Comma-separated check IDs to run (e.g. '1.1,2.1'). Omit to run all."),
+        ] = None,
+        region: Annotated[
+            str | None,
+            Field(description="AWS region (only for provider=aws). Defaults to us-east-1."),
+        ] = None,
+        profile: Annotated[
+            str | None,
+            Field(description="AWS CLI profile (only for provider=aws)."),
+        ] = None,
+    ) -> str:
+        """Run CIS benchmark checks against a cloud account.
+
+        Evaluates security posture against CIS Foundations Benchmarks:
+        - AWS Foundations v3.0: 18 checks (IAM, Storage, Logging, Networking)
+        - Snowflake v1.0: 12 checks (Auth, Network, Data Protection, Monitoring, Access Control)
+
+        All checks are read-only. Requires appropriate credentials (AWS or Snowflake).
+
+        Returns:
+            JSON with per-check pass/fail results, evidence, severity, and pass rate.
+        """
+        try:
+            check_list = [c.strip() for c in checks.split(",")] if checks else None
+
+            if provider == "aws":
+                from agent_bom.cloud.aws_cis_benchmark import run_benchmark as run_aws_cis
+
+                report = run_aws_cis(region=region, profile=profile, checks=check_list)
+            elif provider == "snowflake":
+                from agent_bom.cloud.snowflake_cis_benchmark import run_benchmark as run_sf_cis
+
+                report = run_sf_cis(checks=check_list)
+            else:
+                return json.dumps({"error": f"Unsupported provider: {provider}. Use 'aws' or 'snowflake'."})
+
+            return _truncate_response(json.dumps(report.to_dict(), indent=2, default=str))
+        except Exception as exc:
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
+
     # ── Resources ────────────────────────────────────────────────
 
     @mcp.resource("registry://servers")
@@ -1601,6 +1650,11 @@ _SERVER_CARD_TOOLS = [
     {
         "name": "analytics_query",
         "description": "Query vulnerability trends, posture history, and runtime events from ClickHouse",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "cis_benchmark",
+        "description": "Run CIS benchmark checks against AWS or Snowflake accounts",
         "annotations": {"readOnlyHint": True},
     },
 ]

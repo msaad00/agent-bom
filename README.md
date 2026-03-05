@@ -131,7 +131,7 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 | Quick local scan | CLI | `agent-bom scan` |
 | CI/CD gate | GitHub Action | `uses: msaad00/agent-bom@v0.53.0` |
 | Security dashboard | API + UI | `agent-bom serve` |
-| MCP tool integration | MCP server | `agent-bom mcp-server` (17 tools) |
+| MCP tool integration | MCP server | `agent-bom mcp-server` (18 tools) |
 | K8s fleet scanning | Helm | `helm install deploy/helm/agent-bom` |
 | Analytics + viz | Docker Compose | `cd infra/clickhouse && docker compose up` |
 | Snowflake governance | API | `agent-bom api --snowflake` |
@@ -573,7 +573,7 @@ agent-bom mcp-server                    # stdio
 agent-bom mcp-server --transport sse    # remote
 ```
 
-17 tools: `scan`, `check`, `blast_radius`, `policy_check`, `registry_lookup`, `generate_sbom`, `compliance`, `remediate`, `verify`, `where`, `inventory`, `diff`, `skill_trust`, `marketplace_check`, `code_scan`, `context_graph`, `analytics_query`
+18 tools: `scan`, `check`, `blast_radius`, `policy_check`, `registry_lookup`, `generate_sbom`, `compliance`, `remediate`, `verify`, `where`, `inventory`, `diff`, `skill_trust`, `marketplace_check`, `code_scan`, `context_graph`, `analytics_query`, `cis_benchmark`
 
 ### Cloud UI
 

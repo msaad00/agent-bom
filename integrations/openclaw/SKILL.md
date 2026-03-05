@@ -124,7 +124,7 @@ docker run -p 8080:8080 agent-bom-sse
 # Connect: { "type": "sse", "url": "http://localhost:8080/sse" }
 ```
 
-## Available MCP Tools (17 tools)
+## Available MCP Tools (18 tools)
 
 | Tool | Description |
 |------|-------------|
@@ -145,6 +145,7 @@ docker run -p 8080:8080 agent-bom-sse
 | `inventory` | List discovered agents, servers, packages |
 | `context_graph` | Agent context graph with lateral movement analysis |
 | `analytics_query` | Query vulnerability trends, posture history, and runtime events from ClickHouse |
+| `cis_benchmark` | Run CIS benchmark checks against AWS or Snowflake accounts |
 
 ## MCP Resources
 

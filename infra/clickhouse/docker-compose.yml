@@ -1,0 +1,51 @@
+# ClickHouse + Grafana for agent-bom analytics
+#
+# Usage:
+#   cd infra/clickhouse
+#   docker compose up -d
+#   # ClickHouse: http://localhost:8123
+#   # Grafana:    http://localhost:3001 (admin/admin)
+#
+# Then run scans with analytics enabled:
+#   agent-bom scan --clickhouse-url http://localhost:8123
+#
+# Or query via MCP:
+#   analytics_query(query_type="top_cves")
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3
+    ports:
+      - "8123:8123"   # HTTP API
+      - "9000:9000"   # Native protocol
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    environment:
+      CLICKHOUSE_DB: agent_bom
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  grafana:
+    image: grafana/grafana:10.4-ubuntu
+    ports:
+      - "3001:3000"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    environment:
+      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/agent-bom.json
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana-provisioning:/etc/grafana/provisioning:ro
+      - ./grafana-dashboard.json:/var/lib/grafana/dashboards/agent-bom.json:ro
+
+volumes:
+  clickhouse-data:
+  grafana-data:

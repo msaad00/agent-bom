@@ -53,6 +53,10 @@ class AnalyticsStore(Protocol):
         """Runtime event counts grouped by type."""
         ...
 
+    def record_scan_metadata(self, metadata: dict) -> None:
+        """Record scan-level metadata (agent count, vuln count, grade)."""
+        ...
+
 
 # ------------------------------------------------------------------
 # Null implementation (default — zero overhead)
@@ -82,6 +86,9 @@ class NullAnalyticsStore:
 
     def query_event_summary(self, hours: int = 24) -> list[dict]:
         return []
+
+    def record_scan_metadata(self, metadata: dict) -> None:
+        pass
 
 
 # ------------------------------------------------------------------
@@ -187,6 +194,20 @@ class ClickHouseAnalyticsStore:
             f"WHERE event_timestamp >= now() - INTERVAL {int(hours)} HOUR "  # nosec B608
             f"GROUP BY event_type, severity ORDER BY cnt DESC"
         )
+
+    def record_scan_metadata(self, metadata: dict) -> None:
+        row = {
+            "scan_id": metadata.get("scan_id", str(uuid.uuid4())),
+            "agent_count": int(metadata.get("agent_count", 0)),
+            "package_count": int(metadata.get("package_count", 0)),
+            "vuln_count": int(metadata.get("vuln_count", 0)),
+            "critical_count": int(metadata.get("critical_count", 0)),
+            "high_count": int(metadata.get("high_count", 0)),
+            "posture_grade": metadata.get("posture_grade", ""),
+            "scan_duration_ms": int(metadata.get("scan_duration_ms", 0)),
+            "source": metadata.get("source", "cli"),
+        }
+        self._client.insert_json("scan_metadata", [row])
 
 
 def _escape(value: str) -> str:

@@ -214,8 +214,8 @@ class TestClickHouseClient:
 
         with patch.object(urllib.request, "urlopen", return_value=mock_resp) as mock_open:
             c.ensure_tables()
-            # 1 CREATE DATABASE + 3 CREATE TABLE = 4 calls
-            assert mock_open.call_count == 4
+            # 1 CREATE DATABASE + 4 CREATE TABLE = 5 calls
+            assert mock_open.call_count == 5
 
 
 # ─── NullAnalyticsStore tests ───────────────────────────────────────────────
@@ -563,3 +563,99 @@ class TestEscape:
         from agent_bom.api.clickhouse_store import _escape
 
         assert _escape("my-agent") == "my-agent"
+
+
+# ─── Scan metadata tests ──────────────────────────────────────────────────
+
+
+class TestScanMetadata:
+    """Test scan_metadata table and recording."""
+
+    def test_scan_metadata_table_in_ddl(self):
+        from agent_bom.cloud.clickhouse import _TABLE_DDL
+
+        ddl_text = " ".join(_TABLE_DDL)
+        assert "scan_metadata" in ddl_text
+        assert "agent_count" in ddl_text
+        assert "posture_grade" in ddl_text
+
+    def test_null_store_record_scan_metadata(self):
+        from agent_bom.api.clickhouse_store import NullAnalyticsStore
+
+        store = NullAnalyticsStore()
+        store.record_scan_metadata({"scan_id": "test", "agent_count": 5})
+        # Should not raise
+
+    def test_clickhouse_store_record_scan_metadata(self):
+        import urllib.request
+
+        from agent_bom.api.clickhouse_store import ClickHouseAnalyticsStore
+
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = b""
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+
+        with patch.object(urllib.request, "urlopen", return_value=mock_resp) as mock_open:
+            store = ClickHouseAnalyticsStore(url="http://localhost:8123")
+            store.record_scan_metadata(
+                {
+                    "scan_id": "abc-123",
+                    "agent_count": 10,
+                    "package_count": 50,
+                    "vuln_count": 3,
+                    "critical_count": 1,
+                    "high_count": 2,
+                    "posture_grade": "B",
+                    "scan_duration_ms": 1500,
+                    "source": "cli",
+                }
+            )
+            # Find the insert call (contains INSERT INTO scan_metadata)
+            insert_calls = [c for c in mock_open.call_args_list if b"INSERT INTO scan_metadata" in c[0][0].data]
+            assert len(insert_calls) == 1
+            body = insert_calls[0][0][0].data.decode("utf-8")
+            assert "abc-123" in body
+
+
+# ─── Grafana infrastructure tests ──────────────────────────────────────────
+
+
+class TestGrafanaInfra:
+    """Verify ClickHouse + Grafana infra files exist and are valid."""
+
+    def test_docker_compose_exists(self):
+        from pathlib import Path
+
+        p = Path(__file__).parent.parent / "infra" / "clickhouse" / "docker-compose.yml"
+        assert p.exists()
+        content = p.read_text()
+        assert "clickhouse" in content
+        assert "grafana" in content
+
+    def test_init_sql_has_all_tables(self):
+        from pathlib import Path
+
+        p = Path(__file__).parent.parent / "infra" / "clickhouse" / "init.sql"
+        assert p.exists()
+        content = p.read_text()
+        assert "vulnerability_scans" in content
+        assert "runtime_events" in content
+        assert "posture_scores" in content
+        assert "scan_metadata" in content
+
+    def test_grafana_dashboard_valid_json(self):
+        from pathlib import Path
+
+        p = Path(__file__).parent.parent / "infra" / "clickhouse" / "grafana-dashboard.json"
+        assert p.exists()
+        data = json.loads(p.read_text())
+        assert data["title"] == "agent-bom Security Analytics"
+        assert len(data["panels"]) >= 10
+
+    def test_grafana_datasource_provisioning(self):
+        from pathlib import Path
+
+        p = Path(__file__).parent.parent / "infra" / "clickhouse" / "grafana-provisioning" / "datasources" / "clickhouse.yml"
+        assert p.exists()
+        assert "grafana-clickhouse-datasource" in p.read_text()

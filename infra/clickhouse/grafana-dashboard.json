@@ -1,0 +1,301 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "Overview",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "green", "value": 0 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "id": 1,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "title": "Critical Findings (7d)",
+      "type": "stat",
+      "targets": [
+        {
+          "rawSql": "SELECT count() AS cnt FROM agent_bom.vulnerability_scans WHERE severity = 'CRITICAL' AND scan_timestamp >= now() - INTERVAL 7 DAY",
+          "format": 1
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "orange", "value": null },
+              { "color": "green", "value": 0 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "id": 2,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "title": "High Findings (7d)",
+      "type": "stat",
+      "targets": [
+        {
+          "rawSql": "SELECT count() AS cnt FROM agent_bom.vulnerability_scans WHERE severity = 'HIGH' AND scan_timestamp >= now() - INTERVAL 7 DAY",
+          "format": 1
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "blue", "value": null }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "id": 3,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "title": "Total Scans (30d)",
+      "type": "stat",
+      "targets": [
+        {
+          "rawSql": "SELECT count(DISTINCT scan_id) AS cnt FROM agent_bom.vulnerability_scans WHERE scan_timestamp >= now() - INTERVAL 30 DAY",
+          "format": 1
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "id": 4,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "title": "Latest Posture Grade",
+      "type": "stat",
+      "targets": [
+        {
+          "rawSql": "SELECT posture_grade FROM agent_bom.posture_scores ORDER BY measured_at DESC LIMIT 1",
+          "format": 1
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 101,
+      "title": "Vulnerability Trends",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "lineWidth": 2,
+            "pointSize": 5,
+            "stacking": { "mode": "normal" }
+          }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "CRITICAL" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "HIGH" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "MEDIUM" }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "LOW" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] }
+        ]
+      },
+      "gridPos": { "h": 10, "w": 16, "x": 0, "y": 6 },
+      "id": 5,
+      "options": { "legend": { "displayMode": "table", "placement": "right" }, "tooltip": { "mode": "multi" } },
+      "title": "Vulnerabilities by Severity (30d)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "rawSql": "SELECT toDate(scan_timestamp) AS time, severity, count() AS cnt FROM agent_bom.vulnerability_scans WHERE scan_timestamp >= now() - INTERVAL 30 DAY GROUP BY time, severity ORDER BY time",
+          "format": 0
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 8 }] },
+          "custom": { "align": "auto" }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 10, "w": 8, "x": 16, "y": 6 },
+      "id": 6,
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "cnt", "desc": true }] },
+      "title": "Top 20 CVEs",
+      "type": "table",
+      "targets": [
+        {
+          "rawSql": "SELECT cve_id, count() AS cnt, max(cvss_score) AS max_cvss FROM agent_bom.vulnerability_scans WHERE cve_id != '' GROUP BY cve_id ORDER BY cnt DESC LIMIT 20",
+          "format": 1
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 },
+      "id": 102,
+      "title": "Posture & Runtime",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "pointSize": 5 }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 17 },
+      "id": 7,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "title": "Posture Grade History (90d)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "rawSql": "SELECT toDate(measured_at) AS time, agent_name, risk_score FROM agent_bom.posture_scores WHERE measured_at >= now() - INTERVAL 90 DAY ORDER BY time",
+          "format": 0
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1 }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 17 },
+      "id": 8,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "title": "Runtime Events by Type (24h)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "rawSql": "SELECT toStartOfHour(event_timestamp) AS time, event_type, count() AS cnt FROM agent_bom.runtime_events WHERE event_timestamp >= now() - INTERVAL 24 HOUR GROUP BY time, event_type ORDER BY time",
+          "format": 0
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 25 },
+      "id": 103,
+      "title": "Packages & Ecosystems",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "hideFrom": { "legend": false, "tooltip": false, "viz": false } }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 26 },
+      "id": 9,
+      "options": { "legend": { "displayMode": "list", "placement": "right" }, "pieType": "donut", "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false } },
+      "title": "Findings by Ecosystem",
+      "type": "piechart",
+      "targets": [
+        {
+          "rawSql": "SELECT ecosystem, count() AS cnt FROM agent_bom.vulnerability_scans WHERE scan_timestamp >= now() - INTERVAL 30 DAY GROUP BY ecosystem ORDER BY cnt DESC LIMIT 10",
+          "format": 1
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "" },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 26 },
+      "id": 10,
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "vuln_count", "desc": true }] },
+      "title": "Most Vulnerable Packages (30d)",
+      "type": "table",
+      "targets": [
+        {
+          "rawSql": "SELECT package_name, package_version, ecosystem, count() AS vuln_count, max(cvss_score) AS max_cvss FROM agent_bom.vulnerability_scans WHERE scan_timestamp >= now() - INTERVAL 30 DAY GROUP BY package_name, package_version, ecosystem ORDER BY vuln_count DESC LIMIT 25",
+          "format": 1
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["agent-bom", "security", "vulnerability"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30d", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "agent-bom Security Analytics",
+  "uid": "agent-bom-analytics",
+  "version": 1
+}

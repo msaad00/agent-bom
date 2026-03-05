@@ -447,6 +447,7 @@ def main():
 @click.option("--aws-include-ec2", is_flag=True, help="Discover EC2 instances by tag (used with --aws)")
 @click.option("--aws-ec2-tag", default=None, metavar="KEY=VALUE", help="EC2 tag filter for --aws-include-ec2 (e.g. 'Environment=ai-prod')")
 @click.option("--aws-cis-benchmark", is_flag=True, help="Run CIS AWS Foundations Benchmark v3.0 checks (used with --aws)")
+@click.option("--snowflake-cis-benchmark", is_flag=True, help="Run CIS Snowflake Benchmark v1.0 checks (used with --snowflake)")
 @click.option("--huggingface", "hf_flag", is_flag=True, help="Discover models, Spaces, and endpoints from Hugging Face Hub")
 @click.option("--hf-token", default=None, envvar="HF_TOKEN", metavar="TOKEN", help="Hugging Face API token")
 @click.option("--hf-username", default=None, metavar="USER", help="Hugging Face username to scope discovery")
@@ -611,6 +612,7 @@ def scan(
     aws_include_ec2: bool,
     aws_ec2_tag: Optional[str],
     aws_cis_benchmark: bool,
+    snowflake_cis_benchmark: bool,
     hf_flag: bool,
     hf_token: Optional[str],
     hf_username: Optional[str],
@@ -1435,6 +1437,45 @@ def scan(
         except CloudDiscoveryError as exc:
             con.print(f"  [red]CIS Benchmark error: {exc}[/red]")
 
+    # Step 1x-sf: CIS Snowflake Benchmark
+    sf_cis_benchmark_report = None
+    if snowflake_cis_benchmark:
+        from agent_bom.cloud import CloudDiscoveryError as _SFCISError
+
+        con.print("\n[bold blue]Running CIS Snowflake Benchmark v1.0...[/bold blue]\n")
+        try:
+            from agent_bom.cloud.snowflake_cis_benchmark import run_benchmark as run_sf_cis
+
+            sf_cis_benchmark_report = run_sf_cis()
+            passed = sf_cis_benchmark_report.passed
+            failed = sf_cis_benchmark_report.failed
+            total = sf_cis_benchmark_report.total
+            rate = sf_cis_benchmark_report.pass_rate
+            con.print(f"  [green]✓[/green] {total} checks evaluated — {passed} passed, {failed} failed ({rate:.0f}% pass rate)")
+            if failed > 0:
+                from rich.table import Table
+
+                tbl = Table(title="CIS Snowflake Benchmark v1.0", show_lines=False, padding=(0, 1))
+                tbl.add_column("Check", style="cyan", width=6)
+                tbl.add_column("Title", min_width=30)
+                tbl.add_column("Status", width=6)
+                tbl.add_column("Severity", width=8)
+                tbl.add_column("Evidence", max_width=50)
+                _sf_status_style = {"pass": "[green]PASS[/]", "fail": "[red]FAIL[/]", "error": "[yellow]ERR[/]"}
+                _sf_sev_style = {"critical": "[red]critical[/]", "high": "[bright_red]high[/]", "medium": "[yellow]medium[/]"}
+                for c in sf_cis_benchmark_report.checks:
+                    tbl.add_row(
+                        c.check_id,
+                        c.title,
+                        _sf_status_style.get(c.status.value, c.status.value),
+                        _sf_sev_style.get(c.severity, c.severity),
+                        c.evidence,
+                    )
+                con.print()
+                con.print(tbl)
+        except _SFCISError as exc:
+            con.print(f"  [red]CIS Snowflake Benchmark error: {exc}[/red]")
+
     # Step 1y: SaaS connector discovery
     saas_connectors: list[tuple[str, dict]] = []
     if not skill_only and jira_discover:
@@ -1807,6 +1848,8 @@ def scan(
         report.sast_data = _sast_data
     if cis_benchmark_report is not None:
         report.cis_benchmark_data = cis_benchmark_report.to_dict()
+    if sf_cis_benchmark_report is not None:
+        report.snowflake_cis_benchmark_data = sf_cis_benchmark_report.to_dict()
 
     # ── Context graph: lateral movement analysis ────────────────────
     if context_graph_flag and report.blast_radii:

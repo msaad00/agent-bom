@@ -1404,6 +1404,56 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             logger.exception("MCP tool error")
             return json.dumps({"error": sanitize_error(exc)})
 
+    @mcp.tool(annotations=_READ_ONLY)
+    async def analytics_query(
+        query_type: Annotated[
+            str,
+            Field(description="Query type: vuln_trends, top_cves, posture_history, or event_summary"),
+        ],
+        days: Annotated[
+            int,
+            Field(description="Lookback window in days (default 30). Used by vuln_trends and posture_history."),
+        ] = 30,
+        hours: Annotated[
+            int,
+            Field(description="Lookback window in hours (default 24). Used by event_summary."),
+        ] = 24,
+        agent: Annotated[
+            str | None,
+            Field(description="Filter by agent name. Used by vuln_trends and posture_history."),
+        ] = None,
+        limit: Annotated[
+            int,
+            Field(description="Max results for top_cves (default 20)."),
+        ] = 20,
+    ) -> str:
+        """Query vulnerability trends, posture history, and runtime event summaries from ClickHouse.
+
+        Requires AGENT_BOM_CLICKHOUSE_URL to be set. Returns empty results if
+        ClickHouse is not configured.
+        """
+        try:
+            from agent_bom.api.server import _get_analytics_store
+
+            store = _get_analytics_store()
+            valid_types = {"vuln_trends", "top_cves", "posture_history", "event_summary"}
+            if query_type not in valid_types:
+                return json.dumps({"error": f"Invalid query_type. Use one of: {', '.join(sorted(valid_types))}"})
+
+            if query_type == "vuln_trends":
+                data = store.query_vuln_trends(days=days, agent=agent)
+            elif query_type == "top_cves":
+                data = store.query_top_cves(limit=limit)
+            elif query_type == "posture_history":
+                data = store.query_posture_history(agent=agent, days=days)
+            else:
+                data = store.query_event_summary(hours=hours)
+
+            return json.dumps({"query_type": query_type, "results": data, "count": len(data)}, indent=2, default=str)
+        except Exception as exc:
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
+
     # ── Resources ────────────────────────────────────────────────
 
     @mcp.resource("registry://servers")

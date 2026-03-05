@@ -499,6 +499,13 @@ def main():
 )
 @click.option("--drata-token", default=None, envvar="DRATA_API_TOKEN", metavar="TOKEN", help="Drata API token for GRC evidence upload")
 @click.option(
+    "--clickhouse-url",
+    default=None,
+    envvar="AGENT_BOM_CLICKHOUSE_URL",
+    metavar="URL",
+    help="ClickHouse HTTP URL for analytics (e.g. http://localhost:8123)",
+)
+@click.option(
     "--verbose", "-v", is_flag=True, help="Full output — dependency tree, all findings, severity chart, threat frameworks, debug logging"
 )
 @click.option("--no-color", is_flag=True, help="Disable colored output (useful for piping, CI logs, accessibility)")
@@ -638,6 +645,7 @@ def scan(
     push_api_key: Optional[str],
     vanta_token: Optional[str],
     drata_token: Optional[str],
+    clickhouse_url: Optional[str],
     verbose: bool,
     no_color: bool,
     preset: Optional[str],
@@ -2245,6 +2253,36 @@ def scan(
         except (FileNotFoundError, ValueError) as e:
             con.print(f"\n  [red]Policy error: {e}[/red]")
             sys.exit(1)
+
+    # Step 7c: ClickHouse analytics (optional, post-scan)
+    if clickhouse_url and blast_radii:
+        try:
+            import uuid as _uuid_ch
+
+            from agent_bom.api.clickhouse_store import ClickHouseAnalyticsStore
+
+            _ch_store = ClickHouseAnalyticsStore(url=clickhouse_url)
+            _scan_id = str(_uuid_ch.uuid4())
+            vuln_dicts = [
+                {
+                    "package": br.package.name,
+                    "version": br.package.version,
+                    "ecosystem": br.package.ecosystem,
+                    "cve_id": br.vulnerability.id,
+                    "cvss_score": getattr(br.vulnerability, "cvss_score", 0.0) or 0.0,
+                    "epss_score": getattr(br.vulnerability, "epss_score", 0.0) or 0.0,
+                    "severity": br.vulnerability.severity.value.lower(),
+                    "source": getattr(br.vulnerability, "source", "osv"),
+                }
+                for br in blast_radii
+            ]
+            for agent in agents:
+                _ch_store.record_scan(_scan_id, agent.name, vuln_dicts)
+            if not quiet:
+                con.print(f"  [green]✓[/green] Analytics: {len(vuln_dicts)} finding(s) recorded to ClickHouse")
+        except Exception as _ch_exc:
+            if not quiet:
+                con.print(f"  [yellow]⚠[/yellow] ClickHouse analytics: {_ch_exc}")
 
     # Scan completion divider
     _elapsed = _time.monotonic() - _scan_start
@@ -3992,6 +4030,92 @@ def watch_cmd(webhook, alert_log, interval):
     console.print("\n  [dim]Press Ctrl+C to stop.[/dim]\n")
 
     start_watching(sinks, debounce_seconds=interval)
+
+
+@main.command("analytics")
+@click.argument("query_type", type=click.Choice(["trends", "posture", "events", "top-cves"]))
+@click.option("--days", default=30, type=int, help="Lookback window in days (default: 30)")
+@click.option("--hours", default=24, type=int, help="Lookback window in hours for events (default: 24)")
+@click.option("--agent", default=None, help="Filter by agent name")
+@click.option("--limit", "top_limit", default=20, type=int, help="Limit for top-cves (default: 20)")
+@click.option("--clickhouse-url", default=None, envvar="AGENT_BOM_CLICKHOUSE_URL", metavar="URL", help="ClickHouse HTTP URL")
+def analytics_cmd(query_type, days, hours, agent, top_limit, clickhouse_url):
+    """Query vulnerability trends, posture history, and runtime events from ClickHouse.
+
+    \b
+    Usage:
+      agent-bom analytics trends [--days 30] [--agent NAME]
+      agent-bom analytics posture [--days 90] [--agent NAME]
+      agent-bom analytics events [--hours 24]
+      agent-bom analytics top-cves [--limit 20]
+    """
+    from rich.console import Console
+    from rich.table import Table
+
+    from agent_bom.api.clickhouse_store import ClickHouseAnalyticsStore
+
+    console = Console()
+
+    if not clickhouse_url:
+        console.print("[red]ClickHouse URL required.[/red] Set --clickhouse-url or AGENT_BOM_CLICKHOUSE_URL env var.")
+        sys.exit(1)
+
+    try:
+        store = ClickHouseAnalyticsStore(url=clickhouse_url)
+    except Exception as exc:
+        console.print(f"[red]ClickHouse connection error:[/red] {exc}")
+        sys.exit(1)
+
+    if query_type == "trends":
+        rows = store.query_vuln_trends(days=days, agent=agent)
+        table = Table(title=f"Vulnerability Trends (last {days} days)")
+        table.add_column("Day", style="cyan")
+        table.add_column("Severity", style="yellow")
+        table.add_column("Count", style="bold")
+        for r in rows:
+            table.add_row(str(r.get("day", "")), r.get("severity", ""), str(r.get("cnt", 0)))
+        console.print(table)
+
+    elif query_type == "posture":
+        rows = store.query_posture_history(agent=agent, days=days)
+        table = Table(title=f"Posture History (last {days} days)")
+        table.add_column("Day", style="cyan")
+        table.add_column("Agent", style="blue")
+        table.add_column("Grade", style="bold")
+        table.add_column("Risk Score", style="yellow")
+        table.add_column("Compliance", style="green")
+        for r in rows:
+            table.add_row(
+                str(r.get("day", "")),
+                r.get("agent_name", ""),
+                r.get("posture_grade", ""),
+                str(r.get("risk_score", "")),
+                str(r.get("compliance_score", "")),
+            )
+        console.print(table)
+
+    elif query_type == "events":
+        rows = store.query_event_summary(hours=hours)
+        table = Table(title=f"Runtime Events (last {hours} hours)")
+        table.add_column("Event Type", style="cyan")
+        table.add_column("Severity", style="yellow")
+        table.add_column("Count", style="bold")
+        for r in rows:
+            table.add_row(r.get("event_type", ""), r.get("severity", ""), str(r.get("cnt", 0)))
+        console.print(table)
+
+    elif query_type == "top-cves":
+        rows = store.query_top_cves(limit=top_limit)
+        table = Table(title=f"Top {top_limit} CVEs")
+        table.add_column("CVE ID", style="cyan")
+        table.add_column("Count", style="bold")
+        table.add_column("Max CVSS", style="red")
+        for r in rows:
+            table.add_row(r.get("cve_id", ""), str(r.get("cnt", 0)), str(r.get("max_cvss", "")))
+        console.print(table)
+
+    if not rows:
+        console.print("[dim]No data found. Run scans with --clickhouse-url to populate analytics.[/dim]")
 
 
 if __name__ == "__main__":

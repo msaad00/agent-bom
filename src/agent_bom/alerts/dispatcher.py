@@ -189,6 +189,37 @@ class WebhookChannel:
             return False
 
 
+# ─── ClickHouse Channel ──────────────────────────────────────────────────────
+
+
+class ClickHouseChannel:
+    """Route runtime alerts to ClickHouse ``runtime_events`` table.
+
+    Auto-enabled when ``AGENT_BOM_CLICKHOUSE_URL`` is set.
+    Uses the zero-dep stdlib HTTP client — no extra pip packages.
+    """
+
+    def __init__(self, url: str, **kwargs) -> None:
+        self._url = url
+        self._kwargs = kwargs
+        self._store = None  # lazy init
+
+    def _get_store(self):
+        if self._store is None:
+            from agent_bom.api.clickhouse_store import ClickHouseAnalyticsStore
+
+            self._store = ClickHouseAnalyticsStore(url=self._url, **self._kwargs)
+        return self._store
+
+    async def send(self, alert: dict) -> bool:
+        try:
+            self._get_store().record_event(alert)
+            return True
+        except Exception:
+            logger.exception("ClickHouse channel delivery failed")
+            return False
+
+
 # ─── Dispatcher ───────────────────────────────────────────────────────────────
 
 

@@ -34,6 +34,8 @@ agent-bom scan --fail-on-severity high -q          # CI gate
 agent-bom scan --image myapp:latest                # Docker image scanning
 agent-bom scan --k8s --all-namespaces              # K8s cluster
 agent-bom scan --aws --snowflake --databricks      # Multi-cloud
+agent-bom scan --aws-cis-benchmark                 # CIS AWS Foundations v3.0
+agent-bom scan --snowflake-cis-benchmark           # CIS Snowflake v1.0
 agent-bom scan --hf-model meta-llama/Llama-3.1-8B  # model provenance
 ```
 
@@ -74,24 +76,13 @@ Auto-discovers Claude Desktop, Claude Code, Cursor, Windsurf, Cline, VS Code Cop
 
 ## Why agent-bom
 
-| | Grype / Trivy | Wiz / Snyk | agent-bom |
-|---|---|---|---|
-| Package CVEs | Yes | Yes | Yes |
-| Container scanning | Yes | Yes | Yes |
-| AI agent discovery | — | — | 20 clients auto-detected |
-| Blast radius to agents | — | — | CVE → agent → creds → tools |
-| MCP tool reachability | — | — | Yes |
-| Credential exposure | — | Partial | Full per-agent mapping |
-| Policy-as-code | — | Yes (Snyk) | Yes (16 conditions) |
-| 10-framework compliance | — | Partial | Full (OWASP + ATLAS + NIST + EU AI Act + ...) |
-| Open source | Yes | No | Yes (Apache 2.0) |
+Traditional scanners tell you a package has a CVE. agent-bom tells you **which AI agents are compromised**, **which credentials leak**, **which tools an attacker reaches**, and gives you a **fix-first priority** across your entire AI stack.
+
+What sets it apart: AI agent discovery (20 clients), blast radius mapping (CVE → agent → creds → tools), CIS benchmarks (AWS, Snowflake), 10-framework compliance, and policy-as-code — all open source.
 
 ---
 
 ## How a CVE propagates through your AI stack
-
-> **Traditional scanners tell you a package has a CVE.**
-> **agent-bom tells you which AI agents are compromised, which credentials leak, which tools an attacker reaches, and what the business impact is.**
 
 <p align="center">
   <picture>
@@ -113,12 +104,12 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 
 ---
 
-## Scanner pipeline
+## Scan pipeline
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scanner-architecture-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scanner-architecture-light.svg" alt="Scanner Architecture — 7-stage pipeline" width="800" />
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scanner-architecture-light.svg" alt="Scan Pipeline — 7-stage workflow" width="800" />
   </picture>
 </p>
 
@@ -238,6 +229,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full set of architectur
 | **Credential risk ranking** | — | Rank exposed credentials by blast radius severity tier |
 | **AI framework recognition** | — | GPU/ML packages flagged as high-risk in image scans (via Grype/Syft) |
 | **Lateral movement analysis** | — | Agent context graph, shared server/credential detection, BFS attack paths |
+| **CIS Benchmarks** | — | AWS Foundations v3.0 (18 checks), Snowflake v1.0 (12 checks) |
 | **427+ server MCP registry** | — | Risk levels, tool inventories, auto-synced weekly |
 
 </details>
@@ -257,7 +249,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full set of architectur
 | MCP configs | Auto-discover (20 clients + Docker Compose) |
 | Docker images | Grype / Syft / Docker CLI fallback |
 | Kubernetes | kubectl across namespaces |
-| Cloud providers | AWS, Azure, GCP, Databricks, Snowflake, Nebius |
+| Cloud providers | AWS, Azure, GCP, Databricks, Snowflake, Nebius, CoreWeave |
+| CIS benchmarks | AWS Foundations v3.0, Snowflake v1.0 |
 | Terraform / GitHub Actions | AI resources + env vars |
 | AI platforms | HuggingFace, W&B, MLflow, OpenAI |
 | Jupyter notebooks | AI library imports + model refs |
@@ -411,7 +404,7 @@ Every finding is tagged against ten frameworks simultaneously — both at the bl
 - **SOC 2** — Trust Services Criteria CC6 through CC9 (9 criteria mapped)
 - **CIS Controls v8** — Safeguards CIS-02, CIS-07, CIS-16 (10 safeguards mapped)
 
-> **CIS Controls v8 vs. CIS Benchmarks:** agent-bom ships CIS Controls v8 — the generic cross-platform security controls ("what to do"). Platform-specific CIS Benchmarks ("how to do it") like AWS Foundations v3.0, GCP v3.0, Azure v2.1, Snowflake v1.0, and Kubernetes v1.9 are on the roadmap.
+> **CIS Controls v8 vs. CIS Benchmarks:** agent-bom ships both. CIS Controls v8 maps generic security safeguards ("what to do"). Platform-specific CIS Benchmarks run live checks ("how to verify"): `--aws-cis-benchmark` (18 checks, IAM/Storage/Logging/Networking) and `--snowflake-cis-benchmark` (12 checks, Auth/Network/Data/Monitoring/Access). GCP, Azure, and Kubernetes benchmarks are planned.
 
 ### AI-BOM export
 
@@ -460,7 +453,9 @@ See [AI Infrastructure Scanning Guide](docs/AI_INFRASTRUCTURE_SCANNING.md) for G
 
 ```bash
 agent-bom scan --aws --aws-region us-east-1       # Bedrock, Lambda, EKS, ECS, EC2, Step Functions
+agent-bom scan --aws --aws-cis-benchmark          # CIS AWS Foundations v3.0 (18 checks)
 agent-bom scan --snowflake                         # Cortex Agents, MCP Servers, Search, Snowpark
+agent-bom scan --snowflake-cis-benchmark          # CIS Snowflake Benchmark v1.0 (12 checks)
 agent-bom scan --databricks                        # Cluster libraries, model serving
 agent-bom scan --nebius --nebius-project-id proj   # GPU cloud K8s + containers
 agent-bom scan --k8s --context=coreweave-cluster   # CoreWeave / any K8s
@@ -732,14 +727,15 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 - [x] SAST code scanning — Semgrep wrapper with CWE-based compliance mapping across all 10 frameworks (`code_scan` MCP tool)
 - [x] NVD vulnerability status tracking — Analyzed/Modified/Rejected status per CVE + remediation source links from NVD references
 - [x] CVE-level compliance tagging — per-vulnerability framework mapping across all 10 frameworks (severity, KEV, EPSS, CWE, AI package, fix availability)
+- [x] CIS AWS Foundations Benchmark v3.0 — 18 live checks across IAM, Storage, Logging, Networking (`--aws-cis-benchmark`)
+- [x] CIS Snowflake Benchmark v1.0 — 12 live checks across Auth, Network, Data Protection, Monitoring, Access Control (`--snowflake-cis-benchmark`)
 
 **Planned:**
 - [ ] Platform-specific CIS Benchmarks:
-  - AWS Foundations Benchmark v3.0
   - GCP Foundations Benchmark v3.0
   - Azure Foundations Benchmark v2.1
-  - Snowflake Benchmark v1.0
   - Kubernetes Benchmark v1.9
+- [ ] Snowflake org-level multi-account CIS evaluation
 - [ ] License compliance engine
 - [ ] Workflow engine scanning (n8n, Zapier, Make)
 

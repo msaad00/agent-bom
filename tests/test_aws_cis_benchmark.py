@@ -17,6 +17,17 @@ from agent_bom.cloud.aws_cis_benchmark import (
     _check_1_10,
     _check_1_12,
     _check_1_15,
+    _check_2_1_1,
+    _check_2_1_2,
+    _check_2_1_4,
+    _check_3_1,
+    _check_3_2,
+    _check_3_4,
+    _check_3_5,
+    _check_3_6,
+    _check_5_2,
+    _check_5_3,
+    _check_5_6,
     run_benchmark,
 )
 
@@ -237,6 +248,342 @@ class TestCheck115:
 
 
 # ---------------------------------------------------------------------------
+# 2.1.1 — S3 account-level public access block
+# ---------------------------------------------------------------------------
+
+
+class TestCheck211:
+    def test_pass_all_blocked(self):
+        client = MagicMock()
+        client.get_public_access_block.return_value = {
+            "PublicAccessBlockConfiguration": {
+                "BlockPublicAcls": True,
+                "IgnorePublicAcls": True,
+                "BlockPublicPolicy": True,
+                "RestrictPublicBuckets": True,
+            }
+        }
+        result = _check_2_1_1(client, "123456789012")
+        assert result.status == CheckStatus.PASS
+
+    def test_fail_missing_setting(self):
+        client = MagicMock()
+        client.get_public_access_block.return_value = {
+            "PublicAccessBlockConfiguration": {
+                "BlockPublicAcls": True,
+                "IgnorePublicAcls": True,
+                "BlockPublicPolicy": False,
+                "RestrictPublicBuckets": True,
+            }
+        }
+        result = _check_2_1_1(client, "123456789012")
+        assert result.status == CheckStatus.FAIL
+        assert "BlockPublicPolicy" in result.evidence
+
+    def test_fail_no_config(self):
+        client = MagicMock()
+        exc = Exception("NoSuchPublicAccessBlockConfiguration")
+        exc.response = {"Error": {"Code": "NoSuchPublicAccessBlockConfiguration"}}
+        client.get_public_access_block.side_effect = exc
+        result = _check_2_1_1(client, "123456789012")
+        assert result.status == CheckStatus.FAIL
+
+
+# ---------------------------------------------------------------------------
+# 2.1.2 — S3 encryption
+# ---------------------------------------------------------------------------
+
+
+class TestCheck212:
+    def test_pass_all_encrypted(self):
+        client = MagicMock()
+        client.list_buckets.return_value = {"Buckets": [{"Name": "my-bucket"}]}
+        client.get_bucket_encryption.return_value = {"ServerSideEncryptionConfiguration": {}}
+        result = _check_2_1_2(client)
+        assert result.status == CheckStatus.PASS
+
+    def test_fail_unencrypted(self):
+        client = MagicMock()
+        client.list_buckets.return_value = {"Buckets": [{"Name": "open-bucket"}]}
+        exc = Exception("ServerSideEncryptionConfigurationNotFoundError")
+        exc.response = {"Error": {"Code": "ServerSideEncryptionConfigurationNotFoundError"}}
+        client.get_bucket_encryption.side_effect = exc
+        result = _check_2_1_2(client)
+        assert result.status == CheckStatus.FAIL
+        assert "open-bucket" in result.evidence
+
+
+# ---------------------------------------------------------------------------
+# 2.1.4 — S3 versioning
+# ---------------------------------------------------------------------------
+
+
+class TestCheck214:
+    def test_pass_versioned(self):
+        client = MagicMock()
+        client.list_buckets.return_value = {"Buckets": [{"Name": "my-bucket"}]}
+        client.get_bucket_versioning.return_value = {"Status": "Enabled"}
+        result = _check_2_1_4(client)
+        assert result.status == CheckStatus.PASS
+
+    def test_fail_unversioned(self):
+        client = MagicMock()
+        client.list_buckets.return_value = {"Buckets": [{"Name": "no-ver"}]}
+        client.get_bucket_versioning.return_value = {}
+        result = _check_2_1_4(client)
+        assert result.status == CheckStatus.FAIL
+        assert "no-ver" in result.evidence
+
+
+# ---------------------------------------------------------------------------
+# 3.1 — CloudTrail multi-region
+# ---------------------------------------------------------------------------
+
+
+class TestCheck31:
+    def test_pass_multi_region_logging(self):
+        client = MagicMock()
+        client.describe_trails.return_value = {"trailList": [{"TrailARN": "arn:trail", "IsMultiRegionTrail": True, "Name": "main"}]}
+        client.get_trail_status.return_value = {"IsLogging": True}
+        result = _check_3_1(client)
+        assert result.status == CheckStatus.PASS
+
+    def test_fail_no_multi_region(self):
+        client = MagicMock()
+        client.describe_trails.return_value = {"trailList": [{"TrailARN": "arn:trail", "IsMultiRegionTrail": False, "Name": "local"}]}
+        result = _check_3_1(client)
+        assert result.status == CheckStatus.FAIL
+
+    def test_fail_not_logging(self):
+        client = MagicMock()
+        client.describe_trails.return_value = {"trailList": [{"TrailARN": "arn:trail", "IsMultiRegionTrail": True, "Name": "main"}]}
+        client.get_trail_status.return_value = {"IsLogging": False}
+        result = _check_3_1(client)
+        assert result.status == CheckStatus.FAIL
+
+
+# ---------------------------------------------------------------------------
+# 3.2 — CloudTrail log file validation
+# ---------------------------------------------------------------------------
+
+
+class TestCheck32:
+    def test_pass_validation_enabled(self):
+        client = MagicMock()
+        client.describe_trails.return_value = {"trailList": [{"Name": "main", "LogFileValidationEnabled": True}]}
+        result = _check_3_2(client)
+        assert result.status == CheckStatus.PASS
+
+    def test_fail_no_validation(self):
+        client = MagicMock()
+        client.describe_trails.return_value = {"trailList": [{"Name": "main", "TrailARN": "arn:trail", "LogFileValidationEnabled": False}]}
+        result = _check_3_2(client)
+        assert result.status == CheckStatus.FAIL
+
+    def test_fail_no_trails(self):
+        client = MagicMock()
+        client.describe_trails.return_value = {"trailList": []}
+        result = _check_3_2(client)
+        assert result.status == CheckStatus.FAIL
+
+
+# ---------------------------------------------------------------------------
+# 3.4 — CloudTrail + CloudWatch Logs
+# ---------------------------------------------------------------------------
+
+
+class TestCheck34:
+    def test_pass_integrated(self):
+        client = MagicMock()
+        client.describe_trails.return_value = {"trailList": [{"Name": "main", "CloudWatchLogsLogGroupArn": "arn:logs:group"}]}
+        result = _check_3_4(client)
+        assert result.status == CheckStatus.PASS
+
+    def test_fail_no_cwl(self):
+        client = MagicMock()
+        client.describe_trails.return_value = {"trailList": [{"Name": "main", "TrailARN": "arn:trail"}]}
+        result = _check_3_4(client)
+        assert result.status == CheckStatus.FAIL
+
+
+# ---------------------------------------------------------------------------
+# 3.5 — Management events recording
+# ---------------------------------------------------------------------------
+
+
+class TestCheck35:
+    def test_pass_records_all(self):
+        client = MagicMock()
+        client.describe_trails.return_value = {"trailList": [{"TrailARN": "arn:trail", "IsMultiRegionTrail": True}]}
+        client.get_event_selectors.return_value = {
+            "EventSelectors": [{"IncludeManagementEvents": True, "ReadWriteType": "All"}],
+            "AdvancedEventSelectors": [],
+        }
+        result = _check_3_5(client)
+        assert result.status == CheckStatus.PASS
+
+    def test_fail_no_multi_region(self):
+        client = MagicMock()
+        client.describe_trails.return_value = {"trailList": [{"TrailARN": "arn:trail", "IsMultiRegionTrail": False}]}
+        result = _check_3_5(client)
+        assert result.status == CheckStatus.FAIL
+
+
+# ---------------------------------------------------------------------------
+# 3.6 — CloudTrail S3 bucket access logging
+# ---------------------------------------------------------------------------
+
+
+class TestCheck36:
+    def test_pass_logging_enabled(self):
+        s3 = MagicMock()
+        ct = MagicMock()
+        ct.describe_trails.return_value = {"trailList": [{"S3BucketName": "ct-bucket"}]}
+        s3.get_bucket_logging.return_value = {"LoggingEnabled": {"TargetBucket": "log-bucket"}}
+        result = _check_3_6(s3, ct)
+        assert result.status == CheckStatus.PASS
+
+    def test_fail_no_logging(self):
+        s3 = MagicMock()
+        ct = MagicMock()
+        ct.describe_trails.return_value = {"trailList": [{"S3BucketName": "ct-bucket"}]}
+        s3.get_bucket_logging.return_value = {}
+        result = _check_3_6(s3, ct)
+        assert result.status == CheckStatus.FAIL
+        assert "ct-bucket" in result.evidence
+
+    def test_not_applicable_no_trails(self):
+        s3 = MagicMock()
+        ct = MagicMock()
+        ct.describe_trails.return_value = {"trailList": []}
+        result = _check_3_6(s3, ct)
+        assert result.status == CheckStatus.NOT_APPLICABLE
+
+
+# ---------------------------------------------------------------------------
+# 5.2 — Security groups admin ports
+# ---------------------------------------------------------------------------
+
+
+class TestCheck52:
+    def test_pass_no_open_admin(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "SecurityGroups": [
+                    {
+                        "GroupId": "sg-1",
+                        "IpPermissions": [{"FromPort": 443, "ToPort": 443, "IpRanges": [{"CidrIp": "0.0.0.0/0"}], "Ipv6Ranges": []}],
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_5_2(client)
+        assert result.status == CheckStatus.PASS
+
+    def test_fail_ssh_open(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "SecurityGroups": [
+                    {
+                        "GroupId": "sg-bad",
+                        "IpPermissions": [{"FromPort": 22, "ToPort": 22, "IpRanges": [{"CidrIp": "0.0.0.0/0"}], "Ipv6Ranges": []}],
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_5_2(client)
+        assert result.status == CheckStatus.FAIL
+        assert "sg-bad" in result.evidence
+
+    def test_fail_rdp_ipv6_open(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "SecurityGroups": [
+                    {
+                        "GroupId": "sg-rdp",
+                        "IpPermissions": [{"FromPort": 3389, "ToPort": 3389, "IpRanges": [], "Ipv6Ranges": [{"CidrIpv6": "::/0"}]}],
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_5_2(client)
+        assert result.status == CheckStatus.FAIL
+
+
+# ---------------------------------------------------------------------------
+# 5.3 — Default security group restricts all
+# ---------------------------------------------------------------------------
+
+
+class TestCheck53:
+    def test_pass_empty_default(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {"SecurityGroups": [{"GroupId": "sg-default", "VpcId": "vpc-1", "IpPermissions": [], "IpPermissionsEgress": []}]}
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_5_3(client)
+        assert result.status == CheckStatus.PASS
+
+    def test_fail_inbound_rules(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "SecurityGroups": [
+                    {
+                        "GroupId": "sg-default",
+                        "VpcId": "vpc-1",
+                        "IpPermissions": [{"IpProtocol": "-1"}],
+                        "IpPermissionsEgress": [],
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_5_3(client)
+        assert result.status == CheckStatus.FAIL
+
+
+# ---------------------------------------------------------------------------
+# 5.6 — VPC flow logs
+# ---------------------------------------------------------------------------
+
+
+class TestCheck56:
+    def test_pass_all_vpcs_covered(self):
+        client = MagicMock()
+        client.describe_vpcs.return_value = {"Vpcs": [{"VpcId": "vpc-1"}]}
+        client.describe_flow_logs.return_value = {"FlowLogs": [{"ResourceId": "vpc-1", "FlowLogStatus": "ACTIVE"}]}
+        result = _check_5_6(client)
+        assert result.status == CheckStatus.PASS
+
+    def test_fail_missing_flow_log(self):
+        client = MagicMock()
+        client.describe_vpcs.return_value = {"Vpcs": [{"VpcId": "vpc-1"}, {"VpcId": "vpc-2"}]}
+        client.describe_flow_logs.return_value = {"FlowLogs": [{"ResourceId": "vpc-1", "FlowLogStatus": "ACTIVE"}]}
+        result = _check_5_6(client)
+        assert result.status == CheckStatus.FAIL
+        assert "vpc-2" in result.evidence
+
+    def test_not_applicable_no_vpcs(self):
+        client = MagicMock()
+        client.describe_vpcs.return_value = {"Vpcs": []}
+        result = _check_5_6(client)
+        assert result.status == CheckStatus.NOT_APPLICABLE
+
+
+# ---------------------------------------------------------------------------
 # Report model
 # ---------------------------------------------------------------------------
 
@@ -324,25 +671,47 @@ class TestRunBenchmark:
             mock_sts = MagicMock()
             mock_sts.get_caller_identity.return_value = {"Account": "111222333444"}
 
-            mock_iam = _iam_client()
-            mock_iam.generate_credential_report.return_value = {"State": "COMPLETE"}
-            mock_iam.get_credential_report.return_value = {
+            # Generic mock that works for all services
+            mock_client = _iam_client()
+            mock_client.generate_credential_report.return_value = {"State": "COMPLETE"}
+            mock_client.get_credential_report.return_value = {
                 "Content": b"user,password_last_used,access_key_1_last_used_date,access_key_2_last_used_date\n"
             }
-            mock_iam.list_user_policies.return_value = {"PolicyNames": []}
-            mock_iam.list_attached_user_policies.return_value = {"AttachedPolicies": []}
+            mock_client.list_user_policies.return_value = {"PolicyNames": []}
+            mock_client.list_attached_user_policies.return_value = {"AttachedPolicies": []}
+            # S3
+            mock_client.list_buckets.return_value = {"Buckets": []}
+            mock_client.get_public_access_block.return_value = {
+                "PublicAccessBlockConfiguration": {
+                    "BlockPublicAcls": True,
+                    "IgnorePublicAcls": True,
+                    "BlockPublicPolicy": True,
+                    "RestrictPublicBuckets": True,
+                }
+            }
+            # CloudTrail
+            mock_client.describe_trails.return_value = {"trailList": []}
+            # EC2 — separate mock because paginator returns different structure
+            mock_ec2 = MagicMock()
+            ec2_paginator = MagicMock()
+            ec2_paginator.paginate.return_value = [{"SecurityGroups": []}]
+            mock_ec2.get_paginator.return_value = ec2_paginator
+            mock_ec2.describe_vpcs.return_value = {"Vpcs": []}
+            mock_ec2.describe_flow_logs.return_value = {"FlowLogs": []}
 
             def client_factory(service, **kwargs):
                 if service == "sts":
                     return mock_sts
-                return mock_iam
+                if service == "ec2":
+                    return mock_ec2
+                return mock_client
 
             mock_session.client.side_effect = client_factory
 
             report = run_benchmark()
             assert report.account_id == "111222333444"
-            assert report.total == 7
-            assert all(c.status in (CheckStatus.PASS, CheckStatus.FAIL) for c in report.checks)
+            # 7 IAM + 2 S3 + 4 CloudTrail + 3 VPC + 1 s3control + 1 s3+cloudtrail = 18
+            assert report.total == 18
 
     def test_filter_checks(self):
         modules_patch, mock_boto3 = _mock_boto3_modules()

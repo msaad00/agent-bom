@@ -4,7 +4,7 @@ Start with:
     agent-bom mcp-server              # stdio (for Claude Desktop, Cursor, etc.)
     agent-bom mcp-server --sse        # SSE transport (for remote clients)
 
-Tools (17):
+Tools (18):
     scan              — Full discovery → scan → output pipeline
     check             — Check a specific package for CVEs before installing
     blast_radius      — Look up blast radius for a specific CVE
@@ -22,6 +22,7 @@ Tools (17):
     code_scan         — SAST scanning via Semgrep with CWE-based compliance mapping
     context_graph     — Agent context graph with lateral movement analysis
     analytics_query   — Query vulnerability trends and runtime events from ClickHouse
+    cis_benchmark     — Run CIS benchmark checks against AWS or Snowflake accounts
 
 Resources (2):
     registry://servers  — Browse 427+ server security metadata registry

@@ -11,7 +11,7 @@ High-level view of input sources, the core processing engine, and output channel
 ```mermaid
 graph TB
     subgraph Input["Input Sources"]
-        MCP["MCP Configs\n18 Clients"]
+        MCP["MCP Configs\n20 Clients"]
         Docker["Docker Images"]
         K8s["Kubernetes"]
         Cloud["Cloud APIs\nAWS / Azure / GCP / Snowflake"]

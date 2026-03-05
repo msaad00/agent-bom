@@ -18,7 +18,7 @@ metadata:
   pypi: https://pypi.org/project/agent-bom/
   smithery: https://smithery.ai/server/agent-bom/agent-bom
   scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
-  tests: 3056
+  tests: 3050
   install:
     pipx: agent-bom
     pip: agent-bom
@@ -83,7 +83,7 @@ metadata:
 # agent-bom — AI Supply Chain Security Scanner
 
 Scans AI infrastructure for vulnerabilities, generates SBOMs, and enforces
-compliance. Discovers MCP clients, servers, and packages across 18+ AI platforms.
+compliance. Discovers MCP clients, servers, and packages across 20 MCP clients.
 
 ## Install (Recommended: Local-First)
 

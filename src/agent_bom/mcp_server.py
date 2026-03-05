@@ -1538,6 +1538,12 @@ _SERVER_CARD_TOOLS = [
         "description": "Pre-install marketplace trust check with registry cross-reference",
         "annotations": {"readOnlyHint": True},
     },
+    {
+        "name": "code_scan",
+        "description": "SAST scanning via Semgrep with CWE-based compliance mapping",
+        "annotations": {"readOnlyHint": True},
+    },
+    {"name": "context_graph", "description": "Agent context graph with lateral movement analysis", "annotations": {"readOnlyHint": True}},
 ]
 
 _SERVER_CARD_PROMPTS = [

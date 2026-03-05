@@ -22,7 +22,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from dashboard.data import SEV_COLORS, SEV_ORDER, extract_blast_radius, extract_packages
+try:
+    from dashboard.data import SEV_COLORS, SEV_ORDER, extract_blast_radius, extract_packages
+except ImportError:
+    from data import SEV_COLORS, SEV_ORDER, extract_blast_radius, extract_packages
 
 # ─── Page Config ──────────────────────────────────────────────────────────────
 

@@ -31,10 +31,16 @@ def test_no_streamlit_import():
     assert not serve_app.exists(), "serve_app.py should be deleted"
 
 
-def test_pyproject_no_streamlit():
-    """pyproject.toml [ui] extras should not contain streamlit."""
+def test_pyproject_streamlit_in_dashboard_only():
+    """pyproject.toml should only have streamlit in [dashboard] extras, not [ui]."""
     from pathlib import Path
 
     toml_text = (Path(__file__).resolve().parent.parent / "pyproject.toml").read_text()
-    # Check that ui section no longer has streamlit
-    assert "streamlit" not in toml_text.lower()
+    # [ui] extra should not contain streamlit
+    import re
+
+    ui_match = re.search(r"ui = \[([^\]]*)\]", toml_text, re.DOTALL)
+    if ui_match:
+        assert "streamlit" not in ui_match.group(1).lower()
+    # Dashboard extra should have streamlit
+    assert 'dashboard = ["streamlit' in toml_text

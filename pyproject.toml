@@ -91,6 +91,7 @@ mcp-server = [
     "mcp>=1.26",
     "smithery>=0.4",
 ]
+dashboard = ["streamlit>=1.30", "plotly>=5.18"]
 snyk = []  # Uses existing httpx dependency, no additional packages needed
 cloud = [
     "agent-bom[aws]",

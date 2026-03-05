@@ -13,6 +13,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlparse
 
 from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.models import Package
@@ -20,6 +21,14 @@ from agent_bom.models import Package
 logger = logging.getLogger(__name__)
 
 _API_BASE = "https://glama.ai/api/mcp/v1"
+
+
+def _url_host_matches(url: str, domain: str) -> bool:
+    """Check if a URL's hostname matches or is a subdomain of the given domain."""
+    host = urlparse(url).hostname or ""
+    return host == domain or host.endswith(f".{domain}")
+
+
 _REGISTRY_PATH = Path(__file__).parent / "mcp_registry.json"
 
 
@@ -140,7 +149,7 @@ async def glama_lookup(server_name: str) -> list[Package]:
         if s.name.lower() == server_name.lower() or s.slug == server_name.lower():
             # Try to infer ecosystem from repository URL
             ecosystem = "npm"  # default for MCP servers
-            if "pypi" in s.repository_url or "python" in s.description.lower():
+            if _url_host_matches(s.repository_url.lower(), "pypi.org") or "python" in s.description.lower():
                 ecosystem = "pypi"
 
             pkg_name = f"{s.namespace}/{s.slug}" if s.namespace else s.slug
@@ -228,12 +237,12 @@ async def sync_from_glama(
                     result.skipped += 1
                     continue
 
-                # Infer ecosystem from repo URL
+                # Infer ecosystem from repo URL (use parsed hostname, not substring)
                 ecosystem = "npm"  # default
                 repo_url = server.repository_url.lower()
-                if "pypi" in repo_url or "python" in server.description.lower()[:200]:
+                if _url_host_matches(repo_url, "pypi.org") or "python" in server.description.lower()[:200]:
                     ecosystem = "pypi"
-                elif "cargo" in repo_url or "crates.io" in repo_url:
+                elif _url_host_matches(repo_url, "crates.io"):
                     ecosystem = "cargo"
 
                 # Classify risk level from tools

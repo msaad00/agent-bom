@@ -1,6 +1,8 @@
 """Pure data extraction helpers for the agent-bom dashboard.
 
 No Streamlit imports — can be used standalone or from tests.
+
+Consumed by ``dashboard/app.py`` and ``tests/test_dashboard.py``.
 """
 
 from __future__ import annotations

@@ -16,8 +16,48 @@
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center">
-  <b>AI supply chain security scanner. Scan packages and images for CVEs. Assess config security — credential exposure, tool access, privilege escalation. Map blast radius from vulnerabilities to credentials and tools. Enterprise posture scoring, incident correlation, credential risk ranking. 10-framework compliance: OWASP LLM + OWASP MCP + OWASP Agentic + MITRE ATLAS + NIST AI RMF + EU AI Act + NIST CSF 2.0 + ISO 27001 + SOC 2 + CIS Controls v8.</b>
+  <b>The open-source security scanner for AI agents, MCP servers, and GPU infrastructure.<br>See what Wiz, Snyk, and Grype miss.</b>
 </p>
+
+---
+
+## Get started
+
+```bash
+pip install agent-bom
+
+agent-bom scan                                     # auto-discover + scan
+agent-bom scan --enrich                            # + NVD CVSS + EPSS + CISA KEV
+agent-bom scan -f html -o report.html              # HTML dashboard
+agent-bom scan --enforce                           # tool poisoning detection
+agent-bom scan --fail-on-severity high -q          # CI gate
+agent-bom scan --image myapp:latest                # Docker image scanning
+agent-bom scan --k8s --all-namespaces              # K8s cluster
+agent-bom scan --aws --snowflake --databricks      # Multi-cloud
+agent-bom scan --hf-model meta-llama/Llama-3.1-8B  # model provenance
+```
+
+Auto-discovers Claude Desktop, Claude Code, Cursor, Windsurf, Cline, VS Code Copilot, Continue, Zed, Cortex Code (CoCo), Codex CLI, Gemini CLI, Goose, Snowflake CLI, OpenClaw, Roo Code, Amazon Q, ToolHive, Docker MCP, JetBrains AI, and Junie.
+
+<details>
+<summary><b>Install extras</b></summary>
+
+| Mode | Command |
+|------|---------|
+| Core CLI | `pip install agent-bom` |
+| Cloud (all) | `pip install 'agent-bom[cloud]'` |
+| AWS | `pip install 'agent-bom[aws]'` |
+| Snowflake | `pip install 'agent-bom[snowflake]'` |
+| Databricks | `pip install 'agent-bom[databricks]'` |
+| Nebius GPU cloud | `pip install 'agent-bom[nebius]'` |
+| REST API | `pip install 'agent-bom[api]'` |
+| Dashboard | `pip install 'agent-bom[ui]'` |
+| AI enrichment | `pip install 'agent-bom[ai-enrich]'` |
+| MCP server | `pip install 'agent-bom[mcp-server]'` |
+| OpenTelemetry | `pip install 'agent-bom[otel]'` |
+| Docker | `docker run --rm -v ~/.config:/root/.config:ro agentbom/agent-bom scan` |
+
+</details>
 
 ---
 
@@ -29,6 +69,22 @@
     <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/enterprise-overview-light.svg" alt="agent-bom enterprise overview" width="800" />
   </picture>
 </p>
+
+---
+
+## Why agent-bom
+
+| | Grype / Trivy | Wiz / Snyk | agent-bom |
+|---|---|---|---|
+| Package CVEs | Yes | Yes | Yes |
+| Container scanning | Yes | Yes | Yes |
+| AI agent discovery | — | — | 20 clients auto-detected |
+| Blast radius to agents | — | — | CVE → agent → creds → tools |
+| MCP tool reachability | — | — | Yes |
+| Credential exposure | — | Partial | Full per-agent mapping |
+| Policy-as-code | — | Yes (Snyk) | Yes (18 conditions) |
+| 10-framework compliance | — | Partial | Full (OWASP + ATLAS + NIST + EU AI Act + ...) |
+| Open source | Yes | No | Yes (Apache 2.0) |
 
 ---
 
@@ -74,6 +130,21 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 6. **Report** — JSON, SARIF, CycloneDX, SPDX, HTML, or console output. Alert dispatch to Slack/webhooks. Nothing stored server-side.
 
 > **Individual developers:** Steps 1–4 are automatic. Enterprise features (steps 5–6) activate with `--enrich`, `--posture`, or the REST API.
+
+---
+
+## How to deploy
+
+| Use case | Deploy | Command |
+|----------|--------|---------|
+| Quick local scan | CLI | `agent-bom scan` |
+| CI/CD gate | GitHub Action | `uses: msaad00/agent-bom@v0.52.0` |
+| Security dashboard | API + UI | `agent-bom serve` |
+| MCP tool integration | MCP server | `agent-bom mcp-server` (17 tools) |
+| K8s fleet scanning | Helm | `helm install deploy/helm/agent-bom` |
+| Analytics + viz | Docker Compose | `cd infra/clickhouse && docker compose up` |
+| Snowflake governance | API | `agent-bom api --snowflake` |
+| Isolated scan | Docker | `docker run agentbom/agent-bom scan` |
 
 ---
 
@@ -173,29 +244,13 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full set of architectur
 
 ---
 
-## Get started
-
-```bash
-pip install agent-bom
-
-agent-bom scan                                     # auto-discover + scan
-agent-bom scan --enrich                            # + NVD CVSS + EPSS + CISA KEV
-agent-bom scan -f html -o report.html              # HTML dashboard
-agent-bom scan --enforce                           # tool poisoning detection
-agent-bom scan --fail-on-severity high -q          # CI gate
-agent-bom scan --image myapp:latest                # Docker image scanning
-agent-bom scan --k8s --all-namespaces              # K8s cluster
-agent-bom scan --aws --snowflake --databricks      # Multi-cloud
-agent-bom scan --hf-model meta-llama/Llama-3.1-8B  # model provenance
-```
-
-Auto-discovers Claude Desktop, Claude Code, Cursor, Windsurf, Cline, VS Code Copilot, Continue, Zed, Cortex Code (CoCo), Codex CLI, Gemini CLI, Goose, Snowflake CLI, OpenClaw, Roo Code, Amazon Q, ToolHive, and Docker MCP Toolkit.
+## What it scans
 
 <table>
 <tr>
 <td width="50%" valign="top">
 
-**What it scans:**
+**Input sources:**
 
 | Source | How |
 |--------|-----|
@@ -216,7 +271,7 @@ Auto-discovers Claude Desktop, Claude Code, Cursor, Windsurf, Cline, VS Code Cop
 </td>
 <td width="50%" valign="top">
 
-**What it outputs:**
+**Output formats:**
 
 Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON, REST API
 
@@ -234,30 +289,11 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
 | OpenClaw | [SKILL.md](integrations/openclaw/SKILL.md) |
 | Smithery | [smithery.yaml](smithery.yaml) |
 | Railway | [Dockerfile.sse](Dockerfile.sse) |
+| Helm | [`deploy/helm/agent-bom/`](deploy/helm/agent-bom/) |
 
 </td>
 </tr>
 </table>
-
-<details>
-<summary><b>Install extras</b></summary>
-
-| Mode | Command |
-|------|---------|
-| Core CLI | `pip install agent-bom` |
-| Cloud (all) | `pip install 'agent-bom[cloud]'` |
-| AWS | `pip install 'agent-bom[aws]'` |
-| Snowflake | `pip install 'agent-bom[snowflake]'` |
-| Databricks | `pip install 'agent-bom[databricks]'` |
-| Nebius GPU cloud | `pip install 'agent-bom[nebius]'` |
-| REST API | `pip install 'agent-bom[api]'` |
-| Dashboard | `pip install 'agent-bom[ui]'` |
-| AI enrichment | `pip install 'agent-bom[ai-enrich]'` |
-| MCP server | `pip install 'agent-bom[mcp-server]'` |
-| OpenTelemetry | `pip install 'agent-bom[otel]'` |
-| Docker | `docker run --rm -v ~/.config:/root/.config:ro agentbom/agent-bom scan` |
-
-</details>
 
 ---
 
@@ -395,7 +431,7 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible graph 
 agent-bom scan --policy policy.json --fail-on-severity high
 ```
 
-Supported policy conditions: `severity_gte`, `is_kev`, `ai_risk`, `has_credentials`, `ecosystem`, `package_name_contains`, `min_agents`, `min_tools`, `unverified_server`, `registry_risk_gte`, `owasp_tag`, `owasp_mcp_tag`, `is_malicious`, `min_scorecard_score`, `max_epss_score`, `has_kev_with_no_fix`
+Supported policy conditions: `severity_gte`, `is_kev`, `ai_risk`, `has_credentials`, `ecosystem`, `package_name_contains`, `min_agents`, `min_tools`, `unverified_server`, `registry_risk_gte`, `owasp_tag`, `owasp_mcp_tag`, `is_malicious`, `min_scorecard_score`, `max_epss_score`, `has_kev_with_no_fix`. See [`policy.json`](policy.json) for an example template.
 
 ### Enterprise security operations
 
@@ -419,6 +455,8 @@ Supported policy conditions: `severity_gte`, `is_kev`, `ai_risk`, `has_credentia
 - Aggregated across all agents and servers per credential
 
 ### Cloud provider discovery
+
+See [AI Infrastructure Scanning Guide](docs/AI_INFRASTRUCTURE_SCANNING.md) for GPU container scanning examples (NVIDIA + AMD ROCm).
 
 ```bash
 agent-bom scan --aws --aws-region us-east-1       # Bedrock, Lambda, EKS, ECS, EC2, Step Functions
@@ -540,7 +578,7 @@ agent-bom mcp-server                    # stdio
 agent-bom mcp-server --transport sse    # remote
 ```
 
-16 tools: `scan`, `check`, `blast_radius`, `policy_check`, `registry_lookup`, `generate_sbom`, `compliance`, `remediate`, `verify`, `where`, `inventory`, `diff`, `skill_trust`, `marketplace_check`, `code_scan`, `context_graph`
+17 tools: `scan`, `check`, `blast_radius`, `policy_check`, `registry_lookup`, `generate_sbom`, `compliance`, `remediate`, `verify`, `where`, `inventory`, `diff`, `skill_trust`, `marketplace_check`, `code_scan`, `context_graph`, `analytics_query`
 
 ### Cloud UI
 

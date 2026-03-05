@@ -74,6 +74,7 @@ def _make_report(blast_radii=None) -> AIBOMReport:
 def test_enrich_empty_blast_radii():
     """Should return 0 for empty blast radii list."""
     from agent_bom.ai_enrich import enrich_blast_radii
+
     result = asyncio.run(enrich_blast_radii([]))
     assert result == 0
 
@@ -81,6 +82,7 @@ def test_enrich_empty_blast_radii():
 def test_executive_summary_empty_report():
     """Should return None for report with no blast radii."""
     from agent_bom.ai_enrich import generate_executive_summary
+
     report = AIBOMReport(agents=[], blast_radii=[])
     result = asyncio.run(generate_executive_summary(report))
     assert result is None
@@ -89,6 +91,7 @@ def test_executive_summary_empty_report():
 def test_threat_chains_empty_report():
     """Should return empty list for report with no blast radii."""
     from agent_bom.ai_enrich import generate_threat_chains
+
     report = AIBOMReport(agents=[], blast_radii=[])
     result = asyncio.run(generate_threat_chains(report))
     assert result == []
@@ -100,6 +103,7 @@ def test_threat_chains_empty_report():
 def test_build_blast_radius_prompt():
     """Prompt should include CVE ID, package, credentials, tools."""
     from agent_bom.ai_enrich import _build_blast_radius_prompt
+
     br = _make_blast_radius()
     prompt = _build_blast_radius_prompt(br)
     assert "CVE-2026-27001" in prompt
@@ -112,6 +116,7 @@ def test_build_blast_radius_prompt():
 def test_build_executive_summary_prompt():
     """Prompt should include scan statistics."""
     from agent_bom.ai_enrich import _build_executive_summary_prompt
+
     report = _make_report()
     prompt = _build_executive_summary_prompt(report)
     assert "agent(s)" in prompt
@@ -121,6 +126,7 @@ def test_build_executive_summary_prompt():
 def test_build_threat_chain_prompt():
     """Prompt should include top findings with tools and creds."""
     from agent_bom.ai_enrich import _build_threat_chain_prompt
+
     report = _make_report()
     prompt = _build_threat_chain_prompt(report)
     assert "CVE-2026-27001" in prompt
@@ -135,10 +141,13 @@ def test_build_threat_chain_prompt():
 async def test_enrich_blast_radii_with_mock_llm():
     """Should enrich findings when LLM returns a response."""
     from agent_bom.ai_enrich import enrich_blast_radii
+
     br = _make_blast_radius()
 
-    with patch("agent_bom.ai_enrich._check_litellm", return_value=True), \
-         patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock, return_value="This CVE allows RCE through the OpenClaw agent."):
+    with (
+        patch("agent_bom.ai_enrich._check_litellm", return_value=True),
+        patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock, return_value="This CVE allows RCE through the OpenClaw agent."),
+    ):
         result = await enrich_blast_radii([br])
         assert result == 1
         assert br.ai_summary == "This CVE allows RCE through the OpenClaw agent."
@@ -148,10 +157,13 @@ async def test_enrich_blast_radii_with_mock_llm():
 async def test_executive_summary_with_mock_llm():
     """Should generate executive summary from LLM response."""
     from agent_bom.ai_enrich import generate_executive_summary
+
     report = _make_report()
 
-    with patch("agent_bom.ai_enrich._check_litellm", return_value=True), \
-         patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock, return_value="Critical risk: 1 RCE vulnerability found."):
+    with (
+        patch("agent_bom.ai_enrich._check_litellm", return_value=True),
+        patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock, return_value="Critical risk: 1 RCE vulnerability found."),
+    ):
         result = await generate_executive_summary(report)
         assert result == "Critical risk: 1 RCE vulnerability found."
 
@@ -160,10 +172,17 @@ async def test_executive_summary_with_mock_llm():
 async def test_threat_chains_with_mock_llm():
     """Should generate threat chain analysis."""
     from agent_bom.ai_enrich import generate_threat_chains
+
     report = _make_report()
 
-    with patch("agent_bom.ai_enrich._check_litellm", return_value=True), \
-         patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock, return_value="1. Exploit CVE-2026-27001\n2. Access exec\n3. Exfiltrate OPENAI_API_KEY"):
+    with (
+        patch("agent_bom.ai_enrich._check_litellm", return_value=True),
+        patch(
+            "agent_bom.ai_enrich._call_llm",
+            new_callable=AsyncMock,
+            return_value="1. Exploit CVE-2026-27001\n2. Access exec\n3. Exfiltrate OPENAI_API_KEY",
+        ),
+    ):
         result = await generate_threat_chains(report)
         assert len(result) == 1
         assert "CVE-2026-27001" in result[0]
@@ -173,10 +192,13 @@ async def test_threat_chains_with_mock_llm():
 async def test_llm_failure_returns_none():
     """When LLM call fails, should fall back gracefully."""
     from agent_bom.ai_enrich import enrich_blast_radii
+
     br = _make_blast_radius()
 
-    with patch("agent_bom.ai_enrich._check_litellm", return_value=True), \
-         patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock, return_value=None):
+    with (
+        patch("agent_bom.ai_enrich._check_litellm", return_value=True),
+        patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock, return_value=None),
+    ):
         result = await enrich_blast_radii([br])
         assert result == 0
         assert br.ai_summary is None
@@ -190,7 +212,9 @@ async def test_caching_avoids_duplicate_calls():
     br1 = _make_blast_radius()
     br2 = _make_blast_radius()
     br2.vulnerability = Vulnerability(
-        id="CVE-2026-24764", summary="SSRF", severity=Severity.HIGH,
+        id="CVE-2026-24764",
+        summary="SSRF",
+        severity=Severity.HIGH,
     )
 
     call_count = 0
@@ -200,8 +224,7 @@ async def test_caching_avoids_duplicate_calls():
         call_count += 1
         return "Mocked analysis"
 
-    with patch("agent_bom.ai_enrich._check_litellm", return_value=True), \
-         patch("agent_bom.ai_enrich._call_llm", side_effect=mock_call):
+    with patch("agent_bom.ai_enrich._check_litellm", return_value=True), patch("agent_bom.ai_enrich._call_llm", side_effect=mock_call):
         result = await enrich_blast_radii([br1, br2])
         assert result == 2
         assert call_count == 1  # Only one LLM call, second reused from cache
@@ -237,6 +260,7 @@ def test_report_has_ai_threat_chains_field():
 def test_json_output_includes_ai_summary():
     """JSON output should include ai_summary field in blast_radius."""
     from agent_bom.output import to_json
+
     br = _make_blast_radius()
     br.ai_summary = "AI-generated analysis of CVE-2026-27001"
     report = _make_report([br])
@@ -247,6 +271,7 @@ def test_json_output_includes_ai_summary():
 def test_json_output_includes_executive_summary():
     """JSON output should include executive_summary when present."""
     from agent_bom.output import to_json
+
     report = _make_report()
     report.executive_summary = "Critical risk assessment summary"
     data = to_json(report)
@@ -256,6 +281,7 @@ def test_json_output_includes_executive_summary():
 def test_json_output_includes_threat_chains():
     """JSON output should include ai_threat_chains when present."""
     from agent_bom.output import to_json
+
     report = _make_report()
     report.ai_threat_chains = ["Chain 1: exploit -> lateral -> exfiltrate"]
     data = to_json(report)
@@ -265,6 +291,7 @@ def test_json_output_includes_threat_chains():
 def test_json_output_omits_ai_fields_when_not_enriched():
     """JSON output should not include AI fields when not enriched."""
     from agent_bom.output import to_json
+
     report = _make_report()
     data = to_json(report)
     assert "executive_summary" not in data
@@ -279,6 +306,7 @@ def test_cli_has_ai_enrich_flag():
     from click.testing import CliRunner
 
     from agent_bom.cli import main
+
     runner = CliRunner()
     result = runner.invoke(main, ["scan", "--help"])
     assert "--ai-enrich" in result.output
@@ -289,6 +317,7 @@ def test_cli_has_ai_model_option():
     from click.testing import CliRunner
 
     from agent_bom.cli import main
+
     runner = CliRunner()
     result = runner.invoke(main, ["scan", "--help"])
     assert "--ai-model" in result.output
@@ -299,6 +328,7 @@ def test_cli_ai_model_shows_ollama_examples():
     from click.testing import CliRunner
 
     from agent_bom.cli import main
+
     runner = CliRunner()
     result = runner.invoke(main, ["scan", "--help"])
     assert "ollama" in result.output.lower()
@@ -361,8 +391,10 @@ def test_resolve_model_prefers_ollama():
     """Should prefer Ollama when running with installed models."""
     from agent_bom.ai_enrich import _resolve_model
 
-    with patch("agent_bom.ai_enrich._detect_ollama", return_value=True), \
-         patch("agent_bom.ai_enrich._get_ollama_models", return_value=["llama3.2:latest"]):
+    with (
+        patch("agent_bom.ai_enrich._detect_ollama", return_value=True),
+        patch("agent_bom.ai_enrich._get_ollama_models", return_value=["llama3.2:latest"]),
+    ):
         result = _resolve_model()
         assert result == "ollama/llama3.2:latest"
 
@@ -371,9 +403,11 @@ def test_resolve_model_falls_back_to_openai():
     """Should use openai when Ollama unavailable and key set."""
     from agent_bom.ai_enrich import _resolve_model
 
-    with patch("agent_bom.ai_enrich._detect_ollama", return_value=False), \
-         patch("agent_bom.ai_enrich._check_huggingface", return_value=False), \
-         patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}, clear=True):
+    with (
+        patch("agent_bom.ai_enrich._detect_ollama", return_value=False),
+        patch("agent_bom.ai_enrich._check_huggingface", return_value=False),
+        patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}, clear=True),
+    ):
         result = _resolve_model()
         assert result == "openai/gpt-4o-mini"
 
@@ -382,9 +416,11 @@ def test_resolve_model_no_provider():
     """Should return default when no provider available."""
     from agent_bom.ai_enrich import DEFAULT_MODEL, _resolve_model
 
-    with patch("agent_bom.ai_enrich._detect_ollama", return_value=False), \
-         patch("agent_bom.ai_enrich._check_huggingface", return_value=False), \
-         patch.dict(os.environ, {}, clear=True):
+    with (
+        patch("agent_bom.ai_enrich._detect_ollama", return_value=False),
+        patch("agent_bom.ai_enrich._check_huggingface", return_value=False),
+        patch.dict(os.environ, {}, clear=True),
+    ):
         result = _resolve_model()
         assert result == DEFAULT_MODEL
 
@@ -401,9 +437,7 @@ async def test_call_ollama_direct_success():
 
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.json.return_value = {
-        "message": {"content": "Analysis of the vulnerability..."}
-    }
+    mock_response.json.return_value = {"message": {"content": "Analysis of the vulnerability..."}}
 
     mock_client = AsyncMock()
     mock_client.post = AsyncMock(return_value=mock_response)
@@ -460,10 +494,12 @@ async def test_call_llm_ollama_falls_back_to_litellm():
     """When Ollama direct fails and no HuggingFace, should fall back to litellm."""
     from agent_bom.ai_enrich import _call_llm
 
-    with patch("agent_bom.ai_enrich._call_ollama_direct", new_callable=AsyncMock, return_value=None), \
-         patch("agent_bom.ai_enrich._check_huggingface", return_value=False), \
-         patch("agent_bom.ai_enrich._check_litellm", return_value=True), \
-         patch("agent_bom.ai_enrich._call_llm_via_litellm", new_callable=AsyncMock, return_value="litellm fallback"):
+    with (
+        patch("agent_bom.ai_enrich._call_ollama_direct", new_callable=AsyncMock, return_value=None),
+        patch("agent_bom.ai_enrich._check_huggingface", return_value=False),
+        patch("agent_bom.ai_enrich._check_litellm", return_value=True),
+        patch("agent_bom.ai_enrich._call_llm_via_litellm", new_callable=AsyncMock, return_value="litellm fallback"),
+    ):
         result = await _call_llm("test prompt", "ollama/llama3.2")
         assert result == "litellm fallback"
 
@@ -473,9 +509,11 @@ async def test_call_llm_ollama_no_fallback():
     """When Ollama direct fails and no HuggingFace or litellm, should return None."""
     from agent_bom.ai_enrich import _call_llm
 
-    with patch("agent_bom.ai_enrich._call_ollama_direct", new_callable=AsyncMock, return_value=None), \
-         patch("agent_bom.ai_enrich._check_huggingface", return_value=False), \
-         patch("agent_bom.ai_enrich._check_litellm", return_value=False):
+    with (
+        patch("agent_bom.ai_enrich._call_ollama_direct", new_callable=AsyncMock, return_value=None),
+        patch("agent_bom.ai_enrich._check_huggingface", return_value=False),
+        patch("agent_bom.ai_enrich._check_litellm", return_value=False),
+    ):
         result = await _call_llm("test prompt", "ollama/llama3.2")
         assert result is None
 
@@ -487,11 +525,14 @@ async def test_call_llm_ollama_no_fallback():
 async def test_enrichment_guard_allows_ollama():
     """enrich_blast_radii should proceed when Ollama available (no litellm)."""
     from agent_bom.ai_enrich import enrich_blast_radii
+
     br = _make_blast_radius()
 
-    with patch("agent_bom.ai_enrich._check_litellm", return_value=False), \
-         patch("agent_bom.ai_enrich._detect_ollama", return_value=True), \
-         patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock, return_value="Ollama analysis"):
+    with (
+        patch("agent_bom.ai_enrich._check_litellm", return_value=False),
+        patch("agent_bom.ai_enrich._detect_ollama", return_value=True),
+        patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock, return_value="Ollama analysis"),
+    ):
         result = await enrich_blast_radii([br], model="ollama/llama3.2")
         assert result == 1
         assert br.ai_summary == "Ollama analysis"
@@ -501,11 +542,14 @@ async def test_enrichment_guard_allows_ollama():
 async def test_enrichment_guard_blocks_no_provider():
     """enrich_blast_radii should return 0 when no provider available."""
     from agent_bom.ai_enrich import enrich_blast_radii
+
     br = _make_blast_radius()
 
-    with patch("agent_bom.ai_enrich._check_litellm", return_value=False), \
-         patch("agent_bom.ai_enrich._detect_ollama", return_value=False), \
-         patch("agent_bom.ai_enrich._check_huggingface", return_value=False):
+    with (
+        patch("agent_bom.ai_enrich._check_litellm", return_value=False),
+        patch("agent_bom.ai_enrich._detect_ollama", return_value=False),
+        patch("agent_bom.ai_enrich._check_huggingface", return_value=False),
+    ):
         result = await enrich_blast_radii([br])
         assert result == 0
 
@@ -514,11 +558,14 @@ async def test_enrichment_guard_blocks_no_provider():
 async def test_executive_summary_guard_allows_ollama():
     """generate_executive_summary should work with Ollama only."""
     from agent_bom.ai_enrich import generate_executive_summary
+
     report = _make_report()
 
-    with patch("agent_bom.ai_enrich._check_litellm", return_value=False), \
-         patch("agent_bom.ai_enrich._detect_ollama", return_value=True), \
-         patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock, return_value="Risk summary"):
+    with (
+        patch("agent_bom.ai_enrich._check_litellm", return_value=False),
+        patch("agent_bom.ai_enrich._detect_ollama", return_value=True),
+        patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock, return_value="Risk summary"),
+    ):
         result = await generate_executive_summary(report, model="ollama/llama3.2")
         assert result == "Risk summary"
 
@@ -546,9 +593,11 @@ def test_has_any_provider_none():
     """Should return False for ollama model when no providers available."""
     from agent_bom.ai_enrich import _has_any_provider
 
-    with patch("agent_bom.ai_enrich._detect_ollama", return_value=False), \
-         patch("agent_bom.ai_enrich._check_huggingface", return_value=False), \
-         patch("agent_bom.ai_enrich._check_litellm", return_value=False):
+    with (
+        patch("agent_bom.ai_enrich._detect_ollama", return_value=False),
+        patch("agent_bom.ai_enrich._check_huggingface", return_value=False),
+        patch("agent_bom.ai_enrich._check_litellm", return_value=False),
+    ):
         assert _has_any_provider("ollama/llama3.2") is False
 
 
@@ -558,6 +607,7 @@ def test_has_any_provider_none():
 def test_action_yml_exists():
     """action.yml should exist at repo root."""
     from pathlib import Path
+
     action_path = Path(__file__).parent.parent / "action.yml"
     assert action_path.exists(), "action.yml not found at repo root"
 
@@ -567,6 +617,7 @@ def test_action_yml_valid_yaml():
     from pathlib import Path
 
     import yaml
+
     action_path = Path(__file__).parent.parent / "action.yml"
     with open(action_path) as f:
         data = yaml.safe_load(f)
@@ -580,6 +631,7 @@ def test_action_yml_has_required_inputs():
     from pathlib import Path
 
     import yaml
+
     action_path = Path(__file__).parent.parent / "action.yml"
     with open(action_path) as f:
         data = yaml.safe_load(f)
@@ -596,6 +648,7 @@ def test_action_yml_has_outputs():
     from pathlib import Path
 
     import yaml
+
     action_path = Path(__file__).parent.parent / "action.yml"
     with open(action_path) as f:
         data = yaml.safe_load(f)
@@ -610,6 +663,7 @@ def test_action_yml_composite():
     from pathlib import Path
 
     import yaml
+
     action_path = Path(__file__).parent.parent / "action.yml"
     with open(action_path) as f:
         data = yaml.safe_load(f)
@@ -622,10 +676,17 @@ def test_action_yml_composite():
 def test_build_skill_analysis_prompt():
     """Prompt should include file content, static findings, and threat categories."""
     from agent_bom.ai_enrich import _build_skill_analysis_prompt
+
     raw_content = {"CLAUDE.md": "# Claude\nUse npx @mcp/server-filesystem /tmp\nNever bind to 0.0.0.0"}
-    findings = [{"severity": "high", "category": "shell_access",
-                 "title": "Shell access via server 'bash'",
-                 "detail": "Uses bash", "source_file": "CLAUDE.md"}]
+    findings = [
+        {
+            "severity": "high",
+            "category": "shell_access",
+            "title": "Shell access via server 'bash'",
+            "detail": "Uses bash",
+            "source_file": "CLAUDE.md",
+        }
+    ]
     prompt = _build_skill_analysis_prompt(raw_content, findings)
     assert "CLAUDE.md" in prompt
     assert "Never bind to 0.0.0.0" in prompt
@@ -637,6 +698,7 @@ def test_build_skill_analysis_prompt():
 def test_parse_skill_analysis_response_valid():
     """Should parse valid JSON response."""
     from agent_bom.ai_enrich import _parse_skill_analysis_response
+
     response = '{"overall_risk_level": "low", "summary": "Safe", "finding_reviews": [], "new_findings": []}'
     result = _parse_skill_analysis_response(response)
     assert result is not None
@@ -647,6 +709,7 @@ def test_parse_skill_analysis_response_valid():
 def test_parse_skill_analysis_response_markdown_fenced():
     """Should strip markdown code fences."""
     from agent_bom.ai_enrich import _parse_skill_analysis_response
+
     response = '```json\n{"overall_risk_level": "medium", "summary": "Some risk"}\n```'
     result = _parse_skill_analysis_response(response)
     assert result is not None
@@ -656,6 +719,7 @@ def test_parse_skill_analysis_response_markdown_fenced():
 def test_parse_skill_analysis_response_invalid():
     """Should return None for non-JSON response."""
     from agent_bom.ai_enrich import _parse_skill_analysis_response
+
     result = _parse_skill_analysis_response("I cannot analyze this file.")
     assert result is None
 
@@ -666,22 +730,28 @@ def test_apply_skill_analysis_adjusts_severity():
     from agent_bom.parsers.skill_audit import SkillAuditResult, SkillFinding
 
     audit = SkillAuditResult(
-        findings=[SkillFinding(
-            severity="high", category="shell_access",
-            title="Shell access via server 'bash'",
-            detail="Uses bash", source_file="CLAUDE.md",
-        )],
+        findings=[
+            SkillFinding(
+                severity="high",
+                category="shell_access",
+                title="Shell access via server 'bash'",
+                detail="Uses bash",
+                source_file="CLAUDE.md",
+            )
+        ],
         passed=False,
     )
     ai_data = {
         "overall_risk_level": "low",
         "summary": "The shell reference is in a 'do not use' section.",
-        "finding_reviews": [{
-            "original_title": "Shell access via server 'bash'",
-            "verdict": "false_positive",
-            "adjusted_severity": None,
-            "reasoning": "The file warns against using bash, not instructing to use it."
-        }],
+        "finding_reviews": [
+            {
+                "original_title": "Shell access via server 'bash'",
+                "verdict": "false_positive",
+                "adjusted_severity": None,
+                "reasoning": "The file warns against using bash, not instructing to use it.",
+            }
+        ],
         "new_findings": [],
     }
     _apply_skill_analysis(audit, ai_data)
@@ -702,13 +772,15 @@ def test_apply_skill_analysis_adds_new_findings():
         "overall_risk_level": "high",
         "summary": "Detected prompt injection pattern.",
         "finding_reviews": [],
-        "new_findings": [{
-            "severity": "high",
-            "category": "prompt_injection",
-            "title": "Hidden instruction in HTML comment",
-            "detail": "An HTML comment contains instructions to ignore safety guidelines.",
-            "recommendation": "Remove hidden instructions from skill files."
-        }],
+        "new_findings": [
+            {
+                "severity": "high",
+                "category": "prompt_injection",
+                "title": "Hidden instruction in HTML comment",
+                "detail": "An HTML comment contains instructions to ignore safety guidelines.",
+                "recommendation": "Remove hidden instructions from skill files.",
+            }
+        ],
     }
     _apply_skill_analysis(audit, ai_data)
 
@@ -733,15 +805,19 @@ async def test_enrich_skill_audit_with_mock_llm():
     )
     skill_audit = SkillAuditResult(findings=[], passed=True)
 
-    mock_response = _json.dumps({
-        "overall_risk_level": "safe",
-        "summary": "No security risks found in this skill file.",
-        "finding_reviews": [],
-        "new_findings": [],
-    })
+    mock_response = _json.dumps(
+        {
+            "overall_risk_level": "safe",
+            "summary": "No security risks found in this skill file.",
+            "finding_reviews": [],
+            "new_findings": [],
+        }
+    )
 
-    with patch("agent_bom.ai_enrich._has_any_provider", return_value=True), \
-         patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock, return_value=mock_response):
+    with (
+        patch("agent_bom.ai_enrich._has_any_provider", return_value=True),
+        patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock, return_value=mock_response),
+    ):
         result = await enrich_skill_audit(skill_result, skill_audit)
         assert result is True
         assert skill_audit.ai_overall_risk_level == "safe"
@@ -787,6 +863,7 @@ async def test_enrich_skill_audit_empty_content():
 def test_parse_json_response_clean():
     """Should parse clean JSON directly."""
     from agent_bom.ai_enrich import _parse_json_response
+
     result = _parse_json_response('{"key": "value", "num": 42}')
     assert result == {"key": "value", "num": 42}
 
@@ -794,6 +871,7 @@ def test_parse_json_response_clean():
 def test_parse_json_response_fenced():
     """Should extract JSON from markdown fences."""
     from agent_bom.ai_enrich import _parse_json_response
+
     result = _parse_json_response('```json\n{"key": "fenced"}\n```')
     assert result == {"key": "fenced"}
 
@@ -801,6 +879,7 @@ def test_parse_json_response_fenced():
 def test_parse_json_response_embedded():
     """Should extract JSON embedded in other text."""
     from agent_bom.ai_enrich import _parse_json_response
+
     result = _parse_json_response('Here is the analysis: {"key": "embedded"} and more text.')
     assert result == {"key": "embedded"}
 
@@ -808,12 +887,14 @@ def test_parse_json_response_embedded():
 def test_parse_json_response_invalid():
     """Should return None for non-JSON text."""
     from agent_bom.ai_enrich import _parse_json_response
+
     assert _parse_json_response("I cannot analyze this.") is None
 
 
 def test_parse_json_response_empty():
     """Should return None for empty/whitespace input."""
     from agent_bom.ai_enrich import _parse_json_response
+
     assert _parse_json_response("") is None
     assert _parse_json_response("   ") is None
     assert _parse_json_response(None) is None
@@ -863,8 +944,10 @@ async def test_call_huggingface_success():
     fake_hf = MagicMock()
     fake_hf.InferenceClient = MagicMock(return_value=mock_client)
 
-    with patch.dict("sys.modules", {"huggingface_hub": fake_hf}), \
-         patch("agent_bom.ai_enrich.asyncio.to_thread", new_callable=AsyncMock, return_value=mock_response):
+    with (
+        patch.dict("sys.modules", {"huggingface_hub": fake_hf}),
+        patch("agent_bom.ai_enrich.asyncio.to_thread", new_callable=AsyncMock, return_value=mock_response),
+    ):
         result = await _call_huggingface("test prompt")
         assert result == "HuggingFace analysis result"
 
@@ -874,9 +957,11 @@ async def test_call_llm_ollama_falls_back_to_huggingface():
     """When Ollama fails and HuggingFace available, should use HF."""
     from agent_bom.ai_enrich import _call_llm
 
-    with patch("agent_bom.ai_enrich._call_ollama_direct", new_callable=AsyncMock, return_value=None), \
-         patch("agent_bom.ai_enrich._check_huggingface", return_value=True), \
-         patch("agent_bom.ai_enrich._call_huggingface", new_callable=AsyncMock, return_value="HF response"):
+    with (
+        patch("agent_bom.ai_enrich._call_ollama_direct", new_callable=AsyncMock, return_value=None),
+        patch("agent_bom.ai_enrich._check_huggingface", return_value=True),
+        patch("agent_bom.ai_enrich._call_huggingface", new_callable=AsyncMock, return_value="HF response"),
+    ):
         result = await _call_llm("test prompt", "ollama/llama3.2")
         assert result == "HF response"
 
@@ -895,8 +980,10 @@ def test_has_any_provider_with_huggingface():
     """Should return True for ollama/ model when HuggingFace is available as fallback."""
     from agent_bom.ai_enrich import _has_any_provider
 
-    with patch("agent_bom.ai_enrich._detect_ollama", return_value=False), \
-         patch("agent_bom.ai_enrich._check_huggingface", return_value=True):
+    with (
+        patch("agent_bom.ai_enrich._detect_ollama", return_value=False),
+        patch("agent_bom.ai_enrich._check_huggingface", return_value=True),
+    ):
         assert _has_any_provider("ollama/llama3.2") is True
 
 
@@ -923,8 +1010,10 @@ def test_resolve_model_picks_best_ollama():
     """Should pick the highest-priority installed Ollama model."""
     from agent_bom.ai_enrich import _resolve_model
 
-    with patch("agent_bom.ai_enrich._detect_ollama", return_value=True), \
-         patch("agent_bom.ai_enrich._get_ollama_models", return_value=["mistral:latest", "llama3.1:8b"]):
+    with (
+        patch("agent_bom.ai_enrich._detect_ollama", return_value=True),
+        patch("agent_bom.ai_enrich._get_ollama_models", return_value=["mistral:latest", "llama3.1:8b"]),
+    ):
         result = _resolve_model()
         # llama3.1:8b is higher in OLLAMA_MODEL_PREFERENCE than mistral
         assert result == "ollama/llama3.1:8b"
@@ -934,10 +1023,12 @@ def test_resolve_model_huggingface_tier():
     """Should fall back to HuggingFace when Ollama has no models."""
     from agent_bom.ai_enrich import HF_DEFAULT_MODEL, _resolve_model
 
-    with patch("agent_bom.ai_enrich._detect_ollama", return_value=True), \
-         patch("agent_bom.ai_enrich._get_ollama_models", return_value=[]), \
-         patch("agent_bom.ai_enrich._check_huggingface", return_value=True), \
-         patch.dict(os.environ, {"HF_TOKEN": "hf_test123"}):
+    with (
+        patch("agent_bom.ai_enrich._detect_ollama", return_value=True),
+        patch("agent_bom.ai_enrich._get_ollama_models", return_value=[]),
+        patch("agent_bom.ai_enrich._check_huggingface", return_value=True),
+        patch.dict(os.environ, {"HF_TOKEN": "hf_test123"}),
+    ):
         result = _resolve_model()
         assert result == f"huggingface/{HF_DEFAULT_MODEL}"
 
@@ -946,10 +1037,12 @@ def test_resolve_model_empty_ollama_models():
     """Ollama running but no models → fall through to next tier."""
     from agent_bom.ai_enrich import _resolve_model
 
-    with patch("agent_bom.ai_enrich._detect_ollama", return_value=True), \
-         patch("agent_bom.ai_enrich._get_ollama_models", return_value=[]), \
-         patch("agent_bom.ai_enrich._check_huggingface", return_value=False), \
-         patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}, clear=True):
+    with (
+        patch("agent_bom.ai_enrich._detect_ollama", return_value=True),
+        patch("agent_bom.ai_enrich._get_ollama_models", return_value=[]),
+        patch("agent_bom.ai_enrich._check_huggingface", return_value=False),
+        patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}, clear=True),
+    ):
         result = _resolve_model()
         assert result == "openai/gpt-4o-mini"
 
@@ -958,8 +1051,10 @@ def test_resolve_model_ollama_uses_first_available():
     """When no preferred model installed, should use first available."""
     from agent_bom.ai_enrich import _resolve_model
 
-    with patch("agent_bom.ai_enrich._detect_ollama", return_value=True), \
-         patch("agent_bom.ai_enrich._get_ollama_models", return_value=["some-obscure-model:latest"]):
+    with (
+        patch("agent_bom.ai_enrich._detect_ollama", return_value=True),
+        patch("agent_bom.ai_enrich._get_ollama_models", return_value=["some-obscure-model:latest"]),
+    ):
         result = _resolve_model()
         assert result == "ollama/some-obscure-model:latest"
 
@@ -970,6 +1065,7 @@ def test_resolve_model_ollama_uses_first_available():
 def test_build_mcp_config_analysis_prompt():
     """Prompt should include server names, tools, credentials, and agent info."""
     from agent_bom.ai_enrich import _build_mcp_config_analysis_prompt
+
     report = _make_report()
     prompt = _build_mcp_config_analysis_prompt(report)
     assert "openclaw-gateway" in prompt
@@ -987,21 +1083,27 @@ async def test_analyze_mcp_config_security_with_mock():
     from agent_bom.ai_enrich import analyze_mcp_config_security
 
     report = _make_report()
-    mock_response = _json.dumps({
-        "overall_risk": "High",
-        "summary": "Multiple servers lack authentication.",
-        "findings": [{
-            "severity": "high",
-            "category": "auth_missing",
-            "title": "No auth on openclaw-gateway",
-            "detail": "Server exposes exec tool without credentials.",
-            "recommendation": "Add API key authentication.",
-        }],
-    })
+    mock_response = _json.dumps(
+        {
+            "overall_risk": "High",
+            "summary": "Multiple servers lack authentication.",
+            "findings": [
+                {
+                    "severity": "high",
+                    "category": "auth_missing",
+                    "title": "No auth on openclaw-gateway",
+                    "detail": "Server exposes exec tool without credentials.",
+                    "recommendation": "Add API key authentication.",
+                }
+            ],
+        }
+    )
 
-    with patch("agent_bom.ai_enrich._has_any_provider", return_value=True), \
-         patch("agent_bom.ai_enrich._call_llm_structured", new_callable=AsyncMock, return_value=None), \
-         patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock, return_value=mock_response):
+    with (
+        patch("agent_bom.ai_enrich._has_any_provider", return_value=True),
+        patch("agent_bom.ai_enrich._call_llm_structured", new_callable=AsyncMock, return_value=None),
+        patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock, return_value=mock_response),
+    ):
         result = await analyze_mcp_config_security(report, model="ollama/llama3.2")
         assert result is not None
         assert result.overall_risk == "High"
@@ -1013,6 +1115,7 @@ async def test_analyze_mcp_config_security_with_mock():
 async def test_analyze_mcp_config_no_servers():
     """Should return None when report has no MCP servers."""
     from agent_bom.ai_enrich import analyze_mcp_config_security
+
     report = AIBOMReport(agents=[], blast_radii=[])
     result = await analyze_mcp_config_security(report)
     assert result is None
@@ -1022,6 +1125,7 @@ async def test_analyze_mcp_config_no_servers():
 async def test_analyze_mcp_config_no_provider():
     """Should return None when no LLM provider available."""
     from agent_bom.ai_enrich import analyze_mcp_config_security
+
     report = _make_report()
 
     with patch("agent_bom.ai_enrich._has_any_provider", return_value=False):
@@ -1035,6 +1139,7 @@ async def test_analyze_mcp_config_no_provider():
 def test_json_output_includes_mcp_config_analysis():
     """JSON output should include mcp_config_analysis when present."""
     from agent_bom.output import to_json
+
     report = _make_report()
     report.mcp_config_analysis = {
         "overall_risk": "Medium",
@@ -1049,6 +1154,7 @@ def test_json_output_includes_mcp_config_analysis():
 def test_json_output_omits_mcp_config_when_not_enriched():
     """JSON output should not include mcp_config_analysis when absent."""
     from agent_bom.output import to_json
+
     report = _make_report()
     data = to_json(report)
     assert "mcp_config_analysis" not in data

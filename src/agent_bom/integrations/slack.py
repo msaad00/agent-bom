@@ -57,28 +57,34 @@ def _build_slack_blocks(finding: dict) -> list[dict]:
             context_parts.append(f"*Servers:* {', '.join(servers)}")
         if creds:
             context_parts.append(f"*Credentials:* {', '.join(creds)}")
-        blocks.append({
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": " | ".join(context_parts)},
-        })
+        blocks.append(
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": " | ".join(context_parts)},
+            }
+        )
 
     # Fix version if available
     fix = finding.get("fixed_version")
     if fix:
-        blocks.append({
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": f":white_check_mark: *Fix:* Upgrade to `{fix}`"},
-        })
+        blocks.append(
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f":white_check_mark: *Fix:* Upgrade to `{fix}`"},
+            }
+        )
 
     # Compliance tags
     tags = []
     for tag_field in ("owasp_tags", "owasp_mcp_tags", "atlas_tags", "nist_ai_rmf_tags"):
         tags.extend(finding.get(tag_field, []))
     if tags:
-        blocks.append({
-            "type": "context",
-            "elements": [{"type": "mrkdwn", "text": f"Compliance: {' '.join(tags)}"}],
-        })
+        blocks.append(
+            {
+                "type": "context",
+                "elements": [{"type": "mrkdwn", "text": f"Compliance: {' '.join(tags)}"}],
+            }
+        )
 
     return blocks
 
@@ -101,7 +107,11 @@ async def send_slack_alert(
 
     async with create_client(timeout=10.0) as client:
         response = await request_with_retry(
-            client, "POST", webhook_url, json_body=payload, max_retries=2,
+            client,
+            "POST",
+            webhook_url,
+            json_body=payload,
+            max_retries=2,
         )
 
         if response and response.status_code == 200:
@@ -117,7 +127,11 @@ async def send_slack_payload(webhook_url: str, payload: dict) -> bool:
     """Send a raw Slack payload to a webhook URL."""
     async with create_client(timeout=10.0) as client:
         response = await request_with_retry(
-            client, "POST", webhook_url, json_body=payload, max_retries=2,
+            client,
+            "POST",
+            webhook_url,
+            json_body=payload,
+            max_retries=2,
         )
         if response and response.status_code == 200:
             return True
@@ -152,12 +166,13 @@ def build_summary_message(findings: list[dict]) -> dict:
     top = sorted(findings, key=lambda f: f.get("risk_score", 0), reverse=True)[:3]
     if top:
         top_text = "\n".join(
-            f"- `{f.get('package', '?')}` — {f.get('vulnerability_id', '?')} (risk {f.get('risk_score', 0):.1f})"
-            for f in top
+            f"- `{f.get('package', '?')}` — {f.get('vulnerability_id', '?')} (risk {f.get('risk_score', 0):.1f})" for f in top
         )
-        blocks.append({
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": f"*Top Risks:*\n{top_text}"},
-        })
+        blocks.append(
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f"*Top Risks:*\n{top_text}"},
+            }
+        )
 
     return {"blocks": blocks}

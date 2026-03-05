@@ -38,10 +38,7 @@ def discover(
     try:
         import wandb  # noqa: F401
     except ImportError:
-        raise CloudDiscoveryError(
-            "wandb is required for W&B discovery. "
-            "Install with: pip install 'agent-bom[wandb]'"
-        )
+        raise CloudDiscoveryError("wandb is required for W&B discovery. Install with: pip install 'agent-bom[wandb]'")
 
     agents: list[Agent] = []
     warnings: list[str] = []
@@ -50,17 +47,11 @@ def discover(
     resolved_entity = entity or os.environ.get("WANDB_ENTITY", "")
 
     if not resolved_key:
-        warnings.append(
-            "WANDB_API_KEY not set. Provide --wandb-api-key or "
-            "set the WANDB_API_KEY env var."
-        )
+        warnings.append("WANDB_API_KEY not set. Provide --wandb-api-key or set the WANDB_API_KEY env var.")
         return agents, warnings
 
     if not resolved_entity:
-        warnings.append(
-            "WANDB_ENTITY not set. Provide --wandb-entity or "
-            "set the WANDB_ENTITY env var."
-        )
+        warnings.append("WANDB_ENTITY not set. Provide --wandb-entity or set the WANDB_ENTITY env var.")
         return agents, warnings
 
     # ── Runs ──────────────────────────────────────────────────────────────

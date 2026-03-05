@@ -17,9 +17,7 @@ from agent_bom.remediate import (
 
 def test_credential_fix_github_pat():
     """GitHub PAT template mentions repo scope and links to github.com."""
-    fixes = generate_credential_fixes(
-        {"GITHUB_PERSONAL_ACCESS_TOKEN": ["agent/server"]}
-    )
+    fixes = generate_credential_fixes({"GITHUB_PERSONAL_ACCESS_TOKEN": ["agent/server"]})
     assert len(fixes) == 1
     fix = fixes[0]
     assert isinstance(fix, CredentialFix)
@@ -31,9 +29,7 @@ def test_credential_fix_github_pat():
 
 def test_credential_fix_postgres():
     """Postgres template recommends a read-only role."""
-    fixes = generate_credential_fixes(
-        {"POSTGRES_CONNECTION_STRING": ["db/server"]}
-    )
+    fixes = generate_credential_fixes({"POSTGRES_CONNECTION_STRING": ["db/server"]})
     assert len(fixes) == 1
     fix = fixes[0]
     assert fix.credential_name == "POSTGRES_CONNECTION_STRING"
@@ -42,9 +38,7 @@ def test_credential_fix_postgres():
 
 def test_credential_fix_slack():
     """Slack template links to slack.com."""
-    fixes = generate_credential_fixes(
-        {"SLACK_BOT_TOKEN": ["slack/server"]}
-    )
+    fixes = generate_credential_fixes({"SLACK_BOT_TOKEN": ["slack/server"]})
     assert len(fixes) == 1
     fix = fixes[0]
     assert fix.credential_name == "SLACK_BOT_TOKEN"
@@ -53,9 +47,7 @@ def test_credential_fix_slack():
 
 def test_credential_fix_generic_api_key():
     """An unknown *_API_KEY credential matches the pattern-based fallback."""
-    fixes = generate_credential_fixes(
-        {"MY_API_KEY": ["svc/server"]}
-    )
+    fixes = generate_credential_fixes({"MY_API_KEY": ["svc/server"]})
     assert len(fixes) == 1
     fix = fixes[0]
     assert isinstance(fix, CredentialFix)
@@ -169,5 +161,6 @@ def test_export_sh(tmp_path):
     assert "npm install axios@0.21.1" in content
     # Verify file is executable
     import stat
+
     mode = out.stat().st_mode
     assert mode & stat.S_IXUSR

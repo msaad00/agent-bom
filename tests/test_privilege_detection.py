@@ -121,6 +121,7 @@ class TestDetectImagePrivileges:
 
     def test_inspect_failure_returns_empty_profile(self):
         from agent_bom.image import ImageScanError
+
         with patch("agent_bom.image._docker_inspect", side_effect=ImageScanError("nope")):
             p = detect_image_privileges("bad:image")
         assert not p.runs_as_root

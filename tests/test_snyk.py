@@ -28,10 +28,7 @@ def _mock_snyk_issue(issue_id="SNYK-JS-EXPRESS-123", title="Test vuln", severity
             "effective_severity_level": severity,
             "cvss_score": cvss,
             "slots": {
-                "references": [
-                    {"type": "cve", "value": cve_id}
-                    for cve_id in (cve_ids or [])
-                ],
+                "references": [{"type": "cve", "value": cve_id} for cve_id in (cve_ids or [])],
             },
         },
     }
@@ -103,9 +100,11 @@ def test_enrich_adds_new_vuln(mock_client_factory, mock_request):
     mock_client.__aexit__ = AsyncMock(return_value=False)
     mock_client_factory.return_value = mock_client
 
-    mock_request.return_value = _make_response({
-        "data": [_mock_snyk_issue(cve_ids=["CVE-2025-9999"])],
-    })
+    mock_request.return_value = _make_response(
+        {
+            "data": [_mock_snyk_issue(cve_ids=["CVE-2025-9999"])],
+        }
+    )
 
     pkg = Package(name="express", version="4.17.1", ecosystem="npm")
     count = enrich_with_snyk_sync([pkg], token="test-key", org_id="org-123")
@@ -124,9 +123,11 @@ def test_enrich_dedup_with_osv(mock_client_factory, mock_request):
     mock_client.__aexit__ = AsyncMock(return_value=False)
     mock_client_factory.return_value = mock_client
 
-    mock_request.return_value = _make_response({
-        "data": [_mock_snyk_issue(cve_ids=["CVE-2025-0001"])],
-    })
+    mock_request.return_value = _make_response(
+        {
+            "data": [_mock_snyk_issue(cve_ids=["CVE-2025-0001"])],
+        }
+    )
 
     pkg = Package(name="express", version="4.17.1", ecosystem="npm")
     pkg.vulnerabilities = [

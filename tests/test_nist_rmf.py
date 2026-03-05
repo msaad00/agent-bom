@@ -220,13 +220,13 @@ def test_full_scenario_all_tags():
 
     # All expected tags
     assert "GOVERN-1.7" in tags  # always
-    assert "MAP-3.5" in tags     # always
+    assert "MAP-3.5" in tags  # always
     assert "GOVERN-6.1" in tags  # exec tools
     assert "GOVERN-6.2" in tags  # AI + creds + HIGH
-    assert "MAP-1.6" in tags     # >3 tools
-    assert "MAP-5.2" in tags     # data tools
-    assert "MEASURE-2.5" in tags # AI + HIGH
-    assert "MEASURE-2.9" in tags # fix available
+    assert "MAP-1.6" in tags  # >3 tools
+    assert "MAP-5.2" in tags  # data tools
+    assert "MEASURE-2.5" in tags  # AI + HIGH
+    assert "MEASURE-2.9" in tags  # fix available
     assert "MANAGE-1.3" in tags  # KEV
     assert "MANAGE-2.2" in tags  # credentials
     assert "MANAGE-2.4" in tags  # AI + creds + HIGH

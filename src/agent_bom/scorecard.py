@@ -27,9 +27,7 @@ SCORECARD_API_URL = "https://api.securityscorecards.dev/projects"
 _scorecard_cache: dict[str, Optional[dict]] = {}
 
 # Pattern to extract GitHub owner/repo from various URL formats
-_GITHUB_REPO_PATTERN = re.compile(
-    r"(?:https?://)?github\.com/([^/]+/[^/#?]+?)(?:\.git)?(?:[/#?]|$)"
-)
+_GITHUB_REPO_PATTERN = re.compile(r"(?:https?://)?github\.com/([^/]+/[^/#?]+?)(?:\.git)?(?:[/#?]|$)")
 
 
 def extract_github_repo(url: str) -> Optional[str]:
@@ -104,10 +102,7 @@ async def fetch_scorecard(repo: str) -> Optional[dict]:
                     "score": data.get("score", 0.0),
                     "date": data.get("date", ""),
                     "repo": data.get("repo", {}).get("name", repo),
-                    "checks": {
-                        check["name"]: check.get("score", -1)
-                        for check in data.get("checks", [])
-                    },
+                    "checks": {check["name"]: check.get("score", -1) for check in data.get("checks", [])},
                 }
                 _scorecard_cache[repo] = result
                 return result

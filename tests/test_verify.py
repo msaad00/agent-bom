@@ -20,7 +20,8 @@ def test_parse_package_spec_name_at_version():
 
 def test_parse_package_spec_scoped_npm():
     name, version, eco = _parse_package_spec(
-        "@modelcontextprotocol/server-filesystem@2025.1.14", "npm",
+        "@modelcontextprotocol/server-filesystem@2025.1.14",
+        "npm",
     )
     assert name == "@modelcontextprotocol/server-filesystem"
     assert version == "2025.1.14"
@@ -96,11 +97,13 @@ def test_verify_installed_record_with_mock():
     mock_file.locate.return_value.read_bytes.return_value = file_content
 
     mock_dist = MagicMock()
-    mock_dist.metadata = _make_mock_metadata({
-        "Version": "1.0.0",
-        "License-Expression": "MIT",
-        "Author": "Test",
-    })
+    mock_dist.metadata = _make_mock_metadata(
+        {
+            "Version": "1.0.0",
+            "License-Expression": "MIT",
+            "Author": "Test",
+        }
+    )
     mock_dist.files = [mock_file]
 
     with patch("agent_bom.integrity.distribution", return_value=mock_dist):
@@ -330,9 +333,14 @@ def test_verify_record_not_available_still_passes():
     integrity = {"sha256": "abc123def456789012345678", "verified": True}
     provenance = {"has_provenance": True, "attestation_count": 1}
     pypi_meta = {
-        "name": "agent-bom", "version": "0.31.6", "license": "Apache-2.0",
-        "source_repo": "", "author": "", "sha256_digests": [],
-        "requires_python": "", "project_urls": {},
+        "name": "agent-bom",
+        "version": "0.31.6",
+        "license": "Apache-2.0",
+        "source_repo": "",
+        "author": "",
+        "sha256_digests": [],
+        "requires_python": "",
+        "project_urls": {},
     }
 
     result = _run_verify_with_mocks(["verify", "--json"], record, integrity, provenance, pypi_meta)

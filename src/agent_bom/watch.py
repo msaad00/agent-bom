@@ -63,10 +63,7 @@ class ConsoleAlertSink:
             "info": "cyan",
         }
         style = severity_styles.get(alert.severity, "white")
-        con.print(
-            f"  [{style}][{alert.severity.upper()}][/{style}] "
-            f"{alert.summary}"
-        )
+        con.print(f"  [{style}][{alert.severity.upper()}][/{style}] {alert.summary}")
         if alert.details:
             for key, val in alert.details.items():
                 con.print(f"    [dim]{key}: {val}[/dim]")
@@ -104,16 +101,14 @@ class WebhookAlertSink:
                 if resp.status_code < 400:
                     return  # Success
                 if resp.status_code >= 500 and attempt < self.retries:
-                    time.sleep(0.5 * (2 ** attempt))
+                    time.sleep(0.5 * (2**attempt))
                     continue  # Retry on 5xx
-                logger.warning(
-                    "Webhook alert to %s returned HTTP %d", self.url, resp.status_code
-                )
+                logger.warning("Webhook alert to %s returned HTTP %d", self.url, resp.status_code)
                 return
             except Exception as exc:  # noqa: BLE001
                 last_err = exc
                 if attempt < self.retries:
-                    time.sleep(0.5 * (2 ** attempt))
+                    time.sleep(0.5 * (2**attempt))
                     continue
         logger.warning("Failed to send webhook alert to %s: %s", self.url, last_err)
 
@@ -198,6 +193,7 @@ class ConfigChangeHandler:
             # Diff
             if self._last_scan:
                 from agent_bom.history import diff_reports
+
                 diff = diff_reports(self._last_scan, current_scan)
                 self._process_diff(diff, config_path)
             else:
@@ -278,10 +274,7 @@ def start_watching(
         from watchdog.events import FileSystemEventHandler
         from watchdog.observers import Observer
     except ImportError:
-        raise ImportError(
-            "watchdog is required for `agent-bom watch`.\n"
-            "Install with: pip install 'agent-bom[watch]'"
-        ) from None
+        raise ImportError("watchdog is required for `agent-bom watch`.\nInstall with: pip install 'agent-bom[watch]'") from None
 
     handler = ConfigChangeHandler(alert_sinks, debounce_seconds)
 

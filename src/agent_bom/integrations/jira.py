@@ -89,13 +89,19 @@ async def create_jira_ticket(
 
     async with create_client(timeout=15.0) as client:
         import base64
+
         auth_str = base64.b64encode(f"{email}:{api_token}".encode()).decode()
         headers = {
             "Authorization": f"Basic {auth_str}",
             "Content-Type": "application/json",
         }
         response = await request_with_retry(
-            client, "POST", url, json_body=payload, headers=headers, max_retries=2,
+            client,
+            "POST",
+            url,
+            json_body=payload,
+            headers=headers,
+            max_retries=2,
         )
 
         if response and response.status_code in (200, 201):

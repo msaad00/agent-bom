@@ -11,6 +11,7 @@ from agent_bom.api.store import InMemoryJobStore
 def _clear_jobs():
     """Reset the job store to a fresh in-memory store."""
     from agent_bom.api.server import set_job_store
+
     set_job_store(InMemoryJobStore())
 
 
@@ -57,17 +58,19 @@ def test_compliance_no_scans():
 def test_compliance_with_findings():
     """Blast radius entries with OWASP tags produce correct per-control status."""
     _clear_jobs()
-    _add_done_job([
-        {
-            "vulnerability_id": "CVE-2025-0001",
-            "severity": "high",
-            "package": "express",
-            "affected_agents": ["claude-desktop"],
-            "owasp_tags": ["LLM05", "LLM06"],
-            "atlas_tags": ["AML.T0010"],
-            "nist_ai_rmf_tags": ["MAP-3.5"],
-        },
-    ])
+    _add_done_job(
+        [
+            {
+                "vulnerability_id": "CVE-2025-0001",
+                "severity": "high",
+                "package": "express",
+                "affected_agents": ["claude-desktop"],
+                "owasp_tags": ["LLM05", "LLM06"],
+                "atlas_tags": ["AML.T0010"],
+                "nist_ai_rmf_tags": ["MAP-3.5"],
+            },
+        ]
+    )
     client = TestClient(app)
     resp = client.get("/v1/compliance")
     data = resp.json()
@@ -93,17 +96,19 @@ def test_compliance_with_findings():
 def test_compliance_severity_breakdown():
     """CRITICAL findings show in severity_breakdown and produce fail status."""
     _clear_jobs()
-    _add_done_job([
-        {
-            "vulnerability_id": "CVE-2025-9999",
-            "severity": "critical",
-            "package": "langchain",
-            "affected_agents": ["cursor"],
-            "owasp_tags": ["LLM05", "LLM04"],
-            "atlas_tags": ["AML.T0010", "AML.T0020"],
-            "nist_ai_rmf_tags": ["GOVERN-1.7", "MAP-3.5"],
-        },
-    ])
+    _add_done_job(
+        [
+            {
+                "vulnerability_id": "CVE-2025-9999",
+                "severity": "critical",
+                "package": "langchain",
+                "affected_agents": ["cursor"],
+                "owasp_tags": ["LLM05", "LLM04"],
+                "atlas_tags": ["AML.T0010", "AML.T0020"],
+                "nist_ai_rmf_tags": ["GOVERN-1.7", "MAP-3.5"],
+            },
+        ]
+    )
     client = TestClient(app)
     data = client.get("/v1/compliance").json()
 
@@ -118,17 +123,19 @@ def test_compliance_severity_breakdown():
 def test_compliance_warning_status():
     """MEDIUM-only findings produce warning (not fail) status."""
     _clear_jobs()
-    _add_done_job([
-        {
-            "vulnerability_id": "CVE-2025-5555",
-            "severity": "medium",
-            "package": "axios",
-            "affected_agents": ["windsurf"],
-            "owasp_tags": ["LLM05"],
-            "atlas_tags": ["AML.T0010"],
-            "nist_ai_rmf_tags": ["MAP-3.5"],
-        },
-    ])
+    _add_done_job(
+        [
+            {
+                "vulnerability_id": "CVE-2025-5555",
+                "severity": "medium",
+                "package": "axios",
+                "affected_agents": ["windsurf"],
+                "owasp_tags": ["LLM05"],
+                "atlas_tags": ["AML.T0010"],
+                "nist_ai_rmf_tags": ["MAP-3.5"],
+            },
+        ]
+    )
     client = TestClient(app)
     data = client.get("/v1/compliance").json()
 
@@ -170,17 +177,19 @@ def test_compliance_nist_catalog_complete():
 def test_compliance_summary_counts():
     """Summary pass/warn/fail counts match control statuses."""
     _clear_jobs()
-    _add_done_job([
-        {
-            "vulnerability_id": "CVE-2025-1111",
-            "severity": "high",
-            "package": "express",
-            "affected_agents": ["claude-desktop"],
-            "owasp_tags": ["LLM05"],
-            "atlas_tags": ["AML.T0010"],
-            "nist_ai_rmf_tags": ["MAP-3.5", "GOVERN-1.7"],
-        },
-    ])
+    _add_done_job(
+        [
+            {
+                "vulnerability_id": "CVE-2025-1111",
+                "severity": "high",
+                "package": "express",
+                "affected_agents": ["claude-desktop"],
+                "owasp_tags": ["LLM05"],
+                "atlas_tags": ["AML.T0010"],
+                "nist_ai_rmf_tags": ["MAP-3.5", "GOVERN-1.7"],
+            },
+        ]
+    )
     client = TestClient(app)
     data = client.get("/v1/compliance").json()
 

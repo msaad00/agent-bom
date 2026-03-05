@@ -50,16 +50,12 @@ _IMPORT_TO_PACKAGE: dict[str, str] = {
 
 # Regex: import statement for AI libraries
 _AI_IMPORT_RE = re.compile(
-    r"^(?:import|from)\s+("
-    + "|".join(re.escape(k) for k in _IMPORT_TO_PACKAGE)
-    + r")(?:\s|\.|$)",
+    r"^(?:import|from)\s+(" + "|".join(re.escape(k) for k in _IMPORT_TO_PACKAGE) + r")(?:\s|\.|$)",
     re.MULTILINE,
 )
 
 # Regex: pip install in notebook cells (! or % prefix)
-_PIP_INSTALL_RE = re.compile(
-    r"[!%]pip\s+install\s+([^\n]+)", re.MULTILINE
-)
+_PIP_INSTALL_RE = re.compile(r"[!%]pip\s+install\s+([^\n]+)", re.MULTILINE)
 
 # Regex: credential env vars
 _CRED_ENV_RE = re.compile(
@@ -176,10 +172,7 @@ def scan_jupyter_notebooks(
             # Skip common false positives
             if key_value in ("your_api_key_here", "YOUR_API_KEY", "test", "example"):
                 continue
-            warnings.append(
-                f"Jupyter: possible hardcoded API key in {nb_path.name} "
-                f"(value starts with '{key_value[:8]}...')"
-            )
+            warnings.append(f"Jupyter: possible hardcoded API key in {nb_path.name} (value starts with '{key_value[:8]}...')")
 
         # Skip notebooks with no AI-related findings
         if not seen_packages and not credential_env_vars:

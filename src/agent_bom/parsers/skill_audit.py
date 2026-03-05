@@ -82,7 +82,11 @@ class SkillAuditResult:
 _SHELL_COMMANDS = {"sh", "bash", "cmd", "powershell", "zsh"}
 
 _DANGEROUS_ARG_KEYWORDS = {
-    "--allow-exec", "exec", "shell", "--dangerous", "--yolo",
+    "--allow-exec",
+    "exec",
+    "shell",
+    "--dangerous",
+    "--yolo",
 }
 
 _DANGEROUS_SERVER_NAME_KEYWORDS = {"exec", "shell", "terminal", "command"}
@@ -382,18 +386,17 @@ def _scan_behavioral_risks(raw_content: dict[str, str]) -> list[SkillFinding]:
                 if len(snippet) > 120:
                     snippet = snippet[:117] + "..."
 
-                findings.append(SkillFinding(
-                    severity=bp.severity,
-                    category=bp.category,
-                    title=bp.title,
-                    detail=(
-                        f"Detected in {filename}: \"{snippet}\". "
-                        f"{bp.description}"
-                    ),
-                    source_file=filename,
-                    recommendation=bp.description,
-                    context="behavioral",
-                ))
+                findings.append(
+                    SkillFinding(
+                        severity=bp.severity,
+                        category=bp.category,
+                        title=bp.title,
+                        detail=(f'Detected in {filename}: "{snippet}". {bp.description}'),
+                        source_file=filename,
+                        recommendation=bp.description,
+                        context="behavioral",
+                    )
+                )
 
     return findings
 
@@ -485,11 +488,7 @@ def audit_skill_result(result: SkillScanResult) -> SkillAuditResult:
     registry_names = list(registry.keys())
 
     # Batch-verify packages not in the MCP registry against PyPI/npm
-    unregistered = [
-        (pkg.name, pkg.ecosystem)
-        for pkg in result.packages
-        if pkg.name not in registry
-    ]
+    unregistered = [(pkg.name, pkg.ecosystem) for pkg in result.packages if pkg.name not in registry]
     verified: dict[str, bool] = {}
     if unregistered:
         try:
@@ -510,39 +509,43 @@ def audit_skill_result(result: SkillScanResult) -> SkillAuditResult:
     audit.credentials_checked = len(result.credential_env_vars)
 
     if len(result.credential_env_vars) >= 8:
-        audit.findings.append(SkillFinding(
-            severity="medium",
-            category="excessive_permissions",
-            title="Excessive credential exposure across skill files",
-            detail=(
-                f"{len(result.credential_env_vars)} credential env vars referenced "
-                f"across skill files: "
-                f"{', '.join(result.credential_env_vars[:10])}"
-                f"{'...' if len(result.credential_env_vars) > 10 else ''}"
-            ),
-            source_file=source_file,
-            recommendation="Reduce the number of credentials or scope them to individual servers.",
-            context="env_reference",
-        ))
+        audit.findings.append(
+            SkillFinding(
+                severity="medium",
+                category="excessive_permissions",
+                title="Excessive credential exposure across skill files",
+                detail=(
+                    f"{len(result.credential_env_vars)} credential env vars referenced "
+                    f"across skill files: "
+                    f"{', '.join(result.credential_env_vars[:10])}"
+                    f"{'...' if len(result.credential_env_vars) > 10 else ''}"
+                ),
+                source_file=source_file,
+                recommendation="Reduce the number of credentials or scope them to individual servers.",
+                context="env_reference",
+            )
+        )
 
     # Also check per-server credential density
     for srv in result.servers:
         env_count = len(srv.env)
         if env_count >= 5:
-            audit.findings.append(SkillFinding(
-                severity="medium",
-                category="excessive_permissions",
-                title=f"Server '{srv.name}' has {env_count} env vars configured",
-                detail=(
-                    f"MCP server config '{srv.name}' (from JSON block in {source_file}) "
-                    f"has {env_count} environment variables, "
-                    "which may indicate over-provisioned access."
-                ),
-                source_file=source_file,
-                server=srv.name,
-                recommendation="Review env vars and remove any that are not strictly required.",
-                context="config_block",
-            ))
+            audit.findings.append(
+                SkillFinding(
+                    severity="medium",
+                    category="excessive_permissions",
+                    title=f"Server '{srv.name}' has {env_count} env vars configured",
+                    detail=(
+                        f"MCP server config '{srv.name}' (from JSON block in {source_file}) "
+                        f"has {env_count} environment variables, "
+                        "which may indicate over-provisioned access."
+                    ),
+                    source_file=source_file,
+                    server=srv.name,
+                    recommendation="Review env vars and remove any that are not strictly required.",
+                    context="config_block",
+                )
+            )
 
     # ── Behavioral risk patterns ────────────────────────────────────────
     if result.raw_content:
@@ -555,9 +558,7 @@ def audit_skill_result(result: SkillScanResult) -> SkillAuditResult:
         audit.findings.extend(metadata_findings)
 
     # ── Final pass/fail ──────────────────────────────────────────────────
-    audit.passed = not any(
-        f.severity in ("critical", "high") for f in audit.findings
-    )
+    audit.passed = not any(f.severity in ("critical", "high") for f in audit.findings)
 
     return audit
 
@@ -596,41 +597,45 @@ def _check_package(
 
     if best_ratio >= 0.80:
         # Close but not exact — possible typosquat
-        audit.findings.append(SkillFinding(
-            severity="high",
-            category="typosquat",
-            title=f"Possible typosquat: '{name}'",
-            detail=(
-                f"Package '{name}' (extracted from a code block in {source_file}) "
-                f"is {best_ratio:.0%} similar to known registry entry '{best_match}'. "
-                "This could be a typosquat attack."
-            ),
-            source_file=source_file,
-            package=name,
-            recommendation=f"Verify the package name. Did you mean '{best_match}'?",
-            context="code_block",
-        ))
+        audit.findings.append(
+            SkillFinding(
+                severity="high",
+                category="typosquat",
+                title=f"Possible typosquat: '{name}'",
+                detail=(
+                    f"Package '{name}' (extracted from a code block in {source_file}) "
+                    f"is {best_ratio:.0%} similar to known registry entry '{best_match}'. "
+                    "This could be a typosquat attack."
+                ),
+                source_file=source_file,
+                package=name,
+                recommendation=f"Verify the package name. Did you mean '{best_match}'?",
+                context="code_block",
+            )
+        )
     else:
         # Dynamically verified as a real package on PyPI/npm — skip
         if verified and verified.get(name):
             return
 
         # Not in registry AND not found on PyPI/npm — flag as unknown
-        audit.findings.append(SkillFinding(
-            severity="low",
-            category="unknown_package",
-            title=f"Unknown package: '{name}'",
-            detail=(
-                f"Package '{name}' (extracted from a code block in {source_file}) "
-                "was not found in the MCP registry or on "
-                f"{'PyPI' if pkg.ecosystem == 'pypi' else 'npm'}. "
-                "It may be a typo or a private package."
-            ),
-            source_file=source_file,
-            package=name,
-            recommendation="Verify the package source and maintainer before trusting it.",
-            context="code_block",
-        ))
+        audit.findings.append(
+            SkillFinding(
+                severity="low",
+                category="unknown_package",
+                title=f"Unknown package: '{name}'",
+                detail=(
+                    f"Package '{name}' (extracted from a code block in {source_file}) "
+                    "was not found in the MCP registry or on "
+                    f"{'PyPI' if pkg.ecosystem == 'pypi' else 'npm'}. "
+                    "It may be a typo or a private package."
+                ),
+                source_file=source_file,
+                package=name,
+                recommendation="Verify the package source and maintainer before trusting it.",
+                context="code_block",
+            )
+        )
 
 
 # ── Per-server checks ───────────────────────────────────────────────────────
@@ -646,95 +651,100 @@ def _check_server(
     # ── Check 4: Shell/exec access via command ───────────────────────────
     cmd_base = srv.command.rsplit("/", 1)[-1].lower() if srv.command else ""
     if cmd_base in _SHELL_COMMANDS:
-        audit.findings.append(SkillFinding(
-            severity="high",
-            category="shell_access",
-            title=f"Shell access via server '{srv.name}'",
-            detail=(
-                f"MCP server config '{srv.name}' (from JSON block in {source_file}) "
-                f"uses shell command '{srv.command}', "
-                "which grants arbitrary code execution."
-            ),
-            source_file=source_file,
-            server=srv.name,
-            recommendation="Avoid using raw shell commands. Use a purpose-built MCP server instead.",
-            context="config_block",
-        ))
+        audit.findings.append(
+            SkillFinding(
+                severity="high",
+                category="shell_access",
+                title=f"Shell access via server '{srv.name}'",
+                detail=(
+                    f"MCP server config '{srv.name}' (from JSON block in {source_file}) "
+                    f"uses shell command '{srv.command}', "
+                    "which grants arbitrary code execution."
+                ),
+                source_file=source_file,
+                server=srv.name,
+                recommendation="Avoid using raw shell commands. Use a purpose-built MCP server instead.",
+                context="config_block",
+            )
+        )
 
     # ── Check 4b: Shell/exec access via args ─────────────────────────────
     args_lower = [a.lower() for a in srv.args]
-    matched_args = [
-        a for a in args_lower
-        if any(kw in a for kw in _DANGEROUS_ARG_KEYWORDS)
-    ]
+    matched_args = [a for a in args_lower if any(kw in a for kw in _DANGEROUS_ARG_KEYWORDS)]
     if matched_args:
-        audit.findings.append(SkillFinding(
-            severity="high",
-            category="shell_access",
-            title=f"Dangerous arguments on server '{srv.name}'",
-            detail=(
-                f"MCP server config '{srv.name}' (from JSON block in {source_file}) "
-                f"has arguments containing dangerous keywords: "
-                f"{', '.join(matched_args)}"
-            ),
-            source_file=source_file,
-            server=srv.name,
-            recommendation="Remove dangerous flags or use a sandboxed execution environment.",
-            context="config_block",
-        ))
+        audit.findings.append(
+            SkillFinding(
+                severity="high",
+                category="shell_access",
+                title=f"Dangerous arguments on server '{srv.name}'",
+                detail=(
+                    f"MCP server config '{srv.name}' (from JSON block in {source_file}) "
+                    f"has arguments containing dangerous keywords: "
+                    f"{', '.join(matched_args)}"
+                ),
+                source_file=source_file,
+                server=srv.name,
+                recommendation="Remove dangerous flags or use a sandboxed execution environment.",
+                context="config_block",
+            )
+        )
 
     # ── Check 5: Dangerous server name ───────────────────────────────────
     name_lower = srv.name.lower()
-    matched_name_keywords = [
-        kw for kw in _DANGEROUS_SERVER_NAME_KEYWORDS if kw in name_lower
-    ]
+    matched_name_keywords = [kw for kw in _DANGEROUS_SERVER_NAME_KEYWORDS if kw in name_lower]
     if matched_name_keywords:
-        audit.findings.append(SkillFinding(
-            severity="high",
-            category="shell_access",
-            title=f"Server name suggests dangerous capabilities: '{srv.name}'",
-            detail=(
-                f"MCP server '{srv.name}' (from JSON block in {source_file}) "
-                f"has a name containing keywords suggesting "
-                f"execution capabilities: {', '.join(matched_name_keywords)}"
-            ),
-            source_file=source_file,
-            server=srv.name,
-            recommendation="Review the server's actual capabilities and restrict if possible.",
-            context="config_block",
-        ))
+        audit.findings.append(
+            SkillFinding(
+                severity="high",
+                category="shell_access",
+                title=f"Server name suggests dangerous capabilities: '{srv.name}'",
+                detail=(
+                    f"MCP server '{srv.name}' (from JSON block in {source_file}) "
+                    f"has a name containing keywords suggesting "
+                    f"execution capabilities: {', '.join(matched_name_keywords)}"
+                ),
+                source_file=source_file,
+                server=srv.name,
+                recommendation="Review the server's actual capabilities and restrict if possible.",
+                context="config_block",
+            )
+        )
 
     # ── Check 2: Unverified MCP server ───────────────────────────────────
     matched_entry = _match_server_to_registry(srv, registry)
     if matched_entry is None:
-        audit.findings.append(SkillFinding(
-            severity="medium",
-            category="unverified_server",
-            title=f"MCP server not found in registry: '{srv.name}'",
-            detail=(
-                f"MCP server config '{srv.name}' (command: '{srv.command}') "
-                f"from {source_file} does not match any entry in the MCP registry."
-            ),
-            source_file=source_file,
-            server=srv.name,
-            recommendation="Verify the server source and add it to the registry if trustworthy.",
-            context="config_block",
-        ))
+        audit.findings.append(
+            SkillFinding(
+                severity="medium",
+                category="unverified_server",
+                title=f"MCP server not found in registry: '{srv.name}'",
+                detail=(
+                    f"MCP server config '{srv.name}' (command: '{srv.command}') "
+                    f"from {source_file} does not match any entry in the MCP registry."
+                ),
+                source_file=source_file,
+                server=srv.name,
+                recommendation="Verify the server source and add it to the registry if trustworthy.",
+                context="config_block",
+            )
+        )
     elif not matched_entry.get("verified", False):
-        audit.findings.append(SkillFinding(
-            severity="medium",
-            category="unverified_server",
-            title=f"Unverified MCP server: '{srv.name}'",
-            detail=(
-                f"MCP server config '{srv.name}' from {source_file} matches "
-                f"registry entry '{matched_entry.get('package', '?')}' but is "
-                "marked as unverified."
-            ),
-            source_file=source_file,
-            server=srv.name,
-            recommendation="Review the server source code before trusting it in production.",
-            context="config_block",
-        ))
+        audit.findings.append(
+            SkillFinding(
+                severity="medium",
+                category="unverified_server",
+                title=f"Unverified MCP server: '{srv.name}'",
+                detail=(
+                    f"MCP server config '{srv.name}' from {source_file} matches "
+                    f"registry entry '{matched_entry.get('package', '?')}' but is "
+                    "marked as unverified."
+                ),
+                source_file=source_file,
+                server=srv.name,
+                recommendation="Review the server source code before trusting it in production.",
+                context="config_block",
+            )
+        )
 
     # ── Check 7: External URL ────────────────────────────────────────────
     if srv.transport in (TransportType.SSE, TransportType.STREAMABLE_HTTP) and srv.url:
@@ -744,20 +754,22 @@ def _check_server(
             for local in ("localhost", "127.0.0.1", "[::1]", "0.0.0.0")  # nosec B104 — checking URLs, not binding
         )
         if not is_local:
-            audit.findings.append(SkillFinding(
-                severity="medium",
-                category="external_url",
-                title=f"External URL on server '{srv.name}'",
-                detail=(
-                    f"MCP server config '{srv.name}' (from JSON block in {source_file}) "
-                    f"connects to external URL '{srv.url}'. "
-                    "Data sent to this server may leave your network."
-                ),
-                source_file=source_file,
-                server=srv.name,
-                recommendation="Ensure the remote endpoint is trusted and traffic is encrypted.",
-                context="config_block",
-            ))
+            audit.findings.append(
+                SkillFinding(
+                    severity="medium",
+                    category="external_url",
+                    title=f"External URL on server '{srv.name}'",
+                    detail=(
+                        f"MCP server config '{srv.name}' (from JSON block in {source_file}) "
+                        f"connects to external URL '{srv.url}'. "
+                        "Data sent to this server may leave your network."
+                    ),
+                    source_file=source_file,
+                    server=srv.name,
+                    recommendation="Ensure the remote endpoint is trusted and traffic is encrypted.",
+                    context="config_block",
+                )
+            )
 
 
 # ── Metadata quality checks ──────────────────────────────────────────────────
@@ -790,34 +802,38 @@ def _check_metadata_quality(
 
     # ── Missing source / homepage ─────────────────────────────────────
     if not meta.homepage and not meta.source:
-        findings.append(SkillFinding(
-            severity="medium",
-            category="missing_source",
-            title="No homepage or source URL in skill metadata",
-            detail=(
-                f"Skill '{meta.name or 'unknown'}' in {source_file} has no homepage "
-                "or source URL in its frontmatter. Users cannot verify the publisher "
-                "or audit the source code."
-            ),
-            source_file=source_file,
-            recommendation="Add 'homepage' and 'source' fields to the YAML frontmatter.",
-            context="metadata",
-        ))
+        findings.append(
+            SkillFinding(
+                severity="medium",
+                category="missing_source",
+                title="No homepage or source URL in skill metadata",
+                detail=(
+                    f"Skill '{meta.name or 'unknown'}' in {source_file} has no homepage "
+                    "or source URL in its frontmatter. Users cannot verify the publisher "
+                    "or audit the source code."
+                ),
+                source_file=source_file,
+                recommendation="Add 'homepage' and 'source' fields to the YAML frontmatter.",
+                context="metadata",
+            )
+        )
 
     # ── Missing license ───────────────────────────────────────────────
     if not meta.license:
-        findings.append(SkillFinding(
-            severity="low",
-            category="missing_license",
-            title="No license declared in skill metadata",
-            detail=(
-                f"Skill '{meta.name or 'unknown'}' in {source_file} does not declare "
-                "a license. This makes it unclear under what terms the skill can be used."
-            ),
-            source_file=source_file,
-            recommendation="Add a 'license' field (e.g. 'Apache-2.0', 'MIT') to the frontmatter.",
-            context="metadata",
-        ))
+        findings.append(
+            SkillFinding(
+                severity="low",
+                category="missing_license",
+                title="No license declared in skill metadata",
+                detail=(
+                    f"Skill '{meta.name or 'unknown'}' in {source_file} does not declare "
+                    "a license. This makes it unclear under what terms the skill can be used."
+                ),
+                source_file=source_file,
+                recommendation="Add a 'license' field (e.g. 'Apache-2.0', 'MIT') to the frontmatter.",
+                context="metadata",
+            )
+        )
 
     # ── Undeclared runtime dependencies ───────────────────────────────
     all_text = " ".join(raw_content.values()).lower()
@@ -828,99 +844,106 @@ def _check_metadata_quality(
             continue
         for pat in patterns:
             if re.search(pat, all_text, re.IGNORECASE):
-                findings.append(SkillFinding(
-                    severity="medium",
-                    category="undeclared_dependency",
-                    title=f"Undeclared runtime dependency: '{dep_name}'",
-                    detail=(
-                        f"Skill '{meta.name or 'unknown'}' in {source_file} references "
-                        f"'{dep_name}' in its instructions but does not declare it "
-                        "in required_bins or optional_bins. Users may encounter failures "
-                        "if the binary is not installed."
-                    ),
-                    source_file=source_file,
-                    recommendation=(
-                        f"Add '{dep_name}' to 'optional_bins' (if optional) or "
-                        "'requires.bins' (if required) in the frontmatter metadata."
-                    ),
-                    context="metadata",
-                ))
+                findings.append(
+                    SkillFinding(
+                        severity="medium",
+                        category="undeclared_dependency",
+                        title=f"Undeclared runtime dependency: '{dep_name}'",
+                        detail=(
+                            f"Skill '{meta.name or 'unknown'}' in {source_file} references "
+                            f"'{dep_name}' in its instructions but does not declare it "
+                            "in required_bins or optional_bins. Users may encounter failures "
+                            "if the binary is not installed."
+                        ),
+                        source_file=source_file,
+                        recommendation=(
+                            f"Add '{dep_name}' to 'optional_bins' (if optional) or "
+                            "'requires.bins' (if required) in the frontmatter metadata."
+                        ),
+                        context="metadata",
+                    )
+                )
                 break  # One finding per dep, not per pattern match
 
     # ── Single install method ─────────────────────────────────────────
     if len(meta.install_methods) == 1:
-        findings.append(SkillFinding(
-            severity="low",
-            category="limited_install",
-            title="Only one install method declared",
-            detail=(
-                f"Skill '{meta.name or 'unknown'}' in {source_file} only provides "
-                f"'{meta.install_methods[0]}' as an install method. Offering "
-                "multiple install options (uv, pip, pipx) improves accessibility."
-            ),
-            source_file=source_file,
-            recommendation="Add alternative install methods (pip, pipx) to the frontmatter.",
-            context="metadata",
-        ))
+        findings.append(
+            SkillFinding(
+                severity="low",
+                category="limited_install",
+                title="Only one install method declared",
+                detail=(
+                    f"Skill '{meta.name or 'unknown'}' in {source_file} only provides "
+                    f"'{meta.install_methods[0]}' as an install method. Offering "
+                    "multiple install options (uv, pip, pipx) improves accessibility."
+                ),
+                source_file=source_file,
+                recommendation="Add alternative install methods (pip, pipx) to the frontmatter.",
+                context="metadata",
+            )
+        )
 
     # ── Read-only claims without source verification ──────────────────
-    read_only_claimed = any(
-        "read-only" in text.lower() or "read only" in text.lower()
-        for text in raw_content.values()
-    )
+    read_only_claimed = any("read-only" in text.lower() or "read only" in text.lower() for text in raw_content.values())
     if read_only_claimed and not meta.source and not meta.homepage:
-        findings.append(SkillFinding(
-            severity="medium",
-            category="unverifiable_claim",
-            title="Read-only claim without source verification",
-            detail=(
-                f"Skill '{meta.name or 'unknown'}' in {source_file} claims read-only "
-                "behavior but provides no source URL for users to verify this claim. "
-                "Without access to the source code, read-only guarantees are runtime "
-                "assertions that cannot be audited."
-            ),
-            source_file=source_file,
-            recommendation=(
-                "Add a 'source' URL to the frontmatter so users can audit "
-                "the code and verify read-only behavior."
-            ),
-            context="metadata",
-        ))
+        findings.append(
+            SkillFinding(
+                severity="medium",
+                category="unverifiable_claim",
+                title="Read-only claim without source verification",
+                detail=(
+                    f"Skill '{meta.name or 'unknown'}' in {source_file} claims read-only "
+                    "behavior but provides no source URL for users to verify this claim. "
+                    "Without access to the source code, read-only guarantees are runtime "
+                    "assertions that cannot be audited."
+                ),
+                source_file=source_file,
+                recommendation=("Add a 'source' URL to the frontmatter so users can audit the code and verify read-only behavior."),
+                context="metadata",
+            )
+        )
 
     # ── Network endpoints not documented ──────────────────────────────
     # Check if skill content references API calls but doesn't have a
     # "network" or "endpoints" or "API" documentation section
-    has_api_refs = bool(re.search(
-        r"https?://(?:api\.|registry\.|services\.)",
-        all_text,
-    ))
+    has_api_refs = bool(
+        re.search(
+            r"https?://(?:api\.|registry\.|services\.)",
+            all_text,
+        )
+    )
     # Look for documentation sections about network/endpoints, not just API URLs
-    has_network_docs = bool(re.search(
-        r"(?:^|\n)#+\s+.*(?:network|endpoint|transparenc|api.+call)",
-        all_text,
-        re.IGNORECASE,
-    )) or bool(re.search(
-        r"(?:network\s+endpoint|endpoint.+call|api.+(?:read-only|read only))",
-        all_text,
-        re.IGNORECASE,
-    ))
+    has_network_docs = bool(
+        re.search(
+            r"(?:^|\n)#+\s+.*(?:network|endpoint|transparenc|api.+call)",
+            all_text,
+            re.IGNORECASE,
+        )
+    ) or bool(
+        re.search(
+            r"(?:network\s+endpoint|endpoint.+call|api.+(?:read-only|read only))",
+            all_text,
+            re.IGNORECASE,
+        )
+    )
     if has_api_refs and not has_network_docs:
-        findings.append(SkillFinding(
-            severity="medium",
-            category="undocumented_network",
-            title="API endpoints referenced but not documented",
-            detail=(
-                f"Skill '{meta.name or 'unknown'}' in {source_file} references "
-                "external API URLs but does not document which network endpoints "
-                "are called or what data is transmitted."
-            ),
-            source_file=source_file,
-            recommendation=(
-                "Add a 'Transparency' or 'Network endpoints' section documenting "
-                "all external APIs called and what data is sent."
-            ),
-            context="metadata",
-        ))
+        findings.append(
+            SkillFinding(
+                severity="medium",
+                category="undocumented_network",
+                title="API endpoints referenced but not documented",
+                detail=(
+                    f"Skill '{meta.name or 'unknown'}' in {source_file} references "
+                    "external API URLs but does not document which network endpoints "
+                    "are called or what data is transmitted."
+                ),
+                source_file=source_file,
+                recommendation=(
+                    "Add a 'Transparency' or 'Network endpoints' section documenting all external APIs called and what data is sent."
+                ),
+                context="metadata",
+            )
+        )
 
     return findings
 

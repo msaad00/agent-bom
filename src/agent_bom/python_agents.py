@@ -43,35 +43,33 @@ from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, Tran
 # Maps canonical PyPI package name → (display_name, framework_key, import_roots)
 
 _FRAMEWORKS: dict[str, tuple[str, str, list[str]]] = {
-    "openai-agents":       ("OpenAI Agents SDK",   "openai-agents",  ["agents"]),
-    "google-adk":          ("Google ADK",           "google-adk",     ["google.adk", "google.adk.agents"]),
-    "langchain":           ("LangChain",            "langchain",      ["langchain", "langchain_core", "langchain_community"]),
-    "langgraph":           ("LangGraph",            "langchain",      ["langgraph"]),
-    "langchain-openai":    ("LangChain-OpenAI",     "langchain",      ["langchain_openai"]),
-    "langchain-anthropic": ("LangChain-Anthropic",  "langchain",      ["langchain_anthropic"]),
-    "pyautogen":           ("AutoGen",              "autogen",        ["autogen"]),
-    "autogen-agentchat":   ("AutoGen AgentChat",    "autogen",        ["autogen_agentchat", "autogen"]),
-    "crewai":              ("CrewAI",               "crewai",         ["crewai"]),
-    "llama-index-core":    ("LlamaIndex",           "llamaindex",     ["llama_index", "llama_index.core"]),
-    "llama_index":         ("LlamaIndex (legacy)",  "llamaindex",     ["llama_index"]),
-    "pydantic-ai":         ("Pydantic AI",          "pydantic-ai",    ["pydantic_ai"]),
-    "smolagents":          ("smolagents",           "smolagents",     ["smolagents"]),
-    "semantic-kernel":     ("Semantic Kernel",      "semantic-kernel",["semantic_kernel"]),
-    "haystack-ai":         ("Haystack",             "haystack",       ["haystack"]),
-    "farm-haystack":       ("Haystack (legacy)",    "haystack",       ["haystack"]),
+    "openai-agents": ("OpenAI Agents SDK", "openai-agents", ["agents"]),
+    "google-adk": ("Google ADK", "google-adk", ["google.adk", "google.adk.agents"]),
+    "langchain": ("LangChain", "langchain", ["langchain", "langchain_core", "langchain_community"]),
+    "langgraph": ("LangGraph", "langchain", ["langgraph"]),
+    "langchain-openai": ("LangChain-OpenAI", "langchain", ["langchain_openai"]),
+    "langchain-anthropic": ("LangChain-Anthropic", "langchain", ["langchain_anthropic"]),
+    "pyautogen": ("AutoGen", "autogen", ["autogen"]),
+    "autogen-agentchat": ("AutoGen AgentChat", "autogen", ["autogen_agentchat", "autogen"]),
+    "crewai": ("CrewAI", "crewai", ["crewai"]),
+    "llama-index-core": ("LlamaIndex", "llamaindex", ["llama_index", "llama_index.core"]),
+    "llama_index": ("LlamaIndex (legacy)", "llamaindex", ["llama_index"]),
+    "pydantic-ai": ("Pydantic AI", "pydantic-ai", ["pydantic_ai"]),
+    "smolagents": ("smolagents", "smolagents", ["smolagents"]),
+    "semantic-kernel": ("Semantic Kernel", "semantic-kernel", ["semantic_kernel"]),
+    "haystack-ai": ("Haystack", "haystack", ["haystack"]),
+    "farm-haystack": ("Haystack (legacy)", "haystack", ["haystack"]),
 }
 
 # Flat set of all import roots for fast lookup
-_ALL_IMPORT_ROOTS: frozenset[str] = frozenset(
-    root for _, _, roots in _FRAMEWORKS.values() for root in roots
-)
+_ALL_IMPORT_ROOTS: frozenset[str] = frozenset(root for _, _, roots in _FRAMEWORKS.values() for root in roots)
 
 # ─── Credential env var patterns ──────────────────────────────────────────────
 
 _CRED_ENV_RE = re.compile(
-    r'(?:OPENAI|ANTHROPIC|GOOGLE|GEMINI|AZURE|GROQ|COHERE|MISTRAL|'
-    r'HUGGINGFACE|HF_TOKEN|LANGCHAIN|LLAMA|TOGETHER|REPLICATE|'
-    r'AI21|VERTEX|BEDROCK|AWS_SECRET|API_KEY|API_TOKEN|SECRET_KEY)',
+    r"(?:OPENAI|ANTHROPIC|GOOGLE|GEMINI|AZURE|GROQ|COHERE|MISTRAL|"
+    r"HUGGINGFACE|HF_TOKEN|LANGCHAIN|LLAMA|TOGETHER|REPLICATE|"
+    r"AI21|VERTEX|BEDROCK|AWS_SECRET|API_KEY|API_TOKEN|SECRET_KEY)",
     re.IGNORECASE,
 )
 
@@ -84,12 +82,12 @@ _AGENT_NAME_RE = re.compile(
 
 # Tool decorators: @tool, @function_tool, @agent.tool
 _TOOL_DECORATOR_RE = re.compile(
-    r'@(?:\w+\.)?(?:function_tool|tool|skill|action)\s*\n\s*(?:async\s+)?def\s+(\w+)',
+    r"@(?:\w+\.)?(?:function_tool|tool|skill|action)\s*\n\s*(?:async\s+)?def\s+(\w+)",
 )
 
 # tools=[foo, bar, baz] argument
 _TOOLS_ARG_RE = re.compile(
-    r'tools\s*=\s*\[([^\]]*)\]',
+    r"tools\s*=\s*\[([^\]]*)\]",
 )
 
 # model= argument
@@ -100,22 +98,24 @@ _MODEL_ARG_RE = re.compile(
 # os.environ / os.getenv / env variable references
 _ENV_REF_RE = re.compile(
     r'(?:os\.environ(?:\.get)?\s*[\[(]["\']|os\.getenv\s*\(\s*["\']|getenv\s*\(\s*["\'])'
-    r'([A-Z][A-Z0-9_]+)',
+    r"([A-Z][A-Z0-9_]+)",
 )
 
 
 # ─── Data classes ─────────────────────────────────────────────────────────────
+
 
 class _PythonAgentDef(NamedTuple):
     name: str
     framework: str
     tools: list[str]
     model: str
-    env_refs: list[str]   # credential env var names referenced (never values)
+    env_refs: list[str]  # credential env var names referenced (never values)
     file: str
 
 
 # ─── Requirement file parsers ─────────────────────────────────────────────────
+
 
 def _parse_requirements_txt(path: Path) -> dict[str, str]:
     """Parse requirements.txt / constraints.txt → {package: version}."""
@@ -125,12 +125,12 @@ def _parse_requirements_txt(path: Path) -> dict[str, str]:
         if not line or line.startswith(("#", "-")):
             continue
         # name==1.2.3, name>=1.2, name~=1.2, name[extra]==1.2
-        m = re.match(r'^([A-Za-z0-9_\-]+)(?:\[[^\]]*\])?\s*[=~!<>]+\s*([^\s;#,]+)', line)
+        m = re.match(r"^([A-Za-z0-9_\-]+)(?:\[[^\]]*\])?\s*[=~!<>]+\s*([^\s;#,]+)", line)
         if m:
             pkgs[m.group(1).lower().replace("_", "-")] = m.group(2)
         else:
             # bare name with no version
-            bare = re.match(r'^([A-Za-z0-9_\-]+)', line)
+            bare = re.match(r"^([A-Za-z0-9_\-]+)", line)
             if bare:
                 pkgs[bare.group(1).lower().replace("_", "-")] = "unknown"
     return pkgs
@@ -144,7 +144,7 @@ def _parse_pyproject_toml(path: Path) -> dict[str, str]:
     in_deps = False
     for line in text.splitlines():
         stripped = line.strip()
-        if re.match(r'^\[(?:project\.dependencies|tool\.poetry\.dependencies)\]', stripped):
+        if re.match(r"^\[(?:project\.dependencies|tool\.poetry\.dependencies)\]", stripped):
             in_deps = True
             continue
         if stripped.startswith("[") and in_deps:
@@ -178,6 +178,7 @@ def _collect_requirements(project: Path) -> dict[str, str]:
 
 # ─── Python file analysis ─────────────────────────────────────────────────────
 
+
 def _detect_frameworks_in_imports(tree: ast.Module) -> set[str]:
     """Return set of framework_keys found via import statements."""
     found: set[str] = set()
@@ -202,7 +203,7 @@ def _extract_agent_defs(content: str, filename: str) -> list[_PythonAgentDef]:
     # Detect framework from imports
     framework = "unknown"
     for root in _ALL_IMPORT_ROOTS:
-        if re.search(rf'\bimport\s+{re.escape(root)}\b|from\s+{re.escape(root)}\b', content):
+        if re.search(rf"\bimport\s+{re.escape(root)}\b|from\s+{re.escape(root)}\b", content):
             for pkg, (_, fkey, roots) in _FRAMEWORKS.items():
                 if root in roots:
                     framework = fkey
@@ -222,12 +223,12 @@ def _extract_agent_defs(content: str, filename: str) -> list[_PythonAgentDef]:
         agent_name = agent_m.group(1)
 
         # Look for tools=[...] near this agent definition (within 500 chars)
-        nearby = content[agent_m.start(): agent_m.start() + 500]
+        nearby = content[agent_m.start() : agent_m.start() + 500]
         tools_in_call: list[str] = []
         tools_m = _TOOLS_ARG_RE.search(nearby)
         if tools_m:
             raw = tools_m.group(1)
-            tools_in_call = [t.strip().strip('"\'') for t in raw.split(",") if t.strip()]
+            tools_in_call = [t.strip().strip("\"'") for t in raw.split(",") if t.strip()]
 
         model_m = _MODEL_ARG_RE.search(nearby)
         model = model_m.group(1) if model_m else ""
@@ -235,14 +236,16 @@ def _extract_agent_defs(content: str, filename: str) -> list[_PythonAgentDef]:
         # Merge tools from decorators + call-site
         all_tools = list(dict.fromkeys(tool_names + tools_in_call))
 
-        defs.append(_PythonAgentDef(
-            name=agent_name,
-            framework=framework,
-            tools=all_tools,
-            model=model,
-            env_refs=env_refs,
-            file=filename,
-        ))
+        defs.append(
+            _PythonAgentDef(
+                name=agent_name,
+                framework=framework,
+                tools=all_tools,
+                model=model,
+                env_refs=env_refs,
+                file=filename,
+            )
+        )
 
     return defs
 
@@ -255,15 +258,28 @@ def _scan_python_files(project: Path) -> list[_PythonAgentDef]:
     py_files = sorted(project.rglob("*.py"))
     # Exclude common non-project dirs
     py_files = [
-        f for f in py_files
-        if not any(part in f.parts for part in (
-            ".venv", "venv", "env", ".env", "node_modules",
-            "__pycache__", ".git", "dist", "build", "site-packages",
-            "tests", "test",
-        ))
+        f
+        for f in py_files
+        if not any(
+            part in f.parts
+            for part in (
+                ".venv",
+                "venv",
+                "env",
+                ".env",
+                "node_modules",
+                "__pycache__",
+                ".git",
+                "dist",
+                "build",
+                "site-packages",
+                "tests",
+                "test",
+            )
+        )
     ]
 
-    for py_file in py_files[:200]:    # cap at 200 files for performance
+    for py_file in py_files[:200]:  # cap at 200 files for performance
         try:
             content = py_file.read_text(encoding="utf-8", errors="replace")
         except OSError:
@@ -343,14 +359,16 @@ def scan_python_agents(project_path: str) -> tuple[list[Agent], list[str]]:
     # create one synthetic entry per framework so CVE scanning still runs
     if not agent_defs and active_frameworks:
         for fkey, display in active_frameworks.items():
-            agent_defs.append(_PythonAgentDef(
-                name=f"{display} project",
-                framework=fkey,
-                tools=[],
-                model="",
-                env_refs=[],
-                file=project.name,
-            ))
+            agent_defs.append(
+                _PythonAgentDef(
+                    name=f"{display} project",
+                    framework=fkey,
+                    tools=[],
+                    model="",
+                    env_refs=[],
+                    file=project.name,
+                )
+            )
 
     if not agent_defs:
         return [], []
@@ -359,10 +377,7 @@ def scan_python_agents(project_path: str) -> tuple[list[Agent], list[str]]:
     warnings: list[str] = []
     for d in agent_defs:
         if d.env_refs:
-            warnings.append(
-                f"Credential env vars referenced in {d.file} ({d.name}): "
-                + ", ".join(d.env_refs)
-            )
+            warnings.append(f"Credential env vars referenced in {d.file} ({d.name}): " + ", ".join(d.env_refs))
 
     # 5. Build Agent objects
     agents: list[Agent] = []
@@ -372,14 +387,14 @@ def scan_python_agents(project_path: str) -> tuple[list[Agent], list[str]]:
         # Include ALL non-AI packages too (for full CVE coverage)
         if not pkgs:
             # Framework not in requirements but used in code — add as unknown version
-            display = dict(
-                (fkey, dn) for _, (dn, fkey, _) in _FRAMEWORKS.items()
-            ).get(d.framework, d.framework)
-            pkgs = [Package(
-                name=d.framework,
-                version="unknown",
-                ecosystem="pypi",
-            )]
+            display = dict((fkey, dn) for _, (dn, fkey, _) in _FRAMEWORKS.items()).get(d.framework, d.framework)
+            pkgs = [
+                Package(
+                    name=d.framework,
+                    version="unknown",
+                    ecosystem="pypi",
+                )
+            ]
             warnings.append(
                 f"Framework '{d.framework}' used in {d.file} but not found in "
                 f"requirements files — version unknown, CVE scan may be incomplete"

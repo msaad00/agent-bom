@@ -57,8 +57,7 @@ def discover_images(
     """
     if not _kubectl_available():
         raise K8sDiscoveryError(
-            "'kubectl' not found on PATH. Install kubectl and ensure it is configured "
-            "with access to the target cluster."
+            "'kubectl' not found on PATH. Install kubectl and ensure it is configured with access to the target cluster."
         )
 
     cmd = ["kubectl", "get", "pods", "-o", "json"]

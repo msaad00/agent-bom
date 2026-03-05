@@ -9,7 +9,6 @@ Based on the real OpenClaw project: https://github.com/openclaw/openclaw
 - 12 real CVEs from GitHub Security Advisories
 """
 
-
 from agent_bom.discovery import CONFIG_LOCATIONS, PROJECT_CONFIG_FILES, parse_mcp_config
 from agent_bom.models import AgentType, TransportType
 
@@ -95,11 +94,7 @@ def test_parse_openclaw_empty_config():
 
 def test_parse_openclaw_agent_config_only():
     """OpenClaw config with only agent settings (no mcpServers) returns no MCP servers."""
-    config = {
-        "agent": {
-            "model": "anthropic/claude-opus-4-6"
-        }
-    }
+    config = {"agent": {"model": "anthropic/claude-opus-4-6"}}
     servers = parse_mcp_config(config, "~/.openclaw/openclaw.json")
     assert len(servers) == 0
 

@@ -54,10 +54,7 @@ def discover(
         import boto3  # noqa: F811
         from botocore.exceptions import ClientError, NoCredentialsError
     except ImportError:
-        raise CloudDiscoveryError(
-            "boto3 is required for AWS discovery. "
-            "Install with: pip install 'agent-bom[aws]'"
-        )
+        raise CloudDiscoveryError("boto3 is required for AWS discovery. Install with: pip install 'agent-bom[aws]'")
 
     agents: list[Agent] = []
     warnings: list[str] = []
@@ -78,18 +75,12 @@ def discover(
         agents.extend(bedrock_agents)
         warnings.extend(bedrock_warnings)
     except NoCredentialsError:
-        warnings.append(
-            "AWS credentials not found. Configure via env vars, "
-            "~/.aws/credentials, IAM role, or SSO."
-        )
+        warnings.append("AWS credentials not found. Configure via env vars, ~/.aws/credentials, IAM role, or SSO.")
         return agents, warnings
     except ClientError as exc:
         code = exc.response["Error"]["Code"]
         if code in ("AccessDeniedException", "UnauthorizedAccess"):
-            warnings.append(
-                "Access denied for bedrock-agent:ListAgents. "
-                "Attach the BedrockAgentReadOnly or AmazonBedrockReadOnly policy."
-            )
+            warnings.append("Access denied for bedrock-agent:ListAgents. Attach the BedrockAgentReadOnly or AmazonBedrockReadOnly policy.")
         else:
             warnings.append(f"AWS Bedrock API error: {exc}")
 
@@ -178,12 +169,14 @@ def discover(
             agent_type=AgentType.CUSTOM,
             config_path=f"ecs://{img_ref}",
             source="aws-ecs",
-            mcp_servers=[MCPServer(
-                name=img_ref,
-                command="docker",
-                args=["run", img_ref],
-                transport=TransportType.STDIO,
-            )],
+            mcp_servers=[
+                MCPServer(
+                    name=img_ref,
+                    command="docker",
+                    args=["run", img_ref],
+                    transport=TransportType.STDIO,
+                )
+            ],
         )
         agents.append(ecs_agent)
 
@@ -193,6 +186,7 @@ def discover(
 # ---------------------------------------------------------------------------
 # Bedrock discovery
 # ---------------------------------------------------------------------------
+
 
 def _discover_bedrock(session: Any, region: str) -> tuple[list[Agent], list[str]]:
     """Discover Bedrock agents and their action groups."""
@@ -301,10 +295,12 @@ def _extract_tools_from_schema(action_group_detail: dict) -> list[MCPTool]:
         # Function schema — simpler format
         func_schema = action_group_detail.get("functionSchema", {})
         for func in func_schema.get("functions", []):
-            tools.append(MCPTool(
-                name=func.get("name", "unknown"),
-                description=func.get("description", ""),
-            ))
+            tools.append(
+                MCPTool(
+                    name=func.get("name", "unknown"),
+                    description=func.get("description", ""),
+                )
+            )
         return tools
 
     # Parse OpenAPI spec
@@ -315,10 +311,12 @@ def _extract_tools_from_schema(action_group_detail: dict) -> list[MCPTool]:
             for method, op in methods.items():
                 if method.lower() in ("get", "post", "put", "delete", "patch"):
                     op_id = op.get("operationId", f"{method.upper()} {path}")
-                    tools.append(MCPTool(
-                        name=op_id,
-                        description=op.get("summary", op.get("description", "")),
-                    ))
+                    tools.append(
+                        MCPTool(
+                            name=op_id,
+                            description=op.get("summary", op.get("description", "")),
+                        )
+                    )
     except (json.JSONDecodeError, TypeError):
         pass
 
@@ -328,6 +326,7 @@ def _extract_tools_from_schema(action_group_detail: dict) -> list[MCPTool]:
 # ---------------------------------------------------------------------------
 # Lambda package extraction
 # ---------------------------------------------------------------------------
+
 
 def _extract_lambda_packages(
     session: Any,
@@ -378,6 +377,7 @@ def _packages_from_layer(
 
     # Download the layer zip
     import urllib.request
+
     with urllib.request.urlopen(download_url) as resp:  # noqa: S310 — presigned AWS URL  # nosec B310
         layer_bytes = resp.read()
 
@@ -406,11 +406,13 @@ def _parse_python_packages_from_zip(zf: zipfile.ZipFile) -> list[Package]:
                 pkg_version = msg.get("Version", "")
                 if pkg_name and pkg_version and pkg_name.lower() not in seen:
                     seen.add(pkg_name.lower())
-                    packages.append(Package(
-                        name=pkg_name,
-                        version=pkg_version,
-                        ecosystem="pypi",
-                    ))
+                    packages.append(
+                        Package(
+                            name=pkg_name,
+                            version=pkg_version,
+                            ecosystem="pypi",
+                        )
+                    )
             except Exception:
                 continue
 
@@ -431,11 +433,13 @@ def _parse_node_packages_from_zip(zf: zipfile.ZipFile) -> list[Package]:
                 pkg_version = data.get("version", "")
                 if pkg_name and pkg_version and pkg_name not in seen:
                     seen.add(pkg_name)
-                    packages.append(Package(
-                        name=pkg_name,
-                        version=pkg_version,
-                        ecosystem="npm",
-                    ))
+                    packages.append(
+                        Package(
+                            name=pkg_name,
+                            version=pkg_version,
+                            ecosystem="npm",
+                        )
+                    )
             except Exception:
                 continue
 
@@ -445,6 +449,7 @@ def _parse_node_packages_from_zip(zf: zipfile.ZipFile) -> list[Package]:
 # ---------------------------------------------------------------------------
 # ECS discovery
 # ---------------------------------------------------------------------------
+
 
 def _discover_ecs_images(session: Any, region: str) -> tuple[list[str], list[str]]:
     """Discover container image refs from running ECS tasks."""
@@ -483,6 +488,7 @@ def _discover_ecs_images(session: Any, region: str) -> tuple[list[str], list[str
 # ---------------------------------------------------------------------------
 # SageMaker discovery
 # ---------------------------------------------------------------------------
+
 
 def _discover_sagemaker(session: Any, region: str) -> tuple[list[Agent], list[str]]:
     """Discover SageMaker endpoints and their container images."""
@@ -541,8 +547,14 @@ def _discover_sagemaker(session: Any, region: str) -> tuple[list[Agent], list[st
 # ---------------------------------------------------------------------------
 
 _AI_RUNTIMES = {
-    "python3.9", "python3.10", "python3.11", "python3.12", "python3.13",
-    "nodejs18.x", "nodejs20.x", "nodejs22.x",
+    "python3.9",
+    "python3.10",
+    "python3.11",
+    "python3.12",
+    "python3.13",
+    "nodejs18.x",
+    "nodejs20.x",
+    "nodejs22.x",
 }
 
 
@@ -597,6 +609,7 @@ def _discover_lambda_functions(
 # ---------------------------------------------------------------------------
 # EKS discovery
 # ---------------------------------------------------------------------------
+
 
 def _discover_eks_images(
     session: Any,
@@ -653,6 +666,7 @@ def _discover_eks_images(
 # Step Functions discovery
 # ---------------------------------------------------------------------------
 
+
 def _discover_step_functions(
     session: Any,
     region: str,
@@ -692,26 +706,32 @@ def _discover_step_functions(
                 if ":lambda:" in arn:
                     packages = _extract_lambda_packages(session, arn, region, parent_warnings)
                     func_name = arn.split(":")[-1] if ":" in arn else arn
-                    servers.append(MCPServer(
-                        name=f"sfn-lambda:{func_name}",
-                        command="lambda",
-                        args=[arn],
-                        transport=TransportType.STREAMABLE_HTTP,
-                        packages=packages,
-                    ))
+                    servers.append(
+                        MCPServer(
+                            name=f"sfn-lambda:{func_name}",
+                            command="lambda",
+                            args=[arn],
+                            transport=TransportType.STREAMABLE_HTTP,
+                            packages=packages,
+                        )
+                    )
                 else:
                     service = arn.split(":")[2] if len(arn.split(":")) > 2 else "aws"
-                    tools.append(MCPTool(
-                        name=f"{service}:{arn.split(':')[-1]}",
-                        description=f"Step Functions task resource: {arn}",
-                    ))
+                    tools.append(
+                        MCPTool(
+                            name=f"{service}:{arn.split(':')[-1]}",
+                            description=f"Step Functions task resource: {arn}",
+                        )
+                    )
 
             if not servers:
-                servers = [MCPServer(
-                    name=f"sfn-orchestration:{sm_name}",
-                    transport=TransportType.UNKNOWN,
-                    tools=tools,
-                )]
+                servers = [
+                    MCPServer(
+                        name=f"sfn-orchestration:{sm_name}",
+                        transport=TransportType.UNKNOWN,
+                        tools=tools,
+                    )
+                ]
 
             agent = Agent(
                 name=f"step-functions:{sm_name}",
@@ -758,6 +778,7 @@ def _extract_sfn_task_resources(definition: dict) -> list[str]:
 # EC2 discovery
 # ---------------------------------------------------------------------------
 
+
 def _discover_ec2_instances(
     session: Any,
     region: str,
@@ -774,8 +795,7 @@ def _discover_ec2_instances(
 
     if not tag_filter:
         warnings.append(
-            "EC2 discovery requires --aws-ec2-tag KEY=VALUE to filter instances. "
-            "Scanning all instances is not supported for safety."
+            "EC2 discovery requires --aws-ec2-tag KEY=VALUE to filter instances. Scanning all instances is not supported for safety."
         )
         return agents, warnings
 

@@ -83,7 +83,9 @@ def test_slack_blocks_compliance_tags():
 
 def test_slack_blocks_no_creds():
     finding = _make_finding(
-        affected_agents=[], affected_servers=[], exposed_credentials=[],
+        affected_agents=[],
+        affected_servers=[],
+        exposed_credentials=[],
     )
     blocks = _build_slack_blocks(finding)
     # Should still have header + fields but no context with agents/creds

@@ -147,13 +147,15 @@ def test_lookup_no_token(mock_search):
 def test_lookup_found(mock_search):
     """Lookup resolves a server from Smithery."""
     mock_search.return_value = SmitherySearchResult(
-        servers=[SmitheryServer(
-            qualified_name="exa/exa-search",
-            display_name="Exa Search",
-            verified=True,
-            use_count=5000,
-            remote=True,
-        )],
+        servers=[
+            SmitheryServer(
+                qualified_name="exa/exa-search",
+                display_name="Exa Search",
+                verified=True,
+                use_count=5000,
+                remote=True,
+            )
+        ],
         total_count=1,
     )
 
@@ -170,12 +172,14 @@ def test_lookup_found(mock_search):
 def test_lookup_unverified_risk(mock_search):
     """Unverified server gets high risk level."""
     mock_search.return_value = SmitherySearchResult(
-        servers=[SmitheryServer(
-            qualified_name="unknown/risky-server",
-            display_name="Risky Server",
-            verified=False,
-            use_count=10,
-        )],
+        servers=[
+            SmitheryServer(
+                qualified_name="unknown/risky-server",
+                display_name="Risky Server",
+                verified=False,
+                use_count=10,
+            )
+        ],
         total_count=1,
     )
 
@@ -190,12 +194,14 @@ def test_lookup_unverified_risk(mock_search):
 def test_lookup_popular_verified_low_risk(mock_search):
     """Popular verified server gets low risk level."""
     mock_search.return_value = SmitherySearchResult(
-        servers=[SmitheryServer(
-            qualified_name="official/safe-server",
-            display_name="Safe Server",
-            verified=True,
-            use_count=5000,
-        )],
+        servers=[
+            SmitheryServer(
+                qualified_name="official/safe-server",
+                display_name="Safe Server",
+                verified=True,
+                use_count=5000,
+            )
+        ],
         total_count=1,
     )
 
@@ -235,9 +241,7 @@ def test_sync_dry_run(mock_client_factory, mock_request, tmp_path):
         _mock_server_entry("new/server-1", "New Server 1"),
         _mock_server_entry("new/server-2", "New Server 2"),
     ]
-    mock_request.return_value = _make_response(
-        _mock_search_response(servers, total_count=2, total_pages=1)
-    )
+    mock_request.return_value = _make_response(_mock_search_response(servers, total_count=2, total_pages=1))
 
     # Use a temp registry file
     reg_file = tmp_path / "mcp_registry.json"
@@ -269,16 +273,18 @@ def test_sync_skips_existing(mock_client_factory, mock_request, tmp_path):
         _mock_server_entry("existing/server", "Existing Server"),
         _mock_server_entry("new/server", "New Server"),
     ]
-    mock_request.return_value = _make_response(
-        _mock_search_response(servers, total_count=2, total_pages=1)
-    )
+    mock_request.return_value = _make_response(_mock_search_response(servers, total_count=2, total_pages=1))
 
     reg_file = tmp_path / "mcp_registry.json"
-    reg_file.write_text(json.dumps({
-        "servers": {
-            "existing/server": {"package": "existing/server", "ecosystem": "npm"},
-        },
-    }))
+    reg_file.write_text(
+        json.dumps(
+            {
+                "servers": {
+                    "existing/server": {"package": "existing/server", "ecosystem": "npm"},
+                },
+            }
+        )
+    )
 
     with (
         patch("agent_bom.smithery._get_token", return_value="test-key"),
@@ -339,6 +345,7 @@ def test_cli_registry_smithery_sync_no_key():
     with patch.dict("os.environ", {}, clear=False):
         # Remove SMITHERY_API_KEY if set
         import os
+
         env = dict(os.environ)
         env.pop("SMITHERY_API_KEY", None)
         result = runner.invoke(main, ["registry", "smithery-sync"], env=env)

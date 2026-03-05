@@ -62,20 +62,65 @@ _CODE_BLOCK_RE = re.compile(r"```[\w]*\n([\s\S]*?)```", re.MULTILINE)
 
 # Credential env var heuristics
 _CREDENTIAL_KEYWORDS = {
-    "key", "token", "secret", "password", "credential",
-    "apikey", "api_key", "auth", "private",
+    "key",
+    "token",
+    "secret",
+    "password",
+    "credential",
+    "apikey",
+    "api_key",
+    "auth",
+    "private",
 }
 _ENV_VAR_EXCLUDE = {
-    "PATH", "HOME", "USER", "SHELL", "LANG", "TERM", "DISPLAY",
-    "PORT", "HOST", "NODE_ENV", "DEBUG", "LOG_LEVEL", "PYTHONPATH",
-    "GOPATH", "GOROOT", "JAVA_HOME", "TMPDIR", "EDITOR", "VISUAL",
-    "TZ", "LC_ALL", "LC_CTYPE", "PWD", "OLDPWD", "SHLVL",
-    "XDG_RUNTIME_DIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME",
-    "GITHUB_SHA", "GITHUB_REF", "GITHUB_ACTIONS", "GITHUB_WORKSPACE",
-    "GITHUB_REPOSITORY", "GITHUB_EVENT_NAME", "GITHUB_RUN_ID",
-    "CI", "RUNNER_OS", "RUNNER_TEMP", "BUILD_NUMBER", "HOSTNAME",
-    "COLUMNS", "LINES", "PAGER", "LESS", "MORE", "MANPATH",
-    "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH",
+    "PATH",
+    "HOME",
+    "USER",
+    "SHELL",
+    "LANG",
+    "TERM",
+    "DISPLAY",
+    "PORT",
+    "HOST",
+    "NODE_ENV",
+    "DEBUG",
+    "LOG_LEVEL",
+    "PYTHONPATH",
+    "GOPATH",
+    "GOROOT",
+    "JAVA_HOME",
+    "TMPDIR",
+    "EDITOR",
+    "VISUAL",
+    "TZ",
+    "LC_ALL",
+    "LC_CTYPE",
+    "PWD",
+    "OLDPWD",
+    "SHLVL",
+    "XDG_RUNTIME_DIR",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "GITHUB_SHA",
+    "GITHUB_REF",
+    "GITHUB_ACTIONS",
+    "GITHUB_WORKSPACE",
+    "GITHUB_REPOSITORY",
+    "GITHUB_EVENT_NAME",
+    "GITHUB_RUN_ID",
+    "CI",
+    "RUNNER_OS",
+    "RUNNER_TEMP",
+    "BUILD_NUMBER",
+    "HOSTNAME",
+    "COLUMNS",
+    "LINES",
+    "PAGER",
+    "LESS",
+    "MORE",
+    "MANPATH",
+    "LD_LIBRARY_PATH",
+    "DYLD_LIBRARY_PATH",
 }
 
 
@@ -141,16 +186,12 @@ def _parse_frontmatter(content: str) -> SkillMetadata | None:
             meta.license = value
 
     # Extract required bins (under requires: bins:)
-    bins_section = re.search(
-        r"requires:\s*\n\s+bins:\s*\n((?:\s+-\s+\S+\n?)+)", raw
-    )
+    bins_section = re.search(r"requires:\s*\n\s+bins:\s*\n((?:\s+-\s+\S+\n?)+)", raw)
     if bins_section:
         meta.required_bins = _YAML_LIST_ITEM_RE.findall(bins_section.group(1))
 
     # Extract optional bins
-    opt_bins_section = re.search(
-        r"optional_bins:\s*\n((?:\s+-\s+\S+\n?)+)", raw
-    )
+    opt_bins_section = re.search(r"optional_bins:\s*\n((?:\s+-\s+\S+\n?)+)", raw)
     if opt_bins_section:
         meta.optional_bins = _YAML_LIST_ITEM_RE.findall(opt_bins_section.group(1))
 
@@ -243,7 +284,7 @@ def parse_skill_file(path: Path) -> SkillScanResult:
             key = (name.lower(), "pypi")
             if key not in seen_packages:
                 seen_packages.add(key)
-                version = spec[len(name):].lstrip("><=!~") if len(spec) > len(name) else "latest"
+                version = spec[len(name) :].lstrip("><=!~") if len(spec) > len(name) else "latest"
                 packages.append(Package(name=name, version=version or "latest", ecosystem="pypi"))
 
     # npm install packages
@@ -276,22 +317,21 @@ def parse_skill_file(path: Path) -> SkillScanResult:
                 env = srv_config.get("env", {})
                 # Redact values — only keep keys for credential detection
                 redacted_env = {k: "***REDACTED***" for k in env}
-                servers.append(MCPServer(
-                    name=name,
-                    command=command,
-                    args=args,
-                    env=redacted_env,
-                    transport=TransportType.STDIO,
-                ))
+                servers.append(
+                    MCPServer(
+                        name=name,
+                        command=command,
+                        args=args,
+                        env=redacted_env,
+                        transport=TransportType.STDIO,
+                    )
+                )
         except (json.JSONDecodeError, AttributeError):
             logger.debug("Failed to parse MCP JSON block in %s", path)
 
     # Credential env var detection
     all_env_vars = set(_ENV_VAR_RE.findall(content))
-    credential_vars = sorted(
-        v for v in all_env_vars
-        if _is_credential_name(v) and v not in _ENV_VAR_EXCLUDE
-    )
+    credential_vars = sorted(v for v in all_env_vars if _is_credential_name(v) and v not in _ENV_VAR_EXCLUDE)
 
     # Parse YAML frontmatter (SKILL.md format)
     metadata = _parse_frontmatter(content)
@@ -322,7 +362,7 @@ def _parse_pkg_spec(spec: str, version_sep: str) -> tuple[str, str]:
             rest = spec[1:]
             if "@" in rest:
                 idx = rest.index("@")
-                return (spec[: idx + 1], rest[idx + 1:])
+                return (spec[: idx + 1], rest[idx + 1 :])
             return (spec, "")
         # Non-scoped: name@version
         if "@" in spec:

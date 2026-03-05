@@ -67,18 +67,18 @@ def to_svg(
     Returns:
         Complete SVG document as a string.
     """
-    vuln_pkg_keys: set[tuple[str, str]] = {
-        (br.package.name, br.package.ecosystem) for br in blast_radii
-    }
+    vuln_pkg_keys: set[tuple[str, str]] = {(br.package.name, br.package.ecosystem) for br in blast_radii}
     pkg_cve_map: dict[tuple[str, str], list[dict]] = {}
     for br in blast_radii:
         key = (br.package.name, br.package.ecosystem)
         if key not in pkg_cve_map:
             pkg_cve_map[key] = []
-        pkg_cve_map[key].append({
-            "id": br.vulnerability.id,
-            "severity": br.vulnerability.severity.value.lower(),
-        })
+        pkg_cve_map[key].append(
+            {
+                "id": br.vulnerability.id,
+                "severity": br.vulnerability.severity.value.lower(),
+            }
+        )
 
     # ── Collect layout items per column ───────────────────────────────────
     providers: list[dict] = []
@@ -103,19 +103,19 @@ def to_svg(
             providers.append({"id": f"p:{source}", "label": _provider_label(source)})
 
         aid = f"a:{agent.name}"
-        agents.append({
-            "id": aid,
-            "label": agent.name,
-            "type": agent.agent_type.value,
-            "servers": len(agent.mcp_servers),
-        })
+        agents.append(
+            {
+                "id": aid,
+                "label": agent.name,
+                "type": agent.agent_type.value,
+                "servers": len(agent.mcp_servers),
+            }
+        )
         provider_to_agents.append((f"p:{source}", aid))
 
         for srv in agent.mcp_servers:
             sid = f"s:{agent.name}:{srv.name}"
-            has_vuln = any(
-                (p.name, p.ecosystem) in vuln_pkg_keys for p in srv.packages
-            )
+            has_vuln = any((p.name, p.ecosystem) in vuln_pkg_keys for p in srv.packages)
             has_cred = srv.has_credentials
             stype = "server_vuln" if has_vuln else ("server_cred" if has_cred else "server_clean")
 
@@ -123,13 +123,15 @@ def to_svg(
             if has_cred:
                 cred_label = f" [{len(srv.credential_names)} cred]"
 
-            servers.append({
-                "id": sid,
-                "label": srv.name + cred_label,
-                "type": stype,
-                "pkg_count": len(srv.packages),
-                "tool_count": len(srv.tools) if srv.tools else 0,
-            })
+            servers.append(
+                {
+                    "id": sid,
+                    "label": srv.name + cred_label,
+                    "type": stype,
+                    "pkg_count": len(srv.packages),
+                    "tool_count": len(srv.tools) if srv.tools else 0,
+                }
+            )
             agent_to_servers.append((aid, sid))
 
             for pkg in srv.packages:
@@ -137,12 +139,14 @@ def to_svg(
                 pid = f"pkg:{pkg.name}:{pkg.ecosystem}"
                 is_vuln = pkg_key in vuln_pkg_keys
 
-                packages.append({
-                    "id": pid,
-                    "label": f"{pkg.name}@{pkg.version}",
-                    "type": "pkg_vuln" if is_vuln else "pkg_clean",
-                    "ecosystem": pkg.ecosystem,
-                })
+                packages.append(
+                    {
+                        "id": pid,
+                        "label": f"{pkg.name}@{pkg.version}",
+                        "type": "pkg_vuln" if is_vuln else "pkg_clean",
+                        "ecosystem": pkg.ecosystem,
+                    }
+                )
                 server_to_packages.append((sid, pid))
 
                 if is_vuln and pkg_key in pkg_cve_map:
@@ -150,12 +154,14 @@ def to_svg(
                         cve_id = f"cve:{cve_info['id']}"
                         if cve_info["id"] not in cve_set:
                             cve_set.add(cve_info["id"])
-                            cves.append({
-                                "id": cve_id,
-                                "label": cve_info["id"],
-                                "type": f"cve_{cve_info['severity']}",
-                                "severity": cve_info["severity"],
-                            })
+                            cves.append(
+                                {
+                                    "id": cve_id,
+                                    "label": cve_info["id"],
+                                    "type": f"cve_{cve_info['severity']}",
+                                    "severity": cve_info["severity"],
+                                }
+                            )
                         package_to_cves.append((pid, cve_id))
 
     # Deduplicate packages/servers (same ID can appear under multiple parents)
@@ -202,19 +208,21 @@ def to_svg(
     parts.append(
         f'<text x="{total_w / 2}" y="30" text-anchor="middle" '
         f'font-size="18" font-weight="bold" fill="#1a1a1a">'
-        f'AI Supply Chain — agent-bom</text>'
+        f"AI Supply Chain — agent-bom</text>"
     )
     parts.append(
         f'<text x="{total_w / 2}" y="52" text-anchor="middle" '
         f'font-size="13" fill="#666">'
-        f'{agent_count} agents | {server_count} servers | '
-        f'{pkg_count} packages | {vuln_count} CVEs</text>'
+        f"{agent_count} agents | {server_count} servers | "
+        f"{pkg_count} packages | {vuln_count} CVEs</text>"
     )
 
     # Column headers
     headers = [
-        (_COL_PROVIDER, "Sources"), (_COL_AGENT, "Agents"),
-        (_COL_SERVER, "MCP Servers"), (_COL_PACKAGE, "Packages"),
+        (_COL_PROVIDER, "Sources"),
+        (_COL_AGENT, "Agents"),
+        (_COL_SERVER, "MCP Servers"),
+        (_COL_PACKAGE, "Packages"),
     ]
     if cves:
         headers.append((_COL_CVE, "CVEs"))
@@ -222,14 +230,11 @@ def to_svg(
         parts.append(
             f'<text x="{x + _NODE_W / 2}" y="{_HEADER_H - 12}" '
             f'text-anchor="middle" font-size="13" font-weight="600" fill="#444">'
-            f'{label}</text>'
+            f"{label}</text>"
         )
 
     # Edges (draw first so nodes appear on top)
-    all_edges = (
-        provider_to_agents + agent_to_servers +
-        server_to_packages + package_to_cves
-    )
+    all_edges = provider_to_agents + agent_to_servers + server_to_packages + package_to_cves
     col_x_map = {}
     for item in providers:
         col_x_map[item["id"]] = _COL_PROVIDER
@@ -275,7 +280,7 @@ def to_svg(
             parts.append(
                 f'<text x="{col_x + _NODE_W / 2}" y="{y + _NODE_H / 2 + 4}" '
                 f'text-anchor="middle" font-size="11" font-weight="500" fill="{text_color}">'
-                f'{label}</text>'
+                f"{label}</text>"
             )
 
     _draw_nodes(providers, _COL_PROVIDER, "provider")
@@ -287,8 +292,7 @@ def to_svg(
     # Empty state
     if not report.agents:
         parts.append(
-            f'<text x="{total_w / 2}" y="{total_h / 2}" text-anchor="middle" '
-            f'font-size="16" fill="#999">No agents discovered</text>'
+            f'<text x="{total_w / 2}" y="{total_h / 2}" text-anchor="middle" font-size="16" fill="#999">No agents discovered</text>'
         )
 
     parts.append("</svg>")
@@ -308,6 +312,7 @@ def export_svg(
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _dedup_by_id(items: list[dict]) -> list[dict]:
     """Deduplicate items by their 'id' key, keeping first occurrence."""

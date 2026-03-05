@@ -36,10 +36,7 @@ def discover(
     try:
         import mlflow  # noqa: F401
     except ImportError:
-        raise CloudDiscoveryError(
-            "mlflow is required for MLflow discovery. "
-            "Install with: pip install 'agent-bom[mlflow]'"
-        )
+        raise CloudDiscoveryError("mlflow is required for MLflow discovery. Install with: pip install 'agent-bom[mlflow]'")
 
     agents: list[Agent] = []
     warnings: list[str] = []
@@ -47,10 +44,7 @@ def discover(
     resolved_uri = tracking_uri or os.environ.get("MLFLOW_TRACKING_URI", "")
 
     if not resolved_uri:
-        warnings.append(
-            "MLFLOW_TRACKING_URI not set. Provide --mlflow-tracking-uri or "
-            "set the MLFLOW_TRACKING_URI env var."
-        )
+        warnings.append("MLFLOW_TRACKING_URI not set. Provide --mlflow-tracking-uri or set the MLFLOW_TRACKING_URI env var.")
         return agents, warnings
 
     # ── Registered Models ─────────────────────────────────────────────────
@@ -126,10 +120,12 @@ def _discover_registered_models(
             )
 
             if description:
-                server.tools.append(MCPTool(
-                    name="inference",
-                    description=description[:200],
-                ))
+                server.tools.append(
+                    MCPTool(
+                        name="inference",
+                        description=description[:200],
+                    )
+                )
 
             agent = Agent(
                 name=f"mlflow-model:{model_name}",
@@ -295,6 +291,7 @@ def _parse_conda_yaml(content: str) -> list[Package]:
 
     try:
         import yaml
+
         data = yaml.safe_load(content)
         if not isinstance(data, dict):
             return packages

@@ -36,10 +36,7 @@ async def upload_evidence(
     """
     total_vulns = scan_result.get("summary", {}).get("total_vulnerabilities", 0)
     total_agents = scan_result.get("summary", {}).get("total_agents", 0)
-    critical_count = sum(
-        1 for br in scan_result.get("blast_radius", [])
-        if br.get("severity") == "critical"
-    )
+    critical_count = sum(1 for br in scan_result.get("blast_radius", []) if br.get("severity") == "critical")
 
     payload = {
         "name": evidence_name,
@@ -68,7 +65,12 @@ async def upload_evidence(
 
     async with create_client(timeout=15.0) as client:
         response = await request_with_retry(
-            client, "POST", url, json_body=payload, headers=headers, max_retries=2,
+            client,
+            "POST",
+            url,
+            json_body=payload,
+            headers=headers,
+            max_retries=2,
         )
 
         if response and response.status_code in (200, 201):

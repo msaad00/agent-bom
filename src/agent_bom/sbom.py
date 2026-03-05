@@ -80,20 +80,20 @@ def parse_cyclonedx(data: dict) -> list[Package]:
             continue
 
         # Determine ecosystem: prefer purl, then component type
-        ecosystem = _ecosystem_from_purl(purl) if purl else _ecosystem_from_type(
-            comp.get("type", "library")
-        )
+        ecosystem = _ecosystem_from_purl(purl) if purl else _ecosystem_from_type(comp.get("type", "library"))
         if ecosystem in ("library", "framework", "container", "device", "unknown"):
             ecosystem = "unknown"
 
-        packages.append(Package(
-            name=name,
-            version=version,
-            ecosystem=ecosystem,
-            purl=purl or None,
-            is_direct=True,
-            resolved_from_registry=False,
-        ))
+        packages.append(
+            Package(
+                name=name,
+                version=version,
+                ecosystem=ecosystem,
+                purl=purl or None,
+                is_direct=True,
+                resolved_from_registry=False,
+            )
+        )
 
     return packages
 
@@ -123,13 +123,15 @@ def parse_spdx(data: dict) -> list[Package]:
             if not name:
                 continue
             ecosystem = _ecosystem_from_purl(purl) if purl else "unknown"
-            packages.append(Package(
-                name=name,
-                version=version,
-                ecosystem=ecosystem,
-                purl=purl or None,
-                is_direct=True,
-            ))
+            packages.append(
+                Package(
+                    name=name,
+                    version=version,
+                    ecosystem=ecosystem,
+                    purl=purl or None,
+                    is_direct=True,
+                )
+            )
         return packages
 
     # SPDX 2.x format
@@ -148,13 +150,15 @@ def parse_spdx(data: dict) -> list[Package]:
                 break
 
         ecosystem = _ecosystem_from_purl(purl) if purl else "unknown"
-        packages.append(Package(
-            name=name,
-            version=version,
-            ecosystem=ecosystem,
-            purl=purl or None,
-            is_direct=True,
-        ))
+        packages.append(
+            Package(
+                name=name,
+                version=version,
+                ecosystem=ecosystem,
+                purl=purl or None,
+                is_direct=True,
+            )
+        )
 
     return packages
 
@@ -188,12 +192,6 @@ def load_sbom(path: str) -> tuple[list[Package], str]:
 
     # agent-bom JSON report: has "ai_bom_version"
     if "ai_bom_version" in data or "blast_radius" in data:
-        raise ValueError(
-            "That looks like an agent-bom report, not an SBOM. "
-            "Use 'agent-bom diff' for report comparison."
-        )
+        raise ValueError("That looks like an agent-bom report, not an SBOM. Use 'agent-bom diff' for report comparison.")
 
-    raise ValueError(
-        f"Unrecognised SBOM format in {path}. "
-        "Expected CycloneDX JSON (bomFormat=CycloneDX) or SPDX 2.x/3.0 JSON."
-    )
+    raise ValueError(f"Unrecognised SBOM format in {path}. Expected CycloneDX JSON (bomFormat=CycloneDX) or SPDX 2.x/3.0 JSON.")

@@ -6,7 +6,7 @@ description: >-
   compliance (OWASP, MITRE ATLAS, EU AI Act, NIST AI RMF). Use when the user
   mentions vulnerability scanning, dependency security, SBOM generation, MCP server
   trust, or AI supply chain risk.
-version: 0.55.0
+version: 0.56.0
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. Optional: Docker for container
@@ -18,11 +18,11 @@ metadata:
   pypi: https://pypi.org/project/agent-bom/
   smithery: https://smithery.ai/server/agent-bom/agent-bom
   scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
-  tests: 3050
+  tests: 3100
   install:
     pipx: agent-bom
     pip: agent-bom
-    docker: ghcr.io/msaad00/agent-bom:0.55.0
+    docker: ghcr.io/msaad00/agent-bom:0.56.0
   openclaw:
     requires:
       bins: []
@@ -113,7 +113,7 @@ agent-bom where             # show all discovery paths
 ### As a Docker Container
 
 ```bash
-docker run --rm ghcr.io/msaad00/agent-bom:0.55.0 scan
+docker run --rm ghcr.io/msaad00/agent-bom:0.56.0 scan
 ```
 
 ### Self-Hosted SSE Server
@@ -215,7 +215,7 @@ installation or self-host your own instance.
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
 - **PyPI**: [pypi.org/project/agent-bom](https://pypi.org/project/agent-bom/)
 - **Smithery**: [smithery.ai/server/agent-bom](https://smithery.ai/server/agent-bom/agent-bom)
-- **Sigstore signed**: `agent-bom verify agent-bom@0.55.0`
-- **3,050+ tests** with automated security scanning (CodeQL + OpenSSF Scorecard)
+- **Sigstore signed**: `agent-bom verify agent-bom@0.56.0`
+- **3,100+ tests** with automated security scanning (CodeQL + OpenSSF Scorecard)
 - **OpenSSF Scorecard**: [securityscorecards.dev](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom)
 - **No telemetry**: Zero tracking, zero analytics

@@ -3846,6 +3846,54 @@ def registry_enrich(dry_run):
         con.print("[green]Registry file updated.[/green]")
 
 
+@registry.command("enrich-cves")
+@click.option("--nvd-api-key", envvar="NVD_API_KEY", default=None, help="NVD API key for higher rate limits.")
+@click.option("--dry-run", is_flag=True, help="Preview CVE enrichment without writing.")
+def registry_enrich_cves(nvd_api_key, dry_run):
+    """Enrich registry with CVE data from OSV, EPSS, and CISA KEV.
+
+    \b
+    Scans all npm/pypi packages in the registry for known vulnerabilities:
+    - Queries OSV batch API for CVEs affecting each package version
+    - Fetches EPSS exploit prediction scores
+    - Checks CISA KEV (Known Exploited Vulnerabilities) catalog
+    - Extracts fix versions from OSV affected ranges
+
+    \b
+    Example:
+      agent-bom registry enrich-cves
+      agent-bom registry enrich-cves --dry-run
+    """
+    from rich.console import Console
+
+    from agent_bom.registry import enrich_registry_with_cves_sync
+
+    con = Console(stderr=True)
+    con.print("[bold]Enriching registry with CVE data (OSV + EPSS + KEV)...[/bold]")
+    if dry_run:
+        con.print("[dim](dry run — no files will be modified)[/dim]")
+
+    result = enrich_registry_with_cves_sync(nvd_api_key=nvd_api_key, dry_run=dry_run)
+
+    if result.enriched:
+        con.print(f"\n[bold red]Found vulnerabilities in {result.enriched} server(s):[/bold red]")
+        for d in result.details:
+            kev_tag = " [KEV]" if d["kev"] else ""
+            con.print(f"  {d['server']}: {d['cve_count']} CVEs, {d['ghsa_count']} GHSAs{kev_tag}")
+            if d["cves"]:
+                con.print(f"    {', '.join(d['cves'][:5])}")
+    else:
+        con.print("\n[green]No known CVEs found in scannable registry packages.[/green]")
+
+    con.print(
+        f"\n[bold]Summary:[/bold] {result.scannable} scannable, {result.enriched} with CVEs, "
+        f"{result.total_cves} total CVEs, {result.total_critical} critical, {result.total_kev} KEV "
+        f"(of {result.total} total servers)"
+    )
+    if not dry_run and result.enriched > 0:
+        con.print("[green]Registry file updated with CVE data.[/green]")
+
+
 @registry.command("smithery-sync")
 @click.option("--token", envvar="SMITHERY_API_KEY", help="Smithery API key (or set SMITHERY_API_KEY).")
 @click.option("--max-pages", type=int, default=10, show_default=True, help="Maximum pages to fetch from Smithery.")

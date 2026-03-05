@@ -1,4 +1,4 @@
-"""Tests for toxic combination detection — Wiz-style chained risk analysis."""
+"""Tests for toxic combination detection — chained risk analysis."""
 
 from __future__ import annotations
 

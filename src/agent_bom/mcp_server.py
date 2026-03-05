@@ -4,7 +4,7 @@ Start with:
     agent-bom mcp-server              # stdio (for Claude Desktop, Cursor, etc.)
     agent-bom mcp-server --sse        # SSE transport (for remote clients)
 
-Tools (16):
+Tools (17):
     scan              — Full discovery → scan → output pipeline
     check             — Check a specific package for CVEs before installing
     blast_radius      — Look up blast radius for a specific CVE
@@ -21,9 +21,10 @@ Tools (16):
     marketplace_check — Pre-install trust check with registry cross-reference
     code_scan         — SAST scanning via Semgrep with CWE-based compliance mapping
     context_graph     — Agent context graph with lateral movement analysis
+    analytics_query   — Query vulnerability trends and runtime events from ClickHouse
 
 Resources (2):
-    registry://servers  — Browse 427+ server threat intel registry
+    registry://servers  — Browse 427+ server security metadata registry
     policy://template   — Default security policy template
 
 Security: Read-only. Never executes MCP servers or reads credential values.
@@ -1460,10 +1461,11 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     @mcp.resource("registry://servers")
     def registry_servers_resource() -> str:
-        """Browse the MCP server threat intelligence registry (427+ servers).
+        """Browse the MCP server security metadata registry (427+ servers).
 
-        Returns the full registry with risk levels, tools, credential
-        requirements, and verification status for every known MCP server.
+        Returns the full registry with risk levels (category-derived), tools,
+        credential env vars (heuristic-inferred), and verification status
+        for every known MCP server.
         """
         try:
             return _get_registry_data_raw()

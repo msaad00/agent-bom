@@ -1,8 +1,8 @@
 ---
 name: agent-bom
 description: >-
-  AI supply chain security scanner — check packages for CVEs, look up MCP servers
-  in the 427+ server threat registry, assess blast radius, generate SBOMs, enforce
+  AI agent infrastructure security scanner — check packages for CVEs, look up MCP servers
+  in the 427+ server security metadata registry, assess blast radius, generate SBOMs, enforce
   compliance (OWASP, MITRE ATLAS, EU AI Act, NIST AI RMF). Use when the user
   mentions vulnerability scanning, dependency security, SBOM generation, MCP server
   trust, or AI supply chain risk.
@@ -18,7 +18,7 @@ metadata:
   pypi: https://pypi.org/project/agent-bom/
   smithery: https://smithery.ai/server/agent-bom/agent-bom
   scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
-  tests: 2900
+  tests: 2948
   install:
     pipx: agent-bom
     pip: agent-bom
@@ -131,7 +131,7 @@ docker run -p 8080:8080 agent-bom-sse
 | `scan` | Full discovery + vulnerability scan pipeline |
 | `check` | Check a package for CVEs (OSV, NVD, EPSS, KEV) |
 | `blast_radius` | Map CVE impact chain across agents, servers, credentials |
-| `registry_lookup` | Look up MCP server in 427+ server threat registry |
+| `registry_lookup` | Look up MCP server in 427+ server security metadata registry |
 | `compliance` | OWASP LLM/Agentic Top 10, EU AI Act, MITRE ATLAS, NIST AI RMF |
 | `remediate` | Prioritized remediation plan for vulnerabilities |
 | `verify` | Package integrity + SLSA provenance check |
@@ -150,7 +150,7 @@ docker run -p 8080:8080 agent-bom-sse
 
 | Resource | Description |
 |----------|-------------|
-| `registry://servers` | Browse 427+ MCP server threat intelligence registry |
+| `registry://servers` | Browse 427+ MCP server security metadata registry |
 | `policy://template` | Default security policy template |
 
 ## Example Workflows
@@ -215,6 +215,6 @@ installation or self-host your own instance.
 - **PyPI**: [pypi.org/project/agent-bom](https://pypi.org/project/agent-bom/)
 - **Smithery**: [smithery.ai/server/agent-bom](https://smithery.ai/server/agent-bom/agent-bom)
 - **Sigstore signed**: `agent-bom verify agent-bom@0.53.0`
-- **2,950+ tests** with automated security scanning (CodeQL + OpenSSF Scorecard)
+- **2,948 tests** with automated security scanning (CodeQL + OpenSSF Scorecard)
 - **OpenSSF Scorecard**: [securityscorecards.dev](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom)
 - **No telemetry**: Zero tracking, zero analytics

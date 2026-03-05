@@ -18,6 +18,7 @@ import {
   Waypoints,
   Eye,
   Clock,
+  Radio,
   Menu,
   X,
 } from "lucide-react";
@@ -55,6 +56,7 @@ const NAV_GROUPS = [
       { href: "/gateway",    label: "Gateway",     icon: Lock },
       { href: "/compliance", label: "Compliance",  icon: Shield },
       { href: "/governance", label: "Governance",  icon: Eye },
+      { href: "/traces",     label: "Traces",      icon: Radio },
       { href: "/activity",   label: "Activity",    icon: Clock },
     ],
   },

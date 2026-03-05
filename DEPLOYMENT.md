@@ -712,17 +712,15 @@ def scan_with_audit(user, target):
 
 | Feature | agent-bom | Syft | Grype | Snyk | Wiz |
 |---------|-----------|------|-------|------|-----|
-| AI agent scanning | ✅ | ❌ | ❌ | ❌ | ❌ |
+| AI agent config discovery | ✅ (20 MCP clients) | ❌ | ❌ | ❌ | ❌ |
 | MCP server support | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Transitive deps | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Blast radius (AI-specific) | ✅ | ❌ | ❌ | ❌ | ❌ |
 | EPSS/KEV enrichment | ✅ | ❌ | ❌ | ✅ | ✅ |
-| Container scanning | 🔜 | ✅ | ✅ | ✅ | ✅ |
-| Cloud API scanning | 🔜 | ❌ | ❌ | ✅ | ✅ |
+| Container scanning | ✅ (via Grype/Syft) | ✅ | ✅ | ✅ | ✅ |
+| Cloud API scanning | ✅ (AWS, Azure, GCP, Snowflake, Databricks) | ❌ | ❌ | ✅ | ✅ |
 | Open source | ✅ | ✅ | ✅ | ❌ | ❌ |
 | CycloneDX output | ✅ | ✅ | ❌ | ✅ | ✅ |
-
-**agent-bom is the only tool purpose-built for AI infrastructure security.**
 
 ---
 
@@ -736,8 +734,4 @@ agent-bom scales from local CLI to enterprise infrastructure by:
 4. **Remote Scanning**: SSH, agents, cloud APIs
 5. **Performance**: Caching, batching, parallelization
 
-**Similar to Syft/Grype**, agent-bom can be deployed anywhere—but specialized for **AI agents and MCP servers**, not generic software.
-
-**Ready to implement**: Dockerfile → CI/CD → Snowflake API → Remote scanning
-
-Would you like to start with containerization and CI/CD integration?
+agent-bom can be deployed anywhere — CLI, Docker, CI/CD, Kubernetes, Snowflake, or as an MCP server — specialized for AI agent infrastructure security.

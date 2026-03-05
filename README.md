@@ -16,7 +16,7 @@
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center">
-  <b>The open-source security scanner for AI agents, MCP servers, and GPU infrastructure.<br>See what Wiz, Snyk, and Grype miss.</b>
+  <b>Open-source security scanner for AI agent infrastructure.<br>Discover configurations, scan dependencies, map blast radius, enforce compliance.</b>
 </p>
 
 ---
@@ -82,7 +82,7 @@ Auto-discovers Claude Desktop, Claude Code, Cursor, Windsurf, Cline, VS Code Cop
 | Blast radius to agents | — | — | CVE → agent → creds → tools |
 | MCP tool reachability | — | — | Yes |
 | Credential exposure | — | Partial | Full per-agent mapping |
-| Policy-as-code | — | Yes (Snyk) | Yes (18 conditions) |
+| Policy-as-code | — | Yes (Snyk) | Yes (16 conditions) |
 | 10-framework compliance | — | Partial | Full (OWASP + ATLAS + NIST + EU AI Act + ...) |
 | Open source | Yes | No | Yes (Apache 2.0) |
 
@@ -138,7 +138,7 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 | Use case | Deploy | Command |
 |----------|--------|---------|
 | Quick local scan | CLI | `agent-bom scan` |
-| CI/CD gate | GitHub Action | `uses: msaad00/agent-bom@v0.52.0` |
+| CI/CD gate | GitHub Action | `uses: msaad00/agent-bom@v0.53.0` |
 | Security dashboard | API + UI | `agent-bom serve` |
 | MCP tool integration | MCP server | `agent-bom mcp-server` (17 tools) |
 | K8s fleet scanning | Helm | `helm install deploy/helm/agent-bom` |
@@ -651,7 +651,7 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for full Snowflake architecture and setup ins
 
 ## MCP Server Registry (427+ servers)
 
-Curated registry of 427+ known MCP servers with risk levels, tool inventories, credential env vars, categories, and version pins. Auto-synced weekly from the [Official MCP Registry](https://registry.modelcontextprotocol.io). Unverified servers trigger warnings. Policy rules can block them in CI.
+Registry of 427+ known MCP servers with risk levels, tool inventories, credential env vars, categories, and version pins. Risk levels are derived from server category (filesystem/shell = high, database/cloud = medium, search/monitoring = low). Credential env vars are inferred from package-name heuristics (21 patterns). Auto-synced weekly from the [Official MCP Registry](https://registry.modelcontextprotocol.io). 375 servers manually verified; 52 auto-enriched. Unverified servers trigger warnings. Policy rules can block them in CI.
 
 Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python scripts/expand_registry.py`
 

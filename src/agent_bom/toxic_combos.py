@@ -1,4 +1,4 @@
-"""Toxic combination detection — Wiz-style chained risk analysis.
+"""Toxic combination detection — chained risk analysis.
 
 Identifies dangerous combinations of vulnerabilities, credentials, tools,
 and blast radius that individually might be acceptable but together form

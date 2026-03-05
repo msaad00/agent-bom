@@ -529,6 +529,9 @@ def main():
     default=None,
     help="Export compliance evidence bundle (ZIP) for CMMC, FedRAMP, or NIST AI RMF audits",
 )
+@click.option(
+    "--self-scan", "self_scan", is_flag=True, default=False, help="Scan agent-bom's own installed dependencies for vulnerabilities."
+)
 @click.option("--demo", is_flag=True, default=False, help="Run a demo scan with bundled inventory containing known-vulnerable packages.")
 def scan(
     project: Optional[str],
@@ -663,6 +666,7 @@ def scan(
     preset: Optional[str],
     open_report: bool,
     compliance_export: Optional[str],
+    self_scan: bool,
     demo: bool,
 ):
     """Discover agents, extract dependencies, scan for vulnerabilities.
@@ -700,6 +704,56 @@ def scan(
     elif preset == "quick":
         transitive = False
         enrich = False
+
+    # ── Self-scan mode: scan agent-bom's own installed dependencies ──
+    if self_scan:
+        import importlib.metadata as _meta
+        import json as _json
+        import os as _os
+        import tempfile as _tempfile
+
+        _pkgs = []
+        try:
+            _dist = _meta.distribution("agent-bom")
+            for _req_str in _dist.requires or []:
+                _name = _req_str.split(";")[0].split("[")[0].strip()
+                for _op in (">=", "<=", "==", "!=", "~=", ">", "<"):
+                    if _op in _name:
+                        _name = _name[: _name.index(_op)].strip()
+                        break
+                if not _name:
+                    continue
+                try:
+                    _ver = _meta.version(_name)
+                except _meta.PackageNotFoundError:
+                    continue
+                _pkgs.append({"name": _name, "version": _ver, "ecosystem": "pypi"})
+        except _meta.PackageNotFoundError:
+            click.echo("Error: agent-bom package not found. Install it first.", err=True)
+            sys.exit(2)
+
+        _self_inventory = {
+            "agents": [
+                {
+                    "name": "agent-bom",
+                    "agent_type": "custom",
+                    "source": "agent-bom --self-scan",
+                    "mcp_servers": [
+                        {
+                            "name": "agent-bom-mcp-server",
+                            "command": "agent-bom mcp-server",
+                            "transport": "stdio",
+                            "packages": _pkgs,
+                        }
+                    ],
+                }
+            ]
+        }
+        _sf_fd, _sf_path = _tempfile.mkstemp(suffix=".json", prefix="agent-bom-self-scan-")
+        with _os.fdopen(_sf_fd, "w") as _sf:
+            _json.dump(_self_inventory, _sf)
+        inventory = _sf_path
+        enrich = True
 
     # ── Demo mode: load bundled inventory with known-vulnerable packages ──
     if demo:

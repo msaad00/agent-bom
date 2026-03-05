@@ -129,6 +129,16 @@ async def _lifespan(app_instance: FastAPI):
 
             _schedule_store = InMemoryScheduleStore()
 
+    # ── Analytics store (ClickHouse OLAP — optional) ──
+    if _os.environ.get("AGENT_BOM_CLICKHOUSE_URL") and _analytics_store is None:
+        try:
+            from agent_bom.api.clickhouse_store import ClickHouseAnalyticsStore
+
+            set_analytics_store(ClickHouseAnalyticsStore(url=_os.environ["AGENT_BOM_CLICKHOUSE_URL"]))
+            _logger.info("ClickHouse analytics store enabled")
+        except Exception:
+            _logger.warning("ClickHouse analytics unavailable, using NullAnalyticsStore", exc_info=True)
+
     global _cleanup_task
     _cleanup_task = asyncio.create_task(_cleanup_loop())
 
@@ -2324,6 +2334,28 @@ def set_policy_store(store: Any) -> None:
     """Switch the policy store backend. Call before server startup."""
     global _policy_store
     _policy_store = store
+
+
+# ─── Analytics store (ClickHouse OLAP — optional) ────────────────────────────
+_analytics_store: Any = None
+
+
+def _get_analytics_store():
+    """Get the active analytics store, defaulting to NullAnalyticsStore."""
+    global _analytics_store
+    if _analytics_store is None:
+        with _store_lock:
+            if _analytics_store is None:
+                from agent_bom.api.clickhouse_store import NullAnalyticsStore
+
+                _analytics_store = NullAnalyticsStore()
+    return _analytics_store
+
+
+def set_analytics_store(store: Any) -> None:
+    """Switch the analytics store backend. Call before server startup."""
+    global _analytics_store
+    _analytics_store = store
 
 
 class StateUpdate(BaseModel):

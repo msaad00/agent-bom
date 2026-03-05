@@ -149,38 +149,42 @@ class ClickHouseAnalyticsStore:
     # -- reads ---------------------------------------------------------
 
     def query_vuln_trends(self, days: int = 30, agent: str | None = None) -> list[dict]:
+        # days is int-only, agent is escaped via _escape() — safe from injection
         where = f"scan_timestamp >= now() - INTERVAL {int(days)} DAY"
         if agent:
             where += f" AND agent_name = '{_escape(agent)}'"
-        return self._client.query_json(  # nosec B608 — days is int-only, agent is escaped
-            f"SELECT toDate(scan_timestamp) AS day, severity, count() AS cnt "
-            f"FROM vulnerability_scans WHERE {where} "
+        return self._client.query_json(
+            f"SELECT toDate(scan_timestamp) AS day, severity, count() AS cnt "  # nosec B608
+            f"FROM vulnerability_scans WHERE {where} "  # nosec B608
             f"GROUP BY day, severity ORDER BY day"
         )
 
     def query_top_cves(self, limit: int = 20) -> list[dict]:
-        return self._client.query_json(  # nosec B608 — limit is int-only
-            f"SELECT cve_id, count() AS cnt, max(cvss_score) AS max_cvss "
-            f"FROM vulnerability_scans WHERE cve_id != '' "
-            f"GROUP BY cve_id ORDER BY cnt DESC LIMIT {int(limit)}"
+        # limit is int-only via int() cast — safe from injection
+        return self._client.query_json(
+            f"SELECT cve_id, count() AS cnt, max(cvss_score) AS max_cvss "  # nosec B608
+            f"FROM vulnerability_scans WHERE cve_id != '' "  # nosec B608
+            f"GROUP BY cve_id ORDER BY cnt DESC LIMIT {int(limit)}"  # nosec B608
         )
 
     def query_posture_history(self, agent: str | None = None, days: int = 90) -> list[dict]:
+        # days is int-only, agent is escaped via _escape() — safe from injection
         where = f"measured_at >= now() - INTERVAL {int(days)} DAY"
         if agent:
             where += f" AND agent_name = '{_escape(agent)}'"
-        return self._client.query_json(  # nosec B608 — days is int-only, agent is escaped
-            f"SELECT toDate(measured_at) AS day, agent_name, posture_grade, "
-            f"risk_score, compliance_score "
-            f"FROM posture_scores WHERE {where} "
+        return self._client.query_json(
+            f"SELECT toDate(measured_at) AS day, agent_name, posture_grade, "  # nosec B608
+            f"risk_score, compliance_score "  # nosec B608
+            f"FROM posture_scores WHERE {where} "  # nosec B608
             f"ORDER BY day"
         )
 
     def query_event_summary(self, hours: int = 24) -> list[dict]:
-        return self._client.query_json(  # nosec B608 — hours is int-only
-            f"SELECT event_type, severity, count() AS cnt "
-            f"FROM runtime_events "
-            f"WHERE event_timestamp >= now() - INTERVAL {int(hours)} HOUR "
+        # hours is int-only via int() cast — safe from injection
+        return self._client.query_json(
+            f"SELECT event_type, severity, count() AS cnt "  # nosec B608
+            f"FROM runtime_events "  # nosec B608
+            f"WHERE event_timestamp >= now() - INTERVAL {int(hours)} HOUR "  # nosec B608
             f"GROUP BY event_type, severity ORDER BY cnt DESC"
         )
 

@@ -384,6 +384,34 @@ agent-bom scan --model-files ./models      # model file scanning
 
 </details>
 
+<details>
+<summary><b>Pre-install guard</b></summary>
+
+Intercept `pip install` or `npm install` to scan packages for CVEs before they land. Alias-ready for transparent protection.
+
+```bash
+agent-bom guard pip install flask requests     # scan then install
+agent-bom guard npm install express            # same for npm
+alias pip='agent-bom guard pip'                # transparent protection
+```
+
+Blocks on critical/high CVEs by default. Use `--allow-risky` to install anyway with a warning.
+
+</details>
+
+<details>
+<summary><b>Registry sync</b></summary>
+
+Keep the local MCP server registry current with live sources:
+
+```bash
+agent-bom registry glama-sync         # import from Glama.ai (18,000+ servers)
+agent-bom registry sync               # sync from Official MCP Registry
+agent-bom registry sync-all           # all sources (Official + Smithery + Glama)
+```
+
+</details>
+
 > **That's all you need.** Run `agent-bom scan` and you're done.
 > Everything below is for teams deploying agent-bom as an enterprise security platform.
 

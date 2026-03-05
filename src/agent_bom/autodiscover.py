@@ -21,16 +21,42 @@ _NPM_URL = "https://registry.npmjs.org/{}/latest"
 _PYPI_URL = "https://pypi.org/pypi/{}/json"
 
 # Keywords that signal higher-risk capabilities
-_HIGH_RISK_KEYWORDS = frozenset({
-    "filesystem", "write", "execute", "shell", "database", "sql",
-    "admin", "deploy", "delete", "command", "eval", "sudo",
-    "credential", "password", "token", "secret",
-})
+_HIGH_RISK_KEYWORDS = frozenset(
+    {
+        "filesystem",
+        "write",
+        "execute",
+        "shell",
+        "database",
+        "sql",
+        "admin",
+        "deploy",
+        "delete",
+        "command",
+        "eval",
+        "sudo",
+        "credential",
+        "password",
+        "token",
+        "secret",
+    }
+)
 
-_MEDIUM_RISK_KEYWORDS = frozenset({
-    "read", "search", "fetch", "query", "http", "request",
-    "download", "upload", "send", "post", "api",
-})
+_MEDIUM_RISK_KEYWORDS = frozenset(
+    {
+        "read",
+        "search",
+        "fetch",
+        "query",
+        "http",
+        "request",
+        "download",
+        "upload",
+        "send",
+        "post",
+        "api",
+    }
+)
 
 
 async def fetch_npm_metadata(name: str, client: object) -> Optional[dict]:
@@ -64,12 +90,7 @@ async def fetch_pypi_metadata(name: str, client: object) -> Optional[dict]:
         data = resp.json()
         info = data.get("info", {})
         project_urls = info.get("project_urls") or {}
-        source_url = (
-            project_urls.get("Source")
-            or project_urls.get("Repository")
-            or project_urls.get("Homepage")
-            or ""
-        )
+        source_url = project_urls.get("Source") or project_urls.get("Repository") or project_urls.get("Homepage") or ""
         requires_dist = info.get("requires_dist") or []
         # Count maintainers from author field
         author = info.get("author", "")
@@ -201,7 +222,8 @@ async def enrich_unknown_packages(packages: list[Package]) -> int:
 
     # Filter to packages not already enriched
     to_enrich = [
-        p for p in packages
+        p
+        for p in packages
         if not p.resolved_from_registry
         and not getattr(p, "auto_risk_level", None)
         and p.version not in ("unknown", "latest", "")

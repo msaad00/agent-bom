@@ -101,10 +101,7 @@ def _check_mcp_sdk() -> None:
     try:
         import mcp  # noqa: F401
     except ImportError:
-        raise IntrospectionError(
-            "mcp SDK is required for runtime introspection. "
-            "Install with: pip install mcp"
-        )
+        raise IntrospectionError("mcp SDK is required for runtime introspection. Install with: pip install mcp")
 
 
 async def introspect_server(
@@ -208,11 +205,13 @@ async def _query_capabilities(
     try:
         tools_result = await session.list_tools()
         for tool in tools_result.tools:
-            result.runtime_tools.append(MCPTool(
-                name=tool.name,
-                description=getattr(tool, "description", "") or "",
-                input_schema=getattr(tool, "inputSchema", None),
-            ))
+            result.runtime_tools.append(
+                MCPTool(
+                    name=tool.name,
+                    description=getattr(tool, "description", "") or "",
+                    input_schema=getattr(tool, "inputSchema", None),
+                )
+            )
     except Exception as exc:
         logger.debug("tools/list failed for %s: %s", server.name, exc)
 
@@ -220,12 +219,14 @@ async def _query_capabilities(
     try:
         resources_result = await session.list_resources()
         for resource in resources_result.resources:
-            result.runtime_resources.append(MCPResource(
-                uri=str(getattr(resource, "uri", "")),
-                name=getattr(resource, "name", "") or "",
-                description=getattr(resource, "description", "") or "",
-                mime_type=getattr(resource, "mimeType", None),
-            ))
+            result.runtime_resources.append(
+                MCPResource(
+                    uri=str(getattr(resource, "uri", "")),
+                    name=getattr(resource, "name", "") or "",
+                    description=getattr(resource, "description", "") or "",
+                    mime_type=getattr(resource, "mimeType", None),
+                )
+            )
     except Exception as exc:
         logger.debug("resources/list failed for %s: %s", server.name, exc)
 
@@ -279,9 +280,7 @@ async def introspect_servers(
         elif server.transport in (TransportType.SSE, TransportType.STREAMABLE_HTTP) and server.url:
             introspectable.append(server)
         else:
-            report.warnings.append(
-                f"Skipping {server.name}: no command/URL for {server.transport.value} transport"
-            )
+            report.warnings.append(f"Skipping {server.name}: no command/URL for {server.transport.value} transport")
 
     if not introspectable:
         report.warnings.append("No servers eligible for introspection")
@@ -292,11 +291,13 @@ async def introspect_servers(
 
     for i, result in enumerate(results):
         if isinstance(result, Exception):
-            report.results.append(ServerIntrospection(
-                server_name=introspectable[i].name,
-                success=False,
-                error=str(result),
-            ))
+            report.results.append(
+                ServerIntrospection(
+                    server_name=introspectable[i].name,
+                    success=False,
+                    error=str(result),
+                )
+            )
         else:
             report.results.append(result)
 

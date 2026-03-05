@@ -1,7 +1,7 @@
 {
   "name": "agent-bom",
   "description": "AI supply chain security scanner — CVEs, blast radius, compliance, policy, SBOMs",
-  "version": "0.55.0",
+  "version": "0.56.0",
   "repository": "https://github.com/msaad00/agent-bom",
   "transport": "stdio",
   "command": "agent-bom",

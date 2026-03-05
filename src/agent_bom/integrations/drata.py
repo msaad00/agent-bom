@@ -42,8 +42,7 @@ async def upload_evidence(
     payload = {
         "name": evidence_name,
         "description": (
-            f"AI supply chain security scan by agent-bom. "
-            f"{total_agents} agent(s) scanned, {total_vulns} vulnerability(ies) found."
+            f"AI supply chain security scan by agent-bom. {total_agents} agent(s) scanned, {total_vulns} vulnerability(ies) found."
         ),
         "evidenceType": "EXTERNAL",
         "collectedAt": datetime.now(timezone.utc).isoformat(),
@@ -66,7 +65,12 @@ async def upload_evidence(
 
     async with create_client(timeout=15.0) as client:
         response = await request_with_retry(
-            client, "POST", url, json_body=payload, headers=headers, max_retries=2,
+            client,
+            "POST",
+            url,
+            json_body=payload,
+            headers=headers,
+            max_retries=2,
         )
 
         if response and response.status_code in (200, 201):

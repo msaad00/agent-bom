@@ -83,11 +83,7 @@ def to_prometheus(
 
     # ── agent_bom_info ────────────────────────────────────────────────────
     header("info", "agent-bom tool metadata (always 1)")
-    lines.append(
-        _metric("info", 1,
-                ("version", report.tool_version),
-                ("scan_at", report.generated_at.strftime("%Y-%m-%dT%H:%M:%SZ")))
-    )
+    lines.append(_metric("info", 1, ("version", report.tool_version), ("scan_at", report.generated_at.strftime("%Y-%m-%dT%H:%M:%SZ"))))
     lines.append("")
 
     # ── agent_bom_scan_timestamp_seconds ─────────────────────────────────
@@ -110,8 +106,7 @@ def to_prometheus(
     lines.append("")
 
     # ── Vulnerability counts by severity ─────────────────────────────────
-    header("vulnerabilities_total",
-           "Total vulnerabilities found, broken down by severity")
+    header("vulnerabilities_total", "Total vulnerabilities found, broken down by severity")
     sev_counts: dict[str, int] = {s.value: 0 for s in Severity if s != Severity.NONE}
     for br in brs:
         sev = br.vulnerability.severity.value
@@ -122,23 +117,20 @@ def to_prometheus(
     lines.append("")
 
     # ── CISA KEV count ────────────────────────────────────────────────────
-    header("kev_findings_total",
-           "Number of findings in the CISA Known Exploited Vulnerabilities catalog")
+    header("kev_findings_total", "Number of findings in the CISA Known Exploited Vulnerabilities catalog")
     kev_count = sum(1 for br in brs if br.vulnerability.is_kev)
     lines.append(_metric("kev_findings_total", kev_count))
     lines.append("")
 
     # ── Fixable vulns ─────────────────────────────────────────────────────
-    header("fixable_vulnerabilities_total",
-           "Number of vulnerabilities that have a known fixed version available")
+    header("fixable_vulnerabilities_total", "Number of vulnerabilities that have a known fixed version available")
     fixable = sum(1 for br in brs if br.vulnerability.fixed_version)
     lines.append(_metric("fixable_vulnerabilities_total", fixable))
     lines.append("")
 
     # ── Per-vulnerability blast radius scores ─────────────────────────────
     if brs:
-        header("blast_radius_score",
-               "Blast radius risk score per vulnerability (0-10 scale)")
+        header("blast_radius_score", "Blast radius risk score per vulnerability (0-10 scale)")
         for br in brs:
             v = br.vulnerability
             lines.append(
@@ -159,8 +151,7 @@ def to_prometheus(
         # ── EPSS scores ───────────────────────────────────────────────────
         epss_brs = [br for br in brs if br.vulnerability.epss_score is not None]
         if epss_brs:
-            header("vulnerability_epss_score",
-                   "EPSS exploit probability score (0.0-1.0) per vulnerability")
+            header("vulnerability_epss_score", "EPSS exploit probability score (0.0-1.0) per vulnerability")
             for br in epss_brs:
                 v = br.vulnerability
                 lines.append(
@@ -177,8 +168,7 @@ def to_prometheus(
         # ── CVSS scores ───────────────────────────────────────────────────
         cvss_brs = [br for br in brs if br.vulnerability.cvss_score is not None]
         if cvss_brs:
-            header("vulnerability_cvss_score",
-                   "CVSS base score (0.0-10.0) per vulnerability")
+            header("vulnerability_cvss_score", "CVSS base score (0.0-10.0) per vulnerability")
             for br in cvss_brs:
                 v = br.vulnerability
                 lines.append(
@@ -193,8 +183,7 @@ def to_prometheus(
             lines.append("")
 
     # ── Per-agent breakdowns ───────────────────────────────────────────────
-    header("agent_vulnerabilities_total",
-           "Number of vulnerabilities per agent, broken down by severity")
+    header("agent_vulnerabilities_total", "Number of vulnerabilities per agent, broken down by severity")
     # Build agent→severity→count
     agent_sev: dict[str, dict[str, int]] = {}
     for br in brs:
@@ -210,19 +199,13 @@ def to_prometheus(
             agent_sev[agent.name] = {s.value: 0 for s in Severity if s != Severity.NONE}
     for agent_name, sev_map in sorted(agent_sev.items()):
         for sev, count in sev_map.items():
-            lines.append(
-                _metric("agent_vulnerabilities_total", count,
-                        ("agent", agent_name), ("severity", sev))
-            )
+            lines.append(_metric("agent_vulnerabilities_total", count, ("agent", agent_name), ("severity", sev)))
     lines.append("")
 
-    header("credentials_exposed_total",
-           "Number of distinct credentials exposed per agent")
+    header("credentials_exposed_total", "Number of distinct credentials exposed per agent")
     for agent in report.agents:
         cred_count = sum(len(s.credential_names) for s in agent.mcp_servers)
-        lines.append(
-            _metric("credentials_exposed_total", cred_count, ("agent", agent.name))
-        )
+        lines.append(_metric("credentials_exposed_total", cred_count, ("agent", agent.name)))
     lines.append("")
 
     return "\n".join(lines)
@@ -272,9 +255,7 @@ def push_to_gateway(
     # Enforce http/https only — reject file://, ftp://, etc.
     parsed_scheme = gateway_url.split("://", 1)[0].lower()
     if parsed_scheme not in ("http", "https"):
-        raise PushgatewayError(
-            f"Pushgateway URL must use http:// or https://, got: {gateway_url!r}"
-        )
+        raise PushgatewayError(f"Pushgateway URL must use http:// or https://, got: {gateway_url!r}")
 
     text = to_prometheus(report, blast_radii)
 
@@ -294,9 +275,7 @@ def push_to_gateway(
         # nosec B310 — URL scheme restricted to http/https above
         with urllib.request.urlopen(req, timeout=timeout) as resp:  # nosec B310
             if resp.status not in (200, 202):
-                raise PushgatewayError(
-                    f"Pushgateway returned HTTP {resp.status}"
-                )
+                raise PushgatewayError(f"Pushgateway returned HTTP {resp.status}")
     except urllib.error.HTTPError as e:
         raise PushgatewayError(f"Pushgateway HTTP {e.code}: {e.reason}") from e
     except urllib.error.URLError as e:
@@ -347,10 +326,12 @@ def push_otlp(
 
     brs = blast_radii or []
 
-    resource = Resource(attributes={
-        SERVICE_NAME: "agent-bom",
-        "agent_bom.version": report.tool_version,
-    })
+    resource = Resource(
+        attributes={
+            SERVICE_NAME: "agent-bom",
+            "agent_bom.version": report.tool_version,
+        }
+    )
 
     otlp_url = endpoint.rstrip("/") + "/v1/metrics"
     exporter = OTLPMetricExporter(endpoint=otlp_url, timeout=timeout)
@@ -373,18 +354,10 @@ def push_otlp(
     def _kev_cb(options):
         yield otel_metrics.Observation(sum(1 for br in brs if br.vulnerability.is_kev))
 
-    meter.create_observable_gauge("agent_bom.agents_total",
-                                   callbacks=[_agents_cb],
-                                   description="Total AI agents discovered")
-    meter.create_observable_gauge("agent_bom.mcp_servers_total",
-                                   callbacks=[_servers_cb],
-                                   description="Total MCP servers")
-    meter.create_observable_gauge("agent_bom.packages_total",
-                                   callbacks=[_packages_cb],
-                                   description="Total packages scanned")
-    meter.create_observable_gauge("agent_bom.kev_findings_total",
-                                   callbacks=[_kev_cb],
-                                   description="CISA KEV findings")
+    meter.create_observable_gauge("agent_bom.agents_total", callbacks=[_agents_cb], description="Total AI agents discovered")
+    meter.create_observable_gauge("agent_bom.mcp_servers_total", callbacks=[_servers_cb], description="Total MCP servers")
+    meter.create_observable_gauge("agent_bom.packages_total", callbacks=[_packages_cb], description="Total packages scanned")
+    meter.create_observable_gauge("agent_bom.kev_findings_total", callbacks=[_kev_cb], description="CISA KEV findings")
 
     # Severity breakdown via ObservableGauge per severity
     sev_counts: dict[str, int] = {s.value: 0 for s in Severity if s != Severity.NONE}

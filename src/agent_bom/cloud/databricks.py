@@ -41,10 +41,7 @@ def discover(
         from databricks.sdk import WorkspaceClient
         from databricks.sdk.errors import PermissionDenied  # noqa: F401
     except ImportError:
-        raise CloudDiscoveryError(
-            "databricks-sdk is required for Databricks discovery. "
-            "Install with: pip install 'agent-bom[databricks]'"
-        )
+        raise CloudDiscoveryError("databricks-sdk is required for Databricks discovery. Install with: pip install 'agent-bom[databricks]'")
 
     agents: list[Agent] = []
     warnings: list[str] = []

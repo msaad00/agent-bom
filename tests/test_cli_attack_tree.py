@@ -1,4 +1,5 @@
 """Tests for CLI attack flow tree rendering."""
+
 from io import StringIO
 from unittest.mock import patch
 
@@ -27,7 +28,7 @@ def _make_report(n_findings=3, with_tools=False, with_creds=False):
     blast_radii = []
     for i in range(n_findings):
         sev = [Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM][i % 3]
-        vuln = Vulnerability(id=f"CVE-2024-{1000+i}", summary=f"Test vuln {i}", severity=sev, cvss_score=9.0 - i)
+        vuln = Vulnerability(id=f"CVE-2024-{1000 + i}", summary=f"Test vuln {i}", severity=sev, cvss_score=9.0 - i)
         pkg = Package(name=f"pkg-{i}", version="1.0.0", ecosystem="npm")
         servers[0].packages.append(pkg)
         tools = [MCPTool(name=f"tool_{j}", description="") for j in range(3)] if with_tools else []

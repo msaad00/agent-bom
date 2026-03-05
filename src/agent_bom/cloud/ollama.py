@@ -61,10 +61,12 @@ def discover(
                 size_gb = size / (1024**3)
                 meta_parts.append(f"size:{size_gb:.1f}GB")
 
-            tools.append(MCPTool(
-                name=name,
-                description=f"Ollama model — {', '.join(meta_parts)}" if meta_parts else "Ollama model",
-            ))
+            tools.append(
+                MCPTool(
+                    name=name,
+                    description=f"Ollama model — {', '.join(meta_parts)}" if meta_parts else "Ollama model",
+                )
+            )
 
             # Model name could be "llama3:8b" or "qwen2.5-coder:7b-instruct-q4_K_M"
             base_name = name.split(":")[0] if ":" in name else name
@@ -75,11 +77,13 @@ def discover(
                 command="ollama",
                 args=["run", name],
                 tools=tools,
-                packages=[Package(
-                    name=base_name,
-                    version=tag,
-                    ecosystem="ollama",
-                )],
+                packages=[
+                    Package(
+                        name=base_name,
+                        version=tag,
+                        ecosystem="ollama",
+                    )
+                ],
             )
 
             agent = Agent(
@@ -102,11 +106,13 @@ def discover(
                     name=f"ollama/{model_name}:{model_tag}",
                     command="ollama",
                     args=["run", f"{model_name}:{model_tag}"],
-                    packages=[Package(
-                        name=model_name,
-                        version=model_tag,
-                        ecosystem="ollama",
-                    )],
+                    packages=[
+                        Package(
+                            name=model_name,
+                            version=model_tag,
+                            ecosystem="ollama",
+                        )
+                    ],
                 )
                 agent = Agent(
                     name=f"ollama-model-{model_name}",
@@ -119,10 +125,7 @@ def discover(
         else:
             warnings.append("Ollama manifest directory found but no models detected")
     else:
-        warnings.append(
-            f"Ollama not detected (no API at {resolved_host}, "
-            f"no manifests at {_MANIFEST_DIR})"
-        )
+        warnings.append(f"Ollama not detected (no API at {resolved_host}, no manifests at {_MANIFEST_DIR})")
 
     return agents, warnings
 

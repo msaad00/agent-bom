@@ -161,13 +161,15 @@ def test_max_concurrent_jobs():
     fake_store = InMemoryJobStore()
     dummy_request = ScanRequest()
     for i in range(_MAX_CONCURRENT_JOBS):
-        fake_store.put(ScanJob(
-            job_id=f"fake-{i}",
-            status=JobStatus.RUNNING,
-            created_at="2026-01-01T00:00:00Z",
-            request=dummy_request,
-            progress=[],
-        ))
+        fake_store.put(
+            ScanJob(
+                job_id=f"fake-{i}",
+                status=JobStatus.RUNNING,
+                created_at="2026-01-01T00:00:00Z",
+                request=dummy_request,
+                progress=[],
+            )
+        )
 
     set_job_store(fake_store)
     try:

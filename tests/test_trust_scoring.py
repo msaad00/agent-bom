@@ -70,10 +70,12 @@ def test_unverified_servers_lower_registry():
 
 def test_mixed_verification():
     """One verified, one not → 50% of 20 = 10."""
-    agent = _agent(servers=[
-        _server(name="a", verified=True),
-        _server(name="b", verified=False),
-    ])
+    agent = _agent(
+        servers=[
+            _server(name="a", verified=True),
+            _server(name="b", verified=False),
+        ]
+    )
     _, factors = compute_trust_score(agent)
     assert factors["registry_verification"] == 10.0
 
@@ -93,14 +95,16 @@ def test_vuln_penalty():
 
 def test_credential_penalty():
     """Agents with many credential-like env vars get lower hygiene score."""
-    srv = _server(env={
-        "API_KEY": "sk-abc",
-        "AUTH_TOKEN": "tok",
-        "SECRET": "s",
-        "DATABASE_URL": "pg://...",
-        "DEBUG": "1",
-        "LOG_LEVEL": "info",
-    })
+    srv = _server(
+        env={
+            "API_KEY": "sk-abc",
+            "AUTH_TOKEN": "tok",
+            "SECRET": "s",
+            "DATABASE_URL": "pg://...",
+            "DEBUG": "1",
+            "LOG_LEVEL": "info",
+        }
+    )
     agent = _agent(servers=[srv])
     _, factors = compute_trust_score(agent)
     # 4 credential-like vars → cred_count=4 → score=5.0

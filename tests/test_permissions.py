@@ -1,6 +1,5 @@
 """Tests for tool permission classification and PermissionProfile building."""
 
-
 from agent_bom.models import PermissionProfile
 from agent_bom.permissions import (
     _infer_category,
@@ -136,21 +135,26 @@ class TestBuildPermissionProfile:
 
     def test_sudo_command_sets_root(self):
         profile = build_permission_profile(
-            tools=["get_data"], command="sudo", args=["node", "server.js"],
+            tools=["get_data"],
+            command="sudo",
+            args=["node", "server.js"],
         )
         assert profile.runs_as_root
         assert profile.privilege_level == "high"
 
     def test_shell_command_sets_shell_access(self):
         profile = build_permission_profile(
-            tools=[], command="bash", args=["-c", "echo hello"],
+            tools=[],
+            command="bash",
+            args=["-c", "echo hello"],
         )
         assert profile.shell_access
         assert profile.privilege_level == "high"
 
     def test_credentials_set_network_access(self):
         profile = build_permission_profile(
-            tools=["get_data"], credential_env_vars=["API_KEY"],
+            tools=["get_data"],
+            credential_env_vars=["API_KEY"],
         )
         assert profile.network_access
         assert profile.privilege_level == "medium"

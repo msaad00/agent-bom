@@ -15,6 +15,7 @@ def test_introspection_error_when_no_mcp_sdk():
     with patch.dict(sys.modules, {"mcp": None}):
         # Need to reimport to trigger the check
         from agent_bom.mcp_introspect import IntrospectionError, _check_mcp_sdk
+
         with pytest.raises(IntrospectionError, match="mcp SDK is required"):
             _check_mcp_sdk()
 
@@ -24,6 +25,7 @@ def test_introspection_error_when_no_mcp_sdk():
 
 def test_server_introspection_no_drift():
     from agent_bom.mcp_introspect import ServerIntrospection
+
     result = ServerIntrospection(server_name="test", success=True)
     assert not result.has_drift
     assert result.tool_count == 0
@@ -32,6 +34,7 @@ def test_server_introspection_no_drift():
 
 def test_server_introspection_with_drift():
     from agent_bom.mcp_introspect import ServerIntrospection
+
     result = ServerIntrospection(
         server_name="test",
         success=True,
@@ -43,6 +46,7 @@ def test_server_introspection_with_drift():
 
 def test_server_introspection_with_tools():
     from agent_bom.mcp_introspect import ServerIntrospection
+
     result = ServerIntrospection(
         server_name="test",
         success=True,
@@ -63,15 +67,25 @@ def test_server_introspection_with_tools():
 
 def test_introspection_report_stats():
     from agent_bom.mcp_introspect import IntrospectionReport, ServerIntrospection
+
     report = IntrospectionReport(
         results=[
-            ServerIntrospection(server_name="a", success=True, runtime_tools=[
-                MCPTool(name="t1", description=""),
-            ]),
+            ServerIntrospection(
+                server_name="a",
+                success=True,
+                runtime_tools=[
+                    MCPTool(name="t1", description=""),
+                ],
+            ),
             ServerIntrospection(server_name="b", success=False, error="timeout"),
-            ServerIntrospection(server_name="c", success=True, tools_added=["new"], runtime_resources=[
-                MCPResource(uri="r1", name="r1"),
-            ]),
+            ServerIntrospection(
+                server_name="c",
+                success=True,
+                tools_added=["new"],
+                runtime_resources=[
+                    MCPResource(uri="r1", name="r1"),
+                ],
+            ),
         ]
     )
     assert report.total_servers == 3
@@ -258,6 +272,7 @@ def test_drift_detection_resources():
 def test_blast_radius_has_nist_tags_field():
     """BlastRadius model should have nist_ai_rmf_tags field."""
     from agent_bom.models import BlastRadius
+
     br = BlastRadius(
         vulnerability=MagicMock(),
         package=MagicMock(),

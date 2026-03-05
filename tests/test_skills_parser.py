@@ -14,13 +14,7 @@ from agent_bom.parsers.skills import (
 def test_parse_npx_commands(tmp_path):
     """Extracts npx package references from code blocks."""
     md = tmp_path / "skill.md"
-    md.write_text(
-        "# My Skill\n\n"
-        "```bash\n"
-        "npx -y @modelcontextprotocol/server-filesystem /tmp\n"
-        "npx @anthropic/mcp-server-github\n"
-        "```\n"
-    )
+    md.write_text("# My Skill\n\n```bash\nnpx -y @modelcontextprotocol/server-filesystem /tmp\nnpx @anthropic/mcp-server-github\n```\n")
     result = parse_skill_file(md)
     names = [p.name for p in result.packages]
     assert "@modelcontextprotocol/server-filesystem" in names
@@ -32,12 +26,7 @@ def test_parse_npx_commands(tmp_path):
 def test_parse_uvx_commands(tmp_path):
     """Extracts uvx package references."""
     md = tmp_path / "skill.md"
-    md.write_text(
-        "# Python Skill\n\n"
-        "```bash\n"
-        "uvx mcp-server-sqlite --db test.db\n"
-        "```\n"
-    )
+    md.write_text("# Python Skill\n\n```bash\nuvx mcp-server-sqlite --db test.db\n```\n")
     result = parse_skill_file(md)
     assert len(result.packages) >= 1
     assert result.packages[0].name == "mcp-server-sqlite"
@@ -47,12 +36,7 @@ def test_parse_uvx_commands(tmp_path):
 def test_parse_pip_install(tmp_path):
     """Extracts pip install package references."""
     md = tmp_path / "setup.md"
-    md.write_text(
-        "# Setup\n\n"
-        "```bash\n"
-        "pip install langchain==0.1.0 openai>=1.0\n"
-        "```\n"
-    )
+    md.write_text("# Setup\n\n```bash\npip install langchain==0.1.0 openai>=1.0\n```\n")
     result = parse_skill_file(md)
     names = [p.name for p in result.packages]
     assert "langchain" in names
@@ -62,12 +46,7 @@ def test_parse_pip_install(tmp_path):
 def test_parse_npm_install(tmp_path):
     """Extracts npm install package references."""
     md = tmp_path / "setup.md"
-    md.write_text(
-        "# Setup\n\n"
-        "```bash\n"
-        "npm install express@4.18.2 lodash\n"
-        "```\n"
-    )
+    md.write_text("# Setup\n\n```bash\nnpm install express@4.18.2 lodash\n```\n")
     result = parse_skill_file(md)
     names = [p.name for p in result.packages]
     assert "express" in names
@@ -78,18 +57,18 @@ def test_parse_mcp_json_block(tmp_path):
     """Extracts MCP server configs from JSON code blocks."""
     md = tmp_path / "config.md"
     md.write_text(
-        '# MCP Config\n\n'
-        '```json\n'
-        '{\n'
+        "# MCP Config\n\n"
+        "```json\n"
+        "{\n"
         '  "mcpServers": {\n'
         '    "filesystem": {\n'
         '      "command": "npx",\n'
         '      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],\n'
         '      "env": {"API_KEY": "test"}\n'
-        '    }\n'
-        '  }\n'
-        '}\n'
-        '```\n'
+        "    }\n"
+        "  }\n"
+        "}\n"
+        "```\n"
     )
     result = parse_skill_file(md)
     assert len(result.servers) >= 1
@@ -99,11 +78,7 @@ def test_parse_mcp_json_block(tmp_path):
 def test_parse_credential_env_vars(tmp_path):
     """Detects credential env var references, excludes false positives."""
     md = tmp_path / "config.md"
-    md.write_text(
-        "# Config\n\n"
-        "Set OPENAI_API_KEY and ANTHROPIC_API_KEY in your environment.\n"
-        "Also set DATABASE_URL and PORT and HOME.\n"
-    )
+    md.write_text("# Config\n\nSet OPENAI_API_KEY and ANTHROPIC_API_KEY in your environment.\nAlso set DATABASE_URL and PORT and HOME.\n")
     result = parse_skill_file(md)
     creds = result.credential_env_vars
     assert "OPENAI_API_KEY" in creds
@@ -154,11 +129,7 @@ def test_discover_cursorrules(tmp_path):
 
 def test_scan_deduplicates(tmp_path):
     """scan_skill_files merges and deduplicates across files."""
-    content = (
-        "```bash\n"
-        "npx @modelcontextprotocol/server-filesystem /tmp\n"
-        "```\n"
-    )
+    content = "```bash\nnpx @modelcontextprotocol/server-filesystem /tmp\n```\n"
     f1 = tmp_path / "skill1.md"
     f2 = tmp_path / "skill2.md"
     f1.write_text(content)
@@ -173,6 +144,7 @@ def test_parse_preserves_raw_content(tmp_path):
     md = tmp_path / "CLAUDE.md"
     md.write_text("# My Instructions\nDo not use 0.0.0.0\n")
     from agent_bom.parsers.skills import parse_skill_file
+
     result = parse_skill_file(md)
     assert str(md) in result.raw_content
     assert "Do not use 0.0.0.0" in result.raw_content[str(md)]
@@ -185,6 +157,7 @@ def test_scan_merges_raw_content(tmp_path):
     f1.write_text("# Claude\nInstructions here")
     f2.write_text("# Skill\nMore instructions")
     from agent_bom.parsers.skills import scan_skill_files
+
     result = scan_skill_files([f1, f2])
     assert len(result.raw_content) == 2
     assert str(f1) in result.raw_content
@@ -196,6 +169,7 @@ def test_raw_content_truncated(tmp_path):
     md = tmp_path / "huge.md"
     md.write_text("x" * 20000)
     from agent_bom.parsers.skills import parse_skill_file
+
     result = parse_skill_file(md)
     assert len(result.raw_content[str(md)]) == 8000
 
@@ -219,20 +193,14 @@ def test_parse_pip_install_strips_comments(tmp_path):
     # Should only extract agent-bom (once, deduplicated)
     assert "agent-bom" in names
     # Comment words should NOT be extracted as packages
-    for bad_name in ["AWS", "Bedrock", "Lambda", "EKS", "SageMaker",
-                     "Cortex", "Agents", "MCP", "Servers", "Snowpark",
-                     "All", "providers"]:
+    for bad_name in ["AWS", "Bedrock", "Lambda", "EKS", "SageMaker", "Cortex", "Agents", "MCP", "Servers", "Snowpark", "All", "providers"]:
         assert bad_name not in names, f"False positive: '{bad_name}' extracted from comment"
 
 
 def test_parse_pip_install_extras_with_comment(tmp_path):
     """pip install with extras bracket and comment extracts only the package."""
     md = tmp_path / "setup.md"
-    md.write_text(
-        "```bash\n"
-        "pip install flask[async]  # web framework with async support\n"
-        "```\n"
-    )
+    md.write_text("```bash\npip install flask[async]  # web framework with async support\n```\n")
     result = parse_skill_file(md)
     names = [p.name for p in result.packages]
     assert "flask" in names
@@ -243,11 +211,7 @@ def test_parse_pip_install_extras_with_comment(tmp_path):
 def test_parse_npm_install_strips_comments(tmp_path):
     """npm install should NOT extract words from inline comments."""
     md = tmp_path / "setup.md"
-    md.write_text(
-        "```bash\n"
-        "npm install express  # web framework for Node.js\n"
-        "```\n"
-    )
+    md.write_text("```bash\nnpm install express  # web framework for Node.js\n```\n")
     result = parse_skill_file(md)
     names = [p.name for p in result.packages]
     assert "express" in names
@@ -317,12 +281,7 @@ def test_parse_no_frontmatter(tmp_path):
 def test_parse_frontmatter_minimal(tmp_path):
     """Minimal frontmatter with just name and version."""
     md = tmp_path / "SKILL.md"
-    md.write_text(
-        "---\n"
-        "name: bare-tool\n"
-        "version: 0.1.0\n"
-        "---\n\n# Bare Tool\n"
-    )
+    md.write_text("---\nname: bare-tool\nversion: 0.1.0\n---\n\n# Bare Tool\n")
     result = parse_skill_file(md)
     meta = result.metadata
     assert meta is not None
@@ -338,9 +297,7 @@ def test_parse_frontmatter_minimal(tmp_path):
 def test_scan_skill_files_merges_metadata(tmp_path):
     """scan_skill_files keeps the first valid metadata."""
     skill = tmp_path / "SKILL.md"
-    skill.write_text(
-        "---\nname: tool-a\nversion: 1.0.0\n---\n\n# Tool A\n"
-    )
+    skill.write_text("---\nname: tool-a\nversion: 1.0.0\n---\n\n# Tool A\n")
     claude = tmp_path / "CLAUDE.md"
     claude.write_text("# Claude\nJust instructions.\n")
 

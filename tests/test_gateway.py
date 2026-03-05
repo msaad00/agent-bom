@@ -6,6 +6,7 @@ from agent_bom.gateway import evaluate_gateway_policies, gateway_policy_to_proxy
 
 def _now() -> str:
     from datetime import datetime, timezone
+
     return datetime.now(timezone.utc).isoformat()
 
 

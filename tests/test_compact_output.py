@@ -52,8 +52,7 @@ def _make_server(name="test-server", packages=None, env=None, tools=None):
     )
 
 
-def _make_agent(name="test-agent", agent_type=AgentType.CLAUDE_DESKTOP,
-                status=AgentStatus.CONFIGURED, servers=None):
+def _make_agent(name="test-agent", agent_type=AgentType.CLAUDE_DESKTOP, status=AgentStatus.CONFIGURED, servers=None):
     return Agent(
         name=name,
         agent_type=agent_type,
@@ -65,16 +64,22 @@ def _make_agent(name="test-agent", agent_type=AgentType.CLAUDE_DESKTOP,
 
 def _vuln(vid="CVE-2024-0001", severity=Severity.CRITICAL, fixed=None, kev=False):
     return Vulnerability(
-        id=vid, summary="test vuln", severity=severity,
-        fixed_version=fixed, is_kev=kev,
+        id=vid,
+        summary="test vuln",
+        severity=severity,
+        fixed_version=fixed,
+        is_kev=kev,
     )
 
 
 def _blast(vuln, pkg, agents, servers, creds=None):
     return BlastRadius(
-        vulnerability=vuln, package=pkg,
-        affected_servers=servers, affected_agents=agents,
-        exposed_credentials=creds or [], exposed_tools=[],
+        vulnerability=vuln,
+        package=pkg,
+        affected_servers=servers,
+        affected_agents=agents,
+        exposed_credentials=creds or [],
+        exposed_tools=[],
     )
 
 
@@ -83,11 +88,15 @@ def _blast(vuln, pkg, agents, servers, creds=None):
 
 def test_compact_summary_clean():
     """0 vulns → CLEAN posture."""
-    agent = _make_agent(servers=[
-        _make_server(packages=[
-            Package(name="express", version="4.19.0", ecosystem="npm"),
-        ])
-    ])
+    agent = _make_agent(
+        servers=[
+            _make_server(
+                packages=[
+                    Package(name="express", version="4.19.0", ecosystem="npm"),
+                ]
+            )
+        ]
+    )
     report = AIBOMReport(agents=[agent])
     output = _capture(print_compact_summary, report)
     assert "CLEAN" in output
@@ -98,8 +107,7 @@ def test_compact_summary_clean():
 def test_compact_summary_with_vulns():
     """Shows severity breakdown when vulns exist."""
     vuln = _vuln()
-    pkg = Package(name="lodash", version="4.17.20", ecosystem="npm",
-                  vulnerabilities=[vuln])
+    pkg = Package(name="lodash", version="4.17.20", ecosystem="npm", vulnerabilities=[vuln])
     server = _make_server(packages=[pkg])
     agent = _make_agent(servers=[server])
     br = _blast(vuln, pkg, [agent], [server])
@@ -123,17 +131,29 @@ def test_compact_summary_credentials():
 
 def test_compact_agents_table():
     """One row per configured agent."""
-    a1 = _make_agent(name="claude-desktop", servers=[
-        _make_server(packages=[
-            Package(name="express", version="4.19.0", ecosystem="npm"),
-        ])
-    ])
-    a2 = _make_agent(name="cursor", agent_type=AgentType.CURSOR, servers=[
-        _make_server(name="s2", packages=[
-            Package(name="flask", version="3.0.0", ecosystem="pypi"),
-            Package(name="requests", version="2.31.0", ecosystem="pypi"),
-        ])
-    ])
+    a1 = _make_agent(
+        name="claude-desktop",
+        servers=[
+            _make_server(
+                packages=[
+                    Package(name="express", version="4.19.0", ecosystem="npm"),
+                ]
+            )
+        ],
+    )
+    a2 = _make_agent(
+        name="cursor",
+        agent_type=AgentType.CURSOR,
+        servers=[
+            _make_server(
+                name="s2",
+                packages=[
+                    Package(name="flask", version="3.0.0", ecosystem="pypi"),
+                    Package(name="requests", version="2.31.0", ecosystem="pypi"),
+                ],
+            )
+        ],
+    )
     report = AIBOMReport(agents=[a1, a2])
     output = _capture(print_compact_agents, report)
     assert "claude-desktop" in output
@@ -179,8 +199,7 @@ def test_compact_blast_radius_empty():
 def test_compact_blast_radius_kev():
     """KEV badge shown for known-exploited vulns."""
     v = _vuln(vid="CVE-2024-0001", severity=Severity.CRITICAL, kev=True)
-    pkg = Package(name="log4j", version="2.14.0", ecosystem="maven",
-                  vulnerabilities=[v])
+    pkg = Package(name="log4j", version="2.14.0", ecosystem="maven", vulnerabilities=[v])
     server = _make_server(packages=[pkg])
     agent = _make_agent(servers=[server])
     br = _blast(v, pkg, [agent], [server])
@@ -199,8 +218,7 @@ def test_compact_remediation_limit():
     radii = []
     for i in range(5):
         v = _vuln(vid=f"CVE-2024-{i:04d}", severity=Severity.HIGH, fixed="9.9.9")
-        p = Package(name=f"pkg-{i}", version="1.0.0", ecosystem="npm",
-                    vulnerabilities=[v])
+        p = Package(name=f"pkg-{i}", version="1.0.0", ecosystem="npm", vulnerabilities=[v])
         radii.append(_blast(v, p, [agent], [server]))
     report = AIBOMReport(agents=[agent], blast_radii=radii)
     output = _capture(print_compact_remediation, report, limit=2)

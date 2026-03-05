@@ -47,8 +47,7 @@ def _make_server(name="test-server", packages=None, env=None, tools=None):
     )
 
 
-def _make_agent(name="test-agent", agent_type=AgentType.CLAUDE_DESKTOP,
-                status=AgentStatus.CONFIGURED, servers=None):
+def _make_agent(name="test-agent", agent_type=AgentType.CLAUDE_DESKTOP, status=AgentStatus.CONFIGURED, servers=None):
     return Agent(
         name=name,
         agent_type=agent_type,
@@ -60,11 +59,15 @@ def _make_agent(name="test-agent", agent_type=AgentType.CLAUDE_DESKTOP,
 
 def test_posture_summary_clean():
     """0 vulns → 'CLEAN' posture."""
-    agent = _make_agent(servers=[
-        _make_server(packages=[
-            Package(name="express", version="4.19.0", ecosystem="npm"),
-        ])
-    ])
+    agent = _make_agent(
+        servers=[
+            _make_server(
+                packages=[
+                    Package(name="express", version="4.19.0", ecosystem="npm"),
+                ]
+            )
+        ]
+    )
     report = AIBOMReport(agents=[agent])
     output = _capture_posture(report)
     assert "CLEAN" in output
@@ -76,20 +79,25 @@ def test_posture_summary_with_vulns():
     """Shows severity breakdown when vulns exist."""
     vuln_crit = Vulnerability(id="CVE-2024-0001", summary="RCE", severity=Severity.CRITICAL)
     vuln_high = Vulnerability(id="CVE-2024-0002", summary="XSS", severity=Severity.HIGH)
-    pkg = Package(name="lodash", version="4.17.20", ecosystem="npm",
-                  vulnerabilities=[vuln_crit, vuln_high])
+    pkg = Package(name="lodash", version="4.17.20", ecosystem="npm", vulnerabilities=[vuln_crit, vuln_high])
     server = _make_server(packages=[pkg])
     agent = _make_agent(servers=[server])
 
     br_crit = BlastRadius(
-        vulnerability=vuln_crit, package=pkg,
-        affected_servers=[server], affected_agents=[agent],
-        exposed_credentials=[], exposed_tools=[],
+        vulnerability=vuln_crit,
+        package=pkg,
+        affected_servers=[server],
+        affected_agents=[agent],
+        exposed_credentials=[],
+        exposed_tools=[],
     )
     br_high = BlastRadius(
-        vulnerability=vuln_high, package=pkg,
-        affected_servers=[server], affected_agents=[agent],
-        exposed_credentials=[], exposed_tools=[],
+        vulnerability=vuln_high,
+        package=pkg,
+        affected_servers=[server],
+        affected_agents=[agent],
+        exposed_credentials=[],
+        exposed_tools=[],
     )
     report = AIBOMReport(agents=[agent], blast_radii=[br_crit, br_high])
     output = _capture_posture(report)
@@ -119,10 +127,12 @@ def test_posture_summary_ecosystem_breakdown():
     pkgs_pypi = [
         Package(name="flask", version="3.0.0", ecosystem="pypi"),
     ]
-    agent = _make_agent(servers=[
-        _make_server(name="web", packages=pkgs_npm),
-        _make_server(name="api", packages=pkgs_pypi),
-    ])
+    agent = _make_agent(
+        servers=[
+            _make_server(name="web", packages=pkgs_npm),
+            _make_server(name="api", packages=pkgs_pypi),
+        ]
+    )
     report = AIBOMReport(agents=[agent])
     output = _capture_posture(report)
     assert "npm" in output

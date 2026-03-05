@@ -46,10 +46,7 @@ _SECURITY_FLAGS: dict[str, dict] = {
     ".joblib": {
         "severity": "MEDIUM",
         "type": "JOBLIB_DESERIALIZATION",
-        "description": (
-            "Joblib uses pickle internally and may execute arbitrary code. "
-            "Prefer safetensors for model weights."
-        ),
+        "description": ("Joblib uses pickle internally and may execute arbitrary code. Prefer safetensors for model weights."),
     },
 }
 
@@ -104,21 +101,20 @@ def scan_model_files(
             if ext in _SECURITY_FLAGS:
                 flag = _SECURITY_FLAGS[ext].copy()
                 security_flags.append(flag)
-                warnings.append(
-                    f"Model file {file_path.name}: {flag['severity']} — {flag['type']}. "
-                    f"{flag['description']}"
-                )
+                warnings.append(f"Model file {file_path.name}: {flag['severity']} — {flag['type']}. {flag['description']}")
 
-            results.append({
-                "path": str(file_path),
-                "filename": file_path.name,
-                "extension": ext,
-                "format": info["format"],
-                "ecosystem": info["ecosystem"],
-                "size_bytes": size_bytes,
-                "size_human": _human_size(size_bytes),
-                "security_flags": security_flags,
-            })
+            results.append(
+                {
+                    "path": str(file_path),
+                    "filename": file_path.name,
+                    "extension": ext,
+                    "format": info["format"],
+                    "ecosystem": info["ecosystem"],
+                    "size_bytes": size_bytes,
+                    "size_human": _human_size(size_bytes),
+                    "security_flags": security_flags,
+                }
+            )
 
     return results, warnings
 
@@ -144,11 +140,13 @@ def verify_model_hash(
     }
 
     if not file_path.is_file():
-        result["security_flags"].append({
-            "severity": "HIGH",
-            "type": "FILE_NOT_FOUND",
-            "description": f"Model file not found: {file_path}",
-        })
+        result["security_flags"].append(
+            {
+                "severity": "HIGH",
+                "type": "FILE_NOT_FOUND",
+                "description": f"Model file not found: {file_path}",
+            }
+        )
         return result
 
     h = hashlib.sha256()
@@ -159,11 +157,13 @@ def verify_model_hash(
                 h.update(chunk)
                 size += len(chunk)
     except OSError as exc:
-        result["security_flags"].append({
-            "severity": "MEDIUM",
-            "type": "HASH_ERROR",
-            "description": f"Could not read file for hashing: {exc}",
-        })
+        result["security_flags"].append(
+            {
+                "severity": "MEDIUM",
+                "type": "HASH_ERROR",
+                "description": f"Could not read file for hashing: {exc}",
+            }
+        )
         return result
 
     result["sha256"] = h.hexdigest()
@@ -172,14 +172,15 @@ def verify_model_hash(
     if expected_sha256 is not None:
         result["match"] = result["sha256"] == expected_sha256.lower()
         if not result["match"]:
-            result["security_flags"].append({
-                "severity": "CRITICAL",
-                "type": "HASH_MISMATCH",
-                "description": (
-                    f"SHA-256 mismatch — expected {expected_sha256[:16]}..., "
-                    f"got {result['sha256'][:16]}... File may be tampered."
-                ),
-            })
+            result["security_flags"].append(
+                {
+                    "severity": "CRITICAL",
+                    "type": "HASH_MISMATCH",
+                    "description": (
+                        f"SHA-256 mismatch — expected {expected_sha256[:16]}..., got {result['sha256'][:16]}... File may be tampered."
+                    ),
+                }
+            )
 
     return result
 
@@ -218,14 +219,15 @@ def check_sigstore_signature(file_path: str | Path) -> dict:
             break
 
     if not result["signed"]:
-        result["security_flags"].append({
-            "severity": "MEDIUM",
-            "type": "UNSIGNED",
-            "description": (
-                "No Sigstore signature found. Model provenance cannot be verified. "
-                "Consider signing with cosign or sigstore."
-            ),
-        })
+        result["security_flags"].append(
+            {
+                "severity": "MEDIUM",
+                "type": "UNSIGNED",
+                "description": (
+                    "No Sigstore signature found. Model provenance cannot be verified. Consider signing with cosign or sigstore."
+                ),
+            }
+        )
 
     return result
 
@@ -258,24 +260,30 @@ def check_huggingface_provenance(
             data = json.loads(resp.read().decode())
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
-            result["security_flags"].append({
-                "severity": "HIGH",
-                "type": "NO_PROVENANCE",
-                "description": f"Model '{model_name}' not found on HuggingFace. Cannot verify provenance.",
-            })
+            result["security_flags"].append(
+                {
+                    "severity": "HIGH",
+                    "type": "NO_PROVENANCE",
+                    "description": f"Model '{model_name}' not found on HuggingFace. Cannot verify provenance.",
+                }
+            )
         else:
-            result["security_flags"].append({
-                "severity": "MEDIUM",
-                "type": "PROVENANCE_CHECK_FAILED",
-                "description": f"HuggingFace API error {exc.code}: {exc.reason}",
-            })
+            result["security_flags"].append(
+                {
+                    "severity": "MEDIUM",
+                    "type": "PROVENANCE_CHECK_FAILED",
+                    "description": f"HuggingFace API error {exc.code}: {exc.reason}",
+                }
+            )
         return result
     except (urllib.error.URLError, OSError, ValueError) as exc:
-        result["security_flags"].append({
-            "severity": "MEDIUM",
-            "type": "PROVENANCE_CHECK_FAILED",
-            "description": f"Could not reach HuggingFace API: {exc}",
-        })
+        result["security_flags"].append(
+            {
+                "severity": "MEDIUM",
+                "type": "PROVENANCE_CHECK_FAILED",
+                "description": f"Could not reach HuggingFace API: {exc}",
+            }
+        )
         return result
 
     result["author"] = data.get("author")
@@ -287,22 +295,24 @@ def check_huggingface_provenance(
 
     # Check if siblings include sha256-bearing files
     siblings = data.get("siblings", [])
-    result["sha256_available"] = any(
-        s.get("lfs", {}).get("sha256") for s in siblings if isinstance(s, dict)
-    )
+    result["sha256_available"] = any(s.get("lfs", {}).get("sha256") for s in siblings if isinstance(s, dict))
 
     # Flag if no model card or author info
     if not result["has_model_card"]:
-        result["security_flags"].append({
-            "severity": "LOW",
-            "type": "NO_MODEL_CARD",
-            "description": "Model has no model card. Documentation of training data, biases, and limitations is missing.",
-        })
+        result["security_flags"].append(
+            {
+                "severity": "LOW",
+                "type": "NO_MODEL_CARD",
+                "description": "Model has no model card. Documentation of training data, biases, and limitations is missing.",
+            }
+        )
     if not result["author"]:
-        result["security_flags"].append({
-            "severity": "MEDIUM",
-            "type": "NO_AUTHOR",
-            "description": "Model has no identified author. Provenance cannot be attributed.",
-        })
+        result["security_flags"].append(
+            {
+                "severity": "MEDIUM",
+                "type": "NO_AUTHOR",
+                "description": "Model has no identified author. Provenance cannot be attributed.",
+            }
+        )
 
     return result

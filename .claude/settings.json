@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:docs.genesiscomputing.com)",
+      "Bash(ruff format src/agent_bom/push.py tests/test_push.py)",
+      "Bash(gh repo create msaad00/cloud-security --public --description \"Cloud security skills collection — reusable security automation for AI agents\" --clone)",
+      "Bash(git log --oneline feat/vex-support --not origin/main)"
+    ],
+    "additionalDirectories": [
+      "/Users/mohamedsaad/Desktop"
+    ]
+  }
+}

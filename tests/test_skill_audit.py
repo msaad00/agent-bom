@@ -23,8 +23,7 @@ def test_typosquat_detection():
         ],
         source_files=["CLAUDE.md"],
     )
-    with patch("agent_bom.parsers.skill_audit._batch_verify_packages_sync",
-               return_value={}):
+    with patch("agent_bom.parsers.skill_audit._batch_verify_packages_sync", return_value={}):
         audit = audit_skill_result(result)
 
     typosquat_findings = [f for f in audit.findings if f.category == "typosquat"]
@@ -116,8 +115,7 @@ def test_unknown_package():
         source_files=["skill.md"],
     )
     # Mock verification to avoid network calls — package doesn't exist
-    with patch("agent_bom.parsers.skill_audit._batch_verify_packages_sync",
-               return_value={"totally-fake-package-xyz": False}):
+    with patch("agent_bom.parsers.skill_audit._batch_verify_packages_sync", return_value={"totally-fake-package-xyz": False}):
         audit = audit_skill_result(result)
 
     unknown = [f for f in audit.findings if f.category == "unknown_package"]
@@ -165,10 +163,7 @@ def test_shell_access_args():
     )
     audit = audit_skill_result(result)
 
-    shell_findings = [
-        f for f in audit.findings
-        if f.category == "shell_access" and "argument" in f.title.lower()
-    ]
+    shell_findings = [f for f in audit.findings if f.category == "shell_access" and "argument" in f.title.lower()]
     assert len(shell_findings) >= 1
     assert shell_findings[0].severity == "high"
 
@@ -180,9 +175,16 @@ def test_excessive_credentials():
     """10 credential env vars triggers MEDIUM excessive_permissions."""
     result = SkillScanResult(
         credential_env_vars=[
-            "API_KEY_1", "API_KEY_2", "API_KEY_3", "API_KEY_4",
-            "SECRET_1", "SECRET_2", "SECRET_3", "SECRET_4",
-            "TOKEN_1", "TOKEN_2",
+            "API_KEY_1",
+            "API_KEY_2",
+            "API_KEY_3",
+            "API_KEY_4",
+            "SECRET_1",
+            "SECRET_2",
+            "SECRET_3",
+            "SECRET_4",
+            "TOKEN_1",
+            "TOKEN_2",
         ],
         source_files=["CLAUDE.md"],
     )
@@ -324,9 +326,13 @@ def test_skill_audit_absent_when_no_scan():
 def test_skill_finding_has_ai_fields():
     """SkillFinding should have ai_analysis and ai_adjusted_severity defaults."""
     from agent_bom.parsers.skill_audit import SkillFinding
+
     f = SkillFinding(
-        severity="high", category="test", title="test",
-        detail="test", source_file="test.md",
+        severity="high",
+        category="test",
+        title="test",
+        detail="test",
+        source_file="test.md",
     )
     assert f.ai_analysis is None
     assert f.ai_adjusted_severity is None
@@ -338,6 +344,7 @@ def test_skill_finding_has_ai_fields():
 def test_skill_audit_result_has_ai_fields():
     """SkillAuditResult should have ai_skill_summary and ai_overall_risk_level."""
     from agent_bom.parsers.skill_audit import SkillAuditResult
+
     r = SkillAuditResult()
     assert r.ai_skill_summary is None
     assert r.ai_overall_risk_level is None
@@ -378,8 +385,11 @@ def test_verify_package_exists_pypi():
     mock_cm.__aexit__ = AsyncMock(return_value=False)
 
     import agent_bom.http_client as _hc
-    with patch.object(_hc, "create_client", return_value=mock_cm), \
-         patch.object(_hc, "request_with_retry", new_callable=AsyncMock, return_value=mock_resp):
+
+    with (
+        patch.object(_hc, "create_client", return_value=mock_cm),
+        patch.object(_hc, "request_with_retry", new_callable=AsyncMock, return_value=mock_resp),
+    ):
         result = asyncio.run(_verify_package_exists("requests", "pypi"))
         assert result is True
 
@@ -396,8 +406,11 @@ def test_verify_package_not_found():
     mock_cm.__aexit__ = AsyncMock(return_value=False)
 
     import agent_bom.http_client as _hc
-    with patch.object(_hc, "create_client", return_value=mock_cm), \
-         patch.object(_hc, "request_with_retry", new_callable=AsyncMock, return_value=mock_resp):
+
+    with (
+        patch.object(_hc, "create_client", return_value=mock_cm),
+        patch.object(_hc, "request_with_retry", new_callable=AsyncMock, return_value=mock_resp),
+    ):
         result = asyncio.run(_verify_package_exists("zzz-not-real-abc", "pypi"))
         assert result is False
 
@@ -411,8 +424,11 @@ def test_verify_package_network_error():
     mock_cm.__aexit__ = AsyncMock(return_value=False)
 
     import agent_bom.http_client as _hc
-    with patch.object(_hc, "create_client", return_value=mock_cm), \
-         patch.object(_hc, "request_with_retry", new_callable=AsyncMock, return_value=None):
+
+    with (
+        patch.object(_hc, "create_client", return_value=mock_cm),
+        patch.object(_hc, "request_with_retry", new_callable=AsyncMock, return_value=None),
+    ):
         result = asyncio.run(_verify_package_exists("requests", "pypi"))
         assert result is None
 
@@ -426,12 +442,15 @@ def test_batch_verify_packages():
             return True
         return False
 
-    with patch("agent_bom.parsers.skill_audit._verify_package_exists",
-               side_effect=mock_verify):
-        results = asyncio.run(_batch_verify_packages([
-            ("requests", "pypi"),
-            ("zzz-fake", "pypi"),
-        ]))
+    with patch("agent_bom.parsers.skill_audit._verify_package_exists", side_effect=mock_verify):
+        results = asyncio.run(
+            _batch_verify_packages(
+                [
+                    ("requests", "pypi"),
+                    ("zzz-fake", "pypi"),
+                ]
+            )
+        )
         assert results["requests"] is True
         # fail-open: False from _verify → still False (only None coerced to True)
         assert results["zzz-fake"] is False
@@ -446,8 +465,7 @@ def test_unknown_package_skipped_if_verified():
         source_files=["skill.md"],
     )
     # flask exists on PyPI → verified as True
-    with patch("agent_bom.parsers.skill_audit._batch_verify_packages_sync",
-               return_value={"flask": True}):
+    with patch("agent_bom.parsers.skill_audit._batch_verify_packages_sync", return_value={"flask": True}):
         audit = audit_skill_result(result)
 
     unknown = [f for f in audit.findings if f.category == "unknown_package"]
@@ -462,8 +480,7 @@ def test_unknown_package_flagged_if_not_verified():
         ],
         source_files=["skill.md"],
     )
-    with patch("agent_bom.parsers.skill_audit._batch_verify_packages_sync",
-               return_value={"zzz-not-real-pkg": False}):
+    with patch("agent_bom.parsers.skill_audit._batch_verify_packages_sync", return_value={"zzz-not-real-pkg": False}):
         audit = audit_skill_result(result)
 
     unknown = [f for f in audit.findings if f.category == "unknown_package"]
@@ -480,8 +497,7 @@ def test_verification_failure_falls_back():
         source_files=["skill.md"],
     )
     # Simulate network failure
-    with patch("agent_bom.parsers.skill_audit._batch_verify_packages_sync",
-               side_effect=Exception("Network error")):
+    with patch("agent_bom.parsers.skill_audit._batch_verify_packages_sync", side_effect=Exception("Network error")):
         audit = audit_skill_result(result)
 
     # Should still produce findings (falls back to registry-only behavior)
@@ -809,7 +825,8 @@ def test_metadata_missing_source():
 def test_metadata_has_source_no_finding():
     """Skill with homepage doesn't get missing_source finding."""
     meta = SkillMetadata(
-        name="my-tool", version="1.0.0",
+        name="my-tool",
+        version="1.0.0",
         homepage="https://github.com/example/my-tool",
     )
     result = _make_metadata_result(metadata=meta)
@@ -820,8 +837,7 @@ def test_metadata_has_source_no_finding():
 
 def test_metadata_missing_license():
     """Skill with no license gets a low finding."""
-    meta = SkillMetadata(name="my-tool", version="1.0.0",
-                         homepage="https://example.com")
+    meta = SkillMetadata(name="my-tool", version="1.0.0", homepage="https://example.com")
     result = _make_metadata_result(metadata=meta)
     audit = audit_skill_result(result)
     findings = [f for f in audit.findings if f.category == "missing_license"]
@@ -831,8 +847,7 @@ def test_metadata_missing_license():
 
 def test_metadata_has_license_no_finding():
     """Skill with license declared doesn't get flagged."""
-    meta = SkillMetadata(name="my-tool", version="1.0.0",
-                         homepage="https://example.com", license="MIT")
+    meta = SkillMetadata(name="my-tool", version="1.0.0", homepage="https://example.com", license="MIT")
     result = _make_metadata_result(metadata=meta)
     audit = audit_skill_result(result)
     findings = [f for f in audit.findings if f.category == "missing_license"]
@@ -842,8 +857,10 @@ def test_metadata_has_license_no_finding():
 def test_metadata_undeclared_docker_dep():
     """Skill referencing docker without declaring it gets flagged."""
     meta = SkillMetadata(
-        name="my-tool", version="1.0.0",
-        homepage="https://example.com", license="MIT",
+        name="my-tool",
+        version="1.0.0",
+        homepage="https://example.com",
+        license="MIT",
         required_bins=["my-tool"],
     )
     result = _make_metadata_result(
@@ -859,8 +876,10 @@ def test_metadata_undeclared_docker_dep():
 def test_metadata_declared_docker_no_finding():
     """Skill that declares docker as optional_bins doesn't get flagged."""
     meta = SkillMetadata(
-        name="my-tool", version="1.0.0",
-        homepage="https://example.com", license="MIT",
+        name="my-tool",
+        version="1.0.0",
+        homepage="https://example.com",
+        license="MIT",
         required_bins=["my-tool"],
         optional_bins=["docker"],
     )
@@ -876,8 +895,10 @@ def test_metadata_declared_docker_no_finding():
 def test_metadata_single_install_method():
     """Skill with only one install method gets a low finding."""
     meta = SkillMetadata(
-        name="my-tool", version="1.0.0",
-        homepage="https://example.com", license="MIT",
+        name="my-tool",
+        version="1.0.0",
+        homepage="https://example.com",
+        license="MIT",
         install_methods=["uv"],
     )
     result = _make_metadata_result(metadata=meta)
@@ -890,8 +911,10 @@ def test_metadata_single_install_method():
 def test_metadata_multiple_install_methods_no_finding():
     """Skill with multiple install methods doesn't get flagged."""
     meta = SkillMetadata(
-        name="my-tool", version="1.0.0",
-        homepage="https://example.com", license="MIT",
+        name="my-tool",
+        version="1.0.0",
+        homepage="https://example.com",
+        license="MIT",
         install_methods=["uv", "pip", "pipx"],
     )
     result = _make_metadata_result(metadata=meta)
@@ -916,7 +939,8 @@ def test_metadata_read_only_claim_without_source():
 def test_metadata_read_only_with_source_no_finding():
     """Skill claiming read-only WITH source URL doesn't get flagged."""
     meta = SkillMetadata(
-        name="my-tool", version="1.0.0",
+        name="my-tool",
+        version="1.0.0",
         source="https://github.com/example/my-tool",
     )
     result = _make_metadata_result(
@@ -931,8 +955,10 @@ def test_metadata_read_only_with_source_no_finding():
 def test_metadata_undocumented_network():
     """Skill with API URLs but no network documentation gets flagged."""
     meta = SkillMetadata(
-        name="my-tool", version="1.0.0",
-        homepage="https://example.com", license="MIT",
+        name="my-tool",
+        version="1.0.0",
+        homepage="https://example.com",
+        license="MIT",
     )
     result = _make_metadata_result(
         metadata=meta,
@@ -946,16 +972,20 @@ def test_metadata_undocumented_network():
 def test_metadata_documented_network_no_finding():
     """Skill with API URLs AND network documentation doesn't get flagged."""
     meta = SkillMetadata(
-        name="my-tool", version="1.0.0",
-        homepage="https://example.com", license="MIT",
+        name="my-tool",
+        version="1.0.0",
+        homepage="https://example.com",
+        license="MIT",
     )
     result = _make_metadata_result(
         metadata=meta,
-        raw_content={"SKILL.md": (
-            "Queries https://api.osv.dev/v1/querybatch for vulns.\n\n"
-            "## Network endpoints called\n"
-            "All API calls are read-only queries.\n"
-        )},
+        raw_content={
+            "SKILL.md": (
+                "Queries https://api.osv.dev/v1/querybatch for vulns.\n\n"
+                "## Network endpoints called\n"
+                "All API calls are read-only queries.\n"
+            )
+        },
     )
     audit = audit_skill_result(result)
     findings = [f for f in audit.findings if f.category == "undocumented_network"]
@@ -966,8 +996,14 @@ def test_metadata_no_frontmatter_skips_metadata_checks():
     """Files without frontmatter skip metadata quality checks entirely."""
     result = _make_metadata_result(metadata=None)
     audit = audit_skill_result(result)
-    metadata_cats = {"missing_source", "missing_license", "undeclared_dependency",
-                     "limited_install", "unverifiable_claim", "undocumented_network"}
+    metadata_cats = {
+        "missing_source",
+        "missing_license",
+        "undeclared_dependency",
+        "limited_install",
+        "unverifiable_claim",
+        "undocumented_network",
+    }
     findings = [f for f in audit.findings if f.category in metadata_cats]
     assert len(findings) == 0
 
@@ -975,7 +1011,8 @@ def test_metadata_no_frontmatter_skips_metadata_checks():
 def test_metadata_complete_skill_passes():
     """A fully complete SKILL.md metadata produces no metadata findings."""
     meta = SkillMetadata(
-        name="my-tool", version="1.0.0",
+        name="my-tool",
+        version="1.0.0",
         homepage="https://github.com/example/my-tool",
         source="https://github.com/example/my-tool",
         license="Apache-2.0",
@@ -985,16 +1022,24 @@ def test_metadata_complete_skill_passes():
     )
     result = _make_metadata_result(
         metadata=meta,
-        raw_content={"SKILL.md": (
-            "This tool is read-only.\n"
-            "Uses https://api.osv.dev for scanning.\n\n"
-            "## Network endpoints called\n"
-            "All API calls are read-only queries to OSV.dev.\n"
-            "Docker scanning requires docker binary.\n"
-        )},
+        raw_content={
+            "SKILL.md": (
+                "This tool is read-only.\n"
+                "Uses https://api.osv.dev for scanning.\n\n"
+                "## Network endpoints called\n"
+                "All API calls are read-only queries to OSV.dev.\n"
+                "Docker scanning requires docker binary.\n"
+            )
+        },
     )
     audit = audit_skill_result(result)
-    metadata_cats = {"missing_source", "missing_license", "undeclared_dependency",
-                     "limited_install", "unverifiable_claim", "undocumented_network"}
+    metadata_cats = {
+        "missing_source",
+        "missing_license",
+        "undeclared_dependency",
+        "limited_install",
+        "unverifiable_claim",
+        "undocumented_network",
+    }
     findings = [f for f in audit.findings if f.category in metadata_cats]
     assert len(findings) == 0

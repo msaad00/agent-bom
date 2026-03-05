@@ -82,19 +82,23 @@ class ToolDriftDetector:
 
         alerts: list[Alert] = []
         if new_tools:
-            alerts.append(Alert(
-                detector="tool_drift",
-                severity=AlertSeverity.HIGH,
-                message=f"New tools detected after startup: {', '.join(sorted(new_tools))}",
-                details={"new_tools": sorted(new_tools), "baseline_count": len(self._baseline)},
-            ))
+            alerts.append(
+                Alert(
+                    detector="tool_drift",
+                    severity=AlertSeverity.HIGH,
+                    message=f"New tools detected after startup: {', '.join(sorted(new_tools))}",
+                    details={"new_tools": sorted(new_tools), "baseline_count": len(self._baseline)},
+                )
+            )
         if removed_tools:
-            alerts.append(Alert(
-                detector="tool_drift",
-                severity=AlertSeverity.MEDIUM,
-                message=f"Tools removed after startup: {', '.join(sorted(removed_tools))}",
-                details={"removed_tools": sorted(removed_tools)},
-            ))
+            alerts.append(
+                Alert(
+                    detector="tool_drift",
+                    severity=AlertSeverity.MEDIUM,
+                    message=f"Tools removed after startup: {', '.join(sorted(removed_tools))}",
+                    details={"removed_tools": sorted(removed_tools)},
+                )
+            )
         return alerts
 
     @property
@@ -120,17 +124,19 @@ class ArgumentAnalyzer:
                 arg_value = str(arg_value)
             for pattern_name, pattern in DANGEROUS_ARG_PATTERNS:
                 if pattern.search(arg_value):
-                    alerts.append(Alert(
-                        detector="argument_analyzer",
-                        severity=AlertSeverity.HIGH,
-                        message=f"Dangerous argument pattern '{pattern_name}' in {tool_name}.{arg_name}",
-                        details={
-                            "tool": tool_name,
-                            "argument": arg_name,
-                            "pattern": pattern_name,
-                            "value_preview": arg_value[:100],
-                        },
-                    ))
+                    alerts.append(
+                        Alert(
+                            detector="argument_analyzer",
+                            severity=AlertSeverity.HIGH,
+                            message=f"Dangerous argument pattern '{pattern_name}' in {tool_name}.{arg_name}",
+                            details={
+                                "tool": tool_name,
+                                "argument": arg_name,
+                                "pattern": pattern_name,
+                                "value_preview": arg_value[:100],
+                            },
+                        )
+                    )
         return alerts
 
 
@@ -152,17 +158,19 @@ class CredentialLeakDetector:
             if matches:
                 # Redact the actual credential value
                 redacted = [m[:8] + "..." if len(m) > 8 else "***" for m in matches[:3]]
-                alerts.append(Alert(
-                    detector="credential_leak",
-                    severity=AlertSeverity.CRITICAL,
-                    message=f"Credential leak detected: {cred_name} in response from {tool_name}",
-                    details={
-                        "tool": tool_name,
-                        "credential_type": cred_name,
-                        "match_count": len(matches),
-                        "redacted_preview": redacted,
-                    },
-                ))
+                alerts.append(
+                    Alert(
+                        detector="credential_leak",
+                        severity=AlertSeverity.CRITICAL,
+                        message=f"Credential leak detected: {cred_name} in response from {tool_name}",
+                        details={
+                            "tool": tool_name,
+                            "credential_type": cred_name,
+                            "match_count": len(matches),
+                            "redacted_preview": redacted,
+                        },
+                    )
+                )
         return alerts
 
 
@@ -196,17 +204,19 @@ class RateLimitTracker:
 
         alerts: list[Alert] = []
         if len(q) >= self._threshold:
-            alerts.append(Alert(
-                detector="rate_limit",
-                severity=AlertSeverity.MEDIUM,
-                message=f"Excessive tool calls: {tool_name} called {len(q)} times in {self._window}s (threshold: {self._threshold})",
-                details={
-                    "tool": tool_name,
-                    "count": len(q),
-                    "threshold": self._threshold,
-                    "window_seconds": self._window,
-                },
-            ))
+            alerts.append(
+                Alert(
+                    detector="rate_limit",
+                    severity=AlertSeverity.MEDIUM,
+                    message=f"Excessive tool calls: {tool_name} called {len(q)} times in {self._window}s (threshold: {self._threshold})",
+                    details={
+                        "tool": tool_name,
+                        "count": len(q),
+                        "threshold": self._threshold,
+                        "window_seconds": self._window,
+                    },
+                )
+            )
         return alerts
 
     @property
@@ -240,16 +250,18 @@ class SequenceAnalyzer:
 
         for seq_name, patterns, description in SUSPICIOUS_SEQUENCES:
             if self._matches_sequence(calls_list, patterns):
-                alerts.append(Alert(
-                    detector="sequence_analyzer",
-                    severity=AlertSeverity.HIGH,
-                    message=description,
-                    details={
-                        "sequence_name": seq_name,
-                        "recent_calls": calls_list[-len(patterns):],
-                        "window_size": self._window_size,
-                    },
-                ))
+                alerts.append(
+                    Alert(
+                        detector="sequence_analyzer",
+                        severity=AlertSeverity.HIGH,
+                        message=description,
+                        details={
+                            "sequence_name": seq_name,
+                            "recent_calls": calls_list[-len(patterns) :],
+                            "window_size": self._window_size,
+                        },
+                    )
+                )
         return alerts
 
     @staticmethod
@@ -259,7 +271,7 @@ class SequenceAnalyzer:
             return False
 
         # Check the last N calls against the patterns
-        tail = calls[-len(patterns):]
+        tail = calls[-len(patterns) :]
         for call, pattern in zip(tail, patterns):
             if not re.search(pattern, call, re.IGNORECASE):
                 return False

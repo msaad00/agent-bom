@@ -137,7 +137,8 @@ def test_enrich_skips_registry_packages():
 
     # Replicate the filter condition from enrich_unknown_packages
     to_enrich = [
-        p for p in packages
+        p
+        for p in packages
         if not p.resolved_from_registry
         and not getattr(p, "auto_risk_level", None)
         and p.version not in ("unknown", "latest", "")

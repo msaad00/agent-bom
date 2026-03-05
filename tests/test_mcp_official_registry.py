@@ -21,10 +21,7 @@ from agent_bom.models import MCPServer, TransportType
 
 def _mock_search_response(servers, count=None, next_cursor=None):
     return {
-        "servers": [
-            {"server": s, "_meta": {"status": "active"}}
-            for s in servers
-        ],
+        "servers": [{"server": s, "_meta": {"status": "active"}} for s in servers],
         "metadata": {
             "count": count or len(servers),
             "nextCursor": next_cursor,
@@ -132,9 +129,7 @@ def test_search_pagination(mock_client_factory, mock_request):
     mock_client_factory.return_value = mock_client
 
     servers = [_mock_server()]
-    mock_request.return_value = _make_response(
-        _mock_search_response(servers, count=100, next_cursor="abc123")
-    )
+    mock_request.return_value = _make_response(_mock_search_response(servers, count=100, next_cursor="abc123"))
 
     result = search_official_registry_sync("test", limit=10)
     assert result.next_cursor == "abc123"
@@ -150,11 +145,13 @@ def test_search_pagination(mock_client_factory, mock_request):
 def test_lookup_found(mock_search):
     """Lookup resolves a server from the registry."""
     mock_search.return_value = OfficialRegistrySearchResult(
-        servers=[OfficialRegistryServer(
-            qualified_name="io.github.test/filesystem",
-            description="Filesystem server",
-            version="1.2.0",
-        )],
+        servers=[
+            OfficialRegistryServer(
+                qualified_name="io.github.test/filesystem",
+                description="Filesystem server",
+                version="1.2.0",
+            )
+        ],
         total_count=1,
     )
 
@@ -191,9 +188,7 @@ def test_sync_dry_run(mock_client_factory, mock_request, tmp_path):
     mock_client_factory.return_value = mock_client
 
     servers = [_mock_server("new/server-1"), _mock_server("new/server-2")]
-    mock_request.return_value = _make_response(
-        _mock_search_response(servers, count=2)
-    )
+    mock_request.return_value = _make_response(_mock_search_response(servers, count=2))
 
     reg_file = tmp_path / "mcp_registry.json"
     reg_file.write_text(json.dumps({"servers": {}}))
@@ -217,9 +212,7 @@ def test_sync_adds_new(mock_client_factory, mock_request, tmp_path):
     mock_client_factory.return_value = mock_client
 
     servers = [_mock_server("new/server")]
-    mock_request.return_value = _make_response(
-        _mock_search_response(servers, count=1)
-    )
+    mock_request.return_value = _make_response(_mock_search_response(servers, count=1))
 
     reg_file = tmp_path / "mcp_registry.json"
     reg_file.write_text(json.dumps({"servers": {}}))
@@ -242,16 +235,18 @@ def test_sync_skips_existing(mock_client_factory, mock_request, tmp_path):
     mock_client_factory.return_value = mock_client
 
     servers = [_mock_server("existing/server"), _mock_server("new/server")]
-    mock_request.return_value = _make_response(
-        _mock_search_response(servers, count=2)
-    )
+    mock_request.return_value = _make_response(_mock_search_response(servers, count=2))
 
     reg_file = tmp_path / "mcp_registry.json"
-    reg_file.write_text(json.dumps({
-        "servers": {
-            "existing/server": {"package": "existing/server", "ecosystem": "npm"},
-        },
-    }))
+    reg_file.write_text(
+        json.dumps(
+            {
+                "servers": {
+                    "existing/server": {"package": "existing/server", "ecosystem": "npm"},
+                },
+            }
+        )
+    )
 
     with patch("agent_bom.mcp_official_registry._REGISTRY_PATH", reg_file):
         result = sync_from_official_registry_sync(max_pages=1, dry_run=False)

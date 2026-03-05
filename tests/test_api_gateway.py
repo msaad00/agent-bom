@@ -14,6 +14,7 @@ from agent_bom.api.server import app, set_policy_store
 
 def _now() -> str:
     from datetime import datetime, timezone
+
     return datetime.now(timezone.utc).isoformat()
 
 
@@ -72,11 +73,14 @@ def test_list_filter_mode():
 
 def test_create_policy():
     client, store = _fresh_client()
-    resp = client.post("/v1/gateway/policies", json={
-        "name": "block-exec",
-        "mode": "enforce",
-        "rules": [{"id": "r1", "action": "block", "block_tools": ["exec"]}],
-    })
+    resp = client.post(
+        "/v1/gateway/policies",
+        json={
+            "name": "block-exec",
+            "mode": "enforce",
+            "rules": [{"id": "r1", "action": "block", "block_tools": ["exec"]}],
+        },
+    )
     assert resp.status_code == 201
     data = resp.json()
     assert data["name"] == "block-exec"
@@ -182,17 +186,19 @@ def test_audit_empty():
 
 def test_audit_populated():
     client, store = _fresh_client()
-    store.put_audit_entry(PolicyAuditEntry(
-        entry_id="e-1",
-        policy_id="p-1",
-        policy_name="test",
-        rule_id="r1",
-        agent_name="agent-a",
-        tool_name="exec",
-        action_taken="blocked",
-        reason="blocked",
-        timestamp=_now(),
-    ))
+    store.put_audit_entry(
+        PolicyAuditEntry(
+            entry_id="e-1",
+            policy_id="p-1",
+            policy_name="test",
+            rule_id="r1",
+            agent_name="agent-a",
+            tool_name="exec",
+            action_taken="blocked",
+            reason="blocked",
+            timestamp=_now(),
+        )
+    )
     resp = client.get("/v1/gateway/audit")
     assert resp.json()["count"] == 1
 
@@ -213,17 +219,19 @@ def test_stats_populated():
     client, store = _fresh_client()
     store.put_policy(_make_policy(policy_id="p-1", mode=PolicyMode.ENFORCE))
     store.put_policy(_make_policy(policy_id="p-2", mode=PolicyMode.AUDIT))
-    store.put_audit_entry(PolicyAuditEntry(
-        entry_id="e-1",
-        policy_id="p-1",
-        policy_name="test",
-        rule_id="r1",
-        agent_name="a",
-        tool_name="exec",
-        action_taken="blocked",
-        reason="r",
-        timestamp=_now(),
-    ))
+    store.put_audit_entry(
+        PolicyAuditEntry(
+            entry_id="e-1",
+            policy_id="p-1",
+            policy_name="test",
+            rule_id="r1",
+            agent_name="a",
+            tool_name="exec",
+            action_taken="blocked",
+            reason="r",
+            timestamp=_now(),
+        )
+    )
     resp = client.get("/v1/gateway/stats")
     data = resp.json()
     assert data["total_policies"] == 2

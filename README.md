@@ -113,6 +113,15 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
   </picture>
 </p>
 
+## Six modes, one engine
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/modes-flow-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/modes-flow-light.svg" alt="agent-bom modes — CLI, MCP Server, REST API, Runtime Proxy, GitHub Action, Dashboard" width="800" />
+  </picture>
+</p>
+
 1. **Discover** — auto-detect MCP configs across 20 clients (Claude Desktop, Cursor, JetBrains AI, Junie, Codex CLI, Gemini CLI, Goose, etc.)
 2. **Extract** — pull server names, package names, env var **names**, and tool lists. Credential **values** are never read.
 3. **Scan** — send only package names + versions to public APIs (OSV.dev, NVD, EPSS, CISA KEV). NVD status tracking (Analyzed/Modified/Rejected) with remediation links.
@@ -129,7 +138,7 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 | Use case | Deploy | Command |
 |----------|--------|---------|
 | Quick local scan | CLI | `agent-bom scan` |
-| CI/CD gate | GitHub Action | `uses: msaad00/agent-bom@v0.55.0` |
+| CI/CD gate | GitHub Action | `uses: msaad00/agent-bom@v0.56.0` |
 | Security dashboard | API + UI | `agent-bom serve` |
 | MCP tool integration | MCP server | `agent-bom mcp-server` (18 tools) |
 | K8s fleet scanning | Helm | `helm install deploy/helm/agent-bom` |
@@ -276,7 +285,7 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
 |----------|------|
 | PyPI | `pip install agent-bom` |
 | Docker | `docker run agentbom/agent-bom scan` |
-| GitHub Action | `uses: msaad00/agent-bom@v0.55.0` |
+| GitHub Action | `uses: msaad00/agent-bom@v0.56.0` |
 | MCP Registry | [server.json](integrations/mcp-registry/server.json) |
 | ToolHive | [registry entry](integrations/toolhive/server.json) |
 | OpenClaw | [SKILL.md](integrations/openclaw/SKILL.md) |
@@ -523,7 +532,8 @@ Both sources deduplicate by CVE ID against OSV results.
 |------|---------|----------|
 | CLI | `agent-bom scan` | Local audit |
 | Pre-install check | `agent-bom check express@4.18.2 -e npm` | Before running MCP servers |
-| GitHub Action | `uses: msaad00/agent-bom@v0.55.0` | CI/CD + SARIF |
+| Pre-install guard | `agent-bom guard pip install flask` | Scan-before-install hook |
+| GitHub Action | `uses: msaad00/agent-bom@v0.56.0` | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated scans |
 | REST API | `agent-bom api` | Dashboards, SIEM |
 | Runtime proxy | `agent-bom proxy` | Opt-in MCP traffic audit (per-server) |
@@ -535,7 +545,7 @@ Both sources deduplicate by CVE ID against OSV results.
 ### GitHub Action
 
 ```yaml
-- uses: msaad00/agent-bom@v0.55.0
+- uses: msaad00/agent-bom@v0.56.0
   with:
     severity-threshold: high
     upload-sarif: true
@@ -677,7 +687,7 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 - **[PERMISSIONS.md](PERMISSIONS.md)** — auditable trust contract with all config paths enumerated
 - **Read-only** — never writes configs, runs servers, provisions resources, or stores secrets
 - **Credential redaction** — only env var **names** in reports; values, tokens, passwords never read
-- **Sigstore signed** — releases v0.7.0+ signed via cosign OIDC; verify PyPI integrity with `agent-bom verify agent-bom@0.55.0` (SHA-256 + SLSA provenance)
+- **Sigstore signed** — releases v0.7.0+ signed via cosign OIDC; verify PyPI integrity with `agent-bom verify agent-bom@0.56.0` (SHA-256 + SLSA provenance)
 - **No binary needed (MCP)** — SSE transport requires zero local install; local CLI available for air-gapped use
 - **OpenSSF Scorecard** — [automated supply chain scoring](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom)
 
@@ -729,6 +739,11 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 - [x] CVE-level compliance tagging — per-vulnerability framework mapping across all 10 frameworks (severity, KEV, EPSS, CWE, AI package, fix availability)
 - [x] CIS AWS Foundations Benchmark v3.0 — 18 live checks across IAM, Storage, Logging, Networking (`--aws-cis-benchmark`)
 - [x] CIS Snowflake Benchmark v1.0 — 12 live checks across Auth, Network, Data Protection, Monitoring, Access Control (`--snowflake-cis-benchmark`)
+- [x] Structured logging — `--log-level`, `--log-json`, `--log-file` across CLI, API, MCP server; JSON formatter for SIEM ingestion
+- [x] Pre-install guard — `agent-bom guard pip install <pkg>` scans packages for CVEs before installation; alias-ready for pip/npm
+- [x] Glama.ai registry sync — `agent-bom registry glama-sync` bulk-imports 18,000+ MCP servers with ecosystem/risk classification
+- [x] Registry CVE enrichment — OSV + EPSS + CISA KEV enrichment for all registry entries
+- [x] Streamlit dashboard — interactive AI-BOM/SBOM visualization (`agent-bom streamlit`)
 
 **Planned:**
 - [ ] Platform-specific CIS Benchmarks:

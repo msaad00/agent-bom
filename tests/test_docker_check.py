@@ -32,6 +32,7 @@ def test_docker_mcp_discovery_no_files(monkeypatch, tmp_path):
     )
     # Patch expanduser at module level in discovery
     import agent_bom.discovery as disc_mod
+
     original = disc_mod.os.path.expanduser
     monkeypatch.setattr(disc_mod.os.path, "expanduser", lambda p: str(tmp_path / "nonexistent") if ".docker/mcp" in p else original(p))
 
@@ -49,6 +50,7 @@ def test_docker_mcp_discovery_empty_registry(tmp_path):
 
     # Directly test the function by patching the path
     import agent_bom.discovery as disc_mod
+
     original_expanduser = disc_mod.os.path.expanduser
 
     def mock_expanduser(p):
@@ -97,6 +99,7 @@ def test_docker_mcp_discovery_with_servers(tmp_path):
     (catalogs_dir / "docker-mcp.yaml").write_text(yaml.dump(catalog))
 
     import agent_bom.discovery as disc_mod
+
     original_expanduser = disc_mod.os.path.expanduser
 
     def mock_expanduser(p):
@@ -222,8 +225,10 @@ def test_check_latest_triggers_resolution():
     async def fake_osv(pkgs):
         return {}
 
-    with patch("agent_bom.resolver.resolve_package_version", side_effect=fake_resolve), \
-         patch("agent_bom.scanners.query_osv_batch", side_effect=fake_osv):
+    with (
+        patch("agent_bom.resolver.resolve_package_version", side_effect=fake_resolve),
+        patch("agent_bom.scanners.query_osv_batch", side_effect=fake_osv),
+    ):
         result = runner.invoke(main, ["check", "express@latest", "-e", "npm"])
         assert resolve_called, "resolve_package_version should have been called for @latest"
         assert "Resolved" in result.output or "1.6.2" in result.output

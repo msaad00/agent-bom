@@ -138,18 +138,22 @@ def test_proxy_alerts_with_data():
     import agent_bom.api.server as srv
 
     srv._proxy_alerts.clear()
-    push_proxy_alert({
-        "type": "runtime_alert",
-        "detector": "credential_leak",
-        "severity": "critical",
-        "message": "AWS key in response",
-    })
-    push_proxy_alert({
-        "type": "runtime_alert",
-        "detector": "argument_analyzer",
-        "severity": "high",
-        "message": "Path traversal detected",
-    })
+    push_proxy_alert(
+        {
+            "type": "runtime_alert",
+            "detector": "credential_leak",
+            "severity": "critical",
+            "message": "AWS key in response",
+        }
+    )
+    push_proxy_alert(
+        {
+            "type": "runtime_alert",
+            "detector": "argument_analyzer",
+            "severity": "high",
+            "message": "Path traversal detected",
+        }
+    )
 
     client = TestClient(app)
     resp = client.get("/v1/proxy/alerts")

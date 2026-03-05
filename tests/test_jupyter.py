@@ -98,10 +98,12 @@ def test_scan_hardcoded_key_warning(tmp_path: Path):
 
 def test_scan_markdown_cells_ignored(tmp_path: Path):
     """Markdown cells should not trigger detection."""
-    nb = _make_notebook([
-        _markdown_cell("# Setup\nimport openai  <!-- this is markdown -->"),
-        _code_cell("x = 1 + 1"),
-    ])
+    nb = _make_notebook(
+        [
+            _markdown_cell("# Setup\nimport openai  <!-- this is markdown -->"),
+            _code_cell("x = 1 + 1"),
+        ]
+    )
     (tmp_path / "readme.ipynb").write_text(json.dumps(nb))
     agents, _ = scan_jupyter_notebooks(tmp_path)
     assert agents == []
@@ -122,10 +124,12 @@ def test_scan_multiple_notebooks(tmp_path: Path):
 
 def test_scan_deduplication(tmp_path: Path):
     """Same package imported twice should appear once."""
-    nb = _make_notebook([
-        _code_cell("import openai"),
-        _code_cell("from openai import ChatCompletion"),
-    ])
+    nb = _make_notebook(
+        [
+            _code_cell("import openai"),
+            _code_cell("from openai import ChatCompletion"),
+        ]
+    )
     (tmp_path / "dup.ipynb").write_text(json.dumps(nb))
     agents, _ = scan_jupyter_notebooks(tmp_path)
     pkgs = agents[0].mcp_servers[0].packages

@@ -16,27 +16,87 @@ if TYPE_CHECKING:
 
 # ── Keyword sets for tool classification ─────────────────────────────────────
 
-_DESTRUCTIVE_KEYWORDS = frozenset({
-    "delete", "remove", "drop", "destroy", "purge", "truncate", "wipe", "erase",
-    "uninstall", "terminate", "kill",
-})
+_DESTRUCTIVE_KEYWORDS = frozenset(
+    {
+        "delete",
+        "remove",
+        "drop",
+        "destroy",
+        "purge",
+        "truncate",
+        "wipe",
+        "erase",
+        "uninstall",
+        "terminate",
+        "kill",
+    }
+)
 
-_EXECUTE_KEYWORDS = frozenset({
-    "exec", "execute", "run", "shell", "eval", "command", "invoke", "spawn",
-    "call", "launch", "start_process",
-})
+_EXECUTE_KEYWORDS = frozenset(
+    {
+        "exec",
+        "execute",
+        "run",
+        "shell",
+        "eval",
+        "command",
+        "invoke",
+        "spawn",
+        "call",
+        "launch",
+        "start_process",
+    }
+)
 
-_WRITE_KEYWORDS = frozenset({
-    "write", "create", "update", "modify", "set", "put", "push", "post",
-    "insert", "upload", "move", "rename", "copy", "send", "publish", "deploy",
-    "scale", "restart", "apply", "patch", "merge", "commit",
-})
+_WRITE_KEYWORDS = frozenset(
+    {
+        "write",
+        "create",
+        "update",
+        "modify",
+        "set",
+        "put",
+        "push",
+        "post",
+        "insert",
+        "upload",
+        "move",
+        "rename",
+        "copy",
+        "send",
+        "publish",
+        "deploy",
+        "scale",
+        "restart",
+        "apply",
+        "patch",
+        "merge",
+        "commit",
+    }
+)
 
-_READ_KEYWORDS = frozenset({
-    "read", "get", "list", "search", "query", "fetch", "find", "describe",
-    "show", "download", "view", "inspect", "check", "count", "browse",
-    "lookup", "resolve", "ping",
-})
+_READ_KEYWORDS = frozenset(
+    {
+        "read",
+        "get",
+        "list",
+        "search",
+        "query",
+        "fetch",
+        "find",
+        "describe",
+        "show",
+        "download",
+        "view",
+        "inspect",
+        "check",
+        "count",
+        "browse",
+        "lookup",
+        "resolve",
+        "ping",
+    }
+)
 
 _SHELL_COMMANDS = frozenset({"sh", "bash", "zsh", "cmd", "powershell", "pwsh"})
 
@@ -147,6 +207,4 @@ def command_runs_as_root(command: str, args: list[str]) -> bool:
 def command_is_shell(command: str, args: list[str]) -> bool:
     """Check if command is a shell interpreter."""
     cmd_base = command.rsplit("/", 1)[-1] if "/" in command else command
-    return cmd_base in _SHELL_COMMANDS or any(
-        a.rsplit("/", 1)[-1] in _SHELL_COMMANDS for a in args
-    )
+    return cmd_base in _SHELL_COMMANDS or any(a.rsplit("/", 1)[-1] in _SHELL_COMMANDS for a in args)

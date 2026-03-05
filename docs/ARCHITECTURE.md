@@ -285,3 +285,6 @@ graph TB
 | MCP Server | `src/agent_bom/mcp_server.py` | FastMCP server (18 tools) |
 | Context Graph | `src/agent_bom/context_graph.py` | Lateral movement analysis |
 | Cloud | `src/agent_bom/cloud/` | AWS, Azure, GCP, Snowflake, Databricks, Nebius |
+| Logging | `src/agent_bom/logging_config.py` | Structured JSON/console logging, env var config |
+| Guard | `src/agent_bom/guard.py` | Pre-install CVE scan for pip/npm packages |
+| Glama | `src/agent_bom/glama.py` | Glama.ai registry sync (18,000+ MCP servers) |

@@ -82,8 +82,11 @@ async def fetch_snyk_issues(
     params = {"version": _API_VERSION}
 
     resp = await request_with_retry(
-        client, "GET", url,
-        headers=headers, params=params,
+        client,
+        "GET",
+        url,
+        headers=headers,
+        params=params,
     )
 
     if resp is None or resp.status_code != 200:
@@ -96,17 +99,17 @@ async def fetch_snyk_issues(
     issues = []
     for item in data.get("data", []):
         attrs = item.get("attributes", {})
-        issues.append({
-            "id": item.get("id", ""),
-            "title": attrs.get("title", ""),
-            "severity": attrs.get("effective_severity_level", attrs.get("severity", "medium")),
-            "cvss_score": attrs.get("cvss_score"),
-            "cve_ids": [
-                slot.get("value")
-                for slot in attrs.get("slots", {}).get("references", [])
-                if slot.get("type") == "cve"
-            ] if isinstance(attrs.get("slots"), dict) else [],
-        })
+        issues.append(
+            {
+                "id": item.get("id", ""),
+                "title": attrs.get("title", ""),
+                "severity": attrs.get("effective_severity_level", attrs.get("severity", "medium")),
+                "cvss_score": attrs.get("cvss_score"),
+                "cve_ids": [slot.get("value") for slot in attrs.get("slots", {}).get("references", []) if slot.get("type") == "cve"]
+                if isinstance(attrs.get("slots"), dict)
+                else [],
+            }
+        )
 
     return issues
 
@@ -166,13 +169,15 @@ async def enrich_with_snyk(
                 if not vuln_id:
                     continue
 
-                pkg.vulnerabilities.append(Vulnerability(
-                    id=vuln_id,
-                    summary=f"[Snyk] {issue.get('title', '')}",
-                    severity=_severity_from_snyk(issue.get("severity", "medium")),
-                    cvss_score=issue.get("cvss_score"),
-                    references=[f"https://security.snyk.io/vuln/{snyk_id}"] if snyk_id else [],
-                ))
+                pkg.vulnerabilities.append(
+                    Vulnerability(
+                        id=vuln_id,
+                        summary=f"[Snyk] {issue.get('title', '')}",
+                        severity=_severity_from_snyk(issue.get("severity", "medium")),
+                        cvss_score=issue.get("cvss_score"),
+                        references=[f"https://security.snyk.io/vuln/{snyk_id}"] if snyk_id else [],
+                    )
+                )
                 existing_ids.add(vuln_id.upper())
                 new_vuln_count += 1
 

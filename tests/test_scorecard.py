@@ -1,6 +1,5 @@
 """Tests for OpenSSF Scorecard enrichment module."""
 
-
 from agent_bom.models import (
     Agent,
     AgentType,
@@ -66,14 +65,14 @@ def test_extract_github_repo_trailing_slash():
 
 
 def test_repo_from_source_repo():
-    pkg = Package(name="express", version="4.18.2", ecosystem="npm",
-                  source_repo="https://github.com/expressjs/express")
+    pkg = Package(name="express", version="4.18.2", ecosystem="npm", source_repo="https://github.com/expressjs/express")
     assert _repo_url_from_package(pkg) == "expressjs/express"
 
 
 def test_repo_from_purl_with_github():
-    pkg = Package(name="express", version="4.18.2", ecosystem="npm",
-                  purl="pkg:npm/express@4.18.2?repository_url=github.com/expressjs/express")
+    pkg = Package(
+        name="express", version="4.18.2", ecosystem="npm", purl="pkg:npm/express@4.18.2?repository_url=github.com/expressjs/express"
+    )
     assert _repo_url_from_package(pkg) == "expressjs/express"
 
 
@@ -83,8 +82,7 @@ def test_repo_from_package_no_repo():
 
 
 def test_repo_from_package_non_github():
-    pkg = Package(name="lib", version="1.0", ecosystem="npm",
-                  source_repo="https://gitlab.com/owner/repo")
+    pkg = Package(name="lib", version="1.0", ecosystem="npm", source_repo="https://gitlab.com/owner/repo")
     assert _repo_url_from_package(pkg) is None
 
 
@@ -93,12 +91,10 @@ def test_repo_from_package_non_github():
 
 def _make_br(scorecard_score=None):
     """Create a minimal BlastRadius for testing."""
-    pkg = Package(name="test-pkg", version="1.0.0", ecosystem="npm",
-                  scorecard_score=scorecard_score)
+    pkg = Package(name="test-pkg", version="1.0.0", ecosystem="npm", scorecard_score=scorecard_score)
     vuln = Vulnerability(id="CVE-2024-1234", summary="Test", severity=Severity.HIGH)
     server = MCPServer(name="test-server")
-    agent = Agent(name="test-agent", agent_type=AgentType.CLAUDE_DESKTOP,
-                  config_path="/tmp/test", mcp_servers=[server])
+    agent = Agent(name="test-agent", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/test", mcp_servers=[server])
     return BlastRadius(
         vulnerability=vuln,
         package=pkg,
@@ -168,11 +164,9 @@ def test_risk_score_very_low_scorecard_high_boost():
 def test_risk_score_capped_at_10():
     """Risk score should never exceed 10.0."""
     pkg = Package(name="test", version="1.0", ecosystem="npm", scorecard_score=1.0)
-    vuln = Vulnerability(id="CVE-2024-9999", summary="Test", severity=Severity.CRITICAL,
-                         epss_score=0.95, is_kev=True)
+    vuln = Vulnerability(id="CVE-2024-9999", summary="Test", severity=Severity.CRITICAL, epss_score=0.95, is_kev=True)
     server = MCPServer(name="srv")
-    agent = Agent(name="a", agent_type=AgentType.CLAUDE_DESKTOP,
-                  config_path="/tmp", mcp_servers=[server])
+    agent = Agent(name="a", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp", mcp_servers=[server])
     br = BlastRadius(
         vulnerability=vuln,
         package=pkg,

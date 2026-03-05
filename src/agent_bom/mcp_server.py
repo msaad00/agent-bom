@@ -252,6 +252,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
     When the smithery SDK is installed, the server is automatically enhanced
     with session-config and CORS middleware for Smithery.ai hosted deployment.
     """
+    from agent_bom.logging_config import setup_logging
+
+    setup_logging(level="INFO")
     _check_mcp_sdk()
     from mcp.server.fastmcp import FastMCP
 

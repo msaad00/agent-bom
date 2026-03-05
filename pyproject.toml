@@ -127,6 +127,12 @@ Documentation = "https://github.com/msaad00/agent-bom#readme"
 "Security Policy" = "https://github.com/msaad00/agent-bom/blob/main/SECURITY.md"
 "Trust & Permissions" = "https://github.com/msaad00/agent-bom/blob/main/PERMISSIONS.md"
 
+[tool.uv]
+# Only install core deps by default — extras (cloud, dev) must be explicit.
+# Prevents `uv sync` from pulling heavy optional deps (azure, gcp, etc.)
+# which break on Python 3.14 and bloat CI/container builds.
+default-groups = []
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

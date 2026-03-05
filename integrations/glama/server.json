@@ -1,0 +1,16 @@
+{
+  "name": "agent-bom",
+  "description": "AI supply chain security scanner — CVEs, blast radius, compliance, policy, SBOMs",
+  "version": "0.55.0",
+  "repository": "https://github.com/msaad00/agent-bom",
+  "transport": "stdio",
+  "command": "agent-bom",
+  "args": ["mcp-server"],
+  "dockerfile": "integrations/glama/Dockerfile",
+  "environmentVariables": {
+    "NVD_API_KEY": {
+      "description": "NVD API key for higher rate limits on vulnerability enrichment",
+      "required": false
+    }
+  }
+}

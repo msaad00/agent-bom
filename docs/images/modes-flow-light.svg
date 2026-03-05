@@ -1,0 +1,407 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1060 780" fill="none">
+  <style>
+    .title { font: 700 14px system-ui, -apple-system, sans-serif; fill: #1f2328; }
+    .mode-title { font: 700 11px system-ui, -apple-system, sans-serif; }
+    .mode-sub { font: 500 9.5px system-ui, -apple-system, sans-serif; fill: #656d76; }
+    .step { font: 600 9px system-ui, -apple-system, sans-serif; fill: #1f2328; }
+    .step-detail { font: 400 8px system-ui, -apple-system, sans-serif; fill: #656d76; }
+    .badge { font: 700 8px system-ui, -apple-system, sans-serif; fill: #ffffff; }
+    .section-label { font: 700 9px system-ui, -apple-system, sans-serif; letter-spacing: 0.08em; }
+    .footer { font: 500 9px system-ui, -apple-system, sans-serif; fill: #656d76; }
+    .connector { fill: none; stroke-width: 1.5; }
+    .cmd { font: 600 9px 'SF Mono', 'Fira Code', monospace; fill: #8250df; }
+  </style>
+  <defs>
+    <marker id="arr-blue" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="7" markerHeight="5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#0969da" opacity="0.8"/>
+    </marker>
+    <marker id="arr-green" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="7" markerHeight="5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#1a7f37" opacity="0.8"/>
+    </marker>
+    <marker id="arr-purple" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="7" markerHeight="5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#8250df" opacity="0.8"/>
+    </marker>
+    <marker id="arr-orange" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="7" markerHeight="5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#bf8700" opacity="0.8"/>
+    </marker>
+    <marker id="arr-red" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="7" markerHeight="5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#cf222e" opacity="0.8"/>
+    </marker>
+    <marker id="arr-yellow" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="7" markerHeight="5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#9a6700" opacity="0.8"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1060" height="780" rx="12" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
+  <text x="530" y="30" text-anchor="middle" class="title">How agent-bom Works — Mode by Mode</text>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- MODE 1: CLI Scan (blue) -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <rect x="16" y="50" width="500" height="108" rx="8" fill="#f6f8fa" stroke="#0969da" stroke-width="1.2"/>
+  <rect x="16" y="50" width="500" height="4" rx="2" fill="#0969da"/>
+  <rect x="28" y="62" width="32" height="16" rx="4" fill="#0969da"/>
+  <text x="44" y="74" text-anchor="middle" class="badge">CLI</text>
+  <text x="70" y="74" class="mode-title" fill="#0969da">Local Scan</text>
+  <text x="28" y="92" class="cmd">agent-bom scan [--image] [--sbom cyclonedx]</text>
+
+  <!-- Flow steps -->
+  <rect x="28" y="102" width="78" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="67" y="116" text-anchor="middle" class="step">Discovery</text>
+  <text x="67" y="126" text-anchor="middle" class="step-detail">20 MCP clients</text>
+
+  <line x1="108" y1="115" x2="122" y2="115" class="connector" stroke="#0969da" marker-end="url(#arr-blue)"/>
+
+  <rect x="124" y="102" width="72" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="160" y="116" text-anchor="middle" class="step">Parse</text>
+  <text x="160" y="126" text-anchor="middle" class="step-detail">configs + deps</text>
+
+  <line x1="198" y1="115" x2="212" y2="115" class="connector" stroke="#0969da" marker-end="url(#arr-blue)"/>
+
+  <rect x="214" y="102" width="72" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="250" y="116" text-anchor="middle" class="step">Scan</text>
+  <text x="250" y="126" text-anchor="middle" class="step-detail">OSV + NVD</text>
+
+  <line x1="288" y1="115" x2="302" y2="115" class="connector" stroke="#0969da" marker-end="url(#arr-blue)"/>
+
+  <rect x="304" y="102" width="72" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="340" y="116" text-anchor="middle" class="step">Enrich</text>
+  <text x="340" y="126" text-anchor="middle" class="step-detail">EPSS + KEV</text>
+
+  <line x1="378" y1="115" x2="392" y2="115" class="connector" stroke="#0969da" marker-end="url(#arr-blue)"/>
+
+  <rect x="394" y="102" width="108" height="26" rx="4" fill="#ffffff" stroke="#0969da" stroke-width="1"/>
+  <text x="448" y="116" text-anchor="middle" class="step">Report</text>
+  <text x="448" y="126" text-anchor="middle" class="step-detail">JSON/CycloneDX/SPDX/SARIF</text>
+
+  <text x="504" y="150" text-anchor="end" class="mode-sub">Blast radius: CVE → server → creds → tools</text>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- MODE 2: MCP Server (purple) -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <rect x="544" y="50" width="500" height="108" rx="8" fill="#f6f8fa" stroke="#8250df" stroke-width="1.2"/>
+  <rect x="544" y="50" width="500" height="4" rx="2" fill="#8250df"/>
+  <rect x="556" y="62" width="40" height="16" rx="4" fill="#8250df"/>
+  <text x="576" y="74" text-anchor="middle" class="badge">MCP</text>
+  <text x="606" y="74" class="mode-title" fill="#8250df">MCP Server (18 tools)</text>
+  <text x="556" y="92" class="cmd">agent-bom mcp-server [--transport stdio|sse]</text>
+
+  <!-- Flow steps -->
+  <rect x="556" y="102" width="78" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="595" y="116" text-anchor="middle" class="step">AI Agent</text>
+  <text x="595" y="126" text-anchor="middle" class="step-detail">Claude, Cursor...</text>
+
+  <line x1="636" y1="115" x2="650" y2="115" class="connector" stroke="#8250df" marker-end="url(#arr-purple)"/>
+
+  <rect x="652" y="102" width="72" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="688" y="116" text-anchor="middle" class="step">MCP Call</text>
+  <text x="688" y="126" text-anchor="middle" class="step-detail">tool_name(args)</text>
+
+  <line x1="726" y1="115" x2="740" y2="115" class="connector" stroke="#8250df" marker-end="url(#arr-purple)"/>
+
+  <rect x="742" y="102" width="78" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="781" y="116" text-anchor="middle" class="step">Engine</text>
+  <text x="781" y="126" text-anchor="middle" class="step-detail">scan/check/blast</text>
+
+  <line x1="822" y1="115" x2="836" y2="115" class="connector" stroke="#8250df" marker-end="url(#arr-purple)"/>
+
+  <rect x="838" y="102" width="94" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="885" y="116" text-anchor="middle" class="step">JSON Result</text>
+  <text x="885" y="126" text-anchor="middle" class="step-detail">structured to agent</text>
+
+  <line x1="934" y1="115" x2="948" y2="115" class="connector" stroke="#8250df" marker-end="url(#arr-purple)"/>
+
+  <rect x="950" y="102" width="78" height="26" rx="4" fill="#ffffff" stroke="#8250df" stroke-width="1"/>
+  <text x="989" y="116" text-anchor="middle" class="step">Agent Acts</text>
+  <text x="989" y="126" text-anchor="middle" class="step-detail">remediate / fix</text>
+
+  <text x="1032" y="150" text-anchor="end" class="mode-sub">Glama, ToolHive, Smithery, Claude Desktop</text>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- MODE 3: REST API (orange) -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <rect x="16" y="178" width="500" height="108" rx="8" fill="#f6f8fa" stroke="#bf8700" stroke-width="1.2"/>
+  <rect x="16" y="178" width="500" height="4" rx="2" fill="#bf8700"/>
+  <rect x="28" y="190" width="32" height="16" rx="4" fill="#bf8700"/>
+  <text x="44" y="202" text-anchor="middle" class="badge">API</text>
+  <text x="70" y="202" class="mode-title" fill="#bf8700">REST API Server</text>
+  <text x="28" y="220" class="cmd">agent-bom serve [--port 8422] [--cors]</text>
+
+  <rect x="28" y="230" width="78" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="67" y="244" text-anchor="middle" class="step">HTTP Client</text>
+  <text x="67" y="254" text-anchor="middle" class="step-detail">curl / SDK / UI</text>
+
+  <line x1="108" y1="243" x2="122" y2="243" class="connector" stroke="#bf8700" marker-end="url(#arr-orange)"/>
+
+  <rect x="124" y="230" width="78" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="163" y="244" text-anchor="middle" class="step">FastAPI</text>
+  <text x="163" y="254" text-anchor="middle" class="step-detail">/v1/scan, /v1/blast</text>
+
+  <line x1="204" y1="243" x2="218" y2="243" class="connector" stroke="#bf8700" marker-end="url(#arr-orange)"/>
+
+  <rect x="220" y="230" width="78" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="259" y="244" text-anchor="middle" class="step">Rate Limit</text>
+  <text x="259" y="254" text-anchor="middle" class="step-detail">token + IP</text>
+
+  <line x1="300" y1="243" x2="314" y2="243" class="connector" stroke="#bf8700" marker-end="url(#arr-orange)"/>
+
+  <rect x="316" y="230" width="78" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="355" y="244" text-anchor="middle" class="step">Engine</text>
+  <text x="355" y="254" text-anchor="middle" class="step-detail">same core scan</text>
+
+  <line x1="396" y1="243" x2="410" y2="243" class="connector" stroke="#bf8700" marker-end="url(#arr-orange)"/>
+
+  <rect x="412" y="230" width="94" height="26" rx="4" fill="#ffffff" stroke="#bf8700" stroke-width="1"/>
+  <text x="459" y="244" text-anchor="middle" class="step">JSON / Webhook</text>
+  <text x="459" y="254" text-anchor="middle" class="step-detail">Jira, Slack, ServiceNow</text>
+
+  <text x="504" y="278" text-anchor="end" class="mode-sub">Dashboard backend, Snowflake integration</text>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- MODE 4: Runtime Proxy (yellow/gold) -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <rect x="544" y="178" width="500" height="108" rx="8" fill="#f6f8fa" stroke="#9a6700" stroke-width="1.2"/>
+  <rect x="544" y="178" width="500" height="4" rx="2" fill="#9a6700"/>
+  <rect x="556" y="190" width="50" height="16" rx="4" fill="#9a6700"/>
+  <text x="581" y="202" text-anchor="middle" class="badge">PROXY</text>
+  <text x="616" y="202" class="mode-title" fill="#9a6700">Runtime Proxy (6-layer)</text>
+  <text x="556" y="220" class="cmd">agent-bom protect [--mode monitor|enforce]</text>
+
+  <rect x="556" y="230" width="72" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="592" y="244" text-anchor="middle" class="step">MCP Traffic</text>
+  <text x="592" y="254" text-anchor="middle" class="step-detail">agent ↔ server</text>
+
+  <line x1="630" y1="243" x2="644" y2="243" class="connector" stroke="#9a6700" marker-end="url(#arr-yellow)"/>
+
+  <rect x="646" y="230" width="72" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="682" y="244" text-anchor="middle" class="step">Replay Det.</text>
+  <text x="682" y="254" text-anchor="middle" class="step-detail">dedup requests</text>
+
+  <line x1="720" y1="243" x2="734" y2="243" class="connector" stroke="#9a6700" marker-end="url(#arr-yellow)"/>
+
+  <rect x="736" y="230" width="72" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="772" y="244" text-anchor="middle" class="step">Tool Drift</text>
+  <text x="772" y="254" text-anchor="middle" class="step-detail">undeclared block</text>
+
+  <line x1="810" y1="243" x2="824" y2="243" class="connector" stroke="#9a6700" marker-end="url(#arr-yellow)"/>
+
+  <rect x="826" y="230" width="72" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="862" y="244" text-anchor="middle" class="step">Policy + Cred</text>
+  <text x="862" y="254" text-anchor="middle" class="step-detail">args + leak scan</text>
+
+  <line x1="900" y1="243" x2="914" y2="243" class="connector" stroke="#9a6700" marker-end="url(#arr-yellow)"/>
+
+  <rect x="916" y="230" width="116" height="26" rx="4" fill="#ffffff" stroke="#9a6700" stroke-width="1"/>
+  <text x="974" y="244" text-anchor="middle" class="step">Allow / Block / Alert</text>
+  <text x="974" y="254" text-anchor="middle" class="step-detail">Prometheus :8422</text>
+
+  <text x="1032" y="278" text-anchor="end" class="mode-sub">5 detectors, webhook alerts, audit log</text>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- MODE 5: GitHub Action (green) -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <rect x="16" y="306" width="500" height="108" rx="8" fill="#f6f8fa" stroke="#1a7f37" stroke-width="1.2"/>
+  <rect x="16" y="306" width="500" height="4" rx="2" fill="#1a7f37"/>
+  <rect x="28" y="318" width="56" height="16" rx="4" fill="#1a7f37"/>
+  <text x="56" y="330" text-anchor="middle" class="badge">ACTION</text>
+  <text x="94" y="330" class="mode-title" fill="#1a7f37">GitHub Action (CI/CD Gate)</text>
+  <text x="28" y="348" class="cmd">uses: msaad00/agent-bom@v0.55.0</text>
+
+  <rect x="28" y="358" width="78" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="67" y="372" text-anchor="middle" class="step">PR Push</text>
+  <text x="67" y="382" text-anchor="middle" class="step-detail">trigger workflow</text>
+
+  <line x1="108" y1="371" x2="122" y2="371" class="connector" stroke="#1a7f37" marker-end="url(#arr-green)"/>
+
+  <rect x="124" y="358" width="78" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="163" y="372" text-anchor="middle" class="step">Install</text>
+  <text x="163" y="382" text-anchor="middle" class="step-detail">pip install agent-bom</text>
+
+  <line x1="204" y1="371" x2="218" y2="371" class="connector" stroke="#1a7f37" marker-end="url(#arr-green)"/>
+
+  <rect x="220" y="358" width="78" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="259" y="372" text-anchor="middle" class="step">Scan Repo</text>
+  <text x="259" y="382" text-anchor="middle" class="step-detail">MCP + deps + code</text>
+
+  <line x1="300" y1="371" x2="314" y2="371" class="connector" stroke="#1a7f37" marker-end="url(#arr-green)"/>
+
+  <rect x="316" y="358" width="78" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="355" y="372" text-anchor="middle" class="step">Policy Check</text>
+  <text x="355" y="382" text-anchor="middle" class="step-detail">fail-on-severity</text>
+
+  <line x1="396" y1="371" x2="410" y2="371" class="connector" stroke="#1a7f37" marker-end="url(#arr-green)"/>
+
+  <rect x="412" y="358" width="94" height="26" rx="4" fill="#ffffff" stroke="#1a7f37" stroke-width="1"/>
+  <text x="459" y="372" text-anchor="middle" class="step">PR Comment</text>
+  <text x="459" y="382" text-anchor="middle" class="step-detail">SARIF upload</text>
+
+  <text x="504" y="406" text-anchor="end" class="mode-sub">GitHub Marketplace, fail/pass gate</text>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- MODE 6: Dashboard (red/coral) -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <rect x="544" y="306" width="500" height="108" rx="8" fill="#f6f8fa" stroke="#cf222e" stroke-width="1.2"/>
+  <rect x="544" y="306" width="500" height="4" rx="2" fill="#cf222e"/>
+  <rect x="556" y="318" width="72" height="16" rx="4" fill="#cf222e"/>
+  <text x="592" y="330" text-anchor="middle" class="badge">DASHBOARD</text>
+  <text x="638" y="330" class="mode-title" fill="#cf222e">Interactive Dashboard</text>
+  <text x="556" y="348" class="cmd">agent-bom dashboard [--port 8501]</text>
+
+  <rect x="556" y="358" width="78" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="595" y="372" text-anchor="middle" class="step">Streamlit UI</text>
+  <text x="595" y="382" text-anchor="middle" class="step-detail">15 sections</text>
+
+  <line x1="636" y1="371" x2="650" y2="371" class="connector" stroke="#cf222e" marker-end="url(#arr-red)"/>
+
+  <rect x="652" y="358" width="78" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="691" y="372" text-anchor="middle" class="step">Live Scan</text>
+  <text x="691" y="382" text-anchor="middle" class="step-detail">real-time results</text>
+
+  <line x1="732" y1="371" x2="746" y2="371" class="connector" stroke="#cf222e" marker-end="url(#arr-red)"/>
+
+  <rect x="748" y="358" width="78" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="787" y="372" text-anchor="middle" class="step">Visualize</text>
+  <text x="787" y="382" text-anchor="middle" class="step-detail">charts + graphs</text>
+
+  <line x1="828" y1="371" x2="842" y2="371" class="connector" stroke="#cf222e" marker-end="url(#arr-red)"/>
+
+  <rect x="844" y="358" width="78" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="883" y="372" text-anchor="middle" class="step">Blast Map</text>
+  <text x="883" y="382" text-anchor="middle" class="step-detail">interactive graph</text>
+
+  <line x1="924" y1="371" x2="938" y2="371" class="connector" stroke="#cf222e" marker-end="url(#arr-red)"/>
+
+  <rect x="940" y="358" width="90" height="26" rx="4" fill="#ffffff" stroke="#cf222e" stroke-width="1"/>
+  <text x="985" y="372" text-anchor="middle" class="step">Export</text>
+  <text x="985" y="382" text-anchor="middle" class="step-detail">PDF / SBOM / JSON</text>
+
+  <text x="1032" y="406" text-anchor="end" class="mode-sub">Self-scan, compliance scorecard, SBOM viewer</text>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- SHARED ENGINE SECTION -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <rect x="16" y="434" width="1028" height="4" rx="2" fill="#d0d7de" opacity="0.5"/>
+  <text x="530" y="458" text-anchor="middle" class="section-label" fill="#8b949e">SHARED ENGINE — ALL MODES USE THE SAME CORE</text>
+
+  <!-- Engine modules row -->
+  <rect x="16" y="470" width="140" height="50" rx="6" fill="#f6f8fa" stroke="#0969da" stroke-width="1"/>
+  <text x="86" y="490" text-anchor="middle" class="step" fill="#0969da">Discovery</text>
+  <text x="86" y="504" text-anchor="middle" class="step-detail">20 MCP clients</text>
+  <text x="86" y="514" text-anchor="middle" class="step-detail">4 cloud providers</text>
+
+  <rect x="170" y="470" width="140" height="50" rx="6" fill="#f6f8fa" stroke="#0969da" stroke-width="1"/>
+  <text x="240" y="490" text-anchor="middle" class="step" fill="#0969da">Parsers</text>
+  <text x="240" y="504" text-anchor="middle" class="step-detail">npm, pip, cargo, go</text>
+  <text x="240" y="514" text-anchor="middle" class="step-detail">Docker, requirements.txt</text>
+
+  <rect x="324" y="470" width="140" height="50" rx="6" fill="#f6f8fa" stroke="#1a7f37" stroke-width="1"/>
+  <text x="394" y="490" text-anchor="middle" class="step" fill="#1a7f37">Scanners</text>
+  <text x="394" y="504" text-anchor="middle" class="step-detail">OSV, NVD, Grype, Syft</text>
+  <text x="394" y="514" text-anchor="middle" class="step-detail">OpenSSF Scorecard</text>
+
+  <rect x="478" y="470" width="140" height="50" rx="6" fill="#f6f8fa" stroke="#9a6700" stroke-width="1"/>
+  <text x="548" y="490" text-anchor="middle" class="step" fill="#9a6700">Enrichment</text>
+  <text x="548" y="504" text-anchor="middle" class="step-detail">EPSS, KEV, CVSS</text>
+  <text x="548" y="514" text-anchor="middle" class="step-detail">blast radius mapping</text>
+
+  <rect x="632" y="470" width="140" height="50" rx="6" fill="#f6f8fa" stroke="#bf8700" stroke-width="1"/>
+  <text x="702" y="490" text-anchor="middle" class="step" fill="#bf8700">Compliance</text>
+  <text x="702" y="504" text-anchor="middle" class="step-detail">OWASP, ATLAS, NIST</text>
+  <text x="702" y="514" text-anchor="middle" class="step-detail">EU AI Act, ISO 42001</text>
+
+  <rect x="786" y="470" width="140" height="50" rx="6" fill="#f6f8fa" stroke="#cf222e" stroke-width="1"/>
+  <text x="856" y="490" text-anchor="middle" class="step" fill="#cf222e">Policy Engine</text>
+  <text x="856" y="504" text-anchor="middle" class="step-detail">18 conditions</text>
+  <text x="856" y="514" text-anchor="middle" class="step-detail">YAML rules</text>
+
+  <rect x="940" y="470" width="104" height="50" rx="6" fill="#f6f8fa" stroke="#8250df" stroke-width="1"/>
+  <text x="992" y="490" text-anchor="middle" class="step" fill="#8250df">Registry</text>
+  <text x="992" y="504" text-anchor="middle" class="step-detail">427+ MCP servers</text>
+  <text x="992" y="514" text-anchor="middle" class="step-detail">CVE + EPSS + KEV</text>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- DATA SOURCES + OUTPUT TARGETS -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <rect x="16" y="540" width="1028" height="4" rx="2" fill="#d0d7de" opacity="0.5"/>
+
+  <!-- Data Sources (left) -->
+  <text x="270" y="564" text-anchor="middle" class="section-label" fill="#0969da">INPUT SOURCES</text>
+
+  <rect x="16" y="576" width="120" height="38" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="76" y="594" text-anchor="middle" class="step">MCP Configs</text>
+  <text x="76" y="607" text-anchor="middle" class="step-detail">claude_desktop_config.json</text>
+
+  <rect x="146" y="576" width="100" height="38" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="196" y="594" text-anchor="middle" class="step">Package Files</text>
+  <text x="196" y="607" text-anchor="middle" class="step-detail">package.json, req.txt</text>
+
+  <rect x="256" y="576" width="100" height="38" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="306" y="594" text-anchor="middle" class="step">Docker Images</text>
+  <text x="306" y="607" text-anchor="middle" class="step-detail">OCI layers + SBOM</text>
+
+  <rect x="366" y="576" width="100" height="38" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="416" y="594" text-anchor="middle" class="step">Cloud APIs</text>
+  <text x="416" y="607" text-anchor="middle" class="step-detail">AWS, Azure, GCP, SF</text>
+
+  <rect x="476" y="576" width="100" height="38" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="526" y="594" text-anchor="middle" class="step">Source Code</text>
+  <text x="526" y="607" text-anchor="middle" class="step-detail">prompt injection scan</text>
+
+  <!-- Output Targets (right) -->
+  <text x="800" y="564" text-anchor="middle" class="section-label" fill="#1a7f37">OUTPUT TARGETS</text>
+
+  <rect x="620" y="576" width="100" height="38" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="670" y="594" text-anchor="middle" class="step">SBOM</text>
+  <text x="670" y="607" text-anchor="middle" class="step-detail">CycloneDX, SPDX</text>
+
+  <rect x="730" y="576" width="100" height="38" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="780" y="594" text-anchor="middle" class="step">SARIF</text>
+  <text x="780" y="607" text-anchor="middle" class="step-detail">GitHub Code Scanning</text>
+
+  <rect x="840" y="576" width="100" height="38" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="890" y="594" text-anchor="middle" class="step">Connectors</text>
+  <text x="890" y="607" text-anchor="middle" class="step-detail">Jira, Slack, SNOW</text>
+
+  <rect x="950" y="576" width="94" height="38" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="997" y="594" text-anchor="middle" class="step">ClickHouse</text>
+  <text x="997" y="607" text-anchor="middle" class="step-detail">Analytics warehouse</text>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- DEPLOYMENT MAP -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <rect x="16" y="634" width="1028" height="4" rx="2" fill="#d0d7de" opacity="0.5"/>
+  <text x="530" y="658" text-anchor="middle" class="section-label" fill="#9a6700">DEPLOYMENT OPTIONS</text>
+
+  <rect x="16" y="668" width="130" height="44" rx="6" fill="#ffffff" stroke="#0969da" stroke-width="1"/>
+  <text x="81" y="686" text-anchor="middle" class="step" fill="#0969da">pip install</text>
+  <text x="81" y="700" text-anchor="middle" class="step-detail">PyPI package</text>
+
+  <rect x="160" y="668" width="130" height="44" rx="6" fill="#ffffff" stroke="#8250df" stroke-width="1"/>
+  <text x="225" y="686" text-anchor="middle" class="step" fill="#8250df">Docker Hub</text>
+  <text x="225" y="700" text-anchor="middle" class="step-detail">GHCR + Docker Hub</text>
+
+  <rect x="304" y="668" width="130" height="44" rx="6" fill="#ffffff" stroke="#1a7f37" stroke-width="1"/>
+  <text x="369" y="686" text-anchor="middle" class="step" fill="#1a7f37">GitHub Action</text>
+  <text x="369" y="700" text-anchor="middle" class="step-detail">Marketplace</text>
+
+  <rect x="448" y="668" width="130" height="44" rx="6" fill="#ffffff" stroke="#bf8700" stroke-width="1"/>
+  <text x="513" y="686" text-anchor="middle" class="step" fill="#bf8700">Railway SSE</text>
+  <text x="513" y="700" text-anchor="middle" class="step-detail">Remote MCP server</text>
+
+  <rect x="592" y="668" width="130" height="44" rx="6" fill="#ffffff" stroke="#9a6700" stroke-width="1"/>
+  <text x="657" y="686" text-anchor="middle" class="step" fill="#9a6700">Helm Chart</text>
+  <text x="657" y="700" text-anchor="middle" class="step-detail">K8s fleet scanning</text>
+
+  <rect x="736" y="668" width="130" height="44" rx="6" fill="#ffffff" stroke="#cf222e" stroke-width="1"/>
+  <text x="801" y="686" text-anchor="middle" class="step" fill="#cf222e">Glama / Smithery</text>
+  <text x="801" y="700" text-anchor="middle" class="step-detail">MCP marketplaces</text>
+
+  <rect x="880" y="668" width="164" height="44" rx="6" fill="#ffffff" stroke="#8250df" stroke-width="1"/>
+  <text x="962" y="686" text-anchor="middle" class="step" fill="#8250df">Snowflake Native App</text>
+  <text x="962" y="700" text-anchor="middle" class="step-detail">Enterprise governance</text>
+
+  <!-- Footer -->
+  <text x="530" y="746" text-anchor="middle" class="footer">All modes share the same engine, registry, and enrichment pipeline</text>
+  <text x="530" y="762" text-anchor="middle" class="footer">github.com/msaad00/agent-bom</text>
+</svg>

@@ -515,6 +515,15 @@ def main():
 @click.option(
     "--verbose", "-v", is_flag=True, help="Full output — dependency tree, all findings, severity chart, threat frameworks, debug logging"
 )
+@click.option(
+    "--log-level",
+    "log_level",
+    type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False),
+    default=None,
+    help="Set log level (overrides --verbose). Env: AGENT_BOM_LOG_LEVEL",
+)
+@click.option("--log-json", "log_json", is_flag=True, help="Emit structured JSON logs to stderr (for SIEM ingestion)")
+@click.option("--log-file", "log_file", type=click.Path(), default=None, help="Write JSON logs to file")
 @click.option("--no-color", is_flag=True, help="Disable colored output (useful for piping, CI logs, accessibility)")
 @click.option(
     "--preset",
@@ -662,6 +671,9 @@ def scan(
     drata_token: Optional[str],
     clickhouse_url: Optional[str],
     verbose: bool,
+    log_level: Optional[str],
+    log_json: bool,
+    log_file: Optional[str],
     no_color: bool,
     preset: Optional[str],
     open_report: bool,
@@ -677,14 +689,15 @@ def scan(
       1  Fail — policy failure, or vulnerabilities found at or above
                 --fail-on-severity / --fail-on-kev / --fail-if-ai-risk
     """
-    import logging as _logging
     import time as _time
+
+    from agent_bom.logging_config import setup_logging
 
     _scan_start = _time.monotonic()
 
-    # Verbose mode: set root logging to DEBUG
-    if verbose:
-        _logging.basicConfig(level=_logging.DEBUG, format="%(name)s %(levelname)s: %(message)s")
+    # Configure logging — explicit --log-level overrides --verbose
+    _log_level = log_level or ("DEBUG" if verbose else "WARNING")
+    setup_logging(level=_log_level, json_output=log_json, log_file=log_file)
 
     # Apply presets (override defaults, don't override explicit flags)
     if preset == "ci":
@@ -3285,7 +3298,9 @@ def policy_template(output: str):
 @click.option("--persist", default=None, metavar="DB_PATH", help="Enable persistent job storage via SQLite (e.g. --persist jobs.db).")
 @click.option("--cors-allow-all", is_flag=True, default=False, help="Allow all CORS origins (dev mode).")
 @click.option("--reload", is_flag=True, help="Auto-reload on code changes (development mode)")
-def serve_cmd(host: str, port: int, persist: Optional[str], cors_allow_all: bool, reload: bool):
+@click.option("--log-level", "log_level", type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False), default="INFO")
+@click.option("--log-json", "log_json", is_flag=True, help="Structured JSON logs")
+def serve_cmd(host: str, port: int, persist: Optional[str], cors_allow_all: bool, reload: bool, log_level: str, log_json: bool):
     """Start the API server + Next.js dashboard.
 
     \b
@@ -3296,6 +3311,10 @@ def serve_cmd(host: str, port: int, persist: Optional[str], cors_allow_all: bool
       agent-bom serve
       agent-bom serve --port 8422 --persist jobs.db
     """
+    from agent_bom.logging_config import setup_logging
+
+    setup_logging(level=log_level, json_output=log_json)
+
     try:
         import uvicorn  # noqa: F401
     except ImportError:
@@ -3454,7 +3473,9 @@ def api_cmd(
 )
 @click.option("--port", default=8423, show_default=True, help="Port for HTTP/SSE transport.")
 @click.option("--host", default="127.0.0.1", show_default=True, help="Host for HTTP/SSE transport.")
-def mcp_server_cmd(transport: str, port: int, host: str):
+@click.option("--log-level", "log_level", type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False), default="INFO")
+@click.option("--log-json", "log_json", is_flag=True, help="Structured JSON logs")
+def mcp_server_cmd(transport: str, port: int, host: str, log_level: str, log_json: bool):
     """Start agent-bom as an MCP server.
 
     \b
@@ -3487,6 +3508,10 @@ def mcp_server_cmd(transport: str, port: int, host: str):
     Claude Desktop config (~/.claude/claude_desktop_config.json):
       {"mcpServers": {"agent-bom": {"command": "agent-bom", "args": ["mcp-server"]}}}
     """
+    from agent_bom.logging_config import setup_logging
+
+    setup_logging(level=log_level, json_output=log_json)
+
     try:
         from agent_bom.mcp_server import create_mcp_server
     except ImportError:
@@ -3982,6 +4007,107 @@ def registry_mcp_sync(max_pages, dry_run):
         con.print("[green]Registry file updated.[/green]")
 
 
+@registry.command("glama-sync")
+@click.option("--max-pages", type=int, default=10, show_default=True, help="Maximum pages to fetch from Glama.")
+@click.option("--dry-run", is_flag=True, help="Preview without writing to registry.")
+def registry_glama_sync(max_pages, dry_run):
+    """Import MCP servers from Glama.ai into the local registry.
+
+    \b
+    Fetches servers from glama.ai/api/mcp/v1/servers and adds new entries
+    that don't already exist in mcp_registry.json. No authentication required.
+
+    \b
+    Usage:
+      agent-bom registry glama-sync
+      agent-bom registry glama-sync --max-pages 50 --dry-run
+    """
+    from rich.console import Console
+
+    from agent_bom.glama import sync_from_glama_sync
+
+    con = Console(stderr=True)
+    con.print("[bold]Syncing MCP servers from Glama.ai...[/bold]")
+    if dry_run:
+        con.print("[dim](dry run — no files will be modified)[/dim]")
+
+    result = sync_from_glama_sync(max_pages=max_pages, dry_run=dry_run)
+
+    if result.added:
+        con.print(f"\n[bold green]Added {result.added} new server(s):[/bold green]")
+        for d in result.details[:20]:
+            con.print(f"  {d['server']}")
+        if len(result.details) > 20:
+            con.print(f"  ... and {len(result.details) - 20} more")
+    else:
+        con.print("\n[green]No new servers found (all already in local registry).[/green]")
+
+    con.print(f"\n[bold]Summary:[/bold] {result.added} added, {result.skipped} already known (of {result.total_fetched} fetched)")
+    if not dry_run and result.added > 0:
+        con.print("[green]Registry file updated.[/green]")
+
+
+@registry.command("sync-all")
+@click.option("--max-pages", type=int, default=10, show_default=True, help="Maximum pages per source.")
+@click.option("--smithery-token", envvar="SMITHERY_API_KEY", default=None, help="Smithery API key.")
+@click.option("--dry-run", is_flag=True, help="Preview without writing to registry.")
+def registry_sync_all(max_pages, smithery_token, dry_run):
+    """Sync from ALL registry sources (Official MCP + Smithery + Glama).
+
+    \b
+    Runs all three sync sources in sequence and reports combined results.
+    Smithery requires SMITHERY_API_KEY env var or --smithery-token flag.
+
+    \b
+    Usage:
+      agent-bom registry sync-all
+      agent-bom registry sync-all --dry-run
+    """
+    from rich.console import Console
+
+    con = Console(stderr=True)
+    con.print("[bold]Syncing from all registry sources...[/bold]")
+    if dry_run:
+        con.print("[dim](dry run — no files will be modified)[/dim]")
+
+    total_added = 0
+    total_fetched = 0
+
+    # 1. Official MCP Registry
+    con.print("\n[blue]1/3[/blue] Official MCP Registry...")
+    from agent_bom.mcp_official_registry import sync_from_official_registry_sync
+
+    r1 = sync_from_official_registry_sync(max_pages=max_pages, dry_run=dry_run)
+    con.print(f"  Added: {r1.added}, Skipped: {r1.skipped}, Fetched: {r1.total_fetched}")
+    total_added += r1.added
+    total_fetched += r1.total_fetched
+
+    # 2. Smithery
+    con.print("\n[blue]2/3[/blue] Smithery.ai...")
+    if smithery_token:
+        from agent_bom.smithery import sync_from_smithery_sync
+
+        r2 = sync_from_smithery_sync(token=smithery_token, max_pages=max_pages, dry_run=dry_run)
+        con.print(f"  Added: {r2.added}, Skipped: {r2.skipped}, Fetched: {r2.total_fetched}")
+        total_added += r2.added
+        total_fetched += r2.total_fetched
+    else:
+        con.print("  [dim]Skipped (no SMITHERY_API_KEY)[/dim]")
+
+    # 3. Glama
+    con.print("\n[blue]3/3[/blue] Glama.ai...")
+    from agent_bom.glama import sync_from_glama_sync
+
+    r3 = sync_from_glama_sync(max_pages=max_pages, dry_run=dry_run)
+    con.print(f"  Added: {r3.added}, Skipped: {r3.skipped}, Fetched: {r3.total_fetched}")
+    total_added += r3.added
+    total_fetched += r3.total_fetched
+
+    con.print(f"\n[bold]Total:[/bold] {total_added} added from {total_fetched} fetched across all sources")
+    if not dry_run and total_added > 0:
+        con.print("[green]Registry file updated.[/green]")
+
+
 @main.command("proxy")
 @click.option("--policy", type=click.Path(exists=True), help="Policy file for runtime enforcement")
 @click.option("--log", "log_path", default=None, help="Audit log output path (JSONL)")
@@ -4046,6 +4172,46 @@ def proxy_cmd(
     sys.exit(exit_code)
 
 
+@main.command("guard", context_settings={"ignore_unknown_options": True, "allow_extra_args": True})
+@click.argument("tool", type=click.Choice(["pip", "npm", "npx"]))
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+@click.option("--min-severity", default="high", type=click.Choice(["critical", "high", "medium"]), help="Minimum severity to block")
+@click.option("--allow-risky", is_flag=True, help="Warn but don't block risky packages")
+def guard_cmd(tool: str, args: tuple, min_severity: str, allow_risky: bool):
+    """Pre-install security guard — scan packages before installing.
+
+    \b
+    Wraps pip/npm install to check each package against OSV and NVD
+    for known vulnerabilities before allowing installation.
+
+    \b
+    Usage:
+      agent-bom guard pip install requests flask
+      agent-bom guard npm install express
+
+    \b
+    Shell alias (recommended):
+      alias pip='agent-bom guard pip'
+      alias npm='agent-bom guard npm'
+
+    \b
+    Blocks install if any package has critical/high CVEs.
+    Use --allow-risky to install anyway (with warnings).
+    """
+    from agent_bom.guard import run_guarded_install
+    from agent_bom.logging_config import setup_logging
+
+    setup_logging(level="INFO")
+
+    exit_code = run_guarded_install(
+        tool=tool,
+        args=list(args),
+        min_severity=min_severity,
+        allow_risky=allow_risky,
+    )
+    sys.exit(exit_code)
+
+
 @main.command("protect")
 @click.option(
     "--mode",
@@ -4061,7 +4227,9 @@ def proxy_cmd(
 @click.option(
     "--alert-webhook", default=None, envvar="AGENT_BOM_ALERT_WEBHOOK", help="Webhook URL for runtime alerts (Slack/Teams/PagerDuty)"
 )
-def protect_cmd(mode, port, host, detectors, alert_file, alert_webhook):
+@click.option("--log-level", "log_level", type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False), default="INFO")
+@click.option("--log-json", "log_json", is_flag=True, help="Structured JSON logs")
+def protect_cmd(mode, port, host, detectors, alert_file, alert_webhook, log_level, log_json):
     """Run the runtime protection engine as a standalone monitor.
 
     \b
@@ -4092,8 +4260,11 @@ def protect_cmd(mode, port, host, detectors, alert_file, alert_webhook):
     import signal
 
     from agent_bom.alerts.dispatcher import AlertDispatcher
+    from agent_bom.logging_config import setup_logging
     from agent_bom.runtime.protection import ProtectionEngine
     from agent_bom.runtime.server import run_http_mode, run_stdin_mode
+
+    setup_logging(level=log_level, json_output=log_json)
 
     # Build dispatcher with configured channels
     dispatcher = AlertDispatcher()

@@ -4273,5 +4273,52 @@ def analytics_cmd(query_type, days, hours, agent, top_limit, clickhouse_url):
         console.print("[dim]No data found. Run scans with --clickhouse-url to populate analytics.[/dim]")
 
 
+@main.command("dashboard")
+@click.option("--report", type=click.Path(exists=True), default=None, help="Path to agent-bom JSON report file.")
+@click.option("--port", default=8501, show_default=True, help="Streamlit server port.")
+def dashboard_cmd(report: Optional[str], port: int):
+    """Launch the interactive Streamlit dashboard.
+
+    \b
+    Requires:  pip install 'agent-bom[dashboard]'
+
+    \b
+    Usage:
+      agent-bom dashboard                        # Upload or live-scan from UI
+      agent-bom dashboard --report scan.json     # Pre-load a report
+      agent-bom scan -f json -o r.json && agent-bom dashboard --report r.json
+    """
+    import shutil
+    import subprocess
+
+    if not shutil.which("streamlit"):
+        click.echo("Error: streamlit not found. Install with: pip install 'agent-bom[dashboard]'", err=True)
+        sys.exit(1)
+
+    app_path = Path(__file__).parent.parent.parent / "dashboard" / "app.py"
+    if not app_path.exists():
+        # Fallback: installed package location
+        import importlib.resources
+
+        try:
+            ref = importlib.resources.files("dashboard") / "app.py"
+            app_path = Path(str(ref))
+        except (ModuleNotFoundError, TypeError):
+            click.echo("Error: dashboard/app.py not found. Run from the agent-bom repo root.", err=True)
+            sys.exit(1)
+
+    cmd = ["streamlit", "run", str(app_path), "--server.port", str(port)]
+    if report:
+        cmd += ["--", "--report", report]
+
+    try:
+        subprocess.run(cmd, check=True)
+    except KeyboardInterrupt:
+        pass
+    except subprocess.CalledProcessError as exc:
+        click.echo(f"Dashboard exited with code {exc.returncode}", err=True)
+        sys.exit(exc.returncode)
+
+
 if __name__ == "__main__":
     main()

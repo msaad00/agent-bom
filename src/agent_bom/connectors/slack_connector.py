@@ -16,7 +16,7 @@ import os
 from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.models import Agent, AgentType, MCPServer, TransportType
 
-from .base import ConnectorError, ConnectorHealthState, ConnectorStatus
+from .base import CONNECTOR_HEALTH_TIMEOUT, ConnectorError, ConnectorHealthState, ConnectorStatus
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ async def _discover_async(bot_token: str) -> tuple[list[Agent], list[str]]:
     warnings: list[str] = []
     headers = {"Authorization": f"Bearer {bot_token}"}
 
-    async with create_client(timeout=30.0) as client:
+    async with create_client() as client:
         # 1. Get workspace info
         workspace_name = "unknown-workspace"
         resp = await request_with_retry(client, "GET", f"{_SLACK_API}/team.info", headers=headers)
@@ -133,7 +133,7 @@ def health_check(
 
     async def _check() -> ConnectorStatus:
         headers = {"Authorization": f"Bearer {token}"}
-        async with create_client(timeout=10.0) as client:
+        async with create_client(timeout=CONNECTOR_HEALTH_TIMEOUT) as client:
             resp = await request_with_retry(client, "GET", f"{_SLACK_API}/auth.test", headers=headers)
             if resp is None:
                 return ConnectorStatus(connector="slack", state=ConnectorHealthState.UNREACHABLE, message="No response")

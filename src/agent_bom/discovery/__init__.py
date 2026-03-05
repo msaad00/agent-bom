@@ -524,7 +524,6 @@ def parse_snowflake_connections(config_path: str) -> list[MCPServer]:
 
         account = conn_def.get("account", "")
         user = conn_def.get("user", "")
-        authenticator = conn_def.get("authenticator", "SNOWFLAKE")
 
         # Build env dict with redacted credentials
         env: dict[str, str] = {}

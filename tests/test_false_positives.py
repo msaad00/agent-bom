@@ -40,7 +40,7 @@ class TestToolDeduplication:
             _server("srv2", tools=[MCPTool(name="read_file", description="different desc")]),
             _server("srv3", tools=[tool]),
         ]
-        br = BlastRadius(
+        BlastRadius(
             vulnerability=_vuln(),
             package=_pkg(),
             affected_servers=servers,

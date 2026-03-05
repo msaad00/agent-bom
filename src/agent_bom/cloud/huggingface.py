@@ -209,7 +209,6 @@ def _discover_inference_endpoints(
 
     for ep in endpoints:
         ep_name = getattr(ep, "name", "unknown")
-        model_id = getattr(ep, "model_id", None) or getattr(ep, "repository", None) or ""
         status = getattr(ep, "status", "unknown")
         framework = getattr(ep, "framework", None) or ""
 

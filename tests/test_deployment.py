@@ -200,7 +200,7 @@ def test_health_endpoint_fields():
     from agent_bom import __version__
     from agent_bom.mcp_server import create_mcp_server
 
-    server = create_mcp_server()
+    create_mcp_server()
     # The routes are registered; verify the build_server_card still works
     from agent_bom.mcp_server import build_server_card
 

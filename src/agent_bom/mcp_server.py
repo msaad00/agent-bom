@@ -87,10 +87,12 @@ def _truncate_response(response_str: str) -> str:
 
 def _safe_path(path_str: str) -> Path:
     """Resolve a user-provided path and validate against directory traversal."""
-    p = Path(path_str).expanduser().resolve()
-    if not p.is_relative_to(Path.home()):
-        raise ValueError(f"Path {path_str!r} resolves outside home directory")
-    return p
+    from agent_bom.security import SecurityError, validate_path
+
+    try:
+        return validate_path(path_str, restrict_to_home=True)
+    except SecurityError as exc:
+        raise ValueError(str(exc)) from exc
 
 
 # Cached registry data (loaded once, reused across requests)

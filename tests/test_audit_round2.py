@@ -129,7 +129,7 @@ def test_sqlite_job_store_has_indexes():
     from agent_bom.api.store import SQLiteJobStore
 
     with tempfile.NamedTemporaryFile(suffix=".db") as tmp:
-        store = SQLiteJobStore(tmp.name)
+        SQLiteJobStore(tmp.name)
         conn = sqlite3.connect(tmp.name)
         indexes = [r[1] for r in conn.execute("PRAGMA index_list('jobs')").fetchall()]
         assert "idx_jobs_status" in indexes
@@ -145,7 +145,7 @@ def test_sqlite_schedule_store_has_index():
     from agent_bom.api.schedule_store import SQLiteScheduleStore
 
     with tempfile.NamedTemporaryFile(suffix=".db") as tmp:
-        store = SQLiteScheduleStore(tmp.name)
+        SQLiteScheduleStore(tmp.name)
         conn = sqlite3.connect(tmp.name)
         indexes = [r[1] for r in conn.execute("PRAGMA index_list('schedules')").fetchall()]
         assert "idx_sched_due" in indexes
@@ -160,7 +160,7 @@ def test_sqlite_policy_store_has_timestamp_index():
     from agent_bom.api.policy_store import SQLitePolicyStore
 
     with tempfile.NamedTemporaryFile(suffix=".db") as tmp:
-        store = SQLitePolicyStore(tmp.name)
+        SQLitePolicyStore(tmp.name)
         conn = sqlite3.connect(tmp.name)
         indexes = [r[1] for r in conn.execute("PRAGMA index_list('policy_audit_log')").fetchall()]
         assert "idx_pal_ts" in indexes

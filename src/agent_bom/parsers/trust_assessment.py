@@ -128,9 +128,7 @@ def _fm_value(raw: str, field_name: str) -> str | None:
 
 def _fm_list(raw: str, field_name: str) -> list[str]:
     """Extract list items under a YAML field from raw frontmatter."""
-    section = re.search(
-        rf"^\s*{re.escape(field_name)}\s*:\s*\n((?:\s+-\s+.+\n?)+)", raw, re.MULTILINE
-    )
+    section = re.search(rf"^\s*{re.escape(field_name)}\s*:\s*\n((?:\s+-\s+.+\n?)+)", raw, re.MULTILINE)
     if not section:
         return []
     return re.findall(r"^\s+-\s+(.+)$", section.group(1), re.MULTILINE)
@@ -178,7 +176,7 @@ def _assess_purpose_capability(
             evidence.append(f"{f.category}: {f.title}")
 
     # Check for undocumented network
-    raw = (meta.raw_frontmatter if meta else "")
+    raw = meta.raw_frontmatter if meta else ""
     has_network_docs = _fm_has(raw, "network_endpoints")
 
     if shell_findings:
@@ -215,9 +213,7 @@ def _assess_purpose_capability(
         name="Purpose & Capability",
         key="purpose_capability",
         level=TrustLevel.PASS,
-        summary="Name, description, and required binaries declared" + (
-            "; network endpoints documented" if has_network_docs else ""
-        ),
+        summary="Name, description, and required binaries declared" + ("; network endpoints documented" if has_network_docs else ""),
         details=details,
         evidence=evidence,
     )
@@ -232,7 +228,7 @@ def _assess_instruction_scope(
     details: list[str] = []
     evidence: list[str] = []
 
-    raw = (meta.raw_frontmatter if meta else "")
+    raw = meta.raw_frontmatter if meta else ""
     has_file_reads = _fm_has(raw, "file_reads")
     has_justification = _fm_has(raw, "file_reads_justification")
     has_data_handling = _fm_has(raw, "sensitive_data_handling")
@@ -254,9 +250,7 @@ def _assess_instruction_scope(
             evidence.append(f"file_writes: {writes}")
 
     # Check for credential file access or data exfiltration
-    dangerous_scope = _audit_findings_for(
-        audit, "credential_file_access", "data_exfiltration", "memory_poisoning"
-    )
+    dangerous_scope = _audit_findings_for(audit, "credential_file_access", "data_exfiltration", "memory_poisoning")
     if dangerous_scope:
         for f in dangerous_scope[:3]:
             details.append(f"Behavioral finding: {f.title}")
@@ -306,9 +300,7 @@ def _assess_instruction_scope(
         name="Instruction Scope",
         key="instruction_scope",
         level=TrustLevel.PASS,
-        summary="File reads bounded and justified" + (
-            "; data handling documented" if has_data_handling else ""
-        ),
+        summary="File reads bounded and justified" + ("; data handling documented" if has_data_handling else ""),
         details=details,
         evidence=evidence,
     )
@@ -323,7 +315,7 @@ def _assess_install_mechanism(
     details: list[str] = []
     evidence: list[str] = []
 
-    raw = (meta.raw_frontmatter if meta else "")
+    raw = meta.raw_frontmatter if meta else ""
     has_source = bool(meta and meta.source)
     has_homepage = bool(meta and meta.homepage)
     install_methods = meta.install_methods if meta else []
@@ -337,9 +329,7 @@ def _assess_install_mechanism(
         details.append(f"Homepage: {meta.homepage}")
 
     # Check for verification/signing references
-    has_signing = bool(
-        re.search(r"(?:sigstore|cosign|checksum|sha256|provenance|slsa)", raw, re.IGNORECASE)
-    )
+    has_signing = bool(re.search(r"(?:sigstore|cosign|checksum|sha256|provenance|slsa)", raw, re.IGNORECASE))
     if has_signing:
         details.append("Signing/provenance references found in metadata")
 
@@ -377,9 +367,7 @@ def _assess_install_mechanism(
         name="Install Mechanism",
         key="install_mechanism",
         level=TrustLevel.PASS,
-        summary=f"{len(install_methods)} install method(s), source available" + (
-            ", signed" if has_signing else ""
-        ),
+        summary=f"{len(install_methods)} install method(s), source available" + (", signed" if has_signing else ""),
         details=details,
         evidence=evidence,
     )
@@ -394,15 +382,13 @@ def _assess_credentials(
     details: list[str] = []
     evidence: list[str] = []
 
-    raw = (meta.raw_frontmatter if meta else "")
+    raw = meta.raw_frontmatter if meta else ""
     cred_count = len(scan.credential_env_vars)
     has_optional_env = _fm_has(raw, "optional_env")
-    has_required_env = _fm_has(raw, "env")
     has_sent_only_to = "sent_only_to" in raw if raw else False
 
     # Check what's declared
     required_env_list = _fm_list(raw, "env")
-    env_empty = _fm_value(raw, "env")  # check for "env: []"
 
     if cred_count == 0:
         details.append("No credential env vars referenced")
@@ -454,10 +440,7 @@ def _assess_credentials(
         name="Credentials",
         key="credentials",
         level=TrustLevel.PASS,
-        summary="No required credentials" + (
-            f"; {cred_count} optional, documented" if cred_count > 0 and has_optional_env
-            else ""
-        ),
+        summary="No required credentials" + (f"; {cred_count} optional, documented" if cred_count > 0 and has_optional_env else ""),
         details=details,
         evidence=evidence,
     )
@@ -472,7 +455,7 @@ def _assess_persistence_privilege(
     details: list[str] = []
     evidence: list[str] = []
 
-    raw = (meta.raw_frontmatter if meta else "")
+    raw = meta.raw_frontmatter if meta else ""
 
     # Check frontmatter declarations
     persistence_val = _fm_value(raw, "persistence")
@@ -487,9 +470,7 @@ def _assess_persistence_privilege(
         details.append(f"privilege_escalation: {priv_esc_val}")
 
     # Check audit behavioral findings
-    priv_findings = _audit_findings_for(
-        audit, "persistence_mechanism", "privilege_escalation", "confirmation_bypass"
-    )
+    priv_findings = _audit_findings_for(audit, "persistence_mechanism", "privilege_escalation", "confirmation_bypass")
     if priv_findings:
         for f in priv_findings[:3]:
             details.append(f"Behavioral finding: {f.title}")
@@ -537,9 +518,12 @@ def _assess_persistence_privilege(
 
     # All declared as false → best case
     all_false = (
-        persistence_val and persistence_val.lower() == "false"
-        and telemetry_val and telemetry_val.lower() == "false"
-        and priv_esc_val and priv_esc_val.lower() == "false"
+        persistence_val
+        and persistence_val.lower() == "false"
+        and telemetry_val
+        and telemetry_val.lower() == "false"
+        and priv_esc_val
+        and priv_esc_val.lower() == "false"
     )
 
     if all_false:

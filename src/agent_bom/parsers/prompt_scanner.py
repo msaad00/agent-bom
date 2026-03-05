@@ -27,29 +27,54 @@ logger = logging.getLogger(__name__)
 # ── File discovery patterns ──────────────────────────────────────────────────
 
 PROMPT_FILE_EXTENSIONS = {
-    ".prompt", ".promptfile", ".system-prompt",
-    ".jinja2", ".j2", ".hbs", ".mustache",
+    ".prompt",
+    ".promptfile",
+    ".system-prompt",
+    ".jinja2",
+    ".j2",
+    ".hbs",
+    ".mustache",
 }
 
 PROMPT_FILE_NAMES = {
-    "system_prompt.txt", "system_prompt.md",
-    "system_prompt.yaml", "system_prompt.yml", "system_prompt.json",
-    "prompt.yaml", "prompt.yml", "prompt.json",
-    "user_prompt.txt", "user_prompt.md",
-    "agent_prompt.txt", "agent_prompt.md",
-    "instructions.txt", "instructions.md",
+    "system_prompt.txt",
+    "system_prompt.md",
+    "system_prompt.yaml",
+    "system_prompt.yml",
+    "system_prompt.json",
+    "prompt.yaml",
+    "prompt.yml",
+    "prompt.json",
+    "user_prompt.txt",
+    "user_prompt.md",
+    "agent_prompt.txt",
+    "agent_prompt.md",
+    "instructions.txt",
+    "instructions.md",
 }
 
 PROMPT_DIR_NAMES = {
-    "prompts", "prompt_templates", "prompt-templates",
-    "system_prompts", "system-prompts",
+    "prompts",
+    "prompt_templates",
+    "prompt-templates",
+    "system_prompts",
+    "system-prompts",
 }
 
 # Directories to skip during scanning
 _SKIP_DIRS = {
-    ".git", "node_modules", "__pycache__", ".venv", "venv",
-    ".tox", ".mypy_cache", ".ruff_cache", "dist", "build",
-    ".eggs", "*.egg-info",
+    ".git",
+    "node_modules",
+    "__pycache__",
+    ".venv",
+    "venv",
+    ".tox",
+    ".mypy_cache",
+    ".ruff_cache",
+    "dist",
+    "build",
+    ".eggs",
+    "*.egg-info",
 }
 
 
@@ -285,7 +310,19 @@ def discover_prompt_files(
                 if entry.name.lower() in PROMPT_DIR_NAMES:
                     # Scan all files inside prompt directories
                     for f in sorted(entry.rglob("*")):
-                        if f.is_file() and f.suffix in {".txt", ".md", ".yaml", ".yml", ".json", ".j2", ".jinja2", ".hbs", ".mustache", ".prompt", ".promptfile"}:
+                        if f.is_file() and f.suffix in {
+                            ".txt",
+                            ".md",
+                            ".yaml",
+                            ".yml",
+                            ".json",
+                            ".j2",
+                            ".jinja2",
+                            ".hbs",
+                            ".mustache",
+                            ".prompt",
+                            ".promptfile",
+                        }:
                             found.append(f)
                 else:
                     _walk(entry, depth + 1)
@@ -310,7 +347,6 @@ def _analyze_content(
 ) -> list[PromptFinding]:
     """Analyze prompt content for security risks."""
     findings: list[PromptFinding] = []
-    lines = content.split("\n")
 
     # Build a line-lookup for match positions
     def _find_line(pos: int) -> int:
@@ -320,72 +356,82 @@ def _analyze_content(
     # Critical: Hardcoded secrets
     for pattern, title in _SECRET_PATTERNS:
         for match in pattern.finditer(content):
-            findings.append(PromptFinding(
-                severity="critical",
-                category="hardcoded_secret",
-                title=title,
-                detail=f"Found {title.lower()} in prompt template",
-                source_file=source_file,
-                line_number=_find_line(match.start()),
-                matched_text=_redact(match.group(0)),
-                recommendation="Remove hardcoded secrets. Use environment variables or secret managers.",
-            ))
+            findings.append(
+                PromptFinding(
+                    severity="critical",
+                    category="hardcoded_secret",
+                    title=title,
+                    detail=f"Found {title.lower()} in prompt template",
+                    source_file=source_file,
+                    line_number=_find_line(match.start()),
+                    matched_text=_redact(match.group(0)),
+                    recommendation="Remove hardcoded secrets. Use environment variables or secret managers.",
+                )
+            )
 
     # High: Prompt injection / jailbreak
     for pattern, title in _INJECTION_PATTERNS:
         for match in pattern.finditer(content):
-            findings.append(PromptFinding(
-                severity="high",
-                category="prompt_injection",
-                title=title,
-                detail=f"Detected injection/jailbreak pattern: {match.group(0)[:80]}",
-                source_file=source_file,
-                line_number=_find_line(match.start()),
-                matched_text=match.group(0)[:100],
-                recommendation="Remove prompt injection patterns. These can compromise agent safety controls.",
-            ))
+            findings.append(
+                PromptFinding(
+                    severity="high",
+                    category="prompt_injection",
+                    title=title,
+                    detail=f"Detected injection/jailbreak pattern: {match.group(0)[:80]}",
+                    source_file=source_file,
+                    line_number=_find_line(match.start()),
+                    matched_text=match.group(0)[:100],
+                    recommendation="Remove prompt injection patterns. These can compromise agent safety controls.",
+                )
+            )
 
     # High: Unsafe instructions
     for pattern, title in _UNSAFE_INSTRUCTION_PATTERNS:
         for match in pattern.finditer(content):
-            findings.append(PromptFinding(
-                severity="high",
-                category="unsafe_instruction",
-                title=title,
-                detail=f"Prompt instructs agent to: {match.group(0)[:80]}",
-                source_file=source_file,
-                line_number=_find_line(match.start()),
-                matched_text=match.group(0)[:100],
-                recommendation="Restrict agent capabilities. Avoid granting shell access or data exfiltration paths.",
-            ))
+            findings.append(
+                PromptFinding(
+                    severity="high",
+                    category="unsafe_instruction",
+                    title=title,
+                    detail=f"Prompt instructs agent to: {match.group(0)[:80]}",
+                    source_file=source_file,
+                    line_number=_find_line(match.start()),
+                    matched_text=match.group(0)[:100],
+                    recommendation="Restrict agent capabilities. Avoid granting shell access or data exfiltration paths.",
+                )
+            )
 
     # Medium: Excessive permissions
     for pattern, title in _PERMISSION_PATTERNS:
         for match in pattern.finditer(content):
-            findings.append(PromptFinding(
-                severity="medium",
-                category="excessive_permission",
-                title=title,
-                detail=f"Prompt grants excessive permissions: {match.group(0)[:80]}",
-                source_file=source_file,
-                line_number=_find_line(match.start()),
-                matched_text=match.group(0)[:100],
-                recommendation="Apply least-privilege. Scope agent access to only what's needed.",
-            ))
+            findings.append(
+                PromptFinding(
+                    severity="medium",
+                    category="excessive_permission",
+                    title=title,
+                    detail=f"Prompt grants excessive permissions: {match.group(0)[:80]}",
+                    source_file=source_file,
+                    line_number=_find_line(match.start()),
+                    matched_text=match.group(0)[:100],
+                    recommendation="Apply least-privilege. Scope agent access to only what's needed.",
+                )
+            )
 
     # Medium: Sensitive data in prompt content
     for pattern, title in _SENSITIVE_DATA_PATTERNS:
         for match in pattern.finditer(content):
-            findings.append(PromptFinding(
-                severity="medium",
-                category="sensitive_data",
-                title=title,
-                detail="Possible sensitive data in prompt template",
-                source_file=source_file,
-                line_number=_find_line(match.start()),
-                matched_text=_redact(match.group(0)),
-                recommendation="Remove sensitive data from prompt templates. Use parameterized inputs.",
-            ))
+            findings.append(
+                PromptFinding(
+                    severity="medium",
+                    category="sensitive_data",
+                    title=title,
+                    detail="Possible sensitive data in prompt template",
+                    source_file=source_file,
+                    line_number=_find_line(match.start()),
+                    matched_text=_redact(match.group(0)),
+                    recommendation="Remove sensitive data from prompt templates. Use parameterized inputs.",
+                )
+            )
 
     return findings
 
@@ -419,14 +465,12 @@ def _extract_prompt_from_json(content: str) -> str:
                 _walk_json(item, depth + 1)
         elif isinstance(obj, dict):
             # Prioritize known prompt-related keys
-            for key in ("prompt", "system_prompt", "system", "content",
-                        "instructions", "template", "message", "text"):
+            for key in ("prompt", "system_prompt", "system", "content", "instructions", "template", "message", "text"):
                 if key in obj:
                     _walk_json(obj[key], depth + 1)
             # Also walk other values
             for key, val in obj.items():
-                if key not in ("prompt", "system_prompt", "system", "content",
-                               "instructions", "template", "message", "text"):
+                if key not in ("prompt", "system_prompt", "system", "content", "instructions", "template", "message", "text"):
                     _walk_json(val, depth + 1)
 
     _walk_json(data)
@@ -446,10 +490,19 @@ def _extract_prompt_from_yaml(content: str) -> str:
         lower = stripped.lower()
 
         # Check for prompt-related YAML keys
-        if any(lower.startswith(k) for k in (
-            "prompt:", "system_prompt:", "system:", "content:",
-            "instructions:", "template:", "message:", "text:",
-        )):
+        if any(
+            lower.startswith(k)
+            for k in (
+                "prompt:",
+                "system_prompt:",
+                "system:",
+                "content:",
+                "instructions:",
+                "template:",
+                "message:",
+                "text:",
+            )
+        ):
             # Value on same line after colon
             val = stripped.split(":", 1)[1].strip()
             if val and val not in ("|", ">", "|-", ">-"):
@@ -528,8 +581,6 @@ def scan_prompt_files(
         result.findings.extend(findings)
 
     # Determine pass/fail
-    result.passed = not any(
-        f.severity in ("critical", "high") for f in result.findings
-    )
+    result.passed = not any(f.severity in ("critical", "high") for f in result.findings)
 
     return result

@@ -198,8 +198,6 @@ def test_scheduler_backoff_on_failure():
     run_fn = MagicMock()
     sleep_calls = []
 
-    original_sleep = asyncio.sleep
-
     async def mock_sleep(seconds):
         sleep_calls.append(seconds)
         if len(sleep_calls) >= 3:

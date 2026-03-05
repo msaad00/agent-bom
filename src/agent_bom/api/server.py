@@ -70,7 +70,7 @@ from contextlib import asynccontextmanager  # noqa: E402
 async def _lifespan(app_instance: FastAPI):
     """Start background cleanup task on startup, cancel on shutdown."""
     # Priority: Snowflake > SQLite > InMemory (lazy default)
-    if _os.environ.get("SNOWFLAKE_ACCOUNT"):
+    if os.environ.get("SNOWFLAKE_ACCOUNT"):
         from agent_bom.api.snowflake_store import (
             SnowflakeFleetStore,
             SnowflakeJobStore,
@@ -85,7 +85,7 @@ async def _lifespan(app_instance: FastAPI):
             set_fleet_store(SnowflakeFleetStore(sf))
         if _policy_store is None:
             set_policy_store(SnowflakePolicyStore(sf))
-    elif _os.environ.get("AGENT_BOM_POSTGRES_URL"):
+    elif os.environ.get("AGENT_BOM_POSTGRES_URL"):
         from agent_bom.api.postgres_store import (
             PostgresFleetStore,
             PostgresJobStore,
@@ -98,8 +98,8 @@ async def _lifespan(app_instance: FastAPI):
             set_fleet_store(PostgresFleetStore())
         if _policy_store is None:
             set_policy_store(PostgresPolicyStore())
-    elif _os.environ.get("AGENT_BOM_DB"):
-        db_path = _os.environ["AGENT_BOM_DB"]
+    elif os.environ.get("AGENT_BOM_DB"):
+        db_path = os.environ["AGENT_BOM_DB"]
         if _store is None:
             from agent_bom.api.store import SQLiteJobStore
 
@@ -116,25 +116,25 @@ async def _lifespan(app_instance: FastAPI):
     # ── Schedule store ──
     global _schedule_store
     if _schedule_store is None:
-        if _os.environ.get("AGENT_BOM_POSTGRES_URL"):
+        if os.environ.get("AGENT_BOM_POSTGRES_URL"):
             from agent_bom.api.postgres_store import PostgresScheduleStore
 
             _schedule_store = PostgresScheduleStore()
-        elif _os.environ.get("AGENT_BOM_DB"):
+        elif os.environ.get("AGENT_BOM_DB"):
             from agent_bom.api.schedule_store import SQLiteScheduleStore
 
-            _schedule_store = SQLiteScheduleStore(_os.environ["AGENT_BOM_DB"])
+            _schedule_store = SQLiteScheduleStore(os.environ["AGENT_BOM_DB"])
         else:
             from agent_bom.api.schedule_store import InMemoryScheduleStore
 
             _schedule_store = InMemoryScheduleStore()
 
     # ── Analytics store (ClickHouse OLAP — optional) ──
-    if _os.environ.get("AGENT_BOM_CLICKHOUSE_URL") and _analytics_store is None:
+    if os.environ.get("AGENT_BOM_CLICKHOUSE_URL") and _analytics_store is None:
         try:
             from agent_bom.api.clickhouse_store import ClickHouseAnalyticsStore
 
-            set_analytics_store(ClickHouseAnalyticsStore(url=_os.environ["AGENT_BOM_CLICKHOUSE_URL"]))
+            set_analytics_store(ClickHouseAnalyticsStore(url=os.environ["AGENT_BOM_CLICKHOUSE_URL"]))
             _logger.info("ClickHouse analytics store enabled")
         except Exception:
             _logger.warning("ClickHouse analytics unavailable, using NullAnalyticsStore", exc_info=True)
@@ -172,7 +172,7 @@ async def _lifespan(app_instance: FastAPI):
     _executor.shutdown(wait=True, cancel_futures=True)
     # Close Postgres connection pool if active
     try:
-        if _os.environ.get("AGENT_BOM_POSTGRES_URL"):
+        if os.environ.get("AGENT_BOM_POSTGRES_URL"):
             from agent_bom.api.postgres_store import _pool as _pg_pool
 
             if _pg_pool is not None:
@@ -191,10 +191,10 @@ app = FastAPI(
 )
 
 # ── API hardening config ─────────────────────────────────────────────────
-import os as _os  # noqa: E402
+import os  # noqa: E402
 
 _default_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
-_cors_env = _os.environ.get("CORS_ORIGINS")
+_cors_env = os.environ.get("CORS_ORIGINS")
 _cors_origins: list[str] = [o.strip() for o in _cors_env.split(",") if o.strip()] if _cors_env else _default_origins
 _api_key: str | None = None
 _rate_limit_rpm: int = 60
@@ -433,7 +433,7 @@ def configure_api(
 
 
 # Thread pool for running blocking scan functions without blocking the event loop
-_executor = ThreadPoolExecutor(max_workers=min(8, (_os.cpu_count() or 4) + 2))
+_executor = ThreadPoolExecutor(max_workers=min(8, (os.cpu_count() or 4) + 2))
 
 # ─── Lazy-init lock (protects _store, _fleet_store, _policy_store) ───────────
 _store_lock = threading.Lock()
@@ -2726,11 +2726,11 @@ async def governance_report(days: int = 30):
     Mines ACCESS_HISTORY, GRANTS_TO_ROLES, TAG_REFERENCES, and
     CORTEX_AGENT_USAGE_HISTORY. Requires SNOWFLAKE_ACCOUNT env var.
     """
-    import os as _os
+    import os
 
     days = max(1, min(days, 365))
 
-    if not _os.environ.get("SNOWFLAKE_ACCOUNT"):
+    if not os.environ.get("SNOWFLAKE_ACCOUNT"):
         raise HTTPException(
             status_code=400,
             detail="SNOWFLAKE_ACCOUNT env var not set. Governance requires Snowflake.",
@@ -2753,11 +2753,11 @@ async def governance_findings(
     category: str | None = None,
 ):
     """Return only governance findings, optionally filtered."""
-    import os as _os
+    import os
 
     days = max(1, min(days, 365))
 
-    if not _os.environ.get("SNOWFLAKE_ACCOUNT"):
+    if not os.environ.get("SNOWFLAKE_ACCOUNT"):
         raise HTTPException(
             status_code=400,
             detail="SNOWFLAKE_ACCOUNT env var not set.",
@@ -2794,11 +2794,11 @@ async def activity_timeline(days: int = 30):
     Reconstructs agent execution history from 365-day query history
     and AI observability traces.
     """
-    import os as _os
+    import os
 
     days = max(1, min(days, 365))
 
-    if not _os.environ.get("SNOWFLAKE_ACCOUNT"):
+    if not os.environ.get("SNOWFLAKE_ACCOUNT"):
         raise HTTPException(
             status_code=400,
             detail="SNOWFLAKE_ACCOUNT env var not set. Activity requires Snowflake.",
@@ -2825,11 +2825,11 @@ async def cortex_telemetry(hours: int = 24):
     into per-agent metrics, error rates, latency percentiles, and
     health status.
     """
-    import os as _os
+    import os
 
     hours = max(1, min(hours, 8760))
 
-    if not _os.environ.get("SNOWFLAKE_ACCOUNT"):
+    if not os.environ.get("SNOWFLAKE_ACCOUNT"):
         raise HTTPException(
             status_code=400,
             detail="SNOWFLAKE_ACCOUNT env var not set.",
@@ -2851,9 +2851,9 @@ async def cortex_telemetry(hours: int = 24):
 @app.get("/v1/cortex/agents/{name}/telemetry", tags=["governance"])
 async def cortex_agent_telemetry(name: str, hours: int = 24):
     """Telemetry for a specific Cortex agent."""
-    import os as _os
+    import os
 
-    if not _os.environ.get("SNOWFLAKE_ACCOUNT"):
+    if not os.environ.get("SNOWFLAKE_ACCOUNT"):
         raise HTTPException(
             status_code=400,
             detail="SNOWFLAKE_ACCOUNT env var not set.",
@@ -2875,9 +2875,9 @@ async def cortex_agent_telemetry(name: str, hours: int = 24):
 @app.get("/v1/cortex/health", tags=["governance"])
 async def cortex_health():
     """Health status for all Cortex agents."""
-    import os as _os
+    import os
 
-    if not _os.environ.get("SNOWFLAKE_ACCOUNT"):
+    if not os.environ.get("SNOWFLAKE_ACCOUNT"):
         raise HTTPException(
             status_code=400,
             detail="SNOWFLAKE_ACCOUNT env var not set.",

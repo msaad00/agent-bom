@@ -75,6 +75,7 @@ gcp = [
     "google-cloud-run>=0.10",
     "google-cloud-resource-manager>=1.12",
 ]
+coreweave = []  # kubectl only — no pip packages
 databricks = ["databricks-sdk>=0.20"]
 snowflake = ["snowflake-connector-python>=3.6"]
 nebius = ["requests>=2.28"]

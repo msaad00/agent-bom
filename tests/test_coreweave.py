@@ -6,6 +6,8 @@ import json
 import subprocess
 from unittest.mock import patch
 
+from agent_bom.cloud.coreweave import _CRD_INFERENCESERVICE, _CRD_VIRTUALSERVER
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # 1. Provider registration
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -73,10 +75,10 @@ _EMPTY_JSON = json.dumps({"items": []})
 def _mock_kubectl_run(cmd, **kwargs):
     """Mock subprocess.run for kubectl commands."""
     # VirtualServer CRD query
-    if "virtualservers.virtualserver.coreweave.com" in cmd:
+    if _CRD_VIRTUALSERVER in cmd:
         return subprocess.CompletedProcess(cmd, 0, stdout=_VIRTUALSERVER_JSON, stderr="")
     # InferenceService CRD query
-    if "inferenceservices.serving.kserve.io" in cmd:
+    if _CRD_INFERENCESERVICE in cmd:
         return subprocess.CompletedProcess(cmd, 0, stdout=_EMPTY_JSON, stderr="")
     # Pods query (for GPU pods and InfiniBand)
     if "pods" in cmd:
@@ -129,9 +131,9 @@ _INFERENCESERVICE_JSON = json.dumps(
 
 
 def _mock_kubectl_inferenceservice(cmd, **kwargs):
-    if "virtualservers.virtualserver.coreweave.com" in cmd:
+    if _CRD_VIRTUALSERVER in cmd:
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="not found")
-    if "inferenceservices.serving.kserve.io" in cmd:
+    if _CRD_INFERENCESERVICE in cmd:
         return subprocess.CompletedProcess(cmd, 0, stdout=_INFERENCESERVICE_JSON, stderr="")
     if "pods" in cmd:
         return subprocess.CompletedProcess(cmd, 0, stdout=_EMPTY_JSON, stderr="")
@@ -182,9 +184,9 @@ _NIM_POD_JSON = json.dumps(
 
 
 def _mock_kubectl_nim(cmd, **kwargs):
-    if "virtualservers.virtualserver.coreweave.com" in cmd:
+    if _CRD_VIRTUALSERVER in cmd:
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="not found")
-    if "inferenceservices.serving.kserve.io" in cmd:
+    if _CRD_INFERENCESERVICE in cmd:
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="not found")
     if "pods" in cmd:
         return subprocess.CompletedProcess(cmd, 0, stdout=_NIM_POD_JSON, stderr="")
@@ -239,9 +241,9 @@ _IB_POD_JSON = json.dumps(
 
 
 def _mock_kubectl_ib(cmd, **kwargs):
-    if "virtualservers.virtualserver.coreweave.com" in cmd:
+    if _CRD_VIRTUALSERVER in cmd:
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="not found")
-    if "inferenceservices.serving.kserve.io" in cmd:
+    if _CRD_INFERENCESERVICE in cmd:
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="not found")
     if "pods" in cmd:
         return subprocess.CompletedProcess(cmd, 0, stdout=_IB_POD_JSON, stderr="")
@@ -293,9 +295,9 @@ _NIM_INFERENCESERVICE_JSON = json.dumps(
 
 
 def _mock_kubectl_nim_isvc(cmd, **kwargs):
-    if "virtualservers.virtualserver.coreweave.com" in cmd:
+    if _CRD_VIRTUALSERVER in cmd:
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="not found")
-    if "inferenceservices.serving.kserve.io" in cmd:
+    if _CRD_INFERENCESERVICE in cmd:
         return subprocess.CompletedProcess(cmd, 0, stdout=_NIM_INFERENCESERVICE_JSON, stderr="")
     if "pods" in cmd:
         return subprocess.CompletedProcess(cmd, 0, stdout=_EMPTY_JSON, stderr="")

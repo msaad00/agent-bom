@@ -28,6 +28,10 @@ logger = logging.getLogger(__name__)
 # NVIDIA NIM image prefix — containers from NGC Inference Microservices
 _NIM_IMAGE_PREFIX = "nvcr.io/nim/"
 
+# Kubernetes CRD fully-qualified names
+_CRD_VIRTUALSERVER = "virtualservers.virtualserver.coreweave.com"
+_CRD_INFERENCESERVICE = "inferenceservices.serving.kserve.io"
+
 
 def _kubectl(
     args: list[str],
@@ -144,7 +148,7 @@ def _discover_virtual_servers(
     ns_args = ["-n", namespace] if namespace else ["-A"]
     try:
         data = _kubectl(
-            ["get", "virtualservers.virtualserver.coreweave.com", *ns_args],
+            ["get", _CRD_VIRTUALSERVER, *ns_args],
             context=context,
         )
     except CloudDiscoveryError:
@@ -201,7 +205,7 @@ def _discover_inference_services(
     ns_args = ["-n", namespace] if namespace else ["-A"]
     try:
         data = _kubectl(
-            ["get", "inferenceservices.serving.kserve.io", *ns_args],
+            ["get", _CRD_INFERENCESERVICE, *ns_args],
             context=context,
         )
     except CloudDiscoveryError:

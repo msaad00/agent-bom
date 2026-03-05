@@ -398,6 +398,7 @@ class AIBOMReport:
     toxic_combinations: Optional[list] = None  # Serialized ToxicCombination list
     prioritized_findings: Optional[list] = None  # Priority-ordered findings
     sast_data: Optional[dict] = None  # Serialized SAST scan results (Semgrep)
+    cis_benchmark_data: Optional[dict] = None  # Serialized CIS AWS Benchmark results
 
     def __post_init__(self):
         if not self.tool_version:

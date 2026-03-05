@@ -1554,6 +1554,9 @@ def to_json(report: AIBOMReport) -> dict:
     if report.sast_data:
         result["sast"] = report.sast_data
 
+    if report.cis_benchmark_data:
+        result["cis_benchmark"] = report.cis_benchmark_data
+
     # Posture scorecard
     from agent_bom.posture import (
         compute_credential_risk_ranking,

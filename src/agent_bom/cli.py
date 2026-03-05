@@ -446,6 +446,7 @@ def main():
 @click.option("--aws-include-step-functions", is_flag=True, help="Discover Step Functions workflows (used with --aws)")
 @click.option("--aws-include-ec2", is_flag=True, help="Discover EC2 instances by tag (used with --aws)")
 @click.option("--aws-ec2-tag", default=None, metavar="KEY=VALUE", help="EC2 tag filter for --aws-include-ec2 (e.g. 'Environment=ai-prod')")
+@click.option("--aws-cis-benchmark", is_flag=True, help="Run CIS AWS Foundations Benchmark v3.0 checks (used with --aws)")
 @click.option("--huggingface", "hf_flag", is_flag=True, help="Discover models, Spaces, and endpoints from Hugging Face Hub")
 @click.option("--hf-token", default=None, envvar="HF_TOKEN", metavar="TOKEN", help="Hugging Face API token")
 @click.option("--hf-username", default=None, metavar="USER", help="Hugging Face username to scope discovery")
@@ -609,6 +610,7 @@ def scan(
     aws_include_step_functions: bool,
     aws_include_ec2: bool,
     aws_ec2_tag: Optional[str],
+    aws_cis_benchmark: bool,
     hf_flag: bool,
     hf_token: Optional[str],
     hf_username: Optional[str],
@@ -1394,6 +1396,45 @@ def scan(
         except CloudDiscoveryError as exc:
             con.print(f"\n  [red]{provider_name.upper()} discovery error: {exc}[/red]")
 
+    # Step 1x: CIS AWS Foundations Benchmark
+    cis_benchmark_report = None
+    if aws_cis_benchmark:
+        from agent_bom.cloud import CloudDiscoveryError
+
+        con.print("\n[bold blue]Running CIS AWS Foundations Benchmark v3.0...[/bold blue]\n")
+        try:
+            from agent_bom.cloud.aws_cis_benchmark import run_benchmark as run_cis
+
+            cis_benchmark_report = run_cis(region=aws_region, profile=aws_profile)
+            passed = cis_benchmark_report.passed
+            failed = cis_benchmark_report.failed
+            total = cis_benchmark_report.total
+            rate = cis_benchmark_report.pass_rate
+            con.print(f"  [green]✓[/green] {total} checks evaluated — {passed} passed, {failed} failed ({rate:.0f}% pass rate)")
+            if failed > 0:
+                from rich.table import Table
+
+                tbl = Table(title="CIS AWS Foundations Benchmark v3.0", show_lines=False, padding=(0, 1))
+                tbl.add_column("Check", style="cyan", width=6)
+                tbl.add_column("Title", min_width=30)
+                tbl.add_column("Status", width=6)
+                tbl.add_column("Severity", width=8)
+                tbl.add_column("Evidence", max_width=50)
+                _status_style = {"pass": "[green]PASS[/]", "fail": "[red]FAIL[/]", "error": "[yellow]ERR[/]"}
+                _sev_style = {"critical": "[red]critical[/]", "high": "[bright_red]high[/]", "medium": "[yellow]medium[/]"}
+                for c in cis_benchmark_report.checks:
+                    tbl.add_row(
+                        c.check_id,
+                        c.title,
+                        _status_style.get(c.status.value, c.status.value),
+                        _sev_style.get(c.severity, c.severity),
+                        c.evidence,
+                    )
+                con.print()
+                con.print(tbl)
+        except CloudDiscoveryError as exc:
+            con.print(f"  [red]CIS Benchmark error: {exc}[/red]")
+
     # Step 1y: SaaS connector discovery
     saas_connectors: list[tuple[str, dict]] = []
     if not skill_only and jira_discover:
@@ -1764,6 +1805,8 @@ def scan(
         report.enforcement_data = _enforcement_data
     if _sast_data:
         report.sast_data = _sast_data
+    if cis_benchmark_report is not None:
+        report.cis_benchmark_data = cis_benchmark_report.to_dict()
 
     # ── Context graph: lateral movement analysis ────────────────────
     if context_graph_flag and report.blast_radii:

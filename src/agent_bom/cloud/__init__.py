@@ -1,7 +1,7 @@
 """Cloud provider auto-discovery for AI agents and MCP servers.
 
-Discovers agents from AWS, Azure, GCP, Databricks, Snowflake, Nebius,
-Hugging Face Hub, W&B, MLflow, OpenAI, and Ollama (local) APIs.
+Discovers agents from AWS, Azure, GCP, CoreWeave, Databricks, Snowflake,
+Nebius, Hugging Face Hub, W&B, MLflow, OpenAI, and Ollama (local) APIs.
 Each provider is an optional dependency — install with e.g. ``pip install 'agent-bom[aws]'``.
 """
 
@@ -18,6 +18,7 @@ _PROVIDERS: dict[str, str] = {
     "aws": "agent_bom.cloud.aws",
     "azure": "agent_bom.cloud.azure",
     "gcp": "agent_bom.cloud.gcp",
+    "coreweave": "agent_bom.cloud.coreweave",
     "databricks": "agent_bom.cloud.databricks",
     "snowflake": "agent_bom.cloud.snowflake",
     "nebius": "agent_bom.cloud.nebius",

@@ -2967,7 +2967,8 @@ def test_openclaw_skill_is_pure_mcp():
     p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
     content = p.read_text()
     assert "bins: []" in content, "Should require no binaries"
-    assert "file_reads: []" in content, "Should declare no file reads"
+    assert "file_reads:" in content, "Should declare file reads"
+    assert "mcp.json" in content, "Should declare MCP config file reads"
     assert "file_writes: []" in content
     assert "telemetry: false" in content
     assert "persistence: false" in content

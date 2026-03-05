@@ -18,7 +18,7 @@ metadata:
   pypi: https://pypi.org/project/agent-bom/
   smithery: https://smithery.ai/server/agent-bom/agent-bom
   scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
-  tests: 2700
+  tests: 2900
   install:
     pipx: agent-bom
     pip: agent-bom
@@ -27,7 +27,16 @@ metadata:
     requires:
       bins: []
       env: []
-    optional_env: []
+    optional_env:
+      - NVD_API_KEY
+      - SNYK_TOKEN
+      - AGENT_BOM_CLICKHOUSE_URL
+    optional_bins:
+      - syft
+      - grype
+      - kubectl
+      - semgrep
+      - docker
     emoji: "\U0001F6E1"
     homepage: https://github.com/msaad00/agent-bom
     source: https://github.com/msaad00/agent-bom
@@ -36,11 +45,33 @@ metadata:
       - darwin
       - linux
       - windows
-    file_reads: []
+    file_reads:
+      - "~/.cursor/mcp.json"
+      - "~/Library/Application Support/Claude/claude_desktop_config.json"
+      - "~/.claude/settings.json"
+      - "~/.windsurf/mcp.json"
+      - "~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json"
+      - "user-provided SBOM files (CycloneDX/SPDX JSON)"
+      - "user-provided SKILL.md files (for skill_trust analysis)"
     file_writes: []
     network_endpoints:
+      - url: "https://api.osv.dev/v1"
+        purpose: "OSV vulnerability database — batch CVE lookup for packages"
+        auth: false
+      - url: "https://services.nvd.nist.gov/rest/json/cves/2.0"
+        purpose: "NVD CVSS v4 enrichment — optional API key increases rate limit"
+        auth: false
+      - url: "https://api.first.org/data/v1/epss"
+        purpose: "EPSS exploit probability scores"
+        auth: false
+      - url: "https://api.deps.dev/v3alpha"
+        purpose: "Google deps.dev — transitive dependency resolution and license enrichment"
+        auth: false
+      - url: "https://api.snyk.io"
+        purpose: "Snyk vulnerability enrichment (requires SNYK_TOKEN)"
+        auth: true
       - url: "https://agent-bom-mcp.up.railway.app/sse"
-        purpose: "Optional remote MCP endpoint — queries public vulnerability databases (OSV, NVD, EPSS, KEV) and the bundled registry. Local-first scanning recommended."
+        purpose: "Optional remote MCP endpoint — local-first scanning recommended"
         auth: false
     telemetry: false
     persistence: false
@@ -181,8 +212,8 @@ installation or self-host your own instance.
 
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
 - **PyPI**: [pypi.org/project/agent-bom](https://pypi.org/project/agent-bom/)
-- **Smithery**: 99/100 quality score
+- **Smithery**: [smithery.ai/server/agent-bom](https://smithery.ai/server/agent-bom/agent-bom)
 - **Sigstore signed**: `agent-bom verify agent-bom@0.51.0`
-- **2,700+ tests** with automated security scanning (CodeQL + OpenSSF Scorecard)
+- **2,900+ tests** with automated security scanning (CodeQL + OpenSSF Scorecard)
 - **OpenSSF Scorecard**: [securityscorecards.dev](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom)
 - **No telemetry**: Zero tracking, zero analytics

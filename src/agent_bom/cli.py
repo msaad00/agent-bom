@@ -430,6 +430,11 @@ def main():
 @click.option("--azure-subscription", default=None, metavar="ID", envvar="AZURE_SUBSCRIPTION_ID", help="Azure subscription ID")
 @click.option("--gcp", "gcp_flag", is_flag=True, help="Discover agents from Google Cloud Vertex AI and Cloud Run")
 @click.option("--gcp-project", default=None, metavar="PROJECT", envvar="GOOGLE_CLOUD_PROJECT", help="GCP project ID")
+@click.option(
+    "--coreweave", "coreweave_flag", is_flag=True, help="Discover GPU VMs, NVIDIA NIM inference, and InfiniBand training from CoreWeave"
+)
+@click.option("--coreweave-context", default=None, metavar="CTX", help="kubectl context for CoreWeave cluster")
+@click.option("--coreweave-namespace", default=None, metavar="NS", help="Limit CoreWeave discovery to a namespace")
 @click.option("--databricks", "databricks_flag", is_flag=True, help="Discover agents from Databricks clusters and model serving")
 @click.option("--snowflake", "snowflake_flag", is_flag=True, help="Discover Cortex agents and Snowpark apps from Snowflake")
 @click.option("--cortex-observability", is_flag=True, help="Include Cortex agent observability telemetry (requires --snowflake)")
@@ -590,6 +595,9 @@ def scan(
     azure_subscription: Optional[str],
     gcp_flag: bool,
     gcp_project: Optional[str],
+    coreweave_flag: bool,
+    coreweave_context: Optional[str],
+    coreweave_namespace: Optional[str],
     databricks_flag: bool,
     snowflake_flag: bool,
     cortex_observability: bool,
@@ -777,6 +785,10 @@ def scan(
             reads.append("  [green]Would query:[/green]  Databricks Clusters/Libraries APIs")
         if snowflake_flag:
             reads.append("  [green]Would query:[/green]  Snowflake Cortex Agents/MCP Servers/Search/Snowpark/Streamlit APIs")
+        if coreweave_flag:
+            reads.append(
+                "  [green]Would query:[/green]  CoreWeave VirtualServer/InferenceService CRDs, GPU pods, InfiniBand jobs via kubectl"
+            )
         if nebius_flag:
             reads.append("  [green]Would query:[/green]  Nebius K8s/Container APIs")
         if hf_flag:
@@ -858,6 +870,7 @@ def scan(
         aws
         or azure_flag
         or gcp_flag
+        or coreweave_flag
         or databricks_flag
         or snowflake_flag
         or nebius_flag
@@ -884,7 +897,7 @@ def scan(
         con.print(
             "  Use --project, --config-dir, --inventory, --image, --k8s, --code, "
             "--tf-dir, --gha, --agent-project, --jupyter, --aws, --azure, --gcp, "
-            "--databricks, --snowflake, --nebius, --huggingface, --wandb, "
+            "--coreweave, --databricks, --snowflake, --nebius, --huggingface, --wandb, "
             "--mlflow, --openai, --ollama, or --scan-prompts to specify a target."
         )
         sys.exit(0)
@@ -1345,6 +1358,8 @@ def scan(
         cloud_providers.append(("azure", {"subscription_id": azure_subscription}))
     if not skill_only and gcp_flag:
         cloud_providers.append(("gcp", {"project_id": gcp_project}))
+    if not skill_only and coreweave_flag:
+        cloud_providers.append(("coreweave", {"context": coreweave_context, "namespace": coreweave_namespace}))
     if not skill_only and databricks_flag:
         cloud_providers.append(("databricks", {}))
     if not skill_only and snowflake_flag:

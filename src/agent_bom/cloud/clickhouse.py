@@ -56,7 +56,7 @@ class ClickHouseClient:
         data = query.encode("utf-8")
         req = urllib.request.Request(self.url, data=data, headers=headers, method="POST")
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:  # nosec B310 — URL scheme is user-configured
                 return resp.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")

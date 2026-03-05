@@ -152,14 +152,14 @@ class ClickHouseAnalyticsStore:
         where = f"scan_timestamp >= now() - INTERVAL {int(days)} DAY"
         if agent:
             where += f" AND agent_name = '{_escape(agent)}'"
-        return self._client.query_json(
+        return self._client.query_json(  # nosec B608 — days is int-only, agent is escaped
             f"SELECT toDate(scan_timestamp) AS day, severity, count() AS cnt "
             f"FROM vulnerability_scans WHERE {where} "
             f"GROUP BY day, severity ORDER BY day"
         )
 
     def query_top_cves(self, limit: int = 20) -> list[dict]:
-        return self._client.query_json(
+        return self._client.query_json(  # nosec B608 — limit is int-only
             f"SELECT cve_id, count() AS cnt, max(cvss_score) AS max_cvss "
             f"FROM vulnerability_scans WHERE cve_id != '' "
             f"GROUP BY cve_id ORDER BY cnt DESC LIMIT {int(limit)}"
@@ -169,7 +169,7 @@ class ClickHouseAnalyticsStore:
         where = f"measured_at >= now() - INTERVAL {int(days)} DAY"
         if agent:
             where += f" AND agent_name = '{_escape(agent)}'"
-        return self._client.query_json(
+        return self._client.query_json(  # nosec B608 — days is int-only, agent is escaped
             f"SELECT toDate(measured_at) AS day, agent_name, posture_grade, "
             f"risk_score, compliance_score "
             f"FROM posture_scores WHERE {where} "
@@ -177,7 +177,7 @@ class ClickHouseAnalyticsStore:
         )
 
     def query_event_summary(self, hours: int = 24) -> list[dict]:
-        return self._client.query_json(
+        return self._client.query_json(  # nosec B608 — hours is int-only
             f"SELECT event_type, severity, count() AS cnt "
             f"FROM runtime_events "
             f"WHERE event_timestamp >= now() - INTERVAL {int(hours)} HOUR "

@@ -143,7 +143,6 @@ target-version = "py311"
 select = ["E", "F", "I", "N", "W"]
 ignore = [
     "E501",  # Line too long (handled by line-length setting)
-    "F841",  # Unused variable (will clean up later)
 ]
 
 [tool.ruff.lint.per-file-ignores]

@@ -3394,7 +3394,7 @@ def completions_cmd(shell: str):
     try:
         result = _sp.run(["agent-bom"], env=env, capture_output=True, text=True)
         click.echo(result.stdout, nl=False)
-    except Exception as exc:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         # Fallback: print activation instructions
         if shell == "bash":
             click.echo('eval "$(_AGENT_BOM_COMPLETE=bash_source agent-bom)"')

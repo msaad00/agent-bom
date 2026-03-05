@@ -369,16 +369,12 @@ def find_lateral_paths(
             current_node = graph.nodes.get(current_id)
             if current_node:
                 is_lateral = False
-                target_agent = ""
-
                 if current_node.kind == NodeKind.AGENT and current_node.label != source_agent:
                     is_lateral = True
-                    target_agent = current_node.label
                 elif current_node.kind in (NodeKind.CREDENTIAL, NodeKind.TOOL):
                     node_agent = current_node.metadata.get("agent", "")
                     if node_agent and node_agent != source_agent:
                         is_lateral = True
-                        target_agent = node_agent
 
                 if is_lateral:
                     path_key = tuple(path_nodes)

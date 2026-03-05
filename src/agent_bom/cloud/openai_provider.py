@@ -37,10 +37,7 @@ def discover(
     try:
         import openai  # noqa: F401
     except ImportError:
-        raise CloudDiscoveryError(
-            "openai is required for OpenAI discovery. "
-            "Install with: pip install 'agent-bom[openai]'"
-        )
+        raise CloudDiscoveryError("openai is required for OpenAI discovery. Install with: pip install 'agent-bom[openai]'")
 
     agents: list[Agent] = []
     warnings: list[str] = []
@@ -49,10 +46,7 @@ def discover(
     resolved_org = organization or os.environ.get("OPENAI_ORG_ID", "")
 
     if not resolved_key:
-        warnings.append(
-            "OPENAI_API_KEY not set. Provide --openai-api-key or "
-            "set the OPENAI_API_KEY env var."
-        )
+        warnings.append("OPENAI_API_KEY not set. Provide --openai-api-key or set the OPENAI_API_KEY env var.")
         return agents, warnings
 
     # ── Assistants ────────────────────────────────────────────────────────
@@ -96,7 +90,6 @@ def _discover_assistants(
             asst_id = getattr(asst, "id", "unknown")
             asst_name = getattr(asst, "name", None) or asst_id
             model = getattr(asst, "model", "unknown")
-            instructions = getattr(asst, "instructions", "") or ""
             tools = getattr(asst, "tools", []) or []
 
             # Map assistant tools to MCPTool objects
@@ -107,24 +100,30 @@ def _discover_assistants(
                 tool_type = getattr(tool, "type", "")
 
                 if tool_type == "code_interpreter":
-                    mcp_tools.append(MCPTool(
-                        name="code_interpreter",
-                        description="Executes Python code in a sandbox [HIGH-RISK: code execution]",
-                    ))
+                    mcp_tools.append(
+                        MCPTool(
+                            name="code_interpreter",
+                            description="Executes Python code in a sandbox [HIGH-RISK: code execution]",
+                        )
+                    )
                 elif tool_type == "file_search":
-                    mcp_tools.append(MCPTool(
-                        name="file_search",
-                        description="Searches through uploaded files using vector store",
-                    ))
+                    mcp_tools.append(
+                        MCPTool(
+                            name="file_search",
+                            description="Searches through uploaded files using vector store",
+                        )
+                    )
                 elif tool_type == "function":
                     func = getattr(tool, "function", None)
                     if func:
                         func_name = getattr(func, "name", "unknown")
                         func_desc = getattr(func, "description", "") or ""
-                        mcp_tools.append(MCPTool(
-                            name=func_name,
-                            description=func_desc[:200],
-                        ))
+                        mcp_tools.append(
+                            MCPTool(
+                                name=func_name,
+                                description=func_desc[:200],
+                            )
+                        )
 
             # OpenAI SDK itself is a dependency
             packages.append(Package(name="openai", version="unknown", ecosystem="pypi"))
@@ -193,10 +192,12 @@ def _discover_fine_tunes(
 
             # Add training file info as a tool descriptor
             if training_file:
-                server.tools.append(MCPTool(
-                    name="training_data",
-                    description=f"Trained on file {training_file}, base model {model}",
-                ))
+                server.tools.append(
+                    MCPTool(
+                        name="training_data",
+                        description=f"Trained on file {training_file}, base model {model}",
+                    )
+                )
 
             agent = Agent(
                 name=f"openai-ft:{fine_tuned_model}",

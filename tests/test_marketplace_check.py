@@ -12,7 +12,6 @@ def mcp():
 
 def test_marketplace_tool_registered(mcp):
     """marketplace_check should be registered as a tool."""
-    tools = {name for name in dir(mcp) if not name.startswith("_")}
     # The tool is registered via @mcp.tool — verify import works
     from agent_bom.mcp_server import create_mcp_server as _
 

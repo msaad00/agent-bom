@@ -19,6 +19,10 @@ class ConnectorHealthState(str, Enum):
     AUTH_FAILED = "auth_failed"
 
 
+# Shared timeout for health-check probes (intentionally shorter than discovery).
+CONNECTOR_HEALTH_TIMEOUT: float = 10.0
+
+
 @dataclass
 class ConnectorStatus:
     """Health check result for a connector."""

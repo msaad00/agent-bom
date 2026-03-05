@@ -87,7 +87,7 @@ class TestSyncAutoClassification:
         }
         mock_request.return_value = _make_response(api_response)
 
-        result = sync_from_official_registry_sync(max_pages=1, page_size=10)
+        sync_from_official_registry_sync(max_pages=1, page_size=10)
 
         written = json.loads(mock_path.write_text.call_args[0][0])
         entry = written["servers"]["test/dangerous-server"]
@@ -113,7 +113,7 @@ class TestSyncAutoClassification:
         }
         mock_request.return_value = _make_response(api_response)
 
-        result = sync_from_official_registry_sync(max_pages=1, page_size=10)
+        sync_from_official_registry_sync(max_pages=1, page_size=10)
 
         written = json.loads(mock_path.write_text.call_args[0][0])
         assert written["servers"]["github-actions"]["category"] == "developer-tools"
@@ -184,7 +184,7 @@ class TestSyncAutoClassification:
         }
         mock_request.return_value = _make_response(api_response)
 
-        result = sync_from_official_registry_sync(max_pages=1, page_size=10)
+        sync_from_official_registry_sync(max_pages=1, page_size=10)
 
         written = json.loads(mock_path.write_text.call_args[0][0])
         assert written["servers"]["test/reader"]["risk_level"] == "low"

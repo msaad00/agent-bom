@@ -45,10 +45,15 @@ def _pip_fix(package="flask", current="2.0.0", fixed="3.0.0"):
 def test_apply_npm_fixes(tmp_path):
     """Modifies package.json with fixed versions."""
     pkg_json = tmp_path / "package.json"
-    pkg_json.write_text(json.dumps({
-        "name": "test-app",
-        "dependencies": {"express": "^4.17.1", "lodash": "^4.17.21"},
-    }, indent=2))
+    pkg_json.write_text(
+        json.dumps(
+            {
+                "name": "test-app",
+                "dependencies": {"express": "^4.17.1", "lodash": "^4.17.21"},
+            },
+            indent=2,
+        )
+    )
 
     plan = RemediationPlan(package_fixes=[_npm_fix()])
     result = apply_fixes(plan, [tmp_path])
@@ -67,9 +72,12 @@ def test_apply_npm_fixes(tmp_path):
 def test_apply_npm_dry_run(tmp_path):
     """Preview without modifying files."""
     pkg_json = tmp_path / "package.json"
-    original = json.dumps({
-        "dependencies": {"express": "^4.17.1"},
-    }, indent=2)
+    original = json.dumps(
+        {
+            "dependencies": {"express": "^4.17.1"},
+        },
+        indent=2,
+    )
     pkg_json.write_text(original)
 
     plan = RemediationPlan(package_fixes=[_npm_fix()])
@@ -84,9 +92,12 @@ def test_apply_npm_dry_run(tmp_path):
 def test_apply_npm_backup(tmp_path):
     """Creates .agent-bom-backup file before modifying."""
     pkg_json = tmp_path / "package.json"
-    original = json.dumps({
-        "dependencies": {"express": "^4.17.1"},
-    }, indent=2)
+    original = json.dumps(
+        {
+            "dependencies": {"express": "^4.17.1"},
+        },
+        indent=2,
+    )
     pkg_json.write_text(original)
 
     plan = RemediationPlan(package_fixes=[_npm_fix()])
@@ -103,9 +114,14 @@ def test_apply_npm_backup(tmp_path):
 def test_apply_npm_no_backup(tmp_path):
     """Skips backup when backup=False."""
     pkg_json = tmp_path / "package.json"
-    pkg_json.write_text(json.dumps({
-        "dependencies": {"express": "^4.17.1"},
-    }, indent=2))
+    pkg_json.write_text(
+        json.dumps(
+            {
+                "dependencies": {"express": "^4.17.1"},
+            },
+            indent=2,
+        )
+    )
 
     plan = RemediationPlan(package_fixes=[_npm_fix()])
     result = apply_fixes(plan, [tmp_path], backup=False)
@@ -117,10 +133,15 @@ def test_apply_npm_no_backup(tmp_path):
 def test_apply_npm_dev_dependencies(tmp_path):
     """Updates packages in devDependencies too."""
     pkg_json = tmp_path / "package.json"
-    pkg_json.write_text(json.dumps({
-        "dependencies": {},
-        "devDependencies": {"express": "^4.17.1"},
-    }, indent=2))
+    pkg_json.write_text(
+        json.dumps(
+            {
+                "dependencies": {},
+                "devDependencies": {"express": "^4.17.1"},
+            },
+            indent=2,
+        )
+    )
 
     plan = RemediationPlan(package_fixes=[_npm_fix()])
     result = apply_fixes(plan, [tmp_path])
@@ -155,7 +176,7 @@ def test_apply_pip_preserves_comments(tmp_path):
     req_txt.write_text("# Production deps\nflask==2.0.0\n\n# Dev deps\npytest==7.0.0\n")
 
     plan = RemediationPlan(package_fixes=[_pip_fix()])
-    result = apply_fixes(plan, [tmp_path])
+    apply_fixes(plan, [tmp_path])
 
     lines = req_txt.read_text().splitlines()
     assert lines[0] == "# Production deps"
@@ -210,25 +231,34 @@ def test_apply_from_json(tmp_path):
     """Standalone apply command reads scan JSON and modifies files."""
     # Create scan output JSON
     scan_json = tmp_path / "scan.json"
-    scan_json.write_text(json.dumps({
-        "remediation_plan": [
+    scan_json.write_text(
+        json.dumps(
             {
-                "package": "express",
-                "ecosystem": "npm",
-                "current_version": "4.17.1",
-                "fixed_version": "4.21.0",
-                "vulnerabilities": ["CVE-2024-0001"],
-                "affected_agents": ["claude-desktop"],
+                "remediation_plan": [
+                    {
+                        "package": "express",
+                        "ecosystem": "npm",
+                        "current_version": "4.17.1",
+                        "fixed_version": "4.21.0",
+                        "vulnerabilities": ["CVE-2024-0001"],
+                        "affected_agents": ["claude-desktop"],
+                    }
+                ],
             }
-        ],
-    }))
+        )
+    )
 
     # Create package.json
     project = tmp_path / "project"
     project.mkdir()
-    (project / "package.json").write_text(json.dumps({
-        "dependencies": {"express": "^4.17.1"},
-    }, indent=2))
+    (project / "package.json").write_text(
+        json.dumps(
+            {
+                "dependencies": {"express": "^4.17.1"},
+            },
+            indent=2,
+        )
+    )
 
     result = apply_fixes_from_json(str(scan_json), str(project))
 
@@ -257,21 +287,25 @@ def test_registry_enrich_fills_missing(tmp_path, monkeypatch):
 
     # Create a minimal registry with incomplete entries
     test_registry = tmp_path / "test_registry.json"
-    test_registry.write_text(json.dumps({
-        "servers": {
-            "mcp-github-server": {
-                "package": "mcp-github-server",
-                "ecosystem": "npm",
-                "latest_version": "1.0.0",
-                "description": "",
-                "name": "GitHub Server",
-                "risk_justification": "",
-                "category": "developer-tools",
-                "verified": False,
-                "tools": ["create_issue"],
-            },
-        },
-    }))
+    test_registry.write_text(
+        json.dumps(
+            {
+                "servers": {
+                    "mcp-github-server": {
+                        "package": "mcp-github-server",
+                        "ecosystem": "npm",
+                        "latest_version": "1.0.0",
+                        "description": "",
+                        "name": "GitHub Server",
+                        "risk_justification": "",
+                        "category": "developer-tools",
+                        "verified": False,
+                        "tools": ["create_issue"],
+                    },
+                },
+            }
+        )
+    )
 
     # Monkeypatch the registry path
     monkeypatch.setattr(reg_mod, "_REGISTRY_PATH", test_registry)
@@ -293,23 +327,27 @@ def test_registry_enrich_infers_risk_level(tmp_path, monkeypatch):
     from agent_bom import registry as reg_mod
 
     test_registry = tmp_path / "test_registry.json"
-    test_registry.write_text(json.dumps({
-        "servers": {
-            "mcp-fs-server": {
-                "package": "mcp-fs-server",
-                "ecosystem": "npm",
-                "latest_version": "1.0.0",
-                "description": "Filesystem access",
-                "name": "FS Server",
-                "risk_justification": "Full filesystem access",
-                "category": "filesystem",
-                "verified": False,
-                "tools": ["read_file"],
-                "credential_env_vars": [],
-                # risk_level intentionally missing — should be inferred as "high"
-            },
-        },
-    }))
+    test_registry.write_text(
+        json.dumps(
+            {
+                "servers": {
+                    "mcp-fs-server": {
+                        "package": "mcp-fs-server",
+                        "ecosystem": "npm",
+                        "latest_version": "1.0.0",
+                        "description": "Filesystem access",
+                        "name": "FS Server",
+                        "risk_justification": "Full filesystem access",
+                        "category": "filesystem",
+                        "verified": False,
+                        "tools": ["read_file"],
+                        "credential_env_vars": [],
+                        # risk_level intentionally missing — should be inferred as "high"
+                    },
+                },
+            }
+        )
+    )
 
     monkeypatch.setattr(reg_mod, "_REGISTRY_PATH", test_registry)
 
@@ -325,19 +363,23 @@ def test_registry_enrich_infers_credentials(tmp_path, monkeypatch):
     from agent_bom import registry as reg_mod
 
     test_registry = tmp_path / "test_registry.json"
-    test_registry.write_text(json.dumps({
-        "servers": {
-            "mcp-slack-bot": {
-                "package": "mcp-slack-bot",
-                "ecosystem": "npm",
-                "latest_version": "1.0.0",
-                "description": "Slack bot",
-                "name": "Slack Bot",
-                "risk_justification": "",
-                "category": "communication",
-            },
-        },
-    }))
+    test_registry.write_text(
+        json.dumps(
+            {
+                "servers": {
+                    "mcp-slack-bot": {
+                        "package": "mcp-slack-bot",
+                        "ecosystem": "npm",
+                        "latest_version": "1.0.0",
+                        "description": "Slack bot",
+                        "name": "Slack Bot",
+                        "risk_justification": "",
+                        "category": "communication",
+                    },
+                },
+            }
+        )
+    )
 
     monkeypatch.setattr(reg_mod, "_REGISTRY_PATH", test_registry)
 
@@ -354,19 +396,21 @@ def test_registry_enrich_dry_run(tmp_path, monkeypatch):
     from agent_bom import registry as reg_mod
 
     test_registry = tmp_path / "test_registry.json"
-    original = json.dumps({
-        "servers": {
-            "mcp-test-server": {
-                "package": "mcp-test-server",
-                "ecosystem": "npm",
-                "latest_version": "1.0.0",
-                "description": "",
-                "name": "Test",
-                "risk_justification": "",
-                "category": "",
+    original = json.dumps(
+        {
+            "servers": {
+                "mcp-test-server": {
+                    "package": "mcp-test-server",
+                    "ecosystem": "npm",
+                    "latest_version": "1.0.0",
+                    "description": "",
+                    "name": "Test",
+                    "risk_justification": "",
+                    "category": "",
+                },
             },
-        },
-    })
+        }
+    )
     test_registry.write_text(original)
 
     monkeypatch.setattr(reg_mod, "_REGISTRY_PATH", test_registry)
@@ -383,23 +427,27 @@ def test_registry_enrich_all_complete(tmp_path, monkeypatch):
     from agent_bom import registry as reg_mod
 
     test_registry = tmp_path / "test_registry.json"
-    test_registry.write_text(json.dumps({
-        "servers": {
-            "mcp-complete-server": {
-                "package": "mcp-complete-server",
-                "ecosystem": "npm",
-                "latest_version": "1.0.0",
-                "description": "A complete server",
-                "name": "Complete",
-                "risk_justification": "Fully documented risk",
-                "category": "utilities",
-                "risk_level": "low",
-                "verified": True,
-                "tools": ["do_thing"],
-                "credential_env_vars": [],
-            },
-        },
-    }))
+    test_registry.write_text(
+        json.dumps(
+            {
+                "servers": {
+                    "mcp-complete-server": {
+                        "package": "mcp-complete-server",
+                        "ecosystem": "npm",
+                        "latest_version": "1.0.0",
+                        "description": "A complete server",
+                        "name": "Complete",
+                        "risk_justification": "Fully documented risk",
+                        "category": "utilities",
+                        "risk_level": "low",
+                        "verified": True,
+                        "tools": ["do_thing"],
+                        "credential_env_vars": [],
+                    },
+                },
+            }
+        )
+    )
 
     monkeypatch.setattr(reg_mod, "_REGISTRY_PATH", test_registry)
 

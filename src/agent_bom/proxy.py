@@ -167,7 +167,7 @@ class ProxyMetricsServer:
 
         async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
             try:
-                request_line = await asyncio.wait_for(reader.readline(), timeout=10)
+                await asyncio.wait_for(reader.readline(), timeout=10)
                 # Read remaining headers
                 while True:
                     header = await asyncio.wait_for(reader.readline(), timeout=5)

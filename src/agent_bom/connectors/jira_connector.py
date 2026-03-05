@@ -13,7 +13,7 @@ import os
 from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.models import Agent, AgentType, MCPServer, TransportType
 
-from .base import ConnectorError, ConnectorHealthState, ConnectorStatus
+from .base import CONNECTOR_HEALTH_TIMEOUT, ConnectorError, ConnectorHealthState, ConnectorStatus
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ async def _discover_async(
     warnings: list[str] = []
     auth = (email, api_token)
 
-    async with create_client(timeout=30.0) as client:
+    async with create_client() as client:
         # 1. Discover automation rules
         resp = await request_with_retry(
             client,
@@ -144,7 +144,7 @@ def health_check(
         return ConnectorStatus(connector="jira", state=ConnectorHealthState.AUTH_FAILED, message=str(e))
 
     async def _check() -> ConnectorStatus:
-        async with create_client(timeout=10.0) as client:
+        async with create_client(timeout=CONNECTOR_HEALTH_TIMEOUT) as client:
             resp = await request_with_retry(client, "GET", f"{url}/rest/api/3/serverInfo", auth=(user, token))
             if resp is None:
                 return ConnectorStatus(connector="jira", state=ConnectorHealthState.UNREACHABLE, message="No response from Jira API")

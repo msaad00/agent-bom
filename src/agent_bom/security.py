@@ -101,13 +101,18 @@ def validate_environment(env: dict[str, str]) -> None:
     logger.debug(f"Validated {len(env)} environment variable(s)")
 
 
-def validate_path(path: str | Path, must_exist: bool = False) -> Path:
+def validate_path(
+    path: str | Path,
+    must_exist: bool = False,
+    restrict_to_home: bool = False,
+) -> Path:
     """
     Validate and normalize a file path.
 
     Args:
         path: Path to validate
         must_exist: If True, path must exist
+        restrict_to_home: If True, path must resolve inside the user's home directory
 
     Returns:
         Validated and normalized Path object
@@ -115,7 +120,7 @@ def validate_path(path: str | Path, must_exist: bool = False) -> Path:
     Raises:
         SecurityError: If path is invalid or contains path traversal
     """
-    path = Path(path)
+    path = Path(path).expanduser()
 
     # Resolve to absolute path (prevents path traversal)
     try:
@@ -123,7 +128,11 @@ def validate_path(path: str | Path, must_exist: bool = False) -> Path:
     except (OSError, RuntimeError) as e:
         raise SecurityError(f"Invalid path '{path}': {e}")
 
-    # Check for path traversal attempts
+    # Restrict to home directory (used by MCP server for user-provided paths)
+    if restrict_to_home and not resolved.is_relative_to(Path.home()):
+        raise SecurityError(f"Path resolves outside home directory: {path}")
+
+    # Check for path traversal attempts (on unresolved path)
     if ".." in path.parts:
         logger.warning(f"Path traversal attempt detected: {path}")
         raise SecurityError(f"Path traversal not allowed: {path}")

@@ -16,15 +16,21 @@ pip install agent-bom
 
 ### 1. Registry Lookup
 
-Check if the server is in agent-bom's curated registry (100 servers, 58 verified):
+Check if the server is in agent-bom's curated registry (427+ servers, 375 verified):
 
 ```bash
-# Check the registry via REST API
-agent-bom api &  # Start API server
+# Via CLI
+agent-bom registry-lookup <server-name>
+
+# Via MCP tool
+registry_lookup(server_name="<server-name>")
+
+# Via REST API
+agent-bom api &
 curl http://127.0.0.1:8422/v1/registry/<server-name> | python3 -m json.tool
 ```
 
-Or check the registry file directly: `data/mcp-registry.yaml`
+Or browse the registry file: [`src/agent_bom/mcp_registry.json`](src/agent_bom/mcp_registry.json)
 
 The registry provides:
 - **Verified status** — has the server been independently verified?

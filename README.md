@@ -754,64 +754,30 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 
 ## Roadmap
 
-**Shipped:**
-- [x] Cloud AI inventory — AWS Bedrock, Azure AI Foundry, GCP Vertex, Snowflake Cortex, Databricks, Nebius
-- [x] Tool poisoning / prompt injection detection — `--enforce` with description injection, capability combos, CVE exposure, drift
-- [x] Model weight provenance — SHA-256 hash, Sigstore file detection, HuggingFace metadata (`--model-provenance`, `--hf-model`)
-- [x] 20 MCP client discovery — JetBrains AI, Junie, Codex CLI, Gemini CLI, Goose, Snowflake CLI, full Cortex Code (CoCo) coverage
-- [x] K8s AI workload discovery — `--k8s --all-namespaces` with pod-level scanning
-- [x] OWASP MCP Top 10 compliance mapping — MCP01–MCP10 risk tagging
-- [x] Malicious package detection — OSV MAL- prefix flagging + typosquat heuristics
-- [x] OpenSSF Scorecard enrichment — `--scorecard` for package health scoring
-- [x] AI framework package recognition — GPU/ML packages (CUDA, ROCm, vLLM, JAX, etc.) flagged as high-risk in image scans
-- [x] Runtime MCP proxy — opt-in stdio proxy (`agent-bom proxy`) wraps individual MCP server commands for traffic interception; requires per-server client reconfiguration
-- [x] Enterprise integrations — Jira, Slack, Vanta, Drata
-- [x] Runtime sidecar Docker container — `Dockerfile.runtime` + Docker Compose for MCP proxy deployment
-- [x] EU AI Act compliance mapping — ART-5 through ART-17 risk classification
-- [x] OWASP Agentic Top 10 — ASI01 through ASI10 agent-specific risk tagging
-- [x] Marketplace trust check — `marketplace_check` MCP tool for pre-install validation
-- [x] OpenTelemetry trace ingestion — `POST /v1/traces` for vulnerable tool call flagging
-- [x] CMMC/FedRAMP compliance evidence export — `--compliance-export` ZIP bundles
-- [x] Agent spawn tree visualization — parent-child delegation chains
-- [x] RSP v3.0 alignment badge — Anthropic Responsible Scaling Policy compliance indicator
-- [x] Claude Code config security scanner — Check Point CVE vector detection
-- [x] Over-permission analyzer — mission profile enforcement per agent type
-- [x] Alert pipeline — AlertDispatcher with Slack, webhook, and in-memory channels; auto-trigger on scan
-- [x] Runtime protection engine — unified 5-detector orchestration with OTel trace ingestion
-- [x] Multi-tenant fleet — tenant_id scoping, X-Tenant-ID header, per-tenant stats
-- [x] Enterprise posture scorecard — letter grade (A–F), 6-dimension breakdown, auto-computed in scan output
-- [x] Incident correlation — per-agent vulnerability grouping with P1–P4 priority for SOC workflows
-- [x] Credential risk ranking — blast radius severity ranking for all exposed credentials
-- [x] Slack blast radius enrichment — webhook payloads include risk score, agents, credentials, fix versions
-- [x] Advanced policy conditions — `min_scorecard_score`, `max_epss_score`, `has_kev_with_no_fix`
-- [x] Enterprise hardening — bounded caches, SQLite indexes, stuck job cleanup, Content-Length validation
-- [x] Agent context graph — lateral movement analysis via shared servers, credentials, and tools; BFS attack path discovery
-- [x] Enterprise security hardening — per-job thread locks, SSRF protection, error sanitization, RBAC least privilege, path traversal guards
-- [x] NIST CSF 2.0 compliance mapping (14 categories across Govern, Identify, Protect, Detect, Respond)
-- [x] ISO 27001:2022 compliance mapping (9 Annex A controls, A.5.19–A.8.28)
-- [x] SOC 2 Trust Services Criteria (9 criteria, CC6–CC9)
-- [x] CIS Controls v8 (10 safeguards, CIS-02/CIS-07/CIS-16)
-- [x] Critical-only severity triggers (EU AI Act ART-5 Prohibited Practices)
-- [x] SSH/OAuth/PKI/SCIM credential detection
-- [x] SAST code scanning — Semgrep wrapper with CWE-based compliance mapping across all 10 frameworks (`code_scan` MCP tool)
-- [x] NVD vulnerability status tracking — Analyzed/Modified/Rejected status per CVE + remediation source links from NVD references
-- [x] CVE-level compliance tagging — per-vulnerability framework mapping across all 10 frameworks (severity, KEV, EPSS, CWE, AI package, fix availability)
-- [x] CIS AWS Foundations Benchmark v3.0 — 18 live checks across IAM, Storage, Logging, Networking (`--aws-cis-benchmark`)
-- [x] CIS Snowflake Benchmark v1.0 — 12 live checks across Auth, Network, Data Protection, Monitoring, Access Control (`--snowflake-cis-benchmark`)
-- [x] Structured logging — `--log-level`, `--log-json`, `--log-file` across CLI, API, MCP server; JSON formatter for SIEM ingestion
-- [x] Pre-install guard — `agent-bom guard pip install <pkg>` scans packages for CVEs before installation; alias-ready for pip/npm
-- [x] Glama.ai registry sync — `agent-bom registry glama-sync` bulk-imports 18,000+ MCP servers with ecosystem/risk classification
-- [x] Registry CVE enrichment — OSV + EPSS + CISA KEV enrichment for all registry entries
-- [x] Streamlit dashboard — interactive AI-BOM/SBOM visualization (`agent-bom streamlit`)
-
-**Planned:**
-- [ ] Platform-specific CIS Benchmarks:
-  - GCP Foundations Benchmark v3.0
-  - Azure Foundations Benchmark v2.1
-  - Kubernetes Benchmark v1.9
+**Next up:**
+- [ ] CIS Benchmarks: GCP v3.0, Azure v2.1, Kubernetes v1.9
 - [ ] Snowflake org-level multi-account CIS evaluation
 - [ ] License compliance engine
 - [ ] Workflow engine scanning (n8n, Zapier, Make)
+
+<details>
+<summary><b>Shipped features (50+)</b></summary>
+
+| Area | Highlights |
+|------|-----------|
+| **Discovery** | 20 MCP clients, K8s pods, 7 cloud providers, Docker Compose, Ollama, HuggingFace |
+| **Scanning** | OSV + NVD CVSS v4 + EPSS + KEV + GHSA + NVIDIA CSAF, malicious package detection, typosquat heuristics |
+| **Analysis** | Blast radius mapping, lateral movement graphs, credential risk ranking, incident correlation (P1-P4) |
+| **Compliance** | 10 frameworks (OWASP Agentic/LLM/MCP, MITRE ATLAS, NIST AI RMF, EU AI Act, NIST CSF 2.0, ISO 27001, SOC 2, CIS Controls v8) |
+| **CIS Benchmarks** | AWS Foundations v3.0 (18 checks), Snowflake v1.0 (12 checks) |
+| **Runtime** | MCP proxy, 5-detector protection engine, config watchers, OTel trace ingestion |
+| **Enterprise** | Posture scorecard (A-F), policy-as-code (16 conditions), SAST via Semgrep, pre-install guard |
+| **Output** | JSON, SARIF, CycloneDX, SPDX, HTML, Mermaid, Cytoscape graph, Prometheus, Slack/webhook alerts |
+| **Integrations** | Jira, Slack, Vanta, Drata, GitHub Action, Snowflake Native App, Streamlit dashboard |
+
+See [CHANGELOG.md](CHANGELOG.md) for the full version history.
+
+</details>
 
 ---
 

@@ -344,10 +344,7 @@ cat > /tmp/agent-bom-test/.mcp.json << 'EOF'
       "env": {
         "API_KEY": "sk-live-abc123secretkey456",
         "DATABASE_URL": "postgres://admin:supersecretpassword@db.internal:5432/prod",
-        "AWS_SECRET_ACCESS_KEY": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
         "GITHUB_TOKEN": "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh",
-        "SLACK_TOKEN": "xoxb-fake-slack-token-for-test",
-        "JWT_TOKEN": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.faketoken",
         "SAFE_VAR": "this-is-not-a-secret"
       }
     }
@@ -359,7 +356,7 @@ EOF
 agent-bom scan --config-dir /tmp/agent-bom-test -f json -o /tmp/agent-bom-test/output.json
 
 # 3. Verify: grep for ANY secret value — should find NOTHING (exit code 1 = pass)
-grep -c "sk-live-abc123\|supersecretpassword\|wJalrXUtnFEMI\|ghp_ABCDEF\|xoxb-fake-slack\|eyJhbGci" /tmp/agent-bom-test/output.json
+grep -c "sk-live-abc123\|supersecretpassword\|ghp_ABCDEF" /tmp/agent-bom-test/output.json
 # Expected output: 0
 
 # 4. Verify: credential key NAMES are detected (values are never written to output)

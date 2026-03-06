@@ -18,7 +18,7 @@ metadata:
   pypi: https://pypi.org/project/agent-bom/
   smithery: https://smithery.ai/server/agent-bom/agent-bom
   scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
-  tests: 3100
+  tests: 6100
   install:
     pipx: agent-bom
     pip: agent-bom
@@ -237,6 +237,6 @@ used when you explicitly set them. They are never auto-discovered or inferred.
 - **PyPI**: [pypi.org/project/agent-bom](https://pypi.org/project/agent-bom/)
 - **Smithery**: [smithery.ai/server/agent-bom](https://smithery.ai/server/agent-bom/agent-bom)
 - **Sigstore signed**: `agent-bom verify agent-bom@0.56.0`
-- **3,100+ tests** with automated security scanning (CodeQL + OpenSSF Scorecard)
+- **6,100+ tests** with automated security scanning (CodeQL + OpenSSF Scorecard)
 - **OpenSSF Scorecard**: [securityscorecards.dev](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom)
 - **No telemetry**: Zero tracking, zero analytics

@@ -212,3 +212,12 @@ jobs:
               --title "agent-bom $TAG" \
               --generate-notes
           fi
+
+      - name: Update floating major tag (v0)
+        run: |
+          MAJOR=$(echo "${{ github.ref_name }}" | grep -oP '^v\d+')
+          if [ -n "$MAJOR" ]; then
+            git tag -f "$MAJOR" "${{ github.ref_name }}"
+            git push origin "$MAJOR" --force
+            echo "Updated floating tag $MAJOR → ${{ github.ref_name }}"
+          fi

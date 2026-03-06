@@ -31,8 +31,15 @@ VERSION_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     # ToolHive server.json (version field + OCI image tags)
     ("integrations/toolhive/server.json", re.compile(r'("version":\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
     ("integrations/toolhive/server.json", re.compile(r"(ghcr\.io/msaad00/agent-bom:v)[^\s\"]+"), r"\g<1>{v}"),
-    # OpenClaw SKILL.md
+    # Snowpark Dockerfile
+    ("Dockerfile.snowpark", re.compile(r"^(ARG VERSION=)\S+", re.M), r"\g<1>{v}"),
+    # Helm chart
+    ("deploy/helm/agent-bom/Chart.yaml", re.compile(r'^(appVersion:\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
+    ("deploy/helm/agent-bom/values.yaml", re.compile(r'^(\s*tag:\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
+    # OpenClaw SKILL.md (version + docker tag + sigstore verify)
     ("integrations/openclaw/SKILL.md", re.compile(r"^(version:\s*)\S+", re.M), r"\g<1>{v}"),
+    ("integrations/openclaw/SKILL.md", re.compile(r"(ghcr\.io/msaad00/agent-bom:)\S+"), r"\g<1>{v}"),
+    ("integrations/openclaw/SKILL.md", re.compile(r"(agent-bom verify agent-bom@)\S+"), r"\g<1>{v}"),
 ]
 
 # Patterns that reference the version in docs/tests (updated separately)
@@ -48,6 +55,10 @@ DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     ("tests/test_core.py", re.compile(r'(assert\s+__version__\s*==\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
     # Only match version assertions that currently contain a semver pattern (avoids clobbering SARIF "2.1.0")
     ("tests/test_core.py", re.compile(r'(assert\s+data\["version"\]\s*==\s*")0\.\d+\.\d+(")', re.M), r"\g<1>{v}\g<2>"),
+    # cve-freshness.yml — SARIF fallback template version
+    (".github/workflows/cve-freshness.yml", re.compile(r'("version":")\d+\.\d+\.\d+(")'), r"\g<1>{v}\g<2>"),
+    # README.md — Sigstore verify line
+    ("README.md", re.compile(r"(agent-bom verify agent-bom@)\S+"), r"\g<1>{v}"),
 ]
 
 

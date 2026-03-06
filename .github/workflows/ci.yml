@@ -170,37 +170,59 @@ jobs:
           print(m.group(1))
           ")
 
-          echo "pyproject.toml:    $PYPROJECT_VER"
-          echo "__init__.py:       $INIT_VER"
-          echo "Dockerfile.mcp:    $DOCKER_VER"
-          echo "Dockerfile.sse:    $SSE_VER"
-          echo "Dockerfile.runtime: $RUNTIME_VER"
-          echo "server.json:       $SERVER_VER"
+          # Extract Dockerfile.snowpark ARG VERSION
+          SNOWPARK_VER=$(python -c "
+          import re
+          text = open('Dockerfile.snowpark').read()
+          m = re.search(r'ARG VERSION=(\S+)', text)
+          print(m.group(1))
+          ")
+
+          # Extract Helm Chart appVersion
+          HELM_VER=$(python -c "
+          import re
+          text = open('deploy/helm/agent-bom/Chart.yaml').read()
+          m = re.search(r'appVersion:\s*\"([^\"]+)\"', text)
+          print(m.group(1))
+          ")
+
+          # Extract MCP Registry server.json version
+          REGISTRY_VER=$(python -c "
+          import json
+          data = json.load(open('integrations/mcp-registry/server.json'))
+          print(data['version'])
+          ")
+
+          echo "pyproject.toml:       $PYPROJECT_VER"
+          echo "__init__.py:          $INIT_VER"
+          echo "Dockerfile.mcp:       $DOCKER_VER"
+          echo "Dockerfile.sse:       $SSE_VER"
+          echo "Dockerfile.runtime:   $RUNTIME_VER"
+          echo "Dockerfile.snowpark:  $SNOWPARK_VER"
+          echo "server.json (TH):     $SERVER_VER"
+          echo "server.json (MCP):    $REGISTRY_VER"
+          echo "Chart.yaml:           $HELM_VER"
 
           MISMATCH=0
-          if [ "$PYPROJECT_VER" != "$INIT_VER" ]; then
-            echo "::error::Version mismatch: pyproject.toml ($PYPROJECT_VER) != __init__.py ($INIT_VER)"
-            MISMATCH=1
-          fi
-          if [ "$PYPROJECT_VER" != "$DOCKER_VER" ]; then
-            echo "::error::Version mismatch: pyproject.toml ($PYPROJECT_VER) != Dockerfile.mcp ($DOCKER_VER)"
-            MISMATCH=1
-          fi
-          if [ "$PYPROJECT_VER" != "$SSE_VER" ]; then
-            echo "::error::Version mismatch: pyproject.toml ($PYPROJECT_VER) != Dockerfile.sse ($SSE_VER)"
-            MISMATCH=1
-          fi
-          if [ "$PYPROJECT_VER" != "$RUNTIME_VER" ]; then
-            echo "::error::Version mismatch: pyproject.toml ($PYPROJECT_VER) != Dockerfile.runtime ($RUNTIME_VER)"
-            MISMATCH=1
-          fi
-          if [ "$PYPROJECT_VER" != "$SERVER_VER" ]; then
-            echo "::error::Version mismatch: pyproject.toml ($PYPROJECT_VER) != server.json ($SERVER_VER)"
-            MISMATCH=1
-          fi
+          for LABEL_VER in \
+            "__init__.py:$INIT_VER" \
+            "Dockerfile.mcp:$DOCKER_VER" \
+            "Dockerfile.sse:$SSE_VER" \
+            "Dockerfile.runtime:$RUNTIME_VER" \
+            "Dockerfile.snowpark:$SNOWPARK_VER" \
+            "server.json (ToolHive):$SERVER_VER" \
+            "server.json (MCP Registry):$REGISTRY_VER" \
+            "Chart.yaml appVersion:$HELM_VER"; do
+            LABEL="${LABEL_VER%%:*}"
+            VER="${LABEL_VER#*:}"
+            if [ "$PYPROJECT_VER" != "$VER" ]; then
+              echo "::error::Version mismatch: pyproject.toml ($PYPROJECT_VER) != $LABEL ($VER)"
+              MISMATCH=1
+            fi
+          done
 
           if [ "$MISMATCH" -eq 1 ]; then
-            echo "::error::Version numbers must be aligned across all files"
+            echo "::error::Version numbers must be aligned across all files. Run: python scripts/bump-version.py $PYPROJECT_VER"
             exit 1
           fi
           echo "All version numbers aligned at $PYPROJECT_VER"

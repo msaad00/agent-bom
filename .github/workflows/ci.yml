@@ -253,13 +253,12 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: '0'
 
-  # 6. agent-bom Self-Scan (dogfooding with test SBOM → GitHub Security tab)
+  # 6. agent-bom Self-Scan (dogfooding with test SBOM)
   agent-bom-scan:
     name: agent-bom Self-Scan
     runs-on: ubuntu-latest
     needs: [test]
     permissions:
-      security-events: write
       contents: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -281,12 +280,10 @@ jobs:
             echo '{"$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json","version":"2.1.0","runs":[{"tool":{"driver":{"name":"agent-bom"}},"results":[]}]}' > results.sarif
           fi
 
-      - name: Upload SARIF to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@89a39a4e59826350b863aa6b6252a07ad50cf83e # v4
-        if: always()
-        with:
-          sarif_file: results.sarif
-          category: agent-bom
+      # SARIF upload removed: uploading a non-CodeQL SARIF category from CI
+      # creates a "code scanning configuration" that GitHub expects on every PR.
+      # If any PR run skips or fails, it shows "1 configuration not found".
+      # Scan results are visible in the workflow output instead.
 
   # 7. Dogfood GitHub Action (test action.yml via uses: ./)
   action-dogfood:

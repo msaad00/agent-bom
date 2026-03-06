@@ -6,7 +6,7 @@ description: >-
   compliance (OWASP, MITRE ATLAS, EU AI Act, NIST AI RMF). Use when the user
   mentions vulnerability scanning, dependency security, SBOM generation, MCP server
   trust, or AI supply chain risk.
-version: 0.59.0
+version: 0.59.1
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. Optional: Docker for container
@@ -22,7 +22,7 @@ metadata:
   install:
     pipx: agent-bom
     pip: agent-bom
-    docker: ghcr.io/msaad00/agent-bom:0.59.0
+    docker: ghcr.io/msaad00/agent-bom:0.59.1
   openclaw:
     requires:
       bins: []
@@ -73,7 +73,7 @@ metadata:
     credential_handling_verification: "Verify directly on GitHub without installing: https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py#L148-L185 (sanitize_env_vars + value credential patterns), https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/discovery/__init__.py#L307-L311 (parse_mcp_config redaction), #L425-L426 (parse_codex_config), #L483-L484 (parse_goose_config), #L528-L535 (parse_snowflake_connections)"
     data_flow: "All scanning is local-first with zero outbound calls by default except public vulnerability databases (OSV, NVD, EPSS, GitHub Advisories). The remote SSE endpoint is never auto-contacted, never auto-discovered, and requires explicit manual configuration. No discovery data, config files, credentials, or environment variables ever leave the machine. Only public package names and CVE IDs are sent to vulnerability databases."
     verification_without_install: "All security-critical code is viewable on GitHub without installing: (1) Credential redaction: https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py (2) Config parsing: https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/discovery/__init__.py (3) 3,200+ tests including security tests: https://github.com/msaad00/agent-bom/tree/main/tests (4) OpenSSF Scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom (5) CodeQL + Bandit + pip-audit run on every PR: https://github.com/msaad00/agent-bom/actions"
-    supply_chain_verification: "PyPI releases are Sigstore-signed with SLSA provenance attestation. Verify: agent-bom verify agent-bom@0.59.0 (checks SHA-256 + Sigstore signature + SLSA provenance). Source: Apache-2.0 licensed, all code public. No obfuscation, no minification, no binary blobs."
+    supply_chain_verification: "PyPI releases are Sigstore-signed with SLSA provenance attestation. Verify: agent-bom verify agent-bom@0.59.1 (checks SHA-256 + Sigstore signature + SLSA provenance). Source: Apache-2.0 licensed, all code public. No obfuscation, no minification, no binary blobs."
     file_reads:
       # Claude Desktop
       - "~/Library/Application Support/Claude/claude_desktop_config.json"
@@ -192,7 +192,7 @@ agent-bom where             # show all discovery paths
 ### As a Docker Container
 
 ```bash
-docker run --rm ghcr.io/msaad00/agent-bom:0.59.0 scan
+docker run --rm ghcr.io/msaad00/agent-bom:0.59.1 scan
 ```
 
 ### Self-Hosted SSE Server
@@ -332,7 +332,7 @@ returns an error asking you to configure them.
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
 - **PyPI**: [pypi.org/project/agent-bom](https://pypi.org/project/agent-bom/)
 - **Smithery**: [smithery.ai/server/agent-bom](https://smithery.ai/server/agent-bom/agent-bom)
-- **Sigstore signed**: `agent-bom verify agent-bom@0.59.0`
+- **Sigstore signed**: `agent-bom verify agent-bom@0.59.1
 - **3,200+ tests** with automated security scanning (CodeQL + OpenSSF Scorecard)
 - **OpenSSF Scorecard**: [securityscorecards.dev](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom)
 - **No telemetry**: Zero tracking, zero analytics

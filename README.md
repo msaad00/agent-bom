@@ -69,7 +69,7 @@ Auto-discovers Claude Desktop, Claude Code, Cursor, Windsurf, Cline, VS Code Cop
 | pip | `pip install --upgrade agent-bom` |
 | pipx | `pipx upgrade agent-bom` |
 | Docker | `docker pull agentbom/agent-bom:latest` |
-| GitHub Action | Update `uses: msaad00/agent-bom@v0` (auto-tracks latest) |
+| GitHub Action | Update `uses: msaad00/agent-bom@v0.59.1 (auto-tracks latest) |
 
 Check your version: `agent-bom --version`
 
@@ -152,7 +152,7 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 | Use case | Deploy | Command |
 |----------|--------|---------|
 | Quick local scan | CLI | `agent-bom scan` |
-| CI/CD gate | GitHub Action | `uses: msaad00/agent-bom@v0.59.0 |
+| CI/CD gate | GitHub Action | `uses: msaad00/agent-bom@v0.59.1 |
 | Security dashboard | API + UI | `agent-bom serve` |
 | MCP tool integration | MCP server | `agent-bom mcp-server` (20 tools) |
 | K8s fleet scanning | Helm | `helm install deploy/helm/agent-bom` |
@@ -299,7 +299,7 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
 |----------|------|
 | PyPI | `pip install agent-bom` |
 | Docker | `docker run agentbom/agent-bom scan` |
-| GitHub Action | `uses: msaad00/agent-bom@v0.59.0 |
+| GitHub Action | `uses: msaad00/agent-bom@v0.59.1 |
 | MCP Registry | [server.json](integrations/mcp-registry/server.json) |
 | ToolHive | [registry entry](integrations/toolhive/server.json) |
 | OpenClaw | [SKILL.md](integrations/openclaw/SKILL.md) |
@@ -606,7 +606,7 @@ Both sources deduplicate by CVE ID against OSV results.
 | CLI | `agent-bom scan` | Local audit |
 | Pre-install check | `agent-bom check express@4.18.2 -e npm` | Before running MCP servers |
 | Pre-install guard | `agent-bom guard pip install flask` | Scan-before-install hook |
-| GitHub Action | `uses: msaad00/agent-bom@v0.59.0 | CI/CD + SARIF |
+| GitHub Action | `uses: msaad00/agent-bom@v0.59.1 | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated scans |
 | REST API | `agent-bom api` | Dashboards, SIEM |
 | Runtime proxy | `agent-bom proxy` | Opt-in MCP traffic audit (per-server) |
@@ -618,7 +618,7 @@ Both sources deduplicate by CVE ID against OSV results.
 ### GitHub Action
 
 ```yaml
-- uses: msaad00/agent-bom@v0.59.0
+- uses: msaad00/agent-bom@v0.59.1
   with:
     severity-threshold: high
     upload-sarif: true
@@ -760,7 +760,7 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 - **[PERMISSIONS.md](PERMISSIONS.md)** — auditable trust contract with all config paths enumerated
 - **Read-only** — never writes configs, runs servers, provisions resources, or stores secrets
 - **Credential redaction** — only env var **names** in reports; values, tokens, passwords never read
-- **Sigstore signed** — releases v0.7.0+ signed via cosign OIDC; verify PyPI integrity with `agent-bom verify agent-bom@0.59.0` (SHA-256 + SLSA provenance)
+- **Sigstore signed** — releases v0.7.0+ signed via cosign OIDC; verify PyPI integrity with `agent-bom verify agent-bom@0.59.1 (SHA-256 + SLSA provenance)
 - **No binary needed (MCP)** — SSE transport requires zero local install; local CLI available for air-gapped use
 - **OpenSSF Scorecard** — [automated supply chain scoring](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom)
 

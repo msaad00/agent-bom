@@ -20,3 +20,4 @@ report.html
 src/agent_bom/ui_dist/
 ui/out/
 ui/.next/
+.coverage

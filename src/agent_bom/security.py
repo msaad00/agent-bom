@@ -152,6 +152,7 @@ _VALUE_CREDENTIAL_PATTERNS = [
     re.compile(r"-----BEGIN (?:RSA |EC |DSA )?PRIVATE KEY-----"),  # Private keys
     re.compile(r"eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}"),  # JWTs
     re.compile(r"xox[bpsar]-[A-Za-z0-9-]{10,}"),  # Slack tokens
+    re.compile(r"\w+://[^:]+:[^@]+@"),  # Connection strings with embedded credentials
 ]
 
 

@@ -31,6 +31,11 @@ metadata:
       - NVD_API_KEY
       - SNYK_TOKEN
       - AGENT_BOM_CLICKHOUSE_URL
+      - AWS_PROFILE
+      - AWS_DEFAULT_REGION
+      - SNOWFLAKE_ACCOUNT
+      - SNOWFLAKE_USER
+      - SNOWFLAKE_PASSWORD
     optional_bins:
       - syft
       - grype
@@ -46,6 +51,8 @@ metadata:
       - linux
       - windows
     file_reads_note: "Reads server names and command paths only — never credentials, tokens, or env var values"
+    credential_handling: "Config files are parsed for JSON keys (mcpServers.*.command, mcpServers.*.args) only. Env var blocks are skipped entirely. Values of env, API keys, tokens, and passwords are never read, stored, or transmitted. Cloud credentials (AWS, Snowflake) are only used when user explicitly runs cis_benchmark with those providers."
+    data_flow: "All scanning is local-first. Network calls go only to public vuln databases (OSV, NVD, EPSS). The SSE endpoint is never auto-contacted — requires explicit user configuration. No discovery data leaves the machine unless the user configures a remote endpoint."
     file_reads:
       - "~/.cursor/mcp.json"
       - "~/Library/Application Support/Claude/claude_desktop_config.json"
@@ -72,8 +79,10 @@ metadata:
         purpose: "Snyk vulnerability enrichment (requires SNYK_TOKEN)"
         auth: true
       - url: "https://agent-bom-mcp.up.railway.app/sse"
-        purpose: "Optional remote MCP endpoint — local-first scanning recommended"
+        purpose: "Optional remote MCP endpoint — never contacted unless user explicitly configures it. Local-first scanning recommended. Only receives tool call arguments (package names, CVE IDs), never config files or credentials."
         auth: false
+        opt_in: true
+        auto_contacted: false
     telemetry: false
     persistence: false
     privilege_escalation: false
@@ -215,6 +224,15 @@ client config. It is never contacted during normal local operation.
 
 Optional tokens (NVD_API_KEY, SNYK_TOKEN, AGENT_BOM_CLICKHOUSE_URL) are only
 used when you explicitly set them. They are never auto-discovered or inferred.
+
+### Cloud credentials (CIS benchmarks)
+
+The `cis_benchmark` tool for AWS uses standard AWS SDK credential chain
+(AWS_PROFILE, AWS_DEFAULT_REGION) and for Snowflake uses SNOWFLAKE_ACCOUNT,
+SNOWFLAKE_USER, SNOWFLAKE_PASSWORD. These are **only used when you explicitly
+invoke `cis_benchmark`** with those providers — they are never read during
+normal scanning, discovery, or any other tool call. If not set, the tool
+returns an error asking you to configure them.
 
 ## Security Boundaries
 

@@ -31,7 +31,7 @@ jobs:
           publish_results: true
           repo_token: ${{ secrets.SCORECARD_TOKEN }}
 
-      - name: Upload to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@89a39a4e59826350b863aa6b6252a07ad50cf83e # v4
-        with:
-          sarif_file: scorecard-results.sarif
+      # Scorecard results are published to securityscorecards.dev via publish_results: true.
+      # We intentionally skip upload-sarif here because Scorecard only runs on main
+      # (not PRs), and uploading SARIF creates a "code scanning configuration" that
+      # GitHub expects on PRs too — causing "1 configuration not found" neutral checks.

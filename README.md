@@ -400,6 +400,37 @@ Blocks on critical/high CVEs by default. Use `--allow-risky` to install anyway w
 </details>
 
 <details>
+<summary><b>Runtime security — proxy, protect, watch</b></summary>
+
+Three runtime modes for continuous MCP security. Each must be explicitly configured per-server — agent-bom is not an endpoint agent.
+
+**Proxy** — intercept all MCP JSON-RPC traffic between client and server. Policy enforcement, credential leak detection, replay detection, rate limiting, JSONL audit log, Prometheus metrics.
+
+```bash
+agent-bom proxy -- npx @modelcontextprotocol/server-filesystem /tmp
+agent-bom proxy --policy policy.json --log audit.jsonl -- npx @mcp/server-github
+agent-bom proxy --detect-credentials --block-undeclared -- npx @mcp/server-postgres
+```
+
+**Protect** — 5-detector anomaly engine. Accepts OTel traces or runs as HTTP sidecar. Detects tool drift (rug pulls), shell injection in arguments, credential leaks in responses, rate anomalies, and suspicious call sequences (exfiltration patterns).
+
+```bash
+echo '{"tool_name":"exec","arguments":{"cmd":"rm -rf /"}}' | agent-bom protect
+cat otel-export.jsonl | agent-bom protect --alert-file alerts.jsonl
+agent-bom protect --mode http --port 8423    # HTTP sidecar
+```
+
+**Watch** — filesystem watchers on MCP config files. Re-scans on change, diffs against last scan, sends alerts on new servers/vulns/credentials.
+
+```bash
+agent-bom watch                                           # monitor all discovered configs
+agent-bom watch --webhook https://hooks.slack.com/...     # alert to Slack
+agent-bom watch --log alerts.jsonl                        # alert to file
+```
+
+</details>
+
+<details>
 <summary><b>Registry sync</b></summary>
 
 Keep the local MCP server registry current with live sources:

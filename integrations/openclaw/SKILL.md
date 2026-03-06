@@ -45,6 +45,7 @@ metadata:
       - darwin
       - linux
       - windows
+    file_reads_note: "Reads server names and command paths only — never credentials, tokens, or env var values"
     file_reads:
       - "~/.cursor/mcp.json"
       - "~/Library/Application Support/Claude/claude_desktop_config.json"
@@ -193,6 +194,26 @@ configurations), a convenience endpoint is available:
 as local scanning. It receives only the arguments you provide in tool calls
 (package names, CVE IDs, server names). For sensitive environments, use local
 installation or self-host your own instance.
+
+## Privacy & Data Handling
+
+### Config file reads
+
+Discovery reads local MCP client config files to extract **server names and
+command paths only**. It never reads, parses, or transmits credential values,
+API keys, or environment variable contents from those files. The extracted data
+(e.g., "brave-search is configured in Claude Desktop") stays in local memory
+and is only included in scan output you explicitly request.
+
+### Network behavior
+
+All scanning runs **locally by default** with no outbound connections except
+public vulnerability databases (OSV, NVD, EPSS). The remote SSE endpoint
+(`railway.app`) is **opt-in only** — you must explicitly add it to your MCP
+client config. It is never contacted during normal local operation.
+
+Optional tokens (NVD_API_KEY, SNYK_TOKEN, AGENT_BOM_CLICKHOUSE_URL) are only
+used when you explicitly set them. They are never auto-discovered or inferred.
 
 ## Security Boundaries
 

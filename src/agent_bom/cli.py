@@ -542,6 +542,14 @@ def main():
     "--self-scan", "self_scan", is_flag=True, default=False, help="Scan agent-bom's own installed dependencies for vulnerabilities."
 )
 @click.option("--demo", is_flag=True, default=False, help="Run a demo scan with bundled inventory containing known-vulnerable packages.")
+@click.option(
+    "--correlate",
+    "correlate_log",
+    type=click.Path(exists=True),
+    default=None,
+    metavar="AUDIT_LOG",
+    help="Cross-reference scan results with proxy audit log (JSONL) to identify which vulnerable tools were actually called.",
+)
 def scan(
     project: Optional[str],
     config_dir: Optional[str],
@@ -680,6 +688,7 @@ def scan(
     compliance_export: Optional[str],
     self_scan: bool,
     demo: bool,
+    correlate_log: Optional[str],
 ):
     """Discover agents, extract dependencies, scan for vulnerabilities.
 
@@ -2152,6 +2161,32 @@ def scan(
                 con.print("\n  [yellow]⚠ No project directories with dependency files found for --apply[/yellow]")
         else:
             con.print("\n  [green]✓[/green] No fixable vulnerabilities — nothing to apply")
+
+    # Step 4f: Runtime ↔ scan correlation (optional)
+    if correlate_log and blast_radii:
+        from agent_bom.runtime_correlation import correlate as _correlate_runtime
+
+        try:
+            _corr_report = _correlate_runtime(blast_radii, audit_log_path=correlate_log)
+            report.runtime_correlation = _corr_report.to_dict()
+            if _corr_report.vulnerable_tools_called > 0:
+                con.print(
+                    f"\n  [red]⚠[/red] Runtime correlation: "
+                    f"{_corr_report.vulnerable_tools_called} vulnerable tool(s) were actually called "
+                    f"(out of {_corr_report.unique_tools_called} unique tools in audit log)"
+                )
+                for cf in _corr_report.correlated_findings[:5]:
+                    con.print(
+                        f"    [red]●[/red] {cf.vulnerability_id} → tool:{cf.tool_name} "
+                        f"(called {cf.call_count}x, risk {cf.original_risk_score:.1f}→{cf.correlated_risk_score:.1f})"
+                    )
+            else:
+                con.print(
+                    f"\n  [green]✓[/green] Runtime correlation: "
+                    f"no vulnerable tools were called ({_corr_report.unique_tools_called} tools in audit log)"
+                )
+        except Exception as e:
+            con.print(f"\n  [yellow]⚠[/yellow] Runtime correlation failed: {e}")
 
     # Step 5: Output
     if is_stdout:

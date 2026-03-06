@@ -302,3 +302,198 @@ def test_evaluate_policy_warnings_and_passed():
     assert result["warnings"][0]["rule_id"] == "warn-medium"
     assert result["warnings"][0]["severity"] == "high"
     assert result["warnings"][0]["package"] == "example-pkg@1.0.0"
+
+
+# ---------------------------------------------------------------------------
+# Expression engine (v0.58.0+)
+# ---------------------------------------------------------------------------
+
+
+class TestExpressionTokenizer:
+    def test_tokenize_simple(self):
+        from agent_bom.policy import _tokenize
+
+        tokens = _tokenize("epss_score > 0.7")
+        assert len(tokens) == 3
+        assert tokens[0] == ("IDENT", "epss_score")
+        assert tokens[1] == ("CMP", ">")
+        assert tokens[2] == ("NUMBER", "0.7")
+
+    def test_tokenize_boolean_ops(self):
+        from agent_bom.policy import _tokenize
+
+        tokens = _tokenize("is_kev and severity >= HIGH")
+        assert tokens[0] == ("IDENT", "is_kev")
+        assert tokens[1] == ("BOOL_OP", "and")
+        assert tokens[2] == ("IDENT", "severity")
+        assert tokens[3] == ("CMP", ">=")
+        assert tokens[4] == ("IDENT", "HIGH")
+
+    def test_tokenize_parens(self):
+        from agent_bom.policy import _tokenize
+
+        tokens = _tokenize("(a or b) and c")
+        types = [t[0] for t in tokens]
+        assert "PAREN" in types
+
+    def test_tokenize_string_literal(self):
+        from agent_bom.policy import _tokenize
+
+        tokens = _tokenize('ecosystem == "pypi"')
+        assert tokens[2] == ("STRING", "pypi")
+
+    def test_tokenize_invalid_raises(self):
+        from agent_bom.policy import _tokenize
+
+        with pytest.raises(ValueError, match="Invalid token"):
+            _tokenize("epss_score @@ 0.7")
+
+
+class TestExpressionEvaluator:
+    def test_simple_comparison(self):
+        from agent_bom.policy import evaluate_expression
+
+        br = _make_blast_radius(severity="critical")
+        br.vulnerability.epss_score = 0.85
+        br.vulnerability.cvss_score = 9.5
+        br.package.scorecard_score = None
+        br.risk_score = 8.0
+        assert evaluate_expression("epss_score > 0.7", br) is True
+        assert evaluate_expression("epss_score < 0.5", br) is False
+
+    def test_severity_comparison(self):
+        from agent_bom.policy import evaluate_expression
+
+        br = _make_blast_radius(severity="high")
+        br.vulnerability.epss_score = 0.5
+        br.vulnerability.cvss_score = 7.0
+        br.package.scorecard_score = None
+        br.risk_score = 5.0
+        # HIGH (3) >= MEDIUM (2) = True
+        assert evaluate_expression("severity >= MEDIUM", br) is True
+        # HIGH (3) >= CRITICAL (4) = False
+        assert evaluate_expression("severity >= CRITICAL", br) is False
+
+    def test_boolean_and(self):
+        from agent_bom.policy import evaluate_expression
+
+        br = _make_blast_radius(severity="critical", is_kev=True)
+        br.vulnerability.epss_score = 0.9
+        br.vulnerability.cvss_score = 9.0
+        br.package.scorecard_score = None
+        br.risk_score = 9.0
+        assert evaluate_expression("is_kev and severity >= HIGH", br) is True
+
+    def test_boolean_or(self):
+        from agent_bom.policy import evaluate_expression
+
+        br = _make_blast_radius(severity="low", is_kev=True)
+        br.vulnerability.epss_score = 0.1
+        br.vulnerability.cvss_score = 2.0
+        br.package.scorecard_score = None
+        br.risk_score = 2.0
+        assert evaluate_expression("is_kev or severity >= HIGH", br) is True
+
+    def test_not_operator(self):
+        from agent_bom.policy import evaluate_expression
+
+        br = _make_blast_radius(severity="low", is_kev=False)
+        br.vulnerability.epss_score = 0.1
+        br.vulnerability.cvss_score = 2.0
+        br.package.scorecard_score = None
+        br.risk_score = 2.0
+        assert evaluate_expression("not is_kev", br) is True
+
+    def test_parentheses(self):
+        from agent_bom.policy import evaluate_expression
+
+        br = _make_blast_radius(
+            severity="high",
+            is_kev=False,
+            ai_risk_context="AI framework",
+        )
+        br.vulnerability.epss_score = 0.5
+        br.vulnerability.cvss_score = 7.0
+        br.package.scorecard_score = 2.0
+        br.risk_score = 7.0
+        # ai_risk AND (is_kev OR scorecard_score < 3.0)
+        assert evaluate_expression("ai_risk and (is_kev or scorecard_score < 3.0)", br) is True
+
+    def test_agent_count(self):
+        from agent_bom.policy import evaluate_expression
+
+        agents = [MagicMock(), MagicMock(), MagicMock()]
+        br = _make_blast_radius(severity="high", affected_agents=agents)
+        br.vulnerability.epss_score = 0.5
+        br.vulnerability.cvss_score = 7.0
+        br.package.scorecard_score = None
+        br.risk_score = 7.0
+        assert evaluate_expression("agent_count >= 3", br) is True
+        assert evaluate_expression("agent_count >= 5", br) is False
+
+    def test_has_credentials(self):
+        from agent_bom.policy import evaluate_expression
+
+        br = _make_blast_radius(exposed_credentials=["AWS_SECRET_KEY"])
+        br.vulnerability.epss_score = 0.5
+        br.vulnerability.cvss_score = 5.0
+        br.package.scorecard_score = None
+        br.risk_score = 5.0
+        assert evaluate_expression("has_credentials", br) is True
+        assert evaluate_expression("credential_count > 0", br) is True
+
+    def test_unknown_field_raises(self):
+        from agent_bom.policy import evaluate_expression
+
+        br = _make_blast_radius()
+        br.vulnerability.epss_score = 0.5
+        # Unknown field in expression = rule doesn't match (fail-safe)
+        # evaluate_expression raises ValueError, but _rule_matches catches it
+        with pytest.raises(ValueError, match="Unknown field"):
+            evaluate_expression("nonexistent_field > 0", br)
+
+    def test_empty_expression(self):
+        from agent_bom.policy import evaluate_expression
+
+        br = _make_blast_radius()
+        assert evaluate_expression("", br) is False
+
+
+class TestExpressionInRuleMatches:
+    def test_condition_field_in_rule(self):
+        rule = {"id": "test", "condition": "is_kev", "action": "fail"}
+        br = _make_blast_radius(is_kev=True)
+        br.vulnerability.epss_score = 0.5
+        br.vulnerability.cvss_score = 5.0
+        br.package.scorecard_score = None
+        br.risk_score = 5.0
+        assert _rule_matches(rule, br) is True
+
+    def test_condition_and_declarative_both_must_match(self):
+        rule = {
+            "id": "test",
+            "condition": "epss_score > 0.5",
+            "severity_gte": "HIGH",
+            "action": "fail",
+        }
+        br = _make_blast_radius(severity="high")
+        br.vulnerability.epss_score = 0.8
+        br.vulnerability.cvss_score = 7.0
+        br.package.scorecard_score = None
+        br.risk_score = 7.0
+        # Both match
+        assert _rule_matches(rule, br) is True
+
+        # Expression matches, declarative doesn't
+        br2 = _make_blast_radius(severity="low")
+        br2.vulnerability.epss_score = 0.8
+        br2.vulnerability.cvss_score = 3.0
+        br2.package.scorecard_score = None
+        br2.risk_score = 3.0
+        assert _rule_matches(rule, br2) is False
+
+    def test_invalid_expression_fails_safe(self):
+        rule = {"id": "test", "condition": "@@invalid@@", "action": "fail"}
+        br = _make_blast_radius()
+        # Invalid expression = doesn't match (fail-safe, not fail-open)
+        assert _rule_matches(rule, br) is False

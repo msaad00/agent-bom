@@ -113,6 +113,7 @@ dev = [
     "pip-audit>=2.10",  # Security dependency scanning
     "bandit>=1.9",      # Static security analysis
     "safety>=3.7",      # Vulnerability checking
+    "pytest-cov>=4.1",  # Coverage reporting
 ]
 
 [project.scripts]
@@ -141,6 +142,12 @@ agent_bom = ["mcp_registry.json", "ui_dist/**"]
 
 [tool.smithery]
 server = "agent_bom.mcp_server:create_smithery_server"
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+markers = [
+    "network: tests that require network access (OSV API)",
+]
 
 [tool.ruff]
 line-length = 140  # Relaxed from 120 for CLI help strings

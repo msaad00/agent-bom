@@ -152,11 +152,17 @@ async def fetch_epss_scores(cve_ids: list[str], client: httpx.AsyncClient) -> di
     scores: dict[str, dict] = {}
     uncached: list[str] = []
 
-    # Check persistent cache first
+    # Check persistent cache first — reject entries older than 30 days
+    _max_age_secs = 30 * 86400  # 30 days
+    now = time.time()
     for cve_id in cve_ids:
         if cve_id in _epss_file_cache:
             cached = _epss_file_cache[cve_id]
-            scores[cve_id] = {k: v for k, v in cached.items() if k != "_cached_at"}
+            cached_at = cached.get("_cached_at", 0)
+            if now - cached_at < _max_age_secs:
+                scores[cve_id] = {k: v for k, v in cached.items() if k != "_cached_at"}
+            else:
+                uncached.append(cve_id)  # Stale — refetch
         else:
             uncached.append(cve_id)
 

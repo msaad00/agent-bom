@@ -86,8 +86,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev,api,mcp-server]"
 
-      - name: Run tests
-        run: pytest tests/ -v --tb=short
+      - name: Run tests with coverage
+        run: pytest tests/ -v --tb=short --cov=agent_bom --cov-report=term-missing --cov-fail-under=70 -m "not network"
 
   # 3b. PR Base Branch Guard — prevent stacked PRs targeting feature branches
   base-branch-check:

@@ -117,7 +117,7 @@ def test_smithery_yaml_exists():
 
 
 def test_server_card_has_all_tools():
-    """Server card should list all 19 MCP tools."""
+    """Server card should list all 20 MCP tools."""
     from agent_bom.mcp_server import build_server_card
 
     card = build_server_card()

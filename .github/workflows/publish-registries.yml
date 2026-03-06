@@ -53,8 +53,8 @@ jobs:
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
           if [ -z "$SMITHERY_API_TOKEN" ]; then
-            echo "::warning::SMITHERY_API_TOKEN not set — skipping Smithery publish"
-            exit 0
+            echo "::error::SMITHERY_API_TOKEN not set — cannot publish to Smithery"
+            exit 1
           fi
 
           QUALIFIED_NAME="agent-bom%2Fagent-bom"
@@ -87,7 +87,9 @@ jobs:
           if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
             echo "Smithery publish succeeded"
           else
-            echo "::warning::Smithery publish returned HTTP ${HTTP_STATUS} — check response above"
+            echo "::error::Smithery publish failed with HTTP ${HTTP_STATUS}"
+            cat /tmp/smithery-response.json
+            exit 1
           fi
 
   clawhub:
@@ -130,8 +132,8 @@ jobs:
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
           if [ -z "$CLAWHUB_TOKEN" ]; then
-            echo "::warning::CLAWHUB_TOKEN not set — skipping ClawHub publish"
-            exit 0
+            echo "::error::CLAWHUB_TOKEN not set — cannot publish to ClawHub"
+            exit 1
           fi
 
           echo "Publishing agent-bom v${VERSION} to ClawHub..."
@@ -145,5 +147,6 @@ jobs:
             --changelog "Release v${VERSION}"; then
             echo "ClawHub publish succeeded"
           else
-            echo "::warning::ClawHub publish failed (version may already exist) — continuing"
+            echo "::error::ClawHub publish failed"
+            exit 1
           fi

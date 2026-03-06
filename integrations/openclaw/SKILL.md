@@ -22,7 +22,7 @@ metadata:
   install:
     pipx: agent-bom
     pip: agent-bom
-    docker: ghcr.io/msaad00/agent-bom:0.58.1
+    docker: ghcr.io/msaad00/agent-bom:0.59.0
   openclaw:
     requires:
       bins: []
@@ -190,7 +190,7 @@ agent-bom where             # show all discovery paths
 ### As a Docker Container
 
 ```bash
-docker run --rm ghcr.io/msaad00/agent-bom:0.58.1 scan
+docker run --rm ghcr.io/msaad00/agent-bom:0.59.0 scan
 ```
 
 ### Self-Hosted SSE Server
@@ -330,7 +330,7 @@ returns an error asking you to configure them.
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
 - **PyPI**: [pypi.org/project/agent-bom](https://pypi.org/project/agent-bom/)
 - **Smithery**: [smithery.ai/server/agent-bom](https://smithery.ai/server/agent-bom/agent-bom)
-- **Sigstore signed**: `agent-bom verify agent-bom@0.58.1`
+- **Sigstore signed**: `agent-bom verify agent-bom@0.59.0`
 - **3,200+ tests** with automated security scanning (CodeQL + OpenSSF Scorecard)
 - **OpenSSF Scorecard**: [securityscorecards.dev](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom)
 - **No telemetry**: Zero tracking, zero analytics

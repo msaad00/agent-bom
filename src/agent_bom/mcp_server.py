@@ -1449,6 +1449,14 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             if query_type not in valid_types:
                 return json.dumps({"error": f"Invalid query_type. Use one of: {', '.join(sorted(valid_types))}"})
 
+            # Validate agent name to prevent SQL injection via ClickHouse
+            import re as _re
+
+            if agent and not _re.fullmatch(r"[a-zA-Z0-9._\-/ ]{1,200}", agent):
+                return json.dumps(
+                    {"error": "Invalid agent name. Use only alphanumeric, dot, dash, underscore, slash, space (max 200 chars)."}
+                )
+
             if query_type == "vuln_trends":
                 data = store.query_vuln_trends(days=days, agent=agent)
             elif query_type == "top_cves":
@@ -1573,7 +1581,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             logger.exception("Registry read failed")
             return json.dumps({"error": f"Failed to read registry: {sanitize_error(exc)}"})
 
-    @mcp.tool()
+    @mcp.tool(annotations=_READ_ONLY)
     async def runtime_correlate(
         config_path: Annotated[
             str,
@@ -1599,7 +1607,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             summary stats, and uncalled vulnerable tools.
         """
         try:
-            report = await _run_scan_pipeline(config_path)
+            # Normalize "auto" → None so _run_scan_pipeline uses default discovery
+            effective_config = None if config_path == "auto" else config_path
+            report = await _run_scan_pipeline(effective_config)
             result: dict = {
                 "scan_summary": {
                     "agents": report.total_agents,
@@ -1609,9 +1619,11 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             }
 
             if audit_log:
+                # Validate audit_log path to prevent directory traversal
+                safe_audit = _safe_path(audit_log)
                 from agent_bom.runtime_correlation import correlate as _correlate
 
-                corr = _correlate(report.blast_radii, audit_log_path=audit_log)
+                corr = _correlate(report.blast_radii, audit_log_path=str(safe_audit))
                 result["correlation"] = corr.to_dict()
             else:
                 result["correlation"] = {

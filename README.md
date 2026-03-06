@@ -746,7 +746,7 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 - **[PERMISSIONS.md](PERMISSIONS.md)** — auditable trust contract with all config paths enumerated
 - **Read-only** — never writes configs, runs servers, provisions resources, or stores secrets
 - **Credential redaction** — only env var **names** in reports; values, tokens, passwords never read
-- **Sigstore signed** — releases v0.7.0+ signed via cosign OIDC; verify PyPI integrity with `agent-bom verify agent-bom@0.58.1` (SHA-256 + SLSA provenance)
+- **Sigstore signed** — releases v0.7.0+ signed via cosign OIDC; verify PyPI integrity with `agent-bom verify agent-bom@0.59.0` (SHA-256 + SLSA provenance)
 - **No binary needed (MCP)** — SSE transport requires zero local install; local CLI available for air-gapped use
 - **OpenSSF Scorecard** — [automated supply chain scoring](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom)
 

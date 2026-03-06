@@ -18,7 +18,7 @@ metadata:
   pypi: https://pypi.org/project/agent-bom/
   smithery: https://smithery.ai/server/agent-bom/agent-bom
   scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
-  tests: 3173
+  tests: 3207
   install:
     pipx: agent-bom
     pip: agent-bom
@@ -68,15 +68,59 @@ metadata:
       - darwin
       - linux
       - windows
-    file_reads_note: "Reads server names and command paths only — never credentials, tokens, or env var values"
-    credential_handling: "Config files are parsed for JSON keys (mcpServers.*.command, mcpServers.*.args) only. Env var blocks are skipped entirely. Values of env, API keys, tokens, and passwords are never read, stored, or transmitted. Cloud credentials (AWS, Snowflake) are only used when user explicitly runs cis_benchmark with those providers."
-    data_flow: "All scanning is local-first with zero outbound calls by default except public vulnerability databases (OSV, NVD, EPSS). The remote SSE endpoint is never auto-contacted, never auto-discovered, and requires explicit manual configuration. No discovery data, config files, credentials, or environment variables ever leave the machine. Only public package names and CVE IDs are sent to vulnerability databases."
+    file_reads_note: "Parses full config files to extract server names and commands. All env var values are redacted via sanitize_env_vars() before inclusion in scan output."
+    credential_handling: "Config files are fully parsed as JSON/TOML/YAML, but only server names (mcpServers.*.command, mcpServers.*.args, mcpServers.*.url) are extracted. Env var blocks ARE read but ALL values are replaced with '***REDACTED***' by src/agent_bom/security.py:sanitize_env_vars() before appearing in any output. Bearer tokens are redacted to '***REDACTED***'. Snowflake passwords are redacted to '***REDACTED***'. This is enforced in src/agent_bom/discovery/__init__.py at every parse function. Cloud credentials (AWS, Snowflake) are only used when user explicitly runs cis_benchmark with those providers."
+    credential_handling_verification: "Verify at: src/agent_bom/security.py lines 148-175 (sanitize_env_vars), src/agent_bom/discovery/__init__.py lines 307-311 (parse_mcp_config), lines 425-426 (parse_codex_config), lines 483-484 (parse_goose_config), lines 528-535 (parse_snowflake_connections)"
+    data_flow: "All scanning is local-first with zero outbound calls by default except public vulnerability databases (OSV, NVD, EPSS, GitHub Advisories). The remote SSE endpoint is never auto-contacted, never auto-discovered, and requires explicit manual configuration. No discovery data, config files, credentials, or environment variables ever leave the machine. Only public package names and CVE IDs are sent to vulnerability databases."
     file_reads:
-      - "~/.cursor/mcp.json"
+      # Claude Desktop
       - "~/Library/Application Support/Claude/claude_desktop_config.json"
+      - "~/.config/Claude/claude_desktop_config.json"
+      # Claude Code
       - "~/.claude/settings.json"
+      - "~/.claude.json"
+      # Cursor
+      - "~/.cursor/mcp.json"
+      - "~/Library/Application Support/Cursor/User/globalStorage/cursor.mcp/mcp.json"
+      # Windsurf
       - "~/.windsurf/mcp.json"
-      - "~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json"
+      # Cline
+      - "~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json"
+      # VS Code Copilot
+      - "~/Library/Application Support/Code/User/mcp.json"
+      # Cortex Code (Snowflake)
+      - "~/.snowflake/cortex/mcp.json"
+      - "~/.snowflake/cortex/settings.json"
+      - "~/.snowflake/cortex/permissions.json"
+      # Codex CLI
+      - "~/.codex/config.toml"
+      # Gemini CLI
+      - "~/.gemini/settings.json"
+      # Goose
+      - "~/.config/goose/config.yaml"
+      # Snowflake CLI
+      - "~/.snowflake/connections.toml"
+      - "~/.snowflake/config.toml"
+      # Continue
+      - "~/.continue/config.json"
+      # Zed
+      - "~/.config/zed/settings.json"
+      # OpenClaw
+      - "~/.openclaw/openclaw.json"
+      # Roo Code
+      - "~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json"
+      # Amazon Q
+      - "~/Library/Application Support/Code/User/globalStorage/amazonwebservices.amazon-q-vscode/mcp.json"
+      # JetBrains AI
+      - "~/Library/Application Support/JetBrains/*/mcp.json"
+      - "~/.config/github-copilot/intellij/mcp.json"
+      # Junie
+      - "~/.junie/mcp/mcp.json"
+      # Project-level configs (searched in working directory)
+      - ".mcp.json"
+      - ".vscode/mcp.json"
+      - ".cursor/mcp.json"
+      # User-provided files
       - "user-provided SBOM files (CycloneDX/SPDX JSON)"
       - "user-provided SKILL.md files (for skill_trust analysis)"
     file_writes: []
@@ -92,6 +136,9 @@ metadata:
         auth: false
       - url: "https://api.deps.dev/v3alpha"
         purpose: "Google deps.dev — transitive dependency resolution and license enrichment"
+        auth: false
+      - url: "https://api.github.com/advisories"
+        purpose: "GitHub Security Advisories — supplemental CVE lookup for packages"
         auth: false
       - url: "https://api.snyk.io"
         purpose: "Snyk vulnerability enrichment (requires SNYK_TOKEN)"
@@ -231,16 +278,22 @@ For sensitive environments, use local installation or self-host your own instanc
 
 ### Config file reads
 
-Discovery reads local MCP client config files to extract **server names and
-command paths only**. It never reads, parses, or transmits credential values,
-API keys, or environment variable contents from those files. The extracted data
-(e.g., "brave-search is configured in Claude Desktop") stays in local memory
-and is only included in scan output you explicitly request.
+Discovery reads and **fully parses** local MCP client config files (JSON, TOML,
+YAML) to extract server names, command paths, and transport URLs. Environment
+variable blocks **are read** during parsing, but **all values are replaced with
+`***REDACTED***`** by `sanitize_env_vars()` (`src/agent_bom/security.py:148`)
+before appearing in any output. Bearer tokens and passwords are also redacted.
+Only env var **names** (not values) appear in reports. The extracted data (e.g.,
+"brave-search is configured in Claude Desktop") stays in local memory and is
+only included in scan output you explicitly request.
+
+Verify this behavior: `src/agent_bom/security.py` lines 148-175,
+`src/agent_bom/discovery/__init__.py` lines 307-311, 425-426, 483-484, 528-535.
 
 ### Network behavior
 
 All scanning runs **locally by default** with no outbound connections except
-public vulnerability databases (OSV, NVD, EPSS). The remote SSE endpoint
+public vulnerability databases (OSV, NVD, EPSS, GitHub Advisories). The remote SSE endpoint
 (`railway.app`) is **opt-in only** — you must explicitly add it to your MCP
 client config. It is never contacted during normal local operation.
 
@@ -278,6 +331,6 @@ returns an error asking you to configure them.
 - **PyPI**: [pypi.org/project/agent-bom](https://pypi.org/project/agent-bom/)
 - **Smithery**: [smithery.ai/server/agent-bom](https://smithery.ai/server/agent-bom/agent-bom)
 - **Sigstore signed**: `agent-bom verify agent-bom@0.58.1`
-- **3,100+ tests** with automated security scanning (CodeQL + OpenSSF Scorecard)
+- **3,200+ tests** with automated security scanning (CodeQL + OpenSSF Scorecard)
 - **OpenSSF Scorecard**: [securityscorecards.dev](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom)
 - **No telemetry**: Zero tracking, zero analytics

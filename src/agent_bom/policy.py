@@ -4,9 +4,18 @@ Allows teams to define declarative security rules that are evaluated against
 scan results and produce structured violations. Rules are loaded from a JSON
 or YAML policy file and evaluated against BlastRadius findings.
 
+Supports two rule styles:
+
+1. **Declarative conditions** (existing, backwards-compatible):
+   Each field is a discrete condition. All conditions are ANDed.
+
+2. **Expression-based conditions** (new in v0.58.0):
+   Use the ``condition`` field with a safe expression language supporting
+   comparisons, boolean operators, and field access.
+
 Example policy file (policy.json):
 {
-  "version": "1",
+  "version": "2",
   "name": "production-security-policy",
   "rules": [
     {
@@ -16,25 +25,16 @@ Example policy file (policy.json):
       "action": "fail"
     },
     {
-      "id": "no-kev",
-      "description": "CISA Known Exploited Vulnerabilities must be fixed immediately",
-      "is_kev": true,
+      "id": "high-epss-with-creds",
+      "description": "High EPSS score with exposed credentials",
+      "condition": "epss_score > 0.7 and has_credentials and severity >= HIGH",
       "action": "fail"
     },
     {
-      "id": "no-ai-with-creds",
-      "description": "AI framework packages with credentials must not have high+ vulns",
-      "ai_risk": true,
-      "has_credentials": true,
-      "severity_gte": "HIGH",
+      "id": "risky-ai-package",
+      "description": "AI packages with low scorecard or KEV status",
+      "condition": "ai_risk and (is_kev or scorecard_score < 3.0)",
       "action": "fail"
-    },
-    {
-      "id": "warn-medium-with-creds",
-      "description": "Medium vulns in servers with credentials generate warnings",
-      "has_credentials": true,
-      "severity_gte": "MEDIUM",
-      "action": "warn"
     }
   ]
 }
@@ -43,13 +43,233 @@ Example policy file (policy.json):
 from __future__ import annotations
 
 import json
+import operator
+import re
 from pathlib import Path
 
 SEVERITY_ORDER = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1, "NONE": 0}
 RISK_LEVEL_ORDER = {"high": 3, "medium": 2, "low": 1}
 
+
+# ─── Expression engine ─────────────────────────────────────────────────────
+# A safe, minimal expression evaluator for policy conditions.
+# Supports: field access, comparisons (>, <, >=, <=, ==, !=),
+#           boolean operators (and, or, not), parentheses, literals.
+# NO arbitrary code execution — only whitelisted fields and operators.
+
+_COMPARISON_OPS = {
+    ">": operator.gt,
+    "<": operator.lt,
+    ">=": operator.ge,
+    "<=": operator.le,
+    "==": operator.eq,
+    "!=": operator.ne,
+}
+
+# Token types for the expression lexer
+_TOKEN_RE = re.compile(
+    r"""
+    \s*(?:
+        (\d+\.\d+|\d+)          |  # number literal
+        "((?:[^"\\]|\\.)*)"     |  # double-quoted string
+        '((?:[^'\\]|\\.)*)'     |  # single-quoted string
+        (>=|<=|!=|==|>|<)       |  # comparison operator
+        (\(|\))                 |  # parentheses
+        (and|or|not)\b          |  # boolean operators
+        (true|false)\b          |  # boolean literals
+        ([a-zA-Z_][a-zA-Z0-9_]*)  # identifier
+    )\s*
+    """,
+    re.VERBOSE | re.IGNORECASE,
+)
+
+
+def _tokenize(expr: str) -> list[tuple[str, str]]:
+    """Tokenize an expression string into (type, value) pairs."""
+    tokens: list[tuple[str, str]] = []
+    pos = 0
+    while pos < len(expr):
+        m = _TOKEN_RE.match(expr, pos)
+        if not m:
+            rest = expr[pos:].strip()
+            if not rest:
+                break
+            raise ValueError(f"Invalid token in expression at position {pos}: {rest[:20]!r}")
+        if m.group(1) is not None:
+            tokens.append(("NUMBER", m.group(1)))
+        elif m.group(2) is not None:
+            tokens.append(("STRING", m.group(2)))
+        elif m.group(3) is not None:
+            tokens.append(("STRING", m.group(3)))
+        elif m.group(4) is not None:
+            tokens.append(("CMP", m.group(4)))
+        elif m.group(5) is not None:
+            tokens.append(("PAREN", m.group(5)))
+        elif m.group(6) is not None:
+            tokens.append(("BOOL_OP", m.group(6).lower()))
+        elif m.group(7) is not None:
+            tokens.append(("BOOL_LIT", m.group(7).lower()))
+        elif m.group(8) is not None:
+            tokens.append(("IDENT", m.group(8)))
+        pos = m.end()
+    return tokens
+
+
+def _extract_field(br, name: str):
+    """Extract a field value from a BlastRadius object for expression evaluation.
+
+    Only whitelisted fields are accessible — no arbitrary attribute access.
+    """
+    field_map = {
+        # Vulnerability fields
+        "severity": lambda b: SEVERITY_ORDER.get(b.vulnerability.severity.value.upper(), 0),
+        "cvss_score": lambda b: b.vulnerability.cvss_score or 0.0,
+        "epss_score": lambda b: b.vulnerability.epss_score or 0.0,
+        "is_kev": lambda b: bool(b.vulnerability.is_kev),
+        "has_fix": lambda b: bool(b.vulnerability.fixed_version),
+        "vuln_id": lambda b: b.vulnerability.id,
+        # Package fields
+        "package_name": lambda b: b.package.name,
+        "ecosystem": lambda b: b.package.ecosystem,
+        "scorecard_score": lambda b: b.package.scorecard_score if b.package.scorecard_score is not None else 0.0,
+        "is_malicious": lambda b: getattr(b.package, "is_malicious", False),
+        # Blast radius fields
+        "risk_score": lambda b: b.risk_score,
+        "agent_count": lambda b: len(b.affected_agents),
+        "server_count": lambda b: len(b.affected_servers),
+        "tool_count": lambda b: len(b.exposed_tools),
+        "credential_count": lambda b: len(b.exposed_credentials),
+        "has_credentials": lambda b: bool(b.exposed_credentials),
+        "ai_risk": lambda b: bool(b.ai_risk_context),
+        # Tags
+        "owasp_tags": lambda b: getattr(b, "owasp_tags", []),
+        "owasp_mcp_tags": lambda b: getattr(b, "owasp_mcp_tags", []),
+        "owasp_agentic_tags": lambda b: getattr(b, "owasp_agentic_tags", []),
+        "nist_csf_tags": lambda b: getattr(b, "nist_csf_tags", []),
+        "cis_tags": lambda b: getattr(b, "cis_tags", []),
+    }
+
+    # Severity name comparisons: resolve "HIGH", "CRITICAL" etc. to ordinal
+    if name.upper() in SEVERITY_ORDER:
+        return SEVERITY_ORDER[name.upper()]
+
+    getter = field_map.get(name)
+    if getter is None:
+        raise ValueError(f"Unknown field in policy expression: {name!r}")
+    return getter(br)
+
+
+class _ExprParser:
+    """Recursive descent parser for policy expressions.
+
+    Grammar:
+        expr     → or_expr
+        or_expr  → and_expr ("or" and_expr)*
+        and_expr → not_expr ("and" not_expr)*
+        not_expr → "not" not_expr | cmp_expr
+        cmp_expr → primary (CMP primary)?
+        primary  → "(" expr ")" | NUMBER | STRING | BOOL_LIT | IDENT
+    """
+
+    def __init__(self, tokens: list[tuple[str, str]], br):
+        self.tokens = tokens
+        self.pos = 0
+        self.br = br
+
+    def peek(self) -> tuple[str, str] | None:
+        if self.pos < len(self.tokens):
+            return self.tokens[self.pos]
+        return None
+
+    def consume(self) -> tuple[str, str]:
+        tok = self.tokens[self.pos]
+        self.pos += 1
+        return tok
+
+    def parse(self) -> bool:
+        result = self._or_expr()
+        if self.pos < len(self.tokens):
+            raise ValueError(f"Unexpected token: {self.tokens[self.pos]}")
+        return bool(result)
+
+    def _or_expr(self):
+        left = self._and_expr()
+        while self.peek() and self.peek()[0] == "BOOL_OP" and self.peek()[1] == "or":  # type: ignore[index]
+            self.consume()
+            right = self._and_expr()
+            left = left or right
+        return left
+
+    def _and_expr(self):
+        left = self._not_expr()
+        while self.peek() and self.peek()[0] == "BOOL_OP" and self.peek()[1] == "and":  # type: ignore[index]
+            self.consume()
+            right = self._not_expr()
+            left = left and right
+        return left
+
+    def _not_expr(self):
+        if self.peek() and self.peek()[0] == "BOOL_OP" and self.peek()[1] == "not":  # type: ignore[index]
+            self.consume()
+            return not self._not_expr()
+        return self._cmp_expr()
+
+    def _cmp_expr(self):
+        left = self._primary()
+        if self.peek() and self.peek()[0] == "CMP":  # type: ignore[index]
+            _, op_str = self.consume()
+            right = self._primary()
+            op_func = _COMPARISON_OPS[op_str]
+            return op_func(left, right)
+        return left
+
+    def _primary(self):
+        tok = self.peek()
+        if tok is None:
+            raise ValueError("Unexpected end of expression")
+
+        if tok[0] == "PAREN" and tok[1] == "(":
+            self.consume()
+            result = self._or_expr()
+            closing = self.peek()
+            if not closing or closing[0] != "PAREN" or closing[1] != ")":
+                raise ValueError("Missing closing parenthesis")
+            self.consume()
+            return result
+
+        if tok[0] == "NUMBER":
+            self.consume()
+            return float(tok[1]) if "." in tok[1] else int(tok[1])
+
+        if tok[0] == "STRING":
+            self.consume()
+            return tok[1]
+
+        if tok[0] == "BOOL_LIT":
+            self.consume()
+            return tok[1] == "true"
+
+        if tok[0] == "IDENT":
+            self.consume()
+            return _extract_field(self.br, tok[1])
+
+        raise ValueError(f"Unexpected token: {tok}")
+
+
+def evaluate_expression(expr: str, br) -> bool:
+    """Evaluate a policy expression against a BlastRadius finding.
+
+    Returns True if the expression matches (rule should trigger).
+    """
+    tokens = _tokenize(expr)
+    if not tokens:
+        return False
+    parser = _ExprParser(tokens, br)
+    return parser.parse()
+
+
 POLICY_TEMPLATE = {
-    "version": "1",
+    "version": "2",
     "name": "my-security-policy",
     "rules": [
         {
@@ -70,6 +290,18 @@ POLICY_TEMPLATE = {
             "ai_risk": True,
             "has_credentials": True,
             "severity_gte": "HIGH",
+            "action": "fail",
+        },
+        {
+            "id": "high-epss-with-creds",
+            "description": "High exploit probability with exposed credentials",
+            "condition": "epss_score > 0.7 and has_credentials",
+            "action": "fail",
+        },
+        {
+            "id": "risky-ai-or-kev",
+            "description": "AI packages that are either KEV or have poor maintainer reputation",
+            "condition": "ai_risk and (is_kev or scorecard_score < 3.0)",
             "action": "fail",
         },
         {
@@ -95,7 +327,7 @@ POLICY_TEMPLATE = {
         {
             "id": "warn-excessive-agency",
             "description": "Servers with >5 tools and any CVE trigger excessive agency warning",
-            "min_tools": 6,
+            "condition": "tool_count > 5",
             "action": "warn",
         },
         {
@@ -103,6 +335,12 @@ POLICY_TEMPLATE = {
             "description": "High-risk registry servers must not have critical CVEs",
             "registry_risk_gte": "high",
             "severity_gte": "CRITICAL",
+            "action": "fail",
+        },
+        {
+            "id": "wide-blast-radius",
+            "description": "Vulnerabilities affecting 3+ agents with credentials",
+            "condition": "agent_count >= 3 and credential_count > 0 and severity >= MEDIUM",
             "action": "fail",
         },
     ],
@@ -155,8 +393,21 @@ def _validate_policy(policy: dict) -> None:
 def _rule_matches(rule: dict, br) -> bool:
     """Check if a BlastRadius finding matches a policy rule.
 
-    Conditions are ANDed: ALL specified conditions must be true.
+    Supports two modes:
+    - **Expression mode**: ``"condition": "epss_score > 0.7 and severity >= HIGH"``
+    - **Declarative mode**: individual fields ANDed together (backwards-compatible)
+
+    When both ``condition`` and declarative fields are present, ALL must match.
     """
+    # Expression-based condition (new in v0.58.0)
+    if "condition" in rule:
+        try:
+            if not evaluate_expression(rule["condition"], br):
+                return False
+        except ValueError:
+            # Invalid expression = rule doesn't match (fail-safe)
+            return False
+
     # severity_gte: severity must be >= this level
     if "severity_gte" in rule:
         threshold = SEVERITY_ORDER.get(rule["severity_gte"].upper(), 0)

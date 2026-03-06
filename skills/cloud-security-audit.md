@@ -5,53 +5,79 @@
 ## Architecture
 
 ```
-  AWS Corporate Account
- ┌──────────────────────────────────────────────────────────────────────────────────────┐
- │                                                                                      │
- │  ┌──────────────┐    Snowflake    ┌──────────────┐         ┌──────────────────┐      │
- │  │  Snowflake   │    Task         │ Offboarding  │         │  AWS EventBridge │      │
- │  │  IAM &       │───(scheduled)──▶│ S3 Bucket    │────────▶│  Events + Rule   │      │
- │  │  Departed    │                 │ (JSON/Parquet│         │                  │      │
- │  │  Employees   │                 │  exports)    │         └────────┬─────────┘      │
- │  └──────────────┘                 └──────────────┘                  │                 │
- │                                                                     │                 │
- │                                           ┌─────────────────────────┘                 │
- │                                           │                                           │
- │                              ┌────────────▼─────────────────────────────┐             │
- │                              │              VPC                          │             │
- │                              │                                          │             │
- │                              │  ┌─────────────┐    ┌─────────────────┐  │             │
- │                              │  │ Parser      │    │ Worker          │  │             │
- │                              │  │ Lambda      │───▶│ Lambda          │  │             │
- │                              │  │             │    │                 │  │             │
- │                              │  │ IAM USER ◄──┘    │                 │  │             │
- │                              │  └──────┬──────┘    └────────┬────────┘  │             │
- │                              │  Parser IAM Role    Worker IAM Role      │             │
- │                              │  (read-only)        (write, cross-acct)  │             │
- │                              └──────────────────────────────┬───────────┘             │
- │                                                             │                         │
- │                              ┌──────────────────────────────┘                         │
- │                              │                                                        │
- │                 ┌────────────▼──────────┐         ┌─────────────────────┐             │
- │                 │  Target Accounts       │         │ Lambda Execution    │             │
- │                 │                        │         │ Logs S3             │             │
- │                 │  1. Revoke all creds   │         │ (audit trail)       │             │
- │                 │  2. Strip all perms    │         └──────────┬──────────┘             │
- │                 │  3. Quarantine & delete│                    │                        │
- │                 └───────────────────────┘                     │                        │
- │                                                               ▼                        │
- │                                                  ┌─────────────────────┐               │
- │                                                  │ Analytics / DW      │               │
- │                                                  │ (Snowflake,         │               │
- │                                                  │  ClickHouse, DBX,   │               │
- │                                                  │  or S3 archive)     │               │
- │                                                  │                     │               │
- │                                                  │ Remediation history │               │
- │                                                  │ Posture metrics     │               │
- │                                                  │ Compliance evidence │               │
- │                                                  └─────────────────────┘               │
- └──────────────────────────────────────────────────────────────────────────────────────┘
+                         EXTERNAL DATA SOURCES
+ ┌──────────────────────────────────────────────────────────────────────┐
+ │                                                                      │
+ │  ┌───────────┐  ┌────────────┐  ┌────────────┐  ┌──────────────┐   │
+ │  │  Workday  │  │ Snowflake  │  │ Databricks │  │  ClickHouse  │   │
+ │  │  (API)    │  │ (SQL/S.I.) │  │ (Unity)    │  │  (SQL)       │   │
+ │  └─────┬─────┘  └─────┬──────┘  └─────┬──────┘  └──────┬───────┘   │
+ │        └───────────────┴───────┬───────┴─────────────────┘           │
+ └────────────────────────────────┼─────────────────────────────────────┘
+                                  │  HR termination data
+                                  │  + CloudTrail IAM events
+                                  ▼
+ ┌────────────────────────────────────────────────────────────────────────┐
+ │                  AWS Organization — Security OU Account                │
+ │                                                                        │
+ │  ┌──────────────────────────────────────────┐                          │
+ │  │  Reconciler                              │                          │
+ │  │                                          │                          │
+ │  │  sources.py → DepartureRecord[]          │                          │
+ │  │  change_detect.py → SHA-256 row diff     │                          │
+ │  │  export.py → S3 manifest (KMS encrypted) │                          │
+ │  └─────────────────┬────────────────────────┘                          │
+ │                    │                                                    │
+ │                    ▼                                                    │
+ │  ┌──────────────────────────┐     ┌─────────────────────────────┐     │
+ │  │  S3 Departures Bucket    │────▶│  EventBridge Rule           │     │
+ │  │  (KMS, versioned)        │     │  (S3 PutObject trigger)     │     │
+ │  └──────────────────────────┘     └──────────────┬──────────────┘     │
+ │                                                   │                    │
+ │                                   ┌───────────────▼───────────────┐   │
+ │                                   │        Step Function           │   │
+ │   ┌───── VPC ─────────────────────────────────────────────────┐   │   │
+ │   │                                                           │   │   │
+ │   │  ┌─────────────────────┐    ┌──────────────────────────┐  │   │   │
+ │   │  │ Parser Lambda       │    │ Worker Lambda             │  │   │   │
+ │   │  │                     │───▶│                            │  │   │   │
+ │   │  │ - Validate manifest │    │ - 13-step IAM cleanup     │  │   │   │
+ │   │  │ - Grace period check│    │ - Cross-account STS       │  │   │   │
+ │   │  │ - Rehire filtering  │    │ - Multi-cloud workers     │  │   │   │
+ │   │  │ - IAM existence     │    │ - Audit to DDB + S3       │  │   │   │
+ │   │  │                     │    │                            │  │   │   │
+ │   │  │ Parser IAM Role     │    │ Worker IAM Role            │  │   │   │
+ │   │  │ (read-only)         │    │ (write, cross-account)     │  │   │   │
+ │   │  └─────────────────────┘    └────────────┬─────────────┘  │   │   │
+ │   └──────────────────────────────────────────┼─────────────────┘   │   │
+ │                                              │                      │   │
+ │                 ┌────────────────────────────▼──────────────────┐    │
+ │                 │  Target Accounts (via STS AssumeRole)         │    │
+ │                 │                                                │    │
+ │                 │  1. Revoke all credentials                    │    │
+ │                 │  2. Strip all permissions                     │    │
+ │                 │  3. Delete IAM user                           │    │
+ │                 └──────────────────────────────────────────────┘    │
+ │                                                                      │
+ │   ┌──────────────────────────────────────────────────────────────┐   │
+ │   │  Audit Trail                                                 │   │
+ │   │  DynamoDB (per-user) + S3 (execution logs)                   │   │
+ │   └──────────────────────────────┬───────────────────────────────┘   │
+ └──────────────────────────────────┼───────────────────────────────────┘
+                                    │  Remediation logs feed back
+                                    ▼
+ ┌──────────────────────────────────────────────────────────────────────┐
+ │                    EXTERNAL ANALYTICS / DW                            │
+ │                                                                      │
+ │  ┌───────────┐  ┌────────────┐  ┌────────────┐  ┌──────────────┐   │
+ │  │ Snowflake │  │ ClickHouse │  │ Databricks │  │  S3 Archive  │   │
+ │  └───────────┘  └────────────┘  └────────────┘  └──────────────┘   │
+ │                                                                      │
+ │  Remediation history · Posture metrics · Compliance evidence         │
+ └──────────────────────────────────────────────────────────────────────┘
 ```
+
+> **Deployable code**: See [cloud-security](https://github.com/msaad00/cloud-security/tree/main/skills/iam-departures-remediation) for production Lambda code, CloudFormation templates, and multi-cloud workers.
 
 ## Data Flow — Step by Step
 

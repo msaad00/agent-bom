@@ -243,8 +243,23 @@ def validate_url(url: str) -> None:
         raise SecurityError(f"Only HTTPS URLs are allowed, got: {parsed.scheme}")
 
     # Validate domain is not localhost or internal IP
-    if parsed.hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1"):  # nosec B104 - checking FOR these values to reject them, not binding to them
-        raise SecurityError(f"Cannot connect to localhost/internal IPs: {parsed.hostname}")
+    hostname = parsed.hostname or ""
+    if hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1"):  # nosec B104 - checking FOR these values to reject them, not binding to them
+        raise SecurityError(f"Cannot connect to localhost/internal IPs: {hostname}")
+
+    # Block private/reserved IP ranges (RFC 1918, link-local, cloud metadata)
+    import ipaddress
+
+    try:
+        addr = ipaddress.ip_address(hostname)
+        if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
+            raise SecurityError(f"Cannot connect to private/reserved IP: {hostname}")
+    except ValueError:
+        pass  # hostname is a domain name, not an IP — OK
+
+    # Block cloud metadata endpoints (AWS/GCP/Azure)
+    if hostname in ("169.254.169.254", "metadata.google.internal"):
+        raise SecurityError(f"Cannot connect to cloud metadata endpoint: {hostname}")
 
     logger.debug(f"URL validated: {url}")
 

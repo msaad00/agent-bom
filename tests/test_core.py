@@ -2986,7 +2986,7 @@ def test_openclaw_skill_declares_mcp_endpoint():
 
 
 def test_openclaw_skill_lists_tools():
-    """OpenClaw SKILL.md should document all 14 MCP tools."""
+    """OpenClaw SKILL.md should document all 20 MCP tools."""
     from pathlib import Path
 
     p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"

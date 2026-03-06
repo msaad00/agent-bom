@@ -285,6 +285,10 @@ def scan_code(
     if not resolved.exists():
         raise SASTScanError(f"Path does not exist: {path}")
 
+    # Validate config: only allow safe values (no URLs that could exfiltrate code)
+    if config.startswith(("http://", "https://", "ftp://")):
+        raise SASTScanError("Remote semgrep config URLs are not allowed. Use 'auto', 'p/<ruleset>', or a local file path.")
+
     start = time.monotonic()
 
     cmd = [

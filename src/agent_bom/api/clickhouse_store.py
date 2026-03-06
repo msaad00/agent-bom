@@ -212,4 +212,5 @@ class ClickHouseAnalyticsStore:
 
 def _escape(value: str) -> str:
     """Escape a string value for ClickHouse SQL (prevent injection)."""
-    return value.replace("\\", "\\\\").replace("'", "\\'")
+    # Strip null bytes which can truncate queries in some drivers
+    return value.replace("\x00", "").replace("\\", "\\\\").replace("'", "\\'")

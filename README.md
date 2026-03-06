@@ -75,6 +75,19 @@ Check your version: `agent-bom --version`
 
 </details>
 
+<details>
+<summary><b>Uninstall</b></summary>
+
+| Method | Command |
+|--------|---------|
+| pip | `pip uninstall agent-bom` |
+| pipx | `pipx uninstall agent-bom` |
+| Docker | `docker rmi agentbom/agent-bom` |
+
+Remove local data: `rm -rf ~/.agent-bom`
+
+</details>
+
 ---
 
 ## Architecture

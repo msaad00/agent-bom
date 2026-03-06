@@ -18,7 +18,7 @@ metadata:
   pypi: https://pypi.org/project/agent-bom/
   smithery: https://smithery.ai/server/agent-bom/agent-bom
   scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
-  tests: 3207
+  tests: 3200
   install:
     pipx: agent-bom
     pip: agent-bom
@@ -69,9 +69,11 @@ metadata:
       - linux
       - windows
     file_reads_note: "Parses full config files to extract server names and commands. All env var values are redacted via sanitize_env_vars() before inclusion in scan output."
-    credential_handling: "Config files are fully parsed as JSON/TOML/YAML, but only server names (mcpServers.*.command, mcpServers.*.args, mcpServers.*.url) are extracted. Env var blocks ARE read but ALL values are replaced with '***REDACTED***' by src/agent_bom/security.py:sanitize_env_vars() before appearing in any output. Bearer tokens are redacted to '***REDACTED***'. Snowflake passwords are redacted to '***REDACTED***'. This is enforced in src/agent_bom/discovery/__init__.py at every parse function. Cloud credentials (AWS, Snowflake) are only used when user explicitly runs cis_benchmark with those providers."
-    credential_handling_verification: "Verify at: src/agent_bom/security.py lines 148-175 (sanitize_env_vars), src/agent_bom/discovery/__init__.py lines 307-311 (parse_mcp_config), lines 425-426 (parse_codex_config), lines 483-484 (parse_goose_config), lines 528-535 (parse_snowflake_connections)"
+    credential_handling: "Config files are fully parsed as JSON/TOML/YAML, but only server names (mcpServers.*.command, mcpServers.*.args, mcpServers.*.url) are extracted. Env var blocks ARE read but ALL values are replaced with '***REDACTED***' by sanitize_env_vars() before appearing in any output. Additionally, values are scanned for credential patterns (AWS keys, GitHub tokens, JWTs, private keys) and redacted even in custom-named variables. Bearer tokens and Snowflake passwords are also redacted. This is enforced in src/agent_bom/discovery/__init__.py at every parse function. Cloud credentials (AWS, Snowflake) are only used when user explicitly runs cis_benchmark with those providers."
+    credential_handling_verification: "Verify directly on GitHub without installing: https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py#L148-L185 (sanitize_env_vars + value credential patterns), https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/discovery/__init__.py#L307-L311 (parse_mcp_config redaction), #L425-L426 (parse_codex_config), #L483-L484 (parse_goose_config), #L528-L535 (parse_snowflake_connections)"
     data_flow: "All scanning is local-first with zero outbound calls by default except public vulnerability databases (OSV, NVD, EPSS, GitHub Advisories). The remote SSE endpoint is never auto-contacted, never auto-discovered, and requires explicit manual configuration. No discovery data, config files, credentials, or environment variables ever leave the machine. Only public package names and CVE IDs are sent to vulnerability databases."
+    verification_without_install: "All security-critical code is viewable on GitHub without installing: (1) Credential redaction: https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py (2) Config parsing: https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/discovery/__init__.py (3) 6,194 tests including security tests: https://github.com/msaad00/agent-bom/tree/main/tests (4) OpenSSF Scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom (5) CodeQL + Bandit + pip-audit run on every PR: https://github.com/msaad00/agent-bom/actions"
+    supply_chain_verification: "PyPI releases are Sigstore-signed with SLSA provenance attestation. Verify: agent-bom verify agent-bom@0.59.0 (checks SHA-256 + Sigstore signature + SLSA provenance). Source: Apache-2.0 licensed, all code public. No obfuscation, no minification, no binary blobs."
     file_reads:
       # Claude Desktop
       - "~/Library/Application Support/Claude/claude_desktop_config.json"

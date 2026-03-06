@@ -61,6 +61,20 @@ Auto-discovers Claude Desktop, Claude Code, Cursor, Windsurf, Cline, VS Code Cop
 
 </details>
 
+<details>
+<summary><b>Upgrade</b></summary>
+
+| Method | Command |
+|--------|---------|
+| pip | `pip install --upgrade agent-bom` |
+| pipx | `pipx upgrade agent-bom` |
+| Docker | `docker pull agentbom/agent-bom:latest` |
+| GitHub Action | Update `uses: msaad00/agent-bom@v0` (auto-tracks latest) |
+
+Check your version: `agent-bom --version`
+
+</details>
+
 ---
 
 ## Architecture

@@ -33,8 +33,8 @@ jobs:
           RAILWAY_SERVICE: ${{ vars.RAILWAY_SERVICE }}
         run: |
           if [ -z "$RAILWAY_TOKEN" ]; then
-            echo "::warning::RAILWAY_TOKEN not set — skipping Railway deploy"
-            exit 0
+            echo "::error::RAILWAY_TOKEN not set — cannot deploy to Railway. Set the secret or disable DEPLOY_TARGET."
+            exit 1
           fi
           if [ -n "$RAILWAY_SERVICE" ]; then
             railway up --service "$RAILWAY_SERVICE" --detach

@@ -138,7 +138,7 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 | Use case | Deploy | Command |
 |----------|--------|---------|
 | Quick local scan | CLI | `agent-bom scan` |
-| CI/CD gate | GitHub Action | `uses: msaad00/agent-bom@v0.58.1` |
+| CI/CD gate | GitHub Action | `uses: msaad00/agent-bom@v0.59.0 |
 | Security dashboard | API + UI | `agent-bom serve` |
 | MCP tool integration | MCP server | `agent-bom mcp-server` (20 tools) |
 | K8s fleet scanning | Helm | `helm install deploy/helm/agent-bom` |
@@ -285,7 +285,7 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
 |----------|------|
 | PyPI | `pip install agent-bom` |
 | Docker | `docker run agentbom/agent-bom scan` |
-| GitHub Action | `uses: msaad00/agent-bom@v0.58.1` |
+| GitHub Action | `uses: msaad00/agent-bom@v0.59.0 |
 | MCP Registry | [server.json](integrations/mcp-registry/server.json) |
 | ToolHive | [registry entry](integrations/toolhive/server.json) |
 | OpenClaw | [SKILL.md](integrations/openclaw/SKILL.md) |
@@ -592,7 +592,7 @@ Both sources deduplicate by CVE ID against OSV results.
 | CLI | `agent-bom scan` | Local audit |
 | Pre-install check | `agent-bom check express@4.18.2 -e npm` | Before running MCP servers |
 | Pre-install guard | `agent-bom guard pip install flask` | Scan-before-install hook |
-| GitHub Action | `uses: msaad00/agent-bom@v0.58.1` | CI/CD + SARIF |
+| GitHub Action | `uses: msaad00/agent-bom@v0.59.0 | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated scans |
 | REST API | `agent-bom api` | Dashboards, SIEM |
 | Runtime proxy | `agent-bom proxy` | Opt-in MCP traffic audit (per-server) |
@@ -604,7 +604,7 @@ Both sources deduplicate by CVE ID against OSV results.
 ### GitHub Action
 
 ```yaml
-- uses: msaad00/agent-bom@v0.58.1
+- uses: msaad00/agent-bom@v0.59.0
   with:
     severity-threshold: high
     upload-sarif: true

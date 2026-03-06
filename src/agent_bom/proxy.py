@@ -412,20 +412,25 @@ def check_policy(
         if rule_tool and rule_tool == tool_name:
             return False, f"Tool '{tool_name}' blocked by rule '{rule.get('id', '?')}'"
 
-        # tool_name_pattern match (regex)
+        # tool_name_pattern match (regex) — compile with length guard to mitigate ReDoS
         pattern = rule.get("tool_name_pattern")
         if pattern:
             try:
-                if re.match(pattern, tool_name):
+                if len(pattern) > 500:
+                    logger.warning("Skipping oversized tool_name_pattern (%d chars)", len(pattern))
+                elif re.match(pattern, tool_name):
                     return False, f"Tool '{tool_name}' matches blocked pattern '{pattern}'"
             except re.error:
                 pass
 
-        # arg_pattern: {arg_name: regex_pattern}
+        # arg_pattern: {arg_name: regex_pattern} — length guard to mitigate ReDoS
         arg_patterns = rule.get("arg_pattern", {})
         for arg_name, arg_regex in arg_patterns.items():
             arg_value = str(arguments.get(arg_name, ""))
             try:
+                if len(arg_regex) > 500:
+                    logger.warning("Skipping oversized arg_pattern for '%s' (%d chars)", arg_name, len(arg_regex))
+                    continue
                 if re.search(arg_regex, arg_value):
                     return False, f"Argument '{arg_name}' matches blocked pattern '{arg_regex}'"
             except re.error:

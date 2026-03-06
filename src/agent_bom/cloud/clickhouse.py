@@ -18,6 +18,16 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_TIMEOUT = 30  # seconds
 
+# Defense-in-depth: only allow known table/database names to prevent SQL injection.
+_IDENTIFIER_RE = __import__("re").compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+
+def _validate_identifier(name: str, kind: str = "identifier") -> str:
+    """Validate a SQL identifier (table/database name) against injection."""
+    if not _IDENTIFIER_RE.match(name):
+        raise ValueError(f"Invalid {kind} name: {name!r}")
+    return name
+
 
 class ClickHouseError(Exception):
     """Raised when a ClickHouse HTTP request fails."""
@@ -70,6 +80,7 @@ class ClickHouseClient:
         """Batch insert rows via FORMAT JSONEachRow."""
         if not rows:
             return
+        _validate_identifier(table, "table")
         ndjson = "\n".join(json.dumps(r, default=str) for r in rows)
         query = f"INSERT INTO {table} FORMAT JSONEachRow\n{ndjson}"
         self.execute(query)
@@ -88,6 +99,7 @@ class ClickHouseClient:
 
     def ensure_tables(self) -> None:
         """Create analytics tables if they don't exist (idempotent)."""
+        _validate_identifier(self.database, "database")
         self.execute(f"CREATE DATABASE IF NOT EXISTS {self.database}")
         for ddl in _TABLE_DDL:
             self.execute(ddl)

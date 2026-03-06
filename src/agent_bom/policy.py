@@ -171,10 +171,15 @@ class _ExprParser:
         primary  → "(" expr ")" | NUMBER | STRING | BOOL_LIT | IDENT
     """
 
+    _MAX_TOKENS = 200  # Guard against overly complex expressions
+
     def __init__(self, tokens: list[tuple[str, str]], br):
+        if len(tokens) > self._MAX_TOKENS:
+            raise ValueError(f"Expression too complex ({len(tokens)} tokens, max {self._MAX_TOKENS})")
         self.tokens = tokens
         self.pos = 0
         self.br = br
+        self._depth = 0
 
     def peek(self) -> tuple[str, str] | None:
         if self.pos < len(self.tokens):
@@ -229,12 +234,16 @@ class _ExprParser:
             raise ValueError("Unexpected end of expression")
 
         if tok[0] == "PAREN" and tok[1] == "(":
+            self._depth += 1
+            if self._depth > 20:
+                raise ValueError("Expression nesting too deep (max 20 levels)")
             self.consume()
             result = self._or_expr()
             closing = self.peek()
             if not closing or closing[0] != "PAREN" or closing[1] != ")":
                 raise ValueError("Missing closing parenthesis")
             self.consume()
+            self._depth -= 1
             return result
 
         if tok[0] == "NUMBER":

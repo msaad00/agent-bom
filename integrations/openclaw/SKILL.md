@@ -327,12 +327,65 @@ returns an error asking you to configure them.
 - Internal URLs, hostnames, or proprietary package names
 - Use `${env:VAR}` references, never literal credential values
 
+## Reproducible Redaction Test
+
+Verify credential redaction without trusting any claims. Create a fake config
+with real-looking secrets, run agent-bom, and confirm nothing leaks:
+
+```bash
+# 1. Create a temp dir with a fake MCP config containing real-looking secrets
+mkdir -p /tmp/agent-bom-test
+cat > /tmp/agent-bom-test/.mcp.json << 'EOF'
+{
+  "mcpServers": {
+    "test-server": {
+      "command": "node",
+      "args": ["server.js"],
+      "env": {
+        "API_KEY": "sk-live-abc123secretkey456",
+        "DATABASE_URL": "postgres://admin:supersecretpassword@db.internal:5432/prod",
+        "GITHUB_TOKEN": "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh",
+        "SAFE_VAR": "this-is-not-a-secret"
+      }
+    }
+  }
+}
+EOF
+
+# 2. Run scan against ONLY this test directory (isolated from real configs)
+agent-bom scan --config-dir /tmp/agent-bom-test -f json -o /tmp/agent-bom-test/output.json
+
+# 3. Verify: grep for ANY secret value — should find NOTHING (exit code 1 = pass)
+grep -c "sk-live-abc123\|supersecretpassword\|ghp_ABCDEF" /tmp/agent-bom-test/output.json
+# Expected output: 0
+
+# 4. Verify: credential key NAMES are detected (values are never written to output)
+grep -c '"API_KEY"\|"GITHUB_TOKEN"\|"AWS_SECRET_ACCESS_KEY"\|"DATABASE_URL"' /tmp/agent-bom-test/output.json
+# Expected output: >0 (key names appear in credential_env_vars list)
+
+# 5. Verify: has_credentials is true for our test server
+grep -c '"has_credentials": true' /tmp/agent-bom-test/output.json
+# Expected output: >0
+
+# 6. Cleanup
+rm -rf /tmp/agent-bom-test
+```
+
+**How redaction works:** Env var **values** are never written to scan output.
+The JSON report only includes credential key **names** in `credential_env_vars`
+(e.g., `["API_KEY", "GITHUB_TOKEN"]`) so you can see what's referenced without
+exposing secrets. Values are redacted in-memory by `sanitize_env_vars()`
+([source](https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py#L148-L187))
+before any downstream processing. Both key-name patterns (token, password,
+secret, api_key, auth, credential, bearer, jwt) and value patterns (AWS keys,
+GitHub tokens, JWTs, Slack tokens, connection strings, private keys) are caught.
+
 ## Verification
 
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
 - **PyPI**: [pypi.org/project/agent-bom](https://pypi.org/project/agent-bom/)
 - **Smithery**: [smithery.ai/server/agent-bom](https://smithery.ai/server/agent-bom/agent-bom)
-- **Sigstore signed**: `agent-bom verify agent-bom@0.59.1
-- **3,200+ tests** with automated security scanning (CodeQL + OpenSSF Scorecard)
+- **Sigstore signed**: `agent-bom verify agent-bom@0.59.1`
+- **6,100+ tests** with automated security scanning (CodeQL + OpenSSF Scorecard)
 - **OpenSSF Scorecard**: [securityscorecards.dev](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom)
 - **No telemetry**: Zero tracking, zero analytics

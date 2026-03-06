@@ -2126,6 +2126,27 @@ def test_credential_redaction_in_discovery():
     assert env["NORMAL_VAR"] == "not-a-secret"
 
 
+def test_credential_redaction_value_patterns():
+    """sanitize_env_vars catches credentials by value pattern, not just key name."""
+    from agent_bom.security import sanitize_env_vars
+
+    env = {
+        "MY_DB": "postgres://user:secret@host:5432/db",
+        "CUSTOM_GH": "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh",
+        "MY_JWT": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.sig",
+        "MY_SLACK": "xoxb-fake-slack-token-for-test",
+        "MY_AWS": "AKIAIOSFODNN7EXAMPLE",
+        "SAFE": "hello-world",
+    }
+    result = sanitize_env_vars(env)
+    assert result["MY_DB"] == "***REDACTED***"
+    assert result["CUSTOM_GH"] == "***REDACTED***"
+    assert result["MY_JWT"] == "***REDACTED***"
+    assert result["MY_SLACK"] == "***REDACTED***"
+    assert result["MY_AWS"] == "***REDACTED***"
+    assert result["SAFE"] == "hello-world"
+
+
 # ─── MITRE ATLAS Tests ──────────────────────────────────────────────────────
 
 

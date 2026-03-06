@@ -771,7 +771,7 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 | **Compliance** | 10 frameworks (OWASP Agentic/LLM/MCP, MITRE ATLAS, NIST AI RMF, EU AI Act, NIST CSF 2.0, ISO 27001, SOC 2, CIS Controls v8) |
 | **CIS Benchmarks** | AWS Foundations v3.0 (18 checks), Snowflake v1.0 (12 checks) |
 | **Runtime** | MCP proxy, 5-detector protection engine, config watchers, OTel trace ingestion |
-| **Enterprise** | Posture scorecard (A-F), policy-as-code (16 conditions), SAST via Semgrep, pre-install guard |
+| **Enterprise** | Posture scorecard (A-F), policy-as-code (17 conditions), SAST via Semgrep, pre-install guard |
 | **Output** | JSON, SARIF, CycloneDX, SPDX, HTML, Mermaid, Cytoscape graph, Prometheus, Slack/webhook alerts |
 | **Integrations** | Jira, Slack, Vanta, Drata, GitHub Action, Snowflake Native App, Streamlit dashboard |
 

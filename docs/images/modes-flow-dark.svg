@@ -84,7 +84,7 @@
   <rect x="544" y="50" width="500" height="4" rx="2" fill="#bc8cff"/>
   <rect x="556" y="62" width="40" height="16" rx="4" fill="#bc8cff"/>
   <text x="576" y="74" text-anchor="middle" class="badge">MCP</text>
-  <text x="606" y="74" class="mode-title" fill="#bc8cff">MCP Server (18 tools)</text>
+  <text x="606" y="74" class="mode-title" fill="#bc8cff">MCP Server (19 tools)</text>
   <text x="556" y="92" class="cmd">agent-bom mcp-server [--transport stdio|sse]</text>
 
   <!-- Flow steps -->

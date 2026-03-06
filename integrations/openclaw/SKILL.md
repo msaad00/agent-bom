@@ -6,7 +6,7 @@ description: >-
   compliance (OWASP, MITRE ATLAS, EU AI Act, NIST AI RMF). Use when the user
   mentions vulnerability scanning, dependency security, SBOM generation, MCP server
   trust, or AI supply chain risk.
-version: 0.56.0
+version: 0.57.0
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. Optional: Docker for container
@@ -22,7 +22,7 @@ metadata:
   install:
     pipx: agent-bom
     pip: agent-bom
-    docker: ghcr.io/msaad00/agent-bom:0.56.0
+    docker: ghcr.io/msaad00/agent-bom:0.57.0
   openclaw:
     requires:
       bins: []
@@ -114,7 +114,7 @@ agent-bom where             # show all discovery paths
 ### As a Docker Container
 
 ```bash
-docker run --rm ghcr.io/msaad00/agent-bom:0.56.0 scan
+docker run --rm ghcr.io/msaad00/agent-bom:0.57.0 scan
 ```
 
 ### Self-Hosted SSE Server
@@ -125,7 +125,7 @@ docker run -p 8080:8080 agent-bom-sse
 # Connect: { "type": "sse", "url": "http://localhost:8080/sse" }
 ```
 
-## Available MCP Tools (18 tools)
+## Available MCP Tools (19 tools)
 
 | Tool | Description |
 |------|-------------|
@@ -147,6 +147,7 @@ docker run -p 8080:8080 agent-bom-sse
 | `context_graph` | Agent context graph with lateral movement analysis |
 | `analytics_query` | Query vulnerability trends, posture history, and runtime events from ClickHouse |
 | `cis_benchmark` | Run CIS benchmark checks against AWS or Snowflake accounts |
+| `fleet_scan` | Batch registry lookup + risk scoring for MCP server inventories |
 
 ## MCP Resources
 
@@ -236,7 +237,7 @@ used when you explicitly set them. They are never auto-discovered or inferred.
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
 - **PyPI**: [pypi.org/project/agent-bom](https://pypi.org/project/agent-bom/)
 - **Smithery**: [smithery.ai/server/agent-bom](https://smithery.ai/server/agent-bom/agent-bom)
-- **Sigstore signed**: `agent-bom verify agent-bom@0.56.0`
+- **Sigstore signed**: `agent-bom verify agent-bom@0.57.0`
 - **6,100+ tests** with automated security scanning (CodeQL + OpenSSF Scorecard)
 - **OpenSSF Scorecard**: [securityscorecards.dev](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom)
 - **No telemetry**: Zero tracking, zero analytics

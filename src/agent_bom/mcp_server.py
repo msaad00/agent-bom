@@ -1504,6 +1504,14 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         try:
             check_list = [c.strip() for c in checks.split(",")] if checks else None
 
+            # Validate inputs to prevent injection
+            import re as _re
+
+            if region and not _re.fullmatch(r"[a-z]{2}(-gov)?-[a-z]+-\d{1,2}", region):
+                return json.dumps({"error": f"Invalid AWS region format: {region}"})
+            if profile and not _re.fullmatch(r"[a-zA-Z0-9._-]{1,100}", profile):
+                return json.dumps({"error": "Invalid AWS profile name. Use alphanumeric, dot, dash, underscore (max 100 chars)."})
+
             if provider == "aws":
                 from agent_bom.cloud.aws_cis_benchmark import run_benchmark as run_aws_cis
 
@@ -1558,6 +1566,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
             if not names:
                 return json.dumps({"error": "No server names provided"})
+
+            if len(names) > 1000:
+                return json.dumps({"error": f"Too many servers ({len(names)}). Maximum is 1,000 per request."})
 
             result = _fleet_scan(names)
             return _truncate_response(result.to_json())

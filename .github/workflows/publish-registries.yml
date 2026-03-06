@@ -62,34 +62,64 @@ jobs:
 
           echo "Publishing agent-bom v${VERSION} to Smithery..."
 
+          # Retry up to 3 times with exponential backoff (handles transient 5xx)
+          for ATTEMPT in 1 2 3; do
+            HTTP_STATUS=$(curl -s --connect-timeout 10 --max-time 30 \
+              -o /tmp/smithery-response.json -w "%{http_code}" \
+              -X PUT "https://api.smithery.ai/servers/${QUALIFIED_NAME}/releases" \
+              -H "Authorization: Bearer ${SMITHERY_API_TOKEN}" \
+              -F "payload={
+                \"type\": \"external\",
+                \"upstreamUrl\": \"${MCP_URL}\",
+                \"configSchema\": {
+                  \"type\": \"object\",
+                  \"properties\": {
+                    \"NVD_API_KEY\": {
+                      \"type\": \"string\",
+                      \"description\": \"NVD API key for higher rate limits on CVSS enrichment (optional)\"
+                    }
+                  },
+                  \"required\": []
+                }
+              }")
+
+            echo "Smithery attempt ${ATTEMPT}/3 — HTTP ${HTTP_STATUS}"
+
+            if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+              echo "Smithery publish succeeded"
+              break
+            elif [ "$HTTP_STATUS" -ge 500 ] && [ "$ATTEMPT" -lt 3 ]; then
+              DELAY=$((ATTEMPT * 10))
+              echo "Server error — retrying in ${DELAY}s..."
+              sleep "$DELAY"
+            else
+              echo "::error::Smithery publish failed with HTTP ${HTTP_STATUS}"
+              cat /tmp/smithery-response.json
+              exit 1
+            fi
+          done
+
+  glama:
+    name: Trigger Glama Rebuild
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Trigger Glama rebuild
+        env:
+          GLAMA_WEBHOOK_URL: ${{ vars.GLAMA_WEBHOOK_URL }}
+        run: |
+          if [ -z "$GLAMA_WEBHOOK_URL" ]; then
+            echo "::notice::GLAMA_WEBHOOK_URL not configured — Glama will rebuild on next auto-sync from PyPI"
+            echo "To enable instant rebuild, set GLAMA_WEBHOOK_URL in repo variables"
+            exit 0
+          fi
           HTTP_STATUS=$(curl -s --connect-timeout 10 --max-time 30 \
-            -o /tmp/smithery-response.json -w "%{http_code}" \
-            -X PUT "https://api.smithery.ai/servers/${QUALIFIED_NAME}/releases" \
-            -H "Authorization: Bearer ${SMITHERY_API_TOKEN}" \
-            -F "payload={
-              \"type\": \"external\",
-              \"upstreamUrl\": \"${MCP_URL}\",
-              \"configSchema\": {
-                \"type\": \"object\",
-                \"properties\": {
-                  \"NVD_API_KEY\": {
-                    \"type\": \"string\",
-                    \"description\": \"NVD API key for higher rate limits on CVSS enrichment (optional)\"
-                  }
-                },
-                \"required\": []
-              }
-            }")
-
-          echo "Smithery response (HTTP ${HTTP_STATUS}):"
-          cat /tmp/smithery-response.json
-
-          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
-            echo "Smithery publish succeeded"
+            -o /dev/null -w "%{http_code}" \
+            -X POST "$GLAMA_WEBHOOK_URL")
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 400 ]; then
+            echo "Glama rebuild triggered successfully"
           else
-            echo "::error::Smithery publish failed with HTTP ${HTTP_STATUS}"
-            cat /tmp/smithery-response.json
-            exit 1
+            echo "::warning::Glama rebuild trigger returned HTTP ${HTTP_STATUS} — may need manual rebuild"
           fi
 
   clawhub:
@@ -140,13 +170,23 @@ jobs:
 
           npm install -g clawhub@0.7.0  # pinned — update periodically
           clawhub login --token "${CLAWHUB_TOKEN}"
-          if clawhub publish integrations/openclaw \
-            --slug agent-bom \
-            --name "agent-bom" \
-            --version "${VERSION}" \
-            --changelog "Release v${VERSION}"; then
-            echo "ClawHub publish succeeded"
-          else
-            echo "::error::ClawHub publish failed"
-            exit 1
-          fi
+
+          # Retry up to 3 times with exponential backoff
+          for ATTEMPT in 1 2 3; do
+            echo "ClawHub attempt ${ATTEMPT}/3..."
+            if clawhub publish integrations/openclaw \
+              --slug agent-bom \
+              --name "agent-bom" \
+              --version "${VERSION}" \
+              --changelog "Release v${VERSION}"; then
+              echo "ClawHub publish succeeded"
+              break
+            elif [ "$ATTEMPT" -lt 3 ]; then
+              DELAY=$((ATTEMPT * 10))
+              echo "ClawHub publish failed — retrying in ${DELAY}s..."
+              sleep "$DELAY"
+            else
+              echo "::error::ClawHub publish failed after 3 attempts"
+              exit 1
+            fi
+          done

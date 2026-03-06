@@ -65,17 +65,26 @@ jobs:
 
       - name: Publish to MCP Registry
         run: |
-          HTTP_STATUS=$(curl -s --connect-timeout 10 --max-time 30 \
-            -o /tmp/publish-response.json -w "%{http_code}" \
-            -X POST "https://registry.modelcontextprotocol.io/v0.1/publish" \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${{ steps.auth.outputs.jwt }}" \
-            -d @integrations/mcp-registry/server.json)
-          echo "Publish status: $HTTP_STATUS"
-          cat /tmp/publish-response.json
-          if [ "$HTTP_STATUS" -ge 400 ]; then
-            echo "::error::MCP Registry publish failed (HTTP $HTTP_STATUS) — check response above"
-            exit 1
-          else
-            echo "Published to MCP Registry successfully"
-          fi
+          # Retry up to 3 times with exponential backoff
+          for ATTEMPT in 1 2 3; do
+            HTTP_STATUS=$(curl -s --connect-timeout 10 --max-time 30 \
+              -o /tmp/publish-response.json -w "%{http_code}" \
+              -X POST "https://registry.modelcontextprotocol.io/v0.1/publish" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer ${{ steps.auth.outputs.jwt }}" \
+              -d @integrations/mcp-registry/server.json)
+            echo "MCP Registry attempt ${ATTEMPT}/3 — HTTP $HTTP_STATUS"
+            cat /tmp/publish-response.json
+
+            if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 400 ]; then
+              echo "Published to MCP Registry successfully"
+              break
+            elif [ "$HTTP_STATUS" -ge 500 ] && [ "$ATTEMPT" -lt 3 ]; then
+              DELAY=$((ATTEMPT * 10))
+              echo "Server error — retrying in ${DELAY}s..."
+              sleep "$DELAY"
+            else
+              echo "::error::MCP Registry publish failed (HTTP $HTTP_STATUS) — check response above"
+              exit 1
+            fi
+          done

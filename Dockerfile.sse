@@ -41,7 +41,7 @@ ENV PORT=8423
 
 EXPOSE ${PORT}
 
-HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD agent-bom --version || exit 1
 
 # Use shell form so $PORT is expanded at runtime (Railway/Render inject PORT)

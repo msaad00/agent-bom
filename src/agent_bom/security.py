@@ -145,9 +145,23 @@ def validate_path(
     return resolved
 
 
+_VALUE_CREDENTIAL_PATTERNS = [
+    re.compile(r"(?:sk|pk|rk)[-_](?:live|test|prod)[-_]\w{10,}", re.I),  # Stripe/service keys
+    re.compile(r"(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{30,}"),  # GitHub tokens
+    re.compile(r"(?:AKIA|ASIA)[A-Z0-9]{16}"),  # AWS access key IDs
+    re.compile(r"-----BEGIN (?:RSA |EC |DSA )?PRIVATE KEY-----"),  # Private keys
+    re.compile(r"eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}"),  # JWTs
+    re.compile(r"xox[bpsar]-[A-Za-z0-9-]{10,}"),  # Slack tokens
+]
+
+
 def sanitize_env_vars(env: dict[str, Any]) -> dict[str, str]:
     """
     Sanitize environment variables by redacting sensitive values.
+
+    Checks both key names (via SENSITIVE_PATTERNS) and values (via
+    _VALUE_CREDENTIAL_PATTERNS) to catch hardcoded credentials in
+    custom-named variables.
 
     Args:
         env: Dictionary of environment variables
@@ -163,7 +177,12 @@ def sanitize_env_vars(env: dict[str, Any]) -> dict[str, str]:
         if is_sensitive:
             sanitized[key] = "***REDACTED***"
         else:
-            sanitized[key] = str(value)
+            str_value = str(value)
+            # Also scan values for credential patterns (catches custom-named vars)
+            if any(p.search(str_value) for p in _VALUE_CREDENTIAL_PATTERNS):
+                sanitized[key] = "***REDACTED***"
+            else:
+                sanitized[key] = str_value
 
     return sanitized
 

@@ -97,11 +97,16 @@ async def fetch_nvd_data(cve_id: str, client: httpx.AsyncClient, api_key: Option
     """
     _load_enrichment_cache()
 
-    # Check persistent cache
+    # Check persistent cache — reject entries older than 90 days
+    _nvd_max_age_secs = 90 * 86400
+    _now = time.time()
     if cve_id in _nvd_file_cache:
         cached = _nvd_file_cache[cve_id]
-        data = {k: v for k, v in cached.items() if k != "_cached_at"}
-        return data if data else None
+        cached_at = cached.get("_cached_at", 0)
+        if _now - cached_at < _nvd_max_age_secs:
+            data = {k: v for k, v in cached.items() if k != "_cached_at"}
+            return data if data else None
+        # Stale — fall through to refetch
 
     headers = {}
     if api_key:

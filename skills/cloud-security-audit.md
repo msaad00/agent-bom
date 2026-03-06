@@ -36,24 +36,35 @@
  │                 │  Target Accounts       │         │ Lambda Execution    │             │
  │                 │                        │         │ Logs S3             │             │
  │                 │  1. Revoke all creds   │         │ (audit trail)       │             │
- │                 │  2. Strip all perms    │         └─────────────────────┘             │
- │                 │  3. Quarantine & delete│                                             │
- │                 └───────────────────────┘                                              │
+ │                 │  2. Strip all perms    │         └──────────┬──────────┘             │
+ │                 │  3. Quarantine & delete│                    │                        │
+ │                 └───────────────────────┘                     │                        │
+ │                                                               ▼                        │
+ │                                                  ┌─────────────────────┐               │
+ │                                                  │ Analytics / DW      │               │
+ │                                                  │ (Snowflake,         │               │
+ │                                                  │  ClickHouse, DBX,   │               │
+ │                                                  │  or S3 archive)     │               │
+ │                                                  │                     │               │
+ │                                                  │ Remediation history │               │
+ │                                                  │ Posture metrics     │               │
+ │                                                  │ Compliance evidence │               │
+ │                                                  └─────────────────────┘               │
  └──────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Data Flow — Step by Step
 
 ```
-  STEP 1                STEP 2              STEP 3              STEP 4              STEP 5
- ┌─────────┐          ┌─────────┐         ┌──────────┐        ┌──────────┐        ┌──────────┐
- │Snowflake│          │   S3    │         │EventBrdge│        │  Parser  │        │  Worker  │
- │  Task   │─────────▶│ Bucket  │────────▶│  Rule    │───────▶│  Lambda  │───────▶│  Lambda  │
- └─────────┘          └─────────┘         └──────────┘        └──────────┘        └──────────┘
-  Scheduled            JSON/Parquet        S3 PutObject         Parse export        Cross-account
-  query joins          departed            triggers rule        Match IAM to        IAM actions on
-  IAM + HR data        employee IAM        in EventBridge       departed list       target accounts
-                       export                                   Identify targets    Revoke + strip
+  STEP 1                STEP 2              STEP 3              STEP 4              STEP 5              STEP 6
+ ┌─────────┐          ┌─────────┐         ┌──────────┐        ┌──────────┐        ┌──────────┐        ┌──────────┐
+ │Snowflake│          │   S3    │         │EventBrdge│        │  Parser  │        │  Worker  │        │ Logs S3  │
+ │  Task   │─────────▶│ Bucket  │────────▶│  Rule    │───────▶│  Lambda  │───────▶│  Lambda  │───────▶│ → DW     │
+ └─────────┘          └─────────┘         └──────────┘        └──────────┘        └──────────┘        └──────────┘
+  Scheduled            JSON/Parquet        S3 PutObject         Parse export        Cross-account       Audit logs
+  query joins          departed            triggers rule        Match IAM to        IAM actions on      feed back to
+  IAM + HR data        employee IAM        in EventBridge       departed list       target accounts     Snowflake/CH/
+                       export                                   Identify targets    Revoke + strip      DBX for analytics
 ```
 
 ### Step 1 — Snowflake Task (Scheduled Query)
@@ -255,7 +266,37 @@ The assumed role in each target account has:
 }
 ```
 
-### Step 6 — Validate with agent-bom
+### Step 6 — Audit Logs → Analytics / Data Warehouse
+
+Lambda execution logs land in S3, then feed back into your data warehouse for historical analytics, compliance evidence, and posture tracking.
+
+```
+  Lambda Execution Logs S3
+         │
+         ├──▶ Snowflake (external stage → COPY INTO remediation_log)
+         ├──▶ ClickHouse (S3 table function → INSERT INTO remediation_log)
+         ├──▶ Databricks (Auto Loader → Delta table)
+         └──▶ S3 archive (Athena queries for ad-hoc analysis)
+```
+
+This closes the loop: the same warehouse that sourced the departed employee data now stores the remediation results. You can track:
+- **Remediation velocity** — time from termination to IAM cleanup
+- **Coverage gaps** — departed employees whose IAM was missed
+- **Posture trend** — orphaned IAM count over time
+- **Compliance evidence** — auditor-ready logs of every action taken
+
+```sql
+-- Snowflake: remediation dashboard query
+SELECT
+    DATE_TRUNC('week', remediation_time) AS week,
+    COUNT(*) AS resources_remediated,
+    AVG(DATEDIFF('hour', termination_date, remediation_time)) AS avg_hours_to_remediate
+FROM remediation_log
+GROUP BY 1
+ORDER BY 1 DESC;
+```
+
+### Step 7 — Validate with agent-bom
 
 After the workflow completes, validate the security posture:
 

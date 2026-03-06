@@ -58,12 +58,12 @@ def test_create_mcp_server_returns_object():
 
 
 def test_mcp_server_has_eighteen_tools():
-    """Server should register exactly 18 tools."""
+    """Server should register exactly 19 tools."""
     from agent_bom.mcp_server import create_mcp_server
 
     server = create_mcp_server()
     tools = _run(server.list_tools())
-    assert len(tools) == 18
+    assert len(tools) == 19
 
 
 def test_mcp_server_tool_names():
@@ -92,6 +92,7 @@ def test_mcp_server_tool_names():
         "context_graph",
         "analytics_query",
         "cis_benchmark",
+        "fleet_scan",
     }
 
 

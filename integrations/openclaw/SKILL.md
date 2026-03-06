@@ -27,15 +27,33 @@ metadata:
     requires:
       bins: []
       env: []
+      credentials: none
+    credential_policy: "Zero credentials required for core scanning. All env vars below are strictly optional and only used for specific enterprise features (CIS benchmarks, analytics). They are never auto-discovered, inferred, or transmitted."
     optional_env:
-      - NVD_API_KEY
-      - SNYK_TOKEN
-      - AGENT_BOM_CLICKHOUSE_URL
-      - AWS_PROFILE
-      - AWS_DEFAULT_REGION
-      - SNOWFLAKE_ACCOUNT
-      - SNOWFLAKE_USER
-      - SNOWFLAKE_PASSWORD
+      - name: NVD_API_KEY
+        purpose: "Increases NVD API rate limit (scanning works without it)"
+        required: false
+      - name: SNYK_TOKEN
+        purpose: "Snyk vulnerability enrichment (optional additional data source)"
+        required: false
+      - name: AGENT_BOM_CLICKHOUSE_URL
+        purpose: "ClickHouse analytics storage (enterprise only, not needed for scanning)"
+        required: false
+      - name: AWS_PROFILE
+        purpose: "AWS CIS benchmark only — used when user explicitly runs cis_benchmark(provider='aws')"
+        required: false
+      - name: AWS_DEFAULT_REGION
+        purpose: "AWS CIS benchmark only"
+        required: false
+      - name: SNOWFLAKE_ACCOUNT
+        purpose: "Snowflake CIS benchmark only — used when user explicitly runs cis_benchmark(provider='snowflake')"
+        required: false
+      - name: SNOWFLAKE_USER
+        purpose: "Snowflake CIS benchmark only"
+        required: false
+      - name: SNOWFLAKE_PASSWORD
+        purpose: "Snowflake CIS benchmark only"
+        required: false
     optional_bins:
       - syft
       - grype
@@ -52,7 +70,7 @@ metadata:
       - windows
     file_reads_note: "Reads server names and command paths only — never credentials, tokens, or env var values"
     credential_handling: "Config files are parsed for JSON keys (mcpServers.*.command, mcpServers.*.args) only. Env var blocks are skipped entirely. Values of env, API keys, tokens, and passwords are never read, stored, or transmitted. Cloud credentials (AWS, Snowflake) are only used when user explicitly runs cis_benchmark with those providers."
-    data_flow: "All scanning is local-first. Network calls go only to public vuln databases (OSV, NVD, EPSS). The SSE endpoint is never auto-contacted — requires explicit user configuration. No discovery data leaves the machine unless the user configures a remote endpoint."
+    data_flow: "All scanning is local-first with zero outbound calls by default except public vulnerability databases (OSV, NVD, EPSS). The remote SSE endpoint is never auto-contacted, never auto-discovered, and requires explicit manual configuration. No discovery data, config files, credentials, or environment variables ever leave the machine. Only public package names and CVE IDs are sent to vulnerability databases."
     file_reads:
       - "~/.cursor/mcp.json"
       - "~/Library/Application Support/Claude/claude_desktop_config.json"
@@ -79,10 +97,12 @@ metadata:
         purpose: "Snyk vulnerability enrichment (requires SNYK_TOKEN)"
         auth: true
       - url: "https://agent-bom-mcp.up.railway.app/sse"
-        purpose: "Optional remote MCP endpoint — never contacted unless user explicitly configures it. Local-first scanning recommended. Only receives tool call arguments (package names, CVE IDs), never config files or credentials."
+        purpose: "Fully optional remote MCP endpoint for clients that only support remote servers. Never auto-contacted, never auto-discovered. Requires explicit manual configuration by the user. Only receives tool call arguments (public package names, CVE IDs). Never receives config files, credentials, env vars, or discovery data."
         auth: false
         opt_in: true
         auto_contacted: false
+        receives_credentials: false
+        receives_discovery_data: false
     telemetry: false
     persistence: false
     privilege_escalation: false
@@ -185,10 +205,11 @@ generate_sbom(format="cyclonedx")
 skill_trust(skill_content="<paste SKILL.md content>")
 ```
 
-## Remote SSE Endpoint (Optional)
+## Remote SSE Endpoint (Fully Optional, Opt-In Only)
 
-For MCP clients that only support remote servers (e.g., some Claude Desktop
-configurations), a convenience endpoint is available:
+For MCP clients that only support remote servers, a convenience endpoint exists.
+**This is never auto-contacted.** You must manually add it to your config to use it.
+Local-first scanning is the recommended and default mode.
 
 ```json
 {
@@ -201,10 +222,10 @@ configurations), a convenience endpoint is available:
 }
 ```
 
-**Important:** This endpoint queries the same public vulnerability databases
-as local scanning. It receives only the arguments you provide in tool calls
-(package names, CVE IDs, server names). For sensitive environments, use local
-installation or self-host your own instance.
+**Data sent to this endpoint:** Only the arguments you provide in tool calls
+(public package names, CVE IDs, server names). **Never sent:** config files,
+credentials, API keys, environment variables, file contents, or discovery data.
+For sensitive environments, use local installation or self-host your own instance.
 
 ## Privacy & Data Handling
 

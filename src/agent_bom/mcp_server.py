@@ -1510,6 +1510,51 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             logger.exception("MCP tool error")
             return json.dumps({"error": sanitize_error(exc)})
 
+    # ── Tool 19: fleet_scan ────────────────────────────────────────
+
+    @mcp.tool(annotations=_READ_ONLY)
+    async def fleet_scan(
+        servers: Annotated[
+            str,
+            Field(
+                description="Comma-separated or newline-separated list of MCP server names to scan. "
+                "E.g. '@modelcontextprotocol/server-filesystem, brave-search, glean, 50 sleep'."
+            ),
+        ],
+    ) -> str:
+        """Batch-scan a list of MCP server names against the security metadata registry.
+
+        Designed for fleet inventory data (CrowdStrike, SIEM, CSV exports) where
+        you have server names but not versions. Returns per-server risk assessment
+        with registry match status, risk category, tools, credentials, known CVEs,
+        and a verdict (known-high-risk, known-medium, known-low, unknown-unvetted).
+
+        Risk levels are category-derived (filesystem=high, database=medium,
+        search=low), not made-up threat scores. Every field is traceable to a source.
+
+        Returns:
+            JSON with summary (total, matched, unmatched, risk breakdown)
+            and per-server details.
+        """
+        try:
+            from agent_bom.fleet_scan import fleet_scan as _fleet_scan
+
+            # Parse input: support comma-separated and newline-separated
+            names: list[str] = []
+            for line in servers.replace(",", "\n").split("\n"):
+                name = line.strip()
+                if name:
+                    names.append(name)
+
+            if not names:
+                return json.dumps({"error": "No server names provided"})
+
+            result = _fleet_scan(names)
+            return _truncate_response(result.to_json())
+        except Exception as exc:
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
+
     # ── Resources ────────────────────────────────────────────────
 
     @mcp.resource("registry://servers")
@@ -1659,6 +1704,11 @@ _SERVER_CARD_TOOLS = [
     {
         "name": "cis_benchmark",
         "description": "Run CIS benchmark checks against AWS or Snowflake accounts",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "fleet_scan",
+        "description": "Batch-scan MCP server names against registry for fleet inventory assessment",
         "annotations": {"readOnlyHint": True},
     },
 ]

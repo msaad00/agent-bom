@@ -17,9 +17,6 @@
     <marker id="arrow-red" viewBox="0 0 8 6" refX="7" refY="3" markerWidth="8" markerHeight="6" orient="auto">
       <path d="M0 0 L8 3 L0 6Z" fill="#ef4444" opacity="0.5"/>
     </marker>
-    <marker id="arrow-amber" viewBox="0 0 8 6" refX="7" refY="3" markerWidth="8" markerHeight="6" orient="auto">
-      <path d="M0 0 L8 3 L0 6Z" fill="#f59e0b" opacity="0.4"/>
-    </marker>
     <marker id="arrow-muted" viewBox="0 0 8 6" refX="7" refY="3" markerWidth="8" markerHeight="6" orient="auto">
       <path d="M0 0 L8 3 L0 6Z" fill="#52525b" opacity="0.5"/>
     </marker>
@@ -29,71 +26,71 @@
   <rect width="960" height="500" rx="12" fill="#09090b"/>
 
   <!-- Title -->
-  <text x="480" y="30" text-anchor="middle" class="title">How a single CVE propagates through your AI stack</text>
-  <text x="480" y="46" text-anchor="middle" class="subtitle">agent-bom maps the full blast radius: vulnerability → package → server → agent → credentials → tools</text>
+  <text x="480" y="30" text-anchor="middle" class="title">How one vulnerable package reaches your entire AI stack</text>
+  <text x="480" y="46" text-anchor="middle" class="subtitle">agent-bom maps the full blast radius: package → vulnerability → server → agent → credentials → tools</text>
 
   <!-- ═══════════════════════════════════════════════════════════════════════ -->
   <!-- EDGES (drawn first so nodes sit on top)                                -->
   <!-- ═══════════════════════════════════════════════════════════════════════ -->
 
-  <!-- CVE → Package -->
+  <!-- Package → CVE -->
   <line x1="148" y1="218" x2="186" y2="218" stroke="#ef4444" stroke-width="2" opacity="0.5" marker-end="url(#arrow-red)"/>
 
-  <!-- Package → Server A (sqlite-mcp) -->
-  <path d="M316 205 C340 205, 350 142, 372 142" stroke="#ef4444" stroke-width="1.5" opacity="0.35" fill="none" marker-end="url(#arrow-red)"/>
+  <!-- CVE → Server A (sqlite-mcp) — smooth S-curve from center -->
+  <path d="M316 218 C340 218, 352 142, 372 142" stroke="#ef4444" stroke-width="1.5" opacity="0.35" fill="none" marker-end="url(#arrow-red)"/>
 
-  <!-- Package → Server B (db-tools) -->
-  <path d="M316 232 C340 232, 350 298, 372 298" stroke="#ef4444" stroke-width="1.5" opacity="0.35" fill="none" marker-end="url(#arrow-red)"/>
+  <!-- CVE → Server B (db-tools) — smooth S-curve from center -->
+  <path d="M316 218 C340 218, 352 300, 372 300" stroke="#ef4444" stroke-width="1.5" opacity="0.35" fill="none" marker-end="url(#arrow-red)"/>
 
-  <!-- Server A → Agent 1 (Cursor) -->
-  <path d="M512 128 C536 128, 546 98, 560 98" stroke="#a78bfa" stroke-width="1.5" opacity="0.3" fill="none" marker-end="url(#arrow-muted)"/>
+  <!-- Server A → Agent 1 (Cursor) — smooth S-curve -->
+  <path d="M512 142 C530 142, 542 106, 560 106" stroke="#a78bfa" stroke-width="1.5" opacity="0.3" fill="none" marker-end="url(#arrow-muted)"/>
 
   <!-- Server A → Agent 2 (Claude Desktop) — shared path highlight -->
-  <path d="M512 155 C540 155, 546 218, 560 218" stroke="#a78bfa" stroke-width="2" opacity="0.5" fill="none" marker-end="url(#arrow-muted)"/>
+  <path d="M512 142 C530 142, 542 224, 560 224" stroke="#a78bfa" stroke-width="2" opacity="0.5" fill="none" marker-end="url(#arrow-muted)"/>
 
   <!-- Server B → Agent 2 (Claude Desktop) — shared path highlight -->
-  <path d="M512 285 C540 285, 546 230, 560 230" stroke="#a78bfa" stroke-width="2" opacity="0.5" fill="none" marker-end="url(#arrow-muted)"/>
+  <path d="M512 300 C530 300, 542 224, 560 224" stroke="#a78bfa" stroke-width="2" opacity="0.5" fill="none" marker-end="url(#arrow-muted)"/>
 
-  <!-- Server B → Agent 3 (Windsurf) -->
-  <path d="M512 310 C536 310, 546 340, 560 340" stroke="#a78bfa" stroke-width="1.5" opacity="0.3" fill="none" marker-end="url(#arrow-muted)"/>
+  <!-- Server B → Agent 3 (Windsurf) — smooth S-curve -->
+  <path d="M512 300 C530 300, 542 348, 560 348" stroke="#a78bfa" stroke-width="1.5" opacity="0.3" fill="none" marker-end="url(#arrow-muted)"/>
 
-  <!-- Agent 1 → Credentials (short horizontal links) -->
-  <line x1="690" y1="99" x2="732" y2="99" stroke="#52525b" stroke-width="1" opacity="0.25"/>
-  <line x1="690" y1="99" x2="710" y2="133" stroke="#52525b" stroke-width="1" opacity="0.2"/>
+  <!-- Agent 1 → Credentials -->
+  <line x1="690" y1="106" x2="732" y2="99" stroke="#52525b" stroke-width="1" opacity="0.25"/>
+  <line x1="690" y1="106" x2="732" y2="133" stroke="#52525b" stroke-width="1" opacity="0.2"/>
 
   <!-- Agent 2 → Credentials -->
-  <line x1="690" y1="224" x2="710" y2="133" stroke="#52525b" stroke-width="1" opacity="0.2"/>
-  <line x1="690" y1="224" x2="710" y2="167" stroke="#52525b" stroke-width="1" opacity="0.2"/>
+  <line x1="690" y1="224" x2="732" y2="133" stroke="#52525b" stroke-width="1" opacity="0.2"/>
+  <line x1="690" y1="224" x2="732" y2="167" stroke="#52525b" stroke-width="1" opacity="0.2"/>
 
   <!-- Agent 3 → Credentials -->
-  <line x1="690" y1="348" x2="710" y2="167" stroke="#52525b" stroke-width="1" opacity="0.15"/>
+  <line x1="690" y1="348" x2="732" y2="167" stroke="#52525b" stroke-width="1" opacity="0.15"/>
 
   <!-- ═══════════════════════════════════════════════════════════════════════ -->
   <!-- COLUMN LABELS                                                           -->
   <!-- ═══════════════════════════════════════════════════════════════════════ -->
-  <text x="95" y="72" text-anchor="middle" class="section-label">VULNERABILITY</text>
-  <text x="252" y="72" text-anchor="middle" class="section-label">PACKAGE</text>
+  <text x="95" y="72" text-anchor="middle" class="section-label">PACKAGE</text>
+  <text x="252" y="72" text-anchor="middle" class="section-label">VULNERABILITY</text>
   <text x="442" y="72" text-anchor="middle" class="section-label">MCP SERVERS</text>
   <text x="625" y="72" text-anchor="middle" class="section-label">AI AGENTS</text>
   <text x="825" y="72" text-anchor="middle" class="section-label">BLAST RADIUS</text>
 
   <!-- ═══════════════════════════════════════════════════════════════════════ -->
-  <!-- NODE: CVE                                                               -->
+  <!-- NODE: Package (col 1)                                                   -->
   <!-- ═══════════════════════════════════════════════════════════════════════ -->
   <rect x="28" y="186" width="120" height="64" rx="10" fill="#18181b" stroke="#27272a" stroke-width="1"/>
-  <rect x="28" y="186" width="4" height="64" rx="2" fill="#ef4444"/>
-  <text x="48" y="204" class="node-type" fill="#ef4444">CVE</text>
-  <text x="48" y="220" class="node-label" fill="#fca5a5">CVE-2025-1234</text>
-  <text x="48" y="236" class="node-detail">Critical 9.8 · CISA KEV</text>
+  <rect x="28" y="186" width="4" height="64" rx="2" fill="#f59e0b"/>
+  <text x="48" y="204" class="node-type" fill="#f59e0b">PACKAGE</text>
+  <text x="48" y="220" class="node-label">better-sqlite3</text>
+  <text x="48" y="236" class="node-detail">npm · v9.0.0</text>
 
   <!-- ═══════════════════════════════════════════════════════════════════════ -->
-  <!-- NODE: Package                                                           -->
+  <!-- NODE: CVE (col 2)                                                       -->
   <!-- ═══════════════════════════════════════════════════════════════════════ -->
   <rect x="186" y="186" width="130" height="64" rx="10" fill="#18181b" stroke="#27272a" stroke-width="1"/>
-  <rect x="186" y="186" width="4" height="64" rx="2" fill="#f59e0b"/>
-  <text x="206" y="204" class="node-type" fill="#f59e0b">PACKAGE</text>
-  <text x="206" y="220" class="node-label">better-sqlite3</text>
-  <text x="206" y="236" class="node-detail">npm · v9.0.0</text>
+  <rect x="186" y="186" width="4" height="64" rx="2" fill="#ef4444"/>
+  <text x="206" y="204" class="node-type" fill="#ef4444">CVE</text>
+  <text x="206" y="220" class="node-label" fill="#fca5a5">CVE-2025-1234</text>
+  <text x="206" y="236" class="node-detail">Critical 9.8 · CISA KEV</text>
 
   <!-- ═══════════════════════════════════════════════════════════════════════ -->
   <!-- NODE: Server A (sqlite-mcp)                                             -->

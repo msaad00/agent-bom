@@ -270,4 +270,248 @@ SAST_CWE_MAP: dict[str, dict[str, list[str]]] = {
         "nist_csf": ["PR.DS-01"],
         "cis": ["CIS-16.1"],
     },
+    # ── Input validation & injection variants ────────────────────────────────
+    "CWE-20": {  # Improper Input Validation
+        "owasp_llm": ["LLM02"],
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+        "cis": ["CIS-16.12"],
+    },
+    "CWE-77": {  # Command Injection (generic)
+        "owasp_llm": ["LLM02"],
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+        "cis": ["CIS-16.12"],
+    },
+    "CWE-80": {  # Script Injection (Basic XSS)
+        "owasp_llm": ["LLM02"],
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+    },
+    "CWE-90": {  # LDAP Injection
+        "owasp_llm": ["LLM02"],
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+        "cis": ["CIS-16.1"],
+    },
+    "CWE-91": {  # XML Injection (XPath)
+        "owasp_llm": ["LLM02"],
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+    },
+    "CWE-117": {  # Log Injection
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+        "cis": ["CIS-16.1"],
+    },
+    "CWE-352": {  # Cross-Site Request Forgery (CSRF)
+        "owasp_llm": ["LLM02"],
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+        "soc2": ["CC6.1"],
+    },
+    "CWE-434": {  # Unrestricted Upload of Dangerous File Type
+        "owasp_llm": ["LLM02"],
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+        "cis": ["CIS-16.1"],
+    },
+    "CWE-444": {  # HTTP Request Smuggling
+        "owasp_llm": ["LLM02"],
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+        "cis": ["CIS-16.12"],
+    },
+    "CWE-601": {  # Open Redirect
+        "owasp_llm": ["LLM02"],
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+        "cis": ["CIS-16.1"],
+    },
+    "CWE-643": {  # XPath Injection
+        "owasp_llm": ["LLM02"],
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+    },
+    # ── Authentication & authorization ───────────────────────────────────────
+    "CWE-269": {  # Improper Privilege Management
+        "owasp_llm": ["LLM08"],
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.AA-01", "PR.AA-03"],
+        "soc2": ["CC6.1"],
+        "cis": ["CIS-16.1"],
+    },
+    "CWE-276": {  # Incorrect Default Permissions
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.AA-01"],
+        "soc2": ["CC6.1"],
+        "cis": ["CIS-16.1"],
+    },
+    "CWE-287": {  # Improper Authentication
+        "owasp_llm": ["LLM02"],
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.AA-01"],
+        "soc2": ["CC6.1"],
+        "cis": ["CIS-16.1"],
+    },
+    "CWE-306": {  # Missing Authentication for Critical Function
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.AA-01"],
+        "soc2": ["CC6.1"],
+        "cis": ["CIS-16.1"],
+    },
+    "CWE-639": {  # Authorization Bypass via User-Controlled Key (IDOR)
+        "owasp_llm": ["LLM02"],
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.AA-01"],
+        "cis": ["CIS-16.1"],
+    },
+    "CWE-862": {  # Missing Authorization
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.AA-01"],
+        "soc2": ["CC6.1"],
+    },
+    "CWE-863": {  # Incorrect Authorization
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.AA-01"],
+        "soc2": ["CC6.1"],
+    },
+    # ── Sensitive data exposure ──────────────────────────────────────────────
+    "CWE-200": {  # Exposure of Sensitive Information
+        "owasp_llm": ["LLM06"],
+        "iso_27001": ["A.8.9"],
+        "nist_csf": ["PR.AA-01"],
+        "soc2": ["CC6.1"],
+    },
+    "CWE-209": {  # Error Message Information Leak
+        "owasp_llm": ["LLM06"],
+        "iso_27001": ["A.8.9"],
+        "nist_csf": ["PR.AA-01"],
+    },
+    "CWE-215": {  # Information Exposure Through Debug Information
+        "owasp_llm": ["LLM06"],
+        "iso_27001": ["A.8.9"],
+        "nist_csf": ["PR.AA-01"],
+        "soc2": ["CC6.1"],
+    },
+    "CWE-312": {  # Cleartext Storage of Sensitive Information
+        "owasp_llm": ["LLM06"],
+        "iso_27001": ["A.8.9", "A.8.24"],
+        "nist_csf": ["PR.DS-01"],
+        "soc2": ["CC6.1"],
+        "cis": ["CIS-16.1"],
+    },
+    "CWE-319": {  # Cleartext Transmission of Sensitive Information
+        "owasp_llm": ["LLM06"],
+        "iso_27001": ["A.8.24"],
+        "nist_csf": ["PR.DS-02"],
+        "soc2": ["CC6.1"],
+    },
+    "CWE-497": {  # Exposure of Sensitive System Information
+        "owasp_llm": ["LLM06"],
+        "iso_27001": ["A.8.9"],
+        "nist_csf": ["PR.AA-01"],
+        "soc2": ["CC6.1"],
+    },
+    "CWE-538": {  # Sensitive Information in Log Files
+        "owasp_llm": ["LLM06"],
+        "iso_27001": ["A.8.9"],
+        "nist_csf": ["PR.AA-01"],
+        "soc2": ["CC6.1"],
+    },
+    # ── Cryptography ─────────────────────────────────────────────────────────
+    "CWE-295": {  # Improper Certificate Validation
+        "iso_27001": ["A.8.24"],
+        "nist_csf": ["PR.DS-02"],
+        "soc2": ["CC6.1"],
+        "cis": ["CIS-16.1"],
+    },
+    "CWE-326": {  # Inadequate Encryption Strength
+        "iso_27001": ["A.8.24"],
+        "nist_csf": ["PR.DS-01", "PR.DS-02"],
+        "soc2": ["CC6.1"],
+    },
+    "CWE-330": {  # Use of Insufficiently Random Values
+        "iso_27001": ["A.8.24"],
+        "nist_csf": ["PR.DS-02"],
+        "soc2": ["CC6.1"],
+    },
+    "CWE-347": {  # Improper Verification of Cryptographic Signature
+        "iso_27001": ["A.8.24"],
+        "nist_csf": ["PR.DS-02"],
+        "soc2": ["CC6.1"],
+    },
+    # ── Memory safety & resource management ──────────────────────────────────
+    "CWE-119": {  # Buffer Overflow
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+        "cis": ["CIS-16.12"],
+    },
+    "CWE-125": {  # Out-of-bounds Read
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+    },
+    "CWE-190": {  # Integer Overflow
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+        "cis": ["CIS-16.12"],
+    },
+    "CWE-362": {  # Race Condition
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+    },
+    "CWE-400": {  # Uncontrolled Resource Consumption (DoS)
+        "owasp_llm": ["LLM10"],
+        "iso_27001": ["A.8.8"],
+        "nist_csf": ["DE.CM-09"],
+        "cis": ["CIS-07.5"],
+    },
+    "CWE-416": {  # Use After Free
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+        "cis": ["CIS-16.12"],
+    },
+    "CWE-476": {  # NULL Pointer Dereference
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+    },
+    "CWE-787": {  # Out-of-bounds Write
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+        "cis": ["CIS-16.12"],
+    },
+    # ── Supply chain & trust boundaries ──────────────────────────────────────
+    "CWE-426": {  # Untrusted Search Path
+        "owasp_llm": ["LLM05"],
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+        "cis": ["CIS-16.1"],
+    },
+    "CWE-427": {  # Uncontrolled Search Path Element
+        "owasp_llm": ["LLM05"],
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+        "cis": ["CIS-16.1"],
+    },
+    "CWE-501": {  # Trust Boundary Violation
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+        "cis": ["CIS-16.11"],
+    },
+    "CWE-776": {  # XML Bomb (Billion Laughs)
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+        "cis": ["CIS-16.12"],
+    },
+    "CWE-829": {  # Inclusion of Functionality from Untrusted Control Sphere
+        "owasp_llm": ["LLM05"],
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+        "cis": ["CIS-02.7"],
+    },
+    "CWE-942": {  # Permissive Cross-domain Policy
+        "owasp_llm": ["LLM02"],
+        "iso_27001": ["A.8.28"],
+        "nist_csf": ["PR.DS-01"],
+    },
 }

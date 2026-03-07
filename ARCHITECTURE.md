@@ -19,7 +19,7 @@ Discovery ──> Scanning ──> Enrichment ──> Blast Radius ──> Compl
 | Entry point | File | Purpose |
 |---|---|---|
 | CLI | `cli.py` | Click-based CLI with 15+ commands |
-| MCP Server | `mcp_server.py` | FastMCP server with 20 tools |
+| MCP Server | `mcp_server.py` | FastMCP server with 22 tools |
 | Proxy | `proxy.py` | MCP JSON-RPC proxy with runtime enforcement |
 | API | `api/server.py` | FastAPI REST server with job queue |
 
@@ -210,8 +210,8 @@ cli.py / mcp_server.py / api/server.py
 |---|---|
 | Python modules | 148 |
 | Test files | 144 |
-| Test functions | ~1,900 (6,100+ parameterized cases) |
-| MCP tools | 20 |
+| Test functions | 3,419 (3,480 collected by pytest) |
+| MCP tools | 22 |
 | Compliance frameworks | 10 |
 | Runtime detectors | 6 |
 | Cloud providers | 12 |

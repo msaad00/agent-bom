@@ -229,9 +229,9 @@
   <text x="612" y="504" text-anchor="middle" class="stat-num" fill="#059669">12</text>
   <text x="612" y="518" text-anchor="middle" class="stat-label">output formats</text>
 
-  <text x="742" y="504" text-anchor="middle" class="stat-num" fill="#7c3aed">20</text>
+  <text x="742" y="504" text-anchor="middle" class="stat-num" fill="#7c3aed">22</text>
   <text x="742" y="518" text-anchor="middle" class="stat-label">MCP server tools</text>
 
-  <text x="872" y="504" text-anchor="middle" class="stat-num" fill="#a1a1aa">6,100+</text>
+  <text x="872" y="504" text-anchor="middle" class="stat-num" fill="#a1a1aa">3,400+</text>
   <text x="872" y="518" text-anchor="middle" class="stat-label">tests</text>
 </svg>

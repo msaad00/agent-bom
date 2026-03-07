@@ -1,6 +1,6 @@
 # MCP Tools Reference
 
-agent-bom exposes 20 tools via its MCP server.
+agent-bom exposes 22 tools via its MCP server.
 
 ## Tools
 
@@ -87,6 +87,18 @@ fleet_scan(servers=["brave-search", "filesystem", "postgres"])
 
 ### runtime_correlate
 Cross-reference runtime audit logs with CVE findings for risk amplification.
+
+### vector_db_scan
+Probe Qdrant, Weaviate, Chroma, and Milvus instances for authentication misconfigurations and exposure.
+```
+vector_db_scan()
+```
+
+### aisvs_benchmark
+Run OWASP AISVS v1.0 compliance checks — 9 AI security verification checks across model, data, and inference layers.
+```
+aisvs_benchmark()
+```
 
 ## Resources
 

@@ -1475,7 +1475,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
     async def cis_benchmark(
         provider: Annotated[
             str,
-            Field(description="Cloud provider: 'aws' or 'snowflake'."),
+            Field(description="Cloud provider: 'aws', 'snowflake', 'azure', or 'gcp'."),
         ],
         checks: Annotated[
             str | None,
@@ -1489,17 +1489,28 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             str | None,
             Field(description="AWS CLI profile (only for provider=aws)."),
         ] = None,
+        subscription_id: Annotated[
+            str | None,
+            Field(description="Azure subscription ID (only for provider=azure). Falls back to AZURE_SUBSCRIPTION_ID env var."),
+        ] = None,
+        project_id: Annotated[
+            str | None,
+            Field(description="GCP project ID (only for provider=gcp). Falls back to GOOGLE_CLOUD_PROJECT env var."),
+        ] = None,
     ) -> str:
         """Run CIS benchmark checks against a cloud account.
 
         Evaluates security posture against CIS Foundations Benchmarks:
         - AWS Foundations v3.0: 18 checks (IAM, Storage, Logging, Networking)
         - Snowflake v1.0: 12 checks (Auth, Network, Data Protection, Monitoring, Access Control)
+        - Azure Security Benchmark v3.0: 10 checks (IAM, Storage, Logging, Networking, Key Vault)
+        - GCP Foundation v3.0: 8 checks (IAM, Logging, Networking, Storage)
 
-        All checks are read-only. Requires appropriate credentials (AWS or Snowflake).
+        All checks are read-only. Failed checks include MITRE ATT&CK Enterprise technique mappings.
+        Requires appropriate credentials for the chosen provider.
 
         Returns:
-            JSON with per-check pass/fail results, evidence, severity, and pass rate.
+            JSON with per-check pass/fail results, evidence, severity, ATT&CK techniques, and pass rate.
         """
         try:
             check_list = [c.strip() for c in checks.split(",")] if checks else None
@@ -1520,8 +1531,16 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                 from agent_bom.cloud.snowflake_cis_benchmark import run_benchmark as run_sf_cis
 
                 report = run_sf_cis(checks=check_list)
+            elif provider == "azure":
+                from agent_bom.cloud.azure_cis_benchmark import run_benchmark as run_azure_cis
+
+                report = run_azure_cis(subscription_id=subscription_id, checks=check_list)
+            elif provider == "gcp":
+                from agent_bom.cloud.gcp_cis_benchmark import run_benchmark as run_gcp_cis
+
+                report = run_gcp_cis(project_id=project_id, checks=check_list)
             else:
-                return json.dumps({"error": f"Unsupported provider: {provider}. Use 'aws' or 'snowflake'."})
+                return json.dumps({"error": f"Unsupported provider: {provider}. Use 'aws', 'snowflake', 'azure', or 'gcp'."})
 
             return _truncate_response(json.dumps(report.to_dict(), indent=2, default=str))
         except Exception as exc:

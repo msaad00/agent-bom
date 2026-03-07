@@ -1711,6 +1711,83 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             "Generate a compliance summary suitable for security review."
         )
 
+    # ── Tool 21: vector_db_scan ───────────────────────────────────────
+
+    @mcp.tool(annotations=_READ_ONLY)
+    async def vector_db_scan(
+        hosts: Annotated[
+            str | None,
+            Field(description="Comma-separated hosts to probe (default: 127.0.0.1). Example: '127.0.0.1,10.0.0.5'."),
+        ] = None,
+    ) -> str:
+        """Scan for running vector databases and assess their security posture.
+
+        Probes well-known ports for Qdrant (6333), Weaviate (8080), Chroma (8000),
+        and Milvus (9091). For each discovered instance checks:
+        - Authentication required (no_auth flag if collections accessible without credentials)
+        - Network exposure (network_exposed if accessible beyond localhost)
+        - Number of collections/indexes exposed without auth
+        - MAESTRO layer: KC4: Memory & Context
+
+        Returns:
+            JSON with per-database risk assessment including risk_level, risk_flags, and metadata.
+        """
+        try:
+            from agent_bom.cloud.vector_db import discover_vector_dbs
+
+            host_list = [h.strip() for h in hosts.split(",")] if hosts else None
+            results = discover_vector_dbs(hosts=host_list)
+            return _truncate_response(
+                json.dumps(
+                    {
+                        "databases_found": len(results),
+                        "results": [r.to_dict() for r in results],
+                    },
+                    indent=2,
+                    default=str,
+                )
+            )
+        except Exception as exc:
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
+
+    # ── Tool 22: aisvs_benchmark ──────────────────────────────────────
+
+    @mcp.tool(annotations=_READ_ONLY)
+    async def aisvs_benchmark(
+        checks: Annotated[
+            str | None,
+            Field(description=("Comma-separated AISVS check IDs to run (e.g. 'AI-4.1,AI-6.1'). Omit to run all 9 checks.")),
+        ] = None,
+    ) -> str:
+        """Run AISVS v1.0 (AI Security Verification Standard) compliance checks.
+
+        Evaluates the local AI system stack against OWASP AISVS v1.0 controls:
+        - AI-4.1 Model files use safe serialization (not pickle/pt/bin)
+        - AI-4.2 Model files have cryptographic integrity digest
+        - AI-4.3 Ollama inference API not network-exposed without auth
+        - AI-5.2 No ML development tools (Jupyter, MLflow, Ray) network-exposed
+        - AI-6.1 Vector stores require authentication
+        - AI-6.2 Vector stores bound to localhost only
+        - AI-7.1 No known malicious or typosquatted ML packages installed
+        - AI-7.2 Locally cached models have verifiable provenance
+        - AI-8.1 MCP server tool definitions include input schemas
+
+        Each check is tagged with its MAESTRO layer (KC1-KC6).
+
+        Returns:
+            JSON with per-check pass/fail results, evidence, severity, MAESTRO layer, and pass rate.
+        """
+        try:
+            from agent_bom.cloud.aisvs_benchmark import run_benchmark as _run_aisvs
+
+            check_list = [c.strip() for c in checks.split(",")] if checks else None
+            report = _run_aisvs(checks=check_list)
+            return _truncate_response(json.dumps(report.to_dict(), indent=2, default=str))
+        except Exception as exc:
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
+
     # ── Custom routes: metadata + health ─────────────────────────────
 
     @mcp.custom_route("/.well-known/mcp/server-card.json", methods=["GET"])
@@ -1809,6 +1886,16 @@ _SERVER_CARD_TOOLS = [
     {
         "name": "runtime_correlate",
         "description": "Cross-reference scan results with proxy audit logs to find actually-called vulnerable tools",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "vector_db_scan",
+        "description": "Discover running vector databases (Qdrant, Weaviate, Chroma, Milvus) and assess auth + exposure (MAESTRO KC4)",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "aisvs_benchmark",
+        "description": "OWASP AISVS v1.0 compliance checks — model safety, vector store auth, inference exposure, supply chain",
         "annotations": {"readOnlyHint": True},
     },
 ]

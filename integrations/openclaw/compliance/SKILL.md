@@ -8,8 +8,9 @@ description: >-
 version: 0.59.3
 license: Apache-2.0
 compatibility: >-
-  Requires Python 3.11+. Install via pipx or pip. No external dependencies,
-  API keys, or network access required.
+  Requires Python 3.11+. Install via pipx or pip. No credentials required for
+  OWASP/NIST/EU AI Act evaluation. CIS benchmark checks optionally use cloud
+  SDK credentials (AWS/Azure/GCP/Snowflake) if provided.
 metadata:
   author: msaad00
   homepage: https://github.com/msaad00/agent-bom

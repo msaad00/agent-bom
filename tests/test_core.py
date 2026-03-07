@@ -3001,14 +3001,17 @@ def test_openclaw_scan_skill_structure():
 
 
 def test_openclaw_compliance_skill_minimal_surface():
-    """Compliance skill should have zero file reads and zero network endpoints."""
+    """Compliance skill should declare cloud creds for CIS checks and zero binaries."""
     from pathlib import Path
 
     p = Path(__file__).parent.parent / "integrations" / "openclaw" / "compliance" / "SKILL.md"
     content = p.read_text()
-    assert "network_endpoints: []" in content, "Compliance should need zero network"
-    assert "optional_env: []" in content, "Compliance should need zero env vars"
+    assert "network_endpoints: []" in content, "Compliance should need zero direct network"
     assert "optional_bins: []" in content, "Compliance should need zero binaries"
+    # CIS benchmarks need optional cloud credentials — these must be documented
+    assert "AWS_PROFILE" in content, "AWS CIS creds should be documented"
+    assert "AZURE_TENANT_ID" in content, "Azure CIS creds should be documented"
+    assert "SNOWFLAKE_ACCOUNT" in content, "Snowflake CIS creds should be documented"
     for tool in ["compliance", "policy_check", "cis_benchmark", "generate_sbom"]:
         assert tool in content, f"Tool '{tool}' should be in compliance SKILL.md"
 

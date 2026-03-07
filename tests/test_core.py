@@ -3002,8 +3002,9 @@ def test_openclaw_skill_declares_network_endpoints():
     p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
     content = p.read_text()
     assert "network_endpoints:" in content
-    assert "osv.dev" in content
-    assert "nvd.nist.gov" in content
+    # Check full endpoint URLs are declared (not URL validation, just manifest completeness)
+    assert "https://api.osv.dev/v1" in content  # nosec - not URL validation
+    assert "https://services.nvd.nist.gov/rest/json/cves/2.0" in content  # nosec - not URL validation
 
 
 def test_openclaw_skill_lists_tools():

@@ -1,229 +1,237 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 520" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" fill="none">
   <style>
-    .title { font: 700 18px system-ui, -apple-system, sans-serif; fill: #1f2328; }
-    .subtitle { font: 500 11px system-ui, -apple-system, sans-serif; fill: #656d76; }
-    .phase-title { font: 700 10px system-ui, sans-serif; letter-spacing: 0.08em; }
-    .mod-label { font: 600 10.5px system-ui, sans-serif; fill: #1f2328; }
-    .mod-detail { font: 400 8.5px system-ui, sans-serif; fill: #656d76; }
-    .arrow-label { font: 500 8.5px system-ui, sans-serif; fill: #656d76; }
-    .stat { font: 700 14px system-ui, sans-serif; }
-    .stat-label { font: 500 8.5px system-ui, sans-serif; fill: #656d76; }
-    .note { font: 400 9px system-ui, sans-serif; fill: #656d76; }
+    text { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; }
+    .title { font-size: 20px; font-weight: 700; fill: #18181b; }
+    .subtitle { font-size: 11px; font-weight: 400; fill: #71717a; }
+    .phase-num { font-size: 28px; font-weight: 800; }
+    .phase-name { font-size: 13px; font-weight: 700; letter-spacing: 0.06em; }
+    .mod-name { font-size: 11.5px; font-weight: 600; fill: #27272a; }
+    .mod-sub { font-size: 9.5px; font-weight: 400; fill: #71717a; }
+    .arrow-text { font-size: 10px; font-weight: 600; fill: #a1a1aa; }
+    .chain-label { font-size: 11px; font-weight: 700; }
+    .chain-sub { font-size: 9px; font-weight: 500; fill: #71717a; }
+    .chain-arrow { font-size: 14px; font-weight: 300; fill: #d4d4d8; }
+    .sec-label { font-size: 9px; font-weight: 600; fill: #a1a1aa; letter-spacing: 0.08em; }
+    .entry-label { font-size: 9px; font-weight: 600; }
+    .stat-num { font-size: 16px; font-weight: 800; }
+    .stat-label { font-size: 8.5px; font-weight: 500; fill: #71717a; }
   </style>
-  <defs>
-    <marker id="ar" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto">
-      <polygon points="0 0, 10 3.5, 0 7" fill="#d0d7de"/>
-    </marker>
-    <marker id="ar-blue" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto">
-      <polygon points="0 0, 10 3.5, 0 7" fill="#3b82f6" opacity="0.5"/>
-    </marker>
-  </defs>
 
-  <rect width="960" height="520" rx="12" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
+  <!-- Background -->
+  <rect width="960" height="540" rx="12" fill="#ffffff" stroke="#e4e4e7" stroke-width="1"/>
 
   <!-- Title -->
-  <text x="480" y="32" text-anchor="middle" class="title">Core Engine Architecture</text>
-  <text x="480" y="50" text-anchor="middle" class="subtitle">Every mode (CLI, MCP, API, Proxy, Action, Dashboard) feeds into this shared pipeline</text>
+  <text x="480" y="34" text-anchor="middle" class="title">How agent-bom works</text>
+  <text x="480" y="52" text-anchor="middle" class="subtitle">Every interface (CLI, MCP server, REST API, GitHub Action, proxy, dashboard) feeds into this pipeline</text>
 
-  <!-- ═══ PHASE 1: DISCOVER ═══ -->
-  <rect x="20" y="72" width="176" height="280" rx="10" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5"/>
-  <text x="108" y="92" text-anchor="middle" class="phase-title" fill="#2563eb">1 · DISCOVER</text>
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- PHASE 1: DISCOVER                                                      -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <rect x="24" y="72" width="200" height="248" rx="12" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
 
-  <rect x="32" y="104" width="152" height="30" rx="6" fill="#fff" stroke="#dbeafe" stroke-width="1"/>
-  <text x="108" y="119" text-anchor="middle" class="mod-label">MCP Config Parser</text>
-  <text x="108" y="130" text-anchor="middle" class="mod-detail">20 clients · auto-detect</text>
+  <!-- Phase header -->
+  <text x="44" y="106" class="phase-num" fill="#3b82f6" opacity="0.12">1</text>
+  <text x="72" y="100" class="phase-name" fill="#2563eb">DISCOVER</text>
+  <text x="72" y="114" class="mod-sub">Find every AI component</text>
 
-  <rect x="32" y="140" width="152" height="30" rx="6" fill="#fff" stroke="#dbeafe" stroke-width="1"/>
-  <text x="108" y="155" text-anchor="middle" class="mod-label">Cloud Connectors</text>
-  <text x="108" y="166" text-anchor="middle" class="mod-detail">AWS · Snowflake · Databricks</text>
+  <!-- Modules -->
+  <rect x="38" y="130" width="172" height="28" rx="6" fill="#eff6ff" stroke="#bfdbfe" stroke-width="0.5"/>
+  <text x="50" y="148" class="mod-name">MCP Config Parser</text>
+  <text x="210" y="148" text-anchor="end" class="mod-sub" fill="#2563eb">20 clients</text>
 
-  <rect x="32" y="176" width="152" height="30" rx="6" fill="#fff" stroke="#dbeafe" stroke-width="1"/>
-  <text x="108" y="191" text-anchor="middle" class="mod-label">Container Scanner</text>
-  <text x="108" y="202" text-anchor="middle" class="mod-detail">Grype · Syft · OCI layers</text>
+  <rect x="38" y="164" width="172" height="28" rx="6" fill="#eff6ff" stroke="#bfdbfe" stroke-width="0.5"/>
+  <text x="50" y="182" class="mod-name">Cloud Connectors</text>
+  <text x="210" y="182" text-anchor="end" class="mod-sub" fill="#2563eb">6 providers</text>
 
-  <rect x="32" y="212" width="152" height="30" rx="6" fill="#fff" stroke="#dbeafe" stroke-width="1"/>
-  <text x="108" y="227" text-anchor="middle" class="mod-label">Package Parsers</text>
-  <text x="108" y="238" text-anchor="middle" class="mod-detail">npm · pip · cargo · go · maven</text>
+  <rect x="38" y="198" width="172" height="28" rx="6" fill="#eff6ff" stroke="#bfdbfe" stroke-width="0.5"/>
+  <text x="50" y="216" class="mod-name">Container Scanner</text>
+  <text x="210" y="216" text-anchor="end" class="mod-sub" fill="#2563eb">Grype/Syft</text>
 
-  <rect x="32" y="248" width="152" height="30" rx="6" fill="#fff" stroke="#dbeafe" stroke-width="1"/>
-  <text x="108" y="263" text-anchor="middle" class="mod-label">SBOM Ingest</text>
-  <text x="108" y="274" text-anchor="middle" class="mod-detail">CycloneDX · SPDX</text>
+  <rect x="38" y="232" width="172" height="28" rx="6" fill="#eff6ff" stroke="#bfdbfe" stroke-width="0.5"/>
+  <text x="50" y="250" class="mod-name">Package Parsers</text>
+  <text x="210" y="250" text-anchor="end" class="mod-sub" fill="#2563eb">5 ecosystems</text>
 
-  <rect x="32" y="284" width="152" height="30" rx="6" fill="#fff" stroke="#dbeafe" stroke-width="1"/>
-  <text x="108" y="299" text-anchor="middle" class="mod-label">AI Model Provenance</text>
-  <text x="108" y="310" text-anchor="middle" class="mod-detail">HuggingFace · ONNX · GGUF</text>
-
-  <rect x="32" y="320" width="152" height="22" rx="6" fill="#dbeafe" stroke="#bfdbfe" stroke-width="1"/>
-  <text x="108" y="335" text-anchor="middle" class="mod-detail" fill="#2563eb">sanitize_env_vars()</text>
+  <rect x="38" y="266" width="172" height="28" rx="6" fill="#eff6ff" stroke="#bfdbfe" stroke-width="0.5"/>
+  <text x="50" y="284" class="mod-name">SBOM + Model Ingest</text>
+  <text x="210" y="284" text-anchor="end" class="mod-sub" fill="#2563eb">13 formats</text>
 
   <!-- Arrow 1→2 -->
-  <line x1="200" y1="210" x2="224" y2="210" stroke="#d0d7de" stroke-width="2" marker-end="url(#ar)"/>
-  <text x="212" y="200" text-anchor="middle" class="arrow-label">agents[]</text>
+  <line x1="228" y1="196" x2="256" y2="196" stroke="#3b82f6" stroke-width="2" opacity="0.3"/>
+  <polygon points="254,190 266,196 254,202" fill="#3b82f6" opacity="0.3"/>
+  <text x="247" y="184" text-anchor="middle" class="arrow-text">agents[]</text>
 
-  <!-- ═══ PHASE 2: SCAN ═══ -->
-  <rect x="228" y="72" width="176" height="280" rx="10" fill="#fef3c7" stroke="#fde68a" stroke-width="1.5"/>
-  <text x="316" y="92" text-anchor="middle" class="phase-title" fill="#d97706">2 · SCAN</text>
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- PHASE 2: SCAN                                                           -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <rect x="270" y="72" width="200" height="248" rx="12" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
 
-  <rect x="240" y="104" width="152" height="30" rx="6" fill="#fff" stroke="#fde68a" stroke-width="1"/>
-  <text x="316" y="119" text-anchor="middle" class="mod-label">OSV Scanner</text>
-  <text x="316" y="130" text-anchor="middle" class="mod-detail">Batch CVE lookup</text>
+  <text x="290" y="106" class="phase-num" fill="#f59e0b" opacity="0.12">2</text>
+  <text x="318" y="100" class="phase-name" fill="#d97706">SCAN</text>
+  <text x="318" y="114" class="mod-sub">Query vulnerability databases</text>
 
-  <rect x="240" y="140" width="152" height="30" rx="6" fill="#fff" stroke="#fde68a" stroke-width="1"/>
-  <text x="316" y="155" text-anchor="middle" class="mod-label">NVD Enrichment</text>
-  <text x="316" y="166" text-anchor="middle" class="mod-detail">CVSS v3.1 + v4.0</text>
+  <rect x="284" y="130" width="172" height="28" rx="6" fill="#fffbeb" stroke="#fde68a" stroke-width="0.5"/>
+  <text x="296" y="148" class="mod-name">OSV.dev</text>
+  <text x="456" y="148" text-anchor="end" class="mod-sub" fill="#d97706">batch CVE lookup</text>
 
-  <rect x="240" y="176" width="152" height="30" rx="6" fill="#fff" stroke="#fde68a" stroke-width="1"/>
-  <text x="316" y="191" text-anchor="middle" class="mod-label">EPSS Scoring</text>
-  <text x="316" y="202" text-anchor="middle" class="mod-detail">Exploit probability</text>
+  <rect x="284" y="164" width="172" height="28" rx="6" fill="#fffbeb" stroke="#fde68a" stroke-width="0.5"/>
+  <text x="296" y="182" class="mod-name">NVD + CVSS</text>
+  <text x="456" y="182" text-anchor="end" class="mod-sub" fill="#d97706">v3.1 + v4.0</text>
 
-  <rect x="240" y="212" width="152" height="30" rx="6" fill="#fff" stroke="#fde68a" stroke-width="1"/>
-  <text x="316" y="227" text-anchor="middle" class="mod-label">KEV Check</text>
-  <text x="316" y="238" text-anchor="middle" class="mod-detail">CISA known exploited</text>
+  <rect x="284" y="198" width="172" height="28" rx="6" fill="#fffbeb" stroke="#fde68a" stroke-width="0.5"/>
+  <text x="296" y="216" class="mod-name">EPSS</text>
+  <text x="456" y="216" text-anchor="end" class="mod-sub" fill="#d97706">exploit probability</text>
 
-  <rect x="240" y="248" width="152" height="30" rx="6" fill="#fff" stroke="#fde68a" stroke-width="1"/>
-  <text x="316" y="263" text-anchor="middle" class="mod-label">Registry Lookup</text>
-  <text x="316" y="274" text-anchor="middle" class="mod-detail">427+ MCP server metadata</text>
+  <rect x="284" y="232" width="172" height="28" rx="6" fill="#fffbeb" stroke="#fde68a" stroke-width="0.5"/>
+  <text x="296" y="250" class="mod-name">CISA KEV</text>
+  <text x="456" y="250" text-anchor="end" class="mod-sub" fill="#d97706">known exploited</text>
 
-  <rect x="240" y="284" width="152" height="30" rx="6" fill="#fff" stroke="#fde68a" stroke-width="1"/>
-  <text x="316" y="299" text-anchor="middle" class="mod-label">GHSA + Snyk</text>
-  <text x="316" y="310" text-anchor="middle" class="mod-detail">Supplemental advisories</text>
-
-  <rect x="240" y="320" width="152" height="22" rx="6" fill="#fde68a" stroke="#fcd34d" stroke-width="1"/>
-  <text x="316" y="335" text-anchor="middle" class="mod-detail" fill="#92400e">90-day NVD cache TTL</text>
+  <rect x="284" y="266" width="172" height="28" rx="6" fill="#fffbeb" stroke="#fde68a" stroke-width="0.5"/>
+  <text x="296" y="284" class="mod-name">MCP Registry</text>
+  <text x="456" y="284" text-anchor="end" class="mod-sub" fill="#d97706">427+ servers</text>
 
   <!-- Arrow 2→3 -->
-  <line x1="408" y1="210" x2="432" y2="210" stroke="#d0d7de" stroke-width="2" marker-end="url(#ar)"/>
-  <text x="420" y="200" text-anchor="middle" class="arrow-label">findings[]</text>
+  <line x1="474" y1="196" x2="502" y2="196" stroke="#f59e0b" stroke-width="2" opacity="0.3"/>
+  <polygon points="500,190 512,196 500,202" fill="#f59e0b" opacity="0.3"/>
+  <text x="493" y="184" text-anchor="middle" class="arrow-text">findings[]</text>
 
-  <!-- ═══ PHASE 3: ANALYZE ═══ -->
-  <rect x="436" y="72" width="176" height="280" rx="10" fill="#fce7f3" stroke="#fbcfe8" stroke-width="1.5"/>
-  <text x="524" y="92" text-anchor="middle" class="phase-title" fill="#db2777">3 · ANALYZE</text>
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- PHASE 3: ANALYZE                                                        -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <rect x="516" y="72" width="200" height="248" rx="12" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
 
-  <rect x="448" y="104" width="152" height="30" rx="6" fill="#fff" stroke="#fbcfe8" stroke-width="1"/>
-  <text x="524" y="119" text-anchor="middle" class="mod-label">Blast Radius</text>
-  <text x="524" y="130" text-anchor="middle" class="mod-detail">CVE → server → creds → tools</text>
+  <text x="536" y="106" class="phase-num" fill="#f43f5e" opacity="0.12">3</text>
+  <text x="564" y="100" class="phase-name" fill="#e11d48">ANALYZE</text>
+  <text x="564" y="114" class="mod-sub">Map risk and blast radius</text>
 
-  <rect x="448" y="140" width="152" height="30" rx="6" fill="#fff" stroke="#fbcfe8" stroke-width="1"/>
-  <text x="524" y="155" text-anchor="middle" class="mod-label">Compliance Engine</text>
-  <text x="524" y="166" text-anchor="middle" class="mod-detail">10 frameworks · 300+ controls</text>
+  <rect x="530" y="130" width="172" height="28" rx="6" fill="#fff1f2" stroke="#fecdd3" stroke-width="0.5"/>
+  <text x="542" y="148" class="mod-name">Blast Radius Engine</text>
+  <text x="702" y="148" text-anchor="end" class="mod-sub" fill="#e11d48">CVE chains</text>
 
-  <rect x="448" y="176" width="152" height="30" rx="6" fill="#fff" stroke="#fbcfe8" stroke-width="1"/>
-  <text x="524" y="191" text-anchor="middle" class="mod-label">Policy Engine</text>
-  <text x="524" y="202" text-anchor="middle" class="mod-detail">16 conditions · YAML rules</text>
+  <rect x="530" y="164" width="172" height="28" rx="6" fill="#fff1f2" stroke="#fecdd3" stroke-width="0.5"/>
+  <text x="542" y="182" class="mod-name">Compliance</text>
+  <text x="702" y="182" text-anchor="end" class="mod-sub" fill="#e11d48">10 frameworks</text>
 
-  <rect x="448" y="212" width="152" height="30" rx="6" fill="#fff" stroke="#fbcfe8" stroke-width="1"/>
-  <text x="524" y="227" text-anchor="middle" class="mod-label">Tool Enforcement</text>
-  <text x="524" y="238" text-anchor="middle" class="mod-detail">Poisoning · drift · injection</text>
+  <rect x="530" y="198" width="172" height="28" rx="6" fill="#fff1f2" stroke="#fecdd3" stroke-width="0.5"/>
+  <text x="542" y="216" class="mod-name">Policy Engine</text>
+  <text x="702" y="216" text-anchor="end" class="mod-sub" fill="#e11d48">17 conditions</text>
 
-  <rect x="448" y="248" width="152" height="30" rx="6" fill="#fff" stroke="#fbcfe8" stroke-width="1"/>
-  <text x="524" y="263" text-anchor="middle" class="mod-label">CIS Benchmarks</text>
-  <text x="524" y="274" text-anchor="middle" class="mod-detail">AWS v3.0 · Snowflake v1.0</text>
+  <rect x="530" y="232" width="172" height="28" rx="6" fill="#fff1f2" stroke="#fecdd3" stroke-width="0.5"/>
+  <text x="542" y="250" class="mod-name">Tool Enforcement</text>
+  <text x="702" y="250" text-anchor="end" class="mod-sub" fill="#e11d48">poisoning/drift</text>
 
-  <rect x="448" y="284" width="152" height="30" rx="6" fill="#fff" stroke="#fbcfe8" stroke-width="1"/>
-  <text x="524" y="299" text-anchor="middle" class="mod-label">Context Graph</text>
-  <text x="524" y="310" text-anchor="middle" class="mod-detail">Lateral movement analysis</text>
+  <rect x="530" y="266" width="172" height="28" rx="6" fill="#fff1f2" stroke="#fecdd3" stroke-width="0.5"/>
+  <text x="542" y="284" class="mod-name">Context Graph</text>
+  <text x="702" y="284" text-anchor="end" class="mod-sub" fill="#e11d48">lateral movement</text>
 
   <!-- Arrow 3→4 -->
-  <line x1="616" y1="210" x2="640" y2="210" stroke="#d0d7de" stroke-width="2" marker-end="url(#ar)"/>
-  <text x="628" y="200" text-anchor="middle" class="arrow-label">report</text>
+  <line x1="720" y1="196" x2="748" y2="196" stroke="#f43f5e" stroke-width="2" opacity="0.3"/>
+  <polygon points="746,190 758,196 746,202" fill="#f43f5e" opacity="0.3"/>
+  <text x="739" y="184" text-anchor="middle" class="arrow-text">report</text>
 
-  <!-- ═══ PHASE 4: OUTPUT ═══ -->
-  <rect x="644" y="72" width="176" height="280" rx="10" fill="#dcfce7" stroke="#bbf7d0" stroke-width="1.5"/>
-  <text x="732" y="92" text-anchor="middle" class="phase-title" fill="#16a34a">4 · OUTPUT</text>
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- PHASE 4: REPORT                                                         -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <rect x="762" y="72" width="174" height="248" rx="12" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
 
-  <rect x="656" y="104" width="152" height="30" rx="6" fill="#fff" stroke="#bbf7d0" stroke-width="1"/>
-  <text x="732" y="119" text-anchor="middle" class="mod-label">SBOM Generator</text>
-  <text x="732" y="130" text-anchor="middle" class="mod-detail">CycloneDX · SPDX · VEX</text>
+  <text x="782" y="106" class="phase-num" fill="#10b981" opacity="0.12">4</text>
+  <text x="810" y="100" class="phase-name" fill="#059669">REPORT</text>
+  <text x="810" y="114" class="mod-sub">Generate outputs</text>
 
-  <rect x="656" y="140" width="152" height="30" rx="6" fill="#fff" stroke="#bbf7d0" stroke-width="1"/>
-  <text x="732" y="155" text-anchor="middle" class="mod-label">Report Formats</text>
-  <text x="732" y="166" text-anchor="middle" class="mod-detail">JSON · SARIF · HTML · Table</text>
+  <rect x="776" y="130" width="146" height="28" rx="6" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="0.5"/>
+  <text x="788" y="148" class="mod-name">SBOM Export</text>
+  <text x="922" y="148" text-anchor="end" class="mod-sub" fill="#059669">CDX/SPDX/VEX</text>
 
-  <rect x="656" y="176" width="152" height="30" rx="6" fill="#fff" stroke="#bbf7d0" stroke-width="1"/>
-  <text x="732" y="191" text-anchor="middle" class="mod-label">Remediation Plan</text>
-  <text x="732" y="202" text-anchor="middle" class="mod-detail">Prioritized fix guidance</text>
+  <rect x="776" y="164" width="146" height="28" rx="6" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="0.5"/>
+  <text x="788" y="182" class="mod-name">SARIF</text>
+  <text x="922" y="182" text-anchor="end" class="mod-sub" fill="#059669">GitHub Security</text>
 
-  <rect x="656" y="212" width="152" height="30" rx="6" fill="#fff" stroke="#bbf7d0" stroke-width="1"/>
-  <text x="732" y="227" text-anchor="middle" class="mod-label">SARIF Upload</text>
-  <text x="732" y="238" text-anchor="middle" class="mod-detail">GitHub Code Scanning</text>
+  <rect x="776" y="198" width="146" height="28" rx="6" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="0.5"/>
+  <text x="788" y="216" class="mod-name">HTML Dashboard</text>
+  <text x="922" y="216" text-anchor="end" class="mod-sub" fill="#059669">interactive</text>
 
-  <rect x="656" y="248" width="152" height="30" rx="6" fill="#fff" stroke="#bbf7d0" stroke-width="1"/>
-  <text x="732" y="263" text-anchor="middle" class="mod-label">Webhooks</text>
-  <text x="732" y="274" text-anchor="middle" class="mod-detail">Slack · Jira · ServiceNow</text>
+  <rect x="776" y="232" width="146" height="28" rx="6" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="0.5"/>
+  <text x="788" y="250" class="mod-name">Remediation</text>
+  <text x="922" y="250" text-anchor="end" class="mod-sub" fill="#059669">prioritized fixes</text>
 
-  <rect x="656" y="284" width="152" height="30" rx="6" fill="#fff" stroke="#bbf7d0" stroke-width="1"/>
-  <text x="732" y="299" text-anchor="middle" class="mod-label">ClickHouse Analytics</text>
-  <text x="732" y="310" text-anchor="middle" class="mod-detail">Trend storage · posture history</text>
+  <rect x="776" y="266" width="146" height="28" rx="6" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="0.5"/>
+  <text x="788" y="284" class="mod-name">Alerts</text>
+  <text x="922" y="284" text-anchor="end" class="mod-sub" fill="#059669">Slack/webhooks</text>
 
-  <!-- ═══ RUNTIME SIDECAR ═══ -->
-  <rect x="844" y="72" width="100" height="280" rx="10" fill="#f5f3ff" stroke="#ddd6fe" stroke-width="1.5"/>
-  <text x="894" y="92" text-anchor="middle" class="phase-title" fill="#7c3aed">RUNTIME</text>
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- BLAST RADIUS CHAIN — the unique value proposition                       -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <rect x="24" y="338" width="912" height="72" rx="10" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
 
-  <rect x="852" y="108" width="84" height="42" rx="6" fill="#fff" stroke="#ddd6fe" stroke-width="1"/>
-  <text x="894" y="126" text-anchor="middle" class="mod-label">Proxy</text>
-  <text x="894" y="138" text-anchor="middle" class="mod-detail">MCP intercept</text>
-  <text x="894" y="148" text-anchor="middle" class="mod-detail">+ enforce</text>
+  <text x="480" y="358" text-anchor="middle" class="phase-name" fill="#7c3aed">WHAT MAKES THIS DIFFERENT — BLAST RADIUS CHAIN</text>
 
-  <rect x="852" y="158" width="84" height="42" rx="6" fill="#fff" stroke="#ddd6fe" stroke-width="1"/>
-  <text x="894" y="176" text-anchor="middle" class="mod-label">Protect</text>
-  <text x="894" y="188" text-anchor="middle" class="mod-detail">5 detectors</text>
-  <text x="894" y="198" text-anchor="middle" class="mod-detail">drift · inject · leak</text>
+  <!-- Chain nodes -->
+  <rect x="52" y="370" width="84" height="28" rx="14" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1" stroke-opacity="0.4"/>
+  <text x="94" y="388" text-anchor="middle" class="chain-label" fill="#6d28d9">CVE</text>
 
-  <rect x="852" y="208" width="84" height="42" rx="6" fill="#fff" stroke="#ddd6fe" stroke-width="1"/>
-  <text x="894" y="226" text-anchor="middle" class="mod-label">Watch</text>
-  <text x="894" y="238" text-anchor="middle" class="mod-detail">Config monitor</text>
-  <text x="894" y="248" text-anchor="middle" class="mod-detail">+ webhook alerts</text>
+  <text x="148" y="388" text-anchor="middle" class="chain-arrow">&#x2192;</text>
 
-  <rect x="852" y="258" width="84" height="42" rx="6" fill="#fff" stroke="#ddd6fe" stroke-width="1"/>
-  <text x="894" y="276" text-anchor="middle" class="mod-label">Introspect</text>
-  <text x="894" y="288" text-anchor="middle" class="mod-detail">Live tools/list</text>
-  <text x="894" y="298" text-anchor="middle" class="mod-detail">+ drift detect</text>
+  <rect x="160" y="370" width="106" height="28" rx="14" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1" stroke-opacity="0.4"/>
+  <text x="213" y="388" text-anchor="middle" class="chain-label" fill="#6d28d9">Package</text>
 
-  <rect x="852" y="308" width="84" height="30" rx="6" fill="#fff" stroke="#ddd6fe" stroke-width="1"/>
-  <text x="894" y="323" text-anchor="middle" class="mod-label">Audit Log</text>
-  <text x="894" y="335" text-anchor="middle" class="mod-detail">JSONL + Prometheus</text>
+  <text x="278" y="388" text-anchor="middle" class="chain-arrow">&#x2192;</text>
 
-  <!-- Dashed arrow: runtime feeds back into scan -->
-  <path d="M 844 340 Q 750 400 408 340" stroke="#7c3aed" stroke-width="1.5" stroke-dasharray="6 3" fill="none" marker-end="url(#ar)"/>
-  <text x="620" y="390" text-anchor="middle" class="mod-detail" fill="#7c3aed">runtime audit → correlate with CVE findings</text>
+  <rect x="290" y="370" width="120" height="28" rx="14" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1" stroke-opacity="0.4"/>
+  <text x="350" y="388" text-anchor="middle" class="chain-label" fill="#6d28d9">MCP Server</text>
 
-  <!-- ═══ SECURITY BAR ═══ -->
-  <rect x="20" y="370" width="920" height="36" rx="8" fill="#fef2f2" stroke="#fecaca" stroke-width="1"/>
-  <text x="480" y="392" text-anchor="middle" class="phase-title" fill="#dc2626">SECURITY · EVERY STAGE</text>
-  <text x="160" y="392" text-anchor="middle" class="mod-detail" fill="#991b1b">Credential redaction</text>
-  <text x="340" y="392" text-anchor="middle" class="mod-detail" fill="#991b1b">Path validation</text>
-  <text x="500" y="392" text-anchor="middle" class="mod-detail" fill="#991b1b">Input bounds</text>
-  <text x="650" y="392" text-anchor="middle" class="mod-detail" fill="#991b1b">Rate limiting</text>
-  <text x="810" y="392" text-anchor="middle" class="mod-detail" fill="#991b1b">Sigstore verification</text>
+  <text x="422" y="388" text-anchor="middle" class="chain-arrow">&#x2192;</text>
 
-  <!-- ═══ STATS BAR ═══ -->
-  <rect x="20" y="424" width="920" height="80" rx="10" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+  <rect x="434" y="370" width="106" height="28" rx="14" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1" stroke-opacity="0.4"/>
+  <text x="487" y="388" text-anchor="middle" class="chain-label" fill="#6d28d9">AI Agent</text>
 
-  <text x="100" y="454" text-anchor="middle" class="stat" fill="#2563eb">20</text>
-  <text x="100" y="470" text-anchor="middle" class="stat-label">MCP clients</text>
-  <text x="100" y="484" text-anchor="middle" class="stat-label">auto-detected</text>
+  <text x="552" y="388" text-anchor="middle" class="chain-arrow">&#x2192;</text>
 
-  <text x="240" y="454" text-anchor="middle" class="stat" fill="#d97706">5</text>
-  <text x="240" y="470" text-anchor="middle" class="stat-label">vulnerability</text>
-  <text x="240" y="484" text-anchor="middle" class="stat-label">databases</text>
+  <rect x="564" y="370" width="120" height="28" rx="14" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1" stroke-opacity="0.4"/>
+  <text x="624" y="388" text-anchor="middle" class="chain-label" fill="#6d28d9">Credentials</text>
 
-  <text x="380" y="454" text-anchor="middle" class="stat" fill="#db2777">427+</text>
-  <text x="380" y="470" text-anchor="middle" class="stat-label">MCP servers</text>
-  <text x="380" y="484" text-anchor="middle" class="stat-label">in registry</text>
+  <text x="696" y="388" text-anchor="middle" class="chain-arrow">&#x2192;</text>
 
-  <text x="520" y="454" text-anchor="middle" class="stat" fill="#db2777">10</text>
-  <text x="520" y="470" text-anchor="middle" class="stat-label">compliance</text>
-  <text x="520" y="484" text-anchor="middle" class="stat-label">frameworks</text>
+  <rect x="708" y="370" width="106" height="28" rx="14" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1" stroke-opacity="0.4"/>
+  <text x="761" y="388" text-anchor="middle" class="chain-label" fill="#6d28d9">Tools</text>
 
-  <text x="660" y="454" text-anchor="middle" class="stat" fill="#16a34a">12</text>
-  <text x="660" y="470" text-anchor="middle" class="stat-label">output</text>
-  <text x="660" y="484" text-anchor="middle" class="stat-label">formats</text>
+  <text x="826" y="388" text-anchor="middle" class="chain-arrow">&#x2192;</text>
 
-  <text x="800" y="454" text-anchor="middle" class="stat" fill="#7c3aed">5</text>
-  <text x="800" y="470" text-anchor="middle" class="stat-label">runtime</text>
-  <text x="800" y="484" text-anchor="middle" class="stat-label">detectors</text>
+  <rect x="838" y="370" width="80" height="28" rx="14" fill="#fef2f2" stroke="#ef4444" stroke-width="1" stroke-opacity="0.4"/>
+  <text x="878" y="388" text-anchor="middle" class="chain-label" fill="#dc2626">Impact</text>
 
-  <text x="900" y="454" text-anchor="middle" class="stat" fill="#dc2626">6,100+</text>
-  <text x="900" y="470" text-anchor="middle" class="stat-label">test</text>
-  <text x="900" y="484" text-anchor="middle" class="stat-label">functions</text>
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- SECURITY + RUNTIME BAR                                                  -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <rect x="24" y="424" width="444" height="44" rx="8" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
+  <text x="44" y="442" class="sec-label" fill="#a1a1aa">SECURITY LAYER</text>
+  <text x="44" y="458" class="mod-sub">Credential redaction · path validation · input bounds · rate limiting · Sigstore signing</text>
+
+  <rect x="480" y="424" width="456" height="44" rx="8" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
+  <text x="500" y="442" class="sec-label" fill="#a1a1aa">RUNTIME (OPTIONAL)</text>
+  <text x="500" y="458" class="mod-sub">MCP proxy · 5 detectors (drift, injection, credential leak) · config watch · live introspect</text>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- STATS ROW                                                               -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <rect x="24" y="482" width="912" height="44" rx="8" fill="#f4f4f5" stroke="#e4e4e7" stroke-width="1"/>
+
+  <text x="92" y="504" text-anchor="middle" class="stat-num" fill="#2563eb">20</text>
+  <text x="92" y="518" text-anchor="middle" class="stat-label">MCP clients</text>
+
+  <text x="222" y="504" text-anchor="middle" class="stat-num" fill="#d97706">6</text>
+  <text x="222" y="518" text-anchor="middle" class="stat-label">vuln databases</text>
+
+  <text x="352" y="504" text-anchor="middle" class="stat-num" fill="#e11d48">427+</text>
+  <text x="352" y="518" text-anchor="middle" class="stat-label">registry servers</text>
+
+  <text x="482" y="504" text-anchor="middle" class="stat-num" fill="#e11d48">10</text>
+  <text x="482" y="518" text-anchor="middle" class="stat-label">compliance frameworks</text>
+
+  <text x="612" y="504" text-anchor="middle" class="stat-num" fill="#059669">12</text>
+  <text x="612" y="518" text-anchor="middle" class="stat-label">output formats</text>
+
+  <text x="742" y="504" text-anchor="middle" class="stat-num" fill="#7c3aed">20</text>
+  <text x="742" y="518" text-anchor="middle" class="stat-label">MCP server tools</text>
+
+  <text x="872" y="504" text-anchor="middle" class="stat-num" fill="#a1a1aa">6,100+</text>
+  <text x="872" y="518" text-anchor="middle" class="stat-label">tests</text>
 </svg>

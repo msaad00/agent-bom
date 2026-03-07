@@ -26,8 +26,8 @@
   <text x="140" y="114" text-anchor="end" class="step-desc">20 clients</text>
   <rect x="30" y="120" width="140" height="1" fill="#e4e4e7"/>
 
-  <text x="36" y="138" class="item-label" fill="#2563eb">Cloud providers</text>
-  <text x="140" y="138" text-anchor="end" class="step-desc">AWS/Azure/GCP/SF</text>
+  <text x="36" y="138" class="item-label" fill="#2563eb">Cloud</text>
+  <text x="140" y="138" text-anchor="end" class="step-desc">AWS/GCP/Azure/SF</text>
   <rect x="30" y="144" width="140" height="1" fill="#e4e4e7"/>
 
   <text x="36" y="162" class="item-label" fill="#2563eb">Containers</text>
@@ -38,7 +38,7 @@
   <text x="140" y="186" text-anchor="end" class="step-desc">npm/pip/cargo/go</text>
   <rect x="30" y="192" width="140" height="1" fill="#e4e4e7"/>
 
-  <text x="36" y="210" class="item-label" fill="#2563eb">Kubernetes</text>
+  <text x="36" y="210" class="item-label" fill="#2563eb">K8s</text>
   <text x="140" y="210" text-anchor="end" class="step-desc">all namespaces</text>
   <rect x="30" y="216" width="140" height="1" fill="#e4e4e7"/>
 
@@ -54,7 +54,7 @@
   <text x="140" y="282" text-anchor="end" class="step-desc">AI resources</text>
   <rect x="30" y="288" width="140" height="1" fill="#e4e4e7"/>
 
-  <text x="36" y="306" class="item-label" fill="#2563eb">GitHub Actions</text>
+  <text x="36" y="306" class="item-label" fill="#2563eb">GH Actions</text>
   <text x="140" y="306" text-anchor="end" class="step-desc">env vars</text>
   <rect x="30" y="312" width="140" height="1" fill="#e4e4e7"/>
 

@@ -2971,22 +2971,20 @@ def test_mcp_registry_server_json_valid():
 
 
 def test_openclaw_skills_exist():
-    """OpenClaw split skills should all exist with agent-bom content."""
+    """Single consolidated OpenClaw SKILL.md should exist with agent-bom content."""
     from pathlib import Path
 
-    base = Path(__file__).parent.parent / "integrations" / "openclaw"
-    for subdir in ("scan", "compliance", "registry", "runtime"):
-        p = base / subdir / "SKILL.md"
-        assert p.exists(), f"{subdir}/SKILL.md should exist"
-        content = p.read_text()
-        assert "agent-bom" in content
+    p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
+    assert p.exists(), "integrations/openclaw/SKILL.md should exist"
+    content = p.read_text()
+    assert "agent-bom" in content
 
 
 def test_openclaw_scan_skill_structure():
-    """Scan skill should declare file reads, network endpoints, and core tools."""
+    """Skill should declare file reads, network endpoints, and core tools."""
     from pathlib import Path
 
-    p = Path(__file__).parent.parent / "integrations" / "openclaw" / "scan" / "SKILL.md"
+    p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
     content = p.read_text()
     assert "bins: []" in content, "Should require no binaries"
     assert "file_reads:" in content, "Should declare file reads"
@@ -2997,44 +2995,40 @@ def test_openclaw_scan_skill_structure():
     assert "https://api.osv.dev/v1" in content  # nosec - manifest completeness check
     assert "https://services.nvd.nist.gov/rest/json/cves/2.0" in content  # nosec - manifest completeness check
     for tool in ["scan", "check", "blast_radius", "remediate", "verify", "where", "inventory", "diff"]:
-        assert tool in content, f"Tool '{tool}' should be in scan SKILL.md"
+        assert tool in content, f"Tool '{tool}' should be in SKILL.md"
 
 
 def test_openclaw_compliance_skill_minimal_surface():
-    """Compliance skill should declare cloud creds for CIS checks and zero binaries."""
+    """Skill should document cloud credentials needed for CIS checks."""
     from pathlib import Path
 
-    p = Path(__file__).parent.parent / "integrations" / "openclaw" / "compliance" / "SKILL.md"
+    p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
     content = p.read_text()
-    assert "network_endpoints: []" in content, "Compliance should need zero direct network"
-    assert "optional_bins: []" in content, "Compliance should need zero binaries"
     # CIS benchmarks need optional cloud credentials — these must be documented
     assert "AWS_PROFILE" in content, "AWS CIS creds should be documented"
     assert "AZURE_TENANT_ID" in content, "Azure CIS creds should be documented"
     assert "SNOWFLAKE_ACCOUNT" in content, "Snowflake CIS creds should be documented"
     for tool in ["compliance", "policy_check", "cis_benchmark", "generate_sbom"]:
-        assert tool in content, f"Tool '{tool}' should be in compliance SKILL.md"
+        assert tool in content, f"Tool '{tool}' should be in SKILL.md"
 
 
 def test_openclaw_registry_skill_minimal_surface():
-    """Registry skill should have zero file reads (bundled data)."""
+    """Skill should mention bundled registry data and registry tools."""
     from pathlib import Path
 
-    p = Path(__file__).parent.parent / "integrations" / "openclaw" / "registry" / "SKILL.md"
+    p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
     content = p.read_text()
     assert "bundled" in content.lower(), "Should mention bundled registry data"
     for tool in ["registry_lookup", "marketplace_check", "fleet_scan", "skill_trust", "code_scan"]:
-        assert tool in content, f"Tool '{tool}' should be in registry SKILL.md"
+        assert tool in content, f"Tool '{tool}' should be in SKILL.md"
 
 
 def test_openclaw_skills_all_tools_covered():
-    """All 20 MCP tools should be covered across the 4 split skills."""
+    """All 22 MCP tools should be covered in the consolidated skill."""
     from pathlib import Path
 
-    base = Path(__file__).parent.parent / "integrations" / "openclaw"
-    all_content = ""
-    for subdir in ("scan", "compliance", "registry", "runtime"):
-        all_content += (base / subdir / "SKILL.md").read_text()
+    p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
+    content = p.read_text()
 
     for tool in [
         "scan",
@@ -3056,33 +3050,32 @@ def test_openclaw_skills_all_tools_covered():
         "analytics_query",
         "cis_benchmark",
         "fleet_scan",
-        "runtime_correlate",
+        "vector_db_scan",
+        "aisvs_benchmark",
     ]:
-        assert tool in all_content, f"Tool '{tool}' missing from split skills"
+        assert tool in content, f"Tool '{tool}' missing from SKILL.md"
 
 
 def test_openclaw_skills_have_source_links():
-    """All OpenClaw skills should include source and verification links."""
+    """OpenClaw skill should include source and verification links."""
     from pathlib import Path
 
-    base = Path(__file__).parent.parent / "integrations" / "openclaw"
-    for subdir in ("scan", "compliance", "registry", "runtime"):
-        content = (base / subdir / "SKILL.md").read_text()
-        assert "github.com/msaad00/agent-bom" in content, f"{subdir} missing source link"
-        assert "Apache-2.0" in content, f"{subdir} missing license"
+    p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
+    content = p.read_text()
+    assert "github.com/msaad00/agent-bom" in content, "Missing source link"
+    assert "Apache-2.0" in content, "Missing license"
 
 
 def test_openclaw_skills_no_binary_install():
-    """All OpenClaw skills must NOT require installing an external binary."""
+    """OpenClaw skill must NOT require installing an external binary."""
     from pathlib import Path
 
-    base = Path(__file__).parent.parent / "integrations" / "openclaw"
-    for subdir in ("scan", "compliance", "registry", "runtime"):
-        content = (base / subdir / "SKILL.md").read_text()
-        assert "kind: pipx" not in content, f"{subdir} should not have pipx install spec"
-        assert "kind: pip" not in content, f"{subdir} should not have pip install spec"
-        assert "requires:" in content
-        assert "bins: []" in content
+    p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
+    content = p.read_text()
+    assert "kind: pipx" not in content, "Should not have pipx install spec"
+    assert "kind: pip" not in content, "Should not have pip install spec"
+    assert "requires:" in content
+    assert "bins: []" in content
 
 
 def test_cli_dry_run_shows_data_audit():
@@ -3119,10 +3112,10 @@ def test_permissions_md_has_full_config_paths():
 
 
 def test_openclaw_scan_skill_describes_data_handling():
-    """Scan skill should describe data handling and redaction behavior."""
+    """Skill should describe data handling and redaction behavior."""
     from pathlib import Path
 
-    p = Path(__file__).parent.parent / "integrations" / "openclaw" / "scan" / "SKILL.md"
+    p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
     content = p.read_text()
     assert "package names" in content.lower()
     assert "redact" in content.lower()

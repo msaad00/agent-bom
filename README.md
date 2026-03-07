@@ -16,7 +16,7 @@
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center">
-  <b>AI supply chain security scanner. Scan packages and images for CVEs. Assess config security — credential exposure, tool access, privilege escalation. Map blast radius from vulnerabilities to credentials and tools. Enterprise posture scoring, incident correlation, credential risk ranking. OWASP LLM Top 10 + OWASP MCP Top 10 + MITRE ATLAS + NIST AI RMF + EU AI Act.</b>
+  <b>Security scanner for AI agent infrastructure. Find CVEs, map blast radius, detect credential exposure — from MCP configs to cloud deployments.</b>
 </p>
 
 <p align="center">
@@ -48,7 +48,7 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 |---|---|---|
 | Package CVE detection | Yes | Yes — OSV + NVD CVSS v4 + EPSS + CISA KEV + GHSA + NVIDIA CSAF |
 | SBOM generation | Yes (Syft) | Yes — CycloneDX 1.6, SPDX 3.0, SARIF |
-| **AI agent discovery** | — | 18 MCP clients + Docker Compose auto-discovered |
+| **AI agent discovery** | — | 20 MCP clients + Docker Compose auto-discovered |
 | **Blast radius mapping** | — | CVE → package → server → agent → credentials → tools |
 | **Credential exposure** | — | Which secrets leak per vulnerability, per agent |
 | **MCP tool reachability** | — | Which tools an attacker reaches post-exploit |
@@ -82,7 +82,7 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 
 | Source | How |
 |--------|-----|
-| MCP configs | Auto-discover (18 clients + Docker Compose) |
+| MCP configs | Auto-discover (20 clients + Docker Compose) |
 | Docker images | Grype / Syft / Docker CLI fallback |
 | Kubernetes | kubectl across namespaces |
 | Cloud providers | AWS, Azure, GCP, Databricks, Snowflake, Nebius |
@@ -110,10 +110,11 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
 |----------|------|
 | PyPI | `pip install agent-bom` |
 | Docker | `docker run agentbom/agent-bom scan` |
-| GitHub Action | `uses: msaad00/agent-bom@v0.48.0` |
+| GitHub Action | `uses: msaad00/agent-bom@v0.59.1` |
 | MCP Registry | [server.json](integrations/mcp-registry/server.json) |
 | ToolHive | [registry entry](integrations/toolhive/server.json) |
 | OpenClaw | [SKILL.md](integrations/openclaw/SKILL.md) |
+| Glama | [glama.ai/mcp/servers/@msaad00/agent-bom](https://glama.ai/mcp/servers/@msaad00/agent-bom) |
 | Smithery | [smithery.yaml](smithery.yaml) |
 | Railway | [Dockerfile.sse](Dockerfile.sse) |
 
@@ -125,7 +126,7 @@ Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON,
 
 ## How it works
 
-1. **Discover** — auto-detect MCP configs across 18 clients (Claude Desktop, Cursor, Codex CLI, Gemini CLI, Goose, etc.)
+1. **Discover** — auto-detect MCP configs across 20 clients (Claude Desktop, Cursor, Codex CLI, Gemini CLI, Goose, JetBrains AI, Junie, etc.)
 2. **Extract** — pull server names, package names, env var **names**, and tool lists. Credential **values** are never read.
 3. **Scan** — send only package names + versions to public APIs (OSV.dev, NVD, EPSS, CISA KEV). No hostnames, no secrets, no auth tokens.
 4. **Analyze** — CVE blast radius mapping, tool poisoning detection (`--enforce`), OWASP/ATLAS/NIST threat models, model provenance (`--hf-model`)
@@ -205,7 +206,7 @@ agent-bom scan --aws --snowflake --databricks      # Multi-cloud
 agent-bom scan --hf-model meta-llama/Llama-3.1-8B  # model provenance
 ```
 
-Auto-discovers Claude Desktop, Claude Code, Cursor, Windsurf, Cline, VS Code Copilot, Continue, Zed, Cortex Code (CoCo), Codex CLI, Gemini CLI, Goose, Snowflake CLI, OpenClaw, Roo Code, Amazon Q, ToolHive, and Docker MCP Toolkit.
+Auto-discovers Claude Desktop, Claude Code, Cursor, Windsurf, Cline, VS Code Copilot, Continue, Zed, Cortex Code (CoCo), Codex CLI, Gemini CLI, Goose, Snowflake CLI, OpenClaw, Roo Code, Amazon Q, ToolHive, Docker MCP Toolkit, JetBrains AI, and Junie.
 
 <details>
 <summary><b>Install extras</b></summary>
@@ -463,7 +464,7 @@ Both sources deduplicate by CVE ID against OSV results. Packages without a pinne
 |------|---------|----------|
 | CLI | `agent-bom scan` | Local audit |
 | Pre-install check | `agent-bom check express@4.18.2 -e npm` | Before running MCP servers |
-| GitHub Action | `uses: msaad00/agent-bom@v0.48.0` | CI/CD + SARIF |
+| GitHub Action | `uses: msaad00/agent-bom@v0.59.1` | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated scans |
 | REST API | `agent-bom api` | Dashboards, SIEM |
 | Runtime proxy | `agent-bom proxy` | Opt-in MCP traffic audit (per-server) |
@@ -482,7 +483,7 @@ Both sources deduplicate by CVE ID against OSV results. Packages without a pinne
 ### GitHub Action
 
 ```yaml
-- uses: msaad00/agent-bom@v0.48.0
+- uses: msaad00/agent-bom@v0.59.1
   with:
     severity-threshold: high
     upload-sarif: true
@@ -520,7 +521,7 @@ agent-bom mcp-server                    # stdio
 agent-bom mcp-server --transport sse    # remote
 ```
 
-15 tools: `scan`, `check`, `blast_radius`, `policy_check`, `registry_lookup`, `generate_sbom`, `compliance`, `remediate`, `verify`, `where`, `inventory`, `diff`, `skill_trust`, `marketplace_check`, `context_graph`
+19 tools: `scan`, `check`, `blast_radius`, `policy_check`, `registry_lookup`, `generate_sbom`, `compliance`, `remediate`, `verify`, `where`, `inventory`, `diff`, `skill_trust`, `marketplace_check`, `code_scan`, `context_graph`, `analytics_query`, `cis_benchmark`, `fleet_scan`
 
 ### Cloud UI
 
@@ -600,7 +601,7 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 | **AI frameworks** | Dependency scan | LangChain, LlamaIndex, AutoGen, PyTorch, JAX, TensorFlow |
 | **Inference servers** | `--image` | vLLM, Triton, TGI, llama.cpp |
 | **MLOps** | Dependency scan | MLflow, W&B, Ray, ClearML |
-| **MCP ecosystem** | Auto-discovery + registry | 18 clients, 427+ servers |
+| **MCP ecosystem** | Auto-discovery + registry | 20 clients, 427+ servers |
 | **LLM providers** | API key + SDK detection | OpenAI, Anthropic, Cohere, Mistral |
 | **IaC + CI/CD** | `--tf-dir`, `--gha` | Terraform AI resources, GitHub Actions |
 
@@ -626,7 +627,7 @@ Browse: [mcp_registry.json](src/agent_bom/mcp_registry.json) | Expand: `python s
 - [x] Cloud AI inventory — AWS Bedrock, Azure AI Foundry, GCP Vertex, Snowflake Cortex, Databricks, Nebius
 - [x] Tool poisoning / prompt injection detection — `--enforce` with description injection, capability combos, CVE exposure, drift
 - [x] Model weight provenance — SHA-256 hash, Sigstore file detection, HuggingFace metadata (`--model-provenance`, `--hf-model`)
-- [x] 18 MCP client discovery — Codex CLI, Gemini CLI, Goose, Snowflake CLI, full Cortex Code (CoCo) coverage
+- [x] 20 MCP client discovery — Codex CLI, Gemini CLI, Goose, Snowflake CLI, JetBrains AI, Junie, full Cortex Code (CoCo) coverage
 - [x] K8s AI workload discovery — `--k8s --all-namespaces` with pod-level scanning
 - [x] OWASP MCP Top 10 compliance mapping — MCP01–MCP10 risk tagging
 - [x] Malicious package detection — OSV MAL- prefix flagging + typosquat heuristics

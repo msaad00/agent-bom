@@ -6,6 +6,7 @@ Pluggable detectors that analyze MCP JSON-RPC traffic in real-time:
 - CredentialLeakDetector — API keys/tokens in tool responses
 - RateLimitTracker — excessive tool calls per window
 - SequenceAnalyzer — suspicious multi-step call patterns (exfiltration, recon)
+- ResponseInspector — HTML/CSS cloaking, SVG payloads, invisible chars in responses
 """
 
 from __future__ import annotations
@@ -20,6 +21,10 @@ from enum import Enum
 from agent_bom.runtime.patterns import (
     CREDENTIAL_PATTERNS,
     DANGEROUS_ARG_PATTERNS,
+    RESPONSE_BASE64_PATTERN,
+    RESPONSE_CLOAKING_PATTERNS,
+    RESPONSE_INVISIBLE_CHARS,
+    RESPONSE_SVG_PATTERNS,
     SUSPICIOUS_SEQUENCES,
 )
 
@@ -286,3 +291,96 @@ class SequenceAnalyzer:
     @property
     def recent_calls(self) -> list[str]:
         return list(self._recent_calls)
+
+
+# ─── Response Inspector ──────────────────────────────────────────────────────
+
+
+class ResponseInspector:
+    """Detect hidden content and payloads in tool response text.
+
+    Scans for HTML/CSS cloaking (display:none, visibility:hidden, opacity:0),
+    SVG-based payloads (script tags, foreignObject), invisible Unicode
+    characters (zero-width, RTL overrides, tag chars), and large base64
+    blobs that may indicate exfiltration staging.
+
+    Based on Unit42 research showing 85% of real-world prompt injections
+    use social engineering via tool responses with hidden instructions.
+    """
+
+    def check(self, tool_name: str, response_text: str) -> list[Alert]:
+        """Scan response text for cloaking, SVG payloads, and invisible chars."""
+        alerts: list[Alert] = []
+
+        # HTML/CSS cloaking
+        for pattern_name, pattern in RESPONSE_CLOAKING_PATTERNS:
+            matches = pattern.findall(response_text)
+            if matches:
+                alerts.append(
+                    Alert(
+                        detector="response_inspector",
+                        severity=AlertSeverity.HIGH,
+                        message=f"HTML/CSS cloaking detected: {pattern_name} in response from {tool_name}",
+                        details={
+                            "tool": tool_name,
+                            "pattern": pattern_name,
+                            "category": "cloaking",
+                            "match_count": len(matches),
+                        },
+                    )
+                )
+
+        # SVG payloads
+        for pattern_name, pattern in RESPONSE_SVG_PATTERNS:
+            matches = pattern.findall(response_text)
+            if matches:
+                alerts.append(
+                    Alert(
+                        detector="response_inspector",
+                        severity=AlertSeverity.CRITICAL,
+                        message=f"SVG payload detected: {pattern_name} in response from {tool_name}",
+                        details={
+                            "tool": tool_name,
+                            "pattern": pattern_name,
+                            "category": "svg_payload",
+                            "match_count": len(matches),
+                        },
+                    )
+                )
+
+        # Invisible Unicode characters
+        for pattern_name, pattern in RESPONSE_INVISIBLE_CHARS:
+            matches = pattern.findall(response_text)
+            if matches:
+                alerts.append(
+                    Alert(
+                        detector="response_inspector",
+                        severity=AlertSeverity.HIGH,
+                        message=f"Invisible characters detected: {pattern_name} in response from {tool_name}",
+                        details={
+                            "tool": tool_name,
+                            "pattern": pattern_name,
+                            "category": "invisible_text",
+                            "match_count": len(matches),
+                        },
+                    )
+                )
+
+        # Base64 blobs in responses (potential exfil staging)
+        b64_matches = RESPONSE_BASE64_PATTERN.findall(response_text)
+        if b64_matches:
+            alerts.append(
+                Alert(
+                    detector="response_inspector",
+                    severity=AlertSeverity.MEDIUM,
+                    message=f"Large base64 blob in response from {tool_name} — potential exfiltration staging",
+                    details={
+                        "tool": tool_name,
+                        "category": "base64_blob",
+                        "match_count": len(b64_matches),
+                        "largest_length": max(len(m) for m in b64_matches),
+                    },
+                )
+            )
+
+        return alerts

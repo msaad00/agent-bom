@@ -207,7 +207,7 @@
 
   <rect x="480" y="424" width="456" height="44" rx="8" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
   <text x="500" y="442" class="sec-label" fill="#a1a1aa">RUNTIME (OPTIONAL)</text>
-  <text x="500" y="458" class="mod-sub">MCP proxy · 5 detectors (drift, injection, credential leak) · config watch · live introspect</text>
+  <text x="500" y="458" class="mod-sub">MCP proxy · 6 detectors (drift, injection, credential leak) · config watch · live introspect</text>
 
   <!-- ═══════════════════════════════════════════════════════════════════════ -->
   <!-- STATS ROW                                                               -->

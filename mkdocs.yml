@@ -1,0 +1,96 @@
+site_name: agent-bom
+site_description: AI agent infrastructure security scanner
+site_url: https://msaad00.github.io/agent-bom
+repo_url: https://github.com/msaad00/agent-bom
+repo_name: msaad00/agent-bom
+edit_uri: edit/main/site-docs/
+docs_dir: site-docs
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - tables
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/msaad00/agent-bom
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/agent-bom/
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/install.md
+      - Quick Start: getting-started/quickstart.md
+      - MCP Server Setup: getting-started/mcp-server.md
+  - Features:
+      - Scanning & Discovery: features/scanning.md
+      - Blast Radius: features/blast-radius.md
+      - Compliance: features/compliance.md
+      - Registry: features/registry.md
+      - Runtime Proxy: features/runtime-proxy.md
+      - SBOM Generation: features/sbom.md
+      - Policy Engine: features/policy.md
+  - Deployment:
+      - Overview: deployment/overview.md
+      - Docker: deployment/docker.md
+      - Kubernetes: deployment/kubernetes.md
+      - Runtime Monitoring: deployment/runtime-monitoring.md
+      - Grafana Dashboard: deployment/grafana.md
+  - Architecture:
+      - Overview: architecture/overview.md
+      - AI Infrastructure Scanning: architecture/ai-infrastructure.md
+  - Reference:
+      - MCP Tools: reference/mcp-tools.md
+      - CLI Commands: reference/cli.md
+      - Configuration: reference/configuration.md
+  - Skills:
+      - Overview: skills/index.md
+  - Contributing: contributing.md
+  - Security: security.md

@@ -424,3 +424,14 @@ annotations:
 ```
 
 To disable metrics, set `--metrics-port 0`.
+
+### Grafana dashboard
+
+A pre-built Grafana dashboard is available at [`dashboards/grafana-agent-bom.json`](../dashboards/grafana-agent-bom.json). Import it into Grafana (Dashboards > Import) to get:
+
+- Severity distribution (donut + trend lines)
+- Top blast radius scores and EPSS probabilities
+- Per-agent vulnerability and credential exposure tables
+- Proxy runtime panels (call rate, block reasons, latency p50/p95, replay rejections)
+
+See [`dashboards/README.md`](../dashboards/README.md) for setup details.

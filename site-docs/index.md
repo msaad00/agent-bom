@@ -1,0 +1,55 @@
+# agent-bom
+
+**Security scanner for AI agent infrastructure.**
+
+Find CVEs, map blast radius, detect credential exposure across MCP agents, containers, Kubernetes, cloud, and GPU workloads.
+
+## What it does
+
+```
+CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
+  └─ better-sqlite3@9.0.0  (npm)
+       └─ sqlite-mcp  (MCP Server · unverified)
+            ├─ Cursor IDE  (Agent · 4 servers · 12 tools)
+            ├─ ANTHROPIC_KEY, DB_URL, AWS_SECRET  (Credentials exposed)
+            └─ query_db, read_file, write_file  (Tools at risk)
+
+ Fix: upgrade better-sqlite3 → 11.7.0
+```
+
+Traditional scanners tell you a package has a CVE. agent-bom tells you which AI agents are compromised, which credentials leak, which tools an attacker reaches, and what the business impact is.
+
+## Quick start
+
+```bash
+pip install agent-bom
+agent-bom scan       # auto-discover 20 MCP clients + scan
+agent-bom check langchain   # check a specific package
+```
+
+[Get started](getting-started/install.md){ .md-button .md-button--primary }
+[View on GitHub](https://github.com/msaad00/agent-bom){ .md-button }
+
+## Key capabilities
+
+| Capability | Description |
+|---|---|
+| **Discovery** | Auto-detect 20 MCP clients (Claude, Cursor, Windsurf, VS Code, etc.) |
+| **CVE scanning** | OSV + NVD CVSS v4 + EPSS + CISA KEV + GHSA |
+| **Blast radius** | Map CVE impact: package → server → agent → credentials → tools |
+| **Registry** | 427+ MCP server security metadata entries |
+| **Compliance** | OWASP LLM/Agentic/MCP Top 10, MITRE ATLAS, EU AI Act, NIST AI RMF, CIS |
+| **Runtime proxy** | Policy enforcement, credential leak detection, audit logging |
+| **SBOM** | CycloneDX 1.6, SPDX 3.0 output |
+| **Cloud** | AWS, Snowflake, Azure, GCP CIS benchmarks |
+
+## Deployment options
+
+| Mode | Command |
+|---|---|
+| CLI | `pip install agent-bom` |
+| MCP server | `agent-bom mcp-server` |
+| Docker | `docker run ghcr.io/msaad00/agent-bom scan` |
+| GitHub Action | `uses: msaad00/agent-bom@v0` |
+| Kubernetes | Helm chart + CronJob + DaemonSet |
+| Remote SSE | Self-host or use hosted endpoint |

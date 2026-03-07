@@ -99,13 +99,6 @@ rm -rf ~/.agent-bom                      # remove local data
 
 ## How it works
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/high-level-workflow-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/high-level-workflow-light.svg" alt="How it works" width="800" />
-  </picture>
-</p>
-
 1. **Discover** -- auto-detect MCP configs, Docker images, K8s pods, cloud resources, model files
 2. **Scan** -- send package names + versions to public APIs (OSV.dev, NVD, EPSS, CISA KEV). No secrets leave your machine.
 3. **Analyze** -- blast radius mapping, tool poisoning detection, compliance tagging, posture scoring
@@ -126,7 +119,7 @@ rm -rf ~/.agent-bom                      # remove local data
 | **Credential exposure** | -- | Which secrets leak per vulnerability, per agent |
 | **Tool poisoning detection** | -- | Description injection, capability combos, drift detection |
 | **Privilege detection** | -- | root, shell access, privileged containers, per-tool permissions |
-| **6-framework compliance** | -- | OWASP LLM + MCP + Agentic, MITRE ATLAS, NIST AI RMF, EU AI Act |
+| **10-framework compliance** | -- | OWASP LLM + MCP + Agentic, MITRE ATLAS, NIST AI RMF + CSF, EU AI Act, SOC 2, ISO 27001, CIS |
 | **Posture scorecard** | -- | Letter grade (A-F), 6 dimensions, incident correlation (P1-P4) |
 | **Policy-as-code** | -- | 16 conditions, CI gate, block unverified servers |
 | **Lateral movement analysis** | -- | Agent context graph, shared credentials, BFS attack paths |
@@ -172,11 +165,11 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible
 | Mode | Command | Best for |
 |------|---------|----------|
 | CLI | `agent-bom scan` | Local audit |
-| GitHub Action | `uses: msaad00/agent-bom@v0.59.1` | CI/CD + SARIF |
+| GitHub Action | `uses: msaad00/agent-bom@v0` | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated scans |
 | REST API | `agent-bom api` | Dashboards, SIEM |
-| MCP Server | `agent-bom mcp-server` (19 tools) | Inside any MCP client |
-| Dashboard | `agent-bom serve` | API + Next.js UI (18 pages) |
+| MCP Server | `agent-bom mcp-server` (20 tools) | Inside any MCP client |
+| Dashboard | `agent-bom serve` | API + Next.js UI (15 pages) |
 | Runtime proxy | `agent-bom proxy` | MCP traffic audit |
 | Snowflake | [DEPLOYMENT.md](DEPLOYMENT.md) | Snowpark + SiS |
 
@@ -184,7 +177,7 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible
 <summary><b>GitHub Action</b></summary>
 
 ```yaml
-- uses: msaad00/agent-bom@v0.59.1
+- uses: msaad00/agent-bom@v0
   with:
     severity-threshold: high
     upload-sarif: true
@@ -195,7 +188,7 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible
 </details>
 
 <details>
-<summary><b>REST API (14 endpoints)</b></summary>
+<summary><b>REST API</b></summary>
 
 ```bash
 pip install agent-bom[api]
@@ -208,7 +201,7 @@ agent-bom api --api-key $SECRET --rate-limit 30   # http://127.0.0.1:8422/docs
 | `GET /v1/scan/{id}` | Results + status |
 | `GET /v1/scan/{id}/attack-flow` | Per-CVE blast radius graph |
 | `GET /v1/registry` | 427+ server registry |
-| `GET /v1/compliance` | Full 6-framework compliance posture |
+| `GET /v1/compliance` | Full 10-framework compliance posture |
 | `GET /v1/posture` | Enterprise posture scorecard (A-F) |
 | `GET /v1/posture/credentials` | Credential risk ranking |
 | `GET /v1/posture/incidents` | Incident correlation (P1-P4) |
@@ -241,7 +234,7 @@ agent-bom api --api-key $SECRET --rate-limit 30   # http://127.0.0.1:8422/docs
 |----------|------|
 | PyPI | `pip install agent-bom` |
 | Docker | `docker run agentbom/agent-bom scan` |
-| GitHub Action | `uses: msaad00/agent-bom@v0.59.1` |
+| GitHub Action | `uses: msaad00/agent-bom@v0` |
 | Glama | [glama.ai/mcp/servers/@msaad00/agent-bom](https://glama.ai/mcp/servers/@msaad00/agent-bom) |
 | MCP Registry | [server.json](integrations/mcp-registry/server.json) |
 | ToolHive | [registry entry](integrations/toolhive/server.json) |

@@ -1,3 +1,18 @@
+## ── Builder stage ────────────────────────────────────────────────────────────
+FROM python:3.12-slim@sha256:39e4e1ccb01578e3c86f7a0cf7b7fd89b8dbe2c27a88de11cf726ba669469f49 AS builder
+
+WORKDIR /app
+
+# Install build-time deps (git needed for setuptools-scm / VCS installs)
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml README.md LICENSE ./
+COPY src/ ./src/
+
+RUN pip install --no-cache-dir --prefix=/install ".[api]"
+
+## ── Runtime stage ────────────────────────────────────────────────────────────
 FROM python:3.12-slim@sha256:39e4e1ccb01578e3c86f7a0cf7b7fd89b8dbe2c27a88de11cf726ba669469f49
 
 ARG VERSION=dev
@@ -7,41 +22,22 @@ LABEL description="agent-bom: AI supply chain security scanner — CVEs, config 
 LABEL org.opencontainers.image.version="${VERSION}"
 LABEL org.opencontainers.image.source="https://github.com/msaad00/agent-bom"
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    git \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create app directory
-WORKDIR /app
-
-# Copy package files
-COPY pyproject.toml README.md LICENSE ./
-COPY src/ ./src/
-
-# Install agent-bom with API extras
-RUN pip install --no-cache-dir -e ".[api]"
+# Copy only installed packages from builder (no git, curl, pip, setuptools)
+COPY --from=builder /install /usr/local
 
 # Create non-root user for least-privilege execution
 RUN addgroup --system abom && adduser --system --ingroup abom abom
 
-# Create workspace directory for mounting
 WORKDIR /workspace
 RUN chown abom:abom /workspace
 
 USER abom
 
-# Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV TERM=xterm-256color
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD agent-bom --version || exit 1
 
-# Default entrypoint
 ENTRYPOINT ["agent-bom"]
-
-# Default command (show help)
 CMD ["--help"]

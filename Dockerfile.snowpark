@@ -1,3 +1,14 @@
+## ── Builder stage ────────────────────────────────────────────────────────────
+FROM python:3.11-slim@sha256:c8271b1f627d0068857dce5b53e14a9558603b527e46f1f901722f935b786a39 AS builder
+
+WORKDIR /app
+
+COPY pyproject.toml README.md LICENSE ./
+COPY src/ ./src/
+
+RUN pip install --no-cache-dir --prefix=/install ".[api,snowflake]"
+
+## ── Runtime stage ────────────────────────────────────────────────────────────
 FROM python:3.11-slim@sha256:c8271b1f627d0068857dce5b53e14a9558603b527e46f1f901722f935b786a39
 
 ARG VERSION=0.59.2
@@ -7,12 +18,8 @@ LABEL description="agent-bom API for Snowpark Container Services"
 LABEL org.opencontainers.image.source="https://github.com/msaad00/agent-bom"
 LABEL org.opencontainers.image.version="${VERSION}"
 
-WORKDIR /app
-
-COPY pyproject.toml README.md LICENSE ./
-COPY src/ ./src/
-
-RUN pip install --no-cache-dir -e ".[api,snowflake]"
+# Copy only installed packages from builder (no pip, setuptools)
+COPY --from=builder /install /usr/local
 
 RUN addgroup --system abom && adduser --system --ingroup abom abom
 USER abom

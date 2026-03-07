@@ -10,6 +10,14 @@
 #   AGENT_BOM_POLICY   — Path to policy JSON file (mounted volume)
 #   AGENT_BOM_LOG      — Path to audit JSONL log (mounted volume)
 
+## ── Builder stage ────────────────────────────────────────────────────────────
+FROM python:3.12-slim@sha256:39e4e1ccb01578e3c86f7a0cf7b7fd89b8dbe2c27a88de11cf726ba669469f49 AS builder
+
+ARG VERSION=0.59.2
+
+RUN pip install --no-cache-dir --prefix=/install agent-bom==${VERSION}
+
+## ── Runtime stage ────────────────────────────────────────────────────────────
 FROM python:3.12-slim@sha256:39e4e1ccb01578e3c86f7a0cf7b7fd89b8dbe2c27a88de11cf726ba669469f49
 
 ARG VERSION=0.59.2
@@ -20,10 +28,8 @@ LABEL org.opencontainers.image.version="${VERSION}"
 LABEL org.opencontainers.image.source="https://github.com/msaad00/agent-bom"
 LABEL org.opencontainers.image.licenses="Apache-2.0"
 
-WORKDIR /app
-
-# Install agent-bom from PyPI (no local source needed)
-RUN pip install --no-cache-dir agent-bom==${VERSION}
+# Copy only installed packages from builder (no pip, setuptools)
+COPY --from=builder /install /usr/local
 
 # Create non-root user for least-privilege execution
 RUN addgroup --system abom && adduser --system --ingroup abom abom

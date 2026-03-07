@@ -11,6 +11,7 @@ import {
   ShieldAlert, Server, Package, Bug, Zap, ArrowRight, Clock,
   AlertTriangle, Container, Layers, FileText, ExternalLink,
 } from "lucide-react";
+import { VulnTrendChart, EpssDistributionChart, TrendDataPoint, EpssDataPoint } from "@/components/charts";
 
 // ─── Aggregation helpers ──────────────────────────────────────────────────────
 
@@ -126,6 +127,45 @@ function aggregateSources(jobs: ScanJob[]): ScanSource[] {
   return sources;
 }
 
+function aggregateTrend(jobs: ScanJob[]): TrendDataPoint[] {
+  const done = jobs
+    .filter((j) => j.status === "done" && j.result)
+    .sort((a, b) => a.created_at.localeCompare(b.created_at));
+  return done.map((j) => {
+    const blast = (j.result as ScanResult)?.blast_radius ?? [];
+    const sev = aggregateSeverity(blast);
+    const d = new Date(j.created_at);
+    return {
+      label: `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`,
+      critical: sev.critical,
+      high: sev.high,
+      medium: sev.medium,
+      low: sev.low,
+    };
+  });
+}
+
+function aggregateEpss(allBlast: BlastRadius[]): EpssDataPoint[] {
+  const buckets = [
+    { range: "0-10%", min: 0, max: 0.1, count: 0 },
+    { range: "10-30%", min: 0.1, max: 0.3, count: 0 },
+    { range: "30-50%", min: 0.3, max: 0.5, count: 0 },
+    { range: "50-70%", min: 0.5, max: 0.7, count: 0 },
+    { range: "70-90%", min: 0.7, max: 0.9, count: 0 },
+    { range: "90-100%", min: 0.9, max: 1.01, count: 0 },
+  ];
+  for (const b of allBlast) {
+    if (b.epss_score == null) continue;
+    for (const bucket of buckets) {
+      if (b.epss_score >= bucket.min && b.epss_score < bucket.max) {
+        bucket.count++;
+        break;
+      }
+    }
+  }
+  return buckets.map(({ range, count }) => ({ range, count }));
+}
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
@@ -167,6 +207,8 @@ export default function Dashboard() {
   const severity = useMemo(() => aggregateSeverity(allBlast), [allBlast]);
   const topPackages = useMemo(() => aggregatePackages(jobs), [jobs]);
   const sources = useMemo(() => aggregateSources(jobs), [jobs]);
+  const trendData = useMemo(() => aggregateTrend(jobs), [jobs]);
+  const epssData = useMemo(() => aggregateEpss(allBlast), [allBlast]);
 
   // Unique CVE count
   const uniqueCVEs = useMemo(() => {
@@ -235,6 +277,14 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <SeverityChart severity={severity} />
           <SourceBreakdown sources={sources} />
+        </div>
+      )}
+
+      {/* Trend charts */}
+      {!loading && allBlast.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <VulnTrendChart data={trendData} />
+          <EpssDistributionChart data={epssData} />
         </div>
       )}
 

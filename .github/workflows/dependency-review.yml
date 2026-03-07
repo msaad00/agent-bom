@@ -28,6 +28,11 @@ jobs:
           # jinja2 and werkzeug are BSD-3-Clause (Pallets) but GitHub
           # dependency review cannot resolve their license from version
           # constraint pins — whitelist them explicitly.
+          # recharts is Apache-2.0 but npm metadata returns null.
+          # victory-vendor is ISC+JSON+MIT — JSON license not in allow
+          # list; whitelisted at package level rather than blanket-allowing.
           allow-dependencies-licenses: >-
             pkg:pypi/jinja2,
-            pkg:pypi/werkzeug
+            pkg:pypi/werkzeug,
+            pkg:npm/recharts,
+            pkg:npm/victory-vendor

@@ -243,7 +243,12 @@ def validate_json_file(path: Path) -> dict:
 
 def validate_url(url: str) -> None:
     """
-    Validate a URL for safety.
+    Validate a URL for safety, including DNS rebinding protection.
+
+    Resolves hostnames to IPs and validates the resolved addresses against
+    private/loopback/reserved/link-local ranges to prevent DNS rebinding
+    attacks where a hostname initially resolves to a public IP but later
+    resolves to an internal one.
 
     Args:
         url: URL to validate
@@ -251,6 +256,8 @@ def validate_url(url: str) -> None:
     Raises:
         SecurityError: If URL is invalid or uses insecure protocol
     """
+    import ipaddress
+    import socket
     from urllib.parse import urlparse
 
     try:
@@ -267,19 +274,32 @@ def validate_url(url: str) -> None:
     if hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1"):  # nosec B104 - checking FOR these values to reject them, not binding to them
         raise SecurityError(f"Cannot connect to localhost/internal IPs: {hostname}")
 
-    # Block private/reserved IP ranges (RFC 1918, link-local, cloud metadata)
-    import ipaddress
+    # Block cloud metadata endpoints (AWS/GCP/Azure)
+    if hostname in ("169.254.169.254", "metadata.google.internal"):
+        raise SecurityError(f"Cannot connect to cloud metadata endpoint: {hostname}")
 
+    # Check if hostname is already an IP literal
     try:
         addr = ipaddress.ip_address(hostname)
         if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
             raise SecurityError(f"Cannot connect to private/reserved IP: {hostname}")
     except ValueError:
-        pass  # hostname is a domain name, not an IP — OK
+        pass  # hostname is a domain name — resolve below
 
-    # Block cloud metadata endpoints (AWS/GCP/Azure)
-    if hostname in ("169.254.169.254", "metadata.google.internal"):
-        raise SecurityError(f"Cannot connect to cloud metadata endpoint: {hostname}")
+    # DNS rebinding protection: resolve hostname and validate all resolved IPs
+    try:
+        addrinfos = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+    except socket.gaierror:
+        raise SecurityError(f"Cannot resolve hostname: {hostname}")
+
+    for family, _type, _proto, _canonname, sockaddr in addrinfos:
+        resolved_ip = sockaddr[0]
+        try:
+            addr = ipaddress.ip_address(resolved_ip)
+            if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
+                raise SecurityError(f"Hostname '{hostname}' resolves to private/reserved IP: {resolved_ip}")
+        except ValueError:
+            continue
 
     logger.debug(f"URL validated: {url}")
 

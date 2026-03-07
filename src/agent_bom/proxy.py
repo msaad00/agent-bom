@@ -102,9 +102,10 @@ class ProxyMetrics:
 class ProxyMetricsServer:
     """Lightweight HTTP server exposing Prometheus text exposition format on /metrics."""
 
-    def __init__(self, metrics: ProxyMetrics, port: int = 8422) -> None:
+    def __init__(self, metrics: ProxyMetrics, port: int = 8422, token: Optional[str] = None) -> None:
         self.metrics = metrics
         self.port = port
+        self.token = token
         self._server: Optional[asyncio.AbstractServer] = None
 
     def render_metrics(self) -> str:
@@ -169,11 +170,24 @@ class ProxyMetricsServer:
         async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
             try:
                 await asyncio.wait_for(reader.readline(), timeout=10)
-                # Read remaining headers
+                # Read remaining headers and capture Authorization
+                auth_header = ""
                 while True:
                     header = await asyncio.wait_for(reader.readline(), timeout=5)
                     if not header or header == b"\r\n":
                         break
+                    header_str = header.decode("utf-8", errors="replace").strip()
+                    if header_str.lower().startswith("authorization:"):
+                        auth_header = header_str.split(":", 1)[1].strip()
+
+                # Bearer token auth (optional — enabled via --metrics-token)
+                if self.token:
+                    expected = f"Bearer {self.token}"
+                    if auth_header != expected:
+                        response = "HTTP/1.1 401 Unauthorized\r\nContent-Length: 12\r\n\r\nUnauthorized"
+                        writer.write(response.encode())
+                        await writer.drain()
+                        return
 
                 body = self.render_metrics()
                 response = (
@@ -460,7 +474,18 @@ def set_gateway_evaluator(fn) -> None:  # noqa: ANN001
 
 
 async def _send_webhook(url: str, payload: dict) -> None:
-    """Fire-and-forget POST to an alert webhook URL."""
+    """Fire-and-forget POST to an alert webhook URL.
+
+    Validates the URL before sending to prevent SSRF via --alert-webhook.
+    """
+    from agent_bom.security import SecurityError, validate_url
+
+    try:
+        validate_url(url)
+    except SecurityError as e:
+        logger.warning("Webhook URL rejected: %s", e)
+        return
+
     try:
         import httpx
 
@@ -480,6 +505,7 @@ async def run_proxy(
     log_only: bool = False,
     alert_webhook: Optional[str] = None,
     metrics_port: int = 8422,
+    metrics_token: Optional[str] = None,
 ) -> int:
     """Main proxy loop. Spawns server subprocess, relays JSON-RPC.
 
@@ -492,6 +518,7 @@ async def run_proxy(
         rate_limit_threshold: Max calls per tool per 60s (0 = disabled).
         log_only: Log alerts without blocking (advisory mode).
         alert_webhook: Optional webhook URL for runtime alert notifications.
+        metrics_token: Optional bearer token for Prometheus /metrics endpoint.
 
     Returns the server process exit code.
     """
@@ -510,7 +537,7 @@ async def run_proxy(
     metrics = ProxyMetrics()
 
     # Prometheus metrics server
-    metrics_server = ProxyMetricsServer(metrics, port=metrics_port)
+    metrics_server = ProxyMetricsServer(metrics, port=metrics_port, token=metrics_token)
     await metrics_server.start()
 
     # Runtime detectors

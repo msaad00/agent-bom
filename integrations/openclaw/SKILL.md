@@ -71,7 +71,7 @@ metadata:
     file_reads_note: "Parses full config files to extract server names and commands. All env var values are redacted via sanitize_env_vars() before inclusion in scan output."
     credential_handling: "Config files are fully parsed as JSON/TOML/YAML, but only server names (mcpServers.*.command, mcpServers.*.args, mcpServers.*.url) are extracted. Env var blocks ARE read but ALL values are replaced with '***REDACTED***' by sanitize_env_vars() before appearing in any output. Additionally, values are scanned for credential patterns (AWS keys, GitHub tokens, JWTs, private keys) and redacted even in custom-named variables. Bearer tokens and Snowflake passwords are also redacted. This is enforced in src/agent_bom/discovery/__init__.py at every parse function. Cloud credentials (AWS, Snowflake) are only used when user explicitly runs cis_benchmark with those providers."
     credential_handling_verification: "Verify directly on GitHub without installing: https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py#L148-L185 (sanitize_env_vars + value credential patterns), https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/discovery/__init__.py#L307-L311 (parse_mcp_config redaction), #L425-L426 (parse_codex_config), #L483-L484 (parse_goose_config), #L528-L535 (parse_snowflake_connections)"
-    data_flow: "All scanning is local-first with zero outbound calls by default except public vulnerability databases (OSV, NVD, EPSS, GitHub Advisories). The remote SSE endpoint is never auto-contacted, never auto-discovered, and requires explicit manual configuration. No discovery data, config files, credentials, or environment variables ever leave the machine. Only public package names and CVE IDs are sent to vulnerability databases."
+    data_flow: "All scanning is local-first with zero outbound calls by default except public vulnerability databases (OSV, NVD, EPSS, GitHub Advisories). No discovery data, config files, credentials, or environment variables ever leave the machine. Only public package names and CVE IDs are sent to vulnerability databases."
     verification_without_install: "All security-critical code is viewable on GitHub without installing: (1) Credential redaction: https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py (2) Config parsing: https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/discovery/__init__.py (3) 6,100+ tests including security tests: https://github.com/msaad00/agent-bom/tree/main/tests (4) OpenSSF Scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom (5) CodeQL + Bandit + pip-audit run on every PR: https://github.com/msaad00/agent-bom/actions"
     supply_chain_verification: "PyPI releases are Sigstore-signed with SLSA provenance attestation. Verify: agent-bom verify agent-bom@0.59.2 (checks SHA-256 + Sigstore signature + SLSA provenance). Source: Apache-2.0 licensed, all code public. No obfuscation, no minification, no binary blobs."
     file_reads:
@@ -145,13 +145,6 @@ metadata:
       - url: "https://api.snyk.io"
         purpose: "Snyk vulnerability enrichment (requires SNYK_TOKEN)"
         auth: true
-      - url: "https://agent-bom-mcp.up.railway.app/sse"
-        purpose: "Fully optional remote MCP endpoint for clients that only support remote servers. Never auto-contacted, never auto-discovered. Requires explicit manual configuration by the user. Only receives tool call arguments (public package names, CVE IDs). Never receives config files, credentials, env vars, or discovery data."
-        auth: false
-        opt_in: true
-        auto_contacted: false
-        receives_credentials: false
-        receives_discovery_data: false
     telemetry: false
     persistence: false
     privilege_escalation: false
@@ -254,28 +247,6 @@ generate_sbom(format="cyclonedx")
 skill_trust(skill_content="<paste SKILL.md content>")
 ```
 
-## Remote SSE Endpoint (Fully Optional, Opt-In Only)
-
-For MCP clients that only support remote servers, a convenience endpoint exists.
-**This is never auto-contacted.** You must manually add it to your config to use it.
-Local-first scanning is the recommended and default mode.
-
-```json
-{
-  "mcpServers": {
-    "agent-bom": {
-      "type": "sse",
-      "url": "https://agent-bom-mcp.up.railway.app/sse"
-    }
-  }
-}
-```
-
-**Data sent to this endpoint:** Only the arguments you provide in tool calls
-(public package names, CVE IDs, server names). **Never sent:** config files,
-credentials, API keys, environment variables, file contents, or discovery data.
-For sensitive environments, use local installation or self-host your own instance.
-
 ## Privacy & Data Handling
 
 ### Config file reads
@@ -295,9 +266,7 @@ Verify this behavior: `src/agent_bom/security.py` lines 148-175,
 ### Network behavior
 
 All scanning runs **locally by default** with no outbound connections except
-public vulnerability databases (OSV, NVD, EPSS, GitHub Advisories). The remote SSE endpoint
-(`railway.app`) is **opt-in only** — you must explicitly add it to your MCP
-client config. It is never contacted during normal local operation.
+public vulnerability databases (OSV, NVD, EPSS, GitHub Advisories).
 
 Optional tokens (NVD_API_KEY, SNYK_TOKEN, AGENT_BOM_CLICKHOUSE_URL) are only
 used when you explicitly set them. They are never auto-discovered or inferred.

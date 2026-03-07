@@ -554,8 +554,8 @@ def test_assess_trust_no_frontmatter():
 
 
 def test_assess_trust_agent_bom_skill():
-    """Our own SKILL.md should score benign."""
-    skill_path = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
+    """Our own SKILL.md (scan skill) should score benign."""
+    skill_path = Path(__file__).parent.parent / "integrations" / "openclaw" / "scan" / "SKILL.md"
     if not skill_path.exists():
         return  # Skip if not in the repo
 

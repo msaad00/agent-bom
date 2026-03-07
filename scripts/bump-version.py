@@ -36,10 +36,13 @@ VERSION_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     # Helm chart
     ("deploy/helm/agent-bom/Chart.yaml", re.compile(r'^(appVersion:\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
     ("deploy/helm/agent-bom/values.yaml", re.compile(r'^(\s*tag:\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
-    # OpenClaw SKILL.md (version + docker tag + sigstore verify)
-    ("integrations/openclaw/SKILL.md", re.compile(r"^(version:\s*)\S+", re.M), r"\g<1>{v}"),
-    ("integrations/openclaw/SKILL.md", re.compile(r"(ghcr\.io/msaad00/agent-bom:)\S+"), r"\g<1>{v}"),
-    ("integrations/openclaw/SKILL.md", re.compile(r"(agent-bom verify agent-bom@)\S+"), r"\g<1>{v}"),
+    # OpenClaw SKILL.md files (version + docker tag + sigstore verify)
+    ("integrations/openclaw/scan/SKILL.md", re.compile(r"^(version:\s*)\S+", re.M), r"\g<1>{v}"),
+    ("integrations/openclaw/scan/SKILL.md", re.compile(r"(ghcr\.io/msaad00/agent-bom:)\S+"), r"\g<1>{v}"),
+    ("integrations/openclaw/scan/SKILL.md", re.compile(r"(agent-bom verify agent-bom@)\S+"), r"\g<1>{v}"),
+    ("integrations/openclaw/compliance/SKILL.md", re.compile(r"^(version:\s*)\S+", re.M), r"\g<1>{v}"),
+    ("integrations/openclaw/registry/SKILL.md", re.compile(r"^(version:\s*)\S+", re.M), r"\g<1>{v}"),
+    ("integrations/openclaw/runtime/SKILL.md", re.compile(r"^(version:\s*)\S+", re.M), r"\g<1>{v}"),
 ]
 
 # Patterns that reference the version in docs/tests (updated separately)

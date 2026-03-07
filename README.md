@@ -259,7 +259,7 @@ agent-bom api --api-key $SECRET --rate-limit 30   # http://127.0.0.1:8422/docs
 | Glama | [glama.ai/mcp/servers/@msaad00/agent-bom](https://glama.ai/mcp/servers/@msaad00/agent-bom) |
 | MCP Registry | [server.json](integrations/mcp-registry/server.json) |
 | ToolHive | [registry entry](integrations/toolhive/server.json) |
-| OpenClaw | [SKILL.md](integrations/openclaw/SKILL.md) |
+| OpenClaw | [scan](integrations/openclaw/scan/SKILL.md) &#183; [compliance](integrations/openclaw/compliance/SKILL.md) &#183; [registry](integrations/openclaw/registry/SKILL.md) &#183; [runtime](integrations/openclaw/runtime/SKILL.md) |
 | Smithery | [smithery.yaml](smithery.yaml) |
 | Railway | [Dockerfile.sse](Dockerfile.sse) |
 

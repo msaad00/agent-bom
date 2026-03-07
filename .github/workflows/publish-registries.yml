@@ -166,27 +166,36 @@ jobs:
             exit 1
           fi
 
-          echo "Publishing agent-bom v${VERSION} to ClawHub..."
+          echo "Publishing agent-bom skills v${VERSION} to ClawHub..."
 
           npm install -g clawhub@0.7.0  # pinned — update periodically
           clawhub login --token "${CLAWHUB_TOKEN}"
 
-          # Retry up to 3 times with exponential backoff
-          for ATTEMPT in 1 2 3; do
-            echo "ClawHub attempt ${ATTEMPT}/3..."
-            if clawhub publish integrations/openclaw \
-              --slug agent-bom \
-              --name "agent-bom" \
-              --version "${VERSION}" \
-              --changelog "Release v${VERSION}"; then
-              echo "ClawHub publish succeeded"
-              break
-            elif [ "$ATTEMPT" -lt 3 ]; then
-              DELAY=$((ATTEMPT * 10))
-              echo "ClawHub publish failed — retrying in ${DELAY}s..."
-              sleep "$DELAY"
-            else
-              echo "::error::ClawHub publish failed after 3 attempts"
-              exit 1
-            fi
+          # Publish 4 focused skills (split from monolith for better trust scores)
+          SKILLS="scan:agent-bom-scan compliance:agent-bom-compliance registry:agent-bom-registry runtime:agent-bom-runtime"
+          for SKILL_ENTRY in $SKILLS; do
+            SKILL_DIR="${SKILL_ENTRY%%:*}"
+            SKILL_SLUG="${SKILL_ENTRY#*:}"
+            echo ""
+            echo "=== Publishing ${SKILL_SLUG} ==="
+
+            # Retry up to 3 times with exponential backoff
+            for ATTEMPT in 1 2 3; do
+              echo "ClawHub attempt ${ATTEMPT}/3 for ${SKILL_SLUG}..."
+              if clawhub publish "integrations/openclaw/${SKILL_DIR}" \
+                --slug "${SKILL_SLUG}" \
+                --name "${SKILL_SLUG}" \
+                --version "${VERSION}" \
+                --changelog "Release v${VERSION}"; then
+                echo "ClawHub publish succeeded for ${SKILL_SLUG}"
+                break
+              elif [ "$ATTEMPT" -lt 3 ]; then
+                DELAY=$((ATTEMPT * 10))
+                echo "ClawHub publish failed for ${SKILL_SLUG} — retrying in ${DELAY}s..."
+                sleep "$DELAY"
+              else
+                echo "::error::ClawHub publish failed for ${SKILL_SLUG} after 3 attempts"
+                exit 1
+              fi
+            done
           done

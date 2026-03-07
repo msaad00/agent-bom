@@ -111,6 +111,13 @@ rm -rf ~/.agent-bom                      # remove local data
 3. **Analyze** -- blast radius mapping, tool poisoning detection, compliance tagging, posture scoring
 4. **Report** -- JSON, SARIF, CycloneDX, SPDX, HTML, Mermaid, or console. Alert dispatch to Slack/webhooks.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scan-pipeline-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scan-pipeline-light.svg" alt="Scan pipeline" width="800" />
+  </picture>
+</p>
+
 **Read-only guarantee.** Never writes configs, never runs servers, never stores secrets. `--dry-run` previews everything. Every release is [Sigstore-signed](PERMISSIONS.md).
 
 ---
@@ -126,11 +133,18 @@ rm -rf ~/.agent-bom                      # remove local data
 | **Credential exposure** | -- | Which secrets leak per vulnerability, per agent |
 | **Tool poisoning detection** | -- | Description injection, capability combos, drift detection |
 | **Privilege detection** | -- | root, shell access, privileged containers, per-tool permissions |
-| **10-framework compliance** | -- | OWASP LLM + MCP + Agentic, MITRE ATLAS, NIST AI RMF + CSF, EU AI Act, SOC 2, ISO 27001, CIS |
+| **10-framework compliance** | -- | OWASP LLM + MCP + Agentic, MITRE ATLAS, NIST AI RMF + CSF, EU AI Act, SOC 2, ISO 27001, CIS AI |
 | **Posture scorecard** | -- | Letter grade (A-F), 6 dimensions, incident correlation (P1-P4) |
-| **Policy-as-code** | -- | 16 conditions, CI gate, block unverified servers |
+| **Policy-as-code** | -- | 17 conditions, CI gate, block unverified servers |
 | **Lateral movement analysis** | -- | Agent context graph, shared credentials, BFS attack paths |
 | **427+ server MCP registry** | -- | Risk levels, tool inventories, auto-synced weekly |
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/compliance-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/compliance-light.svg" alt="Compliance coverage" width="800" />
+  </picture>
+</p>
 
 <details>
 <summary><b>What it scans</b></summary>
@@ -255,10 +269,22 @@ agent-bom api --api-key $SECRET --rate-limit 30   # http://127.0.0.1:8422/docs
 
 <p align="center">
   <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-stack-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-stack-light.svg" alt="Architecture stack" width="800" />
+  </picture>
+</p>
+
+<details>
+<summary><b>Engine internals</b></summary>
+
+<p align="center">
+  <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/engine-internals-dark.svg">
     <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/engine-internals-light.svg" alt="Engine internals" width="800" />
   </picture>
 </p>
+
+</details>
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full diagrams: data flow pipeline, blast radius propagation, compliance framework mapping, integration architecture, and deployment topology.
 
@@ -277,7 +303,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full diagrams: data flow pi
 
 ## Roadmap
 
-- [ ] CIS AI benchmarks
+- [x] CIS AI benchmarks
 - [ ] License compliance engine
 - [ ] Workflow engine scanning (n8n, Zapier, Make)
 

@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 280" fill="none">
+  <style>
+    text { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; }
+    .title { font-size: 16px; font-weight: 700; fill: #18181b; }
+    .subtitle { font-size: 10.5px; font-weight: 400; fill: #a1a1aa; }
+    .fw-name { font-size: 10px; font-weight: 700; fill: #27272a; }
+    .fw-code { font-size: 8px; font-weight: 600; fill: #a1a1aa; }
+    .fw-count { font-size: 18px; font-weight: 800; }
+    .fw-label { font-size: 8px; font-weight: 500; fill: #a1a1aa; }
+    .bar-bg { fill: #e4e4e7; }
+    .summary-num { font-size: 22px; font-weight: 800; }
+    .summary-label { font-size: 9px; font-weight: 500; fill: #a1a1aa; }
+  </style>
+
+  <rect width="960" height="280" rx="12" fill="#ffffff" stroke="#e4e4e7" stroke-width="1"/>
+
+  <text x="480" y="28" text-anchor="middle" class="title">Compliance coverage</text>
+  <text x="480" y="44" text-anchor="middle" class="subtitle">10 frameworks, 300+ controls mapped automatically from scan findings</text>
+
+  <!-- ═══ ROW 1: 5 frameworks ═══ -->
+
+  <!-- OWASP LLM Top 10 -->
+  <rect x="20" y="64" width="176" height="72" rx="8" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
+  <text x="36" y="84" class="fw-name">OWASP LLM Top 10</text>
+  <text x="36" y="96" class="fw-code">Prompt injection, data poisoning, supply chain</text>
+  <rect x="36" y="104" width="144" height="4" rx="2" class="bar-bg"/>
+  <rect x="36" y="104" width="144" height="4" rx="2" fill="#3b82f6"/>
+  <text x="36" y="126" class="fw-count" fill="#3b82f6">10</text>
+  <text x="64" y="126" class="fw-label">controls</text>
+
+  <!-- OWASP MCP Top 10 -->
+  <rect x="208" y="64" width="176" height="72" rx="8" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
+  <text x="224" y="84" class="fw-name">OWASP MCP Top 10</text>
+  <text x="224" y="96" class="fw-code">Tool poisoning, auth bypass, rug pull</text>
+  <rect x="224" y="104" width="144" height="4" rx="2" class="bar-bg"/>
+  <rect x="224" y="104" width="144" height="4" rx="2" fill="#3b82f6"/>
+  <text x="224" y="126" class="fw-count" fill="#3b82f6">10</text>
+  <text x="252" y="126" class="fw-label">controls</text>
+
+  <!-- OWASP Agentic Top 10 -->
+  <rect x="396" y="64" width="176" height="72" rx="8" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
+  <text x="412" y="84" class="fw-name">OWASP Agentic Top 10</text>
+  <text x="412" y="96" class="fw-code">Excessive agency, insecure output</text>
+  <rect x="412" y="104" width="144" height="4" rx="2" class="bar-bg"/>
+  <rect x="412" y="104" width="144" height="4" rx="2" fill="#3b82f6"/>
+  <text x="412" y="126" class="fw-count" fill="#3b82f6">10</text>
+  <text x="440" y="126" class="fw-label">controls</text>
+
+  <!-- MITRE ATLAS -->
+  <rect x="584" y="64" width="176" height="72" rx="8" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
+  <text x="600" y="84" class="fw-name">MITRE ATLAS</text>
+  <text x="600" y="96" class="fw-code">Adversarial ML tactics + techniques</text>
+  <rect x="600" y="104" width="144" height="4" rx="2" class="bar-bg"/>
+  <rect x="600" y="104" width="108" height="4" rx="2" fill="#f59e0b"/>
+  <text x="600" y="126" class="fw-count" fill="#f59e0b">14</text>
+  <text x="628" y="126" class="fw-label">techniques</text>
+
+  <!-- NIST AI RMF -->
+  <rect x="772" y="64" width="168" height="72" rx="8" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
+  <text x="788" y="84" class="fw-name">NIST AI RMF</text>
+  <text x="788" y="96" class="fw-code">Govern, map, measure, manage</text>
+  <rect x="788" y="104" width="136" height="4" rx="2" class="bar-bg"/>
+  <rect x="788" y="104" width="102" height="4" rx="2" fill="#10b981"/>
+  <text x="788" y="126" class="fw-count" fill="#10b981">19</text>
+  <text x="816" y="126" class="fw-label">subcategories</text>
+
+  <!-- ═══ ROW 2: 5 frameworks ═══ -->
+
+  <!-- NIST CSF -->
+  <rect x="20" y="148" width="176" height="72" rx="8" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
+  <text x="36" y="168" class="fw-name">NIST CSF 2.0</text>
+  <text x="36" y="180" class="fw-code">Identify, protect, detect, respond</text>
+  <rect x="36" y="188" width="144" height="4" rx="2" class="bar-bg"/>
+  <rect x="36" y="188" width="108" height="4" rx="2" fill="#10b981"/>
+  <text x="36" y="210" class="fw-count" fill="#10b981">23</text>
+  <text x="64" y="210" class="fw-label">subcategories</text>
+
+  <!-- EU AI Act -->
+  <rect x="208" y="148" width="176" height="72" rx="8" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
+  <text x="224" y="168" class="fw-name">EU AI Act</text>
+  <text x="224" y="180" class="fw-code">Risk management, transparency, oversight</text>
+  <rect x="224" y="188" width="144" height="4" rx="2" class="bar-bg"/>
+  <rect x="224" y="188" width="86" height="4" rx="2" fill="#a78bfa"/>
+  <text x="224" y="210" class="fw-count" fill="#a78bfa">12</text>
+  <text x="252" y="210" class="fw-label">articles</text>
+
+  <!-- SOC 2 -->
+  <rect x="396" y="148" width="176" height="72" rx="8" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
+  <text x="412" y="168" class="fw-name">SOC 2</text>
+  <text x="412" y="180" class="fw-code">Trust service criteria</text>
+  <rect x="412" y="188" width="144" height="4" rx="2" class="bar-bg"/>
+  <rect x="412" y="188" width="72" height="4" rx="2" fill="#f43f5e"/>
+  <text x="412" y="210" class="fw-count" fill="#f43f5e">8</text>
+  <text x="432" y="210" class="fw-label">criteria</text>
+
+  <!-- ISO 27001 -->
+  <rect x="584" y="148" width="176" height="72" rx="8" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
+  <text x="600" y="168" class="fw-name">ISO 27001</text>
+  <text x="600" y="180" class="fw-code">Information security controls</text>
+  <rect x="600" y="188" width="144" height="4" rx="2" class="bar-bg"/>
+  <rect x="600" y="188" width="86" height="4" rx="2" fill="#f43f5e"/>
+  <text x="600" y="210" class="fw-count" fill="#f43f5e">10</text>
+  <text x="628" y="210" class="fw-label">controls</text>
+
+  <!-- CIS Benchmarks -->
+  <rect x="772" y="148" width="168" height="72" rx="8" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
+  <text x="788" y="168" class="fw-name">CIS Benchmarks</text>
+  <text x="788" y="180" class="fw-code">AWS v3.0, Snowflake v1.0</text>
+  <rect x="788" y="188" width="136" height="4" rx="2" class="bar-bg"/>
+  <rect x="788" y="188" width="136" height="4" rx="2" fill="#34d399"/>
+  <text x="788" y="210" class="fw-count" fill="#34d399">200+</text>
+  <text x="828" y="210" class="fw-label">checks</text>
+
+  <!-- ═══ SUMMARY BAR ═══ -->
+  <rect x="20" y="236" width="920" height="32" rx="8" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
+
+  <text x="80" y="258" text-anchor="middle" class="summary-num" fill="#3b82f6">10</text>
+  <text x="126" y="258" class="summary-label">frameworks</text>
+
+  <rect x="186" y="244" width="1" height="16" fill="#e4e4e7"/>
+
+  <text x="230" y="258" text-anchor="middle" class="summary-num" fill="#10b981">300+</text>
+  <text x="276" y="258" class="summary-label">controls mapped</text>
+
+  <rect x="370" y="244" width="1" height="16" fill="#e4e4e7"/>
+
+  <text x="420" y="258" text-anchor="middle" class="summary-num" fill="#f59e0b">3</text>
+  <text x="442" y="258" class="summary-label">OWASP standards (LLM + MCP + Agentic)</text>
+
+  <rect x="660" y="244" width="1" height="16" fill="#e4e4e7"/>
+
+  <text x="710" y="258" text-anchor="middle" class="summary-num" fill="#a78bfa">auto</text>
+  <text x="756" y="258" class="summary-label">mapped from scan findings — no manual config</text>
+</svg>

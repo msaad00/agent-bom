@@ -1,0 +1,132 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 440" fill="none">
+  <style>
+    text { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; }
+    .title { font-size: 16px; font-weight: 700; fill: #18181b; }
+    .layer-name { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; }
+    .item { font-size: 9.5px; font-weight: 600; fill: #27272a; }
+    .detail { font-size: 8px; font-weight: 400; fill: #71717a; }
+    .arrow-up { font-size: 12px; fill: #d4d4d8; }
+    .side-label { font-size: 8px; font-weight: 700; letter-spacing: 0.08em; }
+  </style>
+
+  <rect width="800" height="440" rx="12" fill="#ffffff" stroke="#e4e4e7" stroke-width="1"/>
+
+  <text x="400" y="28" text-anchor="middle" class="title">Architecture stack</text>
+
+  <!-- ═══ LAYER 5: INTERFACES ═══ -->
+  <rect x="100" y="48" width="600" height="48" rx="8" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
+  <rect x="100" y="48" width="600" height="4" rx="2" fill="#2563eb"/>
+  <text x="120" y="78" class="layer-name" fill="#2563eb">INTERFACES</text>
+
+  <rect x="230" y="60" width="56" height="24" rx="5" fill="#eff6ff" stroke="#bfdbfe" stroke-width="0.5"/>
+  <text x="258" y="76" text-anchor="middle" class="item">CLI</text>
+  <rect x="294" y="60" width="72" height="24" rx="5" fill="#eff6ff" stroke="#bfdbfe" stroke-width="0.5"/>
+  <text x="330" y="76" text-anchor="middle" class="item">MCP Server</text>
+  <rect x="374" y="60" width="64" height="24" rx="5" fill="#eff6ff" stroke="#bfdbfe" stroke-width="0.5"/>
+  <text x="406" y="76" text-anchor="middle" class="item">REST API</text>
+  <rect x="446" y="60" width="56" height="24" rx="5" fill="#eff6ff" stroke="#bfdbfe" stroke-width="0.5"/>
+  <text x="474" y="76" text-anchor="middle" class="item">Action</text>
+  <rect x="510" y="60" width="56" height="24" rx="5" fill="#eff6ff" stroke="#bfdbfe" stroke-width="0.5"/>
+  <text x="538" y="76" text-anchor="middle" class="item">Proxy</text>
+  <rect x="574" y="60" width="76" height="24" rx="5" fill="#eff6ff" stroke="#bfdbfe" stroke-width="0.5"/>
+  <text x="612" y="76" text-anchor="middle" class="item">Dashboard</text>
+
+  <text x="400" y="110" text-anchor="middle" class="arrow-up">&#x25B2;</text>
+
+  <!-- ═══ LAYER 4: OUTPUT ═══ -->
+  <rect x="100" y="118" width="600" height="48" rx="8" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
+  <rect x="100" y="118" width="600" height="4" rx="2" fill="#059669"/>
+  <text x="120" y="148" class="layer-name" fill="#059669">OUTPUT</text>
+
+  <rect x="220" y="130" width="56" height="24" rx="5" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="0.5"/>
+  <text x="248" y="146" text-anchor="middle" class="item">Console</text>
+  <rect x="284" y="130" width="48" height="24" rx="5" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="0.5"/>
+  <text x="308" y="146" text-anchor="middle" class="item">HTML</text>
+  <rect x="340" y="130" width="50" height="24" rx="5" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="0.5"/>
+  <text x="365" y="146" text-anchor="middle" class="item">SARIF</text>
+  <rect x="398" y="130" width="50" height="24" rx="5" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="0.5"/>
+  <text x="423" y="146" text-anchor="middle" class="item">SBOM</text>
+  <rect x="456" y="130" width="46" height="24" rx="5" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="0.5"/>
+  <text x="479" y="146" text-anchor="middle" class="item">JSON</text>
+  <rect x="510" y="130" width="56" height="24" rx="5" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="0.5"/>
+  <text x="538" y="146" text-anchor="middle" class="item">Graph</text>
+  <rect x="574" y="130" width="76" height="24" rx="5" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="0.5"/>
+  <text x="612" y="146" text-anchor="middle" class="item">Webhooks</text>
+
+  <text x="400" y="180" text-anchor="middle" class="arrow-up">&#x25B2;</text>
+
+  <!-- ═══ LAYER 3: ANALYSIS ═══ -->
+  <rect x="100" y="188" width="600" height="48" rx="8" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
+  <rect x="100" y="188" width="600" height="4" rx="2" fill="#e11d48"/>
+  <text x="120" y="218" class="layer-name" fill="#e11d48">ANALYSIS</text>
+
+  <rect x="220" y="200" width="80" height="24" rx="5" fill="#fff1f2" stroke="#fecdd3" stroke-width="0.5"/>
+  <text x="260" y="216" text-anchor="middle" class="item">Blast Radius</text>
+  <rect x="308" y="200" width="76" height="24" rx="5" fill="#fff1f2" stroke="#fecdd3" stroke-width="0.5"/>
+  <text x="346" y="216" text-anchor="middle" class="item">Compliance</text>
+  <rect x="392" y="200" width="56" height="24" rx="5" fill="#fff1f2" stroke="#fecdd3" stroke-width="0.5"/>
+  <text x="420" y="216" text-anchor="middle" class="item">Policy</text>
+  <rect x="456" y="200" width="76" height="24" rx="5" fill="#fff1f2" stroke="#fecdd3" stroke-width="0.5"/>
+  <text x="494" y="216" text-anchor="middle" class="item">Enforcement</text>
+  <rect x="540" y="200" width="58" height="24" rx="5" fill="#fff1f2" stroke="#fecdd3" stroke-width="0.5"/>
+  <text x="569" y="216" text-anchor="middle" class="item">Posture</text>
+  <rect x="606" y="200" width="76" height="24" rx="5" fill="#fff1f2" stroke="#fecdd3" stroke-width="0.5"/>
+  <text x="644" y="216" text-anchor="middle" class="item">Context Graph</text>
+
+  <text x="400" y="250" text-anchor="middle" class="arrow-up">&#x25B2;</text>
+
+  <!-- ═══ LAYER 2: VULN DATA ═══ -->
+  <rect x="100" y="258" width="600" height="48" rx="8" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
+  <rect x="100" y="258" width="600" height="4" rx="2" fill="#d97706"/>
+  <text x="120" y="288" class="layer-name" fill="#d97706">VULN DATA</text>
+
+  <rect x="240" y="270" width="52" height="24" rx="5" fill="#fffbeb" stroke="#fde68a" stroke-width="0.5"/>
+  <text x="266" y="286" text-anchor="middle" class="item">OSV</text>
+  <rect x="300" y="270" width="48" height="24" rx="5" fill="#fffbeb" stroke="#fde68a" stroke-width="0.5"/>
+  <text x="324" y="286" text-anchor="middle" class="item">NVD</text>
+  <rect x="356" y="270" width="48" height="24" rx="5" fill="#fffbeb" stroke="#fde68a" stroke-width="0.5"/>
+  <text x="380" y="286" text-anchor="middle" class="item">EPSS</text>
+  <rect x="412" y="270" width="48" height="24" rx="5" fill="#fffbeb" stroke="#fde68a" stroke-width="0.5"/>
+  <text x="436" y="286" text-anchor="middle" class="item">KEV</text>
+  <rect x="468" y="270" width="52" height="24" rx="5" fill="#fffbeb" stroke="#fde68a" stroke-width="0.5"/>
+  <text x="494" y="286" text-anchor="middle" class="item">GHSA</text>
+  <rect x="528" y="270" width="72" height="24" rx="5" fill="#fffbeb" stroke="#fde68a" stroke-width="0.5"/>
+  <text x="564" y="286" text-anchor="middle" class="item">MCP Registry</text>
+
+  <text x="400" y="320" text-anchor="middle" class="arrow-up">&#x25B2;</text>
+
+  <!-- ═══ LAYER 1: SOURCES ═══ -->
+  <rect x="100" y="328" width="600" height="48" rx="8" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
+  <rect x="100" y="328" width="600" height="4" rx="2" fill="#7c3aed"/>
+  <text x="120" y="358" class="layer-name" fill="#7c3aed">SOURCES</text>
+
+  <rect x="218" y="340" width="64" height="24" rx="5" fill="#f5f3ff" stroke="#ddd6fe" stroke-width="0.5"/>
+  <text x="250" y="356" text-anchor="middle" class="item">MCP</text>
+  <rect x="290" y="340" width="56" height="24" rx="5" fill="#f5f3ff" stroke="#ddd6fe" stroke-width="0.5"/>
+  <text x="318" y="356" text-anchor="middle" class="item">Docker</text>
+  <rect x="354" y="340" width="42" height="24" rx="5" fill="#f5f3ff" stroke="#ddd6fe" stroke-width="0.5"/>
+  <text x="375" y="356" text-anchor="middle" class="item">K8s</text>
+  <rect x="404" y="340" width="50" height="24" rx="5" fill="#f5f3ff" stroke="#ddd6fe" stroke-width="0.5"/>
+  <text x="429" y="356" text-anchor="middle" class="item">Cloud</text>
+  <rect x="462" y="340" width="58" height="24" rx="5" fill="#f5f3ff" stroke="#ddd6fe" stroke-width="0.5"/>
+  <text x="491" y="356" text-anchor="middle" class="item">Models</text>
+  <rect x="528" y="340" width="56" height="24" rx="5" fill="#f5f3ff" stroke="#ddd6fe" stroke-width="0.5"/>
+  <text x="556" y="356" text-anchor="middle" class="item">SBOMs</text>
+  <rect x="592" y="340" width="66" height="24" rx="5" fill="#f5f3ff" stroke="#ddd6fe" stroke-width="0.5"/>
+  <text x="625" y="356" text-anchor="middle" class="item">Packages</text>
+
+  <!-- ═══ SECURITY SIDEBAR ═══ -->
+  <rect x="24" y="48" width="56" height="328" rx="8" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
+  <rect x="24" y="48" width="4" height="328" rx="2" fill="#ef4444"/>
+  <text x="52" y="140" text-anchor="middle" class="side-label" fill="#dc2626" transform="rotate(-90, 52, 140)">SECURITY LAYER</text>
+  <text x="52" y="260" text-anchor="middle" class="detail" transform="rotate(-90, 52, 260)">redaction · validation · rate limits · signing</text>
+
+  <!-- ═══ RUNTIME SIDEBAR ═══ -->
+  <rect x="720" y="48" width="56" height="328" rx="8" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
+  <rect x="772" y="48" width="4" height="328" rx="2" fill="#7c3aed"/>
+  <text x="748" y="130" text-anchor="middle" class="side-label" fill="#7c3aed" transform="rotate(90, 748, 130)">RUNTIME (OPT)</text>
+  <text x="748" y="260" text-anchor="middle" class="detail" transform="rotate(90, 748, 260)">proxy · protect · watch · introspect</text>
+
+  <!-- ═══ BOTTOM LABEL ═══ -->
+  <text x="400" y="406" text-anchor="middle" font-size="9" font-weight="500" fill="#a1a1aa" font-family="system-ui, sans-serif">Data flows bottom → top. Security and runtime are cross-cutting.</text>
+</svg>

@@ -1,0 +1,210 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 420" fill="none">
+  <style>
+    text { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; }
+    .title { font-size: 16px; font-weight: 700; fill: #18181b; }
+    .subtitle { font-size: 10.5px; font-weight: 400; fill: #a1a1aa; }
+    .step-num { font-size: 11px; font-weight: 800; }
+    .step-name { font-size: 12px; font-weight: 700; fill: #ffffff; }
+    .step-desc { font-size: 9px; font-weight: 400; fill: #71717a; }
+    .item-label { font-size: 9px; font-weight: 600; }
+    .arrow-label { font-size: 8.5px; font-weight: 600; fill: #a1a1aa; }
+  </style>
+
+  <rect width="960" height="420" rx="12" fill="#ffffff" stroke="#e4e4e7" stroke-width="1"/>
+
+  <text x="480" y="28" text-anchor="middle" class="title">Scan pipeline</text>
+  <text x="480" y="44" text-anchor="middle" class="subtitle">5 stages, left to right. No secrets leave your machine — only package names + versions are sent to public APIs.</text>
+
+  <!-- ═══ STEP 1: DISCOVER ═══ -->
+  <rect x="20" y="64" width="160" height="304" rx="10" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
+  <rect x="20" y="64" width="160" height="32" rx="10" fill="#2563eb"/>
+  <rect x="20" y="82" width="160" height="14" fill="#2563eb"/>
+  <text x="40" y="84" class="step-num" fill="#bfdbfe">1</text>
+  <text x="56" y="84" class="step-name">DISCOVER</text>
+
+  <text x="36" y="114" class="item-label" fill="#2563eb">MCP configs</text>
+  <text x="140" y="114" text-anchor="end" class="step-desc">20 clients</text>
+  <rect x="30" y="120" width="140" height="1" fill="#e4e4e7"/>
+
+  <text x="36" y="138" class="item-label" fill="#2563eb">Cloud providers</text>
+  <text x="140" y="138" text-anchor="end" class="step-desc">AWS/Azure/GCP/SF</text>
+  <rect x="30" y="144" width="140" height="1" fill="#e4e4e7"/>
+
+  <text x="36" y="162" class="item-label" fill="#2563eb">Containers</text>
+  <text x="140" y="162" text-anchor="end" class="step-desc">Grype + Syft</text>
+  <rect x="30" y="168" width="140" height="1" fill="#e4e4e7"/>
+
+  <text x="36" y="186" class="item-label" fill="#2563eb">Packages</text>
+  <text x="140" y="186" text-anchor="end" class="step-desc">npm/pip/cargo/go</text>
+  <rect x="30" y="192" width="140" height="1" fill="#e4e4e7"/>
+
+  <text x="36" y="210" class="item-label" fill="#2563eb">Kubernetes</text>
+  <text x="140" y="210" text-anchor="end" class="step-desc">all namespaces</text>
+  <rect x="30" y="216" width="140" height="1" fill="#e4e4e7"/>
+
+  <text x="36" y="234" class="item-label" fill="#2563eb">AI models</text>
+  <text x="140" y="234" text-anchor="end" class="step-desc">13 formats</text>
+  <rect x="30" y="240" width="140" height="1" fill="#e4e4e7"/>
+
+  <text x="36" y="258" class="item-label" fill="#2563eb">SBOMs</text>
+  <text x="140" y="258" text-anchor="end" class="step-desc">CDX + SPDX</text>
+  <rect x="30" y="264" width="140" height="1" fill="#e4e4e7"/>
+
+  <text x="36" y="282" class="item-label" fill="#2563eb">Terraform</text>
+  <text x="140" y="282" text-anchor="end" class="step-desc">AI resources</text>
+  <rect x="30" y="288" width="140" height="1" fill="#e4e4e7"/>
+
+  <text x="36" y="306" class="item-label" fill="#2563eb">GitHub Actions</text>
+  <text x="140" y="306" text-anchor="end" class="step-desc">env vars</text>
+  <rect x="30" y="312" width="140" height="1" fill="#e4e4e7"/>
+
+  <text x="36" y="330" class="item-label" fill="#2563eb">Skill files</text>
+  <text x="140" y="330" text-anchor="end" class="step-desc">CLAUDE.md etc</text>
+  <rect x="30" y="336" width="140" height="1" fill="#e4e4e7"/>
+
+  <text x="36" y="354" class="item-label" fill="#2563eb">Jupyter</text>
+  <text x="140" y="354" text-anchor="end" class="step-desc">AI lib imports</text>
+
+  <!-- Arrow 1→2 -->
+  <line x1="184" y1="216" x2="204" y2="216" stroke="#d4d4d8" stroke-width="1.5"/>
+  <polygon points="202,211 212,216 202,221" fill="#d4d4d8"/>
+  <text x="198" y="204" text-anchor="middle" class="arrow-label">agents[]</text>
+
+  <!-- ═══ STEP 2: SCAN ═══ -->
+  <rect x="216" y="64" width="160" height="200" rx="10" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
+  <rect x="216" y="64" width="160" height="32" rx="10" fill="#d97706"/>
+  <rect x="216" y="82" width="160" height="14" fill="#d97706"/>
+  <text x="236" y="84" class="step-num" fill="#fef3c7">2</text>
+  <text x="252" y="84" class="step-name">SCAN</text>
+
+  <text x="232" y="114" class="item-label" fill="#d97706">OSV.dev</text>
+  <text x="366" y="114" text-anchor="end" class="step-desc">batch CVE lookup</text>
+  <rect x="226" y="120" width="140" height="1" fill="#e4e4e7"/>
+
+  <text x="232" y="138" class="item-label" fill="#d97706">NVD</text>
+  <text x="366" y="138" text-anchor="end" class="step-desc">CVSS v3.1 + v4.0</text>
+  <rect x="226" y="144" width="140" height="1" fill="#e4e4e7"/>
+
+  <text x="232" y="162" class="item-label" fill="#d97706">EPSS</text>
+  <text x="366" y="162" text-anchor="end" class="step-desc">exploit probability</text>
+  <rect x="226" y="168" width="140" height="1" fill="#e4e4e7"/>
+
+  <text x="232" y="186" class="item-label" fill="#d97706">CISA KEV</text>
+  <text x="366" y="186" text-anchor="end" class="step-desc">known exploited</text>
+  <rect x="226" y="192" width="140" height="1" fill="#e4e4e7"/>
+
+  <text x="232" y="210" class="item-label" fill="#d97706">GHSA + CSAF</text>
+  <text x="366" y="210" text-anchor="end" class="step-desc">supplemental</text>
+  <rect x="226" y="216" width="140" height="1" fill="#e4e4e7"/>
+
+  <text x="232" y="234" class="item-label" fill="#d97706">MCP Registry</text>
+  <text x="366" y="234" text-anchor="end" class="step-desc">427+ servers</text>
+  <rect x="226" y="240" width="140" height="1" fill="#e4e4e7"/>
+
+  <text x="232" y="254" class="step-desc">Queries run in parallel</text>
+
+  <!-- Arrow 2→3 -->
+  <line x1="380" y1="164" x2="400" y2="164" stroke="#d4d4d8" stroke-width="1.5"/>
+  <polygon points="398,159 408,164 398,169" fill="#d4d4d8"/>
+  <text x="394" y="152" text-anchor="middle" class="arrow-label">findings[]</text>
+
+  <!-- ═══ STEP 3: ANALYZE ═══ -->
+  <rect x="412" y="64" width="160" height="200" rx="10" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
+  <rect x="412" y="64" width="160" height="32" rx="10" fill="#e11d48"/>
+  <rect x="412" y="82" width="160" height="14" fill="#e11d48"/>
+  <text x="432" y="84" class="step-num" fill="#ffe4e6">3</text>
+  <text x="448" y="84" class="step-name">ANALYZE</text>
+
+  <text x="428" y="114" class="item-label" fill="#e11d48">Blast radius</text>
+  <text x="562" y="114" text-anchor="end" class="step-desc">CVE chains</text>
+  <rect x="422" y="120" width="140" height="1" fill="#e4e4e7"/>
+
+  <text x="428" y="138" class="item-label" fill="#e11d48">Compliance</text>
+  <text x="562" y="138" text-anchor="end" class="step-desc">10 frameworks</text>
+  <rect x="422" y="144" width="140" height="1" fill="#e4e4e7"/>
+
+  <text x="428" y="162" class="item-label" fill="#e11d48">Policy engine</text>
+  <text x="562" y="162" text-anchor="end" class="step-desc">17 conditions</text>
+  <rect x="422" y="168" width="140" height="1" fill="#e4e4e7"/>
+
+  <text x="428" y="186" class="item-label" fill="#e11d48">Enforcement</text>
+  <text x="562" y="186" text-anchor="end" class="step-desc">poisoning/drift</text>
+  <rect x="422" y="192" width="140" height="1" fill="#e4e4e7"/>
+
+  <text x="428" y="210" class="item-label" fill="#e11d48">Context graph</text>
+  <text x="562" y="210" text-anchor="end" class="step-desc">lateral movement</text>
+  <rect x="422" y="216" width="140" height="1" fill="#e4e4e7"/>
+
+  <text x="428" y="234" class="item-label" fill="#e11d48">Posture score</text>
+  <text x="562" y="234" text-anchor="end" class="step-desc">A-F grade</text>
+
+  <!-- Arrow 3→4 -->
+  <line x1="576" y1="164" x2="596" y2="164" stroke="#d4d4d8" stroke-width="1.5"/>
+  <polygon points="594,159 604,164 594,169" fill="#d4d4d8"/>
+  <text x="590" y="152" text-anchor="middle" class="arrow-label">report</text>
+
+  <!-- ═══ STEP 4: REPORT ═══ -->
+  <rect x="608" y="64" width="160" height="200" rx="10" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
+  <rect x="608" y="64" width="160" height="32" rx="10" fill="#059669"/>
+  <rect x="608" y="82" width="160" height="14" fill="#059669"/>
+  <text x="628" y="84" class="step-num" fill="#d1fae5">4</text>
+  <text x="644" y="84" class="step-name">REPORT</text>
+
+  <text x="624" y="114" class="item-label" fill="#059669">Console</text>
+  <text x="758" y="114" text-anchor="end" class="step-desc">table + summary</text>
+  <rect x="618" y="120" width="140" height="1" fill="#e4e4e7"/>
+
+  <text x="624" y="138" class="item-label" fill="#059669">HTML</text>
+  <text x="758" y="138" text-anchor="end" class="step-desc">interactive dashboard</text>
+  <rect x="618" y="144" width="140" height="1" fill="#e4e4e7"/>
+
+  <text x="624" y="162" class="item-label" fill="#059669">SARIF</text>
+  <text x="758" y="162" text-anchor="end" class="step-desc">GitHub Security tab</text>
+  <rect x="618" y="168" width="140" height="1" fill="#e4e4e7"/>
+
+  <text x="624" y="186" class="item-label" fill="#059669">SBOM</text>
+  <text x="758" y="186" text-anchor="end" class="step-desc">CycloneDX + SPDX</text>
+  <rect x="618" y="192" width="140" height="1" fill="#e4e4e7"/>
+
+  <text x="624" y="210" class="item-label" fill="#059669">JSON / Graph</text>
+  <text x="758" y="210" text-anchor="end" class="step-desc">Cytoscape + Mermaid</text>
+  <rect x="618" y="216" width="140" height="1" fill="#e4e4e7"/>
+
+  <text x="624" y="234" class="item-label" fill="#059669">Webhooks</text>
+  <text x="758" y="234" text-anchor="end" class="step-desc">Slack + custom</text>
+
+  <!-- Arrow 4→5 -->
+  <line x1="772" y1="164" x2="792" y2="164" stroke="#d4d4d8" stroke-width="1.5"/>
+  <polygon points="790,159 800,164 790,169" fill="#d4d4d8"/>
+  <text x="786" y="152" text-anchor="middle" class="arrow-label">alert</text>
+
+  <!-- ═══ STEP 5: ENFORCE ═══ -->
+  <rect x="804" y="64" width="136" height="200" rx="10" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
+  <rect x="804" y="64" width="136" height="32" rx="10" fill="#7c3aed"/>
+  <rect x="804" y="82" width="136" height="14" fill="#7c3aed"/>
+  <text x="824" y="84" class="step-num" fill="#ede9fe">5</text>
+  <text x="840" y="84" class="step-name">ENFORCE</text>
+
+  <text x="820" y="114" class="item-label" fill="#7c3aed">CI gate</text>
+  <text x="930" y="114" text-anchor="end" class="step-desc">fail on severity</text>
+  <rect x="814" y="120" width="116" height="1" fill="#e4e4e7"/>
+
+  <text x="820" y="138" class="item-label" fill="#7c3aed">Policy block</text>
+  <text x="930" y="138" text-anchor="end" class="step-desc">YAML rules</text>
+  <rect x="814" y="144" width="116" height="1" fill="#e4e4e7"/>
+
+  <text x="820" y="162" class="item-label" fill="#7c3aed">KEV block</text>
+  <text x="930" y="162" text-anchor="end" class="step-desc">--fail-on-kev</text>
+  <rect x="814" y="168" width="116" height="1" fill="#e4e4e7"/>
+
+  <text x="820" y="186" class="item-label" fill="#7c3aed">Remediation</text>
+  <text x="930" y="186" text-anchor="end" class="step-desc">prioritized fixes</text>
+  <rect x="814" y="192" width="116" height="1" fill="#e4e4e7"/>
+
+  <text x="820" y="210" class="item-label" fill="#7c3aed">VEX apply</text>
+  <text x="930" y="210" text-anchor="end" class="step-desc">suppress accepted</text>
+
+  <!-- ═══ BOTTOM BAR ═══ -->
+  <rect x="20" y="380" width="920" height="28" rx="8" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
+  <text x="480" y="399" text-anchor="middle" font-size="9" font-weight="600" fill="#a1a1aa" letter-spacing="0.06em" font-family="system-ui, sans-serif">READ-ONLY GUARANTEE · never writes configs · never runs servers · never stores secrets · --dry-run previews everything · Sigstore signed</text>
+</svg>

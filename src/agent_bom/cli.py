@@ -450,6 +450,15 @@ def main():
 @click.option("--snowflake-cis-benchmark", is_flag=True, help="Run CIS Snowflake Benchmark v1.0 checks (used with --snowflake)")
 @click.option("--azure-cis-benchmark", is_flag=True, help="Run CIS Azure Security Benchmark v3.0 checks (requires AZURE_SUBSCRIPTION_ID)")
 @click.option("--gcp-cis-benchmark", is_flag=True, help="Run CIS GCP Foundation Benchmark v3.0 checks (requires GOOGLE_CLOUD_PROJECT)")
+@click.option(
+    "--aisvs", "aisvs_flag", is_flag=True, help="Run AISVS v1.0 compliance checks (model safety, vector store auth, inference exposure)"
+)
+@click.option(
+    "--vector-db-scan",
+    "vector_db_scan",
+    is_flag=True,
+    help="Scan for running vector databases (Qdrant, Weaviate, Chroma, Milvus) and assess security",
+)
 @click.option("--huggingface", "hf_flag", is_flag=True, help="Discover models, Spaces, and endpoints from Hugging Face Hub")
 @click.option("--hf-token", default=None, envvar="HF_TOKEN", metavar="TOKEN", help="Hugging Face API token")
 @click.option("--hf-username", default=None, metavar="USER", help="Hugging Face username to scope discovery")
@@ -637,6 +646,8 @@ def scan(
     snowflake_cis_benchmark: bool,
     azure_cis_benchmark: bool,
     gcp_cis_benchmark: bool,
+    aisvs_flag: bool,
+    vector_db_scan: bool,
     hf_flag: bool,
     hf_token: Optional[str],
     hf_username: Optional[str],
@@ -1644,6 +1655,95 @@ def scan(
         except _GCPCISError as exc:
             con.print(f"  [red]CIS GCP Benchmark error: {exc}[/red]")
 
+    # Step 1x-b: Vector DB scan
+    vector_db_results = []
+    if vector_db_scan:
+        from rich.table import Table as _RTable
+
+        con.print("\n[bold blue]Scanning for vector databases...[/bold blue]\n")
+        try:
+            from agent_bom.cloud.vector_db import discover_vector_dbs
+
+            vector_db_results = discover_vector_dbs()
+            if not vector_db_results:
+                con.print("  [dim]No running vector databases found on this host.[/dim]")
+            else:
+                con.print(f"  Found [bold]{len(vector_db_results)}[/bold] vector database(s)")
+                tbl = _RTable(title="Vector DB Security", show_lines=True)
+                tbl.add_column("DB", width=10)
+                tbl.add_column("Port", width=6)
+                tbl.add_column("Auth", width=8)
+                tbl.add_column("Loopback", width=10)
+                tbl.add_column("Risk", width=10)
+                tbl.add_column("Flags")
+                _vdb_risk = {
+                    "critical": "[red]critical[/]",
+                    "high": "[bright_red]high[/]",
+                    "medium": "[yellow]medium[/]",
+                    "safe": "[green]safe[/]",
+                }
+                for r in vector_db_results:
+                    tbl.add_row(
+                        r.db_type,
+                        str(r.port),
+                        "[green]yes[/]" if r.requires_auth else "[red]NO[/]",
+                        "[green]yes[/]" if r.is_loopback else "[red]NO[/]",
+                        _vdb_risk.get(r.risk_level, r.risk_level),
+                        ", ".join(r.risk_flags) or "-",
+                    )
+                con.print()
+                con.print(tbl)
+        except Exception as exc:
+            con.print(f"  [red]Vector DB scan error: {exc}[/red]")
+
+    # Step 1x-c: AISVS compliance benchmark
+    aisvs_report = None
+    if aisvs_flag:
+        from rich.table import Table as _RTable
+
+        con.print("\n[bold blue]Running AISVS v1.0 compliance checks...[/bold blue]\n")
+        try:
+            from agent_bom.cloud.aisvs_benchmark import run_benchmark as _run_aisvs
+
+            aisvs_report = _run_aisvs()
+            passed = aisvs_report.passed
+            failed = aisvs_report.failed
+            total = aisvs_report.total
+            rate = aisvs_report.pass_rate
+            con.print(
+                f"  [bold]AISVS v1.0[/bold]: {passed}/{total} checks passed "
+                f"([{'green' if rate >= 80 else 'yellow' if rate >= 50 else 'red'}]{rate:.1f}%[/])"
+            )
+            tbl = _RTable(title="AISVS Compliance", show_lines=True)
+            tbl.add_column("Check", width=8)
+            tbl.add_column("Title", max_width=45)
+            tbl.add_column("Status", width=8)
+            tbl.add_column("Sev", width=8)
+            tbl.add_column("MAESTRO", width=22)
+            tbl.add_column("Evidence", max_width=40)
+            _aiv_status = {
+                "pass": "[green]PASS[/]",
+                "fail": "[red]FAIL[/]",
+                "error": "[yellow]ERR[/]",
+                "not_applicable": "[dim]N/A[/]",
+            }
+            from agent_bom.maestro import tag_aisvs_check as _maestro_tag
+
+            for c in aisvs_report.checks:
+                maestro = _maestro_tag(c.check_id).value
+                tbl.add_row(
+                    c.check_id,
+                    c.title,
+                    _aiv_status.get(c.status.value, c.status.value),
+                    c.severity,
+                    maestro,
+                    c.evidence,
+                )
+            con.print()
+            con.print(tbl)
+        except Exception as exc:
+            con.print(f"  [red]AISVS benchmark error: {exc}[/red]")
+
     # Step 1y: SaaS connector discovery
     saas_connectors: list[tuple[str, dict]] = []
     if not skill_only and jira_discover:
@@ -2022,6 +2122,10 @@ def scan(
         report.azure_cis_benchmark_data = azure_cis_benchmark_report.to_dict()
     if gcp_cis_benchmark_report is not None:
         report.gcp_cis_benchmark_data = gcp_cis_benchmark_report.to_dict()
+    if aisvs_report is not None:
+        report.aisvs_benchmark_data = aisvs_report.to_dict()
+    if vector_db_results:
+        report.vector_db_scan_data = [r.to_dict() for r in vector_db_results]
 
     # ── Context graph: lateral movement analysis ────────────────────
     if context_graph_flag and report.blast_radii:
@@ -3613,7 +3717,7 @@ def mcp_server_cmd(transport: str, port: int, host: str, log_level: str, log_jso
     Requires:  pip install 'agent-bom[mcp-server]'
 
     \b
-    Exposes 20 security tools via MCP protocol:
+    Exposes 22 security tools via MCP protocol:
       scan              Full scan — CVEs, config security, blast radius, compliance
       check             Check a specific package for CVEs before installing
       blast_radius      Look up blast radius for a specific CVE

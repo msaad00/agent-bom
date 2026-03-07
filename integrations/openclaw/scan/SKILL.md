@@ -42,9 +42,10 @@ metadata:
       - darwin
       - linux
       - windows
-    file_reads_note: "Parses MCP client config files to extract server names and commands. All env var values are redacted via sanitize_env_vars() before inclusion in scan output."
-    credential_handling: "Config files are parsed as JSON/TOML/YAML, but only server names, commands, args, and URLs are extracted. All env var values are replaced with '***REDACTED***' by sanitize_env_vars() before appearing in any output."
-    data_flow: "All scanning is local-first. Only public package names and CVE IDs are sent to vulnerability databases (OSV, NVD, EPSS, GitHub Advisories). No config files, credentials, or environment variable values ever leave the machine."
+    file_reads_note: "Parses MCP client config files to extract server names, commands, args, and URLs only. Env var values are handled by sanitize_env_vars() in the installed package — verify at https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py#L159"
+    credential_handling: "Config files are parsed as JSON/TOML/YAML. Only server names, commands, args, and URLs are extracted. Env var value redaction is implemented by sanitize_env_vars() in the installed code — inspect before running with sensitive data: https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py#L159"
+    data_flow: "All scanning is local-first. Only public package names and CVE IDs are sent to vulnerability databases (OSV, NVD, EPSS, GitHub Advisories). Verify no-exfiltration behavior by reviewing the installed code before providing production credentials."
+    install_verification: "Before running with sensitive data: (1) pip install agent-bom; (2) agent-bom verify agent-bom; (3) review security.py#L159 (sanitize_env_vars) and discovery/__init__.py to confirm redaction behavior."
     file_reads:
       # Claude Desktop
       - "~/Library/Application Support/Claude/claude_desktop_config.json"
@@ -162,13 +163,26 @@ scan()
 
 ## Privacy & Data Handling
 
-Discovery reads local MCP client config files to extract server names and
-commands. All env var **values** are replaced with `***REDACTED***` by
-`sanitize_env_vars()` before appearing in any output. Only public package names
-and CVE IDs are sent to vulnerability databases.
+This skill installs agent-bom from PyPI. The redaction behavior described here
+is implemented in the installed package — **verify before running with
+sensitive data**:
 
-Verify: [security.py](https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py#L148-L187),
-[discovery/__init__.py](https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/discovery/__init__.py)
+```bash
+# 1. Verify package integrity (Sigstore)
+agent-bom verify agent-bom
+
+# 2. Review the redaction code directly
+# security.py L159: sanitize_env_vars() — replaces env values with ***REDACTED***
+# https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py#L159
+
+# 3. Review config parsing
+# https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/discovery/__init__.py
+```
+
+Discovery reads local MCP client config files. Only server names, commands,
+args, and URLs are extracted. Env var values are replaced with `***REDACTED***`
+by `sanitize_env_vars()` in the installed code. Only public package names and
+CVE IDs are sent to vulnerability databases.
 
 ## Verification
 

@@ -25,8 +25,32 @@ metadata:
       bins: []
       env: []
       credentials: none
-    credential_policy: "Zero credentials required. All compliance evaluation runs locally on scan data already in memory."
-    optional_env: []
+    credential_policy: "Zero credentials required for OWASP/NIST/EU AI Act compliance and SBOM generation. CIS benchmark checks (AWS, Azure, GCP, Snowflake) optionally accept cloud credentials — only used locally to call cloud APIs, never transmitted elsewhere."
+    optional_env:
+      - name: AWS_PROFILE
+        purpose: "AWS CIS benchmark checks — uses boto3 with your local AWS profile"
+        required: false
+      - name: AZURE_TENANT_ID
+        purpose: "Azure CIS benchmark checks (azure-mgmt-* SDK)"
+        required: false
+      - name: AZURE_CLIENT_ID
+        purpose: "Azure CIS benchmark checks — service principal client ID"
+        required: false
+      - name: AZURE_CLIENT_SECRET
+        purpose: "Azure CIS benchmark checks — service principal secret"
+        required: false
+      - name: GOOGLE_APPLICATION_CREDENTIALS
+        purpose: "GCP CIS benchmark checks (google-cloud-* SDK)"
+        required: false
+      - name: SNOWFLAKE_ACCOUNT
+        purpose: "Snowflake CIS benchmark checks"
+        required: false
+      - name: SNOWFLAKE_USER
+        purpose: "Snowflake CIS benchmark checks"
+        required: false
+      - name: SNOWFLAKE_PASSWORD
+        purpose: "Snowflake CIS benchmark checks"
+        required: false
     optional_bins: []
     emoji: "\U00002705"
     homepage: https://github.com/msaad00/agent-bom
@@ -36,9 +60,10 @@ metadata:
       - darwin
       - linux
       - windows
-    data_flow: "Purely local. Evaluates scan results already in memory against bundled compliance rules. Zero network calls, zero file reads beyond user-provided SBOMs."
+    data_flow: "Purely local for OWASP/NIST/EU AI Act/MITRE/SBOM features. CIS benchmark checks call cloud provider APIs (AWS/Azure/GCP/Snowflake) using locally configured credentials — no data is stored or transmitted beyond the cloud provider's own API. Zero file reads beyond user-provided SBOMs."
     file_reads:
       - "user-provided SBOM files (CycloneDX/SPDX JSON)"
+      - "user-provided policy files (YAML/JSON policy-as-code)"
     file_writes: []
     network_endpoints: []
     telemetry: false
@@ -77,7 +102,7 @@ agent-bom generate-sbom     # generate CycloneDX SBOM
 - **MITRE ATLAS** — adversarial ML threat framework
 - **EU AI Act** — risk classification, transparency, SBOM requirements
 - **NIST AI RMF** — govern, map, measure, manage lifecycle
-- **CIS Foundations** — AWS and Snowflake benchmarks
+- **CIS Foundations** — AWS, Azure v3.0, GCP v3.0, Snowflake benchmarks
 
 ## Example Workflows
 

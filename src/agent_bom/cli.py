@@ -448,6 +448,8 @@ def main():
 @click.option("--aws-ec2-tag", default=None, metavar="KEY=VALUE", help="EC2 tag filter for --aws-include-ec2 (e.g. 'Environment=ai-prod')")
 @click.option("--aws-cis-benchmark", is_flag=True, help="Run CIS AWS Foundations Benchmark v3.0 checks (used with --aws)")
 @click.option("--snowflake-cis-benchmark", is_flag=True, help="Run CIS Snowflake Benchmark v1.0 checks (used with --snowflake)")
+@click.option("--azure-cis-benchmark", is_flag=True, help="Run CIS Azure Security Benchmark v3.0 checks (requires AZURE_SUBSCRIPTION_ID)")
+@click.option("--gcp-cis-benchmark", is_flag=True, help="Run CIS GCP Foundation Benchmark v3.0 checks (requires GOOGLE_CLOUD_PROJECT)")
 @click.option("--huggingface", "hf_flag", is_flag=True, help="Discover models, Spaces, and endpoints from Hugging Face Hub")
 @click.option("--hf-token", default=None, envvar="HF_TOKEN", metavar="TOKEN", help="Hugging Face API token")
 @click.option("--hf-username", default=None, metavar="USER", help="Hugging Face username to scope discovery")
@@ -633,6 +635,8 @@ def scan(
     aws_ec2_tag: Optional[str],
     aws_cis_benchmark: bool,
     snowflake_cis_benchmark: bool,
+    azure_cis_benchmark: bool,
+    gcp_cis_benchmark: bool,
     hf_flag: bool,
     hf_token: Optional[str],
     hf_username: Optional[str],
@@ -1552,6 +1556,94 @@ def scan(
         except _SFCISError as exc:
             con.print(f"  [red]CIS Snowflake Benchmark error: {exc}[/red]")
 
+    # Step 1x-az: CIS Azure Benchmark
+    azure_cis_benchmark_report = None
+    if azure_cis_benchmark:
+        from agent_bom.cloud import CloudDiscoveryError as _AZCISError
+
+        con.print("\n[bold blue]Running CIS Azure Security Benchmark v3.0...[/bold blue]\n")
+        try:
+            from agent_bom.cloud.azure_cis_benchmark import run_benchmark as run_az_cis
+
+            azure_cis_benchmark_report = run_az_cis()
+            passed = azure_cis_benchmark_report.passed
+            failed = azure_cis_benchmark_report.failed
+            total = azure_cis_benchmark_report.total
+            rate = azure_cis_benchmark_report.pass_rate
+            con.print(f"  [green]✓[/green] {total} checks evaluated — {passed} passed, {failed} failed ({rate:.0f}% pass rate)")
+            if failed > 0:
+                from rich.table import Table
+
+                tbl = Table(title="CIS Azure Security Benchmark v3.0", show_lines=False, padding=(0, 1))
+                tbl.add_column("Check", style="cyan", width=6)
+                tbl.add_column("Title", min_width=30)
+                tbl.add_column("Status", width=6)
+                tbl.add_column("Severity", width=8)
+                tbl.add_column("ATT&CK", width=20)
+                tbl.add_column("Evidence", max_width=40)
+                _az_status = {"pass": "[green]PASS[/]", "fail": "[red]FAIL[/]", "error": "[yellow]ERR[/]"}
+                _az_sev = {"critical": "[red]critical[/]", "high": "[bright_red]high[/]", "medium": "[yellow]medium[/]"}
+                from agent_bom.mitre_attack import tag_cis_check
+
+                for c in azure_cis_benchmark_report.checks:
+                    attack = ", ".join(tag_cis_check(c)) or "-"
+                    tbl.add_row(
+                        c.check_id,
+                        c.title,
+                        _az_status.get(c.status.value, c.status.value),
+                        _az_sev.get(c.severity, c.severity),
+                        attack,
+                        c.evidence,
+                    )
+                con.print()
+                con.print(tbl)
+        except _AZCISError as exc:
+            con.print(f"  [red]CIS Azure Benchmark error: {exc}[/red]")
+
+    # Step 1x-gcp: CIS GCP Benchmark
+    gcp_cis_benchmark_report = None
+    if gcp_cis_benchmark:
+        from agent_bom.cloud import CloudDiscoveryError as _GCPCISError
+
+        con.print("\n[bold blue]Running CIS GCP Foundation Benchmark v3.0...[/bold blue]\n")
+        try:
+            from agent_bom.cloud.gcp_cis_benchmark import run_benchmark as run_gcp_cis
+
+            gcp_cis_benchmark_report = run_gcp_cis()
+            passed = gcp_cis_benchmark_report.passed
+            failed = gcp_cis_benchmark_report.failed
+            total = gcp_cis_benchmark_report.total
+            rate = gcp_cis_benchmark_report.pass_rate
+            con.print(f"  [green]✓[/green] {total} checks evaluated — {passed} passed, {failed} failed ({rate:.0f}% pass rate)")
+            if failed > 0:
+                from rich.table import Table
+
+                tbl = Table(title="CIS GCP Foundation Benchmark v3.0", show_lines=False, padding=(0, 1))
+                tbl.add_column("Check", style="cyan", width=6)
+                tbl.add_column("Title", min_width=30)
+                tbl.add_column("Status", width=6)
+                tbl.add_column("Severity", width=8)
+                tbl.add_column("ATT&CK", width=20)
+                tbl.add_column("Evidence", max_width=40)
+                _gcp_status = {"pass": "[green]PASS[/]", "fail": "[red]FAIL[/]", "error": "[yellow]ERR[/]"}
+                _gcp_sev = {"critical": "[red]critical[/]", "high": "[bright_red]high[/]", "medium": "[yellow]medium[/]"}
+                from agent_bom.mitre_attack import tag_cis_check as _tag_gcp
+
+                for c in gcp_cis_benchmark_report.checks:
+                    attack = ", ".join(_tag_gcp(c)) or "-"
+                    tbl.add_row(
+                        c.check_id,
+                        c.title,
+                        _gcp_status.get(c.status.value, c.status.value),
+                        _gcp_sev.get(c.severity, c.severity),
+                        attack,
+                        c.evidence,
+                    )
+                con.print()
+                con.print(tbl)
+        except _GCPCISError as exc:
+            con.print(f"  [red]CIS GCP Benchmark error: {exc}[/red]")
+
     # Step 1y: SaaS connector discovery
     saas_connectors: list[tuple[str, dict]] = []
     if not skill_only and jira_discover:
@@ -1926,6 +2018,10 @@ def scan(
         report.cis_benchmark_data = cis_benchmark_report.to_dict()
     if sf_cis_benchmark_report is not None:
         report.snowflake_cis_benchmark_data = sf_cis_benchmark_report.to_dict()
+    if azure_cis_benchmark_report is not None:
+        report.azure_cis_benchmark_data = azure_cis_benchmark_report.to_dict()
+    if gcp_cis_benchmark_report is not None:
+        report.gcp_cis_benchmark_data = gcp_cis_benchmark_report.to_dict()
 
     # ── Context graph: lateral movement analysis ────────────────────
     if context_graph_flag and report.blast_radii:

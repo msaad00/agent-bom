@@ -400,6 +400,8 @@ class AIBOMReport:
     sast_data: Optional[dict] = None  # Serialized SAST scan results (Semgrep)
     cis_benchmark_data: Optional[dict] = None  # Serialized CIS AWS Benchmark results
     snowflake_cis_benchmark_data: Optional[dict] = None  # Serialized CIS Snowflake Benchmark results
+    azure_cis_benchmark_data: Optional[dict] = None  # Serialized CIS Azure Benchmark results
+    gcp_cis_benchmark_data: Optional[dict] = None  # Serialized CIS GCP Benchmark results
     runtime_correlation: Optional[dict] = None  # Runtime ↔ scan correlation (proxy audit vs CVE findings)
 
     def __post_init__(self):

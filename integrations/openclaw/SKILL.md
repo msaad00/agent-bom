@@ -93,9 +93,10 @@ metadata:
     data_flow: >-
       All scanning is local-first. Only public package names and CVE IDs are
       sent to vulnerability databases (OSV, NVD, EPSS, GitHub Advisories).
-      CIS benchmark checks call cloud provider APIs using locally configured
-      credentials only. No config files, credentials, or env var values ever
-      leave the machine.
+      Registry data (427+ MCP server metadata) is bundled in the package —
+      lookups are in-memory with zero network calls. CIS benchmark checks call
+      cloud provider APIs using locally configured credentials only. No config
+      files, credentials, or env var values ever leave the machine.
     file_reads:
       # Claude Desktop
       - "~/Library/Application Support/Claude/claude_desktop_config.json"

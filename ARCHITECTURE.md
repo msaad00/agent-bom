@@ -21,7 +21,7 @@ Discovery ──> Scanning ──> Enrichment ──> Blast Radius ──> Compl
 | CLI | `cli.py` | Click-based CLI with 15+ commands |
 | MCP Server | `mcp_server.py` | FastMCP server with 20 tools |
 | Proxy | `proxy.py` | MCP JSON-RPC proxy with runtime enforcement |
-| API | `api.py` | FastAPI REST server |
+| API | `api/server.py` | FastAPI REST server with job queue |
 
 ## Module Map
 
@@ -82,17 +82,29 @@ Each module exports `tag_blast_radius(br: BlastRadius)` to annotate findings.
 └── prompt_scanner.py    # Prompt injection pattern detection (reused by enforcement)
 ```
 
-### Cloud Security
+### Cloud & Infrastructure (14 modules)
 
 ```
 ├── cloud/
-│   ├── aws_cis_benchmark.py      # AWS CIS Foundations v3.0 (16 checks via boto3)
-│   └── snowflake_cis_benchmark.py # Snowflake CIS v1.0 (12 checks via SQL)
+│   ├── base.py                    # Base cloud provider abstraction
+│   ├── aws.py                     # AWS account scanning
+│   ├── aws_cis_benchmark.py       # AWS CIS Foundations v3.0 (16 checks via boto3)
+│   ├── azure.py                   # Azure account scanning
+│   ├── gcp.py                     # GCP account scanning
+│   ├── snowflake.py               # Snowflake account scanning
+│   ├── snowflake_cis_benchmark.py # Snowflake CIS v1.0 (12 checks via SQL)
+│   ├── databricks.py              # Databricks workspace scanning
+│   ├── huggingface.py             # HuggingFace model registry
+│   ├── ollama.py                  # Ollama local model scanning
+│   ├── openai_provider.py         # OpenAI integration
+│   ├── clickhouse.py              # ClickHouse analytics storage
+│   └── ...                        # coreweave, mlflow, wandb, nebius providers
 ├── scorecard.py         # OpenSSF Scorecard fetching → risk boost
-└── malicious.py         # Typosquat detection, known malicious package flagging
+├── malicious.py         # Typosquat detection, known malicious package flagging
+└── model_files.py       # ML model file detection (.pt, .pkl, .h5, .safetensors)
 ```
 
-### Additional Capabilities
+### Policy, SBOM & Verification
 
 ```
 ├── policy.py            # Policy-as-code engine (17 conditions incl. expression parser)
@@ -101,20 +113,82 @@ Each module exports `tag_blast_radius(br: BlastRadius)` to annotate findings.
 ├── integrity.py         # Package verification: npm/PyPI hashes, SLSA provenance, Sigstore
 ├── sast.py              # Semgrep SAST integration with CWE-to-compliance mapping
 ├── context_graph.py     # Lateral movement analysis — BFS pathfinding, interaction risk
-├── mcp_registry.json    # 427+ MCP server security metadata (bundled)
 ├── risk_analyzer.py     # Capability classification, dangerous combo detection
-├── http_client.py       # Shared HTTP client with retry, timeout, user-agent
-├── config.py            # Global configuration constants and weights
 └── parsers/
     ├── skills.py        # SKILL.md YAML frontmatter parser
     ├── skill_audit.py   # Skill trust assessment (5-category analysis)
-    └── instruction_provenance.py # Sigstore verification for skill files
+    └── trust_assessment.py # Trust scoring engine
+```
+
+### API & Storage Layer
+
+```
+├── api/
+│   ├── server.py          # FastAPI REST server with job queue
+│   ├── auth.py            # JWT authentication
+│   ├── audit_log.py       # API audit logging
+│   ├── store.py           # Base data store abstraction
+│   ├── postgres_store.py  # PostgreSQL backend
+│   ├── snowflake_store.py # Snowflake backend
+│   ├── clickhouse_store.py # ClickHouse backend
+│   ├── fleet_store.py     # Fleet inventory storage
+│   └── scheduler.py       # Async job scheduler
+├── gateway.py             # API gateway with rate limiting
+└── http_client.py         # Shared HTTP client with retry, timeout, user-agent
+```
+
+### Integrations, Alerts & SIEM
+
+```
+├── integrations/
+│   ├── slack.py           # Slack alert/notification dispatcher
+│   ├── jira.py            # Jira issue creation
+│   ├── vanta.py           # Vanta compliance sync
+│   └── drata.py           # Drata compliance sync
+├── connectors/
+│   ├── base.py            # Base connector with CONNECTOR_HEALTH_TIMEOUT
+│   ├── slack_connector.py # Slack connector
+│   ├── jira_connector.py  # Jira connector
+│   └── servicenow_connector.py # ServiceNow connector
+├── alerts/
+│   ├── dispatcher.py      # Alert routing (Slack, Teams, PagerDuty)
+│   ├── scan_alerts.py     # Scan-triggered alerts
+│   └── dedup.py           # Alert deduplication
+└── siem/
+    └── ocsf.py            # Open Cybersecurity Schema Format export
+```
+
+### Output & Visualization (8 modules)
+
+```
+├── output/
+│   ├── __init__.py        # JSON, SARIF, CycloneDX, SPDX, text formatters
+│   ├── html.py            # HTML dashboard report
+│   ├── svg.py             # SVG diagrams (architecture, blast radius, compliance)
+│   ├── mermaid.py         # Mermaid diagram syntax
+│   ├── graph.py           # NetworkX graph generation
+│   ├── agent_mesh.py      # Agent mesh topology visualization
+│   ├── attack_flow.py     # Attack flow visualization
+│   └── prometheus.py      # Prometheus metrics export
+├── remediate.py           # Actionable remediation plan generation
+└── push.py                # Push results to external platforms
+```
+
+### Shared Utilities
+
+```
+├── config.py              # Global configuration constants and weights
+├── constants.py           # AI_PACKAGES, TRAINING_DATA_PACKAGES, SAST_CWE_MAP (52 CWEs)
+├── models.py              # Core data classes
+├── security.py            # validate_path(), sanitize_env_vars(), credential redaction
+├── mcp_registry.json      # 427+ MCP server security metadata (bundled)
+└── http_client.py         # Shared HTTP client with retry, timeout, user-agent
 ```
 
 ## Dependency Graph (simplified)
 
 ```
-cli.py / mcp_server.py / api.py
+cli.py / mcp_server.py / api/server.py
     │
     ├── discovery/         (standalone — no deps on scanning)
     ├── scanners/          (depends on: models, enrichment, http_client)
@@ -124,8 +198,24 @@ cli.py / mcp_server.py / api.py
     ├── policy.py          (depends on: models)
     ├── enforcement.py     (depends on: mcp_introspect, prompt_scanner, risk_analyzer)
     ├── proxy.py           (depends on: runtime/, policy, enforcement)
+    ├── cloud/             (depends on: models, cloud SDKs)
+    ├── integrations/      (depends on: models, connectors/)
+    ├── alerts/            (depends on: models, integrations/)
     └── output/            (depends on: models)
 ```
+
+## Module Stats
+
+| Metric | Count |
+|---|---|
+| Python modules | 148 |
+| Test files | 144 |
+| Test functions | ~1,900 (6,100+ parameterized cases) |
+| MCP tools | 20 |
+| Compliance frameworks | 10 |
+| Runtime detectors | 6 |
+| Cloud providers | 12 |
+| SAST CWE mappings | 52 |
 
 ## How to Add...
 

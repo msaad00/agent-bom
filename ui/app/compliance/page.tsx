@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { ComplianceHeatmap } from "@/components/compliance-heatmap";
+import { ComplianceMatrix } from "@/components/compliance-matrix";
 
 // ─── Status helpers ──────────────────────────────────────────────────────────
 
@@ -269,7 +270,7 @@ export default function CompliancePage() {
   const [data, setData] = useState<ComplianceResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"detail" | "heatmap">("detail");
+  const [viewMode, setViewMode] = useState<"detail" | "heatmap" | "matrix">("detail");
 
   useEffect(() => {
     api
@@ -428,10 +429,24 @@ export default function CompliancePage() {
           <Grid3X3 className="w-3.5 h-3.5" />
           Heatmap
         </button>
+        <button
+          onClick={() => setViewMode("matrix")}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            viewMode === "matrix"
+              ? "bg-emerald-600 text-white"
+              : "bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-700"
+          }`}
+        >
+          <Scan className="w-3.5 h-3.5" />
+          Matrix
+        </button>
       </div>
 
       {/* ── Heatmap View ──────────────────────────────────────────────── */}
       {viewMode === "heatmap" && <ComplianceHeatmap data={data} />}
+
+      {/* ── Matrix View ───────────────────────────────────────────────── */}
+      {viewMode === "matrix" && <ComplianceMatrix data={data} />}
 
       {/* ── Detail View ───────────────────────────────────────────────── */}
       {viewMode === "detail" && (

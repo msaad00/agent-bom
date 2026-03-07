@@ -133,7 +133,7 @@ rm -rf ~/.agent-bom                      # remove local data
 | **Credential exposure** | -- | Which secrets leak per vulnerability, per agent |
 | **Tool poisoning detection** | -- | Description injection, capability combos, drift detection |
 | **Privilege detection** | -- | root, shell access, privileged containers, per-tool permissions |
-| **10-framework compliance** | -- | OWASP LLM + MCP + Agentic, MITRE ATLAS, NIST AI RMF + CSF, EU AI Act, SOC 2, ISO 27001, CIS AI |
+| **10-framework compliance** | -- | OWASP LLM + MCP + Agentic, MITRE ATLAS, NIST AI RMF + CSF, EU AI Act, SOC 2, ISO 27001, CIS |
 | **Posture scorecard** | -- | Letter grade (A-F), 6 dimensions, incident correlation (P1-P4) |
 | **Policy-as-code** | -- | 17 conditions, CI gate, block unverified servers |
 | **Lateral movement analysis** | -- | Agent context graph, shared credentials, BFS attack paths |
@@ -303,7 +303,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full diagrams: data flow pi
 
 ## Roadmap
 
-- [x] CIS AI benchmarks
+- [x] CIS Foundations benchmarks (AWS v3.0, Snowflake v1.0)
+- [ ] CIS AI benchmarks (pending CIS publication)
 - [ ] License compliance engine
 - [ ] Workflow engine scanning (n8n, Zapier, Make)
 

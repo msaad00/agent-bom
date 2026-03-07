@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
+      - "v*.*.*"  # semver only — excludes floating tags like v0
 
 permissions:
   contents: read

@@ -187,7 +187,7 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible
 | Mode | Command | Best for |
 |------|---------|----------|
 | CLI | `agent-bom scan` | Local audit |
-| GitHub Action | `uses: msaad00/agent-bom@v0` | CI/CD + SARIF |
+| GitHub Action | `uses: msaad00/agent-bom@v0.60.0 | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated scans |
 | REST API | `agent-bom api` | Dashboards, SIEM |
 | MCP Server | `agent-bom mcp-server` (22 tools) | Inside any MCP client |
@@ -199,7 +199,7 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible
 <summary><b>GitHub Action</b></summary>
 
 ```yaml
-- uses: msaad00/agent-bom@v0
+- uses: msaad00/agent-bom@v0.60.0
   with:
     severity-threshold: high
     upload-sarif: true
@@ -256,7 +256,7 @@ agent-bom api --api-key $SECRET --rate-limit 30   # http://127.0.0.1:8422/docs
 |----------|------|
 | PyPI | `pip install agent-bom` |
 | Docker | `docker run agentbom/agent-bom scan` |
-| GitHub Action | `uses: msaad00/agent-bom@v0` |
+| GitHub Action | `uses: msaad00/agent-bom@v0.60.0 |
 | Glama | [glama.ai/mcp/servers/@msaad00/agent-bom](https://glama.ai/mcp/servers/@msaad00/agent-bom) |
 | MCP Registry | [server.json](integrations/mcp-registry/server.json) |
 | ToolHive | [registry entry](integrations/toolhive/server.json) |
@@ -298,6 +298,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full diagrams: data flow pi
 - **`--dry-run`** -- preview every file and API URL before access
 - **Sigstore signed** -- releases v0.7.0+ signed via cosign OIDC
 - **OpenSSF Scorecard** -- [automated supply chain scoring](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom)
+- **OpenSSF Best Practices** -- [passing badge (100%)](https://www.bestpractices.dev/projects/12114) — 67/67 criteria
+- **Continuous fuzzing** -- [ClusterFuzzLite](https://github.com/msaad00/agent-bom/blob/main/.github/workflows/cifuzz.yml) fuzzes SBOM parsers, policy evaluator, and skill parser on every PR
 - **[PERMISSIONS.md](PERMISSIONS.md)** -- full auditable trust contract
 
 ---

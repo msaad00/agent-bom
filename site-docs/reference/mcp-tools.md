@@ -37,7 +37,7 @@ Generate a prioritized remediation plan for discovered vulnerabilities.
 ### verify
 Package integrity check with Sigstore signature and SLSA provenance verification.
 ```
-verify(package="agent-bom@0.59.1")
+verify(package="agent-bom@0.60.0")
 ```
 
 ### skill_trust

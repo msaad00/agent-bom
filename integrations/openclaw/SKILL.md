@@ -304,6 +304,6 @@ configured credentials and call only the cloud provider's own APIs.
 ## Verification
 
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
-- **Sigstore signed**: `agent-bom verify agent-bom@0.59.3`
+- **Sigstore signed**: `agent-bom verify agent-bom@0.60.0`
 - **3,400+ tests** with CodeQL + OpenSSF Scorecard
 - **No telemetry**: Zero tracking, zero analytics

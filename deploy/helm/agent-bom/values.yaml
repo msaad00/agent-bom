@@ -1,10 +1,10 @@
 image:
-  repository: msaad02/agent-bom
+  repository: agentbom/agent-bom
   tag: "0.59.2"
   pullPolicy: IfNotPresent
 
 runtimeImage:
-  repository: msaad02/agent-bom-runtime
+  repository: agentbom/agent-bom-runtime
   tag: "0.59.2"
   pullPolicy: IfNotPresent
 

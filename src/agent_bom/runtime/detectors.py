@@ -157,7 +157,7 @@ class CredentialLeakDetector:
             matches = pattern.findall(response_text)
             if matches:
                 # Redact the actual credential value
-                redacted = [m[:8] + "..." if len(m) > 8 else "***" for m in matches[:3]]
+                redacted = [m[:4] + "..." if len(m) > 4 else "***" for m in matches[:3]]
                 alerts.append(
                     Alert(
                         detector="credential_leak",

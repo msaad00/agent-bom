@@ -28,31 +28,13 @@ metadata:
       bins: []
       env: []
       credentials: none
-    credential_policy: "Zero credentials required for core scanning. All env vars below are strictly optional and only used for specific enterprise features (CIS benchmarks, analytics). They are never auto-discovered, inferred, or transmitted."
+    credential_policy: "Zero credentials required. Optional env vars below increase rate limits or add data sources. They are never auto-discovered, inferred, or transmitted."
     optional_env:
       - name: NVD_API_KEY
         purpose: "Increases NVD API rate limit (scanning works without it)"
         required: false
       - name: SNYK_TOKEN
         purpose: "Snyk vulnerability enrichment (optional additional data source)"
-        required: false
-      - name: AGENT_BOM_CLICKHOUSE_URL
-        purpose: "ClickHouse analytics storage (enterprise only, not needed for scanning)"
-        required: false
-      - name: AWS_PROFILE
-        purpose: "AWS CIS benchmark only — used when user explicitly runs cis_benchmark(provider='aws')"
-        required: false
-      - name: AWS_DEFAULT_REGION
-        purpose: "AWS CIS benchmark only"
-        required: false
-      - name: SNOWFLAKE_ACCOUNT
-        purpose: "Snowflake CIS benchmark only — used when user explicitly runs cis_benchmark(provider='snowflake')"
-        required: false
-      - name: SNOWFLAKE_USER
-        purpose: "Snowflake CIS benchmark only"
-        required: false
-      - name: SNOWFLAKE_PASSWORD
-        purpose: "Snowflake CIS benchmark only"
         required: false
     optional_bins:
       - syft
@@ -69,7 +51,7 @@ metadata:
       - linux
       - windows
     file_reads_note: "Parses full config files to extract server names and commands. All env var values are redacted via sanitize_env_vars() before inclusion in scan output."
-    credential_handling: "Config files are fully parsed as JSON/TOML/YAML, but only server names (mcpServers.*.command, mcpServers.*.args, mcpServers.*.url) are extracted. Env var blocks ARE read but ALL values are replaced with '***REDACTED***' by sanitize_env_vars() before appearing in any output. Additionally, values are scanned for credential patterns (AWS keys, GitHub tokens, JWTs, private keys) and redacted even in custom-named variables. Bearer tokens and Snowflake passwords are also redacted. This is enforced in src/agent_bom/discovery/__init__.py at every parse function. Cloud credentials (AWS, Snowflake) are only used when user explicitly runs cis_benchmark with those providers."
+    credential_handling: "Config files are fully parsed as JSON/TOML/YAML, but only server names (mcpServers.*.command, mcpServers.*.args, mcpServers.*.url) are extracted. Env var blocks ARE read but ALL values are replaced with '***REDACTED***' by sanitize_env_vars() before appearing in any output. Additionally, values are scanned for credential patterns (AWS keys, GitHub tokens, JWTs, private keys) and redacted even in custom-named variables. This is enforced in src/agent_bom/discovery/__init__.py at every parse function."
     credential_handling_verification: "Verify directly on GitHub without installing: https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py#L148-L185 (sanitize_env_vars + value credential patterns), https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/discovery/__init__.py#L307-L311 (parse_mcp_config redaction), #L425-L426 (parse_codex_config), #L483-L484 (parse_goose_config), #L528-L535 (parse_snowflake_connections)"
     data_flow: "All scanning is local-first with zero outbound calls by default except public vulnerability databases (OSV, NVD, EPSS, GitHub Advisories). No discovery data, config files, credentials, or environment variables ever leave the machine. Only public package names and CVE IDs are sent to vulnerability databases."
     verification_without_install: "All security-critical code is viewable on GitHub without installing: (1) Credential redaction: https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py (2) Config parsing: https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/discovery/__init__.py (3) 6,100+ tests including security tests: https://github.com/msaad00/agent-bom/tree/main/tests (4) OpenSSF Scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom (5) CodeQL + Bandit + pip-audit run on every PR: https://github.com/msaad00/agent-bom/actions"
@@ -90,19 +72,12 @@ metadata:
       - "~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json"
       # VS Code Copilot
       - "~/Library/Application Support/Code/User/mcp.json"
-      # Cortex Code (Snowflake)
-      - "~/.snowflake/cortex/mcp.json"
-      - "~/.snowflake/cortex/settings.json"
-      - "~/.snowflake/cortex/permissions.json"
       # Codex CLI
       - "~/.codex/config.toml"
       # Gemini CLI
       - "~/.gemini/settings.json"
       # Goose
       - "~/.config/goose/config.yaml"
-      # Snowflake CLI
-      - "~/.snowflake/connections.toml"
-      - "~/.snowflake/config.toml"
       # Continue
       - "~/.continue/config.json"
       # Zed
@@ -268,17 +243,8 @@ Verify this behavior: `src/agent_bom/security.py` lines 148-175,
 All scanning runs **locally by default** with no outbound connections except
 public vulnerability databases (OSV, NVD, EPSS, GitHub Advisories).
 
-Optional tokens (NVD_API_KEY, SNYK_TOKEN, AGENT_BOM_CLICKHOUSE_URL) are only
-used when you explicitly set them. They are never auto-discovered or inferred.
-
-### Cloud credentials (CIS benchmarks)
-
-The `cis_benchmark` tool for AWS uses standard AWS SDK credential chain
-(AWS_PROFILE, AWS_DEFAULT_REGION) and for Snowflake uses SNOWFLAKE_ACCOUNT,
-SNOWFLAKE_USER, SNOWFLAKE_PASSWORD. These are **only used when you explicitly
-invoke `cis_benchmark`** with those providers — they are never read during
-normal scanning, discovery, or any other tool call. If not set, the tool
-returns an error asking you to configure them.
+Optional tokens (NVD_API_KEY, SNYK_TOKEN) are only used when you explicitly
+set them. They are never auto-discovered or inferred.
 
 ## Security Boundaries
 

@@ -1,0 +1,51 @@
+name: Feature Request
+description: Suggest a new feature or improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea for agent-bom? We'd love to hear it. Please describe the problem you're solving and your proposed solution.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem does this solve? What's the use case?
+      placeholder: "I'm trying to ... but currently ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How would you like this to work?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any workarounds or alternative approaches you've considered.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of agent-bom does this relate to?
+      options:
+        - CLI / scanning
+        - MCP server
+        - REST API
+        - Dashboard / UI
+        - Compliance / policy
+        - Cloud providers
+        - Container / K8s scanning
+        - SBOM / output formats
+        - Runtime (proxy / protect / watch)
+        - Documentation
+        - Other
+    validations:
+      required: true

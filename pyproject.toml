@@ -161,3 +161,4 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]  # Allow unused imports in __init__.py
+"fuzz/*.py" = ["N802"]  # TestOneInput is the required atheris entry-point name

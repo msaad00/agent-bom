@@ -259,7 +259,7 @@ agent-bom api --api-key $SECRET --rate-limit 30   # http://127.0.0.1:8422/docs
 | Glama | [glama.ai/mcp/servers/@msaad00/agent-bom](https://glama.ai/mcp/servers/@msaad00/agent-bom) |
 | MCP Registry | [server.json](integrations/mcp-registry/server.json) |
 | ToolHive | [registry entry](integrations/toolhive/server.json) |
-| OpenClaw | [scan](integrations/openclaw/scan/SKILL.md) &#183; [compliance](integrations/openclaw/compliance/SKILL.md) &#183; [registry](integrations/openclaw/registry/SKILL.md) &#183; [runtime](integrations/openclaw/runtime/SKILL.md) |
+| OpenClaw | [SKILL.md](integrations/openclaw/SKILL.md) |
 | Smithery | [smithery.yaml](smithery.yaml) |
 | Railway | [Dockerfile.sse](Dockerfile.sse) |
 
@@ -303,7 +303,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full diagrams: data flow pi
 
 ## Roadmap
 
-- [x] CIS Foundations benchmarks (AWS v3.0, Snowflake v1.0)
+- [x] CIS Foundations benchmarks (AWS v3.0, Azure v3.0, GCP v3.0, Snowflake v1.0)
 - [ ] CIS AI benchmarks (pending CIS publication)
 - [ ] License compliance engine
 - [ ] Workflow engine scanning (n8n, Zapier, Make)

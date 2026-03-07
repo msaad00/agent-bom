@@ -290,7 +290,7 @@ def test_send_webhook():
 
     from agent_bom.proxy import _send_webhook
 
-    with patch("httpx.AsyncClient") as mock_client_cls:
+    with patch("agent_bom.security.validate_url"), patch("httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
         mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -311,7 +311,7 @@ def test_send_webhook_failure_silent():
 
     from agent_bom.proxy import _send_webhook
 
-    with patch("httpx.AsyncClient") as mock_client_cls:
+    with patch("agent_bom.security.validate_url"), patch("httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
         mock_client.post.side_effect = Exception("connection failed")
         mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)

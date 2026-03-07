@@ -4160,9 +4160,19 @@ def registry_sync_all(max_pages, smithery_token, dry_run):
     "--alert-webhook", default=None, envvar="AGENT_BOM_ALERT_WEBHOOK", help="Webhook URL for runtime alerts (Slack/Teams/PagerDuty)"
 )
 @click.option("--metrics-port", default=8422, show_default=True, help="Prometheus metrics port (0 to disable)")
+@click.option("--metrics-token", default=None, envvar="AGENT_BOM_METRICS_TOKEN", help="Bearer token for Prometheus /metrics endpoint")
 @click.argument("server_cmd", nargs=-1, required=True)
 def proxy_cmd(
-    policy, log_path, block_undeclared, detect_credentials, rate_limit_threshold, log_only, alert_webhook, metrics_port, server_cmd
+    policy,
+    log_path,
+    block_undeclared,
+    detect_credentials,
+    rate_limit_threshold,
+    log_only,
+    alert_webhook,
+    metrics_port,
+    metrics_token,
+    server_cmd,
 ):
     """Run an MCP server through agent-bom's security proxy.
 
@@ -4208,6 +4218,7 @@ def proxy_cmd(
             log_only=log_only,
             alert_webhook=alert_webhook,
             metrics_port=metrics_port,
+            metrics_token=metrics_token,
         )
     )
     sys.exit(exit_code)

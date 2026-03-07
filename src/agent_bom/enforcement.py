@@ -204,6 +204,54 @@ def scan_tool_descriptions(server: MCPServer) -> list[EnforcementFinding]:
     return findings
 
 
+def scan_resource_descriptions(server: MCPServer) -> list[EnforcementFinding]:
+    """Scan MCP resource descriptions for injection patterns.
+
+    Resources are another text surface that can carry hidden instructions.
+    Applies the same injection/unsafe-instruction patterns as tool scanning.
+    """
+    from agent_bom.parsers.prompt_scanner import (
+        _INJECTION_PATTERNS,
+        _UNSAFE_INSTRUCTION_PATTERNS,
+    )
+
+    findings: list[EnforcementFinding] = []
+    for resource in server.resources:
+        desc = (resource.description or "").strip()
+        if not desc:
+            continue
+
+        text = _normalize_text(desc)
+
+        for pattern, title in _INJECTION_PATTERNS:
+            if pattern.search(text):
+                findings.append(
+                    EnforcementFinding(
+                        severity="high",
+                        category="resource_injection",
+                        server_name=server.name,
+                        tool_name=resource.name,
+                        reason=f"Resource description contains injection pattern: {title}",
+                        recommendation="Review resource description for hidden instructions. Verify the MCP server source.",
+                    )
+                )
+
+        for pattern, title in _UNSAFE_INSTRUCTION_PATTERNS:
+            if pattern.search(text):
+                findings.append(
+                    EnforcementFinding(
+                        severity="high",
+                        category="resource_injection",
+                        server_name=server.name,
+                        tool_name=resource.name,
+                        reason=f"Resource description contains unsafe instruction: {title}",
+                        recommendation="Remove unsafe instructions from resource descriptions. Verify the MCP server source.",
+                    )
+                )
+
+    return findings
+
+
 def score_capability_risk(server: MCPServer) -> list[EnforcementFinding]:
     """Detect dangerous capability combinations across a server's tools.
 
@@ -628,6 +676,36 @@ def check_over_permission(server: MCPServer, agent_type: str | None = None) -> l
     return findings
 
 
+def check_tool_name_collisions(servers: list[MCPServer]) -> list[EnforcementFinding]:
+    """Detect tool name collisions across servers in the same agent config.
+
+    Two servers exposing the same tool name creates ambiguity — the agent
+    may invoke the wrong server, and an attacker can shadow a legitimate
+    tool by registering a malicious server with the same tool name.
+    """
+    findings: list[EnforcementFinding] = []
+    tool_owners: dict[str, list[str]] = {}  # tool_name → [server_names]
+
+    for server in servers:
+        for tool in server.tools:
+            tool_owners.setdefault(tool.name, []).append(server.name)
+
+    for tool_name, owners in tool_owners.items():
+        if len(owners) > 1:
+            findings.append(
+                EnforcementFinding(
+                    severity="medium",
+                    category="tool_collision",
+                    server_name=", ".join(owners),
+                    tool_name=tool_name,
+                    reason=f"Tool '{tool_name}' exposed by multiple servers: {', '.join(owners)}",
+                    recommendation="Rename or remove duplicate tools. Use namespaced tool names to avoid collisions.",
+                )
+            )
+
+    return findings
+
+
 def run_enforcement(
     servers: list[MCPServer],
     introspection_report: IntrospectionReport | None = None,
@@ -652,6 +730,9 @@ def run_enforcement(
         # 1. Scan tool descriptions + inputSchema for injection
         report.findings.extend(scan_tool_descriptions(server))
 
+        # 1b. Scan resource descriptions for injection
+        report.findings.extend(scan_resource_descriptions(server))
+
         # 2. Check dangerous capability combos (word-boundary matching)
         report.findings.extend(score_capability_risk(server))
 
@@ -664,6 +745,9 @@ def run_enforcement(
 
         # 5. Check agentic search risk (indirect prompt injection)
         report.findings.extend(check_agentic_search_risk(server))
+
+    # 6. Cross-server tool name collision detection
+    report.findings.extend(check_tool_name_collisions(servers))
 
     # Determine pass/fail based on threshold
     threshold = _SEVERITY_ORDER.get(fail_on_severity, 1)

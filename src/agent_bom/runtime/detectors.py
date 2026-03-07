@@ -266,16 +266,22 @@ class SequenceAnalyzer:
 
     @staticmethod
     def _matches_sequence(calls: list[str], patterns: list[str]) -> bool:
-        """Check if the tail of calls matches a pattern sequence."""
+        """Check if patterns appear as a subsequence within calls.
+
+        Uses subsequence matching instead of exact-tail matching so that
+        inserting benign calls between attack steps (e.g., read_file →
+        benign_tool → http_request) cannot evade detection.
+        """
         if len(calls) < len(patterns):
             return False
 
-        # Check the last N calls against the patterns
-        tail = calls[-len(patterns) :]
-        for call, pattern in zip(tail, patterns):
-            if not re.search(pattern, call, re.IGNORECASE):
-                return False
-        return True
+        pattern_idx = 0
+        for call in calls:
+            if re.search(patterns[pattern_idx], call, re.IGNORECASE):
+                pattern_idx += 1
+                if pattern_idx == len(patterns):
+                    return True
+        return False
 
     @property
     def recent_calls(self) -> list[str]:

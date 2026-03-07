@@ -1,0 +1,238 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 520" fill="none">
+  <style>
+    text { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; }
+    .title { font-size: 16px; font-weight: 700; fill: #f4f4f5; }
+    .subtitle { font-size: 10.5px; font-weight: 400; fill: #52525b; }
+    .layer-label { font-size: 9px; font-weight: 700; letter-spacing: 0.1em; fill: #3f3f46; }
+    .node-type { font-size: 8px; font-weight: 700; letter-spacing: 0.1em; }
+    .node-label { font-size: 11.5px; font-weight: 700; fill: #e4e4e7; }
+    .node-detail { font-size: 9px; font-weight: 400; fill: #71717a; }
+    .tool-name { font-size: 8.5px; font-weight: 600; font-family: ui-monospace, monospace; fill: #a1a1aa; }
+    .cred-name { font-size: 8.5px; font-weight: 600; font-family: ui-monospace, monospace; fill: #fbbf24; }
+    .badge { font-size: 8px; font-weight: 700; }
+    .legend-label { font-size: 9px; font-weight: 500; fill: #71717a; }
+  </style>
+
+  <!-- Background -->
+  <rect width="960" height="520" rx="12" fill="#09090b"/>
+
+  <!-- Title -->
+  <text x="480" y="30" text-anchor="middle" class="title">What agent-bom discovers on your machine</text>
+  <text x="480" y="46" text-anchor="middle" class="subtitle">Auto-detected MCP topology: agents, servers, tools, and credential exposure</text>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- LAYER LABELS (left side)                                                -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <text x="16" y="100" class="layer-label" transform="rotate(-90, 16, 100)">AI AGENTS</text>
+  <text x="16" y="260" class="layer-label" transform="rotate(-90, 16, 260)">MCP SERVERS</text>
+  <text x="16" y="420" class="layer-label" transform="rotate(-90, 16, 420)">TOOLS + CREDENTIALS</text>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- EDGES: Agents → Servers (drawn first)                                   -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+  <!-- Claude Desktop → sqlite-mcp -->
+  <path d="M160 138 C160 170, 120 190, 120 218" stroke="#3b82f6" stroke-width="1.5" opacity="0.25" fill="none"/>
+  <!-- Claude Desktop → filesystem-mcp (shared) -->
+  <path d="M190 138 C190 170, 360 190, 360 218" stroke="#3b82f6" stroke-width="2" opacity="0.35" fill="none"/>
+  <!-- Claude Desktop → github-mcp -->
+  <path d="M220 138 C230 170, 580 185, 580 218" stroke="#3b82f6" stroke-width="1.5" opacity="0.25" fill="none"/>
+
+  <!-- Cursor → filesystem-mcp (shared) -->
+  <path d="M420 138 C420 170, 370 190, 370 218" stroke="#3b82f6" stroke-width="2" opacity="0.35" fill="none"/>
+  <!-- Cursor → sqlite-mcp -->
+  <path d="M390 138 C390 170, 130 190, 130 218" stroke="#3b82f6" stroke-width="1.5" opacity="0.25" fill="none"/>
+  <!-- Cursor → web-search -->
+  <path d="M450 138 C450 170, 810 185, 810 218" stroke="#3b82f6" stroke-width="1.5" opacity="0.25" fill="none"/>
+
+  <!-- Windsurf → filesystem-mcp (shared) -->
+  <path d="M650 138 C650 175, 380 190, 380 218" stroke="#3b82f6" stroke-width="2" opacity="0.35" fill="none"/>
+  <!-- Windsurf → github-mcp -->
+  <path d="M680 138 C680 170, 590 190, 590 218" stroke="#3b82f6" stroke-width="1.5" opacity="0.25" fill="none"/>
+
+  <!-- VS Code → web-search -->
+  <path d="M890 138 C890 170, 820 190, 820 218" stroke="#3b82f6" stroke-width="1.5" opacity="0.25" fill="none"/>
+  <!-- VS Code → github-mcp -->
+  <path d="M870 138 C870 170, 600 190, 600 218" stroke="#3b82f6" stroke-width="1.5" opacity="0.25" fill="none"/>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- EDGES: Servers → Tools/Credentials                                      -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+  <!-- sqlite-mcp → its tools -->
+  <path d="M100 290 C100 310, 60 330, 60 348" stroke="#a78bfa" stroke-width="1" opacity="0.2" fill="none"/>
+  <path d="M120 290 C120 310, 140 330, 140 348" stroke="#a78bfa" stroke-width="1" opacity="0.2" fill="none"/>
+  <path d="M140 290 C140 310, 220 330, 220 348" stroke="#a78bfa" stroke-width="1" opacity="0.2" fill="none"/>
+  <!-- sqlite-mcp → creds -->
+  <path d="M130 290 C130 315, 80 390, 80 408" stroke="#f59e0b" stroke-width="1" opacity="0.2" fill="none"/>
+
+  <!-- filesystem-mcp → its tools -->
+  <path d="M340 290 C340 310, 310 330, 310 348" stroke="#a78bfa" stroke-width="1" opacity="0.2" fill="none"/>
+  <path d="M360 290 C360 310, 390 330, 390 348" stroke="#a78bfa" stroke-width="1" opacity="0.2" fill="none"/>
+  <path d="M380 290 C380 310, 470 330, 470 348" stroke="#a78bfa" stroke-width="1" opacity="0.2" fill="none"/>
+
+  <!-- github-mcp → its tools -->
+  <path d="M570 290 C570 310, 550 330, 550 348" stroke="#a78bfa" stroke-width="1" opacity="0.2" fill="none"/>
+  <path d="M590 290 C590 310, 630 330, 630 348" stroke="#a78bfa" stroke-width="1" opacity="0.2" fill="none"/>
+  <!-- github-mcp → creds -->
+  <path d="M600 290 C600 315, 370 390, 370 408" stroke="#f59e0b" stroke-width="1" opacity="0.2" fill="none"/>
+
+  <!-- web-search → its tools -->
+  <path d="M800 290 C800 310, 780 330, 780 348" stroke="#a78bfa" stroke-width="1" opacity="0.2" fill="none"/>
+  <path d="M820 290 C820 310, 860 330, 860 348" stroke="#a78bfa" stroke-width="1" opacity="0.2" fill="none"/>
+  <!-- web-search → creds -->
+  <path d="M810 290 C810 315, 590 390, 590 408" stroke="#f59e0b" stroke-width="1" opacity="0.2" fill="none"/>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- LAYER 1: AI AGENTS                                                      -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+  <!-- Agent: Claude Desktop -->
+  <rect x="100" y="74" width="160" height="64" rx="10" fill="#18181b" stroke="#27272a" stroke-width="1"/>
+  <rect x="100" y="74" width="4" height="64" rx="2" fill="#3b82f6"/>
+  <text x="120" y="92" class="node-type" fill="#3b82f6">AI AGENT</text>
+  <text x="120" y="108" class="node-label">Claude Desktop</text>
+  <text x="120" y="122" class="node-detail">3 servers · 8 tools</text>
+
+  <!-- Agent: Cursor -->
+  <rect x="330" y="74" width="160" height="64" rx="10" fill="#18181b" stroke="#27272a" stroke-width="1"/>
+  <rect x="330" y="74" width="4" height="64" rx="2" fill="#3b82f6"/>
+  <text x="350" y="92" class="node-type" fill="#3b82f6">AI AGENT</text>
+  <text x="350" y="108" class="node-label">Cursor IDE</text>
+  <text x="350" y="122" class="node-detail">3 servers · 9 tools</text>
+
+  <!-- Agent: Windsurf -->
+  <rect x="570" y="74" width="160" height="64" rx="10" fill="#18181b" stroke="#27272a" stroke-width="1"/>
+  <rect x="570" y="74" width="4" height="64" rx="2" fill="#3b82f6"/>
+  <text x="590" y="92" class="node-type" fill="#3b82f6">AI AGENT</text>
+  <text x="590" y="108" class="node-label">Windsurf</text>
+  <text x="590" y="122" class="node-detail">2 servers · 5 tools</text>
+
+  <!-- Agent: VS Code Copilot -->
+  <rect x="800" y="74" width="140" height="64" rx="10" fill="#18181b" stroke="#27272a" stroke-width="1"/>
+  <rect x="800" y="74" width="4" height="64" rx="2" fill="#3b82f6"/>
+  <text x="820" y="92" class="node-type" fill="#3b82f6">AI AGENT</text>
+  <text x="820" y="108" class="node-label">VS Code Copilot</text>
+  <text x="820" y="122" class="node-detail">2 servers · 4 tools</text>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- LAYER 2: MCP SERVERS                                                    -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+  <!-- Server: sqlite-mcp (unverified, red border) -->
+  <rect x="52" y="218" width="170" height="72" rx="10" fill="#18181b" stroke="#ef4444" stroke-width="1.5" stroke-opacity="0.4"/>
+  <rect x="52" y="218" width="4" height="72" rx="2" fill="#a78bfa"/>
+  <text x="72" y="236" class="node-type" fill="#a78bfa">MCP SERVER</text>
+  <text x="72" y="252" class="node-label">sqlite-mcp</text>
+  <text x="72" y="266" class="node-detail">3 tools · runs as root</text>
+  <!-- Unverified badge -->
+  <rect x="160" y="222" width="56" height="16" rx="8" fill="#ef4444" fill-opacity="0.15" stroke="#ef4444" stroke-width="0.5" stroke-opacity="0.3"/>
+  <text x="188" y="233" text-anchor="middle" class="badge" fill="#fca5a5">unverified</text>
+
+  <!-- Server: filesystem-mcp (shared by 3 agents, highlighted) -->
+  <rect x="272" y="218" width="170" height="72" rx="10" fill="#18181b" stroke="#f59e0b" stroke-width="1.5" stroke-opacity="0.4"/>
+  <rect x="272" y="218" width="4" height="72" rx="2" fill="#a78bfa"/>
+  <text x="292" y="236" class="node-type" fill="#a78bfa">MCP SERVER</text>
+  <text x="292" y="252" class="node-label">filesystem-mcp</text>
+  <text x="292" y="266" class="node-detail">3 tools · read/write access</text>
+  <!-- Shared badge -->
+  <rect x="380" y="222" width="56" height="16" rx="8" fill="#f59e0b" fill-opacity="0.15" stroke="#f59e0b" stroke-width="0.5" stroke-opacity="0.3"/>
+  <text x="408" y="233" text-anchor="middle" class="badge" fill="#fbbf24">3 agents</text>
+
+  <!-- Server: github-mcp -->
+  <rect x="502" y="218" width="170" height="72" rx="10" fill="#18181b" stroke="#27272a" stroke-width="1"/>
+  <rect x="502" y="218" width="4" height="72" rx="2" fill="#a78bfa"/>
+  <text x="522" y="236" class="node-type" fill="#a78bfa">MCP SERVER</text>
+  <text x="522" y="252" class="node-label">github-mcp</text>
+  <text x="522" y="266" class="node-detail">2 tools · verified</text>
+  <!-- Verified badge -->
+  <rect x="620" y="222" width="46" height="16" rx="8" fill="#10b981" fill-opacity="0.15" stroke="#10b981" stroke-width="0.5" stroke-opacity="0.3"/>
+  <text x="643" y="233" text-anchor="middle" class="badge" fill="#34d399">verified</text>
+
+  <!-- Server: web-search -->
+  <rect x="732" y="218" width="170" height="72" rx="10" fill="#18181b" stroke="#27272a" stroke-width="1"/>
+  <rect x="732" y="218" width="4" height="72" rx="2" fill="#a78bfa"/>
+  <text x="752" y="236" class="node-type" fill="#a78bfa">MCP SERVER</text>
+  <text x="752" y="252" class="node-label">web-search</text>
+  <text x="752" y="266" class="node-detail">2 tools · verified</text>
+  <rect x="850" y="222" width="46" height="16" rx="8" fill="#10b981" fill-opacity="0.15" stroke="#10b981" stroke-width="0.5" stroke-opacity="0.3"/>
+  <text x="873" y="233" text-anchor="middle" class="badge" fill="#34d399">verified</text>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- LAYER 3: TOOLS                                                          -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+  <!-- sqlite-mcp tools -->
+  <rect x="32" y="348" width="76" height="22" rx="5" fill="#18181b" stroke="#27272a" stroke-width="0.5"/>
+  <text x="70" y="363" text-anchor="middle" class="tool-name">query_db</text>
+
+  <rect x="116" y="348" width="76" height="22" rx="5" fill="#18181b" stroke="#27272a" stroke-width="0.5"/>
+  <text x="154" y="363" text-anchor="middle" class="tool-name">exec_sql</text>
+
+  <rect x="200" y="348" width="76" height="22" rx="5" fill="#2d1215" stroke="#ef4444" stroke-width="1"/>
+  <text x="238" y="363" text-anchor="middle" class="tool-name" fill="#fca5a5">run_shell</text>
+
+  <!-- filesystem-mcp tools -->
+  <rect x="290" y="348" width="76" height="22" rx="5" fill="#18181b" stroke="#27272a" stroke-width="0.5"/>
+  <text x="328" y="363" text-anchor="middle" class="tool-name">read_file</text>
+
+  <rect x="374" y="348" width="80" height="22" rx="5" fill="#18181b" stroke="#27272a" stroke-width="0.5"/>
+  <text x="414" y="363" text-anchor="middle" class="tool-name">write_file</text>
+
+  <rect x="462" y="348" width="72" height="22" rx="5" fill="#18181b" stroke="#27272a" stroke-width="0.5"/>
+  <text x="498" y="363" text-anchor="middle" class="tool-name">list_dir</text>
+
+  <!-- github-mcp tools -->
+  <rect x="542" y="348" width="80" height="22" rx="5" fill="#18181b" stroke="#27272a" stroke-width="0.5"/>
+  <text x="582" y="363" text-anchor="middle" class="tool-name">create_pr</text>
+
+  <rect x="630" y="348" width="80" height="22" rx="5" fill="#18181b" stroke="#27272a" stroke-width="0.5"/>
+  <text x="670" y="363" text-anchor="middle" class="tool-name">list_issues</text>
+
+  <!-- web-search tools -->
+  <rect x="768" y="348" width="68" height="22" rx="5" fill="#18181b" stroke="#27272a" stroke-width="0.5"/>
+  <text x="802" y="363" text-anchor="middle" class="tool-name">search</text>
+
+  <rect x="844" y="348" width="80" height="22" rx="5" fill="#18181b" stroke="#27272a" stroke-width="0.5"/>
+  <text x="884" y="363" text-anchor="middle" class="tool-name">fetch_url</text>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- LAYER 3: CREDENTIALS (below tools)                                      -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <text x="40" y="402" class="layer-label">CREDENTIALS EXPOSED PER SERVER</text>
+
+  <!-- sqlite-mcp creds -->
+  <rect x="32" y="408" width="130" height="22" rx="5" fill="#1c1917" stroke="#78350f" stroke-width="0.5"/>
+  <circle cx="46" cy="419" r="3" fill="#f59e0b" opacity="0.5"/>
+  <text x="56" y="423" class="cred-name">DB_URL</text>
+
+  <!-- filesystem-mcp — no sensitive creds -->
+  <rect x="200" y="408" width="130" height="22" rx="5" fill="#18181b" stroke="#27272a" stroke-width="0.5"/>
+  <text x="214" y="423" class="tool-name">no credentials</text>
+
+  <!-- github-mcp creds -->
+  <rect x="370" y="408" width="130" height="22" rx="5" fill="#1c1917" stroke="#78350f" stroke-width="0.5"/>
+  <circle cx="384" cy="419" r="3" fill="#f59e0b" opacity="0.5"/>
+  <text x="394" y="423" class="cred-name">GITHUB_TOKEN</text>
+
+  <!-- web-search creds -->
+  <rect x="540" y="408" width="130" height="22" rx="5" fill="#1c1917" stroke="#78350f" stroke-width="0.5"/>
+  <circle cx="554" cy="419" r="3" fill="#f59e0b" opacity="0.5"/>
+  <text x="564" y="423" class="cred-name">SERP_API_KEY</text>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- INSIGHT BAR                                                             -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <rect x="24" y="452" width="912" height="52" rx="10" fill="#18181b" stroke="#27272a" stroke-width="1"/>
+
+  <text x="52" y="474" font-size="10" font-weight="600" fill="#f4f4f5">Key findings:</text>
+
+  <circle cx="166" cy="471" r="4" fill="#f59e0b" opacity="0.6"/>
+  <text x="178" y="475" class="legend-label">filesystem-mcp shared by 3 agents — single point of failure</text>
+
+  <circle cx="506" cy="471" r="4" fill="#ef4444" opacity="0.6"/>
+  <text x="518" y="475" class="legend-label">sqlite-mcp unverified + root + run_shell = critical risk</text>
+
+  <circle cx="806" cy="471" r="4" fill="#3b82f6" opacity="0.6"/>
+  <text x="818" y="475" class="legend-label">3 credentials exposed</text>
+</svg>

@@ -57,25 +57,16 @@
   <!-- Server B → Agent 3 (Windsurf) -->
   <path d="M512 310 C536 310, 546 340, 560 340" stroke="#a78bfa" stroke-width="1.5" opacity="0.3" fill="none" marker-end="url(#arrow-muted)"/>
 
-  <!-- Agent 1 → Credentials -->
-  <path d="M690 92 C710 92, 720 78, 732 78" stroke="#52525b" stroke-width="1" opacity="0.3" fill="none"/>
-  <path d="M690 104 C710 104, 720 114, 732 114" stroke="#52525b" stroke-width="1" opacity="0.3" fill="none"/>
+  <!-- Agent 1 → Credentials (short horizontal links) -->
+  <line x1="690" y1="99" x2="732" y2="99" stroke="#52525b" stroke-width="1" opacity="0.25"/>
+  <line x1="690" y1="99" x2="710" y2="133" stroke="#52525b" stroke-width="1" opacity="0.2"/>
 
-  <!-- Agent 2 → Credentials (multiple) -->
-  <path d="M690 214 C710 214, 720 78, 732 78" stroke="#52525b" stroke-width="1" opacity="0.2" fill="none"/>
-  <path d="M690 218 C710 218, 720 114, 732 114" stroke="#52525b" stroke-width="1" opacity="0.3" fill="none"/>
-  <path d="M690 226 C710 226, 720 150, 732 150" stroke="#52525b" stroke-width="1" opacity="0.3" fill="none"/>
+  <!-- Agent 2 → Credentials -->
+  <line x1="690" y1="224" x2="710" y2="133" stroke="#52525b" stroke-width="1" opacity="0.2"/>
+  <line x1="690" y1="224" x2="710" y2="167" stroke="#52525b" stroke-width="1" opacity="0.2"/>
 
   <!-- Agent 3 → Credentials -->
-  <path d="M690 340 C710 340, 720 150, 732 150" stroke="#52525b" stroke-width="1" opacity="0.2" fill="none"/>
-
-  <!-- Agent connections to tools -->
-  <path d="M690 100 C714 100, 720 222, 732 222" stroke="#52525b" stroke-width="1" opacity="0.15" fill="none"/>
-  <path d="M690 232 C714 232, 720 222, 732 222" stroke="#52525b" stroke-width="1" opacity="0.2" fill="none"/>
-  <path d="M690 232 C714 232, 720 258, 732 258" stroke="#52525b" stroke-width="1" opacity="0.2" fill="none"/>
-  <path d="M690 232 C714 232, 720 294, 732 294" stroke="#52525b" stroke-width="1" opacity="0.2" fill="none"/>
-  <path d="M690 345 C714 345, 720 258, 732 258" stroke="#52525b" stroke-width="1" opacity="0.15" fill="none"/>
-  <path d="M690 345 C714 345, 720 330, 732 330" stroke="#52525b" stroke-width="1" opacity="0.2" fill="none"/>
+  <line x1="690" y1="348" x2="710" y2="167" stroke="#52525b" stroke-width="1" opacity="0.15"/>
 
   <!-- ═══════════════════════════════════════════════════════════════════════ -->
   <!-- COLUMN LABELS                                                           -->
@@ -225,8 +216,8 @@
   <text x="440" y="472" text-anchor="middle" class="impact-label">tool exposed</text>
 
   <!-- Fix recommendation -->
-  <rect x="520" y="422" width="400" height="52" rx="8" fill="#052e16" stroke="#065f46" stroke-width="1"/>
-  <text x="540" y="442" font-size="9" font-weight="600" fill="#34d399" letter-spacing="0.05em" font-family="system-ui, sans-serif">RECOMMENDED FIX</text>
-  <text x="540" y="462" class="fix-label" fill="#6ee7b7">upgrade better-sqlite3 → 11.7.0</text>
-  <text x="540" y="476" class="node-detail" fill="#34d399">Resolves all 3 agent exposures in one upgrade</text>
+  <rect x="520" y="420" width="404" height="58" rx="8" fill="#052e16" stroke="#065f46" stroke-width="1"/>
+  <text x="540" y="440" font-size="9" font-weight="600" fill="#34d399" letter-spacing="0.05em" font-family="system-ui, sans-serif">RECOMMENDED FIX</text>
+  <text x="540" y="458" class="fix-label" fill="#6ee7b7">upgrade better-sqlite3 → 11.7.0</text>
+  <text x="540" y="474" class="node-detail" fill="#34d399">Resolves all 3 agent exposures in one upgrade</text>
 </svg>

@@ -6,6 +6,7 @@ from agent_bom.runtime.detectors import (
     ArgumentAnalyzer,
     CredentialLeakDetector,
     RateLimitTracker,
+    ResponseInspector,
     SequenceAnalyzer,
     ToolDriftDetector,
 )
@@ -23,6 +24,7 @@ __all__ = [
     "CredentialLeakDetector",
     "DANGEROUS_ARG_PATTERNS",
     "RateLimitTracker",
+    "ResponseInspector",
     "SUSPICIOUS_SEQUENCES",
     "SequenceAnalyzer",
     "ToolDriftDetector",

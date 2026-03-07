@@ -41,6 +41,43 @@ DANGEROUS_ARG_PATTERNS: list[tuple[str, re.Pattern]] = [
 ]
 
 
+# ─── Response content inspection patterns ────────────────────────────────────
+
+# HTML/CSS cloaking patterns used to hide malicious instructions from users
+# while keeping them visible to the LLM (Unit42 research)
+RESPONSE_CLOAKING_PATTERNS: list[tuple[str, re.Pattern]] = [
+    ("CSS display:none", re.compile(r"display\s*:\s*none", re.IGNORECASE)),
+    ("CSS visibility:hidden", re.compile(r"visibility\s*:\s*hidden", re.IGNORECASE)),
+    ("CSS opacity:0", re.compile(r"opacity\s*:\s*0(?:[;\s\"]|$)", re.IGNORECASE)),
+    ("CSS position offscreen", re.compile(r"position\s*:\s*absolute[^}]*(?:left|top)\s*:\s*-\d{4,}px", re.IGNORECASE)),
+    ("CSS font-size:0", re.compile(r"font-size\s*:\s*0(?:px|em|rem|%)?[;\s\"]", re.IGNORECASE)),
+    ("CSS color transparent", re.compile(r"color\s*:\s*(?:transparent|rgba\s*\([^)]*,\s*0\s*\))", re.IGNORECASE)),
+    ("HTML hidden attribute", re.compile(r"<[^>]+\bhidden\b[^>]*>", re.IGNORECASE)),
+    ("HTML aria-hidden", re.compile(r'aria-hidden\s*=\s*["\']true["\']', re.IGNORECASE)),
+]
+
+# SVG payload patterns — embedded scripts or foreign content
+RESPONSE_SVG_PATTERNS: list[tuple[str, re.Pattern]] = [
+    ("SVG script tag", re.compile(r"<script[^>]*>", re.IGNORECASE)),
+    ("SVG foreignObject", re.compile(r"<foreignObject[^>]*>", re.IGNORECASE)),
+    ("SVG onload handler", re.compile(r"\bon(?:load|error|click|mouseover)\s*=", re.IGNORECASE)),
+    ("SVG xlink:href javascript", re.compile(r'xlink:href\s*=\s*["\']javascript:', re.IGNORECASE)),
+    ("SVG use href data URI", re.compile(r'href\s*=\s*["\']data:', re.IGNORECASE)),
+]
+
+# Zero-width and invisible Unicode characters used to hide instructions
+RESPONSE_INVISIBLE_CHARS: list[tuple[str, re.Pattern]] = [
+    ("Zero-width space cluster", re.compile(r"[\u200b\u200c\u200d\ufeff]{3,}")),
+    ("Zero-width joiner sequence", re.compile(r"(?:\u200d.){4,}")),
+    ("Homoglyph substitution", re.compile(r"[\u0410-\u044f](?=[a-zA-Z])|(?<=[a-zA-Z])[\u0410-\u044f]")),  # Cyrillic mixed with Latin
+    ("Right-to-left override", re.compile(r"[\u202e\u2066\u2067\u2068\u202a\u202b]")),
+    ("Tag characters", re.compile(r"[\U000e0001-\U000e007f]{3,}")),
+]
+
+# Base64 encoded content in responses (potential exfiltration staging)
+RESPONSE_BASE64_PATTERN = re.compile(r"(?:^|[^A-Za-z0-9+/])([A-Za-z0-9+/]{60,}={0,2})(?:$|[^A-Za-z0-9+/])")
+
+
 # ─── Suspicious tool call sequences ──────────────────────────────────────────
 
 # (sequence_name, [tool_name_patterns], description)

@@ -93,7 +93,7 @@
   <rect x="42" y="224" width="170" height="4" rx="2" fill="#d29922" opacity="0.6"/>
   <text x="127" y="248" text-anchor="middle" class="spoke-title" fill="#d29922">Runtime Proxy</text>
   <text x="127" y="262" text-anchor="middle" class="spoke-line1">MCP traffic monitoring</text>
-  <text x="127" y="274" text-anchor="middle" class="spoke-line2">5 detectors + alert webhook</text>
+  <text x="127" y="274" text-anchor="middle" class="spoke-line2">6 detectors + alert webhook</text>
 
   <!-- Footer -->
   <text x="440" y="462" text-anchor="middle" class="footer">One engine, multiple deployment modes</text>

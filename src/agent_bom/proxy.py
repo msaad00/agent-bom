@@ -545,6 +545,7 @@ async def run_proxy(
         ArgumentAnalyzer,
         CredentialLeakDetector,
         RateLimitTracker,
+        ResponseInspector,
         SequenceAnalyzer,
         ToolDriftDetector,
     )
@@ -554,6 +555,7 @@ async def run_proxy(
     cred_detector = CredentialLeakDetector() if detect_credentials else None
     rate_tracker = RateLimitTracker(threshold=rate_limit_threshold) if rate_limit_threshold > 0 else None
     seq_analyzer = SequenceAnalyzer()
+    response_inspector = ResponseInspector()
     replay_detector = ReplayDetector()
     scan_config = load_scan_config(policy) if policy else ScanConfig()
     runtime_alerts: list[dict] = []
@@ -804,6 +806,16 @@ async def run_proxy(
                         tool_for_resp = pending_calls[resp_id][0]
                     cred_alerts = cred_detector.check(tool_for_resp or "unknown", result_text)
                     _handle_alerts(cred_alerts, log_file)
+
+                # Runtime detector: response content inspection (cloaking, SVG, invisible chars)
+                if "result" in msg:
+                    ri_text = json.dumps(msg.get("result", ""))
+                    ri_id = msg.get("id")
+                    ri_tool = ""
+                    if ri_id is not None and ri_id in pending_calls:
+                        ri_tool = pending_calls[ri_id][0]
+                    ri_alerts = response_inspector.check(ri_tool or "unknown", ri_text)
+                    _handle_alerts(ri_alerts, log_file)
 
                 # Inline response scanning (PII, secrets, payload vuln)
                 if scan_config.enabled and "result" in msg:

@@ -1,6 +1,6 @@
 # MCP Server Setup
 
-agent-bom runs as an MCP server, exposing 20 security tools to any MCP client.
+agent-bom runs as an MCP server, exposing 22 security tools to any MCP client.
 
 ## Local (stdio)
 

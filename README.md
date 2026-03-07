@@ -189,7 +189,7 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible
 | GitHub Action | `uses: msaad00/agent-bom@v0` | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated scans |
 | REST API | `agent-bom api` | Dashboards, SIEM |
-| MCP Server | `agent-bom mcp-server` (20 tools) | Inside any MCP client |
+| MCP Server | `agent-bom mcp-server` (22 tools) | Inside any MCP client |
 | Dashboard | `agent-bom serve` | API + Next.js UI (15 pages) |
 | Runtime proxy | `agent-bom proxy` | MCP traffic audit |
 | Snowflake | [DEPLOYMENT.md](DEPLOYMENT.md) | Snowpark + SiS |

@@ -16,7 +16,7 @@ metadata:
   source: https://github.com/msaad00/agent-bom
   pypi: https://pypi.org/project/agent-bom/
   scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
-  tests: 6194
+  tests: 3480
   install:
     pipx: agent-bom
     pip: agent-bom
@@ -188,5 +188,5 @@ CVE IDs are sent to vulnerability databases.
 
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
 - **Sigstore signed**: `agent-bom verify agent-bom@0.59.3`
-- **6,100+ tests** with CodeQL + OpenSSF Scorecard
+- **3,400+ tests** with CodeQL + OpenSSF Scorecard
 - **No telemetry**: Zero tracking, zero analytics

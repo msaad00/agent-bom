@@ -33,5 +33,29 @@
         }
       ]
     }
-  ]
+  ],
+  "_meta": {
+    "tools": [
+      "scan",
+      "check",
+      "blast_radius",
+      "policy_check",
+      "registry_lookup",
+      "generate_sbom",
+      "compliance",
+      "remediate",
+      "skill_trust",
+      "verify",
+      "where",
+      "inventory",
+      "diff",
+      "marketplace_check",
+      "code_scan",
+      "context_graph",
+      "analytics_query",
+      "cis_benchmark",
+      "fleet_scan",
+      "runtime_correlate"
+    ]
+  }
 }

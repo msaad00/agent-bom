@@ -58,7 +58,8 @@
             "context_graph",
             "analytics_query",
             "cis_benchmark",
-            "fleet_scan"
+            "fleet_scan",
+            "runtime_correlate"
           ]
         }
       }

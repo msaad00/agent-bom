@@ -15,6 +15,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import re
 import sys
 import time
@@ -499,10 +500,11 @@ async def run_proxy(
     if policy_path:
         policy = json.loads(Path(policy_path).read_text())
 
-    # Open audit log
+    # Open audit log with restricted permissions (0o600)
     log_file = None
     if log_path:
-        log_file = open(log_path, "a")  # noqa: SIM115
+        fd = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        log_file = os.fdopen(fd, "a")
 
     # Metrics
     metrics = ProxyMetrics()

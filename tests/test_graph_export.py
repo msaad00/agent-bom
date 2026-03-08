@@ -1,0 +1,387 @@
+"""Tests for transitive dependency graph export (#292).
+
+Tests cover:
+- load_graph_from_scan() parses agents/servers/packages/CVEs
+- Transitive packages (is_direct=False, dependency_depth>0) are included
+- Packages with no vulns get 'pkg' kind; with vulns get 'pkg_vuln'
+- Servers with has_credentials=True get 'server_cred' kind
+- to_dot() produces valid DOT syntax
+- to_mermaid() produces valid Mermaid syntax
+- to_json() produces serialisable dict with nodes/edges/stats
+- load_graph_from_scan() raises ValueError for non-agent-bom JSON
+- Empty agents list produces empty graph
+- graph CLI command: json/dot/mermaid --output to file
+- graph CLI command: bad file raises SystemExit
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import tempfile
+from pathlib import Path
+
+import pytest
+from click.testing import CliRunner
+
+from agent_bom.output.graph_export import (
+    DepGraph,
+    load_graph_from_scan,
+    to_dot,
+    to_json,
+    to_mermaid,
+)
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+
+def _make_scan_json(agents: list[dict] | None = None) -> dict:
+    return {
+        "document_type": "AI-BOM",
+        "spec_version": "1.0",
+        "ai_bom_version": "0.62.0",
+        "generated_at": "2026-03-08T00:00:00",
+        "summary": {
+            "total_agents": len(agents or []),
+            "total_mcp_servers": 0,
+            "total_packages": 0,
+            "total_vulnerabilities": 0,
+            "critical_findings": 0,
+        },
+        "agents": agents or [],
+    }
+
+
+def _pkg(name: str, version: str = "1.0.0", eco: str = "npm", vulns: list | None = None, is_direct: bool = True, depth: int = 0) -> dict:
+    return {
+        "name": name,
+        "version": version,
+        "ecosystem": eco,
+        "purl": f"pkg:{eco}/{name}@{version}",
+        "is_direct": is_direct,
+        "dependency_depth": depth,
+        "parent_package": None,
+        "vulnerabilities": vulns or [],
+    }
+
+
+def _vuln(vid: str = "CVE-2024-0001", severity: str = "high") -> dict:
+    return {"id": vid, "severity": severity, "summary": "A test vulnerability.", "cvss_score": 7.5}
+
+
+def _server(name: str, pkgs: list | None = None, has_creds: bool = False) -> dict:
+    return {
+        "name": name,
+        "command": "npx",
+        "args": [],
+        "transport": "stdio",
+        "url": "",
+        "has_credentials": has_creds,
+        "packages": pkgs or [],
+    }
+
+
+def _agent(name: str, servers: list | None = None, source: str = "local") -> dict:
+    return {
+        "name": name,
+        "type": "custom",
+        "config_path": "/tmp/mcp.json",
+        "source": source,
+        "status": "active",
+        "mcp_servers": servers or [],
+    }
+
+
+def _write_scan(data: dict) -> str:
+    f = tempfile.NamedTemporaryFile(suffix=".json", mode="w", delete=False)
+    json.dump(data, f)
+    f.close()
+    return f.name
+
+
+# ── load_graph_from_scan ───────────────────────────────────────────────────────
+
+
+def test_empty_agents_produces_empty_graph():
+    path = _write_scan(_make_scan_json([]))
+    try:
+        g = load_graph_from_scan(path)
+        assert g.node_count() == 0
+        assert g.edge_count() == 0
+    finally:
+        os.unlink(path)
+
+
+def test_loads_agent_server_package_nodes():
+    data = _make_scan_json([_agent("myagent", [_server("myserver", [_pkg("requests", "2.31.0", "pypi")])])])
+    path = _write_scan(data)
+    try:
+        g = load_graph_from_scan(path)
+        kinds = {n.kind for n in g.nodes}
+        assert "provider" in kinds
+        assert "agent" in kinds
+        assert "server" in kinds
+        assert "pkg" in kinds
+    finally:
+        os.unlink(path)
+
+
+def test_vulnerable_package_gets_pkg_vuln_kind():
+    pkg = _pkg("lodash", "4.17.20", "npm", vulns=[_vuln("CVE-2021-23337")])
+    data = _make_scan_json([_agent("a", [_server("s", [pkg])])])
+    path = _write_scan(data)
+    try:
+        g = load_graph_from_scan(path)
+        kinds = {n.kind for n in g.nodes}
+        assert "pkg_vuln" in kinds
+        assert "cve" in kinds
+    finally:
+        os.unlink(path)
+
+
+def test_transitive_package_gets_pkg_transitive_kind():
+    pkg = _pkg("semver", "7.5.4", "npm", is_direct=False, depth=2)
+    data = _make_scan_json([_agent("a", [_server("s", [pkg])])])
+    path = _write_scan(data)
+    try:
+        g = load_graph_from_scan(path)
+        trans_nodes = [n for n in g.nodes if n.kind == "pkg_transitive"]
+        assert len(trans_nodes) == 1
+        assert "depth 2" in trans_nodes[0].label
+    finally:
+        os.unlink(path)
+
+
+def test_credential_server_gets_server_cred_kind():
+    srv = _server("cred-server", has_creds=True)
+    data = _make_scan_json([_agent("a", [srv])])
+    path = _write_scan(data)
+    try:
+        g = load_graph_from_scan(path)
+        kinds = {n.kind for n in g.nodes}
+        assert "server_cred" in kinds
+    finally:
+        os.unlink(path)
+
+
+def test_edges_connect_hierarchy():
+    pkg = _pkg("axios", "1.0.0", "npm")
+    data = _make_scan_json([_agent("a", [_server("s", [pkg])])])
+    path = _write_scan(data)
+    try:
+        g = load_graph_from_scan(path)
+        edge_kinds = {e.kind for e in g.edges}
+        assert "hosts" in edge_kinds
+        assert "uses" in edge_kinds
+        assert "depends_on" in edge_kinds
+    finally:
+        os.unlink(path)
+
+
+def test_cve_edge_affects():
+    pkg = _pkg("pkg", vulns=[_vuln("CVE-2024-9999", "critical")])
+    data = _make_scan_json([_agent("a", [_server("s", [pkg])])])
+    path = _write_scan(data)
+    try:
+        g = load_graph_from_scan(path)
+        affects_edges = [e for e in g.edges if e.kind == "affects"]
+        assert len(affects_edges) == 1
+        cve_nodes = [n for n in g.nodes if n.kind == "cve"]
+        assert cve_nodes[0].severity == "critical"
+    finally:
+        os.unlink(path)
+
+
+def test_multiple_agents_multiple_providers():
+    a1 = _agent("agent1", source="aws")
+    a2 = _agent("agent2", source="azure")
+    data = _make_scan_json([a1, a2])
+    path = _write_scan(data)
+    try:
+        g = load_graph_from_scan(path)
+        provider_nodes = [n for n in g.nodes if n.kind == "provider"]
+        assert len(provider_nodes) == 2
+        labels = {n.label for n in provider_nodes}
+        assert "aws" in labels
+        assert "azure" in labels
+    finally:
+        os.unlink(path)
+
+
+def test_raises_value_error_for_invalid_json():
+    path = _write_scan({"not": "an-agent-bom-report"})
+    try:
+        with pytest.raises(ValueError, match="AI-BOM"):
+            load_graph_from_scan(path)
+    finally:
+        os.unlink(path)
+
+
+def test_raises_file_not_found():
+    with pytest.raises(FileNotFoundError):
+        load_graph_from_scan("/nonexistent/path/report.json")
+
+
+# ── to_dot ────────────────────────────────────────────────────────────────────
+
+
+def test_to_dot_basic_structure():
+    pkg = _pkg("react", "18.0.0", "npm")
+    data = _make_scan_json([_agent("a", [_server("s", [pkg])])])
+    path = _write_scan(data)
+    try:
+        g = load_graph_from_scan(path)
+        dot = to_dot(g)
+        assert "digraph dependency_graph" in dot
+        assert "rankdir=LR" in dot
+        assert "->" in dot
+    finally:
+        os.unlink(path)
+
+
+def test_to_dot_contains_all_node_labels():
+    pkg = _pkg("express", "4.18.0", "npm", vulns=[_vuln("CVE-2024-1234")])
+    data = _make_scan_json([_agent("myagent", [_server("mysrv", [pkg])])])
+    path = _write_scan(data)
+    try:
+        g = load_graph_from_scan(path)
+        dot = to_dot(g)
+        assert "myagent" in dot
+        assert "mysrv" in dot
+        assert "express" in dot
+        assert "CVE-2024-1234" in dot
+    finally:
+        os.unlink(path)
+
+
+def test_to_dot_empty_graph():
+    g = DepGraph()
+    dot = to_dot(g)
+    assert "digraph dependency_graph" in dot
+    assert "->" not in dot
+
+
+# ── to_mermaid ────────────────────────────────────────────────────────────────
+
+
+def test_to_mermaid_basic_structure():
+    pkg = _pkg("vue", "3.0.0", "npm")
+    data = _make_scan_json([_agent("a", [_server("s", [pkg])])])
+    path = _write_scan(data)
+    try:
+        g = load_graph_from_scan(path)
+        mmd = to_mermaid(g)
+        assert "flowchart LR" in mmd
+        assert "classDef" in mmd
+        assert "-->" in mmd
+    finally:
+        os.unlink(path)
+
+
+def test_to_mermaid_empty_graph():
+    g = DepGraph()
+    mmd = to_mermaid(g)
+    assert "flowchart LR" in mmd
+    assert "-->" not in mmd
+
+
+# ── to_json ──────────────────────────────────────────────────────────────────
+
+
+def test_to_json_structure():
+    pkg = _pkg("numpy", "1.24.0", "pypi")
+    data = _make_scan_json([_agent("a", [_server("s", [pkg])])])
+    path = _write_scan(data)
+    try:
+        g = load_graph_from_scan(path)
+        result = to_json(g)
+        assert "nodes" in result
+        assert "edges" in result
+        assert "stats" in result
+        assert result["stats"]["node_count"] == g.node_count()
+        assert result["stats"]["edge_count"] == g.edge_count()
+        # Should be JSON-serialisable
+        json.dumps(result)
+    finally:
+        os.unlink(path)
+
+
+def test_to_json_node_has_required_fields():
+    pkg = _pkg("flask", "3.0.0", "pypi")
+    data = _make_scan_json([_agent("a", [_server("s", [pkg])])])
+    path = _write_scan(data)
+    try:
+        g = load_graph_from_scan(path)
+        result = to_json(g)
+        for node in result["nodes"]:
+            assert "id" in node
+            assert "label" in node
+            assert "kind" in node
+    finally:
+        os.unlink(path)
+
+
+# ── CLI graph command ─────────────────────────────────────────────────────────
+
+
+def test_cli_graph_json_to_stdout():
+    from agent_bom.cli import main
+
+    pkg = _pkg("boto3", "1.28.0", "pypi")
+    data = _make_scan_json([_agent("cli-agent", [_server("s", [pkg])])])
+    path = _write_scan(data)
+    try:
+        runner = CliRunner()
+        result = runner.invoke(main, ["graph", path, "--format", "json"])
+        assert result.exit_code == 0
+        parsed = json.loads(result.output)
+        assert "nodes" in parsed
+        assert "edges" in parsed
+    finally:
+        os.unlink(path)
+
+
+def test_cli_graph_dot_to_file():
+    from agent_bom.cli import main
+
+    pkg = _pkg("django", "4.2.0", "pypi")
+    data = _make_scan_json([_agent("a", [_server("s", [pkg])])])
+    path = _write_scan(data)
+    with tempfile.NamedTemporaryFile(suffix=".dot", delete=False) as out:
+        out_path = out.name
+
+    try:
+        runner = CliRunner()
+        result = runner.invoke(main, ["graph", path, "--format", "dot", "--output", out_path])
+        assert result.exit_code == 0
+        dot_content = Path(out_path).read_text()
+        assert "digraph dependency_graph" in dot_content
+    finally:
+        os.unlink(path)
+        os.unlink(out_path)
+
+
+def test_cli_graph_mermaid_to_stdout():
+    from agent_bom.cli import main
+
+    data = _make_scan_json([_agent("a", [])])
+    path = _write_scan(data)
+    try:
+        runner = CliRunner()
+        result = runner.invoke(main, ["graph", path, "--format", "mermaid"])
+        assert result.exit_code == 0
+        assert "flowchart LR" in result.output
+    finally:
+        os.unlink(path)
+
+
+def test_cli_graph_invalid_file_exits_nonzero():
+    from agent_bom.cli import main
+
+    path = _write_scan({"invalid": True})
+    try:
+        runner = CliRunner()
+        result = runner.invoke(main, ["graph", path])
+        assert result.exit_code != 0
+    finally:
+        os.unlink(path)

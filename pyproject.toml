@@ -94,6 +94,10 @@ mcp-server = [
 ]
 dashboard = ["streamlit>=1.30", "plotly>=5.18"]
 snyk = []  # Uses existing httpx dependency, no additional packages needed
+oidc = [
+    "PyJWT>=2.8",
+    "cryptography>=41.0",
+]
 cloud = [
     "agent-bom[aws]",
     "agent-bom[azure]",

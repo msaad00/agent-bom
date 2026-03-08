@@ -11,7 +11,7 @@ import {
   ShieldAlert, Server, Package, Bug, Zap, ArrowRight, Clock,
   AlertTriangle, Container, Layers, FileText, ExternalLink,
 } from "lucide-react";
-import { VulnTrendChart, EpssDistributionChart, TrendDataPoint, EpssDataPoint } from "@/components/charts";
+import { VulnTrendChart, EpssDistributionChart, EpssVsCvssChart, TrendDataPoint, EpssDataPoint, EpssVsCvssPoint } from "@/components/charts";
 
 // ─── Aggregation helpers ──────────────────────────────────────────────────────
 
@@ -166,6 +166,124 @@ function aggregateEpss(allBlast: BlastRadius[]): EpssDataPoint[] {
   return buckets.map(({ range, count }) => ({ range, count }));
 }
 
+function aggregateEpssVsCvss(allBlast: BlastRadius[]): EpssVsCvssPoint[] {
+  return allBlast
+    .filter((b) => b.cvss_score != null && b.epss_score != null)
+    .map((b) => ({
+      cve: b.vulnerability_id,
+      cvss: b.cvss_score!,
+      epss: b.epss_score!,
+      blast: b.blast_score,
+      severity: b.severity?.toLowerCase() ?? "low",
+      kev: !!(b.cisa_kev ?? b.is_kev),
+      package: b.package,
+    }));
+}
+
+// Compound issue: a finding that meets 2+ independent risk signals simultaneously.
+// Each rule returns a subset of blast radius entries.
+export interface CompoundIssue {
+  id: string;
+  title: string;
+  description: string;
+  count: number;
+  severity: "critical" | "high";
+  findings: BlastRadius[];
+  filter: string; // URL param for /vulns deep-link
+}
+
+const SEVERITY_ORDER_MAP: Record<string, number> = {
+  critical: 4, high: 3, medium: 2, low: 1,
+};
+
+function aggregateCompoundIssues(allBlast: BlastRadius[]): CompoundIssue[] {
+  const issues: CompoundIssue[] = [];
+
+  // 1. CISA KEV + reachable tool exposure
+  const kevReachable = allBlast.filter(
+    (b) => (b.cisa_kev ?? b.is_kev) && b.reachable_tools.length > 0
+  );
+  if (kevReachable.length > 0) {
+    issues.push({
+      id: "kev-reachable",
+      title: "Actively Exploited + Tool Reachability",
+      description:
+        "Known-exploited vulnerabilities (CISA KEV) in packages reachable by MCP tools — immediate patching required.",
+      count: kevReachable.length,
+      severity: "critical",
+      findings: kevReachable.sort((a, b) => b.blast_score - a.blast_score),
+      filter: "kev=true",
+    });
+  }
+
+  // 2. CISA KEV + credential exposure
+  const kevCredential = allBlast.filter(
+    (b) => (b.cisa_kev ?? b.is_kev) && b.exposed_credentials.length > 0
+  );
+  if (kevCredential.length > 0) {
+    issues.push({
+      id: "kev-credential",
+      title: "Actively Exploited + Credential Exposure",
+      description:
+        "Known-exploited CVEs co-located with exposed credentials — data exfiltration risk.",
+      count: kevCredential.length,
+      severity: "critical",
+      findings: kevCredential.sort((a, b) => b.blast_score - a.blast_score),
+      filter: "kev=true",
+    });
+  }
+
+  // 3. High EPSS (≥30%) + Critical/High CVSS (≥7) — imminent exploitation likely
+  const epssHighCvss = allBlast.filter(
+    (b) =>
+      (b.epss_score ?? 0) >= 0.3 &&
+      (b.cvss_score ?? 0) >= 7 &&
+      !b.cisa_kev &&
+      !b.is_kev
+  );
+  if (epssHighCvss.length > 0) {
+    issues.push({
+      id: "epss-cvss",
+      title: "High Exploit Probability + Critical Severity",
+      description:
+        "CVEs with EPSS ≥ 30% and CVSS ≥ 7.0 — statistically likely to be exploited in the wild within 30 days.",
+      count: epssHighCvss.length,
+      severity: "high",
+      findings: epssHighCvss.sort((a, b) => b.blast_score - a.blast_score),
+      filter: "severity=high",
+    });
+  }
+
+  // 4. Credential exposure + reachable exec tools
+  const credExec = allBlast.filter(
+    (b) =>
+      b.exposed_credentials.length > 0 &&
+      b.reachable_tools.some((t) =>
+        ["bash", "exec", "shell", "run", "execute", "subprocess"].some((kw) =>
+          t.toLowerCase().includes(kw)
+        )
+      )
+  );
+  if (credExec.length > 0) {
+    issues.push({
+      id: "cred-exec",
+      title: "Credential Exposure + Code Execution Path",
+      description:
+        "Exposed credentials reachable from tools with code execution capability — privilege escalation vector.",
+      count: credExec.length,
+      severity: "critical",
+      findings: credExec.sort((a, b) => b.blast_score - a.blast_score),
+      filter: "severity=critical",
+    });
+  }
+
+  return issues.sort(
+    (a, b) =>
+      (SEVERITY_ORDER_MAP[b.severity] ?? 0) -
+      (SEVERITY_ORDER_MAP[a.severity] ?? 0)
+  );
+}
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
@@ -209,6 +327,8 @@ export default function Dashboard() {
   const sources = useMemo(() => aggregateSources(jobs), [jobs]);
   const trendData = useMemo(() => aggregateTrend(jobs), [jobs]);
   const epssData = useMemo(() => aggregateEpss(allBlast), [allBlast]);
+  const scatterData = useMemo(() => aggregateEpssVsCvss(allBlast), [allBlast]);
+  const compoundIssues = useMemo(() => aggregateCompoundIssues(allBlast), [allBlast]);
 
   // Unique CVE count
   const uniqueCVEs = useMemo(() => {
@@ -286,6 +406,35 @@ export default function Dashboard() {
           <VulnTrendChart data={trendData} />
           <EpssDistributionChart data={epssData} />
         </div>
+      )}
+
+      {/* EPSS × CVSS risk map */}
+      {!loading && scatterData.length > 0 && (
+        <EpssVsCvssChart data={scatterData} />
+      )}
+
+      {/* Compound Issues */}
+      {!loading && compoundIssues.length > 0 && (
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest">
+                Compound Issues
+              </h2>
+              <p className="text-[10px] text-zinc-600 mt-0.5">
+                Findings that meet multiple independent risk criteria simultaneously
+              </p>
+            </div>
+            <Link href="/vulns" className="text-xs text-emerald-500 hover:text-emerald-400 flex items-center gap-1">
+              View all <ArrowRight className="w-3 h-3" />
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {compoundIssues.map((issue) => (
+              <CompoundIssueCard key={issue.id} issue={issue} />
+            ))}
+          </div>
+        </section>
       )}
 
       {/* Agent topology */}
@@ -669,6 +818,56 @@ function EmptyState() {
         <ArrowRight className="w-3.5 h-3.5" />
       </Link>
     </div>
+  );
+}
+
+function CompoundIssueCard({ issue }: { issue: CompoundIssue }) {
+  const isCrit = issue.severity === "critical";
+  const borderColor = isCrit ? "border-red-900" : "border-orange-900/60";
+  const badgeColor = isCrit
+    ? "bg-red-950 border border-red-800 text-red-400"
+    : "bg-orange-950 border border-orange-800 text-orange-400";
+  const countColor = isCrit ? "text-red-400" : "text-orange-400";
+
+  return (
+    <Link href={`/vulns?${issue.filter}`}>
+      <div
+        className={`bg-zinc-900 border ${borderColor} rounded-xl p-4 hover:bg-zinc-800/80 transition-colors cursor-pointer`}
+      >
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <div className="flex items-center gap-2">
+            <AlertTriangle
+              className={`w-4 h-4 shrink-0 ${isCrit ? "text-red-400" : "text-orange-400"}`}
+            />
+            <span className="text-sm font-semibold text-zinc-200 leading-tight">
+              {issue.title}
+            </span>
+          </div>
+          <span className={`text-xs font-mono font-bold ${countColor} shrink-0`}>
+            {issue.count}
+          </span>
+        </div>
+        <p className="text-xs text-zinc-500 leading-relaxed mb-3">
+          {issue.description}
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          {issue.findings.slice(0, 4).map((f) => (
+            <span
+              key={f.vulnerability_id}
+              className={`text-[10px] font-mono rounded px-1.5 py-0.5 ${badgeColor}`}
+            >
+              {f.vulnerability_id}
+              {(f.cisa_kev ?? f.is_kev) && " ⚡"}
+            </span>
+          ))}
+          {issue.findings.length > 4 && (
+            <span className="text-[10px] text-zinc-600 font-mono px-1 py-0.5">
+              +{issue.findings.length - 4} more
+            </span>
+          )}
+        </div>
+      </div>
+    </Link>
   );
 }
 

@@ -1,4 +1,4 @@
-.PHONY: help install test lint docker-build docker-run scan clean build-ui
+.PHONY: help install test lint docker-build docker-run scan clean build-ui analytics
 
 help:  ## Show this help message
 	@echo 'Usage: make [target]'
@@ -100,3 +100,25 @@ git-status:  ## Show git status and current branch
 	@git branch --show-current
 	@echo ""
 	@git status
+
+analytics:  ## Show adoption metrics (PyPI downloads, GitHub traffic, stars)
+	@echo "=== PyPI downloads (recent) ==="
+	@curl -sf "https://pypistats.org/api/packages/agent-bom/recent" 2>/dev/null \
+		| python3 -c "import json,sys; d=json.load(sys.stdin)['data']; print(f\"  Last day:   {d['last_day']:>8,}\n  Last week:  {d['last_week']:>8,}\n  Last month: {d['last_month']:>8,}\")" \
+		|| echo "  (pypistats rate-limited — try again in 60s)"
+	@echo ""
+	@echo "=== PyPI downloads by Python version ==="
+	@curl -sf "https://pypistats.org/api/packages/agent-bom/python_minor" 2>/dev/null \
+		| python3 -c "import json,sys; d=json.load(sys.stdin)['data']; [print(f\"  Python {r['category']:6} {r['downloads']:>8,}\") for r in sorted(d, key=lambda x: x['downloads'], reverse=True)[:8] if r['category'] and r['category'] != 'null']" \
+		|| echo "  (pypistats rate-limited)"
+	@echo ""
+	@echo "=== GitHub traffic (last 14 days) ==="
+	@gh api /repos/msaad00/agent-bom/traffic/views 2>/dev/null \
+		| python3 -c "import json,sys; d=json.load(sys.stdin); print(f\"  Views:  {d['count']:>8,}  unique: {d['uniques']:,}\")" \
+		|| echo "  (requires repo write access)"
+	@gh api /repos/msaad00/agent-bom/traffic/clones 2>/dev/null \
+		| python3 -c "import json,sys; d=json.load(sys.stdin); print(f\"  Clones: {d['count']:>8,}  unique: {d['uniques']:,}\")" \
+		|| true
+	@echo ""
+	@echo "=== GitHub stars & forks ==="
+	@gh api /repos/msaad00/agent-bom --jq '"  Stars: " + (.stargazers_count|tostring) + "   Forks: " + (.forks_count|tostring)' 2>/dev/null || true

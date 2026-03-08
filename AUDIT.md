@@ -297,6 +297,173 @@ Output
 
 ---
 
+---
+
+## Area 4: Runtime Layer (proxy.py + runtime/)
+
+### What it does (verified)
+
+```
+proxy.py (900+ lines) — stdio MCP proxy
+  ├── relay_client_to_server()
+  │     ├── Replay detection (SHA-256 canonical JSON, 5-min window, 10K cap)
+  │     ├── Undeclared tool blocking (--block-undeclared)
+  │     ├── Policy enforcement (allowlist/blocklist, tool_name_pattern, arg_pattern)
+  │     ├── Gateway evaluator hook (external enforcement integration point)
+  │     ├── ArgumentAnalyzer (7 dangerous arg patterns)
+  │     ├── RateLimitTracker (sliding window, configurable threshold)
+  │     ├── SequenceAnalyzer (4 sequences, subsequence matching — evades interleaved benign calls)
+  │     └── Inline scanner (proxy_scanner.scan_tool_call — prompt injection, PII, secrets)
+  └── relay_server_to_client()
+        ├── ToolDriftDetector (baseline vs current, new tools = HIGH, removed = MEDIUM)
+        ├── CredentialLeakDetector (12 credential patterns, values redacted in alerts)
+        ├── ResponseInspector (8 cloaking + 5 SVG + 5 invisible char + base64 + 6 injection)
+        └── Inline response scanner (proxy_scanner.scan_tool_response)
+
+ProxyMetrics — per-tool call counts, blocked counts, latency (p50/p95), replay rejections
+ProxyMetricsServer — Prometheus text exposition on port 8422, optional bearer token auth
+ReplayDetector — canonical JSON SHA-256, 5-minute sliding window, LRU eviction at 10K
+check_policy() — allowlist takes precedence, block_tools/tool_name/tool_name_pattern/arg_pattern,
+                  ReDoS guard (>500 char patterns skipped with warning)
+log_tool_call() — JSONL audit log, 0o600 permissions, payload SHA-256, policy result, reason
+_send_webhook() — SSRF-protected (validate_url()), fire-and-forget async POST
+```
+
+**runtime/detectors.py** — 7 detectors:
+
+| Detector | What it checks |
+|----------|----------------|
+| ToolDriftDetector | New tools after startup (rug pull) |
+| ArgumentAnalyzer | Shell metacharacters, path traversal, cmd injection, env vars, creds, base64/hex payloads |
+| CredentialLeakDetector | 12 credential patterns in responses (AWS, GitHub, OpenAI, Anthropic, Slack, Stripe, etc.) |
+| RateLimitTracker | Excessive calls per tool per window |
+| SequenceAnalyzer | 4 suspicious multi-step sequences (exfil, credential harvest, privilege escalation, recon) |
+| ResponseInspector | HTML/CSS cloaking, SVG payloads, invisible Unicode, base64 blobs, prompt injection |
+| VectorDBInjectionDetector | Vector tool name detection + severity upgrade to CRITICAL; wraps ResponseInspector |
+
+### Fixed in this audit
+
+| # | File | Fix |
+|---|------|-----|
+| F5 | `runtime/__init__.py` | `VectorDBInjectionDetector` was not exported from the public runtime API — added to `__all__` |
+| F6 | `proxy.py` | `VectorDBInjectionDetector` was never instantiated in `run_proxy()` — added `vector_detector` alongside `response_inspector`; now fires for every tool response with CRITICAL severity upgrade for confirmed vector tool names |
+
+**Test coverage**: 88 tests in `test_runtime_detectors.py` + `test_proxy.py` + `test_proxy_metrics.py`, plus `test_protect.py`, `test_protection_engine.py`. All 7 detectors are tested individually.
+
+---
+
+## Area 5: API Layer (api/)
+
+### What it does (verified)
+
+```
+api/server.py — FastAPI, auto-selects backend from env:
+  Snowflake (SNOWFLAKE_ACCOUNT) > Postgres (AGENT_BOM_POSTGRES_URL) > SQLite (AGENT_BOM_DB) > InMemory
+
+Middleware stack (outermost → innermost):
+  CORSMiddleware   — configurable via CORS_ORIGINS (defaults to localhost only)
+  TrustHeadersMiddleware — X-Content-Type-Options, X-Frame-Options, Cache-Control: no-store, CSP: default-src 'self'
+  APIKeyMiddleware — simple mode (static key) or RBAC mode (KeyStore, role-based path matching)
+
+RBAC roles: admin > analyst > viewer
+  admin  — DELETE scans, CREATE/DELETE gateway policies, fleet sync, key management, exceptions
+  analyst — POST scan, gateway evaluate, OTel traces, result push, schedule CRUD
+  viewer  — all GET/read endpoints
+
+api/auth.py:
+  scrypt KDF (n=16384, r=8, p=1, dklen=32), per-key random salt, hmac.compare_digest (constant-time)
+  Key format: abom_<secrets.token_urlsafe(32)>
+  Raw key returned once, only scrypt-derived hash stored
+
+api/audit_log.py:
+  HMAC-SHA256 per-entry: entry_id|timestamp|action|actor|resource
+  Warns if AGENT_BOM_AUDIT_HMAC_KEY not set (ephemeral key, restarts break cross-session verify)
+  InMemoryAuditLog: 50K cap, LRU trim
+  SQLiteAuditLog: WAL mode, 3 indexes, parameterized queries (no SQL injection surface)
+  verify_integrity() returns (verified_count, tampered_count)
+
+Analytics: optional ClickHouse backend (AGENT_BOM_CLICKHOUSE_URL)
+Scheduler: background task, runs scheduled scans from store
+ThreadPoolExecutor: sync scan work offloaded from async event loop
+```
+
+### Issues
+
+None found. Auth, audit log, RBAC, middleware, and backend selection are all correctly implemented.
+
+**Note on AGENT_BOM_AUDIT_HMAC_KEY**: the code correctly warns when this is unset. Production docs should prominently require this env var for meaningful audit log tamper detection.
+
+**Test coverage**: `test_api_hardening.py`, `test_api_endpoints.py`, `test_api_store.py`, `test_api_gateway.py`, `test_api_fleet.py`, `test_api_agent_detail.py`, `test_api_pipeline_events.py`, `test_api_proxy_scorecard.py`, `test_audit_round2.py` — 58+ tests across these files.
+
+---
+
+## Area 6: Data Flow (end-to-end)
+
+```
+CLI/API/MCP
+    │
+    ▼
+ScanRequest → _run_scan_sync() [ThreadPoolExecutor]
+    │
+    ├── discovery/     MCP client config → list of servers + packages
+    ├── cloud/         Cloud provider APIs → list of agents + packages
+    ├── sbom.py        SBOM ingest (CycloneDX/SPDX) → packages
+    ├── image.py       Syft/Grype → packages + CVEs
+    ├── sast.py        Semgrep → CWE findings
+    ├── integrity.py   SLSA + package integrity
+    └── transitive.py  Transitive dependency resolution
+                │
+                ▼
+        ScanCache (SQLite, 24h TTL)
+                │
+                ▼
+        OSV.dev batch API (primary CVE source)
+        GHSA + NVIDIA advisory (supplemental)
+                │
+                ▼
+        Enrichment (optional --enrich):
+          NVD (CWE, dates, status — 90d cache)
+          EPSS (exploit probability — 30d cache)
+          CISA KEV (known-exploited — 24h cache)
+          OpenSSF Scorecard (maintainer health)
+                │
+                ▼
+        blast_radius_analysis() → CVE→package→server→agent graph
+          risk_score = base_severity + agent_reach + cred_exposure
+                     + tool_count + AI_boost + KEV_boost + EPSS_boost
+                     + scorecard_boost
+          compliance tagging: 10 frameworks per finding
+                │
+                ▼
+        toxic_combos.py → 8 multi-factor risk patterns
+                │
+                ▼
+        policy.py → 17 conditions, block/warn/allow
+                │
+                ▼
+        AIBOMReport.to_dict() → output/__init__.py
+          → JSON, HTML, React Flow, Mermaid, Prometheus, SVG, SARIF, SBOM
+```
+
+**Data isolation**: Each scan is a separate object; no cross-scan shared state. The in-memory job store caps at `API_MAX_IN_MEMORY_JOBS` and evicts on TTL.
+
+**No issues found** with data flow. Input validation uses `security.py` (validate_path, validate_url, validate_command). All external API calls have timeouts. NVD/EPSS/KEV/OSV use httpx with configured timeout.
+
+---
+
+## Audit Summary (all areas)
+
+| Area | Status | Bugs Fixed | Open Issues |
+|------|--------|-----------|-------------|
+| Scanner architecture | PASS | 3 (F1-F3) | 2 (O1-O2) |
+| Cloud modules | PASS | 1 (F4) | 1 (O3) |
+| Output + API + MCP | PASS | 2 (F3, MCP desc) | 0 |
+| Runtime layer | PASS | 2 (F5-F6) | 0 |
+| API layer | PASS | 0 | 0 |
+| Data flow | PASS | 0 | 0 |
+
+---
+
 ## Next Audit Checklist (delta from this audit)
 
 When re-running this audit, check:
@@ -304,6 +471,9 @@ When re-running this audit, check:
 - [ ] NVIDIA advisory filter still narrow? (O1)
 - [ ] Maven/Go ecosystem test coverage added? (O2)
 - [ ] `discover_governance`/`discover_activity` extended beyond Snowflake? (O3)
+- [x] `VectorDBInjectionDetector` wired into `run_proxy()` — fixed F6
+- [x] `VectorDBInjectionDetector` exported from `runtime/__init__.py` — fixed F5
+- [ ] `AGENT_BOM_AUDIT_HMAC_KEY` documented prominently in deployment docs?
 - [ ] New modules added without tests?
 - [ ] New CIS benchmarks added — does output/__init__.py serialize them?
 - [ ] @mcp.tool count still matches _SERVER_CARD_TOOLS count (both should be 22)?

@@ -9,6 +9,7 @@ from agent_bom.runtime.detectors import (
     ResponseInspector,
     SequenceAnalyzer,
     ToolDriftDetector,
+    VectorDBInjectionDetector,
 )
 from agent_bom.runtime.patterns import (
     CREDENTIAL_PATTERNS,
@@ -28,4 +29,5 @@ __all__ = [
     "SUSPICIOUS_SEQUENCES",
     "SequenceAnalyzer",
     "ToolDriftDetector",
+    "VectorDBInjectionDetector",
 ]

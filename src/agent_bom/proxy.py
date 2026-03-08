@@ -548,6 +548,7 @@ async def run_proxy(
         ResponseInspector,
         SequenceAnalyzer,
         ToolDriftDetector,
+        VectorDBInjectionDetector,
     )
 
     drift_detector = ToolDriftDetector()
@@ -556,6 +557,7 @@ async def run_proxy(
     rate_tracker = RateLimitTracker(threshold=rate_limit_threshold) if rate_limit_threshold > 0 else None
     seq_analyzer = SequenceAnalyzer()
     response_inspector = ResponseInspector()
+    vector_detector = VectorDBInjectionDetector()
     replay_detector = ReplayDetector()
     scan_config = load_scan_config(policy) if policy else ScanConfig()
     runtime_alerts: list[dict] = []
@@ -808,6 +810,7 @@ async def run_proxy(
                     _handle_alerts(cred_alerts, log_file)
 
                 # Runtime detector: response content inspection (cloaking, SVG, invisible chars)
+                # Also runs VectorDBInjectionDetector for vector tool responses (cache poisoning)
                 if "result" in msg:
                     ri_text = json.dumps(msg.get("result", ""))
                     ri_id = msg.get("id")
@@ -816,6 +819,9 @@ async def run_proxy(
                         ri_tool = pending_calls[ri_id][0]
                     ri_alerts = response_inspector.check(ri_tool or "unknown", ri_text)
                     _handle_alerts(ri_alerts, log_file)
+                    # Vector DB / RAG retrieval: specialized cache-poison detection with CRITICAL severity
+                    vec_alerts = vector_detector.check(ri_tool or "unknown", ri_text)
+                    _handle_alerts(vec_alerts, log_file)
 
                 # Inline response scanning (PII, secrets, payload vuln)
                 if scan_config.enabled and "result" in msg:

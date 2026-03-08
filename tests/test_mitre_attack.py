@@ -9,9 +9,52 @@ from agent_bom.mitre_attack import (
     ATTACK_TECHNIQUES,
     attack_label,
     attack_labels,
+    tag_blast_radius,
     tag_cis_check,
     tag_provenance_finding,
 )
+from agent_bom.models import (
+    Agent,
+    AgentType,
+    BlastRadius,
+    MCPServer,
+    MCPTool,
+    Package,
+    Severity,
+    Vulnerability,
+)
+
+# ---------------------------------------------------------------------------
+# Helpers for blast radius tests
+# ---------------------------------------------------------------------------
+
+
+def _br(
+    *,
+    severity: Severity = Severity.HIGH,
+    cwe_ids: list[str] | None = None,
+    creds: list[str] | None = None,
+    tools: list[MCPTool] | None = None,
+    pkg_name: str = "flask",
+    is_kev: bool = False,
+) -> BlastRadius:
+    vuln = Vulnerability(
+        id="CVE-2025-9999",
+        summary="test vuln",
+        severity=severity,
+        cwe_ids=cwe_ids or [],
+        is_kev=is_kev,
+    )
+    pkg = Package(name=pkg_name, version="1.0.0", ecosystem="pypi")
+    return BlastRadius(
+        vulnerability=vuln,
+        package=pkg,
+        affected_servers=[MCPServer(name="srv")],
+        affected_agents=[Agent(name="a1", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp")],
+        exposed_credentials=creds or [],
+        exposed_tools=tools or [],
+    )
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -233,3 +276,139 @@ def test_attack_labels_list():
     result = attack_labels(["T1078", "T1530"])
     assert len(result) == 2
     assert all(isinstance(s, str) for s in result)
+
+
+# ---------------------------------------------------------------------------
+# tag_blast_radius — CWE-based mapping
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "cwe,expected_tag",
+    [
+        ("CWE-78", "T1059"),  # OS command injection → execution
+        ("CWE-78", "T1059.004"),  # also unix shell
+        ("CWE-89", "T1190"),  # SQL injection → exploit public-facing app
+        ("CWE-22", "T1083"),  # path traversal → file discovery
+        ("CWE-79", "T1189"),  # XSS → drive-by compromise
+        ("CWE-79", "T1185"),  # XSS → browser session hijacking
+        ("CWE-352", "T1185"),  # CSRF → session hijacking
+        ("CWE-601", "T1189"),  # open redirect → drive-by
+        ("CWE-918", "T1090"),  # SSRF → proxy
+        ("CWE-287", "T1078"),  # improper auth → valid accounts
+        ("CWE-306", "T1078"),  # missing auth → valid accounts
+        ("CWE-269", "T1548"),  # privilege management → elevation
+        ("CWE-798", "T1552"),  # hard-coded creds → unsecured credentials
+        ("CWE-326", "T1600"),  # weak encryption
+        ("CWE-327", "T1600"),  # broken crypto
+        ("CWE-319", "T1040"),  # cleartext transmission → network sniffing
+        ("CWE-200", "T1005"),  # info exposure → data from local system
+        ("CWE-125", "T1499"),  # out-of-bounds read → DoS
+        ("CWE-787", "T1499"),  # out-of-bounds write → DoS
+        ("CWE-416", "T1499"),  # use-after-free → DoS
+        ("CWE-400", "T1499"),  # resource exhaustion → DoS
+        ("CWE-1333", "T1499"),  # ReDoS → DoS
+        ("CWE-494", "T1195.002"),  # download without integrity check
+        ("CWE-502", "T1059"),  # deserialization → execution
+        ("CWE-502", "T1190"),  # deserialization → exploit app
+        ("CWE-611", "T1083"),  # XXE → file discovery
+        ("CWE-611", "T1190"),  # XXE → exploit app
+    ],
+)
+def test_cwe_to_attack_mapping(cwe: str, expected_tag: str):
+    tags = tag_blast_radius(_br(cwe_ids=[cwe]))
+    assert expected_tag in tags, f"Expected {expected_tag} for {cwe}, got {tags}"
+
+
+def test_cwe_normalisation_without_prefix():
+    """Accepts bare '78' as well as 'CWE-78'."""
+    tags_with_prefix = tag_blast_radius(_br(cwe_ids=["CWE-78"]))
+    tags_bare = tag_blast_radius(_br(cwe_ids=["78"]))
+    assert tags_with_prefix == tags_bare
+
+
+def test_cwe_normalisation_lowercase():
+    """Accepts 'cwe-78' (case-insensitive)."""
+    tags = tag_blast_radius(_br(cwe_ids=["cwe-78"]))
+    assert "T1059" in tags
+
+
+def test_multiple_cwes_combined():
+    """Multiple CWEs produce the union of technique sets."""
+    tags = tag_blast_radius(_br(cwe_ids=["CWE-78", "CWE-89"]))
+    assert "T1059" in tags
+    assert "T1190" in tags
+
+
+def test_unknown_cwe_no_error():
+    """Unknown CWE does not raise and returns empty (minus context signals)."""
+    tags = tag_blast_radius(_br(cwe_ids=["CWE-99999"]))
+    # Should not raise; may still have context-based tags for high severity
+    assert isinstance(tags, list)
+
+
+# ---------------------------------------------------------------------------
+# tag_blast_radius — context-based signals
+# ---------------------------------------------------------------------------
+
+
+def test_exposed_credentials_adds_t1552():
+    tags = tag_blast_radius(_br(creds=["OPENAI_API_KEY"]))
+    assert "T1552" in tags
+
+
+def test_critical_severity_adds_t1190():
+    tags = tag_blast_radius(_br(severity=Severity.CRITICAL))
+    assert "T1190" in tags
+
+
+def test_high_severity_without_cwe_adds_supply_chain():
+    """HIGH+ vuln with no CWE IDs gets supply chain as baseline."""
+    tags = tag_blast_radius(_br(severity=Severity.HIGH, cwe_ids=[]))
+    assert "T1195.002" in tags
+
+
+def test_medium_severity_without_cwe_no_supply_chain():
+    """MEDIUM severity without CWE does not get supply chain tag."""
+    tags = tag_blast_radius(_br(severity=Severity.MEDIUM, cwe_ids=[]))
+    assert "T1195.002" not in tags
+
+
+def test_kev_adds_t1190():
+    tags = tag_blast_radius(_br(is_kev=True, severity=Severity.MEDIUM))
+    assert "T1190" in tags
+
+
+def test_exec_tool_adds_t1059():
+    exec_tool = MCPTool(name="run_shell", description="Execute shell commands on the server")
+    tags = tag_blast_radius(_br(tools=[exec_tool]))
+    assert "T1059" in tags
+
+
+def test_non_exec_tool_no_t1059():
+    read_tool = MCPTool(name="read_file", description="Read a file from the filesystem")
+    tags = tag_blast_radius(_br(tools=[read_tool]))
+    assert "T1059" not in tags
+
+
+def test_blast_radius_output_is_sorted():
+    tags = tag_blast_radius(_br(cwe_ids=["CWE-78", "CWE-89"], creds=["KEY"]))
+    assert tags == sorted(tags)
+
+
+def test_returns_list():
+    result = tag_blast_radius(_br())
+    assert isinstance(result, list)
+
+
+def test_catalog_covers_all_tagged_techniques():
+    """Every technique returned by tag_blast_radius must be in ATTACK_TECHNIQUES."""
+    br = _br(
+        cwe_ids=["CWE-78", "CWE-89", "CWE-79", "CWE-798"],
+        creds=["API_KEY"],
+        severity=Severity.CRITICAL,
+        tools=[MCPTool(name="exec_code", description="Run arbitrary code")],
+    )
+    tags = tag_blast_radius(br)
+    for t in tags:
+        assert t in ATTACK_TECHNIQUES, f"Technique {t} not in ATTACK_TECHNIQUES catalog"

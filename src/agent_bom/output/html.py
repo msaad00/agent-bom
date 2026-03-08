@@ -712,10 +712,11 @@ _STATUS_BADGE = {
 
 
 def _compliance_section(blast_radii: list["BlastRadius"]) -> str:
-    """Build OWASP/ATLAS/NIST compliance tables from blast radius tags."""
+    """Build OWASP/ATLAS/ATT&CK/NIST compliance tables from blast radius tags."""
     try:
         from agent_bom.atlas import ATLAS_TECHNIQUES
         from agent_bom.eu_ai_act import EU_AI_ACT
+        from agent_bom.mitre_attack import ATTACK_TECHNIQUES
         from agent_bom.nist_ai_rmf import NIST_AI_RMF
         from agent_bom.owasp import OWASP_LLM_TOP10
         from agent_bom.owasp_agentic import OWASP_AGENTIC_TOP10
@@ -729,6 +730,7 @@ def _compliance_section(blast_radii: list["BlastRadius"]) -> str:
                 "severity": br.vulnerability.severity.value,
                 "owasp_tags": list(br.owasp_tags),
                 "atlas_tags": list(br.atlas_tags),
+                "attack_tags": list(getattr(br, "attack_tags", [])),
                 "nist_ai_rmf_tags": list(br.nist_ai_rmf_tags),
                 "owasp_agentic_tags": list(br.owasp_agentic_tags),
                 "eu_ai_act_tags": list(br.eu_ai_act_tags),
@@ -764,15 +766,16 @@ def _compliance_section(blast_radii: list["BlastRadius"]) -> str:
 
     owasp_rows, op, of, ow = _build_rows(OWASP_LLM_TOP10, "owasp_tags")
     atlas_rows, ap, af, aw = _build_rows(ATLAS_TECHNIQUES, "atlas_tags")
+    attack_rows, atp, atf, atw = _build_rows(ATTACK_TECHNIQUES, "attack_tags")
     nist_rows, np_, nf, nw = _build_rows(NIST_AI_RMF, "nist_ai_rmf_tags")
     agentic_rows, oap, oaf, oaw = _build_rows(OWASP_AGENTIC_TOP10, "owasp_agentic_tags")
     eu_rows, ep, ef_, ew = _build_rows(EU_AI_ACT, "eu_ai_act_tags")
 
-    total = (op + of + ow) + (ap + af + aw) + (np_ + nf + nw) + (oap + oaf + oaw) + (ep + ef_ + ew)
-    total_pass = op + ap + np_ + oap + ep
+    total = (op + of + ow) + (ap + af + aw) + (atp + atf + atw) + (np_ + nf + nw) + (oap + oaf + oaw) + (ep + ef_ + ew)
+    total_pass = op + ap + atp + np_ + oap + ep
     score = round((total_pass / total) * 100, 1) if total > 0 else 100.0
-    has_fail = (of + af + nf + oaf + ef_) > 0
-    has_warn = (ow + aw + nw + oaw + ew) > 0
+    has_fail = (of + af + atf + nf + oaf + ef_) > 0
+    has_warn = (ow + aw + atw + nw + oaw + ew) > 0
     overall = "fail" if has_fail else ("warning" if has_warn else "pass")
     overall_badge = _STATUS_BADGE[overall]
 
@@ -795,7 +798,8 @@ def _compliance_section(blast_radii: list["BlastRadius"]) -> str:
         f'<div class="panel">'
         f"{_framework_table('OWASP LLM Top 10', owasp_rows, op, of, ow)}"
         f"{_framework_table('OWASP Agentic Top 10', agentic_rows, oap, oaf, oaw)}"
-        f"{_framework_table('MITRE ATLAS', atlas_rows, ap, af, aw)}"
+        f"{_framework_table('MITRE ATT&CK Enterprise', attack_rows, atp, atf, atw)}"
+        f"{_framework_table('MITRE ATLAS (AI/ML)', atlas_rows, ap, af, aw)}"
         f"{_framework_table('NIST AI RMF', nist_rows, np_, nf, nw)}"
         f"{_framework_table('EU AI Act', eu_rows, ep, ef_, ew)}"
         f"</div></section>"

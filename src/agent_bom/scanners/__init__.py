@@ -29,6 +29,7 @@ from agent_bom.eu_ai_act import tag_blast_radius as tag_eu_ai_act
 from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.iso_27001 import tag_blast_radius as tag_iso_27001
 from agent_bom.malicious import check_typosquat, flag_malicious_from_vulns
+from agent_bom.mitre_attack import tag_blast_radius as tag_attack_techniques
 from agent_bom.models import Agent, BlastRadius, MCPServer, Package, Severity, Vulnerability
 from agent_bom.nist_ai_rmf import tag_blast_radius as tag_nist_ai_rmf
 from agent_bom.nist_csf import tag_blast_radius as tag_nist_csf
@@ -730,6 +731,7 @@ async def scan_agents(agents: list[Agent]) -> list[BlastRadius]:
             br.calculate_risk_score()
             br.owasp_tags = tag_blast_radius(br)
             br.atlas_tags = tag_atlas_techniques(br)
+            br.attack_tags = tag_attack_techniques(br)
             br.nist_ai_rmf_tags = tag_nist_ai_rmf(br)
             br.owasp_mcp_tags = tag_owasp_mcp(br)
             br.owasp_agentic_tags = tag_owasp_agentic(br)

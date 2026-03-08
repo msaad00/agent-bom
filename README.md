@@ -17,12 +17,16 @@
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center">
-  <b>Security scanner for AI infrastructure. Find CVEs, map blast radius, detect credential exposure across MCP agents, containers, Kubernetes, cloud, and GPU workloads.</b>
+  <b>Security scanner for AI infrastructure. Find CVEs, map blast radius, detect credential exposure across MCP agents, ML frameworks, GPU packages, containers, Kubernetes, and cloud.</b>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.63.0.gif" alt="agent-bom demo — scan, CVE check before/after, GPU infra scan" width="900" />
 </p>
 
 <p align="center">
   <picture>
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo.svg" alt="agent-bom demo" width="800" />
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scan-output-dark.svg" alt="agent-bom scan output with GPU infrastructure scan" width="800" />
   </picture>
 </p>
 
@@ -64,9 +68,18 @@ agent-bom scan -f html -o report.html              # HTML dashboard
 agent-bom scan --enforce                           # tool poisoning detection
 agent-bom scan --fail-on-severity high -q          # CI gate
 agent-bom scan --image myapp:latest                # Docker image scanning
-agent-bom scan --k8s --all-namespaces              # K8s cluster
+agent-bom scan --k8s --all-namespaces              # K8s image scanning (cluster-wide)
+agent-bom scan --k8s-mcp                           # Discover MCP pods + CRDs in Kubernetes
+agent-bom scan --include-processes                 # Scan running host MCP processes (psutil)
+agent-bom scan --include-containers                # Scan Docker containers for MCP servers
+agent-bom scan --health-check                      # Probe discovered servers for liveness
+agent-bom scan --siem splunk --siem-url https://...  # Push findings to SIEM
 agent-bom scan --aws --snowflake --databricks      # Multi-cloud
 agent-bom scan --hf-model meta-llama/Llama-3.1-8B  # model provenance
+agent-bom scan --vector-db-scan                    # Scan self-hosted + Pinecone cloud vector DBs
+agent-bom scan --gpu-scan                          # Discover GPU containers + K8s nodes, detect unauthenticated DCGM exporters
+agent-bom graph report.json --format dot           # Export dependency graph (DOT/Mermaid/JSON)
+agent-bom proxy-configure --apply                  # Auto-wrap MCP configs with security proxy
 ```
 
 Auto-discovers 20 MCP clients: Claude Desktop, Claude Code, Cursor, Windsurf, Cline, VS Code Copilot, Continue, Zed, Cortex Code, Codex CLI, Gemini CLI, Goose, Snowflake CLI, OpenClaw, Roo Code, Amazon Q, ToolHive, Docker MCP Toolkit, JetBrains AI, and Junie.
@@ -87,6 +100,7 @@ Auto-discovers 20 MCP clients: Claude Desktop, Claude Code, Cursor, Windsurf, Cl
 | Cloud (all) | `pip install 'agent-bom[cloud]'` |
 | REST API | `pip install 'agent-bom[api]'` |
 | MCP server | `pip install 'agent-bom[mcp-server]'` |
+| OIDC/SSO auth | `pip install 'agent-bom[oidc]'` |
 | Dashboard | `pip install 'agent-bom[ui]'` |
 | Docker | `docker run --rm -v ~/.config:/root/.config:ro agentbom/agent-bom scan` |
 
@@ -129,16 +143,26 @@ rm -rf ~/.agent-bom                      # remove local data
 |---|---|---|
 | Package CVE detection | Yes | Yes (OSV + NVD + EPSS + CISA KEV + GHSA + NVIDIA CSAF) |
 | SBOM generation | Yes | Yes (CycloneDX 1.6, SPDX 3.0, SARIF) |
-| **AI agent discovery** | -- | 20 MCP clients + Docker Compose |
+| **AI agent discovery** | -- | 20 MCP clients + Docker Compose + running processes + containers + K8s pods/CRDs |
+| **GPU/ML package scanning** | -- | NVIDIA CSAF advisories for CUDA, cuDNN, PyTorch, TensorFlow, JAX, vLLM + AMD ROCm via OSV |
+| **AI supply chain** | -- | Model provenance (pickle risk, digest, gating), HuggingFace Hub, Ollama, MLflow, W&B |
+| **AI cloud inventory** | -- | Coreweave, Nebius, Snowflake, Databricks, OpenAI, HuggingFace Hub — config discovery + CVE tagging |
 | **Blast radius mapping** | -- | CVE -> package -> server -> agent -> credentials -> tools |
 | **Credential exposure** | -- | Which secrets leak per vulnerability, per agent |
 | **Tool poisoning detection** | -- | Description injection, capability combos, drift detection |
 | **Privilege detection** | -- | root, shell access, privileged containers, per-tool permissions |
 | **10-framework compliance** | -- | OWASP LLM + MCP + Agentic, MITRE ATLAS, NIST AI RMF + CSF, EU AI Act, SOC 2, ISO 27001, CIS |
+| **MITRE ATT&CK mapping** | -- | Dynamic technique lookup by tactic phase (no hardcoded T-codes) |
 | **Posture scorecard** | -- | Letter grade (A-F), 6 dimensions, incident correlation (P1-P4) |
-| **Policy-as-code** | -- | 17 conditions, CI gate, block unverified servers |
+| **Policy-as-code + Jira** | -- | 17 conditions, CI gate, auto-create Jira tickets for violations |
+| **SIEM push** | -- | Splunk HEC, Datadog Logs, Elasticsearch — raw or OCSF format |
+| **Proxy auto-configure** | -- | Wrap every MCP server config with `agent-bom proxy` in one command |
+| **Server health checks** | -- | Lightweight liveness probe — reachable, tool count, latency, protocol |
 | **Lateral movement analysis** | -- | Agent context graph, shared credentials, BFS attack paths |
 | **427+ server MCP registry** | -- | Risk levels, tool inventories, auto-synced weekly |
+| **Cloud vector DB scanning** | -- | Pinecone index inventory, risk flags, replica counts via API key |
+| **Dependency graph export** | -- | DOT, Mermaid, JSON — agent → server → package → CVE graph |
+| **OIDC/SSO authentication** | -- | JWT verification (Okta, Google, Azure AD, Auth0) for REST API |
 
 <p align="center">
   <picture>
@@ -155,9 +179,10 @@ rm -rf ~/.agent-bom                      # remove local data
 | MCP configs | Auto-discover (20 clients + Docker Compose) |
 | Docker images | Grype / Syft / Docker CLI fallback |
 | Kubernetes | kubectl across namespaces |
-| Cloud providers | AWS, Azure, GCP, Databricks, Snowflake, Nebius |
+| Cloud providers | AWS, Azure, GCP, Databricks, Snowflake, Coreweave, Nebius |
+| AI cloud services | OpenAI, HuggingFace Hub, W&B, MLflow, Ollama |
+| GPU/ML packages | PyTorch, TF, JAX, vLLM, CUDA toolkit, cuDNN, TensorRT, ROCm |
 | Terraform / GitHub Actions | AI resources + env vars |
-| AI platforms | HuggingFace, W&B, MLflow, OpenAI |
 | Jupyter notebooks | AI library imports + model refs |
 | Model files | 13 formats (.gguf, .safetensors, .pkl, ...) |
 | Skill files | CLAUDE.md, .cursorrules, AGENTS.md |
@@ -187,10 +212,10 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible
 | Mode | Command | Best for |
 |------|---------|----------|
 | CLI | `agent-bom scan` | Local audit |
-| GitHub Action | `uses: msaad00/agent-bom@v0.60.2 | CI/CD + SARIF |
+| GitHub Action | `uses: msaad00/agent-bom@v0.63.1 | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated scans |
 | REST API | `agent-bom api` | Dashboards, SIEM |
-| MCP Server | `agent-bom mcp-server` (22 tools) | Inside any MCP client |
+| MCP Server | `agent-bom mcp-server` (23 tools) | Inside any MCP client |
 | Dashboard | `agent-bom serve` | API + Next.js UI (15 pages) |
 | Runtime proxy | `agent-bom proxy` | MCP traffic audit |
 | Pre-install guard | `agent-bom guard pip install <pkg>` | Block vulnerable installs |
@@ -200,7 +225,7 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible
 <summary><b>GitHub Action</b></summary>
 
 ```yaml
-- uses: msaad00/agent-bom@v0.60.2
+- uses: msaad00/agent-bom@v0.63.1
   with:
     severity-threshold: high
     upload-sarif: true
@@ -277,7 +302,7 @@ Options:
 |----------|------|
 | PyPI | `pip install agent-bom` |
 | Docker | `docker run agentbom/agent-bom scan` |
-| GitHub Action | `uses: msaad00/agent-bom@v0.60.2 |
+| GitHub Action | `uses: msaad00/agent-bom@v0.63.1 |
 | Glama | [glama.ai/mcp/servers/@msaad00/agent-bom](https://glama.ai/mcp/servers/@msaad00/agent-bom) |
 | MCP Registry | [server.json](integrations/mcp-registry/server.json) |
 | ToolHive | [registry entry](integrations/toolhive/server.json) |
@@ -327,10 +352,44 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full diagrams: data flow pi
 
 ## Roadmap
 
-- [x] CIS Foundations benchmarks (AWS v3.0, Azure v3.0, GCP v3.0, Snowflake v1.0)
+**GPU / AI compute**
+- [x] GPU container discovery (Docker — NVIDIA images, CUDA labels, `--gpus` runtime)
+- [x] Kubernetes GPU node inventory (nvidia.com/gpu capacity/allocatable, CUDA driver labels)
+- [x] Unauthenticated DCGM exporter detection (port 9400 metrics leak)
+- [ ] Remote Docker host scanning (currently local daemon only)
+- [ ] NVIDIA GPU CVE feed — CUDA/cuDNN specific advisories beyond OSV
+- [ ] GPU utilization and memory anomaly detection
+
+**AI supply chain**
+- [x] OSV + GHSA + NVD + EPSS + CISA KEV vulnerability enrichment
+- [x] ML model file scanning (.gguf, .safetensors, .onnx) + SHA-256 + Sigstore
+- [x] HuggingFace model provenance and dataset card scanning
+- [ ] Dataset poisoning detection
+- [ ] Training pipeline scanning (MLflow DAGs, Kubeflow pipelines)
+- [ ] Model card authenticity verification (beyond hash/sigstore)
+
+**Agents / MCP**
+- [x] 20 MCP client config discovery paths, live introspection, tool drift detection
+- [x] Runtime proxy with 6 behavioral detectors (rug pull, injection, credential leak, etc.)
+- [ ] Semantic prompt injection analysis (currently pattern-based)
+- [ ] Agent memory / vector store content scanning for injected instructions
+- [ ] LLM API call tracing (which model was called, with what context)
+
+**Identity / access**
+- [x] OIDC/JWT auth for REST API (Okta, Google Workspace, Azure AD, Auth0, GitHub OIDC)
+- [ ] Agent-level identity — propagating caller identity through MCP tool chains
+- [ ] MCP server identity attestation — cryptographic proof of server identity at runtime
+- [ ] Agent-to-agent permission boundary enforcement
+
+**Compliance / standards**
+- [x] 10 frameworks: OWASP LLM, OWASP MCP, OWASP Agentic, ATLAS, NIST AI RMF, EU AI Act, NIST CSF, ISO 27001, SOC 2, CIS Controls
 - [ ] CIS AI benchmarks (pending CIS publication)
-- [ ] License compliance engine
+- [ ] License compliance engine (OSS license risk flagging)
 - [ ] Workflow engine scanning (n8n, Zapier, Make)
+
+**Ecosystem coverage**
+- [ ] Maven / Go ecosystem — test coverage thin (PyPI, npm, cargo, pip best covered)
+- [ ] Windows container support (currently Linux-focused for Docker GPU discovery)
 
 See the full list of [shipped features](https://github.com/msaad00/agent-bom/releases).
 

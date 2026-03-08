@@ -4,9 +4,9 @@
 # Installs atheris and agent-bom, then copies fuzz targets to $OUT.
 # Runs inside the ClusterFuzzLite Docker container (Ubuntu + Python 3.11+).
 
-python3 -m pip install --upgrade pip
+python3 -m pip install pip==25.1.0  # pinned — update periodically
 python3 -m pip install .
-python3 -m pip install pyyaml  # needed by policy.py for YAML policy files
+python3 -m pip install pyyaml==6.0.3  # pinned — update periodically
 
 for fuzzer in $SRC/agent-bom/fuzz/fuzz_*.py; do
   compile_python_fuzzer "$fuzzer"

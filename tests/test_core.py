@@ -256,7 +256,7 @@ def empty_report():
 def test_version_sync():
     from agent_bom import __version__
 
-    assert __version__ == "0.60.2"
+    assert __version__ == "0.63.1"
 
 
 def test_report_version_matches():
@@ -2954,7 +2954,7 @@ def test_toolhive_server_json_valid():
     p = Path(__file__).parent.parent / "integrations" / "toolhive" / "server.json"
     data = _json.loads(p.read_text())
     assert data["name"] == "io.github.msaad00/agent-bom"
-    assert data["version"] == "0.60.2"
+    assert data["version"] == "0.63.1"
     assert "packages" in data
     assert data["packages"][0]["registryType"] == "oci"
 
@@ -3024,7 +3024,7 @@ def test_openclaw_registry_skill_minimal_surface():
 
 
 def test_openclaw_skills_all_tools_covered():
-    """All 22 MCP tools should be covered in the consolidated skill."""
+    """All 23 MCP tools should be covered in the consolidated skill."""
     from pathlib import Path
 
     p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
@@ -3052,6 +3052,7 @@ def test_openclaw_skills_all_tools_covered():
         "fleet_scan",
         "vector_db_scan",
         "aisvs_benchmark",
+        "gpu_infra_scan",
     ]:
         assert tool in content, f"Tool '{tool}' missing from SKILL.md"
 
@@ -3548,3 +3549,68 @@ def test_json_output_includes_license():
     data = to_json(report)
     pkgs = data["agents"][0]["mcp_servers"][0]["packages"]
     assert pkgs[0]["license"] == "MIT"
+
+
+def test_api_posture_counts_empty():
+    """GET /v1/posture/counts returns zero counts with no scans."""
+    pytest.importorskip("fastapi", reason="fastapi not installed")
+    from fastapi.testclient import TestClient
+
+    from agent_bom.api.server import app
+
+    client = TestClient(app)
+    resp = client.get("/v1/posture/counts")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "critical" in body
+    assert "high" in body
+    assert "kev" in body
+    assert "compound_issues" in body
+    assert isinstance(body["total"], int)
+
+
+def test_api_posture_counts_with_data():
+    """GET /v1/posture/counts aggregates critical/high/kev from completed scans."""
+    pytest.importorskip("fastapi", reason="fastapi not installed")
+    from fastapi.testclient import TestClient
+
+    from agent_bom.api.server import JobStatus, ScanJob, ScanRequest, _get_store, app
+
+    client = TestClient(app)
+    job = ScanJob(
+        job_id="counts-test-001",
+        status=JobStatus.DONE,
+        created_at="2026-01-01T00:00:00Z",
+        request=ScanRequest(),
+        result={
+            "blast_radius": [
+                {
+                    "vulnerability_id": "CVE-2024-0001",
+                    "severity": "critical",
+                    "blast_score": 9.5,
+                    "cisa_kev": True,
+                    "reachable_tools": ["bash"],
+                    "exposed_credentials": [],
+                },
+                {
+                    "vulnerability_id": "CVE-2024-0002",
+                    "severity": "high",
+                    "blast_score": 7.0,
+                    "epss_score": 0.4,
+                    "cvss_score": 8.0,
+                    "cisa_kev": False,
+                    "reachable_tools": [],
+                    "exposed_credentials": [],
+                },
+            ]
+        },
+    )
+    _get_store().put(job)
+    resp = client.get("/v1/posture/counts")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["critical"] >= 1
+    assert body["high"] >= 1
+    assert body["kev"] >= 1
+    assert body["compound_issues"] >= 1  # KEV + reachable_tools
+    assert body["total"] >= 2

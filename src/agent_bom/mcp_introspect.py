@@ -312,6 +312,83 @@ def introspect_servers_sync(
     return asyncio.run(introspect_servers(servers, timeout))
 
 
+# ── Health Checks ────────────────────────────────────────────────────────────
+
+HEALTH_CHECK_TIMEOUT = 5.0
+
+
+@dataclass
+class HealthStatus:
+    """Lightweight health status for a single MCP server."""
+
+    server_name: str
+    reachable: bool
+    tool_count: int = 0
+    protocol_version: Optional[str] = None
+    latency_ms: Optional[float] = None
+    error: Optional[str] = None
+
+
+async def health_check_servers(
+    servers: list[MCPServer],
+    timeout: float = HEALTH_CHECK_TIMEOUT,
+    max_concurrent: int = 10,
+) -> list[HealthStatus]:
+    """Lightweight health check for MCP servers.
+
+    Faster than full introspection — uses a shorter default timeout and
+    returns simple reachability + tool count without drift analysis.
+
+    Args:
+        servers: List of MCP servers to probe.
+        timeout: Per-server connection timeout in seconds.
+        max_concurrent: Maximum concurrent probes.
+
+    Returns:
+        List of HealthStatus, one per eligible server.
+    """
+    import time
+
+    _check_mcp_sdk()
+
+    semaphore = asyncio.Semaphore(max_concurrent)
+
+    async def _probe(server: MCPServer) -> HealthStatus:
+        async with semaphore:
+            t0 = time.perf_counter()
+            result = await introspect_server(server, timeout)
+            elapsed_ms = round((time.perf_counter() - t0) * 1000.0, 1)
+            return HealthStatus(
+                server_name=result.server_name,
+                reachable=result.success,
+                tool_count=result.tool_count,
+                protocol_version=result.protocol_version,
+                latency_ms=elapsed_ms if result.success else None,
+                error=result.error,
+            )
+
+    eligible = [
+        s
+        for s in servers
+        if (s.transport == TransportType.STDIO and s.command)
+        or (s.transport in (TransportType.SSE, TransportType.STREAMABLE_HTTP) and s.url)
+    ]
+
+    if not eligible:
+        return []
+
+    tasks = [_probe(s) for s in eligible]
+    return list(await asyncio.gather(*tasks))
+
+
+def health_check_servers_sync(
+    servers: list[MCPServer],
+    timeout: float = HEALTH_CHECK_TIMEOUT,
+) -> list[HealthStatus]:
+    """Synchronous wrapper for health_check_servers."""
+    return asyncio.run(health_check_servers(servers, timeout))
+
+
 def enrich_servers(
     servers: list[MCPServer],
     report: IntrospectionReport,

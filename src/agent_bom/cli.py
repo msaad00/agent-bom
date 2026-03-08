@@ -453,6 +453,43 @@ def main():
     help="Max directory depth for dynamic discovery filesystem scanning",
 )
 @click.option(
+    "--include-processes",
+    is_flag=True,
+    help="Scan running host processes for MCP servers (requires psutil: pip install psutil)",
+)
+@click.option(
+    "--include-containers",
+    is_flag=True,
+    help="Scan running Docker containers for MCP servers (requires docker CLI on PATH)",
+)
+@click.option(
+    "--k8s-mcp",
+    "k8s_mcp",
+    is_flag=True,
+    help="Scan Kubernetes cluster for MCP pods, services, and CRDs (requires kubectl on PATH)",
+)
+@click.option("--k8s-namespace", default="default", show_default=True, help="Kubernetes namespace for --k8s-mcp")
+@click.option(
+    "--k8s-all-namespaces",
+    "k8s_all_namespaces",
+    is_flag=True,
+    help="Scan all Kubernetes namespaces for --k8s-mcp",
+)
+@click.option("--k8s-context", "k8s_mcp_context", default=None, help="kubectl context for --k8s-mcp (uses current context if omitted)")
+@click.option(
+    "--health-check",
+    "health_check",
+    is_flag=True,
+    help="Probe discovered MCP servers for liveness (reachability + tool count, requires mcp SDK)",
+)
+@click.option(
+    "--hc-timeout",
+    type=float,
+    default=5.0,
+    show_default=True,
+    help="Timeout per server for --health-check (seconds)",
+)
+@click.option(
     "--ai-enrich",
     is_flag=True,
     help="Enrich findings with LLM-generated risk narratives, executive summary, and threat chains. Auto-detects Ollama (free, local) or uses litellm (pip install 'agent-bom[ai-enrich]')",
@@ -547,6 +584,14 @@ def main():
     is_flag=True,
     help="Scan for running vector databases (Qdrant, Weaviate, Chroma, Milvus) and assess security",
 )
+@click.option(
+    "--gpu-scan",
+    "gpu_scan_flag",
+    is_flag=True,
+    help="Discover GPU-enabled containers and K8s nodes (NVIDIA base images, CUDA versions, DCGM endpoints). Requires docker/kubectl on PATH.",
+)
+@click.option("--gpu-k8s-context", "gpu_k8s_context", default=None, metavar="CTX", help="kubectl context for --gpu-scan K8s node discovery")
+@click.option("--no-dcgm-probe", "no_dcgm_probe", is_flag=True, help="Skip DCGM exporter endpoint probing during --gpu-scan")
 @click.option("--huggingface", "hf_flag", is_flag=True, help="Discover models, Spaces, and endpoints from Hugging Face Hub")
 @click.option("--hf-token", default=None, envvar="HF_TOKEN", metavar="TOKEN", help="Hugging Face API token")
 @click.option("--hf-username", default=None, metavar="USER", help="Hugging Face username to scope discovery")
@@ -604,6 +649,34 @@ def main():
     "--vanta-token", default=None, envvar="VANTA_API_TOKEN", metavar="TOKEN", help="Vanta API token for compliance evidence upload"
 )
 @click.option("--drata-token", default=None, envvar="DRATA_API_TOKEN", metavar="TOKEN", help="Drata API token for GRC evidence upload")
+@click.option(
+    "--siem",
+    "siem_type",
+    default=None,
+    envvar="AGENT_BOM_SIEM_TYPE",
+    type=click.Choice(["splunk", "datadog", "elasticsearch", "opensearch"], case_sensitive=False),
+    metavar="TYPE",
+    help="Push findings to SIEM: splunk | datadog | elasticsearch | opensearch",
+)
+@click.option(
+    "--siem-url", default=None, envvar="AGENT_BOM_SIEM_URL", metavar="URL", help="SIEM endpoint URL (e.g. https://splunk.corp:8088)"
+)
+@click.option("--siem-token", default=None, envvar="AGENT_BOM_SIEM_TOKEN", metavar="TOKEN", help="SIEM authentication token / API key")
+@click.option(
+    "--siem-index",
+    default=None,
+    envvar="AGENT_BOM_SIEM_INDEX",
+    metavar="INDEX",
+    help="SIEM index / sourcetype (e.g. main, agent-bom-alerts)",
+)
+@click.option(
+    "--siem-format",
+    default="ocsf",
+    envvar="AGENT_BOM_SIEM_FORMAT",
+    type=click.Choice(["raw", "ocsf"], case_sensitive=False),
+    show_default=True,
+    help="Event format for SIEM push: ocsf (default) or raw",
+)
 @click.option(
     "--clickhouse-url",
     default=None,
@@ -708,6 +781,14 @@ def scan(
     graph_backend: str,
     dynamic_discovery: bool,
     dynamic_max_depth: int,
+    include_processes: bool,
+    include_containers: bool,
+    k8s_mcp: bool,
+    k8s_namespace: str,
+    k8s_all_namespaces: bool,
+    k8s_mcp_context: Optional[str],
+    health_check: bool,
+    hc_timeout: float,
     ai_enrich: bool,
     ai_model: str,
     aws: bool,
@@ -738,6 +819,9 @@ def scan(
     databricks_security: bool,
     aisvs_flag: bool,
     vector_db_scan: bool,
+    gpu_scan_flag: bool,
+    gpu_k8s_context: Optional[str],
+    no_dcgm_probe: bool,
     hf_flag: bool,
     hf_token: Optional[str],
     hf_username: Optional[str],
@@ -782,6 +866,11 @@ def scan(
     push_api_key: Optional[str],
     vanta_token: Optional[str],
     drata_token: Optional[str],
+    siem_type: Optional[str],
+    siem_url: Optional[str],
+    siem_token: Optional[str],
+    siem_index: Optional[str],
+    siem_format: str,
     clickhouse_url: Optional[str],
     verbose: bool,
     log_level: Optional[str],
@@ -1047,9 +1136,29 @@ def scan(
         con.print(f"  [green]✓[/green] Loaded {len(agents)} agent(s) from inventory")
     elif not skill_only and config_dir:
         con.print(f"\n[bold blue]Scanning config directory: {config_dir}...[/bold blue]\n")
-        agents = discover_all(project_dir=config_dir, dynamic=dynamic_discovery, dynamic_max_depth=dynamic_max_depth)
+        agents = discover_all(
+            project_dir=config_dir,
+            dynamic=dynamic_discovery,
+            dynamic_max_depth=dynamic_max_depth,
+            include_processes=include_processes,
+            include_containers=include_containers,
+            include_k8s_mcp=k8s_mcp,
+            k8s_namespace=k8s_namespace,
+            k8s_all_namespaces=k8s_all_namespaces,
+            k8s_context=k8s_mcp_context,
+        )
     elif not skill_only:
-        agents = discover_all(project_dir=project, dynamic=dynamic_discovery, dynamic_max_depth=dynamic_max_depth)
+        agents = discover_all(
+            project_dir=project,
+            dynamic=dynamic_discovery,
+            dynamic_max_depth=dynamic_max_depth,
+            include_processes=include_processes,
+            include_containers=include_containers,
+            include_k8s_mcp=k8s_mcp,
+            k8s_namespace=k8s_namespace,
+            k8s_all_namespaces=k8s_all_namespaces,
+            k8s_context=k8s_mcp_context,
+        )
 
     any_cloud = (
         aws
@@ -1866,18 +1975,19 @@ def scan(
 
         con.print("\n[bold blue]Scanning for vector databases...[/bold blue]\n")
         try:
-            from agent_bom.cloud.vector_db import discover_vector_dbs
+            from agent_bom.cloud.vector_db import discover_pinecone, discover_vector_dbs
 
             vector_db_results = discover_vector_dbs()
-            if not vector_db_results:
-                con.print("  [dim]No running vector databases found on this host.[/dim]")
+            pinecone_results = discover_pinecone()
+            if not vector_db_results and not pinecone_results:
+                con.print("  [dim]No running vector databases found. Set PINECONE_API_KEY to scan Pinecone.[/dim]")
             else:
-                con.print(f"  Found [bold]{len(vector_db_results)}[/bold] vector database(s)")
+                total = len(vector_db_results) + len(pinecone_results)
+                con.print(f"  Found [bold]{total}[/bold] vector database(s)")
                 tbl = _RTable(title="Vector DB Security", show_lines=True)
                 tbl.add_column("DB", width=10)
-                tbl.add_column("Port", width=6)
+                tbl.add_column("Instance", width=20)
                 tbl.add_column("Auth", width=8)
-                tbl.add_column("Loopback", width=10)
                 tbl.add_column("Risk", width=10)
                 tbl.add_column("Flags")
                 _vdb_risk = {
@@ -1889,9 +1999,16 @@ def scan(
                 for r in vector_db_results:
                     tbl.add_row(
                         r.db_type,
-                        str(r.port),
+                        f"{r.host}:{r.port}",
                         "[green]yes[/]" if r.requires_auth else "[red]NO[/]",
-                        "[green]yes[/]" if r.is_loopback else "[red]NO[/]",
+                        _vdb_risk.get(r.risk_level, r.risk_level),
+                        ", ".join(r.risk_flags) or "-",
+                    )
+                for r in pinecone_results:
+                    tbl.add_row(
+                        "pinecone",
+                        r.index_name,
+                        "[green]API key[/]",
                         _vdb_risk.get(r.risk_level, r.risk_level),
                         ", ".join(r.risk_flags) or "-",
                     )
@@ -1899,6 +2016,54 @@ def scan(
                 con.print(tbl)
         except Exception as exc:
             con.print(f"  [red]Vector DB scan error: {exc}[/red]")
+
+    # Step 1x-b2: GPU infra scan
+    gpu_infra_report = None
+    if gpu_scan_flag:
+        import asyncio as _asyncio
+
+        from rich.table import Table as _RTable
+
+        con.print("\n[bold blue]Scanning GPU/AI compute infrastructure...[/bold blue]\n")
+        try:
+            from agent_bom.cloud.gpu_infra import gpu_infra_to_agents, scan_gpu_infra
+
+            with con.status("[bold]Probing Docker, K8s, and DCGM endpoints...[/bold]", spinner="dots"):
+                gpu_infra_report = _asyncio.run(scan_gpu_infra(k8s_context=gpu_k8s_context, probe_dcgm=not no_dcgm_probe))
+            for w in gpu_infra_report.warnings:
+                con.print(f"  [yellow]⚠[/yellow] {w}")
+            gpu_agents = gpu_infra_to_agents(gpu_infra_report)
+            if gpu_agents:
+                agents.extend(gpu_agents)
+                con.print(
+                    f"  [green]✓[/green] {gpu_infra_report.total_gpu_containers} GPU container(s), "
+                    f"{len(gpu_infra_report.gpu_nodes)} K8s GPU node(s)"
+                )
+                if gpu_infra_report.unique_cuda_versions:
+                    con.print(f"  CUDA versions: {', '.join(gpu_infra_report.unique_cuda_versions)}")
+                if gpu_infra_report.unauthenticated_dcgm_count:
+                    con.print(
+                        f"  [red]⚠ {gpu_infra_report.unauthenticated_dcgm_count} unauthenticated DCGM exporter(s) — metrics leak[/red]"
+                    )
+                if gpu_infra_report.dcgm_endpoints:
+                    tbl = _RTable(title="DCGM Endpoints", show_lines=False)
+                    tbl.add_column("Host", width=20)
+                    tbl.add_column("Port", width=8)
+                    tbl.add_column("Auth", width=8)
+                    tbl.add_column("GPUs", width=6)
+                    for ep in gpu_infra_report.dcgm_endpoints:
+                        tbl.add_row(
+                            ep.host,
+                            str(ep.port),
+                            "[green]yes[/]" if ep.authenticated else "[red]NO[/]",
+                            str(ep.gpu_count) if ep.gpu_count is not None else "?",
+                        )
+                    con.print()
+                    con.print(tbl)
+            else:
+                con.print("  [dim]No GPU containers or K8s GPU nodes found[/dim]")
+        except Exception as exc:
+            con.print(f"  [red]GPU scan error: {exc}[/red]")
 
     # Step 1x-c: AISVS compliance benchmark
     aisvs_report = None
@@ -2098,6 +2263,27 @@ def scan(
             except IntrospectionError as exc:
                 con.print(f"  [yellow]⚠[/yellow] {exc}")
 
+        # Step 2b-hc: Post-discovery health checks (--health-check)
+        if health_check:
+            from agent_bom.mcp_introspect import IntrospectionError as _HCError
+            from agent_bom.mcp_introspect import health_check_servers_sync
+
+            hc_servers = [s for a in agents for s in a.mcp_servers]
+            con.print(f"\n[bold blue]Health-checking {len(hc_servers)} MCP server(s)...[/bold blue]\n")
+            try:
+                hc_results = health_check_servers_sync(hc_servers, timeout=hc_timeout)
+                reachable = sum(1 for h in hc_results if h.reachable)
+                for h in hc_results:
+                    if h.reachable:
+                        latency_str = f" {h.latency_ms:.0f}ms" if h.latency_ms is not None else ""
+                        proto_str = f" [{h.protocol_version}]" if h.protocol_version else ""
+                        con.print(f"  [green]✓[/green] {h.server_name}: {h.tool_count} tool(s){latency_str}{proto_str}")
+                    else:
+                        con.print(f"  [red]✗[/red] {h.server_name}: {h.error or 'unreachable'}")
+                con.print(f"\n  [bold]{reachable}/{len(hc_results)} server(s) reachable.[/bold]")
+            except _HCError as exc:
+                con.print(f"  [yellow]⚠[/yellow] {exc}")
+
         # Step 2c: Tool poisoning detection + enforcement (--enforce)
         if enforce:
             from agent_bom.enforcement import run_enforcement
@@ -2137,7 +2323,8 @@ def scan(
         unresolved = [p for p in all_packages if p.version in ("latest", "unknown", "")]
         if unresolved:
             con.print(f"\n[bold blue]Resolving {len(unresolved)} package version(s)...[/bold blue]\n")
-            resolved = resolve_all_versions_sync(all_packages)
+            with con.status("[bold]Querying package registries...[/bold]", spinner="dots"):
+                resolved = resolve_all_versions_sync(all_packages)
             con.print(f"\n  [bold]Resolved {resolved}/{len(unresolved)} version(s).[/bold]")
 
         # Step 3b: Auto-discover metadata for unknown packages
@@ -2155,7 +2342,8 @@ def scan(
             from agent_bom.autodiscover import enrich_unknown_packages
 
             con.print(f"\n[bold blue]Auto-discovering metadata for {len(unknown_pkgs)} package(s)...[/bold blue]\n")
-            enriched_count = _asyncio_ad.run(enrich_unknown_packages(unknown_pkgs))
+            with con.status("[bold]Fetching package metadata...[/bold]", spinner="dots"):
+                enriched_count = _asyncio_ad.run(enrich_unknown_packages(unknown_pkgs))
             con.print(f"  [green]✓[/green] Auto-discovered metadata for {enriched_count} package(s)")
 
         # Step 3c: Version drift detection
@@ -2175,10 +2363,18 @@ def scan(
         con.print(Rule("Vulnerability Scan", style="red"))
         con.print()
         blast_radii = []
-        if not no_scan and total_packages > 0:
-            with con.status("[bold]Querying OSV + NVD + KEV + EPSS...[/bold]", spinner="dots"):
+        if no_scan:
+            con.print("  [dim]Vulnerability scanning skipped (--no-scan)[/dim]")
+        elif total_packages == 0:
+            con.print("  [dim]No packages to scan[/dim]")
+        else:
+            _unique_pkgs = len({(p.name, p.version, p.ecosystem) for a in agents for s in a.mcp_servers for p in s.packages})
+            with con.status(f"[bold]Scanning {_unique_pkgs} unique package(s) — OSV · NVD · KEV · EPSS...[/bold]", spinner="dots"):
                 blast_radii = scan_agents_sync(agents, enable_enrichment=enrich, nvd_api_key=nvd_api_key)
-            con.print(f"  [green]✓[/green] Scan complete — {len(blast_radii)} finding(s)")
+            if blast_radii:
+                con.print(f"  [red]⚠[/red] Scan complete — [bold]{len(blast_radii)}[/bold] finding(s)")
+            else:
+                con.print("  [green]✓[/green] No known vulnerabilities found")
 
         # Step 4a: Snyk vulnerability enrichment (optional)
         if snyk_flag and not no_scan and total_packages > 0:
@@ -2188,7 +2384,8 @@ def scan(
                     from agent_bom.snyk import enrich_with_snyk_sync
 
                     con.print("\n[bold blue]Enriching with Snyk vulnerability data...[/bold blue]\n")
-                    snyk_count = enrich_with_snyk_sync(all_pkgs_for_snyk, token=snyk_token, org_id=snyk_org)
+                    with con.status("[bold]Querying Snyk...[/bold]", spinner="dots"):
+                        snyk_count = enrich_with_snyk_sync(all_pkgs_for_snyk, token=snyk_token, org_id=snyk_org)
                     if snyk_count:
                         con.print(f"  [green]✓[/green] Snyk: {snyk_count} additional vulnerability(ies) found")
                     else:
@@ -2330,6 +2527,8 @@ def scan(
         report.aisvs_benchmark_data = aisvs_report.to_dict()
     if vector_db_results:
         report.vector_db_scan_data = [r.to_dict() for r in vector_db_results]
+    if gpu_infra_report is not None:
+        report.gpu_infra_data = gpu_infra_report.risk_summary
 
     # ── Context graph: lateral movement analysis ────────────────────
     if context_graph_flag and report.blast_radii:
@@ -2857,6 +3056,26 @@ def scan(
             policy_result = evaluate_policy(policy_data, blast_radii)
             print_policy_results(policy_result)
             policy_passed = policy_result["passed"]
+
+            # Fire Jira actions for rules with action: "jira"
+            jira_viol = policy_result.get("jira_violations", [])
+            if jira_viol and jira_url and jira_token and jira_project:
+                from agent_bom.policy import fire_policy_jira_actions
+
+                n = fire_policy_jira_actions(
+                    policy_result=policy_result,
+                    jira_url=jira_url,
+                    email=jira_user or "",
+                    api_token=jira_token,
+                    project_key=jira_project,
+                )
+                if n:
+                    con.print(f"  [green]✓[/green] Policy: created {n} Jira ticket(s) for policy violations")
+            elif jira_viol and not (jira_url and jira_token and jira_project):
+                con.print(
+                    f"  [yellow]⚠[/yellow]  Policy: {len(jira_viol)} rule(s) have action='jira' but "
+                    "--jira-url/--jira-token/--jira-project are not set"
+                )
         except (FileNotFoundError, ValueError) as e:
             con.print(f"\n  [red]Policy error: {e}[/red]")
             sys.exit(1)
@@ -2969,6 +3188,46 @@ def scan(
                 con.print("  [green]✓[/green] Drata: evidence uploaded")
             except Exception as exc:
                 con.print(f"  [yellow]⚠[/yellow] Drata upload failed: {exc}")
+
+    # SIEM push — convert blast_radii to OCSF/raw events and send to configured SIEM
+    if siem_type and siem_url and blast_radii:
+        try:
+            from agent_bom.siem import SIEMConfig, create_connector, format_event
+
+            siem_config = SIEMConfig(
+                name=siem_type,
+                url=siem_url,
+                token=siem_token or "",
+                index=siem_index or "agent-bom-alerts",
+            )
+            connector = create_connector(siem_type, siem_config)
+
+            # Build one event per blast radius finding
+            events: list[dict] = []
+            for br in blast_radii:
+                raw = {
+                    "type": "scan_alert",
+                    "severity": br.vulnerability.severity.value,
+                    "message": f"{br.vulnerability.id} in {br.package.name}@{br.package.version}",
+                    "vulnerability_id": br.vulnerability.id,
+                    "package": br.package.name,
+                    "version": br.package.version,
+                    "ecosystem": br.package.ecosystem,
+                    "is_kev": br.vulnerability.is_kev,
+                    "affected_agents": [a.name for a in br.affected_agents],
+                    "exposed_credentials": br.exposed_credentials,
+                    "atlas_tags": getattr(br, "atlas_tags", []),
+                    "attack_tags": getattr(br, "attack_tags", []),
+                    "owasp_tags": getattr(br, "owasp_tags", []),
+                }
+                events.append(format_event(raw, siem_format))
+
+            sent = connector.send_batch(events)
+            con.print(f"  [green]✓[/green] SIEM ({siem_type}): pushed {sent}/{len(events)} event(s)")
+        except Exception as exc:
+            con.print(f"  [yellow]⚠[/yellow] SIEM push failed: {exc}")
+    elif siem_type and not siem_url:
+        con.print(f"  [yellow]⚠[/yellow] --siem {siem_type} set but --siem-url is required")
 
     # Step 9: Exit code based on policy flags
     exit_code = 0
@@ -3365,7 +3624,8 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bo
             async with create_client(timeout=15.0) as client:
                 return await resolve_package_version(pkg, client)
 
-        resolved = asyncio.run(_resolve())
+        with console.status("[bold]Resolving version from registry...[/bold]", spinner="dots"):
+            resolved = asyncio.run(_resolve())
         if resolved:
             console.print(f"  [green]✓ Resolved @latest → {pkg.version}[/green]")
             version = pkg.version
@@ -3376,7 +3636,8 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bo
 
     console.print(f"\n[bold blue]🔍 Checking {name}@{version} ({ecosystem})[/bold blue]\n")
 
-    results = asyncio.run(query_osv_batch([pkg]))
+    with console.status("[bold]Querying OSV...[/bold]", spinner="dots"):
+        results = asyncio.run(query_osv_batch([pkg]))
     key = f"{ecosystem}:{name}@{version}"
     vuln_data = results.get(key, [])
 
@@ -4201,7 +4462,7 @@ def mcp_server_cmd(transport: str, port: int, host: str, log_level: str, log_jso
     Requires:  pip install 'agent-bom[mcp-server]'
 
     \b
-    Exposes 22 security tools via MCP protocol:
+    Exposes 23 security tools via MCP protocol:
       scan              Full scan — CVEs, config security, blast radius, compliance
       check             Check a specific package for CVEs before installing
       blast_radius      Look up blast radius for a specific CVE
@@ -4222,6 +4483,9 @@ def mcp_server_cmd(transport: str, port: int, host: str, log_level: str, log_jso
       cis_benchmark     Run CIS benchmark checks (AWS/Snowflake)
       fleet_scan        Batch registry lookup for fleet inventories
       runtime_correlate Cross-reference runtime audit logs with CVE findings
+      vector_db_scan    Discover vector databases and assess auth exposure
+      aisvs_benchmark   OWASP AISVS v1.0 compliance checks
+      gpu_infra_scan    GPU container and K8s node inventory + DCGM probe
 
     \b
     Usage:
@@ -4919,6 +5183,74 @@ def proxy_cmd(
     sys.exit(exit_code)
 
 
+@main.command("proxy-configure")
+@click.option("--policy", type=click.Path(exists=True), default=None, help="Policy JSON file to pass to each proxy instance")
+@click.option("--log-dir", default=None, type=click.Path(), help="Directory for per-server audit JSONL logs")
+@click.option("--detect-credentials", is_flag=True, help="Enable credential leak detection in each proxy")
+@click.option("--block-undeclared", is_flag=True, help="Block undeclared tools in each proxy")
+@click.option(
+    "--apply",
+    is_flag=True,
+    help="Write proxy config back to source JSON config files (default: preview only)",
+)
+@click.option("--project", default=None, type=click.Path(exists=True), help="Project directory to scan for MCP configs")
+def proxy_configure_cmd(policy, log_dir, detect_credentials, block_undeclared, apply, project):
+    """Auto-configure the agent-bom proxy for discovered MCP servers.
+
+    \b
+    Discovers all MCP servers on this machine, then generates proxy-wrapped
+    configuration entries for every STDIO server.  The proxy adds:
+    - Audit logging (--log-dir)
+    - Policy enforcement (--policy)
+    - Credential leak detection (--detect-credentials)
+    - Undeclared-tool blocking (--block-undeclared)
+
+    \b
+    By default, shows a preview.  Use --apply to write changes back to the
+    original config files (JSON only — claude_desktop_config.json, mcp.json…).
+
+    \b
+    Example:
+      agent-bom proxy-configure --log-dir ~/.agent-bom/logs --detect-credentials
+      agent-bom proxy-configure --policy policy.json --block-undeclared --apply
+    """
+    from agent_bom.discovery import discover_all
+    from agent_bom.proxy_configure import apply_proxy_configs, auto_configure_proxies
+
+    con = Console()
+
+    agents = discover_all(project_dir=project)
+    configs = auto_configure_proxies(
+        agents,
+        policy_path=policy,
+        log_dir=log_dir,
+        detect_credentials=detect_credentials,
+        block_undeclared=block_undeclared,
+    )
+
+    if not configs:
+        con.print("[yellow]No eligible STDIO MCP servers found (need command + stdio transport).[/yellow]")
+        return
+
+    con.print(f"\n[bold blue]Proxy configuration for {len(configs)} MCP server(s):[/bold blue]\n")
+
+    for cfg in configs:
+        con.print(f"  [bold]{cfg.server_name}[/bold]  [dim]({cfg.config_path})[/dim]")
+        con.print(f"    Original : {cfg.original_command} {' '.join(cfg.original_args)}")
+        proxy_preview = f"agent-bom {' '.join(cfg.proxied_args)}"
+        con.print(f"    Proxied  : [green]{proxy_preview}[/green]")
+        con.print()
+
+    if apply:
+        n = apply_proxy_configs(configs, dry_run=False)
+        if n:
+            con.print(f"[green]✓[/green] Patched {n} config file(s).")
+        else:
+            con.print("[yellow]⚠[/yellow] No JSON config files were patched (SSE servers, missing files, or no matching entries).")
+    else:
+        con.print("[dim]Pass --apply to write these changes to config files.[/dim]")
+
+
 @main.command("guard", context_settings={"ignore_unknown_options": True, "allow_extra_args": True})
 @click.argument("tool", type=click.Choice(["pip", "npm", "npx"]))
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
@@ -5237,6 +5569,54 @@ def analytics_cmd(query_type, days, hours, agent, top_limit, clickhouse_url):
 
     if not rows:
         console.print("[dim]No data found. Run scans with --clickhouse-url to populate analytics.[/dim]")
+
+
+@main.command("graph")
+@click.argument("scan_file", type=click.Path(exists=True))
+@click.option(
+    "--format", "-f", "fmt", type=click.Choice(["json", "dot", "mermaid"]), default="json", show_default=True, help="Output format."
+)
+@click.option("--output", "-o", "output_path", default=None, help="Write to file instead of stdout.")
+def graph_cmd(scan_file: str, fmt: str, output_path: Optional[str]) -> None:
+    """Export the transitive dependency graph from a saved JSON scan report.
+
+    \b
+    SCAN_FILE  Path to a JSON file produced by: agent-bom scan --format json
+
+    \b
+    Examples:
+        agent-bom scan --format json --output report.json
+        agent-bom graph report.json --format dot --output deps.dot
+        dot -Tsvg deps.dot -o deps.svg
+
+        agent-bom graph report.json --format mermaid
+
+    Closes #292.
+    """
+    from rich.console import Console as _Console
+
+    from agent_bom.output.graph_export import load_graph_from_scan, to_dot, to_json, to_mermaid
+
+    _con = _Console()
+
+    try:
+        graph = load_graph_from_scan(scan_file)
+    except (ValueError, KeyError) as exc:
+        _con.print(f"[red]Error loading scan file:[/red] {exc}")
+        raise SystemExit(1) from exc
+
+    if fmt == "dot":
+        output = to_dot(graph)
+    elif fmt == "mermaid":
+        output = to_mermaid(graph)
+    else:
+        output = json.dumps(to_json(graph), indent=2)
+
+    if output_path:
+        Path(output_path).write_text(output)
+        _con.print(f"[green]Graph exported[/green] ({graph.node_count()} nodes, {graph.edge_count()} edges) → {output_path}")
+    else:
+        click.echo(output)
 
 
 @main.command("dashboard")

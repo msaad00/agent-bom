@@ -1733,15 +1733,19 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             JSON with per-database risk assessment including risk_level, risk_flags, and metadata.
         """
         try:
-            from agent_bom.cloud.vector_db import discover_vector_dbs
+            from agent_bom.cloud.vector_db import discover_pinecone, discover_vector_dbs
 
             host_list = [h.strip() for h in hosts.split(",")] if hosts else None
-            results = discover_vector_dbs(hosts=host_list)
+            self_hosted = discover_vector_dbs(hosts=host_list)
+            pinecone_results = discover_pinecone()
+            all_results = [r.to_dict() for r in self_hosted] + [r.to_dict() for r in pinecone_results]
             return _truncate_response(
                 json.dumps(
                     {
-                        "databases_found": len(results),
-                        "results": [r.to_dict() for r in results],
+                        "databases_found": len(all_results),
+                        "self_hosted_count": len(self_hosted),
+                        "cloud_count": len(pinecone_results),
+                        "results": all_results,
                     },
                     indent=2,
                     default=str,
@@ -1784,6 +1788,85 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             check_list = [c.strip() for c in checks.split(",")] if checks else None
             report = _run_aisvs(checks=check_list)
             return _truncate_response(json.dumps(report.to_dict(), indent=2, default=str))
+        except Exception as exc:
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
+
+    # ── Tool 23: gpu_infra_scan ────────────────────────────────────
+    @mcp.tool(annotations=_READ_ONLY)
+    async def gpu_infra_scan(
+        k8s_context: Annotated[
+            str | None,
+            Field(description="kubectl context to use for K8s GPU node discovery. Omit for current context."),
+        ] = None,
+        probe_dcgm: Annotated[
+            bool,
+            Field(description="Whether to probe DCGM exporter endpoints on port 9400 (unauthenticated metrics leak detection)."),
+        ] = True,
+    ) -> str:
+        """Discover GPU/AI compute infrastructure: containers, K8s nodes, and DCGM endpoints.
+
+        Scans for GPU-enabled workloads from the local Docker daemon and Kubernetes
+        clusters. Identifies NVIDIA base images, CUDA/cuDNN versions, explicit GPU
+        device assignments, and unauthenticated DCGM exporter endpoints.
+
+        Discovery targets (MAESTRO KC6):
+        - NVIDIA base images (nvcr.io/nvidia/, nvidia/cuda, etc.)
+        - CUDA/cuDNN versions from container labels and env vars
+        - GPU-assigned containers (Docker --gpus, K8s nvidia.com/gpu requests)
+        - Unauthenticated DCGM exporter endpoints (port 9400 — GPU metrics leak)
+        - Kubernetes GPU node inventory with capacity and allocatable counts
+
+        Requires docker and/or kubectl on PATH. All discovery is best-effort
+        (returns empty results rather than failing if tools are unavailable).
+
+        Returns:
+            JSON with GPU containers, K8s nodes, DCGM endpoints, CUDA version
+            inventory, and a risk summary with unauthenticated DCGM count.
+        """
+        try:
+            from agent_bom.cloud.gpu_infra import scan_gpu_infra
+
+            report = await scan_gpu_infra(k8s_context=k8s_context, probe_dcgm=probe_dcgm)
+            result = {
+                "risk_summary": report.risk_summary,
+                "gpu_containers": [
+                    {
+                        "container_id": c.container_id,
+                        "name": c.name,
+                        "image": c.image,
+                        "status": c.status,
+                        "is_nvidia_base": c.is_nvidia_base,
+                        "cuda_version": c.cuda_version,
+                        "cudnn_version": c.cudnn_version,
+                        "gpu_requested": c.gpu_requested,
+                    }
+                    for c in report.gpu_containers
+                ],
+                "k8s_gpu_nodes": [
+                    {
+                        "name": n.name,
+                        "gpu_capacity": n.gpu_capacity,
+                        "gpu_allocatable": n.gpu_allocatable,
+                        "gpu_allocated": n.gpu_allocated,
+                        "cuda_driver_version": n.cuda_driver_version,
+                    }
+                    for n in report.gpu_nodes
+                ],
+                "dcgm_endpoints": [
+                    {
+                        "host": ep.host,
+                        "port": ep.port,
+                        "url": ep.url,
+                        "authenticated": ep.authenticated,
+                        "gpu_count": ep.gpu_count,
+                        "risk": "unauthenticated GPU metrics exposure" if not ep.authenticated else "ok",
+                    }
+                    for ep in report.dcgm_endpoints
+                ],
+                "warnings": report.warnings,
+            }
+            return _truncate_response(json.dumps(result, indent=2, default=str))
         except Exception as exc:
             logger.exception("MCP tool error")
             return json.dumps({"error": sanitize_error(exc)})
@@ -1896,6 +1979,11 @@ _SERVER_CARD_TOOLS = [
     {
         "name": "aisvs_benchmark",
         "description": "OWASP AISVS v1.0 compliance checks — model safety, vector store auth, inference exposure, supply chain",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "gpu_infra_scan",
+        "description": "Discover GPU containers, K8s GPU nodes, CUDA versions, and unauthenticated DCGM endpoints (MAESTRO KC6)",
         "annotations": {"readOnlyHint": True},
     },
 ]

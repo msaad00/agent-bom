@@ -406,6 +406,7 @@ class AIBOMReport:
     databricks_cis_benchmark_data: Optional[dict] = None  # Serialized Databricks Security Best Practices results
     aisvs_benchmark_data: Optional[dict] = None  # Serialized AISVS compliance results
     vector_db_scan_data: Optional[list] = None  # Serialized vector DB security assessments
+    gpu_infra_data: Optional[dict] = None  # Serialized GPU/AI compute infra scan results
     runtime_correlation: Optional[dict] = None  # Runtime ↔ scan correlation (proxy audit vs CVE findings)
 
     def __post_init__(self):

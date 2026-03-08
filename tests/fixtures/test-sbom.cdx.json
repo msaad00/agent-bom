@@ -13,26 +13,26 @@
     {
       "type": "library",
       "name": "flask",
-      "version": "2.2.0",
-      "purl": "pkg:pypi/flask@2.2.0"
+      "version": "3.1.3",
+      "purl": "pkg:pypi/flask@3.1.3"
     },
     {
       "type": "library",
       "name": "werkzeug",
-      "version": "2.2.0",
-      "purl": "pkg:pypi/werkzeug@2.2.0"
+      "version": "3.1.6",
+      "purl": "pkg:pypi/werkzeug@3.1.6"
     },
     {
       "type": "library",
       "name": "jinja2",
-      "version": "3.1.2",
-      "purl": "pkg:pypi/jinja2@3.1.2"
+      "version": "3.1.6",
+      "purl": "pkg:pypi/jinja2@3.1.6"
     },
     {
       "type": "library",
       "name": "requests",
-      "version": "2.28.0",
-      "purl": "pkg:pypi/requests@2.28.0"
+      "version": "2.32.4",
+      "purl": "pkg:pypi/requests@2.32.4"
     }
   ]
 }

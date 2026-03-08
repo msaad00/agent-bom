@@ -543,11 +543,13 @@ async def scan_packages(packages: list[Package]) -> int:
             # Flag packages with MAL- prefixed vulnerability IDs as malicious
             flag_malicious_from_vulns(pkg)
 
-    # Supplemental: check NVIDIA advisories for AI framework packages
+    # Supplemental: check NVIDIA advisories for all AI framework packages.
+    # nvidia_advisory.py maps NVIDIA CSAF products to bundling frameworks (torch,
+    # jax, vllm, etc.) so we pass ALL AI packages — not just nvidia-prefixed ones.
     nvidia_packages = [
         p
         for p in scannable
-        if p.name.lower().replace("-", "_") in _AI_FRAMEWORK_PACKAGES and p.name.lower().startswith(("nvidia", "cuda", "tensorrt", "nccl"))
+        if p.name.lower().replace("-", "_") in _AI_FRAMEWORK_PACKAGES or p.name.lower().replace("-", "") in _AI_FRAMEWORK_PACKAGES
     ]
     if nvidia_packages:
         try:

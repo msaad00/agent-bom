@@ -234,6 +234,7 @@ agent-bom where             # show all discovery paths
 | `context_graph` | Agent context graph with lateral movement analysis |
 | `analytics_query` | Query vulnerability trends, posture history, and runtime events |
 | `vector_db_scan` | Probe Qdrant/Weaviate/Chroma/Milvus for auth and exposure |
+| `gpu_infra_scan` | GPU container and K8s node inventory + unauthenticated DCGM probe (MAESTRO KC6) |
 
 ### Resources
 | Resource | Description |
@@ -260,6 +261,9 @@ aisvs_benchmark()
 
 # Scan vector databases for auth misconfigurations
 vector_db_scan()
+
+# Discover GPU containers, K8s GPU nodes, and unauthenticated DCGM endpoints
+gpu_infra_scan()
 
 # Assess trust of a skill file
 skill_trust(skill_content="<paste SKILL.md content>")

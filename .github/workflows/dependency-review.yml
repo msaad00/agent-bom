@@ -18,21 +18,37 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Review dependency changes
-        uses: actions/dependency-review-action@05fe4576374b728f0c523d6a13d64c25081e0803 # v4
+        uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4
         with:
           fail-on-severity: high
           comment-summary-in-pr: always
           allow-licenses: >-
-            Apache-2.0, MIT, BSD-2-Clause, BSD-3-Clause, ISC, PSF-2.0,
-            Python-2.0, 0BSD, Unlicense, CC0-1.0, MPL-2.0
-          # jinja2 and werkzeug are BSD-3-Clause (Pallets) but GitHub
-          # dependency review cannot resolve their license from version
-          # constraint pins — whitelist them explicitly.
-          # recharts is Apache-2.0 but npm metadata returns null.
-          # victory-vendor is ISC+JSON+MIT — JSON license not in allow
-          # list; whitelisted at package level rather than blanket-allowing.
+            Apache-2.0, MIT, MIT-0, MIT-CMU, BSD-2-Clause, BSD-3-Clause,
+            ISC, PSF-2.0, Python-2.0, Python-2.0.1, 0BSD, Unlicense,
+            CC0-1.0, MPL-2.0, OFL-1.1, ZPL-2.1, HPND-Markus-Kuhn,
+            LGPL-3.0-only
+          # Packages whitelisted by PURL:
+          # - jinja2/werkzeug: BSD-3-Clause but GitHub can't resolve from pins
+          # - recharts: Apache-2.0 but npm metadata returns null
+          # - victory-vendor: ISC+JSON+MIT (JSON not in allow list)
+          # - uv.lock transitive deps with LicenseRef-scancode-* identifiers
+          #   (scancode can't map to standard SPDX; packages are permissive)
           allow-dependencies-licenses: >-
             pkg:pypi/jinja2,
             pkg:pypi/werkzeug,
             pkg:npm/recharts,
-            pkg:npm/victory-vendor
+            pkg:npm/victory-vendor,
+            pkg:pypi/aiohappyeyeballs,
+            pkg:pypi/azure-identity,
+            pkg:pypi/fonttools,
+            pkg:pypi/gitdb,
+            pkg:pypi/librt,
+            pkg:pypi/msal-extensions,
+            pkg:pypi/mypy,
+            pkg:pypi/pillow,
+            pkg:pypi/protobuf,
+            pkg:pypi/psycopg-pool,
+            pkg:pypi/safety,
+            pkg:pypi/scikit-learn,
+            pkg:pypi/typing-extensions,
+            pkg:pypi/wcwidth

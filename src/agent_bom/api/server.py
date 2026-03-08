@@ -272,9 +272,12 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("PUT", "/v1/schedules/"),
     }
 
-    def __init__(self, app: ASGIApp, api_key: str):
+    def __init__(self, app: ASGIApp, api_key: str) -> None:
         super().__init__(app)
         self._api_key = api_key
+        # OIDC config loaded lazily from env on first request
+        self._oidc_config: object | None = None
+        self._oidc_checked = False
 
     def _required_role(self, method: str, path: str) -> str:
         """Determine the minimum role required for a request."""
@@ -309,6 +312,34 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             request.state.api_key_name = "static-key"
             request.state.api_key_role = "admin"
             return await call_next(request)
+
+        # OIDC mode: try JWT verification when AGENT_BOM_OIDC_ISSUER is set
+        if not self._oidc_checked:
+            from agent_bom.api.oidc import OIDCConfig
+
+            self._oidc_config = OIDCConfig.from_env()
+            self._oidc_checked = True
+
+        oidc_cfg = self._oidc_config
+        if oidc_cfg is not None and getattr(oidc_cfg, "enabled", False) and auth.startswith("Bearer "):
+            from agent_bom.api.oidc import OIDCError
+
+            try:
+                _claims, oidc_role = oidc_cfg.verify(raw_key)
+                required = self._required_role(request.method, request.url.path)
+                from agent_bom.api.auth import Role
+
+                if Role(oidc_role).has_role(Role(required)):
+                    request.state.api_key_name = _claims.get("email") or _claims.get("sub", "oidc-user")
+                    request.state.api_key_role = oidc_role
+                    return await call_next(request)
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": f"Forbidden — requires {required} role, OIDC token has {oidc_role}"},
+                )
+            except OIDCError as exc:
+                _logger.debug("OIDC verification failed: %s", exc)
+                # Fall through to API key check — OIDC failure is non-fatal if keys also configured
 
         # RBAC mode: check against KeyStore
         from agent_bom.api.auth import Role, get_key_store
@@ -2018,6 +2049,51 @@ async def get_posture_scorecard() -> dict:
         "summary": "Scorecard not computed for this scan",
         "dimensions": {},
     }
+
+
+@app.get("/v1/posture/counts", tags=["compliance"])
+async def get_posture_counts() -> dict:
+    """Aggregate vulnerability counts across all completed scans.
+
+    Lightweight endpoint used by the dashboard nav to show Critical/High
+    badges without loading full scan payloads.
+
+    Returns:
+        {critical, high, medium, low, total, kev, compound_issues}
+    """
+    counts: dict[str, int] = {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "total": 0,
+        "kev": 0,
+        "compound_issues": 0,
+    }
+    seen_ids: set[str] = set()
+
+    for job in _get_store().list_all():
+        if job.status != JobStatus.DONE or not job.result:
+            continue
+        blast_list = job.result.get("blast_radius", [])
+        for b in blast_list:
+            vid = b.get("vulnerability_id", "")
+            if vid in seen_ids:
+                continue
+            seen_ids.add(vid)
+            sev = (b.get("severity") or "").lower()
+            if sev in counts:
+                counts[sev] += 1
+            counts["total"] += 1
+            if b.get("cisa_kev") or b.get("is_kev"):
+                counts["kev"] += 1
+            # Compound issue: KEV + reachable tool, or KEV + exposed cred
+            if (b.get("cisa_kev") or b.get("is_kev")) and (b.get("reachable_tools") or b.get("exposed_credentials")):
+                counts["compound_issues"] += 1
+            elif (b.get("epss_score") or 0) >= 0.3 and (b.get("cvss_score") or 0) >= 7:
+                counts["compound_issues"] += 1
+
+    return counts
 
 
 @app.get("/v1/posture/credentials", tags=["compliance"])

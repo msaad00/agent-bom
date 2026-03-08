@@ -1,0 +1,66 @@
+name: Weekly uv.lock Upgrade
+
+on:
+  schedule:
+    - cron: "0 8 * * 1"  # Every Monday at 08:00 UTC (before registry sync at 09:00)
+  workflow_dispatch:       # Also triggerable manually from the Actions tab
+
+permissions:
+  contents: read
+
+jobs:
+  upgrade:
+    name: Upgrade uv.lock
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@5a095e7a2014a4212f075830d4f7277575a9d098 # v7.3.1
+        with:
+          python-version: '3.11'
+
+      - name: Upgrade all locked dependencies
+        run: uv lock --upgrade
+
+      - name: Check for changes
+        id: diff
+        run: |
+          if git diff --quiet uv.lock; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "### Changed packages" >> "$GITHUB_STEP_SUMMARY"
+            git diff uv.lock | grep '^[+-].*version' | grep -v '^---\|^+++' | head -50 >> "$GITHUB_STEP_SUMMARY" || true
+          fi
+
+      - name: Open PR if lockfile changed
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BRANCH="chore/uv-lock-upgrade-$(date +%Y%m%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add uv.lock
+          git commit -m "chore: weekly uv.lock upgrade"
+          git push origin "$BRANCH"
+          gh pr create \
+            --title "chore: weekly uv.lock upgrade $(date +%Y-%m-%d)" \
+            --body "Weekly automated lockfile refresh via \`uv lock --upgrade\`.
+
+All packages bumped to latest versions within declared bounds in \`pyproject.toml\`.
+
+**Review checklist:**
+- [ ] CI passes (pip-audit + OSV scanner will catch any new CVEs)
+- [ ] No unexpected major version bumps" \
+            --base main
+
+      - name: No changes
+        if: steps.diff.outputs.changed == 'false'
+        run: echo "uv.lock is already up to date — no package upgrades available."

@@ -30,7 +30,9 @@ Discovery ──> Scanning ──> Enrichment ──> Blast Radius ──> Compl
 ```
 src/agent_bom/
 ├── discovery/           # MCP client/server discovery
-│   └── __init__.py      # CONFIG_LOCATIONS for 21 agent types, JSON/TOML/YAML parsers
+│   └── __init__.py      # CONFIG_LOCATIONS for 21 agent types, JSON/TOML/YAML parsers;
+│                        #   discover_running_processes() (psutil), discover_container_labels()
+│                        #   (docker inspect), discover_k8s_mcp_servers() (kubectl pods + CRDs)
 ├── scanners/            # Vulnerability scanning
 │   ├── __init__.py      # OSV batch queries, scan_packages(), scan_agents_with_enrichment()
 │   ├── ghsa_advisory.py # GitHub Security Advisories (supplemental)
@@ -66,7 +68,7 @@ Each module exports `tag_blast_radius(br: BlastRadius)` to annotate findings.
 ### Runtime & Enforcement
 
 ```
-├── proxy.py             # MCP JSON-RPC proxy — policy enforcement, 6 detectors,
+├── proxy.py             # MCP JSON-RPC proxy — policy enforcement, 7 detectors,
 │                        #   Prometheus metrics, JSONL audit trail, webhook alerts
 ├── runtime/
 │   ├── __init__.py      # Public exports
@@ -77,13 +79,16 @@ Each module exports `tag_blast_radius(br: BlastRadius)` to annotate findings.
 ├── enforcement.py       # Tool poisoning detection (8 checks): injection scanning,
 │                        #   inputSchema analysis, capability combos, CVE exposure,
 │                        #   drift detection, config analysis, over-permission
-├── mcp_introspect.py    # Live MCP server connection — tools/list, resources/list, drift
+├── mcp_introspect.py    # Live MCP server connection — tools/list, resources/list, drift,
+│                        #   health_check_servers() lightweight liveness probe (5s timeout)
+├── proxy_configure.py   # Auto-configure proxy per discovered MCP server — wraps STDIO
+│                        #   entries with `agent-bom proxy --` and applies to config files
 ├── watch.py             # Filesystem watcher on MCP configs, diff-on-change, webhook alerts
 ├── runtime_correlation.py # Cross-reference proxy audit logs with CVE findings
 └── prompt_scanner.py    # Prompt injection pattern detection (reused by enforcement)
 ```
 
-### Cloud & Infrastructure (14 modules)
+### Cloud & Infrastructure (15 modules)
 
 ```
 ├── cloud/
@@ -99,6 +104,8 @@ Each module exports `tag_blast_radius(br: BlastRadius)` to annotate findings.
 │   ├── ollama.py                  # Ollama local model scanning
 │   ├── openai_provider.py         # OpenAI integration
 │   ├── clickhouse.py              # ClickHouse analytics storage
+│   ├── vector_db.py               # Self-hosted vector DB scanning (Chroma, Qdrant, Weaviate, Milvus)
+│   │                              #   + Pinecone cloud index inventory via REST API
 │   └── ...                        # coreweave, mlflow, wandb, nebius providers
 ├── scorecard.py         # OpenSSF Scorecard fetching → risk boost
 ├── malicious.py         # Typosquat detection, known malicious package flagging
@@ -127,6 +134,7 @@ Each module exports `tag_blast_radius(br: BlastRadius)` to annotate findings.
 ├── api/
 │   ├── server.py          # FastAPI REST server with job queue
 │   ├── auth.py            # scrypt KDF API keys, RBAC roles (admin/analyst/viewer)
+│   ├── oidc.py            # OIDC/SSO JWT verification (Okta, Google, Azure AD, Auth0)
 │   ├── audit_log.py       # HMAC-SHA256 signed audit log (InMemory + SQLite backends)
 │   ├── store.py           # Base data store abstraction
 │   ├── postgres_store.py  # PostgreSQL backend
@@ -156,10 +164,11 @@ Each module exports `tag_blast_radius(br: BlastRadius)` to annotate findings.
 │   ├── scan_alerts.py     # Scan-triggered alerts
 │   └── dedup.py           # Alert deduplication
 └── siem/
-    └── ocsf.py            # Open Cybersecurity Schema Format export
+    ├── __init__.py        # SplunkHEC, DatadogLogs, ElasticsearchConnector, create_from_env
+    └── ocsf.py            # OCSF Detection Finding (class_uid=2004) + SyslogConnector
 ```
 
-### Output & Visualization (8 modules)
+### Output & Visualization (9 modules)
 
 ```
 ├── output/
@@ -168,6 +177,7 @@ Each module exports `tag_blast_radius(br: BlastRadius)` to annotate findings.
 │   ├── svg.py             # SVG diagrams (architecture, blast radius, compliance)
 │   ├── mermaid.py         # Mermaid diagram syntax
 │   ├── graph.py           # NetworkX graph generation
+│   ├── graph_export.py    # Standalone graph export (DOT/Mermaid/JSON) — `agent-bom graph` CLI
 │   ├── agent_mesh.py      # Agent mesh topology visualization
 │   ├── attack_flow.py     # Attack flow visualization
 │   └── prometheus.py      # Prometheus metrics export
@@ -209,9 +219,9 @@ cli.py / mcp_server.py / api/server.py
 
 | Metric | Count |
 |---|---|
-| Python modules | 148 |
-| Test files | 144 |
-| Test functions | 3,419 (3,480 collected by pytest) |
+| Python modules | 160 |
+| Test files | 168 |
+| Test functions | ~3,900 (collected by pytest) |
 | MCP tools | 22 |
 | Compliance frameworks | 10 |
 | Runtime detectors | 7 |

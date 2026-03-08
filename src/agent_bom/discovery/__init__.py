@@ -1051,10 +1051,420 @@ def discover_compose_mcp_servers(project_dir: Optional[str] = None) -> Optional[
     )
 
 
+# ─── MCP process command patterns ─────────────────────────────────────────────
+#
+# Substrings that, when found in a process's command line, indicate it may be
+# an MCP server.  All comparisons are case-insensitive.
+_MCP_PROCESS_PATTERNS: tuple[str, ...] = (
+    "mcp-server",
+    "@modelcontextprotocol/",
+    "mcp_server",
+    "mcpserver",
+    "uvx mcp",
+    "npx mcp",
+    "python -m mcp",
+)
+
+# Env vars that signal an MCP server process (prefix match, uppercase)
+_MCP_ENV_SIGNALS: tuple[str, ...] = ("MCP_SERVER", "MCP_PORT", "MCP_TRANSPORT", "MCP_HOST")
+
+
+def discover_running_processes() -> Optional[Agent]:
+    """Discover locally running MCP server processes via psutil.
+
+    Iterates all processes on the host and matches command lines against
+    known MCP server patterns (npm/npx @modelcontextprotocol/*, uvx mcp-server-*,
+    python -m mcp*, etc.).  Each matching process becomes an MCPServer entry.
+
+    Requires ``psutil`` (``pip install psutil`` or ``agent-bom[runtime]``).
+    Returns None if psutil is not installed or no MCP processes are found.
+    """
+    try:
+        import psutil
+    except ImportError:
+        logger.debug("psutil not installed — skipping process discovery (pip install psutil)")
+        return None
+
+    mcp_servers: list[MCPServer] = []
+
+    for proc in psutil.process_iter(["pid", "name", "cmdline", "environ", "cwd"]):
+        try:
+            info = proc.info
+            cmdline: list[str] = info.get("cmdline") or []
+            if not cmdline:
+                continue
+
+            cmd_str = " ".join(cmdline).lower()
+            if not any(pat in cmd_str for pat in _MCP_PROCESS_PATTERNS):
+                continue
+
+            # Try to read environment (may raise AccessDenied on some platforms)
+            try:
+                raw_env: dict[str, str] = info.get("environ") or {}
+            except (psutil.AccessDenied, psutil.ZombieProcess):
+                raw_env = {}
+
+            # Check env signals too — catch MCP servers not matching cmd patterns
+            env_signals = any(k.upper().startswith(_MCP_ENV_SIGNALS) for k in raw_env)
+            if not any(pat in cmd_str for pat in _MCP_PROCESS_PATTERNS) and not env_signals:
+                continue
+
+            env = sanitize_env_vars({k: str(v) for k, v in raw_env.items()})
+
+            # Derive a human-readable name from the command
+            args = cmdline[1:] if len(cmdline) > 1 else []
+            # Use the first arg that looks like a package/module name as the server name
+            name_parts = [p for p in args if p.startswith("@") or "mcp" in p.lower()]
+            server_name = name_parts[0].split("/")[-1] if name_parts else f"process-{info['pid']}"
+
+            # Determine transport from env or args
+            transport = TransportType.STDIO
+            if "--transport" in args:
+                idx = args.index("--transport")
+                if idx + 1 < len(args):
+                    t = args[idx + 1].lower()
+                    if "sse" in t:
+                        transport = TransportType.SSE
+                    elif "http" in t:
+                        transport = TransportType.STREAMABLE_HTTP
+
+            working_dir = info.get("cwd")
+
+            server = MCPServer(
+                name=server_name,
+                command=cmdline[0],
+                args=args,
+                env=env,
+                transport=transport,
+                config_path=f"pid:{info['pid']}",
+                working_dir=working_dir,
+            )
+            mcp_servers.append(server)
+
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+
+    if not mcp_servers:
+        return None
+
+    return Agent(
+        name="running-processes",
+        agent_type=AgentType.CUSTOM,
+        config_path="psutil://processes",
+        mcp_servers=mcp_servers,
+        source="process",
+    )
+
+
+def discover_container_labels() -> Optional[Agent]:
+    """Discover MCP server containers running locally via Docker.
+
+    Uses ``docker ps`` + ``docker inspect`` (no SDK required) to enumerate
+    running containers and identify those whose images, labels, or environment
+    variables indicate an MCP server.
+
+    Returns None if Docker is not available or no MCP containers are found.
+    """
+    if not shutil.which("docker"):
+        return None
+
+    try:
+        ps_result = subprocess.run(
+            ["docker", "ps", "--format", "{{.ID}}"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+
+    if ps_result.returncode != 0:
+        return None
+
+    container_ids = [cid.strip() for cid in ps_result.stdout.splitlines() if cid.strip()]
+    if not container_ids:
+        return None
+
+    mcp_servers: list[MCPServer] = []
+
+    for cid in container_ids:
+        try:
+            inspect_result = subprocess.run(
+                ["docker", "inspect", "--format", "{{json .}}", cid],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        except subprocess.TimeoutExpired:
+            continue
+
+        if inspect_result.returncode != 0:
+            continue
+
+        try:
+            info = json.loads(inspect_result.stdout)
+        except (json.JSONDecodeError, ValueError):
+            continue
+
+        # Normalise: docker inspect returns a list when called without --format json
+        if isinstance(info, list):
+            if not info:
+                continue
+            info = info[0]
+
+        image_name: str = info.get("Config", {}).get("Image", "") or ""
+        labels: dict[str, str] = info.get("Config", {}).get("Labels") or {}
+        cmd: list[str] = info.get("Config", {}).get("Cmd") or []
+        entrypoint: list[str] = info.get("Config", {}).get("Entrypoint") or []
+
+        # Collect raw env list → dict
+        raw_env_list: list[str] = info.get("Config", {}).get("Env") or []
+        raw_env: dict[str, str] = {}
+        for entry in raw_env_list:
+            if "=" in entry:
+                k, _, v = entry.partition("=")
+                raw_env[k] = v
+
+        image_lower = image_name.lower()
+        label_vals = " ".join(labels.values()).lower()
+        label_keys = " ".join(labels.keys()).lower()
+        cmd_str = " ".join(cmd + entrypoint).lower()
+        env_keys = " ".join(raw_env.keys()).upper()
+
+        is_mcp = (
+            "mcp" in image_lower
+            or any(p in image_lower for p in ("modelcontextprotocol", "mcp-server", "mcp_server"))
+            or "mcp" in label_vals
+            or "mcp" in label_keys
+            or "mcp" in cmd_str
+            or any(k.startswith(_MCP_ENV_SIGNALS) for k in env_keys.split())
+        )
+
+        if not is_mcp:
+            continue
+
+        env = sanitize_env_vars(raw_env)
+
+        # Name: prefer label, fall back to image basename, then short container ID
+        server_name = (
+            labels.get("mcp.name") or labels.get("org.opencontainers.image.title") or image_lower.split("/")[-1].split(":")[0] or cid[:12]
+        )
+
+        # Transport: SSE if any port is exposed, else STDIO
+        ports = info.get("NetworkSettings", {}).get("Ports") or {}
+        transport = TransportType.SSE if ports else TransportType.STDIO
+        url: Optional[str] = None
+        if ports:
+            for port_spec, bindings in ports.items():
+                if bindings:
+                    host_port = bindings[0].get("HostPort")
+                    if host_port:
+                        url = f"http://localhost:{host_port}"
+                        break
+
+        from agent_bom.models import Package
+
+        packages = [
+            Package(
+                name=image_name.split(":")[0],
+                version=image_name.split(":")[-1] if ":" in image_name else "latest",
+                ecosystem="docker",
+                is_direct=True,
+            )
+        ]
+
+        server = MCPServer(
+            name=server_name,
+            command=f"docker run {image_name}",
+            args=[],
+            env=env,
+            transport=transport,
+            url=url,
+            packages=packages,
+            config_path=f"docker://{cid[:12]}",
+        )
+        mcp_servers.append(server)
+
+    if not mcp_servers:
+        return None
+
+    return Agent(
+        name="docker-containers",
+        agent_type=AgentType.CUSTOM,
+        config_path="docker://localhost",
+        mcp_servers=mcp_servers,
+        source="container",
+    )
+
+
+# ── Kubernetes MCP CRD / label / env discovery ───────────────────────────────
+
+# MCP signals in pod metadata and container specs
+_K8S_MCP_LABELS = ("mcp.server", "mcp-server", "mcp.io/server", "app.kubernetes.io/component=mcp")
+_K8S_MCP_IMAGE_PATTERNS = ("mcp-server", "mcp_server", "/mcp:", "-mcp:")
+_K8S_MCP_ENV_PREFIX = "MCP_"
+_K8S_MCP_CRD_RESOURCE = "mcpservers"  # custom resource: mcpservers.mcp.io
+
+
+def discover_k8s_mcp_servers(
+    namespace: str = "default",
+    all_namespaces: bool = False,
+    context: Optional[str] = None,
+) -> Optional[Agent]:
+    """Discover MCP servers declared as Kubernetes pods, services, or CRDs.
+
+    Scans pods for MCP signals (labels, annotations, image names, env vars) and
+    optionally queries for ``mcpservers.mcp.io`` custom resources if that CRD
+    is installed.  Uses ``kubectl`` — no Python SDK required.
+
+    Args:
+        namespace: Kubernetes namespace to query (ignored when ``all_namespaces=True``).
+        all_namespaces: Query all namespaces (``kubectl ... -A``).
+        context: kubectl context to use (uses current context if ``None``).
+
+    Returns:
+        An Agent with ``source="kubernetes"`` or ``None`` if kubectl is absent
+        or no MCP pods/CRDs are found.
+    """
+    if not shutil.which("kubectl"):
+        return None
+
+    def _kubectl(*args: str) -> Optional[dict]:
+        cmd = ["kubectl", *args]
+        if context:
+            cmd += ["--context", context]
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if r.returncode != 0:
+                return None
+            return json.loads(r.stdout)
+        except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
+            return None
+
+    # ── 1. Pod-level scan ────────────────────────────────────────────────────
+    pod_args = ["get", "pods", "-o", "json"]
+    if all_namespaces:
+        pod_args.append("-A")
+    else:
+        pod_args += ["-n", namespace]
+
+    pod_data = _kubectl(*pod_args)
+
+    mcp_servers: list[MCPServer] = []
+    seen_names: set[str] = set()
+
+    for pod in (pod_data or {}).get("items", []):
+        meta = pod.get("metadata", {})
+        pod_name = meta.get("name", "unknown")
+        pod_ns = meta.get("namespace", namespace)
+        labels = meta.get("labels", {})
+        annotations = meta.get("annotations", {})
+        spec = pod.get("spec", {})
+
+        # Check label signals
+        label_str = " ".join(f"{k}={v}" for k, v in labels.items()).lower()
+        annotation_keys = " ".join(annotations.keys()).lower()
+        has_label_signal = any(sig.lower() in label_str or sig.lower() in annotation_keys for sig in _K8S_MCP_LABELS)
+
+        containers = spec.get("containers", [])
+        for container in containers:
+            image = container.get("image", "").lower()
+            env_vars: list[dict] = container.get("env", [])
+            env_names = " ".join(e.get("name", "") for e in env_vars)
+
+            has_image_signal = any(pat in image for pat in _K8S_MCP_IMAGE_PATTERNS)
+            has_env_signal = _K8S_MCP_ENV_PREFIX in env_names
+
+            if not (has_label_signal or has_image_signal or has_env_signal):
+                continue
+
+            # Determine transport and URL
+            transport = TransportType.STDIO
+            url = ""
+            ports = container.get("ports", [])
+            if ports:
+                # Assume SSE/HTTP if the container exposes a port
+                transport = TransportType.SSE
+                port_num = ports[0].get("containerPort", 8000)
+                svc_name = labels.get("app", labels.get("app.kubernetes.io/name", pod_name))
+                url = f"http://{svc_name}.{pod_ns}.svc.cluster.local:{port_num}"
+
+            # Sanitize env vars
+            raw_env = {e.get("name", ""): e.get("value", "") for e in env_vars if e.get("name")}
+            env = sanitize_env_vars(raw_env)
+
+            # Build a unique server name
+            container_name = container.get("name", "mcp")
+            server_name = f"{pod_ns}/{pod_name}/{container_name}"
+            if server_name in seen_names:
+                continue
+            seen_names.add(server_name)
+
+            server = MCPServer(
+                name=server_name,
+                command="",  # pod containers don't have a local command to launch
+                env=env,
+                transport=transport,
+                url=url,
+                config_path=f"k8s://{pod_ns}/{pod_name}",
+            )
+            mcp_servers.append(server)
+
+    # ── 2. MCP CRD scan (mcpservers.mcp.io) ─────────────────────────────────
+    crd_args = ["get", _K8S_MCP_CRD_RESOURCE, "-o", "json"]
+    if all_namespaces:
+        crd_args.append("-A")
+    else:
+        crd_args += ["-n", namespace]
+
+    crd_data = _kubectl(*crd_args)
+
+    for item in (crd_data or {}).get("items", []):
+        meta = item.get("metadata", {})
+        crd_name = meta.get("name", "unknown")
+        crd_ns = meta.get("namespace", namespace)
+        spec = item.get("spec", {})
+
+        url = spec.get("url", spec.get("endpoint", ""))
+        transport = TransportType.SSE if url else TransportType.STDIO
+        server_name = f"{crd_ns}/{crd_name}"
+
+        if server_name in seen_names:
+            continue
+        seen_names.add(server_name)
+
+        server = MCPServer(
+            name=server_name,
+            command=spec.get("command", ""),
+            transport=transport,
+            url=url,
+            config_path=f"k8s-crd://{crd_ns}/{crd_name}",
+        )
+        mcp_servers.append(server)
+
+    if not mcp_servers:
+        return None
+
+    ns_label = "all-namespaces" if all_namespaces else namespace
+    return Agent(
+        name=f"kubernetes-mcp/{ns_label}",
+        agent_type=AgentType.CUSTOM,
+        config_path=f"k8s://{ns_label}",
+        mcp_servers=mcp_servers,
+        source="kubernetes",
+    )
+
+
 def discover_all(
     project_dir: Optional[str] = None,
     dynamic: bool = False,
     dynamic_max_depth: int = 4,
+    include_processes: bool = False,
+    include_containers: bool = False,
+    include_k8s_mcp: bool = False,
+    k8s_namespace: str = "default",
+    k8s_all_namespaces: bool = False,
+    k8s_context: Optional[str] = None,
 ) -> list[Agent]:
     """Run full discovery: global configs + project configs + CLI agents.
 
@@ -1062,6 +1472,12 @@ def discover_all(
         project_dir: Optional project directory to scan.
         dynamic: Enable dynamic content-based discovery layer.
         dynamic_max_depth: Maximum depth for dynamic filesystem scanning.
+        include_processes: Also scan running host processes for MCP servers (psutil).
+        include_containers: Also scan running Docker containers for MCP servers.
+        include_k8s_mcp: Scan Kubernetes cluster for MCP pods and CRDs (kubectl).
+        k8s_namespace: Kubernetes namespace to query (default: "default").
+        k8s_all_namespaces: Query all Kubernetes namespaces.
+        k8s_context: kubectl context to use (uses current context if None).
     """
     console.print("\n[bold blue]🔍 Discovering MCP configurations...[/bold blue]\n")
 
@@ -1102,6 +1518,37 @@ def discover_all(
         else:
             console.print("  [dim]  docker-mcp: installed but not configured[/dim]")
         agents.append(docker_agent)
+
+    # Running process discovery (opt-in, requires psutil)
+    if include_processes:
+        proc_agent = discover_running_processes()
+        if proc_agent:
+            console.print(f"  [green]✓[/green] Found {len(proc_agent.mcp_servers)} MCP server process(es) via psutil")
+            agents.append(proc_agent)
+        else:
+            console.print("  [dim]  process scan: no MCP server processes found[/dim]")
+
+    # Docker container discovery (opt-in)
+    if include_containers:
+        container_agent = discover_container_labels()
+        if container_agent:
+            console.print(f"  [green]✓[/green] Found {len(container_agent.mcp_servers)} MCP container(s) via docker inspect")
+            agents.append(container_agent)
+        else:
+            console.print("  [dim]  container scan: no MCP containers found (or docker not running)[/dim]")
+
+    # Kubernetes MCP pod/CRD discovery (opt-in)
+    if include_k8s_mcp:
+        k8s_agent = discover_k8s_mcp_servers(
+            namespace=k8s_namespace,
+            all_namespaces=k8s_all_namespaces,
+            context=k8s_context,
+        )
+        if k8s_agent:
+            console.print(f"  [green]✓[/green] Found {len(k8s_agent.mcp_servers)} MCP server(s) in Kubernetes (pods + CRDs)")
+            agents.append(k8s_agent)
+        else:
+            console.print("  [dim]  k8s-mcp scan: no MCP pods/CRDs found (or kubectl not available)[/dim]")
 
     # Detect installed-but-not-configured agents
     discovered_types = {a.agent_type for a in agents}

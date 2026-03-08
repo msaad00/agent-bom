@@ -463,6 +463,19 @@ def main():
     help="Scan running Docker containers for MCP servers (requires docker CLI on PATH)",
 )
 @click.option(
+    "--health-check",
+    "health_check",
+    is_flag=True,
+    help="Probe discovered MCP servers for liveness (reachability + tool count, requires mcp SDK)",
+)
+@click.option(
+    "--hc-timeout",
+    type=float,
+    default=5.0,
+    show_default=True,
+    help="Timeout per server for --health-check (seconds)",
+)
+@click.option(
     "--ai-enrich",
     is_flag=True,
     help="Enrich findings with LLM-generated risk narratives, executive summary, and threat chains. Auto-detects Ollama (free, local) or uses litellm (pip install 'agent-bom[ai-enrich]')",
@@ -748,6 +761,8 @@ def scan(
     dynamic_max_depth: int,
     include_processes: bool,
     include_containers: bool,
+    health_check: bool,
+    hc_timeout: float,
     ai_enrich: bool,
     ai_model: str,
     aws: bool,
@@ -2153,6 +2168,27 @@ def scan(
                     con.print(f"\n  [bold]{enriched} server(s) enriched with runtime data.[/bold]")
                 _intro_report = intro_report
             except IntrospectionError as exc:
+                con.print(f"  [yellow]⚠[/yellow] {exc}")
+
+        # Step 2b-hc: Post-discovery health checks (--health-check)
+        if health_check:
+            from agent_bom.mcp_introspect import IntrospectionError as _HCError
+            from agent_bom.mcp_introspect import health_check_servers_sync
+
+            hc_servers = [s for a in agents for s in a.mcp_servers]
+            con.print(f"\n[bold blue]Health-checking {len(hc_servers)} MCP server(s)...[/bold blue]\n")
+            try:
+                hc_results = health_check_servers_sync(hc_servers, timeout=hc_timeout)
+                reachable = sum(1 for h in hc_results if h.reachable)
+                for h in hc_results:
+                    if h.reachable:
+                        latency_str = f" {h.latency_ms:.0f}ms" if h.latency_ms is not None else ""
+                        proto_str = f" [{h.protocol_version}]" if h.protocol_version else ""
+                        con.print(f"  [green]✓[/green] {h.server_name}: {h.tool_count} tool(s){latency_str}{proto_str}")
+                    else:
+                        con.print(f"  [red]✗[/red] {h.server_name}: {h.error or 'unreachable'}")
+                con.print(f"\n  [bold]{reachable}/{len(hc_results)} server(s) reachable.[/bold]")
+            except _HCError as exc:
                 con.print(f"  [yellow]⚠[/yellow] {exc}")
 
         # Step 2c: Tool poisoning detection + enforcement (--enforce)

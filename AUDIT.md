@@ -451,6 +451,80 @@ ScanRequest → _run_scan_sync() [ThreadPoolExecutor]
 
 ---
 
+---
+
+## Area 7: CLI (cli.py)
+
+### Commands verified (22 total)
+
+`scan`, `inventory`, `validate`, `where`, `check`, `verify`, `history`, `diff`, `policy-template`, `serve`, `api`, `mcp-server`, `completions`, `apply`, `schedule` (group: add/list/remove), `registry` (group: list/search/update/enrich/sync), `proxy`, `guard`, `protect`, `watch`, `analytics`, `dashboard`
+
+**`serve` vs `api`**: Not duplicates. `serve` = API + bundled Next.js UI, simpler flags. `api` = production server with `--workers`, `--api-key`, `--rate-limit`. Different extras: `[ui]` vs `[api]`.
+
+**`--introspect`**: Flag on `scan`, wired to `mcp_introspect.py`. Not a standalone command.
+
+### Fixed in this audit
+
+| # | File | Fix |
+|---|------|-----|
+| F13 | `cli.py` | `api` command had no `--log-level` or `--log-json` (inconsistent with `serve`). Added both; `setup_logging()` now called; uvicorn log level wired to user input. |
+
+### Open issues
+
+| # | Severity | Issue |
+|---|----------|-------|
+| O5 | LOW | `guard` command (pre-install CVE check wrapping pip/npm) not mentioned in README. Functional, tested, just undocumented externally. |
+
+---
+
+## Area 8: Discovery + Peripheral Runtime Modules
+
+### Discovery (discovery/__init__.py)
+
+- **20 named MCP clients** in `CONFIG_LOCATIONS` (+ `CUSTOM` = 21 `AgentType` enum values). README "20" is accurate. ARCHITECTURE.md "21" also accurate (counts all enum values). No gap.
+- `sanitize_env_vars()` called on all env blocks. `validate_path()` used before reading config files. PASS.
+- Docker MCP Toolkit handled separately (Docker socket path, not `CONFIG_LOCATIONS`). Correct.
+
+### Runtime peripheral modules
+
+| Module | Lines | Wired to CLI | Tests | Status |
+|--------|-------|-------------|-------|--------|
+| `watch.py` | 304 | `watch` command | `test_watch.py` indirect | PASS |
+| `mcp_introspect.py` | 360 | `scan --introspect` | `test_discovery.py` | PASS |
+| `enforcement.py` | 759 | `scan` pipeline | `test_enforcement.py` | PASS |
+
+`enforcement.py`: 8 check functions (`check_cve_exposure`, `check_drift`, `check_claude_config`, `check_agentic_search_risk`, `check_over_permission`, `check_tool_name_collisions` + 2 more). ARCHITECTURE.md previously said "10 checks" — corrected to 8 (F11).
+
+---
+
+## Area 9: Accuracy (ARCHITECTURE.md + SVGs + README)
+
+### Fixed in this audit
+
+| # | File | Fix |
+|---|------|-----|
+| F7 | `ARCHITECTURE.md` | `auth.py — JWT authentication` → `scrypt KDF API keys, RBAC roles (admin/analyst/viewer)`. No JWT anywhere in codebase. |
+| F8 | `ARCHITECTURE.md` | `Runtime detectors: 6` → `7` in Module Stats |
+| F9 | `ARCHITECTURE.md` | Detector list now includes `VectorDBInjectionDetector` |
+| F10 | `ARCHITECTURE.md` | `CLI with 15+ commands` → `22+ commands and groups` |
+| F11 | `ARCHITECTURE.md` | `enforcement.py — 10 checks` → `8 checks` |
+| F12 | SVGs (7 files) | `6 detectors` → `7 detectors`: engine-internals, modes-flow, offerings-map, scanner-architecture (dark + light variants) |
+
+### Verified accurate (no changes needed)
+
+| Claim | Verified |
+|-------|---------|
+| "20 MCP clients" (README) | ✓ 20 named AgentType values |
+| "22 MCP tools" | ✓ meta-test enforces this |
+| "10 compliance frameworks" | ✓ 10 tagging modules |
+| "52 SAST CWE mappings" | ✓ SAST_CWE_MAP count |
+| "12 cloud providers" | ✓ cloud/__init__.py _PROVIDERS |
+| OSV as primary vuln source | ✓ |
+| scrypt KDF for API keys | ✓ auth.py (n=16384, r=8, p=1) |
+| HMAC-SHA256 audit log | ✓ audit_log.py |
+
+---
+
 ## Audit Summary (all areas)
 
 | Area | Status | Bugs Fixed | Open Issues |
@@ -461,6 +535,9 @@ ScanRequest → _run_scan_sync() [ThreadPoolExecutor]
 | Runtime layer | PASS | 2 (F5-F6) | 0 |
 | API layer | PASS | 0 | 0 |
 | Data flow | PASS | 0 | 0 |
+| CLI | PASS | 1 (F13) | 1 (O5: guard undocumented) |
+| Discovery + peripheral modules | PASS | 0 | 0 |
+| Accuracy (ARCHITECTURE + SVGs + README) | PASS | 7 (F7-F12 + F13) | 0 |
 
 ---
 
@@ -479,3 +556,6 @@ When re-running this audit, check:
 - [ ] @mcp.tool count still matches _SERVER_CARD_TOOLS count (both should be 22)?
 - [ ] Any new compliance frameworks added to scanner but not to ARCHITECTURE.md?
 - [ ] Databricks security checks: if CIS ever publishes a Databricks benchmark, rename accordingly
+- [ ] `guard` command documented in README? (O5)
+- [ ] SVG detector count updated if more detectors added?
+- [ ] `serve` and `api` commands still aligned on flags as features are added?

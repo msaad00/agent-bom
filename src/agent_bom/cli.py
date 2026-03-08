@@ -3662,6 +3662,15 @@ def serve_cmd(host: str, port: int, persist: Optional[str], cors_allow_all: bool
     metavar="DB_PATH",
     help="Enable persistent job storage via SQLite (e.g. --persist jobs.db). Jobs survive restarts.",
 )
+@click.option(
+    "--log-level",
+    "log_level",
+    type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False),
+    default="INFO",
+    show_default=True,
+    help="Log verbosity level.",
+)
+@click.option("--log-json", "log_json", is_flag=True, help="Emit structured JSON logs (for log aggregation pipelines).")
 def api_cmd(
     host: str,
     port: int,
@@ -3672,6 +3681,8 @@ def api_cmd(
     api_key: str | None,
     rate_limit_rpm: int,
     persist: str | None,
+    log_level: str,
+    log_json: bool,
 ):
     """Start the agent-bom REST API server.
 
@@ -3696,6 +3707,10 @@ def api_cmd(
       agent-bom api --port 9000               # custom port
       agent-bom api --reload                  # dev mode
     """
+    from agent_bom.logging_config import setup_logging
+
+    setup_logging(level=log_level, json_output=log_json)
+
     try:
         import uvicorn
     except ImportError:
@@ -3746,7 +3761,7 @@ def api_cmd(
         port=port,
         reload=reload,
         workers=1 if reload else workers,
-        log_level="info",
+        log_level=log_level.lower(),
     )
 
 

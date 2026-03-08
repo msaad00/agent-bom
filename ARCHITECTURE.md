@@ -18,7 +18,7 @@ Discovery ──> Scanning ──> Enrichment ──> Blast Radius ──> Compl
 
 | Entry point | File | Purpose |
 |---|---|---|
-| CLI | `cli.py` | Click-based CLI with 15+ commands |
+| CLI | `cli.py` | Click-based CLI with 22+ commands and groups |
 | MCP Server | `mcp_server.py` | FastMCP server with 22 tools |
 | Proxy | `proxy.py` | MCP JSON-RPC proxy with runtime enforcement |
 | API | `api/server.py` | FastAPI REST server with job queue |
@@ -70,10 +70,11 @@ Each module exports `tag_blast_radius(br: BlastRadius)` to annotate findings.
 │                        #   Prometheus metrics, JSONL audit trail, webhook alerts
 ├── runtime/
 │   ├── __init__.py      # Public exports
-│   ├── detectors.py     # 6 detectors: ToolDrift, ArgumentAnalyzer, CredentialLeak,
-│   │                    #   RateLimit, SequenceAnalyzer, ResponseInspector
+│   ├── detectors.py     # 7 detectors: ToolDrift, ArgumentAnalyzer, CredentialLeak,
+│   │                    #   RateLimit, SequenceAnalyzer, ResponseInspector,
+│   │                    #   VectorDBInjectionDetector (RAG/cache-poison, CRITICAL severity)
 │   └── patterns.py      # Regex patterns for credentials, args, cloaking, SVG, Unicode
-├── enforcement.py       # Tool poisoning detection (10 checks): injection scanning,
+├── enforcement.py       # Tool poisoning detection (8 checks): injection scanning,
 │                        #   inputSchema analysis, capability combos, CVE exposure,
 │                        #   drift detection, config analysis, over-permission
 ├── mcp_introspect.py    # Live MCP server connection — tools/list, resources/list, drift
@@ -125,8 +126,8 @@ Each module exports `tag_blast_radius(br: BlastRadius)` to annotate findings.
 ```
 ├── api/
 │   ├── server.py          # FastAPI REST server with job queue
-│   ├── auth.py            # JWT authentication
-│   ├── audit_log.py       # API audit logging
+│   ├── auth.py            # scrypt KDF API keys, RBAC roles (admin/analyst/viewer)
+│   ├── audit_log.py       # HMAC-SHA256 signed audit log (InMemory + SQLite backends)
 │   ├── store.py           # Base data store abstraction
 │   ├── postgres_store.py  # PostgreSQL backend
 │   ├── snowflake_store.py # Snowflake backend
@@ -213,7 +214,7 @@ cli.py / mcp_server.py / api/server.py
 | Test functions | 3,419 (3,480 collected by pytest) |
 | MCP tools | 22 |
 | Compliance frameworks | 10 |
-| Runtime detectors | 6 |
+| Runtime detectors | 7 |
 | Cloud providers | 12 |
 | SAST CWE mappings | 52 |
 

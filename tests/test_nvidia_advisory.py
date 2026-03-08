@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import pytest
+
 from agent_bom.scanners.nvidia_advisory import (
     _csaf_affects_product,
     _word_boundary_match,
+    get_nvidia_products_for_package,
 )
 
 
@@ -97,3 +100,78 @@ def test_csaf_substring_false_positive_blocked():
         "product_tree": {"branches": []},
     }
     assert not _csaf_affects_product(csaf, {"cuda"})
+
+
+# ─── get_nvidia_products_for_package — extended mapping tests ─────────────────
+
+
+@pytest.mark.parametrize(
+    "pkg_name, expected_products",
+    [
+        # Direct NVIDIA packages — should already map
+        ("nvidia-cuda-runtime-cu12", ["cuda toolkit"]),
+        ("nvidia-cudnn-cu12", ["cudnn"]),
+        ("nvidia-nccl-cu12", ["nccl"]),
+        ("tensorrt", ["tensorrt"]),
+        ("nvidia-container-toolkit", ["container toolkit"]),
+        # ML frameworks that bundle CUDA — the O1 gap, now fixed
+        ("torch", ["cuda toolkit", "cudnn", "nccl"]),
+        ("torchvision", ["cuda toolkit", "cudnn", "nccl"]),
+        ("torchaudio", ["cuda toolkit", "cudnn"]),
+        ("jax", ["cuda toolkit", "cudnn"]),
+        ("jaxlib", ["cuda toolkit", "cudnn"]),
+        ("vllm", ["cuda toolkit"]),
+        ("triton", ["cuda toolkit"]),
+        ("cupy", ["cuda toolkit"]),
+        ("cupy-cuda12x", ["cuda toolkit"]),
+        ("accelerate", ["cuda toolkit"]),
+        ("bitsandbytes", ["cuda toolkit"]),
+        ("flash-attn", ["cuda toolkit"]),
+        ("xformers", ["cuda toolkit"]),
+        ("torch-tensorrt", ["tensorrt"]),
+        ("tritonclient", ["triton inference server"]),
+        # Unrelated package — should not map to any NVIDIA product
+        ("requests", []),
+        ("numpy", []),
+        ("fastapi", []),
+    ],
+)
+def test_get_nvidia_products_for_package(pkg_name: str, expected_products: list[str]):
+    """Each AI/GPU package maps to the correct NVIDIA product categories."""
+    result = get_nvidia_products_for_package(pkg_name)
+    for expected in expected_products:
+        assert expected in result, f"{pkg_name!r} should map to {expected!r}, got {result}"
+    if not expected_products:
+        assert result == [], f"{pkg_name!r} should have no NVIDIA product mapping, got {result}"
+
+
+def test_torch_cuda_advisory_wiring():
+    """A CUDA Toolkit CSAF advisory should be detectable for torch packages.
+
+    This is the core O1 scenario: torch bundles CUDA, so a CUDA Toolkit
+    advisory should be flagged against torch packages.
+    """
+    cuda_advisory = {
+        "document": {"title": "NVIDIA CUDA Toolkit - CVE-2025-XXXX Security Update"},
+        "product_tree": {"branches": []},
+    }
+    # torch maps to "cuda toolkit" → the advisory affects "cuda toolkit" → torch is flagged
+    torch_products = set(get_nvidia_products_for_package("torch"))
+    assert _csaf_affects_product(cuda_advisory, torch_products)
+
+
+def test_vllm_cuda_advisory_wiring():
+    """A CUDA Toolkit advisory should be detectable for vllm packages."""
+    cuda_advisory = {
+        "document": {"title": "NVIDIA CUDA Toolkit Security Bulletin"},
+        "product_tree": {"branches": []},
+    }
+    vllm_products = set(get_nvidia_products_for_package("vllm"))
+    assert _csaf_affects_product(cuda_advisory, vllm_products)
+
+
+def test_unrelated_package_no_nvidia_advisory():
+    """An unrelated package should not trigger any NVIDIA product mapping."""
+    assert get_nvidia_products_for_package("requests") == []
+    assert get_nvidia_products_for_package("flask") == []
+    assert get_nvidia_products_for_package("django") == []

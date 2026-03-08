@@ -22,8 +22,15 @@ _GITHUB_API = "https://api.github.com/repos/NVIDIA/product-security/contents"
 
 # Map NVIDIA product names (from CSAF) to PyPI package prefixes.
 # Advisory product names are lowercased for matching.
+#
+# Two categories of entries:
+#   1. Direct NVIDIA packages (nvidia-*, cuda-*): explicitly ship NVIDIA binaries.
+#   2. Bundling frameworks (torch, jax, vllm, etc.): their PyPI wheels bundle CUDA/cuDNN
+#      binaries at specific versions. When NVIDIA publishes a CUDA Toolkit or cuDNN advisory,
+#      these packages are also affected because they vendor the vulnerable CUDA code.
 _NVIDIA_PRODUCT_MAP: dict[str, list[str]] = {
     "cuda toolkit": [
+        # Direct NVIDIA CUDA packages
         "cuda-python",
         "nvidia-cuda-runtime-cu11",
         "nvidia-cuda-runtime-cu12",
@@ -42,23 +49,54 @@ _NVIDIA_PRODUCT_MAP: dict[str, list[str]] = {
         "nvidia-curand-cu11",
         "nvidia-curand-cu12",
         "nvidia-nvjitlink-cu12",
+        # Frameworks that bundle CUDA — affected by CUDA Toolkit CVEs
+        "torch",
+        "torchvision",
+        "torchaudio",
+        "jax",
+        "jaxlib",
+        "vllm",
+        "triton",  # OpenAI Triton compiles to CUDA PTX; CUDA driver vulnerabilities apply
+        "cupy",
+        "cupy-cuda11x",
+        "cupy-cuda12x",
+        "accelerate",  # Wraps CUDA training loops
+        "bitsandbytes",  # CUDA quantization kernels
+        "flash-attn",  # CUDA attention kernels
+        "xformers",  # Meta's CUDA memory-efficient attention
     ],
     "cudnn": [
+        # Direct NVIDIA cuDNN packages
         "nvidia-cudnn-cu11",
         "nvidia-cudnn-cu12",
+        # Frameworks that bundle cuDNN
+        "torch",
+        "torchvision",
+        "torchaudio",
+        "jax",
+        "jaxlib",
     ],
     "nccl": [
+        # Direct NVIDIA NCCL packages
         "nvidia-nccl-cu11",
         "nvidia-nccl-cu12",
+        # Frameworks that use NCCL for multi-GPU collective operations
+        "torch",
+        "torchvision",
     ],
     "tensorrt": [
         "tensorrt",
         "nvidia-tensorrt",
+        "torch-tensorrt",  # PyTorch TensorRT integration
     ],
     "container toolkit": [
         "nvidia-container-toolkit",
     ],
     "nvjpeg": [],  # Not typically a PyPI package, but tracked for image scans
+    "triton inference server": [
+        "tritonclient",
+        "tritonclientutils",
+    ],
 }
 
 # Reverse map: PyPI package name → NVIDIA product names it belongs to

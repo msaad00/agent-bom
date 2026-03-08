@@ -193,6 +193,7 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible
 | MCP Server | `agent-bom mcp-server` (22 tools) | Inside any MCP client |
 | Dashboard | `agent-bom serve` | API + Next.js UI (15 pages) |
 | Runtime proxy | `agent-bom proxy` | MCP traffic audit |
+| Pre-install guard | `agent-bom guard pip install <pkg>` | Block vulnerable installs |
 | Snowflake | [DEPLOYMENT.md](DEPLOYMENT.md) | Snowpark + SiS |
 
 <details>
@@ -230,6 +231,26 @@ agent-bom api --api-key $SECRET --rate-limit 30   # http://127.0.0.1:8422/docs
 | `POST /v1/traces` | OpenTelemetry trace ingestion |
 | `GET /v1/scan/{id}/context-graph` | Lateral movement paths |
 | `GET /v1/malicious/check` | Malicious package check |
+
+</details>
+
+<details>
+<summary><b>Pre-install guard</b></summary>
+
+Scan packages against OSV and NVD **before** they are installed. Blocks installs when critical/high CVEs are found.
+
+```bash
+agent-bom guard pip install requests flask   # scan then install
+agent-bom guard npm install express          # same for npm
+
+# Shell alias — intercept every install automatically
+alias pip='agent-bom guard pip'
+alias npm='agent-bom guard npm'
+```
+
+Options:
+- `--min-severity` — minimum severity to block (`critical`, `high`, `medium`; default: `high`)
+- `--allow-risky` — warn but proceed instead of blocking
 
 </details>
 

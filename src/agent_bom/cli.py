@@ -146,8 +146,34 @@ def _build_agents_from_inventory(inventory_data: dict, source_path: str) -> list
     return agents
 
 
+def _check_optional_dep(name: str) -> str:
+    """Return 'found (vX.Y.Z)' or 'not installed' for an optional binary dep."""
+    import shutil
+    import subprocess
+
+    path = shutil.which(name)
+    if not path:
+        return "not installed"
+    try:
+        result = subprocess.run([path, "version"], capture_output=True, text=True, timeout=3)  # noqa: S603
+        ver = (result.stdout or result.stderr).strip().split("\n")[0]
+        return f"found ({ver})" if ver else "found"
+    except Exception:
+        return "found"
+
+
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
-@click.version_option(version=__version__, prog_name="agent-bom", message="agent-bom %(version)s")
+@click.version_option(
+    version=__version__,
+    prog_name="agent-bom",
+    message=(
+        f"agent-bom {__version__}\n"
+        f"Python {sys.version.split()[0]} · {sys.platform}\n"
+        f"Syft:  {_check_optional_dep('syft')}\n"
+        f"Grype: {_check_optional_dep('grype')}\n"
+        "Docs:  https://github.com/msaad00/agent-bom"
+    ),
+)
 def main():
     """agent-bom — AI Bill of Materials for agents, MCP servers, containers & IaC.
 
@@ -990,13 +1016,18 @@ def scan(
         and not jupyter_dirs
         and not any_cloud
     ):
-        con.print("\n[yellow]No MCP configurations found.[/yellow]")
-        con.print(
-            "  Use --project, --config-dir, --inventory, --image, --k8s, --code, "
-            "--tf-dir, --gha, --agent-project, --jupyter, --aws, --azure, --gcp, "
-            "--coreweave, --databricks, --snowflake, --nebius, --huggingface, --wandb, "
-            "--mlflow, --openai, --ollama, or --scan-prompts to specify a target."
-        )
+        con.print("\n[bold yellow]No MCP configurations found on this machine.[/bold yellow]")
+        con.print()
+        con.print("  [bold]Quick start options:[/bold]")
+        con.print("    [cyan]agent-bom scan --code .[/cyan]          scan Python/Node packages in current directory")
+        con.print("    [cyan]agent-bom scan --image myapp:latest[/cyan] scan a Docker image")
+        con.print("    [cyan]agent-bom check requests@2.25.0[/cyan]   check a single package for CVEs")
+        con.print("    [cyan]agent-bom scan --config-dir PATH[/cyan]  point to a directory with MCP configs")
+        con.print()
+        con.print("  [dim]Supported MCP clients: Claude Desktop, Cursor, VS Code, Windsurf, and 16 more.[/dim]")
+        con.print("  [dim]Full options: agent-bom scan --help[/dim]")
+        con.print("  [dim]Docs: https://github.com/msaad00/agent-bom[/dim]")
+        con.print()
         sys.exit(0)
 
     # Step 1b: Load SBOM packages if provided
@@ -3254,12 +3285,17 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bo
             sev = v.severity.value.lower()
             style = severity_styles.get(sev, "white")
             fix_display = f"[green]✓ {v.fixed_version}[/green]" if v.fixed_version else "[red dim]No fix[/red dim]"
+            # Show summary; fall back to aliases list if empty
+            summary_text = v.summary or ""
+            if not summary_text or summary_text == "No description available":
+                aliases_str = ", ".join(v.aliases[:3]) if v.aliases else ""
+                summary_text = f"[dim]See {aliases_str}[/dim]" if aliases_str else "[dim]No description[/dim]"
             table.add_row(
                 v.id,
                 f"[{style} reverse] {v.severity.value.upper()} [/{style} reverse]",
                 f"{v.cvss_score:.1f}" if v.cvss_score else "—",
                 fix_display,
-                (v.summary or "")[:80],
+                summary_text[:100],
             )
         console.print(table)
         console.print()
@@ -4858,5 +4894,29 @@ def dashboard_cmd(report: Optional[str], port: int):
         sys.exit(exc.returncode)
 
 
+def cli_main() -> None:
+    """Entry point with clean top-level error handling.
+
+    Catches unhandled Python exceptions and prints a user-friendly message
+    instead of a raw traceback.  Pass --verbose to see the full traceback.
+    """
+    try:
+        main(standalone_mode=True)
+    except SystemExit:
+        raise
+    except KeyboardInterrupt:
+        click.echo("\nInterrupted.", err=True)
+        sys.exit(130)
+    except Exception as exc:  # noqa: BLE001
+        verbose = "--verbose" in sys.argv or "-v" in sys.argv
+        err_console = Console(stderr=True)
+        err_console.print(f"\n[bold red]Error:[/bold red] {exc}")
+        if verbose:
+            err_console.print_exception(show_locals=False)
+        else:
+            err_console.print("[dim]Run with --verbose for full traceback.[/dim]")
+        sys.exit(1)
+
+
 if __name__ == "__main__":
-    main()
+    cli_main()  # pragma: no cover

@@ -282,6 +282,57 @@ def parse_fixed_version(vuln_data: dict, package_name: str) -> Optional[str]:
     return prerelease_candidate
 
 
+async def _enrich_vuln_details(client: httpx.AsyncClient, vuln_ids: list[str]) -> dict[str, dict]:
+    """Fetch full vulnerability details from OSV /v1/vulns/{id}.
+
+    The querybatch endpoint only returns {id, modified}.  This function
+    fetches the complete record (summary, severity, references, affected,
+    aliases) for each unique ID so callers get rich data.
+    """
+    if not vuln_ids:
+        return {}
+
+    sem = asyncio.Semaphore(10)  # cap concurrent fetches
+
+    async def _fetch_one(vid: str) -> tuple[str, dict]:
+        async with sem:
+            resp = await request_with_retry(client, "GET", f"{OSV_API_URL}/vulns/{vid}")
+            if resp and resp.status_code == 200:
+                try:
+                    return vid, resp.json()
+                except (ValueError, KeyError):
+                    pass
+        return vid, {}
+
+    pairs = await asyncio.gather(*[_fetch_one(vid) for vid in vuln_ids])
+    return dict(pairs)
+
+
+async def _enrich_results_if_needed(results: dict[str, list[dict]]) -> dict[str, list[dict]]:
+    """Enrich minimal OSV batch results with full vuln details where missing.
+
+    Fetches /v1/vulns/{id} for any vuln entry that only has {id, modified}.
+    """
+    if not results:
+        return results
+    all_vuln_ids: list[str] = []
+    for vuln_list in results.values():
+        for v in vuln_list:
+            if "summary" not in v and v.get("id"):
+                all_vuln_ids.append(v["id"])
+    unique_ids = list(dict.fromkeys(all_vuln_ids))
+    if not unique_ids:
+        return results
+    try:
+        async with create_client(timeout=20.0) as detail_client:
+            details_map = await _enrich_vuln_details(detail_client, unique_ids)
+        for key, vuln_list in results.items():
+            results[key] = [{**v, **details_map.get(v.get("id", ""), {})} for v in vuln_list]
+    except Exception as exc:
+        _logger.debug("OSV detail enrichment skipped: %s", exc)
+    return results
+
+
 async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
     """Query OSV API for vulnerabilities in batch.
 
@@ -310,7 +361,7 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
         packages_to_query.append(pkg)
 
     if not packages_to_query:
-        return results
+        return await _enrich_results_if_needed(results)
 
     queries = []
     pkg_index = {}  # Map query index to package
@@ -332,7 +383,7 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
         pkg_index[len(queries) - 1] = pkg
 
     if not queries:
-        return results
+        return await _enrich_results_if_needed(results)
 
     # Track which queried packages got vulns (to cache "clean" results too)
     queried_keys_with_vulns: set[str] = set()
@@ -374,6 +425,9 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
             # Rate limit: delay between batches
             if batch_start + batch_size < len(queries):
                 await asyncio.sleep(BATCH_DELAY_SECONDS)
+
+    # Enrich minimal batch results with full vuln details (summary, CVSS, etc.)
+    await _enrich_results_if_needed(results)
 
     # Populate cache with fresh results (including "clean" packages)
     if cache:

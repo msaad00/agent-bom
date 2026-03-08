@@ -117,7 +117,7 @@ dev = [
 ]
 
 [project.scripts]
-agent-bom = "agent_bom.cli:main"
+agent-bom = "agent_bom.cli:cli_main"
 
 [project.urls]
 Homepage = "https://github.com/msaad00/agent-bom"

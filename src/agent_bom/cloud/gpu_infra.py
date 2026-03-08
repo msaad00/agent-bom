@@ -209,7 +209,10 @@ def discover_docker_gpu_containers() -> tuple[list[GpuContainer], list[str]]:
         )
         if result.returncode != 0:
             return containers, ["docker ps failed — Docker not running or no permission"]
-        container_ids = [cid.strip() for cid in result.stdout.splitlines() if cid.strip()]
+        # Validate: container IDs are SHA256 hex strings (64 chars) — defense in depth
+        container_ids = [
+            cid.strip() for cid in result.stdout.splitlines() if cid.strip() and all(c in "0123456789abcdefABCDEF" for c in cid.strip())
+        ]
     except (subprocess.TimeoutExpired, OSError) as exc:
         return containers, [f"Docker discovery skipped: {exc}"]
 

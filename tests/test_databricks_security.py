@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from agent_bom.cloud.aws_cis_benchmark import CheckStatus, CISCheckResult
-from agent_bom.cloud.databricks_cis_benchmark import (
-    DatabricksCISReport,
+from agent_bom.cloud.databricks_security import (
+    DatabricksSecurityReport,
     _check_1_1,
     _check_1_2,
     _check_2_1,
@@ -18,7 +18,7 @@ from agent_bom.cloud.databricks_cis_benchmark import (
     _check_4_1,
     _check_5_1,
     _check_5_2,
-    run_benchmark,
+    run_security_checks,
 )
 
 # ---------------------------------------------------------------------------
@@ -76,20 +76,20 @@ def _cluster(
 
 
 # ---------------------------------------------------------------------------
-# DatabricksCISReport model
+# DatabricksSecurityReport model
 # ---------------------------------------------------------------------------
 
 
-class TestDatabricksCISReport:
+class TestDatabricksSecurityReport:
     def test_empty_report(self):
-        r = DatabricksCISReport()
+        r = DatabricksSecurityReport()
         assert r.passed == 0
         assert r.failed == 0
         assert r.total == 0
         assert r.pass_rate == 0.0
 
     def test_pass_rate_calculation(self):
-        r = DatabricksCISReport(
+        r = DatabricksSecurityReport(
             checks=[
                 CISCheckResult(check_id="1.1", title="t1", status=CheckStatus.PASS, severity="high"),
                 CISCheckResult(check_id="1.2", title="t2", status=CheckStatus.FAIL, severity="high"),
@@ -101,7 +101,7 @@ class TestDatabricksCISReport:
         assert r.pass_rate == pytest.approx(66.7, abs=0.1)
 
     def test_error_checks_excluded_from_pass_rate(self):
-        r = DatabricksCISReport(
+        r = DatabricksSecurityReport(
             checks=[
                 CISCheckResult(check_id="1.1", title="t1", status=CheckStatus.PASS, severity="high"),
                 CISCheckResult(check_id="1.2", title="t2", status=CheckStatus.ERROR, severity="high"),
@@ -110,7 +110,7 @@ class TestDatabricksCISReport:
         assert r.pass_rate == 100.0
 
     def test_to_dict_structure(self):
-        r = DatabricksCISReport(
+        r = DatabricksSecurityReport(
             workspace_host="https://adb-123.azuredatabricks.net",
             checks=[
                 CISCheckResult(
@@ -375,32 +375,32 @@ class TestCheck52EnvVarCredentials:
 
 
 # ---------------------------------------------------------------------------
-# run_benchmark — integration (mocked SDK)
+# run_security_checks — integration (mocked SDK)
 # ---------------------------------------------------------------------------
 
 
 class TestRunBenchmark:
-    def test_run_benchmark_no_sdk_raises(self):
+    def test_run_security_checks_no_sdk_raises(self):
         with patch.dict("sys.modules", {"databricks": None, "databricks.sdk": None}):
             with pytest.raises(Exception):
-                run_benchmark(host="https://example.databricks.com", token="token")
+                run_security_checks(host="https://example.databricks.com", token="token")
 
-    def test_run_benchmark_returns_report(self):
+    def test_run_security_checks_returns_report(self):
         ws = _mock_ws()
         mock_sdk = MagicMock()
         mock_sdk.WorkspaceClient.return_value = ws
         with patch.dict("sys.modules", {"databricks": MagicMock(), "databricks.sdk": mock_sdk}):
-            report = run_benchmark(host="https://test.databricks.com", token="test-token")
-        assert isinstance(report, DatabricksCISReport)
+            report = run_security_checks(host="https://test.databricks.com", token="test-token")
+        assert isinstance(report, DatabricksSecurityReport)
         assert report.total == 12  # all 12 checks ran
         assert report.workspace_host == "https://test.databricks.com"
 
-    def test_run_benchmark_all_checks_present(self):
+    def test_run_security_checks_all_checks_present(self):
         ws = _mock_ws()
         mock_sdk = MagicMock()
         mock_sdk.WorkspaceClient.return_value = ws
         with patch.dict("sys.modules", {"databricks": MagicMock(), "databricks.sdk": mock_sdk}):
-            report = run_benchmark(host="https://test.databricks.com", token="test")
+            report = run_security_checks(host="https://test.databricks.com", token="test")
         check_ids = {c.check_id for c in report.checks}
         expected = {"1.1", "1.2", "1.3", "1.4", "2.1", "2.2", "2.3", "2.4", "3.1", "4.1", "5.1", "5.2"}
         assert check_ids == expected

@@ -4,8 +4,9 @@ Runs read-only Databricks REST API checks against security best practices
 covering identity, clusters, data, networking, audit, and secrets.
 Each check returns pass/fail with evidence.
 
-Based on Databricks Security Best Practices and the CIS Benchmark framework
-pattern used across agent-bom's cloud security assessments.
+Based on Databricks Security Best Practices documentation.
+Note: Databricks does not have an official CIS Benchmark. These checks
+are derived from Databricks' own published security hardening guidance.
 
 Required permissions (all read-only):
     CAN MANAGE on workspace (admin or security admin role) for full coverage.
@@ -34,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class DatabricksCISReport:
+class DatabricksSecurityReport:
     """Aggregated Databricks Security Best Practices results."""
 
     benchmark_version: str = "1.0"
@@ -545,10 +546,10 @@ _ALL_CHECKS = [
 ]
 
 
-def run_benchmark(
+def run_security_checks(
     host: str | None = None,
     token: str | None = None,
-) -> DatabricksCISReport:
+) -> DatabricksSecurityReport:
     """Run all Databricks security checks and return a benchmark report.
 
     Args:
@@ -557,7 +558,7 @@ def run_benchmark(
         token: Databricks personal access token. Defaults to DATABRICKS_TOKEN env var.
 
     Returns:
-        DatabricksCISReport with pass/fail results for all checks.
+        DatabricksSecurityReport with pass/fail results for all checks.
 
     Raises:
         CloudDiscoveryError: if databricks-sdk is not installed or workspace is unreachable.
@@ -581,7 +582,7 @@ def run_benchmark(
         raise CloudDiscoveryError(f"Could not connect to Databricks workspace: {exc}") from exc
 
     resolved_host = host or os.environ.get("DATABRICKS_HOST", "unknown")
-    report = DatabricksCISReport(workspace_host=resolved_host)
+    report = DatabricksSecurityReport(workspace_host=resolved_host)
 
     for check_fn in _ALL_CHECKS:
         try:

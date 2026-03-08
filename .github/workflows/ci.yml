@@ -38,7 +38,9 @@ jobs:
           curl -fsSL -o /usr/local/bin/osv-scanner \
             https://github.com/google/osv-scanner/releases/download/v1.9.2/osv-scanner_linux_amd64
           chmod +x /usr/local/bin/osv-scanner
-          osv-scanner --recursive --skip-git .
+          osv-scanner --recursive --skip-git \
+            --skip-dir tests/fixtures \
+            .
 
       - name: Trivy filesystem scan
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0

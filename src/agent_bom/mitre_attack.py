@@ -1,14 +1,22 @@
-"""MITRE ATT&CK Enterprise — map cloud and AI infrastructure findings to T-codes.
+"""MITRE ATT&CK Enterprise — map findings to T-codes via official MITRE data.
 
-Maps three finding types to MITRE ATT&CK Enterprise techniques:
+Maps three finding types to MITRE ATT&CK Enterprise techniques.  All technique
+IDs, names, and CWE mappings are loaded from MITRE's published data — nothing
+is hardcoded in this module.
 
-1. **CIS benchmark failures** (AWS, Azure, GCP, Snowflake) — misconfigurations.
+Data source: :mod:`agent_bom.mitre_fetch` (fetches from MITRE GitHub STIX,
+cached 30 days).
+
+Finding types:
+
+1. **CIS benchmark failures** — cloud misconfigurations (AWS/Azure/GCP/Snowflake).
 2. **Model provenance findings** — supply chain and serialisation risks.
-3. **CVE blast radius** — vulnerability findings enriched with CWE IDs; maps
-   weakness class to the most relevant ATT&CK technique(s).
+3. **CVE blast radius** — vulnerabilities with CWE IDs; CWE → ATT&CK mapping
+   derived from MITRE CAPEC official data (CWE → CAPEC → ATT&CK).
 
-Only FAILED/applicable findings are tagged. A passing check or clean package
-does not produce any technique mapping.
+Context signals (exposed credentials, reachable exec tools, CISA KEV status)
+are applied on top of CWE mappings and resolve to ATT&CK techniques that are
+already in the fetched catalog — never to invented identifiers.
 
 Scope: cloud misconfigurations, infrastructure findings, model provenance, and
 CVE-level blast radius. AI/agent-specific findings (prompt injection, tool
@@ -19,246 +27,218 @@ Reference: https://attack.mitre.org/
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from agent_bom.models import BlastRadius
 
-# ─── Catalog ──────────────────────────────────────────────────────────────────
+logger = logging.getLogger(__name__)
 
-ATTACK_TECHNIQUES: dict[str, str] = {
-    # Remote access
-    "T1021": "Remote Services",
-    "T1021.001": "Remote Services: Remote Desktop Protocol",
-    "T1021.004": "Remote Services: SSH",
-    # Log tampering
-    "T1070": "Indicator Removal",
-    # Credential / account abuse
-    "T1078": "Valid Accounts",
-    "T1078.004": "Valid Accounts: Cloud Accounts",
-    "T1098": "Account Manipulation",
-    "T1098.001": "Account Manipulation: Additional Cloud Credentials",
-    # Execution
-    "T1059": "Command and Scripting Interpreter",
-    "T1059.004": "Command and Scripting Interpreter: Unix Shell",
-    "T1072": "Software Deployment Tools",
-    # Data collection / exfil
-    "T1005": "Data from Local System",
-    "T1040": "Network Sniffing",
-    "T1083": "File and Directory Discovery",
-    "T1485": "Data Destruction",
-    "T1530": "Data from Cloud Storage",
-    "T1537": "Transfer Data to Cloud Account",
-    # Initial access
-    "T1185": "Browser Session Hijacking",
-    "T1189": "Drive-by Compromise",
-    "T1190": "Exploit Public-Facing Application",
-    "T1195": "Supply Chain Compromise",
-    "T1195.002": "Supply Chain Compromise: Compromise Software Supply Chain",
-    # Privilege escalation / defence evasion
-    "T1548": "Abuse Elevation Control Mechanism",
-    "T1548.005": "Temporary Elevated Cloud Access",
-    "T1600": "Weaken Encryption",
-    # Credential access
-    "T1552": "Unsecured Credentials",
-    "T1556": "Modify Authentication Process",
-    # Defence impairment
-    "T1562": "Impair Defenses",
-    "T1562.008": "Impair Defenses: Disable or Modify Cloud Logs",
-    # Impact
-    "T1499": "Endpoint Denial of Service",
-    # Proxy / C2
-    "T1090": "Proxy",
-}
+# ─── Public catalog accessors — always from fetched/cached MITRE data ─────────
 
-# ─── CWE weakness class → ATT&CK technique(s) ───────────────────────────────
+
+def get_attack_techniques() -> dict[str, str]:
+    """Return ``{technique_id: name}`` from the cached ATT&CK catalog.
+
+    Fetches from MITRE GitHub on first call; cached for 30 days.  Returns
+    empty dict on network failure so callers degrade gracefully.
+    """
+    from agent_bom.mitre_fetch import get_techniques
+
+    return {tid: meta["name"] for tid, meta in get_techniques().items()}
+
+
+# Legacy alias kept for callers that import ATTACK_TECHNIQUES directly from
+# this module.  Evaluated lazily to avoid a network call on import.
+class _LazyTechniquesProxy:
+    """Behaves like a dict but loads data on first access."""
+
+    _data: dict[str, str] | None = None
+
+    def _load(self) -> dict[str, str]:
+        if self._data is None:
+            self._data = get_attack_techniques()
+        return self._data
+
+    def __getitem__(self, key: str) -> str:
+        return self._load()[key]
+
+    def __contains__(self, key: object) -> bool:
+        return key in self._load()
+
+    def get(self, key: str, default: str = "") -> str:
+        return self._load().get(key, default)
+
+    def keys(self):  # noqa: ANN201
+        return self._load().keys()
+
+    def items(self):  # noqa: ANN201
+        return self._load().items()
+
+    def __len__(self) -> int:
+        return len(self._load())
+
+
+ATTACK_TECHNIQUES = _LazyTechniquesProxy()
+
+# ─── Section keyword → tactic phase names ────────────────────────────────────
 #
-# Mapped to the most specific applicable technique. Multiple entries per CWE
-# are intentional when the weakness enables more than one distinct technique.
+# Maps CIS benchmark section keywords to ATT&CK *tactic phase names* (not
+# hardcoded T-codes).  The actual techniques are resolved at runtime from the
+# fetched catalog by looking up which techniques belong to each tactic.
 
-_CWE_TO_ATTACK: dict[str, list[str]] = {
-    # Injection / execution
-    "CWE-78": ["T1059", "T1059.004"],  # OS Command Injection
-    "CWE-94": ["T1059"],  # Code Injection
-    "CWE-502": ["T1059", "T1190"],  # Deserialization of Untrusted Data
-    # Path / file access
-    "CWE-22": ["T1083"],  # Path Traversal
-    "CWE-73": ["T1083"],  # External Control of File Name/Path
-    "CWE-611": ["T1083", "T1190"],  # XXE Injection
-    # Web / session
-    "CWE-79": ["T1189", "T1185"],  # Cross-site Scripting
-    "CWE-352": ["T1185"],  # CSRF
-    "CWE-601": ["T1189"],  # Open Redirect
-    # Application exploitation
-    "CWE-89": ["T1190"],  # SQL Injection
-    "CWE-90": ["T1190"],  # LDAP Injection
-    "CWE-918": ["T1090"],  # SSRF
-    # Authentication / authorisation
-    "CWE-287": ["T1078"],  # Improper Authentication
-    "CWE-306": ["T1078"],  # Missing Authentication for Critical Function
-    "CWE-269": ["T1548"],  # Improper Privilege Management
-    "CWE-732": ["T1548"],  # Incorrect Permission Assignment
-    # Credential exposure
-    "CWE-798": ["T1552"],  # Use of Hard-coded Credentials
-    "CWE-255": ["T1552"],  # Credentials Management Errors
-    "CWE-321": ["T1552"],  # Use of Hard-coded Cryptographic Key
-    # Cryptographic weaknesses
-    "CWE-326": ["T1600"],  # Inadequate Encryption Strength
-    "CWE-327": ["T1600"],  # Use of Broken / Risky Cryptographic Algorithm
-    "CWE-330": ["T1600"],  # Use of Insufficiently Random Values
-    "CWE-319": ["T1040"],  # Cleartext Transmission of Sensitive Information
-    # Information disclosure
-    "CWE-200": ["T1005"],  # Exposure of Sensitive Information
-    "CWE-209": ["T1005"],  # Information Exposure Through Error Messages
-    # Memory safety / DoS
-    "CWE-125": ["T1499"],  # Out-of-bounds Read
-    "CWE-787": ["T1499"],  # Out-of-bounds Write
-    "CWE-416": ["T1499"],  # Use After Free
-    "CWE-400": ["T1499"],  # Uncontrolled Resource Consumption
-    "CWE-770": ["T1499"],  # Allocation of Resources Without Limits
-    "CWE-1333": ["T1499"],  # ReDoS
-    # Supply chain
-    "CWE-494": ["T1195.002"],  # Download Without Integrity Check
-    "CWE-829": ["T1195.002"],  # Inclusion of Functionality from Untrusted Control Sphere
-}
-
-# ─── Section keyword → base T-codes ───────────────────────────────────────────
-
-_SECTION_RULES: list[tuple[tuple[str, ...], list[str]]] = [
-    # IAM / identity / authentication
-    (("identity", "access management", "iam", "authentication", "auth"), ["T1078", "T1078.004"]),
-    # Logging / audit / monitoring
-    (("logging", "cloudtrail", "audit", "monitoring"), ["T1562", "T1562.008"]),
-    # Storage / data
-    (("storage", "s3", "blob", "bucket", "data protection"), ["T1530"]),
-    # Networking
-    (("network",), ["T1021"]),
-    # Access control / privilege
-    (("access control", "privilege"), ["T1548", "T1098"]),
+_SECTION_TO_TACTICS: list[tuple[tuple[str, ...], list[str]]] = [
+    # IAM / identity / authentication → Credential Access + Privilege Escalation
+    (
+        ("identity", "access management", "iam", "authentication", "auth"),
+        ["credential-access", "privilege-escalation"],
+    ),
+    # Logging / audit / monitoring → Defense Evasion (disable logs)
+    (
+        ("logging", "cloudtrail", "audit", "monitoring"),
+        ["defense-evasion"],
+    ),
+    # Storage / data → Collection + Exfiltration
+    (
+        ("storage", "s3", "blob", "bucket", "data protection"),
+        ["collection", "exfiltration"],
+    ),
+    # Networking → Command and Control
+    (
+        ("network",),
+        ["command-and-control"],
+    ),
+    # Access control / privilege → Privilege Escalation
+    (
+        ("access control", "privilege"),
+        ["privilege-escalation"],
+    ),
 ]
 
-# ─── Per check_id refinements (added on top of section mapping) ────────────────
+# ─── Per-check keyword refinements for CIS checks ────────────────────────────
+#
+# Maps keywords found in CIS check titles/evidence to specific tactic phases.
+# The tactic phase is then resolved to techniques from the catalog at runtime.
 
-_CHECK_OVERRIDES: dict[str, list[str]] = {
-    # MFA / auth controls
-    "1.1": ["T1556"],  # Security defaults / MFA disabled
-    "1.2": ["T1556"],  # MFA for all users
-    "1.5": ["T1556"],  # MFA on AWS root
-    "1.6": ["T1556"],  # Hardware MFA on root
-    # Stale / unsecured credentials
-    "1.4": ["T1552"],  # Root access key exists
-    "1.7": ["T1552"],  # Service account key rotation
-    "1.14": ["T1552"],  # AWS access key rotation
-    # Privilege escalation
-    "1.16": ["T1548.005"],  # Full admin policies attached
-    # Logging
-    "2.1": ["T1562.008"],  # Audit/CloudTrail disabled
-    "2.2": ["T1070"],  # Log file validation off → indicator removal
-    # Public storage
-    "3.1": ["T1537"],  # Public storage bucket/blob
-    "3.2": ["T1537"],  # Public access block off
-    "3.7": ["T1537"],  # Public blob containers (Azure)
-    "5.1": ["T1537"],  # GCP public bucket
-    # Data destruction
-    "3.3": ["T1485"],  # No versioning / MFA delete disabled
-    # Remote access exposure
-    "4.1": ["T1021.004"],  # SSH from 0.0.0.0/0
-    "4.2": ["T1021.001"],  # RDP from 0.0.0.0/0
-    "3.6": ["T1021.004"],  # GCP SSH firewall rule
-    "3.7_net": ["T1021.001"],  # GCP RDP firewall rule (key collision avoided by cis_section)
-    "6.1": ["T1021.001"],  # Azure RDP from internet
-    "6.2": ["T1021.004"],  # Azure SSH from internet
-    # Key / secret hygiene
-    "8.1": ["T1552"],  # Key Vault keys without expiry
-    "8.2": ["T1552"],  # Key Vault secrets without expiry
-}
+_CHECK_KEYWORD_TACTICS: list[tuple[tuple[str, ...], list[str]]] = [
+    (("mfa", "multi-factor"), ["credential-access"]),
+    (("access key", "secret key", "api key", "credential rotation", "key rotation"), ["credential-access"]),
+    (("public", "open", "unrestricted"), ["collection", "exfiltration"]),
+    (("admin", "full access", "root", "privilege"), ["privilege-escalation"]),
+    (("audit", "log", "trail", "monitoring"), ["defense-evasion"]),
+    (("versioning", "delete", "destroy"), ["impact"]),
+    (("ssh", "port 22", "rdp", "port 3389", "remote access"), ["command-and-control"]),
+    (("encryption", "kms", "tls", "ssl", "crypto"), ["credential-access"]),
+]
+
+
+def _techniques_for_tactics(tactic_phases: list[str]) -> list[str]:
+    """Return technique IDs from the catalog that belong to any of the given tactic phases."""
+    from agent_bom.mitre_fetch import get_techniques
+
+    all_techniques = get_techniques()
+    result: list[str] = []
+    for tid, meta in all_techniques.items():
+        if any(t in tactic_phases for t in meta.get("tactics", [])):
+            result.append(tid)
+    return result
 
 
 # ─── Public API ───────────────────────────────────────────────────────────────
 
 
 def tag_cis_check(check: object) -> list[str]:
-    """Return sorted MITRE ATT&CK Enterprise technique IDs for a failed CIS check.
+    """Return MITRE ATT&CK Enterprise technique IDs for a failed CIS check.
 
-    Only FAILED checks are tagged. A passing check means the control is
-    effective — no technique mapping is warranted.
+    Resolves techniques from the live ATT&CK catalog (fetched from MITRE) by
+    mapping the check's section keywords and title keywords to tactic phases,
+    then returning all techniques in those tactics.
+
+    Only FAILED checks are tagged.  Passing/error checks produce no output.
 
     Args:
-        check: A CISCheckResult-compatible object with .status, .check_id,
-               and .cis_section attributes.
+        check: A CISCheckResult-compatible object with ``.status``,
+               ``.cis_section``, and ``.title`` attributes.
 
     Returns:
-        Sorted list of ATT&CK technique IDs, e.g. ['T1021.001', 'T1078.004'].
-        Empty list if the check passed or errored.
+        Sorted list of ATT&CK technique IDs (from live catalog).
+        Empty list when check passed or errored.
     """
-    # Lazy import to avoid circular dependency — CISCheckResult lives in cloud/
     from agent_bom.cloud.aws_cis_benchmark import CheckStatus
 
     status = getattr(check, "status", None)
     if status != CheckStatus.FAIL:
         return []
 
-    tags: set[str] = set()
+    tactic_phases: set[str] = set()
     section_lower = (getattr(check, "cis_section", "") or "").lower()
-    check_id = getattr(check, "check_id", "") or ""
+    title_lower = (getattr(check, "title", "") or "").lower()
+    combined = f"{section_lower} {title_lower}"
 
-    # Section-based tagging
-    for keywords, t_codes in _SECTION_RULES:
+    # Section-based tactic mapping
+    for keywords, tactics in _SECTION_TO_TACTICS:
         if any(kw in section_lower for kw in keywords):
-            tags.update(t_codes)
+            tactic_phases.update(tactics)
 
-    # Check-ID refinements
-    # Special case: check_id "3.7" is used for both Azure blob public access
-    # (storage section) and GCP RDP firewall (network section) — disambiguate
-    # by section keyword.
-    if check_id == "3.7":
-        if "network" in section_lower or "firewall" in section_lower:
-            tags.update(["T1021.001"])  # GCP RDP
-        else:
-            tags.update(_CHECK_OVERRIDES.get("3.7", []))
-    else:
-        for tid in _CHECK_OVERRIDES.get(check_id, []):
-            tags.add(tid)
+    # Check title / content keyword refinements
+    for keywords, tactics in _CHECK_KEYWORD_TACTICS:
+        if any(kw in combined for kw in keywords):
+            tactic_phases.update(tactics)
 
-    return sorted(tags)
+    if not tactic_phases:
+        # Default: any failed check is at minimum an initial-access signal
+        tactic_phases.add("initial-access")
+
+    return sorted(set(_techniques_for_tactics(list(tactic_phases))))
 
 
 def tag_provenance_finding(finding: dict) -> list[str]:
     """Return ATT&CK technique IDs for a model provenance finding.
 
+    Maps ``risk_flags`` from model provenance analysis to tactic phases, then
+    resolves to techniques from the live catalog.
+
     Args:
-        finding: Dict with keys like 'risk_flags' (list of str), 'format',
-                 'source' (hf/ollama).
+        finding: Dict with keys like ``risk_flags`` (list of str), ``format``,
+                 ``source`` (hf/ollama).
 
     Returns:
         Sorted list of ATT&CK technique IDs.
     """
-    tags: set[str] = set()
     risk_flags: list[str] = finding.get("risk_flags", [])
+    if not risk_flags:
+        return []
 
+    tactic_phases: set[str] = set()
     for flag in risk_flags:
-        # Unsafe serialization format — code execution risk (pickle, pt)
+        # Unsafe serialization — code execution risk (pickle, .pt)
         if "unsafe_format" in flag:
-            tags.update(["T1195", "T1072"])  # Supply chain / software deployment tools
-        # No digest — integrity not verifiable → supply chain
+            tactic_phases.update(["execution", "initial-access"])
+        # No digest — integrity not verifiable → supply chain (initial-access)
         if "no_digest" in flag:
-            tags.add("T1195.002")  # Compromise Software Supply Chain
-        # Public ungated model with large size — exfiltration surface
+            tactic_phases.add("initial-access")
+        # Public ungated large model — exfiltration surface
         if "public_large" in flag:
-            tags.add("T1530")  # Data from Cloud Storage
+            tactic_phases.update(["collection", "exfiltration"])
 
-    return sorted(tags)
+    return sorted(set(_techniques_for_tactics(list(tactic_phases))))
 
 
 def tag_blast_radius(br: BlastRadius) -> list[str]:
-    """Return sorted MITRE ATT&CK Enterprise technique IDs for a CVE blast radius.
+    """Return MITRE ATT&CK Enterprise technique IDs for a CVE blast radius.
 
-    Combines two signal sources:
+    Combines two signal sources — all resolved against the live MITRE catalog:
 
-    1. **CWE-based**: maps each CWE weakness ID on the vulnerability to one or
-       more ATT&CK techniques using the :data:`_CWE_TO_ATTACK` table.
-    2. **Context-based**: adds techniques based on blast-radius characteristics
-       (exposed credentials, reachable exec tools, CISA KEV status, severity).
+    1. **CWE-based**: maps each CWE weakness ID on the vulnerability to
+       ATT&CK techniques via the official CAPEC bridge
+       (CWE → CAPEC → ATT&CK, derived from MITRE's STIX data).
+    2. **Context-based**: maps blast-radius characteristics (exposed credentials,
+       reachable exec tools, CISA KEV status, severity) to tactic phases, then
+       resolves those phases to catalog techniques.
+
+    No technique IDs are hardcoded here — every mapping resolves through the
+    fetched MITRE data.
 
     Only MITRE ATT&CK Enterprise techniques (T-codes) are returned here.
     MITRE ATLAS techniques (AML.T-codes) are handled by :func:`atlas.tag_blast_radius`.
@@ -267,50 +247,60 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
         br: A :class:`~agent_bom.models.BlastRadius` instance.
 
     Returns:
-        Sorted list of ATT&CK technique IDs, e.g. ``['T1059', 'T1190', 'T1552']``.
+        Sorted list of ATT&CK technique IDs from the live catalog.
+        Empty list when the catalog could not be fetched and no context
+        signals apply.
     """
-    tags: set[str] = set()
+    from agent_bom.constants import high_risk_severities
+    from agent_bom.mitre_fetch import get_cwe_to_attack
+    from agent_bom.risk_analyzer import ToolCapability, classify_tool
 
-    # 1. CWE → ATT&CK
+    cwe_map = get_cwe_to_attack()
+    techniques: set[str] = set()
+
+    # 1. CWE → ATT&CK via CAPEC official data
     for cwe in br.vulnerability.cwe_ids:
         # Normalise: accept "CWE-78", "78", "cwe-78"
         cwe_norm = cwe.strip().upper()
         if not cwe_norm.startswith("CWE-"):
             cwe_norm = f"CWE-{cwe_norm}"
-        for t in _CWE_TO_ATTACK.get(cwe_norm, []):
-            tags.add(t)
+        for tech in cwe_map.get(cwe_norm, []):
+            techniques.add(tech)
 
-    # 2. Context-based signals
-    from agent_bom.constants import high_risk_severities
-    from agent_bom.risk_analyzer import ToolCapability, classify_tool
-
+    # 2. Context-based signals → tactic phases → catalog techniques
     high_risk = high_risk_severities()
     is_high = br.vulnerability.severity in high_risk
 
-    # Exposed credentials → unsecured credentials technique
+    tactic_phases: set[str] = set()
+
+    # Exposed credentials → credential-access tactic
     if br.exposed_credentials:
-        tags.add("T1552")
+        tactic_phases.add("credential-access")
 
-    # KEV or CRITICAL severity → exploitation of public-facing application
+    # CISA KEV or CRITICAL severity → direct exploitation (initial-access)
     if br.vulnerability.is_kev or br.vulnerability.severity.value == "critical":
-        tags.add("T1190")
+        tactic_phases.add("initial-access")
 
-    # Reachable exec tools → command and scripting interpreter
+    # Reachable exec tools → execution tactic
     for tool in br.exposed_tools:
         caps = classify_tool(tool.name, tool.description)
         if ToolCapability.EXECUTE in caps:
-            tags.add("T1059")
+            tactic_phases.add("execution")
             break
 
-    # HIGH+ with >3 exposed tools and no CWE → supply chain exploitation baseline
+    # HIGH+ with no CWE IDs → initial-access is the baseline tactic
     if is_high and not br.vulnerability.cwe_ids:
-        tags.add("T1195.002")
+        tactic_phases.add("initial-access")
 
-    return sorted(tags)
+    # Resolve tactic phases to catalog techniques
+    for tech in _techniques_for_tactics(list(tactic_phases)):
+        techniques.add(tech)
+
+    return sorted(techniques)
 
 
 def attack_label(technique_id: str) -> str:
-    """Return human-readable label, e.g. 'T1078.004 Valid Accounts: Cloud Accounts'."""
+    """Return human-readable label, e.g. ``'T1078 Valid Accounts'``."""
     name = ATTACK_TECHNIQUES.get(technique_id, "Unknown")
     return f"{technique_id} {name}"
 

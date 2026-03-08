@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -144,6 +145,59 @@ def _build_agents_from_inventory(inventory_data: dict, source_path: str) -> list
         agents.append(agent)
 
     return agents
+
+
+_update_check_result: str | None = None
+_update_check_done = threading.Event()
+
+
+def _check_for_update_bg() -> None:
+    """Background thread: compare __version__ against PyPI latest. Non-blocking."""
+    global _update_check_result  # noqa: PLW0603
+    try:
+        import urllib.request
+
+        cache_dir = Path.home() / ".cache" / "agent-bom"
+        cache_file = cache_dir / "update-check.txt"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+
+        # Only hit PyPI once per 24 hours
+        import time
+
+        if cache_file.exists() and (time.time() - cache_file.stat().st_mtime) < 86400:
+            _update_check_result = cache_file.read_text().strip() or None
+            _update_check_done.set()
+            return
+
+        with urllib.request.urlopen(  # noqa: S310  # nosec B310
+            "https://pypi.org/pypi/agent-bom/json", timeout=5
+        ) as resp:
+            data = json.loads(resp.read())
+        latest = data["info"]["version"]
+
+        from packaging.version import Version
+
+        if Version(latest) > Version(__version__):
+            msg = (
+                f"[yellow]Update available:[/yellow] agent-bom {__version__} → [bold]{latest}[/bold]\n"
+                f"  Run: [cyan]pip install --upgrade agent-bom[/cyan]"
+            )
+        else:
+            msg = ""
+        cache_file.write_text(msg)
+        _update_check_result = msg or None
+    except Exception:  # noqa: BLE001
+        _update_check_result = None
+    finally:
+        _update_check_done.set()
+
+
+def _print_update_notice(console: Console) -> None:
+    """Print update notice if a newer version was found (non-blocking)."""
+    _update_check_done.wait(timeout=0.1)  # don't block the user
+    if _update_check_result:
+        console.print()
+        console.print(_update_check_result)
 
 
 def _check_optional_dep(name: str) -> str:
@@ -4895,14 +4949,22 @@ def dashboard_cmd(report: Optional[str], port: int):
 
 
 def cli_main() -> None:
-    """Entry point with clean top-level error handling.
+    """Entry point with clean top-level error handling and update check.
 
     Catches unhandled Python exceptions and prints a user-friendly message
     instead of a raw traceback.  Pass --verbose to see the full traceback.
+    Starts a background thread to check for newer versions on PyPI.
     """
+    # Start update check in background — never blocks the scan
+    _t = threading.Thread(target=_check_for_update_bg, daemon=True)
+    _t.start()
+
     try:
         main(standalone_mode=True)
-    except SystemExit:
+    except SystemExit as exc:
+        # Print update notice before exit (if available quickly)
+        if exc.code == 0:
+            _print_update_notice(Console(stderr=True))
         raise
     except KeyboardInterrupt:
         click.echo("\nInterrupted.", err=True)

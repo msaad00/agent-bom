@@ -2,6 +2,9 @@
 
 Converts BlastRadius JSON data (from to_json()) into @xyflow/react-compatible
 nodes and edges, with filtering by CVE, severity, framework tag, and agent.
+
+Also provides build_lateral_movement_flow() for visualizing cross-agent lateral
+movement paths derived from context_graph_data (shared_servers, lateral_paths).
 """
 
 from __future__ import annotations
@@ -18,6 +21,192 @@ _X_TOOL = 1050
 _Y_SPACING = 120
 _Y_BRANCH_OFFSET = 60
 
+# Lateral movement graph columns
+_X_LM_AGENT_LEFT = 0
+_X_LM_SERVER = 500
+_X_LM_AGENT_RIGHT = 1000
+
+
+def build_lateral_movement_flow(
+    context_graph_data: dict,
+    *,
+    highlight_cross_poison: bool = True,
+) -> dict:
+    """Build a React Flow graph showing cross-agent lateral movement paths.
+
+    Visualizes how agents are connected through shared MCP servers and which
+    connections represent cross-agent poison risks (write+read tool pairs).
+
+    Args:
+        context_graph_data: Context graph dict with optional keys:
+            - shared_servers: list of {name, agents, tools} dicts
+            - lateral_paths: list of path lists (each a sequence of node names)
+        highlight_cross_poison: If True, edges on shared servers with
+            write+read tool pairs are styled as CRITICAL (red dashed).
+
+    Returns:
+        {"nodes": [...], "edges": [...], "stats": {...}}
+    """
+    shared_servers: list[dict] = context_graph_data.get("shared_servers", [])
+    lateral_paths: list[list] = context_graph_data.get("lateral_paths", [])
+
+    if not shared_servers and not lateral_paths:
+        return {"nodes": [], "edges": [], "stats": {"total_agents": 0, "total_servers": 0, "lateral_edges": 0, "cross_poison_servers": 0}}
+
+    nodes: list[dict] = []
+    edges: list[dict] = []
+    seen: set[str] = set()
+
+    unique_agents: set[str] = set()
+    unique_servers: set[str] = set()
+    cross_poison_count = 0
+    lateral_edge_count = 0
+
+    y_agent_left = 0
+    y_server = 0
+    y_agent_right = 0
+
+    # Track which side each agent was first placed on
+    agent_side: dict[str, str] = {}
+
+    def _add_agent_node(agent_nm: str) -> None:
+        node_id = f"agent:{agent_nm}"
+        if node_id in seen:
+            return
+        seen.add(node_id)
+        unique_agents.add(agent_nm)
+        nonlocal y_agent_left, y_agent_right
+        # Alternate sides for visual clarity
+        if agent_nm not in agent_side:
+            if len(unique_agents) % 2 == 1:
+                agent_side[agent_nm] = "left"
+                y = y_agent_left
+                y_agent_left += _Y_SPACING
+                x = _X_LM_AGENT_LEFT
+            else:
+                agent_side[agent_nm] = "right"
+                y = y_agent_right
+                y_agent_right += _Y_SPACING
+                x = _X_LM_AGENT_RIGHT
+        else:
+            x = _X_LM_AGENT_LEFT if agent_side[agent_nm] == "left" else _X_LM_AGENT_RIGHT
+            y = 0  # already placed
+            return
+        nodes.append(
+            {
+                "id": node_id,
+                "type": "attackFlowNode",
+                "position": {"x": x, "y": y},
+                "data": {"nodeType": "agent", "label": agent_nm, "agent_type": "", "status": ""},
+            }
+        )
+
+    def _add_server_node(srv_nm: str, *, is_cross_poison: bool = False) -> None:
+        node_id = f"srv:{srv_nm}"
+        if node_id in seen:
+            return
+        seen.add(node_id)
+        unique_servers.add(srv_nm)
+        nonlocal y_server
+        nodes.append(
+            {
+                "id": node_id,
+                "type": "attackFlowNode",
+                "position": {"x": _X_LM_SERVER, "y": y_server},
+                "data": {
+                    "nodeType": "server",
+                    "label": srv_nm,
+                    "is_cross_poison": is_cross_poison,
+                },
+            }
+        )
+        y_server += _Y_SPACING
+
+    # Build from shared_servers
+    for srv_info in shared_servers:
+        srv_nm = srv_info.get("name", "") if isinstance(srv_info, dict) else str(srv_info)
+        agents_on_srv: list[str] = srv_info.get("agents", []) if isinstance(srv_info, dict) else []
+        tools: list[str] = srv_info.get("tools", []) if isinstance(srv_info, dict) else []
+
+        # Detect cross-agent poison (write + read tool pair)
+        has_write = any(
+            kw in str(t).lower() for t in tools for kw in ("write", "insert", "store", "save", "create", "add", "index", "upsert", "embed")
+        )
+        has_read = any(
+            kw in str(t).lower() for t in tools for kw in ("read", "search", "query", "retrieve", "fetch", "get", "lookup", "similarity")
+        )
+        is_cross_poison = highlight_cross_poison and has_write and has_read and len(agents_on_srv) >= 2
+        if is_cross_poison:
+            cross_poison_count += 1
+
+        _add_server_node(srv_nm, is_cross_poison=is_cross_poison)
+        for agent_nm in agents_on_srv:
+            _add_agent_node(agent_nm)
+            # Agent → Server edge
+            edge_id = f"lm:agent:{agent_nm}->srv:{srv_nm}"
+            if edge_id not in seen:
+                seen.add(edge_id)
+                lateral_edge_count += 1
+                edge_style = (
+                    {"stroke": "#dc2626", "strokeDasharray": "6,3", "strokeWidth": 2}
+                    if is_cross_poison
+                    else {"stroke": "#f97316", "strokeDasharray": "5,5"}
+                )
+                edges.append(
+                    {
+                        "id": edge_id,
+                        "source": f"agent:{agent_nm}",
+                        "target": f"srv:{srv_nm}",
+                        "type": "smoothstep",
+                        "animated": is_cross_poison,
+                        "label": "cross-agent poison" if is_cross_poison else "shared",
+                        "style": edge_style,
+                        "data": {"edgeType": "cross_poison" if is_cross_poison else "lateral"},
+                    }
+                )
+
+    # Build from explicit lateral_paths
+    for path in lateral_paths:
+        path_nodes = [(p if isinstance(p, str) else p.get("id", p.get("name", str(p)))) for p in path]
+        for i in range(len(path_nodes) - 1):
+            src, tgt = path_nodes[i], path_nodes[i + 1]
+            # Infer type from prefix conventions
+            src_id = src if ":" in src else f"agent:{src}"
+            tgt_id = tgt if ":" in tgt else f"agent:{tgt}"
+            for nid in (src_id, tgt_id):
+                kind, nm = nid.split(":", 1) if ":" in nid else ("agent", nid)
+                if kind == "agent":
+                    _add_agent_node(nm)
+                elif kind in ("srv", "server"):
+                    _add_server_node(nm)
+            edge_id = f"lm:{src_id}->{tgt_id}"
+            if edge_id not in seen:
+                seen.add(edge_id)
+                lateral_edge_count += 1
+                edges.append(
+                    {
+                        "id": edge_id,
+                        "source": src_id,
+                        "target": tgt_id,
+                        "type": "smoothstep",
+                        "animated": True,
+                        "label": "lateral",
+                        "style": {"stroke": "#f97316", "strokeDasharray": "5,5"},
+                        "data": {"edgeType": "lateral"},
+                    }
+                )
+
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "stats": {
+            "total_agents": len(unique_agents),
+            "total_servers": len(unique_servers),
+            "lateral_edges": lateral_edge_count,
+            "cross_poison_servers": cross_poison_count,
+        },
+    }
+
 
 def build_attack_flow(
     blast_radius: list[dict],
@@ -27,6 +216,7 @@ def build_attack_flow(
     severity: Optional[str] = None,
     framework: Optional[str] = None,
     agent_name: Optional[str] = None,
+    context_graph_data: Optional[dict] = None,
 ) -> dict:
     """Build React Flow nodes/edges from blast radius data.
 
@@ -37,6 +227,9 @@ def build_attack_flow(
         severity: Filter by severity (critical/high/medium/low).
         framework: Filter by framework tag (e.g. "LLM05", "AML.T0010").
         agent_name: Filter to blast radii affecting a specific agent.
+        context_graph_data: Optional context graph dict. When provided,
+            lateral movement edges (orange dashed) are overlaid on the
+            graph for shared servers with cross-agent poison risk.
 
     Returns:
         {"nodes": [...], "edges": [...], "stats": {...}}
@@ -321,6 +514,22 @@ def build_attack_flow(
                         }
                     )
 
+    # Overlay lateral movement edges from context graph (orange dashed)
+    lm_stats: dict = {}
+    if context_graph_data:
+        lm = build_lateral_movement_flow(context_graph_data)
+        lm_stats = lm.get("stats", {})
+        # Add lateral edges (always new — prefixed with "lm:")
+        for edge in lm["edges"]:
+            if edge["id"] not in seen_nodes:
+                seen_nodes.add(edge["id"])
+                edges.append(edge)
+        # Add agent/server nodes not yet present in the blast radius graph
+        for node in lm["nodes"]:
+            if node["id"] not in seen_nodes:
+                seen_nodes.add(node["id"])
+                nodes.append(node)
+
     return {
         "nodes": nodes,
         "edges": edges,
@@ -332,6 +541,8 @@ def build_attack_flow(
             "total_credentials": len(unique_credentials),
             "total_tools": len(unique_tools),
             "severity_counts": severity_counts,
+            "lateral_edges": lm_stats.get("lateral_edges", 0),
+            "cross_poison_servers": lm_stats.get("cross_poison_servers", 0),
         },
     }
 

@@ -148,3 +148,108 @@ def test_tool_nodes_present():
     labels = {n["data"]["label"] for n in tool_nodes}
     assert "read_file" in labels
     assert "write_file" in labels
+
+
+# ── Lateral movement flow tests ───────────────────────────────────────────────
+
+from agent_bom.output.attack_flow import build_lateral_movement_flow  # noqa: E402
+
+
+class TestBuildLateralMovementFlow:
+    def _shared_server_ctx(self):
+        return {
+            "shared_servers": [
+                {
+                    "name": "shared-memory-mcp",
+                    "agents": ["agent-a", "agent-b"],
+                    "tools": ["store_memory", "similarity_search"],
+                }
+            ],
+            "lateral_paths": [],
+        }
+
+    def test_returns_nodes_and_edges(self):
+        result = build_lateral_movement_flow(self._shared_server_ctx())
+        assert "nodes" in result
+        assert "edges" in result
+        assert "stats" in result
+
+    def test_agent_nodes_created(self):
+        result = build_lateral_movement_flow(self._shared_server_ctx())
+        agent_nodes = [n for n in result["nodes"] if n["data"]["nodeType"] == "agent"]
+        labels = {n["data"]["label"] for n in agent_nodes}
+        assert "agent-a" in labels
+        assert "agent-b" in labels
+
+    def test_server_node_created(self):
+        result = build_lateral_movement_flow(self._shared_server_ctx())
+        server_nodes = [n for n in result["nodes"] if n["data"]["nodeType"] == "server"]
+        assert len(server_nodes) == 1
+        assert server_nodes[0]["data"]["label"] == "shared-memory-mcp"
+
+    def test_cross_poison_server_flagged(self):
+        result = build_lateral_movement_flow(self._shared_server_ctx())
+        server_nodes = [n for n in result["nodes"] if n["data"]["nodeType"] == "server"]
+        assert server_nodes[0]["data"]["is_cross_poison"] is True
+
+    def test_cross_poison_edges_are_animated_and_red(self):
+        result = build_lateral_movement_flow(self._shared_server_ctx())
+        cross_edges = [e for e in result["edges"] if e.get("data", {}).get("edgeType") == "cross_poison"]
+        assert len(cross_edges) >= 1
+        for e in cross_edges:
+            assert e.get("animated") is True
+            assert "#dc2626" in e["style"]["stroke"]
+
+    def test_readonly_server_not_cross_poison(self):
+        ctx = {
+            "shared_servers": [
+                {
+                    "name": "readonly-mcp",
+                    "agents": ["agent-a", "agent-b"],
+                    "tools": ["similarity_search", "retrieve_docs"],
+                }
+            ],
+            "lateral_paths": [],
+        }
+        result = build_lateral_movement_flow(ctx)
+        server_nodes = [n for n in result["nodes"] if n["data"]["nodeType"] == "server"]
+        assert server_nodes[0]["data"]["is_cross_poison"] is False
+
+    def test_empty_context_returns_empty(self):
+        result = build_lateral_movement_flow({})
+        assert result["nodes"] == []
+        assert result["edges"] == []
+
+    def test_stats_cross_poison_count(self):
+        result = build_lateral_movement_flow(self._shared_server_ctx())
+        assert result["stats"]["cross_poison_servers"] == 1
+        assert result["stats"]["total_agents"] == 2
+        assert result["stats"]["total_servers"] == 1
+
+    def test_lateral_paths_add_edges(self):
+        ctx = {
+            "shared_servers": [],
+            "lateral_paths": [["agent-x", "agent-y"]],
+        }
+        result = build_lateral_movement_flow(ctx)
+        assert len(result["edges"]) >= 1
+        edge = result["edges"][0]
+        assert edge.get("data", {}).get("edgeType") == "lateral"
+
+    def test_build_attack_flow_overlays_lateral_edges(self):
+        """build_attack_flow with context_graph_data includes lateral edges."""
+        br = _make_blast_radius()
+        ctx = {
+            "shared_servers": [
+                {
+                    "name": "filesystem",
+                    "agents": ["claude-desktop", "cursor"],
+                    "tools": ["write_file", "read_file"],
+                }
+            ],
+            "lateral_paths": [],
+        }
+        result = build_attack_flow(br, _make_agents(), context_graph_data=ctx)
+        lateral = [e for e in result["edges"] if e.get("data", {}).get("edgeType") in ("lateral", "cross_poison")]
+        assert len(lateral) >= 1
+        assert result["stats"].get("cross_poison_servers", 0) >= 1

@@ -17,7 +17,7 @@
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center">
-  <b>Security scanner for AI agent infrastructure. Find CVEs, map blast radius, detect credential exposure, and enforce runtime policy across MCP servers, containers, Kubernetes, cloud, and GPU workloads.</b>
+  <b>Security scanner for AI infrastructure. Find CVEs, map blast radius, detect credential exposure, and enforce runtime policy across MCP servers, containers, Kubernetes, cloud, and GPU workloads.</b>
 </p>
 
 <p align="center">

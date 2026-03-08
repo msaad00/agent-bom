@@ -18,7 +18,7 @@ FROM python:3.12-slim@sha256:39e4e1ccb01578e3c86f7a0cf7b7fd89b8dbe2c27a88de11cf7
 ARG VERSION=dev
 
 LABEL maintainer="W S <34316639+msaad00@users.noreply.github.com>"
-LABEL description="agent-bom: AI supply chain security scanner — CVEs, config security, blast radius, compliance"
+LABEL description="Security scanner for AI infrastructure — CVEs, blast radius, credential exposure, runtime enforcement"
 LABEL org.opencontainers.image.version="${VERSION}"
 LABEL org.opencontainers.image.source="https://github.com/msaad00/agent-bom"
 

@@ -1875,7 +1875,7 @@ _SERVER_CARD_TOOLS = [
     },
     {
         "name": "cis_benchmark",
-        "description": "Run CIS benchmark checks against AWS or Snowflake accounts",
+        "description": "Run CIS benchmark checks against AWS, Snowflake, Azure, or GCP accounts; Databricks security best practices",
         "annotations": {"readOnlyHint": True},
     },
     {

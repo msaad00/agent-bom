@@ -68,7 +68,7 @@ Each module exports `tag_blast_radius(br: BlastRadius)` to annotate findings.
 ### Runtime & Enforcement
 
 ```
-├── proxy.py             # MCP JSON-RPC proxy — policy enforcement, 6 detectors,
+├── proxy.py             # MCP JSON-RPC proxy — policy enforcement, 7 detectors,
 │                        #   Prometheus metrics, JSONL audit trail, webhook alerts
 ├── runtime/
 │   ├── __init__.py      # Public exports

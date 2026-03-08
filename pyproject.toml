@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agent-bom"
-version = "0.60.2"
+version = "0.60.3"
 description = "Security scanner for AI agent infrastructure. Discover MCP configs (20 clients), scan for CVEs, map blast radius to credentials and tools, CIS benchmarks (AWS, Snowflake), pre-install guard, 10-framework compliance."
 readme = "README.md"
 license = {text = "Apache-2.0"}

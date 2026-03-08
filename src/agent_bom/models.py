@@ -402,6 +402,7 @@ class AIBOMReport:
     snowflake_cis_benchmark_data: Optional[dict] = None  # Serialized CIS Snowflake Benchmark results
     azure_cis_benchmark_data: Optional[dict] = None  # Serialized CIS Azure Benchmark results
     gcp_cis_benchmark_data: Optional[dict] = None  # Serialized CIS GCP Benchmark results
+    databricks_cis_benchmark_data: Optional[dict] = None  # Serialized Databricks Security Best Practices results
     aisvs_benchmark_data: Optional[dict] = None  # Serialized AISVS compliance results
     vector_db_scan_data: Optional[list] = None  # Serialized vector DB security assessments
     runtime_correlation: Optional[dict] = None  # Runtime ↔ scan correlation (proxy audit vs CVE findings)

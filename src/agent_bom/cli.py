@@ -4232,17 +4232,19 @@ def completions_cmd(shell: str):
 @click.option("--dir", "-d", "project_dir", type=click.Path(exists=True), default=".", help="Project directory containing dependency files")
 @click.option("--dry-run", is_flag=True, help="Preview changes without modifying files")
 @click.option("--no-backup", is_flag=True, help="Skip creating backup files")
-def apply_command(scan_json, project_dir, dry_run, no_backup):
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt (for CI/scripting)")
+def apply_command(scan_json, project_dir, dry_run, no_backup, yes):
     """Apply remediation fixes from a scan result JSON file.
 
     Reads vulnerability fixes from a previous scan output and modifies
     package.json / requirements.txt with fixed versions.
+    Creates backups by default. Use --dry-run to preview first.
 
     \b
     Example:
         agent-bom scan --format json --output scan.json
         agent-bom apply scan.json --dir ./my-project --dry-run
-        agent-bom apply scan.json --dir ./my-project
+        agent-bom apply scan.json --dir ./my-project --yes
     """
     from rich.console import Console
 
@@ -4250,6 +4252,15 @@ def apply_command(scan_json, project_dir, dry_run, no_backup):
 
     con = Console(stderr=True)
     con.print(f"\n  Applying fixes from [bold]{scan_json}[/bold] to [bold]{project_dir}[/bold]")
+
+    if not dry_run and not yes:
+        con.print(
+            "\n  [yellow]This will modify dependency files in the project directory.[/yellow]\n"
+            f"  Backups will be created {'(disabled by --no-backup)' if no_backup else 'automatically'}.\n"
+        )
+        if not click.confirm("  Proceed?", default=False):
+            con.print("  Aborted.")
+            return
 
     result = apply_fixes_from_json(
         scan_json,

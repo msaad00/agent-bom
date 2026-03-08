@@ -605,6 +605,34 @@ def main():
 )
 @click.option("--drata-token", default=None, envvar="DRATA_API_TOKEN", metavar="TOKEN", help="Drata API token for GRC evidence upload")
 @click.option(
+    "--siem",
+    "siem_type",
+    default=None,
+    envvar="AGENT_BOM_SIEM_TYPE",
+    type=click.Choice(["splunk", "datadog", "elasticsearch", "opensearch"], case_sensitive=False),
+    metavar="TYPE",
+    help="Push findings to SIEM: splunk | datadog | elasticsearch | opensearch",
+)
+@click.option(
+    "--siem-url", default=None, envvar="AGENT_BOM_SIEM_URL", metavar="URL", help="SIEM endpoint URL (e.g. https://splunk.corp:8088)"
+)
+@click.option("--siem-token", default=None, envvar="AGENT_BOM_SIEM_TOKEN", metavar="TOKEN", help="SIEM authentication token / API key")
+@click.option(
+    "--siem-index",
+    default=None,
+    envvar="AGENT_BOM_SIEM_INDEX",
+    metavar="INDEX",
+    help="SIEM index / sourcetype (e.g. main, agent-bom-alerts)",
+)
+@click.option(
+    "--siem-format",
+    default="ocsf",
+    envvar="AGENT_BOM_SIEM_FORMAT",
+    type=click.Choice(["raw", "ocsf"], case_sensitive=False),
+    show_default=True,
+    help="Event format for SIEM push: ocsf (default) or raw",
+)
+@click.option(
     "--clickhouse-url",
     default=None,
     envvar="AGENT_BOM_CLICKHOUSE_URL",
@@ -782,6 +810,11 @@ def scan(
     push_api_key: Optional[str],
     vanta_token: Optional[str],
     drata_token: Optional[str],
+    siem_type: Optional[str],
+    siem_url: Optional[str],
+    siem_token: Optional[str],
+    siem_index: Optional[str],
+    siem_format: str,
     clickhouse_url: Optional[str],
     verbose: bool,
     log_level: Optional[str],
@@ -2969,6 +3002,46 @@ def scan(
                 con.print("  [green]✓[/green] Drata: evidence uploaded")
             except Exception as exc:
                 con.print(f"  [yellow]⚠[/yellow] Drata upload failed: {exc}")
+
+    # SIEM push — convert blast_radii to OCSF/raw events and send to configured SIEM
+    if siem_type and siem_url and blast_radii:
+        try:
+            from agent_bom.siem import SIEMConfig, create_connector, format_event
+
+            siem_config = SIEMConfig(
+                name=siem_type,
+                url=siem_url,
+                token=siem_token or "",
+                index=siem_index or "agent-bom-alerts",
+            )
+            connector = create_connector(siem_type, siem_config)
+
+            # Build one event per blast radius finding
+            events: list[dict] = []
+            for br in blast_radii:
+                raw = {
+                    "type": "scan_alert",
+                    "severity": br.vulnerability.severity.value,
+                    "message": f"{br.vulnerability.id} in {br.package.name}@{br.package.version}",
+                    "vulnerability_id": br.vulnerability.id,
+                    "package": br.package.name,
+                    "version": br.package.version,
+                    "ecosystem": br.package.ecosystem,
+                    "is_kev": br.vulnerability.is_kev,
+                    "affected_agents": [a.name for a in br.affected_agents],
+                    "exposed_credentials": br.exposed_credentials,
+                    "atlas_tags": getattr(br, "atlas_tags", []),
+                    "attack_tags": getattr(br, "attack_tags", []),
+                    "owasp_tags": getattr(br, "owasp_tags", []),
+                }
+                events.append(format_event(raw, siem_format))
+
+            sent = connector.send_batch(events)
+            con.print(f"  [green]✓[/green] SIEM ({siem_type}): pushed {sent}/{len(events)} event(s)")
+        except Exception as exc:
+            con.print(f"  [yellow]⚠[/yellow] SIEM push failed: {exc}")
+    elif siem_type and not siem_url:
+        con.print(f"  [yellow]⚠[/yellow] --siem {siem_type} set but --siem-url is required")
 
     # Step 9: Exit code based on policy flags
     exit_code = 0

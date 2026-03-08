@@ -76,7 +76,7 @@ _jwks_cache = _JwksCache()
 
 def _fetch_json(url: str) -> dict:
     try:
-        with urlopen(url, timeout=_OIDC_TIMEOUT) as resp:  # noqa: S310 — controlled URL from env
+        with urlopen(url, timeout=_OIDC_TIMEOUT) as resp:  # noqa: S310  # nosec B310 — URL is from AGENT_BOM_OIDC_ISSUER env var, operator-controlled
             return json.loads(resp.read())
     except (URLError, OSError, json.JSONDecodeError) as exc:
         raise OIDCError(f"Failed to fetch {url}: {exc}") from exc

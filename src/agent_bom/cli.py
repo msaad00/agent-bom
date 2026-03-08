@@ -169,7 +169,7 @@ def _check_for_update_bg() -> None:
             _update_check_done.set()
             return
 
-        with urllib.request.urlopen(  # noqa: S310
+        with urllib.request.urlopen(  # noqa: S310  # nosec B310
             "https://pypi.org/pypi/agent-bom/json", timeout=5
         ) as resp:
             data = json.loads(resp.read())

@@ -116,12 +116,22 @@ def test_scan_tar_gz_archive(monkeypatch, tmp_path):
 # ─── Error cases ──────────────────────────────────────────────────────────────
 
 
-def test_syft_not_found(monkeypatch, tmp_path):
-    """Missing syft binary raises FilesystemScanError."""
+def test_syft_not_found_uses_native_fallback(monkeypatch, tmp_path):
+    """Missing syft binary falls back to native scanning for directories."""
     monkeypatch.setattr("shutil.which", lambda name: None)
+    # Empty directory → native scan returns empty list (no error)
+    pkgs, strategy = scan_filesystem(str(tmp_path))
+    assert strategy == "native-dir"
+    assert isinstance(pkgs, list)
 
+
+def test_syft_not_found_tar_raises(monkeypatch, tmp_path):
+    """Missing syft binary raises FilesystemScanError for tar archives."""
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    tar = tmp_path / "archive.tar"
+    tar.write_bytes(b"fake")
     with pytest.raises(FilesystemScanError, match="syft not found"):
-        scan_filesystem(str(tmp_path))
+        scan_filesystem(str(tar))
 
 
 def test_syft_nonzero_exit(monkeypatch, tmp_path):

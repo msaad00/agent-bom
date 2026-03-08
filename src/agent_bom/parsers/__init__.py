@@ -663,6 +663,62 @@ def parse_pip_packages(directory: Path) -> list[Package]:
     return packages
 
 
+def parse_pip_environment(python_exec: str | None = None) -> list[Package]:
+    """Scan an installed Python environment via ``pip list --format=json``.
+
+    Useful when there is no lock file (e.g. bare virtualenv, conda env,
+    system Python) and you want to audit what's actually installed.
+
+    Args:
+        python_exec: Path to the Python interpreter whose environment to scan.
+            Defaults to ``sys.executable`` (the currently-running Python).
+
+    Returns:
+        List of :class:`~agent_bom.models.Package` objects with
+        ``ecosystem="pypi"``.  Returns an empty list if ``pip`` is not
+        available in the target environment.
+    """
+    import sys as _sys
+
+    exe = python_exec or _sys.executable
+    try:
+        result = subprocess.run(
+            [exe, "-m", "pip", "list", "--format=json"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        logger.debug("parse_pip_environment: pip not available (%s)", exc)
+        return []
+
+    if result.returncode != 0:
+        logger.debug("parse_pip_environment: pip list failed: %s", result.stderr[:200])
+        return []
+
+    try:
+        raw = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return []
+
+    packages: list[Package] = []
+    for entry in raw:
+        name = entry.get("name", "")
+        version = entry.get("version", "unknown")
+        if name:
+            packages.append(
+                Package(
+                    name=name,
+                    version=version,
+                    ecosystem="pypi",
+                    purl=f"pkg:pypi/{name.lower()}@{version}",
+                    is_direct=True,
+                )
+            )
+
+    return packages
+
+
 def parse_go_packages(directory: Path) -> list[Package]:
     """Parse packages from go.sum."""
     packages = []

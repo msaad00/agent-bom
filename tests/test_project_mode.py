@@ -234,8 +234,8 @@ def test_project_scan_via_cli_no_agents(tmp_path):
 
     (tmp_path / "requirements.txt").write_text("requests==2.31.0\n")
     runner = CliRunner()
-    # Patch discover_all to return no agents (no MCP configs in tmp_path)
-    with patch("agent_bom.discovery.discover_all", return_value=[]):
+    # Patch discover_all at the cli module level (imported at top of cli.py)
+    with patch("agent_bom.cli.discover_all", return_value=[]):
         result = runner.invoke(main, ["scan", "--project", str(tmp_path), "--no-scan"])
     assert result.exit_code == 0
     assert "No MCP configurations" not in result.output

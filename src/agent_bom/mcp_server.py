@@ -1733,15 +1733,19 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             JSON with per-database risk assessment including risk_level, risk_flags, and metadata.
         """
         try:
-            from agent_bom.cloud.vector_db import discover_vector_dbs
+            from agent_bom.cloud.vector_db import discover_pinecone, discover_vector_dbs
 
             host_list = [h.strip() for h in hosts.split(",")] if hosts else None
-            results = discover_vector_dbs(hosts=host_list)
+            self_hosted = discover_vector_dbs(hosts=host_list)
+            pinecone_results = discover_pinecone()
+            all_results = [r.to_dict() for r in self_hosted] + [r.to_dict() for r in pinecone_results]
             return _truncate_response(
                 json.dumps(
                     {
-                        "databases_found": len(results),
-                        "results": [r.to_dict() for r in results],
+                        "databases_found": len(all_results),
+                        "self_hosted_count": len(self_hosted),
+                        "cloud_count": len(pinecone_results),
+                        "results": all_results,
                     },
                     indent=2,
                     default=str,

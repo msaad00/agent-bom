@@ -1964,18 +1964,19 @@ def scan(
 
         con.print("\n[bold blue]Scanning for vector databases...[/bold blue]\n")
         try:
-            from agent_bom.cloud.vector_db import discover_vector_dbs
+            from agent_bom.cloud.vector_db import discover_pinecone, discover_vector_dbs
 
             vector_db_results = discover_vector_dbs()
-            if not vector_db_results:
-                con.print("  [dim]No running vector databases found on this host.[/dim]")
+            pinecone_results = discover_pinecone()
+            if not vector_db_results and not pinecone_results:
+                con.print("  [dim]No running vector databases found. Set PINECONE_API_KEY to scan Pinecone.[/dim]")
             else:
-                con.print(f"  Found [bold]{len(vector_db_results)}[/bold] vector database(s)")
+                total = len(vector_db_results) + len(pinecone_results)
+                con.print(f"  Found [bold]{total}[/bold] vector database(s)")
                 tbl = _RTable(title="Vector DB Security", show_lines=True)
                 tbl.add_column("DB", width=10)
-                tbl.add_column("Port", width=6)
+                tbl.add_column("Instance", width=20)
                 tbl.add_column("Auth", width=8)
-                tbl.add_column("Loopback", width=10)
                 tbl.add_column("Risk", width=10)
                 tbl.add_column("Flags")
                 _vdb_risk = {
@@ -1987,9 +1988,16 @@ def scan(
                 for r in vector_db_results:
                     tbl.add_row(
                         r.db_type,
-                        str(r.port),
+                        f"{r.host}:{r.port}",
                         "[green]yes[/]" if r.requires_auth else "[red]NO[/]",
-                        "[green]yes[/]" if r.is_loopback else "[red]NO[/]",
+                        _vdb_risk.get(r.risk_level, r.risk_level),
+                        ", ".join(r.risk_flags) or "-",
+                    )
+                for r in pinecone_results:
+                    tbl.add_row(
+                        "pinecone",
+                        r.index_name,
+                        "[green]API key[/]",
                         _vdb_risk.get(r.risk_level, r.risk_level),
                         ", ".join(r.risk_flags) or "-",
                     )
@@ -5484,6 +5492,54 @@ def analytics_cmd(query_type, days, hours, agent, top_limit, clickhouse_url):
 
     if not rows:
         console.print("[dim]No data found. Run scans with --clickhouse-url to populate analytics.[/dim]")
+
+
+@main.command("graph")
+@click.argument("scan_file", type=click.Path(exists=True))
+@click.option(
+    "--format", "-f", "fmt", type=click.Choice(["json", "dot", "mermaid"]), default="json", show_default=True, help="Output format."
+)
+@click.option("--output", "-o", "output_path", default=None, help="Write to file instead of stdout.")
+def graph_cmd(scan_file: str, fmt: str, output_path: Optional[str]) -> None:
+    """Export the transitive dependency graph from a saved JSON scan report.
+
+    \b
+    SCAN_FILE  Path to a JSON file produced by: agent-bom scan --format json
+
+    \b
+    Examples:
+        agent-bom scan --format json --output report.json
+        agent-bom graph report.json --format dot --output deps.dot
+        dot -Tsvg deps.dot -o deps.svg
+
+        agent-bom graph report.json --format mermaid
+
+    Closes #292.
+    """
+    from rich.console import Console as _Console
+
+    from agent_bom.output.graph_export import load_graph_from_scan, to_dot, to_json, to_mermaid
+
+    _con = _Console()
+
+    try:
+        graph = load_graph_from_scan(scan_file)
+    except (ValueError, KeyError) as exc:
+        _con.print(f"[red]Error loading scan file:[/red] {exc}")
+        raise SystemExit(1) from exc
+
+    if fmt == "dot":
+        output = to_dot(graph)
+    elif fmt == "mermaid":
+        output = to_mermaid(graph)
+    else:
+        output = json.dumps(to_json(graph), indent=2)
+
+    if output_path:
+        Path(output_path).write_text(output)
+        _con.print(f"[green]Graph exported[/green] ({graph.node_count()} nodes, {graph.edge_count()} edges) → {output_path}")
+    else:
+        click.echo(output)
 
 
 @main.command("dashboard")

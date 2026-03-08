@@ -123,7 +123,7 @@ Pre-commit hooks enforce ruff on every commit. Install once with `pre-commit ins
 1. **Branch from main** and name it `feat/`, `fix/`, `docs/`, or `chore/`.
 2. **All tests pass:** `pytest tests/ -x -q`
 3. **Lint clean:** `ruff check src/ && ruff format --check src/`
-4. **PR description:** one-sentence summary, what changed, how to test it.
+4. **PR description:** one-sentence summary, what changed, how to test it. If the PR resolves a GitHub issue, include `Closes #<issue-number>` in the PR body — GitHub will auto-close the issue when the PR merges.
 5. **One review required** — a maintainer will review within a few days.
 
 CI checks that run on every PR:

@@ -4,11 +4,15 @@ Discovers locally running vector databases by probing well-known ports and
 HTTP health/collection endpoints. Assesses each instance for security
 misconfigurations: unauthenticated access, network exposure, and version info.
 
-Supported databases:
+Supported databases (self-hosted, port-probed):
 - Qdrant  (port 6333)  — open-source vector search engine
 - Weaviate (port 8080) — open-source vector database
 - Chroma  (port 8000)  — open-source embedding database
 - Milvus  (port 9091)  — distributed vector database (HTTP metrics/API)
+
+Cloud-hosted (API-authenticated):
+- Pinecone — ``check_pinecone()`` / ``discover_pinecone()``
+  Requires ``PINECONE_API_KEY`` env var.
 
 Risk flags:
 - no_auth          — responds to collection queries without authentication
@@ -329,3 +333,170 @@ def discover_vector_dbs(
                 results.append(result)
 
     return results
+
+
+# ---------------------------------------------------------------------------
+# Pinecone cloud vector DB — API-authenticated scanning (closes #310)
+# ---------------------------------------------------------------------------
+
+_PINECONE_API_BASE = "https://api.pinecone.io"
+_PINECONE_CONTROLLER_BASE = "https://controller.{environment}.pinecone.io"
+
+
+@dataclass
+class PineconeIndexResult:
+    """Security assessment for a single Pinecone index."""
+
+    index_name: str
+    environment: str
+    dimension: int
+    metric: str
+    status: str  # "ready" | "initializing" | "scaling" | "terminating"
+    pod_type: str
+    pods: int
+    replicas: int
+    is_ready: bool
+    risk_flags: list[str] = field(default_factory=list)
+
+    @property
+    def risk_level(self) -> str:
+        if self.risk_flags:
+            return "medium"
+        return "safe"
+
+    def to_dict(self) -> dict:
+        return {
+            "db_type": "pinecone",
+            "index_name": self.index_name,
+            "environment": self.environment,
+            "dimension": self.dimension,
+            "metric": self.metric,
+            "status": self.status,
+            "pod_type": self.pod_type,
+            "pods": self.pods,
+            "replicas": self.replicas,
+            "is_ready": self.is_ready,
+            "risk_level": self.risk_level,
+            "risk_flags": self.risk_flags,
+            "maestro_layer": MAESTRO_LAYER,
+        }
+
+
+def _pinecone_get(path: str, api_key: str, timeout: int = _DEFAULT_TIMEOUT) -> tuple[int, dict]:
+    """Make an authenticated GET request to the Pinecone API.
+
+    Returns (status_code, parsed_json). Returns (-1, {}) on network/parse error.
+    """
+    url = f"{_PINECONE_API_BASE}{path}"
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={
+                "Api-Key": api_key,
+                "User-Agent": "agent-bom/pinecone-scan",
+                "Accept": "application/json",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # nosec B310
+            return resp.status, json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        try:
+            body = json.loads(e.read())
+        except Exception:
+            body = {}
+        return e.code, body
+    except Exception:
+        return -1, {}
+
+
+def check_pinecone(api_key: str, timeout: int = _DEFAULT_TIMEOUT) -> list[PineconeIndexResult]:
+    """Assess security posture of all Pinecone indexes for the given API key.
+
+    Checks each index for:
+    - Excessive replicas (> 10 → flag ``high_replica_count``)
+    - Pod type using serverless-only (informational in metadata)
+
+    Args:
+        api_key: Pinecone API key (from ``PINECONE_API_KEY`` env var).
+        timeout: HTTP timeout in seconds.
+
+    Returns:
+        List of :class:`PineconeIndexResult`, one per index. Empty list if the
+        API key is invalid or the account has no indexes.
+
+    Raises:
+        ValueError: If ``api_key`` is empty.
+    """
+    if not api_key:
+        raise ValueError("api_key is required for Pinecone scanning")
+
+    status, data = _pinecone_get("/indexes", api_key, timeout)
+    if status == 401:
+        logger.warning("Pinecone: invalid or expired API key")
+        return []
+    if status == 403:
+        logger.warning("Pinecone: API key lacks list-indexes permission")
+        return []
+    if status < 0 or status >= 300:
+        logger.debug("Pinecone: unexpected status %d listing indexes", status)
+        return []
+
+    indexes = data.get("indexes", [])
+    results: list[PineconeIndexResult] = []
+
+    for idx in indexes:
+        name = idx.get("name", "")
+        spec = idx.get("spec", {})
+        pod_spec = spec.get("pod", {})
+        serverless_spec = spec.get("serverless", {})
+
+        environment = pod_spec.get("environment", serverless_spec.get("region", "serverless"))
+        dimension = idx.get("dimension", 0)
+        metric = idx.get("metric", "cosine")
+        state = idx.get("status", {})
+        status_val = state.get("state", "unknown")
+        is_ready = state.get("ready", False)
+        pod_type = pod_spec.get("pod_type", "serverless")
+        pods = pod_spec.get("pods", 0)
+        replicas = pod_spec.get("replicas", 0)
+
+        risk_flags: list[str] = []
+        if replicas > 10:
+            risk_flags.append("high_replica_count")
+
+        results.append(
+            PineconeIndexResult(
+                index_name=name,
+                environment=environment,
+                dimension=dimension,
+                metric=metric,
+                status=status_val,
+                pod_type=pod_type,
+                pods=pods,
+                replicas=replicas,
+                is_ready=is_ready,
+                risk_flags=risk_flags,
+            )
+        )
+
+    return results
+
+
+def discover_pinecone(timeout: int = _DEFAULT_TIMEOUT) -> list[PineconeIndexResult]:
+    """Scan Pinecone using the ``PINECONE_API_KEY`` environment variable.
+
+    Returns an empty list if the env var is not set (no-op, not an error).
+
+    Args:
+        timeout: HTTP timeout in seconds.
+
+    Returns:
+        List of :class:`PineconeIndexResult`, or empty list if no key configured.
+    """
+    import os
+
+    api_key = os.environ.get("PINECONE_API_KEY", "")
+    if not api_key:
+        logger.debug("PINECONE_API_KEY not set — skipping Pinecone scan")
+        return []
+    return check_pinecone(api_key, timeout=timeout)

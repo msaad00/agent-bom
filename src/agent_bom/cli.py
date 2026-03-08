@@ -453,6 +453,16 @@ def main():
     help="Max directory depth for dynamic discovery filesystem scanning",
 )
 @click.option(
+    "--include-processes",
+    is_flag=True,
+    help="Scan running host processes for MCP servers (requires psutil: pip install psutil)",
+)
+@click.option(
+    "--include-containers",
+    is_flag=True,
+    help="Scan running Docker containers for MCP servers (requires docker CLI on PATH)",
+)
+@click.option(
     "--ai-enrich",
     is_flag=True,
     help="Enrich findings with LLM-generated risk narratives, executive summary, and threat chains. Auto-detects Ollama (free, local) or uses litellm (pip install 'agent-bom[ai-enrich]')",
@@ -708,6 +718,8 @@ def scan(
     graph_backend: str,
     dynamic_discovery: bool,
     dynamic_max_depth: int,
+    include_processes: bool,
+    include_containers: bool,
     ai_enrich: bool,
     ai_model: str,
     aws: bool,
@@ -1047,9 +1059,21 @@ def scan(
         con.print(f"  [green]✓[/green] Loaded {len(agents)} agent(s) from inventory")
     elif not skill_only and config_dir:
         con.print(f"\n[bold blue]Scanning config directory: {config_dir}...[/bold blue]\n")
-        agents = discover_all(project_dir=config_dir, dynamic=dynamic_discovery, dynamic_max_depth=dynamic_max_depth)
+        agents = discover_all(
+            project_dir=config_dir,
+            dynamic=dynamic_discovery,
+            dynamic_max_depth=dynamic_max_depth,
+            include_processes=include_processes,
+            include_containers=include_containers,
+        )
     elif not skill_only:
-        agents = discover_all(project_dir=project, dynamic=dynamic_discovery, dynamic_max_depth=dynamic_max_depth)
+        agents = discover_all(
+            project_dir=project,
+            dynamic=dynamic_discovery,
+            dynamic_max_depth=dynamic_max_depth,
+            include_processes=include_processes,
+            include_containers=include_containers,
+        )
 
     any_cloud = (
         aws

@@ -26,6 +26,12 @@
   </picture>
 </p>
 
+<p align="center">
+  <picture>
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scan-output-dark.svg" alt="agent-bom scan output with GPU infrastructure scan" width="800" />
+  </picture>
+</p>
+
 ---
 
 ## Why agent-bom?
@@ -73,6 +79,7 @@ agent-bom scan --siem splunk --siem-url https://...  # Push findings to SIEM
 agent-bom scan --aws --snowflake --databricks      # Multi-cloud
 agent-bom scan --hf-model meta-llama/Llama-3.1-8B  # model provenance
 agent-bom scan --vector-db-scan                    # Scan self-hosted + Pinecone cloud vector DBs
+agent-bom scan --gpu-scan                          # Discover GPU containers + K8s nodes, detect unauthenticated DCGM exporters
 agent-bom graph report.json --format dot           # Export dependency graph (DOT/Mermaid/JSON)
 agent-bom proxy-configure --apply                  # Auto-wrap MCP configs with security proxy
 ```

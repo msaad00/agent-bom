@@ -1297,12 +1297,174 @@ def discover_container_labels() -> Optional[Agent]:
     )
 
 
+# ── Kubernetes MCP CRD / label / env discovery ───────────────────────────────
+
+# MCP signals in pod metadata and container specs
+_K8S_MCP_LABELS = ("mcp.server", "mcp-server", "mcp.io/server", "app.kubernetes.io/component=mcp")
+_K8S_MCP_IMAGE_PATTERNS = ("mcp-server", "mcp_server", "/mcp:", "-mcp:")
+_K8S_MCP_ENV_PREFIX = "MCP_"
+_K8S_MCP_CRD_RESOURCE = "mcpservers"  # custom resource: mcpservers.mcp.io
+
+
+def discover_k8s_mcp_servers(
+    namespace: str = "default",
+    all_namespaces: bool = False,
+    context: Optional[str] = None,
+) -> Optional[Agent]:
+    """Discover MCP servers declared as Kubernetes pods, services, or CRDs.
+
+    Scans pods for MCP signals (labels, annotations, image names, env vars) and
+    optionally queries for ``mcpservers.mcp.io`` custom resources if that CRD
+    is installed.  Uses ``kubectl`` — no Python SDK required.
+
+    Args:
+        namespace: Kubernetes namespace to query (ignored when ``all_namespaces=True``).
+        all_namespaces: Query all namespaces (``kubectl ... -A``).
+        context: kubectl context to use (uses current context if ``None``).
+
+    Returns:
+        An Agent with ``source="kubernetes"`` or ``None`` if kubectl is absent
+        or no MCP pods/CRDs are found.
+    """
+    if not shutil.which("kubectl"):
+        return None
+
+    def _kubectl(*args: str) -> Optional[dict]:
+        cmd = ["kubectl", *args]
+        if context:
+            cmd += ["--context", context]
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if r.returncode != 0:
+                return None
+            return json.loads(r.stdout)
+        except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
+            return None
+
+    # ── 1. Pod-level scan ────────────────────────────────────────────────────
+    pod_args = ["get", "pods", "-o", "json"]
+    if all_namespaces:
+        pod_args.append("-A")
+    else:
+        pod_args += ["-n", namespace]
+
+    pod_data = _kubectl(*pod_args)
+
+    mcp_servers: list[MCPServer] = []
+    seen_names: set[str] = set()
+
+    for pod in (pod_data or {}).get("items", []):
+        meta = pod.get("metadata", {})
+        pod_name = meta.get("name", "unknown")
+        pod_ns = meta.get("namespace", namespace)
+        labels = meta.get("labels", {})
+        annotations = meta.get("annotations", {})
+        spec = pod.get("spec", {})
+
+        # Check label signals
+        label_str = " ".join(f"{k}={v}" for k, v in labels.items()).lower()
+        annotation_keys = " ".join(annotations.keys()).lower()
+        has_label_signal = any(sig.lower() in label_str or sig.lower() in annotation_keys for sig in _K8S_MCP_LABELS)
+
+        containers = spec.get("containers", [])
+        for container in containers:
+            image = container.get("image", "").lower()
+            env_vars: list[dict] = container.get("env", [])
+            env_names = " ".join(e.get("name", "") for e in env_vars)
+
+            has_image_signal = any(pat in image for pat in _K8S_MCP_IMAGE_PATTERNS)
+            has_env_signal = _K8S_MCP_ENV_PREFIX in env_names
+
+            if not (has_label_signal or has_image_signal or has_env_signal):
+                continue
+
+            # Determine transport and URL
+            transport = TransportType.STDIO
+            url = ""
+            ports = container.get("ports", [])
+            if ports:
+                # Assume SSE/HTTP if the container exposes a port
+                transport = TransportType.SSE
+                port_num = ports[0].get("containerPort", 8000)
+                svc_name = labels.get("app", labels.get("app.kubernetes.io/name", pod_name))
+                url = f"http://{svc_name}.{pod_ns}.svc.cluster.local:{port_num}"
+
+            # Sanitize env vars
+            raw_env = {e.get("name", ""): e.get("value", "") for e in env_vars if e.get("name")}
+            env = sanitize_env_vars(raw_env)
+
+            # Build a unique server name
+            container_name = container.get("name", "mcp")
+            server_name = f"{pod_ns}/{pod_name}/{container_name}"
+            if server_name in seen_names:
+                continue
+            seen_names.add(server_name)
+
+            server = MCPServer(
+                name=server_name,
+                command="",  # pod containers don't have a local command to launch
+                env=env,
+                transport=transport,
+                url=url,
+                config_path=f"k8s://{pod_ns}/{pod_name}",
+            )
+            mcp_servers.append(server)
+
+    # ── 2. MCP CRD scan (mcpservers.mcp.io) ─────────────────────────────────
+    crd_args = ["get", _K8S_MCP_CRD_RESOURCE, "-o", "json"]
+    if all_namespaces:
+        crd_args.append("-A")
+    else:
+        crd_args += ["-n", namespace]
+
+    crd_data = _kubectl(*crd_args)
+
+    for item in (crd_data or {}).get("items", []):
+        meta = item.get("metadata", {})
+        crd_name = meta.get("name", "unknown")
+        crd_ns = meta.get("namespace", namespace)
+        spec = item.get("spec", {})
+
+        url = spec.get("url", spec.get("endpoint", ""))
+        transport = TransportType.SSE if url else TransportType.STDIO
+        server_name = f"{crd_ns}/{crd_name}"
+
+        if server_name in seen_names:
+            continue
+        seen_names.add(server_name)
+
+        server = MCPServer(
+            name=server_name,
+            command=spec.get("command", ""),
+            transport=transport,
+            url=url,
+            config_path=f"k8s-crd://{crd_ns}/{crd_name}",
+        )
+        mcp_servers.append(server)
+
+    if not mcp_servers:
+        return None
+
+    ns_label = "all-namespaces" if all_namespaces else namespace
+    return Agent(
+        name=f"kubernetes-mcp/{ns_label}",
+        agent_type=AgentType.CUSTOM,
+        config_path=f"k8s://{ns_label}",
+        mcp_servers=mcp_servers,
+        source="kubernetes",
+    )
+
+
 def discover_all(
     project_dir: Optional[str] = None,
     dynamic: bool = False,
     dynamic_max_depth: int = 4,
     include_processes: bool = False,
     include_containers: bool = False,
+    include_k8s_mcp: bool = False,
+    k8s_namespace: str = "default",
+    k8s_all_namespaces: bool = False,
+    k8s_context: Optional[str] = None,
 ) -> list[Agent]:
     """Run full discovery: global configs + project configs + CLI agents.
 
@@ -1312,6 +1474,10 @@ def discover_all(
         dynamic_max_depth: Maximum depth for dynamic filesystem scanning.
         include_processes: Also scan running host processes for MCP servers (psutil).
         include_containers: Also scan running Docker containers for MCP servers.
+        include_k8s_mcp: Scan Kubernetes cluster for MCP pods and CRDs (kubectl).
+        k8s_namespace: Kubernetes namespace to query (default: "default").
+        k8s_all_namespaces: Query all Kubernetes namespaces.
+        k8s_context: kubectl context to use (uses current context if None).
     """
     console.print("\n[bold blue]🔍 Discovering MCP configurations...[/bold blue]\n")
 
@@ -1370,6 +1536,19 @@ def discover_all(
             agents.append(container_agent)
         else:
             console.print("  [dim]  container scan: no MCP containers found (or docker not running)[/dim]")
+
+    # Kubernetes MCP pod/CRD discovery (opt-in)
+    if include_k8s_mcp:
+        k8s_agent = discover_k8s_mcp_servers(
+            namespace=k8s_namespace,
+            all_namespaces=k8s_all_namespaces,
+            context=k8s_context,
+        )
+        if k8s_agent:
+            console.print(f"  [green]✓[/green] Found {len(k8s_agent.mcp_servers)} MCP server(s) in Kubernetes (pods + CRDs)")
+            agents.append(k8s_agent)
+        else:
+            console.print("  [dim]  k8s-mcp scan: no MCP pods/CRDs found (or kubectl not available)[/dim]")
 
     # Detect installed-but-not-configured agents
     discovered_types = {a.agent_type for a in agents}

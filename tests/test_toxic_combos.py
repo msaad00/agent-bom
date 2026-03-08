@@ -383,3 +383,134 @@ class TestSerialization:
 
     def test_empty_serialization(self):
         assert to_serializable([]) == []
+
+
+# ---------------------------------------------------------------------------
+# TestCachePoison
+# ---------------------------------------------------------------------------
+
+
+class TestCachePoison:
+    def test_cache_poison_detected_via_retrieval_tool(self):
+        """CVE + vector/RAG retrieval tool = CACHE_POISON."""
+        vuln = _vuln("CVE-2024-9999", Severity.CRITICAL)
+        tool = _tool("similarity_search", "Semantic similarity search over vector store")
+        br = _br(vuln=vuln, tools=[tool])
+        report = _report([br])
+        context = {"vector_db_servers": [], "shared_servers": []}
+        combos = detect_toxic_combinations(report, context)
+        cache = [c for c in combos if c.pattern == ToxicPattern.CACHE_POISON]
+        assert len(cache) == 1
+        assert "CVE-2024-9999" in cache[0].title
+        assert cache[0].severity == "critical"
+        assert cache[0].risk_score >= 9.0
+
+    def test_cache_poison_detected_via_vector_db_server(self):
+        """CVE on server in vector_db_servers list = CACHE_POISON."""
+        vuln = _vuln("CVE-2024-8888", Severity.HIGH)
+        server = _server("qdrant-mcp")
+        br = _br(vuln=vuln, servers=[server])
+        report = _report([br])
+        context = {"vector_db_servers": [{"name": "qdrant-mcp"}], "shared_servers": []}
+        combos = detect_toxic_combinations(report, context)
+        cache = [c for c in combos if c.pattern == ToxicPattern.CACHE_POISON]
+        assert len(cache) == 1
+
+    def test_cache_poison_not_triggered_for_low_severity(self):
+        """Low severity CVE + retrieval tool should not trigger CACHE_POISON."""
+        vuln = _vuln("CVE-2024-0001", Severity.LOW)
+        tool = _tool("retrieve_docs", "Retrieve documents from knowledge base")
+        br = _br(vuln=vuln, tools=[tool])
+        combos = detect_toxic_combinations(_report([br]), {})
+        cache = [c for c in combos if c.pattern == ToxicPattern.CACHE_POISON]
+        assert len(cache) == 0
+
+    def test_cache_poison_remediation_mentions_vector_db(self):
+        vuln = _vuln("CVE-2024-7777", Severity.CRITICAL)
+        tool = _tool("vector_search", "Search vector index")
+        br = _br(vuln=vuln, tools=[tool])
+        combos = detect_toxic_combinations(_report([br]), {})
+        cache = [c for c in combos if c.pattern == ToxicPattern.CACHE_POISON]
+        assert len(cache) == 1
+        assert "vector" in cache[0].remediation.lower() or "retrieval" in cache[0].remediation.lower()
+
+
+# ---------------------------------------------------------------------------
+# TestCrossAgentPoison
+# ---------------------------------------------------------------------------
+
+
+class TestCrossAgentPoison:
+    def test_cross_agent_poison_detected(self):
+        """Shared server with write+read tools across 2+ agents = CROSS_AGENT_POISON."""
+        report = _report([])
+        context = {
+            "shared_servers": [
+                {
+                    "name": "shared-memory-mcp",
+                    "agents": ["agent-a", "agent-b"],
+                    "tools": ["store_memory", "similarity_search"],
+                }
+            ],
+            "vector_db_servers": [],
+        }
+        combos = detect_toxic_combinations(report, context)
+        cross = [c for c in combos if c.pattern == ToxicPattern.CROSS_AGENT_POISON]
+        assert len(cross) == 1
+        assert "shared-memory-mcp" in cross[0].title
+        assert cross[0].severity == "high"
+
+    def test_cross_agent_poison_requires_both_tools(self):
+        """Server with only read tools (no write) should not trigger."""
+        report = _report([])
+        context = {
+            "shared_servers": [
+                {
+                    "name": "readonly-mcp",
+                    "agents": ["agent-a", "agent-b"],
+                    "tools": ["similarity_search", "retrieve_docs"],
+                }
+            ],
+            "vector_db_servers": [],
+        }
+        combos = detect_toxic_combinations(report, context)
+        cross = [c for c in combos if c.pattern == ToxicPattern.CROSS_AGENT_POISON]
+        assert len(cross) == 0
+
+    def test_cross_agent_poison_requires_multiple_agents(self):
+        """Single agent on server should not trigger."""
+        report = _report([])
+        context = {
+            "shared_servers": [
+                {
+                    "name": "solo-mcp",
+                    "agents": ["agent-a"],
+                    "tools": ["store_memory", "retrieve_docs"],
+                }
+            ],
+            "vector_db_servers": [],
+        }
+        combos = detect_toxic_combinations(report, context)
+        cross = [c for c in combos if c.pattern == ToxicPattern.CROSS_AGENT_POISON]
+        assert len(cross) == 0
+
+    def test_cross_agent_poison_remediation_mentions_isolation(self):
+        report = _report([])
+        context = {
+            "shared_servers": [
+                {
+                    "name": "shared-mcp",
+                    "agents": ["agent-a", "agent-b", "agent-c"],
+                    "tools": ["index_document", "query_index"],
+                }
+            ],
+            "vector_db_servers": [],
+        }
+        combos = detect_toxic_combinations(report, context)
+        cross = [c for c in combos if c.pattern == ToxicPattern.CROSS_AGENT_POISON]
+        assert len(cross) == 1
+        assert "isolat" in cross[0].remediation.lower() or "separate" in cross[0].remediation.lower()
+
+    def test_new_patterns_in_enum(self):
+        assert ToxicPattern.CACHE_POISON.value == "cache_poison"
+        assert ToxicPattern.CROSS_AGENT_POISON.value == "cross_agent_poison"

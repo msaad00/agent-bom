@@ -25,6 +25,8 @@ class ToxicPattern(str, Enum):
     MULTI_AGENT_CVE = "multi_agent_cve"
     KEV_WITH_CREDS = "kev_with_credentials"
     TRANSITIVE_CRITICAL = "transitive_critical"
+    CACHE_POISON = "cache_poison"
+    CROSS_AGENT_POISON = "cross_agent_poison"
 
 
 @dataclass
@@ -51,17 +53,20 @@ def detect_toxic_combinations(
     """
     combos: list[ToxicCombination] = []
 
-    if not report.blast_radii:
-        return combos
+    if report.blast_radii:
+        combos.extend(_detect_cred_blast(report.blast_radii))
+        combos.extend(_detect_kev_with_creds(report.blast_radii))
+        combos.extend(_detect_execute_exploit(report.blast_radii))
+        combos.extend(_detect_multi_agent_cve(report.blast_radii))
+        combos.extend(_detect_transitive_critical(report.blast_radii))
+        # Cache poison can be detected from tool names alone — no context required
+        combos.extend(_detect_cache_poison(report.blast_radii, context_graph_data or {}))
+        if context_graph_data:
+            combos.extend(_detect_lateral_chain(report.blast_radii, context_graph_data))
 
-    combos.extend(_detect_cred_blast(report.blast_radii))
-    combos.extend(_detect_kev_with_creds(report.blast_radii))
-    combos.extend(_detect_execute_exploit(report.blast_radii))
-    combos.extend(_detect_multi_agent_cve(report.blast_radii))
-    combos.extend(_detect_transitive_critical(report.blast_radii))
-
+    # Context-graph-based detectors run even without blast_radii (structural risk)
     if context_graph_data:
-        combos.extend(_detect_lateral_chain(report.blast_radii, context_graph_data))
+        combos.extend(_detect_cross_agent_poison(report.blast_radii, context_graph_data))
 
     # Deduplicate by (pattern, title)
     seen: set[tuple[str, str]] = set()
@@ -308,6 +313,143 @@ def _detect_lateral_chain(
                 ],
                 risk_score=min(br.risk_score * 1.4, 10.0) if br.risk_score else 9.0,
                 remediation=f"Patch {br.package.name}. Review lateral movement paths and isolate {server_names}.",
+            )
+        )
+    return results
+
+
+def _detect_cross_agent_poison(
+    blast_radii: list[BlastRadius],
+    context_graph_data: dict,
+) -> list[ToxicCombination]:
+    """Detect cross-agent injection: one agent can write to a shared resource read by another.
+
+    Attack pattern: Agent A has a write-capable tool on a shared MCP server.
+    Agent B has a read/retrieval tool on the same server. Agent A can poison
+    the shared context that Agent B will later consume.
+    """
+    shared_servers = context_graph_data.get("shared_servers", [])
+    if not shared_servers:
+        return []
+
+    results = []
+    for server_info in shared_servers:
+        server_name = server_info.get("name", "") if isinstance(server_info, dict) else str(server_info)
+        agents = server_info.get("agents", []) if isinstance(server_info, dict) else []
+        tools = server_info.get("tools", []) if isinstance(server_info, dict) else []
+
+        if len(agents) < 2:
+            continue
+
+        # Check for write + read tool pair on the same shared server
+        write_tools = [
+            t
+            for t in tools
+            if any(kw in str(t).lower() for kw in ("write", "insert", "store", "save", "create", "add", "index", "upsert", "embed"))
+        ]
+        read_tools = [
+            t
+            for t in tools
+            if any(kw in str(t).lower() for kw in ("read", "search", "query", "retrieve", "fetch", "get", "lookup", "similarity"))
+        ]
+
+        if not (write_tools and read_tools):
+            continue
+
+        agent_names = ", ".join(str(a) for a in agents[:4])
+        write_names = ", ".join(str(t) for t in write_tools[:2])
+        read_names = ", ".join(str(t) for t in read_tools[:2])
+
+        results.append(
+            ToxicCombination(
+                pattern=ToxicPattern.CROSS_AGENT_POISON,
+                severity="high",
+                title=f"Cross-Agent Poison: shared server '{server_name}' has write+read tool pair",
+                description=(
+                    f"Server '{server_name}' is shared by {len(agents)} agents ({agent_names}) and "
+                    f"exposes both write tools ({write_names}) and read/retrieval tools ({read_names}). "
+                    f"An agent or external attacker that can invoke write tools can poison the shared "
+                    f"context consumed by other agents via read tools."
+                ),
+                components=[
+                    {"type": "server", "id": server_name, "label": "shared"},
+                    *[{"type": "agent", "id": str(a), "label": "affected"} for a in agents[:4]],
+                    *[{"type": "tool", "id": str(t), "label": "write"} for t in write_tools[:2]],
+                    *[{"type": "tool", "id": str(t), "label": "read"} for t in read_tools[:2]],
+                ],
+                risk_score=8.0,
+                remediation=(
+                    f"Restrict write access to '{server_name}' to trusted agents only. "
+                    f"Add input validation and content scanning on write tools. "
+                    f"Consider separate servers per agent to eliminate the shared surface."
+                ),
+            )
+        )
+    return results
+
+
+def _detect_cache_poison(
+    blast_radii: list[BlastRadius],
+    context_graph_data: dict,
+) -> list[ToxicCombination]:
+    """Detect cache poisoning: CVE in a package + vector DB / RAG retrieval tool exposure.
+
+    When a vulnerable package backs an MCP server that exposes retrieval tools
+    (similarity search, RAG query), an attacker can exploit the CVE to inject
+    malicious content into the vector store, poisoning the LLM's retrieved context.
+    """
+    vector_servers = context_graph_data.get("vector_db_servers", [])
+    vector_server_names: set[str] = {(s.get("name", "") if isinstance(s, dict) else str(s)) for s in vector_servers}
+
+    # Also infer from tool names if vector_db_servers not populated
+    results = []
+    for br in blast_radii:
+        if br.vulnerability.severity.value not in ("critical", "high"):
+            continue
+
+        # Check if any exposed tool looks like a vector/RAG retrieval tool
+        retrieval_tools = [
+            t
+            for t in br.exposed_tools
+            if any(
+                kw in (t.name + " " + (t.description or "")).lower()
+                for kw in ("similarity", "semantic", "retriev", "embedding", "vector", "rag", "context", "knowledge")
+            )
+        ]
+        # Or check if the affected server is a known vector DB server
+        vector_affected = [s for s in br.affected_servers if s.name in vector_server_names]
+
+        if not retrieval_tools and not vector_affected:
+            continue
+
+        tool_names = ", ".join(t.name for t in retrieval_tools[:3])
+        server_names = ", ".join(s.name for s in vector_affected[:2])
+        target_label = tool_names or server_names
+
+        results.append(
+            ToxicCombination(
+                pattern=ToxicPattern.CACHE_POISON,
+                severity="critical",
+                title=f"Cache Poison: {br.vulnerability.id} + RAG/vector retrieval ({target_label})",
+                description=(
+                    f"{br.vulnerability.id} ({br.vulnerability.severity.value}) in {br.package.name}@{br.package.version} "
+                    f"backs a server with RAG/vector retrieval tools ({target_label}). "
+                    f"An attacker exploiting this CVE could inject malicious instructions into the "
+                    f"vector store, poisoning LLM context on every retrieval query."
+                ),
+                components=[
+                    {"type": "cve", "id": br.vulnerability.id, "label": br.vulnerability.severity.value},
+                    {"type": "package", "id": f"{br.package.name}@{br.package.version}", "label": "vector backend"},
+                    *[{"type": "tool", "id": t.name, "label": "retrieval"} for t in retrieval_tools[:3]],
+                    *[{"type": "server", "id": s.name, "label": "vector_db"} for s in vector_affected[:2]],
+                ],
+                risk_score=min(br.risk_score * 1.5, 10.0) if br.risk_score else 9.5,
+                remediation=(
+                    f"Patch {br.package.name} to {br.vulnerability.fixed_version or 'latest'}. "
+                    f"Add content scanning on vector store writes. "
+                    f"Enable authentication on vector DB endpoints. "
+                    f"Implement retrieval output filtering before passing to LLM."
+                ),
             )
         )
     return results

@@ -78,6 +78,68 @@ RESPONSE_INVISIBLE_CHARS: list[tuple[str, re.Pattern]] = [
 RESPONSE_BASE64_PATTERN = re.compile(r"(?:^|[^A-Za-z0-9+/])([A-Za-z0-9+/]{60,}={0,2})(?:$|[^A-Za-z0-9+/])")
 
 
+# ─── Prompt injection patterns in tool responses ──────────────────────────────
+
+# Patterns that indicate a tool response (e.g. from a vector DB retrieval or
+# RAG context fetch) is attempting to inject instructions into the LLM.
+# Used by ResponseInspector to detect cache poisoning and cross-agent injection.
+RESPONSE_INJECTION_PATTERNS: list[tuple[str, re.Pattern]] = [
+    # Role / persona overrides
+    (
+        "Role override",
+        re.compile(
+            r"\b(?:ignore|disregard|forget|override)\b.{0,40}\b(?:instructions?|system\s+prompt|previous|above|rules?|constraints?)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "System prompt injection",
+        re.compile(
+            r"<(?:system|assistant|user|im_start|im_end)[>\s]",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Jailbreak trigger",
+        re.compile(
+            r"\b(?:DAN|jailbreak|do\s+anything\s+now|developer\s+mode|god\s+mode|unrestricted\s+mode|sudo\s+mode)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    # Instruction injection
+    (
+        "Instruction injection",
+        re.compile(
+            r"\b(?:new\s+instruction|additional\s+instruction|important\s+instruction|secret\s+instruction|hidden\s+instruction)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Task hijack",
+        re.compile(
+            r"\b(?:instead(?:\s+of)?|actually|your\s+real\s+task|your\s+actual\s+(?:goal|purpose|job)|from\s+now\s+on)\b.{0,60}\b(?:you\s+(?:must|should|will|are\s+to)|please|task)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    # Exfiltration instructions embedded in content
+    (
+        "Exfil instruction",
+        re.compile(
+            r"\b(?:send|post|forward|transmit|upload|exfiltrate)\b.{0,60}\b(?:this\s+(?:conversation|context|data|prompt)|user\s+data|api\s+key|token|secret)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    # Prompt delimiter attacks
+    (
+        "Prompt delimiter attack",
+        re.compile(
+            r"(?:###\s*(?:SYSTEM|INSTRUCTION|CONTEXT)|---\s*(?:SYSTEM|NEW\s+PROMPT)|={3,}\s*(?:SYSTEM|INSTRUCTION))",
+            re.IGNORECASE,
+        ),
+    ),
+]
+
+
 # ─── Suspicious tool call sequences ──────────────────────────────────────────
 
 # (sequence_name, [tool_name_patterns], description)

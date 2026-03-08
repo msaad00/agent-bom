@@ -23,6 +23,7 @@ from agent_bom.runtime.patterns import (
     DANGEROUS_ARG_PATTERNS,
     RESPONSE_BASE64_PATTERN,
     RESPONSE_CLOAKING_PATTERNS,
+    RESPONSE_INJECTION_PATTERNS,
     RESPONSE_INVISIBLE_CHARS,
     RESPONSE_SVG_PATTERNS,
     SUSPICIOUS_SEQUENCES,
@@ -382,5 +383,105 @@ class ResponseInspector:
                     },
                 )
             )
+
+        # Prompt injection patterns (cache poisoning / cross-agent injection)
+        for pattern_name, pattern in RESPONSE_INJECTION_PATTERNS:
+            matches = pattern.findall(response_text)
+            if matches:
+                alerts.append(
+                    Alert(
+                        detector="response_inspector",
+                        severity=AlertSeverity.CRITICAL,
+                        message=f"Prompt injection detected: {pattern_name} in response from {tool_name}",
+                        details={
+                            "tool": tool_name,
+                            "pattern": pattern_name,
+                            "category": "prompt_injection",
+                            "match_count": len(matches),
+                            "preview": matches[0][:120] if matches else "",
+                        },
+                    )
+                )
+
+        return alerts
+
+
+# ─── Vector DB Injection Detector ────────────────────────────────────────────
+
+
+class VectorDBInjectionDetector:
+    """Detect prompt injection in vector DB / RAG retrieval responses.
+
+    Vector databases are a cache poisoning attack surface: an attacker who
+    can write to the vector store (or poison upstream documents) can inject
+    instructions that the LLM will execute when the agent retrieves context.
+
+    This detector identifies tool calls that look like vector DB retrievals
+    (similarity_search, query, retrieve, search, fetch_context, etc.) and
+    applies full prompt injection scanning to their responses.
+
+    See also: ToxicPattern.CACHE_POISON and ToxicPattern.CROSS_AGENT_POISON
+    in toxic_combos.py.
+    """
+
+    # Tool name patterns that indicate a vector DB / RAG retrieval
+    _VECTOR_TOOL_PATTERNS = re.compile(
+        r"(?:similarity[_\s]search|semantic[_\s]search|vector[_\s](?:search|query|lookup)|"
+        r"retriev(?:e|al)|fetch[_\s](?:context|docs?|chunks?)|rag[_\s](?:query|search)|"
+        r"search[_\s](?:docs?|knowledge|embeddings?)|query[_\s](?:index|store|db|database)|"
+        r"get[_\s]context|lookup[_\s](?:docs?|knowledge))",
+        re.IGNORECASE,
+    )
+
+    def __init__(self) -> None:
+        self._inspector = ResponseInspector()
+
+    def is_vector_tool(self, tool_name: str) -> bool:
+        """Return True if tool_name looks like a vector DB retrieval tool."""
+        return bool(self._VECTOR_TOOL_PATTERNS.search(tool_name))
+
+    def check(self, tool_name: str, response_text: str) -> list[Alert]:
+        """Check a tool response for prompt injection (cache poisoning).
+
+        Always runs injection pattern checks regardless of tool name.
+        If the tool looks like a vector DB retrieval, also runs the full
+        ResponseInspector suite and upgrades severity to CRITICAL.
+        """
+        alerts: list[Alert] = []
+
+        # Injection patterns — always check
+        for pattern_name, pattern in RESPONSE_INJECTION_PATTERNS:
+            matches = pattern.findall(response_text)
+            if matches:
+                is_vector = self.is_vector_tool(tool_name)
+                alerts.append(
+                    Alert(
+                        detector="vector_db_injection",
+                        severity=AlertSeverity.CRITICAL,
+                        message=(
+                            f"{'Cache poisoning' if is_vector else 'Content injection'} detected: "
+                            f"{pattern_name} in {'vector DB retrieval' if is_vector else 'tool response'} "
+                            f"from {tool_name}"
+                        ),
+                        details={
+                            "tool": tool_name,
+                            "pattern": pattern_name,
+                            "category": "cache_poison" if is_vector else "content_injection",
+                            "is_vector_tool": is_vector,
+                            "match_count": len(matches),
+                            "preview": matches[0][:120] if matches else "",
+                        },
+                    )
+                )
+
+        # For confirmed vector tools also run full cloaking/SVG/invisible checks
+        if self.is_vector_tool(tool_name):
+            for alert in self._inspector.check(tool_name, response_text):
+                # Re-tag detector and upgrade severity
+                alert.detector = "vector_db_injection"
+                if alert.severity == AlertSeverity.HIGH:
+                    alert.severity = AlertSeverity.CRITICAL
+                alert.details["category"] = "cache_poison_" + alert.details.get("category", "unknown")
+                alerts.append(alert)
 
         return alerts

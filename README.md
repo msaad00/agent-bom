@@ -214,7 +214,7 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible
 | Mode | Command | Best for |
 |------|---------|----------|
 | CLI | `agent-bom scan` | Local audit |
-| GitHub Action | `uses: msaad00/agent-bom@v0.63.0 | CI/CD + SARIF |
+| GitHub Action | `uses: msaad00/agent-bom@v0.63.1 | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated scans |
 | REST API | `agent-bom api` | Dashboards, SIEM |
 | MCP Server | `agent-bom mcp-server` (23 tools) | Inside any MCP client |
@@ -227,7 +227,7 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible
 <summary><b>GitHub Action</b></summary>
 
 ```yaml
-- uses: msaad00/agent-bom@v0.63.0
+- uses: msaad00/agent-bom@v0.63.1
   with:
     severity-threshold: high
     upload-sarif: true
@@ -304,7 +304,7 @@ Options:
 |----------|------|
 | PyPI | `pip install agent-bom` |
 | Docker | `docker run agentbom/agent-bom scan` |
-| GitHub Action | `uses: msaad00/agent-bom@v0.63.0 |
+| GitHub Action | `uses: msaad00/agent-bom@v0.63.1 |
 | Glama | [glama.ai/mcp/servers/@msaad00/agent-bom](https://glama.ai/mcp/servers/@msaad00/agent-bom) |
 | MCP Registry | [server.json](integrations/mcp-registry/server.json) |
 | ToolHive | [registry entry](integrations/toolhive/server.json) |

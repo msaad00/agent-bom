@@ -3024,7 +3024,7 @@ def test_openclaw_registry_skill_minimal_surface():
 
 
 def test_openclaw_skills_all_tools_covered():
-    """All 22 MCP tools should be covered in the consolidated skill."""
+    """All 23 MCP tools should be covered in the consolidated skill."""
     from pathlib import Path
 
     p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"
@@ -3052,6 +3052,7 @@ def test_openclaw_skills_all_tools_covered():
         "fleet_scan",
         "vector_db_scan",
         "aisvs_benchmark",
+        "gpu_infra_scan",
     ]:
         assert tool in content, f"Tool '{tool}' missing from SKILL.md"
 

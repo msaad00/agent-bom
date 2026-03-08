@@ -450,6 +450,7 @@ def main():
 @click.option("--snowflake-cis-benchmark", is_flag=True, help="Run CIS Snowflake Benchmark v1.0 checks (used with --snowflake)")
 @click.option("--azure-cis-benchmark", is_flag=True, help="Run CIS Azure Security Benchmark v3.0 checks (requires AZURE_SUBSCRIPTION_ID)")
 @click.option("--gcp-cis-benchmark", is_flag=True, help="Run CIS GCP Foundation Benchmark v3.0 checks (requires GOOGLE_CLOUD_PROJECT)")
+@click.option("--databricks-cis-benchmark", is_flag=True, help="Run Databricks Security Best Practices checks (used with --databricks)")
 @click.option(
     "--aisvs", "aisvs_flag", is_flag=True, help="Run AISVS v1.0 compliance checks (model safety, vector store auth, inference exposure)"
 )
@@ -646,6 +647,7 @@ def scan(
     snowflake_cis_benchmark: bool,
     azure_cis_benchmark: bool,
     gcp_cis_benchmark: bool,
+    databricks_cis_benchmark: bool,
     aisvs_flag: bool,
     vector_db_scan: bool,
     hf_flag: bool,
@@ -1655,6 +1657,56 @@ def scan(
         except _GCPCISError as exc:
             con.print(f"  [red]CIS GCP Benchmark error: {exc}[/red]")
 
+    # Step 1x-db: CIS Databricks Benchmark
+    databricks_cis_benchmark_report = None
+    if databricks_cis_benchmark:
+        from agent_bom.cloud import CloudDiscoveryError as _DBCISError
+
+        con.print("\n[bold blue]Running Databricks Security Best Practices checks...[/bold blue]\n")
+        try:
+            from agent_bom.cloud.databricks_cis_benchmark import run_benchmark as run_db_cis
+
+            _db_host = None
+            _db_token = None
+            import os
+
+            _db_host = os.environ.get("DATABRICKS_HOST")
+            _db_token = os.environ.get("DATABRICKS_TOKEN")
+            databricks_cis_benchmark_report = run_db_cis(host=_db_host, token=_db_token)
+            passed = databricks_cis_benchmark_report.passed
+            failed = databricks_cis_benchmark_report.failed
+            total = databricks_cis_benchmark_report.total
+            rate = databricks_cis_benchmark_report.pass_rate
+            con.print(f"  [green]✓[/green] {total} checks evaluated — {passed} passed, {failed} failed ({rate:.0f}% pass rate)")
+            if failed > 0:
+                from rich.table import Table
+
+                tbl = Table(title="Databricks Security Best Practices", show_lines=False, padding=(0, 1))
+                tbl.add_column("Check", style="cyan", width=6)
+                tbl.add_column("Title", min_width=30)
+                tbl.add_column("Status", width=6)
+                tbl.add_column("Severity", width=8)
+                tbl.add_column("ATT&CK", width=20)
+                tbl.add_column("Evidence", max_width=40)
+                _db_status = {"pass": "[green]PASS[/]", "fail": "[red]FAIL[/]", "error": "[yellow]ERR[/]"}
+                _db_sev = {"critical": "[red]critical[/]", "high": "[bright_red]high[/]", "medium": "[yellow]medium[/]"}
+                from agent_bom.mitre_attack import tag_cis_check as _tag_db
+
+                for c in databricks_cis_benchmark_report.checks:
+                    attack = ", ".join(_tag_db(c)) or "-"
+                    tbl.add_row(
+                        c.check_id,
+                        c.title,
+                        _db_status.get(c.status.value, c.status.value),
+                        _db_sev.get(c.severity, c.severity),
+                        attack,
+                        c.evidence,
+                    )
+                con.print()
+                con.print(tbl)
+        except _DBCISError as exc:
+            con.print(f"  [red]Databricks CIS Benchmark error: {exc}[/red]")
+
     # Step 1x-b: Vector DB scan
     vector_db_results = []
     if vector_db_scan:
@@ -2122,6 +2174,8 @@ def scan(
         report.azure_cis_benchmark_data = azure_cis_benchmark_report.to_dict()
     if gcp_cis_benchmark_report is not None:
         report.gcp_cis_benchmark_data = gcp_cis_benchmark_report.to_dict()
+    if databricks_cis_benchmark_report is not None:
+        report.databricks_cis_benchmark_data = databricks_cis_benchmark_report.to_dict()
     if aisvs_report is not None:
         report.aisvs_benchmark_data = aisvs_report.to_dict()
     if vector_db_results:

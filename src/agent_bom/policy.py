@@ -395,8 +395,8 @@ def _validate_policy(policy: dict) -> None:
     for i, rule in enumerate(policy["rules"]):
         if "id" not in rule:
             raise ValueError(f"Rule at index {i} missing 'id'")
-        if rule.get("action") not in ("fail", "warn", None):
-            raise ValueError(f"Rule '{rule['id']}' action must be 'fail' or 'warn'")
+        if rule.get("action") not in ("fail", "warn", "jira", None):
+            raise ValueError(f"Rule '{rule['id']}' action must be 'fail', 'warn', or 'jira'")
 
 
 def _rule_matches(rule: dict, br) -> bool:
@@ -551,19 +551,104 @@ def evaluate_policy(policy: dict, blast_radii: list) -> dict:
                         "package": f"{br.package.name}@{br.package.version}",
                         "ecosystem": br.package.ecosystem,
                         "affected_agents": [a.name for a in br.affected_agents],
+                        "affected_servers": [s.name for s in br.affected_servers],
                         "exposed_credentials": br.exposed_credentials,
                         "is_kev": br.vulnerability.is_kev,
                         "ai_risk_context": br.ai_risk_context,
+                        # Fields used by Jira ticket creation
+                        "fixed_version": br.vulnerability.fixed_version,
+                        "owasp_tags": getattr(br, "owasp_tags", []),
+                        "owasp_mcp_tags": getattr(br, "owasp_mcp_tags", []),
                     }
                 )
 
     failures = [v for v in violations if v["action"] == "fail"]
     warnings = [v for v in violations if v["action"] == "warn"]
+    jira_violations = [v for v in violations if v["action"] == "jira"]
 
     return {
         "policy_name": policy.get("name", "unnamed"),
         "violations": violations,
         "failures": failures,
         "warnings": warnings,
+        "jira_violations": jira_violations,
         "passed": len(failures) == 0,
     }
+
+
+def fire_policy_jira_actions(
+    policy_result: dict,
+    jira_url: str,
+    email: str,
+    api_token: str,
+    project_key: str,
+    issue_type: str = "Bug",
+) -> int:
+    """Create Jira tickets for policy violations with ``action: "jira"``.
+
+    Reads ``jira_violations`` from the result of :func:`evaluate_policy` and
+    opens one Jira ticket per violation.  Tickets are deduplicated within the
+    same scan run by skipping violations whose ``vulnerability_id`` + ``package``
+    pair has already been ticketed.
+
+    Args:
+        policy_result: Return value of :func:`evaluate_policy`.
+        jira_url: Jira instance URL (e.g. ``https://company.atlassian.net``).
+        email: Jira user email for basic auth.
+        api_token: Jira API token.
+        project_key: Jira project key (e.g. ``SEC``).
+        issue_type: Jira issue type (default: ``Bug``).
+
+    Returns:
+        Number of tickets successfully created.
+    """
+    import asyncio
+
+    from agent_bom.integrations.jira import create_jira_ticket
+
+    violations = policy_result.get("jira_violations", [])
+    if not violations:
+        return 0
+
+    seen: set[str] = set()
+    created = 0
+
+    async def _run() -> int:
+        nonlocal created
+        for violation in violations:
+            dedup_key = f"{violation.get('vulnerability_id', '')}::{violation.get('package', '')}"
+            if dedup_key in seen:
+                continue
+            seen.add(dedup_key)
+
+            ticket = await create_jira_ticket(
+                jira_url=jira_url,
+                email=email,
+                api_token=api_token,
+                project_key=project_key,
+                finding=violation,
+                issue_type=issue_type,
+            )
+            if ticket:
+                created += 1
+        return created
+
+    try:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            import concurrent.futures
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(asyncio.run, _run())
+                return future.result()
+        else:
+            return asyncio.run(_run())
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("Policy Jira action failed: %s", exc)
+        return 0

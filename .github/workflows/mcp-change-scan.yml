@@ -31,7 +31,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install agent-bom
-        run: pip install agent-bom
+        run: pip install agent-bom==0.62.0  # pinned — bump on each release
 
       - name: Scan changed MCP configs
         id: scan

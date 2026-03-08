@@ -584,6 +584,14 @@ def main():
     is_flag=True,
     help="Scan for running vector databases (Qdrant, Weaviate, Chroma, Milvus) and assess security",
 )
+@click.option(
+    "--gpu-scan",
+    "gpu_scan_flag",
+    is_flag=True,
+    help="Discover GPU-enabled containers and K8s nodes (NVIDIA base images, CUDA versions, DCGM endpoints). Requires docker/kubectl on PATH.",
+)
+@click.option("--gpu-k8s-context", "gpu_k8s_context", default=None, metavar="CTX", help="kubectl context for --gpu-scan K8s node discovery")
+@click.option("--no-dcgm-probe", "no_dcgm_probe", is_flag=True, help="Skip DCGM exporter endpoint probing during --gpu-scan")
 @click.option("--huggingface", "hf_flag", is_flag=True, help="Discover models, Spaces, and endpoints from Hugging Face Hub")
 @click.option("--hf-token", default=None, envvar="HF_TOKEN", metavar="TOKEN", help="Hugging Face API token")
 @click.option("--hf-username", default=None, metavar="USER", help="Hugging Face username to scope discovery")
@@ -811,6 +819,9 @@ def scan(
     databricks_security: bool,
     aisvs_flag: bool,
     vector_db_scan: bool,
+    gpu_scan_flag: bool,
+    gpu_k8s_context: Optional[str],
+    no_dcgm_probe: bool,
     hf_flag: bool,
     hf_token: Optional[str],
     hf_username: Optional[str],
@@ -2006,6 +2017,55 @@ def scan(
         except Exception as exc:
             con.print(f"  [red]Vector DB scan error: {exc}[/red]")
 
+    # Step 1x-b2: GPU infra scan
+    gpu_infra_report = None
+    if gpu_scan_flag:
+        import asyncio as _asyncio
+
+        from rich.table import Table as _RTable
+
+        con.print("\n[bold blue]Scanning GPU/AI compute infrastructure...[/bold blue]\n")
+        try:
+            from agent_bom.cloud.gpu_infra import gpu_infra_to_agents, scan_gpu_infra
+
+            gpu_infra_report = _asyncio.get_event_loop().run_until_complete(
+                scan_gpu_infra(k8s_context=gpu_k8s_context, probe_dcgm=not no_dcgm_probe)
+            )
+            for w in gpu_infra_report.warnings:
+                con.print(f"  [yellow]⚠[/yellow] {w}")
+            gpu_agents = gpu_infra_to_agents(gpu_infra_report)
+            if gpu_agents:
+                agents.extend(gpu_agents)
+                con.print(
+                    f"  [green]✓[/green] {gpu_infra_report.total_gpu_containers} GPU container(s), "
+                    f"{len(gpu_infra_report.gpu_nodes)} K8s GPU node(s)"
+                )
+                if gpu_infra_report.unique_cuda_versions:
+                    con.print(f"  CUDA versions: {', '.join(gpu_infra_report.unique_cuda_versions)}")
+                if gpu_infra_report.unauthenticated_dcgm_count:
+                    con.print(
+                        f"  [red]⚠ {gpu_infra_report.unauthenticated_dcgm_count} unauthenticated DCGM exporter(s) — metrics leak[/red]"
+                    )
+                if gpu_infra_report.dcgm_endpoints:
+                    tbl = _RTable(title="DCGM Endpoints", show_lines=False)
+                    tbl.add_column("Host", width=20)
+                    tbl.add_column("Port", width=8)
+                    tbl.add_column("Auth", width=8)
+                    tbl.add_column("GPUs", width=6)
+                    for ep in gpu_infra_report.dcgm_endpoints:
+                        tbl.add_row(
+                            ep.host,
+                            str(ep.port),
+                            "[green]yes[/]" if ep.authenticated else "[red]NO[/]",
+                            str(ep.gpu_count) if ep.gpu_count is not None else "?",
+                        )
+                    con.print()
+                    con.print(tbl)
+            else:
+                con.print("  [dim]No GPU containers or K8s GPU nodes found[/dim]")
+        except Exception as exc:
+            con.print(f"  [red]GPU scan error: {exc}[/red]")
+
     # Step 1x-c: AISVS compliance benchmark
     aisvs_report = None
     if aisvs_flag:
@@ -2457,6 +2517,8 @@ def scan(
         report.aisvs_benchmark_data = aisvs_report.to_dict()
     if vector_db_results:
         report.vector_db_scan_data = [r.to_dict() for r in vector_db_results]
+    if gpu_infra_report is not None:
+        report.gpu_infra_data = gpu_infra_report.risk_summary
 
     # ── Context graph: lateral movement analysis ────────────────────
     if context_graph_flag and report.blast_radii:
@@ -4388,7 +4450,7 @@ def mcp_server_cmd(transport: str, port: int, host: str, log_level: str, log_jso
     Requires:  pip install 'agent-bom[mcp-server]'
 
     \b
-    Exposes 22 security tools via MCP protocol:
+    Exposes 23 security tools via MCP protocol:
       scan              Full scan — CVEs, config security, blast radius, compliance
       check             Check a specific package for CVEs before installing
       blast_radius      Look up blast radius for a specific CVE
@@ -4409,6 +4471,9 @@ def mcp_server_cmd(transport: str, port: int, host: str, log_level: str, log_jso
       cis_benchmark     Run CIS benchmark checks (AWS/Snowflake)
       fleet_scan        Batch registry lookup for fleet inventories
       runtime_correlate Cross-reference runtime audit logs with CVE findings
+      vector_db_scan    Discover vector databases and assess auth exposure
+      aisvs_benchmark   OWASP AISVS v1.0 compliance checks
+      gpu_infra_scan    GPU container and K8s node inventory + DCGM probe
 
     \b
     Usage:

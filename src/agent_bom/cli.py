@@ -463,6 +463,20 @@ def main():
     help="Scan running Docker containers for MCP servers (requires docker CLI on PATH)",
 )
 @click.option(
+    "--k8s-mcp",
+    "k8s_mcp",
+    is_flag=True,
+    help="Scan Kubernetes cluster for MCP pods, services, and CRDs (requires kubectl on PATH)",
+)
+@click.option("--k8s-namespace", default="default", show_default=True, help="Kubernetes namespace for --k8s-mcp")
+@click.option(
+    "--k8s-all-namespaces",
+    "k8s_all_namespaces",
+    is_flag=True,
+    help="Scan all Kubernetes namespaces for --k8s-mcp",
+)
+@click.option("--k8s-context", "k8s_mcp_context", default=None, help="kubectl context for --k8s-mcp (uses current context if omitted)")
+@click.option(
     "--health-check",
     "health_check",
     is_flag=True,
@@ -761,6 +775,10 @@ def scan(
     dynamic_max_depth: int,
     include_processes: bool,
     include_containers: bool,
+    k8s_mcp: bool,
+    k8s_namespace: str,
+    k8s_all_namespaces: bool,
+    k8s_mcp_context: Optional[str],
     health_check: bool,
     hc_timeout: float,
     ai_enrich: bool,
@@ -1113,6 +1131,10 @@ def scan(
             dynamic_max_depth=dynamic_max_depth,
             include_processes=include_processes,
             include_containers=include_containers,
+            include_k8s_mcp=k8s_mcp,
+            k8s_namespace=k8s_namespace,
+            k8s_all_namespaces=k8s_all_namespaces,
+            k8s_context=k8s_mcp_context,
         )
     elif not skill_only:
         agents = discover_all(
@@ -1121,6 +1143,10 @@ def scan(
             dynamic_max_depth=dynamic_max_depth,
             include_processes=include_processes,
             include_containers=include_containers,
+            include_k8s_mcp=k8s_mcp,
+            k8s_namespace=k8s_namespace,
+            k8s_all_namespaces=k8s_all_namespaces,
+            k8s_context=k8s_mcp_context,
         )
 
     any_cloud = (

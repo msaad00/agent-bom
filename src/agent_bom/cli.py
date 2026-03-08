@@ -453,6 +453,16 @@ def main():
     help="Max directory depth for dynamic discovery filesystem scanning",
 )
 @click.option(
+    "--include-processes",
+    is_flag=True,
+    help="Scan running host processes for MCP servers (requires psutil: pip install psutil)",
+)
+@click.option(
+    "--include-containers",
+    is_flag=True,
+    help="Scan running Docker containers for MCP servers (requires docker CLI on PATH)",
+)
+@click.option(
     "--ai-enrich",
     is_flag=True,
     help="Enrich findings with LLM-generated risk narratives, executive summary, and threat chains. Auto-detects Ollama (free, local) or uses litellm (pip install 'agent-bom[ai-enrich]')",
@@ -736,6 +746,8 @@ def scan(
     graph_backend: str,
     dynamic_discovery: bool,
     dynamic_max_depth: int,
+    include_processes: bool,
+    include_containers: bool,
     ai_enrich: bool,
     ai_model: str,
     aws: bool,
@@ -1080,9 +1092,21 @@ def scan(
         con.print(f"  [green]✓[/green] Loaded {len(agents)} agent(s) from inventory")
     elif not skill_only and config_dir:
         con.print(f"\n[bold blue]Scanning config directory: {config_dir}...[/bold blue]\n")
-        agents = discover_all(project_dir=config_dir, dynamic=dynamic_discovery, dynamic_max_depth=dynamic_max_depth)
+        agents = discover_all(
+            project_dir=config_dir,
+            dynamic=dynamic_discovery,
+            dynamic_max_depth=dynamic_max_depth,
+            include_processes=include_processes,
+            include_containers=include_containers,
+        )
     elif not skill_only:
-        agents = discover_all(project_dir=project, dynamic=dynamic_discovery, dynamic_max_depth=dynamic_max_depth)
+        agents = discover_all(
+            project_dir=project,
+            dynamic=dynamic_discovery,
+            dynamic_max_depth=dynamic_max_depth,
+            include_processes=include_processes,
+            include_containers=include_containers,
+        )
 
     any_cloud = (
         aws
@@ -2890,6 +2914,26 @@ def scan(
             policy_result = evaluate_policy(policy_data, blast_radii)
             print_policy_results(policy_result)
             policy_passed = policy_result["passed"]
+
+            # Fire Jira actions for rules with action: "jira"
+            jira_viol = policy_result.get("jira_violations", [])
+            if jira_viol and jira_url and jira_token and jira_project:
+                from agent_bom.policy import fire_policy_jira_actions
+
+                n = fire_policy_jira_actions(
+                    policy_result=policy_result,
+                    jira_url=jira_url,
+                    email=jira_user or "",
+                    api_token=jira_token,
+                    project_key=jira_project,
+                )
+                if n:
+                    con.print(f"  [green]✓[/green] Policy: created {n} Jira ticket(s) for policy violations")
+            elif jira_viol and not (jira_url and jira_token and jira_project):
+                con.print(
+                    f"  [yellow]⚠[/yellow]  Policy: {len(jira_viol)} rule(s) have action='jira' but "
+                    "--jira-url/--jira-token/--jira-project are not set"
+                )
         except (FileNotFoundError, ValueError) as e:
             con.print(f"\n  [red]Policy error: {e}[/red]")
             sys.exit(1)

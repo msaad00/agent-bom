@@ -59,7 +59,9 @@
             "analytics_query",
             "cis_benchmark",
             "fleet_scan",
-            "runtime_correlate"
+            "runtime_correlate",
+            "vector_db_scan",
+            "aisvs_benchmark"
           ]
         }
       }

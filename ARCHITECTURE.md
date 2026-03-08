@@ -219,9 +219,9 @@ cli.py / mcp_server.py / api/server.py
 
 | Metric | Count |
 |---|---|
-| Python modules | 158 |
-| Test files | 165 |
-| Test functions | 3,760 (3,841 collected by pytest) |
+| Python modules | 160 |
+| Test files | 168 |
+| Test functions | ~3,900 (collected by pytest) |
 | MCP tools | 22 |
 | Compliance frameworks | 10 |
 | Runtime detectors | 7 |

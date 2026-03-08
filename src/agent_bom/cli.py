@@ -2028,9 +2028,8 @@ def scan(
         try:
             from agent_bom.cloud.gpu_infra import gpu_infra_to_agents, scan_gpu_infra
 
-            gpu_infra_report = _asyncio.get_event_loop().run_until_complete(
-                scan_gpu_infra(k8s_context=gpu_k8s_context, probe_dcgm=not no_dcgm_probe)
-            )
+            with con.status("[bold]Probing Docker, K8s, and DCGM endpoints...[/bold]", spinner="dots"):
+                gpu_infra_report = _asyncio.run(scan_gpu_infra(k8s_context=gpu_k8s_context, probe_dcgm=not no_dcgm_probe))
             for w in gpu_infra_report.warnings:
                 con.print(f"  [yellow]⚠[/yellow] {w}")
             gpu_agents = gpu_infra_to_agents(gpu_infra_report)

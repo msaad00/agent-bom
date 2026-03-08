@@ -62,6 +62,7 @@ def build_graph_elements(
                 "fix_version": br.vulnerability.fixed_version or "",
                 "owasp_tags": list(br.owasp_tags),
                 "atlas_tags": list(br.atlas_tags),
+                "attack_tags": list(getattr(br, "attack_tags", [])),
                 "nist_ai_rmf_tags": list(br.nist_ai_rmf_tags),
                 "owasp_mcp_tags": list(br.owasp_mcp_tags),
                 "owasp_agentic_tags": list(br.owasp_agentic_tags),

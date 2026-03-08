@@ -366,6 +366,10 @@ def print_blast_radius(report: AIBOMReport) -> None:
             tags = sorted(br.atlas_tags)[:3]
             extra = f" +{len(br.atlas_tags) - 3}" if len(br.atlas_tags) > 3 else ""
             threat_lines.append(f"[cyan]{' '.join(tags)}{extra}[/cyan]")
+        if getattr(br, "attack_tags", None):
+            tags = sorted(br.attack_tags)[:3]
+            extra = f" +{len(br.attack_tags) - 3}" if len(br.attack_tags) > 3 else ""
+            threat_lines.append(f"[red]{' '.join(tags)}{extra}[/red]")
         if br.nist_ai_rmf_tags:
             tags = sorted(br.nist_ai_rmf_tags)[:3]
             extra = f" +{len(br.nist_ai_rmf_tags) - 3}" if len(br.nist_ai_rmf_tags) > 3 else ""
@@ -513,10 +517,11 @@ def print_attack_flow_tree(report: AIBOMReport) -> None:
 
 
 def print_threat_frameworks(report: AIBOMReport) -> None:
-    """Print aggregated threat framework coverage — OWASP LLM Top 10 + MITRE ATLAS + NIST AI RMF."""
+    """Print aggregated threat framework coverage — OWASP LLM Top 10 + MITRE ATT&CK + MITRE ATLAS + NIST AI RMF."""
     from collections import Counter
 
     from agent_bom.atlas import ATLAS_TECHNIQUES
+    from agent_bom.mitre_attack import ATTACK_TECHNIQUES
     from agent_bom.nist_ai_rmf import NIST_AI_RMF
     from agent_bom.owasp import OWASP_LLM_TOP10
 
@@ -526,6 +531,7 @@ def print_threat_frameworks(report: AIBOMReport) -> None:
     # Aggregate tag counts
     owasp_counts: Counter[str] = Counter()
     atlas_counts: Counter[str] = Counter()
+    attack_counts: Counter[str] = Counter()
     nist_counts: Counter[str] = Counter()
     owasp_mcp_counts: Counter[str] = Counter()
     owasp_agentic_counts: Counter[str] = Counter()
@@ -539,6 +545,8 @@ def print_threat_frameworks(report: AIBOMReport) -> None:
             owasp_counts[tag] += 1
         for tag in br.atlas_tags:
             atlas_counts[tag] += 1
+        for tag in getattr(br, "attack_tags", []):
+            attack_counts[tag] += 1
         for tag in br.nist_ai_rmf_tags:
             nist_counts[tag] += 1
         for tag in br.owasp_mcp_tags:
@@ -559,6 +567,7 @@ def print_threat_frameworks(report: AIBOMReport) -> None:
     if (
         not owasp_counts
         and not atlas_counts
+        and not attack_counts
         and not nist_counts
         and not owasp_mcp_counts
         and not owasp_agentic_counts
@@ -594,9 +603,26 @@ def print_threat_frameworks(report: AIBOMReport) -> None:
 
         console.print(owasp_table)
 
+    # MITRE ATT&CK Enterprise table (CVE blast radius mappings)
+    if attack_counts:
+        attack_table = Table(title="MITRE ATT&CK Enterprise", title_style="bold red", border_style="dim")
+        attack_table.add_column("Technique", width=12, style="bold red")
+        attack_table.add_column("Name", width=44)
+        attack_table.add_column("Findings", width=9, justify="right")
+        attack_table.add_column("", width=20)
+
+        for code in sorted(attack_counts.keys()):
+            count = attack_counts[code]
+            name = ATTACK_TECHNIQUES.get(code, "Unknown")
+            bar_len = min(count, 16)
+            bar = "[red]" + "█" * bar_len + "[/red]"
+            attack_table.add_row(code, name, f"[bold]{count}[/bold]", bar)
+
+        console.print(attack_table)
+
     # ATLAS table
     if atlas_counts:
-        atlas_table = Table(title="MITRE ATLAS", title_style="bold cyan", border_style="dim")
+        atlas_table = Table(title="MITRE ATLAS (AI/ML)", title_style="bold cyan", border_style="dim")
         atlas_table.add_column("Technique", width=12, style="bold cyan")
         atlas_table.add_column("Name", width=38)
         atlas_table.add_column("Findings", width=9, justify="right")
@@ -991,6 +1017,7 @@ def print_export_hint(report: AIBOMReport) -> None:
     from collections import Counter
 
     from agent_bom.atlas import ATLAS_TECHNIQUES
+    from agent_bom.mitre_attack import ATTACK_TECHNIQUES
     from agent_bom.nist_ai_rmf import NIST_AI_RMF
     from agent_bom.owasp import OWASP_LLM_TOP10
 
@@ -999,6 +1026,7 @@ def print_export_hint(report: AIBOMReport) -> None:
     # ── Threat Framework Coverage Badge ──
     owasp_hit: set[str] = set()
     atlas_hit: set[str] = set()
+    attack_hit: set[str] = set()
     nist_hit: set[str] = set()
     owasp_mcp_hit: set[str] = set()
     owasp_agentic_hit: set[str] = set()
@@ -1010,6 +1038,7 @@ def print_export_hint(report: AIBOMReport) -> None:
     for br in report.blast_radii:
         owasp_hit.update(br.owasp_tags)
         atlas_hit.update(br.atlas_tags)
+        attack_hit.update(getattr(br, "attack_tags", []))
         nist_hit.update(br.nist_ai_rmf_tags)
         owasp_mcp_hit.update(br.owasp_mcp_tags)
         owasp_agentic_hit.update(br.owasp_agentic_tags)
@@ -1029,6 +1058,7 @@ def print_export_hint(report: AIBOMReport) -> None:
 
     owasp_total = len(OWASP_LLM_TOP10)
     atlas_total = len(ATLAS_TECHNIQUES)
+    attack_total = len(ATTACK_TECHNIQUES)
     nist_total = len(NIST_AI_RMF)
     owasp_mcp_total = len(OWASP_MCP_TOP10)
     owasp_agentic_total = len(_OWASP_AGENTIC)
@@ -1048,6 +1078,11 @@ def print_export_hint(report: AIBOMReport) -> None:
         lines.append(
             f"  [bold purple]OWASP LLM Top 10[/bold purple]  {owasp_bar}  [purple]{len(owasp_hit)}/{owasp_total}[/purple] ({owasp_pct}%)"
         )
+
+        # ATT&CK Enterprise bar
+        attack_pct = int(len(attack_hit) / attack_total * 100) if attack_total else 0
+        attack_bar = _coverage_bar(len(attack_hit), attack_total, "red")
+        lines.append(f"  [bold red]MITRE ATT&CK     [/bold red]  {attack_bar}  [red]{len(attack_hit)}/{attack_total}[/red] ({attack_pct}%)")
 
         # ATLAS bar
         atlas_pct = int(len(atlas_hit) / atlas_total * 100) if atlas_total else 0
@@ -1493,6 +1528,7 @@ def to_json(report: AIBOMReport) -> dict:
                 "ai_summary": br.ai_summary,
                 "owasp_tags": br.owasp_tags,
                 "atlas_tags": br.atlas_tags,
+                "attack_tags": getattr(br, "attack_tags", []),
                 "nist_ai_rmf_tags": br.nist_ai_rmf_tags,
                 "owasp_mcp_tags": br.owasp_mcp_tags,
                 "owasp_agentic_tags": br.owasp_agentic_tags,
@@ -1830,6 +1866,7 @@ def to_sarif(report: AIBOMReport) -> dict:
             result["properties"] = {
                 "owasp_tags": br.owasp_tags,
                 "atlas_tags": br.atlas_tags,
+                "attack_tags": getattr(br, "attack_tags", []),
                 "nist_ai_rmf_tags": br.nist_ai_rmf_tags,
                 "owasp_mcp_tags": br.owasp_mcp_tags,
                 "owasp_agentic_tags": br.owasp_agentic_tags,

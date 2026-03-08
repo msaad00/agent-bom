@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import time
 from typing import Optional
 
@@ -38,7 +39,7 @@ from agent_bom.soc2 import tag_blast_radius as tag_soc2
 from agent_bom.vuln_compliance import tag_vulnerability as _tag_vuln
 
 console = Console(stderr=True)
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 OSV_API_URL = "https://api.osv.dev/v1"
 OSV_BATCH_URL = f"{OSV_API_URL}/querybatch"
@@ -64,8 +65,6 @@ def _get_api_semaphore() -> asyncio.Semaphore:
     """
     return asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
-
-_logger = logging.getLogger(__name__)
 
 # ── Scan cache (optional, lazy-initialised) ────────────────────────────────
 
@@ -157,8 +156,6 @@ def _parse_cvss4_vector(vector: str) -> Optional[float]:
         exploit = av * ac * at * pr * ui
         raw = min(10.0, 1.1 * (6.42 * impact + 8.22 * exploit * 0.6))
 
-        import math
-
         return math.ceil(raw * 10) / 10.0
     except Exception:
         return None
@@ -210,8 +207,6 @@ def parse_cvss_vector(vector: str) -> Optional[float]:
             raw = min(isc + exploitability, 10.0)
 
         # Roundup to one decimal (CVSS spec: ceiling to 1 decimal)
-        import math
-
         return math.ceil(raw * 10) / 10.0
 
     except Exception:
@@ -531,7 +526,7 @@ async def scan_packages(packages: list[Package]) -> int:
                 total_vulns -= suppressed
                 console.print(f"  [yellow]⚠[/yellow] Suppressed {suppressed} finding(s) via .agent-bom-ignore")
     except Exception as exc:
-        logger.debug("Ignore file processing skipped: %s", exc)
+        _logger.debug("Ignore file processing skipped: %s", exc)
 
     return total_vulns
 

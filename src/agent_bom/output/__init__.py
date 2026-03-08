@@ -1560,6 +1560,12 @@ def to_json(report: AIBOMReport) -> dict:
     if report.snowflake_cis_benchmark_data:
         result["snowflake_cis_benchmark"] = report.snowflake_cis_benchmark_data
 
+    if report.azure_cis_benchmark_data:
+        result["azure_cis_benchmark"] = report.azure_cis_benchmark_data
+
+    if report.gcp_cis_benchmark_data:
+        result["gcp_cis_benchmark"] = report.gcp_cis_benchmark_data
+
     if report.databricks_cis_benchmark_data:
         result["databricks_cis_benchmark"] = report.databricks_cis_benchmark_data
 

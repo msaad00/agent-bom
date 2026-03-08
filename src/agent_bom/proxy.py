@@ -809,8 +809,11 @@ async def run_proxy(
                     cred_alerts = cred_detector.check(tool_for_resp or "unknown", result_text)
                     _handle_alerts(cred_alerts, log_file)
 
-                # Runtime detector: response content inspection (cloaking, SVG, invisible chars)
-                # Also runs VectorDBInjectionDetector for vector tool responses (cache poisoning)
+                # Runtime detector: response content inspection (cloaking, SVG, invisible chars,
+                # prompt injection). For confirmed vector DB / RAG retrieval tools, also run
+                # VectorDBInjectionDetector which upgrades injection alerts to CRITICAL and tags
+                # them cache_poison_*. Non-vector tools only run ResponseInspector to avoid
+                # duplicate injection alerts.
                 if "result" in msg:
                     ri_text = json.dumps(msg.get("result", ""))
                     ri_id = msg.get("id")
@@ -819,9 +822,10 @@ async def run_proxy(
                         ri_tool = pending_calls[ri_id][0]
                     ri_alerts = response_inspector.check(ri_tool or "unknown", ri_text)
                     _handle_alerts(ri_alerts, log_file)
-                    # Vector DB / RAG retrieval: specialized cache-poison detection with CRITICAL severity
-                    vec_alerts = vector_detector.check(ri_tool or "unknown", ri_text)
-                    _handle_alerts(vec_alerts, log_file)
+                    # Vector DB / RAG tools get specialized cache-poison detection on top
+                    if vector_detector.is_vector_tool(ri_tool or ""):
+                        vec_alerts = vector_detector.check(ri_tool or "unknown", ri_text)
+                        _handle_alerts(vec_alerts, log_file)
 
                 # Inline response scanning (PII, secrets, payload vuln)
                 if scan_config.enabled and "result" in msg:

@@ -6,7 +6,7 @@ description: >-
   fleet risk scoring, assess skill file trust, and run SAST code scans. Use when
   the user mentions MCP server trust, registry lookup, marketplace check, or
   skill trust assessment.
-version: 0.60.1
+version: 0.60.2
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. Optional: Semgrep for SAST

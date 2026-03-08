@@ -138,8 +138,8 @@ def test_validate_policy_missing_rule_id():
 
 
 def test_validate_policy_invalid_action():
-    """Action that is neither 'fail' nor 'warn' raises ValueError."""
-    with pytest.raises(ValueError, match="action must be 'fail' or 'warn'"):
+    """Action that is not a recognised value raises ValueError."""
+    with pytest.raises(ValueError, match="action must be"):
         _validate_policy({"rules": [{"id": "bad", "action": "ignore"}]})
 
 

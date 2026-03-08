@@ -15,8 +15,8 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@5a095e7a2014a4212f075830d4f7277575a9d098 # v7.3.1
         with:
           python-version: "3.11"
 
@@ -30,16 +30,11 @@ jobs:
           cd ui && npm ci && npm run build
           cp -r out ../src/agent_bom/ui_dist
 
-      - name: Install build tools
-        run: pip install build==1.4.0  # pinned — update periodically
-
       - name: Build package
-        run: python -m build
+        run: uv run --with build==1.4.0 python -m build
 
       - name: Verify package
-        run: |
-          pip install twine==6.2.0  # pinned — update periodically
-          twine check dist/*
+        run: uvx twine==6.2.0 check dist/*
 
       - name: Upload dist artifacts
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
@@ -110,18 +105,16 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@5a095e7a2014a4212f075830d4f7277575a9d098 # v7.3.1
         with:
           python-version: "3.11"
 
-      - name: Install package and cyclonedx-bom
-        run: |
-          pip install -e ".[dev]"
-          pip install cyclonedx-bom==7.2.2  # pinned — update periodically
+      - name: Install dependencies
+        run: uv sync --extra dev
 
       - name: Generate CycloneDX SBOM
-        run: cyclonedx-py environment -o agent-bom-sbom.cdx.json
+        run: uv run --with cyclonedx-bom==7.2.2 cyclonedx-py environment -o agent-bom-sbom.cdx.json
 
       - name: Upload SBOM artifact
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0

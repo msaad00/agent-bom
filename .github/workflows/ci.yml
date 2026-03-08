@@ -17,21 +17,19 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@5a095e7a2014a4212f075830d4f7277575a9d098 # v7.3.1
         with:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+        run: uv sync --extra dev
 
       - name: Bandit (Static Security Analysis)
-        run: bandit -r src/ --severity-level medium
+        run: uv run bandit -r src/ --severity-level medium
 
       - name: pip-audit (Dependency Vulnerabilities)
-        run: pip-audit  # all vulns must be fixed; no ignores
+        run: uv run pip-audit  # all vulns must be fixed; no ignores
 
       - name: OSV Scanner (declared dep ranges)
         run: |
@@ -57,21 +55,19 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@5a095e7a2014a4212f075830d4f7277575a9d098 # v7.3.1
         with:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+        run: uv sync --extra dev
 
       - name: Ruff
-        run: ruff check src/
+        run: uv run ruff check src/
 
       - name: MyPy
-        run: mypy src/ --ignore-missing-imports || true
+        run: uv run mypy src/ --ignore-missing-imports || true
 
   # 3. Tests
   test:
@@ -84,18 +80,16 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@5a095e7a2014a4212f075830d4f7277575a9d098 # v7.3.1
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev,api,mcp-server]"
+        run: uv sync --extra dev --extra api --extra mcp-server
 
       - name: Run tests with coverage
-        run: pytest tests/ -v --tb=short --cov=agent_bom --cov-report=term-missing --cov-fail-under=70 -m "not network"
+        run: uv run pytest tests/ -v --tb=short --cov=agent_bom --cov-report=term-missing --cov-fail-under=70 -m "not network"
 
   # 3b. PR Base Branch Guard — prevent stacked PRs targeting feature branches
   base-branch-check:
@@ -243,17 +237,15 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@5a095e7a2014a4212f075830d4f7277575a9d098 # v7.3.1
         with:
           python-version: '3.11'
 
       - name: Build and verify
         run: |
-          python -m pip install --upgrade pip
-          pip install build==1.4.0 twine==6.2.0  # pinned — update periodically
-          python -m build
-          twine check dist/*
+          uv run --with build==1.4.0 python -m build
+          uvx twine==6.2.0 check dist/*
 
       - name: Upload package
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
@@ -293,19 +285,17 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@5a095e7a2014a4212f075830d4f7277575a9d098 # v7.3.1
         with:
           python-version: '3.11'
 
       - name: Install agent-bom from source
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e .
+        run: uv sync
 
       - name: Run agent-bom scan (ingest test SBOM)
         run: |
-          agent-bom scan --sbom tests/fixtures/test-sbom.cdx.json -f sarif -o results.sarif || true
+          uv run agent-bom scan --sbom tests/fixtures/test-sbom.cdx.json -f sarif -o results.sarif || true
           if [ ! -f results.sarif ]; then
             echo '{"$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json","version":"2.1.0","runs":[{"tool":{"driver":{"name":"agent-bom"}},"results":[]}]}' > results.sarif
           fi

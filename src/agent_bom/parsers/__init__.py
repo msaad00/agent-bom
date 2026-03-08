@@ -410,6 +410,98 @@ def parse_conda_environment(directory: Path) -> list[Package]:
     return packages
 
 
+def parse_yarn_lock(directory: Path) -> list[Package]:
+    """Parse packages from yarn.lock (Classic v1 and Berry v2/v3 formats).
+
+    yarn.lock v1 (Classic) uses a block format::
+
+        "name@version":
+          version "resolved_version"
+
+    yarn.lock v2+ (Berry) uses a YAML-like format with ``__metadata``
+    and entries like::
+
+        "name@npm:version":
+          version: "resolved_version"
+
+    We handle both by scanning for version lines after each package header.
+    """
+    lock_file = directory / "yarn.lock"
+    if not lock_file.exists():
+        return []
+
+    packages: list[Package] = []
+    try:
+        content = lock_file.read_text()
+        # Berry v2+ detection
+        is_berry = "__metadata:" in content
+
+        if is_berry:
+            # Berry format: entries separated by blank lines, "version: x.y.z"
+            current_names: list[str] = []
+            seen: set[tuple[str, str]] = set()
+            for line in content.splitlines():
+                stripped = line.strip()
+                # Package header lines: '"name@npm:version, name@npm:version":'
+                if stripped.startswith('"') and stripped.endswith(":") and "@npm:" in stripped:
+                    current_names = []
+                    header = stripped.rstrip(":")
+                    for part in header.strip('"').split(", "):
+                        m = re.match(r'^"?(@?[^@]+)@', part)
+                        if m:
+                            current_names.append(m.group(1))
+                elif stripped.startswith("version:") and current_names:
+                    version = stripped.split(":", 1)[1].strip().strip('"')
+                    for name in current_names:
+                        key = (name, version)
+                        if key not in seen:
+                            seen.add(key)
+                            packages.append(
+                                Package(
+                                    name=name,
+                                    version=version,
+                                    ecosystem="npm",
+                                    purl=f"pkg:npm/{name}@{version}",
+                                    is_direct=False,
+                                )
+                            )
+                    current_names = []
+        else:
+            # Classic v1: '"name@range, name@range":\n  version "x.y.z"'
+            seen: set[tuple[str, str]] = set()
+            current_names: list[str] = []
+            for line in content.splitlines():
+                stripped = line.strip()
+                # Header: one or more "name@range" entries followed by ":"
+                if stripped.endswith(":") and not stripped.startswith("#"):
+                    current_names = []
+                    header = stripped.rstrip(":")
+                    for part in header.strip('"').split(", "):
+                        m = re.match(r'^"?(@?[^@"]+)@', part.strip('"'))
+                        if m:
+                            current_names.append(m.group(1))
+                elif stripped.startswith("version ") and current_names:
+                    version = stripped.split(" ", 1)[1].strip().strip('"')
+                    for name in current_names:
+                        key = (name, version)
+                        if key not in seen:
+                            seen.add(key)
+                            packages.append(
+                                Package(
+                                    name=name,
+                                    version=version,
+                                    ecosystem="npm",
+                                    purl=f"pkg:npm/{name}@{version}",
+                                    is_direct=False,
+                                )
+                            )
+                    current_names = []
+    except Exception as exc:
+        logger.debug("Failed to parse yarn.lock at %s: %s", lock_file, exc)
+
+    return packages
+
+
 def parse_pnpm_lock(directory: Path) -> list[Package]:
     """Parse packages from pnpm-lock.yaml.
 
@@ -727,6 +819,7 @@ def extract_packages(
     server_dir = find_server_directory(server)
     if server_dir:
         packages.extend(parse_npm_packages(server_dir))
+        packages.extend(parse_yarn_lock(server_dir))
         packages.extend(parse_pnpm_lock(server_dir))
         packages.extend(parse_pip_packages(server_dir))  # includes poetry.lock + uv.lock
         packages.extend(parse_conda_environment(server_dir))

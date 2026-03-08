@@ -628,6 +628,18 @@ export const api = {
     return () => es.close(); // cleanup fn
   },
 
+  /** Lightweight aggregate counts for nav badges (Critical/High/KEV/Compound) */
+  getPostureCounts: () =>
+    get<{
+      critical: number;
+      high: number;
+      medium: number;
+      low: number;
+      total: number;
+      kev: number;
+      compound_issues: number;
+    }>("/v1/posture/counts"),
+
   /** Compliance posture across all completed scans */
   getCompliance: () => get<ComplianceResponse>("/v1/compliance"),
 

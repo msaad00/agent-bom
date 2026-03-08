@@ -17,7 +17,7 @@
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center">
-  <b>Security scanner for AI infrastructure. Find CVEs, map blast radius, detect credential exposure across MCP agents, containers, Kubernetes, and cloud.</b>
+  <b>Security scanner for AI infrastructure. Find CVEs, map blast radius, detect credential exposure across MCP agents, ML frameworks, GPU packages, containers, Kubernetes, and cloud.</b>
 </p>
 
 <p align="center">
@@ -139,6 +139,9 @@ rm -rf ~/.agent-bom                      # remove local data
 | Package CVE detection | Yes | Yes (OSV + NVD + EPSS + CISA KEV + GHSA + NVIDIA CSAF) |
 | SBOM generation | Yes | Yes (CycloneDX 1.6, SPDX 3.0, SARIF) |
 | **AI agent discovery** | -- | 20 MCP clients + Docker Compose + running processes + containers + K8s pods/CRDs |
+| **GPU/ML package scanning** | -- | NVIDIA CSAF advisories for CUDA, cuDNN, PyTorch, TensorFlow, JAX, vLLM + AMD ROCm via OSV |
+| **AI supply chain** | -- | Model provenance (pickle risk, digest, gating), HuggingFace Hub, Ollama, MLflow, W&B |
+| **AI cloud inventory** | -- | Coreweave, Nebius, Snowflake, Databricks, OpenAI, HuggingFace Hub — config discovery + CVE tagging |
 | **Blast radius mapping** | -- | CVE -> package -> server -> agent -> credentials -> tools |
 | **Credential exposure** | -- | Which secrets leak per vulnerability, per agent |
 | **Tool poisoning detection** | -- | Description injection, capability combos, drift detection |
@@ -171,9 +174,10 @@ rm -rf ~/.agent-bom                      # remove local data
 | MCP configs | Auto-discover (20 clients + Docker Compose) |
 | Docker images | Grype / Syft / Docker CLI fallback |
 | Kubernetes | kubectl across namespaces |
-| Cloud providers | AWS, Azure, GCP, Databricks, Snowflake, Nebius |
+| Cloud providers | AWS, Azure, GCP, Databricks, Snowflake, Coreweave, Nebius |
+| AI cloud services | OpenAI, HuggingFace Hub, W&B, MLflow, Ollama |
+| GPU/ML packages | PyTorch, TF, JAX, vLLM, CUDA toolkit, cuDNN, TensorRT, ROCm |
 | Terraform / GitHub Actions | AI resources + env vars |
-| AI platforms | HuggingFace, W&B, MLflow, OpenAI |
 | Jupyter notebooks | AI library imports + model refs |
 | Model files | 13 formats (.gguf, .safetensors, .pkl, ...) |
 | Skill files | CLAUDE.md, .cursorrules, AGENTS.md |

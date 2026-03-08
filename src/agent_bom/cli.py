@@ -2324,7 +2324,8 @@ def scan(
         unresolved = [p for p in all_packages if p.version in ("latest", "unknown", "")]
         if unresolved:
             con.print(f"\n[bold blue]Resolving {len(unresolved)} package version(s)...[/bold blue]\n")
-            resolved = resolve_all_versions_sync(all_packages)
+            with con.status("[bold]Querying package registries...[/bold]", spinner="dots"):
+                resolved = resolve_all_versions_sync(all_packages)
             con.print(f"\n  [bold]Resolved {resolved}/{len(unresolved)} version(s).[/bold]")
 
         # Step 3b: Auto-discover metadata for unknown packages
@@ -2342,7 +2343,8 @@ def scan(
             from agent_bom.autodiscover import enrich_unknown_packages
 
             con.print(f"\n[bold blue]Auto-discovering metadata for {len(unknown_pkgs)} package(s)...[/bold blue]\n")
-            enriched_count = _asyncio_ad.run(enrich_unknown_packages(unknown_pkgs))
+            with con.status("[bold]Fetching package metadata...[/bold]", spinner="dots"):
+                enriched_count = _asyncio_ad.run(enrich_unknown_packages(unknown_pkgs))
             con.print(f"  [green]✓[/green] Auto-discovered metadata for {enriched_count} package(s)")
 
         # Step 3c: Version drift detection
@@ -2362,10 +2364,18 @@ def scan(
         con.print(Rule("Vulnerability Scan", style="red"))
         con.print()
         blast_radii = []
-        if not no_scan and total_packages > 0:
-            with con.status("[bold]Querying OSV + NVD + KEV + EPSS...[/bold]", spinner="dots"):
+        if no_scan:
+            con.print("  [dim]Vulnerability scanning skipped (--no-scan)[/dim]")
+        elif total_packages == 0:
+            con.print("  [dim]No packages to scan[/dim]")
+        else:
+            _unique_pkgs = len({(p.name, p.version, p.ecosystem) for a in agents for s in a.mcp_servers for p in s.packages})
+            with con.status(f"[bold]Scanning {_unique_pkgs} unique package(s) — OSV · NVD · KEV · EPSS...[/bold]", spinner="dots"):
                 blast_radii = scan_agents_sync(agents, enable_enrichment=enrich, nvd_api_key=nvd_api_key)
-            con.print(f"  [green]✓[/green] Scan complete — {len(blast_radii)} finding(s)")
+            if blast_radii:
+                con.print(f"  [red]⚠[/red] Scan complete — [bold]{len(blast_radii)}[/bold] finding(s)")
+            else:
+                con.print("  [green]✓[/green] No known vulnerabilities found")
 
         # Step 4a: Snyk vulnerability enrichment (optional)
         if snyk_flag and not no_scan and total_packages > 0:
@@ -2375,7 +2385,8 @@ def scan(
                     from agent_bom.snyk import enrich_with_snyk_sync
 
                     con.print("\n[bold blue]Enriching with Snyk vulnerability data...[/bold blue]\n")
-                    snyk_count = enrich_with_snyk_sync(all_pkgs_for_snyk, token=snyk_token, org_id=snyk_org)
+                    with con.status("[bold]Querying Snyk...[/bold]", spinner="dots"):
+                        snyk_count = enrich_with_snyk_sync(all_pkgs_for_snyk, token=snyk_token, org_id=snyk_org)
                     if snyk_count:
                         con.print(f"  [green]✓[/green] Snyk: {snyk_count} additional vulnerability(ies) found")
                     else:
@@ -3614,7 +3625,8 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bo
             async with create_client(timeout=15.0) as client:
                 return await resolve_package_version(pkg, client)
 
-        resolved = asyncio.run(_resolve())
+        with console.status("[bold]Resolving version from registry...[/bold]", spinner="dots"):
+            resolved = asyncio.run(_resolve())
         if resolved:
             console.print(f"  [green]✓ Resolved @latest → {pkg.version}[/green]")
             version = pkg.version
@@ -3625,7 +3637,8 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bo
 
     console.print(f"\n[bold blue]🔍 Checking {name}@{version} ({ecosystem})[/bold blue]\n")
 
-    results = asyncio.run(query_osv_batch([pkg]))
+    with console.status("[bold]Querying OSV...[/bold]", spinner="dots"):
+        results = asyncio.run(query_osv_batch([pkg]))
     key = f"{ecosystem}:{name}@{version}"
     vuln_data = results.get(key, [])
 

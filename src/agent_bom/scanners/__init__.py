@@ -54,6 +54,8 @@ ECOSYSTEM_MAP = {
     "maven": "Maven",
     "nuget": "NuGet",
     "rubygems": "RubyGems",
+    # conda packages are pip-installable and tracked under PyPI in OSV
+    "conda": "PyPI",
 }
 
 

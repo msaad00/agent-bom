@@ -205,7 +205,7 @@ async def _run_scan_pipeline(
             else:
                 from agent_bom.sbom import load_sbom
 
-                sbom_packages, _warnings = load_sbom(sbom_path)
+                sbom_packages, _warnings, _sbom_name = load_sbom(sbom_path)
                 if sbom_packages:
                     sbom_server = MCPServer(
                         name=f"sbom:{Path(sbom_path).name}",

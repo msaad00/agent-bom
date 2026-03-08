@@ -901,3 +901,118 @@ def extract_packages(
             unique.append(pkg)
 
     return unique
+
+
+# ── Project directory scanner ─────────────────────────────────────────────────
+
+#: Package manifest file names that indicate a scannable directory.
+_MANIFEST_FILES = frozenset(
+    {
+        "package.json",
+        "package-lock.json",
+        "yarn.lock",
+        "pnpm-lock.yaml",
+        "requirements.txt",
+        "Pipfile.lock",
+        "pyproject.toml",
+        "poetry.lock",
+        "uv.lock",
+        "environment.yml",
+        "environment.yaml",
+        "go.mod",
+        "go.sum",
+        "Cargo.toml",
+        "Cargo.lock",
+    }
+)
+
+#: Directories to skip during recursive project scan.
+_SKIP_DIRS = frozenset(
+    {
+        ".git",
+        ".hg",
+        ".svn",
+        "node_modules",
+        "__pycache__",
+        ".venv",
+        "venv",
+        ".env",
+        "dist",
+        "build",
+        ".cache",
+        ".tox",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".pytest_cache",
+        "target",  # Rust/Maven
+        ".cargo",
+    }
+)
+
+
+def _has_manifest(directory: Path) -> bool:
+    """Return True if *directory* contains at least one package manifest."""
+    return any((directory / name).exists() for name in _MANIFEST_FILES)
+
+
+def scan_project_directory(
+    root: Path,
+    max_depth: int = 5,
+) -> dict[Path, list[Package]]:
+    """Recursively walk *root* for package manifests and parse all packages.
+
+    Returns a mapping of ``{directory: [Package, ...]}`` for each directory
+    that contains at least one supported manifest file.  Directories in
+    ``_SKIP_DIRS`` and hidden directories (starting with ``.``) beyond the
+    root are silently skipped.
+
+    Args:
+        root: Project root directory to scan.
+        max_depth: Maximum directory depth to descend (default 5).
+
+    Returns:
+        Dict mapping each manifest-bearing directory to its parsed packages.
+        Empty dict if no manifests are found.
+    """
+    root = Path(root).resolve()
+    results: dict[Path, list[Package]] = {}
+
+    def _walk(directory: Path, depth: int) -> None:
+        if depth > max_depth:
+            return
+
+        if _has_manifest(directory):
+            pkgs: list[Package] = []
+            pkgs.extend(parse_npm_packages(directory))
+            pkgs.extend(parse_yarn_lock(directory))
+            pkgs.extend(parse_pnpm_lock(directory))
+            pkgs.extend(parse_pip_packages(directory))
+            pkgs.extend(parse_conda_environment(directory))
+            pkgs.extend(parse_go_packages(directory))
+            pkgs.extend(parse_cargo_packages(directory))
+
+            # Deduplicate within this directory
+            seen: set[tuple] = set()
+            unique: list[Package] = []
+            for pkg in pkgs:
+                key = (pkg.name, pkg.version, pkg.ecosystem)
+                if key not in seen:
+                    seen.add(key)
+                    unique.append(pkg)
+
+            if unique:
+                results[directory] = unique
+
+        # Recurse into subdirectories
+        try:
+            subdirs = [
+                d for d in directory.iterdir() if d.is_dir() and d.name not in _SKIP_DIRS and not (d.name.startswith(".") and depth > 0)
+            ]
+        except PermissionError:
+            return
+
+        for subdir in sorted(subdirs):
+            _walk(subdir, depth + 1)
+
+    _walk(root, 0)
+    return results

@@ -166,8 +166,45 @@ def parse_spdx(data: dict) -> list[Package]:
 # ─── Auto-detect + load ──────────────────────────────────────────────────────
 
 
-def load_sbom(path: str) -> tuple[list[Package], str]:
-    """Load an SBOM file and return (packages, format_name).
+def detect_sbom_resource_name(data: dict) -> str | None:
+    """Try to extract a human-readable resource name from SBOM metadata.
+
+    Checks (in order):
+    - CycloneDX: ``metadata.component.name``
+    - SPDX 2.x: ``name`` (document name, often the target)
+    - SPDX 3.0: first element ``name`` where type is ``software/Package``
+
+    Returns None if no meaningful name is found.
+    """
+    # CycloneDX
+    if data.get("bomFormat") == "CycloneDX":
+        comp = data.get("metadata", {}).get("component", {})
+        name = comp.get("name", "")
+        if name:
+            return name
+
+    # SPDX 2.x
+    if data.get("spdxVersion", "").startswith("SPDX-2"):
+        doc_name = data.get("name", "")
+        if doc_name and doc_name not in ("NOASSERTION", "NONE"):
+            # SPDX doc names are often "DOCUMENT-<target>" — strip prefix
+            return doc_name.removeprefix("DOCUMENT-").strip() or None
+
+    # SPDX 3.0
+    if data.get("spdxVersion", "").startswith("SPDX-3"):
+        for elem in data.get("elements", []):
+            if isinstance(elem, dict) and elem.get("type") in ("software/Package", "SOFTWARE_PACKAGE"):
+                return elem.get("name") or None
+
+    return None
+
+
+def load_sbom(path: str) -> tuple[list[Package], str, str | None]:
+    """Load an SBOM file and return ``(packages, format_name, resource_name)``.
+
+    ``resource_name`` is the auto-detected target name from SBOM metadata
+    (e.g. ``nginx:1.25``, ``prod-api-01``).  It is ``None`` when the SBOM
+    does not carry a meaningful component name.
 
     Auto-detects CycloneDX vs SPDX from file content.
     Raises ValueError if the format is not recognised.
@@ -178,17 +215,19 @@ def load_sbom(path: str) -> tuple[list[Package], str]:
 
     data = json.loads(p.read_text())
 
+    resource_name = detect_sbom_resource_name(data)
+
     # CycloneDX: has "bomFormat" key
     if "bomFormat" in data and data["bomFormat"] == "CycloneDX":
-        return parse_cyclonedx(data), "cyclonedx"
+        return parse_cyclonedx(data), "cyclonedx", resource_name
 
     # SPDX 3.0: has "spdxVersion" starting with "SPDX-3"
     if data.get("spdxVersion", "").startswith("SPDX-3"):
-        return parse_spdx(data), "spdx-3"
+        return parse_spdx(data), "spdx-3", resource_name
 
     # SPDX 2.x: has "spdxVersion" starting with "SPDX-2"
     if data.get("spdxVersion", "").startswith("SPDX-2"):
-        return parse_spdx(data), "spdx-2"
+        return parse_spdx(data), "spdx-2", resource_name
 
     # agent-bom JSON report: has "ai_bom_version"
     if "ai_bom_version" in data or "blast_radius" in data:

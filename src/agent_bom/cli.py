@@ -340,6 +340,13 @@ def main():
     "--sbom", "sbom_file", type=click.Path(exists=True), help="Existing SBOM file to ingest (CycloneDX or SPDX JSON from Syft/Grype/Trivy)"
 )
 @click.option(
+    "--sbom-name",
+    "sbom_name",
+    default=None,
+    metavar="NAME",
+    help="Label for the SBOM resource (e.g. 'prod-api-01', 'nginx:1.25'). Auto-detected from SBOM metadata if omitted.",
+)
+@click.option(
     "--image", "images", multiple=True, metavar="IMAGE", help="Docker image to scan (e.g. nginx:1.25). Repeatable for multiple images."
 )
 @click.option("--k8s", is_flag=True, help="Discover container images from a Kubernetes cluster via kubectl")
@@ -669,6 +676,7 @@ def scan(
     baseline: Optional[str],
     policy: Optional[str],
     sbom_file: Optional[str],
+    sbom_name: Optional[str],
     images: tuple,
     k8s: bool,
     namespace: str,
@@ -1064,6 +1072,8 @@ def scan(
         and not images
         and not k8s
         and not code_paths
+        and not project  # --project: package scan fallback runs below
+        and not sbom_file
         and not tf_dirs
         and not gha_path
         and not agent_projects
@@ -1073,8 +1083,9 @@ def scan(
         con.print("\n[bold yellow]No MCP configurations found on this machine.[/bold yellow]")
         con.print()
         con.print("  [bold]Quick start options:[/bold]")
-        con.print("    [cyan]agent-bom scan --code .[/cyan]          scan Python/Node packages in current directory")
+        con.print("    [cyan]agent-bom scan --project .[/cyan]        scan all packages in current directory")
         con.print("    [cyan]agent-bom scan --image myapp:latest[/cyan] scan a Docker image")
+        con.print("    [cyan]agent-bom scan --sbom sbom.json[/cyan]   ingest an existing SBOM (CycloneDX / SPDX)")
         con.print("    [cyan]agent-bom check requests@2.25.0[/cyan]   check a single package for CVEs")
         con.print("    [cyan]agent-bom scan --config-dir PATH[/cyan]  point to a directory with MCP configs")
         con.print()
@@ -1087,11 +1098,31 @@ def scan(
     # Step 1b: Load SBOM packages if provided
     sbom_packages: list = []
     if not skill_only and sbom_file:
+        from agent_bom.models import Agent, AgentType, MCPServer, TransportType
         from agent_bom.sbom import load_sbom
 
         try:
-            sbom_packages, sbom_fmt = load_sbom(sbom_file)
-            con.print(f"\n[bold blue]Loaded SBOM ({sbom_fmt}): {len(sbom_packages)} package(s) from {sbom_file}[/bold blue]\n")
+            sbom_packages, sbom_fmt, sbom_detected_name = load_sbom(sbom_file)
+            # Resolve resource name: --sbom-name > SBOM metadata > file stem
+            _resource_name = sbom_name or sbom_detected_name or Path(sbom_file).stem
+            con.print(f"\n[bold blue]Loaded SBOM ({sbom_fmt}): {len(sbom_packages)} package(s) from '{_resource_name}'[/bold blue]\n")
+            # Create a named synthetic agent so blast_radius references the real resource
+            sbom_server = MCPServer(
+                name=_resource_name,
+                command="sbom",
+                args=[sbom_file],
+                transport=TransportType.STDIO,
+                packages=sbom_packages,
+            )
+            sbom_agent = Agent(
+                name=f"sbom:{_resource_name}",
+                agent_type=AgentType.CUSTOM,
+                config_path=sbom_file,
+                source="sbom",
+                mcp_servers=[sbom_server],
+            )
+            agents.append(sbom_agent)
+            sbom_packages = []  # consumed — don't merge into another server
         except (FileNotFoundError, ValueError) as e:
             con.print(f"\n  [red]SBOM error: {e}[/red]")
             sys.exit(1)
@@ -1201,6 +1232,44 @@ def scan(
                 _sast_data = sast_result.to_dict()
             except SASTScanError as e:
                 con.print(f"  [yellow]![/yellow] {code_path}: {e}")
+
+    # Step 1d4: Project package scan fallback
+    # When --project is set but discovery found no MCP agents (no Claude/Cursor/VS Code configs),
+    # walk the project directory for package manifests so the scan is still useful.
+    if not skill_only and project and not agents and not images and not code_paths and not sbom_file:
+        from agent_bom.models import Agent, AgentType, MCPServer, TransportType
+        from agent_bom.parsers import scan_project_directory
+
+        proj_root = Path(project)
+        con.print(f"\n[bold blue]Scanning project directory for package manifests: {proj_root.name}[/bold blue]\n")
+        dir_map = scan_project_directory(proj_root)
+        if dir_map:
+            total_proj_pkgs = sum(len(v) for v in dir_map.values())
+            con.print(f"  [green]✓[/green] {proj_root.name}: {total_proj_pkgs} package(s) across {len(dir_map)} manifest(s)")
+
+            proj_servers: list[MCPServer] = []
+            for manifest_dir, pkgs in dir_map.items():
+                rel = manifest_dir.relative_to(proj_root) if manifest_dir != proj_root else Path(".")
+                server_name = str(rel) if str(rel) != "." else proj_root.name
+                proj_server = MCPServer(
+                    name=server_name,
+                    command="project",
+                    args=[str(manifest_dir)],
+                    transport=TransportType.STDIO,
+                    packages=pkgs,
+                )
+                proj_servers.append(proj_server)
+
+            proj_agent = Agent(
+                name=f"project:{proj_root.name}",
+                agent_type=AgentType.CUSTOM,
+                config_path=str(proj_root),
+                source="project",
+                mcp_servers=proj_servers,
+            )
+            agents.append(proj_agent)
+        else:
+            con.print(f"  [dim]  No package manifests found in {proj_root}[/dim]")
 
     # Step 1e: Terraform scan (--tf-dir)
     if not skill_only and tf_dirs:
@@ -1938,13 +2007,11 @@ def scan(
                     server, resolve_transitive=transitive, max_depth=max_depth, smithery_token=_smithery_tok, mcp_registry=mcp_registry_flag
                 )
 
-                # Merge: discovered + pre-populated + SBOM packages (deduplicated)
+                # Merge: discovered + pre-populated (deduplicated)
+                # Note: SBOM packages are now a separate synthetic agent (sbom:<name>)
+                # and pre-populated packages already include them for sbom agents.
                 discovered_names = {(p.name, p.ecosystem) for p in discovered}
                 merged = discovered + [p for p in pre_populated if (p.name, p.ecosystem) not in discovered_names]
-                if sbom_packages:
-                    existing_names = {(p.name, p.ecosystem) for p in merged}
-                    merged += [p for p in sbom_packages if (p.name, p.ecosystem) not in existing_names]
-                    sbom_packages = []  # Attach to first server only, avoid duplication
                 server.packages = merged
 
                 total_packages += len(server.packages)

@@ -876,7 +876,7 @@ def _run_scan_sync(job: ScanJob) -> None:
             pipeline.update_step("discovery", f"Ingesting SBOM: {req.sbom}")
             from agent_bom.sbom import load_sbom
 
-            sbom_packages, _fmt = load_sbom(req.sbom)
+            sbom_packages, _fmt, _sbom_name = load_sbom(req.sbom)
             if sbom_packages:
                 from agent_bom.models import Agent, AgentType, MCPServer
 

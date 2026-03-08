@@ -211,7 +211,7 @@ def test_load_sbom_autodetect_cyclonedx(tmp_path):
     path = tmp_path / "cdx.json"
     path.write_text(json.dumps(sbom))
 
-    packages, fmt = load_sbom(str(path))
+    packages, fmt, _name = load_sbom(str(path))
     assert fmt == "cyclonedx"
     assert len(packages) == 1
     assert packages[0].name == "axios"

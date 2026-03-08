@@ -790,7 +790,7 @@ def test_load_sbom_cyclonedx(tmp_path):
     }
     p = tmp_path / "sbom.json"
     p.write_text(_json.dumps(sbom))
-    packages, fmt = load_sbom(str(p))
+    packages, fmt, _name = load_sbom(str(p))
     assert fmt == "cyclonedx"
     assert len(packages) == 1
     assert packages[0].name == "flask"

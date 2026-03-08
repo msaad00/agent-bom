@@ -2051,6 +2051,51 @@ async def get_posture_scorecard() -> dict:
     }
 
 
+@app.get("/v1/posture/counts", tags=["compliance"])
+async def get_posture_counts() -> dict:
+    """Aggregate vulnerability counts across all completed scans.
+
+    Lightweight endpoint used by the dashboard nav to show Critical/High
+    badges without loading full scan payloads.
+
+    Returns:
+        {critical, high, medium, low, total, kev, compound_issues}
+    """
+    counts: dict[str, int] = {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "total": 0,
+        "kev": 0,
+        "compound_issues": 0,
+    }
+    seen_ids: set[str] = set()
+
+    for job in _get_store().list_all():
+        if job.status != JobStatus.DONE or not job.result:
+            continue
+        blast_list = job.result.get("blast_radius", [])
+        for b in blast_list:
+            vid = b.get("vulnerability_id", "")
+            if vid in seen_ids:
+                continue
+            seen_ids.add(vid)
+            sev = (b.get("severity") or "").lower()
+            if sev in counts:
+                counts[sev] += 1
+            counts["total"] += 1
+            if b.get("cisa_kev") or b.get("is_kev"):
+                counts["kev"] += 1
+            # Compound issue: KEV + reachable tool, or KEV + exposed cred
+            if (b.get("cisa_kev") or b.get("is_kev")) and (b.get("reachable_tools") or b.get("exposed_credentials")):
+                counts["compound_issues"] += 1
+            elif (b.get("epss_score") or 0) >= 0.3 and (b.get("cvss_score") or 0) >= 7:
+                counts["compound_issues"] += 1
+
+    return counts
+
+
 @app.get("/v1/posture/credentials", tags=["compliance"])
 async def get_credential_risk_ranking() -> dict:
     """Rank credentials by blast radius exposure from the latest scan.

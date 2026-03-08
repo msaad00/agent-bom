@@ -64,14 +64,47 @@ const NAV_GROUPS = [
 
 const allLinks = NAV_GROUPS.flatMap((g) => g.links);
 
+interface RiskCounts {
+  critical: number;
+  high: number;
+  kev: number;
+  compound_issues: number;
+}
+
 export function Nav() {
   const path = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [counts, setCounts] = useState<RiskCounts | null>(null);
 
   // Close mobile menu on route change
   useEffect(() => {
     setMobileOpen(false);
   }, [path]);
+
+  // Fetch aggregate counts for badges (refresh every 60s)
+  useEffect(() => {
+    let mounted = true;
+    const load = () => {
+      api
+        .getPostureCounts()
+        .then((c) => {
+          if (mounted)
+            setCounts({
+              critical: c.critical,
+              high: c.high,
+              kev: c.kev,
+              compound_issues: c.compound_issues,
+            });
+        })
+        .catch(() => {}); // silent — nav badges are non-critical
+    };
+    load();
+    const interval = setInterval(load, 60_000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   return (
     <nav className="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-sm sticky top-0 z-50">
@@ -91,6 +124,7 @@ export function Nav() {
                 {gi > 0 && <div className="w-px h-4 bg-zinc-800 mx-1.5" />}
                 {group.links.map(({ href, label, icon: Icon }) => {
                   const active = href === "/" ? path === "/" : path.startsWith(href);
+                  const isVulns = href === "/vulns";
                   return (
                     <Link
                       key={href}
@@ -103,6 +137,18 @@ export function Nav() {
                     >
                       <Icon className="w-3.5 h-3.5" />
                       {label}
+                      {isVulns && counts && counts.critical > 0 && (
+                        <span className="flex items-center gap-1 ml-0.5">
+                          <span className="text-[9px] font-mono font-bold text-red-400 bg-red-950/60 rounded px-1 py-0 leading-4">
+                            {counts.critical}C
+                          </span>
+                          {counts.high > 0 && (
+                            <span className="text-[9px] font-mono font-bold text-orange-400 bg-orange-950/60 rounded px-1 py-0 leading-4">
+                              {counts.high}H
+                            </span>
+                          )}
+                        </span>
+                      )}
                     </Link>
                   );
                 })}

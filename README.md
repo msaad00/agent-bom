@@ -21,9 +21,7 @@
 </p>
 
 <p align="center">
-  <picture>
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo.svg" alt="agent-bom demo" width="800" />
-  </picture>
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.63.0.gif" alt="agent-bom demo — scan, CVE check before/after, GPU infra scan" width="900" />
 </p>
 
 <p align="center">

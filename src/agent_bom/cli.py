@@ -5072,6 +5072,74 @@ def proxy_cmd(
     sys.exit(exit_code)
 
 
+@main.command("proxy-configure")
+@click.option("--policy", type=click.Path(exists=True), default=None, help="Policy JSON file to pass to each proxy instance")
+@click.option("--log-dir", default=None, type=click.Path(), help="Directory for per-server audit JSONL logs")
+@click.option("--detect-credentials", is_flag=True, help="Enable credential leak detection in each proxy")
+@click.option("--block-undeclared", is_flag=True, help="Block undeclared tools in each proxy")
+@click.option(
+    "--apply",
+    is_flag=True,
+    help="Write proxy config back to source JSON config files (default: preview only)",
+)
+@click.option("--project", default=None, type=click.Path(exists=True), help="Project directory to scan for MCP configs")
+def proxy_configure_cmd(policy, log_dir, detect_credentials, block_undeclared, apply, project):
+    """Auto-configure the agent-bom proxy for discovered MCP servers.
+
+    \b
+    Discovers all MCP servers on this machine, then generates proxy-wrapped
+    configuration entries for every STDIO server.  The proxy adds:
+    - Audit logging (--log-dir)
+    - Policy enforcement (--policy)
+    - Credential leak detection (--detect-credentials)
+    - Undeclared-tool blocking (--block-undeclared)
+
+    \b
+    By default, shows a preview.  Use --apply to write changes back to the
+    original config files (JSON only — claude_desktop_config.json, mcp.json…).
+
+    \b
+    Example:
+      agent-bom proxy-configure --log-dir ~/.agent-bom/logs --detect-credentials
+      agent-bom proxy-configure --policy policy.json --block-undeclared --apply
+    """
+    from agent_bom.discovery import discover_all
+    from agent_bom.proxy_configure import apply_proxy_configs, auto_configure_proxies
+
+    con = Console()
+
+    agents = discover_all(project_dir=project)
+    configs = auto_configure_proxies(
+        agents,
+        policy_path=policy,
+        log_dir=log_dir,
+        detect_credentials=detect_credentials,
+        block_undeclared=block_undeclared,
+    )
+
+    if not configs:
+        con.print("[yellow]No eligible STDIO MCP servers found (need command + stdio transport).[/yellow]")
+        return
+
+    con.print(f"\n[bold blue]Proxy configuration for {len(configs)} MCP server(s):[/bold blue]\n")
+
+    for cfg in configs:
+        con.print(f"  [bold]{cfg.server_name}[/bold]  [dim]({cfg.config_path})[/dim]")
+        con.print(f"    Original : {cfg.original_command} {' '.join(cfg.original_args)}")
+        proxy_preview = f"agent-bom {' '.join(cfg.proxied_args)}"
+        con.print(f"    Proxied  : [green]{proxy_preview}[/green]")
+        con.print()
+
+    if apply:
+        n = apply_proxy_configs(configs, dry_run=False)
+        if n:
+            con.print(f"[green]✓[/green] Patched {n} config file(s).")
+        else:
+            con.print("[yellow]⚠[/yellow] No JSON config files were patched (SSE servers, missing files, or no matching entries).")
+    else:
+        con.print("[dim]Pass --apply to write these changes to config files.[/dim]")
+
+
 @main.command("guard", context_settings={"ignore_unknown_options": True, "allow_extra_args": True})
 @click.argument("tool", type=click.Choice(["pip", "npm", "npx"]))
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)

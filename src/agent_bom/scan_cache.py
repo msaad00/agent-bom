@@ -86,6 +86,26 @@ class ScanCache:
         )
         self._conn.commit()
 
+    def evict(self, ecosystem: str, name: str, version: str) -> None:
+        """Remove a single entry from the cache, forcing a fresh fetch."""
+        key = self._key(ecosystem, name, version)
+        self._conn.execute("DELETE FROM osv_cache WHERE cache_key = ?", (key,))
+        self._conn.commit()
+
+    def evict_many(self, entries: list[tuple[str, str, str]]) -> int:
+        """Remove specific entries from the cache in one transaction.
+
+        Args:
+            entries: List of (ecosystem, name, version) tuples.
+
+        Returns:
+            Number of entries removed.
+        """
+        keys = [(self._key(eco, name, ver),) for eco, name, ver in entries]
+        cur = self._conn.executemany("DELETE FROM osv_cache WHERE cache_key = ?", keys)
+        self._conn.commit()
+        return cur.rowcount or 0
+
     def cleanup_expired(self) -> int:
         """Delete entries older than the TTL.  Returns the count removed."""
         cutoff = time.time() - self._ttl

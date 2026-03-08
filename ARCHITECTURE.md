@@ -88,7 +88,7 @@ Each module exports `tag_blast_radius(br: BlastRadius)` to annotate findings.
 └── prompt_scanner.py    # Prompt injection pattern detection (reused by enforcement)
 ```
 
-### Cloud & Infrastructure (14 modules)
+### Cloud & Infrastructure (15 modules)
 
 ```
 ├── cloud/
@@ -104,6 +104,8 @@ Each module exports `tag_blast_radius(br: BlastRadius)` to annotate findings.
 │   ├── ollama.py                  # Ollama local model scanning
 │   ├── openai_provider.py         # OpenAI integration
 │   ├── clickhouse.py              # ClickHouse analytics storage
+│   ├── vector_db.py               # Self-hosted vector DB scanning (Chroma, Qdrant, Weaviate, Milvus)
+│   │                              #   + Pinecone cloud index inventory via REST API
 │   └── ...                        # coreweave, mlflow, wandb, nebius providers
 ├── scorecard.py         # OpenSSF Scorecard fetching → risk boost
 ├── malicious.py         # Typosquat detection, known malicious package flagging
@@ -132,6 +134,7 @@ Each module exports `tag_blast_radius(br: BlastRadius)` to annotate findings.
 ├── api/
 │   ├── server.py          # FastAPI REST server with job queue
 │   ├── auth.py            # scrypt KDF API keys, RBAC roles (admin/analyst/viewer)
+│   ├── oidc.py            # OIDC/SSO JWT verification (Okta, Google, Azure AD, Auth0)
 │   ├── audit_log.py       # HMAC-SHA256 signed audit log (InMemory + SQLite backends)
 │   ├── store.py           # Base data store abstraction
 │   ├── postgres_store.py  # PostgreSQL backend
@@ -165,7 +168,7 @@ Each module exports `tag_blast_radius(br: BlastRadius)` to annotate findings.
     └── ocsf.py            # OCSF Detection Finding (class_uid=2004) + SyslogConnector
 ```
 
-### Output & Visualization (8 modules)
+### Output & Visualization (9 modules)
 
 ```
 ├── output/
@@ -174,6 +177,7 @@ Each module exports `tag_blast_radius(br: BlastRadius)` to annotate findings.
 │   ├── svg.py             # SVG diagrams (architecture, blast radius, compliance)
 │   ├── mermaid.py         # Mermaid diagram syntax
 │   ├── graph.py           # NetworkX graph generation
+│   ├── graph_export.py    # Standalone graph export (DOT/Mermaid/JSON) — `agent-bom graph` CLI
 │   ├── agent_mesh.py      # Agent mesh topology visualization
 │   ├── attack_flow.py     # Attack flow visualization
 │   └── prometheus.py      # Prometheus metrics export

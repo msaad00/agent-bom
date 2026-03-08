@@ -72,6 +72,8 @@ agent-bom scan --health-check                      # Probe discovered servers fo
 agent-bom scan --siem splunk --siem-url https://...  # Push findings to SIEM
 agent-bom scan --aws --snowflake --databricks      # Multi-cloud
 agent-bom scan --hf-model meta-llama/Llama-3.1-8B  # model provenance
+agent-bom scan --vector-db-scan                    # Scan self-hosted + Pinecone cloud vector DBs
+agent-bom graph report.json --format dot           # Export dependency graph (DOT/Mermaid/JSON)
 agent-bom proxy-configure --apply                  # Auto-wrap MCP configs with security proxy
 ```
 
@@ -93,6 +95,7 @@ Auto-discovers 20 MCP clients: Claude Desktop, Claude Code, Cursor, Windsurf, Cl
 | Cloud (all) | `pip install 'agent-bom[cloud]'` |
 | REST API | `pip install 'agent-bom[api]'` |
 | MCP server | `pip install 'agent-bom[mcp-server]'` |
+| OIDC/SSO auth | `pip install 'agent-bom[oidc]'` |
 | Dashboard | `pip install 'agent-bom[ui]'` |
 | Docker | `docker run --rm -v ~/.config:/root/.config:ro agentbom/agent-bom scan` |
 
@@ -149,6 +152,9 @@ rm -rf ~/.agent-bom                      # remove local data
 | **Server health checks** | -- | Lightweight liveness probe — reachable, tool count, latency, protocol |
 | **Lateral movement analysis** | -- | Agent context graph, shared credentials, BFS attack paths |
 | **427+ server MCP registry** | -- | Risk levels, tool inventories, auto-synced weekly |
+| **Cloud vector DB scanning** | -- | Pinecone index inventory, risk flags, replica counts via API key |
+| **Dependency graph export** | -- | DOT, Mermaid, JSON — agent → server → package → CVE graph |
+| **OIDC/SSO authentication** | -- | JWT verification (Okta, Google, Azure AD, Auth0) for REST API |
 
 <p align="center">
   <picture>

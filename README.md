@@ -217,7 +217,7 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible
 | GitHub Action | `uses: msaad00/agent-bom@v0.63.0 | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated scans |
 | REST API | `agent-bom api` | Dashboards, SIEM |
-| MCP Server | `agent-bom mcp-server` (22 tools) | Inside any MCP client |
+| MCP Server | `agent-bom mcp-server` (23 tools) | Inside any MCP client |
 | Dashboard | `agent-bom serve` | API + Next.js UI (15 pages) |
 | Runtime proxy | `agent-bom proxy` | MCP traffic audit |
 | Pre-install guard | `agent-bom guard pip install <pkg>` | Block vulnerable installs |
@@ -354,10 +354,44 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full diagrams: data flow pi
 
 ## Roadmap
 
-- [x] CIS Foundations benchmarks (AWS v3.0, Azure v3.0, GCP v3.0, Snowflake v1.0)
+**GPU / AI compute**
+- [x] GPU container discovery (Docker — NVIDIA images, CUDA labels, `--gpus` runtime)
+- [x] Kubernetes GPU node inventory (nvidia.com/gpu capacity/allocatable, CUDA driver labels)
+- [x] Unauthenticated DCGM exporter detection (port 9400 metrics leak)
+- [ ] Remote Docker host scanning (currently local daemon only)
+- [ ] NVIDIA GPU CVE feed — CUDA/cuDNN specific advisories beyond OSV
+- [ ] GPU utilization and memory anomaly detection
+
+**AI supply chain**
+- [x] OSV + GHSA + NVD + EPSS + CISA KEV vulnerability enrichment
+- [x] ML model file scanning (.gguf, .safetensors, .onnx) + SHA-256 + Sigstore
+- [x] HuggingFace model provenance and dataset card scanning
+- [ ] Dataset poisoning detection
+- [ ] Training pipeline scanning (MLflow DAGs, Kubeflow pipelines)
+- [ ] Model card authenticity verification (beyond hash/sigstore)
+
+**Agents / MCP**
+- [x] 20 MCP client config discovery paths, live introspection, tool drift detection
+- [x] Runtime proxy with 6 behavioral detectors (rug pull, injection, credential leak, etc.)
+- [ ] Semantic prompt injection analysis (currently pattern-based)
+- [ ] Agent memory / vector store content scanning for injected instructions
+- [ ] LLM API call tracing (which model was called, with what context)
+
+**Identity / access**
+- [x] OIDC/JWT auth for REST API (Okta, Google Workspace, Azure AD, Auth0, GitHub OIDC)
+- [ ] Agent-level identity — propagating caller identity through MCP tool chains
+- [ ] MCP server identity attestation — cryptographic proof of server identity at runtime
+- [ ] Agent-to-agent permission boundary enforcement
+
+**Compliance / standards**
+- [x] 10 frameworks: OWASP LLM, OWASP MCP, OWASP Agentic, ATLAS, NIST AI RMF, EU AI Act, NIST CSF, ISO 27001, SOC 2, CIS Controls
 - [ ] CIS AI benchmarks (pending CIS publication)
-- [ ] License compliance engine
+- [ ] License compliance engine (OSS license risk flagging)
 - [ ] Workflow engine scanning (n8n, Zapier, Make)
+
+**Ecosystem coverage**
+- [ ] Maven / Go ecosystem — test coverage thin (PyPI, npm, cargo, pip best covered)
+- [ ] Windows container support (currently Linux-focused for Docker GPU discovery)
 
 See the full list of [shipped features](https://github.com/msaad00/agent-bom/releases).
 

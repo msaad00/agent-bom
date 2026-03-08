@@ -1,85 +1,179 @@
 # Contributing to agent-bom
 
-Thank you for your interest in contributing to **agent-bom**! This project aims to become the industry standard for AI agent and MCP server security, and we welcome contributions from developers, security researchers, and users.
+agent-bom has 7,000+ monthly installs. Every contribution directly improves security for real AI agent deployments. This guide gets you from zero to merged PR.
 
-## Code of Conduct
+## Table of contents
 
-Please read and follow our [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Be respectful, inclusive, and constructive.
+- [Quick start (5 minutes)](#quick-start)
+- [What to work on](#what-to-work-on)
+- [Development workflow](#development-workflow)
+- [Tests](#tests)
+- [Code style](#code-style)
+- [Submitting a PR](#submitting-a-pr)
+- [Architecture overview](#architecture-overview)
+- [Security reports](#security-reports)
 
-## Getting Started
+---
+
+## Quick start
 
 ```bash
 git clone https://github.com/msaad00/agent-bom.git
 cd agent-bom
-
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install in development mode
+python3 -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -e ".[dev]"
+pre-commit install                                  # wires ruff + ruff-format hooks
+pytest tests/ -x -q                                # must be green before you start
 ```
 
-## Running Tests
+That's it. `agent-bom scan` now runs from your local checkout.
+
+---
+
+## What to work on
+
+### Easiest — good first issues
+
+Browse [`good first issue`](https://github.com/msaad00/agent-bom/issues?q=is%3Aopen+label%3A%22good+first+issue%22) on GitHub. No architecture knowledge required.
+
+Typical good-first tasks:
+- **Add an MCP client** — 5–15 lines in [`src/agent_bom/discovery/__init__.py`](src/agent_bom/discovery/__init__.py). Each entry is a dict with a config path and parser.
+- **Add a registry entry** — Add a JSON object to `mcp_registry.json` (schema in `schemas/`).
+- **Fix a test** — search for `# TODO` or `pytest.mark.skip` in `tests/`.
+- **Improve a docstring** — Any function in `src/agent_bom/` without a clear docstring.
+
+### Medium — help wanted
+
+Browse [`help wanted`](https://github.com/msaad00/agent-bom/issues?q=is%3Aopen+label%3A%22help+wanted%22).
+
+Typical help-wanted tasks:
+- **New package ecosystem parsers** — Ruby Gemfile.lock, .NET packages.lock.json, Swift Package.resolved
+- **Cloud CIS benchmark** — GCP or Azure module following the pattern in `src/agent_bom/cloud/`
+- **Dashboard improvements** — Next.js components in `ui/` (TypeScript, Tailwind)
+- **Output format** — New `--format` target (CSV, Markdown table, etc.) in `src/agent_bom/output/`
+
+### Priority features
+
+See [open issues labeled P1](https://github.com/msaad00/agent-bom/issues?q=is%3Aopen+label%3AP1) for the highest-impact work.
+
+---
+
+## Development workflow
 
 ```bash
-pytest tests/ -v
+# Create a branch
+git checkout -b feat/your-feature   # or fix/your-fix
+
+# Make your changes, then run:
+ruff check src/ --fix               # lint + autofix
+ruff format src/                    # formatting
+pytest tests/ -x -q                 # full suite must stay green
+
+# Pre-commit hooks do this automatically on commit
+git add -p                          # stage intentionally
+git commit -m "feat: your message"
+gh pr create --base main            # or push + open PR on GitHub
 ```
 
-## Code Style
+Branch naming: `feat/`, `fix/`, `docs/`, `chore/` prefixes. Always branch from and PR to `main`.
 
-We use `ruff` for linting:
+---
+
+## Tests
 
 ```bash
-ruff check src/
-ruff format src/
+pytest tests/ -x -q                 # all tests, stop on first fail
+pytest tests/ -k "scanner" -v       # run matching tests only
+pytest tests/test_core.py -v        # specific file
 ```
 
-## Areas to Contribute
+**Rules:**
+- Every new feature needs at least one test.
+- Every bug fix needs a regression test.
+- Network tests (hitting real APIs) are marked `@pytest.mark.network` and skipped in CI. Use mocks for unit tests.
+- The test suite must stay green. Pre-existing failures are bugs, not technical debt.
 
-- **New MCP client configs** — Add discovery paths for new MCP clients (see `discovery/__init__.py`)
-- **New package ecosystems** — Add parsers for Ruby (Gemfile.lock), .NET (packages.lock.json), etc.
-- **Cloud providers** — Extend AWS/Azure/GCP/Snowflake discovery modules
-- **Output formats** — New export targets, dashboard improvements
-- **Registry expansion** — Add MCP server entries to `mcp_registry.json`
+**Test layout:**
 
-## Pull Request Process
+| Directory | What it tests |
+|-----------|--------------|
+| `tests/test_core.py` | CLI commands, report generation |
+| `tests/test_scanner_ecosystems.py` | OSV ecosystem mapping |
+| `tests/test_nvidia_advisory.py` | NVIDIA CSAF advisory enrichment |
+| `tests/test_accuracy_baseline.py` | Known-vuln packages always detected (network) |
+| `tests/test_runtime_*.py` | Proxy, detectors, patterns |
+| `tests/test_api_*.py` | REST API endpoints |
 
-1. Fork the repo and create your branch from `main`
-2. Add tests for any new functionality
-3. Ensure all tests pass: `pytest tests/ -x -q`
-4. Ensure linting passes: `ruff check src/`
-5. Update the README if needed
-6. Submit your PR with a clear description
+---
 
-**Branch protection:** All PRs require 1 approving review from a code owner, 5 CI checks to pass, and signed commits. Admins cannot bypass these rules.
+## Code style
 
-## Version Bump Checklist
+- **Formatter:** `ruff format` (Black-compatible, line length 120)
+- **Linter:** `ruff check` — all rules in `pyproject.toml`
+- **Types:** Type hints on all new public functions. `mypy` is run in CI.
+- **No `print()`** — use `console.print()` (Rich) in CLI code, `logging` in library code.
+- **No stubs or vaporware** — only document and claim features that are implemented and tested.
 
-When preparing a release, update the version in all of these files:
+Pre-commit hooks enforce ruff on every commit. Install once with `pre-commit install`.
 
-1. `pyproject.toml` — `version = "X.Y.Z"`
-2. `src/agent_bom/__init__.py` — `__version__ = "X.Y.Z"`
-3. `Dockerfile` — version label
-4. `Dockerfile.sse` — `ARG VERSION=X.Y.Z`
-5. `integrations/mcp-registry/server.json` — `version`
-6. `integrations/openclaw/*/SKILL.md` — version in frontmatter (scan, compliance, registry, runtime)
-7. `action.yml` — version in description + branding
-8. `README.md` — version references in examples
-9. `PUBLISHING.md` — version references
-10. `tests/test_version.py` — expected version string
+---
 
-## Honesty Rule
+## Submitting a PR
 
-Only document and claim features that are actually implemented and tested. Do not add stubs, placeholders, or roadmap items as if they are shipping features.
+1. **Branch from main** and name it `feat/`, `fix/`, `docs/`, or `chore/`.
+2. **All tests pass:** `pytest tests/ -x -q`
+3. **Lint clean:** `ruff check src/ && ruff format --check src/`
+4. **PR description:** one-sentence summary, what changed, how to test it.
+5. **One review required** — a maintainer will review within a few days.
 
-## Developer Certificate of Origin (DCO)
+CI checks that run on every PR:
+- `pytest` (all tests)
+- `ruff check` + `ruff format --check`
+- `mypy` type check
+- Version alignment (all version strings must match)
+- Docker build
 
-All contributions must include a `Signed-off-by` line in the commit message
-(use `git commit -s`). By signing off, you certify that you have the right
-to submit the work under this project's license per the
-[Developer Certificate of Origin v1.1](https://developercertificate.org/).
+**Commit style:** `type: short description` — types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`.
 
-## Reporting Security Issues
+---
 
-If you discover a security vulnerability, please use [GitHub Security Advisories](https://github.com/msaad00/agent-bom/security/advisories) or email andwgdysaad@gmail.com instead of opening a public issue.
+## Architecture overview
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full module map. Key paths:
+
+| Path | Purpose |
+|------|---------|
+| `src/agent_bom/cli.py` | All CLI commands (Click) |
+| `src/agent_bom/scanners/__init__.py` | OSV batch scan + detail enrichment |
+| `src/agent_bom/enrichment.py` | NVD + EPSS + CISA KEV enrichment |
+| `src/agent_bom/discovery/__init__.py` | MCP client config discovery (20 clients) |
+| `src/agent_bom/models.py` | Core data models (Package, Vulnerability, Agent…) |
+| `src/agent_bom/runtime/` | Proxy detectors (7 detectors) |
+| `src/agent_bom/api/server.py` | FastAPI REST server |
+| `src/agent_bom/mcp_server.py` | MCP server (22 tools) |
+
+The scan pipeline: **discover** MCP configs → **parse** packages → **scan** via OSV batch API → **enrich** full vuln details → **optional** NVD/EPSS/KEV enrichment → **output** (table, JSON, SARIF, CycloneDX…).
+
+---
+
+## Honesty rule
+
+Only document and claim features that are actually implemented and tested. Do not add stubs, placeholders, or roadmap items as shipping features.
+
+---
+
+## Version bump
+
+Use `scripts/bump-version.py`. It updates all 19 files in one go. See `PUBLISHING.md` for the full release checklist.
+
+---
+
+## Developer Certificate of Origin
+
+All contributions must include a `Signed-off-by` line (`git commit -s`). By signing, you certify you have the right to submit the work under the Apache 2.0 license per [DCO v1.1](https://developercertificate.org/).
+
+---
+
+## Security reports
+
+Please **do not open a public issue** for security vulnerabilities. Use [GitHub Security Advisories](https://github.com/msaad00/agent-bom/security/advisories) or email andwgdysaad@gmail.com. We aim to respond within 48 hours.

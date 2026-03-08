@@ -348,14 +348,17 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
 
     # Check cache first
     for pkg in packages:
-        osv_ecosystem = ECOSYSTEM_MAP.get(pkg.ecosystem)
+        # Normalize ecosystem case — ECOSYSTEM_MAP keys are all lowercase.
+        # Accepts "PyPI", "NPM", "PYPI", etc. from external callers.
+        eco_key = pkg.ecosystem.lower()
+        osv_ecosystem = ECOSYSTEM_MAP.get(eco_key)
         if not osv_ecosystem or pkg.version in ("unknown", "latest"):
             continue
         if cache:
-            cached = cache.get(pkg.ecosystem, pkg.name, pkg.version)
+            cached = cache.get(eco_key, pkg.name, pkg.version)
             if cached is not None:
                 if cached:  # non-empty vuln list
-                    key = f"{pkg.ecosystem}:{pkg.name}@{pkg.version}"
+                    key = f"{eco_key}:{pkg.name}@{pkg.version}"
                     results[key] = cached
                 continue  # skip API call (cached hit or cached "clean")
         packages_to_query.append(pkg)
@@ -367,7 +370,8 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
     pkg_index = {}  # Map query index to package
 
     for pkg in packages_to_query:
-        osv_ecosystem = ECOSYSTEM_MAP.get(pkg.ecosystem)
+        eco_key = pkg.ecosystem.lower()
+        osv_ecosystem = ECOSYSTEM_MAP.get(eco_key)
         if not osv_ecosystem or pkg.version in ("unknown", "latest"):
             continue
 
@@ -412,7 +416,7 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
                                 actual_idx = batch_start + i
                                 pkg = pkg_index.get(actual_idx)
                                 if pkg:
-                                    key = f"{pkg.ecosystem}:{pkg.name}@{pkg.version}"
+                                    key = f"{pkg.ecosystem.lower()}:{pkg.name}@{pkg.version}"
                                     results[key] = vulns
                                     queried_keys_with_vulns.add(key)
                     except (ValueError, KeyError) as e:
@@ -432,11 +436,12 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
     # Populate cache with fresh results (including "clean" packages)
     if cache:
         for pkg in packages_to_query:
-            key = f"{pkg.ecosystem}:{pkg.name}@{pkg.version}"
+            eco_key = pkg.ecosystem.lower()
+            key = f"{eco_key}:{pkg.name}@{pkg.version}"
             if key in queried_keys_with_vulns:
-                cache.put(pkg.ecosystem, pkg.name, pkg.version, results[key])
+                cache.put(eco_key, pkg.name, pkg.version, results[key])
             else:
-                cache.put(pkg.ecosystem, pkg.name, pkg.version, [])
+                cache.put(eco_key, pkg.name, pkg.version, [])
 
     return results
 
@@ -496,11 +501,11 @@ async def scan_packages(packages: list[Package]) -> int:
     """Scan a list of packages for vulnerabilities. Returns count of vulns found."""
     # Strip pip extras notation before OSV queries (OSV doesn't understand extras)
     for pkg in packages:
-        if pkg.ecosystem == "pypi" and "[" in pkg.name:
+        if pkg.ecosystem.lower() == "pypi" and "[" in pkg.name:
             pkg.name = _strip_extras(pkg.name)
 
     # Auto-resolve "latest"/"unknown" versions before OSV query
-    unresolved = [p for p in packages if p.version in ("latest", "unknown", "") and p.ecosystem in ("npm", "pypi")]
+    unresolved = [p for p in packages if p.version in ("latest", "unknown", "") and p.ecosystem.lower() in ("npm", "pypi")]
     if unresolved:
         try:
             from agent_bom.resolver import resolve_all_versions
@@ -512,7 +517,7 @@ async def scan_packages(packages: list[Package]) -> int:
             console.print(f"  [yellow]⚠[/yellow] Version resolution skipped: {exc}")
 
     # SAST packages already carry vulns from Semgrep — skip OSV query for them
-    scannable = [p for p in packages if p.version not in ("unknown", "latest") and p.ecosystem != "sast"]
+    scannable = [p for p in packages if p.version not in ("unknown", "latest") and p.ecosystem.lower() != "sast"]
 
     if not scannable:
         return 0
@@ -521,7 +526,7 @@ async def scan_packages(packages: list[Package]) -> int:
 
     total_vulns = 0
     for pkg in scannable:
-        key = f"{pkg.ecosystem}:{pkg.name}@{pkg.version}"
+        key = f"{pkg.ecosystem.lower()}:{pkg.name}@{pkg.version}"
         vuln_data = results.get(key, [])
         if vuln_data:
             pkg.vulnerabilities = build_vulnerabilities(vuln_data, pkg)

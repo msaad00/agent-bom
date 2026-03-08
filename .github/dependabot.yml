@@ -16,3 +16,12 @@ updates:
       - "dependencies"
       - "python"
     open-pull-requests-limit: 10
+
+  - package-ecosystem: "npm"
+    directory: "/ui"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "javascript"
+    open-pull-requests-limit: 5

@@ -64,9 +64,15 @@ agent-bom scan -f html -o report.html              # HTML dashboard
 agent-bom scan --enforce                           # tool poisoning detection
 agent-bom scan --fail-on-severity high -q          # CI gate
 agent-bom scan --image myapp:latest                # Docker image scanning
-agent-bom scan --k8s --all-namespaces              # K8s cluster
+agent-bom scan --k8s --all-namespaces              # K8s image scanning (cluster-wide)
+agent-bom scan --k8s-mcp                           # Discover MCP pods + CRDs in Kubernetes
+agent-bom scan --include-processes                 # Scan running host MCP processes (psutil)
+agent-bom scan --include-containers                # Scan Docker containers for MCP servers
+agent-bom scan --health-check                      # Probe discovered servers for liveness
+agent-bom scan --siem splunk --siem-url https://...  # Push findings to SIEM
 agent-bom scan --aws --snowflake --databricks      # Multi-cloud
 agent-bom scan --hf-model meta-llama/Llama-3.1-8B  # model provenance
+agent-bom proxy-configure --apply                  # Auto-wrap MCP configs with security proxy
 ```
 
 Auto-discovers 20 MCP clients: Claude Desktop, Claude Code, Cursor, Windsurf, Cline, VS Code Copilot, Continue, Zed, Cortex Code, Codex CLI, Gemini CLI, Goose, Snowflake CLI, OpenClaw, Roo Code, Amazon Q, ToolHive, Docker MCP Toolkit, JetBrains AI, and Junie.
@@ -129,14 +135,18 @@ rm -rf ~/.agent-bom                      # remove local data
 |---|---|---|
 | Package CVE detection | Yes | Yes (OSV + NVD + EPSS + CISA KEV + GHSA + NVIDIA CSAF) |
 | SBOM generation | Yes | Yes (CycloneDX 1.6, SPDX 3.0, SARIF) |
-| **AI agent discovery** | -- | 20 MCP clients + Docker Compose |
+| **AI agent discovery** | -- | 20 MCP clients + Docker Compose + running processes + containers + K8s pods/CRDs |
 | **Blast radius mapping** | -- | CVE -> package -> server -> agent -> credentials -> tools |
 | **Credential exposure** | -- | Which secrets leak per vulnerability, per agent |
 | **Tool poisoning detection** | -- | Description injection, capability combos, drift detection |
 | **Privilege detection** | -- | root, shell access, privileged containers, per-tool permissions |
 | **10-framework compliance** | -- | OWASP LLM + MCP + Agentic, MITRE ATLAS, NIST AI RMF + CSF, EU AI Act, SOC 2, ISO 27001, CIS |
+| **MITRE ATT&CK mapping** | -- | Dynamic technique lookup by tactic phase (no hardcoded T-codes) |
 | **Posture scorecard** | -- | Letter grade (A-F), 6 dimensions, incident correlation (P1-P4) |
-| **Policy-as-code** | -- | 17 conditions, CI gate, block unverified servers |
+| **Policy-as-code + Jira** | -- | 17 conditions, CI gate, auto-create Jira tickets for violations |
+| **SIEM push** | -- | Splunk HEC, Datadog Logs, Elasticsearch — raw or OCSF format |
+| **Proxy auto-configure** | -- | Wrap every MCP server config with `agent-bom proxy` in one command |
+| **Server health checks** | -- | Lightweight liveness probe — reachable, tool count, latency, protocol |
 | **Lateral movement analysis** | -- | Agent context graph, shared credentials, BFS attack paths |
 | **427+ server MCP registry** | -- | Risk levels, tool inventories, auto-synced weekly |
 
@@ -187,7 +197,7 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible
 | Mode | Command | Best for |
 |------|---------|----------|
 | CLI | `agent-bom scan` | Local audit |
-| GitHub Action | `uses: msaad00/agent-bom@v0.60.3 | CI/CD + SARIF |
+| GitHub Action | `uses: msaad00/agent-bom@v0.61.0 | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated scans |
 | REST API | `agent-bom api` | Dashboards, SIEM |
 | MCP Server | `agent-bom mcp-server` (22 tools) | Inside any MCP client |
@@ -200,7 +210,7 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible
 <summary><b>GitHub Action</b></summary>
 
 ```yaml
-- uses: msaad00/agent-bom@v0.60.3
+- uses: msaad00/agent-bom@v0.61.0
   with:
     severity-threshold: high
     upload-sarif: true
@@ -277,7 +287,7 @@ Options:
 |----------|------|
 | PyPI | `pip install agent-bom` |
 | Docker | `docker run agentbom/agent-bom scan` |
-| GitHub Action | `uses: msaad00/agent-bom@v0.60.3 |
+| GitHub Action | `uses: msaad00/agent-bom@v0.61.0 |
 | Glama | [glama.ai/mcp/servers/@msaad00/agent-bom](https://glama.ai/mcp/servers/@msaad00/agent-bom) |
 | MCP Registry | [server.json](integrations/mcp-registry/server.json) |
 | ToolHive | [registry entry](integrations/toolhive/server.json) |

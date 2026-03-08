@@ -60,6 +60,8 @@ DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     ("tests/test_core.py", re.compile(r'(assert\s+data\["version"\]\s*==\s*")0\.\d+\.\d+(")', re.M), r"\g<1>{v}\g<2>"),
     # cve-freshness.yml — SARIF fallback template version
     (".github/workflows/cve-freshness.yml", re.compile(r'("version":")\d+\.\d+\.\d+(")'), r"\g<1>{v}\g<2>"),
+    # mcp-change-scan.yml — pinned agent-bom install version
+    (".github/workflows/mcp-change-scan.yml", re.compile(r"(agent-bom==)\d+\.\d+\.\d+"), r"\g<1>{v}"),
     # README.md — Sigstore verify line
     ("README.md", re.compile(r"(agent-bom verify agent-bom@)\S+"), r"\g<1>{v}"),
 ]

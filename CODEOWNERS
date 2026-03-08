@@ -1,0 +1,39 @@
+# CODEOWNERS — auto-assigns reviewers when files are changed in a PR
+# Syntax: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything
+* @msaad00
+
+# Core scanner and enrichment pipeline
+src/agent_bom/scanners/     @msaad00
+src/agent_bom/enrichment.py @msaad00
+src/agent_bom/scan_cache.py @msaad00
+
+# Runtime / proxy / detectors
+src/agent_bom/runtime/      @msaad00
+src/agent_bom/proxy.py      @msaad00
+src/agent_bom/enforcement.py @msaad00
+
+# MCP server and discovery
+src/agent_bom/mcp_server.py  @msaad00
+src/agent_bom/discovery/     @msaad00
+src/agent_bom/mcp_introspect.py @msaad00
+
+# Security-sensitive modules
+src/agent_bom/security.py    @msaad00
+src/agent_bom/credentials.py @msaad00
+src/agent_bom/policy.py      @msaad00
+
+# API server
+src/agent_bom/api/           @msaad00
+
+# Cloud integrations
+src/agent_bom/cloud/         @msaad00
+
+# CI/CD and release pipeline
+.github/                     @msaad00
+scripts/bump-version.py      @msaad00
+pyproject.toml               @msaad00
+
+# Integrations
+integrations/                @msaad00

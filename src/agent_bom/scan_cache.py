@@ -76,6 +76,16 @@ class ScanCache:
         )
         self._conn.commit()
 
+    def put_many(self, entries: list[tuple[str, str, str, list[dict]]]) -> None:
+        """Batch insert/replace multiple cache entries in one transaction."""
+        now = time.time()
+        rows = [(self._key(eco, name, ver), json.dumps(vulns), now) for eco, name, ver, vulns in entries]
+        self._conn.executemany(
+            "INSERT OR REPLACE INTO osv_cache (cache_key, vulns_json, cached_at) VALUES (?, ?, ?)",
+            rows,
+        )
+        self._conn.commit()
+
     def cleanup_expired(self) -> int:
         """Delete entries older than the TTL.  Returns the count removed."""
         cutoff = time.time() - self._ttl

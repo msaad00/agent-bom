@@ -433,15 +433,18 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
     # Enrich minimal batch results with full vuln details (summary, CVSS, etc.)
     await _enrich_results_if_needed(results)
 
-    # Populate cache with fresh results (including "clean" packages)
+    # Populate cache with fresh results — off event loop to avoid blocking
     if cache:
-        for pkg in packages_to_query:
-            eco_key = pkg.ecosystem.lower()
-            key = f"{eco_key}:{pkg.name}@{pkg.version}"
-            if key in queried_keys_with_vulns:
-                cache.put(eco_key, pkg.name, pkg.version, results[key])
-            else:
-                cache.put(eco_key, pkg.name, pkg.version, [])
+        cache_writes = [
+            (
+                pkg.ecosystem.lower(),
+                pkg.name,
+                pkg.version,
+                results.get(f"{pkg.ecosystem.lower()}:{pkg.name}@{pkg.version}", []),
+            )
+            for pkg in packages_to_query
+        ]
+        await asyncio.to_thread(cache.put_many, cache_writes)
 
     return results
 

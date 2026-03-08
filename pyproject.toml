@@ -78,7 +78,7 @@ gcp = [
 coreweave = []  # kubectl only — no pip packages
 databricks = ["databricks-sdk>=0.20"]
 snowflake = ["snowflake-connector-python>=3.6"]
-nebius = ["requests>=2.28"]
+nebius = ["requests>=2.32.4"]  # GHSA-9hjg-9r4m-mvj7 (session cookie leak)
 huggingface = ["huggingface-hub>=0.20"]
 wandb = ["wandb>=0.16"]
 mlflow = ["mlflow>=2.10"]
@@ -92,7 +92,7 @@ mcp-server = [
     "mcp>=1.26",
     "smithery>=0.4",
 ]
-dashboard = ["streamlit>=1.30", "plotly>=5.18"]
+dashboard = ["streamlit>=1.37.0", "plotly>=5.18"]  # GHSA-rxff-vr5r-8cj5 (fixed in 1.37.0)
 snyk = []  # Uses existing httpx dependency, no additional packages needed
 oidc = [
     "PyJWT>=2.8",

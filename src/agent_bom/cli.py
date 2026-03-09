@@ -910,12 +910,31 @@ def scan(
     import time as _time
 
     from agent_bom.logging_config import setup_logging
+    from agent_bom.project_config import (
+        get_fail_on_severity,
+        get_policy_path,
+        load_project_config,
+    )
 
     _scan_start = _time.monotonic()
 
     # Configure logging — explicit --log-level overrides --verbose
     _log_level = log_level or ("DEBUG" if verbose else "WARNING")
     setup_logging(level=_log_level, json_output=log_json, log_file=log_file)
+
+    # Load .agent-bom.yaml project config — CLI flags always win
+    _proj_cfg = load_project_config()
+    if _proj_cfg:
+        if not fail_on_severity:
+            fail_on_severity = get_fail_on_severity(_proj_cfg)
+        if not enrich and _proj_cfg.get("enrich"):
+            enrich = True
+        if not transitive and _proj_cfg.get("transitive"):
+            transitive = True
+        if not fail_on_kev and _proj_cfg.get("fail_on_kev"):
+            fail_on_kev = True
+        if not policy and (cfg_policy := get_policy_path(_proj_cfg)):
+            policy = str(cfg_policy)
 
     # Apply presets (override defaults, don't override explicit flags)
     if preset == "ci":

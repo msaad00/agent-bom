@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from agent_bom.agent_identity import ANONYMOUS, check_identity
 from agent_bom.proxy_scanner import ScanConfig, load_scan_config, scan_tool_call, scan_tool_response
 from agent_bom.security import validate_arguments, validate_command
 
@@ -291,6 +292,7 @@ def log_tool_call(
     reason: str = "",
     payload_sha256: str = "",
     message_id: int | str | None = None,
+    agent_id: str = ANONYMOUS,
 ) -> None:
     """Append a tool call record to the audit JSONL log.
 
@@ -302,11 +304,13 @@ def log_tool_call(
         reason: Reason for blocking (if blocked).
         payload_sha256: SHA-256 hash of the full JSON-RPC payload.
         message_id: JSON-RPC ``id`` field for correlation.
+        agent_id: Resolved caller identity (from _meta.agent_identity).
     """
     record: dict = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "type": "tools/call",
         "tool": tool_name,
+        "agent_id": agent_id,
         "args": _truncate_args(arguments),
         "policy": policy_result,
     }
@@ -624,6 +628,26 @@ async def run_proxy(
                     # Payload integrity: hash the full message
                     p_hash = compute_payload_hash(msg)
 
+                    # Agent identity: extract + resolve from _meta.agent_identity
+                    agent_id, identity_block_reason = check_identity(msg, policy)
+                    if identity_block_reason:
+                        metrics.record_blocked("identity")
+                        if log_file:
+                            log_tool_call(
+                                log_file,
+                                tool_name,
+                                arguments,
+                                "blocked",
+                                identity_block_reason,
+                                payload_sha256=p_hash,
+                                message_id=msg_id,
+                                agent_id=agent_id,
+                            )
+                        error_resp = make_error_response(msg_id, -32600, identity_block_reason)
+                        sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
+                        sys.stdout.buffer.flush()
+                        continue
+
                     # Replay detection
                     if replay_detector.check(msg):
                         metrics.replay_rejections += 1
@@ -639,6 +663,7 @@ async def run_proxy(
                                     reason,
                                     payload_sha256=p_hash,
                                     message_id=msg_id,
+                                    agent_id=agent_id,
                                 )
                             error_resp = make_error_response(msg_id, -32600, reason)
                             sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
@@ -660,6 +685,7 @@ async def run_proxy(
                                 reason,
                                 payload_sha256=p_hash,
                                 message_id=msg_id,
+                                agent_id=agent_id,
                             )
                         error_resp = make_error_response(msg_id, -32600, reason)
                         sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
@@ -680,6 +706,7 @@ async def run_proxy(
                                     reason,
                                     payload_sha256=p_hash,
                                     message_id=msg_id,
+                                    agent_id=agent_id,
                                 )
                             error_resp = make_error_response(msg.get("id"), -32600, reason)
                             sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
@@ -700,6 +727,7 @@ async def run_proxy(
                                     gw_reason,
                                     payload_sha256=p_hash,
                                     message_id=msg_id,
+                                    agent_id=agent_id,
                                 )
                             error_resp = make_error_response(msg.get("id"), -32600, gw_reason)
                             sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
@@ -747,6 +775,7 @@ async def run_proxy(
                                     reason,
                                     payload_sha256=p_hash,
                                     message_id=msg_id,
+                                    agent_id=agent_id,
                                 )
                             error_resp = make_error_response(msg_id, -32600, reason)
                             sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
@@ -767,6 +796,7 @@ async def run_proxy(
                             "allowed",
                             payload_sha256=p_hash,
                             message_id=msg_id,
+                            agent_id=agent_id,
                         )
 
             # Forward to server

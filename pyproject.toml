@@ -55,6 +55,7 @@ otel = [
     "opentelemetry-api>=1.20",
     "opentelemetry-sdk>=1.20",
     "opentelemetry-exporter-otlp-proto-http>=1.20",
+    "protobuf>=3.20.2",  # CVE-2022-1941 (fixed in 3.18.3 / 3.20.2) — transitive via otlp-proto-http
 ]
 ui = [
     "agent-bom[api]",
@@ -93,7 +94,7 @@ mcp-server = [
     "mcp>=1.26",
     "smithery>=0.4",
 ]
-dashboard = ["streamlit>=1.37.0", "plotly>=5.18"]  # GHSA-rxff-vr5r-8cj5 (fixed in 1.37.0)
+dashboard = ["streamlit>=1.37.0", "plotly>=5.18", "pillow>=10.4.0"]  # GHSA-rxff-vr5r-8cj5 (fixed in 1.37.0); pillow>=10.4.0 fixes CVE-2023-50447 + CVE-2024-28219 (transitive via streamlit)
 snyk = []  # Uses existing httpx dependency, no additional packages needed
 oidc = [
     "PyJWT>=2.8",

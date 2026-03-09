@@ -4372,6 +4372,8 @@ def serve_cmd(host: str, port: int, persist: Optional[str], cors_allow_all: bool
         host=host,
         port=port,
         reload=reload,
+        timeout_keep_alive=5,
+        limit_concurrency=500,
     )
 
 
@@ -4500,6 +4502,13 @@ def api_cmd(
         reload=reload,
         workers=1 if reload else workers,
         log_level=log_level.lower(),
+        # Slowloris / connection-exhaustion hardening:
+        # Close idle keep-alive connections after 5s (uvicorn default is 5s but
+        # we set it explicitly so it's visible and auditable).
+        timeout_keep_alive=5,
+        # Hard cap on concurrent in-flight requests; prevents thread/FD exhaustion
+        # under a slow-connection flood. 500 ≫ any realistic single-server load.
+        limit_concurrency=500,
     )
 
 

@@ -38,7 +38,7 @@
 > **Traditional scanners tell you a package has a CVE.**
 > **agent-bom tells you which AI agents are compromised, which credentials leak, which tools an attacker reaches — and then blocks it in real time.**
 
-Two capabilities, one tool: **scanner** (CVEs, blast radius, compliance, supply chain) + **proxy** (intercepts MCP traffic, enforces policy, detects 7 behavioral attack patterns). Read-only. Agentless. Open source.
+Three capabilities, one tool: **scanner** (CVEs, blast radius, compliance, supply chain) + **proxy** (intercepts MCP traffic, enforces policy, detects 7 behavioral attack patterns) + **instruction file trust** (audits CLAUDE.md, .cursorrules, AGENTS.md, SKILL.md for malicious patterns, typosquatting, and Sigstore provenance). Read-only. Agentless. Open source.
 
 ```
 CVE-2025-1234  (CRITICAL . CVSS 9.8 . CISA KEV)
@@ -57,6 +57,45 @@ CVE-2025-1234  (CRITICAL . CVSS 9.8 . CISA KEV)
     <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-light.svg" alt="Blast Radius" width="800" />
   </picture>
 </p>
+
+---
+
+## Instruction file trust
+
+AI agents run on instruction — CLAUDE.md, .cursorrules, AGENTS.md, SKILL.md. A malicious or compromised instruction file is a supply chain attack that executes with full agent permissions. agent-bom audits every instruction file it finds.
+
+```
+agent-bom scan --skill-only
+
+CLAUDE.md  →  SUSPICIOUS (high confidence)
+  [CRITICAL] Credential/secret file access
+             "cat ~/.aws/credentials" detected — reads secret files
+  [HIGH]     Safety confirmation bypass
+             "--dangerously-skip-permissions" found — disables all guardrails
+  [HIGH]     Typosquatting risk: server name "filessystem" (→ filesystem)
+  [MEDIUM]   External URL in instructions: https://malicious-cdn.com/hook.js
+
+  Trust categories
+    Purpose & Capability  WARN  — description vs. actual tool mismatch
+    Instruction Scope     FAIL  — file reads outside home directory
+    Install Mechanism     FAIL  — unverified install source, no Sigstore sig
+    Credentials           WARN  — 3 env vars undocumented
+    Persistence/Privilege PASS  — no persistence, no privilege escalation
+```
+
+Five trust categories, 17 behavioral risk patterns, Sigstore signature verification. No network calls — fully local static analysis.
+
+```bash
+agent-bom scan --skill-only             # audit all discovered instruction files
+agent-bom scan --skill CLAUDE.md        # audit a single specific file
+```
+
+Or via MCP — ask your AI assistant to audit any instruction file before running it:
+
+```
+skill_trust(skill_content="<paste CLAUDE.md content>")
+# → { verdict: "suspicious", confidence: "high", findings: [...], categories: [...] }
+```
 
 ---
 

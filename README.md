@@ -17,7 +17,8 @@
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center">
-  <b>Security scanner for AI infrastructure. Find CVEs, map blast radius, detect credential exposure, and enforce runtime policy across MCP servers, containers, Kubernetes, cloud, and GPU workloads.</b>
+  <b>Security scanner and runtime enforcement proxy for AI infrastructure.</b><br>
+  <b>Find CVEs, map blast radius, and detect credential exposure — then sit in the MCP data path and enforce policy in real time.</b>
 </p>
 
 <p align="center">
@@ -35,7 +36,9 @@
 ## Why agent-bom?
 
 > **Traditional scanners tell you a package has a CVE.**
-> **agent-bom tells you which AI agents are compromised, which credentials leak, which tools an attacker reaches, and what the business impact is.**
+> **agent-bom tells you which AI agents are compromised, which credentials leak, which tools an attacker reaches — and then blocks it in real time.**
+
+Two capabilities, one tool: **scanner** (CVEs, blast radius, compliance, supply chain) + **proxy** (intercepts MCP traffic, enforces policy, detects 7 behavioral attack patterns). Read-only. Agentless. Open source.
 
 ```
 CVE-2025-1234  (CRITICAL . CVSS 9.8 . CISA KEV)
@@ -80,6 +83,25 @@ agent-bom scan --vector-db-scan                    # Scan self-hosted + Pinecone
 agent-bom scan --gpu-scan                          # Discover GPU containers + K8s nodes, detect unauthenticated DCGM exporters
 agent-bom graph report.json --format dot           # Export dependency graph (DOT/Mermaid/JSON)
 agent-bom proxy-configure --apply                  # Auto-wrap MCP configs with security proxy
+```
+
+**Runtime enforcement** — sit between your MCP client and server, enforce policy in real time:
+
+```bash
+# Wrap a single server — intercept every tool call
+agent-bom proxy --command "uvx mcp-server-filesystem /" --policy policy.yml
+
+# Protect mode — run standalone detector engine
+agent-bom protect --mode http
+
+# Watch MCP configs for drift — alert on changes
+agent-bom watch --webhook https://hooks.slack.com/...
+
+# Policy file — 17 conditions, zero code required
+# policy.yml:
+#   blocked_tools: [run_shell, exec_command]
+#   require_agent_identity: true
+#   rate_limit: {threshold: 50, window_seconds: 60}
 ```
 
 Auto-discovers 20 MCP clients: Claude Desktop, Claude Code, Cursor, Windsurf, Cline, VS Code Copilot, Continue, Zed, Cortex Code, Codex CLI, Gemini CLI, Goose, Snowflake CLI, OpenClaw, Roo Code, Amazon Q, ToolHive, Docker MCP Toolkit, JetBrains AI, and Junie.
@@ -217,7 +239,9 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible
 | REST API | `agent-bom api` | Dashboards, SIEM |
 | MCP Server | `agent-bom mcp-server` (23 tools) | Inside any MCP client |
 | Dashboard | `agent-bom serve` | API + Next.js UI (15 pages) |
-| Runtime proxy | `agent-bom proxy` | MCP traffic audit |
+| Runtime proxy | `agent-bom proxy` | Intercept + enforce MCP traffic in real time |
+| Protect engine | `agent-bom protect` | 7 behavioral detectors (rug pull, injection, exfil, credential leak) |
+| Config watcher | `agent-bom watch` | Filesystem watch on MCP configs, alert on drift |
 | Pre-install guard | `agent-bom guard pip install <pkg>` | Block vulnerable installs |
 | Snowflake | [DEPLOYMENT.md](DEPLOYMENT.md) | Snowpark + SiS |
 
@@ -256,6 +280,9 @@ agent-bom api --api-key $SECRET --rate-limit 30   # http://127.0.0.1:8422/docs
 | `POST /v1/traces` | OpenTelemetry trace ingestion |
 | `GET /v1/scan/{id}/context-graph` | Lateral movement paths |
 | `GET /v1/malicious/check` | Malicious package check |
+| `GET /v1/proxy/status` | Live proxy metrics (tool calls, blocked, latency p95) |
+| `GET /v1/proxy/alerts` | Runtime behavioral alerts from audit log |
+| `GET /v1/audit` | Query JSONL audit trail (HMAC integrity verified) |
 
 </details>
 
@@ -370,14 +397,14 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full diagrams: data flow pi
 
 **Agents / MCP**
 - [x] 20 MCP client config discovery paths, live introspection, tool drift detection
-- [x] Runtime proxy with 6 behavioral detectors (rug pull, injection, credential leak, etc.)
-- [ ] Semantic prompt injection analysis (currently pattern-based)
+- [x] Runtime proxy with 7 behavioral detectors (rug pull, injection, credential leak, exfil sequences, response cloaking, vector DB injection, semantic injection scoring)
+- [x] Semantic injection scoring — weighted 10-signal model, 0.0–1.0 risk score, MEDIUM/HIGH alerts
 - [ ] Agent memory / vector store content scanning for injected instructions
 - [ ] LLM API call tracing (which model was called, with what context)
 
 **Identity / access**
 - [x] OIDC/JWT auth for REST API (Okta, Google Workspace, Azure AD, Auth0, GitHub OIDC)
-- [ ] Agent-level identity — propagating caller identity through MCP tool chains
+- [x] Agent-level identity — JWT/opaque token in `_meta.agent_identity`, tracked on every audit log entry, `require_agent_identity` policy enforcement
 - [ ] MCP server identity attestation — cryptographic proof of server identity at runtime
 - [ ] Agent-to-agent permission boundary enforcement
 

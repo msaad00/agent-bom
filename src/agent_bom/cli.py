@@ -237,8 +237,11 @@ def main():
     \b
     Quick start:
       agent-bom scan                        auto-discover local agents
-      agent-bom scan -f html -o report.html open dashboard
+      agent-bom check lodash@4.17.20        pre-install CVE check
       agent-bom scan --enrich               add NVD CVSS + EPSS + CISA KEV
+      agent-bom scan -f html -o report.html --open   HTML dashboard
+      agent-bom proxy --command "uvx ..."   runtime enforcement proxy
+      agent-bom introspect --all            live server tool listing
       agent-bom api                         start REST API (port 8422)
       agent-bom serve                       API + dashboard (port 8422)
 
@@ -1186,29 +1189,31 @@ def scan(
         con.print(f"  [green]✓[/green] Loaded {len(agents)} agent(s) from inventory")
     elif not skill_only and config_dir:
         con.print(f"\n[bold blue]Scanning config directory: {config_dir}...[/bold blue]\n")
-        agents = discover_all(
-            project_dir=config_dir,
-            dynamic=dynamic_discovery,
-            dynamic_max_depth=dynamic_max_depth,
-            include_processes=include_processes,
-            include_containers=include_containers,
-            include_k8s_mcp=k8s_mcp,
-            k8s_namespace=k8s_namespace,
-            k8s_all_namespaces=k8s_all_namespaces,
-            k8s_context=k8s_mcp_context,
-        )
+        with con.status("[bold]Discovering agents and MCP servers...[/bold]", spinner="dots"):
+            agents = discover_all(
+                project_dir=config_dir,
+                dynamic=dynamic_discovery,
+                dynamic_max_depth=dynamic_max_depth,
+                include_processes=include_processes,
+                include_containers=include_containers,
+                include_k8s_mcp=k8s_mcp,
+                k8s_namespace=k8s_namespace,
+                k8s_all_namespaces=k8s_all_namespaces,
+                k8s_context=k8s_mcp_context,
+            )
     elif not skill_only:
-        agents = discover_all(
-            project_dir=project,
-            dynamic=dynamic_discovery,
-            dynamic_max_depth=dynamic_max_depth,
-            include_processes=include_processes,
-            include_containers=include_containers,
-            include_k8s_mcp=k8s_mcp,
-            k8s_namespace=k8s_namespace,
-            k8s_all_namespaces=k8s_all_namespaces,
-            k8s_context=k8s_mcp_context,
-        )
+        with con.status("[bold]Discovering agents and MCP servers...[/bold]", spinner="dots"):
+            agents = discover_all(
+                project_dir=project,
+                dynamic=dynamic_discovery,
+                dynamic_max_depth=dynamic_max_depth,
+                include_processes=include_processes,
+                include_containers=include_containers,
+                include_k8s_mcp=k8s_mcp,
+                k8s_namespace=k8s_namespace,
+                k8s_all_namespaces=k8s_all_namespaces,
+                k8s_context=k8s_mcp_context,
+            )
 
     any_cloud = (
         aws
@@ -3074,6 +3079,7 @@ def scan(
         if open_report:
             import webbrowser
 
+            con.print(f"  [green]✓[/green] Opening report in browser: {out_path}")
             webbrowser.open(f"file://{Path(out_path).resolve()}")
         else:
             con.print(f"  [dim]Open with:[/dim] open {out_path}")
@@ -3122,6 +3128,7 @@ def scan(
         if open_report:
             import webbrowser
 
+            con.print(f"  [green]✓[/green] Opening report in browser: {out_path}")
             webbrowser.open(f"file://{Path(out_path).resolve()}")
         else:
             con.print(f"  [dim]Open with:[/dim] open {out_path}")

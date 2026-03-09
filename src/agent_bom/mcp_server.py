@@ -270,10 +270,12 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         host=host,
         port=port,
         instructions=(
-            f"agent-bom v{__version__} — AI supply chain security scanner. "
-            "Scans packages and images for CVEs, assesses credential exposure and tool access risks, "
-            "maps blast radius from vulnerabilities to credentials and tools, generates SBOMs, "
-            "and enforces security policies. Agentless, read-only, non-root."
+            f"agent-bom v{__version__} — AI infrastructure security scanner with 23 tools. "
+            "Scans packages and images for CVEs (OSV, NVD, EPSS, CISA KEV), maps blast radius "
+            "from vulnerabilities to credentials and tools, generates SBOMs (CycloneDX, SPDX), "
+            "enforces security policies, and maps to 11 compliance frameworks "
+            "(OWASP LLM/MCP/Agentic, MITRE ATLAS, NIST, EU AI Act, ISO 27001, SOC 2). "
+            "Discovers 21 MCP clients. Read-only, agentless, no credentials required."
         ),
     )
     # Set the actual agent-bom version (FastMCP defaults to SDK version)
@@ -538,9 +540,10 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             if not matches:
                 return json.dumps(
                     {
-                        "cve_id": cve_id,
                         "found": False,
-                        "message": f"CVE {cve_id} not found in current scan results",
+                        "error": "CVE not found",
+                        "cve_id": cve_id,
+                        "suggestion": "Run scan first",
                     }
                 )
 
@@ -682,7 +685,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                     indent=2,
                 )
 
-        return json.dumps({"found": False, "query": search_term, "message": "No matching server found in registry"})
+        return json.dumps({"found": False, "error": "No matching server found in registry", "query": search_term})
 
     # ── Tool 6: generate_sbom ─────────────────────────────────────────
 
@@ -1986,19 +1989,35 @@ _SERVER_CARD_TOOLS = [
     {"name": "scan", "description": "Full discovery → scan → output pipeline", "annotations": {"readOnlyHint": True}},
     {"name": "check", "description": "Check a specific package for CVEs before installing", "annotations": {"readOnlyHint": True}},
     {"name": "blast_radius", "description": "Look up blast radius for a specific CVE", "annotations": {"readOnlyHint": True}},
-    {"name": "policy_check", "description": "Evaluate security policy rules", "annotations": {"readOnlyHint": True}},
+    {
+        "name": "policy_check",
+        "description": "Evaluate security policy rules against scan findings — supports 17 conditions including severity, KEV, EPSS, credential exposure, and custom expressions",
+        "annotations": {"readOnlyHint": True},
+    },
     {"name": "registry_lookup", "description": "Query MCP server threat intelligence registry", "annotations": {"readOnlyHint": True}},
     {"name": "generate_sbom", "description": "Generate CycloneDX or SPDX SBOM", "annotations": {"readOnlyHint": True}},
     {
         "name": "compliance",
-        "description": "10-framework compliance posture (OWASP LLM + MCP + Agentic, ATLAS, NIST AI RMF, EU AI Act, NIST CSF, ISO 27001, SOC 2, CIS)",
+        "description": "Map scan findings to 11 compliance frameworks: OWASP LLM/MCP/Agentic/AISVS, MITRE ATLAS, NIST AI RMF/CSF, EU AI Act, ISO 27001, SOC 2, CIS Controls",
         "annotations": {"readOnlyHint": True},
     },
     {"name": "remediate", "description": "Generate actionable remediation plan", "annotations": {"readOnlyHint": True}},
     {"name": "skill_trust", "description": "ClawHub-style trust assessment for SKILL.md files", "annotations": {"readOnlyHint": True}},
-    {"name": "verify", "description": "Package integrity + SLSA provenance verification", "annotations": {"readOnlyHint": True}},
-    {"name": "where", "description": "Show all MCP discovery paths + existence status", "annotations": {"readOnlyHint": True}},
-    {"name": "inventory", "description": "List agents/servers without CVE scanning", "annotations": {"readOnlyHint": True}},
+    {
+        "name": "verify",
+        "description": "Verify package integrity via Sigstore cosign signatures and SLSA provenance attestation",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "where",
+        "description": "List all 21 MCP client config discovery paths with existence status — useful for debugging discovery issues",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "inventory",
+        "description": "Quick agent and server discovery without vulnerability scanning — shows what's configured, not what's vulnerable",
+        "annotations": {"readOnlyHint": True},
+    },
     {"name": "diff", "description": "Compare scan against baseline for new/resolved vulns", "annotations": {"readOnlyHint": True}},
     {
         "name": "marketplace_check",
@@ -2023,7 +2042,7 @@ _SERVER_CARD_TOOLS = [
     },
     {
         "name": "fleet_scan",
-        "description": "Batch-scan MCP server names against registry for fleet inventory assessment",
+        "description": "Batch registry lookup for multiple MCP servers — returns risk levels, tool counts, and trust signals for each",
         "annotations": {"readOnlyHint": True},
     },
     {

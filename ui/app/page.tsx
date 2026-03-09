@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { api, ScanJob, ScanResult, BlastRadius, Agent, formatDate, OWASP_LLM_TOP10, MITRE_ATLAS } from "@/lib/api";
+import { checkFileSize, validateScanReport } from "@/lib/validators";
 import { AgentTopology } from "@/components/agent-topology";
 import { TrustStack } from "@/components/trust-stack";
 import { SeverityBadge } from "@/components/severity-badge";
@@ -323,7 +324,7 @@ export default function Dashboard() {
     return [{
       job_id: "imported",
       status: "done",
-      created_at: importedReport.generated_at ?? new Date().toISOString(),
+      created_at: importedReport.scan_timestamp ?? new Date().toISOString(),
       request: {} as ScanJob["request"],
       progress: [],
       result: importedReport as unknown as Record<string, unknown>,
@@ -896,17 +897,35 @@ function CompoundIssueCard({ issue }: { issue: CompoundIssue }) {
 }
 
 function ApiDown({ onImport }: { onImport: (data: ScanResult) => void }) {
+  const [importError, setImportError] = useState<string | null>(null);
+
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setImportError(null);
+
+    // Reject oversized files before loading into memory
+    const sizeCheck = checkFileSize(file);
+    if (!sizeCheck.ok) {
+      setImportError(sizeCheck.error);
+      e.target.value = "";
+      return;
+    }
+
     const reader = new FileReader();
+    reader.onerror = () => setImportError("Failed to read file.");
     reader.onload = (ev) => {
-      try {
-        const data = JSON.parse(ev.target?.result as string) as ScanResult;
-        onImport(data);
-      } catch {
-        alert("Invalid JSON — make sure this is an agent-bom scan report.");
+      const text = ev.target?.result;
+      if (typeof text !== "string") {
+        setImportError("Could not read file contents.");
+        return;
       }
+      const result = validateScanReport(text);
+      if (!result.ok) {
+        setImportError(result.error);
+        return;
+      }
+      onImport(result.data as ScanResult);
     };
     reader.readAsText(file);
   };
@@ -931,7 +950,13 @@ function ApiDown({ onImport }: { onImport: (data: ScanResult) => void }) {
         <p className="text-xs text-zinc-600 mb-4">
           Generated with{" "}
           <code className="font-mono">agent-bom scan -f json -o report.json</code>
+          <span className="block mt-1 text-zinc-700">Max 10 MB · schema-validated</span>
         </p>
+        {importError && (
+          <div className="mb-4 px-3 py-2 bg-red-950/40 border border-red-800/50 rounded-lg text-left">
+            <p className="text-xs text-red-400 font-mono break-words">{importError}</p>
+          </div>
+        )}
         <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-sm text-zinc-300 transition-colors">
           <FileText className="w-4 h-4" />
           Choose report.json

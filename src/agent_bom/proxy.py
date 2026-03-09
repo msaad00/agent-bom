@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import json
 import logging
 import os
@@ -50,6 +51,7 @@ class ProxyMetrics:
     total_messages_client_to_server: int = 0
     total_messages_server_to_client: int = 0
     replay_rejections: int = 0
+    relay_errors: int = 0
 
     def record_call(self, tool_name: str) -> None:
         """Record an allowed tool call."""
@@ -98,6 +100,7 @@ class ProxyMetrics:
             "messages_client_to_server": self.total_messages_client_to_server,
             "messages_server_to_client": self.total_messages_server_to_client,
             "replay_rejections": self.replay_rejections,
+            "relay_errors": self.relay_errors,
         }
 
 
@@ -353,6 +356,25 @@ def compute_payload_hash(payload: dict) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def compute_response_hmac(payload: dict, key: str) -> str:
+    """HMAC-SHA256 of the canonical JSON response payload.
+
+    Written to the audit log so operators can verify responses were not
+    tampered with between the MCP server and this proxy.  The signature is
+    NOT inserted into the wire protocol (that would break the MCP spec).
+
+    Args:
+        payload: The parsed JSON-RPC response dict.
+        key: A shared secret known to both the proxy operator and the
+             verification tool.  Must be non-empty.
+
+    Returns:
+        Hex-encoded HMAC-SHA256 digest.
+    """
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hmac.new(key.encode("utf-8"), canonical.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
 @dataclass
 class ReplayDetector:
     """Detect replayed JSON-RPC messages by tracking payload hashes.
@@ -514,6 +536,7 @@ async def run_proxy(
     alert_webhook: Optional[str] = None,
     metrics_port: int = 8422,
     metrics_token: Optional[str] = None,
+    response_signing_key: Optional[str] = None,
 ) -> int:
     """Main proxy loop. Spawns server subprocess, relays JSON-RPC.
 
@@ -913,6 +936,22 @@ async def run_proxy(
                 for k in stale:
                     pending_calls.pop(k, None)
 
+            # Response signing — write HMAC to audit log for tamper detection
+            if msg and response_signing_key and log_file:
+                sig = compute_response_hmac(msg, response_signing_key)
+                sig_entry = (
+                    json.dumps(
+                        {
+                            "ts": datetime.now(timezone.utc).isoformat(),
+                            "type": "response_hmac",
+                            "id": msg.get("id"),
+                            "hmac_sha256": sig,
+                        }
+                    )
+                    + "\n"
+                )
+                log_file.write(sig_entry)
+
             # Forward to client
             sys.stdout.buffer.write(line)
             sys.stdout.buffer.flush()
@@ -937,7 +976,21 @@ async def run_proxy(
         )
         for result in results:
             if isinstance(result, Exception) and not isinstance(result, (BrokenPipeError, ConnectionResetError, asyncio.CancelledError)):
-                logger.debug("Relay task exited with error: %s", result)
+                metrics.relay_errors += 1
+                logger.warning("Relay task exited with unexpected error: %s", result)
+                if log_file:
+                    err_entry = (
+                        json.dumps(
+                            {
+                                "ts": datetime.now(timezone.utc).isoformat(),
+                                "type": "relay_error",
+                                "error": str(result),
+                                "error_type": type(result).__name__,
+                            }
+                        )
+                        + "\n"
+                    )
+                    log_file.write(err_entry)
     finally:
         # Write metrics summary + runtime alerts to audit log before closing
         if log_file:

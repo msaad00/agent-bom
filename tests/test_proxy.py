@@ -10,6 +10,7 @@ from agent_bom.proxy import (
     ReplayDetector,
     check_policy,
     compute_payload_hash,
+    compute_response_hmac,
     extract_tool_name,
     is_tools_call,
     log_tool_call,
@@ -392,3 +393,66 @@ def test_check_policy_allowlist_warn_does_not_enforce():
     }
     allowed, reason = check_policy(policy, "write_file", {})
     assert allowed is True  # warn rules are not enforced at runtime
+
+
+# ── compute_response_hmac ───────────────────────────────────────────────────
+
+
+def test_response_hmac_deterministic():
+    """Same payload + key always produces the same HMAC."""
+    msg = {"jsonrpc": "2.0", "id": 1, "result": {"content": [{"type": "text", "text": "ok"}]}}
+    h1 = compute_response_hmac(msg, "secret-key")
+    h2 = compute_response_hmac(msg, "secret-key")
+    assert h1 == h2
+    assert len(h1) == 64  # HMAC-SHA256 hex digest
+
+
+def test_response_hmac_key_sensitivity():
+    """Different keys produce different HMACs for the same payload."""
+    msg = {"jsonrpc": "2.0", "id": 1, "result": {"data": "hello"}}
+    assert compute_response_hmac(msg, "key-a") != compute_response_hmac(msg, "key-b")
+
+
+def test_response_hmac_payload_sensitivity():
+    """Different payloads produce different HMACs with the same key."""
+    msg_a = {"jsonrpc": "2.0", "id": 1, "result": {"data": "hello"}}
+    msg_b = {"jsonrpc": "2.0", "id": 1, "result": {"data": "tampered"}}
+    assert compute_response_hmac(msg_a, "key") != compute_response_hmac(msg_b, "key")
+
+
+def test_response_hmac_canonical_key_order():
+    """HMAC is the same regardless of dict key insertion order."""
+    msg_a = {"b": 2, "a": 1}
+    msg_b = {"a": 1, "b": 2}
+    assert compute_response_hmac(msg_a, "key") == compute_response_hmac(msg_b, "key")
+
+
+def test_response_hmac_differs_from_payload_hash():
+    """HMAC with a key is not the same as a plain SHA-256 hash."""
+    msg = {"jsonrpc": "2.0", "id": 1, "result": {}}
+    assert compute_response_hmac(msg, "some-key") != compute_payload_hash(msg)
+
+
+# ── ProxyMetrics relay_errors ───────────────────────────────────────────────
+
+
+def test_proxy_metrics_relay_errors_default_zero():
+    """relay_errors starts at zero."""
+    m = ProxyMetrics()
+    assert m.relay_errors == 0
+
+
+def test_proxy_metrics_relay_errors_in_summary():
+    """relay_errors is included in the summary dict."""
+    m = ProxyMetrics()
+    m.relay_errors = 2
+    s = m.summary()
+    assert s["relay_errors"] == 2
+
+
+def test_proxy_metrics_summary_relay_errors_zero():
+    """summary() includes relay_errors=0 when no errors occurred."""
+    m = ProxyMetrics()
+    s = m.summary()
+    assert "relay_errors" in s
+    assert s["relay_errors"] == 0

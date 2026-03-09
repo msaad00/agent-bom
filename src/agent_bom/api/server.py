@@ -1712,6 +1712,9 @@ async def get_compliance() -> dict:
     all_blast: list[dict] = []
     latest_scan: str | None = None
     scan_count = 0
+    has_mcp_context = False
+    has_agent_context = False
+    all_scan_sources: set[str] = set()
 
     for job in _get_store().list_all():
         if job.status != JobStatus.DONE or not job.result:
@@ -1721,6 +1724,13 @@ async def get_compliance() -> dict:
         all_blast.extend(br_list)
         if latest_scan is None or (job.completed_at and job.completed_at > latest_scan):
             latest_scan = job.completed_at
+        # Detect scan context from result metadata
+        if job.result.get("has_mcp_context"):
+            has_mcp_context = True
+        if job.result.get("has_agent_context"):
+            has_agent_context = True
+        for src in job.result.get("scan_sources", []):
+            all_scan_sources.add(src)
 
     def _build_controls(
         catalog: dict[str, str],
@@ -1823,6 +1833,9 @@ async def get_compliance() -> dict:
         "overall_status": overall_status,
         "scan_count": scan_count,
         "latest_scan": latest_scan,
+        "has_mcp_context": has_mcp_context,
+        "has_agent_context": has_agent_context,
+        "scan_sources": sorted(all_scan_sources),
         "owasp_llm_top10": owasp,
         "owasp_mcp_top10": owasp_mcp,
         "mitre_atlas": atlas,

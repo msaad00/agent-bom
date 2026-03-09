@@ -244,7 +244,7 @@ def test_scan_returns_json(mock_pipeline):
         config_path="/tmp/test",
         mcp_servers=[MCPServer(name="test-server", command="npx", args=[], env={}, transport=TransportType.STDIO, packages=[])],
     )
-    mock_pipeline.return_value = ([mock_agent], [], [])
+    mock_pipeline.return_value = ([mock_agent], [], [], ["agent_discovery"])
 
     from agent_bom.mcp_server import create_mcp_server
 
@@ -257,7 +257,7 @@ def test_scan_returns_json(mock_pipeline):
 @patch("agent_bom.mcp_server._run_scan_pipeline")
 def test_scan_no_agents(mock_pipeline):
     """Scan with no agents should return no_agents_found status."""
-    mock_pipeline.return_value = ([], [], [])
+    mock_pipeline.return_value = ([], [], [], [])
     from agent_bom.mcp_server import create_mcp_server
 
     server = create_mcp_server()
@@ -273,7 +273,7 @@ def test_scan_no_agents(mock_pipeline):
 @patch("agent_bom.mcp_server._run_scan_pipeline")
 def test_blast_radius_not_found(mock_pipeline):
     """Unknown CVE should return found=False."""
-    mock_pipeline.return_value = ([], [], [])
+    mock_pipeline.return_value = ([], [], [], [])
     from agent_bom.mcp_server import create_mcp_server
 
     server = create_mcp_server()
@@ -289,7 +289,7 @@ def test_blast_radius_not_found(mock_pipeline):
 @patch("agent_bom.mcp_server._run_scan_pipeline")
 def test_policy_check_valid(mock_pipeline):
     """Valid policy with no findings should pass."""
-    mock_pipeline.return_value = ([], [], [])
+    mock_pipeline.return_value = ([], [], [], [])
     from agent_bom.mcp_server import create_mcp_server
 
     server = create_mcp_server()
@@ -324,7 +324,7 @@ def test_generate_sbom_cyclonedx(mock_pipeline):
         config_path="/tmp/test",
         mcp_servers=[MCPServer(name="test-server", command="npx", args=[], env={}, transport=TransportType.STDIO, packages=[])],
     )
-    mock_pipeline.return_value = ([mock_agent], [], [])
+    mock_pipeline.return_value = ([mock_agent], [], [], ["agent_discovery"])
     from agent_bom.mcp_server import create_mcp_server
 
     server = create_mcp_server()
@@ -336,7 +336,7 @@ def test_generate_sbom_cyclonedx(mock_pipeline):
 @patch("agent_bom.mcp_server._run_scan_pipeline")
 def test_generate_sbom_no_agents(mock_pipeline):
     """generate_sbom with no agents should return error."""
-    mock_pipeline.return_value = ([], [], [])
+    mock_pipeline.return_value = ([], [], [], [])
     from agent_bom.mcp_server import create_mcp_server
 
     server = create_mcp_server()
@@ -374,7 +374,7 @@ def test_cli_mcp_server_transport_options():
 @patch("agent_bom.mcp_server._run_scan_pipeline")
 def test_compliance_no_agents(mock_pipeline):
     """Compliance with no agents should return 100% score."""
-    mock_pipeline.return_value = ([], [], [])
+    mock_pipeline.return_value = ([], [], [], [])
     from agent_bom.mcp_server import create_mcp_server
 
     server = create_mcp_server()
@@ -422,7 +422,7 @@ def test_compliance_with_findings(mock_pipeline):
     br.atlas_tags = ["AML.T0010"]
     br.nist_ai_rmf_tags = ["MAP-3.5"]
 
-    mock_pipeline.return_value = ([mock_agent], [br], [])
+    mock_pipeline.return_value = ([mock_agent], [br], [], ["agent_discovery"])
     from agent_bom.mcp_server import create_mcp_server
 
     server = create_mcp_server()
@@ -444,7 +444,7 @@ def test_compliance_with_findings(mock_pipeline):
 @patch("agent_bom.mcp_server._run_scan_pipeline")
 def test_remediate_no_agents(mock_pipeline):
     """Remediate with no agents should return empty plan."""
-    mock_pipeline.return_value = ([], [], [])
+    mock_pipeline.return_value = ([], [], [], [])
     from agent_bom.mcp_server import create_mcp_server
 
     server = create_mcp_server()
@@ -469,7 +469,7 @@ def test_remediate_returns_plan(mock_pipeline):
         config_path="/tmp/test",
         mcp_servers=[MCPServer(name="test-server", command="npx", args=[], env={}, transport=TransportType.STDIO, packages=[])],
     )
-    mock_pipeline.return_value = ([mock_agent], [], [])
+    mock_pipeline.return_value = ([mock_agent], [], [], ["agent_discovery"])
     from agent_bom.mcp_server import create_mcp_server
 
     server = create_mcp_server()
@@ -539,7 +539,7 @@ def test_scan_with_transitive(mock_pipeline):
         config_path="/tmp/test",
         mcp_servers=[MCPServer(name="s", command="npx", args=[], env={}, transport=TransportType.STDIO, packages=[])],
     )
-    mock_pipeline.return_value = ([mock_agent], [], [])
+    mock_pipeline.return_value = ([mock_agent], [], [], ["agent_discovery"])
     from agent_bom.mcp_server import create_mcp_server
 
     server = create_mcp_server()
@@ -559,7 +559,7 @@ def test_scan_with_fail_severity_pass(mock_pipeline):
         config_path="/tmp/test",
         mcp_servers=[MCPServer(name="s", command="npx", args=[], env={}, transport=TransportType.STDIO, packages=[])],
     )
-    mock_pipeline.return_value = ([mock_agent], [], [])
+    mock_pipeline.return_value = ([mock_agent], [], [], ["agent_discovery"])
     from agent_bom.mcp_server import create_mcp_server
 
     server = create_mcp_server()
@@ -596,7 +596,7 @@ def test_scan_with_fail_severity_fail(mock_pipeline):
         exposed_credentials=[],
         exposed_tools=[],
     )
-    mock_pipeline.return_value = ([mock_agent], [br], [])
+    mock_pipeline.return_value = ([mock_agent], [br], [], ["agent_discovery"])
     from agent_bom.mcp_server import create_mcp_server
 
     server = create_mcp_server()
@@ -615,7 +615,7 @@ def test_scan_with_policy(mock_pipeline):
         config_path="/tmp/test",
         mcp_servers=[MCPServer(name="s", command="npx", args=[], env={}, transport=TransportType.STDIO, packages=[])],
     )
-    mock_pipeline.return_value = ([mock_agent], [], [])
+    mock_pipeline.return_value = ([mock_agent], [], [], ["agent_discovery"])
     from agent_bom.mcp_server import create_mcp_server
 
     server = create_mcp_server()
@@ -700,7 +700,7 @@ def test_diff_no_baseline(mock_pipeline):
         config_path="/tmp/test",
         mcp_servers=[MCPServer(name="s", command="npx", args=[], env={}, transport=TransportType.STDIO, packages=[])],
     )
-    mock_pipeline.return_value = ([mock_agent], [], [])
+    mock_pipeline.return_value = ([mock_agent], [], [], ["agent_discovery"])
 
     with patch("agent_bom.history.latest_report", return_value=None), patch("agent_bom.history.save_report"):
         from agent_bom.mcp_server import create_mcp_server
@@ -714,7 +714,7 @@ def test_diff_no_baseline(mock_pipeline):
 @patch("agent_bom.mcp_server._run_scan_pipeline")
 def test_diff_no_agents(mock_pipeline):
     """diff with no agents should return error."""
-    mock_pipeline.return_value = ([], [], [])
+    mock_pipeline.return_value = ([], [], [], [])
     from agent_bom.mcp_server import create_mcp_server
 
     server = create_mcp_server()
@@ -806,7 +806,7 @@ def test_scan_with_invalid_severity_gate():
             config_path="/tmp/test",
             mcp_servers=[MCPServer(name="test-server", command="npx", args=[], env={}, transport=TransportType.STDIO, packages=[])],
         )
-        mock_pipeline.return_value = ([mock_agent], [], [])
+        mock_pipeline.return_value = ([mock_agent], [], [], ["agent_discovery"])
 
         result = _call_tool(server, "scan", {"fail_severity": "invalid_sev"})
         assert "error" in result
@@ -826,7 +826,7 @@ def test_scan_surfaces_warnings():
             config_path="/tmp/test",
             mcp_servers=[MCPServer(name="test-server", command="npx", args=[], env={}, transport=TransportType.STDIO, packages=[])],
         )
-        mock_pipeline.return_value = ([mock_agent], [], ["Image scan failed for bad:image: not found"])
+        mock_pipeline.return_value = ([mock_agent], [], ["Image scan failed for bad:image: not found"], ["agent_discovery"])
 
         result = _call_tool(server, "scan", {})
         assert "warnings" in result
@@ -840,7 +840,7 @@ def test_scan_no_agents_with_warnings():
 
     server = create_mcp_server()
     with patch("agent_bom.mcp_server._run_scan_pipeline") as mock_pipeline:
-        mock_pipeline.return_value = ([], [], ["SBOM file too large"])
+        mock_pipeline.return_value = ([], [], ["SBOM file too large"], [])
 
         result = _call_tool(server, "scan", {})
         assert result["status"] == "no_agents_found"

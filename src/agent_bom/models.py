@@ -417,13 +417,21 @@ class AIBOMReport:
 
     @property
     def has_mcp_context(self) -> bool:
-        """True if scan discovered MCP servers (enables MCP/Agentic framework tags)."""
-        return any(len(a.mcp_servers) > 0 for a in self.agents)
+        """True if scan discovered real MCP servers (not synthetic SBOM/image wrappers).
+
+        A synthetic wrapper has ``command=""`` — real MCP servers always have a command.
+        """
+        return any(s.command for a in self.agents for s in a.mcp_servers)
 
     @property
     def has_agent_context(self) -> bool:
-        """True if scan discovered AI agents (enables agent-specific graphs)."""
-        return len(self.agents) > 0 and any(a.mcp_servers for a in self.agents)
+        """True if scan discovered real AI agents (not synthetic SBOM/image wrappers).
+
+        Synthetic agents (SBOM ingest, image scan) use ``AgentType.CUSTOM`` with
+        names prefixed by ``sbom:`` or ``image:``.  Real discovered agents have
+        specific agent types (CLAUDE_DESKTOP, CURSOR, etc.).
+        """
+        return any(a.agent_type != AgentType.CUSTOM for a in self.agents)
 
     def __post_init__(self):
         if not self.tool_version:

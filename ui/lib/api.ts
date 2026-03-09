@@ -358,6 +358,9 @@ export interface ComplianceResponse {
   overall_status: "pass" | "warning" | "fail";
   scan_count: number;
   latest_scan: string | null;
+  has_mcp_context?: boolean;
+  has_agent_context?: boolean;
+  scan_sources?: string[];
   owasp_llm_top10: ComplianceControl[];
   owasp_mcp_top10: ComplianceControl[];
   mitre_atlas: ComplianceControl[];

@@ -174,12 +174,21 @@ class ConfigChangeHandler:
         self._scan_and_alert(path)
 
     def _scan_and_alert(self, config_path: str) -> None:
-        """Re-scan the changed config and diff against last scan."""
+        """Re-scan the changed config and diff against last scan.
+
+        Includes a short settle delay to avoid reading partially-written config
+        files (TOCTOU mitigation — editors may not write atomically).
+        """
         try:
+            import time as _time
+
             from agent_bom.discovery import discover_all
             from agent_bom.models import AIBOMReport
             from agent_bom.output import to_json
             from agent_bom.parsers import extract_packages
+
+            # Brief settle delay — let the editor finish writing
+            _time.sleep(0.5)
 
             # Discover and scan
             agents = discover_all()

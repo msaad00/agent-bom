@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -44,8 +46,11 @@ def _evict_oldest(cache: dict[str, dict], max_entries: int) -> None:
     """Evict oldest entries when cache exceeds max_entries."""
     if len(cache) <= max_entries:
         return
-    # Sort by _cached_at and remove oldest
-    by_age = sorted(cache.items(), key=lambda kv: kv[1].get("_cached_at", 0))
+    # Evict entries missing _cached_at first (legacy/corrupt), then oldest
+    by_age = sorted(
+        cache.items(),
+        key=lambda kv: kv[1].get("_cached_at") if isinstance(kv[1].get("_cached_at"), (int, float)) else 0,
+    )
     to_remove = len(cache) - max_entries
     for key, _ in by_age[:to_remove]:
         del cache[key]
@@ -75,11 +80,26 @@ def _load_enrichment_cache() -> None:
 
 
 def _save_enrichment_cache() -> None:
-    """Persist NVD + EPSS caches to disk."""
+    """Persist NVD + EPSS caches to disk (atomic write to prevent corruption)."""
     _ENRICHMENT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     for name, data in [("nvd_cache.json", _nvd_file_cache), ("epss_cache.json", _epss_file_cache)]:
+        target = _ENRICHMENT_CACHE_DIR / name
         try:
-            (_ENRICHMENT_CACHE_DIR / name).write_text(json.dumps(data))
+            fd, tmp_path = tempfile.mkstemp(dir=str(_ENRICHMENT_CACHE_DIR), suffix=".tmp")
+            fd_closed = False
+            try:
+                os.write(fd, json.dumps(data).encode("utf-8"))
+                os.close(fd)
+                fd_closed = True
+                os.replace(tmp_path, str(target))
+            except BaseException:
+                if not fd_closed:
+                    os.close(fd)
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
         except OSError:
             _logger.debug("Failed to save %s cache", name)
 

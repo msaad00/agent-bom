@@ -22,7 +22,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
+import stat
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -174,12 +177,12 @@ def apply_proxy_configs(
 
         changed = False
         for cfg in file_configs:
-            # Look for the server by matching its original command in the existing entry
+            # Look for the server by matching its original command AND args
             server_map = data[servers_key]
             for entry_key, entry_val in server_map.items():
                 if not isinstance(entry_val, dict):
                     continue
-                if entry_val.get("command") == cfg.original_command:
+                if entry_val.get("command") == cfg.original_command and entry_val.get("args", []) == cfg.original_args:
                     if dry_run:
                         logger.info("[dry-run] Would patch %s/%s in %s", servers_key, entry_key, config_path)
                     else:
@@ -190,7 +193,29 @@ def apply_proxy_configs(
 
         if changed and not dry_run:
             try:
-                path.write_text(json.dumps(data, indent=2))
+                # Preserve original file permissions
+                try:
+                    orig_mode = path.stat().st_mode
+                except OSError:
+                    orig_mode = stat.S_IRUSR | stat.S_IWUSR  # 0o600 default
+
+                # Atomic write: temp file + rename to prevent corruption
+                fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp", prefix=".agent-bom-")
+                fd_closed = False
+                try:
+                    os.write(fd, json.dumps(data, indent=2).encode("utf-8"))
+                    os.close(fd)
+                    fd_closed = True
+                    os.chmod(tmp_path, orig_mode & 0o777)
+                    os.replace(tmp_path, str(path))
+                except BaseException:
+                    if not fd_closed:
+                        os.close(fd)
+                    try:
+                        os.unlink(tmp_path)
+                    except OSError:
+                        pass
+                    raise
                 modified += 1
             except OSError as exc:
                 logger.warning("Cannot write %s: %s", config_path, exc)

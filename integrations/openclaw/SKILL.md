@@ -7,7 +7,7 @@ description: >-
   and vector database security checks. Use when the user mentions vulnerability
   scanning, MCP server trust, compliance, SBOM generation, CIS benchmarks,
   blast radius, or AI supply chain risk.
-version: 0.59.3
+version: 0.64.0
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. No credentials required for
@@ -19,11 +19,11 @@ metadata:
   source: https://github.com/msaad00/agent-bom
   pypi: https://pypi.org/project/agent-bom/
   scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
-  tests: 3480
+  tests: 4086
   install:
     pipx: agent-bom
     pip: agent-bom
-    docker: ghcr.io/msaad00/agent-bom:0.59.3
+    docker: ghcr.io/msaad00/agent-bom:0.64.0
   openclaw:
     requires:
       bins: []
@@ -196,7 +196,7 @@ agent-bom where             # show all discovery paths
 }
 ```
 
-## Tools (22)
+## Tools (23)
 
 ### Vulnerability Scanning
 | Tool | Description |
@@ -233,6 +233,7 @@ agent-bom where             # show all discovery paths
 |------|-------------|
 | `context_graph` | Agent context graph with lateral movement analysis |
 | `analytics_query` | Query vulnerability trends, posture history, and runtime events |
+| `runtime_correlate` | Cross-reference proxy audit JSONL with CVE findings, risk amplification |
 | `vector_db_scan` | Probe Qdrant/Weaviate/Chroma/Milvus for auth and exposure |
 | `gpu_infra_scan` | GPU container and K8s node inventory + unauthenticated DCGM probe (MAESTRO KC6) |
 
@@ -308,6 +309,6 @@ configured credentials and call only the cloud provider's own APIs.
 ## Verification
 
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
-- **Sigstore signed**: `agent-bom verify agent-bom@0.60.0`
-- **3,400+ tests** with CodeQL + OpenSSF Scorecard
+- **Sigstore signed**: `agent-bom verify agent-bom@0.64.0`
+- **4,086 tests** with CodeQL + OpenSSF Scorecard
 - **No telemetry**: Zero tracking, zero analytics

@@ -24,7 +24,7 @@ graph TB
         Parser["Package Parser"]
         Scanner["Vulnerability Scanner\nOSV + NVD + EPSS + KEV"]
         Blast["Blast Radius Analyzer"]
-        Compliance["Compliance Tagger\n10 Frameworks"]
+        Compliance["Compliance Tagger\n11 Frameworks"]
         Posture["Posture Scorer"]
     end
 
@@ -92,7 +92,7 @@ sequenceDiagram
     BlastRadius-->>CLI: Blast radius chains
 
     CLI->>ComplianceTagger: Findings
-    ComplianceTagger->>ComplianceTagger: Tag 10 frameworks
+    ComplianceTagger->>ComplianceTagger: Tag 11 frameworks
     ComplianceTagger-->>CLI: Tagged findings
 
     CLI->>Reporter: Full results
@@ -158,7 +158,7 @@ graph LR
 
 ## 4. Compliance Framework Mapping
 
-Every blast radius finding is tagged against 10 compliance frameworks simultaneously.
+Every blast radius finding is tagged against 11 compliance frameworks simultaneously.
 
 ```mermaid
 graph TD

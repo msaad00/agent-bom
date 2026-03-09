@@ -283,7 +283,7 @@ agent-bom api --api-key $SECRET --rate-limit 30   # http://127.0.0.1:8422/docs
 | `GET /v1/scan/{id}` | Results + status |
 | `GET /v1/scan/{id}/attack-flow` | Per-CVE blast radius graph |
 | `GET /v1/registry` | 427+ server registry |
-| `GET /v1/compliance` | Full 10-framework compliance posture |
+| `GET /v1/compliance` | Full 11-framework compliance posture |
 | `GET /v1/posture` | Enterprise posture scorecard (A-F) |
 | `GET /v1/posture/credentials` | Credential risk ranking |
 | `GET /v1/posture/incidents` | Incident correlation (P1-P4) |
@@ -428,7 +428,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full diagrams: data flow pi
 - [ ] Agent-to-agent permission boundary enforcement
 
 **Compliance / standards**
-- [x] 10 frameworks: OWASP LLM, OWASP MCP, OWASP Agentic, ATLAS, NIST AI RMF, EU AI Act, NIST CSF, ISO 27001, SOC 2, CIS Controls
+- [x] 11 frameworks: OWASP LLM, OWASP MCP, OWASP Agentic, OWASP AISVS v1.0, ATLAS, NIST AI RMF, EU AI Act, NIST CSF, ISO 27001, SOC 2, CIS Controls
 - [ ] CIS AI benchmarks (pending CIS publication)
 - [ ] License compliance engine (OSS license risk flagging)
 - [ ] Workflow engine scanning (n8n, Zapier, Make)

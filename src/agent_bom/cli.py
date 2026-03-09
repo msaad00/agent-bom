@@ -5239,6 +5239,12 @@ def registry_sync_all(max_pages, smithery_token, dry_run):
 )
 @click.option("--metrics-port", default=8422, show_default=True, help="Prometheus metrics port (0 to disable)")
 @click.option("--metrics-token", default=None, envvar="AGENT_BOM_METRICS_TOKEN", help="Bearer token for Prometheus /metrics endpoint")
+@click.option(
+    "--response-sign-key",
+    default=None,
+    envvar="AGENT_BOM_RESPONSE_SIGN_KEY",
+    help="Secret key for HMAC-SHA256 response signing written to audit log (tamper detection)",
+)
 @click.argument("server_cmd", nargs=-1, required=True)
 def proxy_cmd(
     policy,
@@ -5250,6 +5256,7 @@ def proxy_cmd(
     alert_webhook,
     metrics_port,
     metrics_token,
+    response_sign_key,
     server_cmd,
 ):
     """Run an MCP server through agent-bom's security proxy.
@@ -5261,6 +5268,7 @@ def proxy_cmd(
     - Blocks undeclared tools (not in tools/list response)
     - Detects tool drift (rug pull), dangerous arguments, credential leaks
     - Rate limiting and suspicious sequence detection
+    - HMAC-SHA256 response signing in audit log (--response-sign-key)
 
     \b
     Usage:
@@ -5268,6 +5276,7 @@ def proxy_cmd(
       agent-bom proxy --log audit.jsonl -- npx @mcp/server-github
       agent-bom proxy --policy policy.json --block-undeclared -- npx @mcp/server-postgres
       agent-bom proxy --detect-credentials --log-only -- npx @mcp/server-github
+      agent-bom proxy --log audit.jsonl --response-sign-key $MY_SECRET -- npx @mcp/server-github
 
     \b
     Configure in your MCP client (e.g. Claude Desktop):
@@ -5304,6 +5313,7 @@ def proxy_cmd(
             alert_webhook=alert_webhook,
             metrics_port=metrics_port,
             metrics_token=metrics_token,
+            response_signing_key=response_sign_key,
         )
     )
     sys.exit(exit_code)

@@ -56,10 +56,15 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     - ASI09: Always — any vuln in agent stack = trust exploitation risk.
     - ASI10: Credentials + EXECUTE capability + HIGH+ (persistent rogue).
     """
+    # Agentic tags only apply when there are actual agents in the blast radius.
+    # A container image scan with no agent context should NOT get Agentic tags.
+    if not br.affected_agents:
+        return []
+
     tags: set[str] = {
-        "ASI01",  # always — autonomy risk
-        "ASI04",  # always — supply chain
-        "ASI09",  # always — trust exploitation
+        "ASI01",  # autonomy risk (within agentic context)
+        "ASI04",  # supply chain (within agentic context)
+        "ASI09",  # trust exploitation (within agentic context)
     }
 
     has_exec = False

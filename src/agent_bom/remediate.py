@@ -66,6 +66,14 @@ class RemediationPlan:
 
 # ─── Package fix generation ──────────────────────────────────────────────────
 
+_SHELL_METACHAR_RE = re.compile(r"[;&|`$\n\r<>\"'\\]")
+
+
+def _has_shell_metachar(value: str) -> bool:
+    """Check if a string contains shell metacharacters that could enable injection."""
+    return bool(_SHELL_METACHAR_RE.search(value))
+
+
 _ECOSYSTEM_COMMANDS: dict[str, str] = {
     "npm": "npm install {package}@{version}",
     "pypi": "pip install '{package}>={version}'",
@@ -100,8 +108,25 @@ def generate_package_fixes(plan_items: list[dict]) -> tuple[list[PackageFix], li
             )
             continue
 
+        # Validate package name and version before templating to prevent
+        # command injection via malicious OSV/NVD response data.
+        pkg_name = item["package"]
+        fix_ver = item["fix"]
+        if _has_shell_metachar(pkg_name) or _has_shell_metachar(fix_ver):
+            logger.warning("Skipping remediation for %s — unsafe characters in name/version", pkg_name)
+            unfixable.append(
+                {
+                    "package": pkg_name,
+                    "ecosystem": item["ecosystem"],
+                    "reason": "unsafe characters in package name or version",
+                    "current_version": item["current"],
+                    "vulns": item["vulns"],
+                    "agents": item["agents"],
+                }
+            )
+            continue
         template = _ECOSYSTEM_COMMANDS.get(item["ecosystem"], "# Upgrade {package} to {version}")
-        command = template.format(package=item["package"], version=item["fix"])
+        command = template.format(package=pkg_name, version=fix_ver)
 
         fixable.append(
             PackageFix(
@@ -656,8 +681,12 @@ def apply_fixes_from_json(
         if not fixed:
             continue
         eco = item.get("ecosystem", "")
+        pkg_name = item["package"]
+        if _has_shell_metachar(pkg_name) or _has_shell_metachar(fixed):
+            logger.warning("Skipping auto-apply for %s — unsafe characters", pkg_name)
+            continue
         template = _ECOSYSTEM_COMMANDS.get(eco, "# Upgrade {package} to {version}")
-        command = template.format(package=item["package"], version=fixed)
+        command = template.format(package=pkg_name, version=fixed)
         fixable.append(
             PackageFix(
                 package=item["package"],

@@ -77,6 +77,7 @@ def create_client(timeout: float | None = None, max_redirects: int = 5) -> httpx
         transport=transport,
         follow_redirects=True,
         max_redirects=max_redirects,
+        verify=True,  # Explicit: always verify TLS certificates (defense-in-depth)
     )
 
 

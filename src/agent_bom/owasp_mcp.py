@@ -53,7 +53,12 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     - MCP09: Server found via discovery but not in the curated registry.
     - MCP10: A reachable tool has READ capability AND credentials are exposed.
     """
-    tags: set[str] = {"MCP04"}  # always — supply chain attack surface
+    # MCP tags only apply when there are actual MCP servers in the blast radius.
+    # A plain container image scan with no MCP context should NOT get MCP tags.
+    if not br.affected_servers:
+        return []
+
+    tags: set[str] = {"MCP04"}  # supply chain attack surface (within MCP context)
 
     # MCP01 — token/secret exposure via credential env vars
     if br.exposed_credentials:

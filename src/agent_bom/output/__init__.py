@@ -1417,6 +1417,9 @@ def to_json(report: AIBOMReport) -> dict:
         "spec_version": "1.0",
         "ai_bom_version": report.tool_version,
         "generated_at": report.generated_at.isoformat(),
+        "scan_sources": report.scan_sources,
+        "has_mcp_context": report.has_mcp_context,
+        "has_agent_context": report.has_agent_context,
         "summary": {
             "total_agents": report.total_agents,
             "total_mcp_servers": report.total_servers,

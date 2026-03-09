@@ -410,6 +410,21 @@ class AIBOMReport:
     gpu_infra_data: Optional[dict] = None  # Serialized GPU/AI compute infra scan results
     runtime_correlation: Optional[dict] = None  # Runtime ↔ scan correlation (proxy audit vs CVE findings)
 
+    # Scan context metadata — what input sources were actually processed.
+    # Populated by the CLI/API after scan completes. Consumers use this to
+    # determine which UI panels, compliance frameworks, and graphs apply.
+    scan_sources: list[str] = field(default_factory=list)  # e.g. ["agent_discovery", "image", "sbom"]
+
+    @property
+    def has_mcp_context(self) -> bool:
+        """True if scan discovered MCP servers (enables MCP/Agentic framework tags)."""
+        return any(len(a.mcp_servers) > 0 for a in self.agents)
+
+    @property
+    def has_agent_context(self) -> bool:
+        """True if scan discovered AI agents (enables agent-specific graphs)."""
+        return len(self.agents) > 0 and any(a.mcp_servers for a in self.agents)
+
     def __post_init__(self):
         if not self.tool_version:
             from agent_bom import __version__

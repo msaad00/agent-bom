@@ -8,7 +8,7 @@ import logging
 import os
 import tempfile
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -240,7 +240,7 @@ async def fetch_cisa_kev_catalog(client: httpx.AsyncClient) -> dict:
 
     # Use cache if less than 24 hours old
     if _kev_cache and _kev_cache_time:
-        age = datetime.now() - _kev_cache_time
+        age = datetime.now(timezone.utc) - _kev_cache_time
         if age.total_seconds() < 86400:  # 24 hours
             return _kev_cache
 
@@ -264,7 +264,7 @@ async def fetch_cisa_kev_catalog(client: httpx.AsyncClient) -> dict:
                     }
 
             _kev_cache = kev_dict
-            _kev_cache_time = datetime.now()
+            _kev_cache_time = datetime.now(timezone.utc)
             return kev_dict
         except (ValueError, KeyError) as e:
             console.print(f"  [dim yellow]CISA KEV parse error: {e}[/dim yellow]")

@@ -2653,7 +2653,31 @@ def scan(
                 con.print(f"  [yellow]⚠[/yellow] Cortex observability failed: {exc}")
 
     # Build report
-    report = AIBOMReport(agents=agents, blast_radii=blast_radii)
+    # Determine scan sources for context-aware output and framework applicability
+    _scan_sources: list[str] = []
+    if inventory or dynamic_discovery:
+        _scan_sources.append("agent_discovery")
+    if images or image_tars:
+        _scan_sources.append("image")
+    if sbom_file:
+        _scan_sources.append("sbom")
+    if k8s or k8s_mcp:
+        _scan_sources.append("k8s")
+    if filesystem_paths:
+        _scan_sources.append("filesystem")
+    if tf_dirs:
+        _scan_sources.append("terraform")
+    if gha_path:
+        _scan_sources.append("github_actions")
+    if browser_extensions:
+        _scan_sources.append("browser_extensions")
+    if jupyter_dirs:
+        _scan_sources.append("jupyter")
+    if gpu_scan_flag:
+        _scan_sources.append("gpu_infra")
+    if not _scan_sources:
+        _scan_sources.append("agent_discovery")  # Default scan type
+    report = AIBOMReport(agents=agents, blast_radii=blast_radii, scan_sources=_scan_sources)
     if _skill_audit_data:
         report.skill_audit_data = _skill_audit_data
     if _trust_assessment_data:

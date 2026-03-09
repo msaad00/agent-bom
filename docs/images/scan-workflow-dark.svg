@@ -158,5 +158,5 @@
   <!-- ════════════════════════════════════════════════════════ -->
   <!--  FOOTER — single line                                   -->
   <!-- ════════════════════════════════════════════════════════ -->
-  <text x="600" y="572" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="500" fill="#484f58">Zero runtime deps  ·  Read-only  ·  Agentless  ·  3,400+ tests  ·  Apache 2.0</text>
+  <text x="600" y="572" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="500" fill="#484f58">Zero runtime deps  ·  Read-only  ·  Agentless  ·  4,300+ tests  ·  Apache 2.0</text>
 </svg>

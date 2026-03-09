@@ -16,7 +16,7 @@ metadata:
   source: https://github.com/msaad00/agent-bom
   pypi: https://pypi.org/project/agent-bom/
   scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
-  tests: 4086
+  tests: 4314
   install:
     pipx: agent-bom
     pip: agent-bom
@@ -110,7 +110,7 @@ metadata:
 
 # agent-bom-scan — AI Supply Chain Vulnerability Scanner
 
-Discovers MCP clients and servers across 20 AI tools, checks packages for CVEs,
+Discovers MCP clients and servers across 21 AI tools, checks packages for CVEs,
 maps blast radius, and generates remediation plans.
 
 ## Install
@@ -188,5 +188,5 @@ CVE IDs are sent to vulnerability databases.
 
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
 - **Sigstore signed**: `agent-bom verify agent-bom@0.65.0
-- **3,400+ tests** with CodeQL + OpenSSF Scorecard
+- **4,300+ tests** with CodeQL + OpenSSF Scorecard
 - **No telemetry**: Zero tracking, zero analytics

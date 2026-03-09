@@ -19,7 +19,7 @@ metadata:
   source: https://github.com/msaad00/agent-bom
   pypi: https://pypi.org/project/agent-bom/
   scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
-  tests: 4086
+  tests: 4314
   install:
     pipx: agent-bom
     pip: agent-bom
@@ -310,5 +310,5 @@ configured credentials and call only the cloud provider's own APIs.
 
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
 - **Sigstore signed**: `agent-bom verify agent-bom@0.64.0`
-- **4,086 tests** with CodeQL + OpenSSF Scorecard
+- **4,300+ tests** with CodeQL + OpenSSF Scorecard
 - **No telemetry**: Zero tracking, zero analytics

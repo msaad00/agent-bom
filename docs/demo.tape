@@ -1,4 +1,4 @@
-# agent-bom v0.63.0 demo — run with: vhs docs/demo.tape
+# agent-bom v0.65.0 demo — run with: vhs docs/demo.tape
 # Install vhs: brew install vhs  (or https://github.com/charmbracelet/vhs)
 # Prereqs:
 #   pip install agent-bom
@@ -7,7 +7,7 @@
 #     --label com.nvidia.cuda.version=12.3.0 \
 #     node:18-slim sleep 3600
 
-Output docs/images/demo-v0.63.0.gif
+Output docs/images/demo-v0.65.0.gif
 
 Set Shell "bash"
 Set FontSize 14

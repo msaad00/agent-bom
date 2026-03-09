@@ -314,7 +314,13 @@ function TreemapCell({
   );
 }
 
-export function SupplyChainTreemap({ agents }: { agents: Agent[] }) {
+export function SupplyChainTreemap({
+  agents,
+  onPackageClick,
+}: {
+  agents: Agent[];
+  onPackageClick?: (pkgName: string) => void;
+}) {
   const treeData: TreemapItem[] = agents.map((agent) => ({
     name: agent.name,
     children: agent.mcp_servers.map((srv) => ({
@@ -354,6 +360,13 @@ export function SupplyChainTreemap({ agents }: { agents: Agent[] }) {
             data={treeData}
             dataKey="size"
             content={<TreemapCell />}
+            onClick={(node: Record<string, unknown>) => {
+              if (onPackageClick && node && typeof node.name === "string" && node.size !== undefined) {
+                // Leaf node (package) — strip version suffix for package name
+                const name = node.name.replace(/@[^@]+$/, "");
+                onPackageClick(name);
+              }
+            }}
           />
         </ResponsiveContainer>
       </div>

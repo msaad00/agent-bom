@@ -10,6 +10,15 @@ import {
   formatDate,
 } from "@/lib/api";
 import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+} from "recharts";
+import {
   Lock,
   RefreshCw,
   Loader2,
@@ -180,10 +189,13 @@ export default function GatewayPage() {
 
       {/* Error state */}
       {error && !loading && (
-        <div className="text-center py-16 border border-dashed border-red-900/50 rounded-xl">
-          <AlertTriangle className="w-8 h-8 text-red-500 mx-auto mb-3" />
+        <div className="text-center py-10 border border-dashed border-red-900/50 rounded-xl space-y-3">
+          <AlertTriangle className="w-8 h-8 text-red-500 mx-auto" />
           <p className="text-red-400 text-sm">Failed to load gateway data</p>
-          <p className="text-zinc-500 text-xs mt-1">{error}</p>
+          <p className="text-zinc-500 text-xs">{error}</p>
+          <button onClick={load} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-xs text-zinc-300 transition-colors">
+            <RefreshCw className="w-3.5 h-3.5" /> Retry
+          </button>
         </div>
       )}
 
@@ -371,6 +383,39 @@ export default function GatewayPage() {
               <p className="text-zinc-500 text-sm">No audit entries yet.</p>
             </div>
           ) : (
+            <>
+              {/* Audit chart: action breakdown by top tools */}
+              {(() => {
+                const toolCounts: Record<string, { blocked: number; alerted: number; allowed: number }> = {};
+                for (const e of audit) {
+                  if (!toolCounts[e.tool_name]) toolCounts[e.tool_name] = { blocked: 0, alerted: 0, allowed: 0 };
+                  const key = e.action_taken as "blocked" | "alerted" | "allowed";
+                  if (key in toolCounts[e.tool_name]) toolCounts[e.tool_name][key]++;
+                }
+                const chartData = Object.entries(toolCounts)
+                  .sort(([, a], [, b]) => (b.blocked + b.alerted) - (a.blocked + a.alerted))
+                  .slice(0, 10)
+                  .map(([tool, counts]) => ({ tool: tool.length > 16 ? tool.slice(0, 14) + "…" : tool, ...counts }));
+                return (
+                  <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+                    <h3 className="text-sm font-semibold text-zinc-300 mb-1">Enforcement Actions by Tool</h3>
+                    <p className="text-[10px] text-zinc-600 mb-4">Top tools by blocked + alerted count</p>
+                    <div className="h-44">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                          <XAxis dataKey="tool" tick={{ fontSize: 9, fill: "#71717a" }} tickLine={false} axisLine={{ stroke: "#27272a" }} />
+                          <YAxis tick={{ fontSize: 10, fill: "#71717a" }} tickLine={false} axisLine={false} allowDecimals={false} width={28} />
+                          <Tooltip contentStyle={{ background: "#09090b", border: "1px solid #27272a", borderRadius: 8, fontSize: 12 }} itemStyle={{ color: "#e4e4e7" }} labelStyle={{ color: "#71717a", marginBottom: 4 }} />
+                          <Bar dataKey="blocked" name="blocked" stackId="a" fill="#ef4444" fillOpacity={0.8} />
+                          <Bar dataKey="alerted" name="alerted" stackId="a" fill="#f97316" fillOpacity={0.8} />
+                          <Bar dataKey="allowed" name="allowed" stackId="a" fill="#22c55e" fillOpacity={0.5} radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                );
+              })()}
             <div className="space-y-1">
               {audit.map((entry) => (
                 <div key={entry.entry_id} className="bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 flex items-center justify-between">
@@ -392,6 +437,7 @@ export default function GatewayPage() {
                 </div>
               ))}
             </div>
+            </>
           )}
         </>
       )}

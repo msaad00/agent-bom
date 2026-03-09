@@ -12,6 +12,16 @@ import {
 } from "lucide-react";
 import { api, formatDate } from "@/lib/api";
 import type { ActivityTimeline } from "@/lib/api";
+import { ErrorBanner } from "@/components/empty-state";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+} from "recharts";
 
 export default function ActivityPage() {
   const [timeline, setTimeline] = useState<ActivityTimeline | null>(null);
@@ -21,7 +31,7 @@ export default function ActivityPage() {
   const [tab, setTab] = useState<"queries" | "events">("queries");
   const [search, setSearch] = useState("");
 
-  useEffect(() => {
+  const load = () => {
     setLoading(true);
     setError(null);
     api
@@ -29,7 +39,9 @@ export default function ActivityPage() {
       .then(setTimeline)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [days]);
+  };
+
+  useEffect(() => { load(); }, [days]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
     return (
@@ -41,13 +53,11 @@ export default function ActivityPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-red-800 bg-red-950/50 p-6 text-center">
-        <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-3" />
-        <p className="text-red-300 text-sm">{error}</p>
-        <p className="text-zinc-500 text-xs mt-2">
-          Activity requires SNOWFLAKE_ACCOUNT env var on the API server.
-        </p>
-      </div>
+      <ErrorBanner
+        message={error}
+        hint="Activity requires SNOWFLAKE_ACCOUNT env var on the API server."
+        onRetry={load}
+      />
     );
   }
 
@@ -146,24 +156,31 @@ export default function ActivityPage() {
         </div>
       )}
 
-      {/* Pattern breakdown */}
+      {/* Activity bar chart */}
       {Object.keys(patternCounts).length > 0 && (
-        <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-          <h3 className="text-sm font-semibold text-zinc-300 mb-3">
-            Agent Query Patterns
-          </h3>
-          <div className="flex flex-wrap gap-2">
-            {Object.entries(patternCounts)
-              .sort(([, a], [, b]) => b - a)
-              .map(([pattern, count]) => (
-                <span
-                  key={pattern}
-                  className="px-3 py-1 rounded-md text-xs font-mono bg-zinc-800 text-zinc-300 border border-zinc-700"
-                >
-                  {pattern}{" "}
-                  <span className="text-emerald-400 ml-1">{count}</span>
-                </span>
-              ))}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+          <h3 className="text-sm font-semibold text-zinc-300 mb-1">Agent Query Patterns</h3>
+          <p className="text-[10px] text-zinc-600 mb-4">Query count by detected agent pattern</p>
+          <div className="h-44">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={Object.entries(patternCounts)
+                  .sort(([, a], [, b]) => b - a)
+                  .slice(0, 12)
+                  .map(([pattern, count]) => ({ pattern: pattern.length > 18 ? pattern.slice(0, 16) + "…" : pattern, count }))}
+                margin={{ top: 4, right: 8, bottom: 4, left: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                <XAxis dataKey="pattern" tick={{ fontSize: 9, fill: "#71717a" }} tickLine={false} axisLine={{ stroke: "#27272a" }} />
+                <YAxis tick={{ fontSize: 10, fill: "#71717a" }} tickLine={false} axisLine={false} allowDecimals={false} width={28} />
+                <Tooltip
+                  contentStyle={{ background: "#09090b", border: "1px solid #27272a", borderRadius: 8, fontSize: 12 }}
+                  itemStyle={{ color: "#e4e4e7" }}
+                  labelStyle={{ color: "#71717a", marginBottom: 4 }}
+                />
+                <Bar dataKey="count" name="queries" fill="#10b981" radius={[4, 4, 0, 0]} fillOpacity={0.75} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </div>
       )}

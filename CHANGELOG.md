@@ -7,6 +7,31 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Next.js Insights page** (`/insights`) — SupplyChainTreemap, BlastRadiusRadial, PipelineFlow, EpssVsCvssChart, VulnTrendChart wired to real scan data; treemap cells are clickable and drill down to `/vulns`
+- **Gateway enforcement chart** — audit tab shows stacked bar of blocked/alerted/allowed actions per tool
+- **Governance findings chart** — stacked bar of finding severity by governance category
+- **Activity query chart** — bar chart of agent query pattern frequency
+- **Fleet lifecycle chart** — bar chart of agents by lifecycle state
+- **Jobs status donut** — pie chart summarising job queue by status
+- **`ui/components/empty-state.tsx`** — reusable `EmptyState` + `ErrorBanner` components used across pages
+- **Retry buttons** — Activity and Governance error states now include a Retry button
+- **SECURITY.md** expanded — response SLA, known limitations, API security model, disclosure timeline
+- **PR template** — added Related Issues, TypeScript check, breaking changes, checklist sections
+- **pre-commit hooks** — added `check-yaml`, `check-json`, `check-toml`, `end-of-file-fixer`, `trailing-whitespace`, `detect-private-key`, `check-merge-conflict`, `mixed-line-ending`
+
+### Fixed
+- **JSON report import** — file upload now validates size (10 MB), schema, prototype-pollution keys, and finite numeric values before use (`ui/lib/validators.ts`)
+- **`generated_at` TypeScript error** — `ScanResult` does not have `generated_at`; use `scan_timestamp` instead
+- **JetBrains claim** — removed from active integrations; filed as issue #412 for proper implementation
+
+### Security
+- **JSON file upload** — `ui/lib/validators.ts` guards against DoS via oversized files, prototype pollution, and schema-invalid payloads (no new npm dependencies)
+
+---
+
 ## [0.60.1] – 2026-03-08
 
 ### Fixed

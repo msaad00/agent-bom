@@ -9,6 +9,15 @@ import {
   formatDate,
 } from "@/lib/api";
 import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Cell,
+} from "recharts";
+import {
   Users,
   RefreshCw,
   Loader2,
@@ -153,6 +162,38 @@ export default function FleetPage() {
           />
         </div>
       )}
+
+      {/* Fleet state distribution chart */}
+      {stats && stats.total > 0 && (() => {
+        const STATE_CHART_COLORS: Record<string, string> = {
+          discovered: "#71717a",
+          pending_review: "#eab308",
+          approved: "#22c55e",
+          quarantined: "#ef4444",
+          decommissioned: "#3f3f46",
+        };
+        const chartData = Object.entries(stats.by_state)
+          .filter(([, v]) => v > 0)
+          .map(([state, count]) => ({ state: STATE_LABELS[state as FleetLifecycleState] ?? state, count, fill: STATE_CHART_COLORS[state] ?? "#71717a" }));
+        return (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+            <h3 className="text-sm font-semibold text-zinc-300 mb-1">Lifecycle Distribution</h3>
+            <p className="text-[10px] text-zinc-600 mb-4">Agent count by lifecycle state</p>
+            <div className="h-36">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
+                  <XAxis dataKey="state" tick={{ fontSize: 10, fill: "#71717a" }} tickLine={false} axisLine={{ stroke: "#27272a" }} />
+                  <YAxis tick={{ fontSize: 10, fill: "#71717a" }} tickLine={false} axisLine={false} allowDecimals={false} width={28} />
+                  <Tooltip contentStyle={{ background: "#09090b", border: "1px solid #27272a", borderRadius: 8, fontSize: 12 }} itemStyle={{ color: "#e4e4e7" }} labelStyle={{ color: "#71717a", marginBottom: 4 }} />
+                  <Bar dataKey="count" name="agents" radius={[4, 4, 0, 0]}>
+                    {chartData.map((entry, i) => <Cell key={i} fill={entry.fill} fillOpacity={0.8} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Filter tabs */}
       <div className="flex gap-1.5 flex-wrap">

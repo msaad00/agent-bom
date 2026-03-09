@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   api,
   ScanJob,
@@ -106,6 +107,7 @@ function buildTrendData(jobs: ScanJob[]): TrendDataPoint[] {
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function InsightsPage() {
+  const router = useRouter();
   const [jobs, setJobs] = useState<ScanJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -211,8 +213,16 @@ export default function InsightsPage() {
       {/* Pipeline flow — full width */}
       {pipelineStats && <PipelineFlow stats={pipelineStats} />}
 
-      {/* Supply chain treemap — full width */}
-      {agents.length > 0 && <SupplyChainTreemap agents={agents} />}
+      {/* Supply chain treemap — full width; click a package → /vulns */}
+      {agents.length > 0 && (
+        <div>
+          <SupplyChainTreemap
+            agents={agents}
+            onPackageClick={(pkg) => router.push(`/vulns?search=${encodeURIComponent(pkg)}`)}
+          />
+          <p className="text-[10px] text-zinc-700 mt-1 text-right">Click a package to drill down → Vulns</p>
+        </div>
+      )}
 
       {/* 2-col: blast radius radial + EPSS×CVSS scatter */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">

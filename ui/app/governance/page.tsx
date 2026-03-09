@@ -18,6 +18,17 @@ import {
   formatDate,
 } from "@/lib/api";
 import type { GovernanceReport, GovernanceFinding } from "@/lib/api";
+import { ErrorBanner } from "@/components/empty-state";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  Cell,
+} from "recharts";
 
 export default function GovernancePage() {
   const [report, setReport] = useState<GovernanceReport | null>(null);
@@ -27,7 +38,7 @@ export default function GovernancePage() {
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [severityFilter, setSeverityFilter] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = () => {
     setLoading(true);
     setError(null);
     api
@@ -35,7 +46,9 @@ export default function GovernancePage() {
       .then(setReport)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [days]);
+  };
+
+  useEffect(() => { load(); }, [days]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
     return (
@@ -47,13 +60,11 @@ export default function GovernancePage() {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-red-800 bg-red-950/50 p-6 text-center">
-        <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-3" />
-        <p className="text-red-300 text-sm">{error}</p>
-        <p className="text-zinc-500 text-xs mt-2">
-          Governance requires SNOWFLAKE_ACCOUNT env var on the API server.
-        </p>
-      </div>
+      <ErrorBanner
+        message={error}
+        hint="Governance requires SNOWFLAKE_ACCOUNT env var on the API server."
+        onRetry={load}
+      />
     );
   }
 
@@ -123,6 +134,48 @@ export default function GovernancePage() {
           color="text-emerald-400"
         />
       </div>
+
+      {/* Findings severity bar chart */}
+      {report.findings.length > 0 && (() => {
+        const sevColors: Record<string, string> = { critical: "#ef4444", high: "#f97316", medium: "#eab308", low: "#3b82f6" };
+        const cats = ["access", "privilege", "data_classification", "agent_usage"];
+        const chartData = cats.map((cat) => {
+          const fs = report.findings.filter((f) => f.category === cat);
+          return {
+            category: cat.replace("_", " "),
+            critical: fs.filter((f) => f.severity === "critical").length,
+            high: fs.filter((f) => f.severity === "high").length,
+            medium: fs.filter((f) => f.severity === "medium").length,
+            low: fs.filter((f) => f.severity === "low").length,
+          };
+        }).filter((d) => d.critical + d.high + d.medium + d.low > 0);
+        if (chartData.length === 0) return null;
+        return (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+            <h3 className="text-sm font-semibold text-zinc-300 mb-1">Findings by Category & Severity</h3>
+            <p className="text-[10px] text-zinc-600 mb-4">Stacked count of findings per governance category</p>
+            <div className="h-44">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                  <XAxis dataKey="category" tick={{ fontSize: 10, fill: "#71717a" }} tickLine={false} axisLine={{ stroke: "#27272a" }} />
+                  <YAxis tick={{ fontSize: 10, fill: "#71717a" }} tickLine={false} axisLine={false} allowDecimals={false} width={28} />
+                  <Tooltip
+                    contentStyle={{ background: "#09090b", border: "1px solid #27272a", borderRadius: 8, fontSize: 12 }}
+                    itemStyle={{ color: "#e4e4e7" }}
+                    labelStyle={{ color: "#71717a", marginBottom: 4 }}
+                  />
+                  {(["critical", "high", "medium", "low"] as const).map((sev) => (
+                    <Bar key={sev} dataKey={sev} stackId="a" fill={sevColors[sev]} fillOpacity={0.8} radius={sev === "critical" ? [4, 4, 0, 0] : [0, 0, 0, 0]}>
+                      {chartData.map((_, i) => <Cell key={i} />)}
+                    </Bar>
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Warnings */}
       {report.warnings.length > 0 && (

@@ -393,6 +393,13 @@ def main():
 @click.option("--skill-only", is_flag=True, help="Scan ONLY skill/instruction files; skip agent/package/CVE scanning")
 @click.option("--scan-prompts", is_flag=True, help="Scan prompt template files (.prompt, system_prompt.*, prompts/) for security risks")
 @click.option(
+    "--browser-extensions",
+    "browser_extensions",
+    is_flag=True,
+    help="Scan installed browser extensions (Chrome, Brave, Edge, Firefox) for dangerous permissions "
+    "that could expose AI assistant sessions or MCP tool calls.",
+)
+@click.option(
     "--jupyter",
     "jupyter_dirs",
     multiple=True,
@@ -781,6 +788,7 @@ def scan(
     no_skill: bool,
     skill_only: bool,
     scan_prompts: bool,
+    browser_extensions: bool,
     jupyter_dirs: tuple,
     model_dirs: tuple,
     model_provenance: bool,
@@ -1715,6 +1723,48 @@ def scan(
                 con.print(Panel(prompt_table, subtitle=stats_line, border_style="magenta"))
             else:
                 con.print("  [green]✓[/green] No security issues found in prompt templates")
+
+    # Step 1g3c: Browser extension scanning (--browser-extensions)
+    if browser_extensions:
+        from agent_bom.parsers.browser_extensions import discover_browser_extensions
+
+        con.print("\n[bold blue]Scanning browser extensions...[/bold blue]\n")
+        br_exts = discover_browser_extensions(include_low_risk=False)
+        if br_exts:
+            from rich.panel import Panel
+            from rich.table import Table as RichTable
+
+            sev_colors = {"critical": "red bold", "high": "red", "medium": "yellow", "low": "dim"}
+            sev_icons = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "⚪"}
+
+            br_table = RichTable(
+                title=f"Browser Extension Security Scan — {len(br_exts)} medium+ risk extension(s)",
+                expand=True,
+                padding=(0, 1),
+                title_style="bold magenta",
+            )
+            br_table.add_column("Risk", justify="center", no_wrap=True, width=10)
+            br_table.add_column("Browser", no_wrap=True, width=10)
+            br_table.add_column("Extension", ratio=2)
+            br_table.add_column("Findings", ratio=4)
+
+            for ext in br_exts:
+                style = sev_colors.get(ext.risk_level, "white")
+                icon = sev_icons.get(ext.risk_level, "⚪")
+                risk_cell = f"{icon} [{style}]{ext.risk_level.upper()}[/{style}]"
+                browser_cell = f"[cyan]{ext.browser}[/cyan]"
+                name_cell = f"[bold]{ext.name}[/bold]\n[dim]{ext.version}[/dim]"
+                findings_cell = "\n".join(f"[dim]• {r}[/dim]" for r in ext.risk_reasons[:4])
+                if len(ext.risk_reasons) > 4:
+                    findings_cell += f"\n[dim]  (+{len(ext.risk_reasons) - 4} more)[/dim]"
+                br_table.add_row(risk_cell, browser_cell, name_cell, findings_cell)
+
+            crit_count = sum(1 for e in br_exts if e.risk_level == "critical")
+            high_count = sum(1 for e in br_exts if e.risk_level == "high")
+            stats = f"[dim]{crit_count} critical · {high_count} high · scan complete[/dim]"
+            con.print(Panel(br_table, subtitle=stats, border_style="magenta"))
+        else:
+            con.print("  [green]✓[/green] No medium+ risk browser extensions found")
 
     # Step 1g4: Jupyter notebook scan (--jupyter)
     if not skill_only and jupyter_dirs:

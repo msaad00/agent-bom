@@ -4,13 +4,21 @@ from __future__ import annotations
 
 import io
 import json
+import sqlite3
+import struct
 import tarfile
 import tempfile
+import zipfile
 from pathlib import Path
 
 import pytest
 
 from agent_bom.oci_parser import (
+    _RPM_HDR_MAGIC,
+    _RPM_TYPE_STRING,
+    _RPMTAG_NAME,
+    _RPMTAG_RELEASE,
+    _RPMTAG_VERSION,
     OCIParseError,
     parse_oci_layout_dir,
     parse_oci_tarball,
@@ -398,3 +406,356 @@ def test_whiteout_path_collected():
     result = parse_oci_tarball(tar)
     # No packages from whiteout-only layer
     assert result.packages == []
+
+
+# ── Java JAR parsing ──────────────────────────────────────────────────────────
+
+
+def _make_jar(pom_props: dict[str, str] | None = None, manifest_mf: dict[str, str] | None = None) -> bytes:
+    """Build an in-memory JAR with optional pom.properties and MANIFEST.MF."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        if pom_props is not None:
+            group_id = pom_props.get("groupId", "com.example")
+            artifact_id = pom_props.get("artifactId", "mylib")
+            lines = "\n".join(f"{k}={v}" for k, v in pom_props.items())
+            zf.writestr(f"META-INF/maven/{group_id}/{artifact_id}/pom.properties", lines)
+        if manifest_mf is not None:
+            lines = "\n".join(f"{k}: {v}" for k, v in manifest_mf.items()) + "\n"
+            zf.writestr("META-INF/MANIFEST.MF", lines)
+    return buf.getvalue()
+
+
+def test_jar_pom_properties():
+    """JAR with pom.properties extracted correctly."""
+    jar = _make_jar(pom_props={"groupId": "org.apache", "artifactId": "commons-lang3", "version": "3.12.0"})
+    tar = _make_docker_save_tar([{"usr/share/java/commons-lang3.jar": jar}])
+    result = parse_oci_tarball(tar)
+    names = {p.name for p in result.packages}
+    assert "commons-lang3" in names
+    pkg = next(p for p in result.packages if p.name == "commons-lang3")
+    assert pkg.version == "3.12.0"
+    assert pkg.ecosystem == "maven"
+    assert "pkg:maven/org.apache/commons-lang3@3.12.0" == pkg.purl
+
+
+def test_jar_manifest_mf_fallback():
+    """JAR with MANIFEST.MF used when no pom.properties."""
+    jar = _make_jar(manifest_mf={"Implementation-Title": "MyLib", "Implementation-Version": "2.0.1"})
+    tar = _make_docker_save_tar([{"opt/app/mylib.jar": jar}])
+    result = parse_oci_tarball(tar)
+    names = {p.name for p in result.packages}
+    assert "MyLib" in names
+
+
+def test_jar_bundle_manifest_fallback():
+    """OSGI Bundle-Name/Bundle-Version in MANIFEST.MF."""
+    jar = _make_jar(manifest_mf={"Bundle-Name": "guava", "Bundle-Version": "32.1.3"})
+    tar = _make_docker_save_tar([{"usr/local/lib/guava.jar": jar}])
+    result = parse_oci_tarball(tar)
+    names = {p.name for p in result.packages}
+    assert "guava" in names
+
+
+def test_jar_outside_known_dirs_skipped():
+    """JARs outside known directories are not scanned (performance guard)."""
+    jar = _make_jar(pom_props={"groupId": "x", "artifactId": "hidden", "version": "1.0"})
+    tar = _make_docker_save_tar([{"proc/1234/hidden.jar": jar}])
+    result = parse_oci_tarball(tar)
+    assert not any(p.name == "hidden" for p in result.packages)
+
+
+def test_jar_pom_and_manifest_dedup():
+    """Same artifact from two JARs in same layer only counted once."""
+    jar = _make_jar(pom_props={"groupId": "org.apache", "artifactId": "log4j", "version": "2.20.0"})
+    tar = _make_docker_save_tar(
+        [
+            {
+                "usr/share/java/log4j-core.jar": jar,
+                "usr/share/java/log4j-api.jar": jar,
+            }
+        ]
+    )
+    result = parse_oci_tarball(tar)
+    assert sum(1 for p in result.packages if p.name == "log4j") == 1
+
+
+# ── Go binary parsing ─────────────────────────────────────────────────────────
+
+
+def _make_go_binary(deps: list[tuple[str, str]]) -> bytes:
+    """Build a fake Go binary blob containing embedded build info text."""
+    # Go buildinfo magic (14 bytes) + 4 bytes padding, then dep lines
+    header = b"\xff Go buildinf:\x00\x00\x00\x00"
+    dep_block = b""
+    for mod_path, mod_ver in deps:
+        dep_block += f"\ndep\t{mod_path}\t{mod_ver}\th1:abc=\n".encode()
+    # Pad to realistic minimum size (real Go binaries are always >> 1 KB)
+    content = header + dep_block
+    return content + b"\x00" * max(0, 256 - len(content))
+
+
+def test_go_binary_deps_extracted():
+    """Go binary deps extracted from embedded buildinfo."""
+    binary = _make_go_binary(
+        [
+            ("github.com/gin-gonic/gin", "v1.9.1"),
+            ("golang.org/x/net", "v0.21.0"),
+        ]
+    )
+    tar = _make_docker_save_tar([{"usr/bin/myapp": binary}])
+    result = parse_oci_tarball(tar)
+    names = {p.name for p in result.packages}
+    assert "github.com/gin-gonic/gin" in names
+    assert "golang.org/x/net" in names
+
+
+def test_go_binary_version_correct():
+    """Go binary dep version extracted correctly."""
+    binary = _make_go_binary([("github.com/spf13/cobra", "v1.8.0")])
+    tar = _make_docker_save_tar([{"usr/local/bin/kubectl": binary}])
+    result = parse_oci_tarball(tar)
+    pkg = next((p for p in result.packages if p.name == "github.com/spf13/cobra"), None)
+    assert pkg is not None
+    assert pkg.version == "v1.8.0"
+    assert pkg.ecosystem == "golang"
+    assert "pkg:golang/github.com/spf13/cobra@v1.8.0" == pkg.purl
+
+
+def test_go_binary_outside_bin_dirs_skipped():
+    """Go binary outside known bin dirs not scanned."""
+    binary = _make_go_binary([("github.com/some/pkg", "v1.0.0")])
+    tar = _make_docker_save_tar([{"var/tmp/binary": binary}])
+    result = parse_oci_tarball(tar)
+    assert not any(p.ecosystem == "golang" for p in result.packages)
+
+
+def test_go_binary_no_magic_skipped():
+    """File without Go buildinfo magic is skipped."""
+    tar = _make_docker_save_tar([{"usr/bin/notgo": b"\x7fELF\x00" * 100}])
+    result = parse_oci_tarball(tar)
+    assert not any(p.ecosystem == "golang" for p in result.packages)
+
+
+# ── Ruby gem parsing ──────────────────────────────────────────────────────────
+
+
+_GEMSPEC_RAILS = b"""
+Gem::Specification.new do |s|
+  s.name = "rails"
+  s.version = "7.1.2"
+  s.summary = "Full-stack web framework"
+end
+"""
+
+_GEMSPEC_NOKOGIRI = b"""
+Gem::Specification.new do |s|
+  s.name = "nokogiri"
+  s.version = Gem::Version.new("1.15.4")
+end
+"""
+
+
+def test_ruby_gemspec_basic():
+    tar = _make_docker_save_tar([{"usr/lib/ruby/gems/3.1.0/specifications/rails-7.1.2.gemspec": _GEMSPEC_RAILS}])
+    result = parse_oci_tarball(tar)
+    names = {p.name for p in result.packages}
+    assert "rails" in names
+    pkg = next(p for p in result.packages if p.name == "rails")
+    assert pkg.version == "7.1.2"
+    assert pkg.ecosystem == "gem"
+    assert pkg.purl == "pkg:gem/rails@7.1.2"
+
+
+def test_ruby_gemspec_version_new_syntax():
+    """Gem::Version.new('...') version syntax parsed correctly."""
+    tar = _make_docker_save_tar([{"var/lib/gems/3.0.0/specifications/nokogiri-1.15.4.gemspec": _GEMSPEC_NOKOGIRI}])
+    result = parse_oci_tarball(tar)
+    names = {p.name for p in result.packages}
+    assert "nokogiri" in names
+
+
+def test_ruby_non_gemspec_skipped():
+    """Non-gemspec files in specifications/ dir are not parsed as gems."""
+    tar = _make_docker_save_tar([{"usr/lib/ruby/gems/3.1.0/specifications/README": b"not a gemspec"}])
+    result = parse_oci_tarball(tar)
+    assert result.packages == []
+
+
+# ── .NET deps.json parsing ────────────────────────────────────────────────────
+
+
+_DEPS_JSON = json.dumps(
+    {
+        "runtimeTarget": {"name": ".NETCoreApp,Version=v8.0"},
+        "targets": {
+            ".NETCoreApp,Version=v8.0": {
+                "Newtonsoft.Json/13.0.3": {},
+                "Microsoft.Extensions.Logging/8.0.0": {},
+            }
+        },
+        "libraries": {
+            "Newtonsoft.Json/13.0.3": {"type": "package", "sha512": "abc"},
+            "Microsoft.Extensions.Logging/8.0.0": {"type": "package", "sha512": "def"},
+            "MyApp/1.0.0": {"type": "project"},  # should be skipped
+        },
+    }
+).encode()
+
+
+def test_dotnet_deps_json_packages():
+    tar = _make_docker_save_tar([{"app/MyApp.deps.json": _DEPS_JSON}])
+    result = parse_oci_tarball(tar)
+    names = {p.name for p in result.packages}
+    assert "Newtonsoft.Json" in names
+    assert "Microsoft.Extensions.Logging" in names
+
+
+def test_dotnet_deps_json_versions():
+    tar = _make_docker_save_tar([{"app/MyApp.deps.json": _DEPS_JSON}])
+    result = parse_oci_tarball(tar)
+    nj = next(p for p in result.packages if p.name == "Newtonsoft.Json")
+    assert nj.version == "13.0.3"
+    assert nj.ecosystem == "nuget"
+    assert nj.purl == "pkg:nuget/Newtonsoft.Json@13.0.3"
+
+
+def test_dotnet_project_type_skipped():
+    """Libraries with type=project are not included."""
+    tar = _make_docker_save_tar([{"app/MyApp.deps.json": _DEPS_JSON}])
+    result = parse_oci_tarball(tar)
+    assert not any(p.name == "MyApp" for p in result.packages)
+
+
+# ── RPM sqlite parsing ────────────────────────────────────────────────────────
+
+
+def _make_rpm_header_blob(name: str, version: str, release: str = "1.el9") -> bytes:
+    """Build a minimal valid RPM header blob for testing."""
+    # Encode strings
+    strings = {
+        _RPMTAG_NAME: name.encode() + b"\x00",
+        _RPMTAG_VERSION: version.encode() + b"\x00",
+        _RPMTAG_RELEASE: release.encode() + b"\x00",
+    }
+
+    # Build data section and compute offsets
+    data = b""
+    offsets: dict[int, int] = {}
+    for tag_id, s in strings.items():
+        offsets[tag_id] = len(data)
+        data += s
+
+    nindex = len(strings)
+    hsize = len(data)
+
+    header = _RPM_HDR_MAGIC
+    header += struct.pack(">II", nindex, hsize)
+    for tag_id, s in strings.items():
+        header += struct.pack(">IIII", tag_id, _RPM_TYPE_STRING, offsets[tag_id], 1)
+    header += data
+    return header
+
+
+def _make_rpm_sqlite(packages: list[tuple[str, str, str]]) -> bytes:
+    """Build an in-memory RPM sqlite database with the given packages."""
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE Packages (hnum INTEGER PRIMARY KEY, blob BLOB)")
+    for i, (name, version, release) in enumerate(packages):
+        blob = _make_rpm_header_blob(name, version, release)
+        conn.execute("INSERT INTO Packages VALUES (?, ?)", (i, blob))
+    conn.commit()
+    # Write to a file and read back as bytes
+    with tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False) as tmp:
+        tmp_path = tmp.name
+    conn2 = sqlite3.connect(tmp_path)
+    conn.backup(conn2)
+    conn2.close()
+    conn.close()
+    import os
+
+    with open(tmp_path, "rb") as f:
+        data = f.read()
+    os.unlink(tmp_path)
+    return data
+
+
+def test_rpm_sqlite_packages():
+    """rpmdb.sqlite packages extracted correctly."""
+    db = _make_rpm_sqlite([("bash", "5.2.26", "1.el9"), ("curl", "8.1.2", "3.el9")])
+    tar = _make_docker_save_tar([{"var/lib/rpm/rpmdb.sqlite": db}])
+    result = parse_oci_tarball(tar)
+    names = {p.name for p in result.packages}
+    assert "bash" in names
+    assert "curl" in names
+
+
+def test_rpm_sqlite_version_includes_release():
+    """RPM version includes release (version-release format)."""
+    db = _make_rpm_sqlite([("openssl", "3.1.0", "2.el9")])
+    tar = _make_docker_save_tar([{"var/lib/rpm/rpmdb.sqlite": db}])
+    result = parse_oci_tarball(tar)
+    pkg = next(p for p in result.packages if p.name == "openssl")
+    assert pkg.version == "3.1.0-2.el9"
+    assert pkg.ecosystem == "rpm"
+
+
+def test_rpm_sqlite_gpg_pubkey_skipped():
+    """gpg-pubkey entries are filtered out."""
+    db = _make_rpm_sqlite([("gpg-pubkey", "12345678", "abc"), ("bash", "5.2", "1")])
+    tar = _make_docker_save_tar([{"var/lib/rpm/rpmdb.sqlite": db}])
+    result = parse_oci_tarball(tar)
+    assert not any(p.name == "gpg-pubkey" for p in result.packages)
+    assert any(p.name == "bash" for p in result.packages)
+
+
+def test_rpm_sqlite_and_log_manifest_dedup():
+    """Same package from sqlite and log manifest only counted once."""
+    db = _make_rpm_sqlite([("nginx", "1.25.0", "1.el9")])
+    log = b"nginx-1.25.0-1.el9.x86_64\n"
+    tar = _make_docker_save_tar(
+        [
+            {
+                "var/lib/rpm/rpmdb.sqlite": db,
+                "var/log/installed-rpms": log,
+            }
+        ]
+    )
+    result = parse_oci_tarball(tar)
+    assert sum(1 for p in result.packages if p.name == "nginx") == 1
+
+
+# ── Full mixed ecosystem layer ────────────────────────────────────────────────
+
+
+def test_full_mixed_ecosystem_layer():
+    """All ecosystems detected from a single mixed layer."""
+    jar = _make_jar(pom_props={"groupId": "org.springframework", "artifactId": "spring-core", "version": "6.1.0"})
+    go_bin = _make_go_binary([("github.com/prometheus/client_golang", "v1.18.0")])
+    db = _make_rpm_sqlite([("glibc", "2.34", "1.el9")])
+    deps_json = json.dumps({"libraries": {"System.Text.Json/8.0.0": {"type": "package"}}}).encode()
+
+    layer = {
+        "var/lib/dpkg/status": _DPKG_STATUS,
+        "lib/apk/db/installed": _APK_INSTALLED,
+        "requests-2.31.0.dist-info/METADATA": _METADATA_REQUESTS,
+        "usr/lib/node_modules/express/package.json": _PACKAGE_JSON_EXPRESS,
+        "usr/share/java/spring-core.jar": jar,
+        "usr/bin/prometheus": go_bin,
+        "usr/lib/ruby/gems/3.1.0/specifications/rails-7.1.2.gemspec": _GEMSPEC_RAILS,
+        "app/MyApp.deps.json": deps_json,
+        "var/lib/rpm/rpmdb.sqlite": db,
+    }
+    tar = _make_docker_save_tar([layer])
+    result = parse_oci_tarball(tar)
+    names = {p.name for p in result.packages}
+
+    assert "bash" in names  # deb
+    assert "busybox" in names  # apk
+    assert "requests" in names  # python
+    assert "express" in names  # node
+    assert "spring-core" in names  # java/maven
+    assert "github.com/prometheus/client_golang" in names  # go
+    assert "rails" in names  # ruby
+    assert "System.Text.Json" in names  # .net
+    assert "glibc" in names  # rpm sqlite

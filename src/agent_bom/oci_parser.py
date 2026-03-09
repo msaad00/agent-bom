@@ -14,7 +14,11 @@ Package ecosystems extracted from each layer filesystem:
 - Node: ``node_modules/*/package.json``
 - Debian/Ubuntu: ``var/lib/dpkg/status``
 - Alpine Linux: ``lib/apk/db/installed``
-- RPM log manifest: ``var/log/installed-rpms``
+- RPM: ``var/lib/rpm/rpmdb.sqlite`` (sqlite3) + ``var/log/installed-rpms`` (log manifest)
+- Java: ``*.jar``/``*.war``/``*.ear`` → ``META-INF/maven/*/pom.properties`` or ``META-INF/MANIFEST.MF``
+- Go binaries: embedded buildinfo (``\xff Go buildinf:`` magic, dep lines)
+- Ruby: ``**/specifications/*.gemspec`` (regex name/version extraction)
+- .NET: ``**/*.deps.json`` (libraries section, type=package)
 
 Whiteout handling: OCI spec uses ``.wh.`` prefix files to signal deletion.
 The parser tracks whiteout paths from each layer and skips package detection
@@ -30,7 +34,12 @@ from __future__ import annotations
 import io
 import json
 import logging
+import re
+import sqlite3
+import struct
 import tarfile
+import tempfile
+import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -42,6 +51,37 @@ _logger = logging.getLogger(__name__)
 # Whiteout prefix per OCI image spec
 _WHITEOUT_PREFIX = ".wh."
 _OPAQUE_WHITEOUT = ".wh..wh..opq"
+
+# Java JAR/WAR/EAR file extension pattern
+_JAR_EXT_RE = re.compile(r"\.(jar|war|ear)$", re.IGNORECASE)
+# Directories likely to contain JARs in container images
+_JAR_DIR_HINTS = ("java", "jvm", "/app/", "/opt/", "/srv/", "/usr/local/", "/usr/share/", "/home/")
+# Max JAR size to open (skip huge fat JARs > 150 MB — they'd be slow)
+_JAR_MAX_BYTES = 150 * 1024 * 1024
+
+# Go binary: embedded build info magic (Go 1.13+)
+_GO_BUILDINFO_MAGIC = b"\xff Go buildinf:"
+# Directories that commonly contain Go binaries
+_GO_BIN_DIR_RE = re.compile(r"^\.?/?(usr/(local/)?s?bin|go/bin|usr/local/go/bin|opt/go/bin)/")
+# Max bytes to read from a binary for Go buildinfo scanning (8 MB)
+_GO_BIN_MAX_READ = 8 * 1024 * 1024
+# Pattern to extract dep lines from Go buildinfo text block
+_GO_DEP_LINE_RE = re.compile(rb"dep\t([^\t\n]+)\t(v[^\t\n\s]+)")
+
+# Ruby gemspec: files under .../specifications/*.gemspec
+_GEMSPEC_PATH_RE = re.compile(r"specifications/([^/]+)\.gemspec$")
+_GEMSPEC_NAME_RE = re.compile(r'\.name\s*=\s*["\']([^"\']+)["\']')
+_GEMSPEC_VER_RE = re.compile(r'\.version\s*=\s*(?:Gem::Version\.new\()?["\']([^"\']+)["\']')
+
+# RPM sqlite: database path candidates in a container layer
+_RPM_SQLITE_PATHS = ("var/lib/rpm/rpmdb.sqlite", "./var/lib/rpm/rpmdb.sqlite")
+# RPM header magic (8 bytes)
+_RPM_HDR_MAGIC = b"\x8e\xad\xe8\x01\x00\x00\x00\x00"
+_RPMTAG_NAME = 1000
+_RPMTAG_VERSION = 1001
+_RPMTAG_RELEASE = 1002
+_RPMTAG_ARCH = 1022
+_RPM_TYPE_STRING = 6
 
 
 @dataclass
@@ -66,6 +106,61 @@ class OCIParseResult:
 
 class OCIParseError(Exception):
     """Raised when an OCI image cannot be parsed."""
+
+
+# ─── RPM header parser ────────────────────────────────────────────────────────
+
+
+def _parse_rpm_header_blob(blob: bytes) -> Optional[tuple[str, str]]:
+    """Parse a minimal RPM header blob and return (name, version) or None.
+
+    RPM header layout (big-endian):
+    - 8 bytes magic
+    - 4 bytes nindex (number of tag entries)
+    - 4 bytes hsize (size of data section)
+    - nindex × 16-byte entries: tag(4) type(4) offset(4) count(4)
+    - data section (hsize bytes)
+    """
+    if len(blob) < 16 or blob[:8] != _RPM_HDR_MAGIC:
+        return None
+    try:
+        nindex = struct.unpack_from(">I", blob, 8)[0]
+        # hsize = struct.unpack_from(">I", blob, 12)[0]  # unused
+        index_start = 16
+        data_start = index_start + nindex * 16
+
+        if data_start > len(blob):
+            return None
+
+        tags: dict[int, tuple[int, int]] = {}  # tag → (type, offset)
+        for i in range(nindex):
+            pos = index_start + i * 16
+            tag = struct.unpack_from(">I", blob, pos)[0]
+            type_ = struct.unpack_from(">I", blob, pos + 4)[0]
+            offset = struct.unpack_from(">I", blob, pos + 8)[0]
+            tags[tag] = (type_, offset)
+
+        def _read_str(tag_id: int) -> str:
+            if tag_id not in tags:
+                return ""
+            type_, offset = tags[tag_id]
+            if type_ != _RPM_TYPE_STRING:
+                return ""
+            abs_pos = data_start + offset
+            end = blob.find(b"\x00", abs_pos)
+            if end == -1:
+                return ""
+            return blob[abs_pos:end].decode("utf-8", errors="ignore")
+
+        name = _read_str(_RPMTAG_NAME)
+        version = _read_str(_RPMTAG_VERSION)
+        release = _read_str(_RPMTAG_RELEASE)
+        if not name or not version:
+            return None
+        full_version = f"{version}-{release}" if release else version
+        return name, full_version
+    except (struct.error, OverflowError):
+        return None
 
 
 # ─── Package extraction from a layer filesystem ───────────────────────────────
@@ -252,6 +347,159 @@ def _extract_packages_from_layer(
         except Exception:
             _logger.debug("Failed to parse rpm manifest")
         break
+
+    # --- RPM sqlite database (rpmdb.sqlite) ---
+    for sqlite_path in _RPM_SQLITE_PATHS:
+        if sqlite_path not in names or _is_deleted(sqlite_path):
+            continue
+        try:
+            f = layer_tf.extractfile(layer_tf.getmember(sqlite_path))
+            if f is None:
+                continue
+            db_bytes = f.read()
+            # Write to temp file so sqlite3 can open it
+            with tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False) as tmp:
+                tmp.write(db_bytes)
+                tmp_path = tmp.name
+            try:
+                conn = sqlite3.connect(tmp_path)
+                try:
+                    rows = conn.execute("SELECT blob FROM Packages").fetchall()
+                    for (blob,) in rows:
+                        if isinstance(blob, bytes):
+                            result = _parse_rpm_header_blob(blob)
+                            if result:
+                                rpm_name, rpm_ver = result
+                                if rpm_name != "gpg-pubkey":
+                                    _add_package(seen, packages, rpm_name, rpm_ver, "rpm", f"pkg:rpm/redhat/{rpm_name}@{rpm_ver}")
+                except sqlite3.DatabaseError:
+                    _logger.debug("Failed to query rpmdb.sqlite")
+                finally:
+                    conn.close()
+            finally:
+                import os as _os
+
+                _os.unlink(tmp_path)
+        except Exception:
+            _logger.debug("Failed to parse rpmdb.sqlite")
+        break
+
+    # --- Java: JARs via META-INF/maven/*/pom.properties or MANIFEST.MF ---
+    for member_name in names:
+        if not _JAR_EXT_RE.search(member_name):
+            continue
+        if _is_deleted(member_name):
+            continue
+        # Normalize: tar paths may lack leading '/'; prepend for hint matching
+        name_for_hint = "/" + member_name.lower()
+        if not any(hint in name_for_hint for hint in _JAR_DIR_HINTS):
+            continue
+        try:
+            member = layer_tf.getmember(member_name)
+            if not member.isfile() or member.size == 0 or member.size > _JAR_MAX_BYTES:
+                continue
+            f = layer_tf.extractfile(member)
+            if f is None:
+                continue
+            jar_bytes = f.read()
+            with zipfile.ZipFile(io.BytesIO(jar_bytes)) as zf:
+                jar_names = zf.namelist()
+                # Prefer META-INF/maven/*/pom.properties (groupId/artifactId/version)
+                pom_props_paths = [n for n in jar_names if re.match(r"META-INF/maven/[^/]+/[^/]+/pom\.properties$", n)]
+                found = False
+                for prop_path in pom_props_paths:
+                    props: dict[str, str] = {}
+                    for prop_line in zf.read(prop_path).decode("utf-8", errors="ignore").splitlines():
+                        if "=" in prop_line and not prop_line.startswith("#"):
+                            k, _, v = prop_line.partition("=")
+                            props[k.strip()] = v.strip()
+                    artifact_id = props.get("artifactId", "")
+                    version = props.get("version", "")
+                    group_id = props.get("groupId", "")
+                    if artifact_id and version:
+                        purl = f"pkg:maven/{group_id}/{artifact_id}@{version}" if group_id else f"pkg:maven/{artifact_id}@{version}"
+                        _add_package(seen, packages, artifact_id, version, "maven", purl)
+                        found = True
+                # Fallback: MANIFEST.MF Implementation-Title/Version or Bundle-*
+                if not found and "META-INF/MANIFEST.MF" in jar_names:
+                    mf: dict[str, str] = {}
+                    for mf_line in zf.read("META-INF/MANIFEST.MF").decode("utf-8", errors="ignore").splitlines():
+                        if ": " in mf_line:
+                            mk, _, mv = mf_line.partition(": ")
+                            mf[mk.strip()] = mv.strip()
+                    title = mf.get("Implementation-Title") or mf.get("Bundle-Name", "")
+                    version = mf.get("Implementation-Version") or mf.get("Bundle-Version", "")
+                    if title and version and not title.startswith("$") and not version.startswith("$"):
+                        _add_package(seen, packages, title, version, "maven")
+        except Exception:
+            _logger.debug("Skipped JAR: %s", member_name)
+
+    # --- Go binaries: embedded build info (go version -m equivalent) ---
+    for member_name in names:
+        if not _GO_BIN_DIR_RE.match(member_name):
+            continue
+        if _is_deleted(member_name):
+            continue
+        try:
+            member = layer_tf.getmember(member_name)
+            if not member.isfile() or member.size < 64:
+                continue
+            f = layer_tf.extractfile(member)
+            if f is None:
+                continue
+            chunk = f.read(_GO_BIN_MAX_READ)
+            if _GO_BUILDINFO_MAGIC not in chunk:
+                continue
+            # Extract dep lines: dep\t<module>\t<version>
+            for m in _GO_DEP_LINE_RE.finditer(chunk):
+                mod_path = m.group(1).decode("utf-8", errors="ignore").strip()
+                mod_ver = m.group(2).decode("utf-8", errors="ignore").strip()
+                if mod_path and mod_ver:
+                    _add_package(seen, packages, mod_path, mod_ver, "golang", f"pkg:golang/{mod_path}@{mod_ver}")
+        except Exception:
+            _logger.debug("Skipped Go binary: %s", member_name)
+
+    # --- Ruby gems: specifications/*.gemspec ---
+    for member_name in names:
+        if not _GEMSPEC_PATH_RE.search(member_name):
+            continue
+        if _is_deleted(member_name):
+            continue
+        try:
+            f = layer_tf.extractfile(layer_tf.getmember(member_name))
+            if f is None:
+                continue
+            content = f.read(32 * 1024).decode("utf-8", errors="ignore")
+            name_m = _GEMSPEC_NAME_RE.search(content)
+            ver_m = _GEMSPEC_VER_RE.search(content)
+            if name_m and ver_m:
+                gem_name = name_m.group(1)
+                gem_ver = ver_m.group(1)
+                _add_package(seen, packages, gem_name, gem_ver, "gem", f"pkg:gem/{gem_name}@{gem_ver}")
+        except Exception:
+            _logger.debug("Skipped gemspec: %s", member_name)
+
+    # --- .NET: *.deps.json (libraries section, type=package) ---
+    for member_name in names:
+        if not member_name.endswith(".deps.json"):
+            continue
+        if _is_deleted(member_name):
+            continue
+        try:
+            f = layer_tf.extractfile(layer_tf.getmember(member_name))
+            if f is None:
+                continue
+            deps = json.loads(f.read().decode("utf-8", errors="ignore"))
+            for lib_key, lib_val in deps.get("libraries", {}).items():
+                if lib_val.get("type") != "package":
+                    continue
+                # key format: "PackageName/1.2.3"
+                if "/" in lib_key:
+                    pkg_name, _, pkg_ver = lib_key.rpartition("/")
+                    if pkg_name and pkg_ver:
+                        _add_package(seen, packages, pkg_name, pkg_ver, "nuget", f"pkg:nuget/{pkg_name}@{pkg_ver}")
+        except Exception:
+            _logger.debug("Skipped deps.json: %s", member_name)
 
     return whiteouts
 

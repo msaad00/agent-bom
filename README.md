@@ -22,7 +22,7 @@
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.63.0.gif" alt="agent-bom demo — scan, CVE check before/after, GPU infra scan" width="900" />
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.65.0.gif" alt="agent-bom demo — scan, CVE check before/after, GPU infra scan" width="900" />
 </p>
 
 <p align="center">

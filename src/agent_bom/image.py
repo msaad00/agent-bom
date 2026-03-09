@@ -652,8 +652,36 @@ def scan_image(
         return packages, "docker"
 
     raise ImageScanError(
-        "Neither 'grype', 'syft', nor 'docker' found on PATH. Install Grype (https://github.com/anchore/grype) to enable image scanning."
+        "Neither 'grype', 'syft', nor 'docker' found on PATH. "
+        "Install Grype (https://github.com/anchore/grype) to enable image scanning, "
+        "or use 'docker save <image> -o image.tar' and pass the tarball with --image-tar."
     )
+
+
+def scan_image_tar(tar_path: str) -> tuple[list[Package], str]:
+    """Scan a pre-saved OCI image tarball or layout directory — no Docker/Syft/Grype required.
+
+    Accepts tarballs created by ``docker save``, ``skopeo copy``, or ``crane pull``.
+
+    Args:
+        tar_path: Path to the image tarball (``.tar``) or OCI layout directory.
+
+    Returns:
+        A tuple ``(packages, strategy)`` where strategy is ``"oci-tarball"``
+        or ``"oci-layout-dir"``.
+
+    Raises:
+        ImageScanError: If the tarball cannot be parsed.
+    """
+    from agent_bom.oci_parser import OCIParseError, scan_oci
+
+    path = Path(tar_path)
+    if not path.exists():
+        raise ImageScanError(f"Image tarball not found: {tar_path}")
+    try:
+        return scan_oci(path)
+    except OCIParseError as e:
+        raise ImageScanError(f"OCI parse error: {e}") from e
 
 
 def image_to_purl(image_ref: str) -> str:

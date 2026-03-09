@@ -91,14 +91,19 @@ def _cache_ttl() -> int:
         return _DEFAULT_TTL
 
 
-def _load_cache() -> Optional[dict]:
-    """Return cached catalog if valid (not expired), else None."""
+def _load_cache(ignore_ttl: bool = False) -> Optional[dict]:
+    """Return cached catalog if valid, else None.
+
+    Args:
+        ignore_ttl: If True, return stale cache regardless of age (used as
+                    offline fallback when network fetch fails).
+    """
     if not _CACHE_PATH.exists():
         return None
     try:
         data = json.loads(_CACHE_PATH.read_text())
         age = time.time() - data.get("fetched_at", 0)
-        if age < _cache_ttl():
+        if ignore_ttl or age < _cache_ttl():
             return data
     except (OSError, json.JSONDecodeError, KeyError):
         pass
@@ -306,7 +311,16 @@ def build_catalog(force_refresh: bool = False) -> dict:
     attack_bundle = _fetch_json(_ENTERPRISE_STIX_URL)
 
     if not attack_bundle:
-        logger.warning("MITRE ATT&CK fetch failed; returning empty catalog")
+        # Network failed — serve stale cache rather than silently dropping all ATT&CK tags
+        stale = _load_cache(ignore_ttl=True)
+        if stale and stale.get("techniques"):
+            stale_age_days = int((time.time() - stale.get("fetched_at", 0)) / 86400)
+            logger.warning(
+                "MITRE ATT&CK fetch failed; using stale cache (%d days old). ATT&CK tags will reflect the cached version.",
+                stale_age_days,
+            )
+            return stale
+        logger.warning("MITRE ATT&CK fetch failed and no cache exists; returning empty catalog")
         return {"techniques": {}, "cwe_to_attack": {}, "attack_version": "unavailable", "fetched_at": 0}
 
     version, techniques = _parse_attack_stix(attack_bundle)

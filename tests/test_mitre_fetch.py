@@ -328,3 +328,66 @@ def test_get_cwe_to_attack_returns_dict():
         result = get_cwe_to_attack()
     assert "CWE-78" in result
     assert "T1059" in result["CWE-78"]
+
+
+# ─── Offline fallback: stale cache on network failure (#409) ──────────────────
+
+
+def test_network_failure_uses_stale_cache(tmp_path):
+    """When the cache is expired AND the network fetch fails, serve stale cache."""
+    stale_cache = {
+        "fetched_at": 1.0,  # expired long ago
+        "attack_version": "stale-v15",
+        "techniques": {"T1059": {"name": "Stale Technique", "tactics": ["execution"]}},
+        "cwe_to_attack": {"CWE-78": ["T1059"]},
+    }
+    cache_file = tmp_path / "mitre-attack-catalog.json"
+    cache_file.write_text(json.dumps(stale_cache))
+
+    with (
+        patch("agent_bom.mitre_fetch._CACHE_PATH", cache_file),
+        patch("agent_bom.mitre_fetch._fetch_json", return_value=None),
+    ):
+        catalog = build_catalog()
+
+    # Should return stale data rather than empty dict
+    assert catalog["attack_version"] == "stale-v15"
+    assert "T1059" in catalog["techniques"]
+    assert "CWE-78" in catalog["cwe_to_attack"]
+
+
+def test_network_failure_no_cache_returns_empty(tmp_path):
+    """When network fails AND no cache exists at all, return empty catalog."""
+    cache_file = tmp_path / "mitre-attack-catalog.json"
+    # cache_file does NOT exist
+
+    with (
+        patch("agent_bom.mitre_fetch._CACHE_PATH", cache_file),
+        patch("agent_bom.mitre_fetch._fetch_json", return_value=None),
+    ):
+        catalog = build_catalog()
+
+    assert catalog["techniques"] == {}
+    assert catalog["attack_version"] == "unavailable"
+
+
+def test_load_cache_ignore_ttl(tmp_path):
+    """_load_cache(ignore_ttl=True) returns stale cache even if expired."""
+    from agent_bom.mitre_fetch import _load_cache
+
+    stale = {
+        "fetched_at": 1.0,
+        "attack_version": "old",
+        "techniques": {"T9999": {}},
+        "cwe_to_attack": {},
+    }
+    cache_file = tmp_path / "mitre-attack-catalog.json"
+    cache_file.write_text(json.dumps(stale))
+
+    with patch("agent_bom.mitre_fetch._CACHE_PATH", cache_file):
+        # Normal load: expired → None
+        assert _load_cache() is None
+        # ignore_ttl: returns data anyway
+        result = _load_cache(ignore_ttl=True)
+        assert result is not None
+        assert result["attack_version"] == "old"

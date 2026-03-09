@@ -14,7 +14,7 @@ resolution-markers = [
 
 [[package]]
 name = "agent-bom"
-version = "0.62.1"
+version = "0.63.3"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -76,6 +76,7 @@ cloud = [
     { name = "wandb" },
 ]
 dashboard = [
+    { name = "pillow" },
     { name = "plotly" },
     { name = "streamlit" },
 ]
@@ -126,6 +127,7 @@ otel = [
     { name = "opentelemetry-api" },
     { name = "opentelemetry-exporter-otlp-proto-http" },
     { name = "opentelemetry-sdk" },
+    { name = "protobuf" },
 ]
 postgres = [
     { name = "psycopg", extra = ["binary"] },
@@ -196,8 +198,10 @@ requires-dist = [
     { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'otel'", specifier = ">=1.20" },
     { name = "opentelemetry-sdk", marker = "extra == 'otel'", specifier = ">=1.20" },
     { name = "packageurl-python", specifier = ">=0.17" },
+    { name = "pillow", marker = "extra == 'dashboard'", specifier = ">=10.4.0" },
     { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.10" },
     { name = "plotly", marker = "extra == 'dashboard'", specifier = ">=5.18" },
+    { name = "protobuf", marker = "extra == 'otel'", specifier = ">=3.20.2" },
     { name = "psutil", marker = "extra == 'runtime'", specifier = ">=5.9" },
     { name = "psycopg", extras = ["binary"], marker = "extra == 'postgres'", specifier = ">=3.1" },
     { name = "psycopg-pool", marker = "extra == 'postgres'", specifier = ">=3.1" },

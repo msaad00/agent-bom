@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64 as _base64
+
 import pytest
 
 from agent_bom.security import (
@@ -156,3 +158,76 @@ class TestSafePath:
         home = Path.home()
         result = _safe_path(str(home))
         assert result == home
+
+
+# ─── Obfuscated / base64 credential detection (#405) ──────────────────────────
+
+
+class TestObfuscatedCredentialDetection:
+    """sanitize_env_vars must catch base64-encoded and high-entropy secrets."""
+
+    def _b64(self, s: str) -> str:
+        return _base64.b64encode(s.encode()).decode()
+
+    def test_base64_encoded_api_key_value_redacted(self):
+        from agent_bom.security import sanitize_env_vars
+
+        # Value contains "api_key=supersecret" base64-encoded
+        encoded = self._b64("api_key=supersecret_value_here")
+        result = sanitize_env_vars({"CUSTOM_VAR": encoded})
+        assert result["CUSTOM_VAR"] == "***REDACTED***"
+
+    def test_base64_encoded_password_keyword_redacted(self):
+        from agent_bom.security import sanitize_env_vars
+
+        encoded = self._b64("password=my_super_secret_pass")
+        result = sanitize_env_vars({"DATA": encoded})
+        assert result["DATA"] == "***REDACTED***"
+
+    def test_base64_encoded_github_token_redacted(self):
+        from agent_bom.security import sanitize_env_vars
+
+        token = "ghp_" + "A" * 36
+        encoded = self._b64(token)
+        result = sanitize_env_vars({"ENCODED_TOKEN": encoded})
+        assert result["ENCODED_TOKEN"] == "***REDACTED***"
+
+    def test_high_entropy_long_string_redacted(self):
+        # Simulate a raw 40-char base64url token (high entropy, no spaces)
+        import secrets as _secrets
+
+        from agent_bom.security import sanitize_env_vars
+
+        high_entropy = _secrets.token_urlsafe(40)  # ~54 chars, entropy ≈ 6.0
+        result = sanitize_env_vars({"MY_CUSTOM_KEY": high_entropy})
+        assert result["MY_CUSTOM_KEY"] == "***REDACTED***"
+
+    def test_plaintext_url_not_redacted(self):
+        from agent_bom.security import sanitize_env_vars
+
+        # A URL with path should not be flagged even if high-entropy
+        result = sanitize_env_vars({"ENDPOINT": "https://api.example.com/v1/data"})
+        assert result["ENDPOINT"] == "https://api.example.com/v1/data"
+
+    def test_short_base64_not_flagged(self):
+        from agent_bom.security import sanitize_env_vars
+
+        # Short base64 values are not secrets (too short to be meaningful)
+        result = sanitize_env_vars({"VALUE": "dGVzdA=="})  # "test" in base64
+        assert result["VALUE"] == "dGVzdA=="
+
+    def test_normal_string_not_redacted(self):
+        from agent_bom.security import sanitize_env_vars
+
+        result = sanitize_env_vars({"PATH_VAR": "/usr/local/bin:/usr/bin"})
+        assert result["PATH_VAR"] == "/usr/local/bin:/usr/bin"
+
+    def test_shannon_entropy_helper(self):
+        from agent_bom.security import _shannon_entropy
+
+        # Uniform distribution has high entropy
+        high = _shannon_entropy("abcdefghijklmnopqrstuvwxyz0123456789ABCDE")
+        # Repeated char has zero entropy
+        low = _shannon_entropy("aaaaaaaaaaaa")
+        assert high > 4.0
+        assert low == 0.0

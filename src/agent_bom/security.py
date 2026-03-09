@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import base64
 import logging
+import math
 import os
 import re
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -155,6 +158,66 @@ _VALUE_CREDENTIAL_PATTERNS = [
     re.compile(r"\w+://[^:]+:[^@]+@"),  # Connection strings with embedded credentials
 ]
 
+# Base64 alphabet (standard + URL-safe)
+_B64_RE = re.compile(r"^[A-Za-z0-9+/\-_]+=*$")
+
+# Minimum length to bother trying base64 decode (encodes ≥20 bytes)
+_B64_MIN_LEN = 28
+
+# Shannon entropy threshold — secrets typically score >3.8 bits/char;
+# readable English scores ~4.0 but with spaces; env var values without
+# spaces that score >4.5 over a long string are almost certainly secrets.
+_HIGH_ENTROPY_THRESHOLD = 4.5
+_HIGH_ENTROPY_MIN_LEN = 40
+
+
+def _shannon_entropy(s: str) -> float:
+    """Return Shannon entropy (bits per character) of a string."""
+    if not s:
+        return 0.0
+    counts = Counter(s)
+    length = len(s)
+    return -sum((c / length) * math.log2(c / length) for c in counts.values())
+
+
+def _is_obfuscated_credential(value: str) -> bool:
+    """Return True if value looks like a base64-encoded or high-entropy secret.
+
+    Two detection strategies:
+    1. Base64 decode: if the value decodes to valid UTF-8 text that itself
+       matches a key name or value credential pattern, flag it.
+    2. High-entropy: long strings (≥40 chars) with no whitespace and Shannon
+       entropy >4.5 bits/char are extremely likely to be opaque secrets
+       (keys, tokens, passwords).  Pure random bytes score ~6.0;
+       base64-encoded secrets score ~5.8; UUIDs score ~3.8.
+    """
+    stripped = value.strip()
+
+    # Strategy 1: base64 decode and re-check
+    if len(stripped) >= _B64_MIN_LEN and _B64_RE.match(stripped):
+        try:
+            decoded = base64.b64decode(stripped + "==").decode("utf-8", errors="strict")
+            decoded_lower = decoded.lower()
+            # Decoded text contains a sensitive keyword
+            if any(re.search(p, decoded_lower) for p in SENSITIVE_PATTERNS):
+                return True
+            # Decoded text matches a known credential value pattern
+            if any(p.search(decoded) for p in _VALUE_CREDENTIAL_PATTERNS):
+                return True
+        except Exception:
+            pass
+
+    # Strategy 2: high Shannon entropy on a compact, non-URL string
+    if (
+        len(stripped) >= _HIGH_ENTROPY_MIN_LEN
+        and " " not in stripped
+        and "://" not in stripped  # exclude URLs
+        and _shannon_entropy(stripped) > _HIGH_ENTROPY_THRESHOLD
+    ):
+        return True
+
+    return False
+
 
 def sanitize_env_vars(env: dict[str, Any]) -> dict[str, str]:
     """
@@ -179,8 +242,11 @@ def sanitize_env_vars(env: dict[str, Any]) -> dict[str, str]:
             sanitized[key] = "***REDACTED***"
         else:
             str_value = str(value)
-            # Also scan values for credential patterns (catches custom-named vars)
+            # Scan values for plaintext credential patterns (catches custom-named vars)
             if any(p.search(str_value) for p in _VALUE_CREDENTIAL_PATTERNS):
+                sanitized[key] = "***REDACTED***"
+            # Detect obfuscated secrets: base64-encoded values and high-entropy strings
+            elif _is_obfuscated_credential(str_value):
                 sanitized[key] = "***REDACTED***"
             else:
                 sanitized[key] = str_value

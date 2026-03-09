@@ -367,12 +367,19 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full diagrams: data flow pi
 ## Trust & permissions
 
 - **Read-only** -- never writes configs, runs servers, provisions resources, or stores secrets
-- **Credential redaction** -- only env var **names** in reports; values never read
+- **Credential redaction** -- only env var **names** in reports; values never read or logged
+- **No shell injection** -- subprocess uses `asyncio.create_subprocess_exec`; command + args validated before every spawn
+- **No SSRF** -- all outbound URLs hardcoded or validated; DNS rebinding defense blocks private/loopback/cloud-metadata ranges
+- **No path traversal** -- `validate_path(restrict_to_home=True)` on all user-supplied paths; MCP tool inputs sanitized
+- **No SQL injection** -- all database queries use parameterized statements
+- **Proxy size guard** -- messages >10 MB dropped before parsing; protects against DoS
+- **Audit integrity** -- JSONL audit logs stored at `0600`, HMAC-signed (SHA-256). Set `AGENT_BOM_AUDIT_HMAC_KEY` in production for cross-restart verifiability.
+- **API security** -- scrypt KDF for API keys, RBAC (admin/analyst/viewer), OIDC/JWT (RS256/ES256, `none` algorithm rejected), constant-time comparison
 - **`--dry-run`** -- preview every file and API URL before access
 - **Sigstore signed** -- releases v0.7.0+ signed via cosign OIDC
 - **OpenSSF Scorecard** -- [automated supply chain scoring](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom)
 - **OpenSSF Best Practices** -- [passing badge (100%)](https://www.bestpractices.dev/projects/12114) — 67/67 criteria
-- **Continuous fuzzing** -- [ClusterFuzzLite](https://github.com/msaad00/agent-bom/blob/main/.github/workflows/cifuzz.yml) fuzzes SBOM parsers, policy evaluator, and skill parser on every PR
+- **Continuous fuzzing** -- [ClusterFuzzLite](https://github.com/msaad00/agent-bom/blob/main/.github/workflows/cifuzz.yml) fuzzes SBOM parsers, policy evaluator, and skill parser
 - **[PERMISSIONS.md](PERMISSIONS.md)** -- full auditable trust contract
 
 ---

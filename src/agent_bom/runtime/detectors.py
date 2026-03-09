@@ -27,6 +27,7 @@ from agent_bom.runtime.patterns import (
     RESPONSE_INVISIBLE_CHARS,
     RESPONSE_SVG_PATTERNS,
     SUSPICIOUS_SEQUENCES,
+    score_semantic_injection,
 )
 
 
@@ -402,6 +403,28 @@ class ResponseInspector:
                         },
                     )
                 )
+
+        # Semantic injection scoring — catches natural-language instruction
+        # hijacking that evades binary pattern matching.
+        semantic_score, triggered_signals = score_semantic_injection(response_text)
+        if semantic_score >= 0.4:
+            severity = AlertSeverity.HIGH if semantic_score >= 0.7 else AlertSeverity.MEDIUM
+            alerts.append(
+                Alert(
+                    detector="response_inspector",
+                    severity=severity,
+                    message=(
+                        f"Semantic injection risk ({semantic_score:.2f}) in response from {tool_name} "
+                        f"— signals: {', '.join(triggered_signals)}"
+                    ),
+                    details={
+                        "tool": tool_name,
+                        "category": "semantic_injection",
+                        "score": round(semantic_score, 3),
+                        "signals": triggered_signals,
+                    },
+                )
+            )
 
         return alerts
 

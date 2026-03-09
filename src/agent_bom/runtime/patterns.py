@@ -167,3 +167,109 @@ SUSPICIOUS_SEQUENCES: list[tuple[str, list[str], str]] = [
         "Multiple list/search operations followed by read — reconnaissance pattern",
     ),
 ]
+
+
+# ─── Semantic injection scoring signals ───────────────────────────────────────
+
+# Each signal: (name, compiled regex, weight 0.0–1.0)
+# Score = sum of triggered weights, capped at 1.0.
+# >= 0.4 → MEDIUM alert; >= 0.7 → HIGH alert.
+# These catch natural-language instruction hijacking that evades binary patterns.
+SEMANTIC_INJECTION_SIGNALS: list[tuple[str, re.Pattern, float]] = [
+    # High-weight: clear identity/role replacement
+    (
+        "you_are_now",
+        re.compile(r"\byou\s+are\s+(?:now\s+)?(?:a|an|the)\b", re.IGNORECASE),
+        0.30,
+    ),
+    (
+        "your_real_role",
+        re.compile(
+            r"\byour\s+(?:new|actual|real|true)\s+(?:role|task|job|purpose|goal|instructions?)\b",
+            re.IGNORECASE,
+        ),
+        0.40,
+    ),
+    (
+        "assistant_data_prefix",
+        re.compile(r"^(?:assistant|ai|system|human)\s*:", re.IGNORECASE | re.MULTILINE),
+        0.40,
+    ),
+    (
+        "identity_claim",
+        re.compile(
+            r"\bI\s+am\s+(?:your|the)\s+(?:developer|creator|admin|operator|owner|architect)\b",
+            re.IGNORECASE,
+        ),
+        0.35,
+    ),
+    (
+        "context_reset",
+        re.compile(
+            r"\b(?:start\s+(?:over|fresh|again)|reset\s+(?:context|conversation|instructions?)"
+            r"|beginning\s+of\s+(?:a\s+new\s+)?(?:context|conversation))\b",
+            re.IGNORECASE,
+        ),
+        0.30,
+    ),
+    # Medium-weight: coercive or trust-manipulation language
+    (
+        "trust_manipulation",
+        re.compile(
+            r"\b(?:trust\s+me|this\s+is\s+(?:safe|ok|fine|legitimate|authorized|allowed|normal))\b",
+            re.IGNORECASE,
+        ),
+        0.20,
+    ),
+    (
+        "imperative_restrict",
+        re.compile(
+            r"\b(?:always|never|must|shall)\b.{0,60}\b(?:tell|share|reveal|say|mention|discuss|disclose)\b",
+            re.IGNORECASE,
+        ),
+        0.25,
+    ),
+    (
+        "do_not_tell",
+        re.compile(
+            r"\b(?:do\s+not|don'?t)\s+(?:tell|mention|say|reveal|disclose|share)\b",
+            re.IGNORECASE,
+        ),
+        0.25,
+    ),
+    # Low-weight: instructional tone directed at an AI (require accumulation)
+    (
+        "you_should_must",
+        re.compile(r"\byou\s+(?:should|must|need\s+to|have\s+to|are\s+required\s+to)\b", re.IGNORECASE),
+        0.10,
+    ),
+    (
+        "action_directive",
+        re.compile(
+            r"\b(?:please|now)\s+(?:do|perform|execute|run|call|invoke|send|fetch|retrieve)\b",
+            re.IGNORECASE,
+        ),
+        0.10,
+    ),
+    (
+        "from_now_on",
+        re.compile(r"\bfrom\s+(?:now|this\s+point|here)\s+(?:on|forward|onwards?)\b", re.IGNORECASE),
+        0.15,
+    ),
+]
+
+
+def score_semantic_injection(text: str) -> tuple[float, list[str]]:
+    """Score text for semantic prompt injection using weighted signal matching.
+
+    Returns:
+        (score, triggered_signals) where score is 0.0–1.0 (capped).
+        score >= 0.4 → suspicious; >= 0.7 → high confidence injection.
+    """
+    score = 0.0
+    triggered: list[str] = []
+    for name, pattern, weight in SEMANTIC_INJECTION_SIGNALS:
+        if pattern.search(text):
+            score += weight
+            triggered.append(name)
+    return min(score, 1.0), triggered

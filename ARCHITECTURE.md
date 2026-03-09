@@ -8,7 +8,7 @@ Module dependency map and data flow guide for contributors.
 Discovery ──> Scanning ──> Enrichment ──> Blast Radius ──> Compliance ──> Output
     │              │            │              │                │            │
     ▼              ▼            ▼              ▼                ▼            ▼
- 21 MCP         OSV API      NVD/EPSS      Risk scoring     10 frameworks  JSON/SARIF/
+ 21 MCP         OSV API      NVD/EPSS      Risk scoring     11 frameworks  JSON/SARIF/
  clients        batch        KEV/GHSA      per CVE with     mapped per     CycloneDX/
  parsed         query        enrichment    agent/cred/tool  finding        SPDX/SVG
                                            reachability
@@ -19,7 +19,7 @@ Discovery ──> Scanning ──> Enrichment ──> Blast Radius ──> Compl
 | Entry point | File | Purpose |
 |---|---|---|
 | CLI | `cli.py` | Click-based CLI with 22+ commands and groups |
-| MCP Server | `mcp_server.py` | FastMCP server with 22 tools |
+| MCP Server | `mcp_server.py` | FastMCP server with 23 tools |
 | Proxy | `proxy.py` | MCP JSON-RPC proxy with runtime enforcement |
 | API | `api/server.py` | FastAPI REST server with job queue |
 
@@ -123,9 +123,10 @@ Each module exports `tag_blast_radius(br: BlastRadius)` to annotate findings.
 ├── context_graph.py     # Lateral movement analysis — BFS pathfinding, interaction risk
 ├── risk_analyzer.py     # Capability classification, dangerous combo detection
 └── parsers/
-    ├── skills.py        # SKILL.md YAML frontmatter parser
-    ├── skill_audit.py   # Skill trust assessment (5-category analysis)
-    └── trust_assessment.py # Trust scoring engine
+    ├── skills.py           # SKILL.md YAML frontmatter parser
+    ├── skill_audit.py      # Skill trust assessment (5-category analysis)
+    ├── trust_assessment.py # Trust scoring engine
+    └── browser_extensions.py # Chrome/Edge/Brave/Firefox manifest.json permission auditor
 ```
 
 ### API & Storage Layer
@@ -219,11 +220,11 @@ cli.py / mcp_server.py / api/server.py
 
 | Metric | Count |
 |---|---|
-| Python modules | 160 |
+| Python modules | 161 |
 | Test files | 168 |
-| Test functions | ~3,900 (collected by pytest) |
-| MCP tools | 22 |
-| Compliance frameworks | 10 |
+| Test functions | ~4,086 (collected by pytest) |
+| MCP tools | 23 |
+| Compliance frameworks | 11 |
 | Runtime detectors | 7 |
 | Cloud providers | 12 |
 | SAST CWE mappings | 52 |

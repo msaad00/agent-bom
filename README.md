@@ -81,6 +81,8 @@ agent-bom scan --aws --snowflake --databricks      # Multi-cloud
 agent-bom scan --hf-model meta-llama/Llama-3.1-8B  # model provenance
 agent-bom scan --vector-db-scan                    # Scan self-hosted + Pinecone cloud vector DBs
 agent-bom scan --gpu-scan                          # Discover GPU containers + K8s nodes, detect unauthenticated DCGM exporters
+agent-bom scan --browser-extensions               # Scan Chrome/Edge/Brave/Firefox extensions for dangerous permissions
+agent-bom scan --skill-only                       # Audit AI instruction files (CLAUDE.md, .cursorrules, AGENTS.md)
 agent-bom graph report.json --format dot           # Export dependency graph (DOT/Mermaid/JSON)
 agent-bom proxy-configure --apply                  # Auto-wrap MCP configs with security proxy
 ```
@@ -178,7 +180,7 @@ rm -rf ~/.agent-bom                      # remove local data
 | **Credential exposure** | -- | Which secrets leak per vulnerability, per agent |
 | **Tool poisoning detection** | -- | Description injection, capability combos, drift detection |
 | **Privilege detection** | -- | root, shell access, privileged containers, per-tool permissions |
-| **10-framework compliance** | -- | OWASP LLM + MCP + Agentic, MITRE ATLAS, NIST AI RMF + CSF, EU AI Act, SOC 2, ISO 27001, CIS |
+| **11-framework compliance** | -- | OWASP LLM + MCP + Agentic + AISVS v1.0, MITRE ATLAS, NIST AI RMF + CSF, EU AI Act, SOC 2, ISO 27001, CIS |
 | **MITRE ATT&CK mapping** | -- | Dynamic technique lookup by tactic phase (no hardcoded T-codes) |
 | **Posture scorecard** | -- | Letter grade (A-F), 6 dimensions, incident correlation (P1-P4) |
 | **Policy-as-code + Jira** | -- | 17 conditions, CI gate, auto-create Jira tickets for violations |
@@ -190,6 +192,8 @@ rm -rf ~/.agent-bom                      # remove local data
 | **Cloud vector DB scanning** | -- | Pinecone index inventory, risk flags, replica counts via API key |
 | **Dependency graph export** | -- | DOT, Mermaid, JSON — agent → server → package → CVE graph |
 | **OIDC/SSO authentication** | -- | JWT verification (Okta, Google, Azure AD, Auth0) for REST API |
+| **Instruction file trust** | -- | SKILL.md/CLAUDE.md/.cursorrules — 17 behavioral patterns, typosquat detection, Sigstore provenance verification |
+| **Browser extension scanning** | -- | Chrome/Edge/Firefox manifest.json — nativeMessaging, dangerous permissions, AI assistant domain access |
 
 <p align="center">
   <picture>
@@ -212,7 +216,8 @@ rm -rf ~/.agent-bom                      # remove local data
 | Terraform / GitHub Actions | AI resources + env vars |
 | Jupyter notebooks | AI library imports + model refs |
 | Model files | 13 formats (.gguf, .safetensors, .pkl, ...) |
-| Skill files | CLAUDE.md, .cursorrules, AGENTS.md |
+| Skill files | CLAUDE.md, .cursorrules, AGENTS.md — behavioral audit, typosquat detection, Sigstore trust verification |
+| Browser extensions | Chrome, Brave, Edge, Firefox — dangerous permission detection (nativeMessaging, cookies, AI host access) |
 | Existing SBOMs | CycloneDX / SPDX import |
 
 </details>

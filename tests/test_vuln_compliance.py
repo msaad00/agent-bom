@@ -83,9 +83,15 @@ class TestAlwaysOnTags:
         assert "CC9.1" in tags["soc2"]
         assert "CC9.2" in tags["soc2"]
 
-    def test_atlas_always_has_supply_chain(self):
+    def test_atlas_context_sensitive(self):
+        # ATLAS tags are now context-sensitive: AML.T0010 only for supply-chain-relevant vulns
+        # A generic LOW-severity lodash vuln should NOT get ATLAS tags
         tags = tag_vulnerability(_vuln(severity=Severity.LOW, fixed_version=None), _pkg())
-        assert "AML.T0010" in tags["atlas"]
+        assert "atlas" not in tags
+
+        # KEV vulns DO get supply chain tag
+        tags_kev = tag_vulnerability(_vuln(severity=Severity.LOW, is_kev=True), _pkg())
+        assert "AML.T0010" in tags_kev["atlas"]
 
     def test_nist_rmf_base_tags(self):
         tags = tag_vulnerability(_vuln(severity=Severity.LOW, fixed_version=None), _pkg())
@@ -102,10 +108,12 @@ class TestAlwaysOnTags:
         assert "MCP04" in tags["owasp_mcp"]
 
     def test_owasp_agentic_base_tags(self):
+        # Agentic tags are now context-sensitive: ASI04 (Supply Chain) always present,
+        # ASI01 only for AI packages, ASI09 only for KEV
         tags = tag_vulnerability(_vuln(severity=Severity.LOW, fixed_version=None), _pkg())
-        assert "ASI01" in tags["owasp_agentic"]
         assert "ASI04" in tags["owasp_agentic"]
-        assert "ASI09" in tags["owasp_agentic"]
+        assert "ASI01" not in tags["owasp_agentic"]  # lodash is not AI
+        assert "ASI09" not in tags["owasp_agentic"]  # not KEV
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -230,7 +238,11 @@ class TestAiPackageTags:
         # Should have AI-specific tags but not severity-dependent ones
         assert "LLM05" in tags.get("owasp_llm", [])
         assert "LLM04" not in tags.get("owasp_llm", [])  # LLM04 needs HIGH
-        assert "AML.T0020" not in tags["atlas"]  # needs HIGH
+        # AML.T0020 (Poison Training Data) fires for training packages
+        # regardless of severity — the risk is about the package role
+        assert "AML.T0020" in tags.get("atlas", [])
+        # AML.T0043 (Craft Adversarial Data) needs HIGH severity
+        assert "AML.T0043" not in tags.get("atlas", [])
 
 
 # ═══════════════════════════════════════════════════════════════════════════

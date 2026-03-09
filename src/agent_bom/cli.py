@@ -5995,6 +5995,55 @@ def introspect_cmd(server_command, server_url, timeout, introspect_all, baseline
         sys.exit(1)
 
 
+@main.command("audit-replay")
+@click.argument("log_path", type=click.Path(exists=True))
+@click.option("--tool", default=None, help="Filter entries by tool name (substring match)")
+@click.option("--type", "entry_type", default=None, help="Filter by entry type (tools/call, relay_error, …)")
+@click.option("--blocked-only", is_flag=True, help="Show only blocked tool calls")
+@click.option("--alerts-only", is_flag=True, help="Show only runtime detector alerts")
+@click.option(
+    "--sign-key",
+    default=None,
+    envvar="AGENT_BOM_RESPONSE_SIGN_KEY",
+    help="Secret key used when the proxy was started with --response-sign-key",
+)
+@click.option("--verify-hmac", is_flag=True, help="Verify HMAC-SHA256 response signatures in the log")
+@click.option("--json", "as_json", is_flag=True, help="Output machine-readable JSON summary (for CI)")
+def audit_replay_cmd(log_path, tool, entry_type, blocked_only, alerts_only, sign_key, verify_hmac, as_json):
+    """View and analyse a proxy audit JSONL log.
+
+    \b
+    Renders a colour-coded summary of all recorded tool calls, alerts,
+    relay errors, and optional HMAC response signatures.
+
+    \b
+    Exits 1 when the log contains blocked calls or relay errors (useful
+    as a CI gate after running a test suite through the proxy).
+
+    \b
+    Examples:
+      agent-bom audit-replay audit.jsonl
+      agent-bom audit-replay audit.jsonl --blocked-only
+      agent-bom audit-replay audit.jsonl --alerts-only
+      agent-bom audit-replay audit.jsonl --tool read_file
+      agent-bom audit-replay audit.jsonl --sign-key $SECRET --verify-hmac
+      agent-bom audit-replay audit.jsonl --json
+    """
+    from agent_bom.audit_replay import replay
+
+    exit_code = replay(
+        log_path,
+        tool=tool,
+        entry_type=entry_type,
+        blocked_only=blocked_only,
+        alerts_only=alerts_only,
+        sign_key=sign_key,
+        verify_hmac=verify_hmac,
+        as_json=as_json,
+    )
+    sys.exit(exit_code)
+
+
 def cli_main() -> None:
     """Entry point with clean top-level error handling and update check.
 

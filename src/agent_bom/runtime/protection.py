@@ -1,6 +1,6 @@
 """Runtime protection engine — unified detector orchestration.
 
-Connects the five runtime detectors, OTel trace ingestion, and the alert
+Connects all seven runtime detectors, OTel trace ingestion, and the alert
 dispatcher into a single protection pipeline. Activated via the API
 (``POST /v1/protect/start``) or CLI (``agent-bom protect``).
 """
@@ -17,8 +17,10 @@ from agent_bom.runtime.detectors import (
     ArgumentAnalyzer,
     CredentialLeakDetector,
     RateLimitTracker,
+    ResponseInspector,
     SequenceAnalyzer,
     ToolDriftDetector,
+    VectorDBInjectionDetector,
 )
 
 logger = logging.getLogger(__name__)
@@ -32,7 +34,7 @@ class ProtectionStats:
     traces_processed: int = 0
     tool_calls_analyzed: int = 0
     alerts_generated: int = 0
-    detectors_active: int = 5
+    detectors_active: int = 7
 
 
 class ProtectionEngine:
@@ -54,6 +56,8 @@ class ProtectionEngine:
         self.cred_detector = CredentialLeakDetector()
         self.rate_tracker = RateLimitTracker()
         self.seq_analyzer = SequenceAnalyzer()
+        self.response_inspector = ResponseInspector()
+        self.vector_db_detector = VectorDBInjectionDetector()
         self.dispatcher = dispatcher or AlertDispatcher()
         self._active = False
         self._stats = ProtectionStats()
@@ -87,6 +91,8 @@ class ProtectionEngine:
                 "CredentialLeakDetector",
                 "RateLimitTracker",
                 "SequenceAnalyzer",
+                "ResponseInspector",
+                "VectorDBInjectionDetector",
             ],
             "detectors_active": self._stats.detectors_active,
         }
@@ -143,17 +149,31 @@ class ProtectionEngine:
         return all_alerts
 
     async def process_tool_response(self, tool_name: str, response_text: str) -> list[dict]:
-        """Check a tool response for credential leaks.
+        """Check a tool response for credential leaks, injection, and cloaking.
+
+        Runs all response-path detectors: CredentialLeakDetector,
+        ResponseInspector, and VectorDBInjectionDetector.
 
         Args:
             tool_name: MCP tool that produced the response.
             response_text: Response text to analyze.
 
         Returns:
-            List of alert dicts for any credential leaks detected.
+            List of alert dicts for any findings detected.
         """
+        all_alerts: list[dict] = []
+
+        # Credential leak detection
         cred_alerts = self.cred_detector.check(tool_name, response_text)
-        all_alerts = [a.to_dict() for a in cred_alerts]
+        all_alerts.extend(a.to_dict() for a in cred_alerts)
+
+        # Response inspection — cloaking, SVG, invisible unicode, injection
+        resp_alerts = self.response_inspector.check(tool_name, response_text)
+        all_alerts.extend(a.to_dict() for a in resp_alerts)
+
+        # Vector DB injection — elevated severity for RAG/retrieval tools
+        vec_alerts = self.vector_db_detector.check(tool_name, response_text)
+        all_alerts.extend(a.to_dict() for a in vec_alerts)
 
         for alert_dict in all_alerts:
             await self.dispatcher.dispatch(alert_dict)

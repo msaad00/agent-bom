@@ -161,6 +161,7 @@ async def _run_scan_pipeline(
     from agent_bom.scanners import scan_agents, scan_agents_with_enrichment
 
     warnings: list[str] = []
+    scan_sources: list[str] = []
 
     # Validate user-provided paths against directory traversal
     if config_path:
@@ -184,14 +185,33 @@ async def _run_scan_pipeline(
             return json.dumps({"error": sanitize_error(exc)})
 
     agents = discover_all(project_dir=config_path)
+    if agents:
+        scan_sources.append("agent_discovery")
 
     # Docker image scanning
     if image:
         try:
-            from agent_bom.image import scan_image
+            from agent_bom.image import scan_image as _scan_image
 
-            img_agents, _warnings = scan_image(image)
-            agents.extend(img_agents)
+            img_packages, _strategy = _scan_image(image)
+            if img_packages:
+                img_server = MCPServer(
+                    name=f"image:{image}",
+                    command="",
+                    args=[],
+                    env={},
+                    transport=TransportType.UNKNOWN,
+                    packages=img_packages,
+                )
+                agents.append(
+                    Agent(
+                        name=f"image:{image}",
+                        agent_type=AgentType.CUSTOM,
+                        config_path="",
+                        mcp_servers=[img_server],
+                    )
+                )
+                scan_sources.append("image")
         except Exception as exc:
             msg = f"Image scan failed for {image}: {sanitize_error(exc)}"
             logger.warning(msg)
@@ -226,13 +246,14 @@ async def _run_scan_pipeline(
                             mcp_servers=[sbom_server],
                         )
                     )
+                    scan_sources.append("sbom")
         except Exception as exc:
             msg = f"SBOM load failed for {sbom_path}: {exc}"
             logger.warning(msg)
             warnings.append(msg)
 
     if not agents:
-        return [], [], warnings
+        return [], [], warnings, scan_sources
 
     for agent in agents:
         for server in agent.mcp_servers:
@@ -243,7 +264,7 @@ async def _run_scan_pipeline(
         blast_radii = await scan_agents_with_enrichment(agents)
     else:
         blast_radii = await scan_agents(agents)
-    return agents, blast_radii, warnings
+    return agents, blast_radii, warnings, scan_sources
 
 
 # ---------------------------------------------------------------------------
@@ -321,7 +342,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             from agent_bom.models import AIBOMReport
             from agent_bom.output import to_json
 
-            agents, blast_radii, scan_warnings = await _run_scan_pipeline(
+            agents, blast_radii, scan_warnings, scan_sources = await _run_scan_pipeline(
                 config_path,
                 image,
                 sbom_path,
@@ -361,7 +382,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                 except Exception as exc:
                     logger.debug("Scorecard enrichment failed: %s", exc)
 
-            report = AIBOMReport(agents=agents, blast_radii=blast_radii)
+            report = AIBOMReport(agents=agents, blast_radii=blast_radii, scan_sources=scan_sources)
             result = to_json(report)
 
             # Policy evaluation
@@ -534,7 +555,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             return json.dumps({"error": sanitize_error(exc)})
 
         try:
-            _agents, blast_radii, _warnings = await _run_scan_pipeline()
+            _agents, blast_radii, _warnings, _srcs = await _run_scan_pipeline()
 
             matches = [br for br in blast_radii if br.vulnerability.id.upper() == validated_cve.upper()]
             if not matches:
@@ -602,7 +623,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             policy = json.loads(policy_json)
             _validate_policy(policy)
 
-            _agents, blast_radii, _warnings = await _run_scan_pipeline()
+            _agents, blast_radii, _warnings, _srcs = await _run_scan_pipeline()
             result = evaluate_policy(policy, blast_radii)
             return json.dumps(result, indent=2, default=str)
         except json.JSONDecodeError as exc:
@@ -711,11 +732,11 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             from agent_bom.models import AIBOMReport
             from agent_bom.output import to_cyclonedx, to_spdx
 
-            agents, blast_radii, _warnings = await _run_scan_pipeline(config_path=config_path)
+            agents, blast_radii, _warnings, scan_sources = await _run_scan_pipeline(config_path=config_path)
             if not agents:
                 return json.dumps({"error": "No agents found to generate SBOM from"})
 
-            report = AIBOMReport(agents=agents, blast_radii=blast_radii)
+            report = AIBOMReport(agents=agents, blast_radii=blast_radii, scan_sources=scan_sources)
 
             if format.lower() == "spdx":
                 return _truncate_response(json.dumps(to_spdx(report), indent=2, default=str))
@@ -755,7 +776,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             from agent_bom.owasp import OWASP_LLM_TOP10
             from agent_bom.owasp_mcp import OWASP_MCP_TOP10
 
-            agents, blast_radii, _warnings = await _run_scan_pipeline(config_path, image)
+            agents, blast_radii, _warnings, _srcs = await _run_scan_pipeline(config_path, image)
 
             # Convert BlastRadius objects to dicts for aggregation
             br_dicts = []
@@ -858,7 +879,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             from agent_bom.models import AIBOMReport
             from agent_bom.remediate import generate_remediation
 
-            agents, blast_radii, _warnings = await _run_scan_pipeline(config_path, image)
+            agents, blast_radii, _warnings, scan_sources = await _run_scan_pipeline(config_path, image)
             if not agents:
                 return json.dumps(
                     {
@@ -869,7 +890,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                     }
                 )
 
-            report = AIBOMReport(agents=agents, blast_radii=blast_radii)
+            report = AIBOMReport(agents=agents, blast_radii=blast_radii, scan_sources=scan_sources)
             plan = generate_remediation(report, blast_radii)
 
             return _truncate_response(
@@ -1165,11 +1186,11 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             from agent_bom.models import AIBOMReport
             from agent_bom.output import to_json
 
-            agents, blast_radii, _warnings = await _run_scan_pipeline()
+            agents, blast_radii, _warnings, scan_sources = await _run_scan_pipeline()
             if not agents:
                 return json.dumps({"error": "No agents found — nothing to diff"})
 
-            report = AIBOMReport(agents=agents, blast_radii=blast_radii)
+            report = AIBOMReport(agents=agents, blast_radii=blast_radii, scan_sources=scan_sources)
             current = to_json(report)
 
             if baseline is None:
@@ -1390,11 +1411,11 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             from agent_bom.models import AIBOMReport
             from agent_bom.output import to_json
 
-            agents, blast_radii, _warnings = await _run_scan_pipeline(config_path)
+            agents, blast_radii, _warnings, scan_sources = await _run_scan_pipeline(config_path)
             if not agents:
                 return json.dumps({"error": "No agents found"})
 
-            report = AIBOMReport(agents=agents, blast_radii=blast_radii)
+            report = AIBOMReport(agents=agents, blast_radii=blast_radii, scan_sources=scan_sources)
             report_json = to_json(report)
             graph = build_context_graph(
                 report_json["agents"],
@@ -1652,12 +1673,12 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         try:
             # Normalize "auto" → None so _run_scan_pipeline uses default discovery
             effective_config = None if config_path == "auto" else config_path
-            report = await _run_scan_pipeline(effective_config)
+            agents, blast_radii, _warnings, _srcs = await _run_scan_pipeline(effective_config)
             result: dict = {
                 "scan_summary": {
-                    "agents": report.total_agents,
-                    "servers": report.total_servers,
-                    "vulnerabilities": len(report.blast_radii),
+                    "agents": len(agents) if agents else 0,
+                    "servers": sum(len(a.mcp_servers) for a in agents) if agents else 0,
+                    "vulnerabilities": len(blast_radii),
                 },
             }
 
@@ -1666,12 +1687,12 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                 safe_audit = _safe_path(audit_log)
                 from agent_bom.runtime_correlation import correlate as _correlate
 
-                corr = _correlate(report.blast_radii, audit_log_path=str(safe_audit))
+                corr = _correlate(blast_radii, audit_log_path=str(safe_audit))
                 result["correlation"] = corr.to_dict()
             else:
                 result["correlation"] = {
                     "note": "No audit log provided. Run 'agent-bom proxy --log audit.jsonl' to capture tool calls, then pass the log path.",
-                    "vulnerable_tools": len({t.name for br in report.blast_radii for t in br.exposed_tools}) if report.blast_radii else 0,
+                    "vulnerable_tools": len({t.name for br in blast_radii for t in br.exposed_tools}) if blast_radii else 0,
                 }
 
             # ML API provenance via OTel trace

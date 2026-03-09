@@ -349,6 +349,13 @@ def main():
 @click.option(
     "--image", "images", multiple=True, metavar="IMAGE", help="Docker image to scan (e.g. nginx:1.25). Repeatable for multiple images."
 )
+@click.option(
+    "--image-tar",
+    "image_tars",
+    multiple=True,
+    metavar="TAR",
+    help="OCI image tarball to scan without Docker/Syft/Grype (e.g. image.tar from 'docker save'). Repeatable.",
+)
 @click.option("--k8s", is_flag=True, help="Discover container images from a Kubernetes cluster via kubectl")
 @click.option("--namespace", default="default", show_default=True, help="Kubernetes namespace (used with --k8s)")
 @click.option("--all-namespaces", "-A", is_flag=True, help="Scan all Kubernetes namespaces (used with --k8s)")
@@ -771,6 +778,7 @@ def scan(
     sbom_file: Optional[str],
     sbom_name: Optional[str],
     images: tuple,
+    image_tars: tuple,
     k8s: bool,
     namespace: str,
     all_namespaces: bool,
@@ -1333,7 +1341,35 @@ def scan(
             except ImageScanError as e:
                 con.print(f"  [yellow]⚠[/yellow] {image_ref}: {e}")
 
-    # Step 1d2: Filesystem / disk snapshot scan (--filesystem)
+    # Step 1d2: OCI tarball scan (--image-tar)
+    if not skill_only and image_tars:
+        from agent_bom.image import ImageScanError, scan_image_tar
+        from agent_bom.models import Agent, AgentType, MCPServer, TransportType
+
+        con.print(f"\n[bold blue]Scanning {len(image_tars)} OCI image tarball(s)...[/bold blue]\n")
+        for tar_path in image_tars:
+            try:
+                tar_packages, tar_strategy = scan_image_tar(tar_path)
+                tar_label = Path(tar_path).name
+                con.print(f"  [green]✓[/green] {tar_label}: {len(tar_packages)} package(s) [dim](via {tar_strategy})[/dim]")
+                server = MCPServer(
+                    name=tar_label,
+                    command="",
+                    args=[],
+                    transport=TransportType.STDIO,
+                    packages=tar_packages,
+                )
+                tar_agent = Agent(
+                    name=f"image-tar:{tar_label}",
+                    agent_type=AgentType.CUSTOM,
+                    config_path=f"oci-tar://{tar_path}",
+                    mcp_servers=[server],
+                )
+                agents.append(tar_agent)
+            except ImageScanError as e:
+                con.print(f"  [yellow]⚠[/yellow] {tar_path}: {e}")
+
+    # Step 1d3: Filesystem / disk snapshot scan (--filesystem)
     if not skill_only and filesystem_paths:
         from agent_bom.filesystem import FilesystemScanError, scan_filesystem
         from agent_bom.models import Agent, AgentType, MCPServer

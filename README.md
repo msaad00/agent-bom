@@ -12,13 +12,15 @@
   <a href="https://github.com/msaad00/agent-bom/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue?style=flat" alt="License"></a>
   <a href="https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom"><img src="https://api.securityscorecards.dev/projects/github.com/msaad00/agent-bom/badge" alt="OpenSSF"></a>
   <a href="https://www.bestpractices.dev/projects/12114"><img src="https://www.bestpractices.dev/projects/12114/badge" alt="OpenSSF Best Practices"></a>
+  <a href="https://pepy.tech/projects/agent-bom"><img src="https://static.pepy.tech/badge/agent-bom/month" alt="Downloads"></a>
   <a href="https://github.com/msaad00/agent-bom/stargazers"><img src="https://img.shields.io/github/stars/msaad00/agent-bom?style=flat&logo=github&label=Stars" alt="Stars"></a>
+  <a href="https://github.com/msaad00/agent-bom/discussions"><img src="https://img.shields.io/github/discussions/msaad00/agent-bom?style=flat&logo=github&label=Discussions" alt="Discussions"></a>
 </p>
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center">
-  <b>Security scanner and runtime enforcement proxy for AI infrastructure.</b><br>
-  <b>Find CVEs, map blast radius, and detect credential exposure — then sit in the MCP data path and enforce policy in real time.</b>
+  <b>Scan your AI infrastructure. Enforce it at runtime.</b><br>
+  CVEs, blast radius, credential exposure, 11 compliance frameworks — then proxy MCP traffic and enforce policy in real time.
 </p>
 
 <p align="center">
@@ -246,7 +248,7 @@ rm -rf ~/.agent-bom                      # remove local data
 
 | Source | How |
 |--------|-----|
-| MCP configs | Auto-discover (20 clients + Docker Compose) |
+| MCP configs | Auto-discover (21 clients + Docker Compose) |
 | Docker images | Grype / Syft / Docker CLI fallback |
 | Kubernetes | kubectl across namespaces |
 | Cloud providers | AWS, Azure, GCP, Databricks, Snowflake, Coreweave, Nebius |
@@ -454,7 +456,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full diagrams: data flow pi
 - [ ] Model card authenticity verification (beyond hash/sigstore)
 
 **Agents / MCP**
-- [x] 20 MCP client config discovery paths, live introspection, tool drift detection
+- [x] 21 MCP client config discovery paths, live introspection, tool drift detection
 - [x] Runtime proxy with 7 behavioral detectors (rug pull, injection, credential leak, exfil sequences, response cloaking, vector DB injection, semantic injection scoring)
 - [x] Semantic injection scoring — weighted 10-signal model, 0.0–1.0 risk score, MEDIUM/HIGH alerts
 - [ ] Agent memory / vector store content scanning for injected instructions

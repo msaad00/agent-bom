@@ -278,12 +278,14 @@ with tabs[1]:
         st.subheader("Dependency Treemap")
         st.caption("Agent > Server > Ecosystem > Package. Red = vulnerable, green = clean.")
 
+        # Build identity map from unique color values so Plotly keeps them as-is
+        color_identity = {c: c for c in tree_df["color"].unique()}
         fig = px.treemap(
             tree_df,
             path=["agent", "server", "ecosystem", "package"],
             values="value",
             color="color",
-            color_discrete_map="identity",
+            color_discrete_map=color_identity,
         )
         fig.update_layout(height=500, margin=dict(t=30, l=10, r=10, b=10))
         fig.update_traces(textinfo="label+value")

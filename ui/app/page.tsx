@@ -292,6 +292,7 @@ export default function Dashboard() {
   const [agentList, setAgentList] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState(false);
+  const [importedReport, setImportedReport] = useState<ScanResult | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -315,7 +316,24 @@ export default function Dashboard() {
     load();
   }, []);
 
-  const doneJobs = useMemo(() => jobs.filter((j) => j.status === "done" && j.result), [jobs]);
+  // When API is down but user imported a local report, synthesise a fake job
+  // so all downstream useMemo aggregators work without changes.
+  const effectiveJobs = useMemo<ScanJob[]>(() => {
+    if (!apiError || !importedReport) return jobs;
+    return [{
+      job_id: "imported",
+      status: "done",
+      created_at: importedReport.generated_at ?? new Date().toISOString(),
+      request: {} as ScanJob["request"],
+      progress: [],
+      result: importedReport as unknown as Record<string, unknown>,
+    } as unknown as ScanJob];
+  }, [jobs, apiError, importedReport]);
+
+  const doneJobs = useMemo(
+    () => effectiveJobs.filter((j) => j.status === "done" && j.result),
+    [effectiveJobs]
+  );
 
   const allBlast = useMemo(
     () => doneJobs.flatMap((j) => (j.result as ScanResult)?.blast_radius ?? []),
@@ -323,9 +341,9 @@ export default function Dashboard() {
   );
 
   const severity = useMemo(() => aggregateSeverity(allBlast), [allBlast]);
-  const topPackages = useMemo(() => aggregatePackages(jobs), [jobs]);
-  const sources = useMemo(() => aggregateSources(jobs), [jobs]);
-  const trendData = useMemo(() => aggregateTrend(jobs), [jobs]);
+  const topPackages = useMemo(() => aggregatePackages(effectiveJobs), [effectiveJobs]);
+  const sources = useMemo(() => aggregateSources(effectiveJobs), [effectiveJobs]);
+  const trendData = useMemo(() => aggregateTrend(effectiveJobs), [effectiveJobs]);
   const epssData = useMemo(() => aggregateEpss(allBlast), [allBlast]);
   const scatterData = useMemo(() => aggregateEpssVsCvss(allBlast), [allBlast]);
   const compoundIssues = useMemo(() => aggregateCompoundIssues(allBlast), [allBlast]);
@@ -352,7 +370,13 @@ export default function Dashboard() {
     return pkgs.size;
   }, [doneJobs]);
 
-  if (apiError) return <ApiDown />;
+  // Derive agent count from imported report when API is unavailable
+  const effectiveAgentCount = importedReport
+    ? (importedReport.agents?.length ?? 0)
+    : agentCount;
+  const isLoading = loading && !importedReport;
+
+  if (apiError && !importedReport) return <ApiDown onImport={setImportedReport} />;
 
   return (
     <div className="space-y-8">
@@ -361,7 +385,7 @@ export default function Dashboard() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Security Posture</h1>
           <p className="text-zinc-400 text-sm mt-1">
-            Aggregated across {doneJobs.length} scan{doneJobs.length !== 1 ? "s" : ""} — {agentCount} agent{agentCount !== 1 ? "s" : ""} · {totalPackages} packages · {uniqueCVEs} unique CVEs
+            Aggregated across {doneJobs.length} scan{doneJobs.length !== 1 ? "s" : ""} — {effectiveAgentCount} agent{effectiveAgentCount !== 1 ? "s" : ""} · {totalPackages} packages · {uniqueCVEs} unique CVEs
           </p>
         </div>
         <Link
@@ -375,15 +399,15 @@ export default function Dashboard() {
 
       {/* Fleet stats */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <StatCard icon={Layers} label="Total scans" value={loading ? "—" : String(doneJobs.length)} color="zinc" href="/jobs" />
-        <StatCard icon={Server} label="Agents" value={loading ? "—" : String(agentCount)} color="emerald" href="/agents" />
-        <StatCard icon={Package} label="Packages" value={loading ? "—" : String(totalPackages)} color="blue" href="/vulns" />
-        <StatCard icon={Bug} label="Unique CVEs" value={loading ? "—" : String(uniqueCVEs)} color="orange" href="/vulns" />
-        <StatCard icon={Zap} label="Critical" value={loading ? "—" : String(severity.critical)} color="red" href="/vulns?severity=critical" />
+        <StatCard icon={Layers} label="Total scans" value={isLoading ? "—" : String(doneJobs.length)} color="zinc" href="/jobs" />
+        <StatCard icon={Server} label="Agents" value={isLoading ? "—" : String(effectiveAgentCount)} color="emerald" href="/agents" />
+        <StatCard icon={Package} label="Packages" value={isLoading ? "—" : String(totalPackages)} color="blue" href="/vulns" />
+        <StatCard icon={Bug} label="Unique CVEs" value={isLoading ? "—" : String(uniqueCVEs)} color="orange" href="/vulns" />
+        <StatCard icon={Zap} label="Critical" value={isLoading ? "—" : String(severity.critical)} color="red" href="/vulns?severity=critical" />
       </div>
 
       {/* AI Agent Trust Stack */}
-      {!loading && (
+      {(!isLoading) && (
         <section>
           <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest mb-3">
             AI Agent Trust Stack
@@ -393,7 +417,7 @@ export default function Dashboard() {
       )}
 
       {/* Severity distribution + Sources — side by side */}
-      {!loading && allBlast.length > 0 && (
+      {(!isLoading) && allBlast.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <SeverityChart severity={severity} />
           <SourceBreakdown sources={sources} />
@@ -401,7 +425,7 @@ export default function Dashboard() {
       )}
 
       {/* Trend charts */}
-      {!loading && allBlast.length > 0 && (
+      {(!isLoading) && allBlast.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <VulnTrendChart data={trendData} />
           <EpssDistributionChart data={epssData} />
@@ -409,12 +433,12 @@ export default function Dashboard() {
       )}
 
       {/* EPSS × CVSS risk map */}
-      {!loading && scatterData.length > 0 && (
+      {(!isLoading) && scatterData.length > 0 && (
         <EpssVsCvssChart data={scatterData} />
       )}
 
       {/* Compound Issues */}
-      {!loading && compoundIssues.length > 0 && (
+      {(!isLoading) && compoundIssues.length > 0 && (
         <section>
           <div className="flex items-center justify-between mb-3">
             <div>
@@ -438,7 +462,7 @@ export default function Dashboard() {
       )}
 
       {/* Agent topology */}
-      {!loading && agentList.length > 0 && (
+      {(!isLoading) && agentList.length > 0 && (
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest">
@@ -453,7 +477,7 @@ export default function Dashboard() {
       )}
 
       {/* Top vulnerable packages */}
-      {!loading && topPackages.length > 0 && (
+      {(!isLoading) && topPackages.length > 0 && (
         <section>
           <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest mb-3">
             Top vulnerable packages
@@ -513,7 +537,7 @@ export default function Dashboard() {
       )}
 
       {/* Blast radius highlights */}
-      {!loading && allBlast.length > 0 && (
+      {(!isLoading) && allBlast.length > 0 && (
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest">
@@ -549,13 +573,13 @@ export default function Dashboard() {
               </Link>
             )}
           </div>
-          {loading ? (
+          {isLoading ? (
             <div className="text-zinc-500 text-sm">Loading...</div>
-          ) : jobs.length === 0 ? (
+          ) : effectiveJobs.length === 0 ? (
             <EmptyState />
           ) : (
             <div className="space-y-2">
-              {jobs.slice(0, 8).map((job) => (
+              {effectiveJobs.slice(0, 8).map((job) => (
                 <JobRow key={job.job_id} job={job} />
               ))}
             </div>
@@ -871,9 +895,24 @@ function CompoundIssueCard({ issue }: { issue: CompoundIssue }) {
   );
 }
 
-function ApiDown() {
+function ApiDown({ onImport }: { onImport: (data: ScanResult) => void }) {
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target?.result as string) as ScanResult;
+        onImport(data);
+      } catch {
+        alert("Invalid JSON — make sure this is an agent-bom scan report.");
+      }
+    };
+    reader.readAsText(file);
+  };
+
   return (
-    <div className="text-center py-24">
+    <div className="text-center py-16">
       <AlertTriangle className="w-10 h-10 text-orange-400 mx-auto mb-4" />
       <h2 className="text-lg font-semibold mb-2">Cannot connect to agent-bom API</h2>
       <p className="text-zinc-500 text-sm mb-6">
@@ -882,10 +921,28 @@ function ApiDown() {
           {process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8422"}
         </code>
       </p>
-      <code className="block bg-zinc-900 border border-zinc-800 rounded-lg px-6 py-4 text-sm font-mono text-emerald-400 inline-block">
+      <code className="block bg-zinc-900 border border-zinc-800 rounded-lg px-6 py-4 text-sm font-mono text-emerald-400 mb-8 inline-block">
         pip install &apos;agent-bom[api]&apos;<br />
         agent-bom api
       </code>
+      <div className="border border-dashed border-zinc-700 rounded-xl p-8 max-w-md mx-auto">
+        <FileText className="w-8 h-8 text-zinc-500 mx-auto mb-3" />
+        <p className="text-sm text-zinc-400 mb-1 font-medium">Or import a local report</p>
+        <p className="text-xs text-zinc-600 mb-4">
+          Generated with{" "}
+          <code className="font-mono">agent-bom scan -f json -o report.json</code>
+        </p>
+        <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-sm text-zinc-300 transition-colors">
+          <FileText className="w-4 h-4" />
+          Choose report.json
+          <input
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={handleFile}
+          />
+        </label>
+      </div>
     </div>
   );
 }

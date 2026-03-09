@@ -10,7 +10,7 @@ DEMO_INVENTORY: dict = {
     "agents": [
         {
             "name": "demo-web-agent",
-            "agent_type": "demo",
+            "agent_type": "custom",
             "source": "agent-bom --demo",
             "mcp_servers": [
                 {
@@ -49,7 +49,7 @@ DEMO_INVENTORY: dict = {
         },
         {
             "name": "demo-code-agent",
-            "agent_type": "demo",
+            "agent_type": "custom",
             "source": "agent-bom --demo",
             "mcp_servers": [
                 {

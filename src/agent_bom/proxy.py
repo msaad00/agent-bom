@@ -497,7 +497,7 @@ async def _send_webhook(url: str, payload: dict) -> None:
     try:
         import httpx
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=10.0, write=10.0, pool=5.0)) as client:
             await client.post(url, json=payload)
     except Exception:  # noqa: BLE001
         logger.debug("Failed to send webhook to %s", url)

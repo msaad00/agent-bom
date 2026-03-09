@@ -30,10 +30,10 @@ jobs:
           python-version: '3.12'
 
       - name: Install MkDocs
-        run: uv tool install mkdocs-material==9.7.4  # pinned — update periodically
+        run: uv pip install --system mkdocs-material==9.7.4  # mkdocs-material ships no CLI; install into system env
 
       - name: Build site
-        run: uvx mkdocs build --strict
+        run: mkdocs build --strict
 
       - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
         with:

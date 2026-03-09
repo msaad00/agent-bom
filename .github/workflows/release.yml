@@ -27,7 +27,7 @@ jobs:
 
       - name: Build dashboard
         run: |
-          cd ui && npm ci && npm run build
+          cd ui && npm ci && NEXT_EXPORT=1 npm run build
           cp -r out ../src/agent_bom/ui_dist
 
       - name: Build package

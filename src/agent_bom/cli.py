@@ -5224,7 +5224,14 @@ def proxy_cmd(
     """
     import asyncio
 
+    from agent_bom.project_config import get_policy_path, load_project_config
     from agent_bom.proxy import run_proxy
+
+    # Auto-load .agent-bom.yaml policy if --policy not explicitly given
+    if not policy:
+        _cfg = load_project_config()
+        if _cfg and (cfg_policy := get_policy_path(_cfg)):
+            policy = str(cfg_policy)
 
     exit_code = asyncio.run(
         run_proxy(

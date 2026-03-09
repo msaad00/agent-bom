@@ -561,6 +561,13 @@ def main():
 @click.option("--coreweave-namespace", default=None, metavar="NS", help="Limit CoreWeave discovery to a namespace")
 @click.option("--databricks", "databricks_flag", is_flag=True, help="Discover agents from Databricks clusters and model serving")
 @click.option("--snowflake", "snowflake_flag", is_flag=True, help="Discover Cortex agents and Snowpark apps from Snowflake")
+@click.option(
+    "--snowflake-authenticator",
+    default=None,
+    envvar="SNOWFLAKE_AUTHENTICATOR",
+    metavar="METHOD",
+    help="Snowflake auth method: externalbrowser (SSO, default), snowflake_jwt (key-pair), oauth. No passwords stored.",
+)
 @click.option("--cortex-observability", is_flag=True, help="Include Cortex agent observability telemetry (requires --snowflake)")
 @click.option("--nebius", "nebius_flag", is_flag=True, help="Discover AI workloads from Nebius GPU cloud")
 @click.option("--nebius-api-key", default=None, envvar="NEBIUS_API_KEY", metavar="KEY", help="Nebius API key")
@@ -809,6 +816,7 @@ def scan(
     coreweave_namespace: Optional[str],
     databricks_flag: bool,
     snowflake_flag: bool,
+    snowflake_authenticator: str | None,
     cortex_observability: bool,
     nebius_flag: bool,
     nebius_api_key: Optional[str],
@@ -1730,7 +1738,7 @@ def scan(
     if not skill_only and databricks_flag:
         cloud_providers.append(("databricks", {}))
     if not skill_only and snowflake_flag:
-        cloud_providers.append(("snowflake", {}))
+        cloud_providers.append(("snowflake", {"authenticator": snowflake_authenticator} if snowflake_authenticator else {}))
     if not skill_only and nebius_flag:
         cloud_providers.append(("nebius", {"api_key": nebius_api_key, "project_id": nebius_project_id}))
     if not skill_only and hf_flag:

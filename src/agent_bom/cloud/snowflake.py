@@ -4,8 +4,26 @@ Requires ``snowflake-connector-python``.  Install with::
 
     pip install 'agent-bom[snowflake]'
 
-Authentication uses standard Snowflake connector auth (env vars SNOWFLAKE_ACCOUNT,
-SNOWFLAKE_USER, SNOWFLAKE_PASSWORD, or external browser / key pair / SSO).
+Authentication — zero-credential model (no passwords stored or logged):
+
+agent-bom never stores credentials. Auth resolution order:
+
+1. ``SNOWFLAKE_AUTHENTICATOR`` env var (or ``--snowflake-authenticator`` CLI flag)
+   Recommended values:
+   - ``externalbrowser``   — SSO via Okta/Azure AD/Google (opens browser) ← **default**
+   - ``snowflake_jwt``     — RSA key-pair (set SNOWFLAKE_PRIVATE_KEY_PATH)
+   - ``oauth``             — OAuth access token (set SNOWFLAKE_TOKEN)
+
+2. ``SNOWFLAKE_PASSWORD`` env var — password auth (not recommended; use SSO or key-pair)
+
+All credentials are read from environment at runtime and passed directly to the
+Snowflake connector. They are never logged, stored, or transmitted by agent-bom.
+Errors are sanitized before display (sanitize_error strips secrets from messages).
+
+Required Snowflake privileges (read-only):
+    IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE (for ACCOUNT_USAGE)
+    USAGE ON WAREHOUSE <warehouse>
+    SELECT on SNOWFLAKE.ACCOUNT_USAGE views (for CIS benchmark)
 """
 
 from __future__ import annotations
@@ -91,8 +109,14 @@ def discover(
     if schema:
         conn_kwargs["schema"] = schema
 
-    # Try password from env if no authenticator specified
+    # Auth resolution: authenticator arg → SNOWFLAKE_AUTHENTICATOR env →
+    # SNOWFLAKE_PASSWORD env → externalbrowser (SSO) as safe default.
+    # Credentials are never stored or logged by agent-bom.
     if not authenticator:
+        authenticator = os.environ.get("SNOWFLAKE_AUTHENTICATOR", "")
+    if authenticator:
+        conn_kwargs["authenticator"] = authenticator
+    else:
         password = os.environ.get("SNOWFLAKE_PASSWORD", "")
         if password:
             conn_kwargs["password"] = password
@@ -696,6 +720,10 @@ def discover_governance(
         conn_kwargs["schema"] = schema
 
     if not authenticator:
+        authenticator = os.environ.get("SNOWFLAKE_AUTHENTICATOR", "")
+    if authenticator:
+        conn_kwargs["authenticator"] = authenticator
+    else:
         password = os.environ.get("SNOWFLAKE_PASSWORD", "")
         if password:
             conn_kwargs["password"] = password
@@ -1374,6 +1402,10 @@ def discover_activity(
         conn_kwargs["schema"] = schema
 
     if not authenticator:
+        authenticator = os.environ.get("SNOWFLAKE_AUTHENTICATOR", "")
+    if authenticator:
+        conn_kwargs["authenticator"] = authenticator
+    else:
         password = os.environ.get("SNOWFLAKE_PASSWORD", "")
         if password:
             conn_kwargs["password"] = password

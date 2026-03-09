@@ -207,6 +207,59 @@ unless a scan job explicitly requests enrichment (`"enrich": true` in the reques
 
 ---
 
+## Authentication Model — Zero-Credential, Zero-Trust
+
+agent-bom **never stores, logs, or transmits credentials**. All authentication
+follows the principle of least privilege with read-only scopes.
+
+### How auth works per provider
+
+| Provider | Preferred auth | Fallback | What we read |
+|----------|---------------|----------|--------------|
+| **Snowflake** | SSO via `externalbrowser` (Okta/Azure AD/Google) — default when no password set | `SNOWFLAKE_PASSWORD` env (not recommended) | Read-only SQL on ACCOUNT_USAGE |
+| **Databricks** | SDK credential chain: `~/.databrickscfg` OAuth profile or workload identity | `DATABRICKS_TOKEN` PAT env | Read-only cluster/library listing |
+| **AWS** | IAM role / OIDC workload identity (GitHub Actions) / `~/.aws/credentials` profile | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` env | Read-only: `Describe*`, `List*`, `Get*` |
+| **Azure** | Managed identity / `az login` / service principal | `AZURE_CLIENT_SECRET` env | Read-only resource listing |
+| **GCP** | Application Default Credentials / workload identity | `GOOGLE_APPLICATION_CREDENTIALS` env | Read-only resource listing |
+| **HuggingFace** | `HF_TOKEN` env (read-only scope) — optional, public models need nothing | None | Model metadata via Hub API |
+| **NVD** | `NVD_API_KEY` env — optional, only increases rate limits | None (public API) | CVE data only |
+
+### Snowflake — explicit auth options
+
+```bash
+# Preferred: SSO (default when SNOWFLAKE_PASSWORD is not set)
+agent-bom scan --snowflake
+
+# Explicit SSO
+agent-bom scan --snowflake --snowflake-authenticator externalbrowser
+
+# Key-pair (no password)
+SNOWFLAKE_PRIVATE_KEY_PATH=~/.ssh/snowflake_key.p8 \
+agent-bom scan --snowflake --snowflake-authenticator snowflake_jwt
+
+# OAuth token
+SNOWFLAKE_TOKEN=<token> \
+agent-bom scan --snowflake --snowflake-authenticator oauth
+```
+
+### CIA Triad compliance
+
+| Principle | How agent-bom upholds it |
+|-----------|--------------------------|
+| **Confidentiality** | Credentials pass env → SDK, never logged. `sanitize_error()` strips secrets from all error messages. Audit logs stored at `0600` permissions. |
+| **Integrity** | SHA-256 payload hashing on every proxied MCP call. Model weight hash verification (`--verify-model-hashes`). SBOM + VEX support for supply chain integrity. |
+| **Availability** | Graceful degradation on auth failure (warning, not crash). Offline mode (`--no-scan`). Rate limiting respected — we never exhaust API quotas. |
+
+### What we never do
+
+- Never write to any cloud resource (pure read-only)
+- Never cache credentials to disk
+- Never log credential values (sanitize_error removes them)
+- Never require admin/write permissions
+- Never make network calls beyond the explicitly listed data sources
+
+---
+
 ## Reporting a Security Issue
 
 See [SECURITY.md](SECURITY.md) for responsible disclosure via GitHub Security Advisories.

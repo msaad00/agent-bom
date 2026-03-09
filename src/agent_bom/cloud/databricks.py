@@ -4,8 +4,18 @@ Requires ``databricks-sdk``.  Install with::
 
     pip install 'agent-bom[databricks]'
 
-Authentication uses the standard Databricks SDK credential chain
-(DATABRICKS_HOST + DATABRICKS_TOKEN env vars, OAuth, or ~/.databrickscfg).
+Authentication — zero-credential model (no passwords stored or logged):
+
+Uses the Databricks SDK credential chain in order:
+1. ``~/.databrickscfg`` profile with OAuth M2M or browser auth (preferred)
+2. ``DATABRICKS_HOST`` + ``DATABRICKS_TOKEN`` env vars (PAT — scoped read-only)
+3. Workload identity in CI (Azure Managed Identity / GCP service account)
+
+agent-bom never stores credentials. All access is read-only.
+
+Required Databricks permissions (read-only):
+    CAN VIEW on all clusters
+    CAN VIEW on model serving endpoints
 """
 
 from __future__ import annotations

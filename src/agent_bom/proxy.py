@@ -559,8 +559,13 @@ async def run_proxy(
         policy = json.loads(Path(policy_path).read_text())
 
     # Open audit log with restricted permissions (0o600)
+    # Reject symlinks to prevent log injection attacks (attacker creates
+    # symlink to overwrite another file via the proxy's audit writes).
     log_file = None
     if log_path:
+        log_p = Path(log_path)
+        if log_p.is_symlink():
+            raise ValueError(f"Audit log path must not be a symlink: {log_path}")
         fd = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
         log_file = os.fdopen(fd, "a")
 
@@ -750,7 +755,7 @@ async def run_proxy(
 
                     # Gateway policy evaluation
                     if _gateway_evaluator is not None:
-                        gw_allowed, gw_reason = _gateway_evaluator(tool_name, arguments)
+                        gw_allowed, gw_reason = _gateway_evaluator(agent_id, tool_name, arguments)
                         if not gw_allowed:
                             metrics.record_blocked("gateway_policy")
                             if log_file:
@@ -896,6 +901,24 @@ async def run_proxy(
                         vec_alerts = vector_detector.check(ri_tool or "unknown", ri_text)
                         _handle_alerts(vec_alerts, log_file)
 
+                # Response signing — compute HMAC on ORIGINAL response before
+                # inline scanning may modify msg (tamper detection must sign
+                # the server's actual response, not a scanner-modified version).
+                if response_signing_key and log_file:
+                    sig = compute_response_hmac(msg, response_signing_key)
+                    sig_entry = (
+                        json.dumps(
+                            {
+                                "ts": datetime.now(timezone.utc).isoformat(),
+                                "type": "response_hmac",
+                                "id": msg.get("id"),
+                                "hmac_sha256": sig,
+                            }
+                        )
+                        + "\n"
+                    )
+                    log_file.write(sig_entry)
+
                 # Inline response scanning (PII, secrets, payload vuln)
                 if scan_config.enabled and "result" in msg:
                     resp_text = json.dumps(msg.get("result", ""))
@@ -935,22 +958,6 @@ async def run_proxy(
                 stale = [k for k, (_, t) in pending_calls.items() if now_mono - t > pending_call_ttl]
                 for k in stale:
                     pending_calls.pop(k, None)
-
-            # Response signing — write HMAC to audit log for tamper detection
-            if msg and response_signing_key and log_file:
-                sig = compute_response_hmac(msg, response_signing_key)
-                sig_entry = (
-                    json.dumps(
-                        {
-                            "ts": datetime.now(timezone.utc).isoformat(),
-                            "type": "response_hmac",
-                            "id": msg.get("id"),
-                            "hmac_sha256": sig,
-                        }
-                    )
-                    + "\n"
-                )
-                log_file.write(sig_entry)
 
             # Forward to client
             sys.stdout.buffer.write(line)

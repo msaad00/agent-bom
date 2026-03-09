@@ -284,7 +284,12 @@ class SequenceAnalyzer:
 
         pattern_idx = 0
         for call in calls:
-            if re.search(patterns[pattern_idx], call, re.IGNORECASE):
+            # Normalize separators to spaces so word boundaries work on
+            # tool names like "read_file" or "http-request" — prevents
+            # false positives like "spreadsheet" matching "read"
+            normalized = re.sub(r"[_\-.]", " ", call)
+            bounded = rf"\b(?:{patterns[pattern_idx]})\b"
+            if re.search(bounded, normalized, re.IGNORECASE):
                 pattern_idx += 1
                 if pattern_idx == len(patterns):
                     return True

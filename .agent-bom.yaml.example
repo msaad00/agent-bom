@@ -1,0 +1,54 @@
+# .agent-bom.yaml — project-level defaults for agent-bom
+# Copy to .agent-bom.yaml in your project root.
+# CLI flags always override these values.
+#
+# Documentation: https://github.com/msaad00/agent-bom/blob/main/docs/project-config.md
+
+# ── Vulnerability filtering ────────────────────────────────────────────────
+
+# Suppress specific CVEs or GHSA IDs (accepted risk, false positives, etc.)
+# ignore:
+#   - CVE-2023-1234
+#   - GHSA-xxxx-yyyy-zzzz
+
+# Minimum severity to report (low | medium | high | critical)
+# min_severity: low
+
+# ── CI gate ───────────────────────────────────────────────────────────────
+
+# Fail the scan when this severity (or above) is found
+# fail_on_severity: high
+
+# Fail the scan when any CISA KEV CVE is found
+# fail_on_kev: false
+
+# ── Scan behaviour ────────────────────────────────────────────────────────
+
+# Always run NVD/EPSS/KEV enrichment (equivalent to --enrich)
+# enrich: false
+
+# Always scan transitive dependencies (equivalent to --transitive)
+# transitive: false
+
+# ── Runtime proxy policy ──────────────────────────────────────────────────
+
+# Path to a policy YAML file for the proxy (equivalent to --policy)
+# Relative paths are resolved from the project root.
+# policy: security/agent-bom-policy.yml
+
+# ── Output ────────────────────────────────────────────────────────────────
+
+# Default output format (console | json | sarif | cyclonedx | spdx | html)
+# output: console
+
+# Default output file path
+# output_file: agent-bom-report.json
+
+# ── Cloud scanners ────────────────────────────────────────────────────────
+
+# scan:
+#   aws: false
+#   azure: false
+#   gcp: false
+#   databricks: false
+#   verify_model_hashes: false

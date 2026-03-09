@@ -539,14 +539,22 @@ def _build_remediation_prompt(items: list[dict]) -> str:
 # ─── Enrichment functions ────────────────────────────────────────────────────
 
 
+_DEFAULT_AI_MAX_CALLS = 50  # Hard cap: prevent runaway spend on large monorepos
+
+
 async def enrich_blast_radii(
     blast_radii: list[BlastRadius],
     model: str = DEFAULT_MODEL,
+    max_calls: int = _DEFAULT_AI_MAX_CALLS,
 ) -> int:
     """Add AI-generated risk narratives to blast radius findings.
 
-    Groups findings by package to minimize API calls.
-    Returns count of enriched findings.
+    Groups findings by package to minimize API calls (one call per unique
+    package, regardless of how many CVEs affect it).
+
+    ``max_calls`` caps total LLM requests per scan run to prevent runaway
+    API spend on large monorepos.  Defaults to 50; pass ``max_calls=0`` to
+    disable the cap.  Returns count of enriched findings.
     """
     if not blast_radii:
         return 0
@@ -554,6 +562,7 @@ async def enrich_blast_radii(
         return 0
 
     enriched = 0
+    calls_made = 0
     seen_packages: dict[str, Optional[str]] = {}  # pkg_key -> ai_summary
 
     for br in blast_radii:
@@ -566,9 +575,17 @@ async def enrich_blast_radii(
                 enriched += 1
             continue
 
+        if max_calls and calls_made >= max_calls:
+            logger.warning(
+                "AI enrichment cap reached (%d unique-package calls). Pass max_calls= to enrich_blast_radii() to increase the limit.",
+                max_calls,
+            )
+            break
+
         prompt = _build_blast_radius_prompt(br)
         result = await _call_llm(prompt, model)
         seen_packages[pkg_key] = result
+        calls_made += 1
         if result:
             br.ai_summary = result
             enriched += 1

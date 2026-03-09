@@ -97,6 +97,11 @@ agent-bom protect --mode http
 # Watch MCP configs for drift — alert on changes
 agent-bom watch --webhook https://hooks.slack.com/...
 
+# Introspect a live MCP server — list tools, detect drift
+agent-bom introspect --command "uvx mcp-server-filesystem /"
+agent-bom introspect --all                                         # auto-discover all configured servers
+agent-bom introspect --all --baseline baseline.json               # exit 1 on new/removed tools
+
 # Policy file — 17 conditions, zero code required
 # policy.yml:
 #   blocked_tools: [run_shell, exec_command]
@@ -283,6 +288,8 @@ agent-bom api --api-key $SECRET --rate-limit 30   # http://127.0.0.1:8422/docs
 | `GET /v1/proxy/status` | Live proxy metrics (tool calls, blocked, latency p95) |
 | `GET /v1/proxy/alerts` | Runtime behavioral alerts from audit log |
 | `GET /v1/audit` | Query JSONL audit trail (HMAC integrity verified) |
+| `WS /ws/proxy/metrics` | Live metrics push every second (tool_calls, blocked, latency_p95) |
+| `WS /ws/proxy/alerts` | Real-time alert stream — new alerts arrive as they happen |
 
 </details>
 

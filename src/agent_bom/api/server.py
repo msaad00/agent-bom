@@ -37,7 +37,7 @@ import secrets
 import threading
 import time
 import uuid
-from collections import defaultdict
+from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from enum import Enum
@@ -2143,16 +2143,22 @@ async def get_incident_correlation() -> dict:
 # In-process ring buffer for proxy alerts/metrics.  The proxy (when running
 # in the same process, e.g. via the API) pushes records here.  External proxy
 # processes write to the JSONL audit log, and these endpoints read it.
+#
+# _proxy_alerts is a bounded deque (O(1) append/pop from both ends).
+# _proxy_alerts_total is a monotonic counter that never decrements — WebSocket
+# clients track their position by this counter, not by deque index, so they
+# correctly detect new alerts even when old ones are evicted from the ring.
 
-_proxy_alerts: list[dict] = []
+_proxy_alerts: deque[dict] = deque(maxlen=1000)
+_proxy_alerts_total: int = 0
 _proxy_metrics: dict | None = None
 
 
 def push_proxy_alert(alert: dict) -> None:
     """Called by the proxy to record a runtime alert (in-process path)."""
+    global _proxy_alerts_total
     _proxy_alerts.append(alert)
-    if len(_proxy_alerts) > 1000:
-        _proxy_alerts.pop(0)
+    _proxy_alerts_total += 1
 
 
 def push_proxy_metrics(metrics: dict) -> None:
@@ -2298,6 +2304,22 @@ async def proxy_alerts(
 # ─── WebSocket: live proxy metrics stream ────────────────────────────────────
 
 
+def _ws_check_auth(websocket: WebSocket) -> bool:
+    """Return True if the WebSocket connection is authorized.
+
+    When ``AGENT_BOM_API_KEY`` is set, callers must pass ``?token=<key>`` in
+    the WebSocket URL.  When the env var is unset the endpoint is open (local
+    dev / single-user mode).
+    """
+    import os as _os
+
+    api_key = _os.environ.get("AGENT_BOM_API_KEY")
+    if not api_key:
+        return True  # no auth configured — open
+    token = websocket.query_params.get("token", "")
+    return bool(token and token == api_key)
+
+
 @app.websocket("/ws/proxy/metrics")
 async def ws_proxy_metrics(websocket: WebSocket) -> None:
     """WebSocket endpoint — push proxy metrics every second.
@@ -2305,6 +2327,8 @@ async def ws_proxy_metrics(websocket: WebSocket) -> None:
     Connect to ``ws://localhost:8422/ws/proxy/metrics`` to receive a live
     stream of proxy metrics as JSON objects.  Useful for building real-time
     dashboards without polling.
+
+    Authentication: pass ``?token=<AGENT_BOM_API_KEY>`` when the env var is set.
 
     Message format (sent every second):
     ::
@@ -2326,6 +2350,10 @@ async def ws_proxy_metrics(websocket: WebSocket) -> None:
         from fastapi.websockets import WebSocketDisconnect
     except ImportError:
         from starlette.websockets import WebSocketDisconnect  # type: ignore[no-reattr]
+
+    if not _ws_check_auth(websocket):
+        await websocket.close(code=4001)
+        return
 
     await websocket.accept()
     try:
@@ -2372,6 +2400,11 @@ async def ws_proxy_alerts(websocket: WebSocket) -> None:
 
     Streams new alerts in real time.  Each message is a single alert object.
     Useful for live security dashboards that need immediate notification.
+
+    Authentication: pass ``?token=<AGENT_BOM_API_KEY>`` when the env var is set.
+
+    Uses a monotonic total counter (not deque length) to detect new alerts
+    correctly even when old entries are evicted from the 1000-entry ring buffer.
     """
     import asyncio
 
@@ -2380,13 +2413,18 @@ async def ws_proxy_alerts(websocket: WebSocket) -> None:
     except ImportError:
         from starlette.websockets import WebSocketDisconnect  # type: ignore[no-reattr]
 
+    if not _ws_check_auth(websocket):
+        await websocket.close(code=4001)
+        return
+
     await websocket.accept()
-    seen = len(_proxy_alerts)
+    seen = _proxy_alerts_total  # monotonic — tracks absolute count, not deque position
     try:
         while True:
-            current = len(_proxy_alerts)
+            current = _proxy_alerts_total
             if current > seen:
-                for alert in _proxy_alerts[seen:current]:
+                new_count = min(current - seen, len(_proxy_alerts))
+                for alert in list(_proxy_alerts)[-new_count:]:
                     await websocket.send_json(alert)
                 seen = current
             await asyncio.sleep(0.25)

@@ -21,6 +21,7 @@ import {
   Radio,
   Menu,
   X,
+  BarChart3,
 } from "lucide-react";
 import { api } from "@/lib/api";
 
@@ -48,6 +49,7 @@ const NAV_GROUPS = [
       { href: "/graph",      label: "Lineage",     icon: GitBranch },
       { href: "/mesh",       label: "Mesh",        icon: Network },
       { href: "/context",    label: "Context",     icon: Waypoints },
+      { href: "/insights",   label: "Insights",    icon: BarChart3 },
     ],
   },
   {

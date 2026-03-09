@@ -17,7 +17,11 @@ import {
   Tooltip,
   CartesianGrid,
   ReferenceLine,
+  Treemap,
+  RadialBarChart,
+  RadialBar,
 } from "recharts";
+import type { Agent, BlastRadius, ScanResult } from "@/lib/api";
 
 // ─── Shared ──────────────────────────────────────────────────────────────────
 
@@ -260,6 +264,273 @@ export function SeverityDonut({ data }: { data: SeveritySlice[] }) {
             total
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Supply Chain Treemap ─────────────────────────────────────────────────────
+
+interface TreemapItem {
+  name: string;
+  size?: number;
+  color?: string;
+  children?: TreemapItem[];
+  [key: string]: unknown;
+}
+
+function TreemapCell({
+  x, y, width, height, name, color,
+}: {
+  x?: number; y?: number; width?: number; height?: number;
+  name?: string; color?: string;
+}) {
+  if (!width || !height || width < 4 || height < 4) return null;
+  const bg = color ?? "#27272a";
+  return (
+    <g>
+      <rect
+        x={x} y={y} width={width} height={height}
+        fill={bg}
+        fillOpacity={0.85}
+        stroke="#18181b"
+        strokeWidth={1.5}
+        rx={3}
+      />
+      {width > 40 && height > 20 && (
+        <text
+          x={(x ?? 0) + (width) / 2}
+          y={(y ?? 0) + (height) / 2}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fill="#e4e4e7"
+          fontSize={Math.min(11, Math.max(8, width / 10))}
+          fontFamily="monospace"
+        >
+          {name && name.length > 16 ? name.slice(0, 14) + "…" : name}
+        </text>
+      )}
+    </g>
+  );
+}
+
+export function SupplyChainTreemap({ agents }: { agents: Agent[] }) {
+  const treeData: TreemapItem[] = agents.map((agent) => ({
+    name: agent.name,
+    children: agent.mcp_servers.map((srv) => ({
+      name: srv.name,
+      children: srv.packages.map((pkg) => {
+        const vulns = pkg.vulnerabilities ?? [];
+        const hasVuln = vulns.length > 0;
+        const worst = vulns.reduce(
+          (w, v) => {
+            const order: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
+            return (order[v.severity] ?? 0) > (order[w] ?? 0) ? v.severity : w;
+          },
+          "none" as string
+        );
+        const color = hasVuln
+          ? worst === "critical" ? "#ef4444"
+          : worst === "high" ? "#f97316"
+          : worst === "medium" ? "#eab308"
+          : "#3b82f6"
+          : "#22c55e";
+        return { name: `${pkg.name}@${pkg.version}`, size: Math.max(1, vulns.length || 1), color };
+      }),
+    })),
+  }));
+
+  if (treeData.length === 0) return null;
+
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 shadow-lg shadow-zinc-950/50">
+      <h3 className="text-sm font-semibold text-zinc-300 mb-1">Supply Chain Map</h3>
+      <p className="text-[10px] text-zinc-600 mb-4">
+        Agent → Server → Package · green = clean · red/orange/yellow = vulnerable
+      </p>
+      <div className="h-64">
+        <ResponsiveContainer width="100%" height="100%">
+          <Treemap
+            data={treeData}
+            dataKey="size"
+            content={<TreemapCell />}
+          />
+        </ResponsiveContainer>
+      </div>
+      <div className="flex gap-4 mt-3">
+        {[
+          { label: "Clean", color: "#22c55e" },
+          { label: "Low", color: "#3b82f6" },
+          { label: "Medium", color: "#eab308" },
+          { label: "High", color: "#f97316" },
+          { label: "Critical", color: "#ef4444" },
+        ].map(({ label, color }) => (
+          <div key={label} className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-sm" style={{ background: color }} />
+            <span className="text-[10px] text-zinc-500">{label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Blast Radius Radial Bar ──────────────────────────────────────────────────
+
+interface RadialPoint {
+  name: string;
+  value: number;
+  fill: string;
+}
+
+export function BlastRadiusRadial({ data }: { data: BlastRadius[] }) {
+  const top = [...data]
+    .sort((a, b) => b.blast_score - a.blast_score)
+    .slice(0, 8);
+
+  if (top.length === 0) return null;
+
+  const maxScore = top[0].blast_score;
+
+  const radialData: RadialPoint[] = top.map((br) => {
+    const sev = br.severity?.toLowerCase() ?? "low";
+    const fill =
+      sev === "critical" ? "#ef4444"
+      : sev === "high" ? "#f97316"
+      : sev === "medium" ? "#eab308"
+      : "#3b82f6";
+    return {
+      name: br.package ?? br.vulnerability_id,
+      value: Math.round((br.blast_score / Math.max(maxScore, 1)) * 100),
+      fill,
+    };
+  });
+
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 shadow-lg shadow-zinc-950/50">
+      <h3 className="text-sm font-semibold text-zinc-300 mb-1">Blast Radius</h3>
+      <p className="text-[10px] text-zinc-600 mb-2">
+        Top packages by blast score (relative %)
+      </p>
+      <div className="h-64">
+        <ResponsiveContainer width="100%" height="100%">
+          <RadialBarChart
+            cx="50%"
+            cy="50%"
+            innerRadius="15%"
+            outerRadius="90%"
+            barSize={10}
+            data={radialData}
+            startAngle={180}
+            endAngle={0}
+          >
+            <RadialBar
+              dataKey="value"
+              cornerRadius={4}
+              background={{ fill: "#27272a" }}
+              label={false}
+            />
+            <Tooltip
+              content={({ active, payload }) => {
+                if (!active || !payload?.length) return null;
+                const d = payload[0].payload as RadialPoint;
+                return (
+                  <div
+                    className="rounded-lg border px-3 py-2 text-xs shadow-xl"
+                    style={{ background: "#09090b", borderColor: "#27272a" }}
+                  >
+                    <div className="font-mono text-zinc-300 mb-1 truncate max-w-[160px]">{d.name}</div>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-zinc-500">Blast %</span>
+                      <span className="font-mono" style={{ color: d.fill }}>{d.value}%</span>
+                    </div>
+                  </div>
+                );
+              }}
+            />
+          </RadialBarChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="space-y-1 mt-2">
+        {radialData.slice(0, 5).map((d) => (
+          <div key={d.name} className="flex items-center gap-2 text-[10px]">
+            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: d.fill }} />
+            <span className="text-zinc-400 font-mono truncate flex-1">{d.name}</span>
+            <span className="text-zinc-600 font-mono">{d.value}%</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Pipeline Flow ────────────────────────────────────────────────────────────
+
+export interface PipelineStats {
+  agents: number;
+  servers: number;
+  packages: number;
+  vulnerabilities: number;
+  critical: number;
+  high: number;
+  kev: number;
+}
+
+const PIPELINE_STAGES = [
+  { id: "discovery",  label: "Discovery",  stat: (s: PipelineStats) => `${s.agents} agents` },
+  { id: "extraction", label: "Extraction", stat: (s: PipelineStats) => `${s.servers} servers` },
+  { id: "scanning",   label: "Scanning",   stat: (s: PipelineStats) => `${s.packages} pkgs` },
+  { id: "enrichment", label: "Enrichment", stat: (s: PipelineStats) => `${s.vulnerabilities} CVEs` },
+  { id: "analysis",   label: "Analysis",   stat: (s: PipelineStats) => `${s.critical}C ${s.high}H` },
+  { id: "output",     label: "Report",     stat: (s: PipelineStats) => s.kev > 0 ? `${s.kev} KEV` : "Clean" },
+] as const;
+
+export function PipelineFlow({ stats }: { stats: PipelineStats }) {
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 shadow-lg shadow-zinc-950/50">
+      <h3 className="text-sm font-semibold text-zinc-300 mb-1">Scan Pipeline</h3>
+      <p className="text-[10px] text-zinc-600 mb-5">
+        End-to-end flow with live stats from the latest scan
+      </p>
+      <div className="flex items-stretch gap-0 overflow-x-auto pb-2">
+        {PIPELINE_STAGES.map((stage, i) => {
+          const isLast = i === PIPELINE_STAGES.length - 1;
+          const isAlert = stage.id === "output" && stats.kev > 0;
+          return (
+            <div key={stage.id} className="flex items-center flex-1 min-w-0">
+              <div
+                className={`flex-1 min-w-[72px] flex flex-col items-center gap-1.5 px-3 py-3 rounded-lg border transition-colors ${
+                  isAlert
+                    ? "bg-red-950/30 border-red-800/50"
+                    : "bg-zinc-800/50 border-zinc-700/40"
+                }`}
+              >
+                <div
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    isAlert ? "bg-red-500" : "bg-emerald-500"
+                  }`}
+                />
+                <span className="text-[10px] font-semibold text-zinc-300 uppercase tracking-wide whitespace-nowrap">
+                  {stage.label}
+                </span>
+                <span
+                  className={`text-[11px] font-mono font-bold ${
+                    isAlert ? "text-red-400" : "text-emerald-400"
+                  }`}
+                >
+                  {stage.stat(stats)}
+                </span>
+              </div>
+              {!isLast && (
+                <div className="w-4 flex-shrink-0 flex items-center justify-center">
+                  <svg width="12" height="10" viewBox="0 0 12 10" fill="none">
+                    <path d="M0 5H10M7 1L11 5L7 9" stroke="#52525b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

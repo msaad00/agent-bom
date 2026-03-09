@@ -16,7 +16,7 @@ metadata:
   source: https://github.com/msaad00/agent-bom
   pypi: https://pypi.org/project/agent-bom/
   scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
-  tests: 4086
+  tests: 4314
   install:
     pipx: agent-bom
     pip: agent-bom
@@ -90,5 +90,5 @@ ClickHouse endpoint for persistent analytics.
 ## Verification
 
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
-- **3,400+ tests** with CodeQL + OpenSSF Scorecard
+- **4,300+ tests** with CodeQL + OpenSSF Scorecard
 - **No telemetry**: Zero tracking, zero analytics

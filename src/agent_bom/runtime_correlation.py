@@ -207,7 +207,7 @@ def _compute_amplifier(
     amp = RISK_AMPLIFIER_CALLED
 
     if call_info["count"] >= 10:
-        amp = max(amp, RISK_AMPLIFIER_FREQUENT)
+        amp += RISK_AMPLIFIER_FREQUENT - RISK_AMPLIFIER_CALLED  # +0.5 bonus for frequent
 
     # Check recency
     try:
@@ -215,12 +215,12 @@ def _compute_amplifier(
         now = datetime.now(timezone.utc)
         hours_since = (now - last).total_seconds() / 3600
         if hours_since <= recency_hours:
-            amp = max(amp, RISK_AMPLIFIER_RECENT)
+            amp += 0.3  # Recency bonus (additive)
     except (ValueError, TypeError):
         pass
 
     if is_kev:
-        amp = max(amp, RISK_AMPLIFIER_KEV_CALLED)
+        amp += RISK_AMPLIFIER_KEV_CALLED - RISK_AMPLIFIER_CALLED  # +1.0 bonus for KEV
 
     return min(amp, RISK_AMPLIFIER_MAX)
 

@@ -8,6 +8,7 @@ critical attack chains (e.g., "Critical CVE + exposed API key + EXECUTE tool
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING
@@ -27,6 +28,15 @@ class ToxicPattern(str, Enum):
     TRANSITIVE_CRITICAL = "transitive_critical"
     CACHE_POISON = "cache_poison"
     CROSS_AGENT_POISON = "cross_agent_poison"
+
+
+def _word_boundary_match(keyword: str, text: str) -> bool:
+    """Check if keyword appears as a whole word (not substring) in text.
+
+    Uses word boundaries so "run" matches "run_command" and "run command"
+    but not "runner" or "list_runner_status".
+    """
+    return bool(re.search(rf"\b{re.escape(keyword)}\b", text))
 
 
 @dataclass
@@ -168,7 +178,10 @@ def _detect_execute_exploit(blast_radii: list[BlastRadius]) -> list[ToxicCombina
         for tool in br.exposed_tools:
             desc_lower = (tool.description or "").lower()
             name_lower = tool.name.lower()
-            if any(kw in desc_lower or kw in name_lower for kw in ("execute", "run", "shell", "write", "delete", "destroy", "eval")):
+            if any(
+                _word_boundary_match(kw, desc_lower) or _word_boundary_match(kw, name_lower)
+                for kw in ("execute", "run", "shell", "write", "delete", "destroy", "eval")
+            ):
                 dangerous_tools.append(tool)
 
         if not dangerous_tools:

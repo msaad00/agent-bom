@@ -210,22 +210,34 @@ def compute_posture_scorecard(report: "AIBOMReport") -> PostureScorecard:
     )
 
     # ── 5. Active Exploitation (10%) ──
-    kev_count = sum(1 for br in report.blast_radii if br.vulnerability.is_kev)
     from agent_bom.config import EPSS_CRITICAL_THRESHOLD
 
-    high_epss = sum(1 for br in report.blast_radii if (br.vulnerability.epss_score or 0) >= EPSS_CRITICAL_THRESHOLD)
+    kev_ids: set[str] = set()
+    high_epss_ids: set[str] = set()
+    for br in report.blast_radii:
+        vid = br.vulnerability.id
+        if br.vulnerability.is_kev:
+            kev_ids.add(vid)
+        if (br.vulnerability.epss_score or 0) >= EPSS_CRITICAL_THRESHOLD:
+            high_epss_ids.add(vid)
 
-    if kev_count == 0 and high_epss == 0:
+    # Deduplicate: vulns that are both KEV and high-EPSS count once at the higher KEV penalty
+    kev_only = kev_ids - high_epss_ids
+    epss_only = high_epss_ids - kev_ids
+    both = kev_ids & high_epss_ids
+
+    if not kev_ids and not high_epss_ids:
         exploit_score = 100.0
         exploit_detail = "No actively exploited vulnerabilities"
     else:
-        exploit_penalty = kev_count * 25 + high_epss * 10
+        # KEV penalty=25, EPSS-only penalty=10, both=25 (no double-count)
+        exploit_penalty = len(kev_only) * 25 + len(epss_only) * 10 + len(both) * 25
         exploit_score = max(0.0, 100.0 - exploit_penalty)
         parts = []
-        if kev_count:
-            parts.append(f"{kev_count} CISA KEV")
-        if high_epss:
-            parts.append(f"{high_epss} high-EPSS")
+        if kev_ids:
+            parts.append(f"{len(kev_ids)} CISA KEV")
+        if high_epss_ids:
+            parts.append(f"{len(high_epss_ids)} high-EPSS")
         exploit_detail = ", ".join(parts)
 
     dimensions["active_exploitation"] = DimensionScore(

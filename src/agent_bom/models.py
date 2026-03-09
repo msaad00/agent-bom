@@ -352,8 +352,9 @@ class BlastRadius:
         cred_factor = min(len(self.exposed_credentials) * RISK_CRED_WEIGHT, RISK_CRED_CAP)
         tool_factor = min(len(self.exposed_tools) * RISK_TOOL_WEIGHT, RISK_TOOL_CAP)
 
-        # AI framework boost: only when full attack surface (creds + tools + AI context)
-        ai_boost = RISK_AI_BOOST if self.ai_risk_context and self.exposed_credentials and self.exposed_tools else 0.0
+        # AI framework boost: when AI context + at least one exposure vector (creds OR tools)
+        ai_signals = sum([bool(self.ai_risk_context), bool(self.exposed_credentials), bool(self.exposed_tools)])
+        ai_boost = RISK_AI_BOOST if ai_signals >= 2 else 0.0
 
         # Actively exploited (KEV) and high exploit probability (EPSS) boosts
         kev_boost = RISK_KEV_BOOST if self.vulnerability.is_kev else 0.0

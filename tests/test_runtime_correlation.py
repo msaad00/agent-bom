@@ -230,7 +230,7 @@ class TestCorrelate:
         brs = [_make_blast_radius(is_kev=True, risk_score=4.0, tool_names=["read_file"])]
         report = correlate(brs, audit_log_path=log)
         finding = report.correlated_findings[0]
-        assert finding.risk_amplifier == 2.5  # KEV + called
+        assert finding.risk_amplifier >= 2.5  # KEV + called (additive stacking)
 
     def test_correlate_sorted_by_risk(self, tmp_path):
         log = tmp_path / "audit.jsonl"

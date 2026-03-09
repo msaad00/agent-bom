@@ -540,6 +540,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             if not matches:
                 return json.dumps(
                     {
+                        "found": False,
                         "error": "CVE not found",
                         "cve_id": cve_id,
                         "suggestion": "Run scan first",
@@ -684,7 +685,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                     indent=2,
                 )
 
-        return json.dumps({"error": "No matching server found in registry", "query": search_term})
+        return json.dumps({"found": False, "error": "No matching server found in registry", "query": search_term})
 
     # ── Tool 6: generate_sbom ─────────────────────────────────────────
 

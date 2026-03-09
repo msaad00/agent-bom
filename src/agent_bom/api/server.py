@@ -414,7 +414,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
 
 class MaxBodySizeMiddleware(BaseHTTPMiddleware):
-    """Reject requests with body larger than max_bytes."""
+    """Reject oversized bodies and enforce a per-request read timeout (slowloris mitigation).
+
+    Two-layer protection:
+    1. Content-Length fast-path: reject before reading if header exceeds limit.
+    2. Streaming body drain with asyncio timeout: covers chunked/streaming uploads
+       that omit Content-Length — a common slowloris vector.
+    """
+
+    # 30s to fully receive a request body; covers slow legitimate clients
+    # while cutting off slowloris attacks that trickle bytes indefinitely.
+    _BODY_TIMEOUT_SECONDS = 30
 
     def __init__(self, app: ASGIApp, max_bytes: int = 10 * 1024 * 1024):
         super().__init__(app)
@@ -432,6 +442,31 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
                     status_code=413,
                     content={"detail": f"Request body too large (max {self._max_bytes // (1024 * 1024)}MB)"},
                 )
+        elif request.method in ("POST", "PUT", "PATCH"):
+            # No Content-Length — drain and check streaming body under timeout
+            try:
+                chunks: list[bytes] = []
+                total = 0
+                async with asyncio.timeout(self._BODY_TIMEOUT_SECONDS):
+                    async for chunk in request.stream():
+                        total += len(chunk)
+                        if total > self._max_bytes:
+                            return JSONResponse(
+                                status_code=413,
+                                content={"detail": f"Request body too large (max {self._max_bytes // (1024 * 1024)}MB)"},
+                            )
+                        chunks.append(chunk)
+            except TimeoutError:
+                return JSONResponse(status_code=408, content={"detail": "Request body read timed out"})
+
+            # Re-inject the drained body so downstream handlers can read it
+            body = b"".join(chunks)
+
+            async def _receive():
+                return {"type": "http.request", "body": body, "more_body": False}
+
+            request._receive = _receive  # type: ignore[attr-defined]
+
         return await call_next(request)
 
 

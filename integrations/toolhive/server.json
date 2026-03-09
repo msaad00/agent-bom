@@ -61,7 +61,8 @@
             "fleet_scan",
             "runtime_correlate",
             "vector_db_scan",
-            "aisvs_benchmark"
+            "aisvs_benchmark",
+            "gpu_infra_scan"
           ]
         }
       }

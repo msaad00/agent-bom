@@ -220,7 +220,7 @@ cli.py / mcp_server.py / api/server.py
 
 | Metric | Count |
 |---|---|
-| Python modules | 161 |
+| Python modules | 165 |
 | Test files | 168 |
 | Test functions | ~4,086 (collected by pytest) |
 | MCP tools | 23 |

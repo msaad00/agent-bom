@@ -180,7 +180,16 @@ def compute_posture_scorecard(report: "AIBOMReport") -> PostureScorecard:
     for br in report.blast_radii:
         total_tags += 1
         has_tag = bool(
-            br.owasp_tags or br.atlas_tags or br.nist_ai_rmf_tags or br.owasp_mcp_tags or br.owasp_agentic_tags or br.eu_ai_act_tags
+            br.owasp_tags
+            or br.atlas_tags
+            or br.nist_ai_rmf_tags
+            or br.owasp_mcp_tags
+            or br.owasp_agentic_tags
+            or br.eu_ai_act_tags
+            or br.nist_csf_tags
+            or br.iso_27001_tags
+            or br.soc2_tags
+            or br.cis_tags
         )
         if has_tag:
             tagged_findings += 1

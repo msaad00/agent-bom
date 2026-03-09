@@ -167,8 +167,10 @@ _B64_MIN_LEN = 28
 # Shannon entropy threshold — secrets typically score >3.8 bits/char;
 # readable English scores ~4.0 but with spaces; env var values without
 # spaces that score >4.5 over a long string are almost certainly secrets.
+# Shorter strings (24-39 chars) require higher entropy to reduce false positives.
 _HIGH_ENTROPY_THRESHOLD = 4.5
-_HIGH_ENTROPY_MIN_LEN = 40
+_HIGH_ENTROPY_MIN_LEN = 24
+_HIGH_ENTROPY_SHORT_THRESHOLD = 5.0  # stricter for shorter strings (24-39 chars)
 
 
 def _shannon_entropy(s: str) -> float:
@@ -186,10 +188,12 @@ def _is_obfuscated_credential(value: str) -> bool:
     Two detection strategies:
     1. Base64 decode: if the value decodes to valid UTF-8 text that itself
        matches a key name or value credential pattern, flag it.
-    2. High-entropy: long strings (≥40 chars) with no whitespace and Shannon
-       entropy >4.5 bits/char are extremely likely to be opaque secrets
-       (keys, tokens, passwords).  Pure random bytes score ~6.0;
-       base64-encoded secrets score ~5.8; UUIDs score ~3.8.
+    2. High-entropy: strings (≥24 chars) with no whitespace and high Shannon
+       entropy are extremely likely to be opaque secrets (keys, tokens,
+       passwords).  Short strings (24-39 chars) require entropy >5.0 to reduce
+       false positives; longer strings (≥40 chars) use the standard 4.5
+       threshold.  Pure random bytes score ~6.0; base64-encoded secrets
+       score ~5.8; UUIDs score ~3.8.
     """
     stripped = value.strip()
 
@@ -208,13 +212,13 @@ def _is_obfuscated_credential(value: str) -> bool:
             pass
 
     # Strategy 2: high Shannon entropy on a compact, non-URL string
-    if (
-        len(stripped) >= _HIGH_ENTROPY_MIN_LEN
-        and " " not in stripped
-        and "://" not in stripped  # exclude URLs
-        and _shannon_entropy(stripped) > _HIGH_ENTROPY_THRESHOLD
-    ):
-        return True
+    # Short strings (24-39 chars) use a stricter threshold to avoid false positives
+    str_len = len(stripped)
+    if str_len >= _HIGH_ENTROPY_MIN_LEN and " " not in stripped and "://" not in stripped:
+        entropy = _shannon_entropy(stripped)
+        threshold = _HIGH_ENTROPY_SHORT_THRESHOLD if str_len < 40 else _HIGH_ENTROPY_THRESHOLD
+        if entropy > threshold:
+            return True
 
     return False
 

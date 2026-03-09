@@ -50,10 +50,16 @@ def tag_vulnerability(vuln: Vulnerability, package: Package) -> dict[str, list[s
         tags["owasp_llm"] = sorted(set(owasp_llm))
 
     # ── MITRE ATLAS ─────────────────────────────────────────────────────
-    atlas: list[str] = ["AML.T0010"]
+    atlas: list[str] = []
+    # AML.T0010 (Supply Chain Compromise) — only for actual supply chain vulns
+    if is_malicious or (is_ai and is_high) or is_kev:
+        atlas.append("AML.T0010")
     if is_ai and is_high:
-        atlas.append("AML.T0020")
-    tags["atlas"] = sorted(set(atlas))
+        atlas.append("AML.T0043")  # Craft Adversarial Data
+    if is_training:
+        atlas.append("AML.T0020")  # Poison Training Data
+    if atlas:
+        tags["atlas"] = sorted(set(atlas))
 
     # ── NIST AI RMF ─────────────────────────────────────────────────────
     nist_rmf: list[str] = ["GOVERN-1.7", "MAP-3.5"]
@@ -150,6 +156,17 @@ def tag_vulnerability(vuln: Vulnerability, package: Package) -> dict[str, list[s
     tags["owasp_mcp"] = sorted(set(mcp))
 
     # ── OWASP Agentic Top 10 ───────────────────────────────────────────
-    tags["owasp_agentic"] = ["ASI01", "ASI04", "ASI09"]
+    agentic: list[str] = []
+    # ASI04 (Supply Chain) — always relevant for dependency vulns
+    agentic.append("ASI04")
+    if is_ai:
+        agentic.append("ASI01")  # Excessive Agency
+    if is_malicious:
+        agentic.append("ASI02")  # Tool Misuse
+        agentic.append("ASI10")  # Rogue Agent Persistence
+    if is_kev:
+        agentic.append("ASI09")  # Human-Agent Trust Exploitation
+    if agentic:
+        tags["owasp_agentic"] = sorted(set(agentic))
 
     return tags

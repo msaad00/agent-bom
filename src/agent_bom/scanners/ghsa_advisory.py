@@ -51,16 +51,38 @@ def _parse_ghsa_severity(advisory: dict) -> tuple[Severity, float | None]:
 
 
 def _extract_fixed_version(advisory: dict, package_name: str) -> str | None:
-    """Extract the first patched version for a specific package."""
+    """Extract the first patched version for a specific package.
+
+    Handles range strings like ``">= 4.18.0"``, ``">= 4.18.0, < 5.0.0"``,
+    and Ruby-style ``"~> 1.2.3"`` by extracting the lower bound.
+    """
     for vuln in advisory.get("vulnerabilities", []):
         pkg = vuln.get("package", {})
         if pkg.get("name", "").lower() == package_name.lower():
             patched = vuln.get("patched_versions")
             if patched:
-                # patched_versions is a range string like ">= 4.18.0"
-                cleaned = patched.lstrip(">= ").split(",")[0].strip()
-                if cleaned:
-                    return cleaned
+                return _parse_patched_range(patched)
+    return None
+
+
+def _parse_patched_range(patched: str) -> str | None:
+    """Parse a GHSA patched_versions range string to a concrete version.
+
+    Examples:
+        ">= 4.18.0"           → "4.18.0"
+        ">= 4.18.0, < 5.0.0"  → "4.18.0"
+        "~> 1.2.3"             → "1.2.3"
+        "^1.2.3"               → "1.2.3"
+    """
+    import re as _re
+
+    # Split on comma — take the lower-bound constraint (first with >= or ~>)
+    for part in patched.split(","):
+        part = part.strip()
+        # Strip range operators: >=, >, ~>, ^, ~=, ==
+        version = _re.sub(r"^[><=~^!]+\s*", "", part).strip()
+        if version and _re.match(r"\d", version):
+            return version
     return None
 
 

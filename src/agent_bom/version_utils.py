@@ -113,19 +113,41 @@ def compare_versions(current: str, fixed: str, ecosystem: str) -> bool:
     """Check if fixed version is newer than current version.
 
     Returns True if fixed > current (meaning upgrade is needed).
-    Simple numeric comparison; does not handle all edge cases.
+    Uses ``packaging.version`` for PyPI/npm/cargo, falls back to
+    numeric tuple comparison for other ecosystems.
+
+    Pre-release handling: ``1.0.0rc1 < 1.0.0`` (correct per PEP 440
+    and semver).
     """
     current = normalize_version(current, ecosystem)
     fixed = normalize_version(fixed, ecosystem)
 
-    # Strip pre-release suffixes for basic comparison
-    def _version_tuple(v: str) -> tuple[int, ...]:
-        # Extract numeric parts only
-        parts = re.findall(r"\d+", v)
-        return tuple(int(p) for p in parts) if parts else (0,)
+    # Try packaging.version first — handles pre-release correctly
+    try:
+        from packaging.version import Version
+
+        return Version(fixed) > Version(current)
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Fallback: numeric tuple (splits pre-release from base version)
+    def _version_tuple(v: str) -> tuple[tuple[int, ...], bool]:
+        """Return (numeric_parts, is_prerelease)."""
+        is_pre = bool(re.search(r"(alpha|beta|rc|dev|pre|preview|[ab]\d)", v, re.IGNORECASE))
+        parts = re.findall(r"\d+", re.split(r"[-]|(?:alpha|beta|rc|dev|pre|preview)", v, flags=re.IGNORECASE)[0])
+        return (tuple(int(p) for p in parts) if parts else (0,)), is_pre
 
     try:
-        return _version_tuple(fixed) > _version_tuple(current)
+        cur_nums, cur_pre = _version_tuple(current)
+        fix_nums, fix_pre = _version_tuple(fixed)
+        if fix_nums != cur_nums:
+            return fix_nums > cur_nums
+        # Same base version: stable > pre-release
+        if cur_pre and not fix_pre:
+            return True  # fixed is stable, current is pre-release
+        if fix_pre and not cur_pre:
+            return False  # fixed is pre-release, current is stable
+        return False  # same base, both pre or both stable
     except (ValueError, TypeError):
         return False
 
@@ -133,6 +155,23 @@ def compare_versions(current: str, fixed: str, ecosystem: str) -> bool:
 # ---------------------------------------------------------------------------
 # Additional ecosystem resolvers
 # ---------------------------------------------------------------------------
+
+
+def _go_encode_module(module: str) -> str:
+    """Encode a Go module path for proxy.golang.org.
+
+    The Go module proxy uses case-encoding: uppercase letters become
+    ``!`` + lowercase (e.g., ``GitHub.com`` → ``!github.com``).
+    Forward slashes are literal path separators in the URL.
+    """
+    parts: list[str] = []
+    for ch in module:
+        if ch.isupper():
+            parts.append("!")
+            parts.append(ch.lower())
+        else:
+            parts.append(ch)
+    return "".join(parts)
 
 
 async def resolve_go_metadata(
@@ -144,7 +183,9 @@ async def resolve_go_metadata(
     Returns (version, None) — Go proxy doesn't provide license info.
     """
 
-    encoded = module.replace("/", "/")  # Go modules use path as-is in URL
+    # Go proxy requires case-encoded module paths (upper → !lower)
+    # and forward slashes are kept as literal path separators.
+    encoded = _go_encode_module(module)
     url = f"https://proxy.golang.org/{encoded}/@latest"
     response = await request_with_retry(client, "GET", url)  # type: ignore[arg-type]
     if response and response.status_code == 200:

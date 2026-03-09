@@ -41,7 +41,35 @@ verify(package="agent-bom@0.60.0")
 ```
 
 ### skill_trust
-Assess the trust level of a SKILL.md file (5-category analysis).
+Audit an AI instruction file (SKILL.md, CLAUDE.md, .cursorrules, AGENTS.md) for supply chain risks, malicious behavioral patterns, and trust level.
+
+Runs 17 behavioral risk patterns (credential file access, confirmation bypass, messaging/impersonation, voice/telephony, filesystem exfiltration, data exfiltration, and more) plus 5-category structural trust assessment:
+
+| Category | Checks |
+|----------|--------|
+| Purpose & Capability | name/description consistency, binary/network scope |
+| Instruction Scope | file reads bounded, data handling documented |
+| Install Mechanism | install source, Sigstore signature, provenance |
+| Credentials | proportionate, scoped, documented env vars |
+| Persistence & Privilege | no persistence, no escalation, no telemetry |
+
+Returns a verdict (`benign` / `suspicious` / `malicious`), confidence level, per-category results, and all findings with severity and recommendations.
+
+```
+skill_trust(skill_content="<paste full file content>")
+# → {
+#     "verdict": "suspicious",
+#     "confidence": "high",
+#     "categories": [
+#       { "name": "Install Mechanism", "level": "fail", "summary": "Unverified install source" },
+#       ...
+#     ],
+#     "findings": [
+#       { "severity": "critical", "title": "Credential/secret file access", "detail": "..." },
+#       ...
+#     ]
+#   }
+```
 
 ### generate_sbom
 Generate an SBOM in CycloneDX or SPDX format.

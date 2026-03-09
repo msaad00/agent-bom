@@ -247,7 +247,7 @@ agent-bom scan --snowflake --snowflake-authenticator oauth
 | Principle | How agent-bom upholds it |
 |-----------|--------------------------|
 | **Confidentiality** | Credentials pass env → SDK, never logged. `sanitize_error()` strips secrets from all error messages. Audit logs stored at `0600` permissions. |
-| **Integrity** | SHA-256 payload hashing on every proxied MCP call. Model weight hash verification (`--verify-model-hashes`). SBOM + VEX support for supply chain integrity. |
+| **Integrity** | SHA-256 payload hashing on every proxied MCP call. Audit logs HMAC-signed (SHA-256) for tamper detection. Set `AGENT_BOM_AUDIT_HMAC_KEY` in production to persist verifiability across restarts. Model weight hash verification (`--verify-model-hashes`). SBOM + VEX support for supply chain integrity. |
 | **Availability** | Graceful degradation on auth failure (warning, not crash). Offline mode (`--no-scan`). Rate limiting respected — we never exhaust API quotas. |
 
 ### What we never do

@@ -31,6 +31,10 @@ from agent_bom.security import validate_arguments, validate_command
 
 logger = logging.getLogger(__name__)
 
+# Maximum JSON-RPC message size accepted from client or server (10 MB).
+# Guards against DoS via oversized payloads in the stdio relay loop.
+_MAX_MESSAGE_BYTES = 10 * 1024 * 1024  # 10 MB
+
 
 # ─── Proxy metrics ──────────────────────────────────────────────────────────
 
@@ -609,6 +613,10 @@ async def run_proxy(
             if not line:
                 break
 
+            if len(line) > _MAX_MESSAGE_BYTES:
+                logger.warning("Oversized message from client (%d bytes) — dropped", len(line))
+                continue
+
             line_str = line.decode("utf-8", errors="replace")
             msg = parse_jsonrpc(line_str)
 
@@ -812,6 +820,10 @@ async def run_proxy(
             line = await process.stdout.readline()
             if not line:
                 break
+
+            if len(line) > _MAX_MESSAGE_BYTES:
+                logger.warning("Oversized message from server (%d bytes) — dropped", len(line))
+                continue
 
             line_str = line.decode("utf-8", errors="replace")
             msg = parse_jsonrpc(line_str)

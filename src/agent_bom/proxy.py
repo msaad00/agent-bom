@@ -609,7 +609,11 @@ async def run_proxy(
         await asyncio.get_running_loop().connect_read_pipe(lambda: protocol, sys.stdin.buffer)
 
         while True:
-            line = await reader.readline()
+            try:
+                line = await asyncio.wait_for(reader.readline(), timeout=120.0)
+            except asyncio.TimeoutError:
+                logger.debug("Client readline timed out — closing relay")
+                break
             if not line:
                 break
 
@@ -925,14 +929,15 @@ async def run_proxy(
             sys.stderr.buffer.flush()
 
     try:
-        await asyncio.gather(
+        results = await asyncio.gather(
             relay_client_to_server(),
             relay_server_to_client(),
             forward_stderr(),
             return_exceptions=True,
         )
-    except (BrokenPipeError, ConnectionResetError):
-        pass
+        for result in results:
+            if isinstance(result, Exception) and not isinstance(result, (BrokenPipeError, ConnectionResetError, asyncio.CancelledError)):
+                logger.debug("Relay task exited with error: %s", result)
     finally:
         # Write metrics summary + runtime alerts to audit log before closing
         if log_file:

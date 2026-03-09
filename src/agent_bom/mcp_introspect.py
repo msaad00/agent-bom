@@ -202,6 +202,7 @@ async def _query_capabilities(
     """Query tools/list and resources/list from an active MCP session."""
 
     # ── Tools ──────────────────────────────────────────────────────────
+    tools_ok = False
     try:
         tools_result = await session.list_tools()
         for tool in tools_result.tools:
@@ -212,10 +213,12 @@ async def _query_capabilities(
                     input_schema=getattr(tool, "inputSchema", None),
                 )
             )
+        tools_ok = True
     except Exception as exc:
-        logger.debug("tools/list failed for %s: %s", server.name, exc)
+        logger.warning("tools/list failed for %s: %s — drift detection skipped", server.name, exc)
 
     # ── Resources ──────────────────────────────────────────────────────
+    resources_ok = False
     try:
         resources_result = await session.list_resources()
         for resource in resources_result.resources:
@@ -227,23 +230,28 @@ async def _query_capabilities(
                     mime_type=getattr(resource, "mimeType", None),
                 )
             )
+        resources_ok = True
     except Exception as exc:
-        logger.debug("resources/list failed for %s: %s", server.name, exc)
+        logger.warning("resources/list failed for %s: %s", server.name, exc)
 
     result.success = True
 
     # ── Drift detection ────────────────────────────────────────────────
+    # Only compare tools if tools/list succeeded — otherwise empty runtime_tools
+    # would falsely report all config tools as "removed".
     config_tool_names = {t.name for t in server.tools}
     runtime_tool_names = {t.name for t in result.runtime_tools}
 
-    result.tools_added = sorted(runtime_tool_names - config_tool_names)
-    result.tools_removed = sorted(config_tool_names - runtime_tool_names)
+    if tools_ok:
+        result.tools_added = sorted(runtime_tool_names - config_tool_names)
+        result.tools_removed = sorted(config_tool_names - runtime_tool_names)
 
-    config_resource_uris = {r.uri for r in server.resources}
-    runtime_resource_uris = {r.uri for r in result.runtime_resources}
+    if resources_ok:
+        config_resource_uris = {r.uri for r in server.resources}
+        runtime_resource_uris = {r.uri for r in result.runtime_resources}
 
-    result.resources_added = sorted(runtime_resource_uris - config_resource_uris)
-    result.resources_removed = sorted(config_resource_uris - runtime_resource_uris)
+        result.resources_added = sorted(runtime_resource_uris - config_resource_uris)
+        result.resources_removed = sorted(config_resource_uris - runtime_resource_uris)
 
     return result
 

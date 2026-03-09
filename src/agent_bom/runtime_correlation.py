@@ -209,9 +209,11 @@ def _compute_amplifier(
     if call_info["count"] >= 10:
         amp += RISK_AMPLIFIER_FREQUENT - RISK_AMPLIFIER_CALLED  # +0.5 bonus for frequent
 
-    # Check recency
+    # Check recency — ensure timezone-aware comparison
     try:
         last = datetime.fromisoformat(call_info["last_called"].replace("Z", "+00:00"))
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
         now = datetime.now(timezone.utc)
         hours_since = (now - last).total_seconds() / 3600
         if hours_since <= recency_hours:

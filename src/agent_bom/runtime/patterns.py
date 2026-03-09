@@ -34,7 +34,10 @@ DANGEROUS_ARG_PATTERNS: list[tuple[str, re.Pattern]] = [
     ("Shell metacharacter", re.compile(r"[;&|`$]|\$\(|>\s*/|<\s*/")),
     ("Path traversal", re.compile(r"\.\./|\.\.\\|%2e%2e")),
     ("Command injection", re.compile(r"\b(?:curl|wget|nc|ncat|bash|sh|python|perl|ruby)\s", re.IGNORECASE)),
-    ("Environment variable access", re.compile(r"\$(?:HOME|PATH|USER|AWS_|ANTHROPIC_|OPENAI_|GITHUB_)", re.IGNORECASE)),
+    (
+        "Environment variable access",
+        re.compile(r"\$\{?(?:HOME|PATH|USER|AWS_[A-Z_]+|ANTHROPIC_[A-Z_]+|OPENAI_[A-Z_]+|GITHUB_[A-Z_]+)\b", re.IGNORECASE),
+    ),
     ("Credential-like value", re.compile(r"(?:password|secret|token|key)\s*[=:]\s*\S{8,}", re.IGNORECASE)),
     ("Base64 encoded payload", re.compile(r"(?:^|[^A-Za-z0-9])(?:[A-Za-z0-9+/]{40,}={0,2})(?:$|[^A-Za-z0-9])")),
     ("Hex encoded payload", re.compile(r"\\x[0-9a-fA-F]{2}(?:\\x[0-9a-fA-F]{2}){9,}")),
@@ -75,7 +78,7 @@ RESPONSE_INVISIBLE_CHARS: list[tuple[str, re.Pattern]] = [
 ]
 
 # Base64 encoded content in responses (potential exfiltration staging)
-RESPONSE_BASE64_PATTERN = re.compile(r"(?:^|[^A-Za-z0-9+/])([A-Za-z0-9+/]{60,}={0,2})(?:$|[^A-Za-z0-9+/])")
+RESPONSE_BASE64_PATTERN = re.compile(r"(?:(?:^|[^A-Za-z0-9+/]))([A-Za-z0-9+/]{60,}={0,2})(?:$|[^A-Za-z0-9+/])", re.MULTILINE)
 
 
 # ─── Prompt injection patterns in tool responses ──────────────────────────────

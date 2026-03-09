@@ -33,10 +33,11 @@ class ToxicPattern(str, Enum):
 def _word_boundary_match(keyword: str, text: str) -> bool:
     """Check if keyword appears as a whole word (not substring) in text.
 
-    Uses word boundaries so "run" matches "run_command" and "run command"
-    but not "runner" or "list_runner_status".
+    Normalizes separators (underscores, hyphens, dots) to spaces first so
+    "run" matches "run_command" and "run-task" but not "runner".
     """
-    return bool(re.search(rf"\b{re.escape(keyword)}\b", text))
+    normalized = re.sub(r"[_\-.]", " ", text)
+    return bool(re.search(rf"\b{re.escape(keyword)}\b", normalized))
 
 
 @dataclass

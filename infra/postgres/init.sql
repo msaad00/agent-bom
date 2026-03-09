@@ -1,16 +1,48 @@
 -- agent-bom PostgreSQL initialization
 -- Runs once on first container start via docker-entrypoint-initdb.d
+-- Also used as the Supabase project schema migration.
 --
 -- Principle: POSTGRES_USER (admin) owns the schema and creates tables.
 -- A separate app user (agent_bom_app) gets DML-only access.
 -- A read-only role exists for dashboards and BI tools.
 --
 -- Auth: scram-sha-256 (set via POSTGRES_INITDB_ARGS + runtime config)
--- All tables use IF NOT EXISTS — safe to re-run.
+-- All DDL uses IF NOT EXISTS — safe to re-run on an existing database.
+--
+-- Tables
+--   teams              Multi-tenant team registry
+--   scan_jobs          Async scan job lifecycle + results
+--   findings           Normalized vulnerability findings (per scan)
+--   agents             Discovered AI agents/clients (per scan)
+--   policy_results     Per-scan policy evaluation outcomes
+--   api_keys           Persistent RBAC API key store
+--   job_queue          Background task queue (enrichment, reports, etc.)
+--   fleet_agents       Managed agent lifecycle with governance state
+--   gateway_policies   Runtime MCP enforcement policies
+--   policy_audit_log   Runtime policy audit trail
+--   scan_schedules     Recurring scan configuration
+--   osv_cache          OSV vulnerability response cache
 
 -- ── Extensions ────────────────────────────────────────────────────────────────
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- ── Table: teams ──────────────────────────────────────────────────────────────
+-- Central multi-tenant entity. All other tables reference team_id.
+-- 'default' team pre-seeded for single-tenant / self-hosted deployments.
+
+CREATE TABLE IF NOT EXISTS teams (
+    team_id    TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    slug       TEXT UNIQUE NOT NULL,
+    created_at TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+    updated_at TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+    metadata   JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+
+INSERT INTO teams (team_id, name, slug)
+    VALUES ('default', 'Default', 'default')
+    ON CONFLICT (team_id) DO NOTHING;
 
 -- ── Tables: Scan Jobs ─────────────────────────────────────────────────────────
 
@@ -19,11 +51,27 @@ CREATE TABLE IF NOT EXISTS scan_jobs (
     status       TEXT NOT NULL,
     created_at   TEXT NOT NULL,
     completed_at TEXT,
+    team_id      TEXT NOT NULL DEFAULT 'default' REFERENCES teams(team_id) ON DELETE CASCADE,
+    triggered_by TEXT,
     data         JSONB NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_jobs_status ON scan_jobs(status);
+-- Idempotent: add team_id to existing scan_jobs tables that predate this migration
+DO $$ BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'scan_jobs' AND column_name = 'team_id'
+    ) THEN
+        ALTER TABLE scan_jobs
+            ADD COLUMN team_id TEXT NOT NULL DEFAULT 'default' REFERENCES teams(team_id) ON DELETE CASCADE,
+            ADD COLUMN triggered_by TEXT;
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_jobs_status  ON scan_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_created ON scan_jobs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_jobs_team_status  ON scan_jobs(team_id, status);
+CREATE INDEX IF NOT EXISTS idx_jobs_team_created ON scan_jobs(team_id, created_at DESC);
 
 -- ── Tables: Fleet Agents ──────────────────────────────────────────────────────
 
@@ -78,6 +126,170 @@ CREATE TABLE IF NOT EXISTS osv_cache (
 );
 
 CREATE INDEX IF NOT EXISTS idx_cache_age ON osv_cache(cached_at);
+
+-- ── Table: findings ───────────────────────────────────────────────────────────
+-- Normalized vulnerability findings extracted from scan results.
+-- One row per (scan_run, CVE, package). Enables cross-scan analytics and
+-- filtered compliance queries without deserializing full scan JSONB.
+
+CREATE TABLE IF NOT EXISTS findings (
+    finding_id            TEXT PRIMARY KEY,   -- uuid
+    scan_run_id           TEXT NOT NULL REFERENCES scan_jobs(job_id) ON DELETE CASCADE,
+    team_id               TEXT NOT NULL DEFAULT 'default' REFERENCES teams(team_id) ON DELETE CASCADE,
+
+    -- Vulnerability identity
+    cve_id                TEXT NOT NULL,      -- CVE-YYYY-NNNNN or GHSA-xxxx-yyyy-zzzz
+    summary               TEXT,
+
+    -- Affected package
+    package_name          TEXT NOT NULL,
+    package_version       TEXT NOT NULL,
+    package_ecosystem     TEXT NOT NULL,      -- npm, pypi, cargo, go, maven, nuget, rubygems
+    package_purl          TEXT,
+
+    -- Severity & scoring
+    severity              TEXT NOT NULL,      -- critical, high, medium, low, none
+    cvss_score            REAL,
+    epss_score            REAL,
+    epss_percentile       REAL,
+    is_kev                BOOLEAN NOT NULL DEFAULT FALSE,
+    kev_date_added        TEXT,
+    kev_due_date          TEXT,
+
+    -- Remediation
+    fixed_version         TEXT,
+    vex_status            TEXT,               -- affected, not_affected, fixed, under_investigation
+    exploitability        TEXT,
+
+    -- Blast radius impact
+    blast_radius_risk     REAL,               -- 0.0–10.0 computed risk score
+    affected_server_count INTEGER NOT NULL DEFAULT 0,
+    affected_agent_count  INTEGER NOT NULL DEFAULT 0,
+    exposed_credentials   JSONB NOT NULL DEFAULT '[]'::jsonb,  -- array of cred var names
+
+    -- Compliance tags from 11 frameworks
+    compliance_tags       JSONB NOT NULL DEFAULT '{}'::jsonb,  -- {owasp_llm: [...], atlas: [...], ...}
+
+    -- CWE lineage
+    cwe_ids               JSONB NOT NULL DEFAULT '[]'::jsonb,  -- ["CWE-79", ...]
+
+    created_at            TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+);
+
+CREATE INDEX IF NOT EXISTS idx_findings_scan       ON findings(scan_run_id);
+CREATE INDEX IF NOT EXISTS idx_findings_team       ON findings(team_id);
+CREATE INDEX IF NOT EXISTS idx_findings_cve        ON findings(cve_id);
+CREATE INDEX IF NOT EXISTS idx_findings_severity   ON findings(severity);
+CREATE INDEX IF NOT EXISTS idx_findings_kev        ON findings(is_kev) WHERE is_kev = TRUE;
+CREATE INDEX IF NOT EXISTS idx_findings_pkg        ON findings(package_name, package_ecosystem);
+CREATE INDEX IF NOT EXISTS idx_findings_compliance ON findings USING GIN(compliance_tags);
+CREATE INDEX IF NOT EXISTS idx_findings_team_sev   ON findings(team_id, severity);
+
+-- ── Table: agents ─────────────────────────────────────────────────────────────
+-- AI agents/clients discovered per scan run. Separate from fleet_agents
+-- (which tracks governed, long-lived agent lifecycle). This table records
+-- point-in-time discovery snapshots.
+
+CREATE TABLE IF NOT EXISTS agents (
+    agent_id           TEXT PRIMARY KEY,   -- uuid per discovery
+    scan_run_id        TEXT NOT NULL REFERENCES scan_jobs(job_id) ON DELETE CASCADE,
+    team_id            TEXT NOT NULL DEFAULT 'default' REFERENCES teams(team_id) ON DELETE CASCADE,
+
+    name               TEXT NOT NULL,
+    agent_type         TEXT NOT NULL,      -- claude-desktop, cursor, windsurf, cline, custom, etc.
+    config_path        TEXT,
+    source             TEXT,               -- local, snowflake, aws, kubernetes, docker
+    parent_agent       TEXT,               -- for delegation chains
+
+    -- Discovery stats
+    mcp_server_count   INTEGER NOT NULL DEFAULT 0,
+    package_count      INTEGER NOT NULL DEFAULT 0,
+    vuln_count         INTEGER NOT NULL DEFAULT 0,
+    critical_count     INTEGER NOT NULL DEFAULT 0,
+
+    metadata           JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at         TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+);
+
+CREATE INDEX IF NOT EXISTS idx_agents_scan ON agents(scan_run_id);
+CREATE INDEX IF NOT EXISTS idx_agents_team ON agents(team_id);
+CREATE INDEX IF NOT EXISTS idx_agents_type ON agents(agent_type);
+
+-- ── Table: policy_results ─────────────────────────────────────────────────────
+-- Per-scan policy evaluation outcomes. Records which policies were checked,
+-- which passed/failed, and which conditions triggered.
+
+CREATE TABLE IF NOT EXISTS policy_results (
+    result_id             TEXT PRIMARY KEY,   -- uuid
+    scan_run_id           TEXT NOT NULL REFERENCES scan_jobs(job_id) ON DELETE CASCADE,
+    team_id               TEXT NOT NULL DEFAULT 'default' REFERENCES teams(team_id) ON DELETE CASCADE,
+
+    policy_id             TEXT REFERENCES gateway_policies(policy_id) ON DELETE SET NULL,
+    policy_name           TEXT NOT NULL,
+    status                TEXT NOT NULL,      -- pass, fail, skipped
+    severity_on_fail      TEXT,               -- critical, high, medium, low
+
+    conditions_triggered  JSONB NOT NULL DEFAULT '[]'::jsonb,  -- ["blocked_tools", "min_scorecard_score"]
+    remediation_guidance  TEXT,
+
+    created_at            TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+);
+
+CREATE INDEX IF NOT EXISTS idx_policy_results_scan   ON policy_results(scan_run_id);
+CREATE INDEX IF NOT EXISTS idx_policy_results_team   ON policy_results(team_id, status);
+CREATE INDEX IF NOT EXISTS idx_policy_results_policy ON policy_results(policy_id);
+
+-- ── Table: api_keys ───────────────────────────────────────────────────────────
+-- Persistent RBAC API key storage. Replaces the in-memory KeyStore so keys
+-- survive restarts. key_hash is a scrypt KDF; raw key is never stored.
+
+CREATE TABLE IF NOT EXISTS api_keys (
+    key_id      TEXT PRIMARY KEY,
+    key_hash    TEXT NOT NULL,      -- scrypt(raw_key, salt) hex
+    key_salt    TEXT NOT NULL,      -- hex-encoded KDF salt
+    key_prefix  TEXT NOT NULL,      -- first 8 chars for UI display (not secret)
+    name        TEXT NOT NULL,
+    role        TEXT NOT NULL,      -- admin, analyst, viewer
+    team_id     TEXT NOT NULL DEFAULT 'default' REFERENCES teams(team_id) ON DELETE CASCADE,
+    scopes      JSONB NOT NULL DEFAULT '[]'::jsonb,   -- [] = all; ["GET /v1/scan*"] = filtered
+    created_by  TEXT,
+    created_at  TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+    expires_at  TEXT,               -- NULL = never
+    last_used   TEXT,
+    revoked     BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_keys_team   ON api_keys(team_id);
+CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(key_prefix);   -- fast lookup during auth
+CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys(team_id, revoked) WHERE revoked = FALSE;
+
+-- ── Table: job_queue ──────────────────────────────────────────────────────────
+-- Background task queue for async operations: CVE enrichment, report
+-- generation, policy batch evaluation. Separate from scan_jobs so each
+-- concern can be tracked independently.
+
+CREATE TABLE IF NOT EXISTS job_queue (
+    job_id        TEXT PRIMARY KEY,   -- uuid
+    job_type      TEXT NOT NULL,      -- scan, enrich, policy_evaluate, generate_report, sbom_export
+    status        TEXT NOT NULL DEFAULT 'pending',  -- pending, running, completed, failed, cancelled
+    team_id       TEXT NOT NULL DEFAULT 'default' REFERENCES teams(team_id) ON DELETE CASCADE,
+
+    payload       JSONB NOT NULL DEFAULT '{}'::jsonb,
+    result        JSONB,
+    error         TEXT,
+    retries       INTEGER NOT NULL DEFAULT 0,
+    max_retries   INTEGER NOT NULL DEFAULT 3,
+
+    scheduled_for TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+    created_at    TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+    started_at    TEXT,
+    completed_at  TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_jobq_status_due ON job_queue(status, scheduled_for)
+    WHERE status IN ('pending', 'running');
+CREATE INDEX IF NOT EXISTS idx_jobq_team       ON job_queue(team_id);
+CREATE INDEX IF NOT EXISTS idx_jobq_type       ON job_queue(job_type);
 
 -- ══════════════════════════════════════════════════════════════════════════════
 -- LEAST PRIVILEGE: App user — DML only, no DDL (cannot CREATE/DROP/ALTER)
@@ -157,3 +369,17 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO agent_bom_re
 --  agent_bom_readonly | SELECT only                     | Any writes
 --
 --  Connection: AGENT_BOM_POSTGRES_URL=postgresql://agent_bom_app:<pw>@<host>:5432/agent_bom
+--
+--  Schema (12 tables):
+--   teams              — multi-tenant team registry (FK root)
+--   scan_jobs          — async scan job lifecycle + full result JSONB
+--   findings           — normalized vulnerability findings (per scan, per CVE)
+--   agents             — discovered AI agents per scan (point-in-time)
+--   policy_results     — per-scan policy evaluation outcomes
+--   api_keys           — persistent RBAC API key store (scrypt KDF)
+--   job_queue          — background async task queue
+--   fleet_agents       — governed agent lifecycle (long-lived)
+--   gateway_policies   — runtime MCP enforcement policies
+--   policy_audit_log   — runtime policy audit trail (HMAC-verified)
+--   scan_schedules     — recurring scan cron configuration
+--   osv_cache          — OSV vulnerability API response cache

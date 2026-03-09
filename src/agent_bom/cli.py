@@ -593,6 +593,12 @@ def main():
 @click.option("--gpu-k8s-context", "gpu_k8s_context", default=None, metavar="CTX", help="kubectl context for --gpu-scan K8s node discovery")
 @click.option("--no-dcgm-probe", "no_dcgm_probe", is_flag=True, help="Skip DCGM exporter endpoint probing during --gpu-scan")
 @click.option("--huggingface", "hf_flag", is_flag=True, help="Discover models, Spaces, and endpoints from Hugging Face Hub")
+@click.option(
+    "--verify-model-hashes",
+    "verify_model_hashes",
+    is_flag=True,
+    help="Verify SHA-256 of local model weight files against HuggingFace Hub metadata",
+)
 @click.option("--hf-token", default=None, envvar="HF_TOKEN", metavar="TOKEN", help="Hugging Face API token")
 @click.option("--hf-username", default=None, metavar="USER", help="Hugging Face username to scope discovery")
 @click.option("--hf-organization", default=None, metavar="ORG", help="Hugging Face organization to scope discovery")
@@ -823,6 +829,7 @@ def scan(
     gpu_k8s_context: Optional[str],
     no_dcgm_probe: bool,
     hf_flag: bool,
+    verify_model_hashes: bool,
     hf_token: Optional[str],
     hf_username: Optional[str],
     hf_organization: Optional[str],
@@ -1754,7 +1761,33 @@ def scan(
         except CloudDiscoveryError as exc:
             con.print(f"\n  [red]{provider_name.upper()} discovery error: {exc}[/red]")
 
-    # Step 1x: CIS AWS Foundations Benchmark
+    # Step 1x: Model hash verification (supply chain integrity)
+    if verify_model_hashes:
+        from agent_bom.model_hash import verify_model_hashes as _verify_hashes
+
+        _scan_roots = [Path(project)] if project else [Path.home()]
+        for _root in _scan_roots:
+            with con.status(f"[bold]Verifying model weight hashes under {_root.name}...[/bold]", spinner="dots"):
+                _hash_report = _verify_hashes(str(_root), token=hf_token)
+            if _hash_report.scanned == 0:
+                con.print(f"  [dim]No model weight files found under {_root}[/dim]")
+            elif _hash_report.has_tampering:
+                con.print(
+                    f"  [red]⚠ SUPPLY_CHAIN_TAMPERING[/red] {_hash_report.tampered} tampered file(s) out of {_hash_report.scanned} scanned"
+                )
+                for r in _hash_report.results:
+                    if r.is_tampered:
+                        con.print(
+                            f"    [red]✗[/red] {r.filename}  expected={r.expected_sha256[:16]}…  got={r.actual_sha256[:16] if r.actual_sha256 else '?'}…"
+                        )
+            elif _hash_report.offline > 0:
+                con.print(f"  [yellow]~[/yellow] {_hash_report.scanned} file(s) found — HuggingFace Hub unreachable, hashes unverified")
+            else:
+                con.print(
+                    f"  [green]✓[/green] {_hash_report.verified} model file(s) verified, {_hash_report.unverified} unverified (not in Hub)"
+                )
+
+    # Step 1y: CIS AWS Foundations Benchmark
     cis_benchmark_report = None
     if aws_cis_benchmark:
         from agent_bom.cloud import CloudDiscoveryError

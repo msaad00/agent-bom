@@ -849,14 +849,16 @@ def parse_maven_packages(directory: Path) -> list[Package]:
     Dependencies without a ``<version>`` element (version inherited via parent
     POM) are skipped — parent POM resolution requires network access.
     """
-    import xml.etree.ElementTree as ET  # stdlib — no extra dep
+    import xml.etree.ElementTree as ET  # for ParseError type only
+
+    from defusedxml.ElementTree import parse as safe_xml_parse  # B314
 
     pom = directory / "pom.xml"
     if not pom.exists():
         return []
 
     try:
-        tree = ET.parse(str(pom))
+        tree = safe_xml_parse(str(pom))
         root = tree.getroot()
     except ET.ParseError as exc:
         logger.debug("Failed to parse pom.xml in %s: %s", directory, exc)

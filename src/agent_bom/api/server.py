@@ -54,7 +54,7 @@ _logger = logging.getLogger(__name__)
 # ─── Dependency check ─────────────────────────────────────────────────────────
 
 try:
-    from fastapi import FastAPI, HTTPException
+    from fastapi import FastAPI, HTTPException, WebSocket
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import RedirectResponse
     from pydantic import BaseModel
@@ -2293,6 +2293,107 @@ async def proxy_alerts(
             "limit": limit,
         },
     }
+
+
+# ─── WebSocket: live proxy metrics stream ────────────────────────────────────
+
+
+@app.websocket("/ws/proxy/metrics")
+async def ws_proxy_metrics(websocket: WebSocket) -> None:
+    """WebSocket endpoint — push proxy metrics every second.
+
+    Connect to ``ws://localhost:8422/ws/proxy/metrics`` to receive a live
+    stream of proxy metrics as JSON objects.  Useful for building real-time
+    dashboards without polling.
+
+    Message format (sent every second):
+    ::
+
+        {
+          "ts": 1234567890.123,
+          "tool_calls": {"read_file": 12, "exec": 3},
+          "blocked": {"rate_limit": 1, "policy": 2},
+          "alerts_last_60s": 4,
+          "latency_p95_ms": 45.2
+        }
+
+    Connection is closed cleanly on disconnect.
+    """
+    import asyncio
+    import time as _time
+
+    try:
+        from fastapi.websockets import WebSocketDisconnect
+    except ImportError:
+        from starlette.websockets import WebSocketDisconnect  # type: ignore[no-reattr]
+
+    await websocket.accept()
+    try:
+        while True:
+            now = _time.time()
+            # Build snapshot from in-process metrics buffer
+            metrics_snapshot: dict = {}
+            if _proxy_metrics is not None:
+                metrics_snapshot = dict(_proxy_metrics)
+            else:
+                log_path = _get_configured_log_path()
+                if log_path:
+                    m = _read_metrics_from_log(log_path)
+                    if m:
+                        metrics_snapshot = m
+
+            # Count alerts in last 60 seconds
+            cutoff = now - 60
+            recent_alerts = [a for a in _proxy_alerts if a.get("ts", 0) > cutoff]
+
+            await websocket.send_json(
+                {
+                    "ts": now,
+                    "tool_calls": metrics_snapshot.get("calls_by_tool", {}),
+                    "blocked": metrics_snapshot.get("blocked_by_reason", {}),
+                    "alerts_last_60s": len(recent_alerts),
+                    "latency_p95_ms": metrics_snapshot.get("latency", {}).get("p95_ms"),
+                    "total_tool_calls": metrics_snapshot.get("total_tool_calls", 0),
+                    "total_blocked": metrics_snapshot.get("total_blocked", 0),
+                    "uptime_seconds": metrics_snapshot.get("uptime_seconds"),
+                }
+            )
+            await asyncio.sleep(1.0)
+    except WebSocketDisconnect:
+        pass
+    except Exception:  # noqa: BLE001
+        # Client disconnected or error — close quietly
+        pass
+
+
+@app.websocket("/ws/proxy/alerts")
+async def ws_proxy_alerts(websocket: WebSocket) -> None:
+    """WebSocket endpoint — push new proxy alerts as they arrive.
+
+    Streams new alerts in real time.  Each message is a single alert object.
+    Useful for live security dashboards that need immediate notification.
+    """
+    import asyncio
+
+    try:
+        from fastapi.websockets import WebSocketDisconnect
+    except ImportError:
+        from starlette.websockets import WebSocketDisconnect  # type: ignore[no-reattr]
+
+    await websocket.accept()
+    seen = len(_proxy_alerts)
+    try:
+        while True:
+            current = len(_proxy_alerts)
+            if current > seen:
+                for alert in _proxy_alerts[seen:current]:
+                    await websocket.send_json(alert)
+                seen = current
+            await asyncio.sleep(0.25)
+    except WebSocketDisconnect:
+        pass
+    except Exception:  # noqa: BLE001
+        pass
 
 
 # ─── OpenSSF Scorecard Lookup ────────────────────────────────────────────────

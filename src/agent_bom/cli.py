@@ -5407,6 +5407,13 @@ def protect_cmd(mode, port, host, detectors, alert_file, alert_webhook, log_leve
 
     from agent_bom.alerts.dispatcher import AlertDispatcher
     from agent_bom.logging_config import setup_logging
+    from agent_bom.project_config import load_project_config
+
+    # Auto-load .agent-bom.yaml for alert_webhook if not explicitly given
+    _proj_cfg = load_project_config()
+    if _proj_cfg:
+        if not alert_webhook and _proj_cfg.get("alert_webhook"):
+            alert_webhook = _proj_cfg["alert_webhook"]
     from agent_bom.runtime.protection import ProtectionEngine
     from agent_bom.runtime.server import run_http_mode, run_stdin_mode
 
@@ -5731,6 +5738,156 @@ def dashboard_cmd(report: Optional[str], port: int):
     except subprocess.CalledProcessError as exc:
         click.echo(f"Dashboard exited with code {exc.returncode}", err=True)
         sys.exit(exc.returncode)
+
+
+@main.command("introspect")
+@click.option("--command", "server_command", default=None, help="MCP server command to introspect (e.g. 'npx @mcp/server-filesystem /')")
+@click.option("--url", "server_url", default=None, help="MCP server SSE/HTTP URL to introspect")
+@click.option("--timeout", "timeout", default=10.0, show_default=True, type=float, help="Connection timeout per server (seconds)")
+@click.option("--all", "introspect_all", is_flag=True, help="Introspect all discovered MCP servers (auto-discovery)")
+@click.option(
+    "--baseline",
+    "baseline_path",
+    type=click.Path(exists=True),
+    default=None,
+    help="JSON baseline of expected tools — report drift against it",
+)
+@click.option("--format", "output_format", type=click.Choice(["console", "json"]), default="console", show_default=True)
+@click.option("--no-color", is_flag=True, help="Disable ANSI color output")
+def introspect_cmd(server_command, server_url, timeout, introspect_all, baseline_path, output_format, no_color):
+    """Connect to live MCP servers and show their actual tools and resources.
+
+    \b
+    Read-only — only calls initialize, tools/list, resources/list.
+    Never calls tools/call.  Detects drift against config-declared tools.
+
+    \b
+    Usage:
+      agent-bom introspect --command "npx @mcp/server-filesystem /"
+      agent-bom introspect --url http://localhost:8080/sse
+      agent-bom introspect --all                           # all discovered servers
+      agent-bom introspect --all --baseline baseline.json  # drift report
+      agent-bom introspect --all --format json             # machine-readable
+
+    \b
+    Requires: pip install 'agent-bom[mcp-server]'  (for MCP SDK)
+    """
+    import json as _json
+
+    from rich.console import Console
+    from rich.table import Table
+
+    from agent_bom.mcp_introspect import introspect_servers_sync
+
+    con = Console(no_color=no_color)
+
+    if not server_command and not server_url and not introspect_all:
+        con.print("[red]Error:[/red] Provide --command, --url, or --all")
+        sys.exit(1)
+
+    # Build server list
+    if introspect_all:
+        from agent_bom.discovery import discover_all
+
+        con.print("[dim]Discovering MCP servers...[/dim]", highlight=False)
+        agents = discover_all()
+        servers = [s for a in agents for s in a.mcp_servers]
+        if not servers:
+            con.print("[yellow]No MCP servers discovered.[/yellow]")
+            sys.exit(0)
+    else:
+        from agent_bom.models import MCPServer, TransportType
+
+        if server_command:
+            parts = server_command.split()
+            srv = MCPServer(
+                name=parts[0],
+                command=parts[0],
+                args=parts[1:],
+                transport=TransportType.STDIO,
+            )
+        else:
+            srv = MCPServer(
+                name=server_url or "server",
+                url=server_url,
+                transport=TransportType.SSE,
+            )
+        servers = [srv]
+
+    # Load baseline if provided
+    baseline: dict[str, list[str]] = {}
+    if baseline_path:
+        try:
+            baseline = _json.loads(Path(baseline_path).read_text())
+        except Exception as e:  # noqa: BLE001
+            con.print(f"[yellow]Warning: could not load baseline: {e}[/yellow]")
+
+    # Introspect
+    try:
+        results = introspect_servers_sync(servers, timeout=timeout)
+    except ImportError:
+        con.print("[red]MCP SDK not installed.[/red] Run: pip install 'agent-bom[mcp-server]'")
+        sys.exit(1)
+
+    if output_format == "json":
+        output = []
+        for r in results:
+            entry = {
+                "server": r.server_name,
+                "success": r.success,
+                "tools": [t.name for t in r.runtime_tools],
+                "resources": [res.name for res in r.runtime_resources],
+                "error": r.error,
+            }
+            if baseline:
+                expected = baseline.get(r.server_name, [])
+                entry["drift_added"] = [t for t in entry["tools"] if t not in expected]
+                entry["drift_removed"] = [t for t in expected if t not in entry["tools"]]
+            output.append(entry)
+        click.echo(_json.dumps(output, indent=2))
+        sys.exit(0)
+
+    # Console output
+    any_drift = False
+    for r in results:
+        status = "[green]✓[/green]" if r.success else "[red]✗[/red]"
+        con.print(f"\n{status} [bold]{r.server_name}[/bold]", highlight=False)
+        if not r.success:
+            con.print(f"  [red]{r.error}[/red]")
+            continue
+
+        if r.protocol_version:
+            con.print(f"  Protocol: {r.protocol_version}")
+
+        if r.runtime_tools:
+            tbl = Table(show_header=True, header_style="bold", box=None, padding=(0, 2))
+            tbl.add_column("Tool")
+            tbl.add_column("Description")
+            for t in r.runtime_tools:
+                desc = (t.description or "")[:80]
+                expected_tools = baseline.get(r.server_name, [])
+                marker = ""
+                if expected_tools and t.name not in expected_tools:
+                    marker = " [yellow](NEW)[/yellow]"
+                    any_drift = True
+                tbl.add_row(f"  {t.name}{marker}", desc)
+            con.print(tbl)
+        else:
+            con.print("  [dim]No tools[/dim]")
+
+        if r.runtime_resources:
+            con.print(f"  Resources: {', '.join(res.name for res in r.runtime_resources)}")
+
+        if baseline:
+            expected_tools = baseline.get(r.server_name, [])
+            removed = [t for t in expected_tools if t not in {x.name for x in r.runtime_tools}]
+            if removed:
+                con.print(f"  [red]Removed tools: {', '.join(removed)}[/red]")
+                any_drift = True
+
+    if any_drift:
+        con.print("\n[yellow]⚠ Drift detected — tools differ from baseline.[/yellow]")
+        sys.exit(1)
 
 
 def cli_main() -> None:

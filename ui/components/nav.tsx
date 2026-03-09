@@ -22,6 +22,7 @@ import {
   Menu,
   X,
   BarChart3,
+  FileText,
 } from "lucide-react";
 import { api } from "@/lib/api";
 
@@ -53,9 +54,16 @@ const NAV_GROUPS = [
     ],
   },
   {
+    label: "Runtime",
+    links: [
+      { href: "/proxy",      label: "Proxy",       icon: Shield },
+      { href: "/audit",      label: "Audit Log",   icon: FileText },
+      { href: "/gateway",    label: "Gateway",     icon: Lock },
+    ],
+  },
+  {
     label: "Govern",
     links: [
-      { href: "/gateway",    label: "Gateway",     icon: Lock },
       { href: "/compliance", label: "Compliance",  icon: Shield },
       { href: "/governance", label: "Governance",  icon: Eye },
       { href: "/traces",     label: "Traces",      icon: Radio },

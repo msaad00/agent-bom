@@ -686,6 +686,30 @@ export const api = {
 
   // Activity Timeline
   getActivity: (days = 30) => get<ActivityTimeline>(`/v1/activity?days=${days}`),
+
+  // ── Proxy Runtime ──
+  getProxyStatus: () => get<ProxyStatusResponse>("/v1/proxy/status"),
+  getProxyAlerts: (filters?: { severity?: string; detector?: string; limit?: number }) => {
+    const params = new URLSearchParams();
+    if (filters?.severity) params.set("severity", filters.severity);
+    if (filters?.detector) params.set("detector", filters.detector);
+    if (filters?.limit) params.set("limit", String(filters.limit));
+    const qs = params.toString();
+    return get<ProxyAlertsResponse>(`/v1/proxy/alerts${qs ? `?${qs}` : ""}`);
+  },
+
+  // ── Audit Log ──
+  listAuditEntries: (filters?: { action?: string; resource?: string; since?: string; limit?: number; offset?: number }) => {
+    const params = new URLSearchParams();
+    if (filters?.action) params.set("action", filters.action);
+    if (filters?.resource) params.set("resource", filters.resource);
+    if (filters?.since) params.set("since", filters.since);
+    if (filters?.limit) params.set("limit", String(filters.limit));
+    if (filters?.offset) params.set("offset", String(filters.offset));
+    const qs = params.toString();
+    return get<AuditLogResponse>(`/v1/audit${qs ? `?${qs}` : ""}`);
+  },
+  getAuditIntegrity: (limit = 1000) => get<AuditIntegrityResponse>(`/v1/audit/integrity?limit=${limit}`),
 };
 
 // ─── Threat Framework Catalogs ────────────────────────────────────────────────
@@ -878,6 +902,59 @@ export interface ActivityTimeline {
     output_tokens: number;
   }>;
   warnings: string[];
+}
+
+// ─── Proxy Runtime types ─────────────────────────────────────────────────────
+
+export interface ProxyStatusResponse {
+  status: string;
+  message?: string;
+  total_tool_calls?: number;
+  total_blocked?: number;
+  uptime_seconds?: number;
+  calls_by_tool?: Record<string, number>;
+  blocked_by_reason?: Record<string, number>;
+  latency?: { p50_ms?: number; p95_ms?: number; p99_ms?: number };
+  detectors_active?: string[];
+  proxy_pid?: number;
+}
+
+export interface ProxyAlert {
+  ts: number;
+  severity: string;
+  detector: string;
+  tool_name: string;
+  message: string;
+  details?: Record<string, unknown>;
+}
+
+export interface ProxyAlertsResponse {
+  alerts: ProxyAlert[];
+  count: number;
+  filters: { severity: string | null; detector: string | null; limit: number };
+}
+
+// ─── Audit Log types ─────────────────────────────────────────────────────────
+
+export interface AuditEntry {
+  entry_id: string;
+  timestamp: string;
+  action: string;
+  actor: string;
+  resource: string;
+  details: Record<string, unknown>;
+  hmac_signature: string;
+}
+
+export interface AuditLogResponse {
+  entries: AuditEntry[];
+  total: number;
+}
+
+export interface AuditIntegrityResponse {
+  verified: number;
+  tampered: number;
+  checked: number;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

@@ -36,20 +36,28 @@ jobs:
           import sys
           from pathlib import Path
 
-          REGISTRY_URL = "https://raw.githubusercontent.com/modelcontextprotocol/servers/main/scripts/servers.json"
+          # Candidate upstream URLs — try in order (upstream may reorganize)
+          REGISTRY_URLS = [
+              "https://raw.githubusercontent.com/modelcontextprotocol/servers/main/scripts/servers.json",
+              "https://raw.githubusercontent.com/modelcontextprotocol/servers/main/servers.json",
+          ]
           REGISTRY_PATH = Path("src/agent_bom/mcp_registry.json")
 
           # Load existing registry
           existing = json.loads(REGISTRY_PATH.read_text())
           known_packages = set(existing["servers"].keys())
 
-          # Fetch upstream
-          try:
-              with urllib.request.urlopen(REGISTRY_URL, timeout=30) as resp:
-                  upstream = json.loads(resp.read())
-          except Exception as e:
-              print(f"Could not fetch upstream registry: {e}", file=sys.stderr)
-              # Not a fatal error — write 0 new servers and exit cleanly
+          # Fetch upstream — try each URL, skip silently if none work
+          upstream = None
+          for url in REGISTRY_URLS:
+              try:
+                  with urllib.request.urlopen(url, timeout=30) as resp:
+                      upstream = json.loads(resp.read())
+                  break
+              except Exception:
+                  continue
+          if upstream is None:
+              print("Upstream MCP server list unavailable — skipping new-server sync", file=sys.stderr)
               Path("/tmp/new_count").write_text("0")
               sys.exit(0)
 

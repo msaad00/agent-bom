@@ -281,7 +281,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     # ── Tool 1: scan ──────────────────────────────────────────────────
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, title="Security Scan")
     async def scan(
         config_path: Annotated[str | None, Field(description="Path to MCP client config directory. Auto-discovers all if omitted.")] = None,
         image: Annotated[str | None, Field(description="Docker image to scan (e.g. 'nginx:1.25', 'ghcr.io/org/app:v1').")] = None,
@@ -396,7 +396,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     # ── Tool 2: check ────────────────────────────────────────────────
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, title="Package CVE Check")
     async def check(
         package: Annotated[
             str,
@@ -506,7 +506,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     # ── Tool 3: blast_radius ──────────────────────────────────────────
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, title="Blast Radius Analysis")
     async def blast_radius(
         cve_id: Annotated[str, Field(description="CVE identifier to look up, e.g. 'CVE-2024-1234' or 'GHSA-xxxx'.")],
     ) -> str:
@@ -569,7 +569,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     # ── Tool 4: policy_check ──────────────────────────────────────────
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, title="Policy Evaluation")
     async def policy_check(
         policy_json: Annotated[
             str,
@@ -613,7 +613,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     # ── Tool 5: registry_lookup ───────────────────────────────────────
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, title="Registry Lookup")
     def registry_lookup(
         server_name: Annotated[
             str | None, Field(description="MCP server name to look up, e.g. 'filesystem', '@modelcontextprotocol/server-github'.")
@@ -686,7 +686,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     # ── Tool 6: generate_sbom ─────────────────────────────────────────
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, title="Generate SBOM")
     async def generate_sbom(
         format: Annotated[str, Field(description="SBOM format: 'cyclonedx' (CycloneDX 1.6) or 'spdx' (SPDX 3.0).")] = "cyclonedx",
         config_path: Annotated[str | None, Field(description="Path to MCP client config directory. Auto-discovers all if omitted.")] = None,
@@ -724,7 +724,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     # ── Tool 7: compliance ───────────────────────────────────────────
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, title="Compliance Posture")
     async def compliance(
         config_path: Annotated[str | None, Field(description="Path to MCP client config directory. Auto-discovers all if omitted.")] = None,
         image: Annotated[str | None, Field(description="Docker image to scan, e.g. 'nginx:1.25'.")] = None,
@@ -831,7 +831,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     # ── Tool 8: remediate ────────────────────────────────────────────
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, title="Remediation Plan")
     async def remediate(
         config_path: Annotated[str | None, Field(description="Path to MCP client config directory. Auto-discovers all if omitted.")] = None,
         image: Annotated[str | None, Field(description="Docker image to scan, e.g. 'nginx:1.25'.")] = None,
@@ -907,7 +907,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     # ── Tool 9: skill_trust ──────────────────────────────────────────
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, title="Skill Trust Assessment")
     def skill_trust(
         skill_path: Annotated[str, Field(description="Path to a SKILL.md file (or any skill/instruction file) to assess.")],
     ) -> str:
@@ -981,7 +981,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     # ── Tool 10: verify ─────────────────────────────────────────────
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, title="Package Integrity Verify")
     async def verify(
         package: Annotated[str, Field(description="Package name with optional version, e.g. 'express@4.18.2' or 'requests==2.31.0'.")],
         ecosystem: Annotated[str, Field(description="Package ecosystem: 'npm' or 'pypi'.")] = "npm",
@@ -1042,7 +1042,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     # ── Tool 11: where ────────────────────────────────────────────
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, title="Discovery Paths")
     def where() -> str:
         """Show all MCP discovery paths and which config files exist.
 
@@ -1088,7 +1088,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     # ── Tool 12: inventory ────────────────────────────────────────
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, title="Agent Inventory")
     def inventory(
         config_path: Annotated[str | None, Field(description="Path to MCP client config directory. Auto-discovers all if omitted.")] = None,
     ) -> str:
@@ -1141,7 +1141,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     # ── Tool 13: diff ─────────────────────────────────────────────
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, title="Vulnerability Diff")
     async def diff(
         baseline: Annotated[
             dict | None, Field(description="Baseline report JSON object. If omitted, uses the latest saved report from history.")
@@ -1193,7 +1193,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     # ── Tool 14: marketplace_check ───────────────────────────────
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, title="Marketplace Trust Check")
     async def marketplace_check(
         package: Annotated[str, Field(description="Package name, e.g. 'express', 'langchain'.")],
         ecosystem: Annotated[str, Field(description="Package ecosystem: 'npm' or 'pypi'.")] = "npm",
@@ -1318,7 +1318,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     # ── Tool 16: code_scan ────────────────────────────────────────
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, title="Code SAST Scan")
     async def code_scan(
         path: Annotated[str, Field(description="Path to source code directory to scan.")],
         config: Annotated[
@@ -1352,7 +1352,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     # ── Tool 17: context_graph ──────────────────────────────────
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, title="Context Graph")
     async def context_graph(
         config_path: Annotated[
             str | None,
@@ -1416,7 +1416,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             logger.exception("MCP tool error")
             return json.dumps({"error": sanitize_error(exc)})
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, title="Analytics Query")
     async def analytics_query(
         query_type: Annotated[
             str,
@@ -1474,7 +1474,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             logger.exception("MCP tool error")
             return json.dumps({"error": sanitize_error(exc)})
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, title="CIS Benchmark")
     async def cis_benchmark(
         provider: Annotated[
             str,
@@ -1552,7 +1552,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     # ── Tool 19: fleet_scan ────────────────────────────────────────
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, title="Fleet Scan")
     async def fleet_scan(
         servers: Annotated[
             str,
@@ -1614,7 +1614,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             logger.exception("Registry read failed")
             return json.dumps({"error": f"Failed to read registry: {sanitize_error(exc)}"})
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, title="Runtime Correlation")
     async def runtime_correlate(
         config_path: Annotated[
             str,
@@ -1716,7 +1716,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     # ── Tool 21: vector_db_scan ───────────────────────────────────────
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, title="Vector DB Scan")
     async def vector_db_scan(
         hosts: Annotated[
             str | None,
@@ -1760,7 +1760,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     # ── Tool 22: aisvs_benchmark ──────────────────────────────────────
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, title="AISVS Benchmark")
     async def aisvs_benchmark(
         checks: Annotated[
             str | None,
@@ -1796,7 +1796,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             return json.dumps({"error": sanitize_error(exc)})
 
     # ── Tool 23: gpu_infra_scan ────────────────────────────────────
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, title="GPU Infrastructure Scan")
     async def gpu_infra_scan(
         k8s_context: Annotated[
             str | None,

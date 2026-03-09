@@ -243,7 +243,7 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible
 | Docker | `docker run agentbom/agent-bom scan` | Isolated scans |
 | REST API | `agent-bom api` | Dashboards, SIEM |
 | MCP Server | `agent-bom mcp-server` (23 tools) | Inside any MCP client |
-| Dashboard | `agent-bom serve` | API + Next.js UI (15 pages) |
+| Dashboard | `agent-bom serve` · [Full deploy guide](docs/DEPLOYMENT.md) | API + Next.js UI (15 pages) · Postgres/Supabase |
 | Runtime proxy | `agent-bom proxy` | Intercept + enforce MCP traffic in real time |
 | Protect engine | `agent-bom protect` | 7 behavioral detectors (rug pull, injection, exfil, credential leak) |
 | Config watcher | `agent-bom watch` | Filesystem watch on MCP configs, alert on drift |

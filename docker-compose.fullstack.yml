@@ -1,0 +1,121 @@
+# agent-bom full-stack compose — API + Dashboard UI + PostgreSQL
+#
+# Usage (local dev):
+#   cp .env.example .env   # fill in POSTGRES_PASSWORD at minimum
+#   docker compose -f docker-compose.fullstack.yml up
+#
+# Then open:
+#   Dashboard  →  http://localhost:3000
+#   API docs   →  http://localhost:8422/docs
+#
+# For production, swap the postgres service for a managed Postgres/Supabase URL:
+#   AGENT_BOM_POSTGRES_URL=postgresql://user:pass@db.supabase.co:5432/postgres
+#   Then remove the postgres + depends_on sections.
+
+version: '3.8'
+
+services:
+
+  # ── FastAPI backend ────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: agentbom/agent-bom:latest
+    container_name: agent-bom-api
+    restart: unless-stopped
+    command: api --host 0.0.0.0 --port 8422
+    environment:
+      AGENT_BOM_POSTGRES_URL: >-
+        postgresql://${POSTGRES_USER:-agent_bom}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-agent_bom}
+      # Optional enrichment API keys
+      NVD_API_KEY: ${NVD_API_KEY:-}
+      # Optional cloud scanning
+      SNOWFLAKE_ACCOUNT: ${SNOWFLAKE_ACCOUNT:-}
+      SNOWFLAKE_USER: ${SNOWFLAKE_USER:-}
+      SNOWFLAKE_PASSWORD: ${SNOWFLAKE_PASSWORD:-}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      # Optional: protect the API with a key
+      AGENT_BOM_API_KEY: ${AGENT_BOM_API_KEY:-}
+    ports:
+      - "${API_PORT:-8422}:8422"
+    volumes:
+      # Mount host MCP config dirs read-only so the API can discover local agents
+      - ~/.config:/root/.config:ro
+      - ~/.claude:/root/.claude:ro
+    networks:
+      - agent-bom
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8422/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── Next.js dashboard ─────────────────────────────────────────────────────
+  ui:
+    build:
+      context: ui/
+      dockerfile: Dockerfile
+      args:
+        # Baked into the Next.js build — must match the publicly reachable API URL
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8422}
+    image: agentbom/agent-bom-ui:latest
+    container_name: agent-bom-ui
+    restart: unless-stopped
+    ports:
+      - "${UI_PORT:-3000}:3000"
+    networks:
+      - agent-bom
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # ── PostgreSQL (dev / self-hosted) ─────────────────────────────────────────
+  # For production: replace with Supabase, Railway, or any managed Postgres.
+  # Set AGENT_BOM_POSTGRES_URL env var on the api service and remove this block.
+  postgres:
+    image: postgres:16-alpine
+    container_name: agent-bom-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-agent_bom}
+      POSTGRES_USER: ${POSTGRES_USER:-agent_bom}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+    ports:
+      # Only expose locally — remove in production
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init-wrapper.sh:/docker-entrypoint-initdb.d/00-init-wrapper.sh:ro
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    command: >
+      postgres
+        -c password_encryption=scram-sha-256
+        -c log_connections=on
+        -c log_disconnections=on
+        -c log_statement=ddl
+        -c max_connections=100
+        -c shared_buffers=128MB
+        -c work_mem=4MB
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-agent_bom} -d ${POSTGRES_DB:-agent_bom}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks:
+      - agent-bom
+
+volumes:
+  postgres-data:
+
+networks:
+  agent-bom:
+    name: agent-bom

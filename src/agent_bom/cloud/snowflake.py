@@ -533,8 +533,8 @@ def _describe_mcp_server_tools(
                                 description = f"[HIGH-RISK: SYSTEM_EXECUTE_SQL] {description}"
 
                             tools.append(MCPTool(name=tool_name, description=description))
-                except Exception:
-                    pass
+                except (ImportError, ValueError, KeyError, TypeError) as exc:
+                    logger.debug("Could not parse tool spec for MCP server: %s", exc)
 
     except Exception as exc:
         warnings.append(f"Could not describe MCP Server {server_name}: {sanitize_error(exc)}")

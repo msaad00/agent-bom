@@ -188,8 +188,9 @@ def _discover_artifacts(
                         mcp_servers=[server],
                     )
                     agents.append(agent)
-            except Exception:
-                pass  # Artifact type may not exist
+            except (ValueError, KeyError, AttributeError) as exc:
+                # Artifact type may not exist in this project
+                logger.debug("Could not list W&B artifacts of type %s: %s", art_type, exc)
 
     except Exception as exc:
         warnings.append(f"Could not list W&B artifacts: {exc}")

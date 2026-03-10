@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 import threading
 from pathlib import Path
@@ -50,6 +51,8 @@ from agent_bom.parsers import extract_packages
 from agent_bom.resolver import resolve_all_versions_sync
 from agent_bom.scanners import scan_agents_sync
 from agent_bom.security import sanitize_env_vars
+
+logger = logging.getLogger(__name__)
 
 BANNER = r"""
    ___                    __     ____  ____  __  ___
@@ -2804,8 +2807,8 @@ def scan(
                 with open(policy) as _pf:
                     _raw_policy = _lic_json.load(_pf)
                     _lic_policy = {k: v for k, v in _raw_policy.items() if k.startswith("license_")}
-            except Exception:
-                pass  # Use default policy
+            except (OSError, json.JSONDecodeError, ValueError) as exc:
+                logger.debug("Could not load license policy file, using defaults: %s", exc)
         _lic_report = evaluate_license_policy(agents, policy=_lic_policy if _lic_policy else None)
         report.license_report = _lic_to_ser(_lic_report)
         if not quiet and output_format == "console":
@@ -3345,8 +3348,9 @@ def scan(
             else:
                 con.print(f"  [green]✓[/green] Asset tracker: {summary['total_open']} open (no changes)")
             tracker.close()
-        except Exception:
-            pass  # asset tracking is best-effort
+        except Exception as exc:
+            # Asset tracking is best-effort; don't fail the scan
+            logger.debug("Asset tracking failed: %s", exc, exc_info=True)
 
     # Step 7: Diff against baseline
     if baseline:
@@ -4374,8 +4378,9 @@ def rescan_command(baseline: str, output: Optional[str], md: Optional[str], enri
         evicted = cache.evict_many([(eco, name, ver) for eco, name, ver in vuln_packages])
         if evicted:
             con.print(f"  [dim]Cache cleared for {evicted} package(s)[/dim]")
-    except Exception:
-        pass  # Cache eviction failure is non-fatal
+    except Exception as exc:
+        # Cache eviction failure is non-fatal
+        logger.debug("Cache eviction failed: %s", exc, exc_info=True)
 
     # ── Re-scan via OSV ───────────────────────────────────────────────────────
     from agent_bom.models import Package
@@ -4397,8 +4402,8 @@ def rescan_command(baseline: str, output: Optional[str], md: Optional[str], enri
                 vulns = [build_vulnerabilities([v], pkg) for v in fresh_results.get(key, [])]
                 flat = [v for sub in vulns for v in sub]
                 asyncio.run(enrich_vulnerabilities(flat))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Re-scan enrichment failed: %s", exc, exc_info=True)
 
     # ── Compare before vs after ───────────────────────────────────────────────
     # Build vuln-id sets from baseline

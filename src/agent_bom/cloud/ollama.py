@@ -139,8 +139,8 @@ def _discover_via_api(host: str) -> list[dict] | None:
         if resp.status_code == 200:
             data = resp.json()
             return data.get("models", [])
-    except Exception:
-        pass
+    except (ImportError, OSError) as exc:
+        logger.debug("Ollama httpx API probe failed: %s", exc)
 
     # Fallback: try with urllib (no extra dep)
     try:
@@ -154,8 +154,8 @@ def _discover_via_api(host: str) -> list[dict] | None:
             if resp.status == 200:
                 data = json.loads(resp.read())
                 return data.get("models", [])
-    except Exception:
-        pass
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.debug("Ollama urllib API probe failed: %s", exc)
 
     return None
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import logging
 import math
 import os
@@ -208,8 +209,8 @@ def _is_obfuscated_credential(value: str) -> bool:
             # Decoded text matches a known credential value pattern
             if any(p.search(decoded) for p in _VALUE_CREDENTIAL_PATTERNS):
                 return True
-        except Exception:
-            pass
+        except (ValueError, UnicodeDecodeError, binascii.Error):
+            pass  # Not valid base64 — fall through to entropy check
 
     # Strategy 2: high Shannon entropy on a compact, non-URL string
     # Short strings (24-39 chars) use a stricter threshold to avoid false positives

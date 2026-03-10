@@ -431,8 +431,9 @@ def _check_8_1(kv_client: Any, subscription_id: str) -> CISCheckResult:
                     exp = getattr(key_prop, "expires_on", None)
                     if exp is None:
                         failing_keys.append(f"{vault_name}/{key_prop.name}")
-            except Exception:
-                pass  # Key enumeration is best-effort per vault
+            except Exception as exc:
+                # Key enumeration is best-effort per vault
+                logger.debug("Could not enumerate keys in vault %s: %s", vault_name, exc)
 
         if failing_keys:
             result.status = CheckStatus.FAIL
@@ -472,8 +473,9 @@ def _check_8_2(kv_client: Any, subscription_id: str) -> CISCheckResult:
                 for secret_prop in secret_client.list_properties_of_secrets():
                     if getattr(secret_prop, "expires_on", None) is None:
                         failing_secrets.append(f"{vault_name}/{secret_prop.name}")
-            except Exception:
-                pass  # Best-effort per vault
+            except Exception as exc:
+                # Secret enumeration is best-effort per vault
+                logger.debug("Could not enumerate secrets in vault %s: %s", vault_name, exc)
 
         if failing_secrets:
             result.status = CheckStatus.FAIL

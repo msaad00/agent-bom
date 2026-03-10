@@ -435,8 +435,9 @@ def _check_5_1(project_id: str) -> CISCheckResult:
                     if "allUsers" in members or "allAuthenticatedUsers" in members:
                         public_buckets.append(bucket.name)
                         break
-            except Exception:
-                pass  # IAM check is best-effort per bucket
+            except Exception as exc:
+                # IAM check is best-effort per bucket
+                logger.debug("Could not check IAM policy for bucket %s: %s", bucket.name, exc)
 
         if public_buckets:
             result.status = CheckStatus.FAIL

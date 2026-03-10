@@ -349,8 +349,9 @@ def _discover_azure_functions(
                                 ecosystem="azure-runtime",
                             )
                         )
-                except Exception:
-                    pass  # Site config read is best-effort
+                except Exception as exc:
+                    # Site config read is best-effort
+                    logger.debug("Could not read site config for function app %s: %s", app_name, exc)
 
             server = MCPServer(
                 name=f"function-app:{app_name}",
@@ -480,8 +481,9 @@ def _discover_ml_endpoints(
                                     "instance_type": instance_type,
                                 }
                             )
-                    except Exception:
-                        pass  # Deployment listing is best-effort
+                    except Exception as exc:
+                        # Deployment listing is best-effort
+                        logger.debug("Could not list deployments for endpoint %s: %s", ep_name, exc)
 
                     server = MCPServer(
                         name=f"ml-endpoint:{ep_name}",

@@ -105,8 +105,8 @@ def _discover_registered_models(
                     try:
                         run_packages = _extract_run_packages(client, run_id)
                         packages.extend(run_packages)
-                    except Exception:
-                        pass
+                    except (OSError, ValueError, KeyError) as exc:
+                        logger.debug("Failed to extract packages from MLflow run %s: %s", run_id, exc)
 
                 # Extract flavor from source path
                 flavor_packages = _extract_flavor_packages(source)
@@ -177,8 +177,8 @@ def _discover_experiments(
                     run_id = getattr(run.info, "run_id", None)
                     if run_id:
                         packages = _extract_run_packages(client, run_id)
-            except Exception:
-                pass
+            except (OSError, ValueError, KeyError) as exc:
+                logger.debug("Failed to extract packages from MLflow experiment %s: %s", exp_id, exc)
 
             server = MCPServer(
                 name=f"mlflow-exp:{exp_name}",
@@ -218,18 +218,20 @@ def _extract_run_packages(client, run_id: str) -> list[Package]:
                     req_data = client.download_artifacts(run_id, req_path)
                     if req_data:
                         packages.extend(_parse_requirements_txt(str(req_data)))
-                except Exception:
-                    pass
+                except (OSError, ValueError) as exc:
+                    # requirements.txt may not exist for this artifact
+                    logger.debug("Could not read requirements.txt for run %s: %s", run_id, exc)
 
                 try:
                     conda_path = f"{path}/conda.yaml"
                     conda_data = client.download_artifacts(run_id, conda_path)
                     if conda_data:
                         packages.extend(_parse_conda_yaml(str(conda_data)))
-                except Exception:
-                    pass
-    except Exception:
-        pass
+                except (OSError, ValueError) as exc:
+                    # conda.yaml may not exist for this artifact
+                    logger.debug("Could not read conda.yaml for run %s: %s", run_id, exc)
+    except (OSError, ValueError, KeyError) as exc:
+        logger.debug("Could not list artifacts for run %s: %s", run_id, exc)
 
     return packages
 
@@ -310,7 +312,7 @@ def _parse_conda_yaml(content: str) -> list[Package]:
                         name = pip_dep.split("[")[0].strip()
                         if name and not name.startswith("-"):
                             packages.append(Package(name=name, version="unknown", ecosystem="pypi"))
-    except Exception:
-        pass
+    except (ImportError, ValueError, KeyError) as exc:
+        logger.debug("Could not parse conda.yaml: %s", exc)
 
     return packages

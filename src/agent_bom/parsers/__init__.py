@@ -327,8 +327,8 @@ def parse_uv_lock(directory: Path) -> list[Package]:
                     m = re.match(r"^([a-zA-Z0-9_.-]+)", dep_str)
                     if m:
                         direct_names.add(m.group(1).lower())
-            except Exception:
-                pass
+            except (OSError, tomllib.TOMLDecodeError, KeyError) as exc:
+                logger.debug("Could not parse pyproject.toml for direct deps: %s", exc)
 
         for pkg in data.get("package", []):
             name = pkg.get("name", "")

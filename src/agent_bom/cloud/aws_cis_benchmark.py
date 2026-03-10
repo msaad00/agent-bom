@@ -461,8 +461,9 @@ def _check_2_1_4(s3_client: Any) -> CISCheckResult:
             versioning = s3_client.get_bucket_versioning(Bucket=name)
             if versioning.get("Status") != "Enabled":
                 unversioned.append(name)
-        except Exception:
-            pass  # skip inaccessible buckets
+        except Exception as exc:
+            # Skip inaccessible buckets (permissions, deleted, etc.)
+            logger.debug("Could not check versioning for bucket %s: %s", name, exc)
 
     if unversioned:
         result.status = CheckStatus.FAIL
@@ -641,8 +642,9 @@ def _check_3_6(s3_client: Any, cloudtrail_client: Any) -> CISCheckResult:
             logging_conf = s3_client.get_bucket_logging(Bucket=bucket_name)
             if not logging_conf.get("LoggingEnabled"):
                 no_logging.append(bucket_name)
-        except Exception:
-            pass  # skip inaccessible
+        except Exception as exc:
+            # Skip inaccessible buckets
+            logger.debug("Could not check logging for bucket %s: %s", bucket_name, exc)
 
     if no_logging:
         result.status = CheckStatus.FAIL
@@ -846,8 +848,9 @@ def run_benchmark(
     try:
         sts = session.client("sts", region_name=resolved_region)
         account_id = sts.get_caller_identity()["Account"]
-    except Exception:
-        pass  # non-fatal
+    except Exception as exc:
+        # Account ID lookup is non-fatal; continue with empty value
+        logger.debug("Could not get AWS account ID: %s", exc)
 
     report = CISBenchmarkReport(region=resolved_region, account_id=account_id)
 

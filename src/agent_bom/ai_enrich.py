@@ -995,6 +995,6 @@ async def analyze_mcp_config_security(
         if parsed:
             try:
                 return MCPConfigSecurityAnalysis.model_validate(parsed)
-            except Exception:
-                pass
+            except (ValueError, TypeError, KeyError) as exc:
+                logger.debug("Failed to validate MCPConfigSecurityAnalysis: %s", exc)
     return None

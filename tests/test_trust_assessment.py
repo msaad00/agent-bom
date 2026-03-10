@@ -610,10 +610,10 @@ def test_mcp_skill_trust_tool_exists():
 
 
 def test_mcp_server_card_has_18_tools():
-    """Server card lists 23 tools (including vector_db_scan, aisvs_benchmark, cis_benchmark, fleet_scan, gpu_infra_scan)."""
+    """Server card lists 29 tools (23 original + 6 scan type tools)."""
     from agent_bom.mcp_server import _SERVER_CARD_TOOLS
 
-    assert len(_SERVER_CARD_TOOLS) == 23
+    assert len(_SERVER_CARD_TOOLS) == 29
     tool_names = {t["name"] for t in _SERVER_CARD_TOOLS}
     assert "code_scan" in tool_names
     assert "context_graph" in tool_names
@@ -621,3 +621,9 @@ def test_mcp_server_card_has_18_tools():
     assert "cis_benchmark" in tool_names
     assert "vector_db_scan" in tool_names
     assert "aisvs_benchmark" in tool_names
+    assert "dataset_card_scan" in tool_names
+    assert "training_pipeline_scan" in tool_names
+    assert "browser_extension_scan" in tool_names
+    assert "model_provenance_scan" in tool_names
+    assert "prompt_scan" in tool_names
+    assert "model_file_scan" in tool_names

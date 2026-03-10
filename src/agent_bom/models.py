@@ -421,6 +421,7 @@ class AIBOMReport:
     training_pipelines: Optional[dict] = None  # Serialized TrainingPipelineScanResult
     dataset_cards: Optional[dict] = None  # Serialized DatasetScanResult
     serving_configs: Optional[list] = None  # Serialized ServingConfig list
+    browser_extensions: Optional[dict] = None  # Serialized browser extension scan results
 
     # Scan context metadata — what input sources were actually processed.
     # Populated by the CLI/API after scan completes. Consumers use this to

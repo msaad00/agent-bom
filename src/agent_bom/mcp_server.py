@@ -4,7 +4,7 @@ Start with:
     agent-bom mcp-server              # stdio (for Claude Desktop, Cursor, etc.)
     agent-bom mcp-server --sse        # SSE transport (for remote clients)
 
-Tools (23):
+Tools (29):
     scan                — Full discovery → scan → output pipeline
     check               — Check a specific package for CVEs before installing
     blast_radius        — Look up blast radius for a specific CVE
@@ -28,6 +28,12 @@ Tools (23):
     vector_db_scan      — Scan vector databases for embedding poisoning and access risks
     aisvs_benchmark     — OWASP AI Security Verification Standard benchmark
     gpu_infra_scan      — Scan GPU infrastructure for CVEs and misconfigurations
+    dataset_card_scan   — Scan dataset cards for licensing and provenance
+    training_pipeline_scan — Scan training pipeline artifacts for lineage
+    browser_extension_scan — Scan browser extensions for dangerous permissions
+    model_provenance_scan  — Check ML model provenance from HuggingFace/Ollama
+    prompt_scan         — Scan prompt templates for injection risks
+    model_file_scan     — Scan model files for serialization risks
 
 Resources (2):
     registry://servers  — Browse 427+ server security metadata registry
@@ -1955,6 +1961,244 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             logger.exception("MCP tool error")
             return json.dumps({"error": sanitize_error(exc)})
 
+    # ── Tool 24: dataset_card_scan ──────────────────────────────────
+
+    @mcp.tool(annotations=_READ_ONLY, title="Dataset Card Scan")
+    async def dataset_card_scan(
+        directory: Annotated[
+            str,
+            Field(description="Directory path to scan for dataset cards (dataset_info.json, README.md frontmatter, .dvc files)."),
+        ],
+    ) -> str:
+        """Scan a directory for ML dataset card metadata and provenance.
+
+        Discovers and parses:
+        - HuggingFace dataset_info.json (auto-generated metadata)
+        - HuggingFace README.md YAML frontmatter (dataset cards)
+        - DVC .dvc tracking files (data versioning provenance)
+
+        Flags: UNLICENSED_DATASET, NO_DATASET_CARD, UNVERSIONED_DATA, REMOTE_DATA_SOURCE.
+        Tags findings with compliance frameworks: OWASP LLM (LLM03), MITRE ATLAS,
+        NIST AI RMF (MAP-3.5), EU AI Act (ART-10).
+        """
+        try:
+            from agent_bom.security import validate_path
+
+            path = validate_path(directory, must_exist=True, restrict_to_home=True)
+            from agent_bom.parsers.dataset_cards import scan_dataset_directory
+
+            result = scan_dataset_directory(path)
+            return _truncate_response(json.dumps(result.to_dict(), indent=2, default=str))
+        except Exception as exc:
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
+
+    # ── Tool 25: training_pipeline_scan ──────────────────────────────
+
+    @mcp.tool(annotations=_READ_ONLY, title="Training Pipeline Scan")
+    async def training_pipeline_scan(
+        directory: Annotated[
+            str,
+            Field(description="Directory path to scan for training pipeline artifacts (MLflow, Kubeflow, W&B)."),
+        ],
+    ) -> str:
+        """Scan a directory for ML training pipeline lineage and provenance.
+
+        Discovers and parses:
+        - MLflow: meta.yaml, MLmodel, requirements.txt, conda.yaml
+        - Kubeflow: Argo workflow YAML, KFP v2 pipelineSpec YAML
+        - W&B: wandb-metadata.json, config.yaml, wandb-summary.json
+
+        Flags: UNSAFE_SERIALIZATION, MISSING_PROVENANCE, MISSING_REQUIREMENTS, EXPOSED_CREDENTIALS.
+        Tags findings with compliance frameworks: OWASP LLM (LLM03), MITRE ATLAS (AML.T0020),
+        NIST AI RMF (MAP-3.5, GOVERN-1.7).
+        """
+        try:
+            from agent_bom.security import validate_path
+
+            path = validate_path(directory, must_exist=True, restrict_to_home=True)
+            from agent_bom.parsers.training_pipeline import scan_training_directory
+
+            result = scan_training_directory(path)
+            return _truncate_response(json.dumps(result.to_dict(), indent=2, default=str))
+        except Exception as exc:
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
+
+    # ── Tool 26: browser_extension_scan ──────────────────────────────
+
+    @mcp.tool(annotations=_READ_ONLY, title="Browser Extension Scan")
+    async def browser_extension_scan(
+        include_low_risk: Annotated[
+            bool,
+            Field(description="Include low-risk extensions in results (default: only medium+ risk)."),
+        ] = False,
+    ) -> str:
+        """Scan installed browser extensions for dangerous permissions.
+
+        Scans Chrome, Chromium, Brave, Edge, and Firefox for extensions with:
+        - nativeMessaging (can execute arbitrary commands)
+        - debugger (can intercept all browser traffic)
+        - cookies/clipboardRead on AI domains
+        - Broad host access patterns (*://*/*)
+        - AI assistant domain access (claude.ai, chatgpt.com, cursor.sh)
+
+        Deduplicates across profiles. Returns risk-ranked results.
+        """
+        try:
+            from agent_bom.parsers.browser_extensions import discover_browser_extensions
+
+            exts = discover_browser_extensions(include_low_risk=include_low_risk)
+            return _truncate_response(
+                json.dumps(
+                    {
+                        "extensions": [e.to_dict() for e in exts],
+                        "total": len(exts),
+                        "critical_count": sum(1 for e in exts if e.risk_level == "critical"),
+                        "high_count": sum(1 for e in exts if e.risk_level == "high"),
+                    },
+                    indent=2,
+                    default=str,
+                )
+            )
+        except Exception as exc:
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
+
+    # ── Tool 27: model_provenance_scan ───────────────────────────────
+
+    @mcp.tool(annotations=_READ_ONLY, title="Model Provenance Scan")
+    async def model_provenance_scan(
+        model_id: Annotated[
+            str,
+            Field(description="HuggingFace model ID (e.g. 'meta-llama/Llama-3-8B') or Ollama model name (e.g. 'llama3')."),
+        ],
+        source: Annotated[
+            str,
+            Field(description="Model source: 'huggingface' or 'ollama' (default: huggingface)."),
+        ] = "huggingface",
+    ) -> str:
+        """Check ML model provenance and supply chain metadata.
+
+        Queries HuggingFace Hub or Ollama for:
+        - Serialization format (safetensors=safe, pickle/pt=unsafe)
+        - SHA256 digest verification
+        - Gated/private status
+        - Model card presence
+        - Risk assessment (critical/high/medium/safe)
+
+        Returns structured provenance data for supply chain risk assessment.
+        """
+        try:
+            if source.lower() == "ollama":
+                from agent_bom.cloud.model_provenance import check_ollama_model
+
+                result = check_ollama_model(model_id)
+            else:
+                from agent_bom.cloud.model_provenance import check_hf_model
+
+                result = check_hf_model(model_id)
+            return _truncate_response(json.dumps(result.to_dict(), indent=2, default=str))
+        except Exception as exc:
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
+
+    # ── Tool 28: prompt_scan ─────────────────────────────────────────
+
+    @mcp.tool(annotations=_READ_ONLY, title="Prompt Template Scan")
+    async def prompt_scan(
+        directory: Annotated[
+            str,
+            Field(description="Directory path to scan for prompt template files (.prompt, system_prompt.*, prompts/ directories)."),
+        ],
+    ) -> str:
+        """Scan prompt template files for injection risks and security issues.
+
+        Discovers and analyzes:
+        - .prompt files
+        - system_prompt.* files
+        - Files in prompts/ directories
+
+        Checks for injection patterns, unsafe variable interpolation, and
+        missing guardrails in prompt templates.
+        """
+        try:
+            from agent_bom.security import validate_path
+
+            path = validate_path(directory, must_exist=True, restrict_to_home=True)
+            from agent_bom.parsers.prompt_scanner import scan_prompt_files
+
+            result = scan_prompt_files(root=path)
+            return _truncate_response(
+                json.dumps(
+                    {
+                        "files_scanned": result.files_scanned,
+                        "prompt_files": result.prompt_files[:50],
+                        "passed": result.passed,
+                        "total_findings": len(result.findings),
+                        "findings": [
+                            {
+                                "file": f.file,
+                                "line": f.line,
+                                "severity": f.severity,
+                                "rule": f.rule,
+                                "message": f.message,
+                            }
+                            for f in result.findings[:100]
+                        ],
+                    },
+                    indent=2,
+                    default=str,
+                )
+            )
+        except Exception as exc:
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
+
+    # ── Tool 29: model_file_scan ─────────────────────────────────────
+
+    @mcp.tool(annotations=_READ_ONLY, title="Model File Scan")
+    async def model_file_scan(
+        directory: Annotated[
+            str,
+            Field(description="Directory path to scan for ML model files (.gguf, .safetensors, .onnx, .pt, .pkl, .h5, etc.)."),
+        ],
+    ) -> str:
+        """Scan a directory for ML model files and assess serialization risks.
+
+        Discovers model files and checks:
+        - Serialization format (safetensors=safe, pickle/joblib=unsafe)
+        - File size and format metadata
+        - GGUF/GGML quantization details
+        - Known unsafe patterns in pickle-based formats
+
+        Returns structured results with risk assessment per model file.
+        """
+        try:
+            from agent_bom.security import validate_path
+
+            path = validate_path(directory, must_exist=True, restrict_to_home=True)
+            from agent_bom.model_files import scan_model_files
+
+            model_files, warnings = scan_model_files(str(path))
+            return _truncate_response(
+                json.dumps(
+                    {
+                        "model_files": model_files,
+                        "total": len(model_files),
+                        "unsafe_count": sum(
+                            1 for r in model_files if any(f.get("severity") in ("HIGH", "CRITICAL") for f in r.get("security_flags", []))
+                        ),
+                        "warnings": warnings,
+                    },
+                    indent=2,
+                    default=str,
+                )
+            )
+        except Exception as exc:
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
+
     # ── Custom routes: metadata + health ─────────────────────────────
 
     @mcp.custom_route("/.well-known/mcp/server-card.json", methods=["GET"])
@@ -2084,6 +2328,36 @@ _SERVER_CARD_TOOLS = [
     {
         "name": "gpu_infra_scan",
         "description": "Discover GPU containers, K8s GPU nodes, CUDA versions, and unauthenticated DCGM endpoints (MAESTRO KC6)",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "dataset_card_scan",
+        "description": "Scan dataset cards (HuggingFace, DVC) for licensing, provenance, and compliance tags (LLM03, ART-10)",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "training_pipeline_scan",
+        "description": "Scan MLflow/Kubeflow/W&B training artifacts for lineage, serialization risks, and compliance tags",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "browser_extension_scan",
+        "description": "Scan installed browser extensions for dangerous permissions and AI assistant domain access",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "model_provenance_scan",
+        "description": "Check ML model provenance from HuggingFace Hub or Ollama for supply chain risk signals",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "prompt_scan",
+        "description": "Scan prompt template files for injection risks and unsafe variable interpolation",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "model_file_scan",
+        "description": "Scan model files (.gguf, .safetensors, .pkl, .pt) for serialization risks and format metadata",
         "annotations": {"readOnlyHint": True},
     },
 ]

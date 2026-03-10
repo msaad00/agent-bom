@@ -127,6 +127,8 @@ Pre-commit hooks enforce ruff on every commit. Install once with `pre-commit ins
 4. **PR description:** one-sentence summary, what changed, how to test it. If the PR resolves a GitHub issue, include `Closes #<issue-number>` in the PR body — GitHub will auto-close the issue when the PR merges.
 5. **One review required** — a maintainer will review within a few days.
 
+By submitting a pull request, you certify that your contribution is made under the terms of the Apache-2.0 license and that you have the right to submit it under those terms (Developer Certificate of Origin).
+
 CI checks that run on every PR:
 - `pytest` (all tests)
 - `ruff check` + `ruff format --check`

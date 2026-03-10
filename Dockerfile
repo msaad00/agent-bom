@@ -21,9 +21,11 @@ LABEL maintainer="W S <34316639+msaad00@users.noreply.github.com>"
 LABEL description="Security scanner for AI infrastructure — CVEs, blast radius, credential exposure, runtime enforcement"
 LABEL org.opencontainers.image.version="${VERSION}"
 LABEL org.opencontainers.image.source="https://github.com/msaad00/agent-bom"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
 
 # Copy only installed packages from builder (no git, curl, pip, setuptools)
 COPY --from=builder /install /usr/local
+COPY --from=builder /app/LICENSE /app/LICENSE
 
 # Create non-root user for least-privilege execution
 RUN addgroup --system abom && adduser --system --ingroup abom abom

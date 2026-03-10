@@ -6,8 +6,8 @@
 #
 # Provide this Dockerfile via Glama Admin > Server Settings > Build.
 
-# python:3.12-slim (pinned by hash for OpenSSF Scorecard)
-FROM python:3.12-slim@sha256:ccc7089399c8bb65dd1fb3ed6d55efa538a3f5e7fca3f5988ac3b5b87e593bf0
+# python:3.12-slim (pinned by hash for OpenSSF Scorecard — same as main Dockerfile)
+FROM python:3.12-slim@sha256:39e4e1ccb01578e3c86f7a0cf7b7fd89b8dbe2c27a88de11cf726ba669469f49
 
 WORKDIR /app
 

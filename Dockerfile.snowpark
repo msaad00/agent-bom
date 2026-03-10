@@ -17,9 +17,11 @@ LABEL maintainer="W S <34316639+msaad00@users.noreply.github.com>"
 LABEL description="agent-bom API for Snowpark Container Services"
 LABEL org.opencontainers.image.source="https://github.com/msaad00/agent-bom"
 LABEL org.opencontainers.image.version="${VERSION}"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
 
 # Copy only installed packages from builder (no pip, setuptools)
 COPY --from=builder /install /usr/local
+COPY --from=builder /app/LICENSE /app/LICENSE
 
 RUN addgroup --system abom && adduser --system --ingroup abom abom
 USER abom

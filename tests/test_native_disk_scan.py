@@ -11,6 +11,7 @@ import pytest
 
 from agent_bom.filesystem import (
     FilesystemScanError,
+    parse_apk_installed,
     parse_dpkg_status,
     parse_site_packages,
     scan_disk_path_native,
@@ -294,3 +295,81 @@ class TestScanFilesystemNativeFallback:
         with patch("shutil.which", return_value=None):
             with pytest.raises(FilesystemScanError, match="syft not found"):
                 scan_filesystem(str(tar_file))
+
+    def test_disk_image_gives_mount_instructions(self, tmp_path):
+        """Disk images (.qcow2, .vmdk, etc.) should give mount instructions."""
+        for ext in (".qcow2", ".vmdk", ".vhd", ".raw"):
+            img = tmp_path / f"disk{ext}"
+            img.write_bytes(b"fake")
+            with pytest.raises(FilesystemScanError, match="Mount it first"):
+                scan_filesystem(str(img))
+
+
+# ── parse_apk_installed (Alpine Linux) ────────────────────────────────────────
+
+APK_INSTALLED = """\
+P:busybox
+V:1.36.1-r6
+A:x86_64
+T:Size optimized toolbox of many common UNIX utilities
+
+P:musl
+V:1.2.4_git20230717-r4
+A:x86_64
+T:the musl c library (libc) implementation
+
+P:zlib
+V:1.3-r2
+A:x86_64
+T:A compression/decompression Library
+"""
+
+
+class TestParseApkInstalled:
+    def test_parses_alpine_packages(self, tmp_path):
+        f = tmp_path / "installed"
+        f.write_text(APK_INSTALLED)
+        pkgs = parse_apk_installed(f)
+        assert len(pkgs) == 3
+        names = {p.name for p in pkgs}
+        assert names == {"busybox", "musl", "zlib"}
+
+    def test_ecosystem_is_apk(self, tmp_path):
+        f = tmp_path / "installed"
+        f.write_text(APK_INSTALLED)
+        pkgs = parse_apk_installed(f)
+        assert all(p.ecosystem == "apk" for p in pkgs)
+
+    def test_purl_format(self, tmp_path):
+        f = tmp_path / "installed"
+        f.write_text(APK_INSTALLED)
+        pkgs = parse_apk_installed(f)
+        bb = next(p for p in pkgs if p.name == "busybox")
+        assert bb.purl == "pkg:apk/alpine/busybox@1.36.1-r6"
+
+    def test_missing_file_returns_empty(self, tmp_path):
+        assert parse_apk_installed(tmp_path / "nonexistent") == []
+
+    def test_empty_file(self, tmp_path):
+        f = tmp_path / "installed"
+        f.write_text("")
+        assert parse_apk_installed(f) == []
+
+
+class TestScanDiskPathNativeAlpine:
+    def test_finds_apk_packages(self, tmp_path):
+        apk_dir = tmp_path / "lib" / "apk" / "db"
+        apk_dir.mkdir(parents=True)
+        (apk_dir / "installed").write_text(APK_INSTALLED)
+        pkgs = scan_disk_path_native(tmp_path)
+        assert any(p.name == "busybox" and p.ecosystem == "apk" for p in pkgs)
+
+    def test_finds_node_global_packages(self, tmp_path):
+        node_dir = tmp_path / "usr" / "local" / "lib" / "node_modules" / "typescript"
+        node_dir.mkdir(parents=True)
+        (node_dir / "package.json").write_text(json.dumps({"name": "typescript", "version": "5.3.3"}))
+        pkgs = scan_disk_path_native(tmp_path)
+        ts = [p for p in pkgs if p.name == "typescript"]
+        assert len(ts) == 1
+        assert ts[0].ecosystem == "npm"
+        assert ts[0].version == "5.3.3"

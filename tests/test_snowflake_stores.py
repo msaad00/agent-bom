@@ -42,19 +42,38 @@ SF_PARAMS = {
 
 
 class TestBuildConnectionParams:
-    def test_password_auth(self, monkeypatch):
+    def test_password_auth_deprecated(self, monkeypatch):
+        """SNOWFLAKE_PASSWORD still works but emits DeprecationWarning."""
         monkeypatch.setenv("SNOWFLAKE_ACCOUNT", "acct1")
         monkeypatch.setenv("SNOWFLAKE_USER", "usr1")
         monkeypatch.setenv("SNOWFLAKE_PASSWORD", "pw1")
         monkeypatch.delenv("SNOWFLAKE_PRIVATE_KEY_PATH", raising=False)
 
+        import warnings
+
+        from agent_bom.api.snowflake_store import build_connection_params
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            p = build_connection_params()
+            assert p["account"] == "acct1"
+            assert p["user"] == "usr1"
+            assert p["password"] == "pw1"
+            assert "private_key_file" not in p
+            assert any(issubclass(x.category, DeprecationWarning) for x in w)
+
+    def test_sso_default(self, monkeypatch):
+        """When no key-pair or password is set, defaults to SSO."""
+        monkeypatch.setenv("SNOWFLAKE_ACCOUNT", "acct_sso")
+        monkeypatch.setenv("SNOWFLAKE_USER", "usr_sso")
+        monkeypatch.delenv("SNOWFLAKE_PRIVATE_KEY_PATH", raising=False)
+        monkeypatch.delenv("SNOWFLAKE_PASSWORD", raising=False)
+
         from agent_bom.api.snowflake_store import build_connection_params
 
         p = build_connection_params()
-        assert p["account"] == "acct1"
-        assert p["user"] == "usr1"
-        assert p["password"] == "pw1"
-        assert "private_key_file" not in p
+        assert p["authenticator"] == "externalbrowser"
+        assert "password" not in p
 
     def test_keypair_auth(self, monkeypatch):
         monkeypatch.setenv("SNOWFLAKE_ACCOUNT", "acct2")
@@ -85,16 +104,91 @@ class TestBuildConnectionParams:
 
     def test_custom_database_schema(self, monkeypatch):
         monkeypatch.setenv("SNOWFLAKE_ACCOUNT", "acct4")
-        monkeypatch.setenv("SNOWFLAKE_PASSWORD", "pw")
+        monkeypatch.setenv("SNOWFLAKE_PRIVATE_KEY_PATH", "/keys/rsa.p8")
         monkeypatch.setenv("SNOWFLAKE_DATABASE", "MY_DB")
         monkeypatch.setenv("SNOWFLAKE_SCHEMA", "MY_SCHEMA")
-        monkeypatch.delenv("SNOWFLAKE_PRIVATE_KEY_PATH", raising=False)
+        monkeypatch.delenv("SNOWFLAKE_PASSWORD", raising=False)
 
         from agent_bom.api.snowflake_store import build_connection_params
 
         p = build_connection_params()
         assert p["database"] == "MY_DB"
         assert p["schema"] == "MY_SCHEMA"
+
+
+# ─── _resolve_snowflake_auth ─────────────────────────────────────────────────
+
+
+class TestResolveSnowflakeAuth:
+    def test_explicit_authenticator(self, monkeypatch):
+        monkeypatch.delenv("SNOWFLAKE_AUTHENTICATOR", raising=False)
+        from agent_bom.cloud.snowflake import _resolve_snowflake_auth
+
+        kwargs: dict = {}
+        _resolve_snowflake_auth(kwargs, "oauth")
+        assert kwargs["authenticator"] == "oauth"
+        assert "password" not in kwargs
+
+    def test_env_authenticator(self, monkeypatch):
+        monkeypatch.setenv("SNOWFLAKE_AUTHENTICATOR", "snowflake_jwt")
+        from agent_bom.cloud.snowflake import _resolve_snowflake_auth
+
+        kwargs: dict = {}
+        _resolve_snowflake_auth(kwargs, None)
+        assert kwargs["authenticator"] == "snowflake_jwt"
+
+    def test_keypair_auth(self, monkeypatch):
+        monkeypatch.delenv("SNOWFLAKE_AUTHENTICATOR", raising=False)
+        monkeypatch.setenv("SNOWFLAKE_PRIVATE_KEY_PATH", "/keys/rsa.p8")
+        monkeypatch.setenv("SNOWFLAKE_PRIVATE_KEY_PASSPHRASE", "secret")
+        monkeypatch.delenv("SNOWFLAKE_PASSWORD", raising=False)
+        from agent_bom.cloud.snowflake import _resolve_snowflake_auth
+
+        kwargs: dict = {}
+        _resolve_snowflake_auth(kwargs, None)
+        assert kwargs["private_key_file"] == "/keys/rsa.p8"
+        assert kwargs["private_key_file_pwd"] == "secret"
+        assert "password" not in kwargs
+        assert "authenticator" not in kwargs
+
+    def test_keypair_no_passphrase(self, monkeypatch):
+        monkeypatch.delenv("SNOWFLAKE_AUTHENTICATOR", raising=False)
+        monkeypatch.setenv("SNOWFLAKE_PRIVATE_KEY_PATH", "/keys/rsa.p8")
+        monkeypatch.delenv("SNOWFLAKE_PRIVATE_KEY_PASSPHRASE", raising=False)
+        monkeypatch.delenv("SNOWFLAKE_PASSWORD", raising=False)
+        from agent_bom.cloud.snowflake import _resolve_snowflake_auth
+
+        kwargs: dict = {}
+        _resolve_snowflake_auth(kwargs, None)
+        assert kwargs["private_key_file"] == "/keys/rsa.p8"
+        assert "private_key_file_pwd" not in kwargs
+
+    def test_password_deprecated(self, monkeypatch):
+        import warnings
+
+        monkeypatch.delenv("SNOWFLAKE_AUTHENTICATOR", raising=False)
+        monkeypatch.delenv("SNOWFLAKE_PRIVATE_KEY_PATH", raising=False)
+        monkeypatch.setenv("SNOWFLAKE_PASSWORD", "legacy-pw")
+        from agent_bom.cloud.snowflake import _resolve_snowflake_auth
+
+        kwargs: dict = {}
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _resolve_snowflake_auth(kwargs, None)
+            assert kwargs["password"] == "legacy-pw"
+            assert any(issubclass(x.category, DeprecationWarning) for x in w)
+            assert any("SNOWFLAKE_PASSWORD is deprecated" in str(x.message) for x in w)
+
+    def test_sso_default(self, monkeypatch):
+        monkeypatch.delenv("SNOWFLAKE_AUTHENTICATOR", raising=False)
+        monkeypatch.delenv("SNOWFLAKE_PRIVATE_KEY_PATH", raising=False)
+        monkeypatch.delenv("SNOWFLAKE_PASSWORD", raising=False)
+        from agent_bom.cloud.snowflake import _resolve_snowflake_auth
+
+        kwargs: dict = {}
+        _resolve_snowflake_auth(kwargs, None)
+        assert kwargs["authenticator"] == "externalbrowser"
+        assert "password" not in kwargs
 
 
 # ─── SnowflakeJobStore ───────────────────────────────────────────────────────
@@ -516,9 +610,9 @@ class TestServerLifespanAutoDetect:
         """When SNOWFLAKE_ACCOUNT is set, Snowflake stores are used over SQLite."""
         monkeypatch.setenv("SNOWFLAKE_ACCOUNT", "test_acct")
         monkeypatch.setenv("SNOWFLAKE_USER", "test_user")
-        monkeypatch.setenv("SNOWFLAKE_PASSWORD", "test_pw")
+        monkeypatch.setenv("SNOWFLAKE_PRIVATE_KEY_PATH", "/keys/rsa.p8")
         monkeypatch.setenv("AGENT_BOM_DB", "/tmp/should_not_use.db")
-        monkeypatch.delenv("SNOWFLAKE_PRIVATE_KEY_PATH", raising=False)
+        monkeypatch.delenv("SNOWFLAKE_PASSWORD", raising=False)
 
         mock_sf_connect.return_value = _mock_connection()
 

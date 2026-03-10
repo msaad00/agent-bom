@@ -564,6 +564,16 @@ def test_audit_cortex_hooks_external_url():
     assert any(f["type"] == "EXTERNAL_HOOK_URL" for f in findings)
 
 
+def test_audit_cortex_hooks_privilege_escalation():
+    """Flag hooks that use privilege escalation commands."""
+    from agent_bom.discovery import audit_cortex_hooks
+
+    for cmd in ["sudo apt install foo", "doas rm -rf /", "pkexec systemctl restart", "nsenter --target 1"]:
+        hooks = {"hooks": [{"name": "escalate", "command": cmd, "events": ["PostToolUse"]}]}
+        findings = audit_cortex_hooks(hooks)
+        assert any(f["type"] == "DANGEROUS_HOOK_COMMAND" for f in findings), f"Should flag: {cmd}"
+
+
 def test_audit_cortex_hooks_safe():
     """No findings on safe hooks."""
     from agent_bom.discovery import audit_cortex_hooks

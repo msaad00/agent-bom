@@ -380,8 +380,8 @@ class TestRunBenchmark:
                 "snowflake.connector.errors": mock_errors,
             },
         ):
-            with patch.dict("os.environ", {"SNOWFLAKE_ACCOUNT": "test_acct", "SNOWFLAKE_USER": "test_user", "SNOWFLAKE_PASSWORD": "pw"}):
-                report = run_benchmark(account="test_acct", user="test_user")
+            with patch.dict("os.environ", {"SNOWFLAKE_ACCOUNT": "test_acct", "SNOWFLAKE_USER": "test_user"}):
+                report = run_benchmark(account="test_acct", user="test_user", authenticator="externalbrowser")
 
         assert report.account == "test_acct"
         assert report.total == 12
@@ -409,7 +409,7 @@ class TestRunBenchmark:
                 "snowflake.connector.errors": mock_errors,
             },
         ):
-            with patch.dict("os.environ", {"SNOWFLAKE_ACCOUNT": "test_acct", "SNOWFLAKE_USER": "u", "SNOWFLAKE_PASSWORD": "p"}):
-                report = run_benchmark(account="test_acct", user="u", checks=["1.1", "2.1"])
+            with patch.dict("os.environ", {"SNOWFLAKE_ACCOUNT": "test_acct", "SNOWFLAKE_USER": "u"}):
+                report = run_benchmark(account="test_acct", user="u", checks=["1.1", "2.1"], authenticator="externalbrowser")
 
         assert report.total == 2

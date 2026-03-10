@@ -64,8 +64,11 @@ metadata:
       - name: SNOWFLAKE_USER
         purpose: "Snowflake CIS benchmark checks"
         required: false
-      - name: SNOWFLAKE_PASSWORD
-        purpose: "Snowflake CIS benchmark checks"
+      - name: SNOWFLAKE_PRIVATE_KEY_PATH
+        purpose: "Snowflake key-pair auth (CI/CD)"
+        required: false
+      - name: SNOWFLAKE_AUTHENTICATOR
+        purpose: "Snowflake auth method (default: externalbrowser SSO)"
         required: false
     optional_bins:
       - syft

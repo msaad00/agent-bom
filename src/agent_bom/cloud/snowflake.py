@@ -14,7 +14,10 @@ agent-bom never stores credentials. Auth resolution order:
    - ``snowflake_jwt``     — RSA key-pair (set SNOWFLAKE_PRIVATE_KEY_PATH)
    - ``oauth``             — OAuth access token (set SNOWFLAKE_TOKEN)
 
-2. ``SNOWFLAKE_PASSWORD`` env var — password auth (not recommended; use SSO or key-pair)
+2. ``SNOWFLAKE_PRIVATE_KEY_PATH`` env var — RSA key-pair auth (recommended for CI/CD)
+
+3. ``SNOWFLAKE_PASSWORD`` env var — **deprecated**, emits a runtime warning.
+   Migrate to SSO (``externalbrowser``) or key-pair (``SNOWFLAKE_PRIVATE_KEY_PATH``).
 
 All credentials are read from environment at runtime and passed directly to the
 Snowflake connector. They are never logged, stored, or transmitted by agent-bom.
@@ -32,6 +35,7 @@ import json
 import logging
 import os
 import re
+import warnings
 from typing import Any
 
 from agent_bom.governance import (
@@ -53,6 +57,49 @@ from agent_bom.security import sanitize_error
 from .base import CloudDiscoveryError
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_snowflake_auth(
+    conn_kwargs: dict[str, Any],
+    authenticator: str | None,
+) -> None:
+    """Resolve Snowflake auth into *conn_kwargs* in-place.
+
+    Priority: explicit authenticator → SNOWFLAKE_AUTHENTICATOR env →
+    key-pair (SNOWFLAKE_PRIVATE_KEY_PATH) → SNOWFLAKE_PASSWORD (deprecated) →
+    externalbrowser SSO (safe default).
+    """
+    if not authenticator:
+        authenticator = os.environ.get("SNOWFLAKE_AUTHENTICATOR", "")
+    if authenticator:
+        conn_kwargs["authenticator"] = authenticator
+        return
+
+    # Key-pair auth (recommended for CI/CD)
+    key_path = os.environ.get("SNOWFLAKE_PRIVATE_KEY_PATH", "")
+    if key_path:
+        conn_kwargs["private_key_file"] = key_path
+        passphrase = os.environ.get("SNOWFLAKE_PRIVATE_KEY_PASSPHRASE", "")
+        if passphrase:
+            conn_kwargs["private_key_file_pwd"] = passphrase
+        return
+
+    # Password auth — deprecated, emit warning
+    password = os.environ.get("SNOWFLAKE_PASSWORD", "")
+    if password:
+        warnings.warn(
+            "SNOWFLAKE_PASSWORD is deprecated and will be removed in a future release. "
+            "Migrate to SSO (SNOWFLAKE_AUTHENTICATOR=externalbrowser) or key-pair "
+            "(SNOWFLAKE_PRIVATE_KEY_PATH). See https://github.com/msaad00/agent-bom#auth",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        conn_kwargs["password"] = password
+        return
+
+    # Safe default — SSO via browser
+    conn_kwargs["authenticator"] = "externalbrowser"
+
 
 # Snowflake identifier safety: only allow alphanumeric, underscore, dot, dollar
 _SAFE_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.$]*$")
@@ -109,19 +156,7 @@ def discover(
     if schema:
         conn_kwargs["schema"] = schema
 
-    # Auth resolution: authenticator arg → SNOWFLAKE_AUTHENTICATOR env →
-    # SNOWFLAKE_PASSWORD env → externalbrowser (SSO) as safe default.
-    # Credentials are never stored or logged by agent-bom.
-    if not authenticator:
-        authenticator = os.environ.get("SNOWFLAKE_AUTHENTICATOR", "")
-    if authenticator:
-        conn_kwargs["authenticator"] = authenticator
-    else:
-        password = os.environ.get("SNOWFLAKE_PASSWORD", "")
-        if password:
-            conn_kwargs["password"] = password
-        else:
-            conn_kwargs["authenticator"] = "externalbrowser"
+    _resolve_snowflake_auth(conn_kwargs, authenticator)
 
     try:
         conn = snowflake.connector.connect(**conn_kwargs)
@@ -719,16 +754,7 @@ def discover_governance(
     if schema:
         conn_kwargs["schema"] = schema
 
-    if not authenticator:
-        authenticator = os.environ.get("SNOWFLAKE_AUTHENTICATOR", "")
-    if authenticator:
-        conn_kwargs["authenticator"] = authenticator
-    else:
-        password = os.environ.get("SNOWFLAKE_PASSWORD", "")
-        if password:
-            conn_kwargs["password"] = password
-        else:
-            conn_kwargs["authenticator"] = "externalbrowser"
+    _resolve_snowflake_auth(conn_kwargs, authenticator)
 
     try:
         conn = snowflake.connector.connect(**conn_kwargs)
@@ -1401,16 +1427,7 @@ def discover_activity(
     if schema:
         conn_kwargs["schema"] = schema
 
-    if not authenticator:
-        authenticator = os.environ.get("SNOWFLAKE_AUTHENTICATOR", "")
-    if authenticator:
-        conn_kwargs["authenticator"] = authenticator
-    else:
-        password = os.environ.get("SNOWFLAKE_PASSWORD", "")
-        if password:
-            conn_kwargs["password"] = password
-        else:
-            conn_kwargs["authenticator"] = "externalbrowser"
+    _resolve_snowflake_auth(conn_kwargs, authenticator)
 
     try:
         conn = snowflake.connector.connect(**conn_kwargs)

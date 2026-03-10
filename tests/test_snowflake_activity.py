@@ -405,7 +405,7 @@ class TestDiscoverActivity:
 
             mock_connector.connect.side_effect = Exception("connection refused")
 
-            with patch.dict("os.environ", {"SNOWFLAKE_ACCOUNT": "test", "SNOWFLAKE_PASSWORD": "pw"}):
+            with patch.dict("os.environ", {"SNOWFLAKE_ACCOUNT": "test"}):
                 timeline = discover_activity(account="test")
                 assert any("Could not connect" in w for w in timeline.warnings)
         finally:
@@ -462,7 +462,7 @@ class TestDiscoverActivity:
 
             conn.cursor.side_effect = [qh_cursor, obs_cursor]
 
-            with patch.dict("os.environ", {"SNOWFLAKE_ACCOUNT": "test", "SNOWFLAKE_PASSWORD": "pw"}):
+            with patch.dict("os.environ", {"SNOWFLAKE_ACCOUNT": "test"}):
                 timeline = discover_activity(account="test")
                 assert timeline.account == "test"
                 assert len(timeline.query_history) == 1

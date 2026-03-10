@@ -3538,9 +3538,14 @@ def scan(
     # Step 9: Exit code based on policy flags
     exit_code = 0
 
-    if fail_on_severity and blast_radii:
+    # Filter blast radii to exclude VEX-suppressed vulnerabilities (not_affected / fixed)
+    from agent_bom.vex import is_vex_suppressed as _is_vex_suppressed
+
+    _active_blast_radii = [br for br in blast_radii if not _is_vex_suppressed(br.vulnerability)]
+
+    if fail_on_severity and _active_blast_radii:
         threshold = SEVERITY_ORDER.get(fail_on_severity, 0)
-        for br in blast_radii:
+        for br in _active_blast_radii:
             sev = br.vulnerability.severity.value.lower()
             if SEVERITY_ORDER.get(sev, 0) >= threshold:
                 if not quiet:
@@ -3548,8 +3553,8 @@ def scan(
                 exit_code = 1
                 break
 
-    if fail_on_kev and blast_radii:
-        kev_findings = [br for br in blast_radii if br.vulnerability.is_kev]
+    if fail_on_kev and _active_blast_radii:
+        kev_findings = [br for br in _active_blast_radii if br.vulnerability.is_kev]
         if kev_findings:
             if not quiet:
                 con.print(
@@ -3558,8 +3563,8 @@ def scan(
                 )
             exit_code = 1
 
-    if fail_if_ai_risk and blast_radii:
-        ai_findings = [br for br in blast_radii if br.ai_risk_context and br.exposed_credentials]
+    if fail_if_ai_risk and _active_blast_radii:
+        ai_findings = [br for br in _active_blast_radii if br.ai_risk_context and br.exposed_credentials]
         if ai_findings:
             if not quiet:
                 con.print(

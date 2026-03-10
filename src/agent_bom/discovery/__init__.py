@@ -638,7 +638,8 @@ def audit_cortex_permissions(permissions: dict) -> list[dict]:
 # Patterns that indicate dangerous hook commands
 _DANGEROUS_HOOK_PATTERNS = re.compile(
     r"(curl\s.*\|\s*(?:ba)?sh|wget\s.*\|\s*(?:ba)?sh|exec\s|eval\s|"
-    r"python\s+-c|node\s+-e|rm\s+-rf|chmod\s+777|>\s*/dev/)",
+    r"python\s+-c|node\s+-e|rm\s+-rf|chmod\s+777|>\s*/dev/|"
+    r"sudo\s|doas\s|pkexec\s|chown\s+root|setuid|nsenter\s)",
     re.IGNORECASE,
 )
 

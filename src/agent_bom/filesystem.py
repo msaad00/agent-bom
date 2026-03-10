@@ -78,6 +78,17 @@ def scan_filesystem(path: str, timeout: int = 600) -> tuple[list[Package], str]:
             "syft not found on PATH — required for tar/archive scanning. Install from https://github.com/anchore/syft"
         )
 
+    # Provide helpful guidance for disk image formats
+    disk_image_exts = {".qcow2", ".vmdk", ".vhd", ".vhdx", ".raw", ".img"}
+    if validated.suffix.lower() in disk_image_exts:
+        raise FilesystemScanError(
+            f"Cannot scan disk image '{validated.name}' directly. "
+            f"Mount it first, then scan the mount point:\n"
+            f"  # Linux:  sudo mount -o loop,ro {validated} /mnt/snapshot\n"
+            f"  # QCOW2:  sudo qemu-nbd -c /dev/nbd0 {validated} && sudo mount /dev/nbd0p1 /mnt/snapshot\n"
+            f"  # Then:   agent-bom scan --filesystem /mnt/snapshot"
+        )
+
     raise FilesystemScanError(f"Unsupported path type: {validated}. Expected a directory or .tar/.tar.gz/.tgz archive.")
 
 
@@ -161,6 +172,61 @@ def parse_dpkg_status(status_file: Path) -> list[Package]:
         elif ":" in raw_line and not raw_line.startswith(" "):
             key, _, value = raw_line.partition(":")
             current[key.strip()] = value.strip()
+
+    return packages
+
+
+def parse_apk_installed(installed_file: Path) -> list[Package]:
+    """Parse installed packages from an Alpine Linux ``lib/apk/db/installed`` file.
+
+    Works on live Alpine systems and mounted VM/container snapshots.
+
+    Args:
+        installed_file: Path to the ``lib/apk/db/installed`` file.
+
+    Returns:
+        List of :class:`~agent_bom.models.Package` objects with
+        ``ecosystem="apk"``.
+    """
+    if not installed_file.exists():
+        return []
+
+    packages: list[Package] = []
+    current: dict[str, str] = {}
+
+    for raw_line in installed_file.read_text(errors="replace").splitlines():
+        if raw_line.strip() == "":
+            if current.get("P") and current.get("V"):
+                name = current["P"]
+                version = current["V"]
+                packages.append(
+                    Package(
+                        name=name,
+                        version=version,
+                        ecosystem="apk",
+                        purl=f"pkg:apk/alpine/{name}@{version}",
+                        is_direct=True,
+                    )
+                )
+            current = {}
+        elif len(raw_line) >= 2 and raw_line[1] == ":":
+            key = raw_line[0]
+            value = raw_line[2:]
+            current[key] = value
+
+    # Handle last stanza without trailing blank line
+    if current.get("P") and current.get("V"):
+        name = current["P"]
+        version = current["V"]
+        packages.append(
+            Package(
+                name=name,
+                version=version,
+                ecosystem="apk",
+                purl=f"pkg:apk/alpine/{name}@{version}",
+                is_direct=True,
+            )
+        )
 
     return packages
 
@@ -300,11 +366,41 @@ def scan_disk_path_native(root: Path) -> list[Package]:
         logger.debug("native-dir: found %d deb packages in %s", len(deb_pkgs), dpkg_status)
     packages.extend(deb_pkgs)
 
+    # Alpine Linux (apk)
+    apk_installed = root / "lib" / "apk" / "db" / "installed"
+    apk_pkgs = parse_apk_installed(apk_installed)
+    if apk_pkgs:
+        logger.debug("native-dir: found %d apk packages in %s", len(apk_pkgs), apk_installed)
+    packages.extend(apk_pkgs)
+
     # RPM / RHEL / CentOS / Fedora
     rpm_pkgs = parse_rpm_packages(root)
     if rpm_pkgs:
         logger.debug("native-dir: found %d rpm packages via rpm --dbpath", len(rpm_pkgs))
     packages.extend(rpm_pkgs)
+
+    # Node.js global packages
+    for node_pattern in (
+        "usr/lib/node_modules/*/package.json",
+        "usr/local/lib/node_modules/*/package.json",
+    ):
+        for pkg_json_path in root.glob(node_pattern):
+            try:
+                pkg_data = json.loads(pkg_json_path.read_text(errors="replace"))
+                name = pkg_data.get("name", "")
+                version = pkg_data.get("version", "")
+                if name and version:
+                    packages.append(
+                        Package(
+                            name=name,
+                            version=version,
+                            ecosystem="npm",
+                            purl=f"pkg:npm/{name}@{version}",
+                            is_direct=True,
+                        )
+                    )
+            except (json.JSONDecodeError, OSError):
+                continue
 
     # Python site-packages / dist-packages
     for pattern in (

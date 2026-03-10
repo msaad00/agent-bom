@@ -79,10 +79,16 @@ def print_posture_summary(report: AIBOMReport) -> None:
                 for cred in server.credential_names:
                     cred_map.setdefault(cred, []).append(f"{agent.name}/{server.name}")
 
-    # Vulnerability severity breakdown
+    # Vulnerability severity breakdown (excluding VEX-suppressed)
+    from agent_bom.vex import is_vex_suppressed
+
     sev_counts: Counter[str] = Counter()
+    vex_suppressed_count = 0
     for br in report.blast_radii:
-        sev_counts[br.vulnerability.severity.value.upper()] += 1
+        if is_vex_suppressed(br.vulnerability):
+            vex_suppressed_count += 1
+        else:
+            sev_counts[br.vulnerability.severity.value.upper()] += 1
 
     # Posture headline
     if report.total_vulnerabilities == 0:
@@ -149,7 +155,10 @@ def print_posture_summary(report: AIBOMReport) -> None:
         lines.append("  [bold]Privileges[/bold]        None elevated")
 
     # Vulnerability count
-    lines.append(f"  [bold]Vulnerabilities[/bold]   {report.total_vulnerabilities}")
+    vuln_label = str(report.total_vulnerabilities)
+    if vex_suppressed_count:
+        vuln_label += f" ({vex_suppressed_count} suppressed by VEX)"
+    lines.append(f"  [bold]Vulnerabilities[/bold]   {vuln_label}")
 
     # Ecosystem breakdown section
     if ecosystem_pkgs:

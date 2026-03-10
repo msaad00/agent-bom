@@ -12,8 +12,9 @@ Required privileges (all read-only):
     SHOW ROLES
 
 Authentication uses standard Snowflake connector auth:
-    SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_PASSWORD env vars,
-    or external browser / key pair / SSO.
+    SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER env vars +
+    SSO (externalbrowser), key-pair (SNOWFLAKE_PRIVATE_KEY_PATH), or OAuth.
+    SNOWFLAKE_PASSWORD is deprecated — use SSO or key-pair instead.
 
 Install: ``pip install 'agent-bom[snowflake]'``
 """
@@ -534,14 +535,9 @@ def run_benchmark(
         "account": resolved_account,
         "user": resolved_user,
     }
-    if authenticator:
-        conn_kwargs["authenticator"] = authenticator
-    if not authenticator:
-        password = os.environ.get("SNOWFLAKE_PASSWORD", "")
-        if password:
-            conn_kwargs["password"] = password
-        else:
-            conn_kwargs["authenticator"] = "externalbrowser"
+    from .snowflake import _resolve_snowflake_auth
+
+    _resolve_snowflake_auth(conn_kwargs, authenticator)
 
     try:
         conn = snowflake.connector.connect(**conn_kwargs)

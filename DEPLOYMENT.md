@@ -406,8 +406,9 @@ The Snowflake stores auto-detect auth method:
 
 | Env Var | Method |
 |---------|--------|
-| `SNOWFLAKE_PRIVATE_KEY_PATH` | Key-pair auth (preferred for service accounts) |
-| `SNOWFLAKE_PASSWORD` | Password auth (fallback) |
+| `SNOWFLAKE_PRIVATE_KEY_PATH` | Key-pair auth (preferred for CI/CD and service accounts) |
+| `SNOWFLAKE_AUTHENTICATOR` | Auth method: `externalbrowser` (SSO, default), `oauth`, `snowflake_jwt` |
+| `SNOWFLAKE_PASSWORD` | **Deprecated** — emits warning. Migrate to key-pair or SSO |
 
 Additional env vars: `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_DATABASE` (default: `AGENT_BOM`), `SNOWFLAKE_SCHEMA` (default: `PUBLIC`).
 
@@ -493,10 +494,13 @@ agent-bom scan --remote ssh://user@vm.example.com --key ~/.ssh/id_rsa
 #### 3. API-Based Cloud Scanning
 
 ```python
-# Scan Snowflake Cortex via API
+# Scan Snowflake Cortex via API (uses SSO by default)
 agent-bom scan --snowflake-account myaccount \
-               --snowflake-user myuser \
-               --snowflake-password-env SNOWFLAKE_PASSWORD
+               --snowflake-user myuser
+
+# Or with key-pair auth (CI/CD)
+SNOWFLAKE_PRIVATE_KEY_PATH=~/.ssh/sf_key.p8 \
+agent-bom scan --snowflake-account myaccount --snowflake-user myuser
 
 # Scan AWS Bedrock via API
 agent-bom scan --aws-region us-east-1 \
@@ -616,7 +620,7 @@ if new_packages:
 ```bash
 # Use environment variables (not CLI args)
 export NVD_API_KEY=xxx
-export SNOWFLAKE_PASSWORD=xxx
+export SNOWFLAKE_PRIVATE_KEY_PATH=~/.ssh/snowflake_key.p8
 
 agent-bom scan --enrich
 

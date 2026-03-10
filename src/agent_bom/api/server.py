@@ -624,6 +624,21 @@ class ScanRequest(BaseModel):
     dynamic_max_depth: int = 4
     """Max directory depth for dynamic discovery."""
 
+    scope_agents: list[str] = []
+    """Filter discovered agents by name (glob patterns, e.g. ['claude-*', 'cursor'])."""
+
+    scope_servers: list[str] = []
+    """Filter discovered MCP servers by name (glob patterns)."""
+
+    exclude_agents: list[str] = []
+    """Exclude agents matching these name patterns."""
+
+    exclude_servers: list[str] = []
+    """Exclude MCP servers matching these name patterns."""
+
+    min_severity: str | None = None
+    """Minimum severity to include in results (low/medium/high/critical)."""
+
 
 class ScanJob(BaseModel):
     """Represents a running or completed scan job."""
@@ -992,6 +1007,27 @@ def _run_scan_sync(job: ScanJob) -> None:
 
         pipeline.complete_step("discovery", f"Found {len(agents)} agent(s)", {"agents": len(agents)})
 
+        # ── Scope filtering (pre-extraction) ──
+        if req.scope_agents or req.scope_servers or req.exclude_agents or req.exclude_servers:
+            import fnmatch
+
+            pre_filter = len(agents)
+            if req.scope_agents:
+                agents = [a for a in agents if any(fnmatch.fnmatch(a.name, pat) for pat in req.scope_agents)]
+            if req.exclude_agents:
+                agents = [a for a in agents if not any(fnmatch.fnmatch(a.name, pat) for pat in req.exclude_agents)]
+            if req.scope_servers or req.exclude_servers:
+                for agent in agents:
+                    if req.scope_servers:
+                        agent.mcp_servers = [s for s in agent.mcp_servers if any(fnmatch.fnmatch(s.name, pat) for pat in req.scope_servers)]
+                    if req.exclude_servers:
+                        agent.mcp_servers = [
+                            s for s in agent.mcp_servers if not any(fnmatch.fnmatch(s.name, pat) for pat in req.exclude_servers)
+                        ]
+            filtered_count = pre_filter - len(agents)
+            if filtered_count:
+                pipeline.update_step("discovery", f"Scope filter removed {filtered_count} agent(s)")
+
         if not agents:
             pipeline.skip_step("extraction", "No agents to extract")
             pipeline.skip_step("scanning", "No packages to scan")
@@ -1018,6 +1054,12 @@ def _run_scan_sync(job: ScanJob) -> None:
         blast_radii = scan_agents_sync(agents, enable_enrichment=req.enrich)
         total_vulns = sum(len(p.vulnerabilities) for a in agents for s in a.mcp_servers for p in s.packages)
         pipeline.complete_step("scanning", f"Found {total_vulns} vulnerabilities", {"vulnerabilities": total_vulns})
+
+        # ── Severity filtering (post-scan) ──
+        if req.min_severity:
+            _sev_order = {"low": 1, "medium": 2, "high": 3, "critical": 4}
+            _min = _sev_order.get(req.min_severity.lower(), 0)
+            blast_radii = [br for br in blast_radii if _sev_order.get(br.vulnerability.severity.value.lower(), 0) >= _min]
 
         # ── Enrichment phase ──
         if req.enrich:

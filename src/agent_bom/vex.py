@@ -196,10 +196,21 @@ def generate_vex(report: "AIBOMReport", auto_triage: bool = False) -> VexDocumen
 # ---------------------------------------------------------------------------
 
 
+_VEX_SUPPRESSED_STATUSES = frozenset({VexStatus.NOT_AFFECTED.value, VexStatus.FIXED.value})
+
+
+def is_vex_suppressed(vuln) -> bool:
+    """Return True if a vulnerability is suppressed by VEX (not_affected or fixed)."""
+    return vuln.vex_status in _VEX_SUPPRESSED_STATUSES
+
+
 def apply_vex(report: "AIBOMReport", vex: VexDocument) -> int:
     """Apply VEX statements to a report's vulnerabilities.
 
     Sets vex_status and vex_justification on matching Vulnerability objects.
+    Vulnerabilities with status ``not_affected`` or ``fixed`` are considered
+    suppressed — they remain in the data model for audit but are excluded
+    from counts, exit codes, and severity-gate logic via :func:`is_vex_suppressed`.
     Returns count of vulnerabilities updated.
     """
     # Build lookup: vuln_id → statement

@@ -8,14 +8,17 @@ Provides pluggable Snowflake persistence for all three store protocols:
 Requires ``pip install 'agent-bom[snowflake]'``.
 
 Auth auto-detection:
-  - If ``SNOWFLAKE_PRIVATE_KEY_PATH`` is set → key-pair auth
-  - Otherwise falls back to ``SNOWFLAKE_PASSWORD``
+  - If ``SNOWFLAKE_PRIVATE_KEY_PATH`` is set → key-pair auth (recommended)
+  - If ``SNOWFLAKE_AUTHENTICATOR`` is set → that authenticator (e.g. externalbrowser)
+  - Otherwise falls back to SSO (externalbrowser) as safe default
+  - ``SNOWFLAKE_PASSWORD`` is deprecated — emits a warning if used
 """
 
 from __future__ import annotations
 
 import json
 import os
+import warnings
 from datetime import datetime, timezone
 
 from .fleet_store import FleetAgent, FleetLifecycleState
@@ -45,8 +48,16 @@ def build_connection_params() -> dict:
         passphrase = os.environ.get("SNOWFLAKE_PRIVATE_KEY_PASSPHRASE")
         if passphrase:
             params["private_key_file_pwd"] = passphrase
+    elif os.environ.get("SNOWFLAKE_PASSWORD"):
+        warnings.warn(
+            "SNOWFLAKE_PASSWORD is deprecated. Migrate to key-pair (SNOWFLAKE_PRIVATE_KEY_PATH) or SSO.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        params["password"] = os.environ["SNOWFLAKE_PASSWORD"]
     else:
-        params["password"] = os.environ.get("SNOWFLAKE_PASSWORD", "")
+        # Safe default — SSO via browser
+        params["authenticator"] = "externalbrowser"
     params["database"] = os.environ.get("SNOWFLAKE_DATABASE", "AGENT_BOM")
     params["schema"] = os.environ.get("SNOWFLAKE_SCHEMA", "PUBLIC")
     return params

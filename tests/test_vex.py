@@ -21,6 +21,7 @@ from agent_bom.vex import (
     apply_vex,
     export_openvex,
     generate_vex,
+    is_vex_suppressed,
     load_vex,
     to_serializable,
 )
@@ -518,3 +519,73 @@ class TestSerialization:
         data = to_serializable(doc)
         json_str = json.dumps(data)
         assert "CVE-2024-1234" in json_str
+
+
+# ---------------------------------------------------------------------------
+# VEX Enforcement — is_vex_suppressed
+# ---------------------------------------------------------------------------
+
+
+class TestIsVexSuppressed:
+    def test_not_affected_is_suppressed(self):
+        v = _vuln("CVE-2024-0001")
+        v.vex_status = "not_affected"
+        assert is_vex_suppressed(v) is True
+
+    def test_fixed_is_suppressed(self):
+        v = _vuln("CVE-2024-0002", severity=Severity.CRITICAL)
+        v.vex_status = "fixed"
+        assert is_vex_suppressed(v) is True
+
+    def test_affected_is_not_suppressed(self):
+        v = _vuln("CVE-2024-0003")
+        v.vex_status = "affected"
+        assert is_vex_suppressed(v) is False
+
+    def test_under_investigation_is_not_suppressed(self):
+        v = _vuln("CVE-2024-0004", severity=Severity.MEDIUM)
+        v.vex_status = "under_investigation"
+        assert is_vex_suppressed(v) is False
+
+    def test_no_vex_status_is_not_suppressed(self):
+        v = _vuln("CVE-2024-0005", severity=Severity.LOW)
+        assert is_vex_suppressed(v) is False
+
+    def test_none_vex_status_is_not_suppressed(self):
+        v = _vuln("CVE-2024-0006")
+        v.vex_status = None
+        assert is_vex_suppressed(v) is False
+
+    def test_apply_then_suppress(self):
+        """Full flow: apply VEX, then check suppression."""
+        vuln = _vuln("CVE-2024-1000", severity=Severity.CRITICAL)
+        pkg = _pkg(vulns=[vuln])
+        server = _server(packages=[pkg])
+        agent = _agent(servers=[server])
+        report = AIBOMReport(agents=[agent])
+
+        doc = VexDocument(
+            statements=[
+                VexStatement(
+                    vulnerability_id="CVE-2024-1000",
+                    status=VexStatus.NOT_AFFECTED,
+                    justification=VexJustification.VULNERABLE_CODE_NOT_PRESENT,
+                ),
+            ]
+        )
+        count = apply_vex(report, doc)
+        assert count == 1
+        assert is_vex_suppressed(vuln) is True
+
+    def test_suppressed_vulns_excluded_from_active_count(self):
+        """Active blast radii exclude VEX-suppressed vulnerabilities."""
+        v1 = _vuln("CVE-2024-A", severity=Severity.CRITICAL)
+        v1.vex_status = "not_affected"
+        v2 = _vuln("CVE-2024-B")
+        v3 = _vuln("CVE-2024-C", severity=Severity.MEDIUM)
+        v3.vex_status = "fixed"
+
+        all_vulns = [v1, v2, v3]
+        active = [v for v in all_vulns if not is_vex_suppressed(v)]
+        assert len(active) == 1
+        assert active[0].id == "CVE-2024-B"

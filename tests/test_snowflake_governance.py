@@ -703,7 +703,7 @@ class TestDiscoverGovernance:
 
             mock_connector.connect.side_effect = Exception("connection refused")
 
-            with patch.dict("os.environ", {"SNOWFLAKE_ACCOUNT": "test", "SNOWFLAKE_PASSWORD": "pw"}):
+            with patch.dict("os.environ", {"SNOWFLAKE_ACCOUNT": "test"}):
                 report = discover_governance(account="test")
                 assert any("Could not connect" in w for w in report.warnings)
         finally:
@@ -753,7 +753,7 @@ class TestDiscoverGovernance:
 
             conn.cursor.side_effect = cursors
 
-            with patch.dict("os.environ", {"SNOWFLAKE_ACCOUNT": "test", "SNOWFLAKE_PASSWORD": "pw"}):
+            with patch.dict("os.environ", {"SNOWFLAKE_ACCOUNT": "test"}):
                 report = discover_governance(account="test")
                 assert report.account == "test"
                 assert len(report.access_records) == 1

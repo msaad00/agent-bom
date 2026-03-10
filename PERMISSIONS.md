@@ -216,7 +216,7 @@ follows the principle of least privilege with read-only scopes.
 
 | Provider | Preferred auth | Fallback | What we read |
 |----------|---------------|----------|--------------|
-| **Snowflake** | SSO via `externalbrowser` (Okta/Azure AD/Google) — default when no password set | `SNOWFLAKE_PASSWORD` env (not recommended) | Read-only SQL on ACCOUNT_USAGE |
+| **Snowflake** | SSO via `externalbrowser` (Okta/Azure AD/Google) — default | Key-pair (`SNOWFLAKE_PRIVATE_KEY_PATH`) for CI/CD | Read-only SQL on ACCOUNT_USAGE |
 | **Databricks** | SDK credential chain: `~/.databrickscfg` OAuth profile or workload identity | `DATABRICKS_TOKEN` PAT env | Read-only cluster/library listing |
 | **AWS** | IAM role / OIDC workload identity (GitHub Actions) / `~/.aws/credentials` profile | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` env | Read-only: `Describe*`, `List*`, `Get*` |
 | **Azure** | Managed identity / `az login` / service principal | `AZURE_CLIENT_SECRET` env | Read-only resource listing |
@@ -227,15 +227,19 @@ follows the principle of least privilege with read-only scopes.
 ### Snowflake — explicit auth options
 
 ```bash
-# Preferred: SSO (default when SNOWFLAKE_PASSWORD is not set)
+# Preferred: SSO (default — opens browser for Okta/Azure AD/Google)
+agent-bom scan --snowflake
+
+# Key-pair auth (recommended for CI/CD — no browser needed)
+SNOWFLAKE_PRIVATE_KEY_PATH=~/.ssh/snowflake_key.p8 \
 agent-bom scan --snowflake
 
 # Explicit SSO
 agent-bom scan --snowflake --snowflake-authenticator externalbrowser
 
-# Key-pair (no password)
-SNOWFLAKE_PRIVATE_KEY_PATH=~/.ssh/snowflake_key.p8 \
-agent-bom scan --snowflake --snowflake-authenticator snowflake_jwt
+# OAuth access token
+SNOWFLAKE_AUTHENTICATOR=oauth SNOWFLAKE_TOKEN=<token> \
+agent-bom scan --snowflake
 
 # OAuth token
 SNOWFLAKE_TOKEN=<token> \

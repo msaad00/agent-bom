@@ -449,7 +449,14 @@ def check_claude_config(config_path: str) -> list[EnforcementFinding]:
     # 3. ANTHROPIC_BASE_URL redirect
     env = data.get("env", {})
     base_url = env.get("ANTHROPIC_BASE_URL", "")
-    if base_url and "api.anthropic.com" not in base_url:
+    if base_url:
+        from urllib.parse import urlparse
+
+        _parsed_host = urlparse(base_url).hostname or ""
+        _is_anthropic = _parsed_host == "api.anthropic.com" or _parsed_host.endswith(".anthropic.com")
+    else:
+        _is_anthropic = True  # no override = safe
+    if base_url and not _is_anthropic:
         findings.append(
             EnforcementFinding(
                 severity="high",

@@ -150,8 +150,14 @@ def _assess_extension_risk(
     if broad_found:
         reasons.append(f"Broad host access: {', '.join(sorted(broad_found))}")
 
-    # AI assistant host access
-    ai_hosts_matched = [h for h in all_hosts if any(ai in h for ai in _AI_ASSISTANT_HOSTS)]
+    # AI assistant host access (proper domain suffix matching)
+    def _host_matches_domain(host_pattern: str, domain: str) -> bool:
+        """Check if a host permission pattern matches a domain or its subdomains."""
+        # Strip protocol and wildcard prefixes: *://*.claude.ai/* → claude.ai
+        h = host_pattern.split("://")[-1].lstrip("*.").rstrip("/*").lower()
+        return h == domain or h.endswith(f".{domain}")
+
+    ai_hosts_matched = [h for h in all_hosts if any(_host_matches_domain(h, ai) for ai in _AI_ASSISTANT_HOSTS)]
     for h in sorted(ai_hosts_matched):
         reasons.append(f"Access to AI assistant domain: {h}")
     has_ai_access = bool(ai_hosts_matched) or bool(broad_found)

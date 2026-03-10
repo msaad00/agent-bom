@@ -170,7 +170,7 @@ def _check_1_5(project_id: str) -> CISCheckResult:
             if role in primitive_roles:
                 members = binding.get("members", [])
                 # Exclude service agents and GCP-managed accounts
-                user_members = [m for m in members if not m.startswith("serviceAccount:") or "gserviceaccount.com" not in m]
+                user_members = [m for m in members if not (m.startswith("serviceAccount:") and m.endswith(".iam.gserviceaccount.com"))]
                 for m in user_members:
                     failing_members.append(f"{role}: {m}")
 

@@ -3,7 +3,7 @@
   "name": "io.github.msaad00/agent-bom",
   "description": "Security scanner for AI infrastructure — CVEs, blast radius, compliance, policy, SBOMs",
   "title": "agent-bom",
-  "version": "0.68.1",
+  "version": "0.68.2",
   "license": "Apache-2.0",
   "repository": {
     "url": "https://github.com/msaad00/agent-bom",
@@ -13,7 +13,7 @@
     {
       "registryType": "pypi",
       "identifier": "agent-bom",
-      "version": "0.68.1",
+      "version": "0.68.2",
       "transport": {
         "type": "stdio"
       },

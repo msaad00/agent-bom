@@ -1615,6 +1615,14 @@ def to_json(report: AIBOMReport) -> dict:
     if report.databricks_cis_benchmark_data:
         result["databricks_cis_benchmark"] = report.databricks_cis_benchmark_data
 
+    # Training pipeline lineage + dataset cards
+    if report.training_pipelines:
+        result["training_pipelines"] = report.training_pipelines
+    if report.dataset_cards:
+        result["dataset_cards"] = report.dataset_cards
+    if report.serving_configs:
+        result["serving_configs"] = report.serving_configs
+
     # Posture scorecard
     from agent_bom.posture import (
         compute_credential_risk_ranking,

@@ -427,6 +427,22 @@ def main():
 )
 @click.option("--model-provenance", is_flag=True, help="Enable SHA-256 hash and Sigstore signature checks for --model-files scans")
 @click.option(
+    "--dataset-cards",
+    "dataset_dirs",
+    multiple=True,
+    type=click.Path(exists=True),
+    metavar="DIR",
+    help="Scan for dataset cards (dataset_info.json, README.md frontmatter, .dvc files). Repeatable.",
+)
+@click.option(
+    "--training-pipelines",
+    "training_dirs",
+    multiple=True,
+    type=click.Path(exists=True),
+    metavar="DIR",
+    help="Scan for ML training pipeline metadata (MLflow runs, Kubeflow pipelines, W&B logs). Repeatable.",
+)
+@click.option(
     "--hf-model",
     "hf_models",
     multiple=True,
@@ -803,6 +819,8 @@ def scan(
     jupyter_dirs: tuple,
     model_dirs: tuple,
     model_provenance: bool,
+    dataset_dirs: tuple,
+    training_dirs: tuple,
     hf_models: tuple,
     introspect: bool,
     introspect_timeout: float,
@@ -1082,6 +1100,10 @@ def scan(
             reads.append(f"  [green]Would read:[/green]   {jdir}  (Jupyter notebooks *.ipynb)")
         for mdir in model_dirs:
             reads.append(f"  [green]Would read:[/green]   {mdir}  (ML model files .gguf, .safetensors, .onnx, .pt, etc.)")
+        for ddir in dataset_dirs:
+            reads.append(f"  [green]Would read:[/green]   {ddir}  (dataset cards: dataset_info.json, README.md, .dvc)")
+        for tdir in training_dirs:
+            reads.append(f"  [green]Would read:[/green]   {tdir}  (training pipelines: MLflow, Kubeflow, W&B)")
         if gha_path:
             reads.append(f"  [green]Would read:[/green]   {gha_path}/.github/workflows/  (GitHub Actions)")
         for sp in skill_paths:
@@ -2865,6 +2887,63 @@ def scan(
                 license_val = hf_result.get("license") or "unspecified"
                 con.print(f"    [green]✓[/green] {hf_name} — author: {author}, license: {license_val}")
         report.model_provenance = hf_provenance
+
+    # ── Step 1k: Dataset card scan ──────────────────────────────────
+    if not skill_only and dataset_dirs:
+        from agent_bom.parsers.dataset_cards import scan_dataset_directory
+
+        all_datasets: list[dict] = []
+        all_ds_warnings: list[str] = []
+        for ddir in dataset_dirs:
+            con.print(f"  [cyan]>[/cyan] Scanning for dataset cards in {ddir}...")
+            ds_result = scan_dataset_directory(ddir)
+            all_datasets.extend(ds_result.datasets)
+            all_ds_warnings.extend(ds_result.warnings)
+        if all_datasets:
+            flagged = sum(1 for d in all_datasets if d.security_flags)
+            con.print(
+                f"    [green]{len(all_datasets)} dataset(s) found[/green]"
+                + (f" [yellow]({flagged} with flags)[/yellow]" if flagged else "")
+            )
+            report.dataset_cards = {
+                "datasets": [d.to_dict() for d in all_datasets],
+                "total_datasets": len(all_datasets),
+                "flagged_count": flagged,
+            }
+            _scan_sources.append("dataset_cards")
+        for w in all_ds_warnings:
+            con.print(f"  [yellow]⚠[/yellow] {w}")
+
+    # ── Step 1l: Training pipeline scan ──────────────────────────────
+    if not skill_only and training_dirs:
+        from agent_bom.parsers.training_pipeline import scan_training_directory
+
+        all_runs: list = []
+        all_serving: list = []
+        all_tp_warnings: list[str] = []
+        for tdir in training_dirs:
+            con.print(f"  [cyan]>[/cyan] Scanning for training pipelines in {tdir}...")
+            tp_result = scan_training_directory(tdir)
+            all_runs.extend(tp_result.training_runs)
+            all_serving.extend(tp_result.serving_configs)
+            all_tp_warnings.extend(tp_result.warnings)
+        if all_runs:
+            flagged = sum(1 for r in all_runs if r.security_flags)
+            con.print(
+                f"    [green]{len(all_runs)} training run(s) found[/green]"
+                + (f" [yellow]({flagged} with flags)[/yellow]" if flagged else "")
+            )
+            report.training_pipelines = {
+                "training_runs": [r.to_dict() for r in all_runs],
+                "total_runs": len(all_runs),
+                "flagged_count": flagged,
+            }
+            _scan_sources.append("training_pipelines")
+        if all_serving:
+            con.print(f"    [green]{len(all_serving)} serving config(s) found[/green]")
+            report.serving_configs = [s.to_dict() for s in all_serving]
+        for w in all_tp_warnings:
+            con.print(f"  [yellow]⚠[/yellow] {w}")
 
     # Step 4c: AI-powered enrichment (optional)
     if ai_enrich:

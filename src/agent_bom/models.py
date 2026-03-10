@@ -418,6 +418,9 @@ class AIBOMReport:
     vector_db_scan_data: Optional[list] = None  # Serialized vector DB security assessments
     gpu_infra_data: Optional[dict] = None  # Serialized GPU/AI compute infra scan results
     runtime_correlation: Optional[dict] = None  # Runtime ↔ scan correlation (proxy audit vs CVE findings)
+    training_pipelines: Optional[dict] = None  # Serialized TrainingPipelineScanResult
+    dataset_cards: Optional[dict] = None  # Serialized DatasetScanResult
+    serving_configs: Optional[list] = None  # Serialized ServingConfig list
 
     # Scan context metadata — what input sources were actually processed.
     # Populated by the CLI/API after scan completes. Consumers use this to

@@ -41,6 +41,57 @@ DANGEROUS_ARG_PATTERNS: list[tuple[str, re.Pattern]] = [
     ("Credential-like value", re.compile(r"(?:password|secret|token|key)\s*[=:]\s*\S{8,}", re.IGNORECASE)),
     ("Base64 encoded payload", re.compile(r"(?:^|[^A-Za-z0-9])(?:[A-Za-z0-9+/]{40,}={0,2})(?:$|[^A-Za-z0-9])")),
     ("Hex encoded payload", re.compile(r"\\x[0-9a-fA-F]{2}(?:\\x[0-9a-fA-F]{2}){9,}")),
+    # SQL injection / dangerous DDL patterns (CoCo, Snowflake, database MCP tools)
+    ("SQL DROP statement", re.compile(r"\bDROP\s+(?:TABLE|DATABASE|SCHEMA|VIEW|FUNCTION|PROCEDURE|USER|ROLE)\b", re.IGNORECASE)),
+    ("SQL TRUNCATE statement", re.compile(r"\bTRUNCATE\s+(?:TABLE\s+)?\w", re.IGNORECASE)),
+    ("SQL GRANT/REVOKE", re.compile(r"\b(?:GRANT|REVOKE)\s+(?:ALL|SELECT|INSERT|UPDATE|DELETE|EXECUTE|OWNERSHIP|CREATE)\b", re.IGNORECASE)),
+    ("SQL ALTER privilege", re.compile(r"\bALTER\s+(?:USER|ROLE|ACCOUNT|SECURITY)\b", re.IGNORECASE)),
+    ("SQL data exfiltration", re.compile(r"\bCOPY\s+INTO\s+['\"]?(?:s3://|gcs://|azure://|@)", re.IGNORECASE)),
+    ("SQL external stage access", re.compile(r"\bCREATE\s+(?:OR\s+REPLACE\s+)?STAGE\b", re.IGNORECASE)),
+    ("SQL network rule", re.compile(r"\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:NETWORK\s+RULE|EXTERNAL\s+ACCESS)\b", re.IGNORECASE)),
+    ("SQL EXECUTE IMMEDIATE", re.compile(r"\bEXECUTE\s+IMMEDIATE\b", re.IGNORECASE)),
+]
+
+
+# ─── Cortex AI model invocation patterns ─────────────────────────────────────
+
+# Detect Snowflake Cortex AI function calls in tool arguments.
+# Used by the proxy to log which AI models are being invoked through CoCo
+# MCP tools — provides "what AI models they're calling" visibility.
+# Each pattern: (name, compiled regex)
+CORTEX_MODEL_PATTERNS: list[tuple[str, re.Pattern]] = [
+    # SNOWFLAKE.CORTEX.COMPLETE('model-name', ...) — the main LLM call
+    (
+        "Cortex COMPLETE",
+        re.compile(
+            r"\b(?:SNOWFLAKE\.)?CORTEX\.COMPLETE\s*\(\s*['\"]([^'\"]+)['\"]",
+            re.IGNORECASE,
+        ),
+    ),
+    # SNOWFLAKE.CORTEX.EMBED_TEXT_768/1024('model-name', ...)
+    (
+        "Cortex EMBED",
+        re.compile(
+            r"\b(?:SNOWFLAKE\.)?CORTEX\.EMBED(?:_TEXT)?(?:_\d+)?\s*\(\s*['\"]([^'\"]+)['\"]",
+            re.IGNORECASE,
+        ),
+    ),
+    # SNOWFLAKE.CORTEX.SENTIMENT / SUMMARIZE / TRANSLATE / EXTRACT_ANSWER
+    (
+        "Cortex AI function",
+        re.compile(
+            r"\b(?:SNOWFLAKE\.)?CORTEX\.(?:SENTIMENT|SUMMARIZE|TRANSLATE|EXTRACT_ANSWER|CLASSIFY_TEXT)\s*\(",
+            re.IGNORECASE,
+        ),
+    ),
+    # Python SDK: cortex.Complete() / Complete.create()
+    (
+        "Cortex Python SDK",
+        re.compile(
+            r"\b(?:cortex\.)?Complete(?:\.create)?\s*\(\s*(?:model\s*=\s*)?['\"]([^'\"]+)['\"]",
+            re.IGNORECASE,
+        ),
+    ),
 ]
 
 
@@ -276,3 +327,19 @@ def score_semantic_injection(text: str) -> tuple[float, list[str]]:
             score += weight
             triggered.append(name)
     return min(score, 1.0), triggered
+
+
+def detect_cortex_models(text: str) -> list[tuple[str, str]]:
+    """Detect Cortex AI model invocations in text.
+
+    Returns:
+        List of (pattern_name, model_name) tuples.  model_name is the
+        extracted model identifier (e.g. "mistral-large2") or "" for
+        patterns that don't capture a model name.
+    """
+    results: list[tuple[str, str]] = []
+    for name, pattern in CORTEX_MODEL_PATTERNS:
+        for match in pattern.finditer(text):
+            model = match.group(1) if match.lastindex and match.lastindex >= 1 else ""
+            results.append((name, model))
+    return results

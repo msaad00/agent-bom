@@ -27,6 +27,7 @@ from agent_bom.runtime.patterns import (
     RESPONSE_INVISIBLE_CHARS,
     RESPONSE_SVG_PATTERNS,
     SUSPICIOUS_SEQUENCES,
+    detect_cortex_models,
     score_semantic_injection,
 )
 
@@ -117,14 +118,14 @@ class ToolDriftDetector:
 
 
 class ArgumentAnalyzer:
-    """Detect dangerous patterns in tool call arguments.
+    """Detect dangerous patterns and AI model invocations in tool call arguments.
 
     Checks for shell metacharacters, path traversal, command injection,
-    and credential-like values in argument strings.
+    credential-like values, and Cortex AI model calls in argument strings.
     """
 
     def check(self, tool_name: str, arguments: dict) -> list[Alert]:
-        """Analyze tool arguments for dangerous patterns."""
+        """Analyze tool arguments for dangerous patterns and AI model usage."""
         alerts: list[Alert] = []
         for arg_name, arg_value in arguments.items():
             if not isinstance(arg_value, str):
@@ -144,6 +145,29 @@ class ArgumentAnalyzer:
                             },
                         )
                     )
+
+            # Cortex AI model detection — INFO-level observability alerts
+            cortex_hits = detect_cortex_models(arg_value)
+            for cx_pattern, cx_model in cortex_hits:
+                alerts.append(
+                    Alert(
+                        detector="argument_analyzer",
+                        severity=AlertSeverity.INFO,
+                        message=(
+                            f"Cortex AI model invocation detected: {cx_pattern}"
+                            f"{f' (model: {cx_model})' if cx_model else ''}"
+                            f" in {tool_name}.{arg_name}"
+                        ),
+                        details={
+                            "tool": tool_name,
+                            "argument": arg_name,
+                            "pattern": cx_pattern,
+                            "model": cx_model,
+                            "category": "cortex_model_usage",
+                        },
+                    )
+                )
+
         return alerts
 
 

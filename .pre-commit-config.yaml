@@ -11,6 +11,7 @@ repos:
       - id: trailing-whitespace
         exclude: "\\.(md|mdx)$"
       - id: detect-private-key
+        exclude: "^tests/"
       - id: check-case-conflict
       - id: check-merge-conflict
       - id: mixed-line-ending

@@ -77,8 +77,8 @@ def _load_enrichment_cache() -> None:
                 _nvd_file_cache.update(fresh)
             else:
                 _epss_file_cache.update(fresh)
-        except (OSError, json.JSONDecodeError, ValueError):
-            _logger.debug("Failed to load enrichment cache %s", name)
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            _logger.warning("Failed to load enrichment cache %s: %s", name, exc)
 
 
 def _save_enrichment_cache() -> None:
@@ -103,7 +103,7 @@ def _save_enrichment_cache() -> None:
                     pass
                 raise
         except OSError:
-            _logger.debug("Failed to save %s cache", name)
+            _logger.warning("Failed to persist %s enrichment cache to disk", name)
 
 
 async def fetch_nvd_data(cve_id: str, client: httpx.AsyncClient, api_key: Optional[str] = None) -> Optional[dict]:
@@ -196,33 +196,43 @@ async def fetch_epss_scores(cve_ids: list[str], client: httpx.AsyncClient) -> di
     if not uncached:
         return scores
 
-    # EPSS API accepts comma-separated CVE list
-    cve_param = ",".join(uncached[:100])  # Limit to 100 per request
+    # EPSS API accepts comma-separated CVE list — paginate in batches
+    epss_batch_size = 100
+    for batch_start in range(0, len(uncached), epss_batch_size):
+        batch = uncached[batch_start : batch_start + epss_batch_size]
+        cve_param = ",".join(batch)
 
-    response = await request_with_retry(
-        client,
-        "GET",
-        EPSS_API_URL,
-        params={"cve": cve_param},
-    )
+        response = await request_with_retry(
+            client,
+            "GET",
+            EPSS_API_URL,
+            params={"cve": cve_param},
+        )
 
-    if response and response.status_code == 200:
-        try:
-            data = response.json()
-            for item in data.get("data", []):
-                cve = item.get("cve")
-                if cve:
-                    entry = {
-                        "score": float(item.get("epss", 0.0)),
-                        "percentile": float(item.get("percentile", 0.0)),
-                        "date": item.get("date"),
-                    }
-                    scores[cve] = entry
-                    _epss_file_cache[cve] = {**entry, "_cached_at": time.time()}
-            _evict_oldest(_epss_file_cache, _MAX_ENRICHMENT_CACHE_ENTRIES)
-        except (ValueError, KeyError) as e:
-            console.print(f"  [dim yellow]EPSS parse error: {e}[/dim yellow]")
+        if response and response.status_code == 200:
+            try:
+                data = response.json()
+                for item in data.get("data", []):
+                    cve = item.get("cve")
+                    if cve:
+                        entry = {
+                            "score": float(item.get("epss", 0.0)),
+                            "percentile": float(item.get("percentile", 0.0)),
+                            "date": item.get("date"),
+                        }
+                        scores[cve] = entry
+                        _epss_file_cache[cve] = {**entry, "_cached_at": time.time()}
+            except (ValueError, KeyError) as e:
+                _logger.warning("EPSS parse error for batch starting at %d: %s", batch_start, e)
+        else:
+            _logger.warning(
+                "EPSS API request failed for %d CVEs (batch %d–%d)",
+                len(batch),
+                batch_start,
+                batch_start + len(batch),
+            )
 
+    _evict_oldest(_epss_file_cache, _MAX_ENRICHMENT_CACHE_ENTRIES)
     return scores
 
 
@@ -255,8 +265,8 @@ async def fetch_cisa_kev_catalog(client: httpx.AsyncClient) -> dict:
                 _kev_cache = disk_data.get("data", {})
                 _kev_cache_time = datetime.fromtimestamp(cached_at, tz=timezone.utc)
                 return _kev_cache
-        except (OSError, json.JSONDecodeError, ValueError):
-            _logger.debug("Failed to load KEV disk cache")
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            _logger.warning("Failed to load KEV disk cache: %s", exc)
 
     response = await request_with_retry(client, "GET", CISA_KEV_URL)
 
@@ -284,8 +294,8 @@ async def fetch_cisa_kev_catalog(client: httpx.AsyncClient) -> dict:
             try:
                 _KEV_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
                 _KEV_CACHE_FILE.write_text(json.dumps({"_cached_at": time.time(), "data": kev_dict}))
-            except OSError:
-                _logger.debug("Failed to persist KEV cache to disk")
+            except OSError as exc:
+                _logger.warning("Failed to persist KEV cache to disk: %s", exc)
 
             return kev_dict
         except (ValueError, KeyError) as e:
@@ -297,11 +307,23 @@ async def fetch_cisa_kev_catalog(client: httpx.AsyncClient) -> dict:
             disk_data = json.loads(_KEV_CACHE_FILE.read_text())
             stale_data = disk_data.get("data", {})
             if stale_data:
+                stale_age_hours = (time.time() - disk_data.get("_cached_at", 0)) / 3600
+                _logger.warning(
+                    "CISA KEV API unreachable — serving stale cache (%.0fh old, %d entries)",
+                    stale_age_hours,
+                    len(stale_data),
+                )
                 console.print("  [dim yellow]⚠ Using stale CISA KEV cache (API unreachable)[/dim yellow]")
                 _kev_cache = stale_data
+                # Cache in memory for 1h before retrying API — prevents
+                # hitting disk on every call within this session while still
+                # retrying the API on the next scan (~1h later).
+                from datetime import timedelta
+
+                _kev_cache_time = datetime.now(timezone.utc) - timedelta(seconds=_KEV_CACHE_TTL_SECONDS - 3600)
                 return stale_data
-        except (OSError, json.JSONDecodeError):
-            pass
+        except (OSError, json.JSONDecodeError) as exc:
+            _logger.warning("Failed to read stale KEV cache: %s", exc)
 
     return {}
 

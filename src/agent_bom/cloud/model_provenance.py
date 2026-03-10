@@ -356,7 +356,8 @@ def _get_ollama_manifest_api(host: str, model_name: str) -> dict | None:
                 # /api/show returns model_info; extract manifest-like structure
                 return data
     except (OSError, json.JSONDecodeError) as exc:
-        logger.debug("Could not fetch Ollama model info for %s: %s", model_name, exc)
+        _safe_name = model_name.replace("\n", "").replace("\r", "") if model_name else ""
+        logger.debug("Could not fetch Ollama model info for %s: %s", _safe_name, exc)
     return None
 
 

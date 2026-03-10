@@ -1752,28 +1752,34 @@ async def list_jobs(limit: int = 50, offset: int = 0) -> dict:
 def _sanitize_api_path(user_path: str) -> str:
     """Validate and sanitize a user-supplied path from an API request.
 
-    Interprets user_path as relative to $HOME (absolute paths rejected).
-    Resolves symlinks and validates the result stays within $HOME using
-    ``os.path.commonpath`` (the pattern CodeQL recognises as a sanitizer).
+    Interprets ``user_path`` as relative to the current user's home directory
+    (absolute paths are rejected). The resolved path is normalised, has any
+    symlinks resolved, and is verified to remain within the home directory
+    using ``os.path.commonpath`` before being returned.
     """
     import os
     from pathlib import Path
 
     from agent_bom.security import SecurityError
 
-    user_path = user_path.strip()
+    # Normalise basic whitespace
+    user_path = (user_path or "").strip()
+    if not user_path:
+        raise SecurityError("Empty paths are not allowed")
 
     # 1. Reject absolute paths — API callers must use paths relative to $HOME
     if os.path.isabs(user_path):
         raise SecurityError(f"Absolute paths are not allowed: {user_path}")
 
-    # 2. Reject path traversal in raw input
+    # 2. Reject path traversal in raw input (../ segments)
     if ".." in user_path.split(os.sep):
         raise SecurityError(f"Path traversal not allowed: {user_path}")
 
     # 3. Compute fixed root and join user path under it
     home = os.path.realpath(str(Path.home()))
-    candidate = os.path.join(home, user_path)
+    # Normalise the user-provided relative path before joining
+    relative = os.path.normpath(user_path)
+    candidate = os.path.join(home, relative)
 
     # 4. Resolve to real absolute path (follows symlinks)
     resolved = os.path.realpath(candidate)

@@ -1758,16 +1758,24 @@ def _sanitize_api_path(user_path: str) -> str:
     import os
     from pathlib import Path
 
-    from agent_bom.security import validate_path
+    from agent_bom.security import SecurityError
 
-    safe = validate_path(user_path, must_exist=True, restrict_to_home=True)
-    resolved = os.path.realpath(str(safe))
-    # Guard: resolved path must start with user home (CodeQL-visible check)
-    home = str(Path.home())
-    if not resolved.startswith(home):
-        from agent_bom.security import SecurityError
+    # 1. Reject path traversal in raw input
+    if ".." in user_path.split(os.sep):
+        raise SecurityError(f"Path traversal not allowed: {user_path}")
 
+    # 2. Resolve to real absolute path (follows symlinks)
+    resolved = os.path.realpath(os.path.expanduser(user_path))
+
+    # 3. Must be under user's home directory
+    home = os.path.realpath(str(Path.home()))
+    if not resolved.startswith(home + os.sep) and resolved != home:
         raise SecurityError(f"Path resolves outside home directory: {user_path}")
+
+    # 4. Must exist on disk
+    if not os.path.exists(resolved):
+        raise SecurityError(f"Path does not exist: {resolved}")
+
     return resolved
 
 

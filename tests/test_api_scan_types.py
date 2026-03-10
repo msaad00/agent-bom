@@ -14,6 +14,8 @@ from starlette.testclient import TestClient
 from agent_bom.api.server import _jobs, app, set_job_store
 from agent_bom.api.store import InMemoryJobStore
 
+_SANITIZE = "agent_bom.api.server._sanitize_api_path"
+
 
 def _fresh_client():
     store = InMemoryJobStore()
@@ -43,9 +45,8 @@ def test_scan_dataset_cards_success(tmp_path):
     fake = _FakeResult(datasets=[{"name": "test-ds"}], source_files=["README.md"])
 
     with (
-        patch("agent_bom.api.server.scan_dataset_cards.__wrapped__", side_effect=None, create=True),
         patch("agent_bom.parsers.dataset_cards.scan_dataset_directory", return_value=fake),
-        patch("agent_bom.security.validate_path"),
+        patch(_SANITIZE, side_effect=lambda p: p),
     ):
         resp = client.post("/v1/scan/dataset-cards", json={"directories": [str(tmp_path)]})
 
@@ -99,7 +100,7 @@ def test_scan_training_pipelines_success(tmp_path):
 
     with (
         patch("agent_bom.parsers.training_pipeline.scan_training_directory", return_value=fake),
-        patch("agent_bom.security.validate_path"),
+        patch(_SANITIZE, side_effect=lambda p: p),
     ):
         resp = client.post("/v1/scan/training-pipelines", json={"directories": [str(tmp_path)]})
 
@@ -246,7 +247,7 @@ def test_scan_prompts_directories(tmp_path):
 
     with (
         patch("agent_bom.parsers.prompt_scanner.scan_prompt_files", return_value=_FakeResult()),
-        patch("agent_bom.security.validate_path"),
+        patch(_SANITIZE, side_effect=lambda p: p),
     ):
         resp = client.post("/v1/scan/prompt-scan", json={"directories": [str(tmp_path)]})
 
@@ -280,7 +281,7 @@ def test_scan_prompts_files(tmp_path):
 
     with (
         patch("agent_bom.parsers.prompt_scanner.scan_prompt_files", return_value=_FakeResult()),
-        patch("agent_bom.security.validate_path"),
+        patch(_SANITIZE, side_effect=lambda p: p),
     ):
         resp = client.post("/v1/scan/prompt-scan", json={"files": [str(prompt_file)]})
 
@@ -312,7 +313,7 @@ def test_scan_model_files_success(tmp_path):
 
     with (
         patch("agent_bom.model_files.scan_model_files", return_value=(fake_files, [])),
-        patch("agent_bom.security.validate_path"),
+        patch(_SANITIZE, side_effect=lambda p: p),
     ):
         resp = client.post("/v1/scan/model-files", json={"directories": [str(tmp_path)]})
 
@@ -332,7 +333,7 @@ def test_scan_model_files_with_hashes(tmp_path):
     with (
         patch("agent_bom.model_files.scan_model_files", return_value=(fake_files, [])),
         patch("agent_bom.model_files.verify_model_hash", return_value={"sha256": "abc123"}) as mock_hash,
-        patch("agent_bom.security.validate_path"),
+        patch(_SANITIZE, side_effect=lambda p: p),
     ):
         resp = client.post("/v1/scan/model-files", json={"directories": [str(tmp_path)], "verify_hashes": True})
 
@@ -354,9 +355,36 @@ def test_scan_model_files_warnings(tmp_path):
 
     with (
         patch("agent_bom.model_files.scan_model_files", return_value=([], ["Skipped large file"])),
-        patch("agent_bom.security.validate_path"),
+        patch(_SANITIZE, side_effect=lambda p: p),
     ):
         resp = client.post("/v1/scan/model-files", json={"directories": [str(tmp_path)]})
 
     assert resp.status_code == 200
     assert resp.json()["warnings"] == ["Skipped large file"]
+
+
+# ---------------------------------------------------------------------------
+# 7. Path sanitization
+# ---------------------------------------------------------------------------
+
+
+def test_sanitize_rejects_traversal():
+    """_sanitize_api_path rejects path traversal."""
+    import pytest
+
+    from agent_bom.api.server import _sanitize_api_path
+    from agent_bom.security import SecurityError
+
+    with pytest.raises(SecurityError, match="traversal"):
+        _sanitize_api_path("/home/user/../../../etc/passwd")
+
+
+def test_sanitize_rejects_outside_home(tmp_path):
+    """_sanitize_api_path rejects paths outside $HOME."""
+    import pytest
+
+    from agent_bom.api.server import _sanitize_api_path
+    from agent_bom.security import SecurityError
+
+    with pytest.raises(SecurityError):
+        _sanitize_api_path("/etc/passwd")

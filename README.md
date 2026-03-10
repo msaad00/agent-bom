@@ -23,6 +23,18 @@
   CVEs, blast radius, credential exposure, 11 compliance frameworks — then proxy MCP traffic and enforce policy in real time.
 </p>
 
+---
+
+## Quick start
+
+```bash
+pip install agent-bom        # install
+agent-bom scan               # auto-discover MCP configs + scan
+agent-bom scan --enrich      # + NVD CVSS + EPSS + CISA KEV enrichment
+```
+
+That's it. agent-bom discovers your MCP client configs (Claude Desktop, Cursor, Windsurf, and 18 more), resolves every server's dependencies, checks them against OSV/NVD/GHSA, and maps the blast radius — which agents, credentials, and tools are affected by each vulnerability.
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.65.0.gif" alt="agent-bom demo — scan, CVE check before/after, GPU infra scan" width="900" />
 </p>
@@ -62,9 +74,45 @@ CVE-2025-1234  (CRITICAL . CVSS 9.8 . CISA KEV)
 
 ---
 
+## MCP server
+
+30 tools available to any MCP-compatible AI assistant.
+
+```bash
+pip install 'agent-bom[mcp-server]'
+agent-bom mcp-server
+```
+
+Add to your MCP client config (Claude Desktop, Cursor, etc.):
+
+```json
+{
+  "mcpServers": {
+    "agent-bom": {
+      "command": "agent-bom",
+      "args": ["mcp-server"]
+    }
+  }
+}
+```
+
+Also available on [Glama](https://glama.ai/mcp/servers/@msaad00/agent-bom), [Smithery](smithery.yaml), [MCP Registry](integrations/mcp-registry/server.json), and [OpenClaw](integrations/openclaw/SKILL.md).
+
+---
+
+## Docker
+
+```bash
+docker run --rm -v ~/.config:/root/.config:ro agentbom/agent-bom scan
+docker run --rm agentbom/agent-bom scan --image nginx:latest
+docker run --rm agentbom/agent-bom mcp-server   # MCP server mode
+```
+
+---
+
 ## Instruction file trust
 
-AI agents run on instruction — CLAUDE.md, .cursorrules, AGENTS.md, SKILL.md. A malicious or compromised instruction file is a supply chain attack that executes with full agent permissions. agent-bom audits every instruction file it finds.
+AI agents run on instruction files — CLAUDE.md, .cursorrules, AGENTS.md, SKILL.md. A malicious or compromised instruction file is a supply chain attack that executes with full agent permissions. agent-bom audits every instruction file it finds.
 
 ```
 agent-bom scan --skill-only
@@ -87,25 +135,33 @@ CLAUDE.md  →  SUSPICIOUS (high confidence)
 
 Five trust categories, 17 behavioral risk patterns, Sigstore signature verification. No network calls — fully local static analysis.
 
-```bash
-agent-bom scan --skill-only             # audit all discovered instruction files
-agent-bom scan --skill CLAUDE.md        # audit a single specific file
-```
+---
 
-Or via MCP — ask your AI assistant to audit any instruction file before running it:
+## How it works
 
-```
-skill_trust(skill_content="<paste CLAUDE.md content>")
-# → { verdict: "suspicious", confidence: "high", findings: [...], categories: [...] }
-```
+1. **Discover** -- auto-detect MCP configs, Docker images, K8s pods, cloud resources, model files
+2. **Scan** -- send package names + versions to public APIs (OSV.dev, NVD, EPSS, CISA KEV). No secrets leave your machine.
+3. **Analyze** -- blast radius mapping, tool poisoning detection, compliance tagging, posture scoring
+4. **Track** -- persistent asset database records first_seen, last_seen, resolved status, and MTTR per vulnerability across scans
+5. **Report** -- JSON, SARIF, CycloneDX, SPDX, HTML, Mermaid, or console. Alert dispatch to Slack/webhooks.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scan-pipeline-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scan-pipeline-light.svg" alt="Scan pipeline" width="800" />
+  </picture>
+</p>
+
+**Read-only guarantee.** Never writes configs, never runs servers, never stores secrets. `--dry-run` previews everything. Every release is [Sigstore-signed](PERMISSIONS.md).
 
 ---
 
-## Get started
+## CLI reference
+
+<details>
+<summary><b>Scanning options</b></summary>
 
 ```bash
-pip install agent-bom
-
 agent-bom scan                                     # auto-discover + scan
 agent-bom scan --enrich                            # + NVD CVSS + EPSS + CISA KEV
 agent-bom scan -f html -o report.html              # HTML dashboard
@@ -122,14 +178,19 @@ agent-bom scan --aws --snowflake --databricks      # Multi-cloud
 agent-bom scan --hf-model meta-llama/Llama-3.1-8B  # model provenance
 agent-bom scan --vector-db-scan                    # Scan self-hosted + Pinecone cloud vector DBs
 agent-bom scan --gpu-scan                          # Discover GPU containers + K8s nodes, detect unauthenticated DCGM exporters
-agent-bom scan --browser-extensions               # Scan Chrome/Edge/Brave/Firefox extensions for dangerous permissions
+agent-bom scan --browser-extensions               # Scan Chrome/Edge/Firefox extensions for dangerous permissions
 agent-bom scan --skill-only                       # Audit AI instruction files (CLAUDE.md, .cursorrules, AGENTS.md)
 agent-bom scan --save report.json                  # Save + track assets (first_seen, resolved, MTTR)
 agent-bom graph report.json --format dot           # Export dependency graph (DOT/Mermaid/JSON)
 agent-bom proxy-configure --apply                  # Auto-wrap MCP configs with security proxy
 ```
 
-**Runtime enforcement** — sit between your MCP client and server, enforce policy in real time:
+</details>
+
+<details>
+<summary><b>Runtime enforcement</b></summary>
+
+Sit between your MCP client and server, enforce policy in real time:
 
 ```bash
 # Wrap a single server — intercept every tool call
@@ -153,6 +214,8 @@ agent-bom introspect --all --baseline baseline.json               # exit 1 on ne
 #   rate_limit: {threshold: 50, window_seconds: 60}
 ```
 
+</details>
+
 Auto-discovers 21 MCP clients: Claude Desktop, Claude Code, Cursor, Windsurf, Cline, VS Code Copilot, Continue, Zed, Cortex Code, Codex CLI, Gemini CLI, Goose, Snowflake CLI, OpenClaw, Roo Code, Amazon Q, ToolHive, Docker MCP Toolkit, JetBrains AI, Junie, and custom paths.
 
 <p align="center">
@@ -162,54 +225,12 @@ Auto-discovers 21 MCP clients: Claude Desktop, Claude Code, Cursor, Windsurf, Cl
   </picture>
 </p>
 
-<details>
-<summary><b>Install extras</b></summary>
-
-| Mode | Command |
-|------|---------|
-| Core CLI | `pip install agent-bom` |
-| Cloud (all) | `pip install 'agent-bom[cloud]'` |
-| REST API | `pip install 'agent-bom[api]'` |
-| MCP server | `pip install 'agent-bom[mcp-server]'` |
-| OIDC/SSO auth | `pip install 'agent-bom[oidc]'` |
-| Dashboard | `pip install 'agent-bom[ui]'` |
-| Docker | `docker run --rm -v ~/.config:/root/.config:ro agentbom/agent-bom scan` |
-
-</details>
-
-<details>
-<summary><b>Upgrade / Uninstall</b></summary>
-
-```bash
-pip install --upgrade agent-bom          # upgrade
-pip uninstall agent-bom                  # uninstall
-rm -rf ~/.agent-bom                      # remove local data
-```
-
-</details>
-
----
-
-## How it works
-
-1. **Discover** -- auto-detect MCP configs, Docker images, K8s pods, cloud resources, model files
-2. **Scan** -- send package names + versions to public APIs (OSV.dev, NVD, EPSS, CISA KEV). No secrets leave your machine.
-3. **Analyze** -- blast radius mapping, tool poisoning detection, compliance tagging, posture scoring
-4. **Track** -- persistent asset database records first_seen, last_seen, resolved status, and MTTR per vulnerability across scans
-5. **Report** -- JSON, SARIF, CycloneDX, SPDX, HTML, Mermaid, or console. Alert dispatch to Slack/webhooks.
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scan-pipeline-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scan-pipeline-light.svg" alt="Scan pipeline" width="800" />
-  </picture>
-</p>
-
-**Read-only guarantee.** Never writes configs, never runs servers, never stores secrets. `--dry-run` previews everything. Every release is [Sigstore-signed](PERMISSIONS.md).
-
 ---
 
 ## What it covers
+
+<details>
+<summary><b>agent-bom vs. traditional scanners</b></summary>
 
 | | Traditional scanners | agent-bom |
 |---|---|---|
@@ -239,12 +260,7 @@ rm -rf ~/.agent-bom                      # remove local data
 | **Browser extension scanning** | -- | Chrome/Edge/Firefox manifest.json — nativeMessaging, dangerous permissions, AI assistant domain access |
 | **Persistent asset tracking** | -- | SQLite DB — first_seen/last_seen/resolved/reopened per vulnerability, MTTR calculation, scan-over-scan diff |
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/compliance-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/compliance-light.svg" alt="Compliance coverage" width="800" />
-  </picture>
-</p>
+</details>
 
 <details>
 <summary><b>What it scans</b></summary>
@@ -281,6 +297,13 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible
 
 </details>
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/compliance-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/compliance-light.svg" alt="Compliance coverage" width="800" />
+  </picture>
+</p>
+
 ---
 
 ## Deployment
@@ -298,6 +321,21 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible
 | Config watcher | `agent-bom watch` | Filesystem watch on MCP configs, alert on drift |
 | Pre-install guard | `agent-bom guard pip install <pkg>` | Block vulnerable installs |
 | Snowflake | [DEPLOYMENT.md](DEPLOYMENT.md) | Snowpark + SiS |
+
+<details>
+<summary><b>Install extras</b></summary>
+
+| Mode | Command |
+|------|---------|
+| Core CLI | `pip install agent-bom` |
+| Cloud (all) | `pip install 'agent-bom[cloud]'` |
+| REST API | `pip install 'agent-bom[api]'` |
+| MCP server | `pip install 'agent-bom[mcp-server]'` |
+| OIDC/SSO auth | `pip install 'agent-bom[oidc]'` |
+| Dashboard | `pip install 'agent-bom[ui]'` |
+| Docker | `docker run --rm -v ~/.config:/root/.config:ro agentbom/agent-bom scan` |
+
+</details>
 
 <details>
 <summary><b>GitHub Action</b></summary>
@@ -395,6 +433,17 @@ Windows-specific volume mount examples and GPU scanning notes: [docs/WINDOWS_CON
 
 </details>
 
+<details>
+<summary><b>Upgrade / Uninstall</b></summary>
+
+```bash
+pip install --upgrade agent-bom          # upgrade
+pip uninstall agent-bom                  # uninstall
+rm -rf ~/.agent-bom                      # remove local data
+```
+
+</details>
+
 ---
 
 ## Ecosystem
@@ -458,7 +507,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full diagrams: data flow pi
 
 ---
 
-## Roadmap
+<details>
+<summary><b>Roadmap</b></summary>
 
 **GPU / AI compute**
 - [x] GPU container discovery (Docker — NVIDIA images, CUDA labels, `--gpus` runtime)
@@ -509,6 +559,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full diagrams: data flow pi
 - [ ] Windows-native container images (nanoserver/servercore)
 
 See the full list of [shipped features](https://github.com/msaad00/agent-bom/releases).
+
+</details>
 
 ---
 

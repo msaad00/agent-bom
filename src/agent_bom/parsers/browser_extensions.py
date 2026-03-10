@@ -125,8 +125,13 @@ def _assess_extension_risk(
     """
     reasons: list[str] = []
 
-    raw_perms: list = manifest.get("permissions", [])
-    host_perms_raw: list = list(manifest.get("host_permissions", []))  # MV3
+    raw_perms = manifest.get("permissions", [])
+    if not isinstance(raw_perms, list):
+        raw_perms = []
+    host_perms_raw_val = manifest.get("host_permissions", [])
+    if not isinstance(host_perms_raw_val, list):
+        host_perms_raw_val = []
+    host_perms_raw: list = list(host_perms_raw_val)  # MV3
 
     # MV2: host patterns can appear inline in permissions[]
     mv2_host_perms = [p for p in raw_perms if isinstance(p, str) and p.startswith(("http", "https", "ftp", "<", "*"))]

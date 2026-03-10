@@ -388,13 +388,14 @@ async def enrich_vulnerabilities(
                 continue
 
             # Apply EPSS data (use first matching CVE)
+            vuln_was_enriched = False
             for cve in vuln_cve_ids:
                 if cve in epss_data:
                     epss = epss_data[cve]
                     vuln.epss_score = epss["score"]
                     vuln.epss_percentile = epss["percentile"]
                     vuln.exploitability = calculate_exploitability(epss["score"])
-                    enriched_count += 1
+                    vuln_was_enriched = True
                     break
 
             # Apply CISA KEV data
@@ -404,7 +405,7 @@ async def enrich_vulnerabilities(
                     vuln.is_kev = True
                     vuln.kev_date_added = kev["date_added"]
                     vuln.kev_due_date = kev["due_date"]
-                    enriched_count += 1
+                    vuln_was_enriched = True
                     break
 
             # Apply NVD data
@@ -413,12 +414,15 @@ async def enrich_vulnerabilities(
                     if cve in nvd_data:
                         nvd = nvd_data[cve]
 
-                        # Extract CWE IDs
+                        # Extract CWE IDs (deduplicated)
                         weaknesses = nvd.get("weaknesses", [])
+                        existing_cwes = set(vuln.cwe_ids)
                         for weakness in weaknesses:
                             for desc in weakness.get("description", []):
-                                if desc.get("value", "").startswith("CWE-"):
-                                    vuln.cwe_ids.append(desc["value"])
+                                cwe_val = desc.get("value", "")
+                                if cwe_val.startswith("CWE-") and cwe_val not in existing_cwes:
+                                    vuln.cwe_ids.append(cwe_val)
+                                    existing_cwes.add(cwe_val)
 
                         # Extract dates
                         vuln.nvd_published = nvd.get("published")
@@ -442,13 +446,17 @@ async def enrich_vulnerabilities(
                             if canonical not in existing_urls:
                                 vuln.references.insert(0, canonical)
 
-                        enriched_count += 1
+                        vuln_was_enriched = True
                         break
+
+            # Count each vulnerability only once regardless of how many sources enriched it
+            if vuln_was_enriched:
+                enriched_count += 1
 
     # Persist enrichment caches to disk
     _save_enrichment_cache()
 
-    console.print(f"\n  [bold]Enriched {enriched_count} vulnerability data points.[/bold]")
+    console.print(f"\n  [bold]Enriched {enriched_count} vulnerabilities.[/bold]")
     return enriched_count
 
 

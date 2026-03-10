@@ -357,7 +357,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                 transitive=transitive,
             )
             if not agents:
-                result = {"status": "no_agents_found", "agents": [], "blast_radii": []}
+                result: dict[str, object] = {"status": "no_agents_found", "agents": [], "blast_radii": []}
                 if scan_warnings:
                     result["warnings"] = scan_warnings
                 return _truncate_response(json.dumps(result))
@@ -372,9 +372,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                         for server in agent.mcp_servers:
                             for pkg in server.packages:
                                 try:
-                                    result = await verify_package_integrity(pkg, client)
-                                    if result:
-                                        pkg.integrity = result
+                                    integrity_result = await verify_package_integrity(pkg, client)
+                                    if integrity_result:
+                                        pkg.integrity = integrity_result
                                 except Exception as exc:
                                     logger.debug("Integrity check failed for %s: %s", pkg.name, exc)
 
@@ -1559,26 +1559,27 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             if profile and not _re.fullmatch(r"[a-zA-Z0-9._-]{1,100}", profile):
                 return json.dumps({"error": "Invalid AWS profile name. Use alphanumeric, dot, dash, underscore (max 100 chars)."})
 
+            cis_report: object
             if provider == "aws":
                 from agent_bom.cloud.aws_cis_benchmark import run_benchmark as run_aws_cis
 
-                report = run_aws_cis(region=region, profile=profile, checks=check_list)
+                cis_report = run_aws_cis(region=region, profile=profile, checks=check_list)
             elif provider == "snowflake":
                 from agent_bom.cloud.snowflake_cis_benchmark import run_benchmark as run_sf_cis
 
-                report = run_sf_cis(checks=check_list)
+                cis_report = run_sf_cis(checks=check_list)
             elif provider == "azure":
                 from agent_bom.cloud.azure_cis_benchmark import run_benchmark as run_azure_cis
 
-                report = run_azure_cis(subscription_id=subscription_id, checks=check_list)
+                cis_report = run_azure_cis(subscription_id=subscription_id, checks=check_list)
             elif provider == "gcp":
                 from agent_bom.cloud.gcp_cis_benchmark import run_benchmark as run_gcp_cis
 
-                report = run_gcp_cis(project_id=project_id, checks=check_list)
+                cis_report = run_gcp_cis(project_id=project_id, checks=check_list)
             else:
                 return json.dumps({"error": f"Unsupported provider: {provider}. Use 'aws', 'snowflake', 'azure', or 'gcp'."})
 
-            return _truncate_response(json.dumps(report.to_dict(), indent=2, default=str))
+            return _truncate_response(json.dumps(cis_report.to_dict(), indent=2, default=str))  # type: ignore[attr-defined]
         except Exception as exc:
             logger.exception("MCP tool error")
             return json.dumps({"error": sanitize_error(exc)})
@@ -2141,11 +2142,11 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                         "total_findings": len(result.findings),
                         "findings": [
                             {
-                                "file": f.file,
-                                "line": f.line,
+                                "file": f.source_file,
+                                "line": f.line_number,
                                 "severity": f.severity,
-                                "rule": f.rule,
-                                "message": f.message,
+                                "rule": f.category,
+                                "message": f.detail,
                             }
                             for f in result.findings[:100]
                         ],
@@ -2240,7 +2241,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         """
         try:
             from agent_bom.license_policy import evaluate_license_policy, to_serializable
-            from agent_bom.models import Agent, MCPServer, Package
+            from agent_bom.models import Agent, AgentType, MCPServer, Package
 
             data = json.loads(scan_json)
             policy = json.loads(policy_json) if policy_json else None
@@ -2263,7 +2264,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                             for p in srv.get("packages", [])
                         ]
                         servers.append(MCPServer(name=srv.get("name", ""), command="", packages=pkgs))
-                    agents.append(Agent(name=agent_data.get("name", ""), agent_type="custom", config_path="", mcp_servers=servers))
+                    agents.append(Agent(name=agent_data.get("name", ""), agent_type=AgentType.CUSTOM, config_path="", mcp_servers=servers))
             elif isinstance(data, list):
                 # Flat package list
                 pkgs = [
@@ -2279,7 +2280,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                 agents = [
                     Agent(
                         name="input",
-                        agent_type="custom",
+                        agent_type=AgentType.CUSTOM,
                         config_path="",
                         mcp_servers=[MCPServer(name="packages", command="", packages=pkgs)],
                     )

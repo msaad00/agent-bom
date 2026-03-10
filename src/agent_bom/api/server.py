@@ -47,9 +47,13 @@ from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from agent_bom import __version__
+
+if TYPE_CHECKING:
+    from agent_bom.api.oidc import OIDCConfig
+    from agent_bom.api.schedule_store import ScheduleStore
 from agent_bom.config import API_JOB_TTL_SECONDS as _JOB_TTL_SECONDS
 from agent_bom.config import API_MAX_CONCURRENT_JOBS as _MAX_CONCURRENT_JOBS
 from agent_bom.config import API_MAX_IN_MEMORY_JOBS as _MAX_IN_MEMORY_JOBS
@@ -282,7 +286,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self._api_key = api_key
         # OIDC config loaded lazily from env on first request
-        self._oidc_config: object | None = None
+        self._oidc_config: OIDCConfig | None = None
         self._oidc_checked = False
 
     def _required_role(self, method: str, path: str) -> str:
@@ -333,9 +337,9 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             try:
                 _claims, oidc_role = oidc_cfg.verify(raw_key)
                 required = self._required_role(request.method, request.url.path)
-                from agent_bom.api.auth import Role
+                from agent_bom.api.auth import _ROLE_HIERARCHY, Role
 
-                if Role(oidc_role).has_role(Role(required)):
+                if _ROLE_HIERARCHY.get(Role(oidc_role), 0) >= _ROLE_HIERARCHY.get(Role(required), 0):
                     request.state.api_key_name = _claims.get("email") or _claims.get("sub", "oidc-user")
                     request.state.api_key_role = oidc_role
                     return await call_next(request)
@@ -915,23 +919,23 @@ def _run_scan_sync(job: ScanJob) -> None:
                 )
 
         for image_ref in req.images:
-            pipeline.update_step("discovery", f"Scanning image: {image_ref}", sub_step=image_ref)
+            pipeline.update_step("discovery", f"Scanning image: {image_ref}")
             from agent_bom.image import scan_image
 
             img_agents, img_warnings = scan_image(image_ref)
-            agents.extend(img_agents)
+            agents.extend(img_agents)  # type: ignore[arg-type]
             warnings_all.extend(img_warnings)
 
         if req.k8s:
             pipeline.update_step("discovery", "Scanning Kubernetes pods...")
             from agent_bom.k8s import discover_images
 
-            k8s_records = discover_images(namespace=req.k8s_namespace)
+            k8s_records = discover_images(namespace=req.k8s_namespace or "default")
             for img, _pod, _ctr in k8s_records:
                 from agent_bom.image import scan_image
 
                 k8s_agents, k8s_warns = scan_image(img)
-                agents.extend(k8s_agents)
+                agents.extend(k8s_agents)  # type: ignore[arg-type]
                 warnings_all.extend(k8s_warns)
 
         for tf_dir in req.tf_dirs:
@@ -1128,7 +1132,7 @@ def _run_scan_sync(job: ScanJob) -> None:
 
 _cleanup_task: asyncio.Task | None = None
 _scheduler_task: asyncio.Task | None = None
-_schedule_store = None
+_schedule_store: ScheduleStore | None = None
 
 
 _STUCK_JOB_TIMEOUT = 1800  # 30 minutes — mark RUNNING jobs as FAILED
@@ -1323,6 +1327,7 @@ async def get_licenses(job_id: str) -> dict:
     from agent_bom.license_policy import evaluate_license_policy as _eval_lic
     from agent_bom.license_policy import to_serializable as _lic_ser
     from agent_bom.models import Agent as _AgentModel
+    from agent_bom.models import AgentType as _AgentType
     from agent_bom.models import MCPServer as _ServerModel
     from agent_bom.models import Package as _PkgModel
 
@@ -1342,7 +1347,9 @@ async def get_licenses(job_id: str) -> dict:
                 for p in sd.get("packages", [])
             ]
             servers.append(_ServerModel(name=sd.get("name", ""), command=sd.get("command", ""), packages=pkgs))
-        model_agents.append(_AgentModel(name=ad.get("name", ""), agent_type=ad.get("type", ""), mcp_servers=servers))
+        model_agents.append(
+            _AgentModel(name=ad.get("name", ""), agent_type=_AgentType(ad.get("type", "custom")), config_path="", mcp_servers=servers)
+        )
 
     lic_report = _eval_lic(model_agents)
     return _lic_ser(lic_report)
@@ -1885,7 +1892,7 @@ async def scan_browser_extensions_endpoint(request: BrowserExtensionsRequest) ->
     from agent_bom.parsers.browser_extensions import discover_browser_extensions
 
     extensions = discover_browser_extensions(include_low_risk=request.include_low_risk)
-    ext_dicts = [e.to_dict() if hasattr(e, "to_dict") else _dataclass_to_dict(e) for e in extensions]
+    ext_dicts: list[Any] = [e.to_dict() if hasattr(e, "to_dict") else _dataclass_to_dict(e) for e in extensions]
 
     return {
         "scan_type": "browser-extensions",
@@ -1915,7 +1922,7 @@ async def scan_model_provenance(request: ModelProvenanceRequest) -> dict:
     """
     from agent_bom.cloud.model_provenance import check_hf_models, check_ollama_models
 
-    results = []
+    results: list[Any] = []
     if request.hf_models:
         hf_results = check_hf_models(request.hf_models)
         results.extend(r.to_dict() if hasattr(r, "to_dict") else _dataclass_to_dict(r) for r in hf_results)
@@ -2030,7 +2037,7 @@ async def scan_model_files_endpoint(request: ModelFilesRequest) -> dict:
     }
 
 
-def _dataclass_to_dict(obj: object) -> dict:
+def _dataclass_to_dict(obj: object) -> object:
     """Convert a dataclass to dict, handling nested dataclasses."""
     import dataclasses
 
@@ -2456,7 +2463,7 @@ async def get_posture_counts() -> dict:
     Returns:
         {critical, high, medium, low, total, kev, compound_issues}
     """
-    counts: dict[str, int | bool | list] = {
+    counts: dict[str, Any] = {
         "critical": 0,
         "high": 0,
         "medium": 0,
@@ -3464,7 +3471,7 @@ async def cortex_telemetry(hours: int = 24):
         )
 
     try:
-        from agent_bom.cloud.snowflake import _get_connection
+        from agent_bom.cloud.snowflake import _get_connection  # type: ignore[attr-defined]
         from agent_bom.cloud.snowflake_observability import get_cortex_telemetry
 
         conn = _get_connection()
@@ -3488,7 +3495,7 @@ async def cortex_agent_telemetry(name: str, hours: int = 24):
         )
 
     try:
-        from agent_bom.cloud.snowflake import _get_connection
+        from agent_bom.cloud.snowflake import _get_connection  # type: ignore[attr-defined]
         from agent_bom.cloud.snowflake_observability import get_cortex_telemetry
 
         conn = _get_connection()
@@ -3618,7 +3625,7 @@ async def ingest_traces(body: dict) -> dict:
                         if name:
                             vuln_servers.append(name)
 
-        flagged = flag_vulnerable_tool_calls(traces, vuln_packages, vuln_servers)
+        flagged = flag_vulnerable_tool_calls(traces, {p: [] for p in vuln_packages}, set(vuln_servers))
 
         return {
             "traces": len(traces),
@@ -3701,6 +3708,7 @@ async def create_schedule(body: ScheduleCreate) -> dict:
         updated_at=now.isoformat(),
         tenant_id=body.tenant_id,
     )
+    assert _schedule_store is not None, "Schedule store not initialized"
     _schedule_store.put(schedule)
     return schedule.model_dump()
 
@@ -3708,12 +3716,14 @@ async def create_schedule(body: ScheduleCreate) -> dict:
 @app.get("/v1/schedules", tags=["schedules"])
 async def list_schedules() -> list[dict]:
     """List all scan schedules."""
+    assert _schedule_store is not None, "Schedule store not initialized"
     return [s.model_dump() for s in _schedule_store.list_all()]
 
 
 @app.get("/v1/schedules/{schedule_id}", tags=["schedules"])
 async def get_schedule(schedule_id: str) -> dict:
     """Get a specific schedule."""
+    assert _schedule_store is not None, "Schedule store not initialized"
     s = _schedule_store.get(schedule_id)
     if s is None:
         raise HTTPException(status_code=404, detail=f"Schedule {schedule_id} not found")
@@ -3723,6 +3733,7 @@ async def get_schedule(schedule_id: str) -> dict:
 @app.delete("/v1/schedules/{schedule_id}", tags=["schedules"], status_code=204)
 async def delete_schedule(schedule_id: str):
     """Delete a schedule."""
+    assert _schedule_store is not None, "Schedule store not initialized"
     if not _schedule_store.delete(schedule_id):
         raise HTTPException(status_code=404, detail=f"Schedule {schedule_id} not found")
 
@@ -3730,6 +3741,7 @@ async def delete_schedule(schedule_id: str):
 @app.put("/v1/schedules/{schedule_id}/toggle", tags=["schedules"])
 async def toggle_schedule(schedule_id: str) -> dict:
     """Enable or disable a schedule."""
+    assert _schedule_store is not None, "Schedule store not initialized"
     s = _schedule_store.get(schedule_id)
     if s is None:
         raise HTTPException(status_code=404, detail=f"Schedule {schedule_id} not found")

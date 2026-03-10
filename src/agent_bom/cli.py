@@ -7,7 +7,7 @@ import logging
 import sys
 import threading
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import click
 from rich.console import Console
@@ -1766,19 +1766,19 @@ def scan(
                 prompt_table.add_column("Finding", ratio=3)
                 prompt_table.add_column("File", ratio=2, style="dim")
 
-                for finding in prompt_result.findings:
-                    style = sev_colors.get(finding.severity, "white")
-                    icon = sev_icons.get(finding.severity, "⚪")
-                    sev_cell = f"{icon} [{style}]{finding.severity.upper()}[/{style}]"
-                    cat_cell = f"[cyan]{finding.category}[/cyan]"
-                    detail_parts = [f"[bold]{finding.title}[/bold]"]
-                    detail_parts.append(f"[dim]{finding.detail}[/dim]")
-                    if finding.recommendation:
-                        detail_parts.append(f"[green]→ {finding.recommendation}[/green]")
+                for prompt_finding in prompt_result.findings:
+                    style = sev_colors.get(prompt_finding.severity, "white")
+                    icon = sev_icons.get(prompt_finding.severity, "⚪")
+                    sev_cell = f"{icon} [{style}]{prompt_finding.severity.upper()}[/{style}]"
+                    cat_cell = f"[cyan]{prompt_finding.category}[/cyan]"
+                    detail_parts = [f"[bold]{prompt_finding.title}[/bold]"]
+                    detail_parts.append(f"[dim]{prompt_finding.detail}[/dim]")
+                    if prompt_finding.recommendation:
+                        detail_parts.append(f"[green]→ {prompt_finding.recommendation}[/green]")
                     detail_cell = "\n".join(detail_parts)
-                    file_info = Path(finding.source_file).name
-                    if finding.line_number:
-                        file_info += f":{finding.line_number}"
+                    file_info = Path(prompt_finding.source_file).name
+                    if prompt_finding.line_number:
+                        file_info += f":{prompt_finding.line_number}"
                     prompt_table.add_row(sev_cell, cat_cell, detail_cell, file_info)
 
                 stats_line = (
@@ -1930,7 +1930,7 @@ def scan(
                 for r in _hash_report.results:
                     if r.is_tampered:
                         con.print(
-                            f"    [red]✗[/red] {r.filename}  expected={r.expected_sha256[:16]}…  got={r.actual_sha256[:16] if r.actual_sha256 else '?'}…"
+                            f"    [red]✗[/red] {r.filename}  expected={(r.expected_sha256 or '?')[:16]}…  got={r.actual_sha256[:16] if r.actual_sha256 else '?'}…"
                         )
             elif _hash_report.offline > 0:
                 con.print(f"  [yellow]~[/yellow] {_hash_report.scanned} file(s) found — HuggingFace Hub unreachable, hashes unverified")
@@ -2181,21 +2181,21 @@ def scan(
                     "medium": "[yellow]medium[/]",
                     "safe": "[green]safe[/]",
                 }
-                for r in vector_db_results:
+                for vdb_r in vector_db_results:
                     tbl.add_row(
-                        r.db_type,
-                        f"{r.host}:{r.port}",
-                        "[green]yes[/]" if r.requires_auth else "[red]NO[/]",
-                        _vdb_risk.get(r.risk_level, r.risk_level),
-                        ", ".join(r.risk_flags) or "-",
+                        vdb_r.db_type,
+                        f"{vdb_r.host}:{vdb_r.port}",
+                        "[green]yes[/]" if vdb_r.requires_auth else "[red]NO[/]",
+                        _vdb_risk.get(vdb_r.risk_level, vdb_r.risk_level),
+                        ", ".join(vdb_r.risk_flags) or "-",
                     )
-                for r in pinecone_results:
+                for pine_r in pinecone_results:
                     tbl.add_row(
                         "pinecone",
-                        r.index_name,
+                        pine_r.index_name,
                         "[green]API key[/]",
-                        _vdb_risk.get(r.risk_level, r.risk_level),
-                        ", ".join(r.risk_flags) or "-",
+                        _vdb_risk.get(pine_r.risk_level, pine_r.risk_level),
+                        ", ".join(pine_r.risk_flags) or "-",
                     )
                 con.print()
                 con.print(tbl)
@@ -2341,7 +2341,7 @@ def scan(
     # Step 2: Extract packages
     total_packages = 0
     if skill_only:
-        blast_radii = []
+        blast_radii: list[Any] = []
     else:
         con.print()
         con.print(Rule("Package Extraction", style="blue"))
@@ -2443,23 +2443,25 @@ def scan(
                 intro_report = introspect_servers_sync(all_servers, timeout=introspect_timeout)
                 for w in intro_report.warnings:
                     con.print(f"  [yellow]⚠[/yellow] {w}")
-                for r in intro_report.results:
-                    if r.success:
+                for intro_r in intro_report.results:
+                    if intro_r.success:
                         drift_str = ""
-                        if r.has_drift:
+                        if intro_r.has_drift:
                             parts = []
-                            if r.tools_added:
-                                parts.append(f"+{len(r.tools_added)} tools")
-                            if r.tools_removed:
-                                parts.append(f"-{len(r.tools_removed)} tools")
-                            if r.resources_added:
-                                parts.append(f"+{len(r.resources_added)} resources")
-                            if r.resources_removed:
-                                parts.append(f"-{len(r.resources_removed)} resources")
+                            if intro_r.tools_added:
+                                parts.append(f"+{len(intro_r.tools_added)} tools")
+                            if intro_r.tools_removed:
+                                parts.append(f"-{len(intro_r.tools_removed)} tools")
+                            if intro_r.resources_added:
+                                parts.append(f"+{len(intro_r.resources_added)} resources")
+                            if intro_r.resources_removed:
+                                parts.append(f"-{len(intro_r.resources_removed)} resources")
                             drift_str = f" [yellow]drift: {', '.join(parts)}[/yellow]"
-                        con.print(f"  [green]✓[/green] {r.server_name}: {r.tool_count} tools, {r.resource_count} resources{drift_str}")
+                        con.print(
+                            f"  [green]✓[/green] {intro_r.server_name}: {intro_r.tool_count} tools, {intro_r.resource_count} resources{drift_str}"
+                        )
                     else:
-                        con.print(f"  [dim]  {r.server_name}: {r.error}[/dim]")
+                        con.print(f"  [dim]  {intro_r.server_name}: {intro_r.error}[/dim]")
                 enriched = enrich_servers(all_servers, intro_report)
                 if enriched:
                     con.print(f"\n  [bold]{enriched} server(s) enriched with runtime data.[/bold]")
@@ -2654,27 +2656,30 @@ def scan(
             instr_files = discover_instruction_files(project_root)
             if instr_files:
                 con.print(f"\n[bold blue]🔏 Verifying instruction file provenance ({len(instr_files)} file(s))...[/bold blue]\n")
-                verifications = verify_instruction_files_batch(instr_files)
+                instr_paths: list[str | Path] = list(instr_files)
+                verifications = verify_instruction_files_batch(instr_paths)
                 _instruction_provenance_data = []
-                for v in verifications:
+                for verification in verifications:
                     rel_path = (
-                        str(Path(v.file_path).relative_to(project_root)) if v.file_path.startswith(str(project_root)) else v.file_path
+                        str(Path(verification.file_path).relative_to(project_root))
+                        if verification.file_path.startswith(str(project_root))
+                        else verification.file_path
                     )
-                    if v.verified:
-                        con.print(f"  [green]✓[/green] {rel_path} — provenance verified ({v.reason})")
-                    elif v.has_sigstore_bundle:
-                        con.print(f"  [yellow]⚠[/yellow] {rel_path} — bundle found but invalid ({v.reason})")
+                    if verification.verified:
+                        con.print(f"  [green]✓[/green] {rel_path} — provenance verified ({verification.reason})")
+                    elif verification.has_sigstore_bundle:
+                        con.print(f"  [yellow]⚠[/yellow] {rel_path} — bundle found but invalid ({verification.reason})")
                     else:
-                        con.print(f"  [dim]  {rel_path} — unsigned (sha256: {v.sha256[:12]}...)[/dim]")
+                        con.print(f"  [dim]  {rel_path} — unsigned (sha256: {verification.sha256[:12]}...)[/dim]")
                     _instruction_provenance_data.append(
                         {
                             "file": rel_path,
-                            "sha256": v.sha256,
-                            "verified": v.verified,
-                            "has_bundle": v.has_sigstore_bundle,
-                            "signer": v.signer_identity,
-                            "rekor_index": v.rekor_log_index,
-                            "reason": v.reason,
+                            "sha256": verification.sha256,
+                            "verified": verification.verified,
+                            "has_bundle": verification.has_sigstore_bundle,
+                            "signer": verification.signer_identity,
+                            "rekor_index": verification.rekor_log_index,
+                            "reason": verification.reason,
                         }
                     )
             else:
@@ -2684,7 +2689,7 @@ def scan(
         _cortex_telemetry_data = None
         if cortex_observability and snowflake_flag:
             try:
-                from agent_bom.cloud.snowflake import _get_connection
+                from agent_bom.cloud.snowflake import _get_connection  # type: ignore[attr-defined]
                 from agent_bom.cloud.snowflake_observability import get_cortex_telemetry
 
                 con.print("\n[bold blue]📊 Fetching Cortex agent observability telemetry...[/bold blue]\n")
@@ -2906,9 +2911,9 @@ def scan(
 
     # ── Step 1k: Dataset card scan ──────────────────────────────────
     if not skill_only and dataset_dirs:
-        from agent_bom.parsers.dataset_cards import scan_dataset_directory
+        from agent_bom.parsers.dataset_cards import DatasetInfo, scan_dataset_directory
 
-        all_datasets: list[dict] = []
+        all_datasets: list[DatasetInfo] = []
         all_ds_warnings: list[str] = []
         for ddir in dataset_dirs:
             con.print(f"  [cyan]>[/cyan] Scanning for dataset cards in {ddir}...")
@@ -3024,15 +3029,15 @@ def scan(
         remed_plan = _gen_remed(report, blast_radii)
         if remed_plan.package_fixes:
             # Collect project directories from agent config paths
-            project_dirs = []
+            project_dirs: list[Path] = []
             for agent in agents:
                 if agent.config_path:
-                    config_dir = Path(agent.config_path).parent
+                    agent_config_dir = Path(agent.config_path).parent
                     # Walk up to find package.json or requirements.txt
-                    for d in [config_dir, config_dir.parent, config_dir.parent.parent]:
-                        if (d / "package.json").exists() or (d / "requirements.txt").exists():
-                            if d not in project_dirs:
-                                project_dirs.append(d)
+                    for candidate_dir in [agent_config_dir, agent_config_dir.parent, agent_config_dir.parent.parent]:
+                        if (candidate_dir / "package.json").exists() or (candidate_dir / "requirements.txt").exists():
+                            if candidate_dir not in project_dirs:
+                                project_dirs.append(candidate_dir)
                             break
             # Also try current working directory
             cwd = Path.cwd()
@@ -3164,27 +3169,27 @@ def scan(
             con.print(Panel.fit(_skill_audit_obj.ai_skill_summary, border_style="cyan"))
 
             # Show AI-adjusted findings
-            adjusted = [f for f in _skill_audit_obj.findings if f.ai_adjusted_severity]
+            adjusted = [sk_f for sk_f in _skill_audit_obj.findings if sk_f.ai_adjusted_severity]
             if adjusted:
-                for f in adjusted:
-                    if f.ai_adjusted_severity == "false_positive":
-                        con.print(f"  [green]✓ FP[/green] {f.title}")
-                        con.print(f"    [dim]{f.ai_analysis}[/dim]")
+                for sk_f in adjusted:
+                    if sk_f.ai_adjusted_severity == "false_positive":
+                        con.print(f"  [green]✓ FP[/green] {sk_f.title}")
+                        con.print(f"    [dim]{sk_f.ai_analysis}[/dim]")
                     else:
-                        con.print(f"  [yellow]↕ ADJ[/yellow] {f.title}: {f.severity} → {f.ai_adjusted_severity}")
-                        if f.ai_analysis:
-                            con.print(f"    [dim]{f.ai_analysis}[/dim]")
+                        con.print(f"  [yellow]↕ ADJ[/yellow] {sk_f.title}: {sk_f.severity} → {sk_f.ai_adjusted_severity}")
+                        if sk_f.ai_analysis:
+                            con.print(f"    [dim]{sk_f.ai_analysis}[/dim]")
 
             # Show AI-detected new findings
-            ai_detected = [f for f in _skill_audit_obj.findings if f.context == "ai_analysis"]
+            ai_detected = [sk_f for sk_f in _skill_audit_obj.findings if sk_f.context == "ai_analysis"]
             if ai_detected:
                 con.print(f"\n  [bold yellow]AI-Detected Threats ({len(ai_detected)})[/bold yellow]")
-                for f in ai_detected:
-                    style = sev_colors.get(f.severity, "white")
-                    con.print(f"    [{style}]\\[{f.severity.upper()}][/{style}] {f.title}")
-                    con.print(f"      [dim]{f.detail}[/dim]")
-                    if f.recommendation:
-                        con.print(f"      [green]→ {f.recommendation}[/green]")
+                for sk_f in ai_detected:
+                    style = sev_colors.get(sk_f.severity, "white")
+                    con.print(f"    [{style}]\\[{sk_f.severity.upper()}][/{style}] {sk_f.title}")
+                    con.print(f"      [dim]{sk_f.detail}[/dim]")
+                    if sk_f.recommendation:
+                        con.print(f"      [green]→ {sk_f.recommendation}[/green]")
 
         if verbose:
             print_remediation_plan(report)
@@ -3489,16 +3494,16 @@ def scan(
             try:
                 from agent_bom.integrations.vanta import upload_evidence
 
-                _asyncio_int.run(upload_evidence(vanta_token, findings))
+                _asyncio_int.run(upload_evidence(vanta_token, findings))  # type: ignore[arg-type]
                 con.print("  [green]✓[/green] Vanta: evidence uploaded")
             except Exception as exc:
                 con.print(f"  [yellow]⚠[/yellow] Vanta upload failed: {exc}")
 
         if drata_token and findings:
             try:
-                from agent_bom.integrations.drata import upload_evidence
+                from agent_bom.integrations.drata import upload_evidence as upload_evidence_drata
 
-                _asyncio_int.run(upload_evidence(drata_token, findings))
+                _asyncio_int.run(upload_evidence_drata(drata_token, findings))  # type: ignore[arg-type]
                 con.print("  [green]✓[/green] Drata: evidence uploaded")
             except Exception as exc:
                 con.print(f"  [yellow]⚠[/yellow] Drata upload failed: {exc}")
@@ -3716,8 +3721,9 @@ def validate(inventory_file: str):
         console.print("[red]jsonschema not installed. Run: pip install jsonschema[/red]")
         sys.exit(1)
 
-    schema_path = Path(__file__).parent.parent.parent / "schemas" / "inventory.schema.json"
-    if not schema_path.exists():
+    _initial_schema = Path(__file__).parent.parent.parent / "schemas" / "inventory.schema.json"
+    schema_path: Path | None = _initial_schema
+    if not _initial_schema.exists():
         # Fallback: look relative to installed package
         import importlib.resources
 
@@ -3820,12 +3826,12 @@ def where(as_json: bool):
         if paths:
             for p in paths:
                 total_paths += 1
-                expanded = expand_path(p)
-                exists = "✓" if expanded.exists() else "✗"
-                style = "green" if expanded.exists() else "dim"
-                if expanded.exists():
+                expanded_path = expand_path(p)
+                mark = "✓" if expanded_path.exists() else "✗"
+                style = "green" if expanded_path.exists() else "dim"
+                if expanded_path.exists():
                     found_paths += 1
-                console.print(f"    [{style}]{exists} {expanded}[/{style}]")
+                console.print(f"    [{style}]{mark} {expanded_path}[/{style}]")
         else:
             console.print(f"    [dim]  (CLI-based discovery via {binary or 'N/A'})[/dim]")
 
@@ -3833,30 +3839,30 @@ def where(as_json: bool):
     console.print("\n  [bold cyan]Docker MCP Toolkit[/bold cyan]")
     for dp in ["~/.docker/mcp/registry.yaml", "~/.docker/mcp/catalogs/docker-mcp.yaml"]:
         total_paths += 1
-        expanded = expand_path(dp)
-        exists = "✓" if expanded.exists() else "✗"
-        style = "green" if expanded.exists() else "dim"
-        if expanded.exists():
+        expanded_path = expand_path(dp)
+        mark = "✓" if expanded_path.exists() else "✗"
+        style = "green" if expanded_path.exists() else "dim"
+        if expanded_path.exists():
             found_paths += 1
-        console.print(f"    [{style}]{exists} {expanded}[/{style}]")
+        console.print(f"    [{style}]{mark} {expanded_path}[/{style}]")
 
     console.print("\n  [bold cyan]Project-level configs[/bold cyan]  [dim](relative to CWD)[/dim]")
     for config_name in PROJECT_CONFIG_FILES:
         total_paths += 1
-        exists = Path(config_name).exists()
-        mark = "✓" if exists else "✗"
-        style = "green" if exists else "dim"
-        if exists:
+        file_exists = Path(config_name).exists()
+        mark = "✓" if file_exists else "✗"
+        style = "green" if file_exists else "dim"
+        if file_exists:
             found_paths += 1
         console.print(f"    [{style}]{mark} ./{config_name}[/{style}]")
 
     console.print("\n  [bold cyan]Docker Compose files[/bold cyan]  [dim](relative to CWD)[/dim]")
     for cf in COMPOSE_FILE_NAMES:
         total_paths += 1
-        exists = Path(cf).exists()
-        mark = "✓" if exists else "✗"
-        style = "green" if exists else "dim"
-        if exists:
+        file_exists = Path(cf).exists()
+        mark = "✓" if file_exists else "✗"
+        style = "green" if file_exists else "dim"
+        if file_exists:
             found_paths += 1
         console.print(f"    [{style}]{mark} ./{cf}[/{style}]")
 

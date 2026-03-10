@@ -144,6 +144,10 @@ def _parse_cvss4_vector(vector: str) -> Optional[float]:
         if any(v is None for v in required):
             return None
 
+        assert av is not None and ac is not None and at is not None
+        assert pr is not None and ui is not None
+        assert vc is not None and vi is not None and va is not None
+
         # Subsequent-system impact (optional — defaults to None=0)
         sc = {"H": 0.56, "L": 0.22, "N": 0.0}.get(m.get("SC", "N"), 0.0)
         si = {"H": 0.56, "L": 0.22, "N": 0.0}.get(m.get("SI", "N"), 0.0)
@@ -192,6 +196,9 @@ def parse_cvss_vector(vector: str) -> Optional[float]:
 
         if any(v is None for v in (av, ac, pr, ui, c, i, a)):
             return None
+
+        assert av is not None and ac is not None and pr is not None and ui is not None
+        assert c is not None and i is not None and a is not None
 
         isc_base = 1.0 - (1.0 - c) * (1.0 - i) * (1.0 - a)
         if scope == "C":
@@ -425,9 +432,9 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
                             vulns = result.get("vulns", [])
                             if vulns:
                                 actual_idx = batch_start + i
-                                pkg = pkg_index.get(actual_idx)
-                                if pkg:
-                                    key = f"{pkg.ecosystem.lower()}:{pkg.name}@{pkg.version}"
+                                pkg_match = pkg_index.get(actual_idx)
+                                if pkg_match:
+                                    key = f"{pkg_match.ecosystem.lower()}:{pkg_match.name}@{pkg_match.version}"
                                     results[key] = vulns
                                     queried_keys_with_vulns.add(key)
                     except (ValueError, KeyError) as e:

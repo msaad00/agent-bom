@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from agent_bom.models import AIBOMReport, BlastRadius
@@ -723,7 +723,7 @@ def _compliance_section(blast_radii: list["BlastRadius"]) -> str:
     except ImportError:
         return ""
 
-    br_dicts = []
+    br_dicts: list[dict[str, Any]] = []
     for br in blast_radii:
         br_dicts.append(
             {
@@ -737,7 +737,7 @@ def _compliance_section(blast_radii: list["BlastRadius"]) -> str:
             }
         )
 
-    def _build_rows(catalog: dict, tag_field: str) -> tuple[str, int, int, int]:
+    def _build_rows(catalog: dict[str, str], tag_field: str) -> tuple[str, int, int, int]:
         rows = []
         pass_count = fail_count = warn_count = 0
         for code, name in sorted(catalog.items()):
@@ -766,7 +766,7 @@ def _compliance_section(blast_radii: list["BlastRadius"]) -> str:
 
     owasp_rows, op, of, ow = _build_rows(OWASP_LLM_TOP10, "owasp_tags")
     atlas_rows, ap, af, aw = _build_rows(ATLAS_TECHNIQUES, "atlas_tags")
-    attack_rows, atp, atf, atw = _build_rows(ATTACK_TECHNIQUES, "attack_tags")
+    attack_rows, atp, atf, atw = _build_rows(dict(ATTACK_TECHNIQUES), "attack_tags")
     nist_rows, np_, nf, nw = _build_rows(NIST_AI_RMF, "nist_ai_rmf_tags")
     agentic_rows, oap, oaf, oaw = _build_rows(OWASP_AGENTIC_TOP10, "owasp_agentic_tags")
     eu_rows, ep, ef_, ew = _build_rows(EU_AI_ACT, "eu_ai_act_tags")

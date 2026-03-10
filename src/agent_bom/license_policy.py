@@ -13,8 +13,12 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
+from typing import TYPE_CHECKING
 
 from agent_bom.models import Agent
+
+if TYPE_CHECKING:
+    from rich.console import Console
 
 logger = logging.getLogger(__name__)
 
@@ -485,7 +489,7 @@ def to_serializable(report: LicenseReport) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def print_license_report(report: LicenseReport, console: object) -> None:
+def print_license_report(report: LicenseReport, console: Console) -> None:
     """Print license compliance report using Rich console."""
     from rich.table import Table
 

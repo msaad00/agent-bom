@@ -1368,8 +1368,9 @@ def scan(
             skill_result = scan_skill_files(skill_file_list)
             if skill_result.servers or skill_result.packages or skill_result.credential_env_vars:
                 con.print(f"\n[bold blue]Scanning {len(skill_file_list)} skill file(s)...[/bold blue]\n")
-                for sf in skill_file_list:
-                    con.print(f"  [dim]•[/dim] {sf.name}  [dim]{sf.parent}[/dim]")
+                if verbose:
+                    for sf in skill_file_list:
+                        con.print(f"  [dim]•[/dim] {sf.name}  [dim]{sf.parent}[/dim]")
                 if skill_result.servers:
                     from agent_bom.models import Agent, AgentType
 
@@ -1480,45 +1481,61 @@ def scan(
         trust_result = assess_trust(_skill_result_obj, _skill_audit_obj)
         _trust_assessment_data = trust_result.to_dict()
 
-        # Console output: trust assessment panel
-        from rich.panel import Panel as TrustPanel
-        from rich.table import Table as TrustTable
-
-        level_icons = {
-            TrustLevel.PASS: "[green]✓[/green]",
-            TrustLevel.INFO: "[blue]ℹ[/blue]",
-            TrustLevel.WARN: "[yellow]⚠[/yellow]",
-            TrustLevel.FAIL: "[red]✗[/red]",
-        }
+        # Console output: trust assessment
         verdict_styles = {
             Verdict.BENIGN: "green",
             Verdict.SUSPICIOUS: "yellow",
             Verdict.MALICIOUS: "red bold",
         }
-        trust_table = TrustTable(expand=True, padding=(0, 1), show_header=True)
-        trust_table.add_column("", justify="center", no_wrap=True, width=3)
-        trust_table.add_column("Category", no_wrap=True, width=24)
-        trust_table.add_column("Summary", ratio=3)
-
-        for cat in trust_result.categories:
-            icon = level_icons.get(cat.level, "?")
-            trust_table.add_row(icon, f"[bold]{cat.name}[/bold]", cat.summary)
-
         vstyle = verdict_styles.get(trust_result.verdict, "white")
-        verdict_line = f"[{vstyle}]{trust_result.verdict.value.upper()}[/{vstyle}] ({trust_result.confidence.value} confidence)"
-        con.print()
-        con.print(
-            TrustPanel(
-                trust_table,
-                title=f"[bold]Trust Assessment — {Path(trust_result.source_file).name}[/bold]",
-                subtitle=verdict_line,
-                border_style=vstyle,
-            )
-        )
 
-        if trust_result.recommendations:
-            for rec in trust_result.recommendations:
-                con.print(f"  [dim]→ {rec}[/dim]")
+        if verbose:
+            # Full trust panel (--verbose only)
+            from rich.panel import Panel as TrustPanel
+            from rich.table import Table as TrustTable
+
+            level_icons = {
+                TrustLevel.PASS: "[green]✓[/green]",
+                TrustLevel.INFO: "[blue]ℹ[/blue]",
+                TrustLevel.WARN: "[yellow]⚠[/yellow]",
+                TrustLevel.FAIL: "[red]✗[/red]",
+            }
+            trust_table = TrustTable(expand=True, padding=(0, 1), show_header=True)
+            trust_table.add_column("", justify="center", no_wrap=True, width=3)
+            trust_table.add_column("Category", no_wrap=True, width=24)
+            trust_table.add_column("Summary", ratio=3)
+
+            for cat in trust_result.categories:
+                icon = level_icons.get(cat.level, "?")
+                trust_table.add_row(icon, f"[bold]{cat.name}[/bold]", cat.summary)
+
+            verdict_line = f"[{vstyle}]{trust_result.verdict.value.upper()}[/{vstyle}] ({trust_result.confidence.value} confidence)"
+            con.print()
+            con.print(
+                TrustPanel(
+                    trust_table,
+                    title=f"[bold]Trust Assessment — {Path(trust_result.source_file).name}[/bold]",
+                    subtitle=verdict_line,
+                    border_style=vstyle,
+                )
+            )
+
+            if trust_result.recommendations:
+                for rec in trust_result.recommendations:
+                    con.print(f"  [dim]→ {rec}[/dim]")
+        else:
+            # Compact one-liner (default mode)
+            fail_count = sum(1 for c in trust_result.categories if c.level == TrustLevel.FAIL)
+            warn_count = sum(1 for c in trust_result.categories if c.level == TrustLevel.WARN)
+            fname = Path(trust_result.source_file).name
+            verdict_text = f"[{vstyle}]{trust_result.verdict.value.upper()}[/{vstyle}]"
+            issues = []
+            if fail_count:
+                issues.append(f"[red]{fail_count} fail[/red]")
+            if warn_count:
+                issues.append(f"[yellow]{warn_count} warn[/yellow]")
+            issues_str = f" ({', '.join(issues)})" if issues else ""
+            con.print(f"  Trust: {fname} → {verdict_text}{issues_str}")
 
     # Step 1g3b: Prompt template scanning (--scan-prompts)
     _prompt_scan_data: dict | None = None

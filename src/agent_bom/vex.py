@@ -7,11 +7,14 @@ Supports OpenVEX JSON format (https://openvex.dev/).
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from agent_bom.models import AIBOMReport
@@ -113,7 +116,7 @@ def load_vex(path: str) -> VexDocument:
             try:
                 justification = VexJustification(just_str)
             except ValueError:
-                pass
+                logger.warning("Unknown VEX justification value: %s", just_str)
 
         products = stmt_data.get("products", [])
         if isinstance(products, list) and products and isinstance(products[0], dict):

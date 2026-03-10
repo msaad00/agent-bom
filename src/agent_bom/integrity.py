@@ -56,8 +56,8 @@ async def verify_npm_integrity(
                 "tarball_url": dist.get("tarball"),
                 "verified": bool(dist.get("integrity") or dist.get("shasum")),
             }
-        except (ValueError, KeyError):
-            pass
+        except (ValueError, KeyError) as exc:
+            logger.warning("npm integrity parse failed for %s@%s: %s", package_name, version, exc)
 
     return None
 
@@ -97,8 +97,8 @@ async def verify_pypi_integrity(
                         "requires_python": url_entry.get("requires_python"),
                         "verified": True,
                     }
-        except (ValueError, KeyError):
-            pass
+        except (ValueError, KeyError) as exc:
+            logger.warning("PyPI integrity parse failed for %s@%s: %s", package_name, version, exc)
 
     return None
 

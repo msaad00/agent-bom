@@ -122,7 +122,7 @@ def _fetch_hub_file_hashes(repo_id: str, token: str | None = None) -> dict[str, 
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:  # noqa: BLE001
-        logger.debug("Hub API fetch failed for %s: %s", repo_id, e)
+        logger.warning("HuggingFace Hub API fetch failed for %s: %s", repo_id, e)
         return None  # None signals offline/unreachable
 
     # siblings list: [{rfilename: "model.safetensors", ...}, ...]
@@ -163,8 +163,8 @@ def _infer_repo_id(model_dir: Path) -> str | None:
                     val = data.get(key, "")
                     if val and "/" in val and not val.startswith("/"):
                         return val
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Could not parse %s for repo ID: %s", cfg_name, exc)
 
     # .git/config
     git_cfg = model_dir / ".git" / "config"
@@ -179,8 +179,8 @@ def _infer_repo_id(model_dir: Path) -> str | None:
                     parts = url.rstrip("/").split("/")
                     if len(parts) >= 2:
                         return f"{parts[-2]}/{parts[-1]}"
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Could not parse .git/config for repo ID: %s", exc)
 
     # Directory name as last resort
     name = model_dir.name

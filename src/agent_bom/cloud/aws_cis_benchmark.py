@@ -1496,6 +1496,15 @@ def run_benchmark(
             )
         except Exception as exc:
             logger.warning("CIS check %s failed: %s", check_id, exc)
+            report.checks.append(
+                CISCheckResult(
+                    check_id=check_id,
+                    title=_extract_title(check_fn),
+                    status=CheckStatus.ERROR,
+                    severity="unknown",
+                    evidence=f"Check failed: {type(exc).__name__}: {exc}",
+                )
+            )
 
     # Standard checks (single client)
     for service, check_fn in _CHECKS:

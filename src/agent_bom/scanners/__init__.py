@@ -82,7 +82,8 @@ def _get_scan_cache():  # noqa: ANN202
             from agent_bom.scan_cache import ScanCache
 
             _scan_cache_instance = ScanCache()
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            _logger.warning("ScanCache initialization failed (caching disabled): %s", exc)
             _scan_cache_instance = False  # mark as attempted, don't retry
     return _scan_cache_instance if _scan_cache_instance is not False else None
 
@@ -823,7 +824,7 @@ async def scan_agents_with_enrichment(
             if unique_pkgs:
                 await enrich_packages_with_scorecard(unique_pkgs)
         except Exception as exc:  # noqa: BLE001
-            _logger.debug("Scorecard auto-enrichment skipped: %s", exc)
+            _logger.warning("Scorecard auto-enrichment failed (risk scores may be understated): %s", exc)
 
         # Recalculate blast radius with all enriched data
         for br in blast_radii:

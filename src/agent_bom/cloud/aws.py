@@ -317,8 +317,8 @@ def _extract_tools_from_schema(action_group_detail: dict) -> list[MCPTool]:
                             description=op.get("summary", op.get("description", "")),
                         )
                     )
-    except (json.JSONDecodeError, TypeError):
-        pass
+    except (json.JSONDecodeError, TypeError) as exc:
+        logger.warning("Failed to parse OpenAPI spec for Lambda tool extraction: %s", exc)
 
     return tools
 

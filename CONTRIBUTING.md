@@ -89,9 +89,10 @@ pytest tests/test_core.py -v        # specific file
 
 **Rules:**
 - Every new feature needs at least one test.
-- Every bug fix needs a regression test.
+- Every bug fix needs a **regression test** that fails without the fix and passes with it. This is enforced during code review — PRs that fix bugs without a regression test will be asked to add one. Over 90% of historical `fix:` commits include regression tests.
 - Network tests (hitting real APIs) are marked `@pytest.mark.network` and skipped in CI. Use mocks for unit tests.
 - The test suite must stay green. Pre-existing failures are bugs, not technical debt.
+- **Coverage floor:** CI enforces a minimum statement coverage threshold (currently 73%, target 80% per [#529](https://github.com/msaad00/agent-bom/issues/529)). PRs that drop coverage below the floor will fail CI.
 
 **Test layout:**
 

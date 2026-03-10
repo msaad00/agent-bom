@@ -285,7 +285,7 @@ Auto-discovers 21 MCP clients: Claude Desktop, Claude Code, Cursor, Windsurf, Cl
 <details>
 <summary><b>What it outputs</b></summary>
 
-Console, HTML dashboard, SARIF, CycloneDX 1.6, SPDX 3.0, Prometheus, OTLP, JSON, Mermaid, Cytoscape graph JSON, REST API.
+Console, JSON, HTML, SARIF, CycloneDX 1.6, SPDX 3.0, Mermaid, SVG, Graph (DOT/JSON/HTML), Prometheus, Badge, REST API — 13 formats total.
 
 ```bash
 agent-bom scan -f cyclonedx -o ai-bom.cdx.json   # CycloneDX 1.6
@@ -572,7 +572,7 @@ pip install -e ".[dev]"
 pytest && ruff check src/
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) | [SECURITY.md](SECURITY.md) | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+See [CONTRIBUTING.md](CONTRIBUTING.md) | [SECURITY.md](SECURITY.md) | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | [GOVERNANCE.md](GOVERNANCE.md) | [ROADMAP.md](ROADMAP.md) | [THREAT_MODEL.md](THREAT_MODEL.md)
 
 ---
 

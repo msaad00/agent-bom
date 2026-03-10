@@ -221,14 +221,17 @@ cli.py / mcp_server.py / api/server.py
 
 | Metric | Count |
 |---|---|
-| Python modules | 171 |
-| Test files | 185 |
-| Test functions | ~4,449 (collected by pytest) |
+| Python modules | 182 |
+| Test files | 187 |
+| Test functions | ~4,618 (collected by pytest) |
 | MCP tools | 30 |
 | Compliance frameworks | 11 |
 | Runtime detectors | 7 |
 | Cloud providers | 12 |
-| SAST CWE mappings | 52 |
+| Security patterns | 71 |
+| SAST CWE mappings | 53 |
+| Output formats | 13 |
+| Policy conditions | 18 + expression engine |
 
 ## How to Add...
 

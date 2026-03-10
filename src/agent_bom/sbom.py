@@ -64,9 +64,19 @@ def parse_cyclonedx(data: dict) -> list[Package]:
     """Parse a CycloneDX 1.x JSON document into Package objects.
 
     Works with output from Syft, Grype, Trivy, cdxgen, and agent-bom itself.
+    Respects component ``scope`` and ``dependencies`` array to distinguish
+    direct vs transitive dependencies.
     """
     packages: list[Package] = []
     components = data.get("components", [])
+
+    # Build set of direct dependency refs from dependencies array
+    _direct_refs: set[str] = set()
+    root_ref = (data.get("metadata", {}).get("component", {}) or {}).get("bom-ref", "")
+    for dep_entry in data.get("dependencies", []):
+        if dep_entry.get("ref") == root_ref:
+            _direct_refs.update(dep_entry.get("dependsOn", []))
+            break
 
     for comp in components:
         if not isinstance(comp, dict):
@@ -137,13 +147,26 @@ def parse_cyclonedx(data: dict) -> list[Package]:
 
         copyright_val = comp.get("copyright") or None
 
+        # Determine direct vs transitive: scope field takes priority,
+        # then check if component is in root's dependsOn list.
+        bom_ref = comp.get("bom-ref", "")
+        scope = comp.get("scope", "")
+        if scope == "required":
+            _is_direct = True
+        elif scope == "optional":
+            _is_direct = False
+        elif _direct_refs and bom_ref:
+            _is_direct = bom_ref in _direct_refs
+        else:
+            _is_direct = True  # fallback when no dependency info
+
         packages.append(
             Package(
                 name=name,
                 version=version,
                 ecosystem=ecosystem,
                 purl=purl or None,
-                is_direct=True,
+                is_direct=_is_direct,
                 resolved_from_registry=False,
                 license=lic_id,
                 license_expression=lic_expr,
@@ -172,6 +195,16 @@ def parse_spdx(data: dict) -> list[Package]:
     """
     packages: list[Package] = []
 
+    # SPDX 3.0: build direct dependency set from relationship elements
+    _spdx3_direct_ids: set[str] = set()
+    for elem in data.get("elements", []):
+        if isinstance(elem, dict) and elem.get("type") in ("Relationship", "relationship"):
+            if elem.get("relationshipType") == "DEPENDS_ON":
+                from_id = elem.get("from", "")
+                # Root element's DEPENDS_ON targets are direct deps
+                if from_id and from_id == data.get("SPDXID", ""):
+                    _spdx3_direct_ids.update(elem.get("to", []) if isinstance(elem.get("to"), list) else [elem.get("to", "")])
+
     # SPDX 3.0 format
     if "spdxVersion" in data and data.get("spdxVersion", "").startswith("SPDX-3"):
         for elem in data.get("elements", []):
@@ -194,13 +227,16 @@ def parse_spdx(data: dict) -> list[Package]:
             desc_3 = elem.get("description") or elem.get("software/description") or None
             copyright_3 = elem.get("copyrightText") or None
 
+            elem_spdxid = elem.get("spdxId", elem.get("SPDXID", ""))
+            _is_direct_3 = elem_spdxid in _spdx3_direct_ids if _spdx3_direct_ids else True
+
             packages.append(
                 Package(
                     name=name,
                     version=version,
                     ecosystem=ecosystem,
                     purl=purl or None,
-                    is_direct=True,
+                    is_direct=_is_direct_3,
                     license=lic_3 if isinstance(lic_3, str) else None,
                     supplier=supplier_3 if isinstance(supplier_3, str) else None,
                     description=desc_3[:300] if desc_3 else None,
@@ -208,6 +244,13 @@ def parse_spdx(data: dict) -> list[Package]:
                 )
             )
         return packages
+
+    # SPDX 2.x: build direct dependency set from relationships
+    _spdx_direct_ids: set[str] = set()
+    doc_spdxid = data.get("SPDXID", "SPDXRef-DOCUMENT")
+    for rel in data.get("relationships", []):
+        if rel.get("spdxElementId") == doc_spdxid and rel.get("relationshipType") == "DEPENDS_ON":
+            _spdx_direct_ids.add(rel.get("relatedSpdxElement", ""))
 
     # SPDX 2.x format
     for pkg in data.get("packages", []):
@@ -244,13 +287,17 @@ def parse_spdx(data: dict) -> list[Package]:
         if copyright_2x and copyright_2x.upper() == "NOASSERTION":
             copyright_2x = None
 
+        # Direct if in document's DEPENDS_ON relationships, or fallback to True
+        pkg_spdxid = pkg.get("SPDXID", "")
+        _is_direct_2x = pkg_spdxid in _spdx_direct_ids if _spdx_direct_ids else True
+
         packages.append(
             Package(
                 name=name,
                 version=version,
                 ecosystem=ecosystem,
                 purl=purl or None,
-                is_direct=True,
+                is_direct=_is_direct_2x,
                 license=lic_declared,
                 supplier=supplier_2x,
                 description=desc_2x[:300] if desc_2x else None,

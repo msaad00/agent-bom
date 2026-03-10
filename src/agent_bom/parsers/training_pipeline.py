@@ -21,6 +21,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from agent_bom.parsers.compliance_tags import tag_training_run
+
 logger = logging.getLogger(__name__)
 
 # Skip directories during discovery
@@ -58,6 +60,7 @@ class TrainingRun:
     git_sha: str = ""
     serialization_format: str = ""
     security_flags: list[dict] = field(default_factory=list)
+    compliance_tags: dict[str, list[str]] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         d: dict = {
@@ -89,6 +92,8 @@ class TrainingRun:
             d["serialization_format"] = self.serialization_format
         if self.security_flags:
             d["security_flags"] = self.security_flags
+        if self.compliance_tags:
+            d["compliance_tags"] = self.compliance_tags
         return d
 
 
@@ -541,18 +546,22 @@ def scan_training_pipelines(paths: list[Path]) -> TrainingPipelineScanResult:
         if name == "meta.yaml":
             run = parse_mlflow_meta_yaml(path)
             if run:
+                tag_training_run(run)
                 result.training_runs.append(run)
                 result.source_files.append(str(path))
 
         elif name == "MLmodel":
             run = parse_mlflow_mlmodel(path)
             if run:
+                tag_training_run(run)
                 result.training_runs.append(run)
                 result.source_files.append(str(path))
 
         elif name.endswith((".yaml", ".yml")) and "pipeline" in name.lower():
             kf_result = parse_kubeflow_pipeline_yaml(path)
             if kf_result:
+                for kf_run in kf_result.training_runs:
+                    tag_training_run(kf_run)
                 result.training_runs.extend(kf_result.training_runs)
                 result.serving_configs.extend(kf_result.serving_configs)
                 result.source_files.extend(kf_result.source_files)
@@ -560,6 +569,7 @@ def scan_training_pipelines(paths: list[Path]) -> TrainingPipelineScanResult:
         elif name == "wandb-metadata.json":
             run = parse_wandb_metadata(path)
             if run:
+                tag_training_run(run)
                 result.training_runs.append(run)
                 result.source_files.append(str(path))
 

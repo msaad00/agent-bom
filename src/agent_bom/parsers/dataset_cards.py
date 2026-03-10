@@ -20,6 +20,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from agent_bom.parsers.compliance_tags import tag_dataset
+
 logger = logging.getLogger(__name__)
 
 # Skip directories during discovery
@@ -52,6 +54,7 @@ class DatasetInfo:
     dvc_remote: str = ""
     dvc_md5: str = ""
     security_flags: list[dict] = field(default_factory=list)
+    compliance_tags: dict[str, list[str]] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         """Serialize to plain dict for JSON output."""
@@ -83,6 +86,8 @@ class DatasetInfo:
             d["dvc_md5"] = self.dvc_md5
         if self.security_flags:
             d["security_flags"] = self.security_flags
+        if self.compliance_tags:
+            d["compliance_tags"] = self.compliance_tags
         return d
 
 
@@ -351,6 +356,7 @@ def scan_datasets(paths: list[Path]) -> DatasetScanResult:
         if info and info.name:
             # Deduplicate by name (prefer the one with more data)
             if info.name not in seen_names:
+                tag_dataset(info)
                 seen_names.add(info.name)
                 result.datasets.append(info)
                 result.source_files.append(str(path))

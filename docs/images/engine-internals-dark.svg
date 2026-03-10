@@ -214,7 +214,7 @@
   <!-- ═══════════════════════════════════════════════════════════════════════ -->
   <rect x="24" y="482" width="912" height="44" rx="8" fill="#111113" stroke="#1c1c1f" stroke-width="1"/>
 
-  <text x="92" y="504" text-anchor="middle" class="stat-num" fill="#3b82f6">20</text>
+  <text x="92" y="504" text-anchor="middle" class="stat-num" fill="#3b82f6">21</text>
   <text x="92" y="518" text-anchor="middle" class="stat-label">MCP clients</text>
 
   <text x="222" y="504" text-anchor="middle" class="stat-num" fill="#f59e0b">6</text>
@@ -223,15 +223,15 @@
   <text x="352" y="504" text-anchor="middle" class="stat-num" fill="#f43f5e">427+</text>
   <text x="352" y="518" text-anchor="middle" class="stat-label">registry servers</text>
 
-  <text x="482" y="504" text-anchor="middle" class="stat-num" fill="#f43f5e">10</text>
+  <text x="482" y="504" text-anchor="middle" class="stat-num" fill="#f43f5e">11</text>
   <text x="482" y="518" text-anchor="middle" class="stat-label">compliance frameworks</text>
 
   <text x="612" y="504" text-anchor="middle" class="stat-num" fill="#10b981">12</text>
   <text x="612" y="518" text-anchor="middle" class="stat-label">output formats</text>
 
-  <text x="742" y="504" text-anchor="middle" class="stat-num" fill="#a78bfa">22</text>
+  <text x="742" y="504" text-anchor="middle" class="stat-num" fill="#a78bfa">30</text>
   <text x="742" y="518" text-anchor="middle" class="stat-label">MCP server tools</text>
 
-  <text x="872" y="504" text-anchor="middle" class="stat-num" fill="#71717a">3,400+</text>
+  <text x="872" y="504" text-anchor="middle" class="stat-num" fill="#71717a">4,400+</text>
   <text x="872" y="518" text-anchor="middle" class="stat-label">tests</text>
 </svg>

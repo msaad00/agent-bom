@@ -537,14 +537,22 @@ def _rule_matches(rule: dict, br) -> bool:
     return True
 
 
-def evaluate_policy(policy: dict, blast_radii: list) -> dict:
+def evaluate_policy(policy: dict, blast_radii: list, *, dry_run: bool = False) -> dict:
     """Evaluate policy rules against blast radius findings.
+
+    Args:
+        policy: Parsed policy dict with ``rules`` list.
+        blast_radii: List of BlastRadius objects to evaluate.
+        dry_run: If True, evaluate rules but treat all 'fail' actions as
+                 'warn' — violations are reported but the scan will not
+                 fail.  Useful for testing new policies before enforcing.
 
     Returns a dict with:
       violations  – list of {rule, finding, action} for matching rules
       failures    – subset of violations where action == 'fail'
       warnings    – subset of violations where action == 'warn'
       passed      – True if no 'fail' violations
+      dry_run     – whether dry-run mode was active
     """
     violations = []
 
@@ -577,6 +585,14 @@ def evaluate_policy(policy: dict, blast_radii: list) -> dict:
     warnings = [v for v in violations if v["action"] == "warn"]
     jira_violations = [v for v in violations if v["action"] == "jira"]
 
+    # In dry-run mode, demote failures to warnings — report but don't block
+    if dry_run:
+        for v in failures:
+            v["original_action"] = "fail"
+            v["action"] = "warn"
+        warnings = warnings + failures
+        failures = []
+
     return {
         "policy_name": policy.get("name", "unnamed"),
         "violations": violations,
@@ -584,6 +600,7 @@ def evaluate_policy(policy: dict, blast_radii: list) -> dict:
         "warnings": warnings,
         "jira_violations": jira_violations,
         "passed": len(failures) == 0,
+        "dry_run": dry_run,
     }
 
 

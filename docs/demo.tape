@@ -1,4 +1,4 @@
-# agent-bom v0.65.0 demo — run with: vhs docs/demo.tape
+# agent-bom v0.69.0 demo — run with: vhs docs/demo.tape
 # Install vhs: brew install vhs  (or https://github.com/charmbracelet/vhs)
 # Prereqs:
 #   pip install agent-bom
@@ -7,7 +7,7 @@
 #     --label com.nvidia.cuda.version=12.3.0 \
 #     node:18-slim sleep 3600
 
-Output docs/images/demo-v0.65.0.gif
+Output docs/images/demo-v0.69.0.gif
 
 Set Shell "bash"
 Set FontSize 14
@@ -19,6 +19,7 @@ Set TypingSpeed 40ms
 Set PlaybackSpeed 1.2
 
 # ── 1. Auto-discover your MCP setup ─────────────────────────────────────────
+# Discovers 21 MCP clients, scans CVEs, maps blast radius, 11-framework compliance
 Type "agent-bom scan"
 Sleep 300ms
 Enter
@@ -37,15 +38,31 @@ Enter
 Sleep 5s
 
 # ── 4. GPU/AI compute infra scan ─────────────────────────────────────────────
-# (requires Docker running with: docker run -d --name gpu-demo \
-#   --label com.nvidia.cuda.version=12.3.0 node:18-slim sleep 3600)
+# Detects CUDA containers, DCGM endpoints, GPU workload security
 Type "agent-bom scan --gpu-scan"
 Sleep 300ms
 Enter
 Sleep 12s
 
-# ── 5. Show 23 MCP server tools ──────────────────────────────────────────────
-Type "agent-bom mcp-server --help | grep -E '^\s{6}\w' | head -25"
+# ── 5. Output formats — SARIF, CycloneDX, SPDX, HTML, Mermaid ──────────────
+Type "agent-bom scan -f sarif -o results.sarif && echo '13 output formats: SARIF, CycloneDX 1.6, SPDX 3.0, HTML, Mermaid, SVG, Prometheus, Badge...'"
+Sleep 300ms
+Enter
+Sleep 4s
+
+# ── 6. Runtime proxy — intercept MCP traffic with 7 detectors ───────────────
+# SQL injection, credential leak, prompt injection, tool drift detection
+Type "agent-bom proxy --detect-credentials --block-undeclared -- npx @modelcontextprotocol/server-fs /tmp &"
+Sleep 300ms
+Enter
+Sleep 3s
+Type "# ↑ Proxy running: 71 security patterns, Cortex AI model tracking, SQL injection detection"
+Sleep 300ms
+Enter
+Sleep 2s
+
+# ── 7. Show 30 MCP server tools ─────────────────────────────────────────────
+Type "agent-bom mcp-server --help | head -5 && echo '30 MCP tools | 12 cloud providers | 7 runtime detectors'"
 Sleep 300ms
 Enter
 Sleep 3s

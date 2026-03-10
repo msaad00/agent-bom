@@ -84,67 +84,82 @@ def _discover_assistants(
             kwargs["organization"] = organization
         client = openai.OpenAI(**kwargs)
 
-        assistants = client.beta.assistants.list(limit=100)
+        # Paginate through all assistants (API returns max 100 per page)
+        after_cursor = None
+        _max_pages = 100  # safety guard: 10,000 assistants max
+        for _page in range(_max_pages):
+            kwargs_list: dict = {"limit": 100}
+            if after_cursor:
+                kwargs_list["after"] = after_cursor
+            assistants = client.beta.assistants.list(**kwargs_list)
+            page_data = getattr(assistants, "data", None) or []
+            if not page_data:
+                break
+            for asst in page_data:
+                asst_id = getattr(asst, "id", "unknown")
+                asst_name = getattr(asst, "name", None) or asst_id
+                model = getattr(asst, "model", "unknown")
+                tools = getattr(asst, "tools", []) or []
 
-        for asst in assistants.data:
-            asst_id = getattr(asst, "id", "unknown")
-            asst_name = getattr(asst, "name", None) or asst_id
-            model = getattr(asst, "model", "unknown")
-            tools = getattr(asst, "tools", []) or []
+                # Map assistant tools to MCPTool objects
+                mcp_tools: list[MCPTool] = []
+                packages: list[Package] = []
 
-            # Map assistant tools to MCPTool objects
-            mcp_tools: list[MCPTool] = []
-            packages: list[Package] = []
+                for tool in tools:
+                    tool_type = getattr(tool, "type", "")
 
-            for tool in tools:
-                tool_type = getattr(tool, "type", "")
-
-                if tool_type == "code_interpreter":
-                    mcp_tools.append(
-                        MCPTool(
-                            name="code_interpreter",
-                            description="Executes Python code in a sandbox [HIGH-RISK: code execution]",
-                        )
-                    )
-                elif tool_type == "file_search":
-                    mcp_tools.append(
-                        MCPTool(
-                            name="file_search",
-                            description="Searches through uploaded files using vector store",
-                        )
-                    )
-                elif tool_type == "function":
-                    func = getattr(tool, "function", None)
-                    if func:
-                        func_name = getattr(func, "name", "unknown")
-                        func_desc = getattr(func, "description", "") or ""
+                    if tool_type == "code_interpreter":
                         mcp_tools.append(
                             MCPTool(
-                                name=func_name,
-                                description=func_desc[:200],
+                                name="code_interpreter",
+                                description="Executes Python code in a sandbox [HIGH-RISK: code execution]",
                             )
                         )
+                    elif tool_type == "file_search":
+                        mcp_tools.append(
+                            MCPTool(
+                                name="file_search",
+                                description="Searches through uploaded files using vector store",
+                            )
+                        )
+                    elif tool_type == "function":
+                        func = getattr(tool, "function", None)
+                        if func:
+                            func_name = getattr(func, "name", "unknown")
+                            func_desc = getattr(func, "description", "") or ""
+                            mcp_tools.append(
+                                MCPTool(
+                                    name=func_name,
+                                    description=func_desc[:200],
+                                )
+                            )
 
-            # OpenAI SDK itself is a dependency
-            packages.append(Package(name="openai", version="unknown", ecosystem="pypi"))
+                # OpenAI SDK itself is a dependency
+                packages.append(Package(name="openai", version="unknown", ecosystem="pypi"))
 
-            server = MCPServer(
-                name=f"openai-asst:{asst_name}",
-                transport=TransportType.UNKNOWN,
-                packages=packages,
-                tools=mcp_tools,
-                env={"OPENAI_API_KEY": "***REDACTED***"},
-            )
+                server = MCPServer(
+                    name=f"openai-asst:{asst_name}",
+                    transport=TransportType.UNKNOWN,
+                    packages=packages,
+                    tools=mcp_tools,
+                    env={"OPENAI_API_KEY": "***REDACTED***"},
+                )
 
-            agent = Agent(
-                name=f"openai-asst:{asst_name}",
-                agent_type=AgentType.CUSTOM,
-                config_path=f"openai://assistants/{asst_id}",
-                source="openai-assistant",
-                version=model,
-                mcp_servers=[server],
-            )
-            agents.append(agent)
+                agent = Agent(
+                    name=f"openai-asst:{asst_name}",
+                    agent_type=AgentType.CUSTOM,
+                    config_path=f"openai://assistants/{asst_id}",
+                    source="openai-assistant",
+                    version=model,
+                    mcp_servers=[server],
+                )
+                agents.append(agent)
+
+            # Advance pagination cursor — use getattr with strict bool check
+            if getattr(assistants, "has_more", False) is True and page_data:
+                after_cursor = page_data[-1].id
+            else:
+                break
 
     except Exception as exc:
         warnings.append(f"Could not list OpenAI assistants: {exc}")
@@ -168,46 +183,61 @@ def _discover_fine_tunes(
             kwargs["organization"] = organization
         client = openai.OpenAI(**kwargs)
 
-        jobs = client.fine_tuning.jobs.list(limit=50)
+        # Paginate through all fine-tuning jobs (API returns max 100 per page)
+        ft_after = None
+        _ft_max_pages = 100  # safety guard: 10,000 jobs max
+        for _ft_page in range(_ft_max_pages):
+            ft_kwargs: dict = {"limit": 100}
+            if ft_after:
+                ft_kwargs["after"] = ft_after
+            jobs = client.fine_tuning.jobs.list(**ft_kwargs)
+            ft_page_data = getattr(jobs, "data", None) or []
+            if not ft_page_data:
+                break
+            for job in ft_page_data:
+                job_id = getattr(job, "id", "unknown")
+                model = getattr(job, "model", "unknown")
+                fine_tuned_model = getattr(job, "fine_tuned_model", None)
+                status = getattr(job, "status", "unknown")
+                training_file = getattr(job, "training_file", None) or ""
 
-        for job in jobs.data:
-            job_id = getattr(job, "id", "unknown")
-            model = getattr(job, "model", "unknown")
-            fine_tuned_model = getattr(job, "fine_tuned_model", None)
-            status = getattr(job, "status", "unknown")
-            training_file = getattr(job, "training_file", None) or ""
+                # Only inventory completed fine-tunes
+                if not fine_tuned_model:
+                    continue
 
-            # Only inventory completed fine-tunes
-            if not fine_tuned_model:
-                continue
+                packages = [Package(name="openai", version="unknown", ecosystem="pypi")]
 
-            packages = [Package(name="openai", version="unknown", ecosystem="pypi")]
-
-            server = MCPServer(
-                name=f"openai-ft:{fine_tuned_model}",
-                transport=TransportType.UNKNOWN,
-                packages=packages,
-                env={"OPENAI_API_KEY": "***REDACTED***"},
-            )
-
-            # Add training file info as a tool descriptor
-            if training_file:
-                server.tools.append(
-                    MCPTool(
-                        name="training_data",
-                        description=f"Trained on file {training_file}, base model {model}",
-                    )
+                server = MCPServer(
+                    name=f"openai-ft:{fine_tuned_model}",
+                    transport=TransportType.UNKNOWN,
+                    packages=packages,
+                    env={"OPENAI_API_KEY": "***REDACTED***"},
                 )
 
-            agent = Agent(
-                name=f"openai-ft:{fine_tuned_model}",
-                agent_type=AgentType.CUSTOM,
-                config_path=f"openai://fine-tuning/{job_id}",
-                source="openai-fine-tune",
-                version=f"{status} (base: {model})",
-                mcp_servers=[server],
-            )
-            agents.append(agent)
+                # Add training file info as a tool descriptor
+                if training_file:
+                    server.tools.append(
+                        MCPTool(
+                            name="training_data",
+                            description=f"Trained on file {training_file}, base model {model}",
+                        )
+                    )
+
+                agent = Agent(
+                    name=f"openai-ft:{fine_tuned_model}",
+                    agent_type=AgentType.CUSTOM,
+                    config_path=f"openai://fine-tuning/{job_id}",
+                    source="openai-fine-tune",
+                    version=f"{status} (base: {model})",
+                    mcp_servers=[server],
+                )
+                agents.append(agent)
+
+            # Advance pagination cursor — strict bool check
+            if getattr(jobs, "has_more", False) is True and ft_page_data:
+                ft_after = ft_page_data[-1].id
+            else:
+                break
 
     except Exception as exc:
         warnings.append(f"Could not list OpenAI fine-tuning jobs: {exc}")

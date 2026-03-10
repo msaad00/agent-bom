@@ -95,7 +95,8 @@ def _discover_models(
     api = HfApi(token=token or None)
 
     try:
-        models = list(api.list_models(author=author, limit=200))
+        # HfApi.list_models returns a paginated iterator — no hardcoded limit
+        models = list(api.list_models(author=author))
     except Exception as exc:
         warnings.append(f"Could not list HF models: {exc}")
         return agents, warnings
@@ -154,7 +155,8 @@ def _discover_spaces(
     api = HfApi(token=token or None)
 
     try:
-        spaces = list(api.list_spaces(author=author, limit=100))
+        # HfApi.list_spaces returns a paginated iterator — no hardcoded limit
+        spaces = list(api.list_spaces(author=author))
     except Exception as exc:
         warnings.append(f"Could not list HF Spaces: {exc}")
         return agents, warnings

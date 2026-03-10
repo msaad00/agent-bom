@@ -1660,6 +1660,17 @@ def export_json(report: AIBOMReport, output_path: str) -> None:
 # ─── CycloneDX Output ──────────────────────────────────────────────────────
 
 
+def _sanitize_bom_ref(raw: str) -> str:
+    """Sanitize a CycloneDX bom-ref to contain only valid characters.
+
+    CycloneDX 1.6 bom-ref should match ``^[a-zA-Z0-9._-]+$``.
+    Replace invalid characters (``@``, ``/``, spaces, etc.) with ``-``.
+    """
+    import re
+
+    return re.sub(r"[^a-zA-Z0-9._-]", "-", raw)
+
+
 def to_cyclonedx(report: AIBOMReport) -> dict:
     """Build CycloneDX 1.6 dict from report."""
     components = []
@@ -1671,7 +1682,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
 
     # Add agents as top-level components
     for agent in report.agents:
-        agent_ref = f"agent-{agent.name}"
+        agent_ref = _sanitize_bom_ref(f"agent-{agent.name}")
         agent_deps = []
 
         components.append(
@@ -1690,7 +1701,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
         )
 
         for server in agent.mcp_servers:
-            server_ref = f"mcp-server-{server.name}-{comp_id}"
+            server_ref = _sanitize_bom_ref(f"mcp-server-{server.name}-{comp_id}")
             comp_id += 1
             server_deps = []
 
@@ -1714,7 +1725,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
             agent_deps.append(server_ref)
 
             for pkg in server.packages:
-                pkg_ref = f"pkg-{pkg.ecosystem}-{pkg.name}-{pkg.version}-{comp_id}"
+                pkg_ref = _sanitize_bom_ref(f"pkg-{pkg.ecosystem}-{pkg.name}-{pkg.version}-{comp_id}")
                 comp_id += 1
 
                 pkg_properties = [
@@ -1887,16 +1898,30 @@ def to_sarif(report: AIBOMReport) -> dict:
 
         config_path = br.affected_agents[0].config_path if br.affected_agents else "unknown"
 
+        # SARIF 2.1.0: fingerprints for dedup, region for location, kind for classification
+        import hashlib
+
+        fp_input = f"{rule_id}:{br.package.name}:{br.package.version}:{config_path}"
+        fingerprint = hashlib.sha256(fp_input.encode()).hexdigest()
+
         result: dict = {
             "ruleId": rule_id,
             "level": level,
+            "kind": "fail",
             "message": {"text": message_text},
+            "fingerprints": {
+                "agent-bom/v1": fingerprint,
+            },
             "locations": [
                 {
                     "physicalLocation": {
                         "artifactLocation": {
                             "uri": config_path,
                             "uriBaseId": "%SRCROOT%",
+                        },
+                        "region": {
+                            "startLine": 1,
+                            "startColumn": 1,
                         },
                     },
                 }
@@ -2381,12 +2406,20 @@ def to_spdx(report: AIBOMReport) -> dict:
     for agent in report.agents:
         agent_id = _next_id("SPDXRef-Agent")
 
-        agent_element = {
-            "type": "ai_bom/Agent",
+        agent_element: dict[str, Any] = {
+            "type": "SOFTWARE_PACKAGE",
             "spdxId": agent_id,
             "name": agent.name,
             "primaryPurpose": "APPLICATION",
             "description": f"AI Agent ({agent.agent_type.value})",
+            "annotation": [
+                {
+                    "type": "Annotation",
+                    "annotationType": "OTHER",
+                    "subject": agent_id,
+                    "statement": f"agent-bom:ai-agent-type={agent.agent_type.value}",
+                }
+            ],
         }
         if agent.config_path:
             agent_element["comment"] = f"config_path: {agent.config_path}, status: {agent.status.value}"

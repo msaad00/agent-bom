@@ -482,7 +482,7 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
         severity, cvss_score = parse_osv_severity(vuln_data)
         fixed = parse_fixed_version(vuln_data, package.name)
 
-        references = [ref.get("url", "") for ref in vuln_data.get("references", []) if ref.get("url")][:5]  # Limit to 5 references
+        references = [ref.get("url", "") for ref in vuln_data.get("references", []) if ref.get("url")]
 
         # Use aliases to surface CVE ID when primary ID is GHSA/OSV/RUSTSEC
         aliases = vuln_data.get("aliases", [])

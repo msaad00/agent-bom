@@ -93,12 +93,11 @@ def _discover_runs(
             # Without a specific project, try listing projects first
             try:
                 projects = api.projects(entity)
-                for proj in list(projects)[:5]:
+                for proj in list(projects):
                     proj_name = getattr(proj, "name", None)
                     if proj_name:
-                        proj_runs = api.runs(f"{entity}/{proj_name}", per_page=10)
-                        runs = list(proj_runs)[:10]
-                        for run in runs:
+                        proj_runs = api.runs(f"{entity}/{proj_name}", per_page=50)
+                        for run in list(proj_runs):
                             agent = _run_to_agent(run, entity, proj_name)
                             if agent:
                                 agents.append(agent)
@@ -106,7 +105,7 @@ def _discover_runs(
                 warnings.append(f"Could not list W&B projects: {exc}")
             return agents, warnings
 
-        for run in list(runs)[:50]:
+        for run in list(runs):
             agent = _run_to_agent(run, entity, project)
             if agent:
                 agents.append(agent)
@@ -166,7 +165,7 @@ def _discover_artifacts(
                     type_name=art_type,
                     name=f"{entity}/{project}",
                 )
-                for artifact in list(artifacts)[:20]:
+                for artifact in list(artifacts):
                     art_name = getattr(artifact, "name", "unknown")
                     art_version = getattr(artifact, "version", "latest")
                     art_metadata = getattr(artifact, "metadata", {}) or {}

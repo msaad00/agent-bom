@@ -77,7 +77,21 @@ def _discover_registered_models(
 
     try:
         client = MlflowClient(tracking_uri=tracking_uri)
-        models = client.search_registered_models(max_results=100)
+        # Paginate through all registered models
+        page_token: str | None = None
+        all_models = []
+        for _page in range(100):  # safety guard: 10,000 models max
+            kwargs_m: dict = {"max_results": 100}
+            if page_token:
+                kwargs_m["page_token"] = page_token
+            result_page = client.search_registered_models(**kwargs_m)
+            all_models.extend(result_page)
+            # MLflow PagedList has .token (str) — must verify it's a real str, not a mock
+            raw_token = getattr(result_page, "token", None)
+            page_token = raw_token if isinstance(raw_token, str) and raw_token else None
+            if not page_token:
+                break
+        models = all_models
 
         for model in models:
             model_name = getattr(model, "name", "unknown")
@@ -154,7 +168,20 @@ def _discover_experiments(
 
     try:
         client = MlflowClient(tracking_uri=tracking_uri)
-        experiments = client.search_experiments(max_results=50)
+        # Paginate through all experiments
+        exp_page_token: str | None = None
+        all_experiments = []
+        for _exp_pg in range(100):  # safety guard: 10,000 experiments max
+            kwargs_e: dict = {"max_results": 100}
+            if exp_page_token:
+                kwargs_e["page_token"] = exp_page_token
+            exp_page = client.search_experiments(**kwargs_e)
+            all_experiments.extend(exp_page)
+            raw_exp_token = getattr(exp_page, "token", None)
+            exp_page_token = raw_exp_token if isinstance(raw_exp_token, str) and raw_exp_token else None
+            if not exp_page_token:
+                break
+        experiments = all_experiments
 
         for exp in experiments:
             exp_id = getattr(exp, "experiment_id", "0")

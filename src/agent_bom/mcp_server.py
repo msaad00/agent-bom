@@ -914,8 +914,11 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                                 "fixed_version": f.fixed_version,
                                 "command": f.command,
                                 "vulns": f.vulns[:5],
+                                "total_vulns": len(f.vulns),
                                 "agents": f.agents[:5],
+                                "total_agents": len(f.agents),
                                 "references": f.references[:10],
+                                "total_references": len(f.references),
                             }
                             for f in plan.package_fixes
                         ],
@@ -923,11 +926,13 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                             {
                                 "credential": f.credential_name,
                                 "locations": f.locations[:5],
+                                "total_locations": len(f.locations),
                                 "risk": f.risk_description,
                                 "fix_steps": f.fix_steps,
                             }
                             for f in plan.credential_fixes
                         ],
+                        "total_unfixable": len(plan.unfixable),
                         "unfixable": plan.unfixable[:10],
                     },
                     indent=2,
@@ -2137,9 +2142,11 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                 json.dumps(
                     {
                         "files_scanned": result.files_scanned,
+                        "total_prompt_files": len(result.prompt_files),
                         "prompt_files": result.prompt_files[:50],
                         "passed": result.passed,
                         "total_findings": len(result.findings),
+                        "findings_shown": min(len(result.findings), 100),
                         "findings": [
                             {
                                 "file": f.source_file,

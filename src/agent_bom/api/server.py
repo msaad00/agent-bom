@@ -1752,27 +1752,37 @@ async def list_jobs(limit: int = 50, offset: int = 0) -> dict:
 def _sanitize_api_path(user_path: str) -> str:
     """Validate and sanitize a user-supplied path from an API request.
 
-    Resolves symlinks, blocks path traversal, and restricts to the user's
-    home directory. Returns the resolved absolute path as a string.
+    Interprets user_path as relative to $HOME (absolute paths rejected).
+    Resolves symlinks and validates the result stays within $HOME using
+    ``os.path.commonpath`` (the pattern CodeQL recognises as a sanitizer).
     """
     import os
     from pathlib import Path
 
     from agent_bom.security import SecurityError
 
-    # 1. Reject path traversal in raw input
+    user_path = user_path.strip()
+
+    # 1. Reject absolute paths — API callers must use paths relative to $HOME
+    if os.path.isabs(user_path):
+        raise SecurityError(f"Absolute paths are not allowed: {user_path}")
+
+    # 2. Reject path traversal in raw input
     if ".." in user_path.split(os.sep):
         raise SecurityError(f"Path traversal not allowed: {user_path}")
 
-    # 2. Resolve to real absolute path (follows symlinks)
-    resolved = os.path.realpath(os.path.expanduser(user_path))
-
-    # 3. Must be under user's home directory
+    # 3. Compute fixed root and join user path under it
     home = os.path.realpath(str(Path.home()))
-    if not resolved.startswith(home + os.sep) and resolved != home:
+    candidate = os.path.join(home, user_path)
+
+    # 4. Resolve to real absolute path (follows symlinks)
+    resolved = os.path.realpath(candidate)
+
+    # 5. Ensure resolved path is within $HOME (CodeQL-recognised guard)
+    if os.path.commonpath([home, resolved]) != home:
         raise SecurityError(f"Path resolves outside home directory: {user_path}")
 
-    # 4. Must exist on disk
+    # 6. Must exist on disk
     if not os.path.exists(resolved):
         raise SecurityError(f"Path does not exist: {resolved}")
 

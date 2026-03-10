@@ -376,15 +376,30 @@ def test_sanitize_rejects_traversal():
     from agent_bom.security import SecurityError
 
     with pytest.raises(SecurityError, match="traversal"):
-        _sanitize_api_path("/home/user/../../../etc/passwd")
+        _sanitize_api_path("subdir/../../etc/passwd")
 
 
-def test_sanitize_rejects_outside_home(tmp_path):
-    """_sanitize_api_path rejects paths outside $HOME."""
+def test_sanitize_rejects_absolute_path():
+    """_sanitize_api_path rejects absolute paths."""
     import pytest
 
     from agent_bom.api.server import _sanitize_api_path
     from agent_bom.security import SecurityError
 
-    with pytest.raises(SecurityError):
+    with pytest.raises(SecurityError, match="Absolute paths"):
         _sanitize_api_path("/etc/passwd")
+
+
+def test_sanitize_resolves_relative_to_home(tmp_path, monkeypatch):
+    """_sanitize_api_path joins relative paths under $HOME."""
+    import os
+
+    from agent_bom.api.server import _sanitize_api_path
+
+    # Create a subdir under tmp_path acting as $HOME
+    subdir = tmp_path / "projects"
+    subdir.mkdir()
+    monkeypatch.setattr("pathlib.Path.home", classmethod(lambda cls: tmp_path))
+
+    result = _sanitize_api_path("projects")
+    assert result == os.path.realpath(str(subdir))

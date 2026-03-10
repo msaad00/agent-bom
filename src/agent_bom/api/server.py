@@ -1749,6 +1749,28 @@ async def list_jobs(limit: int = 50, offset: int = 0) -> dict:
 # Each returns results directly (no job queue — these are fast local scans).
 
 
+def _sanitize_api_path(user_path: str) -> str:
+    """Validate and sanitize a user-supplied path from an API request.
+
+    Resolves symlinks, blocks path traversal, and restricts to the user's
+    home directory. Returns the resolved absolute path as a string.
+    """
+    import os
+    from pathlib import Path
+
+    from agent_bom.security import validate_path
+
+    safe = validate_path(user_path, must_exist=True, restrict_to_home=True)
+    resolved = os.path.realpath(str(safe))
+    # Guard: resolved path must start with user home (CodeQL-visible check)
+    home = str(Path.home())
+    if not resolved.startswith(home):
+        from agent_bom.security import SecurityError
+
+        raise SecurityError(f"Path resolves outside home directory: {user_path}")
+    return resolved
+
+
 class DatasetCardsRequest(BaseModel):
     """Request body for POST /v1/scan/dataset-cards."""
 
@@ -1764,15 +1786,16 @@ async def scan_dataset_cards(request: DatasetCardsRequest) -> dict:
     (unlicensed data, missing cards, unversioned data, remote sources).
     """
     from agent_bom.parsers.dataset_cards import scan_dataset_directory
-    from agent_bom.security import validate_path
 
     results = []
+    safe_dirs = []
     for d in request.directories:
-        validate_path(d, must_exist=True)
-        result = scan_dataset_directory(d)
+        safe = _sanitize_api_path(d)
+        safe_dirs.append(safe)
+        result = scan_dataset_directory(safe)
         results.append(result.to_dict() if hasattr(result, "to_dict") else _dataclass_to_dict(result))
 
-    return {"scan_type": "dataset-cards", "directories": request.directories, "results": results}
+    return {"scan_type": "dataset-cards", "directories": safe_dirs, "results": results}
 
 
 class TrainingPipelinesRequest(BaseModel):
@@ -1790,15 +1813,16 @@ async def scan_training_pipelines(request: TrainingPipelinesRequest) -> dict:
     Flags unsafe serialization (pickle), missing provenance, exposed credentials.
     """
     from agent_bom.parsers.training_pipeline import scan_training_directory
-    from agent_bom.security import validate_path
 
     results = []
+    safe_dirs = []
     for d in request.directories:
-        validate_path(d, must_exist=True)
-        result = scan_training_directory(d)
+        safe = _sanitize_api_path(d)
+        safe_dirs.append(safe)
+        result = scan_training_directory(safe)
         results.append(result.to_dict() if hasattr(result, "to_dict") else _dataclass_to_dict(result))
 
-    return {"scan_type": "training-pipelines", "directories": request.directories, "results": results}
+    return {"scan_type": "training-pipelines", "directories": safe_dirs, "results": results}
 
 
 class BrowserExtensionsRequest(BaseModel):
@@ -1884,18 +1908,17 @@ async def scan_prompts(request: PromptScanRequest) -> dict:
     from pathlib import Path as _Path
 
     from agent_bom.parsers.prompt_scanner import scan_prompt_files
-    from agent_bom.security import validate_path
 
+    safe_dirs = []
     all_paths = []
     for d in request.directories:
-        validate_path(d, must_exist=True)
+        safe_dirs.append(_Path(_sanitize_api_path(d)))
     for f in request.files:
-        validate_path(f, must_exist=True)
-        all_paths.append(_Path(f))
+        all_paths.append(_Path(_sanitize_api_path(f)))
 
     results = []
-    for d in request.directories:
-        result = scan_prompt_files(root=_Path(d))
+    for safe in safe_dirs:
+        result = scan_prompt_files(root=safe)
         results.append(result.to_dict() if hasattr(result, "to_dict") else _dataclass_to_dict(result))
     if all_paths:
         result = scan_prompt_files(paths=all_paths)
@@ -1922,13 +1945,12 @@ async def scan_model_files_endpoint(request: ModelFilesRequest) -> dict:
     and flags unsafe model formats.
     """
     from agent_bom.model_files import scan_model_files, verify_model_hash
-    from agent_bom.security import validate_path
 
     all_files = []
     all_warnings = []
     for d in request.directories:
-        validate_path(d, must_exist=True)
-        files, warnings = scan_model_files(d)
+        safe = _sanitize_api_path(d)
+        files, warnings = scan_model_files(safe)
         all_files.extend(files)
         all_warnings.extend(warnings)
 

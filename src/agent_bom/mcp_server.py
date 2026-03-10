@@ -359,7 +359,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                 result = {"status": "no_agents_found", "agents": [], "blast_radii": []}
                 if scan_warnings:
                     result["warnings"] = scan_warnings
-                return json.dumps(result)
+                return _truncate_response(json.dumps(result))
 
             # Integrity verification
             if verify_integrity:
@@ -507,27 +507,29 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                 )
 
             vulns = build_vulnerabilities(vuln_data, pkg)
-            return json.dumps(
-                {
-                    "package": name,
-                    "version": version,
-                    "ecosystem": eco,
-                    "vulnerabilities": len(vulns),
-                    "status": "vulnerable",
-                    "details": [
-                        {
-                            "id": v.id,
-                            "severity": v.severity.value,
-                            "cvss_score": v.cvss_score,
-                            "fixed_version": v.fixed_version,
-                            "summary": (v.summary or "")[:200],
-                            "compliance_tags": v.compliance_tags,
-                        }
-                        for v in vulns
-                    ],
-                },
-                indent=2,
-                default=str,
+            return _truncate_response(
+                json.dumps(
+                    {
+                        "package": name,
+                        "version": version,
+                        "ecosystem": eco,
+                        "vulnerabilities": len(vulns),
+                        "status": "vulnerable",
+                        "details": [
+                            {
+                                "id": v.id,
+                                "severity": v.severity.value,
+                                "cvss_score": v.cvss_score,
+                                "fixed_version": v.fixed_version,
+                                "summary": (v.summary or "")[:200],
+                                "compliance_tags": v.compliance_tags,
+                            }
+                            for v in vulns
+                        ],
+                    },
+                    indent=2,
+                    default=str,
+                )
             )
         except Exception as exc:
             logger.exception("MCP tool error")
@@ -631,7 +633,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
             _agents, blast_radii, _warnings, _srcs = await _run_scan_pipeline()
             result = evaluate_policy(policy, blast_radii)
-            return json.dumps(result, indent=2, default=str)
+            return _truncate_response(json.dumps(result, indent=2, default=str))
         except json.JSONDecodeError as exc:
             return json.dumps({"error": f"Invalid JSON: {exc}"})
         except ValueError as exc:
@@ -1004,7 +1006,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             except Exception:
                 result["provenance"] = {"status": "check_failed"}
 
-            return json.dumps(result, indent=2)
+            return _truncate_response(json.dumps(result, indent=2))
         except Exception as exc:
             logger.exception("MCP tool error")
             return json.dumps({"error": sanitize_error(exc)})
@@ -1065,7 +1067,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                 "integrity": integrity.to_dict() if integrity and hasattr(integrity, "to_dict") else integrity,
                 "provenance": provenance.to_dict() if provenance and hasattr(provenance, "to_dict") else provenance,
             }
-            return json.dumps(result, indent=2, default=str)
+            return _truncate_response(json.dumps(result, indent=2, default=str))
         except Exception as exc:
             logger.exception("MCP tool error")
             return json.dumps({"error": sanitize_error(exc)})
@@ -1111,7 +1113,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                         "config_paths": entries,
                     }
                 )
-            return json.dumps({"clients": clients, "platform": current_os}, indent=2)
+            return _truncate_response(json.dumps({"clients": clients, "platform": current_os}, indent=2))
         except Exception as exc:
             logger.exception("MCP tool error")
             return json.dumps({"error": sanitize_error(exc)})
@@ -1499,7 +1501,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             else:
                 data = store.query_event_summary(hours=hours)
 
-            return json.dumps({"query_type": query_type, "results": data, "count": len(data)}, indent=2, default=str)
+            return _truncate_response(json.dumps({"query_type": query_type, "results": data, "count": len(data)}, indent=2, default=str))
         except Exception as exc:
             logger.exception("MCP tool error")
             return json.dumps({"error": sanitize_error(exc)})
@@ -1751,7 +1753,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                 result["ml_api_calls"] = []
                 result["ml_api_note"] = "Pass otel_trace path to extract ML API provenance from OTel spans."
 
-            return json.dumps(result, indent=2, default=str)
+            return _truncate_response(json.dumps(result, indent=2, default=str))
         except Exception as exc:
             logger.exception("Runtime correlation failed")
             return json.dumps({"error": f"Correlation failed: {sanitize_error(exc)}"})

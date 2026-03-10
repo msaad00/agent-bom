@@ -3718,7 +3718,13 @@ async def list_assets(
             "mttr_days": mttr,
         }
     except Exception as exc:
-        return {"assets": [], "count": 0, "stats": {}, "mttr_days": None, "error": str(exc)}
+        return {
+            "assets": [],
+            "count": 0,
+            "stats": {},
+            "mttr_days": None,
+            "error": sanitize_error(exc),
+        }
 
 
 @app.get("/v1/assets/stats", tags=["assets"])
@@ -3733,7 +3739,11 @@ async def get_asset_stats() -> dict:
         tracker.close()
         return {"stats": stats, "mttr_days": mttr}
     except Exception as exc:
-        return {"stats": {}, "mttr_days": None, "error": sanitize_error(exc)}
+        return {
+            "stats": {},
+            "mttr_days": None,
+            "error": sanitize_error(exc),
+        }
 
 
 def _mount_dashboard(application: FastAPI) -> None:

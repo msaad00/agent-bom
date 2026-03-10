@@ -1,0 +1,249 @@
+"""Tests for resolver module — coverage expansion."""
+
+from __future__ import annotations
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from agent_bom.models import Package
+from agent_bom.resolver import (
+    enrich_licenses,
+    enrich_supply_chain_metadata,
+    resolve_npm_metadata,
+    resolve_npm_supply_chain,
+    resolve_package_version,
+    resolve_pypi_metadata,
+    resolve_pypi_supply_chain,
+)
+
+
+class TestResolveNpmMetadata:
+    @pytest.mark.asyncio
+    async def test_successful_fetch(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"version": "4.18.2", "license": "MIT"}
+        with patch("agent_bom.resolver.request_with_retry", return_value=mock_response):
+            client = AsyncMock()
+            version, lic = await resolve_npm_metadata("express", client)
+            assert version == "4.18.2"
+            assert lic == "MIT"
+
+    @pytest.mark.asyncio
+    async def test_license_as_dict(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"version": "1.0.0", "license": {"type": "ISC"}}
+        with patch("agent_bom.resolver.request_with_retry", return_value=mock_response):
+            client = AsyncMock()
+            version, lic = await resolve_npm_metadata("test", client)
+            assert lic == "ISC"
+
+    @pytest.mark.asyncio
+    async def test_failed_response(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        with patch("agent_bom.resolver.request_with_retry", return_value=mock_response):
+            client = AsyncMock()
+            version, lic = await resolve_npm_metadata("nonexistent", client)
+            assert version is None
+            assert lic is None
+
+
+class TestResolvePypiMetadata:
+    @pytest.mark.asyncio
+    async def test_successful_fetch(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"info": {"version": "2.31.0", "license": "Apache-2.0"}}
+        with patch("agent_bom.resolver.request_with_retry", return_value=mock_response):
+            client = AsyncMock()
+            version, lic = await resolve_pypi_metadata("requests", client)
+            assert version == "2.31.0"
+            assert lic == "Apache-2.0"
+
+    @pytest.mark.asyncio
+    async def test_unknown_license(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"info": {"version": "1.0.0", "license": "UNKNOWN"}}
+        with patch("agent_bom.resolver.request_with_retry", return_value=mock_response):
+            client = AsyncMock()
+            version, lic = await resolve_pypi_metadata("test", client)
+            assert version == "1.0.0"
+            assert lic is None
+
+
+class TestResolveNpmSupplyChain:
+    @pytest.mark.asyncio
+    async def test_enriches_package(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "description": "Fast web framework",
+            "homepage": "https://expressjs.com",
+            "repository": {"url": "https://github.com/expressjs/express"},
+            "author": {"name": "TJ Holowaychuk"},
+        }
+        pkg = Package(name="express", version="4.18.2", ecosystem="npm")
+        with patch("agent_bom.resolver.request_with_retry", return_value=mock_response):
+            client = AsyncMock()
+            await resolve_npm_supply_chain(pkg, client)
+            assert pkg.description == "Fast web framework"
+            assert pkg.homepage == "https://expressjs.com"
+            assert pkg.author == "TJ Holowaychuk"
+
+    @pytest.mark.asyncio
+    async def test_string_repository(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "repository": "https://github.com/owner/repo",
+        }
+        pkg = Package(name="test", version="1.0.0", ecosystem="npm")
+        with patch("agent_bom.resolver.request_with_retry", return_value=mock_response):
+            client = AsyncMock()
+            await resolve_npm_supply_chain(pkg, client)
+            assert pkg.repository_url == "https://github.com/owner/repo"
+
+    @pytest.mark.asyncio
+    async def test_string_author(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"author": "John Doe"}
+        pkg = Package(name="test", version="1.0.0", ecosystem="npm")
+        with patch("agent_bom.resolver.request_with_retry", return_value=mock_response):
+            client = AsyncMock()
+            await resolve_npm_supply_chain(pkg, client)
+            assert pkg.author == "John Doe"
+
+
+class TestResolvePypiSupplyChain:
+    @pytest.mark.asyncio
+    async def test_enriches_package(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "info": {
+                "summary": "Python HTTP library",
+                "home_page": "https://requests.readthedocs.io",
+                "project_urls": {"Repository": "https://github.com/psf/requests", "Homepage": "https://requests.readthedocs.io"},
+                "author": "Kenneth Reitz",
+                "maintainer": "PSF",
+            }
+        }
+        pkg = Package(name="requests", version="2.31.0", ecosystem="pypi")
+        with patch("agent_bom.resolver.request_with_retry", return_value=mock_response):
+            client = AsyncMock()
+            await resolve_pypi_supply_chain(pkg, client)
+            assert pkg.description == "Python HTTP library"
+            assert pkg.author == "Kenneth Reitz"
+            assert pkg.supplier == "PSF"
+
+
+class TestResolvePackageVersion:
+    @pytest.mark.asyncio
+    async def test_already_resolved(self):
+        pkg = Package(name="express", version="4.18.2", ecosystem="npm")
+        client = AsyncMock()
+        result = await resolve_package_version(pkg, client)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_npm_resolution(self):
+        pkg = Package(name="express", version="latest", ecosystem="npm")
+        with patch("agent_bom.resolver.resolve_npm_metadata", return_value=("4.18.2", "MIT")):
+            client = AsyncMock()
+            result = await resolve_package_version(pkg, client)
+            assert result is True
+            assert pkg.version == "4.18.2"
+            assert pkg.license == "MIT"
+
+    @pytest.mark.asyncio
+    async def test_pypi_resolution(self):
+        pkg = Package(name="requests", version="unknown", ecosystem="pypi")
+        with patch("agent_bom.resolver.resolve_pypi_metadata", return_value=("2.31.0", "Apache-2.0")):
+            client = AsyncMock()
+            result = await resolve_package_version(pkg, client)
+            assert result is True
+            assert pkg.version == "2.31.0"
+
+    @pytest.mark.asyncio
+    async def test_go_resolution(self):
+        pkg = Package(name="github.com/gin-gonic/gin", version="unknown", ecosystem="go")
+        with patch("agent_bom.version_utils.resolve_go_metadata", return_value=("1.9.0", "MIT")):
+            client = AsyncMock()
+            result = await resolve_package_version(pkg, client)
+            assert result is True
+
+    @pytest.mark.asyncio
+    async def test_cargo_resolution(self):
+        pkg = Package(name="serde", version="unknown", ecosystem="cargo")
+        with patch("agent_bom.version_utils.resolve_cargo_metadata", return_value=("1.0.0", "MIT")):
+            client = AsyncMock()
+            result = await resolve_package_version(pkg, client)
+            assert result is True
+
+    @pytest.mark.asyncio
+    async def test_maven_resolution(self):
+        pkg = Package(name="org.apache:commons-lang3", version="unknown", ecosystem="maven")
+        with patch("agent_bom.version_utils.resolve_maven_metadata", return_value=("3.14.0", "Apache-2.0")):
+            client = AsyncMock()
+            result = await resolve_package_version(pkg, client)
+            assert result is True
+
+    @pytest.mark.asyncio
+    async def test_no_version_found(self):
+        pkg = Package(name="nonexistent", version="unknown", ecosystem="npm")
+        with patch("agent_bom.resolver.resolve_npm_metadata", return_value=(None, None)):
+            client = AsyncMock()
+            result = await resolve_package_version(pkg, client)
+            assert result is False
+
+
+class TestEnrichLicenses:
+    @pytest.mark.asyncio
+    async def test_enriches_npm_license(self):
+        pkg = Package(name="express", version="4.18.2", ecosystem="npm")
+        with patch("agent_bom.resolver.resolve_npm_metadata", return_value=(None, "MIT")):
+            client = AsyncMock()
+            count = await enrich_licenses([pkg], client)
+            assert count == 1
+            assert pkg.license == "MIT"
+
+    @pytest.mark.asyncio
+    async def test_skips_already_licensed(self):
+        pkg = Package(name="express", version="4.18.2", ecosystem="npm")
+        pkg.license = "MIT"
+        client = AsyncMock()
+        count = await enrich_licenses([pkg], client)
+        assert count == 0
+
+    @pytest.mark.asyncio
+    async def test_skips_unknown_version(self):
+        pkg = Package(name="express", version="unknown", ecosystem="npm")
+        client = AsyncMock()
+        count = await enrich_licenses([pkg], client)
+        assert count == 0
+
+
+class TestEnrichSupplyChainMetadata:
+    @pytest.mark.asyncio
+    async def test_enriches_npm_metadata(self):
+        pkg = Package(name="express", version="4.18.2", ecosystem="npm")
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"description": "Web framework"}
+        with patch("agent_bom.resolver.request_with_retry", return_value=mock_response):
+            client = AsyncMock()
+            count = await enrich_supply_chain_metadata([pkg], client)
+            assert count == 1
+
+    @pytest.mark.asyncio
+    async def test_skips_packages_with_description(self):
+        pkg = Package(name="express", version="4.18.2", ecosystem="npm")
+        pkg.description = "Already described"
+        client = AsyncMock()
+        count = await enrich_supply_chain_metadata([pkg], client)
+        assert count == 0

@@ -50,15 +50,19 @@ jobs:
           git add uv.lock
           git commit -m "chore: weekly uv.lock upgrade"
           git push origin "$BRANCH"
+          BODY=$(cat <<'PREOF'
+          Weekly automated lockfile refresh via `uv lock --upgrade`.
+
+          All packages bumped to latest versions within declared bounds in `pyproject.toml`.
+
+          **Review checklist:**
+          - [ ] CI passes (pip-audit + OSV scanner will catch any new CVEs)
+          - [ ] No unexpected major version bumps
+          PREOF
+          )
           gh pr create \
             --title "chore: weekly uv.lock upgrade $(date +%Y-%m-%d)" \
-            --body "Weekly automated lockfile refresh via \`uv lock --upgrade\`.
-
-All packages bumped to latest versions within declared bounds in \`pyproject.toml\`.
-
-**Review checklist:**
-- [ ] CI passes (pip-audit + OSV scanner will catch any new CVEs)
-- [ ] No unexpected major version bumps" \
+            --body "$BODY" \
             --base main
 
       - name: No changes

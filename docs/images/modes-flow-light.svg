@@ -39,7 +39,7 @@
   <text x="47" y="91" text-anchor="middle" class="badge">CLI</text>
   <text x="72" y="91" class="mode-title" fill="#0969da">Local Scan</text>
   <text x="32" y="108" class="mode-cmd">agent-bom scan [--image] [--sbom]</text>
-  <text x="32" y="124" class="mode-feat">Discover 21 MCP clients + cloud infra</text>
+  <text x="32" y="124" class="mode-feat">Discover 22 MCP clients + cloud infra</text>
   <text x="32" y="138" class="mode-feat">CVE scan with OSV, NVD, Grype, Syft</text>
   <text x="32" y="152" class="mode-feat">Blast radius: CVE → server → creds → tools</text>
   <text x="308" y="178" text-anchor="end" class="mode-detail">JSON / CycloneDX / SPDX / SARIF / HTML</text>
@@ -121,7 +121,7 @@
   <!-- Engine modules — 7 evenly spaced -->
   <rect x="32" y="386" width="116" height="44" rx="5" fill="#ffffff" stroke="#0969da" stroke-width="0.8"/>
   <text x="90" y="402" text-anchor="middle" class="engine-mod" fill="#0969da">Discovery</text>
-  <text x="90" y="416" text-anchor="middle" class="engine-detail">21 MCP clients · 4 clouds</text>
+  <text x="90" y="416" text-anchor="middle" class="engine-detail">22 MCP clients · 4 clouds</text>
 
   <rect x="158" y="386" width="116" height="44" rx="5" fill="#ffffff" stroke="#0969da" stroke-width="0.8"/>
   <text x="216" y="402" text-anchor="middle" class="engine-mod" fill="#0969da">Parsers</text>

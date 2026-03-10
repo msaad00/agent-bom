@@ -207,9 +207,9 @@ def test_discovery_paths_include_jetbrains():
     assert "junie" in clients
 
 
-def test_client_count_is_20():
-    """Verify we now have 20 MCP client types (18 original + JetBrains AI + Junie)."""
+def test_client_count_is_22():
+    """Verify we now have 22 MCP client types (20 original + Copilot CLI + Tabnine)."""
     from agent_bom.discovery import CONFIG_LOCATIONS
 
-    # CUSTOM is not in CONFIG_LOCATIONS, so count should be 20
-    assert len(CONFIG_LOCATIONS) == 20
+    # CUSTOM is not in CONFIG_LOCATIONS, so count should be 22
+    assert len(CONFIG_LOCATIONS) == 22

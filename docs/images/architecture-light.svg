@@ -38,7 +38,7 @@
 
   <rect x="28" y="68" width="146" height="32" rx="5" fill="#ffffff" stroke="#d1d9e0" stroke-width="1"/>
   <text x="101" y="84" text-anchor="middle" class="box-label">MCP Configs</text>
-  <text x="101" y="96" text-anchor="middle" class="box-sub">21 clients · auto-detect</text>
+  <text x="101" y="96" text-anchor="middle" class="box-sub">22 clients · auto-detect</text>
 
   <rect x="28" y="106" width="146" height="32" rx="5" fill="#ffffff" stroke="#d1d9e0" stroke-width="1"/>
   <text x="101" y="122" text-anchor="middle" class="box-label">Cloud Providers</text>

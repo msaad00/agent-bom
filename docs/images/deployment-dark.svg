@@ -47,7 +47,7 @@
     <rect width="200" height="36" rx="6" fill="#161b22" stroke="#1f6feb" stroke-width="1" opacity="0.8"/>
     <circle cx="16" cy="18" r="5" fill="#58a6ff" opacity="0.5"/>
     <text x="28" y="15" class="node-label">MCP Agent Configs</text>
-    <text x="28" y="28" class="node-sub">21 clients: Claude, Cursor, Codex, Gemini...</text>
+    <text x="28" y="28" class="node-sub">22 clients: Claude, Cursor, Codex, Gemini...</text>
   </g>
 
   <!-- Source 3: Container Images  (y=186, h=36, midY=204) -->

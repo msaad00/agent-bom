@@ -24,7 +24,7 @@
   <!-- Source blocks — clean rounded pills -->
   <rect x="80" y="148" width="108" height="40" rx="10" fill="#fff" stroke="#bfdbfe" stroke-width="1.5"/>
   <text x="134" y="164" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#1e40af">MCP Agents</text>
-  <text x="134" y="180" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#60a5fa">21 clients</text>
+  <text x="134" y="180" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#60a5fa">22 clients</text>
 
   <rect x="198" y="148" width="108" height="40" rx="10" fill="#fff" stroke="#bfdbfe" stroke-width="1.5"/>
   <text x="252" y="164" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#1e40af">Containers</text>
@@ -194,5 +194,5 @@
   <!-- ════════════════════════════════════════════════════════ -->
   <!--  FOOTER                                                 -->
   <!-- ════════════════════════════════════════════════════════ -->
-  <text x="600" y="680" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="500" fill="#94a3b8">21 MCP clients · 12 providers · 7 ecosystems · 12 model formats · 427+ registry · 171 modules · 4,400+ tests · 0 runtime deps</text>
+  <text x="600" y="680" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="500" fill="#94a3b8">22 MCP clients · 12 providers · 7 ecosystems · 12 model formats · 427+ registry · 171 modules · 4,400+ tests · 0 runtime deps</text>
 </svg>

@@ -6,7 +6,7 @@ For the comprehensive guide, see [AI_INFRASTRUCTURE_SCANNING.md](https://github.
 
 | Layer | What we scan |
 |-------|-------------|
-| **MCP Clients** | 21 clients — Claude, Cursor, VS Code, Windsurf, Cline, Codex, Gemini, Goose, etc. |
+| **MCP Clients** | 22 clients — Claude, Cursor, VS Code, Windsurf, Cline, Codex, Gemini, Goose, etc. |
 | **MCP Servers** | Package deps, tool definitions, credential exposure, description drift |
 | **Container Images** | OS + language packages via Grype/Syft |
 | **Kubernetes** | Namespace enumeration, pod MCP detection |

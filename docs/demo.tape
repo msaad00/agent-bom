@@ -19,7 +19,7 @@ Set TypingSpeed 40ms
 Set PlaybackSpeed 1.2
 
 # ── 1. Auto-discover your MCP setup ─────────────────────────────────────────
-# Discovers 21 MCP clients, scans CVEs, maps blast radius, 11-framework compliance
+# Discovers 22 MCP clients, scans CVEs, maps blast radius, 11-framework compliance
 Type "agent-bom scan"
 Sleep 300ms
 Enter

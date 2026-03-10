@@ -157,14 +157,15 @@ class TestSVGStats:
         """No SVG should contain '22 tools' or '23 tools' — must match actual."""
         for svg in SVG_DIR.glob("*.svg"):
             text = svg.read_text()
-            for stale in ["22 tools", "23 tools", "22 MCP", "23 MCP"]:
+            for stale in ["22 tools", "23 tools", "22 MCP tools", "23 MCP tools"]:
                 assert stale not in text, f"{svg.name} contains stale '{stale}' — actual MCP tool count is {ACTUAL_MCP_TOOLS}"
 
     def test_no_stale_client_count_in_svgs(self):
-        """No SVG should say '20 MCP clients' or '20</text>...MCP clients'."""
+        """No SVG should contain stale MCP client counts."""
         for svg in SVG_DIR.glob("*.svg"):
-            text = svg.read_text()
-            assert "20 MCP client" not in text.lower(), f"{svg.name} contains stale '20 MCP clients'"
+            text = svg.read_text().lower()
+            for stale in ["20 mcp client", "20 clients", "21 clients", "21 mcp client"]:
+                assert stale not in text, f"{svg.name} contains stale '{stale}' — actual is {ACTUAL_CONFIG_LOCATIONS}"
 
 
 # ---------------------------------------------------------------------------
@@ -197,8 +198,8 @@ class TestMarkdownStats:
             pytest.skip(f"{doc.name} not found")
         text = doc.read_text()
         # "20 clients" in prose (not "20 named" which is technically correct)
-        for stale in ["(20 clients)", "20 MCP clients"]:
-            assert stale not in text, f"{doc.name} contains stale '{stale}'"
+        for stale in ["(20 clients)", "20 MCP clients", "(21 clients)", "21 MCP clients"]:
+            assert stale not in text, f"{doc.name} contains stale '{stale}' — actual is {ACTUAL_CONFIG_LOCATIONS}"
 
 
 # ---------------------------------------------------------------------------

@@ -147,7 +147,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full module map. Key paths:
 | `src/agent_bom/cli.py` | All CLI commands (Click) |
 | `src/agent_bom/scanners/__init__.py` | OSV batch scan + detail enrichment |
 | `src/agent_bom/enrichment.py` | NVD + EPSS + CISA KEV enrichment |
-| `src/agent_bom/discovery/__init__.py` | MCP client config discovery (21 clients) |
+| `src/agent_bom/discovery/__init__.py` | MCP client config discovery (22 clients) |
 | `src/agent_bom/models.py` | Core data models (Package, Vulnerability, Agent…) |
 | `src/agent_bom/runtime/` | Proxy detectors (7 detectors) |
 | `src/agent_bom/api/server.py` | FastAPI REST server |

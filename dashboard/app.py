@@ -654,7 +654,7 @@ with tabs[6]:
         "Output",
     ]
     descriptions = {
-        "Discovery": "Auto-detect 21 MCP client configs (Claude Desktop, Cursor, VS Code, etc.)",
+        "Discovery": "Auto-detect 22 MCP client configs (Claude Desktop, Cursor, VS Code, etc.)",
         "Parsing": "Extract servers, packages, credentials, tools from config JSON/YAML",
         "Resolution": "Resolve versions via npm/PyPI registries, deps.dev, lock files",
         "Enrichment": "Add licenses, EPSS scores, KEV status, NVD data, scorecards",

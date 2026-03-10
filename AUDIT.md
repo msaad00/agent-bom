@@ -188,7 +188,7 @@ All documented features verified to have code + tests:
 | VEX | `vex.py` | `tests/test_vex.py` |
 | SAST (Semgrep, 52 CWEs) | `sast.py` | `tests/test_sast.py` |
 | Runtime proxy (6 detectors) | `runtime/detectors.py`, `proxy.py` | `tests/test_runtime_detectors.py` |
-| MCP config discovery (21 clients) | `discovery/` | `tests/test_discovery.py` |
+| MCP config discovery (22 clients) | `discovery/` | `tests/test_discovery.py` |
 | CIS benchmarks (AWS/Snowflake/Azure/GCP) | `cloud/*_cis_benchmark.py` | `tests/test_*_cis_benchmark.py` |
 | Databricks security checks | `cloud/databricks_security.py` | `tests/test_databricks_security.py` |
 | AISVS v1.0 | `cloud/aisvs_benchmark.py` | `tests/test_aisvs_benchmark.py` |
@@ -225,7 +225,7 @@ Modules with no test file (functionality tested indirectly via integration tests
 | Identity Layer | PARTIAL | Credential detection in env vars, RBAC in API, no IdP integration |
 | Agent Control Layer | STRONG | Policy enforcement (block/warn/allow), tool allowlisting, rate limiting in proxy |
 | Tool Security Layer | STRONG | MCP tool scanning, injection detection, ArgumentAnalyzer, permission profiles |
-| MCP Layer | STRONG | Config discovery (21 clients), proxy intercept, drift detection, enforcement |
+| MCP Layer | STRONG | Config discovery (22 clients), proxy intercept, drift detection, enforcement |
 | Governance Layer | GOOD | CIS benchmarks (5 cloud platforms), AISVS, policy-as-code, audit logs |
 | Monitoring & Observability | GOOD | Runtime proxy (JSONL audit), OTel ingest, Prometheus metrics, watch (config drift) |
 | Compliance & Regulation | STRONG | 10 frameworks mapped on every finding (OWASP LLM/MCP/Agentic, ATLAS, NIST AI RMF, EU AI Act, NIST CSF, ISO 27001, SOC 2, CIS Controls) |
@@ -238,7 +238,7 @@ Modules with no test file (functionality tested indirectly via integration tests
 
 ```
 Input Sources
-├── Local MCP configs (21 client types)
+├── Local MCP configs (22 client types)
 ├── Cloud providers (12: AWS, Azure, GCP, Snowflake, Databricks, CoreWeave,
 │   Nebius, HuggingFace, W&B, MLflow, OpenAI, Ollama)
 ├── Container images (--image, via Syft/Grype)
@@ -514,7 +514,7 @@ ScanRequest → _run_scan_sync() [ThreadPoolExecutor]
 
 | Claim | Verified |
 |-------|---------|
-| "21 MCP clients" (README) | ✓ 20 named AgentType values + CUSTOM = 21 |
+| "22 MCP clients" (README) | ✓ 20 named AgentType values + CUSTOM = 21 |
 | "30 MCP tools" | ✓ meta-test enforces this |
 | "10 compliance frameworks" | ✓ 10 tagging modules |
 | "52 SAST CWE mappings" | ✓ SAST_CWE_MAP count |

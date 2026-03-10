@@ -279,7 +279,7 @@ graph TB
 | Module | Path | Responsibility |
 |--------|------|----------------|
 | CLI | `src/agent_bom/cli.py` | Click entry point, flag parsing |
-| Discovery | `src/agent_bom/discovery/__init__.py` | MCP client config discovery (21 clients) |
+| Discovery | `src/agent_bom/discovery/__init__.py` | MCP client config discovery (22 clients) |
 | Parsers | `src/agent_bom/parsers/__init__.py` | Package extraction + MCP registry lookup |
 | Skill Parsers | `src/agent_bom/parsers/skills.py` + `skill_audit.py` | SKILL.md/CLAUDE.md behavioral audit, typosquat, Sigstore trust |
 | Browser Extensions | `src/agent_bom/parsers/browser_extensions.py` | Chrome/Edge/Brave/Firefox manifest.json permission auditor |

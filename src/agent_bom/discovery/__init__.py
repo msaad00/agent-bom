@@ -174,6 +174,18 @@ CONFIG_LOCATIONS: dict[AgentType, dict[str, list[str]]] = {
         "Linux": ["~/.junie/mcp/mcp.json"],
         "Windows": ["~/.junie/mcp/mcp.json"],
     },
+    AgentType.COPILOT_CLI: {
+        # GitHub Copilot CLI (standalone) — ~/.copilot/mcp-config.json
+        "Darwin": ["~/.copilot/mcp-config.json"],
+        "Linux": ["~/.copilot/mcp-config.json"],
+        "Windows": ["~/.copilot/mcp-config.json"],
+    },
+    AgentType.TABNINE: {
+        # Tabnine AI assistant — ~/.tabnine/mcp_servers.json (global)
+        "Darwin": ["~/.tabnine/mcp_servers.json"],
+        "Linux": ["~/.tabnine/mcp_servers.json"],
+        "Windows": ["~/.tabnine/mcp_servers.json"],
+    },
 }
 
 # Map agent types to their CLI binary names for installed-but-not-configured detection

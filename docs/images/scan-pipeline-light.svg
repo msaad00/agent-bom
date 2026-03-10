@@ -23,7 +23,7 @@
   <text x="56" y="84" class="step-name">DISCOVER</text>
 
   <text x="36" y="114" class="item-label" fill="#2563eb">MCP configs</text>
-  <text x="140" y="114" text-anchor="end" class="step-desc">21 clients</text>
+  <text x="140" y="114" text-anchor="end" class="step-desc">22 clients</text>
   <rect x="30" y="120" width="140" height="1" fill="#e4e4e7"/>
 
   <text x="36" y="138" class="item-label" fill="#2563eb">Cloud</text>

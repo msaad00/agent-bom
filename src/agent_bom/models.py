@@ -37,6 +37,8 @@ class AgentType(str, Enum):
     DOCKER_MCP = "docker-mcp"  # Docker Desktop MCP Toolkit
     JETBRAINS_AI = "jetbrains-ai"  # JetBrains AI Assistant (IntelliJ, PyCharm, etc.)
     JUNIE = "junie"  # JetBrains Junie coding agent
+    COPILOT_CLI = "copilot-cli"  # GitHub Copilot CLI (standalone)
+    TABNINE = "tabnine"  # Tabnine AI assistant
     CUSTOM = "custom"
 
 

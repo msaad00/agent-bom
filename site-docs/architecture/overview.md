@@ -14,7 +14,7 @@ graph LR
     F --> G[Output]
 
     D --> |OSV, NVD, EPSS| H[(Vuln DBs)]
-    B --> |21 clients| I[Config Files]
+    B --> |22 clients| I[Config Files]
 ```
 
 ## Key modules

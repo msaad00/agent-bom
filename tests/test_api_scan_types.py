@@ -6,6 +6,7 @@ model-provenance,prompt-scan,model-files}.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from unittest.mock import patch
 
@@ -15,6 +16,10 @@ from agent_bom.api.server import _jobs, app, set_job_store
 from agent_bom.api.store import InMemoryJobStore
 
 _SANITIZE = "agent_bom.api.server._sanitize_api_path"
+
+# Path under $HOME so the inline commonpath guard in endpoints passes.
+_HOME = os.path.realpath(os.path.expanduser("~"))
+_FAKE_SAFE = os.path.join(_HOME, "_test_scan_placeholder")
 
 
 def _fresh_client():
@@ -46,7 +51,7 @@ def test_scan_dataset_cards_success(tmp_path):
 
     with (
         patch("agent_bom.parsers.dataset_cards.scan_dataset_directory", return_value=fake),
-        patch(_SANITIZE, side_effect=lambda p: p),
+        patch(_SANITIZE, return_value=_FAKE_SAFE),
     ):
         resp = client.post("/v1/scan/dataset-cards", json={"directories": [str(tmp_path)]})
 
@@ -100,7 +105,7 @@ def test_scan_training_pipelines_success(tmp_path):
 
     with (
         patch("agent_bom.parsers.training_pipeline.scan_training_directory", return_value=fake),
-        patch(_SANITIZE, side_effect=lambda p: p),
+        patch(_SANITIZE, return_value=_FAKE_SAFE),
     ):
         resp = client.post("/v1/scan/training-pipelines", json={"directories": [str(tmp_path)]})
 
@@ -247,7 +252,7 @@ def test_scan_prompts_directories(tmp_path):
 
     with (
         patch("agent_bom.parsers.prompt_scanner.scan_prompt_files", return_value=_FakeResult()),
-        patch(_SANITIZE, side_effect=lambda p: p),
+        patch(_SANITIZE, return_value=_FAKE_SAFE),
     ):
         resp = client.post("/v1/scan/prompt-scan", json={"directories": [str(tmp_path)]})
 
@@ -281,7 +286,7 @@ def test_scan_prompts_files(tmp_path):
 
     with (
         patch("agent_bom.parsers.prompt_scanner.scan_prompt_files", return_value=_FakeResult()),
-        patch(_SANITIZE, side_effect=lambda p: p),
+        patch(_SANITIZE, return_value=_FAKE_SAFE),
     ):
         resp = client.post("/v1/scan/prompt-scan", json={"files": [str(prompt_file)]})
 
@@ -313,7 +318,7 @@ def test_scan_model_files_success(tmp_path):
 
     with (
         patch("agent_bom.model_files.scan_model_files", return_value=(fake_files, [])),
-        patch(_SANITIZE, side_effect=lambda p: p),
+        patch(_SANITIZE, return_value=_FAKE_SAFE),
     ):
         resp = client.post("/v1/scan/model-files", json={"directories": [str(tmp_path)]})
 
@@ -333,7 +338,7 @@ def test_scan_model_files_with_hashes(tmp_path):
     with (
         patch("agent_bom.model_files.scan_model_files", return_value=(fake_files, [])),
         patch("agent_bom.model_files.verify_model_hash", return_value={"sha256": "abc123"}) as mock_hash,
-        patch(_SANITIZE, side_effect=lambda p: p),
+        patch(_SANITIZE, return_value=_FAKE_SAFE),
     ):
         resp = client.post("/v1/scan/model-files", json={"directories": [str(tmp_path)], "verify_hashes": True})
 
@@ -355,7 +360,7 @@ def test_scan_model_files_warnings(tmp_path):
 
     with (
         patch("agent_bom.model_files.scan_model_files", return_value=([], ["Skipped large file"])),
-        patch(_SANITIZE, side_effect=lambda p: p),
+        patch(_SANITIZE, return_value=_FAKE_SAFE),
     ):
         resp = client.post("/v1/scan/model-files", json={"directories": [str(tmp_path)]})
 

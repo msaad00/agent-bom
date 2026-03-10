@@ -1784,15 +1784,13 @@ def _sanitize_api_path(user_path: str) -> str:
     # 4. Resolve to real absolute path (follows symlinks)
     resolved = os.path.realpath(candidate)
 
-    # 5. Ensure resolved path is within $HOME (CodeQL-recognised guard)
-    if os.path.commonpath([home, resolved]) != home:
-        raise SecurityError(f"Path resolves outside home directory: {user_path}")
-
-    # 6. Must exist on disk
-    if not os.path.exists(resolved):
+    # 5. Containment + existence — positive-branch guard pattern so CodeQL
+    #    recognises the barrier (taint is only used inside the safe branch).
+    if os.path.commonpath([home, resolved]) == home:
+        if os.path.exists(resolved):
+            return resolved
         raise SecurityError(f"Path does not exist: {resolved}")
-
-    return resolved
+    raise SecurityError(f"Path resolves outside home directory: {user_path}")
 
 
 class DatasetCardsRequest(BaseModel):
@@ -1809,15 +1807,23 @@ async def scan_dataset_cards(request: DatasetCardsRequest) -> dict:
     Returns dataset metadata, license info, and security flags
     (unlicensed data, missing cards, unversioned data, remote sources).
     """
-    from agent_bom.parsers.dataset_cards import scan_dataset_directory
+    import os
+    from pathlib import Path
 
+    from agent_bom.parsers.dataset_cards import scan_dataset_directory
+    from agent_bom.security import SecurityError
+
+    home = os.path.realpath(str(Path.home()))
     results = []
     safe_dirs = []
     for d in request.directories:
-        safe = _sanitize_api_path(d)
-        safe_dirs.append(safe)
-        result = scan_dataset_directory(safe)
-        results.append(result.to_dict() if hasattr(result, "to_dict") else _dataclass_to_dict(result))
+        resolved = _sanitize_api_path(d)
+        if os.path.commonpath([home, resolved]) == home:
+            safe_dirs.append(resolved)
+            result = scan_dataset_directory(resolved)
+            results.append(result.to_dict() if hasattr(result, "to_dict") else _dataclass_to_dict(result))
+        else:
+            raise SecurityError(f"Path escapes safe root: {d}")
 
     return {"scan_type": "dataset-cards", "directories": safe_dirs, "results": results}
 
@@ -1836,15 +1842,23 @@ async def scan_training_pipelines(request: TrainingPipelinesRequest) -> dict:
     Detects MLflow runs, W&B metadata, Kubeflow pipeline definitions.
     Flags unsafe serialization (pickle), missing provenance, exposed credentials.
     """
-    from agent_bom.parsers.training_pipeline import scan_training_directory
+    import os
+    from pathlib import Path
 
+    from agent_bom.parsers.training_pipeline import scan_training_directory
+    from agent_bom.security import SecurityError
+
+    home = os.path.realpath(str(Path.home()))
     results = []
     safe_dirs = []
     for d in request.directories:
-        safe = _sanitize_api_path(d)
-        safe_dirs.append(safe)
-        result = scan_training_directory(safe)
-        results.append(result.to_dict() if hasattr(result, "to_dict") else _dataclass_to_dict(result))
+        resolved = _sanitize_api_path(d)
+        if os.path.commonpath([home, resolved]) == home:
+            safe_dirs.append(resolved)
+            result = scan_training_directory(resolved)
+            results.append(result.to_dict() if hasattr(result, "to_dict") else _dataclass_to_dict(result))
+        else:
+            raise SecurityError(f"Path escapes safe root: {d}")
 
     return {"scan_type": "training-pipelines", "directories": safe_dirs, "results": results}
 
@@ -1929,16 +1943,27 @@ async def scan_prompts(request: PromptScanRequest) -> dict:
     Detects prompt injection, jailbreak patterns, hardcoded API keys,
     shell execution instructions, and data exfiltration patterns.
     """
-    from pathlib import Path as _Path
+    import os
+    from pathlib import Path
 
     from agent_bom.parsers.prompt_scanner import scan_prompt_files
+    from agent_bom.security import SecurityError
 
-    safe_dirs = []
-    all_paths = []
+    home = os.path.realpath(str(Path.home()))
+    safe_dirs: list[Path] = []
+    all_paths: list[Path] = []
     for d in request.directories:
-        safe_dirs.append(_Path(_sanitize_api_path(d)))
+        resolved = _sanitize_api_path(d)
+        if os.path.commonpath([home, resolved]) == home:
+            safe_dirs.append(Path(resolved))
+        else:
+            raise SecurityError(f"Path escapes safe root: {d}")
     for f in request.files:
-        all_paths.append(_Path(_sanitize_api_path(f)))
+        resolved = _sanitize_api_path(f)
+        if os.path.commonpath([home, resolved]) == home:
+            all_paths.append(Path(resolved))
+        else:
+            raise SecurityError(f"Path escapes safe root: {f}")
 
     results = []
     for safe in safe_dirs:
@@ -1968,15 +1993,23 @@ async def scan_model_files_endpoint(request: ModelFilesRequest) -> dict:
     Detects pickle deserialization risks (.pkl, .pt), verifies file integrity,
     and flags unsafe model formats.
     """
-    from agent_bom.model_files import scan_model_files, verify_model_hash
+    import os
+    from pathlib import Path
 
+    from agent_bom.model_files import scan_model_files, verify_model_hash
+    from agent_bom.security import SecurityError
+
+    home = os.path.realpath(str(Path.home()))
     all_files = []
     all_warnings = []
     for d in request.directories:
-        safe = _sanitize_api_path(d)
-        files, warnings = scan_model_files(safe)
-        all_files.extend(files)
-        all_warnings.extend(warnings)
+        resolved = _sanitize_api_path(d)
+        if os.path.commonpath([home, resolved]) == home:
+            files, warnings = scan_model_files(resolved)
+            all_files.extend(files)
+            all_warnings.extend(warnings)
+        else:
+            raise SecurityError(f"Path escapes safe root: {d}")
 
     if request.verify_hashes:
         for f in all_files:

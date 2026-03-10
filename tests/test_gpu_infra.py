@@ -23,6 +23,7 @@ from agent_bom.cloud.gpu_infra import (
     GpuInfraReport,
     GpuNode,
     _extract_cuda_versions,
+    _is_amd_image,
     _is_nvidia_image,
     discover_docker_gpu_containers,
     discover_k8s_gpu_nodes,
@@ -87,6 +88,7 @@ def test_gpu_infra_report_properties():
             name="cuda-app",
             image="nvcr.io/nvidia/cuda:12.3",
             status="running",
+            gpu_vendor="nvidia",
             is_nvidia_base=True,
             cuda_version="12.3.0",
             cudnn_version=None,
@@ -97,6 +99,7 @@ def test_gpu_infra_report_properties():
             name="vllm-server",
             image="vllm/vllm-openai:v0.4.0",
             status="running",
+            gpu_vendor="nvidia",
             is_nvidia_base=False,
             cuda_version="12.1.0",
             cudnn_version="8.9.0",
@@ -107,7 +110,9 @@ def test_gpu_infra_report_properties():
         DcgmEndpoint(host="localhost", port=9400, url="http://localhost:9400/metrics", authenticated=False, gpu_count=4),
         DcgmEndpoint(host="10.0.0.5", port=9400, url="http://10.0.0.5:9400/metrics", authenticated=True, gpu_count=8),
     ]
-    nodes = [GpuNode(name="gpu-node-1", gpu_capacity=8, gpu_allocatable=6, gpu_allocated=2, cuda_driver_version="525.85")]
+    nodes = [
+        GpuNode(name="gpu-node-1", gpu_vendor="nvidia", gpu_capacity=8, gpu_allocatable=6, gpu_allocated=2, cuda_driver_version="525.85")
+    ]
 
     report = GpuInfraReport(gpu_containers=containers, dcgm_endpoints=endpoints, gpu_nodes=nodes, warnings=[])
 
@@ -142,6 +147,7 @@ def test_gpu_infra_to_agents_containers():
             cuda_version="12.3.0",
             cudnn_version="8.9.0",
             gpu_requested=True,
+            gpu_vendor="nvidia",
         ),
     ]
     report = GpuInfraReport(gpu_containers=containers, dcgm_endpoints=[], gpu_nodes=[], warnings=[])
@@ -157,8 +163,8 @@ def test_gpu_infra_to_agents_containers():
 
 def test_gpu_infra_to_agents_k8s_nodes():
     nodes = [
-        GpuNode(name="node-1", gpu_capacity=4, gpu_allocatable=4, gpu_allocated=0, cuda_driver_version="525"),
-        GpuNode(name="node-2", gpu_capacity=8, gpu_allocatable=6, gpu_allocated=2, cuda_driver_version="525"),
+        GpuNode(name="node-1", gpu_vendor="nvidia", gpu_capacity=4, gpu_allocatable=4, gpu_allocated=0, cuda_driver_version="525"),
+        GpuNode(name="node-2", gpu_vendor="nvidia", gpu_capacity=8, gpu_allocatable=6, gpu_allocated=2, cuda_driver_version="525"),
     ]
     report = GpuInfraReport(gpu_containers=[], dcgm_endpoints=[], gpu_nodes=nodes, warnings=[])
     agents = gpu_infra_to_agents(report)
@@ -180,6 +186,7 @@ def test_gpu_infra_to_agents_no_cuda_version():
             cuda_version=None,
             cudnn_version=None,
             gpu_requested=True,
+            gpu_vendor="nvidia",
         ),
     ]
     report = GpuInfraReport(gpu_containers=containers, dcgm_endpoints=[], gpu_nodes=[], warnings=[])
@@ -191,7 +198,9 @@ def test_gpu_infra_to_agents_no_cuda_version():
 # ─── Integration: discover_docker_gpu_containers (mocked) ─────────────────────
 
 
-def _make_inspect(container_id, name, image, labels=None, env=None, runtime="runc", device_requests=None, port_bindings=None):
+def _make_inspect(
+    container_id, name, image, labels=None, env=None, runtime="runc", device_requests=None, port_bindings=None, devices=None, isolation=""
+):
     return {
         "Id": container_id + "0" * 52,
         "Name": f"/{name}",
@@ -204,6 +213,8 @@ def _make_inspect(container_id, name, image, labels=None, env=None, runtime="run
             "Runtime": runtime,
             "DeviceRequests": device_requests or [],
             "PortBindings": port_bindings or {},
+            "Devices": devices or [],
+            "Isolation": isolation,
         },
         "State": {"Status": "running"},
     }
@@ -529,9 +540,10 @@ async def test_scan_gpu_infra_with_containers():
             cuda_version="12.3.0",
             cudnn_version=None,
             gpu_requested=True,
+            gpu_vendor="nvidia",
         )
     ]
-    nodes = [GpuNode(name="node-1", gpu_capacity=4, gpu_allocatable=4, gpu_allocated=0, cuda_driver_version="525")]
+    nodes = [GpuNode(name="node-1", gpu_vendor="nvidia", gpu_capacity=4, gpu_allocatable=4, gpu_allocated=0, cuda_driver_version="525")]
 
     with (
         patch("agent_bom.cloud.gpu_infra.discover_docker_gpu_containers", return_value=(containers, [])),
@@ -543,3 +555,412 @@ async def test_scan_gpu_infra_with_containers():
     assert report.total_gpu_containers == 1
     assert len(report.gpu_nodes) == 1
     assert report.unique_cuda_versions == ["12.3.0"]
+
+
+# ─── Multi-vendor: AMD ROCm detection ─────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "image,expected",
+    [
+        ("rocm/pytorch:latest", True),
+        ("rocm/tensorflow:latest", True),
+        ("rocm/rocm-terminal:latest", True),
+        ("amd/amdgpu:latest", True),
+        ("nvcr.io/nvidia/cuda:12.3", False),
+        ("python:3.11", False),
+    ],
+)
+def test_is_amd_image(image, expected):
+    assert _is_amd_image(image) == expected
+
+
+def test_discover_docker_amd_rocm_device_mount():
+    """Container with /dev/kfd device mount is detected as AMD GPU."""
+    container_data = [
+        _make_inspect(
+            "aaa111",
+            "rocm-app",
+            "rocm/pytorch:latest",
+            devices=[{"PathOnHost": "/dev/kfd", "PathInContainer": "/dev/kfd", "CgroupPermissions": "rwm"}],
+        )
+    ]
+
+    with (
+        patch("shutil.which", return_value="/usr/bin/docker"),
+        patch("subprocess.run") as mock_run,
+    ):
+        ps_result = MagicMock()
+        ps_result.returncode = 0
+        ps_result.stdout = "aaa111" + "0" * 52 + "\n"
+
+        inspect_result = MagicMock()
+        inspect_result.returncode = 0
+        inspect_result.stdout = json.dumps(container_data)
+
+        mock_run.side_effect = [ps_result, inspect_result]
+
+        containers, warnings = discover_docker_gpu_containers()
+
+    assert len(containers) == 1
+    assert containers[0].gpu_vendor == "amd"
+    assert containers[0].is_nvidia_base is False
+
+
+def test_discover_docker_amd_env_vars():
+    """Container with ROCR_VISIBLE_DEVICES env var is detected as AMD GPU."""
+    container_data = [
+        _make_inspect(
+            "aaa222",
+            "hip-app",
+            "myapp:latest",
+            env=["ROCR_VISIBLE_DEVICES=0,1", "PATH=/usr/bin"],
+        )
+    ]
+
+    with (
+        patch("shutil.which", return_value="/usr/bin/docker"),
+        patch("subprocess.run") as mock_run,
+    ):
+        ps_result = MagicMock()
+        ps_result.returncode = 0
+        ps_result.stdout = "aaa222" + "0" * 52 + "\n"
+
+        inspect_result = MagicMock()
+        inspect_result.returncode = 0
+        inspect_result.stdout = json.dumps(container_data)
+
+        mock_run.side_effect = [ps_result, inspect_result]
+
+        containers, _ = discover_docker_gpu_containers()
+
+    assert len(containers) == 1
+    assert containers[0].gpu_vendor == "amd"
+
+
+def test_discover_docker_amd_image_prefix():
+    """AMD ROCm base image is detected by image prefix."""
+    container_data = [_make_inspect("aaa333", "rocm-train", "rocm/tensorflow:latest")]
+
+    with (
+        patch("shutil.which", return_value="/usr/bin/docker"),
+        patch("subprocess.run") as mock_run,
+    ):
+        ps_result = MagicMock()
+        ps_result.returncode = 0
+        ps_result.stdout = "aaa333" + "0" * 52 + "\n"
+
+        inspect_result = MagicMock()
+        inspect_result.returncode = 0
+        inspect_result.stdout = json.dumps(container_data)
+
+        mock_run.side_effect = [ps_result, inspect_result]
+
+        containers, _ = discover_docker_gpu_containers()
+
+    assert len(containers) == 1
+    assert containers[0].gpu_vendor == "amd"
+
+
+# ─── Multi-vendor: Intel GPU detection ────────────────────────────────────────
+
+
+def test_discover_docker_intel_env_var():
+    """Container with ONEAPI_DEVICE_SELECTOR env var is detected as Intel GPU."""
+    container_data = [
+        _make_inspect(
+            "bbb111",
+            "oneapi-app",
+            "intel/oneapi-basekit:latest",
+            env=["ONEAPI_DEVICE_SELECTOR=level_zero:0", "PATH=/usr/bin"],
+        )
+    ]
+
+    with (
+        patch("shutil.which", return_value="/usr/bin/docker"),
+        patch("subprocess.run") as mock_run,
+    ):
+        ps_result = MagicMock()
+        ps_result.returncode = 0
+        ps_result.stdout = "bbb111" + "0" * 52 + "\n"
+
+        inspect_result = MagicMock()
+        inspect_result.returncode = 0
+        inspect_result.stdout = json.dumps(container_data)
+
+        mock_run.side_effect = [ps_result, inspect_result]
+
+        containers, _ = discover_docker_gpu_containers()
+
+    assert len(containers) == 1
+    assert containers[0].gpu_vendor == "intel"
+
+
+def test_discover_docker_intel_dri_without_kfd():
+    """Container with /dev/dri but NOT /dev/kfd is Intel (not AMD)."""
+    container_data = [
+        _make_inspect(
+            "bbb222",
+            "sycl-app",
+            "myapp:latest",
+            env=["ZE_AFFINITY_MASK=0", "PATH=/usr/bin"],
+            devices=[{"PathOnHost": "/dev/dri", "PathInContainer": "/dev/dri", "CgroupPermissions": "rwm"}],
+        )
+    ]
+
+    with (
+        patch("shutil.which", return_value="/usr/bin/docker"),
+        patch("subprocess.run") as mock_run,
+    ):
+        ps_result = MagicMock()
+        ps_result.returncode = 0
+        ps_result.stdout = "bbb222" + "0" * 52 + "\n"
+
+        inspect_result = MagicMock()
+        inspect_result.returncode = 0
+        inspect_result.stdout = json.dumps(container_data)
+
+        mock_run.side_effect = [ps_result, inspect_result]
+
+        containers, _ = discover_docker_gpu_containers()
+
+    assert len(containers) == 1
+    assert containers[0].gpu_vendor == "intel"
+
+
+# ─── Multi-vendor: Windows WDDM GPU detection ────────────────────────────────
+
+
+def test_discover_docker_windows_gpu():
+    """Container with Windows GPU device class GUID is detected."""
+    container_data = [
+        _make_inspect(
+            "ccc111",
+            "directx-app",
+            "mcr.microsoft.com/windows/servercore:ltsc2022",
+            devices=[
+                {
+                    "PathOnHost": "class/5B45201D-F2F2-4F3B-85BB-30FF1F953599",
+                    "PathInContainer": "",
+                    "CgroupPermissions": "",
+                }
+            ],
+            isolation="process",
+        )
+    ]
+
+    with (
+        patch("shutil.which", return_value="C:\\docker\\docker.exe"),
+        patch("subprocess.run") as mock_run,
+    ):
+        ps_result = MagicMock()
+        ps_result.returncode = 0
+        ps_result.stdout = "ccc111" + "0" * 52 + "\n"
+
+        inspect_result = MagicMock()
+        inspect_result.returncode = 0
+        inspect_result.stdout = json.dumps(container_data)
+
+        mock_run.side_effect = [ps_result, inspect_result]
+
+        containers, _ = discover_docker_gpu_containers()
+
+    assert len(containers) == 1
+    assert containers[0].gpu_vendor == "windows"
+
+
+# ─── Multi-vendor: K8s GPU resources ──────────────────────────────────────────
+
+
+def _make_k8s_node(name, resources=None, labels=None):
+    """Build a K8s node dict with arbitrary GPU resources."""
+    return {
+        "metadata": {"name": name, "labels": labels or {}},
+        "status": {
+            "capacity": {**(resources or {}), "cpu": "32"},
+            "allocatable": {**(resources or {}), "cpu": "32"},
+        },
+    }
+
+
+def test_discover_k8s_amd_gpu_node():
+    """K8s node with amd.com/gpu resource is detected as AMD."""
+    node_list = {"items": [_make_k8s_node("amd-node-1", resources={"amd.com/gpu": "4"})]}
+
+    with (
+        patch("shutil.which", return_value="/usr/bin/kubectl"),
+        patch("subprocess.run") as mock_run,
+    ):
+        result = MagicMock()
+        result.returncode = 0
+        result.stdout = json.dumps(node_list)
+        mock_run.return_value = result
+
+        nodes, _ = discover_k8s_gpu_nodes()
+
+    assert len(nodes) == 1
+    assert nodes[0].gpu_vendor == "amd"
+    assert nodes[0].gpu_capacity == 4
+
+
+def test_discover_k8s_intel_gpu_node():
+    """K8s node with gpu.intel.com/i915 resource is detected as Intel."""
+    node_list = {"items": [_make_k8s_node("intel-node-1", resources={"gpu.intel.com/i915": "2"})]}
+
+    with (
+        patch("shutil.which", return_value="/usr/bin/kubectl"),
+        patch("subprocess.run") as mock_run,
+    ):
+        result = MagicMock()
+        result.returncode = 0
+        result.stdout = json.dumps(node_list)
+        mock_run.return_value = result
+
+        nodes, _ = discover_k8s_gpu_nodes()
+
+    assert len(nodes) == 1
+    assert nodes[0].gpu_vendor == "intel"
+    assert nodes[0].gpu_capacity == 2
+
+
+def test_discover_k8s_intel_xe_gpu_node():
+    """K8s node with gpu.intel.com/xe resource is detected as Intel."""
+    node_list = {"items": [_make_k8s_node("xe-node-1", resources={"gpu.intel.com/xe": "1"})]}
+
+    with (
+        patch("shutil.which", return_value="/usr/bin/kubectl"),
+        patch("subprocess.run") as mock_run,
+    ):
+        result = MagicMock()
+        result.returncode = 0
+        result.stdout = json.dumps(node_list)
+        mock_run.return_value = result
+
+        nodes, _ = discover_k8s_gpu_nodes()
+
+    assert len(nodes) == 1
+    assert nodes[0].gpu_vendor == "intel"
+
+
+def test_discover_k8s_mixed_vendor_nodes():
+    """Cluster with NVIDIA + AMD nodes detects both vendors."""
+    node_list = {
+        "items": [
+            _make_k8s_node("nvidia-node", resources={"nvidia.com/gpu": "8"}),
+            _make_k8s_node("amd-node", resources={"amd.com/gpu": "4"}),
+            _make_k8s_node("cpu-node", resources={}),
+        ]
+    }
+
+    with (
+        patch("shutil.which", return_value="/usr/bin/kubectl"),
+        patch("subprocess.run") as mock_run,
+    ):
+        result = MagicMock()
+        result.returncode = 0
+        result.stdout = json.dumps(node_list)
+        mock_run.return_value = result
+
+        nodes, _ = discover_k8s_gpu_nodes()
+
+    assert len(nodes) == 2
+    vendors = {n.gpu_vendor for n in nodes}
+    assert vendors == {"nvidia", "amd"}
+
+
+# ─── Multi-vendor: vendor_breakdown property ──────────────────────────────────
+
+
+def test_vendor_breakdown_property():
+    """GpuInfraReport.vendor_breakdown counts containers per vendor."""
+    containers = [
+        GpuContainer(
+            container_id="a",
+            name="nv1",
+            image="nvcr.io/nvidia/cuda:12",
+            status="running",
+            gpu_vendor="nvidia",
+            is_nvidia_base=True,
+            cuda_version=None,
+            cudnn_version=None,
+            gpu_requested=True,
+        ),
+        GpuContainer(
+            container_id="b",
+            name="nv2",
+            image="nvcr.io/nvidia/cuda:11",
+            status="running",
+            gpu_vendor="nvidia",
+            is_nvidia_base=True,
+            cuda_version=None,
+            cudnn_version=None,
+            gpu_requested=True,
+        ),
+        GpuContainer(
+            container_id="c",
+            name="amd1",
+            image="rocm/pytorch:latest",
+            status="running",
+            gpu_vendor="amd",
+            is_nvidia_base=False,
+            cuda_version=None,
+            cudnn_version=None,
+            gpu_requested=False,
+        ),
+        GpuContainer(
+            container_id="d",
+            name="intel1",
+            image="myapp:latest",
+            status="running",
+            gpu_vendor="intel",
+            is_nvidia_base=False,
+            cuda_version=None,
+            cudnn_version=None,
+            gpu_requested=False,
+        ),
+    ]
+    report = GpuInfraReport(gpu_containers=containers, dcgm_endpoints=[], gpu_nodes=[], warnings=[])
+    assert report.vendor_breakdown == {"nvidia": 2, "amd": 1, "intel": 1}
+
+
+def test_vendor_breakdown_in_risk_summary():
+    """vendor_breakdown appears in risk_summary output."""
+    report = GpuInfraReport(gpu_containers=[], dcgm_endpoints=[], gpu_nodes=[], warnings=[])
+    assert report.risk_summary["vendor_breakdown"] == {}
+
+
+def test_k8s_gpu_labels_collected():
+    """K8s GPU nodes collect vendor-relevant labels (nvidia, amd, gpu, intel, rocm)."""
+    node_list = {
+        "items": [
+            {
+                "metadata": {
+                    "name": "labeled-node",
+                    "labels": {
+                        "nvidia.com/gpu.product": "A100",
+                        "kubernetes.io/hostname": "labeled-node",
+                        "unrelated-label": "ignored",
+                    },
+                },
+                "status": {
+                    "capacity": {"nvidia.com/gpu": "8", "cpu": "64"},
+                    "allocatable": {"nvidia.com/gpu": "8", "cpu": "64"},
+                },
+            }
+        ]
+    }
+
+    with (
+        patch("shutil.which", return_value="/usr/bin/kubectl"),
+        patch("subprocess.run") as mock_run,
+    ):
+        result = MagicMock()
+        result.returncode = 0
+        result.stdout = json.dumps(node_list)
+        mock_run.return_value = result
+
+        nodes, _ = discover_k8s_gpu_nodes()
+
+    assert len(nodes) == 1
+    assert "nvidia.com/gpu.product" in nodes[0].labels
+    assert "unrelated-label" not in nodes[0].labels

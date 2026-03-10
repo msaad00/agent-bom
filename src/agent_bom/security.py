@@ -485,14 +485,20 @@ def validate_image_ref(ref: str) -> str:
     return ref
 
 
-def sanitize_error(exc: Exception | str) -> str:
-    """Return a safe error message with internal details stripped.
+def sanitize_error(exc: Exception | str, detailed: bool = False) -> str:
+    """Return a safe error message suitable for API consumers.
 
-    Removes file paths, URLs, and truncates to 200 chars so that
-    internal implementation details are never leaked to API consumers.
-    The sanitized (not generic) message is returned — useful for
-    validation errors where the client needs actionable feedback.
+    By default this returns a generic error string that does not depend on
+    the underlying exception message, to avoid leaking implementation
+    details. For internal/validation use cases that need more actionable
+    feedback, set ``detailed=True`` to return a sanitized (but still
+    exception-derived) message.
     """
+    if not detailed:
+        # Generic, non-diagnostic message safe for external clients.
+        return "An internal error occurred. Please contact support."
+
+    # Detailed mode: strip obviously sensitive parts and truncate.
     msg = str(exc)
     # Strip URLs first (before path regex matches the path portion)
     msg = re.sub(r"https?://[^\s\"']+", "<url>", msg)

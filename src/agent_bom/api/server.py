@@ -3718,6 +3718,7 @@ async def list_assets(
             "mttr_days": mttr,
         }
     except Exception as exc:
+        _logger.exception("Error while listing assets")
         return {
             "assets": [],
             "count": 0,
@@ -3739,6 +3740,7 @@ async def get_asset_stats() -> dict:
         tracker.close()
         return {"stats": stats, "mttr_days": mttr}
     except Exception as exc:
+        _logger.exception("Error while getting asset statistics")
         return {
             "stats": {},
             "mttr_days": None,

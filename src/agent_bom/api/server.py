@@ -2109,7 +2109,7 @@ async def get_posture_counts() -> dict:
     Returns:
         {critical, high, medium, low, total, kev, compound_issues}
     """
-    counts: dict[str, int] = {
+    counts: dict[str, int | bool | list] = {
         "critical": 0,
         "high": 0,
         "medium": 0,
@@ -2119,10 +2119,24 @@ async def get_posture_counts() -> dict:
         "compound_issues": 0,
     }
     seen_ids: set[str] = set()
+    has_mcp_context = False
+    has_agent_context = False
+    all_scan_sources: set[str] = set()
+    scan_count = 0
 
     for job in _get_store().list_all():
         if job.status != JobStatus.DONE or not job.result:
             continue
+        scan_count += 1
+
+        # Aggregate context metadata from scan results
+        if job.result.get("has_mcp_context"):
+            has_mcp_context = True
+        if job.result.get("has_agent_context"):
+            has_agent_context = True
+        for src in job.result.get("scan_sources", []):
+            all_scan_sources.add(src)
+
         blast_list = job.result.get("blast_radius", [])
         for b in blast_list:
             vid = b.get("vulnerability_id", "")
@@ -2141,6 +2155,10 @@ async def get_posture_counts() -> dict:
             elif (b.get("epss_score") or 0) >= 0.3 and (b.get("cvss_score") or 0) >= 7:
                 counts["compound_issues"] += 1
 
+    counts["has_mcp_context"] = has_mcp_context
+    counts["has_agent_context"] = has_agent_context
+    counts["scan_sources"] = sorted(all_scan_sources)
+    counts["scan_count"] = scan_count
     return counts
 
 
@@ -3667,6 +3685,55 @@ async def test_siem_connection(siem_type: str = "", url: str = "", token: str = 
 
 # ── Dashboard static file serving ────────────────────────────────────────────
 # Must be registered LAST so API routes take precedence.
+
+
+# ── Asset Tracking ──────────────────────────────────────────────────────────
+
+
+@app.get("/v1/assets", tags=["assets"])
+async def list_assets(
+    status: str | None = None,
+    severity: str | None = None,
+    limit: int = 500,
+) -> dict:
+    """List tracked vulnerability assets with first_seen / last_seen / status.
+
+    The asset tracker persists across scans so you can see when a vulnerability
+    was first discovered, when it was last seen, and when it was resolved.
+
+    Use ``--save`` on CLI scans or the API to populate the tracker.
+    """
+    try:
+        from agent_bom.asset_tracker import AssetTracker
+
+        tracker = AssetTracker()
+        assets = tracker.list_assets(status=status, severity=severity, limit=limit)
+        stats = tracker.stats()
+        mttr = tracker.mttr_days()
+        tracker.close()
+        return {
+            "assets": assets,
+            "count": len(assets),
+            "stats": stats,
+            "mttr_days": mttr,
+        }
+    except Exception as exc:
+        return {"assets": [], "count": 0, "stats": {}, "mttr_days": None, "error": str(exc)}
+
+
+@app.get("/v1/assets/stats", tags=["assets"])
+async def get_asset_stats() -> dict:
+    """Return aggregate asset tracking statistics including MTTR."""
+    try:
+        from agent_bom.asset_tracker import AssetTracker
+
+        tracker = AssetTracker()
+        stats = tracker.stats()
+        mttr = tracker.mttr_days()
+        tracker.close()
+        return {"stats": stats, "mttr_days": mttr}
+    except Exception as exc:
+        return {"stats": {}, "mttr_days": None, "error": str(exc)}
 
 
 def _mount_dashboard(application: FastAPI) -> None:

@@ -3207,13 +3207,35 @@ def scan(
         export_compliance_bundle(report, compliance_export, ce_path)
         con.print(f"\n  [green]✓[/green] Compliance bundle: {ce_path}")
 
-    # Step 6: Save report to history
+    # Step 6: Save report to history + asset tracking
     current_report_json = to_json(report)
     if save_report:
         from agent_bom.history import save_report as _save
 
         saved_path = _save(current_report_json)
         con.print(f"\n  [green]✓[/green] Report saved to history: {saved_path}")
+
+        # Update persistent asset tracker (first_seen / last_seen / resolved)
+        try:
+            from agent_bom.asset_tracker import AssetTracker
+
+            tracker = AssetTracker()
+            asset_diff = tracker.record_scan(current_report_json)
+            summary = asset_diff["summary"]
+            parts = []
+            if summary["new_count"]:
+                parts.append(f"[red]{summary['new_count']} new[/red]")
+            if summary["resolved_count"]:
+                parts.append(f"[green]{summary['resolved_count']} resolved[/green]")
+            if summary["reopened_count"]:
+                parts.append(f"[yellow]{summary['reopened_count']} reopened[/yellow]")
+            if parts:
+                con.print(f"  [green]✓[/green] Asset tracker: {', '.join(parts)} ({summary['total_open']} open)")
+            else:
+                con.print(f"  [green]✓[/green] Asset tracker: {summary['total_open']} open (no changes)")
+            tracker.close()
+        except Exception:
+            pass  # asset tracking is best-effort
 
     # Step 7: Diff against baseline
     if baseline:

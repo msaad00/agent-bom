@@ -2,6 +2,7 @@
 
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
+import { Info } from "lucide-react";
 
 interface EmptyStateProps {
   icon: LucideIcon;
@@ -47,6 +48,32 @@ export function EmptyState({
           {retryLabel}
         </button>
       )}
+    </div>
+  );
+}
+
+/** Banner shown when a page isn't relevant to the current scan context */
+export function ContextBanner({
+  message,
+  scanSources,
+}: {
+  message: string;
+  scanSources?: string[];
+}) {
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 flex items-start gap-3 mb-6">
+      <Info className="w-4 h-4 text-zinc-500 mt-0.5 flex-shrink-0" />
+      <div>
+        <p className="text-sm text-zinc-400">{message}</p>
+        {scanSources && scanSources.length > 0 && (
+          <p className="text-xs text-zinc-600 mt-1">
+            Current scan sources: {scanSources.join(", ")}
+          </p>
+        )}
+        <p className="text-xs text-zinc-600 mt-1">
+          Run a scan with MCP agent discovery to populate this page.
+        </p>
+      </div>
     </div>
   );
 }

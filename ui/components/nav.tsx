@@ -79,7 +79,16 @@ interface RiskCounts {
   high: number;
   kev: number;
   compound_issues: number;
+  has_mcp_context?: boolean;
+  has_agent_context?: boolean;
+  scan_sources?: string[];
+  scan_count?: number;
 }
+
+/** Pages that only make sense when MCP servers / real agents are detected. */
+const MCP_ONLY_PAGES = new Set(["/agents", "/fleet", "/registry", "/mesh", "/context"]);
+const RUNTIME_PAGES = new Set(["/proxy", "/audit", "/gateway"]);
+const SNOWFLAKE_PAGES = new Set(["/governance", "/activity"]);
 
 export function Nav() {
   const path = usePathname();
@@ -91,7 +100,7 @@ export function Nav() {
     setMobileOpen(false);
   }, [path]);
 
-  // Fetch aggregate counts for badges (refresh every 60s)
+  // Fetch aggregate counts + context for badges (refresh every 60s)
   useEffect(() => {
     let mounted = true;
     const load = () => {
@@ -104,6 +113,10 @@ export function Nav() {
               high: c.high,
               kev: c.kev,
               compound_issues: c.compound_issues,
+              has_mcp_context: c.has_mcp_context,
+              has_agent_context: c.has_agent_context,
+              scan_sources: c.scan_sources,
+              scan_count: c.scan_count,
             });
         })
         .catch(() => {}); // silent — nav badges are non-critical
@@ -115,6 +128,15 @@ export function Nav() {
       clearInterval(interval);
     };
   }, []);
+
+  /** Returns true if a nav link is contextually irrelevant given current scans. */
+  const isDimmed = (href: string): boolean => {
+    if (!counts || (counts.scan_count ?? 0) === 0) return false; // no scans yet — show everything
+    if (MCP_ONLY_PAGES.has(href) && !counts.has_mcp_context) return true;
+    if (RUNTIME_PAGES.has(href)) return false; // always accessible (runtime is independent)
+    if (SNOWFLAKE_PAGES.has(href)) return false; // env-gated at API level
+    return false;
+  };
 
   return (
     <nav className="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-sm sticky top-0 z-50">
@@ -135,6 +157,7 @@ export function Nav() {
                 {group.links.map(({ href, label, icon: Icon }) => {
                   const active = href === "/" ? path === "/" : path.startsWith(href);
                   const isVulns = href === "/vulns";
+                  const dimmed = isDimmed(href);
                   return (
                     <Link
                       key={href}
@@ -142,10 +165,13 @@ export function Nav() {
                       className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
                         active
                           ? "bg-zinc-800 text-zinc-100"
+                          : dimmed
+                          ? "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-900"
                           : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900"
                       }`}
+                      title={dimmed ? "No MCP servers detected in current scans" : undefined}
                     >
-                      <Icon className="w-3.5 h-3.5" />
+                      <Icon className={`w-3.5 h-3.5 ${dimmed ? "opacity-40" : ""}`} />
                       {label}
                       {isVulns && counts && counts.critical > 0 && (
                         <span className="flex items-center gap-1 ml-0.5">
@@ -192,6 +218,7 @@ export function Nav() {
                 <div className="grid grid-cols-2 gap-1">
                   {group.links.map(({ href, label, icon: Icon }) => {
                     const active = href === "/" ? path === "/" : path.startsWith(href);
+                    const dimmed = isDimmed(href);
                     return (
                       <Link
                         key={href}
@@ -199,10 +226,12 @@ export function Nav() {
                         className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                           active
                             ? "bg-zinc-800 text-zinc-100"
+                            : dimmed
+                            ? "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-900"
                             : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900"
                         }`}
                       >
-                        <Icon className="w-4 h-4" />
+                        <Icon className={`w-4 h-4 ${dimmed ? "opacity-40" : ""}`} />
                         {label}
                       </Link>
                     );

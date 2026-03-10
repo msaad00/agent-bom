@@ -3,14 +3,8 @@ name: ClusterFuzzLite
 on:
   push:
     branches: [main]
-    paths:
-      - 'fuzz/**'
-      - '.clusterfuzzlite/**'
   pull_request:
     branches: [main]
-    paths:
-      - 'fuzz/**'
-      - '.clusterfuzzlite/**'
   schedule:
     - cron: '0 4 * * 1'  # Weekly batch fuzzing — Monday 04:00 UTC
   workflow_dispatch:

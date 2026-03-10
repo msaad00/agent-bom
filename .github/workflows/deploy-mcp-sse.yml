@@ -16,6 +16,8 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     if: >-
       ${{
         vars.DEPLOY_TARGET == 'railway' &&

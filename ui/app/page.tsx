@@ -92,40 +92,66 @@ interface ScanSource {
   critical: number;
 }
 
+const SOURCE_META: Record<string, { label: string; icon: React.ElementType }> = {
+  agent_discovery: { label: "MCP Agents", icon: Server },
+  image: { label: "Container Images", icon: Container },
+  k8s: { label: "Kubernetes", icon: Layers },
+  sbom: { label: "SBOM Imports", icon: FileText },
+  filesystem: { label: "Filesystem", icon: FileText },
+  terraform: { label: "Terraform", icon: Layers },
+  github_actions: { label: "GitHub Actions", icon: Layers },
+  browser_extensions: { label: "Browser Extensions", icon: ExternalLink },
+  jupyter: { label: "Jupyter Notebooks", icon: FileText },
+  gpu_infra: { label: "GPU Infrastructure", icon: Server },
+};
+
 function aggregateSources(jobs: ScanJob[]): ScanSource[] {
-  let agentScans = 0, agentVulns = 0, agentCrit = 0;
-  let imageScans = 0, imageVulns = 0, imageCrit = 0;
-  let k8sScans = 0, sbomScans = 0;
+  const srcMap = new Map<string, ScanSource>();
 
   for (const job of jobs) {
     if (job.status !== "done") continue;
-    const req = job.request;
     const result = job.result as ScanResult | undefined;
     const blast = result?.blast_radius ?? [];
+    // Prefer scan_sources from result (auto-detected), fall back to request inference
+    const sources = result?.scan_sources ?? [];
 
-    // Detect scan sources from the request
-    if (req.images && req.images.length > 0) {
-      imageScans += req.images.length;
-      imageVulns += blast.length;
-      imageCrit += blast.filter((b) => b.severity === "critical").length;
-    }
-    if (req.k8s) k8sScans++;
-    if (req.sbom) sbomScans++;
-
-    // Agent discovery (default scan or inventory)
-    if (!req.images?.length && !req.k8s && !req.sbom) {
-      agentScans++;
-      agentVulns += blast.length;
-      agentCrit += blast.filter((b) => b.severity === "critical").length;
+    if (sources.length > 0) {
+      for (const src of sources) {
+        const meta = SOURCE_META[src] ?? { label: src, icon: FileText };
+        const existing = srcMap.get(src);
+        if (existing) {
+          existing.count++;
+          existing.vulns += blast.length;
+          existing.critical += blast.filter((b) => b.severity === "critical").length;
+        } else {
+          srcMap.set(src, {
+            label: meta.label,
+            icon: meta.icon,
+            count: 1,
+            vulns: blast.length,
+            critical: blast.filter((b) => b.severity === "critical").length,
+          });
+        }
+      }
+    } else {
+      // Legacy fallback: infer from request
+      const req = job.request;
+      if (req.images && req.images.length > 0) {
+        const e = srcMap.get("image") ?? { label: "Container Images", icon: Container, count: 0, vulns: 0, critical: 0 };
+        e.count += req.images.length;
+        e.vulns += blast.length;
+        e.critical += blast.filter((b) => b.severity === "critical").length;
+        srcMap.set("image", e);
+      } else {
+        const e = srcMap.get("agent_discovery") ?? { label: "MCP Agents", icon: Server, count: 0, vulns: 0, critical: 0 };
+        e.count++;
+        e.vulns += blast.length;
+        e.critical += blast.filter((b) => b.severity === "critical").length;
+        srcMap.set("agent_discovery", e);
+      }
     }
   }
-
-  const sources: ScanSource[] = [];
-  if (agentScans > 0) sources.push({ label: "MCP Agents", icon: Server, count: agentScans, vulns: agentVulns, critical: agentCrit });
-  if (imageScans > 0) sources.push({ label: "Container Images", icon: Container, count: imageScans, vulns: imageVulns, critical: imageCrit });
-  if (k8sScans > 0) sources.push({ label: "Kubernetes", icon: Layers, count: k8sScans, vulns: 0, critical: 0 });
-  if (sbomScans > 0) sources.push({ label: "SBOM Imports", icon: FileText, count: sbomScans, vulns: 0, critical: 0 });
-  return sources;
+  return Array.from(srcMap.values());
 }
 
 function aggregateTrend(jobs: ScanJob[]): TrendDataPoint[] {

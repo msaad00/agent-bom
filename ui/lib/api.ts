@@ -82,6 +82,10 @@ export interface ScanResult {
   warnings?: string[];
   scan_timestamp?: string;
   tool_version?: string;
+  /** Context metadata — auto-detected from scan sources */
+  has_mcp_context?: boolean;
+  has_agent_context?: boolean;
+  scan_sources?: string[];
 }
 
 export interface RemediationItem {
@@ -631,7 +635,7 @@ export const api = {
     return () => es.close(); // cleanup fn
   },
 
-  /** Lightweight aggregate counts for nav badges (Critical/High/KEV/Compound) */
+  /** Lightweight aggregate counts + scan context for nav badges */
   getPostureCounts: () =>
     get<{
       critical: number;
@@ -641,6 +645,10 @@ export const api = {
       total: number;
       kev: number;
       compound_issues: number;
+      has_mcp_context?: boolean;
+      has_agent_context?: boolean;
+      scan_sources?: string[];
+      scan_count?: number;
     }>("/v1/posture/counts"),
 
   /** Compliance posture across all completed scans */

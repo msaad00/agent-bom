@@ -54,6 +54,10 @@ docs/
 # Logs
 *.log
 
+# Secrets
+.env*
+!.env.example
+
 # Local test files
 test_*.json
 test_*.cdx.json

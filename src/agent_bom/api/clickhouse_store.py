@@ -5,6 +5,14 @@ Provides ``AnalyticsStore`` protocol with two implementations:
 * **ClickHouseAnalyticsStore** — real ClickHouse backend for vuln trends,
   runtime events, and posture snapshots.
 * **NullAnalyticsStore** — silent no-op when ClickHouse is not configured.
+
+Security note — SQL injection mitigation:
+  ClickHouse's HTTP interface does not support parameterized queries in the
+  same way as traditional RDBMS drivers.  All numeric parameters are cast via
+  ``int()``/``float()`` before interpolation, and string parameters are
+  sanitized through ``_escape()`` which strips null bytes and escapes
+  backslashes and single quotes.  Bandit ``nosec B608`` annotations suppress
+  the string-concatenation warnings where these guards are in place.
 """
 
 from __future__ import annotations
@@ -211,6 +219,11 @@ class ClickHouseAnalyticsStore:
 
 
 def _escape(value: str) -> str:
-    """Escape a string value for ClickHouse SQL (prevent injection)."""
-    # Strip null bytes which can truncate queries in some drivers
+    """Escape a string value for ClickHouse SQL.
+
+    Defence-in-depth against injection: strips null bytes (which can truncate
+    queries in some drivers), escapes backslashes and single quotes.  All
+    callers also enforce type constraints (int casts for numeric params).
+    See module docstring for full rationale.
+    """
     return value.replace("\x00", "").replace("\\", "\\\\").replace("'", "\\'")

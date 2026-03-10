@@ -5743,7 +5743,7 @@ def protect_cmd(mode, port, host, detectors, alert_file, alert_webhook, log_leve
     console.print(f"[bold green]Runtime protection engine starting ({mode} mode)[/bold green]")
 
     async def _run() -> None:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         stop_event = asyncio.Event()
 
         def _signal_handler() -> None:

@@ -37,7 +37,7 @@ async def run_stdin_mode(engine: ProtectionEngine) -> None:
     engine.start()
     logger.info("Protection engine running in stdin mode (Ctrl+C to stop)")
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     reader = asyncio.StreamReader()
     protocol = asyncio.StreamReaderProtocol(reader)
     await loop.connect_read_pipe(lambda: protocol, sys.stdin)

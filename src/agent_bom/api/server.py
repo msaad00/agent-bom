@@ -496,6 +496,13 @@ def configure_api(
     _api_key = api_key
     _rate_limit_rpm = rate_limit_rpm
 
+    # Warn if API is exposed without authentication
+    if not api_key:
+        _logger.warning(
+            "SECURITY: No AGENT_BOM_API_KEY set — API endpoints are unauthenticated. "
+            "Set AGENT_BOM_API_KEY environment variable for production deployments."
+        )
+
     # Add optional middleware
     if api_key:
         app.add_middleware(APIKeyMiddleware, api_key=api_key)

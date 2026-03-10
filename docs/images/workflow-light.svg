@@ -25,7 +25,7 @@
   <text x="96" y="74" text-anchor="middle" class="step-num" fill="#0969da">1</text>
   <text x="96" y="90" text-anchor="middle" class="step-label">Discover</text>
   <line x1="44" y1="98" x2="148" y2="98" stroke="#d0d7de" stroke-width="0.5"/>
-  <text x="96" y="116" text-anchor="middle" class="step-detail">20 MCP clients</text>
+  <text x="96" y="116" text-anchor="middle" class="step-detail">21 MCP clients</text>
   <text x="96" y="130" text-anchor="middle" class="step-detail">Docker images</text>
   <text x="96" y="144" text-anchor="middle" class="step-detail">Kubernetes pods</text>
   <text x="96" y="158" text-anchor="middle" class="step-detail">Cloud providers</text>

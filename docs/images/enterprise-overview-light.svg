@@ -24,7 +24,7 @@
   <!-- Source blocks — clean rounded pills -->
   <rect x="80" y="148" width="108" height="40" rx="10" fill="#fff" stroke="#bfdbfe" stroke-width="1.5"/>
   <text x="134" y="164" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#1e40af">MCP Agents</text>
-  <text x="134" y="180" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#60a5fa">20 clients</text>
+  <text x="134" y="180" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#60a5fa">21 clients</text>
 
   <rect x="198" y="148" width="108" height="40" rx="10" fill="#fff" stroke="#bfdbfe" stroke-width="1.5"/>
   <text x="252" y="164" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#1e40af">Containers</text>

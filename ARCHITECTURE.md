@@ -41,12 +41,13 @@ src/agent_bom/
 ├── transitive.py        # Transitive dep resolution via deps.dev API
 ├── models.py            # Agent, MCPServer, Package, Vulnerability, BlastRadius, AIBOMReport
 │                        #   BlastRadius.calculate_risk_score() — 8-factor risk computation
+├── asset_tracker.py     # Persistent SQLite vuln tracker — first_seen, resolved, MTTR
 ├── security.py          # validate_path(), sanitize_env_vars(), credential redaction
 └── output/
     └── __init__.py      # JSON, SARIF, CycloneDX, SPDX, SVG, text formatters
 ```
 
-### Compliance Frameworks (10)
+### Compliance Frameworks (11)
 
 Each module exports `tag_blast_radius(br: BlastRadius)` to annotate findings.
 

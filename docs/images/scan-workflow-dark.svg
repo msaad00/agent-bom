@@ -61,7 +61,7 @@
   <text x="210" y="242" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" fill="#58a6ff">Auto-detect every component</text>
 
   <!-- Discover details — clean list, not boxes -->
-  <text x="210" y="280" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" fill="#8b949e">20 MCP clients  ·  11 cloud providers</text>
+  <text x="210" y="280" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" fill="#8b949e">21 MCP clients  ·  11 cloud providers</text>
   <text x="210" y="300" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" fill="#8b949e">Docker + K8s  ·  7 code ecosystems</text>
   <text x="210" y="320" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" fill="#8b949e">12 AI/ML formats  ·  SBOM ingest</text>
   <text x="210" y="340" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" fill="#8b949e">Integrity verification  ·  Filesystem</text>

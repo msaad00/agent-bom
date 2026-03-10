@@ -61,18 +61,20 @@
   <rect x="100" y="188" width="600" height="4" rx="2" fill="#f43f5e"/>
   <text x="120" y="218" class="layer-name" fill="#f43f5e">ANALYSIS</text>
 
-  <rect x="220" y="200" width="80" height="24" rx="5" fill="#2a1520" stroke="#881337" stroke-width="0.5"/>
-  <text x="260" y="216" text-anchor="middle" class="item">Blast Radius</text>
-  <rect x="308" y="200" width="76" height="24" rx="5" fill="#2a1520" stroke="#881337" stroke-width="0.5"/>
-  <text x="346" y="216" text-anchor="middle" class="item">Compliance</text>
-  <rect x="392" y="200" width="56" height="24" rx="5" fill="#2a1520" stroke="#881337" stroke-width="0.5"/>
-  <text x="420" y="216" text-anchor="middle" class="item">Policy</text>
-  <rect x="456" y="200" width="76" height="24" rx="5" fill="#2a1520" stroke="#881337" stroke-width="0.5"/>
-  <text x="494" y="216" text-anchor="middle" class="item">Enforcement</text>
-  <rect x="540" y="200" width="58" height="24" rx="5" fill="#2a1520" stroke="#881337" stroke-width="0.5"/>
-  <text x="569" y="216" text-anchor="middle" class="item">Posture</text>
-  <rect x="606" y="200" width="76" height="24" rx="5" fill="#2a1520" stroke="#881337" stroke-width="0.5"/>
-  <text x="644" y="216" text-anchor="middle" class="item">Context Graph</text>
+  <rect x="210" y="200" width="72" height="24" rx="5" fill="#2a1520" stroke="#881337" stroke-width="0.5"/>
+  <text x="246" y="216" text-anchor="middle" class="item">Blast Radius</text>
+  <rect x="288" y="200" width="68" height="24" rx="5" fill="#2a1520" stroke="#881337" stroke-width="0.5"/>
+  <text x="322" y="216" text-anchor="middle" class="item">Compliance</text>
+  <rect x="362" y="200" width="48" height="24" rx="5" fill="#2a1520" stroke="#881337" stroke-width="0.5"/>
+  <text x="386" y="216" text-anchor="middle" class="item">Policy</text>
+  <rect x="416" y="200" width="70" height="24" rx="5" fill="#2a1520" stroke="#881337" stroke-width="0.5"/>
+  <text x="451" y="216" text-anchor="middle" class="item">Enforcement</text>
+  <rect x="492" y="200" width="50" height="24" rx="5" fill="#2a1520" stroke="#881337" stroke-width="0.5"/>
+  <text x="517" y="216" text-anchor="middle" class="item">Posture</text>
+  <rect x="548" y="200" width="48" height="24" rx="5" fill="#2a1520" stroke="#881337" stroke-width="0.5"/>
+  <text x="572" y="216" text-anchor="middle" class="item">Assets</text>
+  <rect x="602" y="200" width="86" height="24" rx="5" fill="#2a1520" stroke="#881337" stroke-width="0.5"/>
+  <text x="645" y="216" text-anchor="middle" class="item">Context Graph</text>
 
   <text x="400" y="250" text-anchor="middle" class="arrow-up">&#x25B2;</text>
 

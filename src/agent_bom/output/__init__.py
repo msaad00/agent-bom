@@ -1622,6 +1622,8 @@ def to_json(report: AIBOMReport) -> dict:
         result["dataset_cards"] = report.dataset_cards
     if report.serving_configs:
         result["serving_configs"] = report.serving_configs
+    if report.browser_extensions:
+        result["browser_extensions"] = report.browser_extensions
 
     # Posture scorecard
     from agent_bom.posture import (

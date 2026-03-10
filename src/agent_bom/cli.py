@@ -1788,6 +1788,7 @@ def scan(
                 con.print("  [green]✓[/green] No security issues found in prompt templates")
 
     # Step 1g3c: Browser extension scanning (--browser-extensions)
+    _browser_ext_results: dict | None = None
     if browser_extensions:
         from agent_bom.parsers.browser_extensions import discover_browser_extensions
 
@@ -1828,6 +1829,14 @@ def scan(
             con.print(Panel(br_table, subtitle=stats, border_style="magenta"))
         else:
             con.print("  [green]✓[/green] No medium+ risk browser extensions found")
+
+        # Save for later persistence to report (report created after all scans)
+        _browser_ext_results = {
+            "extensions": [e.to_dict() for e in br_exts],
+            "total": len(br_exts),
+            "critical_count": sum(1 for e in br_exts if e.risk_level == "critical"),
+            "high_count": sum(1 for e in br_exts if e.risk_level == "high"),
+        }
 
     # Step 1g4: Jupyter notebook scan (--jupyter)
     if not skill_only and jupyter_dirs:
@@ -2944,6 +2953,10 @@ def scan(
             report.serving_configs = [s.to_dict() for s in all_serving]
         for w in all_tp_warnings:
             con.print(f"  [yellow]⚠[/yellow] {w}")
+
+    # Persist browser extension results to report
+    if _browser_ext_results is not None:
+        report.browser_extensions = _browser_ext_results
 
     # Step 4c: AI-powered enrichment (optional)
     if ai_enrich:

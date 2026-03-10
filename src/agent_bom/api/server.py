@@ -1784,13 +1784,11 @@ def _sanitize_api_path(user_path: str) -> str:
     # 4. Resolve to real absolute path (follows symlinks)
     resolved = os.path.realpath(candidate)
 
-    # 5. Containment + existence — positive-branch guard pattern so CodeQL
-    #    recognises the barrier (taint is only used inside the safe branch).
-    if os.path.commonpath([home, resolved]) == home:
-        if os.path.exists(resolved):
-            return resolved
-        raise SecurityError(f"Path does not exist: {resolved}")
-    raise SecurityError(f"Path resolves outside home directory: {user_path}")
+    # 5. Containment check — ensure resolved path stays within $HOME
+    if os.path.commonpath([home, resolved]) != home:
+        raise SecurityError(f"Path resolves outside home directory: {user_path}")
+
+    return resolved
 
 
 class DatasetCardsRequest(BaseModel):

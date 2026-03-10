@@ -35,6 +35,8 @@ SKILL_FILE_NAMES: list[str] = [
     ".github/copilot-instructions.md",
     ".windsurfrules",
     "AGENTS.md",
+    ".cortex/skills",
+    ".snowflake/cortex/skills",
 ]
 
 # ─── Regex patterns ──────────────────────────────────────────────────────────

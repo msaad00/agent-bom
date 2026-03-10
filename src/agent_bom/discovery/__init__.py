@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import platform
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -565,13 +566,139 @@ def parse_cortex_code_metadata(config_path: str) -> dict:
 
     filename = Path(config_path).name
     if filename == "permissions.json":
-        return {"cortex_permissions": data}
+        return {"cortex_permissions": data, "cortex_permission_findings": audit_cortex_permissions(data)}
     elif filename == "hooks.json":
-        return {"cortex_hooks": data}
+        return {"cortex_hooks": data, "cortex_hook_findings": audit_cortex_hooks(data)}
     elif filename == "settings.json" and "mcpServers" not in data:
         return {"cortex_settings": data}
 
     return {}
+
+
+def audit_cortex_permissions(permissions: dict) -> list[dict]:
+    """Audit Cortex Code permission cache for security risks.
+
+    Flags:
+    - PERSIST_ALLOW_ALL: "Always allow" entries (persist=true) bypass future prompts
+    - HIGH_RISK_TOOL_APPROVED: Cached approval for dangerous tool capabilities
+    - UNVERIFIED_SERVER_APPROVED: Server approved without integrity hash
+    """
+    findings: list[dict] = []
+    high_risk_tools = {"execute", "shell", "run", "eval", "write", "delete", "rm", "sudo"}
+
+    approvals = permissions.get("approvals", permissions.get("tools", []))
+    if isinstance(approvals, dict):
+        approvals = list(approvals.values())
+    if not isinstance(approvals, list):
+        return findings
+
+    for entry in approvals:
+        if not isinstance(entry, dict):
+            continue
+        tool_name = entry.get("tool", entry.get("name", "unknown")).lower()
+        persist = entry.get("persist", entry.get("always_allow", False))
+        server = entry.get("server", entry.get("mcp_server", ""))
+
+        if persist:
+            findings.append(
+                {
+                    "severity": "MEDIUM",
+                    "type": "PERSIST_ALLOW_ALL",
+                    "description": f"Tool '{tool_name}' has persistent 'always allow' — bypasses future approval prompts",
+                    "tool": tool_name,
+                    "server": server,
+                }
+            )
+
+        if any(kw in tool_name for kw in high_risk_tools):
+            findings.append(
+                {
+                    "severity": "HIGH",
+                    "type": "HIGH_RISK_TOOL_APPROVED",
+                    "description": f"High-risk tool '{tool_name}' has cached approval — could be exploited if server is compromised",
+                    "tool": tool_name,
+                    "server": server,
+                }
+            )
+
+        if not entry.get("hash", entry.get("integrity", "")):
+            findings.append(
+                {
+                    "severity": "LOW",
+                    "type": "UNVERIFIED_SERVER_APPROVED",
+                    "description": f"Tool '{tool_name}' approved without integrity verification (no hash) — rug pull risk",
+                    "tool": tool_name,
+                    "server": server,
+                }
+            )
+
+    return findings
+
+
+# Patterns that indicate dangerous hook commands
+_DANGEROUS_HOOK_PATTERNS = re.compile(
+    r"(curl\s.*\|\s*(?:ba)?sh|wget\s.*\|\s*(?:ba)?sh|exec\s|eval\s|"
+    r"python\s+-c|node\s+-e|rm\s+-rf|chmod\s+777|>\s*/dev/)",
+    re.IGNORECASE,
+)
+
+
+def audit_cortex_hooks(hooks: dict) -> list[dict]:
+    """Audit Cortex Code hook configuration for security risks.
+
+    Flags:
+    - DANGEROUS_HOOK_COMMAND: Hook runs shell command with known-dangerous patterns
+    - UNRESTRICTED_HOOK_TRIGGER: Hook fires on all events (no event filter)
+    - EXTERNAL_HOOK_URL: Hook sends data to external URL
+    """
+    findings: list[dict] = []
+
+    hook_list = hooks.get("hooks", [])
+    if isinstance(hook_list, dict):
+        hook_list = list(hook_list.values())
+    if not isinstance(hook_list, list):
+        return findings
+
+    for hook in hook_list:
+        if not isinstance(hook, dict):
+            continue
+        hook_name = hook.get("name", hook.get("id", "unnamed"))
+        command = hook.get("command", hook.get("script", ""))
+        events = hook.get("events", hook.get("on", []))
+        url = hook.get("url", hook.get("webhook", ""))
+
+        if command and _DANGEROUS_HOOK_PATTERNS.search(command):
+            findings.append(
+                {
+                    "severity": "HIGH",
+                    "type": "DANGEROUS_HOOK_COMMAND",
+                    "description": f"Hook '{hook_name}' runs dangerous command pattern: {command[:100]}",
+                    "hook": hook_name,
+                }
+            )
+
+        if not events or events == "*" or events == ["*"]:
+            findings.append(
+                {
+                    "severity": "MEDIUM",
+                    "type": "UNRESTRICTED_HOOK_TRIGGER",
+                    "description": f"Hook '{hook_name}' fires on all events — should be scoped to specific triggers",
+                    "hook": hook_name,
+                }
+            )
+
+        if url and ("http://" in url or "https://" in url):
+            findings.append(
+                {
+                    "severity": "MEDIUM",
+                    "type": "EXTERNAL_HOOK_URL",
+                    "description": f"Hook '{hook_name}' sends data to external URL: {url[:100]}",
+                    "hook": hook_name,
+                    "url": url[:200],
+                }
+            )
+
+    return findings
 
 
 # Custom parsers for non-JSON config formats

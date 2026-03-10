@@ -1,7 +1,8 @@
 """CIS AWS Foundations Benchmark v3.0 — live account checks.
 
 Runs read-only AWS API checks against the CIS AWS Foundations Benchmark v3.0
-covering IAM, Logging (CloudTrail), Storage (S3), and Networking (VPC).
+covering IAM, Storage (S3, EBS, RDS, KMS), Logging (CloudTrail),
+Monitoring (CloudWatch Logs), and Networking (VPC).
 Each check returns pass/fail with evidence.
 
 Required IAM permissions (all read-only, covered by SecurityAudit policy):
@@ -12,6 +13,9 @@ Required IAM permissions (all read-only, covered by SecurityAudit policy):
     iam:ListVirtualMFADevices
     iam:ListUserPolicies
     iam:ListAttachedUserPolicies
+    iam:ListAccessKeys
+    iam:ListPolicies
+    iam:GetPolicyVersion
     iam:GenerateCredentialReport
     iam:GetCredentialReport
     cloudtrail:DescribeTrails
@@ -21,10 +25,18 @@ Required IAM permissions (all read-only, covered by SecurityAudit policy):
     s3:GetBucketLogging
     s3:GetBucketVersioning
     s3:GetBucketEncryption
+    s3:GetBucketPolicy
     s3control:GetPublicAccessBlock
     ec2:DescribeSecurityGroups
     ec2:DescribeFlowLogs
     ec2:DescribeVpcs
+    ec2:DescribeNetworkAcls
+    ec2:DescribeRouteTables
+    ec2:GetEbsEncryptionByDefault
+    rds:DescribeDBInstances
+    kms:ListKeys
+    kms:GetKeyRotationStatus
+    kms:DescribeKey
     logs:DescribeMetricFilters
 
 Install: ``pip install 'agent-bom[aws]'``
@@ -374,6 +386,128 @@ def _check_1_15(iam_client: Any) -> CISCheckResult:
     return result
 
 
+def _check_1_9(iam_client: Any) -> CISCheckResult:
+    """CIS 1.9 — Ensure IAM password policy prevents password reuse."""
+    result = CISCheckResult(
+        check_id="1.9",
+        title="Ensure IAM password policy prevents password reuse",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_IAM_SECTION,
+        recommendation="Set password reuse prevention to 24 or greater in IAM > Account settings.",
+    )
+    try:
+        policy = iam_client.get_account_password_policy()["PasswordPolicy"]
+        reuse_count = policy.get("PasswordReusePrevention", 0)
+        if reuse_count < 24:
+            result.status = CheckStatus.FAIL
+            result.evidence = f"Password reuse prevention is {reuse_count} (required: >= 24)."
+        else:
+            result.evidence = f"Password reuse prevention is set to {reuse_count}."
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        if error_code == "NoSuchEntity":
+            result.status = CheckStatus.FAIL
+            result.evidence = "No password policy is configured."
+        else:
+            raise
+    return result
+
+
+def _check_1_14(iam_client: Any) -> CISCheckResult:
+    """CIS 1.14 — Ensure access keys are rotated every 90 days or less."""
+    result = CISCheckResult(
+        check_id="1.14",
+        title="Ensure access keys are rotated every 90 days or less",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_IAM_SECTION,
+        recommendation="Rotate access keys older than 90 days via IAM > Users > Security credentials.",
+    )
+    paginator = iam_client.get_paginator("list_users")
+    stale_keys: list[str] = []
+    now = datetime.now(tz=timezone.utc)
+
+    for page in paginator.paginate():
+        for user in page["Users"]:
+            username = user["UserName"]
+            keys = iam_client.list_access_keys(UserName=username).get("AccessKeyMetadata", [])
+            for key in keys:
+                if key.get("Status") != "Active":
+                    continue
+                create_date = key.get("CreateDate")
+                if create_date and (now - create_date).days > 90:
+                    stale_keys.append(f"{username}/{key['AccessKeyId']}")
+
+    if stale_keys:
+        result.status = CheckStatus.FAIL
+        result.evidence = f"{len(stale_keys)} access key(s) older than 90 days: {', '.join(stale_keys[:5])}"
+        if len(stale_keys) > 5:
+            result.evidence += f" (+{len(stale_keys) - 5} more)"
+        result.resource_ids = stale_keys[:20]
+    else:
+        result.evidence = "All active access keys are younger than 90 days."
+    return result
+
+
+def _check_1_16(iam_client: Any) -> CISCheckResult:
+    """CIS 1.16 — Ensure IAM policies with full '*:*' admin privileges are not attached."""
+    result = CISCheckResult(
+        check_id="1.16",
+        title="Ensure IAM policies with full admin privileges are not attached",
+        status=CheckStatus.PASS,
+        severity="critical",
+        cis_section=_IAM_SECTION,
+        recommendation="Remove or scope down policies that grant '*' on '*' resources.",
+    )
+    import json as _json
+
+    paginator = iam_client.get_paginator("list_policies")
+    admin_policies: list[str] = []
+
+    for page in paginator.paginate(Scope="Local", OnlyAttached=True):
+        for policy in page["Policies"]:
+            version_id = policy.get("DefaultVersionId", "v1")
+            try:
+                version = iam_client.get_policy_version(
+                    PolicyArn=policy["Arn"],
+                    VersionId=version_id,
+                )["PolicyVersion"]
+                doc = version.get("Document", {})
+                # Document may be URL-encoded JSON string
+                if isinstance(doc, str):
+                    from urllib.parse import unquote
+
+                    doc = _json.loads(unquote(doc))
+                statements = doc.get("Statement", [])
+                if isinstance(statements, dict):
+                    statements = [statements]
+                for stmt in statements:
+                    if stmt.get("Effect") != "Allow":
+                        continue
+                    actions = stmt.get("Action", [])
+                    resources = stmt.get("Resource", [])
+                    if isinstance(actions, str):
+                        actions = [actions]
+                    if isinstance(resources, str):
+                        resources = [resources]
+                    if "*" in actions and "*" in resources:
+                        admin_policies.append(policy["PolicyName"])
+                        break
+            except Exception:
+                logger.debug("Could not inspect policy %s", policy.get("Arn"))
+
+    if admin_policies:
+        result.status = CheckStatus.FAIL
+        result.evidence = f"{len(admin_policies)} attached policy(ies) with full admin: {', '.join(admin_policies[:5])}"
+        if len(admin_policies) > 5:
+            result.evidence += f" (+{len(admin_policies) - 5} more)"
+        result.resource_ids = admin_policies[:20]
+    else:
+        result.evidence = "No attached customer-managed policies grant full '*:*' admin privileges."
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Individual checks — CIS 2.x (Storage / S3)
 # ---------------------------------------------------------------------------
@@ -473,6 +607,132 @@ def _check_2_1_4(s3_client: Any) -> CISCheckResult:
         result.resource_ids = [f"arn:aws:s3:::{b}" for b in unversioned]
     else:
         result.evidence = f"All {len(buckets)} bucket(s) have versioning enabled."
+    return result
+
+
+def _check_2_2_1(ec2_client: Any) -> CISCheckResult:
+    """CIS 2.2.1 — Ensure EBS volume encryption is enabled by default."""
+    result = CISCheckResult(
+        check_id="2.2.1",
+        title="Ensure EBS volume encryption is enabled by default",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_STORAGE_SECTION,
+        recommendation="Enable EBS encryption by default via EC2 > Settings > EBS encryption.",
+    )
+    try:
+        resp = ec2_client.get_ebs_encryption_by_default()
+        if not resp.get("EbsEncryptionByDefault", False):
+            result.status = CheckStatus.FAIL
+            result.evidence = "EBS volume encryption is not enabled by default."
+        else:
+            result.evidence = "EBS volume encryption is enabled by default."
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        logger.debug("Could not check EBS default encryption: %s (%s)", exc, error_code)
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not check EBS encryption default: {error_code or exc}"
+    return result
+
+
+def _check_2_3_1(rds_client: Any) -> CISCheckResult:
+    """CIS 2.3.1 — Ensure RDS instances have encryption at rest enabled."""
+    result = CISCheckResult(
+        check_id="2.3.1",
+        title="Ensure RDS instances have encryption at rest enabled",
+        status=CheckStatus.PASS,
+        severity="high",
+        cis_section=_STORAGE_SECTION,
+        recommendation="Enable encryption at rest when creating RDS instances (cannot be changed post-creation).",
+    )
+    paginator = rds_client.get_paginator("describe_db_instances")
+    unencrypted: list[str] = []
+
+    for page in paginator.paginate():
+        for db in page["DBInstances"]:
+            if not db.get("StorageEncrypted", False):
+                unencrypted.append(db["DBInstanceIdentifier"])
+
+    if unencrypted:
+        result.status = CheckStatus.FAIL
+        result.evidence = f"{len(unencrypted)} RDS instance(s) without encryption: {', '.join(unencrypted[:5])}"
+        if len(unencrypted) > 5:
+            result.evidence += f" (+{len(unencrypted) - 5} more)"
+        result.resource_ids = unencrypted[:20]
+    elif not unencrypted:
+        result.evidence = "All RDS instances have encryption at rest enabled (or no instances found)."
+    return result
+
+
+def _check_2_3_2(rds_client: Any) -> CISCheckResult:
+    """CIS 2.3.2 — Ensure auto minor version upgrade is enabled for RDS instances."""
+    result = CISCheckResult(
+        check_id="2.3.2",
+        title="Ensure auto minor version upgrade is enabled for RDS instances",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_STORAGE_SECTION,
+        recommendation="Enable auto minor version upgrade on all RDS instances.",
+    )
+    paginator = rds_client.get_paginator("describe_db_instances")
+    no_auto_upgrade: list[str] = []
+
+    for page in paginator.paginate():
+        for db in page["DBInstances"]:
+            if not db.get("AutoMinorVersionUpgrade", False):
+                no_auto_upgrade.append(db["DBInstanceIdentifier"])
+
+    if no_auto_upgrade:
+        result.status = CheckStatus.FAIL
+        result.evidence = f"{len(no_auto_upgrade)} RDS instance(s) without auto minor version upgrade: {', '.join(no_auto_upgrade[:5])}"
+        if len(no_auto_upgrade) > 5:
+            result.evidence += f" (+{len(no_auto_upgrade) - 5} more)"
+        result.resource_ids = no_auto_upgrade[:20]
+    else:
+        result.evidence = "All RDS instances have auto minor version upgrade enabled (or no instances found)."
+    return result
+
+
+def _check_2_4_1(kms_client: Any) -> CISCheckResult:
+    """CIS 2.4.1 — Ensure rotation is enabled for customer-managed KMS keys."""
+    result = CISCheckResult(
+        check_id="2.4.1",
+        title="Ensure rotation is enabled for customer-managed KMS keys",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_STORAGE_SECTION,
+        recommendation="Enable automatic key rotation for all customer-managed KMS keys.",
+    )
+    paginator = kms_client.get_paginator("list_keys")
+    no_rotation: list[str] = []
+
+    for page in paginator.paginate():
+        for key in page["Keys"]:
+            key_id = key["KeyId"]
+            try:
+                # Only check customer-managed keys (skip AWS-managed and AWS-owned)
+                desc = kms_client.describe_key(KeyId=key_id)["KeyMetadata"]
+                if desc.get("KeyManager") != "CUSTOMER":
+                    continue
+                if desc.get("KeyState") != "Enabled":
+                    continue
+                rotation = kms_client.get_key_rotation_status(KeyId=key_id)
+                if not rotation.get("KeyRotationEnabled", False):
+                    no_rotation.append(key_id)
+            except Exception as exc:
+                error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+                if error_code in ("AccessDeniedException", "NotFoundException"):
+                    continue
+                logger.debug("Could not check rotation for key %s: %s", key_id, exc)
+
+    if no_rotation:
+        result.status = CheckStatus.FAIL
+        result.evidence = f"{len(no_rotation)} customer-managed key(s) without rotation: {', '.join(no_rotation[:5])}"
+        if len(no_rotation) > 5:
+            result.evidence += f" (+{len(no_rotation) - 5} more)"
+        result.resource_ids = no_rotation[:20]
+    else:
+        result.evidence = "All customer-managed KMS keys have rotation enabled (or no keys found)."
     return result
 
 
@@ -655,6 +915,238 @@ def _check_3_6(s3_client: Any, cloudtrail_client: Any) -> CISCheckResult:
     return result
 
 
+def _check_3_3(s3_client: Any, cloudtrail_client: Any) -> CISCheckResult:
+    """CIS 3.3 — Ensure CloudTrail S3 bucket is not publicly accessible."""
+    result = CISCheckResult(
+        check_id="3.3",
+        title="Ensure CloudTrail S3 bucket is not publicly accessible",
+        status=CheckStatus.PASS,
+        severity="critical",
+        cis_section=_LOGGING_SECTION,
+        recommendation="Remove public access from CloudTrail S3 bucket policies and enable public access blocks.",
+    )
+    import json as _json
+
+    trails = cloudtrail_client.describe_trails(includeShadowTrails=False).get("trailList", [])
+    if not trails:
+        result.status = CheckStatus.NOT_APPLICABLE
+        result.evidence = "No CloudTrail trails configured."
+        return result
+
+    ct_buckets = {t["S3BucketName"] for t in trails if t.get("S3BucketName")}
+    public_buckets: list[str] = []
+
+    for bucket_name in ct_buckets:
+        try:
+            policy_resp = s3_client.get_bucket_policy(Bucket=bucket_name)
+            policy_doc = _json.loads(policy_resp["Policy"])
+            for stmt in policy_doc.get("Statement", []):
+                principal = stmt.get("Principal", {})
+                if principal == "*" or (isinstance(principal, dict) and principal.get("AWS") == "*"):
+                    if stmt.get("Effect") == "Allow":
+                        condition = stmt.get("Condition", {})
+                        if not condition:
+                            public_buckets.append(bucket_name)
+                            break
+        except Exception as exc:
+            error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+            if error_code == "NoSuchBucketPolicy":
+                continue  # No policy = not public via policy
+            logger.debug("Could not check bucket policy for %s: %s", bucket_name, exc)
+
+    if public_buckets:
+        result.status = CheckStatus.FAIL
+        result.evidence = f"CloudTrail S3 bucket(s) with public policy: {', '.join(public_buckets)}"
+        result.resource_ids = [f"arn:aws:s3:::{b}" for b in public_buckets]
+    else:
+        result.evidence = "No CloudTrail S3 buckets have public bucket policies."
+    return result
+
+
+def _check_3_7(cloudtrail_client: Any) -> CISCheckResult:
+    """CIS 3.7 — Ensure CloudTrail logs are encrypted with KMS CMK."""
+    result = CISCheckResult(
+        check_id="3.7",
+        title="Ensure CloudTrail logs are encrypted with KMS CMK",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_LOGGING_SECTION,
+        recommendation="Configure KMS CMK encryption on all CloudTrail trails.",
+    )
+    trails = cloudtrail_client.describe_trails(includeShadowTrails=False).get("trailList", [])
+    if not trails:
+        result.status = CheckStatus.FAIL
+        result.evidence = "No CloudTrail trails configured."
+        return result
+
+    no_kms = [t["Name"] for t in trails if not t.get("KmsKeyId")]
+    if no_kms:
+        result.status = CheckStatus.FAIL
+        result.evidence = f"{len(no_kms)} trail(s) not encrypted with KMS CMK: {', '.join(no_kms[:5])}"
+        if len(no_kms) > 5:
+            result.evidence += f" (+{len(no_kms) - 5} more)"
+        result.resource_ids = [t.get("TrailARN", t["Name"]) for t in trails if not t.get("KmsKeyId")]
+    else:
+        result.evidence = f"All {len(trails)} trail(s) are encrypted with KMS CMK."
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Individual checks — CIS 4.x (Monitoring)
+# ---------------------------------------------------------------------------
+
+_MONITORING_SECTION = "4 - Monitoring"
+
+
+def _check_4_3(logs_client: Any) -> CISCheckResult:
+    """CIS 4.3 — Ensure a metric filter and alarm exist for root account usage."""
+    result = CISCheckResult(
+        check_id="4.3",
+        title="Ensure a metric filter and alarm exist for root account usage",
+        status=CheckStatus.PASS,
+        severity="high",
+        cis_section=_MONITORING_SECTION,
+        recommendation="Create a CloudWatch metric filter and alarm for root account usage.",
+    )
+    root_patterns = [
+        '$.userIdentity.type = "Root"',
+        "userIdentity.type",
+        "Root",
+    ]
+
+    try:
+        paginator = logs_client.get_paginator("describe_metric_filters")
+        found = False
+        for page in paginator.paginate():
+            for mf in page.get("metricFilters", []):
+                pattern = mf.get("filterPattern", "")
+                # Check if the filter pattern references root identity
+                if any(p.lower() in pattern.lower() for p in root_patterns[:2]):
+                    found = True
+                    break
+            if found:
+                break
+
+        if not found:
+            result.status = CheckStatus.FAIL
+            result.evidence = "No metric filter found for root account usage."
+        else:
+            result.evidence = "Metric filter for root account usage exists."
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        logger.debug("Could not check metric filters: %s (%s)", exc, error_code)
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not query metric filters: {error_code or exc}"
+    return result
+
+
+def _check_4_4(logs_client: Any) -> CISCheckResult:
+    """CIS 4.4 — Ensure a metric filter and alarm exist for IAM policy changes."""
+    result = CISCheckResult(
+        check_id="4.4",
+        title="Ensure a metric filter and alarm exist for IAM policy changes",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_MONITORING_SECTION,
+        recommendation="Create a CloudWatch metric filter and alarm for IAM policy changes.",
+    )
+    iam_event_names = [
+        "DeleteGroupPolicy",
+        "DeleteRolePolicy",
+        "DeleteUserPolicy",
+        "PutGroupPolicy",
+        "PutRolePolicy",
+        "PutUserPolicy",
+        "CreatePolicy",
+        "DeletePolicy",
+        "AttachRolePolicy",
+        "DetachRolePolicy",
+        "AttachUserPolicy",
+        "DetachUserPolicy",
+        "AttachGroupPolicy",
+        "DetachGroupPolicy",
+    ]
+
+    try:
+        paginator = logs_client.get_paginator("describe_metric_filters")
+        found = False
+        for page in paginator.paginate():
+            for mf in page.get("metricFilters", []):
+                pattern = mf.get("filterPattern", "")
+                # A proper filter checks at least a few IAM policy event names
+                matches = sum(1 for e in iam_event_names if e in pattern)
+                if matches >= 3:
+                    found = True
+                    break
+            if found:
+                break
+
+        if not found:
+            result.status = CheckStatus.FAIL
+            result.evidence = "No metric filter found for IAM policy changes."
+        else:
+            result.evidence = "Metric filter for IAM policy changes exists."
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        logger.debug("Could not check metric filters: %s (%s)", exc, error_code)
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not query metric filters: {error_code or exc}"
+    return result
+
+
+def _check_4_5(logs_client: Any, cloudtrail_client: Any) -> CISCheckResult:
+    """CIS 4.5 — Ensure a metric filter and alarm exist for CloudTrail config changes."""
+    result = CISCheckResult(
+        check_id="4.5",
+        title="Ensure a metric filter and alarm exist for CloudTrail config changes",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_MONITORING_SECTION,
+        recommendation="Create a CloudWatch metric filter and alarm for CloudTrail configuration changes.",
+    )
+    ct_event_names = [
+        "CreateTrail",
+        "UpdateTrail",
+        "DeleteTrail",
+        "StartLogging",
+        "StopLogging",
+    ]
+
+    try:
+        # First find the log group(s) used by CloudTrail
+        trails = cloudtrail_client.describe_trails(includeShadowTrails=False).get("trailList", [])
+        log_group_arns = {t.get("CloudWatchLogsLogGroupArn", "") for t in trails if t.get("CloudWatchLogsLogGroupArn")}
+
+        if not log_group_arns:
+            result.status = CheckStatus.FAIL
+            result.evidence = "No CloudTrail trails integrated with CloudWatch Logs."
+            return result
+
+        paginator = logs_client.get_paginator("describe_metric_filters")
+        found = False
+        for page in paginator.paginate():
+            for mf in page.get("metricFilters", []):
+                pattern = mf.get("filterPattern", "")
+                matches = sum(1 for e in ct_event_names if e in pattern)
+                if matches >= 3:
+                    found = True
+                    break
+            if found:
+                break
+
+        if not found:
+            result.status = CheckStatus.FAIL
+            result.evidence = "No metric filter found for CloudTrail configuration changes."
+        else:
+            result.evidence = "Metric filter for CloudTrail configuration changes exists."
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        logger.debug("Could not check metric filters: %s (%s)", exc, error_code)
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not query metric filters: {error_code or exc}"
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Individual checks — CIS 5.x (Networking)
 # ---------------------------------------------------------------------------
@@ -775,33 +1267,149 @@ def _check_5_6(ec2_client: Any) -> CISCheckResult:
     return result
 
 
+def _check_5_1(ec2_client: Any) -> CISCheckResult:
+    """CIS 5.1 — Ensure no Network ACLs allow ingress from 0.0.0.0/0 to remote admin ports."""
+    result = CISCheckResult(
+        check_id="5.1",
+        title="Ensure no Network ACLs allow unrestricted ingress to admin ports",
+        status=CheckStatus.PASS,
+        severity="high",
+        cis_section=_NETWORKING_SECTION,
+        recommendation="Restrict NACLs to deny ingress from 0.0.0.0/0 and ::/0 to ports 22 and 3389.",
+    )
+    admin_ports = {22, 3389}
+    open_nacls: list[str] = []
+
+    try:
+        paginator = ec2_client.get_paginator("describe_network_acls")
+        for page in paginator.paginate():
+            for nacl in page["NetworkAcls"]:
+                nacl_id = nacl["NetworkAclId"]
+                for entry in nacl.get("Entries", []):
+                    # Only check inbound allow rules
+                    if entry.get("Egress", True):
+                        continue
+                    if entry.get("RuleAction") != "allow":
+                        continue
+                    cidr = entry.get("CidrBlock", "")
+                    ipv6_cidr = entry.get("Ipv6CidrBlock", "")
+                    if cidr != "0.0.0.0/0" and ipv6_cidr != "::/0":
+                        continue
+                    # Check port range
+                    port_range = entry.get("PortRange", {})
+                    from_port = port_range.get("From", 0)
+                    to_port = port_range.get("To", 65535)
+                    if any(from_port <= p <= to_port for p in admin_ports):
+                        open_nacls.append(nacl_id)
+                        break
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        logger.debug("Could not check NACLs: %s (%s)", exc, error_code)
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not query Network ACLs: {error_code or exc}"
+        return result
+
+    open_nacls = list(dict.fromkeys(open_nacls))
+
+    if open_nacls:
+        result.status = CheckStatus.FAIL
+        result.evidence = f"{len(open_nacls)} NACL(s) allow unrestricted admin port access: {', '.join(open_nacls[:5])}"
+        if len(open_nacls) > 5:
+            result.evidence += f" (+{len(open_nacls) - 5} more)"
+        result.resource_ids = open_nacls[:20]
+    else:
+        result.evidence = "No Network ACLs allow unrestricted ingress to admin ports."
+    return result
+
+
+def _check_5_4(ec2_client: Any) -> CISCheckResult:
+    """CIS 5.4 — Ensure routing tables for VPC peering are least-privilege."""
+    result = CISCheckResult(
+        check_id="5.4",
+        title="Ensure routing tables for VPC peering are least-privilege",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_NETWORKING_SECTION,
+        recommendation="Ensure VPC peering route table entries do not use overly broad CIDR ranges (e.g. 0.0.0.0/0).",
+    )
+    try:
+        paginator = ec2_client.get_paginator("describe_route_tables")
+        broad_routes: list[str] = []
+
+        for page in paginator.paginate():
+            for rt in page["RouteTables"]:
+                rt_id = rt["RouteTableId"]
+                for route in rt.get("Routes", []):
+                    # Only check routes targeting a VPC peering connection
+                    if not route.get("VpcPeeringConnectionId"):
+                        continue
+                    cidr = route.get("DestinationCidrBlock", "")
+                    ipv6_cidr = route.get("DestinationIpv6CidrBlock", "")
+                    if cidr == "0.0.0.0/0" or ipv6_cidr == "::/0":
+                        broad_routes.append(f"{rt_id} -> {route['VpcPeeringConnectionId']}")
+
+        if broad_routes:
+            result.status = CheckStatus.FAIL
+            result.evidence = f"{len(broad_routes)} peering route(s) with overly broad CIDR: {', '.join(broad_routes[:5])}"
+            if len(broad_routes) > 5:
+                result.evidence += f" (+{len(broad_routes) - 5} more)"
+            result.resource_ids = broad_routes[:20]
+        else:
+            result.evidence = "All VPC peering routes use specific CIDR ranges."
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        logger.debug("Could not check route tables: %s (%s)", exc, error_code)
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not query route tables: {error_code or exc}"
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Check registry
 # ---------------------------------------------------------------------------
 
 _CHECKS: list[tuple[str, Callable]] = [
+    # IAM (section 1)
     ("iam", _check_1_4),
     ("iam", _check_1_5),
     ("iam", _check_1_6),
     ("iam", _check_1_8),
+    ("iam", _check_1_9),
     ("iam", _check_1_10),
     ("iam", _check_1_12),
+    ("iam", _check_1_14),
     ("iam", _check_1_15),
+    ("iam", _check_1_16),
+    # Storage (section 2)
     ("s3", _check_2_1_2),
     ("s3", _check_2_1_4),
+    ("ec2", _check_2_2_1),
+    ("rds", _check_2_3_1),
+    ("rds", _check_2_3_2),
+    ("kms", _check_2_4_1),
+    # Logging (section 3)
     ("cloudtrail", _check_3_1),
     ("cloudtrail", _check_3_2),
     ("cloudtrail", _check_3_4),
     ("cloudtrail", _check_3_5),
+    ("cloudtrail", _check_3_7),
+    # Monitoring (section 4)
+    ("logs", _check_4_3),
+    ("logs", _check_4_4),
+    # Networking (section 5)
+    ("ec2", _check_5_1),
     ("ec2", _check_5_2),
     ("ec2", _check_5_3),
+    ("ec2", _check_5_4),
     ("ec2", _check_5_6),
 ]
 
 # Checks that need special handling (multiple clients or account_id)
 _SPECIAL_CHECKS: list[tuple[str, Callable]] = [
     ("s3control", _check_2_1_1),  # needs account_id
+    ("s3+cloudtrail", _check_3_3),  # needs both s3 and cloudtrail clients
     ("s3+cloudtrail", _check_3_6),  # needs both s3 and cloudtrail clients
+    ("logs+cloudtrail", _check_4_5),  # needs logs + cloudtrail clients
 ]
 
 
@@ -894,10 +1502,10 @@ def run_benchmark(
         _run_check(_extract_check_id(check_fn), check_fn, _get_client(service))
 
     # Special checks requiring multiple clients or account_id
-    # 2.1.1 — needs s3control + account_id
     _run_check("2.1.1", _check_2_1_1, _get_client("s3control"), account_id)
-    # 3.6 — needs s3 + cloudtrail
+    _run_check("3.3", _check_3_3, _get_client("s3"), _get_client("cloudtrail"))
     _run_check("3.6", _check_3_6, _get_client("s3"), _get_client("cloudtrail"))
+    _run_check("4.5", _check_4_5, _get_client("logs"), _get_client("cloudtrail"))
 
     # Sort checks by check_id for consistent output
     report.checks.sort(key=lambda c: [int(x) if x.isdigit() else x for x in c.check_id.replace(".", " ").split()])

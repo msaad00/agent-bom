@@ -1,13 +1,18 @@
 """CIS Google Cloud Platform Foundation Benchmark v3.0 — live project checks.
 
 Runs read-only GCP API calls against the CIS GCP Foundation Benchmark v3.0
-covering IAM, Logging, Networking, and Storage.
+covering IAM, Logging, Networking, Virtual Machines, Storage, and Cloud SQL.
 
 Required roles (all read-only):
     roles/iam.securityReviewer
     roles/logging.viewer
     roles/compute.networkViewer
     roles/storage.objectViewer (for bucket IAM inspection)
+
+Required permissions for additional checks:
+    compute.instances.list (CIS 4.1, 4.3)
+    compute.subnetworks.list (CIS 3.9)
+    sqladmin.instances.list (CIS 6.1)
 
 Authentication uses Application Default Credentials:
     gcloud auth application-default login
@@ -94,7 +99,9 @@ class GCPCISReport:
 _IAM_SECTION = "1 - Identity and Access Management"
 _LOGGING_SECTION = "2 - Logging"
 _NETWORK_SECTION = "3 - Networking"
+_COMPUTE_SECTION = "4 - Virtual Machines"
 _STORAGE_SECTION = "5 - Cloud Storage"
+_SQL_SECTION = "6 - Cloud SQL"
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +194,96 @@ def _check_1_5(project_id: str) -> CISCheckResult:
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check IAM policy: {exc}"
+    return result
+
+
+def _check_1_6(project_id: str) -> CISCheckResult:
+    """CIS 1.6 — Ensure service account has no admin privileges."""
+    result = CISCheckResult(
+        check_id="1.6",
+        title="Ensure service account has no admin privileges",
+        status=CheckStatus.ERROR,
+        severity="high",
+        recommendation="Remove roles/owner, roles/editor, and roles/iam.admin from service accounts. Use fine-grained predefined roles instead.",
+        cis_section=_IAM_SECTION,
+    )
+    admin_roles = {"roles/owner", "roles/editor", "roles/iam.admin"}
+    try:
+        import googleapiclient.discovery
+
+        crm = googleapiclient.discovery.build("cloudresourcemanager", "v1", cache_discovery=False)
+        policy = crm.projects().getIamPolicy(resource=project_id, body={}).execute()
+        bindings = policy.get("bindings", [])
+
+        failing: list[str] = []
+        for binding in bindings:
+            role = binding.get("role", "")
+            if role not in admin_roles:
+                continue
+            for member in binding.get("members", []):
+                if member.startswith("serviceAccount:"):
+                    failing.append(f"{role}: {member}")
+
+        if failing:
+            result.status = CheckStatus.FAIL
+            result.evidence = f"Service accounts with admin privileges: {', '.join(failing[:10])}"
+            result.resource_ids = failing
+        else:
+            result.status = CheckStatus.PASS
+            result.evidence = "No service accounts have admin privileges (owner/editor/iam.admin)."
+    except ImportError:
+        result.status = CheckStatus.ERROR
+        result.evidence = "google-api-python-client not installed. Install with: pip install google-api-python-client"
+    except Exception as exc:
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not check service account admin privileges: {exc}"
+    return result
+
+
+def _check_1_7(project_id: str) -> CISCheckResult:
+    """CIS 1.7 — Ensure user-managed service accounts do not have admin privileges."""
+    result = CISCheckResult(
+        check_id="1.7",
+        title="Ensure user-managed service accounts do not have admin privileges",
+        status=CheckStatus.ERROR,
+        severity="medium",
+        recommendation="Remove roles/iam.serviceAccountAdmin, roles/iam.serviceAccountKeyAdmin, and roles/compute.admin from user-managed service accounts.",
+        cis_section=_IAM_SECTION,
+    )
+    sa_admin_roles = {
+        "roles/iam.serviceAccountAdmin",
+        "roles/iam.serviceAccountKeyAdmin",
+        "roles/compute.admin",
+    }
+    try:
+        import googleapiclient.discovery
+
+        crm = googleapiclient.discovery.build("cloudresourcemanager", "v1", cache_discovery=False)
+        policy = crm.projects().getIamPolicy(resource=project_id, body={}).execute()
+        bindings = policy.get("bindings", [])
+
+        failing: list[str] = []
+        for binding in bindings:
+            role = binding.get("role", "")
+            if role not in sa_admin_roles:
+                continue
+            for member in binding.get("members", []):
+                if member.startswith("serviceAccount:"):
+                    failing.append(f"{role}: {member}")
+
+        if failing:
+            result.status = CheckStatus.FAIL
+            result.evidence = f"User-managed service accounts with admin privileges: {', '.join(failing[:10])}"
+            result.resource_ids = failing
+        else:
+            result.status = CheckStatus.PASS
+            result.evidence = "No user-managed service accounts have serviceAccountAdmin, serviceAccountKeyAdmin, or compute.admin roles."
+    except ImportError:
+        result.status = CheckStatus.ERROR
+        result.evidence = "google-api-python-client not installed. Install with: pip install google-api-python-client"
+    except Exception as exc:
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not check user-managed service account admin privileges: {exc}"
     return result
 
 
@@ -312,6 +409,85 @@ def _check_3_1(project_id: str) -> CISCheckResult:
     return result
 
 
+def _check_3_2(project_id: str) -> CISCheckResult:
+    """CIS 3.2 — Ensure legacy networks do not exist in the project."""
+    result = CISCheckResult(
+        check_id="3.2",
+        title="Ensure legacy networks do not exist in the project",
+        status=CheckStatus.ERROR,
+        severity="medium",
+        recommendation="Delete legacy networks and create VPC networks with custom subnet mode instead.",
+        cis_section=_NETWORK_SECTION,
+    )
+    try:
+        from google.cloud import compute_v1
+
+        client = compute_v1.NetworksClient()
+        networks = list(client.list(project=project_id))
+        legacy: list[str] = []
+
+        for net in networks:
+            # Legacy networks have auto_create_subnetworks as None (not True/False)
+            if getattr(net, "auto_create_subnetworks", None) is None:
+                legacy.append(getattr(net, "name", "unknown"))
+
+        if legacy:
+            result.status = CheckStatus.FAIL
+            result.evidence = f"Legacy networks found: {', '.join(legacy)}"
+            result.resource_ids = legacy
+        else:
+            result.status = CheckStatus.PASS
+            result.evidence = f"No legacy networks found across {len(networks)} network(s)."
+    except ImportError:
+        result.status = CheckStatus.ERROR
+        result.evidence = "google-cloud-compute not installed. Install with: pip install google-cloud-compute"
+    except Exception as exc:
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not check for legacy networks: {exc}"
+    return result
+
+
+def _check_3_9(project_id: str) -> CISCheckResult:
+    """CIS 3.9 — Ensure VPC Flow Logs are enabled for every subnet."""
+    result = CISCheckResult(
+        check_id="3.9",
+        title="Ensure VPC Flow Logs are enabled for every subnet",
+        status=CheckStatus.ERROR,
+        severity="medium",
+        recommendation="Enable VPC Flow Logs on all subnets for network monitoring and forensics.",
+        cis_section=_NETWORK_SECTION,
+    )
+    try:
+        from google.cloud import compute_v1
+
+        client = compute_v1.SubnetworksClient()
+        agg = client.aggregated_list(project=project_id)
+        failing: list[str] = []
+        total = 0
+
+        for _region, response in agg:
+            for subnet in response.subnetworks or []:
+                total += 1
+                log_config = getattr(subnet, "log_config", None)
+                if log_config is None or not getattr(log_config, "enable", False):
+                    failing.append(getattr(subnet, "name", "unknown"))
+
+        if failing:
+            result.status = CheckStatus.FAIL
+            result.evidence = f"Subnets without VPC Flow Logs ({len(failing)}/{total}): {', '.join(failing[:10])}"
+            result.resource_ids = failing
+        else:
+            result.status = CheckStatus.PASS
+            result.evidence = f"VPC Flow Logs enabled on all {total} subnet(s)."
+    except ImportError:
+        result.status = CheckStatus.ERROR
+        result.evidence = "google-cloud-compute not installed. Install with: pip install google-cloud-compute"
+    except Exception as exc:
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not check VPC Flow Logs: {exc}"
+    return result
+
+
 def _check_3_6(project_id: str) -> CISCheckResult:
     """CIS 3.6 — Ensure SSH access is restricted from the internet."""
     result = CISCheckResult(
@@ -407,6 +583,103 @@ def _check_3_7(project_id: str) -> CISCheckResult:
 
 
 # ---------------------------------------------------------------------------
+# Individual checks — CIS 4.x (Virtual Machines)
+# ---------------------------------------------------------------------------
+
+
+def _check_4_1(project_id: str) -> CISCheckResult:
+    """CIS 4.1 — Ensure instances are not configured to use default service account."""
+    result = CISCheckResult(
+        check_id="4.1",
+        title="Ensure instances are not configured to use default service account",
+        status=CheckStatus.ERROR,
+        severity="high",
+        recommendation="Create and assign a custom service account to each VM instance instead of using the default Compute Engine service account.",
+        cis_section=_COMPUTE_SECTION,
+    )
+    try:
+        from google.cloud import compute_v1
+
+        client = compute_v1.InstancesClient()
+        agg = client.aggregated_list(project=project_id)
+        failing: list[str] = []
+        total = 0
+
+        for _zone, response in agg:
+            for instance in response.instances or []:
+                total += 1
+                sas = list(getattr(instance, "service_accounts", []) or [])
+                if sas:
+                    email = getattr(sas[0], "email", "")
+                    if email.endswith("-compute@developer.gserviceaccount.com"):
+                        failing.append(getattr(instance, "name", "unknown"))
+
+        if failing:
+            result.status = CheckStatus.FAIL
+            result.evidence = f"Instances using default service account ({len(failing)}/{total}): {', '.join(failing[:10])}"
+            result.resource_ids = failing
+        else:
+            result.status = CheckStatus.PASS
+            result.evidence = f"No instances using default service account across {total} instance(s)."
+    except ImportError:
+        result.status = CheckStatus.ERROR
+        result.evidence = "google-cloud-compute not installed. Install with: pip install google-cloud-compute"
+    except Exception as exc:
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not check instance service accounts: {exc}"
+    return result
+
+
+def _check_4_3(project_id: str) -> CISCheckResult:
+    """CIS 4.3 — Ensure 'Block Project-wide SSH Keys' is enabled for VM instances."""
+    result = CISCheckResult(
+        check_id="4.3",
+        title="Ensure 'Block Project-wide SSH Keys' is enabled for VM instances",
+        status=CheckStatus.ERROR,
+        severity="medium",
+        recommendation="Set the 'block-project-ssh-keys' metadata key to 'true' on each VM instance to prevent project-wide SSH key access.",
+        cis_section=_COMPUTE_SECTION,
+    )
+    try:
+        from google.cloud import compute_v1
+
+        client = compute_v1.InstancesClient()
+        agg = client.aggregated_list(project=project_id)
+        failing: list[str] = []
+        total = 0
+
+        for _zone, response in agg:
+            for instance in response.instances or []:
+                total += 1
+                metadata = getattr(instance, "metadata", None)
+                items = list(getattr(metadata, "items", []) or []) if metadata else []
+                blocked = False
+                for item in items:
+                    key = getattr(item, "key", "")
+                    value = getattr(item, "value", "")
+                    if key == "block-project-ssh-keys" and value.lower() == "true":
+                        blocked = True
+                        break
+                if not blocked:
+                    failing.append(getattr(instance, "name", "unknown"))
+
+        if failing:
+            result.status = CheckStatus.FAIL
+            result.evidence = f"Instances without 'block-project-ssh-keys' ({len(failing)}/{total}): {', '.join(failing[:10])}"
+            result.resource_ids = failing
+        else:
+            result.status = CheckStatus.PASS
+            result.evidence = f"All {total} instance(s) have 'block-project-ssh-keys' enabled."
+    except ImportError:
+        result.status = CheckStatus.ERROR
+        result.evidence = "google-cloud-compute not installed. Install with: pip install google-cloud-compute"
+    except Exception as exc:
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not check instance SSH key metadata: {exc}"
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Individual checks — CIS 5.x (Cloud Storage)
 # ---------------------------------------------------------------------------
 
@@ -456,6 +729,53 @@ def _check_5_1(project_id: str) -> CISCheckResult:
 
 
 # ---------------------------------------------------------------------------
+# Individual checks — CIS 6.x (Cloud SQL)
+# ---------------------------------------------------------------------------
+
+
+def _check_6_1(project_id: str) -> CISCheckResult:
+    """CIS 6.1 — Ensure Cloud SQL database instances require all incoming connections to use SSL."""
+    result = CISCheckResult(
+        check_id="6.1",
+        title="Ensure Cloud SQL database instances require all incoming connections to use SSL",
+        status=CheckStatus.ERROR,
+        severity="high",
+        recommendation="Enable 'Require SSL' (requireSsl) on all Cloud SQL instances to encrypt connections in transit.",
+        cis_section=_SQL_SECTION,
+    )
+    try:
+        import googleapiclient.discovery
+
+        sqladmin = googleapiclient.discovery.build("sqladmin", "v1beta4", cache_discovery=False)
+        resp = sqladmin.instances().list(project=project_id).execute()
+        instances = resp.get("items", [])
+
+        failing: list[str] = []
+        for inst in instances:
+            name = inst.get("name", "unknown")
+            settings = inst.get("settings", {})
+            ip_config = settings.get("ipConfiguration", {})
+            require_ssl = ip_config.get("requireSsl", False)
+            if not require_ssl:
+                failing.append(name)
+
+        if failing:
+            result.status = CheckStatus.FAIL
+            result.evidence = f"Cloud SQL instances not requiring SSL ({len(failing)}/{len(instances)}): {', '.join(failing[:10])}"
+            result.resource_ids = failing
+        else:
+            result.status = CheckStatus.PASS
+            result.evidence = f"All {len(instances)} Cloud SQL instance(s) require SSL connections."
+    except ImportError:
+        result.status = CheckStatus.ERROR
+        result.evidence = "google-api-python-client not installed. Install with: pip install google-api-python-client"
+    except Exception as exc:
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not check Cloud SQL SSL configuration: {exc}"
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
 
@@ -499,12 +819,19 @@ def run_benchmark(
     all_checks: list[tuple[str, Any]] = [
         ("1.4", lambda: _check_1_4(resolved_project)),
         ("1.5", lambda: _check_1_5(resolved_project)),
+        ("1.6", lambda: _check_1_6(resolved_project)),
+        ("1.7", lambda: _check_1_7(resolved_project)),
         ("2.1", lambda: _check_2_1(resolved_project)),
         ("2.2", lambda: _check_2_2(resolved_project)),
         ("3.1", lambda: _check_3_1(resolved_project)),
+        ("3.2", lambda: _check_3_2(resolved_project)),
         ("3.6", lambda: _check_3_6(resolved_project)),
         ("3.7", lambda: _check_3_7(resolved_project)),
+        ("3.9", lambda: _check_3_9(resolved_project)),
+        ("4.1", lambda: _check_4_1(resolved_project)),
+        ("4.3", lambda: _check_4_3(resolved_project)),
         ("5.1", lambda: _check_5_1(resolved_project)),
+        ("6.1", lambda: _check_6_1(resolved_project)),
     ]
 
     for check_id, check_fn in all_checks:

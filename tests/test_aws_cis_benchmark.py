@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -14,19 +15,33 @@ from agent_bom.cloud.aws_cis_benchmark import (
     _check_1_5,
     _check_1_6,
     _check_1_8,
+    _check_1_9,
     _check_1_10,
     _check_1_12,
+    _check_1_14,
     _check_1_15,
+    _check_1_16,
     _check_2_1_1,
     _check_2_1_2,
     _check_2_1_4,
+    _check_2_2_1,
+    _check_2_3_1,
+    _check_2_3_2,
+    _check_2_4_1,
     _check_3_1,
     _check_3_2,
+    _check_3_3,
     _check_3_4,
     _check_3_5,
     _check_3_6,
+    _check_3_7,
+    _check_4_3,
+    _check_4_4,
+    _check_4_5,
+    _check_5_1,
     _check_5_2,
     _check_5_3,
+    _check_5_4,
     _check_5_6,
     run_benchmark,
 )
@@ -48,7 +63,7 @@ def _iam_client(**overrides) -> MagicMock:
     client.list_virtual_mfa_devices.return_value = {"VirtualMFADevices": []}
     client.get_account_password_policy.return_value = {"PasswordPolicy": {"MinimumPasswordLength": 14}}
     paginator = MagicMock()
-    paginator.paginate.return_value = [{"Users": []}]
+    paginator.paginate.return_value = [{"Users": [], "Policies": []}]
     client.get_paginator.return_value = paginator
     for k, v in overrides.items():
         setattr(client, k, v)
@@ -584,6 +599,711 @@ class TestCheck56:
 
 
 # ---------------------------------------------------------------------------
+# 1.9 — Password reuse prevention
+# ---------------------------------------------------------------------------
+
+
+class TestCheck19:
+    def test_pass_reuse_24(self):
+        client = _iam_client()
+        client.get_account_password_policy.return_value = {"PasswordPolicy": {"PasswordReusePrevention": 24}}
+        result = _check_1_9(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "1.9"
+
+    def test_fail_reuse_low(self):
+        client = _iam_client()
+        client.get_account_password_policy.return_value = {"PasswordPolicy": {"PasswordReusePrevention": 5}}
+        result = _check_1_9(client)
+        assert result.status == CheckStatus.FAIL
+        assert "5" in result.evidence
+
+    def test_fail_no_policy(self):
+        client = _iam_client()
+        exc = Exception("NoSuchEntity")
+        exc.response = {"Error": {"Code": "NoSuchEntity", "Message": "..."}}
+        client.get_account_password_policy.side_effect = exc
+        result = _check_1_9(client)
+        assert result.status == CheckStatus.FAIL
+        assert "No password policy" in result.evidence
+
+    def test_fail_reuse_missing_key(self):
+        """PasswordReusePrevention key absent defaults to 0."""
+        client = _iam_client()
+        client.get_account_password_policy.return_value = {"PasswordPolicy": {}}
+        result = _check_1_9(client)
+        assert result.status == CheckStatus.FAIL
+
+
+# ---------------------------------------------------------------------------
+# 1.14 — Access key rotation (90 days)
+# ---------------------------------------------------------------------------
+
+
+class TestCheck114:
+    def test_pass_fresh_keys(self):
+        client = _iam_client()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"Users": [{"UserName": "alice"}]}]
+        client.get_paginator.return_value = paginator
+        client.list_access_keys.return_value = {
+            "AccessKeyMetadata": [
+                {"AccessKeyId": "AKIAIOSFODNN7", "Status": "Active", "CreateDate": datetime.now(tz=timezone.utc)},
+            ]
+        }
+        result = _check_1_14(client)
+        assert result.status == CheckStatus.PASS
+
+    def test_fail_old_key(self):
+        client = _iam_client()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"Users": [{"UserName": "bob"}]}]
+        client.get_paginator.return_value = paginator
+        old_date = datetime.now(tz=timezone.utc) - timedelta(days=120)
+        client.list_access_keys.return_value = {
+            "AccessKeyMetadata": [
+                {"AccessKeyId": "AKIAIOSFODNN7", "Status": "Active", "CreateDate": old_date},
+            ]
+        }
+        result = _check_1_14(client)
+        assert result.status == CheckStatus.FAIL
+        assert "bob" in result.evidence
+
+    def test_pass_inactive_old_key(self):
+        """Inactive keys should not trigger failure."""
+        client = _iam_client()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"Users": [{"UserName": "carol"}]}]
+        client.get_paginator.return_value = paginator
+        old_date = datetime.now(tz=timezone.utc) - timedelta(days=120)
+        client.list_access_keys.return_value = {
+            "AccessKeyMetadata": [
+                {"AccessKeyId": "AKIAIOSFODNN7", "Status": "Inactive", "CreateDate": old_date},
+            ]
+        }
+        result = _check_1_14(client)
+        assert result.status == CheckStatus.PASS
+
+    def test_pass_no_users(self):
+        client = _iam_client()
+        result = _check_1_14(client)
+        assert result.status == CheckStatus.PASS
+
+
+# ---------------------------------------------------------------------------
+# 1.16 — No full admin policies (*:*)
+# ---------------------------------------------------------------------------
+
+
+class TestCheck116:
+    def test_pass_no_admin_policies(self):
+        client = _iam_client()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"Policies": []}]
+        client.get_paginator.return_value = paginator
+        result = _check_1_16(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "1.16"
+
+    def test_fail_admin_policy(self):
+        client = _iam_client()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "Policies": [
+                    {
+                        "PolicyName": "FullAdmin",
+                        "Arn": "arn:aws:iam::123456789:policy/FullAdmin",
+                        "DefaultVersionId": "v1",
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        client.get_policy_version.return_value = {
+            "PolicyVersion": {"Document": {"Statement": [{"Effect": "Allow", "Action": "*", "Resource": "*"}]}}
+        }
+        result = _check_1_16(client)
+        assert result.status == CheckStatus.FAIL
+        assert "FullAdmin" in result.evidence
+
+    def test_pass_scoped_policy(self):
+        client = _iam_client()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "Policies": [
+                    {
+                        "PolicyName": "ReadOnly",
+                        "Arn": "arn:aws:iam::123456789:policy/ReadOnly",
+                        "DefaultVersionId": "v1",
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        client.get_policy_version.return_value = {
+            "PolicyVersion": {
+                "Document": {"Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "arn:aws:s3:::my-bucket/*"}]}
+            }
+        }
+        result = _check_1_16(client)
+        assert result.status == CheckStatus.PASS
+
+
+# ---------------------------------------------------------------------------
+# 2.2.1 — EBS default encryption
+# ---------------------------------------------------------------------------
+
+
+class TestCheck221:
+    def test_pass_encryption_enabled(self):
+        client = MagicMock()
+        client.get_ebs_encryption_by_default.return_value = {"EbsEncryptionByDefault": True}
+        result = _check_2_2_1(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "2.2.1"
+
+    def test_fail_encryption_disabled(self):
+        client = MagicMock()
+        client.get_ebs_encryption_by_default.return_value = {"EbsEncryptionByDefault": False}
+        result = _check_2_2_1(client)
+        assert result.status == CheckStatus.FAIL
+        assert "not enabled" in result.evidence
+
+    def test_error_on_api_failure(self):
+        client = MagicMock()
+        exc = Exception("UnauthorizedOperation")
+        exc.response = {"Error": {"Code": "UnauthorizedOperation"}}
+        client.get_ebs_encryption_by_default.side_effect = exc
+        result = _check_2_2_1(client)
+        assert result.status == CheckStatus.ERROR
+
+
+# ---------------------------------------------------------------------------
+# 2.3.1 — RDS encryption at rest
+# ---------------------------------------------------------------------------
+
+
+class TestCheck231:
+    def test_pass_all_encrypted(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"DBInstances": [{"DBInstanceIdentifier": "db-1", "StorageEncrypted": True}]}]
+        client.get_paginator.return_value = paginator
+        result = _check_2_3_1(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "2.3.1"
+
+    def test_fail_unencrypted(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"DBInstances": [{"DBInstanceIdentifier": "db-open", "StorageEncrypted": False}]}]
+        client.get_paginator.return_value = paginator
+        result = _check_2_3_1(client)
+        assert result.status == CheckStatus.FAIL
+        assert "db-open" in result.evidence
+
+    def test_pass_no_instances(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"DBInstances": []}]
+        client.get_paginator.return_value = paginator
+        result = _check_2_3_1(client)
+        assert result.status == CheckStatus.PASS
+
+
+# ---------------------------------------------------------------------------
+# 2.3.2 — RDS auto minor version upgrade
+# ---------------------------------------------------------------------------
+
+
+class TestCheck232:
+    def test_pass_auto_upgrade_enabled(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"DBInstances": [{"DBInstanceIdentifier": "db-1", "AutoMinorVersionUpgrade": True}]}]
+        client.get_paginator.return_value = paginator
+        result = _check_2_3_2(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "2.3.2"
+
+    def test_fail_auto_upgrade_disabled(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"DBInstances": [{"DBInstanceIdentifier": "db-old", "AutoMinorVersionUpgrade": False}]}]
+        client.get_paginator.return_value = paginator
+        result = _check_2_3_2(client)
+        assert result.status == CheckStatus.FAIL
+        assert "db-old" in result.evidence
+
+    def test_pass_no_instances(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"DBInstances": []}]
+        client.get_paginator.return_value = paginator
+        result = _check_2_3_2(client)
+        assert result.status == CheckStatus.PASS
+
+
+# ---------------------------------------------------------------------------
+# 2.4.1 — KMS key rotation
+# ---------------------------------------------------------------------------
+
+
+class TestCheck241:
+    def test_pass_rotation_enabled(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"Keys": [{"KeyId": "key-1"}]}]
+        client.get_paginator.return_value = paginator
+        client.describe_key.return_value = {"KeyMetadata": {"KeyManager": "CUSTOMER", "KeyState": "Enabled"}}
+        client.get_key_rotation_status.return_value = {"KeyRotationEnabled": True}
+        result = _check_2_4_1(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "2.4.1"
+
+    def test_fail_rotation_disabled(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"Keys": [{"KeyId": "key-bad"}]}]
+        client.get_paginator.return_value = paginator
+        client.describe_key.return_value = {"KeyMetadata": {"KeyManager": "CUSTOMER", "KeyState": "Enabled"}}
+        client.get_key_rotation_status.return_value = {"KeyRotationEnabled": False}
+        result = _check_2_4_1(client)
+        assert result.status == CheckStatus.FAIL
+        assert "key-bad" in result.evidence
+
+    def test_pass_aws_managed_key_skipped(self):
+        """AWS-managed keys should be skipped (not flagged)."""
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"Keys": [{"KeyId": "aws-key-1"}]}]
+        client.get_paginator.return_value = paginator
+        client.describe_key.return_value = {"KeyMetadata": {"KeyManager": "AWS", "KeyState": "Enabled"}}
+        result = _check_2_4_1(client)
+        assert result.status == CheckStatus.PASS
+
+    def test_pass_no_keys(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"Keys": []}]
+        client.get_paginator.return_value = paginator
+        result = _check_2_4_1(client)
+        assert result.status == CheckStatus.PASS
+
+
+# ---------------------------------------------------------------------------
+# 3.3 — CloudTrail S3 bucket not publicly accessible
+# ---------------------------------------------------------------------------
+
+
+class TestCheck33:
+    def test_pass_no_public_policy(self):
+        s3 = MagicMock()
+        ct = MagicMock()
+        ct.describe_trails.return_value = {"trailList": [{"S3BucketName": "ct-bucket"}]}
+        exc = Exception("NoSuchBucketPolicy")
+        exc.response = {"Error": {"Code": "NoSuchBucketPolicy"}}
+        s3.get_bucket_policy.side_effect = exc
+        result = _check_3_3(s3, ct)
+        assert result.status == CheckStatus.PASS
+
+    def test_fail_public_allow(self):
+        import json
+
+        s3 = MagicMock()
+        ct = MagicMock()
+        ct.describe_trails.return_value = {"trailList": [{"S3BucketName": "ct-public"}]}
+        s3.get_bucket_policy.return_value = {
+            "Policy": json.dumps({"Statement": [{"Effect": "Allow", "Principal": "*", "Action": "s3:GetObject", "Resource": "*"}]})
+        }
+        result = _check_3_3(s3, ct)
+        assert result.status == CheckStatus.FAIL
+        assert "ct-public" in result.evidence
+
+    def test_pass_public_with_condition(self):
+        """Allow with Principal=* but a Condition is not flagged."""
+        import json
+
+        s3 = MagicMock()
+        ct = MagicMock()
+        ct.describe_trails.return_value = {"trailList": [{"S3BucketName": "ct-bucket"}]}
+        s3.get_bucket_policy.return_value = {
+            "Policy": json.dumps(
+                {
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": "*",
+                            "Action": "s3:GetObject",
+                            "Resource": "*",
+                            "Condition": {"StringEquals": {"aws:SourceVpce": "vpce-123"}},
+                        }
+                    ]
+                }
+            )
+        }
+        result = _check_3_3(s3, ct)
+        assert result.status == CheckStatus.PASS
+
+    def test_not_applicable_no_trails(self):
+        s3 = MagicMock()
+        ct = MagicMock()
+        ct.describe_trails.return_value = {"trailList": []}
+        result = _check_3_3(s3, ct)
+        assert result.status == CheckStatus.NOT_APPLICABLE
+
+
+# ---------------------------------------------------------------------------
+# 3.7 — CloudTrail KMS encryption
+# ---------------------------------------------------------------------------
+
+
+class TestCheck37:
+    def test_pass_kms_encrypted(self):
+        client = MagicMock()
+        client.describe_trails.return_value = {"trailList": [{"Name": "main", "KmsKeyId": "arn:aws:kms:us-east-1:123:key/abc"}]}
+        result = _check_3_7(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "3.7"
+
+    def test_fail_no_kms(self):
+        client = MagicMock()
+        client.describe_trails.return_value = {"trailList": [{"Name": "main", "TrailARN": "arn:trail"}]}
+        result = _check_3_7(client)
+        assert result.status == CheckStatus.FAIL
+        assert "main" in result.evidence
+
+    def test_fail_no_trails(self):
+        client = MagicMock()
+        client.describe_trails.return_value = {"trailList": []}
+        result = _check_3_7(client)
+        assert result.status == CheckStatus.FAIL
+
+
+# ---------------------------------------------------------------------------
+# 4.3 — Metric filter for root usage
+# ---------------------------------------------------------------------------
+
+
+class TestCheck43:
+    def test_pass_root_filter_exists(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {"metricFilters": [{"filterPattern": '{ $.userIdentity.type = "Root" && $.userIdentity.invokedBy NOT EXISTS }'}]}
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_4_3(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "4.3"
+
+    def test_fail_no_root_filter(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"metricFilters": []}]
+        client.get_paginator.return_value = paginator
+        result = _check_4_3(client)
+        assert result.status == CheckStatus.FAIL
+        assert "No metric filter" in result.evidence
+
+    def test_fail_unrelated_filter(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"metricFilters": [{"filterPattern": "{ $.errorCode = AccessDenied }"}]}]
+        client.get_paginator.return_value = paginator
+        result = _check_4_3(client)
+        assert result.status == CheckStatus.FAIL
+
+
+# ---------------------------------------------------------------------------
+# 4.4 — Metric filter for IAM policy changes
+# ---------------------------------------------------------------------------
+
+
+class TestCheck44:
+    def test_pass_iam_filter_exists(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "metricFilters": [
+                    {
+                        "filterPattern": (
+                            "{ ($.eventName = DeleteGroupPolicy) || ($.eventName = DeleteRolePolicy) "
+                            "|| ($.eventName = DeleteUserPolicy) || ($.eventName = PutGroupPolicy) "
+                            "|| ($.eventName = CreatePolicy) }"
+                        )
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_4_4(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "4.4"
+
+    def test_fail_no_iam_filter(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"metricFilters": []}]
+        client.get_paginator.return_value = paginator
+        result = _check_4_4(client)
+        assert result.status == CheckStatus.FAIL
+        assert "No metric filter" in result.evidence
+
+    def test_fail_too_few_event_matches(self):
+        """Filter mentioning only 2 IAM events should not pass (needs >= 3)."""
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {"metricFilters": [{"filterPattern": "{ ($.eventName = DeleteGroupPolicy) || ($.eventName = CreatePolicy) }"}]}
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_4_4(client)
+        assert result.status == CheckStatus.FAIL
+
+
+# ---------------------------------------------------------------------------
+# 4.5 — Metric filter for CloudTrail config changes
+# ---------------------------------------------------------------------------
+
+
+class TestCheck45:
+    def test_pass_ct_filter_exists(self):
+        logs = MagicMock()
+        ct = MagicMock()
+        ct.describe_trails.return_value = {"trailList": [{"CloudWatchLogsLogGroupArn": "arn:logs:group"}]}
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "metricFilters": [
+                    {
+                        "filterPattern": (
+                            "{ ($.eventName = CreateTrail) || ($.eventName = UpdateTrail) "
+                            "|| ($.eventName = DeleteTrail) || ($.eventName = StartLogging) "
+                            "|| ($.eventName = StopLogging) }"
+                        )
+                    }
+                ]
+            }
+        ]
+        logs.get_paginator.return_value = paginator
+        result = _check_4_5(logs, ct)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "4.5"
+
+    def test_fail_no_cwl_integration(self):
+        logs = MagicMock()
+        ct = MagicMock()
+        ct.describe_trails.return_value = {"trailList": [{"Name": "main"}]}
+        result = _check_4_5(logs, ct)
+        assert result.status == CheckStatus.FAIL
+        assert "CloudWatch Logs" in result.evidence
+
+    def test_fail_no_ct_filter(self):
+        logs = MagicMock()
+        ct = MagicMock()
+        ct.describe_trails.return_value = {"trailList": [{"CloudWatchLogsLogGroupArn": "arn:logs:group"}]}
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"metricFilters": []}]
+        logs.get_paginator.return_value = paginator
+        result = _check_4_5(logs, ct)
+        assert result.status == CheckStatus.FAIL
+        assert "No metric filter" in result.evidence
+
+
+# ---------------------------------------------------------------------------
+# 5.1 — NACLs no unrestricted admin ports
+# ---------------------------------------------------------------------------
+
+
+class TestCheck51:
+    def test_pass_no_open_nacl(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "NetworkAcls": [
+                    {
+                        "NetworkAclId": "acl-1",
+                        "Entries": [
+                            {"Egress": False, "RuleAction": "allow", "CidrBlock": "10.0.0.0/8", "PortRange": {"From": 22, "To": 22}},
+                        ],
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_5_1(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "5.1"
+
+    def test_fail_ssh_open(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "NetworkAcls": [
+                    {
+                        "NetworkAclId": "acl-bad",
+                        "Entries": [
+                            {"Egress": False, "RuleAction": "allow", "CidrBlock": "0.0.0.0/0", "PortRange": {"From": 22, "To": 22}},
+                        ],
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_5_1(client)
+        assert result.status == CheckStatus.FAIL
+        assert "acl-bad" in result.evidence
+
+    def test_fail_rdp_ipv6_open(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "NetworkAcls": [
+                    {
+                        "NetworkAclId": "acl-v6",
+                        "Entries": [
+                            {
+                                "Egress": False,
+                                "RuleAction": "allow",
+                                "CidrBlock": "",
+                                "Ipv6CidrBlock": "::/0",
+                                "PortRange": {"From": 3389, "To": 3389},
+                            },
+                        ],
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_5_1(client)
+        assert result.status == CheckStatus.FAIL
+        assert "acl-v6" in result.evidence
+
+    def test_pass_egress_rule_ignored(self):
+        """Egress rules should be skipped."""
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "NetworkAcls": [
+                    {
+                        "NetworkAclId": "acl-egress",
+                        "Entries": [
+                            {"Egress": True, "RuleAction": "allow", "CidrBlock": "0.0.0.0/0", "PortRange": {"From": 22, "To": 22}},
+                        ],
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_5_1(client)
+        assert result.status == CheckStatus.PASS
+
+    def test_pass_deny_rule_ignored(self):
+        """Deny rules should be skipped."""
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "NetworkAcls": [
+                    {
+                        "NetworkAclId": "acl-deny",
+                        "Entries": [
+                            {"Egress": False, "RuleAction": "deny", "CidrBlock": "0.0.0.0/0", "PortRange": {"From": 22, "To": 22}},
+                        ],
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_5_1(client)
+        assert result.status == CheckStatus.PASS
+
+
+# ---------------------------------------------------------------------------
+# 5.4 — VPC peering least privilege routes
+# ---------------------------------------------------------------------------
+
+
+class TestCheck54:
+    def test_pass_specific_cidr(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "RouteTables": [
+                    {
+                        "RouteTableId": "rtb-1",
+                        "Routes": [
+                            {"DestinationCidrBlock": "10.0.1.0/24", "VpcPeeringConnectionId": "pcx-123"},
+                        ],
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_5_4(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "5.4"
+
+    def test_fail_broad_cidr(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "RouteTables": [
+                    {
+                        "RouteTableId": "rtb-bad",
+                        "Routes": [
+                            {"DestinationCidrBlock": "0.0.0.0/0", "VpcPeeringConnectionId": "pcx-456"},
+                        ],
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_5_4(client)
+        assert result.status == CheckStatus.FAIL
+        assert "rtb-bad" in result.evidence
+        assert "pcx-456" in result.evidence
+
+    def test_pass_no_peering_routes(self):
+        """Routes without VpcPeeringConnectionId should be ignored."""
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "RouteTables": [
+                    {
+                        "RouteTableId": "rtb-normal",
+                        "Routes": [
+                            {"DestinationCidrBlock": "0.0.0.0/0", "GatewayId": "igw-1"},
+                        ],
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_5_4(client)
+        assert result.status == CheckStatus.PASS
+
+    def test_pass_empty_route_tables(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"RouteTables": []}]
+        client.get_paginator.return_value = paginator
+        result = _check_5_4(client)
+        assert result.status == CheckStatus.PASS
+
+
+# ---------------------------------------------------------------------------
 # Report model
 # ---------------------------------------------------------------------------
 
@@ -671,7 +1391,7 @@ class TestRunBenchmark:
             mock_sts = MagicMock()
             mock_sts.get_caller_identity.return_value = {"Account": "111222333444"}
 
-            # Generic mock that works for all services
+            # Generic mock that works for IAM and S3 services
             mock_client = _iam_client()
             mock_client.generate_credential_report.return_value = {"State": "COMPLETE"}
             mock_client.get_credential_report.return_value = {
@@ -679,6 +1399,7 @@ class TestRunBenchmark:
             }
             mock_client.list_user_policies.return_value = {"PolicyNames": []}
             mock_client.list_attached_user_policies.return_value = {"AttachedPolicies": []}
+            mock_client.list_access_keys.return_value = {"AccessKeyMetadata": []}
             # S3
             mock_client.list_buckets.return_value = {"Buckets": []}
             mock_client.get_public_access_block.return_value = {
@@ -694,24 +1415,46 @@ class TestRunBenchmark:
             # EC2 — separate mock because paginator returns different structure
             mock_ec2 = MagicMock()
             ec2_paginator = MagicMock()
-            ec2_paginator.paginate.return_value = [{"SecurityGroups": []}]
+            ec2_paginator.paginate.return_value = [{"SecurityGroups": [], "NetworkAcls": [], "RouteTables": []}]
             mock_ec2.get_paginator.return_value = ec2_paginator
             mock_ec2.describe_vpcs.return_value = {"Vpcs": []}
             mock_ec2.describe_flow_logs.return_value = {"FlowLogs": []}
+            mock_ec2.get_ebs_encryption_by_default.return_value = {"EbsEncryptionByDefault": True}
+            # RDS
+            mock_rds = MagicMock()
+            rds_paginator = MagicMock()
+            rds_paginator.paginate.return_value = [{"DBInstances": []}]
+            mock_rds.get_paginator.return_value = rds_paginator
+            # KMS
+            mock_kms = MagicMock()
+            kms_paginator = MagicMock()
+            kms_paginator.paginate.return_value = [{"Keys": []}]
+            mock_kms.get_paginator.return_value = kms_paginator
+            # CloudWatch Logs
+            mock_logs = MagicMock()
+            logs_paginator = MagicMock()
+            logs_paginator.paginate.return_value = [{"metricFilters": []}]
+            mock_logs.get_paginator.return_value = logs_paginator
 
             def client_factory(service, **kwargs):
                 if service == "sts":
                     return mock_sts
                 if service == "ec2":
                     return mock_ec2
+                if service == "rds":
+                    return mock_rds
+                if service == "kms":
+                    return mock_kms
+                if service == "logs":
+                    return mock_logs
                 return mock_client
 
             mock_session.client.side_effect = client_factory
 
             report = run_benchmark()
             assert report.account_id == "111222333444"
-            # 7 IAM + 2 S3 + 4 CloudTrail + 3 VPC + 1 s3control + 1 s3+cloudtrail = 18
-            assert report.total == 18
+            # 28 _CHECKS + 4 _SPECIAL_CHECKS = 32 total
+            assert report.total == 32
 
     def test_filter_checks(self):
         modules_patch, mock_boto3 = _mock_boto3_modules()

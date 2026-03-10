@@ -9,10 +9,20 @@ import pytest
 from agent_bom.cloud.aws_cis_benchmark import CheckStatus, CISCheckResult
 from agent_bom.cloud.azure_cis_benchmark import (
     AzureCISReport,
+    _check_2_1,
+    _check_2_2,
+    _check_2_3,
     _check_3_1,
+    _check_3_2,
     _check_3_7,
+    _check_3_10,
+    _check_4_1_1,
+    _check_4_2_1,
     _check_6_1,
     _check_6_2,
+    _check_6_3,
+    _check_6_5,
+    _check_7_1,
     _is_internet_exposed,
     run_benchmark,
 )
@@ -250,6 +260,422 @@ def test_check_6_2_ssh_exposed():
     result = _check_6_2(network_client)
     assert result.status == CheckStatus.FAIL
     assert "22" in result.evidence or "SSH" in result.evidence
+
+
+# ---------------------------------------------------------------------------
+# _check_2_1 — Defender for Servers
+# ---------------------------------------------------------------------------
+
+
+def test_check_2_1_standard_tier():
+    security_client = MagicMock()
+    pricing = MagicMock()
+    pricing.pricing_tier = "Standard"
+    security_client.pricings.get.return_value = pricing
+
+    result = _check_2_1(security_client, "sub-123")
+    assert result.status == CheckStatus.PASS
+    assert "Standard" in result.evidence
+
+
+def test_check_2_1_free_tier():
+    security_client = MagicMock()
+    pricing = MagicMock()
+    pricing.pricing_tier = "Free"
+    security_client.pricings.get.return_value = pricing
+
+    result = _check_2_1(security_client, "sub-123")
+    assert result.status == CheckStatus.FAIL
+    assert "Free" in result.evidence
+
+
+def test_check_2_1_exception():
+    security_client = MagicMock()
+    security_client.pricings.get.side_effect = Exception("API error")
+
+    result = _check_2_1(security_client, "sub-123")
+    assert result.status == CheckStatus.ERROR
+
+
+# ---------------------------------------------------------------------------
+# _check_2_2 — Defender for App Services
+# ---------------------------------------------------------------------------
+
+
+def test_check_2_2_standard_tier():
+    security_client = MagicMock()
+    pricing = MagicMock()
+    pricing.pricing_tier = "Standard"
+    security_client.pricings.get.return_value = pricing
+
+    result = _check_2_2(security_client, "sub-123")
+    assert result.status == CheckStatus.PASS
+    assert "App Services" in result.evidence
+
+
+def test_check_2_2_free_tier():
+    security_client = MagicMock()
+    pricing = MagicMock()
+    pricing.pricing_tier = "Free"
+    security_client.pricings.get.return_value = pricing
+
+    result = _check_2_2(security_client, "sub-123")
+    assert result.status == CheckStatus.FAIL
+    assert "Free" in result.evidence
+
+
+def test_check_2_2_exception():
+    security_client = MagicMock()
+    security_client.pricings.get.side_effect = Exception("API error")
+
+    result = _check_2_2(security_client, "sub-123")
+    assert result.status == CheckStatus.ERROR
+
+
+# ---------------------------------------------------------------------------
+# _check_2_3 — Defender for SQL Servers
+# ---------------------------------------------------------------------------
+
+
+def test_check_2_3_standard_tier():
+    security_client = MagicMock()
+    pricing = MagicMock()
+    pricing.pricing_tier = "Standard"
+    security_client.pricings.get.return_value = pricing
+
+    result = _check_2_3(security_client, "sub-123")
+    assert result.status == CheckStatus.PASS
+    assert "SQL Servers" in result.evidence
+
+
+def test_check_2_3_free_tier():
+    security_client = MagicMock()
+    pricing = MagicMock()
+    pricing.pricing_tier = "Free"
+    security_client.pricings.get.return_value = pricing
+
+    result = _check_2_3(security_client, "sub-123")
+    assert result.status == CheckStatus.FAIL
+    assert "Free" in result.evidence
+
+
+def test_check_2_3_exception():
+    security_client = MagicMock()
+    security_client.pricings.get.side_effect = Exception("API error")
+
+    result = _check_2_3(security_client, "sub-123")
+    assert result.status == CheckStatus.ERROR
+
+
+# ---------------------------------------------------------------------------
+# _check_3_2 — Default network access rule = Deny
+# ---------------------------------------------------------------------------
+
+
+def test_check_3_2_all_deny():
+    acct = MagicMock()
+    acct.name = "secure-storage"
+    network_rule_set = MagicMock()
+    network_rule_set.default_action = "Deny"
+    acct.network_rule_set = network_rule_set
+
+    storage_client = MagicMock()
+    storage_client.storage_accounts.list.return_value = [acct]
+
+    result = _check_3_2(storage_client)
+    assert result.status == CheckStatus.PASS
+
+
+def test_check_3_2_allow_default():
+    acct = MagicMock()
+    acct.name = "open-storage"
+    network_rule_set = MagicMock()
+    network_rule_set.default_action = "Allow"
+    acct.network_rule_set = network_rule_set
+
+    storage_client = MagicMock()
+    storage_client.storage_accounts.list.return_value = [acct]
+
+    result = _check_3_2(storage_client)
+    assert result.status == CheckStatus.FAIL
+    assert "open-storage" in result.evidence
+
+
+def test_check_3_2_exception():
+    storage_client = MagicMock()
+    storage_client.storage_accounts.list.side_effect = Exception("API error")
+
+    result = _check_3_2(storage_client)
+    assert result.status == CheckStatus.ERROR
+
+
+# ---------------------------------------------------------------------------
+# _check_3_10 — Soft delete enabled
+# ---------------------------------------------------------------------------
+
+
+def test_check_3_10_soft_delete_enabled():
+    acct = MagicMock()
+    acct.name = "mystorage"
+    acct.id = "/subscriptions/sub-123/resourceGroups/my-rg/providers/Microsoft.Storage/storageAccounts/mystorage"
+
+    blob_props = MagicMock()
+    retention = MagicMock()
+    retention.enabled = True
+    blob_props.delete_retention_policy = retention
+
+    storage_client = MagicMock()
+    storage_client.storage_accounts.list.return_value = [acct]
+    storage_client.blob_services.get_service_properties.return_value = blob_props
+
+    result = _check_3_10(storage_client)
+    assert result.status == CheckStatus.PASS
+
+
+def test_check_3_10_soft_delete_disabled():
+    acct = MagicMock()
+    acct.name = "nosoftdelete"
+    acct.id = "/subscriptions/sub-123/resourceGroups/my-rg/providers/Microsoft.Storage/storageAccounts/nosoftdelete"
+
+    blob_props = MagicMock()
+    retention = MagicMock()
+    retention.enabled = False
+    blob_props.delete_retention_policy = retention
+
+    storage_client = MagicMock()
+    storage_client.storage_accounts.list.return_value = [acct]
+    storage_client.blob_services.get_service_properties.return_value = blob_props
+
+    result = _check_3_10(storage_client)
+    assert result.status == CheckStatus.FAIL
+    assert "nosoftdelete" in result.evidence
+
+
+def test_check_3_10_exception():
+    storage_client = MagicMock()
+    storage_client.storage_accounts.list.side_effect = Exception("API error")
+
+    result = _check_3_10(storage_client)
+    assert result.status == CheckStatus.ERROR
+
+
+# ---------------------------------------------------------------------------
+# _check_4_1_1 — SQL server auditing
+# ---------------------------------------------------------------------------
+
+
+def test_check_4_1_1_auditing_enabled():
+    server = MagicMock()
+    server.name = "sql-prod"
+    server.id = "/subscriptions/sub-123/resourceGroups/my-rg/providers/Microsoft.Sql/servers/sql-prod"
+
+    audit_settings = MagicMock()
+    audit_settings.state = "Enabled"
+
+    sql_client = MagicMock()
+    sql_client.servers.list.return_value = [server]
+    sql_client.server_blob_auditing_policies.get.return_value = audit_settings
+
+    result = _check_4_1_1(sql_client)
+    assert result.status == CheckStatus.PASS
+
+
+def test_check_4_1_1_auditing_disabled():
+    server = MagicMock()
+    server.name = "sql-dev"
+    server.id = "/subscriptions/sub-123/resourceGroups/my-rg/providers/Microsoft.Sql/servers/sql-dev"
+
+    audit_settings = MagicMock()
+    audit_settings.state = "Disabled"
+
+    sql_client = MagicMock()
+    sql_client.servers.list.return_value = [server]
+    sql_client.server_blob_auditing_policies.get.return_value = audit_settings
+
+    result = _check_4_1_1(sql_client)
+    assert result.status == CheckStatus.FAIL
+    assert "sql-dev" in result.evidence
+
+
+def test_check_4_1_1_exception():
+    sql_client = MagicMock()
+    sql_client.servers.list.side_effect = Exception("API error")
+
+    result = _check_4_1_1(sql_client)
+    assert result.status == CheckStatus.ERROR
+
+
+# ---------------------------------------------------------------------------
+# _check_4_2_1 — TLS 1.2 enforcement
+# ---------------------------------------------------------------------------
+
+
+def test_check_4_2_1_tls_12():
+    server = MagicMock()
+    server.name = "sql-prod"
+    server.minimal_tls_version = "1.2"
+
+    sql_client = MagicMock()
+    sql_client.servers.list.return_value = [server]
+
+    result = _check_4_2_1(sql_client)
+    assert result.status == CheckStatus.PASS
+
+
+def test_check_4_2_1_tls_10():
+    server = MagicMock()
+    server.name = "sql-legacy"
+    server.minimal_tls_version = "1.0"
+
+    sql_client = MagicMock()
+    sql_client.servers.list.return_value = [server]
+
+    result = _check_4_2_1(sql_client)
+    assert result.status == CheckStatus.FAIL
+    assert "sql-legacy" in result.evidence
+    assert "1.0" in result.evidence
+
+
+def test_check_4_2_1_tls_not_set():
+    server = MagicMock()
+    server.name = "sql-noset"
+    server.minimal_tls_version = None
+
+    sql_client = MagicMock()
+    sql_client.servers.list.return_value = [server]
+
+    result = _check_4_2_1(sql_client)
+    assert result.status == CheckStatus.FAIL
+    assert "sql-noset" in result.evidence
+
+
+def test_check_4_2_1_exception():
+    sql_client = MagicMock()
+    sql_client.servers.list.side_effect = Exception("API error")
+
+    result = _check_4_2_1(sql_client)
+    assert result.status == CheckStatus.ERROR
+
+
+# ---------------------------------------------------------------------------
+# _check_6_3 — SQL port 1433 NSG exposure
+# ---------------------------------------------------------------------------
+
+
+def test_check_6_3_no_sql_exposure():
+    nsg = MagicMock()
+    nsg.name = "my-nsg"
+    rule = _make_nsg_rule(port="443")
+    nsg.security_rules = [rule]
+
+    network_client = MagicMock()
+    network_client.network_security_groups.list_all.return_value = [nsg]
+
+    result = _check_6_3(network_client)
+    assert result.status == CheckStatus.PASS
+
+
+def test_check_6_3_sql_exposed():
+    nsg = MagicMock()
+    nsg.name = "my-nsg"
+    rule = _make_nsg_rule(port="1433")
+    rule.name = "allow-sql"
+    nsg.security_rules = [rule]
+
+    network_client = MagicMock()
+    network_client.network_security_groups.list_all.return_value = [nsg]
+
+    result = _check_6_3(network_client)
+    assert result.status == CheckStatus.FAIL
+    assert "1433" in result.evidence
+
+
+def test_check_6_3_exception():
+    network_client = MagicMock()
+    network_client.network_security_groups.list_all.side_effect = Exception("API error")
+
+    result = _check_6_3(network_client)
+    assert result.status == CheckStatus.ERROR
+
+
+# ---------------------------------------------------------------------------
+# _check_6_5 — Network Watcher enabled
+# ---------------------------------------------------------------------------
+
+
+def test_check_6_5_watchers_present():
+    watcher = MagicMock()
+    watcher.location = "eastus"
+
+    network_client = MagicMock()
+    network_client.network_watchers.list_all.return_value = [watcher]
+
+    result = _check_6_5(network_client)
+    assert result.status == CheckStatus.PASS
+    assert "eastus" in result.evidence
+
+
+def test_check_6_5_no_watchers():
+    network_client = MagicMock()
+    network_client.network_watchers.list_all.return_value = []
+
+    result = _check_6_5(network_client)
+    assert result.status == CheckStatus.FAIL
+    assert "No Network Watcher" in result.evidence
+
+
+def test_check_6_5_exception():
+    network_client = MagicMock()
+    network_client.network_watchers.list_all.side_effect = Exception("API error")
+
+    result = _check_6_5(network_client)
+    assert result.status == CheckStatus.ERROR
+
+
+# ---------------------------------------------------------------------------
+# _check_7_1 — VMs use Managed Disks
+# ---------------------------------------------------------------------------
+
+
+def test_check_7_1_all_managed():
+    vm = MagicMock()
+    vm.name = "vm-prod"
+    storage_profile = MagicMock()
+    os_disk = MagicMock()
+    os_disk.managed_disk = MagicMock()  # non-None means managed
+    storage_profile.os_disk = os_disk
+    vm.storage_profile = storage_profile
+
+    compute_client = MagicMock()
+    compute_client.virtual_machines.list_all.return_value = [vm]
+
+    result = _check_7_1(compute_client)
+    assert result.status == CheckStatus.PASS
+
+
+def test_check_7_1_unmanaged_disk():
+    vm = MagicMock()
+    vm.name = "vm-legacy"
+    storage_profile = MagicMock()
+    os_disk = MagicMock()
+    os_disk.managed_disk = None  # unmanaged
+    storage_profile.os_disk = os_disk
+    vm.storage_profile = storage_profile
+
+    compute_client = MagicMock()
+    compute_client.virtual_machines.list_all.return_value = [vm]
+
+    result = _check_7_1(compute_client)
+    assert result.status == CheckStatus.FAIL
+    assert "vm-legacy" in result.evidence
+
+
+def test_check_7_1_exception():
+    compute_client = MagicMock()
+    compute_client.virtual_machines.list_all.side_effect = Exception("API error")
+
+    result = _check_7_1(compute_client)
+    assert result.status == CheckStatus.ERROR
 
 
 # ---------------------------------------------------------------------------

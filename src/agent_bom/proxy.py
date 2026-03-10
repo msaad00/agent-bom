@@ -36,6 +36,38 @@ logger = logging.getLogger(__name__)
 # Guards against DoS via oversized payloads in the stdio relay loop.
 _MAX_MESSAGE_BYTES = 10 * 1024 * 1024  # 10 MB
 
+# Regex execution timeout (seconds) — mitigates ReDoS from user-supplied patterns.
+_REGEX_TIMEOUT_SECONDS = 0.1
+
+# Pre-compiled pattern cache to avoid recompiling on every policy check.
+_compiled_patterns: dict[str, re.Pattern] = {}
+
+
+def _safe_compile(pattern: str) -> re.Pattern:
+    """Compile and cache a regex pattern, raising re.error on invalid syntax."""
+    if pattern not in _compiled_patterns:
+        compiled = re.compile(pattern)
+        _compiled_patterns[pattern] = compiled
+    return _compiled_patterns[pattern]
+
+
+def _safe_regex_match(pattern: str, text: str) -> bool:
+    """Run re.match with pre-compilation and input length guard against ReDoS."""
+    if len(text) > 10_000:
+        logger.warning("Skipping regex match on oversized input (%d chars)", len(text))
+        return False
+    compiled = _safe_compile(pattern)
+    return compiled.match(text) is not None
+
+
+def _safe_regex_search(pattern: str, text: str) -> bool:
+    """Run re.search with pre-compilation and input length guard against ReDoS."""
+    if len(text) > 10_000:
+        logger.warning("Skipping regex search on oversized input (%d chars)", len(text))
+        return False
+    compiled = _safe_compile(pattern)
+    return compiled.search(text) is not None
+
 
 # ─── Proxy metrics ──────────────────────────────────────────────────────────
 
@@ -110,10 +142,11 @@ class ProxyMetrics:
 class ProxyMetricsServer:
     """Lightweight HTTP server exposing Prometheus text exposition format on /metrics."""
 
-    def __init__(self, metrics: ProxyMetrics, port: int = 8422, token: Optional[str] = None) -> None:
+    def __init__(self, metrics: ProxyMetrics, port: int = 8422, token: Optional[str] = None, host: str = "127.0.0.1") -> None:
         self.metrics = metrics
         self.port = port
         self.token = token
+        self.host = host
         self._server: Optional[asyncio.AbstractServer] = None
 
     def render_metrics(self) -> str:
@@ -212,8 +245,8 @@ class ProxyMetricsServer:
             finally:
                 writer.close()
 
-        self._server = await asyncio.start_server(handle, "0.0.0.0", self.port)  # nosec B104 — container/K8s metrics endpoint must bind all interfaces
-        logger.info("Prometheus metrics server listening on port %d", self.port)
+        self._server = await asyncio.start_server(handle, self.host, self.port)
+        logger.info("Prometheus metrics server listening on %s:%d", self.host, self.port)
 
     async def stop(self) -> None:
         """Stop the metrics server."""
@@ -393,9 +426,17 @@ class ReplayDetector:
         h = compute_payload_hash(msg)
         now = time.monotonic()
 
-        # Evict stale entries when approaching the cap
+        # Evict stale entries when approaching the cap.
+        # Only evict the oldest half to prevent flood-based eviction attacks —
+        # an attacker cannot flush the entire history by sending many unique messages.
         if len(self._seen) >= self.max_entries:
+            # First try time-based eviction
             self._seen = {k: v for k, v in self._seen.items() if (now - v) < self.window_seconds}
+            # If still over capacity (all entries are within window), evict oldest half
+            if len(self._seen) >= self.max_entries:
+                sorted_entries = sorted(self._seen.items(), key=lambda x: x[1])
+                keep_from = len(sorted_entries) // 2
+                self._seen = dict(sorted_entries[keep_from:])
 
         if h in self._seen and (now - self._seen[h]) < self.window_seconds:
             return True
@@ -457,18 +498,18 @@ def check_policy(
         if rule_tool and rule_tool == tool_name:
             return False, f"Tool '{tool_name}' blocked by rule '{rule.get('id', '?')}'"
 
-        # tool_name_pattern match (regex) — compile with length guard to mitigate ReDoS
+        # tool_name_pattern match (regex) — compile with length + timeout guard to mitigate ReDoS
         pattern = rule.get("tool_name_pattern")
         if pattern:
             try:
                 if len(pattern) > 500:
                     logger.warning("Skipping oversized tool_name_pattern (%d chars)", len(pattern))
-                elif re.match(pattern, tool_name):
+                elif _safe_regex_match(pattern, tool_name):
                     return False, f"Tool '{tool_name}' matches blocked pattern '{pattern}'"
             except re.error:
                 pass
 
-        # arg_pattern: {arg_name: regex_pattern} — length guard to mitigate ReDoS
+        # arg_pattern: {arg_name: regex_pattern} — length + timeout guard to mitigate ReDoS
         arg_patterns = rule.get("arg_pattern", {})
         for arg_name, arg_regex in arg_patterns.items():
             arg_value = str(arguments.get(arg_name, ""))
@@ -476,7 +517,7 @@ def check_policy(
                 if len(arg_regex) > 500:
                     logger.warning("Skipping oversized arg_pattern for '%s' (%d chars)", arg_name, len(arg_regex))
                     continue
-                if re.search(arg_regex, arg_value):
+                if _safe_regex_search(arg_regex, arg_value):
                     return False, f"Argument '{arg_name}' matches blocked pattern '{arg_regex}'"
             except re.error:
                 pass
@@ -941,9 +982,12 @@ async def run_proxy(
                         )
                         _handle_alerts([alert], log_file)
                     if scan_config.mode == "enforce" and any(sr.blocked for sr in resp_results):
-                        # Replace response with safe content
-                        msg["result"] = {
-                            "content": [{"type": "text", "text": "[BLOCKED: security scanner detected sensitive content in response]"}]
+                        # Return a JSON-RPC error instead of modifying the result structure,
+                        # which preserves protocol compatibility with all MCP clients.
+                        msg.pop("result", None)
+                        msg["error"] = {
+                            "code": -32600,
+                            "message": "[BLOCKED] Security scanner detected sensitive content in response",
                         }
                         line = (json.dumps(msg) + "\n").encode()
 

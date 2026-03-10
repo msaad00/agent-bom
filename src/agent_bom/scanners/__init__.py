@@ -413,7 +413,15 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
                 if response and response.status_code == 200:
                     try:
                         data = response.json()
-                        for i, result in enumerate(data.get("results", [])):
+                        osv_results = data.get("results", [])
+                        # Validate response length matches batch to prevent index misattribution
+                        if len(osv_results) != len(batch):
+                            console.print(
+                                f"  [yellow]⚠[/yellow] OSV batch response length mismatch: sent {len(batch)} queries, got {len(osv_results)} results"
+                            )
+                        for i, result in enumerate(osv_results):
+                            if i >= len(batch):
+                                break  # Safety: don't read past our query count
                             vulns = result.get("vulns", [])
                             if vulns:
                                 actual_idx = batch_start + i

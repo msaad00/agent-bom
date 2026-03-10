@@ -712,7 +712,18 @@ def discover_global_configs(agent_types: Optional[list[AgentType]] = None) -> li
             else:
                 resolved_paths = [expand_path(path_str)]
 
-            for config_path in resolved_paths:
+            # Filter out symlinks that resolve outside expected config directories
+            # to prevent symlink-based information disclosure attacks.
+            safe_paths: list[Path] = []
+            for rp in resolved_paths:
+                # Skip symlinks whose target differs from the link path's parent tree
+                raw_path = Path(os.path.expanduser(path_str)) if "*" not in path_str else rp
+                if raw_path.is_symlink() and not rp.is_relative_to(raw_path.parent):
+                    logger.warning("Skipping symlink pointing outside parent: %s -> %s", raw_path, rp)
+                    continue
+                safe_paths.append(rp)
+
+            for config_path in safe_paths:
                 if not config_path.exists():
                     continue
                 try:

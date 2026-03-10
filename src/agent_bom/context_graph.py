@@ -63,11 +63,17 @@ class ContextGraph:
     nodes: dict[str, GraphNode] = field(default_factory=dict)
     edges: list[GraphEdge] = field(default_factory=list)
     adjacency: dict[str, list[GraphEdge]] = field(default_factory=lambda: defaultdict(list))
+    _edge_keys: set[tuple[str, str, str]] = field(default_factory=set)
 
     def add_node(self, node: GraphNode) -> None:
         self.nodes[node.id] = node
 
     def add_edge(self, edge: GraphEdge) -> None:
+        """Add an edge with O(1) deduplication by (source, target, kind)."""
+        key = (edge.source, edge.target, edge.kind.value if isinstance(edge.kind, EdgeKind) else str(edge.kind))
+        if key in self._edge_keys:
+            return
+        self._edge_keys.add(key)
         self.edges.append(edge)
         self.adjacency[edge.source].append(edge)
         # Bidirectional adjacency for BFS traversal
@@ -300,24 +306,21 @@ def build_context_graph(
                     )
 
     # ── Shared credential edges (agent ↔ agent) ──────────────────────
+    # Deduplication is now handled by ContextGraph.add_edge() in O(1).
     for _cred_name, agent_names in cred_to_agents.items():
         unique = sorted(set(agent_names))
         if len(unique) >= 2:
             for i, a1 in enumerate(unique):
                 for a2 in unique[i + 1 :]:
-                    # Only add if not already present for this pair+kind
-                    existing = {(e.source, e.target, e.kind) for e in graph.edges if e.kind == EdgeKind.SHARES_CREDENTIAL}
-                    pair = (f"agent:{a1}", f"agent:{a2}", EdgeKind.SHARES_CREDENTIAL)
-                    if pair not in existing:
-                        graph.add_edge(
-                            GraphEdge(
-                                source=f"agent:{a1}",
-                                target=f"agent:{a2}",
-                                kind=EdgeKind.SHARES_CREDENTIAL,
-                                weight=4.0,
-                                metadata={"credential": _cred_name},
-                            )
+                    graph.add_edge(
+                        GraphEdge(
+                            source=f"agent:{a1}",
+                            target=f"agent:{a2}",
+                            kind=EdgeKind.SHARES_CREDENTIAL,
+                            weight=4.0,
+                            metadata={"credential": _cred_name},
                         )
+                    )
 
     return graph
 
@@ -690,8 +693,6 @@ def to_serializable(
                 "metadata": e.metadata,
             }
             for e in graph.edges
-            # Skip reverse edges (adjacency has bidirectional copies)
-            if e in graph.edges
         ],
         "lateral_paths": [
             {

@@ -7,7 +7,7 @@ description: >-
   and vector database security checks. Use when the user mentions vulnerability
   scanning, MCP server trust, compliance, SBOM generation, CIS benchmarks,
   blast radius, or AI supply chain risk.
-version: 0.64.0
+version: 0.68.0
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. No credentials required for
@@ -19,11 +19,11 @@ metadata:
   source: https://github.com/msaad00/agent-bom
   pypi: https://pypi.org/project/agent-bom/
   scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
-  tests: 4314
+  tests: 4449
   install:
     pipx: agent-bom
     pip: agent-bom
-    docker: ghcr.io/msaad00/agent-bom:0.64.0
+    docker: ghcr.io/msaad00/agent-bom:0.68.0
   openclaw:
     requires:
       bins: []
@@ -199,7 +199,7 @@ agent-bom where             # show all discovery paths
 }
 ```
 
-## Tools (23)
+## Tools (30)
 
 ### Vulnerability Scanning
 | Tool | Description |
@@ -239,6 +239,17 @@ agent-bom where             # show all discovery paths
 | `runtime_correlate` | Cross-reference proxy audit JSONL with CVE findings, risk amplification |
 | `vector_db_scan` | Probe Qdrant/Weaviate/Chroma/Milvus for auth and exposure |
 | `gpu_infra_scan` | GPU container and K8s node inventory + unauthenticated DCGM probe (MAESTRO KC6) |
+
+### Specialized Scans
+| Tool | Description |
+|------|-------------|
+| `dataset_card_scan` | Scan dataset cards for bias, licensing, and provenance issues |
+| `training_pipeline_scan` | Scan training pipeline configs for security risks |
+| `browser_extension_scan` | Scan browser extensions for risky permissions and AI domain access |
+| `model_provenance_scan` | Verify model provenance and supply chain integrity |
+| `prompt_scan` | Scan prompt templates for injection and data leakage risks |
+| `model_file_scan` | Scan model files for unsafe serialization (pickle, etc.) |
+| `license_compliance_scan` | Full SPDX license catalog scan with copyleft and network-copyleft detection |
 
 ### Resources
 | Resource | Description |
@@ -312,6 +323,6 @@ configured credentials and call only the cloud provider's own APIs.
 ## Verification
 
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
-- **Sigstore signed**: `agent-bom verify agent-bom@0.64.0`
-- **4,300+ tests** with CodeQL + OpenSSF Scorecard
+- **Sigstore signed**: `agent-bom verify agent-bom@0.68.0`
+- **4,400+ tests** with CodeQL + OpenSSF Scorecard
 - **No telemetry**: Zero tracking, zero analytics

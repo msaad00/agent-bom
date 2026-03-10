@@ -6,7 +6,7 @@ description: >-
   fleet risk scoring, assess skill file trust, and run SAST code scans. Use when
   the user mentions MCP server trust, registry lookup, marketplace check, or
   skill trust assessment.
-version: 0.67.0
+version: 0.68.0
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. Optional: Semgrep for SAST
@@ -17,7 +17,7 @@ metadata:
   source: https://github.com/msaad00/agent-bom
   pypi: https://pypi.org/project/agent-bom/
   scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
-  tests: 4314
+  tests: 4449
   install:
     pipx: agent-bom
     pip: agent-bom
@@ -110,5 +110,5 @@ as a string argument (no file system access needed).
 ## Verification
 
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
-- **4,300+ tests** with CodeQL + OpenSSF Scorecard
+- **4,400+ tests** with CodeQL + OpenSSF Scorecard
 - **No telemetry**: Zero tracking, zero analytics

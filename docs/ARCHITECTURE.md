@@ -288,7 +288,7 @@ graph TB
 | Policy | `src/agent_bom/policy.py` | Policy-as-code engine |
 | SBOM | `src/agent_bom/sbom.py` | SBOM ingestion (CycloneDX, SPDX) |
 | Image | `src/agent_bom/image.py` | Docker image scanning |
-| MCP Server | `src/agent_bom/mcp_server.py` | FastMCP server (23 tools) |
+| MCP Server | `src/agent_bom/mcp_server.py` | FastMCP server (30 tools) |
 | Asset Tracker | `src/agent_bom/asset_tracker.py` | Persistent vuln tracking — first_seen, resolved, MTTR |
 | Context Graph | `src/agent_bom/context_graph.py` | Lateral movement analysis |
 | Cloud | `src/agent_bom/cloud/` | AWS, Azure, GCP, Snowflake, Databricks, Nebius |

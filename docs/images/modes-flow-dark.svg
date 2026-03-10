@@ -49,7 +49,7 @@
   <rect x="330" y="66" width="300" height="3" rx="1.5" fill="#bc8cff"/>
   <rect x="342" y="80" width="34" height="15" rx="4" fill="#bc8cff"/>
   <text x="359" y="91" text-anchor="middle" class="badge">MCP</text>
-  <text x="386" y="91" class="mode-title" fill="#bc8cff">MCP Server — 23 Tools</text>
+  <text x="386" y="91" class="mode-title" fill="#bc8cff">MCP Server — 30 Tools</text>
   <text x="342" y="108" class="mode-cmd">agent-bom mcp-server [--transport sse]</text>
   <text x="342" y="124" class="mode-feat">AI agents call scan, check, blast_radius</text>
   <text x="342" y="138" class="mode-feat">Registry lookup for 427+ MCP servers</text>
@@ -215,7 +215,7 @@
   <!-- ═══════════════════════════════════════════════════════════ -->
   <rect x="20" y="640" width="920" height="2" rx="1" fill="#30363d" opacity="0.4"/>
 
-  <text x="120" y="666" text-anchor="middle" class="mode-title" fill="#58a6ff">23</text>
+  <text x="120" y="666" text-anchor="middle" class="mode-title" fill="#58a6ff">30</text>
   <text x="120" y="680" text-anchor="middle" class="engine-detail">MCP tools</text>
 
   <text x="240" y="666" text-anchor="middle" class="mode-title" fill="#bc8cff">427+</text>
@@ -230,7 +230,7 @@
   <text x="600" y="666" text-anchor="middle" class="mode-title" fill="#f0883e">11</text>
   <text x="600" y="680" text-anchor="middle" class="engine-detail">compliance frameworks</text>
 
-  <text x="720" y="666" text-anchor="middle" class="mode-title" fill="#f85149">4,230+</text>
+  <text x="720" y="666" text-anchor="middle" class="mode-title" fill="#f85149">4,400+</text>
   <text x="720" y="680" text-anchor="middle" class="engine-detail">test functions</text>
 
   <text x="840" y="666" text-anchor="middle" class="mode-title" fill="#bc8cff">12</text>

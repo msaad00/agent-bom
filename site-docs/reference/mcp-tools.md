@@ -1,6 +1,6 @@
 # MCP Tools Reference
 
-agent-bom exposes 23 tools via its MCP server.
+agent-bom exposes 30 tools via its MCP server.
 
 ## Tools
 
@@ -126,6 +126,54 @@ vector_db_scan()
 Run OWASP AISVS v1.0 compliance checks — 9 AI security verification checks across model, data, and inference layers.
 ```
 aisvs_benchmark()
+```
+
+### gpu_infra_scan
+Scan GPU and AI compute infrastructure — Docker GPU containers, Kubernetes GPU nodes, DCGM unauthenticated endpoint detection.
+```
+gpu_infra_scan()
+```
+
+### dataset_card_scan
+Scan dataset cards (Hugging Face, custom) for supply chain risks, license issues, and data provenance gaps.
+```
+dataset_card_scan(path="/path/to/dataset_card.md")
+```
+
+### training_pipeline_scan
+Scan training pipeline configurations for security risks — untrusted data sources, insecure checkpoints, credential exposure.
+```
+training_pipeline_scan(path="/path/to/training_config.yaml")
+```
+
+### browser_extension_scan
+Scan browser extensions for MCP and AI-related risks — nativeMessaging, broad host permissions, AI assistant domain access.
+```
+browser_extension_scan()
+```
+
+### model_provenance_scan
+Verify model provenance and integrity — check Sigstore signatures, SLSA provenance, and supply chain attestations.
+```
+model_provenance_scan(model="org/model-name")
+```
+
+### prompt_scan
+Scan prompts for injection patterns, exfiltration attempts, and manipulation techniques.
+```
+prompt_scan(prompt="<prompt text>")
+```
+
+### model_file_scan
+Scan model files (ONNX, pickle, SafeTensors, etc.) for embedded threats, unsafe deserialization, and hidden payloads.
+```
+model_file_scan(path="/path/to/model.onnx")
+```
+
+### license_compliance_scan
+SPDX license compliance and compatibility checks — full SPDX catalog support, network-copyleft detection, license conflict identification.
+```
+license_compliance_scan()
 ```
 
 ## Resources

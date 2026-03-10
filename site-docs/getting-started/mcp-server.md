@@ -1,6 +1,6 @@
 # MCP Server Setup
 
-agent-bom runs as an MCP server, exposing 22 security tools to any MCP client.
+agent-bom runs as an MCP server, exposing 30 security tools to any MCP client.
 
 ## Local (stdio)
 
@@ -88,3 +88,13 @@ Connect with:
 | `cis_benchmark` | CIS benchmark checks (AWS/Snowflake) |
 | `fleet_scan` | Batch registry lookup + risk scoring |
 | `runtime_correlate` | Cross-reference runtime logs with CVEs |
+| `vector_db_scan` | Probe vector DBs for auth misconfigurations |
+| `aisvs_benchmark` | OWASP AISVS v1.0 compliance checks |
+| `gpu_infra_scan` | GPU/AI compute infrastructure scanning |
+| `dataset_card_scan` | Scan dataset cards for supply chain risks |
+| `training_pipeline_scan` | Scan training pipeline configs for risks |
+| `browser_extension_scan` | Scan browser extensions for MCP/AI risks |
+| `model_provenance_scan` | Verify model provenance and integrity |
+| `prompt_scan` | Scan prompts for injection and exfiltration |
+| `model_file_scan` | Scan model files for embedded threats |
+| `license_compliance_scan` | SPDX license compliance and compatibility checks |

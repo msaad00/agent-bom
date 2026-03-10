@@ -7,7 +7,7 @@ For the full runtime monitoring deployment guide, see the [dedicated doc](https:
 The runtime proxy (`agent-bom proxy`) intercepts MCP JSON-RPC messages between client and server, providing:
 
 - JSONL audit logging of all tool calls
-- 5-detector anomaly engine (tool drift, argument analysis, credential leak, rate limiting, sequence analysis)
+- 7-detector anomaly engine (tool drift, argument analysis, credential leak, rate limiting, sequence analysis, response inspector, vector DB injection)
 - Policy enforcement with block/allow rules
 - Prometheus metrics on port 8422
 

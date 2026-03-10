@@ -206,7 +206,7 @@ Claude Desktop, Claude Code, Cursor, Windsurf, Cline, Continue, Zed, VS Code Cop
 1. **Full-spectrum AI infra scanning**: CVE + MCP tool security + skill trust + blast radius + compliance — in one tool
 2. **Blast radius analysis**: No competitor does dependency blast radius with compliance framework mapping
 3. **Runtime proxy with enforcement**: Not just scanning — real-time interception, rate limiting, credential leak blocking, rug pull detection
-4. **23 MCP tools**: Deepest MCP server integration — usable by any AI assistant
+4. **30 MCP tools**: Deepest MCP server integration — usable by any AI assistant
 5. **12 cloud provider coverage**: AWS/Azure/GCP + AI-specific (CoreWeave, Databricks, Snowflake, HuggingFace, W&B, MLflow, OpenAI, Ollama, Nebius)
 6. **10 compliance frameworks**: Every finding mapped to OWASP LLM/MCP/Agentic, ATLAS, NIST, EU AI Act, ISO 27001, SOC 2, CIS
 7. **Enrichment depth**: OSV + GHSA + NVD + EPSS + CISA KEV + NVIDIA + OpenSSF Scorecard + MITRE ATT&CK
@@ -276,7 +276,7 @@ Cortex Code has a sophisticated security model that agent-bom should integrate w
 
 1. **agent-bom as Cortex Code MCP server**
    - Cortex Code supports MCP via `mcp.json` — agent-bom can be added as an MCP server
-   - All 23 tools become available to Cortex Code users
+   - All 30 tools become available to Cortex Code users
    - Users can scan their Snowflake pipelines for CVEs, check MCP server trust, run compliance audits — all through natural language in Cortex Code
    - Config: add agent-bom to `~/.snowflake/cortex/mcp.json`
 
@@ -327,7 +327,7 @@ Cortex Code has a sophisticated security model that agent-bom should integrate w
 
 | Coco Security Gap | agent-bom Solution |
 |-------------------|--------------------|
-| "Verify MCP server integrity" — manual guidance only | Automated MCP server scanning (23 tools) |
+| "Verify MCP server integrity" — manual guidance only | Automated MCP server scanning (30 tools) |
 | No CVE scanning of MCP server dependencies | Full enrichment pipeline (OSV+GHSA+NVD+EPSS+KEV) |
 | No blast radius analysis | Blast radius with compliance mapping |
 | Permission caching risks (permissions.json) | Audit cached approvals, flag overly permissive |

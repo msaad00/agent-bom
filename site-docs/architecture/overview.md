@@ -29,10 +29,10 @@ graph LR
 | Compliance | `src/agent_bom/compliance/` | 11 framework mappings |
 | Asset Tracker | `src/agent_bom/asset_tracker.py` | Persistent vuln tracking — first_seen, resolved, MTTR |
 | Proxy | `src/agent_bom/proxy.py` | Runtime MCP interception |
-| Protection | `src/agent_bom/runtime/` | 5-detector anomaly engine |
+| Protection | `src/agent_bom/runtime/` | 7-detector anomaly engine |
 | Enforcement | `src/agent_bom/enforcement.py` | Tool poisoning detection |
 | Security | `src/agent_bom/security.py` | Path validation, credential redaction |
-| MCP Server | `src/agent_bom/mcp_server.py` | 20-tool FastMCP server |
+| MCP Server | `src/agent_bom/mcp_server.py` | 30-tool FastMCP server |
 | API | `src/agent_bom/api/` | REST API (FastAPI) |
 | Output | `src/agent_bom/output/` | HTML, Prometheus, Mermaid, SVG, STIX |
 

@@ -5,7 +5,7 @@ description: >-
   checks packages for CVEs (OSV, NVD, EPSS, KEV), maps blast radius, and generates
   remediation plans. Use when the user mentions vulnerability scanning, dependency
   security, CVE lookup, blast radius analysis, or AI supply chain risk.
-version: 0.67.0
+version: 0.68.0
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. Optional: Grype/Syft for
@@ -16,11 +16,11 @@ metadata:
   source: https://github.com/msaad00/agent-bom
   pypi: https://pypi.org/project/agent-bom/
   scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
-  tests: 4314
+  tests: 4449
   install:
     pipx: agent-bom
     pip: agent-bom
-    docker: ghcr.io/msaad00/agent-bom:0.67.0
+    docker: ghcr.io/msaad00/agent-bom:0.68.0
   openclaw:
     requires:
       bins: []
@@ -187,6 +187,6 @@ CVE IDs are sent to vulnerability databases.
 ## Verification
 
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
-- **Sigstore signed**: `agent-bom verify agent-bom@0.67.0
-- **4,300+ tests** with CodeQL + OpenSSF Scorecard
+- **Sigstore signed**: `agent-bom verify agent-bom@0.68.0
+- **4,400+ tests** with CodeQL + OpenSSF Scorecard
 - **No telemetry**: Zero tracking, zero analytics

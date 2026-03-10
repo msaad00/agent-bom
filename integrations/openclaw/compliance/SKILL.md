@@ -5,7 +5,7 @@ description: >-
   MITRE ATLAS, EU AI Act, NIST AI RMF, and custom policy-as-code rules. Generate
   SBOMs in CycloneDX or SPDX format. Use when the user mentions compliance checking,
   security policy enforcement, SBOM generation, or regulatory frameworks.
-version: 0.67.0
+version: 0.68.0
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. No credentials required for
@@ -17,7 +17,7 @@ metadata:
   source: https://github.com/msaad00/agent-bom
   pypi: https://pypi.org/project/agent-bom/
   scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
-  tests: 4314
+  tests: 4449
   install:
     pipx: agent-bom
     pip: agent-bom
@@ -130,5 +130,5 @@ No credentials needed.
 ## Verification
 
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
-- **4,300+ tests** with CodeQL + OpenSSF Scorecard
+- **4,400+ tests** with CodeQL + OpenSSF Scorecard
 - **No telemetry**: Zero tracking, zero analytics

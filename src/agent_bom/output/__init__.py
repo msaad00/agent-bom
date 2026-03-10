@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from uuid import uuid4
 
 from rich.console import Console
@@ -1763,15 +1763,9 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
 
                 # Add vulnerabilities
                 for vuln in pkg.vulnerabilities:
-                    vuln_entry = {
-                        "id": vuln.id,
-                        "description": vuln.summary,
-                        "source": {"name": "OSV", "url": f"https://osv.dev/vulnerability/{vuln.id}"},
-                        "ratings": [],
-                        "affects": [{"ref": pkg_ref}],
-                    }
+                    ratings: list[dict[str, object]] = []
                     if vuln.cvss_score:
-                        vuln_entry["ratings"].append(
+                        ratings.append(
                             {
                                 "score": vuln.cvss_score,
                                 "severity": vuln.severity.value,
@@ -1779,11 +1773,18 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                             }
                         )
                     else:
-                        vuln_entry["ratings"].append(
+                        ratings.append(
                             {
                                 "severity": vuln.severity.value,
                             }
                         )
+                    vuln_entry: dict[str, object] = {
+                        "id": vuln.id,
+                        "description": vuln.summary,
+                        "source": {"name": "OSV", "url": f"https://osv.dev/vulnerability/{vuln.id}"},
+                        "ratings": ratings,
+                        "affects": [{"ref": pkg_ref}],
+                    }
                     if vuln.fixed_version:
                         vuln_entry["recommendation"] = f"Upgrade to {vuln.fixed_version}"
                     if vuln.vex_status:
@@ -1794,11 +1795,12 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                             "fixed": "resolved",
                             "under_investigation": "in_triage",
                         }
-                        vuln_entry["analysis"] = {
+                        analysis_dict: dict[str, str] = {
                             "state": _cdx_state_map.get(vuln.vex_status, "in_triage"),
                         }
                         if vuln.vex_justification:
-                            vuln_entry["analysis"]["justification"] = vuln.vex_justification
+                            analysis_dict["justification"] = vuln.vex_justification
+                        vuln_entry["analysis"] = analysis_dict
                     vulnerabilities_cdx.append(vuln_entry)
 
             dependencies.append({"ref": server_ref, "dependsOn": server_deps})
@@ -2350,8 +2352,8 @@ def to_spdx(report: AIBOMReport) -> dict:
         spdx_id_counter[0] += 1
         return f"{prefix}-{spdx_id_counter[0]}"
 
-    elements = []
-    relationships = []
+    elements: list[dict[str, Any]] = []
+    relationships: list[dict[str, Any]] = []
     document_id = _next_id("SPDXRef-DOCUMENT")
 
     # Document / CreationInfo
@@ -2422,7 +2424,7 @@ def to_spdx(report: AIBOMReport) -> dict:
                     pkg_id = _next_id("SPDXRef-Pkg")
                     pkg_ref_map[pkg_key] = pkg_id
 
-                    pkg_element = {
+                    pkg_element: dict[str, object] = {
                         "type": "SOFTWARE_PACKAGE",
                         "spdxId": pkg_id,
                         "name": pkg.name,
@@ -2459,7 +2461,7 @@ def to_spdx(report: AIBOMReport) -> dict:
                 # Security relationships for each vulnerability
                 for vuln in pkg.vulnerabilities:
                     vuln_element_id = _next_id("SPDXRef-Vuln")
-                    vuln_element = {
+                    vuln_element: dict[str, object] = {
                         "type": "security/Vulnerability",
                         "spdxId": vuln_element_id,
                         "name": vuln.id,

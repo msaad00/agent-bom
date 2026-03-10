@@ -24,7 +24,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import IO, Optional
 
 from agent_bom.agent_identity import ANONYMOUS, check_identity
 from agent_bom.proxy_scanner import ScanConfig, load_scan_config, scan_tool_call, scan_tool_response
@@ -90,7 +90,7 @@ class RotatingAuditLog:
         self._file = self._open(path)
 
     @staticmethod
-    def _open(path: str) -> object:
+    def _open(path: str) -> IO[str]:
         p = Path(path)
         if p.is_symlink():
             raise ValueError(f"Audit log path must not be a symlink: {path}")
@@ -98,23 +98,23 @@ class RotatingAuditLog:
         return os.fdopen(fd, "a")
 
     def write(self, data: str) -> int:
-        result = self._file.write(data)  # type: ignore[union-attr]
+        result = self._file.write(data)
         self._writes += 1
         if self._writes % 1000 == 0:
             self._maybe_rotate()
         return result
 
     def flush(self) -> None:
-        self._file.flush()  # type: ignore[union-attr]
+        self._file.flush()
 
     def close(self) -> None:
-        self._file.close()  # type: ignore[union-attr]
+        self._file.close()
 
     def _maybe_rotate(self) -> None:
         try:
             size = Path(self._path).stat().st_size
             if size >= self._max_bytes:
-                self._file.close()  # type: ignore[union-attr]
+                self._file.close()
                 rotated = self._path + ".1"
                 if Path(rotated).exists():
                     Path(rotated).unlink()
@@ -381,7 +381,7 @@ def make_error_response(request_id: int | str | None, code: int, message: str) -
 
 
 def log_tool_call(
-    log_file: object,
+    log_file: IO[str],
     tool_name: str,
     arguments: dict,
     policy_result: str = "allowed",
@@ -417,8 +417,8 @@ def log_tool_call(
     if message_id is not None:
         record["message_id"] = message_id
 
-    log_file.write(json.dumps(record) + "\n")  # type: ignore[union-attr]
-    log_file.flush()  # type: ignore[union-attr]
+    log_file.write(json.dumps(record) + "\n")
+    log_file.flush()
 
 
 def _truncate_args(args: dict, max_value_len: int = 200) -> dict:

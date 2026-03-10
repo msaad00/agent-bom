@@ -37,6 +37,8 @@ from agent_bom.config import AI_CACHE_MAX_ENTRIES as _MAX_AI_CACHE
 from agent_bom.config import OLLAMA_BASE_URL
 
 if TYPE_CHECKING:
+    from pydantic import BaseModel
+
     from agent_bom.ai_schemas import MCPConfigSecurityAnalysis
     from agent_bom.models import AIBOMReport, BlastRadius
     from agent_bom.parsers.skill_audit import SkillAuditResult
@@ -352,9 +354,9 @@ def _parse_json_response(response: str) -> dict | None:
 async def _call_ollama_structured(
     prompt: str,
     model: str,
-    schema_cls: type,
+    schema_cls: type[BaseModel],
     max_tokens: int = 500,
-) -> Optional[object]:
+) -> Optional[BaseModel]:
     """Call Ollama with structured output via the ``format`` parameter.
 
     Passes the Pydantic schema's JSON schema to force valid JSON output.
@@ -398,9 +400,9 @@ async def _call_ollama_structured(
 async def _call_llm_structured(
     prompt: str,
     model: str,
-    schema_cls: type,
+    schema_cls: type[BaseModel],
     max_tokens: int = 500,
-) -> Optional[object]:
+) -> Optional[BaseModel]:
     """Call LLM with structured output, falling back to unstructured + parse.
 
     Routing:
@@ -986,7 +988,7 @@ async def analyze_mcp_config_security(
     # Try structured output first
     result = await _call_llm_structured(prompt, model, MCPConfigSecurityAnalysis, max_tokens=1000)
     if result:
-        return result
+        return result  # type: ignore[return-value]
 
     # Fallback to unstructured
     raw = await _call_llm(prompt, model, max_tokens=1000)

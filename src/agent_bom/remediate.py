@@ -388,21 +388,21 @@ def export_remediation_md(plan: RemediationPlan, path: str) -> None:
     if plan.credential_fixes:
         lines.append("## Priority 2: Credential Scope Reduction")
         lines.append("")
-        for fix in plan.credential_fixes:
-            lines.append(f"### {fix.credential_name}")
-            lines.append(f"- **Used by**: {', '.join(fix.locations[:5])}")
-            lines.append(f"- **Risk**: {fix.risk_description}")
+        for cred_fix in plan.credential_fixes:
+            lines.append(f"### {cred_fix.credential_name}")
+            lines.append(f"- **Used by**: {', '.join(cred_fix.locations[:5])}")
+            lines.append(f"- **Risk**: {cred_fix.risk_description}")
             lines.append("- **Fix steps**:")
-            for step in fix.fix_steps:
+            for step in cred_fix.fix_steps:
                 lines.append(f"  - {step}")
-            if fix.fix_commands:
+            if cred_fix.fix_commands:
                 lines.append("- **Commands**:")
                 lines.append("  ```bash")
-                for cmd in fix.fix_commands:
+                for cmd in cred_fix.fix_commands:
                     lines.append(f"  {cmd}")
                 lines.append("  ```")
-            if fix.reference_url:
-                lines.append(f"- **Reference**: {fix.reference_url}")
+            if cred_fix.reference_url:
+                lines.append(f"- **Reference**: {cred_fix.reference_url}")
             lines.append("")
 
     # Priority 3: No fix available
@@ -439,11 +439,11 @@ def export_remediation_sh(plan: RemediationPlan, path: str) -> None:
     if plan.credential_fixes:
         lines.append("# ── Credential Remediation (manual steps) ──")
         lines.append("")
-        for fix in plan.credential_fixes:
-            lines.append(f"# {fix.credential_name}: {fix.risk_description}")
-            for cmd in fix.fix_commands:
+        for cred_fix in plan.credential_fixes:
+            lines.append(f"# {cred_fix.credential_name}: {cred_fix.risk_description}")
+            for cmd in cred_fix.fix_commands:
                 lines.append(cmd)
-            if not fix.fix_commands:
+            if not cred_fix.fix_commands:
                 lines.append("# See remediation.md for manual steps")
             lines.append("")
 

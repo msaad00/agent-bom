@@ -27,6 +27,12 @@ Endpoints:
     DELETE /v1/auth/keys/{id}          revoke an API key
     GET  /v1/audit                     query audit log
     GET  /v1/audit/integrity           verify audit log HMAC integrity
+    POST /v1/scan/dataset-cards        scan dataset cards & DVC files
+    POST /v1/scan/training-pipelines   scan ML training pipeline artifacts
+    POST /v1/scan/browser-extensions   scan browser extensions
+    POST /v1/scan/model-provenance     check HF/Ollama model provenance
+    POST /v1/scan/prompt-scan          scan prompts for injection/secrets
+    POST /v1/scan/model-files          scan model files for unsafe formats
 """
 
 from __future__ import annotations
@@ -1736,6 +1742,219 @@ async def list_jobs(limit: int = 50, offset: int = 0) -> dict:
         "limit": limit,
         "offset": offset,
     }
+
+
+# ─── Dedicated Scan Endpoints ─────────────────────────────────────────────────
+# Lightweight, synchronous scans for specific asset types.
+# Each returns results directly (no job queue — these are fast local scans).
+
+
+class DatasetCardsRequest(BaseModel):
+    """Request body for POST /v1/scan/dataset-cards."""
+
+    directories: list[str]
+    """Directories to scan for dataset cards (dataset_info.json, README.md, .dvc)."""
+
+
+@app.post("/v1/scan/dataset-cards", tags=["scan"], status_code=200)
+async def scan_dataset_cards(request: DatasetCardsRequest) -> dict:
+    """Scan directories for HuggingFace dataset cards, DVC files, and data lineage.
+
+    Returns dataset metadata, license info, and security flags
+    (unlicensed data, missing cards, unversioned data, remote sources).
+    """
+    from agent_bom.parsers.dataset_cards import scan_dataset_directory
+    from agent_bom.security import validate_path
+
+    results = []
+    for d in request.directories:
+        validate_path(d, must_exist=True)
+        result = scan_dataset_directory(d)
+        results.append(result.to_dict() if hasattr(result, "to_dict") else _dataclass_to_dict(result))
+
+    return {"scan_type": "dataset-cards", "directories": request.directories, "results": results}
+
+
+class TrainingPipelinesRequest(BaseModel):
+    """Request body for POST /v1/scan/training-pipelines."""
+
+    directories: list[str]
+    """Directories to scan for ML training artifacts (MLflow, W&B, Kubeflow)."""
+
+
+@app.post("/v1/scan/training-pipelines", tags=["scan"], status_code=200)
+async def scan_training_pipelines(request: TrainingPipelinesRequest) -> dict:
+    """Scan directories for ML training pipeline artifacts.
+
+    Detects MLflow runs, W&B metadata, Kubeflow pipeline definitions.
+    Flags unsafe serialization (pickle), missing provenance, exposed credentials.
+    """
+    from agent_bom.parsers.training_pipeline import scan_training_directory
+    from agent_bom.security import validate_path
+
+    results = []
+    for d in request.directories:
+        validate_path(d, must_exist=True)
+        result = scan_training_directory(d)
+        results.append(result.to_dict() if hasattr(result, "to_dict") else _dataclass_to_dict(result))
+
+    return {"scan_type": "training-pipelines", "directories": request.directories, "results": results}
+
+
+class BrowserExtensionsRequest(BaseModel):
+    """Request body for POST /v1/scan/browser-extensions."""
+
+    include_low_risk: bool = False
+    """Include low-risk extensions (default: only medium+ risk)."""
+
+
+@app.post("/v1/scan/browser-extensions", tags=["scan"], status_code=200)
+async def scan_browser_extensions_endpoint(request: BrowserExtensionsRequest) -> dict:
+    """Scan installed browser extensions (Chrome, Chromium, Brave, Edge, Firefox).
+
+    Detects dangerous permissions (debugger, nativeMessaging, cookies),
+    AI assistant domain access, and broad host permissions.
+    """
+    from agent_bom.parsers.browser_extensions import discover_browser_extensions
+
+    extensions = discover_browser_extensions(include_low_risk=request.include_low_risk)
+    ext_dicts = [e.to_dict() if hasattr(e, "to_dict") else _dataclass_to_dict(e) for e in extensions]
+
+    return {
+        "scan_type": "browser-extensions",
+        "total": len(ext_dicts),
+        "critical": sum(1 for e in ext_dicts if e.get("risk_level") == "critical"),
+        "high": sum(1 for e in ext_dicts if e.get("risk_level") == "high"),
+        "extensions": ext_dicts,
+    }
+
+
+class ModelProvenanceRequest(BaseModel):
+    """Request body for POST /v1/scan/model-provenance."""
+
+    hf_models: list[str] = []
+    """HuggingFace model IDs to check (e.g. ['meta-llama/Llama-2-7b-hf'])."""
+
+    ollama_models: list[str] = []
+    """Ollama model names to check (e.g. ['llama2', 'codellama'])."""
+
+
+@app.post("/v1/scan/model-provenance", tags=["scan"], status_code=200)
+async def scan_model_provenance(request: ModelProvenanceRequest) -> dict:
+    """Check model provenance for HuggingFace and Ollama models.
+
+    Verifies serialization safety (safetensors vs pickle), digest integrity,
+    model card presence, gating status, and public exposure risk.
+    """
+    from agent_bom.cloud.model_provenance import check_hf_models, check_ollama_models
+
+    results = []
+    if request.hf_models:
+        hf_results = check_hf_models(request.hf_models)
+        results.extend(r.to_dict() if hasattr(r, "to_dict") else _dataclass_to_dict(r) for r in hf_results)
+    if request.ollama_models:
+        ollama_results = check_ollama_models(request.ollama_models)
+        results.extend(r.to_dict() if hasattr(r, "to_dict") else _dataclass_to_dict(r) for r in ollama_results)
+
+    return {
+        "scan_type": "model-provenance",
+        "total": len(results),
+        "unsafe_format": sum(1 for r in results if not r.get("is_safe_format", True)),
+        "results": results,
+    }
+
+
+class PromptScanRequest(BaseModel):
+    """Request body for POST /v1/scan/prompt-scan."""
+
+    directories: list[str] = []
+    """Directories to scan for prompt files (.prompt, prompt.yaml, etc.)."""
+
+    files: list[str] = []
+    """Specific prompt files to scan."""
+
+
+@app.post("/v1/scan/prompt-scan", tags=["scan"], status_code=200)
+async def scan_prompts(request: PromptScanRequest) -> dict:
+    """Scan prompt files for injection patterns, hardcoded secrets, and unsafe instructions.
+
+    Detects prompt injection, jailbreak patterns, hardcoded API keys,
+    shell execution instructions, and data exfiltration patterns.
+    """
+    from pathlib import Path as _Path
+
+    from agent_bom.parsers.prompt_scanner import scan_prompt_files
+    from agent_bom.security import validate_path
+
+    all_paths = []
+    for d in request.directories:
+        validate_path(d, must_exist=True)
+    for f in request.files:
+        validate_path(f, must_exist=True)
+        all_paths.append(_Path(f))
+
+    results = []
+    for d in request.directories:
+        result = scan_prompt_files(root=_Path(d))
+        results.append(result.to_dict() if hasattr(result, "to_dict") else _dataclass_to_dict(result))
+    if all_paths:
+        result = scan_prompt_files(paths=all_paths)
+        results.append(result.to_dict() if hasattr(result, "to_dict") else _dataclass_to_dict(result))
+
+    return {"scan_type": "prompt-scan", "results": results}
+
+
+class ModelFilesRequest(BaseModel):
+    """Request body for POST /v1/scan/model-files."""
+
+    directories: list[str]
+    """Directories to scan for ML model files (.pt, .pkl, .safetensors, .gguf, etc.)."""
+
+    verify_hashes: bool = False
+    """Compute SHA-256 hashes for each model file."""
+
+
+@app.post("/v1/scan/model-files", tags=["scan"], status_code=200)
+async def scan_model_files_endpoint(request: ModelFilesRequest) -> dict:
+    """Scan directories for ML model files and assess serialization safety.
+
+    Detects pickle deserialization risks (.pkl, .pt), verifies file integrity,
+    and flags unsafe model formats.
+    """
+    from agent_bom.model_files import scan_model_files, verify_model_hash
+    from agent_bom.security import validate_path
+
+    all_files = []
+    all_warnings = []
+    for d in request.directories:
+        validate_path(d, must_exist=True)
+        files, warnings = scan_model_files(d)
+        all_files.extend(files)
+        all_warnings.extend(warnings)
+
+    if request.verify_hashes:
+        for f in all_files:
+            hash_result = verify_model_hash(f["path"])
+            f["sha256"] = hash_result.get("sha256")
+
+    return {
+        "scan_type": "model-files",
+        "total": len(all_files),
+        "unsafe": sum(1 for f in all_files if f.get("security_flags")),
+        "files": all_files,
+        "warnings": all_warnings,
+    }
+
+
+def _dataclass_to_dict(obj: object) -> dict:
+    """Convert a dataclass to dict, handling nested dataclasses."""
+    import dataclasses
+
+    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+        return {k: _dataclass_to_dict(v) for k, v in dataclasses.asdict(obj).items()}
+    if isinstance(obj, list):
+        return [_dataclass_to_dict(i) for i in obj]
+    return obj
 
 
 # ─── Compliance Posture ───────────────────────────────────────────────────────

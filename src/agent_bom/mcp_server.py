@@ -4,7 +4,7 @@ Start with:
     agent-bom mcp-server              # stdio (for Claude Desktop, Cursor, etc.)
     agent-bom mcp-server --sse        # SSE transport (for remote clients)
 
-Tools (29):
+Tools (30):
     scan                — Full discovery → scan → output pipeline
     check               — Check a specific package for CVEs before installing
     blast_radius        — Look up blast radius for a specific CVE
@@ -34,6 +34,7 @@ Tools (29):
     model_provenance_scan  — Check ML model provenance from HuggingFace/Ollama
     prompt_scan         — Scan prompt templates for injection risks
     model_file_scan     — Scan model files for serialization risks
+    license_compliance_scan — Evaluate package licenses against SPDX compliance policy
 
 Resources (2):
     registry://servers  — Browse 427+ server security metadata registry
@@ -2201,6 +2202,95 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             logger.exception("MCP tool error")
             return json.dumps({"error": sanitize_error(exc)})
 
+    # ── Tool 30: license_compliance_scan ────────────────────────────
+
+    @mcp.tool(annotations=_READ_ONLY, title="License Compliance Scan")
+    async def license_compliance_scan(
+        scan_json: Annotated[
+            str,
+            Field(
+                description=(
+                    "JSON string of a previous scan result (from the 'scan' tool) "
+                    "containing agents with packages. Or a JSON array of "
+                    '{"name": "pkg", "version": "1.0", "ecosystem": "npm", "license": "MIT"} objects.'
+                ),
+            ),
+        ],
+        policy_json: Annotated[
+            str,
+            Field(
+                default="",
+                description=(
+                    'Optional JSON policy: {"license_block": ["GPL-*"], "license_warn": ["LGPL-*"]}. '
+                    "Uses default policy (block GPL/AGPL/SSPL/BUSL/EUPL/OSL, warn LGPL/MPL/EPL/CDDL) if empty."
+                ),
+            ),
+        ] = "",
+    ) -> str:
+        """Evaluate package licenses against compliance policy.
+
+        Categorizes each package license using the full SPDX catalog (2,500+ licenses)
+        with proper expression parsing (OR/AND/WITH), deprecated ID normalization,
+        and network-copyleft detection (AGPL, EUPL, OSL).
+
+        Risk tiers: permissive (low), weak-copyleft (medium), strong-copyleft (high),
+        network-copyleft (critical), commercial-risk (critical), source-available (high).
+
+        Returns structured report with compliance status, findings, and risk summary.
+        """
+        try:
+            from agent_bom.license_policy import evaluate_license_policy, to_serializable
+            from agent_bom.models import Agent, MCPServer, Package
+
+            data = json.loads(scan_json)
+            policy = json.loads(policy_json) if policy_json else None
+
+            # Accept either a full scan result (with agents) or a flat package list
+            agents: list[Agent] = []
+            if isinstance(data, dict) and "agents" in data:
+                # Full scan result — reconstruct agents
+                for agent_data in data["agents"]:
+                    servers = []
+                    for srv in agent_data.get("mcp_servers", []):
+                        pkgs = [
+                            Package(
+                                name=p.get("name", ""),
+                                version=p.get("version", ""),
+                                ecosystem=p.get("ecosystem", ""),
+                                license=p.get("license"),
+                                license_expression=p.get("license_expression"),
+                            )
+                            for p in srv.get("packages", [])
+                        ]
+                        servers.append(MCPServer(name=srv.get("name", ""), command="", packages=pkgs))
+                    agents.append(Agent(name=agent_data.get("name", ""), agent_type="custom", config_path="", mcp_servers=servers))
+            elif isinstance(data, list):
+                # Flat package list
+                pkgs = [
+                    Package(
+                        name=p.get("name", ""),
+                        version=p.get("version", ""),
+                        ecosystem=p.get("ecosystem", ""),
+                        license=p.get("license"),
+                        license_expression=p.get("license_expression"),
+                    )
+                    for p in data
+                ]
+                agents = [
+                    Agent(
+                        name="input",
+                        agent_type="custom",
+                        config_path="",
+                        mcp_servers=[MCPServer(name="packages", command="", packages=pkgs)],
+                    )
+                ]
+
+            report = evaluate_license_policy(agents, policy=policy)
+            return _truncate_response(json.dumps(to_serializable(report), indent=2))
+        except Exception as exc:
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
+
     # ── Custom routes: metadata + health ─────────────────────────────
 
     @mcp.custom_route("/.well-known/mcp/server-card.json", methods=["GET"])
@@ -2360,6 +2450,11 @@ _SERVER_CARD_TOOLS = [
     {
         "name": "model_file_scan",
         "description": "Scan model files (.gguf, .safetensors, .pkl, .pt) for serialization risks and format metadata",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "license_compliance_scan",
+        "description": "Evaluate package licenses against SPDX compliance policy — 2,500+ licenses, network-copyleft detection, deprecated ID normalization",
         "annotations": {"readOnlyHint": True},
     },
 ]

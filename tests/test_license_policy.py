@@ -53,16 +53,28 @@ class TestCategorizeLicense:
             assert risk == "medium"
 
     def test_strong_copyleft_licenses(self):
-        for lic in ["GPL-2.0-only", "GPL-3.0-only", "AGPL-3.0-only", "GPL-3.0-or-later"]:
+        for lic in ["GPL-2.0-only", "GPL-3.0-only", "GPL-3.0-or-later"]:
             cat, risk = categorize_license(lic)
             assert cat == "strong_copyleft", f"{lic} should be strong copyleft"
             assert risk == "high"
 
+    def test_network_copyleft_licenses(self):
+        for lic in ["AGPL-3.0-only", "AGPL-3.0-or-later", "EUPL-1.2", "OSL-3.0"]:
+            cat, risk = categorize_license(lic)
+            assert cat == "network_copyleft", f"{lic} should be network copyleft"
+            assert risk == "critical"
+
     def test_commercial_risk_licenses(self):
-        for lic in ["SSPL-1.0", "BSL-1.1", "Elastic-2.0"]:
+        for lic in ["SSPL-1.0", "Elastic-2.0"]:
             cat, risk = categorize_license(lic)
             assert cat == "commercial_risk", f"{lic} should be commercial risk"
             assert risk == "critical"
+
+    def test_bsl_alias(self):
+        """BSL-1.1 (user alias) maps to BUSL-1.1 commercial risk."""
+        cat, risk = categorize_license("BSL-1.1")
+        assert cat == "commercial_risk"
+        assert risk == "critical"
 
     def test_unknown_license(self):
         cat, risk = categorize_license("CustomLicense-1.0")
@@ -294,3 +306,103 @@ class TestDefaultPolicy:
 
         assert not _matches_pattern("MIT", DEFAULT_LICENSE_POLICY["license_block"])
         assert not _matches_pattern("MIT", DEFAULT_LICENSE_POLICY["license_warn"])
+
+    def test_default_blocks_eupl(self):
+        from agent_bom.license_policy import _matches_pattern
+
+        assert _matches_pattern("EUPL-1.2", DEFAULT_LICENSE_POLICY["license_block"])
+
+    def test_default_blocks_osl(self):
+        from agent_bom.license_policy import _matches_pattern
+
+        assert _matches_pattern("OSL-3.0", DEFAULT_LICENSE_POLICY["license_block"])
+
+    def test_default_blocks_busl(self):
+        from agent_bom.license_policy import _matches_pattern
+
+        assert _matches_pattern("BUSL-1.1", DEFAULT_LICENSE_POLICY["license_block"])
+
+
+# ---------------------------------------------------------------------------
+# TestSPDXIndex — expanded license catalog via license-expression
+# ---------------------------------------------------------------------------
+
+
+class TestSPDXIndex:
+    """Tests for the expanded SPDX catalog from license-expression library."""
+
+    def test_artistic_is_recognized(self):
+        """Artistic-2.0 was 'unknown' with 33 hardcoded licenses, now categorized."""
+        cat, risk = categorize_license("Artistic-2.0")
+        assert cat != "unknown", "Artistic-2.0 should be recognized from SPDX index"
+
+    def test_wtfpl_is_permissive(self):
+        """WTFPL is Public Domain → permissive."""
+        cat, risk = categorize_license("WTFPL")
+        assert cat == "permissive"
+        assert risk == "low"
+
+    def test_cc_by_sa_is_copyleft_limited(self):
+        """CC-BY-SA-4.0 is Copyleft Limited → weak_copyleft."""
+        cat, risk = categorize_license("CC-BY-SA-4.0")
+        assert cat == "weak_copyleft"
+        assert risk == "medium"
+
+    def test_deprecated_gpl_normalizes(self):
+        """GPL-2.0 (deprecated) normalizes to GPL-2.0-only via license-expression."""
+        cat, risk = categorize_license("GPL-2.0")
+        assert cat == "strong_copyleft"
+        assert risk == "high"
+
+    def test_deprecated_lgpl_normalizes(self):
+        """LGPL-2.1 (deprecated) normalizes to LGPL-2.1-only."""
+        cat, risk = categorize_license("LGPL-2.1")
+        assert cat == "weak_copyleft"
+        assert risk == "medium"
+
+    def test_with_exception_handled(self):
+        """GPL-2.0-only WITH Classpath-exception-2.0 parses without error."""
+        cat, risk = categorize_license("GPL-2.0-only WITH Classpath-exception-2.0")
+        # WITH exceptions don't change the base license category
+        assert cat == "strong_copyleft"
+        assert risk == "high"
+
+    def test_nested_parens(self):
+        """(MIT OR Apache-2.0) AND GPL-3.0-only parses correctly."""
+        cat, risk = categorize_license("(MIT OR Apache-2.0) AND GPL-3.0-only")
+        # AND: most restrictive wins → strong_copyleft
+        assert cat == "strong_copyleft"
+        assert risk == "high"
+
+    def test_index_has_many_licenses(self):
+        """The SPDX index should have 100+ entries (vs 33 hardcoded)."""
+        from agent_bom.license_policy import _SPDX_INDEX
+
+        assert len(_SPDX_INDEX) > 100
+
+    def test_agpl_is_network_not_strong(self):
+        """AGPL should be network_copyleft, distinct from GPL strong_copyleft."""
+        agpl_cat, _ = categorize_license("AGPL-3.0-only")
+        gpl_cat, _ = categorize_license("GPL-3.0-only")
+        assert agpl_cat == "network_copyleft"
+        assert gpl_cat == "strong_copyleft"
+        assert agpl_cat != gpl_cat
+
+    def test_network_copyleft_set_exported(self):
+        """NETWORK_COPYLEFT set should be available for downstream code."""
+        from agent_bom.license_policy import NETWORK_COPYLEFT
+
+        assert "AGPL-3.0-only" in NETWORK_COPYLEFT
+        assert "EUPL-1.2" in NETWORK_COPYLEFT
+
+    def test_sspl_blocked_breaks_compliance(self):
+        """SSPL-1.0 is blocked by default policy and breaks compliance."""
+        agents = [_agent(servers=[_server(packages=[_pkg(license="SSPL-1.0")])])]
+        report = evaluate_license_policy(agents)
+        assert report.compliant is False
+
+    def test_eupl_blocked_breaks_compliance(self):
+        """EUPL-1.2 is blocked by default and breaks compliance."""
+        agents = [_agent(servers=[_server(packages=[_pkg(license="EUPL-1.2")])])]
+        report = evaluate_license_policy(agents)
+        assert report.compliant is False

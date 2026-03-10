@@ -63,7 +63,7 @@ def test_mcp_server_has_eighteen_tools():
 
     server = create_mcp_server()
     tools = _run(server.list_tools())
-    assert len(tools) == 29
+    assert len(tools) == 30
 
 
 def test_mcp_server_tool_names():
@@ -103,6 +103,7 @@ def test_mcp_server_tool_names():
         "model_provenance_scan",
         "prompt_scan",
         "model_file_scan",
+        "license_compliance_scan",
     }
 
 

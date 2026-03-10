@@ -1,69 +1,163 @@
 """License policy engine — categorize, evaluate, and report license compliance.
 
+Uses the ``license-expression`` library (transitive dep via cyclonedx-python-lib)
+for proper SPDX expression parsing, deprecated ID normalization, and access to the
+full ScanCode license index (2,500+ licenses with category metadata).
+
 Provides SPDX license categorization, policy evaluation against configurable
 block/warn lists, and Rich console output for license findings.
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 
 from agent_bom.models import Agent
 
+logger = logging.getLogger(__name__)
+
 # ---------------------------------------------------------------------------
-# SPDX license categories
+# SPDX license index — built from license-expression's vendored ScanCode data
 # ---------------------------------------------------------------------------
 
-PERMISSIVE: set[str] = {
-    "MIT",
-    "Apache-2.0",
-    "BSD-2-Clause",
-    "BSD-3-Clause",
-    "ISC",
-    "0BSD",
-    "Unlicense",
-    "CC0-1.0",
-    "CC-BY-4.0",
-    "Zlib",
-    "BSL-1.0",  # Boost, not Business Source License
-    "PSF-2.0",
-    "Python-2.0",
-    "BlueOak-1.0.0",
+# Map library categories → our risk tiers
+_CATEGORY_TO_TIER: dict[str, tuple[str, str]] = {
+    "Permissive": ("permissive", "low"),
+    "Public Domain": ("permissive", "low"),
+    "Copyleft Limited": ("weak_copyleft", "medium"),
+    "Copyleft": ("strong_copyleft", "high"),
+    "Source-available": ("source_available", "high"),
+    "Free Restricted": ("restricted", "medium"),
+    "Proprietary Free": ("proprietary", "medium"),
+    "Commercial": ("commercial_risk", "critical"),
+    "CLA": ("permissive", "low"),
+    "Patent License": ("permissive", "low"),
+    "Unstated License": ("unknown", "medium"),
 }
 
-WEAK_COPYLEFT: set[str] = {
-    "LGPL-2.1-only",
-    "LGPL-2.1-or-later",
-    "LGPL-3.0-only",
-    "LGPL-3.0-or-later",
-    "MPL-2.0",
-    "EPL-2.0",
-    "EPL-1.0",
-    "CDDL-1.0",
-    "CDDL-1.1",
-    "CPL-1.0",
-}
-
-STRONG_COPYLEFT: set[str] = {
-    "GPL-2.0-only",
-    "GPL-2.0-or-later",
-    "GPL-3.0-only",
-    "GPL-3.0-or-later",
+# Network-copyleft overrides — AGPL/EUPL/OSL are stricter than regular copyleft.
+# These get "network_copyleft" category with "critical" risk because they trigger
+# on network use (not just distribution), which catches SaaS/API deployments.
+_NETWORK_COPYLEFT: set[str] = {
+    "AGPL-1.0-only",
+    "AGPL-1.0-or-later",
     "AGPL-3.0-only",
     "AGPL-3.0-or-later",
+    "EUPL-1.1",
+    "EUPL-1.2",
+    "OSL-3.0",
+    "OSL-2.1",
+    "OSL-2.0",
+    "OSL-1.0",
+    "RPL-1.1",
+    "RPL-1.5",
+    "Watcom-1.0",
 }
 
-COMMERCIAL_RISK: set[str] = {
+# Commercial/source-available overrides — these are NOT open source despite
+# sometimes appearing in open ecosystems (MariaDB BSL→BUSL, MongoDB SSPL, etc.)
+_COMMERCIAL_RISK: set[str] = {
     "SSPL-1.0",
-    "BSL-1.1",  # Business Source License (MariaDB/HashiCorp)
+    "BUSL-1.1",  # Business Source License — SPDX key is BUSL, not BSL
     "Elastic-2.0",
-    "Commons-Clause",
 }
 
-# Default policy: block strong copyleft + commercial risk, warn weak copyleft
+# Backward compat aliases — users may pass non-SPDX IDs in policy files
+_ALIASES: dict[str, str] = {
+    "BSL-1.1": "BUSL-1.1",
+    "Commons-Clause": "Commons-Clause",  # Not in SPDX index, flagged as unknown
+}
+
+
+def _build_spdx_index() -> dict[str, tuple[str, str]]:
+    """Build SPDX key → (category, risk_level) lookup from license-expression index.
+
+    Falls back to hardcoded sets if the library is unavailable.
+    """
+    index: dict[str, tuple[str, str]] = {}
+
+    try:
+        from license_expression import get_license_index
+
+        for entry in get_license_index():
+            spdx_key = entry.get("spdx_license_key", "")
+            if not spdx_key or entry.get("is_exception"):
+                continue
+
+            # Network-copyleft overrides
+            if spdx_key in _NETWORK_COPYLEFT:
+                index[spdx_key] = ("network_copyleft", "critical")
+                continue
+
+            # Commercial-risk overrides
+            if spdx_key in _COMMERCIAL_RISK:
+                index[spdx_key] = ("commercial_risk", "critical")
+                continue
+
+            category = entry.get("category", "")
+            tier = _CATEGORY_TO_TIER.get(category, ("unknown", "medium"))
+            index[spdx_key] = tier
+
+    except ImportError:
+        logger.debug("license-expression not available, using hardcoded license sets")
+        # Fallback: hardcoded sets from original implementation
+        for lic in (
+            "MIT",
+            "Apache-2.0",
+            "BSD-2-Clause",
+            "BSD-3-Clause",
+            "ISC",
+            "0BSD",
+            "Unlicense",
+            "CC0-1.0",
+            "CC-BY-4.0",
+            "Zlib",
+            "BSL-1.0",
+            "PSF-2.0",
+            "Python-2.0",
+            "BlueOak-1.0.0",
+        ):
+            index[lic] = ("permissive", "low")
+        for lic in (
+            "LGPL-2.1-only",
+            "LGPL-2.1-or-later",
+            "LGPL-3.0-only",
+            "LGPL-3.0-or-later",
+            "MPL-2.0",
+            "EPL-2.0",
+            "EPL-1.0",
+            "CDDL-1.0",
+            "CDDL-1.1",
+            "CPL-1.0",
+        ):
+            index[lic] = ("weak_copyleft", "medium")
+        for lic in ("GPL-2.0-only", "GPL-2.0-or-later", "GPL-3.0-only", "GPL-3.0-or-later"):
+            index[lic] = ("strong_copyleft", "high")
+        for lic in _NETWORK_COPYLEFT:
+            index[lic] = ("network_copyleft", "critical")
+        for lic in _COMMERCIAL_RISK:
+            index[lic] = ("commercial_risk", "critical")
+        index["SSPL-1.0"] = ("commercial_risk", "critical")
+        index["Elastic-2.0"] = ("commercial_risk", "critical")
+
+    return index
+
+
+# Module-level singleton — built once at import time
+_SPDX_INDEX: dict[str, tuple[str, str]] = _build_spdx_index()
+
+# Expose legacy sets for backward compatibility (tests reference these)
+PERMISSIVE: set[str] = {k for k, v in _SPDX_INDEX.items() if v[0] == "permissive"}
+WEAK_COPYLEFT: set[str] = {k for k, v in _SPDX_INDEX.items() if v[0] == "weak_copyleft"}
+STRONG_COPYLEFT: set[str] = {k for k, v in _SPDX_INDEX.items() if v[0] == "strong_copyleft"}
+COMMERCIAL_RISK: set[str] = {k for k, v in _SPDX_INDEX.items() if v[0] == "commercial_risk"}
+NETWORK_COPYLEFT: set[str] = {k for k, v in _SPDX_INDEX.items() if v[0] == "network_copyleft"}
+
+# Default policy: block strong/network copyleft + commercial risk, warn weak copyleft
 DEFAULT_LICENSE_POLICY: dict = {
-    "license_block": ["GPL-*", "AGPL-*", "SSPL-*", "BSL-1.1", "Elastic-*"],
+    "license_block": ["GPL-*", "AGPL-*", "SSPL-*", "BUSL-*", "BSL-1.1", "Elastic-*", "EUPL-*", "OSL-*"],
     "license_warn": ["LGPL-*", "MPL-*", "EPL-*", "CDDL-*"],
 }
 
@@ -82,7 +176,7 @@ class LicenseFinding:
     ecosystem: str
     license_id: str  # SPDX identifier
     license_expression: str  # Full SPDX expression if available
-    category: str  # permissive, weak_copyleft, strong_copyleft, commercial_risk, unknown
+    category: str  # permissive, weak_copyleft, strong_copyleft, network_copyleft, commercial_risk, unknown
     risk_level: str  # low, medium, high, critical
     reason: str  # Human-readable explanation
     agents: list[str] = field(default_factory=list)
@@ -100,55 +194,119 @@ class LicenseReport:
 
 
 # ---------------------------------------------------------------------------
-# License categorization
+# SPDX expression parsing
 # ---------------------------------------------------------------------------
+
+_RISK_ORDER = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+
+
+def _parse_expression_keys(expression: str) -> list[str]:
+    """Parse an SPDX expression into individual license keys.
+
+    Uses license-expression for proper parsing (handles WITH exceptions,
+    nested parens, deprecated ID normalization like GPL-2.0 → GPL-2.0-only).
+    Falls back to naive split on OR/AND if library unavailable.
+    """
+    try:
+        from license_expression import get_spdx_licensing
+
+        spdx = get_spdx_licensing()
+        parsed = spdx.parse(expression)
+        if parsed is not None:
+            return spdx.license_keys(parsed)
+    except (ImportError, Exception):  # noqa: BLE001
+        pass
+
+    # Fallback: naive split (original behavior)
+    cleaned = expression.replace("(", "").replace(")", "")
+    parts = []
+    for chunk in cleaned.split(" OR "):
+        for sub in chunk.split(" AND "):
+            key = sub.strip()
+            # Strip WITH exceptions (e.g., "GPL-2.0-only WITH Classpath-exception-2.0")
+            if " WITH " in key:
+                key = key.split(" WITH ")[0].strip()
+            if key:
+                parts.append(key)
+    return parts
+
+
+def _categorize_single(spdx_key: str) -> tuple[str, str]:
+    """Categorize a single SPDX license key (not an expression)."""
+    if not spdx_key:
+        return "unknown", "medium"
+
+    # Check alias map
+    resolved = _ALIASES.get(spdx_key, spdx_key)
+
+    # Look up in index
+    if resolved in _SPDX_INDEX:
+        return _SPDX_INDEX[resolved]
+
+    return "unknown", "medium"
 
 
 def categorize_license(spdx_id: str) -> tuple[str, str]:
-    """Categorize an SPDX license identifier.
+    """Categorize an SPDX license identifier or expression.
 
     Returns (category, risk_level) where:
-    - category: permissive, weak_copyleft, strong_copyleft, commercial_risk, unknown
+    - category: permissive, weak_copyleft, strong_copyleft, network_copyleft,
+                commercial_risk, source_available, restricted, proprietary, unknown
     - risk_level: low, medium, high, critical
+
+    Handles compound expressions:
+    - OR: licensee chooses → picks the most permissive (lowest risk)
+    - AND: all apply → picks the most restrictive (highest risk)
+    - WITH: exception modifies base license → categorize base only
     """
     if not spdx_id:
         return "unknown", "medium"
 
     normalized = spdx_id.strip()
+    if not normalized:
+        return "unknown", "medium"
 
-    if normalized in PERMISSIVE:
-        return "permissive", "low"
-    if normalized in WEAK_COPYLEFT:
-        return "weak_copyleft", "medium"
-    if normalized in STRONG_COPYLEFT:
-        return "strong_copyleft", "high"
-    if normalized in COMMERCIAL_RISK:
-        return "commercial_risk", "critical"
+    # Try direct lookup first (fast path for simple IDs)
+    direct = _categorize_single(normalized)
+    if direct[0] != "unknown":
+        return direct
 
-    # Handle SPDX expressions (e.g., "Apache-2.0 OR MIT" → permissive)
-    if " OR " in normalized:
-        parts = [p.strip() for p in normalized.split(" OR ")]
-        categories = [categorize_license(p) for p in parts]
-        # OR means user can choose — pick the most permissive
-        risk_order = {"low": 0, "medium": 1, "high": 2, "critical": 3}
-        best = min(categories, key=lambda c: risk_order.get(c[1], 99))
-        return best
+    # Check if it's a compound expression
+    is_compound = any(op in normalized for op in (" OR ", " AND ", " WITH "))
+    if not is_compound:
+        # Try parsing as deprecated ID (e.g., GPL-2.0 → GPL-2.0-only)
+        keys = _parse_expression_keys(normalized)
+        if len(keys) == 1 and keys[0] != normalized:
+            return _categorize_single(keys[0])
+        return "unknown", "medium"
 
-    if " AND " in normalized:
-        parts = [p.strip() for p in normalized.split(" AND ")]
-        categories = [categorize_license(p) for p in parts]
-        # AND means all apply — pick the most restrictive
-        risk_order = {"low": 0, "medium": 1, "high": 2, "critical": 3}
-        worst = max(categories, key=lambda c: risk_order.get(c[1], 99))
-        return worst
+    # Parse compound expression
+    keys = _parse_expression_keys(normalized)
+    if not keys:
+        return "unknown", "medium"
 
-    return "unknown", "medium"
+    categories = [_categorize_single(k) for k in keys]
+
+    # Determine if OR or AND dominates
+    if " OR " in normalized and " AND " not in normalized:
+        # Pure OR: pick most permissive
+        return min(categories, key=lambda c: _RISK_ORDER.get(c[1], 99))
+    elif " AND " in normalized and " OR " not in normalized:
+        # Pure AND: pick most restrictive
+        return max(categories, key=lambda c: _RISK_ORDER.get(c[1], 99))
+    else:
+        # Mixed: let the parser handle it, take most restrictive (conservative)
+        return max(categories, key=lambda c: _RISK_ORDER.get(c[1], 99))
 
 
 def _matches_pattern(license_id: str, patterns: list[str]) -> bool:
     """Check if a license ID matches any of the glob patterns."""
     for pattern in patterns:
         if fnmatch(license_id, pattern):
+            return True
+        # Also match BSL-1.1 alias for BUSL-1.1
+        resolved = _ALIASES.get(license_id, "")
+        if resolved and fnmatch(resolved, pattern):
             return True
     return False
 
@@ -249,7 +407,8 @@ def evaluate_license_policy(
                             agents=[agent.name],
                         )
                     )
-                elif category in ("strong_copyleft", "commercial_risk"):
+                elif category in ("strong_copyleft", "network_copyleft", "commercial_risk", "source_available"):
+                    report.compliant = False if category in ("network_copyleft", "commercial_risk") else report.compliant
                     report.findings.append(
                         LicenseFinding(
                             package_name=pkg.name,
@@ -331,7 +490,7 @@ def print_license_report(report: LicenseReport, console: object) -> None:
     from rich.table import Table
 
     if not report.findings:
-        console.print("\n  [green]✓[/green] License compliance: no findings\n")
+        console.print("\n  [green]\u2713[/green] License compliance: no findings\n")
         return
 
     status = "[green]COMPLIANT[/green]" if report.compliant else "[red]NON-COMPLIANT[/red]"
@@ -351,7 +510,11 @@ def print_license_report(report: LicenseReport, console: object) -> None:
         "permissive": "green",
         "weak_copyleft": "yellow",
         "strong_copyleft": "red",
+        "network_copyleft": "red",
         "commercial_risk": "red",
+        "source_available": "yellow",
+        "restricted": "yellow",
+        "proprietary": "cyan",
         "unknown": "dim",
     }
 

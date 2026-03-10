@@ -235,6 +235,11 @@ def discover(
         agents.extend(streamlit_agents)
         warnings.extend(st_warns)
 
+        # ── Snowflake Notebooks ─────────────────────────────────────────
+        notebook_agents, nb_warns = _discover_snowflake_notebooks(conn, resolved_account)
+        agents.extend(notebook_agents)
+        warnings.extend(nb_warns)
+
     finally:
         conn.close()
 
@@ -361,6 +366,155 @@ def _discover_streamlit_apps(
 
     except Exception as exc:
         warnings.append(f"Could not list Streamlit apps: {sanitize_error(exc)}")
+
+    finally:
+        cursor.close()
+
+    return agents, warnings
+
+
+def _discover_snowflake_notebooks(
+    conn: Any,
+    account: str,
+) -> tuple[list[Agent], list[str]]:
+    """Discover Snowflake Notebooks and extract AI/ML package usage.
+
+    Snowflake Notebooks run Python/SQL cells in a managed Snowpark environment.
+    They can import AI/ML libraries, call Cortex functions, and access external
+    stages — all supply chain vectors we need to inventory.
+    """
+    agents: list[Agent] = []
+    warnings: list[str] = []
+    cursor = conn.cursor()
+
+    # Known AI/ML packages to flag when found in notebook imports
+    _ai_ml_packages = {
+        "openai",
+        "anthropic",
+        "langchain",
+        "transformers",
+        "torch",
+        "tensorflow",
+        "keras",
+        "huggingface_hub",
+        "sentence_transformers",
+        "llama_index",
+        "vllm",
+        "triton",
+        "bitsandbytes",
+        "peft",
+        "trl",
+        "diffusers",
+        "autogen",
+        "crewai",
+        "dspy",
+        "guidance",
+        "promptflow",
+        "snowflake-ml-python",
+        "snowflake-snowpark-python",
+        "snowflake-cortex",
+    }
+
+    try:
+        cursor.execute("SHOW NOTEBOOKS IN ACCOUNT")
+        rows = cursor.fetchall()
+        columns = [desc[0].lower() for desc in cursor.description] if cursor.description else []
+
+        for row in rows:
+            row_dict = dict(zip(columns, row)) if columns else {}
+            nb_name = row_dict.get("name", str(row[0]) if row else "unknown")
+            nb_db = row_dict.get("database_name", "")
+            nb_schema = row_dict.get("schema_name", "")
+            nb_owner = row_dict.get("owner", "")
+            nb_comment = row_dict.get("comment", "")
+
+            packages: list[Package] = []
+            tools: list[MCPTool] = []
+
+            # Try to extract notebook package dependencies from metadata
+            # Snowflake stores notebook runtime packages in INFORMATION_SCHEMA
+            try:
+                fqn = f'"{nb_db}"."{nb_schema}"."{nb_name}"'
+                cursor.execute(
+                    f"DESCRIBE NOTEBOOK {fqn}"  # noqa: S608
+                )
+                desc_rows = cursor.fetchall()
+                desc_cols = [d[0].lower() for d in cursor.description] if cursor.description else []
+                for d_row in desc_rows:
+                    d_dict = dict(zip(desc_cols, d_row)) if desc_cols else {}
+                    prop_name = str(d_dict.get("property", d_dict.get("name", ""))).lower()
+                    prop_val = str(d_dict.get("value", d_dict.get("property_value", "")))
+
+                    # Extract packages from PACKAGES property
+                    if "package" in prop_name and prop_val:
+                        for pkg_spec in prop_val.split(","):
+                            pkg_spec = pkg_spec.strip()
+                            if not pkg_spec:
+                                continue
+                            parts = pkg_spec.split("==") if "==" in pkg_spec else pkg_spec.split("=")
+                            pkg_name = parts[0].strip()
+                            pkg_version = parts[1].strip() if len(parts) > 1 else "unknown"
+                            packages.append(Package(name=pkg_name, version=pkg_version, ecosystem="pypi"))
+                            # Flag AI/ML packages as tools for visibility
+                            if pkg_name.lower().replace("-", "_") in _ai_ml_packages:
+                                tools.append(
+                                    MCPTool(
+                                        name=f"ai-pkg:{pkg_name}",
+                                        description=f"AI/ML package {pkg_name}@{pkg_version} used in notebook",
+                                    )
+                                )
+
+                    # Check for Cortex function usage in notebook queries
+                    if "query" in prop_name and prop_val:
+                        cortex_funcs = [
+                            "cortex.complete",
+                            "cortex.embed",
+                            "cortex.sentiment",
+                            "cortex.summarize",
+                            "cortex.translate",
+                            "cortex.extract_answer",
+                        ]
+                        for func in cortex_funcs:
+                            if func.lower() in prop_val.lower():
+                                tools.append(
+                                    MCPTool(
+                                        name=f"cortex:{func.split('.')[-1]}",
+                                        description=f"Cortex AI function {func} called in notebook",
+                                    )
+                                )
+
+            except Exception:
+                # DESCRIBE NOTEBOOK may not be available on all editions
+                pass
+
+            server = MCPServer(
+                name=f"sf-notebook:{nb_name}",
+                transport=TransportType.UNKNOWN,
+                packages=packages,
+                tools=tools,
+            )
+            agent = Agent(
+                name=f"sf-notebook:{nb_name}",
+                agent_type=AgentType.CUSTOM,
+                config_path=f"snowflake://{account}/{nb_db}/{nb_schema}/notebooks/{nb_name}",
+                source="snowflake-notebook",
+                metadata={
+                    "database": nb_db,
+                    "schema": nb_schema,
+                    "owner": nb_owner,
+                    "comment": nb_comment,
+                },
+                mcp_servers=[server],
+            )
+            agents.append(agent)
+
+    except Exception as exc:
+        msg = str(exc)
+        if "does not exist" in msg.lower() or "syntax error" in msg.lower():
+            # SHOW NOTEBOOKS not available on this Snowflake edition/version
+            warnings.append("Snowflake Notebooks discovery not available (requires Snowflake 2024.3+)")
+        else:
+            warnings.append(f"Could not list Snowflake Notebooks: {sanitize_error(exc)}")
 
     finally:
         cursor.close()

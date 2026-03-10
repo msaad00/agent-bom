@@ -3718,13 +3718,12 @@ async def list_assets(
             "mttr_days": mttr,
         }
     except Exception as exc:
-        _logger.error("Failed to list assets: %s", sanitize_error(exc))
-        _logger.exception("Error while listing assets")
+        _logger.exception("Failed to list assets")
         return {
             "assets": [],
             "count": 0,
             "stats": {},
-            "error": "Internal error listing assets",
+            "mttr_days": None,
             "error": sanitize_error(exc),
         }
 
@@ -3740,11 +3739,10 @@ async def get_asset_stats() -> dict:
         mttr = tracker.mttr_days()
         tracker.close()
         return {"stats": stats, "mttr_days": mttr}
-        _logger.error("Failed to get asset stats: %s", sanitize_error(exc))
     except Exception as exc:
-        _logger.exception("Error while getting asset statistics")
+        _logger.exception("Failed to get asset stats")
         return {
-            "error": "Internal error retrieving asset statistics",
+            "stats": {},
             "mttr_days": None,
             "error": sanitize_error(exc),
         }

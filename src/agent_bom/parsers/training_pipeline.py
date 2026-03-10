@@ -354,8 +354,8 @@ def parse_kubeflow_pipeline_yaml(path: Path) -> TrainingPipelineScanResult | Non
         logger.warning("Failed to read %s: %s", path, exc)
         return None
 
-    # Verify this is actually a pipeline YAML
-    is_argo = "argoproj.io" in content
+    # Verify this is actually a pipeline YAML (match exact apiVersion patterns)
+    is_argo = bool(re.search(r"apiVersion:\s*argoproj\.io/", content))
     is_kfp = "pipelineSpec" in content or "pipelineInfo" in content
     if not is_argo and not is_kfp:
         return None

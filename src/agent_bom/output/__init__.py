@@ -1459,6 +1459,13 @@ def to_json(report: AIBOMReport) -> dict:
                                 "registry_version": pkg.registry_version,
                                 "license": pkg.license,
                                 "license_expression": pkg.license_expression,
+                                "supplier": pkg.supplier,
+                                "author": pkg.author,
+                                "description": pkg.description,
+                                "homepage": pkg.homepage,
+                                "repository_url": pkg.repository_url,
+                                "download_url": pkg.download_url,
+                                "copyright_text": pkg.copyright_text,
                                 "deps_dev_resolved": pkg.deps_dev_resolved,
                                 "scorecard_score": pkg.scorecard_score,
                                 "scorecard_checks": pkg.scorecard_checks or None,
@@ -1711,6 +1718,24 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                 if pkg.license_expression or pkg.license:
                     lic_id = pkg.license_expression or pkg.license
                     pkg_component["licenses"] = [{"license": {"id": lic_id}}]
+                if pkg.supplier:
+                    pkg_component["supplier"] = {"name": pkg.supplier}
+                if pkg.author:
+                    pkg_component["author"] = pkg.author
+                if pkg.description:
+                    pkg_component["description"] = pkg.description
+                if pkg.copyright_text:
+                    pkg_component["copyright"] = pkg.copyright_text
+                # External references (homepage, repository, download)
+                ext_refs = []
+                if pkg.homepage:
+                    ext_refs.append({"type": "website", "url": pkg.homepage})
+                if pkg.repository_url:
+                    ext_refs.append({"type": "vcs", "url": pkg.repository_url})
+                if pkg.download_url:
+                    ext_refs.append({"type": "distribution", "url": pkg.download_url})
+                if ext_refs:
+                    pkg_component["externalReferences"] = ext_refs
                 components.append(pkg_component)
                 server_deps.append(pkg_ref)
                 bom_ref_map[f"{pkg.ecosystem}:{pkg.name}@{pkg.version}"] = pkg_ref
@@ -2387,6 +2412,16 @@ def to_spdx(report: AIBOMReport) -> dict:
                         pkg_element["externalIdentifier"] = [{"type": "PackageURL", "identifier": pkg.purl}]
                     if pkg.license_expression or pkg.license:
                         pkg_element["declaredLicense"] = pkg.license_expression or pkg.license
+                    if pkg.supplier:
+                        pkg_element["supplier"] = pkg.supplier
+                    if pkg.description:
+                        pkg_element["description"] = pkg.description[:300]
+                    if pkg.homepage:
+                        pkg_element["homepage"] = pkg.homepage
+                    if pkg.download_url:
+                        pkg_element["downloadLocation"] = pkg.download_url
+                    if pkg.copyright_text:
+                        pkg_element["copyrightText"] = pkg.copyright_text
                     elements.append(pkg_element)
 
                 pkg_id = pkg_ref_map[pkg_key]

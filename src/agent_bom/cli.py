@@ -2378,6 +2378,21 @@ def scan(
                 if lic_count:
                     con.print(f"  [green]✓[/green] deps.dev: {lic_count} package license(s) enriched")
 
+                # Enrich supply chain metadata (description, homepage, repo, author)
+                try:
+                    from agent_bom.http_client import create_client as _sc_client
+                    from agent_bom.resolver import enrich_supply_chain_metadata as _sc_enrich
+
+                    async def _do_sc_enrich() -> int:
+                        async with _sc_client(timeout=15.0) as client:
+                            return await _sc_enrich(all_pkgs_updated, client)
+
+                    sc_count = _asyncio_dd.run(_do_sc_enrich())
+                    if sc_count:
+                        con.print(f"  [green]✓[/green] supply chain: {sc_count} package metadata enriched")
+                except Exception:  # noqa: BLE001
+                    pass  # supply chain enrichment is best-effort
+
         # Step 2b: MCP Runtime Introspection (--introspect)
         _enforcement_data: dict | None = None
         _intro_report = None

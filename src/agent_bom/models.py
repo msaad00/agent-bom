@@ -136,6 +136,15 @@ class Package:
     license_expression: Optional[str] = None  # Full SPDX expression (e.g. "Apache-2.0 AND MIT")
     deps_dev_resolved: bool = False  # True if resolved via deps.dev API
 
+    # Supply chain metadata (populated by deps.dev enrichment or SBOM ingestion)
+    supplier: Optional[str] = None  # Organization or individual that supplied the package
+    author: Optional[str] = None  # Package author (name or email)
+    description: Optional[str] = None  # Short package description
+    homepage: Optional[str] = None  # Project homepage URL
+    repository_url: Optional[str] = None  # Source repository URL (git, svn)
+    download_url: Optional[str] = None  # Artifact download location
+    copyright_text: Optional[str] = None  # Copyright notice
+
     # OpenSSF Scorecard enrichment (populated by --scorecard flag)
     scorecard_score: Optional[float] = None  # 0.0-10.0 overall score
     scorecard_checks: dict[str, int] = field(default_factory=dict)  # check_name -> score (-1 to 10)

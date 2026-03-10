@@ -284,24 +284,35 @@ async def enrich_licenses_deps_dev(
             if not info:
                 return False
 
+            enriched = False
+
+            # License enrichment
             licenses = info.get("licenses", [])
-            if not licenses:
-                return False
-
-            # deps.dev returns licenses as a list of SPDX identifiers
             spdx_ids = [lic for lic in licenses if isinstance(lic, str) and lic]
-            if not spdx_ids:
-                return False
+            if spdx_ids and not pkg.license:
+                pkg.license = spdx_ids[0]
+                pkg.license_expression = " AND ".join(spdx_ids) if len(spdx_ids) > 1 else spdx_ids[0]
+                enriched = True
 
-            # Set simple license (first identifier)
-            pkg.license = spdx_ids[0]
-            # Set full expression if multiple
-            if len(spdx_ids) > 1:
-                pkg.license_expression = " AND ".join(spdx_ids)
-            else:
-                pkg.license_expression = spdx_ids[0]
+            # Supply chain metadata from deps.dev links
+            links = info.get("links", [])
+            for link in links:
+                label = (link.get("label") or "").lower()
+                url = link.get("url") or ""
+                if not url:
+                    continue
+                if "homepage" in label and not pkg.homepage:
+                    pkg.homepage = url
+                elif "source" in label or "repo" in label and not pkg.repository_url:
+                    pkg.repository_url = url
 
-            return True
+            # Description from deps.dev (if available)
+            if not pkg.description:
+                desc = info.get("description")
+                if desc:
+                    pkg.description = desc[:300]
+
+            return enriched
 
     async with create_client(timeout=15.0) as client:
         batch_size = MAX_CONCURRENT * 2

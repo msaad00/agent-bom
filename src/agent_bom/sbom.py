@@ -84,6 +84,59 @@ def parse_cyclonedx(data: dict) -> list[Package]:
         if ecosystem in ("library", "framework", "container", "device", "unknown"):
             ecosystem = "unknown"
 
+        # Extract supply chain metadata from CycloneDX fields
+        supplier_name = None
+        supplier_data = comp.get("supplier") or comp.get("manufacturer")
+        if isinstance(supplier_data, dict):
+            supplier_name = supplier_data.get("name")
+        elif isinstance(supplier_data, str):
+            supplier_name = supplier_data
+
+        author_val = comp.get("author") or None
+
+        description_val = comp.get("description") or None
+        if description_val:
+            description_val = description_val[:300]
+
+        # Extract license from CycloneDX licenses array
+        lic_id = None
+        lic_expr = None
+        cdx_licenses = comp.get("licenses", [])
+        if cdx_licenses:
+            ids = []
+            for lic_entry in cdx_licenses:
+                if isinstance(lic_entry, dict):
+                    lic_obj = lic_entry.get("license", {})
+                    if isinstance(lic_obj, dict):
+                        lid = lic_obj.get("id") or lic_obj.get("name")
+                        if lid:
+                            ids.append(lid)
+                    expr = lic_entry.get("expression")
+                    if expr:
+                        lic_expr = expr
+            if ids:
+                lic_id = ids[0]
+                if not lic_expr:
+                    lic_expr = " AND ".join(ids) if len(ids) > 1 else ids[0]
+
+        # Extract external references (homepage, repo, download)
+        homepage_val = None
+        repo_val = None
+        download_val = None
+        for ref in comp.get("externalReferences", []):
+            ref_type = (ref.get("type") or "").lower()
+            ref_url = ref.get("url") or ""
+            if not ref_url:
+                continue
+            if ref_type == "website" and not homepage_val:
+                homepage_val = ref_url
+            elif ref_type == "vcs" and not repo_val:
+                repo_val = ref_url
+            elif ref_type == "distribution" and not download_val:
+                download_val = ref_url
+
+        copyright_val = comp.get("copyright") or None
+
         packages.append(
             Package(
                 name=name,
@@ -92,6 +145,15 @@ def parse_cyclonedx(data: dict) -> list[Package]:
                 purl=purl or None,
                 is_direct=True,
                 resolved_from_registry=False,
+                license=lic_id,
+                license_expression=lic_expr,
+                supplier=supplier_name,
+                author=author_val,
+                description=description_val,
+                homepage=homepage_val,
+                repository_url=repo_val,
+                download_url=download_val,
+                copyright_text=copyright_val,
             )
         )
 
@@ -123,6 +185,15 @@ def parse_spdx(data: dict) -> list[Package]:
             if not name:
                 continue
             ecosystem = _ecosystem_from_purl(purl) if purl else "unknown"
+
+            # Extract SPDX 3.0 metadata
+            lic_3 = elem.get("declaredLicense") or elem.get("software/declaredLicense") or None
+            supplier_3 = elem.get("supplier") or elem.get("originatedBy") or None
+            if isinstance(supplier_3, dict):
+                supplier_3 = supplier_3.get("name")
+            desc_3 = elem.get("description") or elem.get("software/description") or None
+            copyright_3 = elem.get("copyrightText") or None
+
             packages.append(
                 Package(
                     name=name,
@@ -130,6 +201,10 @@ def parse_spdx(data: dict) -> list[Package]:
                     ecosystem=ecosystem,
                     purl=purl or None,
                     is_direct=True,
+                    license=lic_3 if isinstance(lic_3, str) else None,
+                    supplier=supplier_3 if isinstance(supplier_3, str) else None,
+                    description=desc_3[:300] if desc_3 else None,
+                    copyright_text=copyright_3 if isinstance(copyright_3, str) else None,
                 )
             )
         return packages
@@ -150,6 +225,25 @@ def parse_spdx(data: dict) -> list[Package]:
                 break
 
         ecosystem = _ecosystem_from_purl(purl) if purl else "unknown"
+
+        # SPDX 2.x supply chain metadata
+        lic_declared = pkg.get("licenseDeclared") or None
+        if lic_declared and lic_declared.upper() in ("NOASSERTION", "NONE"):
+            lic_declared = None
+        supplier_2x = pkg.get("supplier") or None
+        if isinstance(supplier_2x, str) and supplier_2x.upper() == "NOASSERTION":
+            supplier_2x = None
+        download_loc = pkg.get("downloadLocation") or None
+        if download_loc and download_loc.upper() == "NOASSERTION":
+            download_loc = None
+        homepage_2x = pkg.get("homepage") or None
+        if homepage_2x and homepage_2x.upper() == "NOASSERTION":
+            homepage_2x = None
+        desc_2x = pkg.get("description") or None
+        copyright_2x = pkg.get("copyrightText") or None
+        if copyright_2x and copyright_2x.upper() == "NOASSERTION":
+            copyright_2x = None
+
         packages.append(
             Package(
                 name=name,
@@ -157,6 +251,12 @@ def parse_spdx(data: dict) -> list[Package]:
                 ecosystem=ecosystem,
                 purl=purl or None,
                 is_direct=True,
+                license=lic_declared,
+                supplier=supplier_2x,
+                description=desc_2x[:300] if desc_2x else None,
+                homepage=homepage_2x,
+                download_url=download_loc,
+                copyright_text=copyright_2x,
             )
         )
 

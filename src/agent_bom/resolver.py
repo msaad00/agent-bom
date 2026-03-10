@@ -42,6 +42,37 @@ async def resolve_npm_metadata(
     return None, None
 
 
+async def resolve_npm_supply_chain(
+    pkg: Package,
+    client: httpx.AsyncClient,
+) -> None:
+    """Enrich a Package with npm registry supply chain metadata."""
+    encoded_name = pkg.name.replace("/", "%2F")
+    response = await request_with_retry(client, "GET", f"{NPM_REGISTRY}/{encoded_name}/latest")
+    if not response or response.status_code != 200:
+        return
+    try:
+        data = response.json()
+        if not pkg.description:
+            pkg.description = (data.get("description") or "")[:300] or None
+        if not pkg.homepage:
+            pkg.homepage = data.get("homepage") or None
+        if not pkg.repository_url:
+            repo = data.get("repository")
+            if isinstance(repo, dict):
+                pkg.repository_url = repo.get("url")
+            elif isinstance(repo, str):
+                pkg.repository_url = repo
+        if not pkg.author:
+            author = data.get("author")
+            if isinstance(author, dict):
+                pkg.author = author.get("name")
+            elif isinstance(author, str):
+                pkg.author = author
+    except (ValueError, KeyError):
+        pass
+
+
 async def resolve_pypi_metadata(
     package_name: str,
     client: httpx.AsyncClient,
@@ -64,6 +95,35 @@ async def resolve_pypi_metadata(
         except (ValueError, KeyError):
             pass
     return None, None
+
+
+async def resolve_pypi_supply_chain(
+    pkg: Package,
+    client: httpx.AsyncClient,
+) -> None:
+    """Enrich a Package with PyPI supply chain metadata."""
+    response = await request_with_retry(client, "GET", f"{PYPI_API}/{pkg.name}/json")
+    if not response or response.status_code != 200:
+        return
+    try:
+        info = response.json().get("info", {})
+        if not pkg.description:
+            pkg.description = (info.get("summary") or "")[:300] or None
+        if not pkg.homepage:
+            pkg.homepage = info.get("home_page") or info.get("project_url") or None
+            # Fall back to project_urls
+            if not pkg.homepage:
+                urls = info.get("project_urls") or {}
+                pkg.homepage = urls.get("Homepage") or urls.get("Home") or None
+        if not pkg.repository_url:
+            urls = info.get("project_urls") or {}
+            pkg.repository_url = urls.get("Repository") or urls.get("Source") or urls.get("Source Code") or urls.get("GitHub") or None
+        if not pkg.author:
+            pkg.author = info.get("author") or info.get("author_email") or None
+        if not pkg.supplier:
+            pkg.supplier = info.get("maintainer") or None
+    except (ValueError, KeyError):
+        pass
 
 
 async def resolve_package_version(pkg: Package, client: httpx.AsyncClient) -> bool:
@@ -140,6 +200,35 @@ async def enrich_licenses(packages: list[Package], client: httpx.AsyncClient) ->
         except ImportError:
             pass  # deps_dev module not available — skip gracefully
 
+    return count
+
+
+async def enrich_supply_chain_metadata(
+    packages: list[Package],
+    client: httpx.AsyncClient,
+) -> int:
+    """Enrich packages with supply chain metadata (description, homepage, repo, author).
+
+    Fetches from npm/PyPI registries for those ecosystems; skips packages that
+    already have metadata populated (e.g., from SBOM ingestion).
+
+    Returns count of packages enriched.
+    """
+    need_meta = [p for p in packages if not p.description and p.version not in ("latest", "unknown", "") and p.ecosystem in ("npm", "pypi")]
+    if not need_meta:
+        return 0
+
+    count = 0
+    for pkg in need_meta:
+        try:
+            if pkg.ecosystem == "npm":
+                await resolve_npm_supply_chain(pkg, client)
+            elif pkg.ecosystem == "pypi":
+                await resolve_pypi_supply_chain(pkg, client)
+            if pkg.description or pkg.homepage or pkg.repository_url:
+                count += 1
+        except Exception:  # noqa: BLE001
+            continue
     return count
 
 

@@ -385,7 +385,11 @@ def load_policy(path: str) -> dict:
 
 
 def _validate_policy(policy: dict) -> None:
-    """Light validation of policy structure."""
+    """Validate policy structure and condition syntax at load time.
+
+    Catches invalid conditions immediately rather than at evaluation time,
+    giving operators clear feedback on misconfigured policies.
+    """
     if not isinstance(policy, dict):
         raise ValueError("Policy must be a JSON object")
     if "rules" not in policy:
@@ -397,6 +401,13 @@ def _validate_policy(policy: dict) -> None:
             raise ValueError(f"Rule at index {i} missing 'id'")
         if rule.get("action") not in ("fail", "warn", "jira", None):
             raise ValueError(f"Rule '{rule['id']}' action must be 'fail', 'warn', or 'jira'")
+        # Validate condition expression syntax at load time (fail-fast)
+        condition = rule.get("condition")
+        if condition and isinstance(condition, str):
+            try:
+                _tokenize(condition)
+            except ValueError as e:
+                raise ValueError(f"Rule '{rule['id']}' has invalid condition syntax: {e}") from e
 
 
 def _rule_matches(rule: dict, br) -> bool:

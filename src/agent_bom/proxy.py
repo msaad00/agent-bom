@@ -69,6 +69,62 @@ def _safe_regex_search(pattern: str, text: str) -> bool:
     return compiled.search(text) is not None
 
 
+# ─── Rotating audit log ─────────────────────────────────────────────────────
+
+# Maximum audit log size before rotation (100 MB). Prevents disk exhaustion
+# on long-running proxy instances.
+_AUDIT_LOG_MAX_BYTES = 100 * 1024 * 1024
+
+
+class RotatingAuditLog:
+    """File-like wrapper that rotates the JSONL audit log at a size threshold.
+
+    Checks file size every 1000 writes (not every line) to minimize stat() overhead.
+    Keeps one rotated backup (.1). Rejects symlinks on open.
+    """
+
+    def __init__(self, path: str, max_bytes: int = _AUDIT_LOG_MAX_BYTES) -> None:
+        self._path = path
+        self._max_bytes = max_bytes
+        self._writes = 0
+        self._file = self._open(path)
+
+    @staticmethod
+    def _open(path: str) -> object:
+        p = Path(path)
+        if p.is_symlink():
+            raise ValueError(f"Audit log path must not be a symlink: {path}")
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        return os.fdopen(fd, "a")
+
+    def write(self, data: str) -> int:
+        result = self._file.write(data)  # type: ignore[union-attr]
+        self._writes += 1
+        if self._writes % 1000 == 0:
+            self._maybe_rotate()
+        return result
+
+    def flush(self) -> None:
+        self._file.flush()  # type: ignore[union-attr]
+
+    def close(self) -> None:
+        self._file.close()  # type: ignore[union-attr]
+
+    def _maybe_rotate(self) -> None:
+        try:
+            size = Path(self._path).stat().st_size
+            if size >= self._max_bytes:
+                self._file.close()  # type: ignore[union-attr]
+                rotated = self._path + ".1"
+                if Path(rotated).exists():
+                    Path(rotated).unlink()
+                Path(self._path).rename(rotated)
+                self._file = self._open(self._path)
+                logger.info("Rotated audit log at %d bytes", size)
+        except OSError:
+            pass
+
+
 # ─── Proxy metrics ──────────────────────────────────────────────────────────
 
 
@@ -602,13 +658,10 @@ async def run_proxy(
     # Open audit log with restricted permissions (0o600)
     # Reject symlinks to prevent log injection attacks (attacker creates
     # symlink to overwrite another file via the proxy's audit writes).
+    # RotatingAuditLog handles automatic rotation at 100 MB.
     log_file = None
     if log_path:
-        log_p = Path(log_path)
-        if log_p.is_symlink():
-            raise ValueError(f"Audit log path must not be a symlink: {log_path}")
-        fd = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
-        log_file = os.fdopen(fd, "a")
+        log_file = RotatingAuditLog(log_path)
 
     # Metrics
     metrics = ProxyMetrics()

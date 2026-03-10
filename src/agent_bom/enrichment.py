@@ -28,9 +28,11 @@ NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 EPSS_API_URL = "https://api.first.org/data/v1/epss"
 CISA_KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 
-# Cache for CISA KEV catalog (refresh daily)
+# Cache for CISA KEV catalog (refresh daily, persisted to disk)
 _kev_cache: Optional[dict] = None
 _kev_cache_time: Optional[datetime] = None
+_KEV_CACHE_FILE = Path.home() / ".agent-bom" / "kev_cache.json"
+_KEV_CACHE_TTL_SECONDS = 86400  # 24 hours
 
 # ─── Persistent enrichment cache (NVD + EPSS) ──────────────────────────────
 
@@ -238,11 +240,23 @@ async def fetch_cisa_kev_catalog(client: httpx.AsyncClient) -> dict:
     """
     global _kev_cache, _kev_cache_time
 
-    # Use cache if less than 24 hours old
+    # Use in-memory cache if less than 24 hours old
     if _kev_cache and _kev_cache_time:
         age = datetime.now(timezone.utc) - _kev_cache_time
-        if age.total_seconds() < 86400:  # 24 hours
+        if age.total_seconds() < _KEV_CACHE_TTL_SECONDS:
             return _kev_cache
+
+    # Try loading from disk cache if in-memory cache is stale
+    if not _kev_cache and _KEV_CACHE_FILE.exists():
+        try:
+            disk_data = json.loads(_KEV_CACHE_FILE.read_text())
+            cached_at = disk_data.get("_cached_at", 0)
+            if (time.time() - cached_at) < _KEV_CACHE_TTL_SECONDS:
+                _kev_cache = disk_data.get("data", {})
+                _kev_cache_time = datetime.fromtimestamp(cached_at, tz=timezone.utc)
+                return _kev_cache
+        except (OSError, json.JSONDecodeError, ValueError):
+            _logger.debug("Failed to load KEV disk cache")
 
     response = await request_with_retry(client, "GET", CISA_KEV_URL)
 
@@ -265,9 +279,29 @@ async def fetch_cisa_kev_catalog(client: httpx.AsyncClient) -> dict:
 
             _kev_cache = kev_dict
             _kev_cache_time = datetime.now(timezone.utc)
+
+            # Persist to disk for cross-session resilience
+            try:
+                _KEV_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+                _KEV_CACHE_FILE.write_text(json.dumps({"_cached_at": time.time(), "data": kev_dict}))
+            except OSError:
+                _logger.debug("Failed to persist KEV cache to disk")
+
             return kev_dict
         except (ValueError, KeyError) as e:
             console.print(f"  [dim yellow]CISA KEV parse error: {e}[/dim yellow]")
+
+    # Fallback: serve stale disk cache if API is down
+    if _KEV_CACHE_FILE.exists():
+        try:
+            disk_data = json.loads(_KEV_CACHE_FILE.read_text())
+            stale_data = disk_data.get("data", {})
+            if stale_data:
+                console.print("  [dim yellow]⚠ Using stale CISA KEV cache (API unreachable)[/dim yellow]")
+                _kev_cache = stale_data
+                return stale_data
+        except (OSError, json.JSONDecodeError):
+            pass
 
     return {}
 
@@ -341,6 +375,8 @@ async def enrich_vulnerabilities(
             epss_data = await fetch_epss_scores(cve_ids, client)
             if epss_data:
                 console.print(f"  [green]✓[/green] Retrieved EPSS data for {len(epss_data)} CVE(s)")
+            else:
+                console.print("  [yellow]⚠[/yellow] EPSS data unavailable (API unreachable or no matches)")
 
         # Fetch CISA KEV catalog (cached)
         kev_data = {}
@@ -373,6 +409,8 @@ async def enrich_vulnerabilities(
 
             if nvd_data:
                 console.print(f"  [green]✓[/green] Retrieved NVD data for {len(nvd_data)}/{len(cve_ids)} CVE(s)")
+            else:
+                console.print("  [yellow]⚠[/yellow] NVD data unavailable (API unreachable or rate-limited)")
 
         # Enrich each vulnerability — match by primary ID or CVE aliases
         for vuln in vulnerabilities:

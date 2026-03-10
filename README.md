@@ -289,7 +289,7 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible
 |------|---------|----------|
 | CLI | `agent-bom scan` | Local audit |
 | GitHub Action | `uses: msaad00/agent-bom@v0.68.0 | CI/CD + SARIF |
-| Docker | `docker run agentbom/agent-bom scan` | Isolated scans |
+| Docker | `docker run agentbom/agent-bom scan` | Isolated scans (linux/amd64, linux/arm64) |
 | REST API | `agent-bom api` | Dashboards, SIEM |
 | MCP Server | `agent-bom mcp-server` (30 tools) | Inside any MCP client |
 | Dashboard | `agent-bom serve` · [Full deploy guide](docs/DEPLOYMENT.md) | API + Next.js UI (15 pages) · Postgres/Supabase |
@@ -376,6 +376,22 @@ Options:
 | **Databricks** | Preview (Cluster packages, model serving) | `pip install 'agent-bom[databricks]'` |
 | **Nebius** | Preview (Managed K8s, containers) | `pip install 'agent-bom[nebius]'` |
 | **CoreWeave** | Via K8s | `--k8s --context=coreweave-cluster` |
+
+</details>
+
+<details>
+<summary><b>Docker platform support</b></summary>
+
+Docker images are published for **linux/amd64** and **linux/arm64**. Both architectures are validated in CI on every PR.
+
+| Platform | Method | Notes |
+|----------|--------|-------|
+| Linux x64 / arm64 | Docker | Native support |
+| macOS (Intel / Apple Silicon) | Docker Desktop | Runs Linux containers via virtualization |
+| Windows x64 | Docker Desktop (WSL 2) | Runs Linux containers; mount `%APPDATA%` paths for MCP config discovery |
+| Windows Server | Python CLI | `pip install agent-bom` -- no Docker Desktop required |
+
+Windows-specific volume mount examples and GPU scanning notes: [docs/WINDOWS_CONTAINERS.md](docs/WINDOWS_CONTAINERS.md)
 
 </details>
 
@@ -489,7 +505,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full diagrams: data flow pi
 
 **Ecosystem coverage**
 - [ ] Maven / Go ecosystem — test coverage thin (PyPI, npm, cargo, pip best covered)
-- [ ] Windows container support (currently Linux-focused for Docker GPU discovery)
+- [x] Windows platform docs + Docker Desktop guidance ([WINDOWS_CONTAINERS.md](docs/WINDOWS_CONTAINERS.md))
+- [ ] Windows-native container images (nanoserver/servercore)
 
 See the full list of [shipped features](https://github.com/msaad00/agent-bom/releases).
 

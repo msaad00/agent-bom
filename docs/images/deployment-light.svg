@@ -47,7 +47,7 @@
     <rect width="200" height="36" rx="6" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1"/>
     <circle cx="16" cy="18" r="5" fill="#3b82f6" opacity="0.6"/>
     <text x="28" y="15" class="node-label">MCP Agent Configs</text>
-    <text x="28" y="28" class="node-sub">20 clients: Claude, Cursor, Codex, Gemini...</text>
+    <text x="28" y="28" class="node-sub">21 clients: Claude, Cursor, Codex, Gemini...</text>
   </g>
 
   <!-- Source 3: Container Images  (y=186, h=36, midY=204) -->
@@ -166,7 +166,7 @@
       <rect width="286" height="48" rx="5" fill="#ffffff" stroke="#d0d7de" stroke-width="1" stroke-dasharray="4,3"/>
       <text x="143" y="17" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="600" fill="#94a3b8">PIPELINE FLOW</text>
       <text x="143" y="32" text-anchor="middle" class="node-sub">Ingest -> Parse -> Scan -> Enrich -> Assess -> Remediate</text>
-      <text x="143" y="43" text-anchor="middle" class="node-sub">20 MCP tools  |  100% async  |  streaming output</text>
+      <text x="143" y="43" text-anchor="middle" class="node-sub">23 MCP tools  |  100% async  |  streaming output</text>
     </g>
   </g>
 

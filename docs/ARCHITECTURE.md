@@ -11,7 +11,7 @@ High-level view of input sources, the core processing engine, and output channel
 ```mermaid
 graph TB
     subgraph Input["Input Sources"]
-        MCP["MCP Configs\n20 Clients"]
+        MCP["MCP Configs\n21 Clients"]
         Docker["Docker Images"]
         K8s["Kubernetes"]
         Cloud["Cloud APIs\nAWS / Azure / GCP / Snowflake"]
@@ -25,6 +25,7 @@ graph TB
         Scanner["Vulnerability Scanner\nOSV + NVD + EPSS + KEV"]
         Blast["Blast Radius Analyzer"]
         Compliance["Compliance Tagger\n11 Frameworks"]
+        Assets["Asset Tracker\nfirst_seen / resolved / MTTR"]
         Posture["Posture Scorer"]
     end
 
@@ -46,7 +47,8 @@ graph TB
     Parser --> Scanner
     Scanner --> Blast
     Blast --> Compliance
-    Compliance --> Posture
+    Compliance --> Assets
+    Assets --> Posture
 
     Posture --> Console
     Posture --> SBOM_Out
@@ -94,6 +96,8 @@ sequenceDiagram
     CLI->>ComplianceTagger: Findings
     ComplianceTagger->>ComplianceTagger: Tag 11 frameworks
     ComplianceTagger-->>CLI: Tagged findings
+
+    CLI->>CLI: Asset tracking (first_seen / resolved / MTTR)
 
     CLI->>Reporter: Full results
     Reporter-->>User: Console / JSON / HTML / SBOM / SARIF
@@ -275,7 +279,7 @@ graph TB
 | Module | Path | Responsibility |
 |--------|------|----------------|
 | CLI | `src/agent_bom/cli.py` | Click entry point, flag parsing |
-| Discovery | `src/agent_bom/discovery/__init__.py` | MCP client config discovery (20 clients) |
+| Discovery | `src/agent_bom/discovery/__init__.py` | MCP client config discovery (21 clients) |
 | Parsers | `src/agent_bom/parsers/__init__.py` | Package extraction + MCP registry lookup |
 | Skill Parsers | `src/agent_bom/parsers/skills.py` + `skill_audit.py` | SKILL.md/CLAUDE.md behavioral audit, typosquat, Sigstore trust |
 | Browser Extensions | `src/agent_bom/parsers/browser_extensions.py` | Chrome/Edge/Brave/Firefox manifest.json permission auditor |
@@ -285,6 +289,7 @@ graph TB
 | SBOM | `src/agent_bom/sbom.py` | SBOM ingestion (CycloneDX, SPDX) |
 | Image | `src/agent_bom/image.py` | Docker image scanning |
 | MCP Server | `src/agent_bom/mcp_server.py` | FastMCP server (23 tools) |
+| Asset Tracker | `src/agent_bom/asset_tracker.py` | Persistent vuln tracking — first_seen, resolved, MTTR |
 | Context Graph | `src/agent_bom/context_graph.py` | Lateral movement analysis |
 | Cloud | `src/agent_bom/cloud/` | AWS, Azure, GCP, Snowflake, Databricks, Nebius |
 | Logging | `src/agent_bom/logging_config.py` | Structured JSON/console logging, env var config |

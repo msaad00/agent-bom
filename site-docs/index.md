@@ -23,7 +23,7 @@ Traditional scanners tell you a package has a CVE. agent-bom tells you which AI 
 
 ```bash
 pip install agent-bom
-agent-bom scan       # auto-discover 20 MCP clients + scan
+agent-bom scan       # auto-discover 21 MCP clients + scan
 agent-bom check langchain   # check a specific package
 ```
 
@@ -34,7 +34,7 @@ agent-bom check langchain   # check a specific package
 
 | Capability | Description |
 |---|---|
-| **Discovery** | Auto-detect 20 MCP clients (Claude, Cursor, Windsurf, VS Code, etc.) |
+| **Discovery** | Auto-detect 21 MCP clients (Claude, Cursor, Windsurf, VS Code, etc.) |
 | **CVE scanning** | OSV + NVD CVSS v4 + EPSS + CISA KEV + GHSA |
 | **Blast radius** | Map CVE impact: package → server → agent → credentials → tools |
 | **Registry** | 427+ MCP server security metadata entries |

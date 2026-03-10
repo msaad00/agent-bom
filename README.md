@@ -124,6 +124,7 @@ agent-bom scan --vector-db-scan                    # Scan self-hosted + Pinecone
 agent-bom scan --gpu-scan                          # Discover GPU containers + K8s nodes, detect unauthenticated DCGM exporters
 agent-bom scan --browser-extensions               # Scan Chrome/Edge/Brave/Firefox extensions for dangerous permissions
 agent-bom scan --skill-only                       # Audit AI instruction files (CLAUDE.md, .cursorrules, AGENTS.md)
+agent-bom scan --save report.json                  # Save + track assets (first_seen, resolved, MTTR)
 agent-bom graph report.json --format dot           # Export dependency graph (DOT/Mermaid/JSON)
 agent-bom proxy-configure --apply                  # Auto-wrap MCP configs with security proxy
 ```
@@ -194,7 +195,8 @@ rm -rf ~/.agent-bom                      # remove local data
 1. **Discover** -- auto-detect MCP configs, Docker images, K8s pods, cloud resources, model files
 2. **Scan** -- send package names + versions to public APIs (OSV.dev, NVD, EPSS, CISA KEV). No secrets leave your machine.
 3. **Analyze** -- blast radius mapping, tool poisoning detection, compliance tagging, posture scoring
-4. **Report** -- JSON, SARIF, CycloneDX, SPDX, HTML, Mermaid, or console. Alert dispatch to Slack/webhooks.
+4. **Track** -- persistent asset database records first_seen, last_seen, resolved status, and MTTR per vulnerability across scans
+5. **Report** -- JSON, SARIF, CycloneDX, SPDX, HTML, Mermaid, or console. Alert dispatch to Slack/webhooks.
 
 <p align="center">
   <picture>
@@ -235,6 +237,7 @@ rm -rf ~/.agent-bom                      # remove local data
 | **OIDC/SSO authentication** | -- | JWT verification (Okta, Google, Azure AD, Auth0) for REST API |
 | **Instruction file trust** | -- | SKILL.md/CLAUDE.md/.cursorrules — 17 behavioral patterns, typosquat detection, Sigstore provenance verification |
 | **Browser extension scanning** | -- | Chrome/Edge/Firefox manifest.json — nativeMessaging, dangerous permissions, AI assistant domain access |
+| **Persistent asset tracking** | -- | SQLite DB — first_seen/last_seen/resolved/reopened per vulnerability, MTTR calculation, scan-over-scan diff |
 
 <p align="center">
   <picture>
@@ -285,7 +288,7 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible
 | Mode | Command | Best for |
 |------|---------|----------|
 | CLI | `agent-bom scan` | Local audit |
-| GitHub Action | `uses: msaad00/agent-bom@v0.66.0 | CI/CD + SARIF |
+| GitHub Action | `uses: msaad00/agent-bom@v0.67.0 | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated scans |
 | REST API | `agent-bom api` | Dashboards, SIEM |
 | MCP Server | `agent-bom mcp-server` (23 tools) | Inside any MCP client |
@@ -300,7 +303,7 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible
 <summary><b>GitHub Action</b></summary>
 
 ```yaml
-- uses: msaad00/agent-bom@v0.66.0
+- uses: msaad00/agent-bom@v0.67.0
   with:
     severity-threshold: high
     upload-sarif: true
@@ -335,6 +338,8 @@ agent-bom api --api-key $SECRET --rate-limit 30   # http://127.0.0.1:8422/docs
 | `GET /v1/proxy/alerts` | Runtime behavioral alerts from audit log |
 | `GET /v1/audit` | Query JSONL audit trail (HMAC integrity verified) |
 | `WS /ws/proxy/metrics` | Live metrics push every second (tool_calls, blocked, latency_p95) |
+| `GET /v1/assets` | Persistent vulnerability asset inventory (first_seen, resolved, MTTR) |
+| `GET /v1/assets/stats` | Aggregate asset statistics — open/resolved/critical counts |
 | `WS /ws/proxy/alerts` | Real-time alert stream — new alerts arrive as they happen |
 
 </details>
@@ -382,7 +387,7 @@ Options:
 |----------|------|
 | PyPI | `pip install agent-bom` |
 | Docker | `docker run agentbom/agent-bom scan` |
-| GitHub Action | `uses: msaad00/agent-bom@v0.66.0 |
+| GitHub Action | `uses: msaad00/agent-bom@v0.67.0 |
 | Glama | [glama.ai/mcp/servers/@msaad00/agent-bom](https://glama.ai/mcp/servers/@msaad00/agent-bom) |
 | MCP Registry | [server.json](integrations/mcp-registry/server.json) |
 | ToolHive | [registry entry](integrations/toolhive/server.json) |
@@ -432,7 +437,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full diagrams: data flow pi
 - **Sigstore signed** -- releases v0.7.0+ signed via cosign OIDC
 - **OpenSSF Scorecard** -- [automated supply chain scoring](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom)
 - **OpenSSF Best Practices** -- [passing badge (100%)](https://www.bestpractices.dev/projects/12114) — 67/67 criteria
-- **Continuous fuzzing** -- [ClusterFuzzLite](https://github.com/msaad00/agent-bom/blob/main/.github/workflows/cifuzz.yml) fuzzes SBOM parsers, policy evaluator, and skill parser
+- **Continuous fuzzing** -- [ClusterFuzzLite](https://github.com/msaad00/agent-bom/blob/main/.github/workflows/cflite-pr.yml) fuzzes SBOM parsers, policy evaluator, and skill parser
 - **[PERMISSIONS.md](PERMISSIONS.md)** -- full auditable trust contract
 
 ---
@@ -454,6 +459,14 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full diagrams: data flow pi
 - [ ] Dataset poisoning detection
 - [ ] Training pipeline scanning (MLflow DAGs, Kubeflow pipelines)
 - [ ] Model card authenticity verification (beyond hash/sigstore)
+
+**Asset tracking / posture**
+- [x] Persistent SQLite asset database — first_seen, last_seen, resolved, reopened per vulnerability
+- [x] MTTR (Mean Time To Remediate) calculation across scans
+- [x] Scan-over-scan diff — new, resolved, reopened, unchanged counts
+- [x] REST API: `/v1/assets` + `/v1/assets/stats` for dashboard integration
+- [ ] SLA enforcement — time-to-fix deadlines per severity (critical < 7d, high < 30d)
+- [ ] Trend analytics — vulnerability count over time, resolution velocity
 
 **Agents / MCP**
 - [x] 21 MCP client config discovery paths, live introspection, tool drift detection

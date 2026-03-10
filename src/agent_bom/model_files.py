@@ -51,7 +51,7 @@ _SECURITY_FLAGS: dict[str, dict] = {
 }
 
 
-def _human_size(size_bytes: int) -> str:
+def _human_size(size_bytes: int | float) -> str:
     """Convert bytes to human-readable size string."""
     for unit in ("B", "KB", "MB", "GB", "TB"):
         if size_bytes < 1024:

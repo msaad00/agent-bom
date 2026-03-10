@@ -56,9 +56,9 @@ class DatasetInfo:
     security_flags: list[dict] = field(default_factory=list)
     compliance_tags: dict[str, list[str]] = field(default_factory=dict)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, object]:
         """Serialize to plain dict for JSON output."""
-        d = {
+        d: dict[str, object] = {
             "name": self.name,
             "description": self.description[:300] if self.description else "",
             "license": self.license,
@@ -143,7 +143,7 @@ def parse_dataset_info_json(path: Path) -> DatasetInfo | None:
         return None
 
     info = DatasetInfo(
-        name=data.get("dataset_name", data.get("config_name", path.parent.name)),
+        name=data.get("dataset_name", data.get("config_name", path.parent.name)) or "",
         description=(data.get("description", "") or "")[:300],
         version=str(data.get("version", {}).get("version_str", ""))
         if isinstance(data.get("version"), dict)

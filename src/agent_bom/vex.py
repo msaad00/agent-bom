@@ -121,7 +121,7 @@ def load_vex(path: str) -> VexDocument:
 
         statements.append(
             VexStatement(
-                vulnerability_id=vuln_id,
+                vulnerability_id=vuln_id or "",
                 status=status,
                 justification=justification,
                 impact_statement=stmt_data.get("impact_statement"),
@@ -223,16 +223,16 @@ def apply_vex(report: "AIBOMReport", vex: VexDocument) -> int:
         for server in agent.mcp_servers:
             for pkg in server.packages:
                 for vuln in pkg.vulnerabilities:
-                    stmt = vex_map.get(vuln.id)
-                    if not stmt:
+                    matched_stmt: VexStatement | None = vex_map.get(vuln.id)
+                    if not matched_stmt:
                         # Check aliases
                         for alias in vuln.aliases or []:
-                            stmt = vex_map.get(alias)
-                            if stmt:
+                            matched_stmt = vex_map.get(alias)
+                            if matched_stmt:
                                 break
-                    if stmt:
-                        vuln.vex_status = stmt.status.value
-                        vuln.vex_justification = stmt.justification.value if stmt.justification else None
+                    if matched_stmt:
+                        vuln.vex_status = matched_stmt.status.value
+                        vuln.vex_justification = matched_stmt.justification.value if matched_stmt.justification else None
                         count += 1
 
     return count

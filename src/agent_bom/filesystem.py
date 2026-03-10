@@ -248,8 +248,9 @@ def parse_rpm_packages(root: Path) -> list[Package]:
     if not shutil.which("rpm"):
         return []
 
-    rpm_db = root / "var" / "lib" / "rpm"
-    if not rpm_db.exists() and root == Path("/"):
+    rpm_db_candidate = root / "var" / "lib" / "rpm"
+    rpm_db: Path | None = rpm_db_candidate
+    if not rpm_db_candidate.exists() and root == Path("/"):
         # Live system, default db path
         rpm_db = None
 

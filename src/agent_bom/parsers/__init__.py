@@ -267,9 +267,9 @@ def parse_poetry_lock(directory: Path) -> list[Package]:
             import tomllib  # Python 3.11+
         except ImportError:
             try:
-                import tomli as tomllib  # type: ignore[no-reattr,import-not-found]
+                import tomli as tomllib  # type: ignore[no-redef,no-reattr,import-not-found]
             except ImportError:
-                import toml as tomllib  # type: ignore[no-reattr,import-not-found]
+                import toml as tomllib  # type: ignore[no-redef,no-reattr,import-not-found,import-untyped]
 
         data = tomllib.loads(lock_file.read_text())
         for pkg in data.get("package", []):
@@ -312,9 +312,9 @@ def parse_uv_lock(directory: Path) -> list[Package]:
             import tomllib
         except ImportError:
             try:
-                import tomli as tomllib  # type: ignore[no-reattr,import-not-found]
+                import tomli as tomllib  # type: ignore[no-redef,no-reattr,import-not-found]
             except ImportError:
-                import toml as tomllib  # type: ignore[no-reattr,import-not-found]
+                import toml as tomllib  # type: ignore[no-redef,no-reattr,import-not-found,import-untyped]
 
         data = tomllib.loads(lock_file.read_text())
         # Collect direct dep names from pyproject.toml if available
@@ -368,7 +368,7 @@ def parse_conda_environment(directory: Path) -> list[Package]:
     packages: list[Package] = []
     try:
         try:
-            import yaml  # PyYAML
+            import yaml  # type: ignore[import-untyped]  # PyYAML
         except ImportError:
             logger.debug("PyYAML not installed; skipping conda environment.yml parsing")
             return []
@@ -468,8 +468,8 @@ def parse_yarn_lock(directory: Path) -> list[Package]:
                     current_names = []
         else:
             # Classic v1: '"name@range, name@range":\n  version "x.y.z"'
-            seen: set[tuple[str, str]] = set()
-            current_names: list[str] = []
+            seen = set()  # type: ignore[no-redef]
+            current_names = []  # type: ignore[no-redef]
             for line in content.splitlines():
                 stripped = line.strip()
                 # Header: one or more "name@range" entries followed by ":"
@@ -898,7 +898,7 @@ def parse_maven_packages(directory: Path) -> list[Package]:
             # Skip unresolved property references and missing versions
             if version_el is None or not (version_el.text or "").strip():
                 continue
-            version = version_el.text.strip()
+            version = (version_el.text or "").strip()
             if version.startswith("${"):
                 continue  # parent POM property — can't resolve statically
 
@@ -951,7 +951,7 @@ def parse_cargo_packages(directory: Path) -> list[Package]:
 
 def detect_npx_package(server: MCPServer) -> list[Package]:
     """Extract package info from npx/npm commands."""
-    packages = []
+    packages: list[Package] = []
     if server.command not in ("npx", "npm"):
         return packages
 
@@ -979,7 +979,7 @@ def detect_npx_package(server: MCPServer) -> list[Package]:
 
 def detect_uvx_package(server: MCPServer) -> list[Package]:
     """Extract package info from uvx/uv commands."""
-    packages = []
+    packages: list[Package] = []
     if server.command not in ("uvx", "uv"):
         return packages
 

@@ -177,9 +177,13 @@ async def _introspect_sse(
     from mcp import ClientSession
     from mcp.client.sse import sse_client
 
+    if not server.url:
+        result.error = "Server URL is not set"
+        return result
+
     try:
         async with asyncio.timeout(timeout):
-            async with sse_client(server.url) as (read, write):
+            async with sse_client(server.url) as (read, write):  # type: ignore[arg-type]
                 async with ClientSession(read, write) as session:
                     init_result = await session.initialize()
                     result.protocol_version = getattr(init_result, "protocolVersion", None)
@@ -298,7 +302,7 @@ async def introspect_servers(
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     for i, result in enumerate(results):
-        if isinstance(result, Exception):
+        if isinstance(result, BaseException):
             report.results.append(
                 ServerIntrospection(
                     server_name=introspectable[i].name,
@@ -307,7 +311,7 @@ async def introspect_servers(
                 )
             )
         else:
-            report.results.append(result)
+            report.results.append(result)  # type: ignore[arg-type]
 
     return report
 

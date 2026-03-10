@@ -51,7 +51,7 @@ def _evict_oldest(cache: dict[str, dict], max_entries: int) -> None:
     # Evict entries missing _cached_at first (legacy/corrupt), then oldest
     by_age = sorted(
         cache.items(),
-        key=lambda kv: kv[1].get("_cached_at") if isinstance(kv[1].get("_cached_at"), (int, float)) else 0,
+        key=lambda kv: int(kv[1].get("_cached_at") or 0) if isinstance(kv[1].get("_cached_at"), (int, float)) else 0,
     )
     to_remove = len(cache) - max_entries
     for key, _ in by_age[:to_remove]:
@@ -402,7 +402,7 @@ async def enrich_vulnerabilities(
                 tasks = [fetch_nvd_data(cve_id, client, nvd_api_key) for cve_id in batch]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 for cve_id, result in zip(batch, results):
-                    if result and not isinstance(result, Exception):
+                    if result and not isinstance(result, BaseException):
                         nvd_data[cve_id] = result
                 if batch_start + batch_size < len(cve_ids):
                     await asyncio.sleep(sleep_secs)

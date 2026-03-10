@@ -498,7 +498,7 @@ async def probe_dcgm_endpoint(host: str, port: int = _DCGM_PORT) -> DcgmEndpoint
     except Exception:  # noqa: BLE001
         return None
 
-    if resp.status_code not in (200, 206):
+    if resp is None or resp.status_code not in (200, 206):
         return None
 
     content = resp.text[:4096]  # first 4KB of metrics

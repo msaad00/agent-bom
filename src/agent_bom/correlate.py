@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
-from agent_bom.models import Agent, Package
+from agent_bom.models import Agent, MCPServer, Package
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +85,7 @@ def correlate_agents(agents: list[Agent]) -> tuple[list[Agent], CorrelationResul
         return agents, result
 
     # Build global package index: (name, ecosystem) → list of (agent, server, package)
-    pkg_index: dict[tuple[str, str], list[tuple[Agent, object, Package]]] = {}
+    pkg_index: dict[tuple[str, str], list[tuple[Agent, MCPServer, Package]]] = {}
     for agent in agents:
         for server in agent.mcp_servers:
             for pkg in server.packages:

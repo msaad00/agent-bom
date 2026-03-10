@@ -258,8 +258,8 @@ def verify_installed_record(package_name: str) -> dict:
 
     # Extract metadata
     meta: dict = {
-        "license": dist.metadata.get("License-Expression") or dist.metadata.get("License", ""),
-        "author": dist.metadata.get("Author", ""),
+        "license": dist.metadata.get("License-Expression") or dist.metadata.get("License", ""),  # type: ignore[attr-defined]
+        "author": dist.metadata.get("Author", ""),  # type: ignore[attr-defined]
     }
     project_urls: dict[str, str] = {}
     for val in dist.metadata.get_all("Project-URL") or []:
@@ -283,7 +283,7 @@ def verify_installed_record(package_name: str) -> dict:
             continue
         try:
             full_path = f.locate()
-            data = full_path.read_bytes()
+            data = full_path.read_bytes()  # type: ignore[attr-defined]
             digest = hashlib.sha256(data).digest()
             b64_digest = base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
             if b64_digest == f.hash.value:

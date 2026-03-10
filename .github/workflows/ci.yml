@@ -71,7 +71,7 @@ jobs:
         run: uv run ruff check src/
 
       - name: MyPy
-        run: uv run mypy src/ --ignore-missing-imports || true
+        run: uv run mypy src/
 
   # 3. Tests
   test:

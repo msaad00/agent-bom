@@ -300,7 +300,7 @@ def _detect_lateral_chain(
             if isinstance(node, str):
                 lateral_servers.add(node)
             elif isinstance(node, dict):
-                lateral_servers.add(node.get("id", node.get("name", "")))
+                lateral_servers.add(node.get("id", node.get("name", "")) or "")
 
     results = []
     for br in blast_radii:

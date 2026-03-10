@@ -6,6 +6,7 @@ Uses Slack Block Kit for structured messages. No SDK — pure httpx.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from agent_bom.http_client import create_client, request_with_retry
 
@@ -20,7 +21,7 @@ _SEVERITY_EMOJI: dict[str, str] = {
 }
 
 
-def _build_slack_blocks(finding: dict) -> list[dict]:
+def _build_slack_blocks(finding: dict) -> list[dict[str, Any]]:
     """Build Slack Block Kit blocks from a blast radius finding."""
     vuln_id = finding.get("vulnerability_id", "Unknown")
     severity = finding.get("severity", "medium")
@@ -28,7 +29,7 @@ def _build_slack_blocks(finding: dict) -> list[dict]:
     risk_score = finding.get("risk_score", 0)
     emoji = _SEVERITY_EMOJI.get(severity, ":question:")
 
-    blocks = [
+    blocks: list[dict[str, Any]] = [
         {
             "type": "header",
             "text": {"type": "plain_text", "text": f"{emoji} agent-bom Security Finding"},

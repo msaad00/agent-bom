@@ -13,8 +13,8 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-import toml
-import yaml
+import toml  # type: ignore[import-untyped]
+import yaml  # type: ignore[import-untyped]
 from rich.console import Console
 
 from agent_bom.models import Agent, AgentStatus, AgentType, MCPServer, TransportType
@@ -495,7 +495,7 @@ def parse_goose_config(config_path: str) -> list[MCPServer]:
         env = sanitize_env_vars(raw_env) if isinstance(raw_env, dict) else {}
 
         server = MCPServer(
-            name=ext_def.get("name", name),
+            name=ext_def.get("name", name) or "",
             command=command,
             args=args if isinstance(args, list) else [args],
             env=env,
@@ -605,7 +605,7 @@ def audit_cortex_permissions(permissions: dict) -> list[dict]:
     for entry in approvals:
         if not isinstance(entry, dict):
             continue
-        tool_name = entry.get("tool", entry.get("name", "unknown")).lower()
+        tool_name = str(entry.get("tool", entry.get("name", "unknown")) or "unknown").lower()
         persist = entry.get("persist", entry.get("always_allow", False))
         server = entry.get("server", entry.get("mcp_server", ""))
 
@@ -832,7 +832,7 @@ def detect_installed_agents(discovered_types: set[AgentType]) -> list[Agent]:
 
 def discover_global_configs(agent_types: Optional[list[AgentType]] = None) -> list[Agent]:
     """Discover all global MCP client configurations."""
-    agents = []
+    agents: list[Agent] = []
     sys_platform = get_platform()
 
     if agent_types is None:

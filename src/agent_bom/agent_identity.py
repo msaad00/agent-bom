@@ -149,13 +149,13 @@ def _verify_jwt_signature(token: str, jwks_uri: str) -> tuple[bool, str | None]:
             if kty == "RSA":
                 public_key = RSAAlgorithm.from_jwk(json.dumps(jwk))
             elif kty == "EC":
-                public_key = ECAlgorithm.from_jwk(json.dumps(jwk))
+                public_key = ECAlgorithm.from_jwk(json.dumps(jwk))  # type: ignore[assignment]
             else:
                 continue
             # Verify signature only; expiry is checked separately
             pyjwt.decode(
                 token,
-                public_key,
+                public_key,  # type: ignore[arg-type]
                 algorithms=[alg],
                 options={"verify_exp": False, "verify_aud": False},
             )

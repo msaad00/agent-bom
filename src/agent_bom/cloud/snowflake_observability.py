@@ -120,7 +120,7 @@ def aggregate_agent_metrics(
 
         # Top tools
         agent_tools = tool_freq.get(agent_name, {})
-        top_tools = sorted(agent_tools, key=agent_tools.get, reverse=True)[:5]
+        top_tools = sorted(agent_tools, key=lambda k: agent_tools.get(k, 0), reverse=True)[:5]
 
         results.append(
             CortexAgentMetrics(

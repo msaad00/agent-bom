@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 from .aws_cis_benchmark import CheckStatus, CISCheckResult
 from .base import CloudDiscoveryError
@@ -546,7 +546,7 @@ def run_benchmark(
 
     report = SnowflakeCISReport(account=resolved_account)
 
-    all_checks: list[tuple[str, callable]] = [
+    all_checks: list[tuple[str, Callable[..., CISCheckResult]]] = [
         ("1.1", _check_1_1),
         ("1.2", _check_1_2),
         ("1.3", _check_1_3),

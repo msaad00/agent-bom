@@ -556,10 +556,10 @@ def _check_ai_8_1() -> CISCheckResult:
         cis_section=_AGENT_SECTION,
     )
     try:
-        from agent_bom.discovery import discover_agents
+        from agent_bom.discovery import discover_global_configs
 
-        agents = discover_agents()
-        mcp_servers = []
+        agents = discover_global_configs()
+        mcp_servers: list[Any] = []
         for agent in agents:
             mcp_servers.extend(agent.mcp_servers or [])
 

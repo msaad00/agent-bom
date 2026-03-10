@@ -131,16 +131,16 @@ async def _check_package(name: str, ecosystem: str) -> dict:
     """Check a single package for vulnerabilities using existing scanner."""
     from agent_bom.scanners import scan_packages
 
-    pkg_entry = type("Pkg", (), {"name": name, "version": "latest", "ecosystem": ecosystem})()
+    pkg_entry = type("Pkg", (), {"name": name, "version": "latest", "ecosystem": ecosystem, "vulnerabilities": []})()
     try:
-        vulns = await scan_packages([pkg_entry])
+        await scan_packages([pkg_entry])
     except Exception as e:
         logger.warning("Failed to scan %s: %s", name, e)
         return {"name": name, "ecosystem": ecosystem, "error": str(e), "vulns": [], "blocked": False}
 
     cve_list = []
     blocked = False
-    for v in vulns:
+    for v in getattr(pkg_entry, "vulnerabilities", []):
         severity = getattr(v, "severity", "unknown")
         cve_id = getattr(v, "id", "unknown")
         cve_list.append({"id": cve_id, "severity": severity})

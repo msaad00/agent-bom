@@ -352,7 +352,7 @@ def _detect_yaml_mcp(path: Path, text: str) -> Optional[Agent]:
         return None
 
     try:
-        import yaml
+        import yaml  # type: ignore[import-untyped]
     except ImportError:
         return None
 

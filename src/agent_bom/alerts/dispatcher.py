@@ -96,7 +96,7 @@ class SlackChannel:
             from agent_bom.integrations.slack import send_slack_payload
 
             payload = _build_slack_payload(alert)
-            return send_slack_payload(self.webhook_url, payload)
+            return await send_slack_payload(self.webhook_url, payload)
         except Exception:
             logger.exception("Slack channel delivery failed")
             return False

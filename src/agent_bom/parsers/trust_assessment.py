@@ -161,10 +161,12 @@ def _assess_purpose_capability(
     has_bins = bool(meta and meta.required_bins)
 
     if has_name:
+        assert meta is not None
         details.append(f"Name declared: {meta.name}")
     if has_desc:
         details.append("Description provided")
     if has_bins:
+        assert meta is not None
         details.append(f"Required binaries: {', '.join(meta.required_bins)}")
         evidence.append(f"bins: {meta.required_bins}")
 
@@ -323,9 +325,11 @@ def _assess_install_mechanism(
     if install_methods:
         details.append(f"Install methods: {', '.join(install_methods)}")
     if has_source:
+        assert meta is not None
         details.append(f"Source: {meta.source}")
         evidence.append(f"source: {meta.source}")
     if has_homepage:
+        assert meta is not None
         details.append(f"Homepage: {meta.homepage}")
 
     # Check for verification/signing references

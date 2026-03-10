@@ -175,7 +175,7 @@ async def check_github_advisories(
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         for i, result in enumerate(results):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 logger.debug("GHSA fetch failed for %s: %s", queryable[i].name, result)
                 continue
             if not result:

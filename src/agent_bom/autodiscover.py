@@ -59,10 +59,10 @@ _MEDIUM_RISK_KEYWORDS = frozenset(
 )
 
 
-async def fetch_npm_metadata(name: str, client: object) -> Optional[dict]:
+async def fetch_npm_metadata(name: str, client: object) -> Optional[dict]:  # noqa: ANN001
     """Fetch package metadata from the npm registry."""
     try:
-        resp = await client.get(_NPM_URL.format(name), timeout=10.0)  # type: ignore[union-attr]
+        resp = await client.get(_NPM_URL.format(name), timeout=10.0)  # type: ignore[attr-defined]
         if resp.status_code != 200:
             return None
         data = resp.json()
@@ -81,10 +81,10 @@ async def fetch_npm_metadata(name: str, client: object) -> Optional[dict]:
         return None
 
 
-async def fetch_pypi_metadata(name: str, client: object) -> Optional[dict]:
+async def fetch_pypi_metadata(name: str, client: object) -> Optional[dict]:  # noqa: ANN001
     """Fetch package metadata from PyPI."""
     try:
-        resp = await client.get(_PYPI_URL.format(name), timeout=10.0)  # type: ignore[union-attr]
+        resp = await client.get(_PYPI_URL.format(name), timeout=10.0)  # type: ignore[attr-defined]
         if resp.status_code != 200:
             return None
         data = resp.json()

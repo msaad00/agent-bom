@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from agent_bom.http_client import create_client, request_with_retry
 
@@ -39,7 +39,7 @@ async def upload_evidence(
     total_vulns = scan_result.get("summary", {}).get("total_vulnerabilities", 0)
     total_agents = scan_result.get("summary", {}).get("total_agents", 0)
 
-    payload = {
+    payload: dict[str, Any] = {
         "name": evidence_name,
         "description": (
             f"AI supply chain security scan by agent-bom. {total_agents} agent(s) scanned, {total_vulns} vulnerability(ies) found."

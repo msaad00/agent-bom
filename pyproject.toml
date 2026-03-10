@@ -117,6 +117,9 @@ dev = [
     "pytest-asyncio>=0.21",
     "ruff>=0.4",
     "mypy>=1.0",
+    "types-PyYAML>=6.0",
+    "types-requests>=2.31",
+    "types-toml>=0.10",
     "pip-audit>=2.10",  # Security dependency scanning
     "bandit>=1.9",      # Static security analysis
     "safety>=3.7",      # Vulnerability checking
@@ -155,6 +158,32 @@ asyncio_mode = "strict"
 markers = [
     "network: tests that require network access (OSV API)",
 ]
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_configs = true
+disallow_untyped_defs = false          # Phase 2: enable after all functions annotated
+check_untyped_defs = false             # Phase 2: enable after baseline is clean
+ignore_missing_imports = true          # Third-party stubs (yaml, toml, requests)
+no_implicit_optional = true
+warn_redundant_casts = true
+show_error_codes = true
+
+# Phase 1 exclusions — files with 5+ errors, tracked for cleanup in #525/#526
+[[tool.mypy.overrides]]
+module = [
+    "agent_bom.cli",                # 78 errors — needs split (#525)
+    "agent_bom.api.server",         # 42 errors — needs split (#526)
+    "agent_bom.proxy",              # 16 errors
+    "agent_bom.remediate",          # 14 errors
+    "agent_bom.mcp_server",         # 11 errors
+    "agent_bom.scanners",           # 10 errors
+    "agent_bom.output",             # 7 errors
+    "agent_bom.output.html",        # 3 errors
+    "agent_bom.ai_enrich",          # 6 errors — Pydantic type vars
+    "agent_bom.license_policy",     # 5 errors — rich Console typing
+]
+ignore_errors = true
 
 [tool.ruff]
 line-length = 140  # Relaxed from 120 for CLI help strings

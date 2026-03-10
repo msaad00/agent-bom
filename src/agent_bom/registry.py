@@ -467,11 +467,11 @@ def enrich_registry_entries(dry_run: bool = False) -> EnrichResult:
                     entry["risk_justification"] = inferred
 
         if "credential_env_vars" in needs:
-            inferred = _infer_credentials(name, entry)
-            if inferred is not None:
-                enriched_fields["credential_env_vars"] = inferred
+            inferred_creds = _infer_credentials(name, entry)
+            if inferred_creds is not None:
+                enriched_fields["credential_env_vars"] = inferred_creds
                 if not dry_run:
-                    entry["credential_env_vars"] = inferred
+                    entry["credential_env_vars"] = inferred_creds
 
         if "tools" in needs:
             enriched_fields["tools"] = []

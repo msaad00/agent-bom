@@ -213,7 +213,7 @@ def parse_spdx(data: dict) -> list[Package]:
             if elem.get("type") not in ("software/Package", "SOFTWARE_PACKAGE"):
                 continue
             name = elem.get("name", "")
-            version = elem.get("software/packageVersion", elem.get("packageVersion", "unknown"))
+            version = str(elem.get("software/packageVersion", elem.get("packageVersion", "unknown")) or "unknown")
             purl = elem.get("software/packageUrl", elem.get("externalIdentifier", {}).get("identifier", ""))
             if not name:
                 continue

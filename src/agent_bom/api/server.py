@@ -1044,6 +1044,8 @@ def _run_scan_sync(job: ScanJob) -> None:
         total_pkgs = 0
         for agent in agents:
             for server in agent.mcp_servers:
+                if server.security_blocked:
+                    continue  # Don't extract packages from security-blocked servers
                 if not server.packages:
                     server.packages = extract_packages(server)
                 total_pkgs += len(server.packages)

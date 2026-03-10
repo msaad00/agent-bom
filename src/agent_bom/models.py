@@ -238,6 +238,8 @@ class MCPServer:
     registry_verified: bool = False  # True if found in agent-bom MCP registry
     registry_id: Optional[str] = None  # Registry entry ID, e.g. "modelcontextprotocol/filesystem"
     permission_profile: Optional[PermissionProfile] = None
+    security_blocked: bool = False  # True if server was rejected for security reasons
+    security_warnings: list[str] = field(default_factory=list)  # Security issues found during discovery
 
     @property
     def vulnerable_packages(self) -> list[Package]:

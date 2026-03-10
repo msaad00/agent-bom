@@ -281,8 +281,18 @@ def parse_mcp_config(config_data: dict, config_path: str) -> list[MCPServer]:
         try:
             validate_mcp_server_config(server_def)
         except SecurityError as e:
-            logger.warning(f"Skipping insecure MCP server '{name}': {e}")
-            console.print(f"[yellow]⚠️  Skipped insecure server '{name}': {e}[/yellow]")
+            warning_msg = f"Blocked insecure server '{name}': {e}"
+            logger.warning(warning_msg)
+            console.print(f"[yellow]⚠️  {warning_msg}[/yellow]")
+            # Include blocked server in report for visibility — no silent skips
+            blocked_server = MCPServer(
+                name=name,
+                command=server_def.get("command", ""),
+                config_path=config_path,
+                security_blocked=True,
+                security_warnings=[str(e)],
+            )
+            servers.append(blocked_server)
             continue
 
         # Determine transport type

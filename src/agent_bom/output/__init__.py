@@ -1453,6 +1453,8 @@ def to_json(report: AIBOMReport) -> dict:
                         "mcp_version": server.mcp_version,
                         "has_credentials": server.has_credentials,
                         "credential_env_vars": server.credential_names,
+                        "security_blocked": server.security_blocked,
+                        "security_warnings": server.security_warnings,
                         "tools": [{"name": t.name, "description": t.description} for t in server.tools],
                         "packages": [
                             {

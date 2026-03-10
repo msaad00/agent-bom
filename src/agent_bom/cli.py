@@ -2347,6 +2347,10 @@ def scan(
             con.print(f"  [cyan]Transitive resolution enabled (max depth: {max_depth})[/cyan]\n")
         for agent in agents:
             for server in agent.mcp_servers:
+                if server.security_blocked:
+                    if not quiet:
+                        con.print(f"    [yellow]⚠ {server.name}: blocked — {', '.join(server.security_warnings)}[/yellow]")
+                    continue  # Don't extract from security-blocked servers
                 # Keep pre-populated packages from inventory, merge with discovered ones
                 pre_populated = list(server.packages)
                 _smithery_tok = smithery_token if smithery_flag else None
@@ -3680,6 +3684,8 @@ def inventory(config: Optional[str], project: Optional[str], transitive: bool, m
 
     for agent in agents:
         for server in agent.mcp_servers:
+            if server.security_blocked:
+                continue  # Don't extract from security-blocked servers
             server.packages = extract_packages(server, resolve_transitive=transitive, max_depth=max_depth)
 
     report = AIBOMReport(agents=agents)

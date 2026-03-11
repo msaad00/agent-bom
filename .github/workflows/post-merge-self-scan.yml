@@ -1,0 +1,109 @@
+name: Post-Merge Self-Scan
+
+# Runs agent-bom against its own source code after every merge to main.
+# Uploads SARIF findings to GitHub Security tab. Never blocks main — informational only.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Nightly at 03:00 UTC — catches new CVEs even without a code push
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      fail_on_critical:
+        description: "Exit 1 if critical CVE found (default: false, informational only)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  security-events: write   # required for SARIF upload to GitHub Security tab
+
+jobs:
+  self-sast-scan:
+    name: Self SAST scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@5a095e7a2014a4212f075830d4f7277575a9d098 # v7.3.1
+        with:
+          python-version: "3.11"
+
+      - name: Install agent-bom (from source)
+        run: uv pip install -e ".[dev]" --system
+
+      - name: Run self dep scan (--self-scan)
+        id: dep_scan
+        run: |
+          set +e
+          agent-bom scan --self-scan --output sarif --save sarif/self-dep.sarif --quiet
+          echo "dep_exit=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Run SAST scan on source code (--code)
+        id: sast_scan
+        run: |
+          set +e
+          agent-bom scan \
+            --code src/agent_bom \
+            --output sarif \
+            --save sarif/self-sast.sarif \
+            --quiet
+          echo "sast_exit=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Upload dep scan SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@89a39a4e59826350b863aa6b6252a07ad50cf83e # v4
+        with:
+          sarif_file: sarif/self-dep.sarif
+          category: agent-bom-self-dep
+
+      - name: Upload SAST SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@89a39a4e59826350b863aa6b6252a07ad50cf83e # v4
+        with:
+          sarif_file: sarif/self-sast.sarif
+          category: agent-bom-self-sast
+
+      - name: Fail on critical (optional, only when explicitly requested)
+        if: inputs.fail_on_critical == true
+        run: |
+          if [ "${{ steps.dep_scan.outputs.dep_exit }}" != "0" ]; then
+            echo "::error::Critical vulnerability found in self dep scan — check Security tab"
+            exit 1
+          fi
+
+  generate-sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@5a095e7a2014a4212f075830d4f7277575a9d098 # v7.3.1
+        with:
+          python-version: "3.11"
+
+      - name: Install agent-bom (from source)
+        run: uv pip install -e ".[dev]" --system
+
+      - name: Generate CycloneDX SBOM
+        run: |
+          mkdir -p sbom
+          set +e
+          agent-bom scan --self-scan --output cyclonedx --save sbom/agent-bom.cdx.json --quiet
+          echo "SBOM generated (exit $?)"
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: sbom-${{ github.sha }}
+          path: sbom/agent-bom.cdx.json
+          retention-days: 90

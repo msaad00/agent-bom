@@ -31,6 +31,10 @@ class TestValidateEcosystem:
         with pytest.raises(ValueError, match="Invalid ecosystem"):
             _validate_ecosystem("invalid")
 
+    def test_empty_ecosystem(self):
+        with pytest.raises(ValueError):
+            _validate_ecosystem("")
+
 
 class TestValidateCveId:
     def test_valid_cve(self):
@@ -49,6 +53,9 @@ class TestValidateCveId:
     def test_invalid_format_raises(self):
         with pytest.raises(ValueError, match="Invalid CVE ID format"):
             _validate_cve_id("not-a-cve")
+
+    def test_case_insensitive(self):
+        assert _validate_cve_id("cve-2025-0001") == "cve-2025-0001"
 
 
 class TestTruncateResponse:

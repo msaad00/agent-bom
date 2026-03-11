@@ -7,11 +7,16 @@ import tempfile
 from pathlib import Path
 
 from agent_bom.audit_replay import (
+    AlertEntry,
     AuditLog,
+    RelayErrorEntry,
     ResponseHMACEntry,
     SummaryEntry,
     ToolCallEntry,
+    _policy_style,
+    _severity_style,
     display_json,
+    display_rich,
     parse_audit_log,
     replay,
     verify_hmac_entries,
@@ -334,3 +339,185 @@ def test_tool_call_entry_fields():
     )
     assert tc.tool == "scan"
     assert tc.policy == "allowed"
+
+
+# ── Unique tests from cov2 ──────────────────────────────────────────────────
+
+
+def test_parse_unknown_entry():
+    p = _write_log([{"type": "custom_event", "data": 123}])
+    log = parse_audit_log(p)
+    assert len(log.unknown) == 1
+
+
+def test_parse_blank_lines():
+    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False)
+    tmp.write("\n\n")
+    tmp.close()
+    log = parse_audit_log(Path(tmp.name))
+    assert len(log.tool_calls) == 0
+
+
+def test_verify_hmac_match():
+    import hashlib
+    import hmac as hmac_mod
+
+    sign_key = "secret123"
+    payload_hash = "abc123"
+    expected_hmac = hmac_mod.new(sign_key.encode(), payload_hash.encode(), hashlib.sha256).hexdigest()
+
+    log = AuditLog(
+        tool_calls=[
+            ToolCallEntry(ts="", tool="t", policy="allowed", reason="", agent_id="", args={}, payload_sha256=payload_hash, message_id=1)
+        ],
+        hmac_entries=[ResponseHMACEntry(ts="", message_id=1, hmac_sha256=expected_hmac)],
+    )
+    verified, failed = verify_hmac_entries(log, sign_key)
+    assert verified == 1
+    assert failed == 0
+
+
+def test_verify_hmac_mismatch():
+    log = AuditLog(
+        tool_calls=[ToolCallEntry(ts="", tool="t", policy="allowed", reason="", agent_id="", args={}, payload_sha256="abc", message_id=1)],
+        hmac_entries=[ResponseHMACEntry(ts="", message_id=1, hmac_sha256="wrong" * 16)],
+    )
+    verified, failed = verify_hmac_entries(log, "secret")
+    assert verified == 0
+    assert failed == 1
+
+
+def test_display_json_empty(capsys):
+    log = AuditLog()
+    code = display_json(log)
+    assert code == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["tool_calls"] == 0
+
+
+def test_display_json_with_summary(capsys):
+    log = AuditLog(
+        summary=SummaryEntry(
+            ts="",
+            uptime_seconds=10.0,
+            total_tool_calls=5,
+            total_blocked=0,
+            calls_by_tool={},
+            blocked_by_reason={},
+            latency={},
+            replay_rejections=0,
+            relay_errors=0,
+            runtime_alerts=0,
+        )
+    )
+    code = display_json(log)
+    assert code == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["summary"]["total_tool_calls"] == 5
+
+
+def test_display_rich_empty():
+    log = AuditLog()
+    code = display_rich(log)
+    assert code == 0
+
+
+def test_display_rich_with_blocked_calls():
+    log = AuditLog(
+        summary=SummaryEntry(
+            ts="",
+            uptime_seconds=5.0,
+            total_tool_calls=3,
+            total_blocked=1,
+            calls_by_tool={"read": 3},
+            blocked_by_reason={"policy": 1},
+            latency={"p50_ms": 10, "p95_ms": 50, "avg_ms": 15},
+            replay_rejections=2,
+            relay_errors=1,
+            runtime_alerts=1,
+        ),
+        tool_calls=[
+            ToolCallEntry(
+                ts="2025-01-01T00:00:00Z",
+                tool="read_file",
+                policy="blocked",
+                reason="undeclared",
+                agent_id="agent1",
+                args={"path": "/etc"},
+                payload_sha256="hash",
+                message_id=1,
+            )
+        ],
+    )
+    code = display_rich(log, blocked_only=True)
+    assert code == 1
+
+
+def test_display_rich_alerts_only():
+    log = AuditLog(
+        alerts=[
+            AlertEntry(
+                ts="2025-01-01T00:00:00Z",
+                detector="cred_leak",
+                severity="high",
+                message="Key found",
+                tool="read_file",
+                raw={},
+            )
+        ],
+    )
+    code = display_rich(log, alerts_only=True)
+    assert code == 0
+
+
+def test_display_rich_with_tool_filter():
+    log = AuditLog(
+        tool_calls=[
+            ToolCallEntry(ts="", tool="read_file", policy="allowed", reason="", agent_id="", args={}, payload_sha256="", message_id=None),
+            ToolCallEntry(ts="", tool="write_file", policy="allowed", reason="", agent_id="", args={}, payload_sha256="", message_id=None),
+        ],
+        alerts=[AlertEntry(ts="", detector="d", severity="low", message="m", tool="write_file", raw={})],
+    )
+    code = display_rich(log, tool_filter="read")
+    assert code == 0
+
+
+def test_display_rich_relay_errors():
+    log = AuditLog(
+        relay_errors=[RelayErrorEntry(ts="2025-01-01T00:00:00Z", error="timeout", error_type="io")],
+    )
+    code = display_rich(log)
+    assert code == 1
+
+
+def test_display_rich_hmac_entries():
+    log = AuditLog(
+        hmac_entries=[ResponseHMACEntry(ts="", message_id=1, hmac_sha256="x" * 64)],
+    )
+    code = display_rich(log)
+    assert code == 0
+
+
+def test_severity_style():
+    assert "red" in _severity_style("critical")
+    assert "red" in _severity_style("high")
+    assert "yellow" in _severity_style("medium")
+    assert "dim" in _severity_style("low")
+    assert _severity_style("unknown") == "white"
+
+
+def test_policy_style():
+    assert "red" in _policy_style("blocked")
+    assert "green" in _policy_style("allowed")
+
+
+def test_replay_clean_log_rich():
+    p = _write_log([{"type": "tools/call", "tool": "read", "policy": "allowed"}])
+    code = replay(str(p))
+    assert code == 0
+
+
+def test_replay_as_json_blocked(capsys):
+    p = _write_log([{"type": "tools/call", "tool": "read", "policy": "blocked", "reason": "test"}])
+    code = replay(str(p), as_json=True)
+    assert code == 1

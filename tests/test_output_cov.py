@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from agent_bom.models import (
     Agent,
@@ -11,17 +11,28 @@ from agent_bom.models import (
     AIBOMReport,
     BlastRadius,
     MCPServer,
+    MCPTool,
     Package,
     Severity,
     TransportType,
     Vulnerability,
 )
 from agent_bom.output import (
+    _coverage_bar,
+    _pct,
+    _risk_narrative,
+    build_remediation_plan,
+    print_agent_tree,
+    print_attack_flow_tree,
+    print_blast_radius,
+    print_export_hint,
     print_policy_results,
     print_posture_summary,
     print_severity_chart,
     print_summary,
+    print_threat_frameworks,
     to_cyclonedx,
+    to_json,
     to_sarif,
     to_spdx,
 )
@@ -350,3 +361,398 @@ class TestToSpdx:
         report = _make_report(agents=[agent], blast_radii=[br])
         spdx = to_spdx(report)
         assert len(spdx["elements"]) >= 1
+
+
+# ── _pct / _coverage_bar (from cov2) ────────────────────────────────────────
+
+
+def test_pct_normal():
+    assert _pct(3, 10) == "30%"
+
+
+def test_pct_zero_total():
+    assert _pct(5, 0) == "\u2014"
+
+
+def test_coverage_bar():
+    result = _coverage_bar(5, 10, "red", width=10)
+    assert "\u2588" in result
+
+
+def test_coverage_bar_zero():
+    result = _coverage_bar(0, 10, "blue")
+    assert "\u2591" in result
+
+
+# ── _risk_narrative (from cov2) ──────────────────────────────────────────────
+
+
+def test_risk_narrative_with_creds_and_tools():
+    item = {
+        "vulns": ["CVE-2025-0001"],
+        "agents": ["agent1"],
+        "creds": ["API_KEY"],
+        "tools": ["read_file"],
+    }
+    result = _risk_narrative(item)
+    assert "CVE-2025-0001" in result
+    assert "API_KEY" in result
+    assert "read_file" in result
+
+
+def test_risk_narrative_no_creds():
+    item = {"vulns": ["CVE-1"], "agents": ["a"], "creds": [], "tools": []}
+    result = _risk_narrative(item)
+    assert "CVE-1" in result
+    assert "via a" in result
+
+
+# ── print_agent_tree (from cov2) ─────────────────────────────────────────────
+
+
+def _make_server_cov2(name="srv", pkgs=None, creds=None, tools=None):
+    env = {}
+    if creds:
+        for c in creds:
+            env[c] = "secret-value"
+    return MCPServer(
+        name=name,
+        command="node",
+        transport=TransportType.STDIO,
+        packages=pkgs or [],
+        env=env,
+        tools=tools or [],
+    )
+
+
+def _make_agent_cov2(name="agent1", servers=None, status=AgentStatus.CONFIGURED):
+    return Agent(
+        name=name,
+        agent_type=AgentType.CUSTOM,
+        config_path="/test",
+        mcp_servers=servers or [],
+        status=status,
+    )
+
+
+def _make_report_cov2(agents=None, blast_radii=None):
+    return AIBOMReport(
+        agents=agents or [],
+        blast_radii=blast_radii or [],
+        generated_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+    )
+
+
+def _make_vuln_cov2(vid="CVE-2025-0001", sev=Severity.HIGH, fixed="4.17.22"):
+    return Vulnerability(id=vid, severity=sev, summary="test vuln", fixed_version=fixed)
+
+
+def _make_pkg_cov2(name="lodash", version="4.17.20", ecosystem="npm", vulns=None):
+    return Package(name=name, version=version, ecosystem=ecosystem, vulnerabilities=vulns or [])
+
+
+def _make_blast_radius_cov2(vuln=None, pkg=None, agents=None, servers=None, creds=None, tools=None):
+    v = vuln or _make_vuln_cov2()
+    p = pkg or _make_pkg_cov2(vulns=[v])
+    return BlastRadius(
+        vulnerability=v,
+        package=p,
+        affected_agents=agents or [],
+        affected_servers=servers or [],
+        exposed_credentials=creds or [],
+        exposed_tools=tools or [],
+    )
+
+
+def test_print_agent_tree_basic():
+    pkg = _make_pkg_cov2()
+    srv = _make_server_cov2(pkgs=[pkg], creds=["KEY"])
+    agent = _make_agent_cov2(servers=[srv])
+    report = _make_report_cov2(agents=[agent])
+    print_agent_tree(report)
+
+
+def test_print_agent_tree_not_configured():
+    agent = _make_agent_cov2(status=AgentStatus.INSTALLED_NOT_CONFIGURED)
+    report = _make_report_cov2(agents=[agent])
+    print_agent_tree(report)
+
+
+def test_print_agent_tree_with_vulns():
+    vuln = _make_vuln_cov2()
+    pkg = _make_pkg_cov2(vulns=[vuln])
+    srv = _make_server_cov2(pkgs=[pkg])
+    agent = _make_agent_cov2(servers=[srv])
+    report = _make_report_cov2(agents=[agent])
+    print_agent_tree(report)
+
+
+def test_print_agent_tree_transitive_pkgs():
+    direct = _make_pkg_cov2()
+    direct.is_direct = True
+    trans = _make_pkg_cov2(name="dep", version="1.0")
+    trans.is_direct = False
+    trans.dependency_depth = 2
+    trans.parent_package = "lodash"
+    srv = _make_server_cov2(pkgs=[direct, trans])
+    agent = _make_agent_cov2(servers=[srv])
+    report = _make_report_cov2(agents=[agent])
+    print_agent_tree(report)
+
+
+# ── print_blast_radius (from cov2) ──────────────────────────────────────────
+
+
+def test_print_blast_radius_empty():
+    report = _make_report_cov2()
+    print_blast_radius(report)
+
+
+def test_print_blast_radius_with_findings():
+    vuln = _make_vuln_cov2()
+    vuln.epss_score = 0.85
+    vuln.is_kev = True
+    vuln.references = ["https://example.com"]
+    pkg = _make_pkg_cov2(vulns=[vuln])
+    srv = _make_server_cov2(pkgs=[pkg])
+    agent = _make_agent_cov2(servers=[srv])
+    br = _make_blast_radius_cov2(vuln=vuln, pkg=pkg, agents=[agent], servers=[srv], creds=["KEY"])
+    br.owasp_tags = ["LLM01"]
+    br.atlas_tags = ["AML.T0001"]
+    br.nist_ai_rmf_tags = ["MAP-1.1"]
+    report = _make_report_cov2(agents=[agent], blast_radii=[br])
+    print_blast_radius(report)
+
+
+def test_print_blast_radius_no_fix():
+    vuln = _make_vuln_cov2(fixed=None)
+    pkg = _make_pkg_cov2(vulns=[vuln])
+    br = _make_blast_radius_cov2(vuln=vuln, pkg=pkg)
+    report = _make_report_cov2(blast_radii=[br])
+    print_blast_radius(report)
+
+
+def test_print_blast_radius_ghsa():
+    vuln = _make_vuln_cov2(vid="GHSA-xxxx-yyyy-zzzz")
+    pkg = _make_pkg_cov2(vulns=[vuln])
+    br = _make_blast_radius_cov2(vuln=vuln, pkg=pkg)
+    report = _make_report_cov2(blast_radii=[br])
+    print_blast_radius(report)
+
+
+# ── build_remediation_plan (from cov2) ───────────────────────────────────────
+
+
+def test_build_remediation_plan_empty():
+    assert build_remediation_plan([]) == []
+
+
+def test_build_remediation_plan_with_items():
+    vuln = _make_vuln_cov2()
+    pkg = _make_pkg_cov2(vulns=[vuln])
+    agent = _make_agent_cov2()
+    srv = _make_server_cov2(pkgs=[pkg])
+    br = _make_blast_radius_cov2(vuln=vuln, pkg=pkg, agents=[agent], servers=[srv], creds=["KEY"])
+    plan = build_remediation_plan([br])
+    assert len(plan) >= 1
+    assert plan[0]["package"] == "lodash"
+
+
+# ── to_json (from cov2) ─────────────────────────────────────────────────────
+
+
+def test_to_json_empty_report():
+    report = _make_report_cov2()
+    result = to_json(report)
+    assert result["document_type"] == "AI-BOM"
+    assert result["summary"]["total_agents"] == 0
+    assert isinstance(result["agents"], list)
+
+
+def test_to_json_with_agents():
+    pkg = _make_pkg_cov2()
+    srv = _make_server_cov2(pkgs=[pkg])
+    agent = _make_agent_cov2(servers=[srv])
+    report = _make_report_cov2(agents=[agent])
+    result = to_json(report)
+    assert len(result["agents"]) == 1
+    assert result["agents"][0]["name"] == "agent1"
+
+
+def test_to_json_with_blast_radius():
+    vuln = _make_vuln_cov2()
+    pkg = _make_pkg_cov2(vulns=[vuln])
+    agent = _make_agent_cov2()
+    br = _make_blast_radius_cov2(vuln=vuln, pkg=pkg, agents=[agent])
+    report = _make_report_cov2(agents=[agent], blast_radii=[br])
+    result = to_json(report)
+    assert len(result["blast_radius"]) >= 1
+    assert "threat_framework_summary" in result
+
+
+def test_to_json_with_optional_fields():
+    report = _make_report_cov2()
+    report.executive_summary = "Test summary"
+    report.ai_threat_chains = [{"chain": "test"}]
+    report.skill_audit_data = {"findings": []}
+    report.trust_assessment_data = {"score": 0.8}
+    report.cis_benchmark_data = {"checks": []}
+    result = to_json(report)
+    assert result.get("executive_summary") == "Test summary"
+    assert "skill_audit" in result
+    assert "trust_assessment" in result
+
+
+# ── print_threat_frameworks (from cov2) ──────────────────────────────────────
+
+
+def test_print_threat_frameworks_no_blast():
+    report = _make_report_cov2()
+    print_threat_frameworks(report)
+
+
+def test_print_threat_frameworks_with_tags():
+    vuln = _make_vuln_cov2()
+    pkg = _make_pkg_cov2(vulns=[vuln])
+    br = _make_blast_radius_cov2(vuln=vuln, pkg=pkg)
+    br.owasp_tags = ["LLM01"]
+    br.atlas_tags = ["AML.T0001"]
+    br.nist_ai_rmf_tags = ["MAP-1.1"]
+    br.owasp_mcp_tags = ["MCP01"]
+    br.owasp_agentic_tags = ["AGT01"]
+    br.eu_ai_act_tags = ["ART-9"]
+    br.nist_csf_tags = ["ID.AM"]
+    br.iso_27001_tags = ["A.5.1"]
+    br.soc2_tags = ["CC1.1"]
+    br.cis_tags = ["CIS-1.1"]
+    report = _make_report_cov2(blast_radii=[br])
+    print_threat_frameworks(report)
+
+
+# ── print_export_hint (from cov2) ────────────────────────────────────────────
+
+
+def test_print_export_hint_no_vulns():
+    report = _make_report_cov2()
+    print_export_hint(report)
+
+
+def test_print_export_hint_with_vulns():
+    vuln = _make_vuln_cov2()
+    pkg = _make_pkg_cov2(vulns=[vuln])
+    br = _make_blast_radius_cov2(vuln=vuln, pkg=pkg)
+    br.owasp_tags = ["LLM01"]
+    report = _make_report_cov2(blast_radii=[br])
+    print_export_hint(report)
+
+
+# ── print_attack_flow_tree (from cov2) ───────────────────────────────────────
+
+
+def test_print_attack_flow_tree():
+    vuln = _make_vuln_cov2()
+    vuln.cvss_score = 9.8
+    vuln.epss_score = 0.5
+    vuln.is_kev = True
+    pkg = _make_pkg_cov2(vulns=[vuln])
+    tool = MCPTool(name="read_file", description="Read a file")
+    srv = _make_server_cov2(pkgs=[pkg], tools=[tool])
+    agent = _make_agent_cov2(servers=[srv])
+    br = _make_blast_radius_cov2(vuln=vuln, pkg=pkg, agents=[agent], servers=[srv], creds=["API_KEY"], tools=[tool])
+    report = _make_report_cov2(agents=[agent], blast_radii=[br])
+    print_attack_flow_tree(report)
+
+
+def test_print_attack_flow_tree_no_servers():
+    vuln = _make_vuln_cov2()
+    pkg = _make_pkg_cov2(vulns=[vuln])
+    tool = MCPTool(name="exec", description="Execute")
+    agent = _make_agent_cov2()
+    br = _make_blast_radius_cov2(vuln=vuln, pkg=pkg, agents=[agent], servers=[], creds=["SECRET"], tools=[tool])
+    report = _make_report_cov2(blast_radii=[br])
+    print_attack_flow_tree(report)
+
+
+# ── _build_remediation_json (from cov2) ──────────────────────────────────────
+
+
+def test_build_remediation_json():
+    from agent_bom.output import _build_remediation_json
+
+    vuln = _make_vuln_cov2()
+    pkg = _make_pkg_cov2(vulns=[vuln])
+    agent = _make_agent_cov2()
+    tool = MCPTool(name="read_file", description="Read")
+    srv = _make_server_cov2(pkgs=[pkg], tools=[tool])
+    br = _make_blast_radius_cov2(vuln=vuln, pkg=pkg, agents=[agent], servers=[srv], creds=["KEY"], tools=[tool])
+    report = _make_report_cov2(agents=[agent], blast_radii=[br])
+    result = _build_remediation_json(report)
+    assert isinstance(result, list)
+
+
+# ── export_json (from cov2) ──────────────────────────────────────────────────
+
+
+def test_export_json(tmp_path):
+    import json
+
+    from agent_bom.output import export_json
+
+    report = _make_report_cov2()
+    out = tmp_path / "report.json"
+    export_json(report, str(out))
+    assert out.exists()
+    data = json.loads(out.read_text())
+    assert data["document_type"] == "AI-BOM"
+
+
+# ── to_cyclonedx extras (from cov2) ─────────────────────────────────────────
+
+
+def test_to_cyclonedx_with_agent():
+    vuln = _make_vuln_cov2()
+    pkg = _make_pkg_cov2(vulns=[vuln])
+    srv = _make_server_cov2(pkgs=[pkg])
+    agent = _make_agent_cov2(servers=[srv])
+    report = _make_report_cov2(agents=[agent])
+    result = to_cyclonedx(report)
+    assert len(result["components"]) >= 2
+    assert "vulnerabilities" in result
+
+
+def test_to_cyclonedx_no_fix():
+    vuln = _make_vuln_cov2(fixed=None)
+    pkg = _make_pkg_cov2(vulns=[vuln])
+    srv = _make_server_cov2(pkgs=[pkg])
+    agent = _make_agent_cov2(servers=[srv])
+    report = _make_report_cov2(agents=[agent])
+    result = to_cyclonedx(report)
+    assert "vulnerabilities" in result
+
+
+# ── to_spdx extras (from cov2) ──────────────────────────────────────────────
+
+
+def test_to_spdx_with_agent():
+    vuln = _make_vuln_cov2()
+    pkg = _make_pkg_cov2(vulns=[vuln])
+    srv = _make_server_cov2(pkgs=[pkg])
+    agent = _make_agent_cov2(servers=[srv])
+    report = _make_report_cov2(agents=[agent])
+    result = to_spdx(report)
+    assert len(result.get("packages", result.get("elements", []))) >= 1
+
+
+# ── to_sarif extras (from cov2) ─────────────────────────────────────────────
+
+
+def test_to_sarif_with_findings():
+    vuln = _make_vuln_cov2()
+    pkg = _make_pkg_cov2(vulns=[vuln])
+    agent = _make_agent_cov2()
+    br = _make_blast_radius_cov2(vuln=vuln, pkg=pkg, agents=[agent])
+    report = _make_report_cov2(agents=[agent], blast_radii=[br])
+    result = to_sarif(report)
+    assert "runs" in result
+    run = result["runs"][0]
+    assert len(run.get("results", [])) >= 1

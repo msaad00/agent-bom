@@ -1158,3 +1158,37 @@ def test_json_output_omits_mcp_config_when_not_enriched():
     report = _make_report()
     data = to_json(report)
     assert "mcp_config_analysis" not in data
+
+
+# ── Unique tests from cov2 ──────────────────────────────────────────────────
+
+
+def test_check_litellm_returns_bool():
+    """_check_litellm should return a boolean."""
+    from agent_bom.ai_enrich import _check_litellm
+
+    result = _check_litellm()
+    assert isinstance(result, bool)
+
+
+def test_ai_cache_put():
+    """_ai_cache_put should not error."""
+    from agent_bom.ai_enrich import _ai_cache_put
+
+    _ai_cache_put("test_key", "test_value")
+
+
+def test_cache_key():
+    """_cache_key should return a non-empty string."""
+    from agent_bom.ai_enrich import _cache_key
+
+    key = _cache_key("prompt text", "model-name")
+    assert isinstance(key, str)
+    assert len(key) > 0
+
+
+def test_parse_json_response_not_dict():
+    """_parse_json_response should return None for non-dict JSON."""
+    from agent_bom.ai_enrich import _parse_json_response
+
+    assert _parse_json_response("[1, 2, 3]") is None

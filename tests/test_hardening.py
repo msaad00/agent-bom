@@ -126,7 +126,7 @@ def test_list_jobs_pagination():
     # Return 10 summary items
     mock_store.list_summary.return_value = [{"job_id": f"j-{i}"} for i in range(10)]
 
-    with patch("agent_bom.api.server._get_store", return_value=mock_store):
+    with patch("agent_bom.api.routes.scan._get_store", return_value=mock_store):
         client = TestClient(app)
         resp = client.get("/v1/jobs?limit=3&offset=2")
         assert resp.status_code == 200
@@ -149,7 +149,7 @@ def test_list_jobs_clamps_limit():
     mock_store = MagicMock()
     mock_store.list_summary.return_value = []
 
-    with patch("agent_bom.api.server._get_store", return_value=mock_store):
+    with patch("agent_bom.api.routes.scan._get_store", return_value=mock_store):
         client = TestClient(app)
         resp = client.get("/v1/jobs?limit=999")
         assert resp.status_code == 200

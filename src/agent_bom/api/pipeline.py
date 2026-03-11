@@ -5,12 +5,15 @@ Extracted from api/server.py (Phase 4). Contains:
 - _run_scan_sync: full scan pipeline runner (blocking, thread-safe)
 - _sync_scan_agents_to_fleet: auto-sync discovered agents to fleet registry
 - _now: UTC ISO timestamp helper
+- _executor: shared ThreadPoolExecutor for scan jobs
 """
 
 from __future__ import annotations
 
+import os
 import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
@@ -18,6 +21,9 @@ from typing import Any
 from agent_bom.api.models import JobStatus, ScanJob, StepStatus
 from agent_bom.api.stores import _get_fleet_store, _get_store, _job_lock
 from agent_bom.security import sanitize_error
+
+# ─── Shared executor ─────────────────────────────────────────────────────────
+_executor = ThreadPoolExecutor(max_workers=min(8, (os.cpu_count() or 4) + 2))
 
 # ─── Constants ───────────────────────────────────────────────────────────────
 

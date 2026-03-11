@@ -177,7 +177,7 @@ def test_load_registry_handles_corrupt_json():
     # Clear LRU cache to force reload
     _load_registry.cache_clear()
 
-    with patch("agent_bom.api.server._Path") as mock_path_cls:
+    with patch("agent_bom.api.routes.connectors._Path") as mock_path_cls:
         mock_path = MagicMock()
         mock_path.exists.return_value = True
         mock_path.read_text.return_value = "NOT VALID JSON {{"

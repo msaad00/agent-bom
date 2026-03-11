@@ -15,7 +15,7 @@ from starlette.testclient import TestClient
 from agent_bom.api.server import _jobs, app, set_job_store
 from agent_bom.api.store import InMemoryJobStore
 
-_SANITIZE = "agent_bom.api.server._sanitize_api_path"
+_SANITIZE = "agent_bom.api.routes.scan._sanitize_api_path"
 
 # Path under $HOME so the inline commonpath guard in endpoints passes.
 _HOME = os.path.realpath(os.path.expanduser("~"))

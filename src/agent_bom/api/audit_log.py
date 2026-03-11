@@ -213,8 +213,8 @@ class SQLiteAuditLog:
             params.append(since)
 
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""  # nosec B608 — clauses are static strings, values are parameterized
-        sql = (  # nosec B608
-            f"SELECT entry_id, timestamp, action, actor, resource, details, hmac_signature"
+        sql = (
+            f"SELECT entry_id, timestamp, action, actor, resource, details, hmac_signature"  # nosec B608
             f" FROM audit_log {where} ORDER BY timestamp DESC LIMIT ? OFFSET ?"
         )
         params.extend([limit, offset])

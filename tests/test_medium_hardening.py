@@ -413,7 +413,7 @@ def test_sync_uses_batch_put():
         agents.append(agent)
 
     with (
-        patch("agent_bom.api.server._get_fleet_store", return_value=mock_store),
+        patch("agent_bom.api.pipeline._get_fleet_store", return_value=mock_store),
         patch("agent_bom.fleet.trust_scoring.compute_trust_score", return_value=(0.8, {"test": True})),
     ):
         _sync_scan_agents_to_fleet(agents)
@@ -454,7 +454,7 @@ def test_sync_batch_put_with_existing():
         agents.append(agent)
 
     with (
-        patch("agent_bom.api.server._get_fleet_store", return_value=mock_store),
+        patch("agent_bom.api.pipeline._get_fleet_store", return_value=mock_store),
         patch("agent_bom.fleet.trust_scoring.compute_trust_score", return_value=(0.9, {})),
     ):
         _sync_scan_agents_to_fleet(agents)
@@ -473,7 +473,7 @@ def test_sync_empty_agents_no_batch_put():
 
     mock_store = MagicMock()
 
-    with patch("agent_bom.api.server._get_fleet_store", return_value=mock_store):
+    with patch("agent_bom.api.pipeline._get_fleet_store", return_value=mock_store):
         _sync_scan_agents_to_fleet([])
 
     mock_store.batch_put.assert_not_called()

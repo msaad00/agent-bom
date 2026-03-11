@@ -142,6 +142,10 @@ main.add_command(graph_cmd, "graph")
 main.add_command(dashboard_cmd, "dashboard")
 main.add_command(introspect_cmd, "introspect")
 
+from agent_bom.cli._db import db_cmd  # noqa: E402
+
+main.add_command(db_cmd, "db")
+
 # ---------------------------------------------------------------------------
 # Backward-compatible re-exports used by tests
 # ---------------------------------------------------------------------------

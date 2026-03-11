@@ -11,8 +11,6 @@ import logging
 
 from fastapi import APIRouter
 
-from agent_bom.security import sanitize_error
-
 router = APIRouter()
 _logger = logging.getLogger(__name__)
 
@@ -44,14 +42,14 @@ async def list_assets(
             "stats": stats,
             "mttr_days": mttr,
         }
-    except Exception as exc:
+    except Exception:
         _logger.exception("Failed to list assets")
         return {
             "assets": [],
             "count": 0,
             "stats": {},
             "mttr_days": None,
-            "error": sanitize_error(exc),
+            "error": "Asset tracker unavailable",
         }
 
 
@@ -66,10 +64,10 @@ async def get_asset_stats() -> dict:
         mttr = tracker.mttr_days()
         tracker.close()
         return {"stats": stats, "mttr_days": mttr}
-    except Exception as exc:
+    except Exception:
         _logger.exception("Failed to get asset stats")
         return {
             "stats": {},
             "mttr_days": None,
-            "error": sanitize_error(exc),
+            "error": "Asset tracker unavailable",
         }

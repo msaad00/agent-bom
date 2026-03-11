@@ -30,8 +30,10 @@ def _make_pkg(name: str, version: str, ecosystem: str = "pypi") -> Package:
 def _scan_one(pkg: Package) -> list:
     """Run OSV batch query for a single package and return raw vuln dicts."""
     results = asyncio.run(query_osv_batch([pkg]))
-    # query_osv_batch normalises ecosystem keys to lowercase
-    key = f"{pkg.ecosystem.lower()}:{pkg.name}@{pkg.version}"
+    # query_osv_batch normalises ecosystem keys to lowercase + PEP 503 name
+    from agent_bom.models import normalize_package_name
+
+    key = f"{pkg.ecosystem.lower()}:{normalize_package_name(pkg.name, pkg.ecosystem)}@{pkg.version}"
     return results.get(key, [])
 
 

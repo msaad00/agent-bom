@@ -156,9 +156,9 @@ async def _run_scan_pipeline(
     enrich: bool = False,
     transitive: bool = False,
 ):
-    """Run discovery → extraction → scanning and return (agents, blast_radii, warnings).
+    """Run discovery -> extraction -> scanning and return (agents, blast_radii, warnings).
 
-    Async version — safe to call from within an existing event loop (e.g.
+    Async version -- safe to call from within an existing event loop (e.g.
     FastMCP's async context).  Falls back to asyncio.run() when no loop
     is running (CLI usage).
     """
@@ -309,6 +309,43 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
     # Set the actual agent-bom version (FastMCP defaults to SDK version)
     mcp._mcp_server.version = __version__
 
+    # Import tool implementations
+    from agent_bom.mcp_tools.analysis import (
+        analytics_query_impl,
+        blast_radius_impl,
+        context_graph_impl,
+    )
+    from agent_bom.mcp_tools.cloud import gpu_infra_scan_impl, vector_db_scan_impl
+    from agent_bom.mcp_tools.compliance import (
+        aisvs_benchmark_impl,
+        cis_benchmark_impl,
+        compliance_impl,
+        license_compliance_scan_impl,
+        policy_check_impl,
+    )
+    from agent_bom.mcp_tools.registry import (
+        fleet_scan_impl,
+        marketplace_check_impl,
+        registry_lookup_impl,
+    )
+    from agent_bom.mcp_tools.runtime import (
+        inventory_impl,
+        runtime_correlate_impl,
+        skill_trust_impl,
+        verify_impl,
+        where_impl,
+    )
+    from agent_bom.mcp_tools.sbom import diff_impl, generate_sbom_impl, remediate_impl
+    from agent_bom.mcp_tools.scanning import check_impl, code_scan_impl, scan_impl
+    from agent_bom.mcp_tools.specialized import (
+        browser_extension_scan_impl,
+        dataset_card_scan_impl,
+        model_file_scan_impl,
+        model_provenance_scan_impl,
+        prompt_scan_impl,
+        training_pipeline_scan_impl,
+    )
+
     # ── Tool 1: scan ──────────────────────────────────────────────────
 
     @mcp.tool(annotations=_READ_ONLY, title="Security Scan")
@@ -345,84 +382,19 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             JSON with the complete AI-BOM report including agents, packages,
             vulnerabilities, blast radius, and remediation guidance.
         """
-        try:
-            from agent_bom.models import AIBOMReport
-            from agent_bom.output import to_json
-
-            agents, blast_radii, scan_warnings, scan_sources = await _run_scan_pipeline(
-                config_path,
-                image,
-                sbom_path,
-                enrich,
-                transitive=transitive,
-            )
-            if not agents:
-                result: dict[str, object] = {"status": "no_agents_found", "agents": [], "blast_radii": []}
-                if scan_warnings:
-                    result["warnings"] = scan_warnings
-                return _truncate_response(json.dumps(result))
-
-            # Integrity verification
-            if verify_integrity:
-                from agent_bom.http_client import create_client
-                from agent_bom.integrity import verify_package_integrity
-
-                async with create_client(timeout=15.0) as client:
-                    for agent in agents:
-                        for server in agent.mcp_servers:
-                            for pkg in server.packages:
-                                try:
-                                    integrity_result = await verify_package_integrity(pkg, client)
-                                    if integrity_result:
-                                        pkg.integrity = integrity_result
-                                except Exception as exc:
-                                    logger.debug("Integrity check failed for %s: %s", pkg.name, exc)
-
-            # OpenSSF Scorecard enrichment
-            if scorecard:
-                try:
-                    from agent_bom.scorecard import enrich_packages_with_scorecard
-
-                    all_pkgs = [p for a in agents for s in a.mcp_servers for p in s.packages]
-                    if all_pkgs:
-                        await enrich_packages_with_scorecard(all_pkgs)
-                except Exception as exc:
-                    logger.debug("Scorecard enrichment failed: %s", exc)
-
-            report = AIBOMReport(agents=agents, blast_radii=blast_radii, scan_sources=scan_sources)
-            result = to_json(report)
-
-            # Policy evaluation
-            if policy:
-                from agent_bom.policy import _validate_policy, evaluate_policy
-
-                _validate_policy(policy)
-                result["policy_results"] = evaluate_policy(policy, blast_radii)
-
-            # Severity gate
-            if fail_severity:
-                from agent_bom.models import Severity
-
-                severity_order = ["critical", "high", "medium", "low"]
-                try:
-                    threshold = Severity(fail_severity.lower())
-                    threshold_idx = severity_order.index(threshold.value)
-                except (ValueError, KeyError):
-                    return json.dumps({"error": f"Invalid severity: {fail_severity}. Use: critical, high, medium, low"})
-                gate_fail = any(
-                    severity_order.index(sev) <= threshold_idx
-                    for br in blast_radii
-                    if (sev := br.vulnerability.severity.value) in severity_order
-                )
-                result["gate_status"] = "fail" if gate_fail else "pass"
-                result["gate_severity"] = fail_severity.lower()
-
-            if scan_warnings:
-                result["warnings"] = scan_warnings
-            return _truncate_response(json.dumps(result, indent=2, default=str))
-        except Exception as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+        return await scan_impl(
+            config_path=config_path,
+            image=image,
+            sbom_path=sbom_path,
+            enrich=enrich,
+            scorecard=scorecard,
+            transitive=transitive,
+            verify_integrity=verify_integrity,
+            fail_severity=fail_severity,
+            policy=policy,
+            _run_scan_pipeline=_run_scan_pipeline,
+            _truncate_response=_truncate_response,
+        )
 
     # ── Tool 2: check ────────────────────────────────────────────────
 
@@ -452,89 +424,12 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             JSON with package, version, ecosystem, vulnerability count,
             and vulnerability details (id, severity, cvss, fix version, summary).
         """
-        try:
-            from agent_bom.models import Package as Pkg
-            from agent_bom.scanners import build_vulnerabilities, query_osv_batch
-
-            # Parse name@version
-            spec = package.strip()
-            if "@" in spec and not spec.startswith("@"):
-                name, version = spec.rsplit("@", 1)
-            elif spec.startswith("@") and spec.count("@") > 1:
-                last_at = spec.rindex("@")
-                name, version = spec[:last_at], spec[last_at + 1 :]
-            else:
-                name, version = spec, "latest"
-
-            try:
-                eco = _validate_ecosystem(ecosystem)
-            except ValueError as exc:
-                logger.exception("MCP tool error")
-                return json.dumps({"error": sanitize_error(exc)})
-            pkg = Pkg(name=name, version=version, ecosystem=eco)
-
-            # Resolve "latest" via registry
-            if version in ("latest", ""):
-                from agent_bom.http_client import create_client
-                from agent_bom.resolver import resolve_package_version
-
-                async with create_client(timeout=15.0) as client:
-                    resolved = await resolve_package_version(pkg, client)
-                if resolved:
-                    version = pkg.version
-                else:
-                    return json.dumps(
-                        {
-                            "package": name,
-                            "ecosystem": eco,
-                            "error": f"Could not resolve latest version for {name}",
-                        }
-                    )
-
-            results = await query_osv_batch([pkg])
-            key = f"{eco}:{name}@{version}"
-            vuln_data = results.get(key, [])
-
-            if not vuln_data:
-                return json.dumps(
-                    {
-                        "package": name,
-                        "version": version,
-                        "ecosystem": eco,
-                        "vulnerabilities": 0,
-                        "status": "clean",
-                        "message": f"No known vulnerabilities in {name}@{version}",
-                    }
-                )
-
-            vulns = build_vulnerabilities(vuln_data, pkg)
-            return _truncate_response(
-                json.dumps(
-                    {
-                        "package": name,
-                        "version": version,
-                        "ecosystem": eco,
-                        "vulnerabilities": len(vulns),
-                        "status": "vulnerable",
-                        "details": [
-                            {
-                                "id": v.id,
-                                "severity": v.severity.value,
-                                "cvss_score": v.cvss_score,
-                                "fixed_version": v.fixed_version,
-                                "summary": (v.summary or "")[:200],
-                                "compliance_tags": v.compliance_tags,
-                            }
-                            for v in vulns
-                        ],
-                    },
-                    indent=2,
-                    default=str,
-                )
-            )
-        except Exception as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+        return await check_impl(
+            package=package,
+            ecosystem=ecosystem,
+            _validate_ecosystem=_validate_ecosystem,
+            _truncate_response=_truncate_response,
+        )
 
     # ── Tool 3: blast_radius ──────────────────────────────────────────
 
@@ -557,48 +452,12 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             affected_servers, affected_agents, exposed_credentials, and
             exposed_tools. Returns found=false if CVE not found.
         """
-        try:
-            validated_cve = _validate_cve_id(cve_id)
-        except ValueError as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
-
-        try:
-            _agents, blast_radii, _warnings, _srcs = await _run_scan_pipeline()
-
-            matches = [br for br in blast_radii if br.vulnerability.id.upper() == validated_cve.upper()]
-            if not matches:
-                return json.dumps(
-                    {
-                        "found": False,
-                        "error": "CVE not found",
-                        "cve_id": cve_id,
-                        "suggestion": "Run scan first",
-                    }
-                )
-
-            results = []
-            for br in matches:
-                results.append(
-                    {
-                        "cve_id": br.vulnerability.id,
-                        "severity": br.vulnerability.severity.value,
-                        "cvss_score": br.vulnerability.cvss_score,
-                        "risk_score": br.risk_score,
-                        "package": f"{br.package.name}@{br.package.version}",
-                        "ecosystem": br.package.ecosystem,
-                        "affected_servers": [s.name for s in br.affected_servers],
-                        "affected_agents": [a.name for a in br.affected_agents],
-                        "exposed_credentials": br.exposed_credentials,
-                        "exposed_tools": [t.name for t in br.exposed_tools],
-                        "fixed_version": br.vulnerability.fixed_version,
-                        "ai_risk_context": br.ai_risk_context,
-                    }
-                )
-            return _truncate_response(json.dumps({"cve_id": cve_id, "found": True, "blast_radii": results}, indent=2, default=str))
-        except Exception as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+        return await blast_radius_impl(
+            cve_id=cve_id,
+            _validate_cve_id=_validate_cve_id,
+            _run_scan_pipeline=_run_scan_pipeline,
+            _truncate_response=_truncate_response,
+        )
 
     # ── Tool 4: policy_check ──────────────────────────────────────────
 
@@ -626,23 +485,11 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             JSON with passed (bool), violations list, failure_count, and
             warning_count.
         """
-        try:
-            from agent_bom.policy import _validate_policy, evaluate_policy
-
-            policy = json.loads(policy_json)
-            _validate_policy(policy)
-
-            _agents, blast_radii, _warnings, _srcs = await _run_scan_pipeline()
-            result = evaluate_policy(policy, blast_radii)
-            return _truncate_response(json.dumps(result, indent=2, default=str))
-        except json.JSONDecodeError as exc:
-            return json.dumps({"error": f"Invalid JSON: {exc}"})
-        except ValueError as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
-        except Exception as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+        return await policy_check_impl(
+            policy_json=policy_json,
+            _run_scan_pipeline=_run_scan_pipeline,
+            _truncate_response=_truncate_response,
+        )
 
     # ── Tool 5: registry_lookup ───────────────────────────────────────
 
@@ -675,47 +522,11 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             credential_env_vars, risk_justification. Returns found=false
             if not found.
         """
-        search_term = (server_name or package_name or "").strip()
-        if not search_term:
-            return json.dumps({"error": "Provide server_name or package_name"})
-
-        try:
-            data = _get_registry_data()
-        except Exception as exc:
-            logger.exception("Registry read failed")
-            return json.dumps({"error": f"Failed to read registry: {sanitize_error(exc)}"})
-
-        servers = data.get("servers", {})
-        search_lower = search_term.lower()
-
-        for key, entry in servers.items():
-            if (
-                search_lower in key.lower()
-                or search_lower in entry.get("package", "").lower()
-                or search_lower in entry.get("name", "").lower()
-            ):
-                return json.dumps(
-                    {
-                        "found": True,
-                        "id": key,
-                        "name": entry.get("name", key),
-                        "package": entry.get("package", ""),
-                        "ecosystem": entry.get("ecosystem", ""),
-                        "latest_version": entry.get("latest_version", ""),
-                        "risk_level": entry.get("risk_level", "unknown"),
-                        "risk_justification": entry.get("risk_justification", ""),
-                        "verified": entry.get("verified", False),
-                        "tools": entry.get("tools", []),
-                        "credential_env_vars": entry.get("credential_env_vars", []),
-                        "known_cves": entry.get("known_cves", []),
-                        "category": entry.get("category", ""),
-                        "license": entry.get("license", ""),
-                        "source_url": entry.get("source_url", ""),
-                    },
-                    indent=2,
-                )
-
-        return json.dumps({"found": False, "error": "No matching server found in registry", "query": search_term})
+        return registry_lookup_impl(
+            server_name=server_name,
+            package_name=package_name,
+            _get_registry_data=_get_registry_data,
+        )
 
     # ── Tool 6: generate_sbom ─────────────────────────────────────────
 
@@ -737,23 +548,12 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         Returns:
             JSON string containing the SBOM in the requested format.
         """
-        try:
-            from agent_bom.models import AIBOMReport
-            from agent_bom.output import to_cyclonedx, to_spdx
-
-            agents, blast_radii, _warnings, scan_sources = await _run_scan_pipeline(config_path=config_path)
-            if not agents:
-                return json.dumps({"error": "No agents found to generate SBOM from"})
-
-            report = AIBOMReport(agents=agents, blast_radii=blast_radii, scan_sources=scan_sources)
-
-            if format.lower() == "spdx":
-                return _truncate_response(json.dumps(to_spdx(report), indent=2, default=str))
-            else:
-                return _truncate_response(json.dumps(to_cyclonedx(report), indent=2, default=str))
-        except Exception as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+        return await generate_sbom_impl(
+            format=format,
+            config_path=config_path,
+            _run_scan_pipeline=_run_scan_pipeline,
+            _truncate_response=_truncate_response,
+        )
 
     # ── Tool 7: compliance ───────────────────────────────────────────
 
@@ -779,88 +579,12 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             OWASP MCP Top 10 (10 controls), MITRE ATLAS (13 techniques),
             and NIST AI RMF (14 subcategories).
         """
-        try:
-            from agent_bom.atlas import ATLAS_TECHNIQUES
-            from agent_bom.nist_ai_rmf import NIST_AI_RMF
-            from agent_bom.owasp import OWASP_LLM_TOP10
-            from agent_bom.owasp_mcp import OWASP_MCP_TOP10
-
-            agents, blast_radii, _warnings, _srcs = await _run_scan_pipeline(config_path, image)
-
-            # Convert BlastRadius objects to dicts for aggregation
-            br_dicts = []
-            for br in blast_radii:
-                br_dicts.append(
-                    {
-                        "severity": br.vulnerability.severity.value,
-                        "package": f"{br.package.name}@{br.package.version}",
-                        "affected_agents": [a.name for a in br.affected_agents],
-                        "owasp_tags": list(br.owasp_tags),
-                        "atlas_tags": list(br.atlas_tags),
-                        "nist_ai_rmf_tags": list(br.nist_ai_rmf_tags),
-                        "owasp_mcp_tags": list(br.owasp_mcp_tags),
-                    }
-                )
-
-            def _build_controls(catalog, tag_field, id_key):
-                controls = []
-                for code, name in sorted(catalog.items()):
-                    sev_bk = {"critical": 0, "high": 0, "medium": 0, "low": 0}
-                    pkgs, ags, findings = set(), set(), 0
-                    for br in br_dicts:
-                        if code in br.get(tag_field, []):
-                            findings += 1
-                            sev = (br.get("severity") or "").lower()
-                            if sev in sev_bk:
-                                sev_bk[sev] += 1
-                            if br.get("package"):
-                                pkgs.add(br["package"])
-                            for a in br.get("affected_agents", []):
-                                ags.add(a)
-                    status = "pass" if findings == 0 else ("fail" if sev_bk["critical"] > 0 or sev_bk["high"] > 0 else "warning")
-                    controls.append(
-                        {
-                            id_key: code,
-                            "name": name,
-                            "findings": findings,
-                            "status": status,
-                            "severity_breakdown": sev_bk,
-                            "affected_packages": sorted(pkgs),
-                            "affected_agents": sorted(ags),
-                        }
-                    )
-                return controls
-
-            owasp = _build_controls(OWASP_LLM_TOP10, "owasp_tags", "code")
-            atlas = _build_controls(ATLAS_TECHNIQUES, "atlas_tags", "code")
-            nist = _build_controls(NIST_AI_RMF, "nist_ai_rmf_tags", "code")
-            owasp_mcp = _build_controls(OWASP_MCP_TOP10, "owasp_mcp_tags", "code")
-
-            all_controls = owasp + atlas + nist + owasp_mcp
-            total = len(all_controls)
-            total_pass = sum(1 for c in all_controls if c["status"] == "pass")
-            score = round((total_pass / total) * 100, 1) if total > 0 else 100.0
-            has_fail = any(c["status"] == "fail" for c in all_controls)
-            has_warn = any(c["status"] == "warning" for c in all_controls)
-
-            return _truncate_response(
-                json.dumps(
-                    {
-                        "overall_score": score,
-                        "overall_status": "fail" if has_fail else ("warning" if has_warn else "pass"),
-                        "total_controls": total,
-                        "owasp_llm_top10": owasp,
-                        "mitre_atlas": atlas,
-                        "nist_ai_rmf": nist,
-                        "owasp_mcp_top10": owasp_mcp,
-                    },
-                    indent=2,
-                    default=str,
-                )
-            )
-        except Exception as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+        return await compliance_impl(
+            config_path=config_path,
+            image=image,
+            _run_scan_pipeline=_run_scan_pipeline,
+            _truncate_response=_truncate_response,
+        )
 
     # ── Tool 8: remediate ────────────────────────────────────────────
 
@@ -884,64 +608,12 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             JSON with package_fixes (upgrade commands by ecosystem),
             credential_fixes (scope reduction steps), and unfixable items.
         """
-        try:
-            from agent_bom.models import AIBOMReport
-            from agent_bom.remediate import generate_remediation
-
-            agents, blast_radii, _warnings, scan_sources = await _run_scan_pipeline(config_path, image)
-            if not agents:
-                return json.dumps(
-                    {
-                        "package_fixes": [],
-                        "credential_fixes": [],
-                        "unfixable": [],
-                        "message": "No agents found — nothing to remediate",
-                    }
-                )
-
-            report = AIBOMReport(agents=agents, blast_radii=blast_radii, scan_sources=scan_sources)
-            plan = generate_remediation(report, blast_radii)
-
-            return _truncate_response(
-                json.dumps(
-                    {
-                        "generated_at": plan.generated_at,
-                        "package_fixes": [
-                            {
-                                "package": f.package,
-                                "ecosystem": f.ecosystem,
-                                "current_version": f.current_version,
-                                "fixed_version": f.fixed_version,
-                                "command": f.command,
-                                "vulns": f.vulns[:5],
-                                "total_vulns": len(f.vulns),
-                                "agents": f.agents[:5],
-                                "total_agents": len(f.agents),
-                                "references": f.references[:10],
-                                "total_references": len(f.references),
-                            }
-                            for f in plan.package_fixes
-                        ],
-                        "credential_fixes": [
-                            {
-                                "credential": f.credential_name,
-                                "locations": f.locations[:5],
-                                "total_locations": len(f.locations),
-                                "risk": f.risk_description,
-                                "fix_steps": f.fix_steps,
-                            }
-                            for f in plan.credential_fixes
-                        ],
-                        "total_unfixable": len(plan.unfixable),
-                        "unfixable": plan.unfixable[:10],
-                    },
-                    indent=2,
-                    default=str,
-                )
-            )
-        except Exception as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+        return await remediate_impl(
+            config_path=config_path,
+            image=image,
+            _run_scan_pipeline=_run_scan_pipeline,
+            _truncate_response=_truncate_response,
+        )
 
     # ── Tool 9: skill_trust ──────────────────────────────────────────
 
@@ -965,57 +637,11 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             JSON with verdict, confidence, per-category assessments, and
             recommendations.
         """
-        try:
-            from agent_bom.parsers.skill_audit import audit_skill_result
-            from agent_bom.parsers.skills import parse_skill_file
-            from agent_bom.parsers.trust_assessment import assess_trust
-
-            try:
-                p = _safe_path(skill_path)
-            except ValueError as exc:
-                logger.exception("MCP tool error")
-                return json.dumps({"error": sanitize_error(exc)})
-            if not p.is_file():
-                return json.dumps({"error": f"File not found: {skill_path}"})
-            if p.stat().st_size > _MAX_FILE_SIZE:
-                return json.dumps({"error": f"File too large ({p.stat().st_size} bytes, max {_MAX_FILE_SIZE})"})
-
-            scan = parse_skill_file(p)
-            audit = audit_skill_result(scan)
-            trust = assess_trust(scan, audit)
-
-            result = trust.to_dict()
-
-            # Instruction file provenance check (Sigstore)
-            try:
-                from agent_bom.integrity import verify_instruction_file
-
-                provenance = verify_instruction_file(p)
-                if provenance.verified:
-                    result["provenance"] = {
-                        "status": "verified",
-                        "signer": provenance.signer_identity,
-                        "rekor_index": provenance.rekor_log_index,
-                        "sha256": provenance.sha256,
-                    }
-                elif provenance.has_sigstore_bundle:
-                    result["provenance"] = {
-                        "status": "bundle_found_but_invalid",
-                        "reason": provenance.reason,
-                        "sha256": provenance.sha256,
-                    }
-                else:
-                    result["provenance"] = {
-                        "status": "unsigned",
-                        "sha256": provenance.sha256,
-                    }
-            except Exception:
-                result["provenance"] = {"status": "check_failed"}
-
-            return _truncate_response(json.dumps(result, indent=2))
-        except Exception as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+        return skill_trust_impl(
+            skill_path=skill_path,
+            _safe_path=_safe_path,
+            _truncate_response=_truncate_response,
+        )
 
     # ── Tool 10: verify ─────────────────────────────────────────────
 
@@ -1034,49 +660,12 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             JSON with integrity verification (hash match, expected vs actual)
             and provenance status (SLSA level, source repo, build trigger).
         """
-        try:
-            from agent_bom.http_client import create_client
-            from agent_bom.integrity import (
-                check_package_provenance,
-                verify_package_integrity,
-            )
-            from agent_bom.models import Package as Pkg
-
-            spec = package.strip()
-            try:
-                eco = _validate_ecosystem(ecosystem)
-            except ValueError as exc:
-                logger.exception("MCP tool error")
-                return json.dumps({"error": sanitize_error(exc)})
-
-            # Parse name@version or name==version
-            if eco == "pypi" and "==" in spec:
-                name, version = spec.split("==", 1)
-            elif "@" in spec and not spec.startswith("@"):
-                name, version = spec.rsplit("@", 1)
-            elif spec.startswith("@") and spec.count("@") > 1:
-                last_at = spec.rindex("@")
-                name, version = spec[:last_at], spec[last_at + 1 :]
-            else:
-                name, version = spec, "latest"
-
-            pkg = Pkg(name=name, version=version, ecosystem=eco)
-
-            async with create_client(timeout=15.0) as client:
-                integrity = await verify_package_integrity(pkg, client)
-                provenance = await check_package_provenance(pkg, client)
-
-            result = {
-                "package": name,
-                "version": version,
-                "ecosystem": eco,
-                "integrity": integrity.to_dict() if integrity and hasattr(integrity, "to_dict") else integrity,
-                "provenance": provenance.to_dict() if provenance and hasattr(provenance, "to_dict") else provenance,
-            }
-            return _truncate_response(json.dumps(result, indent=2, default=str))
-        except Exception as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+        return await verify_impl(
+            package=package,
+            ecosystem=ecosystem,
+            _validate_ecosystem=_validate_ecosystem,
+            _truncate_response=_truncate_response,
+        )
 
     # ── Tool 11: where ────────────────────────────────────────────
 
@@ -1091,38 +680,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         Returns:
             JSON with per-client config paths, existence status, and platform.
         """
-        try:
-            import platform
-
-            from agent_bom.discovery import CONFIG_LOCATIONS
-
-            current_os = platform.system()
-            clients = []
-            for agent_type, platforms in CONFIG_LOCATIONS.items():
-                paths = platforms.get(current_os, [])
-                entries = []
-                for p in paths:
-                    try:
-                        expanded = Path(p).expanduser()
-                        entries.append(
-                            {
-                                "path": str(expanded),
-                                "exists": expanded.exists(),
-                            }
-                        )
-                    except Exception:
-                        entries.append({"path": p, "exists": False, "error": "path expansion failed"})
-                clients.append(
-                    {
-                        "client": agent_type.value,
-                        "platform": current_os,
-                        "config_paths": entries,
-                    }
-                )
-            return _truncate_response(json.dumps({"clients": clients, "platform": current_os}, indent=2))
-        except Exception as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+        return where_impl(_truncate_response=_truncate_response)
 
     # ── Tool 12: inventory ────────────────────────────────────────
 
@@ -1139,43 +697,10 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             JSON with discovered agents, their MCP servers, packages, and
             transport types.
         """
-        try:
-            from agent_bom.discovery import discover_all
-            from agent_bom.parsers import extract_packages
-
-            agents = discover_all(project_dir=config_path)
-            if not agents:
-                return json.dumps({"status": "no_agents_found", "agents": []})
-
-            for agent in agents:
-                for server in agent.mcp_servers:
-                    if not server.packages:
-                        server.packages = extract_packages(server)
-
-            result = []
-            for agent in agents:
-                servers = []
-                for s in agent.mcp_servers:
-                    servers.append(
-                        {
-                            "name": s.name,
-                            "command": s.command,
-                            "transport": s.transport.value,
-                            "packages": [{"name": p.name, "version": p.version, "ecosystem": p.ecosystem} for p in s.packages],
-                        }
-                    )
-                result.append(
-                    {
-                        "name": agent.name,
-                        "agent_type": agent.agent_type.value,
-                        "config_path": agent.config_path,
-                        "servers": servers,
-                    }
-                )
-            return _truncate_response(json.dumps({"agents": result, "total_agents": len(result)}, indent=2))
-        except Exception as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+        return inventory_impl(
+            config_path=config_path,
+            _truncate_response=_truncate_response,
+        )
 
     # ── Tool 13: diff ─────────────────────────────────────────────
 
@@ -1195,39 +720,11 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             JSON with new findings, resolved findings, new/removed packages,
             and a human-readable summary.
         """
-        try:
-            from agent_bom.history import diff_reports, latest_report, load_report, save_report
-            from agent_bom.models import AIBOMReport
-            from agent_bom.output import to_json
-
-            agents, blast_radii, _warnings, scan_sources = await _run_scan_pipeline()
-            if not agents:
-                return json.dumps({"error": "No agents found — nothing to diff"})
-
-            report = AIBOMReport(agents=agents, blast_radii=blast_radii, scan_sources=scan_sources)
-            current = to_json(report)
-
-            if baseline is None:
-                latest = latest_report()
-                if latest:
-                    baseline = load_report(latest)
-                else:
-                    save_report(current)
-                    return json.dumps(
-                        {
-                            "message": "No baseline found. Current scan saved as first baseline.",
-                            "current_summary": current.get("summary", {}),
-                        },
-                        indent=2,
-                        default=str,
-                    )
-
-            result = diff_reports(baseline, current)
-            save_report(current)
-            return _truncate_response(json.dumps(result, indent=2, default=str))
-        except Exception as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+        return await diff_impl(
+            baseline=baseline,
+            _run_scan_pipeline=_run_scan_pipeline,
+            _truncate_response=_truncate_response,
+        )
 
     # ── Tool 14: marketplace_check ───────────────────────────────
 
@@ -1251,108 +748,13 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             JSON with name, version, ecosystem, cve_count, download_count,
             registry_verified, and trust_signals.
         """
-        try:
-            name = package.strip()
-            if not name or len(name) > 200:
-                return json.dumps({"error": "Invalid package name"})
-
-            try:
-                eco = _validate_ecosystem(ecosystem)
-            except ValueError as exc:
-                logger.exception("MCP tool error")
-                return json.dumps({"error": sanitize_error(exc)})
-
-            # Fetch package metadata from registry
-            from agent_bom.http_client import create_client
-
-            version = "unknown"
-            download_count = 0
-            license_info = None
-
-            async with create_client(timeout=15.0) as client:
-                if eco == "npm":
-                    try:
-                        resp = await client.get(f"https://registry.npmjs.org/{name}")
-                        if resp.status_code == 200:
-                            data = resp.json()
-                            dist_tags = data.get("dist-tags", {})
-                            version = dist_tags.get("latest", "unknown")
-                            license_info = data.get("license")
-                    except Exception:
-                        logger.debug("npm registry lookup failed for %s", name)
-                    # npm download count
-                    try:
-                        resp = await client.get(f"https://api.npmjs.org/downloads/point/last-week/{name}")
-                        if resp.status_code == 200:
-                            download_count = resp.json().get("downloads", 0)
-                    except Exception:
-                        logger.debug("npm download count lookup failed for %s", name)
-                elif eco == "pypi":
-                    try:
-                        resp = await client.get(f"https://pypi.org/pypi/{name}/json")
-                        if resp.status_code == 200:
-                            data = resp.json()
-                            version = data.get("info", {}).get("version", "unknown")
-                            license_info = data.get("info", {}).get("license")
-                    except Exception:
-                        logger.debug("PyPI metadata lookup failed for %s", name)
-
-            # Check CVEs
-            from agent_bom.models import Package as Pkg
-            from agent_bom.scanners import build_vulnerabilities, query_osv_batch
-
-            pkg = Pkg(name=name, version=version, ecosystem=eco)
-            results = await query_osv_batch([pkg])
-            key = f"{eco}:{name}@{version}"
-            vuln_data = results.get(key, [])
-            vulns = build_vulnerabilities(vuln_data, pkg) if vuln_data else []
-
-            # Cross-reference MCP registry
-            registry_verified = False
-            try:
-                data_raw = _get_registry_data_raw()
-                registry = json.loads(data_raw)
-                if isinstance(registry, dict):
-                    servers = registry.get("servers", registry)
-                    for _k, v in servers.items() if isinstance(servers, dict) else []:
-                        pkgs = v.get("packages", [])
-                        if name in pkgs or any(name in p for p in pkgs):
-                            registry_verified = True
-                            break
-            except Exception:
-                logger.debug("MCP registry verification failed for %s", name)
-
-            # Build trust signals
-            trust_signals = []
-            if len(vulns) == 0:
-                trust_signals.append("no-known-cves")
-            if registry_verified:
-                trust_signals.append("registry-verified")
-            if download_count > 100_000:
-                trust_signals.append("high-adoption")
-            elif download_count > 10_000:
-                trust_signals.append("moderate-adoption")
-            if license_info:
-                trust_signals.append(f"license:{license_info}")
-
-            return json.dumps(
-                {
-                    "package": name,
-                    "version": version,
-                    "ecosystem": eco,
-                    "cve_count": len(vulns),
-                    "download_count": download_count,
-                    "registry_verified": registry_verified,
-                    "license": license_info,
-                    "trust_signals": trust_signals,
-                    "vulnerabilities": [{"id": v.id, "severity": v.severity.value} for v in vulns[:10]],
-                },
-                indent=2,
-                default=str,
-            )
-        except Exception as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+        return await marketplace_check_impl(
+            package=package,
+            ecosystem=ecosystem,
+            _validate_ecosystem=_validate_ecosystem,
+            _get_registry_data_raw=_get_registry_data_raw,
+            _truncate_response=_truncate_response,
+        )
 
     # ── Tool 16: code_scan ────────────────────────────────────────
 
@@ -1372,21 +774,12 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
         Requires ``semgrep`` on PATH (``pip install semgrep``).
         """
-        try:
-            scan_path = _safe_path(path)
-        except ValueError as exc:
-            return json.dumps({"error": sanitize_error(exc)})
-
-        try:
-            from agent_bom.sast import SASTScanError, scan_code
-
-            _packages, sast_result = scan_code(str(scan_path), config=config)
-            return _truncate_response(json.dumps(sast_result.to_dict(), indent=2))
-        except SASTScanError as exc:
-            return json.dumps({"error": sanitize_error(exc)})
-        except Exception as exc:
-            logger.error("code_scan error: %s", exc)
-            return json.dumps({"error": sanitize_error(exc)})
+        return await code_scan_impl(
+            path=path,
+            config=config,
+            _safe_path=_safe_path,
+            _truncate_response=_truncate_response,
+        )
 
     # ── Tool 17: context_graph ──────────────────────────────────
 
@@ -1414,45 +807,13 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         Returns:
             JSON with nodes, edges, lateral_paths, interaction_risks, and stats.
         """
-        try:
-            from agent_bom.context_graph import (
-                NodeKind,
-                build_context_graph,
-                compute_interaction_risks,
-                find_lateral_paths,
-                to_serializable,
-            )
-            from agent_bom.models import AIBOMReport
-            from agent_bom.output import to_json
-
-            agents, blast_radii, _warnings, scan_sources = await _run_scan_pipeline(config_path)
-            if not agents:
-                return json.dumps({"error": "No agents found"})
-
-            report = AIBOMReport(agents=agents, blast_radii=blast_radii, scan_sources=scan_sources)
-            report_json = to_json(report)
-            graph = build_context_graph(
-                report_json["agents"],
-                report_json.get("blast_radius", []),
-            )
-
-            paths: list = []
-            depth = max(1, min(max_depth, 6))
-            if source_agent:
-                node_id = f"agent:{source_agent}"
-                if node_id in graph.nodes:
-                    paths = find_lateral_paths(graph, node_id, max_depth=depth)
-            else:
-                for nid, node in graph.nodes.items():
-                    if node.kind == NodeKind.AGENT:
-                        paths.extend(find_lateral_paths(graph, nid, max_depth=depth))
-
-            risks = compute_interaction_risks(graph)
-            result = to_serializable(graph, paths, risks)
-            return _truncate_response(json.dumps(result, indent=2, default=str))
-        except Exception as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+        return await context_graph_impl(
+            config_path=config_path,
+            source_agent=source_agent,
+            max_depth=max_depth,
+            _run_scan_pipeline=_run_scan_pipeline,
+            _truncate_response=_truncate_response,
+        )
 
     @mcp.tool(annotations=_READ_ONLY, title="Analytics Query")
     async def analytics_query(
@@ -1482,35 +843,14 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         Requires AGENT_BOM_CLICKHOUSE_URL to be set. Returns empty results if
         ClickHouse is not configured.
         """
-        try:
-            from agent_bom.api.server import _get_analytics_store
-
-            store = _get_analytics_store()
-            valid_types = {"vuln_trends", "top_cves", "posture_history", "event_summary"}
-            if query_type not in valid_types:
-                return json.dumps({"error": f"Invalid query_type. Use one of: {', '.join(sorted(valid_types))}"})
-
-            # Validate agent name to prevent SQL injection via ClickHouse
-            import re as _re
-
-            if agent and not _re.fullmatch(r"[a-zA-Z0-9._\-/ ]{1,200}", agent):
-                return json.dumps(
-                    {"error": "Invalid agent name. Use only alphanumeric, dot, dash, underscore, slash, space (max 200 chars)."}
-                )
-
-            if query_type == "vuln_trends":
-                data = store.query_vuln_trends(days=days, agent=agent)
-            elif query_type == "top_cves":
-                data = store.query_top_cves(limit=limit)
-            elif query_type == "posture_history":
-                data = store.query_posture_history(agent=agent, days=days)
-            else:
-                data = store.query_event_summary(hours=hours)
-
-            return _truncate_response(json.dumps({"query_type": query_type, "results": data, "count": len(data)}, indent=2, default=str))
-        except Exception as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+        return await analytics_query_impl(
+            query_type=query_type,
+            days=days,
+            hours=hours,
+            agent=agent,
+            limit=limit,
+            _truncate_response=_truncate_response,
+        )
 
     @mcp.tool(annotations=_READ_ONLY, title="CIS Benchmark")
     async def cis_benchmark(
@@ -1553,41 +893,15 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         Returns:
             JSON with per-check pass/fail results, evidence, severity, ATT&CK techniques, and pass rate.
         """
-        try:
-            check_list = [c.strip() for c in checks.split(",")] if checks else None
-
-            # Validate inputs to prevent injection
-            import re as _re
-
-            if region and not _re.fullmatch(r"[a-z]{2}(-gov)?-[a-z]+-\d{1,2}", region):
-                return json.dumps({"error": f"Invalid AWS region format: {region}"})
-            if profile and not _re.fullmatch(r"[a-zA-Z0-9._-]{1,100}", profile):
-                return json.dumps({"error": "Invalid AWS profile name. Use alphanumeric, dot, dash, underscore (max 100 chars)."})
-
-            cis_report: object
-            if provider == "aws":
-                from agent_bom.cloud.aws_cis_benchmark import run_benchmark as run_aws_cis
-
-                cis_report = run_aws_cis(region=region, profile=profile, checks=check_list)
-            elif provider == "snowflake":
-                from agent_bom.cloud.snowflake_cis_benchmark import run_benchmark as run_sf_cis
-
-                cis_report = run_sf_cis(checks=check_list)
-            elif provider == "azure":
-                from agent_bom.cloud.azure_cis_benchmark import run_benchmark as run_azure_cis
-
-                cis_report = run_azure_cis(subscription_id=subscription_id, checks=check_list)
-            elif provider == "gcp":
-                from agent_bom.cloud.gcp_cis_benchmark import run_benchmark as run_gcp_cis
-
-                cis_report = run_gcp_cis(project_id=project_id, checks=check_list)
-            else:
-                return json.dumps({"error": f"Unsupported provider: {provider}. Use 'aws', 'snowflake', 'azure', or 'gcp'."})
-
-            return _truncate_response(json.dumps(cis_report.to_dict(), indent=2, default=str))  # type: ignore[attr-defined]
-        except Exception as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+        return await cis_benchmark_impl(
+            provider=provider,
+            checks=checks,
+            region=region,
+            profile=profile,
+            subscription_id=subscription_id,
+            project_id=project_id,
+            _truncate_response=_truncate_response,
+        )
 
     # ── Tool 19: fleet_scan ────────────────────────────────────────
 
@@ -1615,27 +929,10 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             JSON with summary (total, matched, unmatched, risk breakdown)
             and per-server details.
         """
-        try:
-            from agent_bom.fleet_scan import fleet_scan as _fleet_scan
-
-            # Parse input: support comma-separated and newline-separated
-            names: list[str] = []
-            for line in servers.replace(",", "\n").split("\n"):
-                name = line.strip()
-                if name:
-                    names.append(name)
-
-            if not names:
-                return json.dumps({"error": "No server names provided"})
-
-            if len(names) > 1000:
-                return json.dumps({"error": f"Too many servers ({len(names)}). Maximum is 1,000 per request."})
-
-            result = _fleet_scan(names)
-            return _truncate_response(result.to_json())
-        except Exception as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+        return await fleet_scan_impl(
+            servers=servers,
+            _truncate_response=_truncate_response,
+        )
 
     # ── Resources ────────────────────────────────────────────────
 
@@ -1685,85 +982,14 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             JSON with correlated findings (CVE + tool call data + amplified risk),
             summary stats, uncalled vulnerable tools, and ml_api_calls provenance.
         """
-        try:
-            # Normalize "auto" → None so _run_scan_pipeline uses default discovery
-            effective_config = None if config_path == "auto" else config_path
-            agents, blast_radii, _warnings, _srcs = await _run_scan_pipeline(effective_config)
-            result: dict = {
-                "scan_summary": {
-                    "agents": len(agents) if agents else 0,
-                    "servers": sum(len(a.mcp_servers) for a in agents) if agents else 0,
-                    "vulnerabilities": len(blast_radii),
-                },
-            }
-
-            if audit_log:
-                # Validate audit_log path to prevent directory traversal
-                safe_audit = _safe_path(audit_log)
-                from agent_bom.runtime_correlation import correlate as _correlate
-
-                corr = _correlate(blast_radii, audit_log_path=str(safe_audit))
-                result["correlation"] = corr.to_dict()
-            else:
-                result["correlation"] = {
-                    "note": "No audit log provided. Run 'agent-bom proxy --log audit.jsonl' to capture tool calls, then pass the log path.",
-                    "vulnerable_tools": len({t.name for br in blast_radii for t in br.exposed_tools}) if blast_radii else 0,
-                }
-
-            # ML API provenance via OTel trace
-            if otel_trace:
-                import json as _json
-
-                from agent_bom.otel_ingest import flag_deprecated_models, parse_ml_api_spans
-
-                safe_trace = _safe_path(otel_trace)
-                try:
-                    trace_data = _json.loads(safe_trace.read_text())
-                    ml_calls = parse_ml_api_spans(trace_data)
-                    flagged = flag_deprecated_models(ml_calls)
-                    result["ml_api_calls"] = [
-                        {
-                            "provider": c.provider,
-                            "model": c.model_name,
-                            "model_version": c.model_version,
-                            "endpoint": c.endpoint,
-                            "input_tokens": c.input_tokens,
-                            "output_tokens": c.output_tokens,
-                            "duration_ms": c.duration_ms,
-                            "status": c.status,
-                            "trace_id": c.trace_id,
-                        }
-                        for c in ml_calls
-                    ]
-                    result["ml_api_flagged"] = [
-                        {
-                            "model": f.call.model_name,
-                            "provider": f.call.provider,
-                            "severity": f.severity,
-                            "reason": f.reason,
-                            "advisory": f.advisory,
-                        }
-                        for f in flagged
-                    ]
-                    result["ml_api_summary"] = {
-                        "total_calls": len(ml_calls),
-                        "flagged": len(flagged),
-                        "providers": list({c.provider for c in ml_calls}),
-                        "models": list({c.model_name for c in ml_calls if c.model_name}),
-                        "total_input_tokens": sum(c.input_tokens for c in ml_calls),
-                        "total_output_tokens": sum(c.output_tokens for c in ml_calls),
-                    }
-                except Exception as trace_exc:
-                    result["ml_api_calls"] = []
-                    result["ml_api_error"] = f"Failed to parse OTel trace: {sanitize_error(trace_exc)}"
-            else:
-                result["ml_api_calls"] = []
-                result["ml_api_note"] = "Pass otel_trace path to extract ML API provenance from OTel spans."
-
-            return _truncate_response(json.dumps(result, indent=2, default=str))
-        except Exception as exc:
-            logger.exception("Runtime correlation failed")
-            return json.dumps({"error": f"Correlation failed: {sanitize_error(exc)}"})
+        return await runtime_correlate_impl(
+            config_path=config_path,
+            audit_log=audit_log,
+            otel_trace=otel_trace,
+            _safe_path=_safe_path,
+            _run_scan_pipeline=_run_scan_pipeline,
+            _truncate_response=_truncate_response,
+        )
 
     @mcp.resource("policy://template")
     def policy_template_resource() -> str:
@@ -1831,28 +1057,10 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         Returns:
             JSON with per-database risk assessment including risk_level, risk_flags, and metadata.
         """
-        try:
-            from agent_bom.cloud.vector_db import discover_pinecone, discover_vector_dbs
-
-            host_list = [h.strip() for h in hosts.split(",")] if hosts else None
-            self_hosted = discover_vector_dbs(hosts=host_list)
-            pinecone_results = discover_pinecone()
-            all_results = [r.to_dict() for r in self_hosted] + [r.to_dict() for r in pinecone_results]
-            return _truncate_response(
-                json.dumps(
-                    {
-                        "databases_found": len(all_results),
-                        "self_hosted_count": len(self_hosted),
-                        "cloud_count": len(pinecone_results),
-                        "results": all_results,
-                    },
-                    indent=2,
-                    default=str,
-                )
-            )
-        except Exception as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+        return await vector_db_scan_impl(
+            hosts=hosts,
+            _truncate_response=_truncate_response,
+        )
 
     # ── Tool 22: aisvs_benchmark ──────────────────────────────────────
 
@@ -1881,15 +1089,10 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         Returns:
             JSON with per-check pass/fail results, evidence, severity, MAESTRO layer, and pass rate.
         """
-        try:
-            from agent_bom.cloud.aisvs_benchmark import run_benchmark as _run_aisvs
-
-            check_list = [c.strip() for c in checks.split(",")] if checks else None
-            report = _run_aisvs(checks=check_list)
-            return _truncate_response(json.dumps(report.to_dict(), indent=2, default=str))
-        except Exception as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+        return await aisvs_benchmark_impl(
+            checks=checks,
+            _truncate_response=_truncate_response,
+        )
 
     # ── Tool 23: gpu_infra_scan ────────────────────────────────────
     @mcp.tool(annotations=_READ_ONLY, title="GPU Infrastructure Scan")
@@ -1923,52 +1126,11 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             JSON with GPU containers, K8s nodes, DCGM endpoints, CUDA version
             inventory, and a risk summary with unauthenticated DCGM count.
         """
-        try:
-            from agent_bom.cloud.gpu_infra import scan_gpu_infra
-
-            report = await scan_gpu_infra(k8s_context=k8s_context, probe_dcgm=probe_dcgm)
-            result = {
-                "risk_summary": report.risk_summary,
-                "gpu_containers": [
-                    {
-                        "container_id": c.container_id,
-                        "name": c.name,
-                        "image": c.image,
-                        "status": c.status,
-                        "is_nvidia_base": c.is_nvidia_base,
-                        "cuda_version": c.cuda_version,
-                        "cudnn_version": c.cudnn_version,
-                        "gpu_requested": c.gpu_requested,
-                    }
-                    for c in report.gpu_containers
-                ],
-                "k8s_gpu_nodes": [
-                    {
-                        "name": n.name,
-                        "gpu_capacity": n.gpu_capacity,
-                        "gpu_allocatable": n.gpu_allocatable,
-                        "gpu_allocated": n.gpu_allocated,
-                        "cuda_driver_version": n.cuda_driver_version,
-                    }
-                    for n in report.gpu_nodes
-                ],
-                "dcgm_endpoints": [
-                    {
-                        "host": ep.host,
-                        "port": ep.port,
-                        "url": ep.url,
-                        "authenticated": ep.authenticated,
-                        "gpu_count": ep.gpu_count,
-                        "risk": "unauthenticated GPU metrics exposure" if not ep.authenticated else "ok",
-                    }
-                    for ep in report.dcgm_endpoints
-                ],
-                "warnings": report.warnings,
-            }
-            return _truncate_response(json.dumps(result, indent=2, default=str))
-        except Exception as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+        return await gpu_infra_scan_impl(
+            k8s_context=k8s_context,
+            probe_dcgm=probe_dcgm,
+            _truncate_response=_truncate_response,
+        )
 
     # ── Tool 24: dataset_card_scan ──────────────────────────────────
 
@@ -1990,17 +1152,10 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         Tags findings with compliance frameworks: OWASP LLM (LLM03), MITRE ATLAS,
         NIST AI RMF (MAP-3.5), EU AI Act (ART-10).
         """
-        try:
-            from agent_bom.security import validate_path
-
-            path = validate_path(directory, must_exist=True, restrict_to_home=True)
-            from agent_bom.parsers.dataset_cards import scan_dataset_directory
-
-            result = scan_dataset_directory(path)
-            return _truncate_response(json.dumps(result.to_dict(), indent=2, default=str))
-        except Exception as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+        return await dataset_card_scan_impl(
+            directory=directory,
+            _truncate_response=_truncate_response,
+        )
 
     # ── Tool 25: training_pipeline_scan ──────────────────────────────
 
@@ -2022,17 +1177,10 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         Tags findings with compliance frameworks: OWASP LLM (LLM03), MITRE ATLAS (AML.T0020),
         NIST AI RMF (MAP-3.5, GOVERN-1.7).
         """
-        try:
-            from agent_bom.security import validate_path
-
-            path = validate_path(directory, must_exist=True, restrict_to_home=True)
-            from agent_bom.parsers.training_pipeline import scan_training_directory
-
-            result = scan_training_directory(path)
-            return _truncate_response(json.dumps(result.to_dict(), indent=2, default=str))
-        except Exception as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+        return await training_pipeline_scan_impl(
+            directory=directory,
+            _truncate_response=_truncate_response,
+        )
 
     # ── Tool 26: browser_extension_scan ──────────────────────────────
 
@@ -2054,25 +1202,10 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
         Deduplicates across profiles. Returns risk-ranked results.
         """
-        try:
-            from agent_bom.parsers.browser_extensions import discover_browser_extensions
-
-            exts = discover_browser_extensions(include_low_risk=include_low_risk)
-            return _truncate_response(
-                json.dumps(
-                    {
-                        "extensions": [e.to_dict() for e in exts],
-                        "total": len(exts),
-                        "critical_count": sum(1 for e in exts if e.risk_level == "critical"),
-                        "high_count": sum(1 for e in exts if e.risk_level == "high"),
-                    },
-                    indent=2,
-                    default=str,
-                )
-            )
-        except Exception as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+        return await browser_extension_scan_impl(
+            include_low_risk=include_low_risk,
+            _truncate_response=_truncate_response,
+        )
 
     # ── Tool 27: model_provenance_scan ───────────────────────────────
 
@@ -2098,19 +1231,11 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
         Returns structured provenance data for supply chain risk assessment.
         """
-        try:
-            if source.lower() == "ollama":
-                from agent_bom.cloud.model_provenance import check_ollama_model
-
-                result = check_ollama_model(model_id)
-            else:
-                from agent_bom.cloud.model_provenance import check_hf_model
-
-                result = check_hf_model(model_id)
-            return _truncate_response(json.dumps(result.to_dict(), indent=2, default=str))
-        except Exception as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+        return await model_provenance_scan_impl(
+            model_id=model_id,
+            source=source,
+            _truncate_response=_truncate_response,
+        )
 
     # ── Tool 28: prompt_scan ─────────────────────────────────────────
 
@@ -2131,40 +1256,10 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         Checks for injection patterns, unsafe variable interpolation, and
         missing guardrails in prompt templates.
         """
-        try:
-            from agent_bom.security import validate_path
-
-            path = validate_path(directory, must_exist=True, restrict_to_home=True)
-            from agent_bom.parsers.prompt_scanner import scan_prompt_files
-
-            result = scan_prompt_files(root=path)
-            return _truncate_response(
-                json.dumps(
-                    {
-                        "files_scanned": result.files_scanned,
-                        "total_prompt_files": len(result.prompt_files),
-                        "prompt_files": result.prompt_files[:50],
-                        "passed": result.passed,
-                        "total_findings": len(result.findings),
-                        "findings_shown": min(len(result.findings), 100),
-                        "findings": [
-                            {
-                                "file": f.source_file,
-                                "line": f.line_number,
-                                "severity": f.severity,
-                                "rule": f.category,
-                                "message": f.detail,
-                            }
-                            for f in result.findings[:100]
-                        ],
-                    },
-                    indent=2,
-                    default=str,
-                )
-            )
-        except Exception as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+        return await prompt_scan_impl(
+            directory=directory,
+            _truncate_response=_truncate_response,
+        )
 
     # ── Tool 29: model_file_scan ─────────────────────────────────────
 
@@ -2185,30 +1280,10 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
         Returns structured results with risk assessment per model file.
         """
-        try:
-            from agent_bom.security import validate_path
-
-            path = validate_path(directory, must_exist=True, restrict_to_home=True)
-            from agent_bom.model_files import scan_model_files
-
-            model_files, warnings = scan_model_files(str(path))
-            return _truncate_response(
-                json.dumps(
-                    {
-                        "model_files": model_files,
-                        "total": len(model_files),
-                        "unsafe_count": sum(
-                            1 for r in model_files if any(f.get("severity") in ("HIGH", "CRITICAL") for f in r.get("security_flags", []))
-                        ),
-                        "warnings": warnings,
-                    },
-                    indent=2,
-                    default=str,
-                )
-            )
-        except Exception as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+        return await model_file_scan_impl(
+            directory=directory,
+            _truncate_response=_truncate_response,
+        )
 
     # ── Tool 30: license_compliance_scan ────────────────────────────
 
@@ -2246,58 +1321,11 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
         Returns structured report with compliance status, findings, and risk summary.
         """
-        try:
-            from agent_bom.license_policy import evaluate_license_policy, to_serializable
-            from agent_bom.models import Agent, AgentType, MCPServer, Package
-
-            data = json.loads(scan_json)
-            policy = json.loads(policy_json) if policy_json else None
-
-            # Accept either a full scan result (with agents) or a flat package list
-            agents: list[Agent] = []
-            if isinstance(data, dict) and "agents" in data:
-                # Full scan result — reconstruct agents
-                for agent_data in data["agents"]:
-                    servers = []
-                    for srv in agent_data.get("mcp_servers", []):
-                        pkgs = [
-                            Package(
-                                name=p.get("name", ""),
-                                version=p.get("version", ""),
-                                ecosystem=p.get("ecosystem", ""),
-                                license=p.get("license"),
-                                license_expression=p.get("license_expression"),
-                            )
-                            for p in srv.get("packages", [])
-                        ]
-                        servers.append(MCPServer(name=srv.get("name", ""), command="", packages=pkgs))
-                    agents.append(Agent(name=agent_data.get("name", ""), agent_type=AgentType.CUSTOM, config_path="", mcp_servers=servers))
-            elif isinstance(data, list):
-                # Flat package list
-                pkgs = [
-                    Package(
-                        name=p.get("name", ""),
-                        version=p.get("version", ""),
-                        ecosystem=p.get("ecosystem", ""),
-                        license=p.get("license"),
-                        license_expression=p.get("license_expression"),
-                    )
-                    for p in data
-                ]
-                agents = [
-                    Agent(
-                        name="input",
-                        agent_type=AgentType.CUSTOM,
-                        config_path="",
-                        mcp_servers=[MCPServer(name="packages", command="", packages=pkgs)],
-                    )
-                ]
-
-            report = evaluate_license_policy(agents, policy=policy)
-            return _truncate_response(json.dumps(to_serializable(report), indent=2))
-        except Exception as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+        return await license_compliance_scan_impl(
+            scan_json=scan_json,
+            policy_json=policy_json,
+            _truncate_response=_truncate_response,
+        )
 
     # ── Custom routes: metadata + health ─────────────────────────────
 

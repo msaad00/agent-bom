@@ -300,7 +300,7 @@ def test_validate_image_ref_valid():
 
 def test_validate_image_ref_with_registry():
     result = validate_image_ref("ghcr.io/user/image:v1.0")
-    assert "ghcr.io" in result
+    assert result == "ghcr.io/user/image:v1.0"
 
 
 # ---------------------------------------------------------------------------

@@ -31,7 +31,7 @@ class TestSafeUrl:
         result = _safe_url("https://api.example.com/path?apiKey=secret&token=abc")
         assert "secret" not in result
         assert "token" not in result
-        assert "example.com" in result
+        assert result.startswith("https://api.example.com/")
 
     def test_strips_userinfo(self):
         result = _safe_url("https://user:pass@api.example.com/path")
@@ -39,7 +39,7 @@ class TestSafeUrl:
 
     def test_basic_url(self):
         result = _safe_url("https://api.example.com/v1/data")
-        assert "api.example.com" in result
+        assert result == "https://api.example.com/v1/data"
         assert "/v1/data" in result
 
     def test_invalid_url(self):

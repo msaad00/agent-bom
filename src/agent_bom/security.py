@@ -372,7 +372,7 @@ def validate_url(url: str) -> None:
         except ValueError:
             continue
 
-    logger.debug(f"URL validated: {url}")
+    logger.debug("URL validated: %s", url.replace("\n", "").replace("\r", ""))
 
 
 def validate_package_name(name: str, ecosystem: str) -> None:

@@ -138,7 +138,8 @@ def _get_semgrep_version() -> Optional[str]:
             timeout=10,
         )
         return result.stdout.strip() if result.returncode == 0 else None
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
+        _logger.debug("Could not determine semgrep version: %s", exc)
         return None
 
 

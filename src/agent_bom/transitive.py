@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from typing import Optional
 
@@ -13,6 +14,7 @@ from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.models import Package
 
 console = Console(stderr=True)
+_logger = logging.getLogger(__name__)
 
 NPM_REGISTRY = "https://registry.npmjs.org"
 PYPI_API = "https://pypi.org/pypi"
@@ -130,7 +132,8 @@ def _resolve_pip_version(version_spec: str, releases: dict) -> str:
                 pv = Version(v)
                 if not pv.is_prerelease and spec.contains(pv):
                     candidates.append(pv)
-            except Exception:
+            except Exception as exc:  # noqa: BLE001
+                _logger.debug("Skipping unparseable version %r for transitive dep: %s", v, exc)
                 continue
         if candidates:
             return str(max(candidates))

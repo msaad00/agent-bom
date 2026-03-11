@@ -99,8 +99,8 @@ def _save_enrichment_cache() -> None:
                     os.close(fd)
                 try:
                     os.unlink(tmp_path)
-                except OSError:
-                    pass
+                except OSError as cleanup_exc:
+                    _logger.debug("Failed to remove temp cache file %s: %s", tmp_path, cleanup_exc)
                 raise
         except OSError:
             _logger.warning("Failed to persist %s enrichment cache to disk", name)

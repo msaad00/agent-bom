@@ -205,7 +205,8 @@ async def sync_from_official_registry(
     """
     try:
         local_data = json.loads(_REGISTRY_PATH.read_text())
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not load local MCP registry %s: %s — defaulting to empty", _REGISTRY_PATH, exc)
         local_data = {"servers": {}}
 
     local_servers = local_data.get("servers", {})

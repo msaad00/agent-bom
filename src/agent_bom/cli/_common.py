@@ -175,5 +175,6 @@ def _check_optional_dep(name: str) -> str:
         result = subprocess.run([path, "version"], capture_output=True, text=True, timeout=3)  # noqa: S603
         ver = (result.stdout or result.stderr).strip().split("\n")[0]
         return f"found ({ver})" if ver else "found"
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Could not get version for %s: %s", name, exc)
         return "found"

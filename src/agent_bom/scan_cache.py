@@ -28,6 +28,7 @@ class ScanCache:
         self,
         db_path: str | Path | None = None,
         ttl_seconds: int = DEFAULT_TTL_SECONDS,
+        max_entries: int | None = None,
     ) -> None:
         if db_path is None:
             db_path = os.environ.get(
@@ -36,6 +37,11 @@ class ScanCache:
             )
         self._db_path = str(db_path)
         self._ttl = ttl_seconds
+        if max_entries is None:
+            from agent_bom.config import SCAN_CACHE_MAX_ENTRIES
+
+            max_entries = SCAN_CACHE_MAX_ENTRIES
+        self._max_entries = max_entries
         Path(self._db_path).parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(self._db_path, check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
@@ -75,6 +81,7 @@ class ScanCache:
             (key, json.dumps(vulns), time.time()),
         )
         self._conn.commit()
+        self._evict_if_needed()
 
     def put_many(self, entries: list[tuple[str, str, str, list[dict]]]) -> None:
         """Batch insert/replace multiple cache entries in one transaction."""
@@ -85,6 +92,7 @@ class ScanCache:
             rows,
         )
         self._conn.commit()
+        self._evict_if_needed()
 
     def evict(self, ecosystem: str, name: str, version: str) -> None:
         """Remove a single entry from the cache, forcing a fresh fetch."""
@@ -112,6 +120,30 @@ class ScanCache:
         cur = self._conn.execute("DELETE FROM osv_cache WHERE cached_at < ?", (cutoff,))
         self._conn.commit()
         return cur.rowcount or 0
+
+    def _evict_if_needed(self) -> None:
+        """Remove the oldest entries when the cache exceeds *max_entries*.
+
+        Uses a single DELETE … WHERE cache_key IN (SELECT … ORDER BY cached_at
+        ASC LIMIT ?) so only one round-trip is needed.  No-op when *max_entries*
+        is 0 (unbounded mode).
+        """
+        if self._max_entries <= 0:
+            return
+        row = self._conn.execute("SELECT COUNT(*) FROM osv_cache").fetchone()
+        count = row[0] if row else 0
+        excess = count - self._max_entries
+        if excess > 0:
+            self._conn.execute(
+                """
+                DELETE FROM osv_cache WHERE cache_key IN (
+                    SELECT cache_key FROM osv_cache ORDER BY cached_at ASC LIMIT ?
+                )
+                """,
+                (excess,),
+            )
+            self._conn.commit()
+            logger.debug("scan_cache: evicted %d oldest entries (limit=%d)", excess, self._max_entries)
 
     def clear(self) -> None:
         """Remove all entries."""

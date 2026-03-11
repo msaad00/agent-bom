@@ -217,6 +217,46 @@ def test_parse_fixed_version_empty():
     assert parse_fixed_version({}, "pkg") is None
 
 
+def test_parse_fixed_version_pep503_mixed_separators():
+    """Underscore vs hyphen in OSV name must still match via PEP 503 normalization."""
+    vuln = {
+        "affected": [
+            {
+                "package": {"name": "Requests_OAuthlib", "ecosystem": "PyPI"},
+                "ranges": [{"events": [{"introduced": "0"}, {"fixed": "2.0.0"}]}],
+            }
+        ]
+    }
+    # Input uses hyphen; OSV data uses underscore — should match after normalization
+    assert parse_fixed_version(vuln, "requests-oauthlib", "PyPI") == "2.0.0"
+
+
+def test_parse_fixed_version_pep503_dot_separator():
+    """Dot-separated OSV name must match hyphen input."""
+    vuln = {
+        "affected": [
+            {
+                "package": {"name": "my.package", "ecosystem": "PyPI"},
+                "ranges": [{"events": [{"fixed": "1.5.0"}]}],
+            }
+        ]
+    }
+    assert parse_fixed_version(vuln, "my-package", "PyPI") == "1.5.0"
+
+
+def test_parse_fixed_version_ecosystem_fallback():
+    """Ecosystem defaults to empty string; comparison still works via lowercasing."""
+    vuln = {
+        "affected": [
+            {
+                "package": {"name": "lodash"},
+                "ranges": [{"events": [{"fixed": "4.17.22"}]}],
+            }
+        ]
+    }
+    assert parse_fixed_version(vuln, "lodash") == "4.17.22"
+
+
 # ---------------------------------------------------------------------------
 # build_vulnerabilities
 # ---------------------------------------------------------------------------

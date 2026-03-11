@@ -83,3 +83,45 @@ class TestScanCacheTTL:
         removed = cache.cleanup_expired()
         assert removed == 1
         assert cache.size == 1
+
+
+class TestScanCacheMaxEntries:
+    """LRU eviction enforces the max_entries cap."""
+
+    def test_eviction_on_put(self, tmp_path):
+        """Oldest entry is evicted when limit is exceeded via put()."""
+        cache = ScanCache(db_path=tmp_path / "max.db", ttl_seconds=3600, max_entries=3)
+        cache.put("npm", "a", "1.0", [])
+        cache.put("npm", "b", "1.0", [])
+        cache.put("npm", "c", "1.0", [])
+        assert cache.size == 3
+
+        # Adding a 4th should evict the oldest (a)
+        cache.put("npm", "d", "1.0", [])
+        assert cache.size == 3
+        assert cache.get("npm", "a", "1.0") is None  # evicted
+        assert cache.get("npm", "d", "1.0") == []  # present
+
+    def test_eviction_on_put_many(self, tmp_path):
+        """put_many() also triggers eviction when limit is exceeded."""
+        cache = ScanCache(db_path=tmp_path / "many.db", ttl_seconds=3600, max_entries=5)
+        for i in range(5):
+            cache.put("npm", f"pkg{i}", "1.0", [])
+        assert cache.size == 5
+
+        cache.put_many([("npm", "extra1", "1.0", []), ("npm", "extra2", "1.0", [])])
+        assert cache.size == 5  # cap enforced
+
+    def test_unlimited_when_zero(self, tmp_path):
+        """max_entries=0 disables eviction (unbounded mode)."""
+        cache = ScanCache(db_path=tmp_path / "unlimited.db", ttl_seconds=3600, max_entries=0)
+        for i in range(20):
+            cache.put("npm", f"pkg{i}", "1.0", [])
+        assert cache.size == 20
+
+    def test_default_max_entries_from_config(self, tmp_path):
+        """Default max_entries is read from SCAN_CACHE_MAX_ENTRIES config."""
+        from agent_bom.config import SCAN_CACHE_MAX_ENTRIES
+
+        cache = ScanCache(db_path=tmp_path / "cfg.db")
+        assert cache._max_entries == SCAN_CACHE_MAX_ENTRIES

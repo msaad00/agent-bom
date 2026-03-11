@@ -159,6 +159,16 @@ SCANNER_BATCH_DELAY = _float("AGENT_BOM_SCANNER_BATCH_DELAY", 0.5)
 SCANNER_BATCH_SIZE = _int("AGENT_BOM_SCANNER_BATCH_SIZE", 1000)  # OSV API max is 1000
 
 
+# ── Scan Cache ────────────────────────────────────────────────────────────────
+# SQLite-backed OSV result cache (~/.agent-bom/scan_cache.db).
+#
+# 100,000 entries covers ~5-10 large enterprise scans before eviction kicks in.
+# Oldest entries are removed first (LRU by insertion time) when the limit is hit.
+# Set to 0 to disable the cap (unbounded growth — not recommended for servers).
+
+SCAN_CACHE_MAX_ENTRIES = _int("AGENT_BOM_SCAN_CACHE_MAX_ENTRIES", 100_000)
+
+
 # ── AI Enrichment ─────────────────────────────────────────────────────────
 # Used by ai_enrich.py for LLM-powered risk narratives.
 #

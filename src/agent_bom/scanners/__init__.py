@@ -47,6 +47,10 @@ _logger = logging.getLogger(__name__)
 
 OSV_API_URL = "https://api.osv.dev/v1"
 OSV_BATCH_URL = f"{OSV_API_URL}/querybatch"
+# Max pipeline-level pause when OSV returns persistent 429 after all per-request retries.
+# Separate from per-request exponential backoff (http_client.py) — this pauses the
+# whole batch queue so subsequent batches don't immediately hammer a throttled API.
+_PIPELINE_429_BACKOFF = 60.0
 OSV_QUERY_URL = f"{OSV_API_URL}/query"
 
 # Map ecosystem names to OSV ecosystem identifiers
@@ -267,16 +271,21 @@ def parse_osv_severity(vuln_data: dict) -> tuple[Severity, Optional[float]]:
     return severity, cvss_score
 
 
-def parse_fixed_version(vuln_data: dict, package_name: str) -> Optional[str]:
+def parse_fixed_version(vuln_data: dict, package_name: str, ecosystem: str = "") -> Optional[str]:
     """Extract fixed version from OSV affected data.
 
-    Prefers stable releases over pre-release versions.
+    Prefers stable releases over pre-release versions.  Uses PEP 503
+    normalization when comparing PyPI package names so that mixed-separator
+    forms (e.g. ``Requests_OAuthlib`` vs ``requests-oauthlib``) always match.
     """
+    norm_input = normalize_package_name(package_name, ecosystem)
     prerelease_candidate: Optional[str] = None
 
     for affected in vuln_data.get("affected", []):
         pkg = affected.get("package", {})
-        if pkg.get("name", "").lower() == package_name.lower():
+        osv_eco = pkg.get("ecosystem", ecosystem)
+        osv_norm = normalize_package_name(pkg.get("name", ""), osv_eco)
+        if osv_norm == norm_input:
             for rng in affected.get("ranges", []):
                 for event in rng.get("events", []):
                     if "fixed" in event:
@@ -447,6 +456,20 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
                                     queried_keys_with_vulns.add(key)
                     except (ValueError, KeyError) as e:
                         console.print(f"  [red]✗[/red] OSV response parse error: {e}")
+                elif response and response.status_code == 429:
+                    # request_with_retry exhausted all retries and still got 429 — apply
+                    # a pipeline-level cooldown before the next batch, respecting any
+                    # Retry-After hint from the server.
+                    retry_after_hdr = response.headers.get("Retry-After")
+                    pipeline_wait = _PIPELINE_429_BACKOFF
+                    if retry_after_hdr:
+                        try:
+                            pipeline_wait = min(float(retry_after_hdr), _PIPELINE_429_BACKOFF)
+                        except ValueError:
+                            pass
+                    console.print(f"  [yellow]⚠[/yellow] OSV rate limit (429) — pausing {pipeline_wait:.0f}s before next batch")
+                    _logger.warning("OSV rate limit hit after all retries; pausing pipeline %.0fs", pipeline_wait)
+                    await asyncio.sleep(pipeline_wait)
                 elif response:
                     console.print(f"  [red]✗[/red] OSV API error: HTTP {response.status_code}")
                 else:
@@ -487,7 +510,7 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
         seen_ids.add(vuln_id)
 
         severity, cvss_score = parse_osv_severity(vuln_data)
-        fixed = parse_fixed_version(vuln_data, package.name)
+        fixed = parse_fixed_version(vuln_data, package.name, package.ecosystem)
 
         references = [ref.get("url", "") for ref in vuln_data.get("references", []) if ref.get("url")]
 

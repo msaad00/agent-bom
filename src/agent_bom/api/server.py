@@ -57,6 +57,7 @@ from agent_bom.api.models import (
     JobStatus,  # noqa: F401 — re-export for tests
     ScanJob,
     ScanRequest,
+    StepStatus,  # noqa: F401 — re-export for tests
     VersionInfo,
 )
 from agent_bom.api.pipeline import (  # noqa: F401

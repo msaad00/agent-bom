@@ -617,11 +617,12 @@ class TestServerLifespanAutoDetect:
         mock_sf_connect.return_value = _mock_connection()
 
         import agent_bom.api.server as srv
+        import agent_bom.api.stores as _stores
 
         # Reset global stores
-        srv._store = None
-        srv._fleet_store = None
-        srv._policy_store = None
+        _stores._store = None
+        _stores._fleet_store = None
+        _stores._policy_store = None
 
         import asyncio
 
@@ -637,11 +638,11 @@ class TestServerLifespanAutoDetect:
             SnowflakePolicyStore,
         )
 
-        assert isinstance(srv._store, SnowflakeJobStore)
-        assert isinstance(srv._fleet_store, SnowflakeFleetStore)
-        assert isinstance(srv._policy_store, SnowflakePolicyStore)
+        assert isinstance(_stores._store, SnowflakeJobStore)
+        assert isinstance(_stores._fleet_store, SnowflakeFleetStore)
+        assert isinstance(_stores._policy_store, SnowflakePolicyStore)
 
         # Cleanup
-        srv._store = None
-        srv._fleet_store = None
-        srv._policy_store = None
+        _stores._store = None
+        _stores._fleet_store = None
+        _stores._policy_store = None

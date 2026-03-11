@@ -39,19 +39,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import threading
 import time
 import uuid
-from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from enum import Enum
-from typing import TYPE_CHECKING, Any
-
 from agent_bom import __version__
-
-if TYPE_CHECKING:
-    from agent_bom.api.schedule_store import ScheduleStore
 from agent_bom.api.middleware import (  # noqa: E402
     APIKeyMiddleware,
     MaxBodySizeMiddleware,
@@ -83,10 +75,50 @@ from agent_bom.api.models import (  # noqa: E402
     TrainingPipelinesRequest,
     VersionInfo,
 )
-from agent_bom.config import API_JOB_TTL_SECONDS as _JOB_TTL_SECONDS
-from agent_bom.config import API_MAX_CONCURRENT_JOBS as _MAX_CONCURRENT_JOBS
-from agent_bom.config import API_MAX_IN_MEMORY_JOBS as _MAX_IN_MEMORY_JOBS
-from agent_bom.security import sanitize_error
+
+# ─── Store accessors (extracted to stores.py) ────────────────────────────────
+from agent_bom.api.stores import (  # noqa: E402
+    _get_analytics_store,
+    _get_configured_log_path,
+    _get_exception_store,
+    _get_fleet_store,
+    _get_policy_store,
+    _get_schedule_store,
+    _get_store,
+    _get_trend_store,
+    _job_lock,
+    _jobs,
+    _jobs_get,
+    _jobs_lock,
+    _jobs_pop,
+    _jobs_put,
+    _proxy_alerts,
+    _read_alerts_from_log,
+    _read_metrics_from_log,
+    _store_lock,
+    push_proxy_alert,
+    push_proxy_metrics,
+    set_analytics_store,
+    set_fleet_store,
+    set_job_store,
+    set_policy_store,
+)
+
+# ─── Pipeline (extracted to pipeline.py) ─────────────────────────────────────
+from agent_bom.api.pipeline import (  # noqa: E402
+    PIPELINE_STEPS,
+    ScanPipeline,
+    _STUCK_JOB_TIMEOUT,
+    _cleanup_loop,
+    _now,
+    _run_scan_sync,
+    _sync_scan_agents_to_fleet,
+)
+import agent_bom.api.stores as _stores  # noqa: E402 — module ref for mutable globals
+
+from agent_bom.config import API_JOB_TTL_SECONDS as _JOB_TTL_SECONDS  # noqa: E402
+from agent_bom.config import API_MAX_CONCURRENT_JOBS as _MAX_CONCURRENT_JOBS  # noqa: E402
+from agent_bom.security import sanitize_error  # noqa: E402
 
 _logger = logging.getLogger(__name__)
 
@@ -108,6 +140,8 @@ from contextlib import asynccontextmanager  # noqa: E402
 @asynccontextmanager
 async def _lifespan(app_instance: FastAPI):
     """Start background cleanup task on startup, cancel on shutdown."""
+    import agent_bom.api.stores as _stores
+
     # Priority: Snowflake > SQLite > InMemory (lazy default)
     if os.environ.get("SNOWFLAKE_ACCOUNT"):
         from agent_bom.api.snowflake_store import (
@@ -118,11 +152,11 @@ async def _lifespan(app_instance: FastAPI):
         )
 
         sf = build_connection_params()
-        if _store is None:
+        if _stores._store is None:
             set_job_store(SnowflakeJobStore(sf))
-        if _fleet_store is None:
+        if _stores._fleet_store is None:
             set_fleet_store(SnowflakeFleetStore(sf))
-        if _policy_store is None:
+        if _stores._policy_store is None:
             set_policy_store(SnowflakePolicyStore(sf))
     elif os.environ.get("AGENT_BOM_POSTGRES_URL"):
         from agent_bom.api.postgres_store import (
@@ -131,45 +165,44 @@ async def _lifespan(app_instance: FastAPI):
             PostgresPolicyStore,
         )
 
-        if _store is None:
+        if _stores._store is None:
             set_job_store(PostgresJobStore())
-        if _fleet_store is None:
+        if _stores._fleet_store is None:
             set_fleet_store(PostgresFleetStore())
-        if _policy_store is None:
+        if _stores._policy_store is None:
             set_policy_store(PostgresPolicyStore())
     elif os.environ.get("AGENT_BOM_DB"):
         db_path = os.environ["AGENT_BOM_DB"]
-        if _store is None:
+        if _stores._store is None:
             from agent_bom.api.store import SQLiteJobStore
 
             set_job_store(SQLiteJobStore(db_path))
-        if _fleet_store is None:
+        if _stores._fleet_store is None:
             from agent_bom.api.fleet_store import SQLiteFleetStore
 
             set_fleet_store(SQLiteFleetStore(db_path))
-        if _policy_store is None:
+        if _stores._policy_store is None:
             from agent_bom.api.policy_store import SQLitePolicyStore
 
             set_policy_store(SQLitePolicyStore(db_path))
 
     # ── Schedule store ──
-    global _schedule_store
-    if _schedule_store is None:
+    if _stores._schedule_store is None:
         if os.environ.get("AGENT_BOM_POSTGRES_URL"):
             from agent_bom.api.postgres_store import PostgresScheduleStore
 
-            _schedule_store = PostgresScheduleStore()
+            _stores._schedule_store = PostgresScheduleStore()
         elif os.environ.get("AGENT_BOM_DB"):
             from agent_bom.api.schedule_store import SQLiteScheduleStore
 
-            _schedule_store = SQLiteScheduleStore(os.environ["AGENT_BOM_DB"])
+            _stores._schedule_store = SQLiteScheduleStore(os.environ["AGENT_BOM_DB"])
         else:
             from agent_bom.api.schedule_store import InMemoryScheduleStore
 
-            _schedule_store = InMemoryScheduleStore()
+            _stores._schedule_store = InMemoryScheduleStore()
 
     # ── Analytics store (ClickHouse OLAP — optional) ──
-    if os.environ.get("AGENT_BOM_CLICKHOUSE_URL") and _analytics_store is None:
+    if os.environ.get("AGENT_BOM_CLICKHOUSE_URL") and _stores._analytics_store is None:
         try:
             from agent_bom.api.clickhouse_store import ClickHouseAnalyticsStore
 
@@ -198,7 +231,7 @@ async def _lifespan(app_instance: FastAPI):
         loop.run_in_executor(_executor, _run_scan_sync, job)
         return job.job_id
 
-    _scheduler_task = asyncio.create_task(scheduler_loop(_schedule_store, _schedule_scan))
+    _scheduler_task = asyncio.create_task(scheduler_loop(_stores._schedule_store, _schedule_scan))
 
     yield
 
@@ -292,542 +325,13 @@ def configure_api(
 # Thread pool for running blocking scan functions without blocking the event loop
 _executor = ThreadPoolExecutor(max_workers=min(8, (os.cpu_count() or 4) + 2))
 
-# ─── Lazy-init lock (protects _store, _fleet_store, _policy_store) ───────────
-_store_lock = threading.Lock()
 
-# ─── Job store (pluggable) ────────────────────────────────────────────────────
-# Import lazily to avoid circular import at module level
-_store: Any = None  # Initialized on first use
+# ─── (Stores moved to stores.py, pipeline moved to pipeline.py) ──────────────
 
-
-def _get_store():
-    """Get the active job store, creating InMemoryJobStore if not yet set."""
-    global _store
-    if _store is None:
-        with _store_lock:
-            if _store is None:
-                from agent_bom.api.store import InMemoryJobStore
-
-                _store = InMemoryJobStore()
-    return _store
-
-
-def set_job_store(store: Any) -> None:
-    """Switch the job store backend. Call before server startup."""
-    global _store
-    _store = store
-
-
-# In-memory job refs for SSE streaming (bounded, thread-safe)
-_jobs: dict[str, "ScanJob"] = {}
-_jobs_lock = threading.Lock()
-_job_locks: dict[str, threading.Lock] = {}  # per-job locks for thread-safe field access
-
-
-def _job_lock(job_id: str) -> threading.Lock:
-    """Get or create a per-job lock for thread-safe field access."""
-    with _jobs_lock:
-        if job_id not in _job_locks:
-            _job_locks[job_id] = threading.Lock()
-        return _job_locks[job_id]
-
-
-def _jobs_put(job_id: str, job: "ScanJob") -> None:
-    """Add a job to _jobs with bounded eviction."""
-    with _jobs_lock:
-        _jobs[job_id] = job
-        if len(_jobs) > _MAX_IN_MEMORY_JOBS:
-            # Evict oldest completed jobs first
-            completed = [(jid, j) for jid, j in _jobs.items() if j.status in (JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED)]
-            completed.sort(key=lambda x: x[1].completed_at or "")
-            for jid, _ in completed[: len(_jobs) - _MAX_IN_MEMORY_JOBS]:
-                _jobs.pop(jid, None)
-
-
-def _jobs_get(job_id: str) -> "ScanJob | None":
-    """Thread-safe get from _jobs."""
-    with _jobs_lock:
-        return _jobs.get(job_id)
-
-
-def _jobs_pop(job_id: str) -> "ScanJob | None":
-    """Thread-safe pop from _jobs."""
-    with _jobs_lock:
-        return _jobs.pop(job_id, None)
-
-
-# ─── Models ───────────────────────────────────────────────────────────────────
-
-
-# ─── Scan Pipeline (structured SSE events) ────────────────────────────────────
-
-
-PIPELINE_STEPS = ["discovery", "extraction", "scanning", "enrichment", "analysis", "output"]
-
-
-class ScanPipeline:
-    """Track scan pipeline steps and emit structured events to job.progress."""
-
-    def __init__(self, job: ScanJob, lock: threading.Lock | None = None) -> None:
-        self._job = job
-        self._lock = lock
-        self._steps: dict[str, dict[str, Any]] = {}
-        for step_id in PIPELINE_STEPS:
-            self._steps[step_id] = {
-                "type": "step",
-                "step_id": step_id,
-                "status": StepStatus.PENDING,
-                "message": f"Pending: {step_id}",
-                "started_at": None,
-                "completed_at": None,
-                "stats": {},
-                "sub_step": None,
-                "progress_pct": None,
-            }
-
-    def start_step(self, step_id: str, message: str, sub_step: str | None = None) -> None:
-        """Mark a step as running and emit event."""
-        event = self._steps[step_id]
-        event["status"] = StepStatus.RUNNING
-        event["message"] = message
-        event["started_at"] = _now()
-        event["sub_step"] = sub_step
-        self._emit(event)
-
-    def update_step(
-        self,
-        step_id: str,
-        message: str,
-        stats: dict[str, int] | None = None,
-        progress_pct: int | None = None,
-    ) -> None:
-        """Update a running step with new message/stats."""
-        event = self._steps[step_id]
-        event["message"] = message
-        if stats:
-            event["stats"].update(stats)
-        if progress_pct is not None:
-            event["progress_pct"] = progress_pct
-        self._emit(event)
-
-    def complete_step(self, step_id: str, message: str, stats: dict[str, int] | None = None) -> None:
-        """Mark a step as done."""
-        event = self._steps[step_id]
-        event["status"] = StepStatus.DONE
-        event["message"] = message
-        event["completed_at"] = _now()
-        if stats:
-            event["stats"].update(stats)
-        self._emit(event)
-
-    def fail_step(self, step_id: str, message: str) -> None:
-        """Mark a step as failed."""
-        event = self._steps[step_id]
-        event["status"] = StepStatus.FAILED
-        event["message"] = message
-        event["completed_at"] = _now()
-        self._emit(event)
-
-    def skip_step(self, step_id: str, message: str) -> None:
-        """Mark a step as skipped."""
-        event = self._steps[step_id]
-        event["status"] = StepStatus.SKIPPED
-        event["message"] = message
-        self._emit(event)
-
-    def _emit(self, event: dict[str, Any]) -> None:
-        """Serialize step event to job.progress for SSE pickup (thread-safe)."""
-        import json as _json_mod
-
-        # Convert enum values to strings for JSON serialization
-        serializable = {k: (v.value if isinstance(v, Enum) else v) for k, v in event.items()}
-        line = _json_mod.dumps(serializable)
-        if self._lock:
-            with self._lock:
-                self._job.progress.append(line)
-        else:
-            self._job.progress.append(line)
-
-
-# ─── Helpers ──────────────────────────────────────────────────────────────────
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _sync_scan_agents_to_fleet(agents: list) -> None:
-    """Sync discovered agents from a scan into the fleet registry.
-
-    Creates new FleetAgent entries for previously unseen agents and updates
-    counts/trust scores for existing ones.  This ensures the fleet table is
-    always populated after every scan — closing the gap where scan_jobs had
-    data but fleet_agents stayed empty.
-    """
-    from agent_bom.api.fleet_store import FleetAgent, FleetLifecycleState
-    from agent_bom.fleet.trust_scoring import compute_trust_score
-
-    store = _get_fleet_store()
-    now = _now()
-
-    # Collect all agents for a single batch upsert (atomicity)
-    to_upsert: list[FleetAgent] = []
-
-    for agent in agents:
-        existing = store.get_by_name(agent.name)
-        server_count = len(agent.mcp_servers)
-        pkg_count = sum(len(s.packages) for s in agent.mcp_servers)
-        cred_count = sum(len(s.credential_names) for s in agent.mcp_servers)
-        vuln_count = sum(s.total_vulnerabilities for s in agent.mcp_servers)
-
-        score, factors = compute_trust_score(agent)
-
-        if existing:
-            existing.server_count = server_count
-            existing.package_count = pkg_count
-            existing.credential_count = cred_count
-            existing.vuln_count = vuln_count
-            existing.trust_score = score
-            existing.trust_factors = factors
-            existing.updated_at = now
-            to_upsert.append(existing)
-        else:
-            fleet_agent = FleetAgent(
-                agent_id=str(uuid.uuid4()),
-                name=agent.name,
-                agent_type=agent.agent_type.value if hasattr(agent.agent_type, "value") else str(agent.agent_type),
-                config_path=agent.config_path or "",
-                lifecycle_state=FleetLifecycleState.DISCOVERED,
-                trust_score=score,
-                trust_factors=factors,
-                server_count=server_count,
-                package_count=pkg_count,
-                credential_count=cred_count,
-                vuln_count=vuln_count,
-                last_discovery=now,
-                created_at=now,
-                updated_at=now,
-            )
-            to_upsert.append(fleet_agent)
-
-    if to_upsert:
-        store.batch_put(to_upsert)
-
-
-def _run_scan_sync(job: ScanJob) -> None:
-    """Run the full scan pipeline in a thread (blocking). Updates job in-place."""
-    lock = _job_lock(job.job_id)
-    with lock:
-        job.status = JobStatus.RUNNING
-        job.started_at = _now()
-    pipeline = ScanPipeline(job, lock)
-
-    try:
-        from agent_bom.discovery import discover_all
-        from agent_bom.output import to_json
-        from agent_bom.parsers import extract_packages
-        from agent_bom.scanners import scan_agents_sync
-        from agent_bom.security import validate_path
-
-        req = job.request
-        agents = []
-        warnings_all: list[str] = []
-
-        # ── Path validation (prevent path traversal via API) ──
-        path_fields = (
-            ([req.inventory] if req.inventory else [])
-            + req.tf_dirs
-            + ([req.gha_path] if req.gha_path else [])
-            + req.agent_projects
-            + req.jupyter_dirs
-            + ([req.sbom] if req.sbom else [])
-            + req.filesystem_paths
-        )
-        for p in path_fields:
-            validate_path(p, must_exist=True)
-
-        # ── Discovery phase ──
-        pipeline.start_step("discovery", "Discovering local MCP configurations...")
-        local_agents = discover_all(
-            dynamic=req.dynamic_discovery,
-            dynamic_max_depth=req.dynamic_max_depth,
-        )
-        agents.extend(local_agents)
-
-        if req.inventory:
-            pipeline.update_step("discovery", f"Loading inventory: {req.inventory}")
-            import json as _json
-
-            from agent_bom.models import Agent, AgentType, MCPServer
-
-            try:
-                with open(req.inventory) as _f:
-                    inv_data = _json.load(_f)
-            except (_json.JSONDecodeError, OSError) as parse_err:
-                raise RuntimeError(f"Failed to load inventory file: {parse_err}") from parse_err
-            for agent_data in inv_data.get("agents", []):
-                servers = []
-                for s in agent_data.get("mcp_servers", []):
-                    servers.append(
-                        MCPServer(
-                            name=s.get("name", "unknown"),
-                            command=s.get("command", ""),
-                            args=s.get("args", []),
-                            env=s.get("env", {}),
-                        )
-                    )
-                agents.append(
-                    Agent(
-                        name=agent_data.get("name", "unknown"),
-                        agent_type=AgentType.CUSTOM,
-                        config_path=req.inventory,
-                        mcp_servers=servers,
-                    )
-                )
-
-        for image_ref in req.images:
-            pipeline.update_step("discovery", f"Scanning image: {image_ref}")
-            from agent_bom.image import scan_image
-
-            img_agents, img_warnings = scan_image(image_ref)
-            agents.extend(img_agents)  # type: ignore[arg-type]
-            warnings_all.extend(img_warnings)
-
-        if req.k8s:
-            pipeline.update_step("discovery", "Scanning Kubernetes pods...")
-            from agent_bom.k8s import discover_images
-
-            k8s_records = discover_images(namespace=req.k8s_namespace or "default")
-            for img, _pod, _ctr in k8s_records:
-                from agent_bom.image import scan_image
-
-                k8s_agents, k8s_warns = scan_image(img)
-                agents.extend(k8s_agents)  # type: ignore[arg-type]
-                warnings_all.extend(k8s_warns)
-
-        for tf_dir in req.tf_dirs:
-            pipeline.update_step("discovery", f"Scanning Terraform: {tf_dir}")
-            from agent_bom.terraform import scan_terraform_dir
-
-            tf_agents, tf_warnings = scan_terraform_dir(tf_dir)
-            agents.extend(tf_agents)
-            warnings_all.extend(tf_warnings)
-
-        if req.gha_path:
-            pipeline.update_step("discovery", f"Scanning GitHub Actions: {req.gha_path}")
-            from agent_bom.github_actions import scan_github_actions
-
-            gha_agents, gha_warnings = scan_github_actions(req.gha_path)
-            agents.extend(gha_agents)
-            warnings_all.extend(gha_warnings)
-
-        for ap in req.agent_projects:
-            pipeline.update_step("discovery", f"Scanning Python agent project: {ap}")
-            from agent_bom.python_agents import scan_python_agents
-
-            py_agents, py_warnings = scan_python_agents(ap)
-            agents.extend(py_agents)
-            warnings_all.extend(py_warnings)
-
-        for jdir in req.jupyter_dirs:
-            pipeline.update_step("discovery", f"Scanning Jupyter notebooks: {jdir}")
-            from agent_bom.jupyter import scan_jupyter_notebooks
-
-            j_agents, j_warnings = scan_jupyter_notebooks(jdir)
-            agents.extend(j_agents)
-            warnings_all.extend(j_warnings)
-
-        if req.sbom:
-            pipeline.update_step("discovery", f"Ingesting SBOM: {req.sbom}")
-            from agent_bom.sbom import load_sbom
-
-            sbom_packages, _fmt, _sbom_name = load_sbom(req.sbom)
-            if sbom_packages:
-                from agent_bom.models import Agent, AgentType, MCPServer
-
-                sbom_server = MCPServer(name=f"sbom:{req.sbom}")
-                sbom_server.packages = sbom_packages
-                sbom_agent = Agent(
-                    name=f"sbom:{req.sbom}",
-                    agent_type=AgentType.CUSTOM,
-                    config_path=req.sbom,
-                    mcp_servers=[sbom_server],
-                )
-                agents.append(sbom_agent)
-
-        for connector_name in req.connectors:
-            pipeline.update_step("discovery", f"Discovering from connector: {connector_name}")
-            try:
-                from agent_bom.connectors import discover_from_connector
-
-                con_agents, con_warnings = discover_from_connector(connector_name)
-                agents.extend(con_agents)
-                warnings_all.extend(con_warnings)
-            except Exception as con_exc:  # noqa: BLE001
-                warnings_all.append(f"{connector_name} connector error: {con_exc}")
-
-        for fs_path in req.filesystem_paths:
-            pipeline.update_step("discovery", f"Scanning filesystem: {fs_path}")
-            try:
-                from agent_bom.filesystem import scan_filesystem
-                from agent_bom.models import Agent, AgentType, MCPServer
-
-                fs_pkgs, fs_strat = scan_filesystem(fs_path)
-                if fs_pkgs:
-                    from pathlib import Path as _Path
-
-                    fs_server = MCPServer(name=f"fs:{fs_path}")
-                    fs_server.packages = fs_pkgs
-                    fs_agent = Agent(
-                        name=f"filesystem:{_Path(fs_path).name}",
-                        agent_type=AgentType.CUSTOM,
-                        config_path=fs_path,
-                        source="filesystem",
-                        mcp_servers=[fs_server],
-                    )
-                    agents.append(fs_agent)
-            except Exception as fs_exc:  # noqa: BLE001
-                warnings_all.append(f"Filesystem scan error for {fs_path}: {fs_exc}")
-
-        pipeline.complete_step("discovery", f"Found {len(agents)} agent(s)", {"agents": len(agents)})
-
-        # ── Scope filtering (pre-extraction) ──
-        if req.scope_agents or req.scope_servers or req.exclude_agents or req.exclude_servers:
-            import fnmatch
-
-            pre_filter = len(agents)
-            if req.scope_agents:
-                agents = [a for a in agents if any(fnmatch.fnmatch(a.name, pat) for pat in req.scope_agents)]
-            if req.exclude_agents:
-                agents = [a for a in agents if not any(fnmatch.fnmatch(a.name, pat) for pat in req.exclude_agents)]
-            if req.scope_servers or req.exclude_servers:
-                for agent in agents:
-                    if req.scope_servers:
-                        agent.mcp_servers = [s for s in agent.mcp_servers if any(fnmatch.fnmatch(s.name, pat) for pat in req.scope_servers)]
-                    if req.exclude_servers:
-                        agent.mcp_servers = [
-                            s for s in agent.mcp_servers if not any(fnmatch.fnmatch(s.name, pat) for pat in req.exclude_servers)
-                        ]
-            filtered_count = pre_filter - len(agents)
-            if filtered_count:
-                pipeline.update_step("discovery", f"Scope filter removed {filtered_count} agent(s)")
-
-        if not agents:
-            pipeline.skip_step("extraction", "No agents to extract")
-            pipeline.skip_step("scanning", "No packages to scan")
-            pipeline.skip_step("enrichment", "Skipped")
-            pipeline.skip_step("analysis", "Skipped")
-            pipeline.skip_step("output", "No results")
-            job.result = {"agents": [], "vulnerabilities": [], "blast_radius": [], "warnings": warnings_all}
-            job.status = JobStatus.DONE
-            job.completed_at = _now()
-            return
-
-        # ── Extraction phase ──
-        pipeline.start_step("extraction", f"Extracting packages from {len(agents)} agent(s)...")
-        total_pkgs = 0
-        for agent in agents:
-            for server in agent.mcp_servers:
-                if server.security_blocked:
-                    continue  # Don't extract packages from security-blocked servers
-                if not server.packages:
-                    server.packages = extract_packages(server)
-                total_pkgs += len(server.packages)
-        pipeline.complete_step("extraction", f"Extracted {total_pkgs} packages", {"packages": total_pkgs})
-
-        # ── Scanning phase ──
-        pipeline.start_step("scanning", "Querying OSV.dev for CVEs...")
-        blast_radii = scan_agents_sync(agents, enable_enrichment=req.enrich)
-        total_vulns = sum(len(p.vulnerabilities) for a in agents for s in a.mcp_servers for p in s.packages)
-        pipeline.complete_step("scanning", f"Found {total_vulns} vulnerabilities", {"vulnerabilities": total_vulns})
-
-        # ── Severity filtering (post-scan) ──
-        if req.min_severity:
-            _sev_order = {"low": 1, "medium": 2, "high": 3, "critical": 4}
-            _min = _sev_order.get(req.min_severity.lower(), 0)
-            blast_radii = [br for br in blast_radii if _sev_order.get(br.vulnerability.severity.value.lower(), 0) >= _min]
-
-        # ── Enrichment phase ──
-        if req.enrich:
-            pipeline.start_step("enrichment", "Enriching with NVD CVSS, EPSS, CISA KEV...")
-            # Enrichment happens inside scan_agents_sync, so just mark done
-            pipeline.complete_step("enrichment", "Enrichment complete")
-        else:
-            pipeline.skip_step("enrichment", "Enrichment not requested")
-
-        # ── Analysis phase ──
-        pipeline.start_step("analysis", "Computing blast radius...")
-        pipeline.complete_step("analysis", f"Computed {len(blast_radii)} blast radius entries", {"blast_radius": len(blast_radii)})
-
-        # ── Output phase ──
-        pipeline.start_step("output", "Building report...")
-        from agent_bom.models import AIBOMReport
-
-        report = AIBOMReport(agents=agents, blast_radii=blast_radii)
-        report_json = to_json(report)
-        report_json["warnings"] = warnings_all
-        with lock:
-            job.result = report_json
-            job.status = JobStatus.DONE
-        pipeline.complete_step("output", "Report ready")
-
-        # Auto-sync discovered agents to fleet registry
-        try:
-            _sync_scan_agents_to_fleet(agents)
-        except Exception as fleet_exc:  # noqa: BLE001
-            with lock:
-                job.progress.append(f"Fleet sync skipped: {fleet_exc}")
-
-    except Exception as exc:  # noqa: BLE001
-        with lock:
-            job.status = JobStatus.FAILED
-            job.error = sanitize_error(exc)
-        # Mark whichever step was running as failed
-        for step_id in PIPELINE_STEPS:
-            if pipeline._steps[step_id]["status"] == StepStatus.RUNNING:
-                pipeline.fail_step(step_id, sanitize_error(exc))
-                break
-        else:
-            with lock:
-                job.progress.append(f"Error: {sanitize_error(exc)}")
-    finally:
-        with lock:
-            job.completed_at = _now()
-        # Persist final state
-        _get_store().put(job)
 
 
 _cleanup_task: asyncio.Task | None = None
 _scheduler_task: asyncio.Task | None = None
-_schedule_store: ScheduleStore | None = None
-
-
-_STUCK_JOB_TIMEOUT = 1800  # 30 minutes — mark RUNNING jobs as FAILED
-
-
-async def _cleanup_loop():
-    """Background task that removes expired jobs and unsticks RUNNING jobs."""
-    while True:
-        await asyncio.sleep(300)
-        _get_store().cleanup_expired(_JOB_TTL_SECONDS)
-        # Unstick jobs that have been RUNNING for too long
-        try:
-            from datetime import datetime, timezone
-
-            now = datetime.now(timezone.utc)
-            with _jobs_lock:
-                for job in list(_jobs.values()):
-                    if job.status == JobStatus.RUNNING and job.created_at:
-                        try:
-                            created = datetime.fromisoformat(job.created_at.replace("Z", "+00:00"))
-                            if (now - created).total_seconds() > _STUCK_JOB_TIMEOUT:
-                                job.status = JobStatus.FAILED
-                                job.error = "Timed out (stuck in RUNNING state)"
-                                job.completed_at = now.isoformat()
-                        except (ValueError, TypeError):
-                            pass
-        except Exception:  # noqa: BLE001
-            pass
 
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
@@ -2176,100 +1680,7 @@ async def get_incident_correlation() -> dict:
 
 # ─── Proxy Status & Alerts ──────────────────────────────────────────────────
 
-# In-process ring buffer for proxy alerts/metrics.  The proxy (when running
-# in the same process, e.g. via the API) pushes records here.  External proxy
-# processes write to the JSONL audit log, and these endpoints read it.
-#
-# _proxy_alerts is a bounded deque (O(1) append/pop from both ends).
-# _proxy_alerts_total is a monotonic counter that never decrements — WebSocket
-# clients track their position by this counter, not by deque index, so they
-# correctly detect new alerts even when old ones are evicted from the ring.
-
-_proxy_alerts: deque[dict] = deque(maxlen=1000)
-_proxy_alerts_total: int = 0
-_proxy_metrics: dict | None = None
-
-
-def push_proxy_alert(alert: dict) -> None:
-    """Called by the proxy to record a runtime alert (in-process path)."""
-    global _proxy_alerts_total
-    _proxy_alerts.append(alert)
-    _proxy_alerts_total += 1
-
-
-def push_proxy_metrics(metrics: dict) -> None:
-    """Called by the proxy to record latest metrics summary."""
-    global _proxy_metrics
-    _proxy_metrics = metrics
-
-
-def _get_configured_log_path() -> _Path | None:
-    """Return the server-configured audit log path, if set.
-
-    The path is set via the AGENT_BOM_LOG environment variable (server-side
-    config only — never from user input).  Returns None when the env var is
-    unset or the file doesn't exist.
-    """
-    import os
-
-    log_env = os.environ.get("AGENT_BOM_LOG")
-    if not log_env:
-        return None
-    path = _Path(log_env).resolve()
-    if not path.is_file() or path.suffix != ".jsonl":
-        return None
-    return path
-
-
-_MAX_LOG_LINES = 50_000  # Cap log parsing to prevent memory issues
-
-
-def _read_alerts_from_log(path: _Path) -> list[dict]:
-    """Read runtime_alert records from a JSONL audit log."""
-    import json as _json
-
-    alerts: list[dict] = []
-    try:
-        with open(path) as f:
-            for i, raw_line in enumerate(f):
-                if i >= _MAX_LOG_LINES:
-                    break
-                line = raw_line.strip()
-                if not line:
-                    continue
-                try:
-                    record = _json.loads(line)
-                    if record.get("type") == "runtime_alert":
-                        alerts.append(record)
-                except (ValueError, KeyError):
-                    continue
-    except OSError:
-        pass
-    return alerts
-
-
-def _read_metrics_from_log(path: _Path) -> dict | None:
-    """Read the last proxy_summary record from a JSONL audit log."""
-    import json as _json
-
-    last_summary = None
-    try:
-        with open(path) as f:
-            for i, raw_line in enumerate(f):
-                if i >= _MAX_LOG_LINES:
-                    break
-                line = raw_line.strip()
-                if not line:
-                    continue
-                try:
-                    record = _json.loads(line)
-                    if record.get("type") == "proxy_summary":
-                        last_summary = record
-                except (ValueError, KeyError):
-                    continue
-    except OSError:
-        pass
-    return last_summary
+# Proxy ring buffer & log helpers moved to stores.py
 
 
 @app.get("/v1/proxy/status", tags=["proxy"])
@@ -2280,8 +1691,8 @@ async def proxy_status() -> dict:
     buffer (populated by ``push_proxy_metrics``) or from the audit log
     configured via the ``AGENT_BOM_LOG`` environment variable.
     """
-    if _proxy_metrics is not None:
-        return _proxy_metrics
+    if _stores._proxy_metrics is not None:
+        return _stores._proxy_metrics
 
     log_path = _get_configured_log_path()
     if log_path:
@@ -2312,10 +1723,10 @@ async def proxy_alerts(
         limit: Maximum number of alerts to return (default 100).
     """
     log_path = _get_configured_log_path()
-    if log_path and not _proxy_alerts:
+    if log_path and not _stores._proxy_alerts:
         alerts = _read_alerts_from_log(log_path)
     else:
-        alerts = list(_proxy_alerts)
+        alerts = list(_stores._proxy_alerts)
 
     # Apply filters
     if severity:
@@ -2397,8 +1808,8 @@ async def ws_proxy_metrics(websocket: WebSocket) -> None:
             now = _time.time()
             # Build snapshot from in-process metrics buffer
             metrics_snapshot: dict = {}
-            if _proxy_metrics is not None:
-                metrics_snapshot = dict(_proxy_metrics)
+            if _stores._proxy_metrics is not None:
+                metrics_snapshot = dict(_stores._proxy_metrics)
             else:
                 log_path = _get_configured_log_path()
                 if log_path:
@@ -2408,7 +1819,7 @@ async def ws_proxy_metrics(websocket: WebSocket) -> None:
 
             # Count alerts in last 60 seconds
             cutoff = now - 60
-            recent_alerts = [a for a in _proxy_alerts if a.get("ts", 0) > cutoff]
+            recent_alerts = [a for a in _stores._proxy_alerts if a.get("ts", 0) > cutoff]
 
             await websocket.send_json(
                 {
@@ -2454,13 +1865,13 @@ async def ws_proxy_alerts(websocket: WebSocket) -> None:
         return
 
     await websocket.accept()
-    seen = _proxy_alerts_total  # monotonic — tracks absolute count, not deque position
+    seen = _stores._proxy_alerts_total  # monotonic — tracks absolute count, not deque position
     try:
         while True:
-            current = _proxy_alerts_total
+            current = _stores._proxy_alerts_total
             if current > seen:
-                new_count = min(current - seen, len(_proxy_alerts))
-                for alert in list(_proxy_alerts)[-new_count:]:
+                new_count = min(current - seen, len(_stores._proxy_alerts))
+                for alert in list(_stores._proxy_alerts)[-new_count:]:
                     await websocket.send_json(alert)
                 seen = current
             await asyncio.sleep(0.25)
@@ -2543,70 +1954,7 @@ async def scorecard_lookup(ecosystem: str, package: str) -> dict:
     }
 
 
-# ─── Fleet Management ────────────────────────────────────────────────────────
-
-_fleet_store: Any = None
-
-
-def _get_fleet_store():
-    """Get the active fleet store, creating InMemoryFleetStore if not set."""
-    global _fleet_store
-    if _fleet_store is None:
-        with _store_lock:
-            if _fleet_store is None:
-                from agent_bom.api.fleet_store import InMemoryFleetStore
-
-                _fleet_store = InMemoryFleetStore()
-    return _fleet_store
-
-
-def set_fleet_store(store: Any) -> None:
-    """Switch the fleet store backend. Call before server startup."""
-    global _fleet_store
-    _fleet_store = store
-
-
-_policy_store: Any = None
-
-
-def _get_policy_store():
-    """Get the active policy store, creating InMemoryPolicyStore if not set."""
-    global _policy_store
-    if _policy_store is None:
-        with _store_lock:
-            if _policy_store is None:
-                from agent_bom.api.policy_store import InMemoryPolicyStore
-
-                _policy_store = InMemoryPolicyStore()
-    return _policy_store
-
-
-def set_policy_store(store: Any) -> None:
-    """Switch the policy store backend. Call before server startup."""
-    global _policy_store
-    _policy_store = store
-
-
-# ─── Analytics store (ClickHouse OLAP — optional) ────────────────────────────
-_analytics_store: Any = None
-
-
-def _get_analytics_store():
-    """Get the active analytics store, defaulting to NullAnalyticsStore."""
-    global _analytics_store
-    if _analytics_store is None:
-        with _store_lock:
-            if _analytics_store is None:
-                from agent_bom.api.clickhouse_store import NullAnalyticsStore
-
-                _analytics_store = NullAnalyticsStore()
-    return _analytics_store
-
-
-def set_analytics_store(store: Any) -> None:
-    """Switch the analytics store backend. Call before server startup."""
-    global _analytics_store
-    _analytics_store = store
+# ─── Fleet Management (store accessors in stores.py) ─────────────────────────
 
 
 @app.get("/v1/fleet", tags=["fleet"])
@@ -3269,23 +2617,20 @@ async def create_schedule(body: ScheduleCreate) -> dict:
         updated_at=now.isoformat(),
         tenant_id=body.tenant_id,
     )
-    assert _schedule_store is not None, "Schedule store not initialized"
-    _schedule_store.put(schedule)
+    _get_schedule_store().put(schedule)
     return schedule.model_dump()
 
 
 @app.get("/v1/schedules", tags=["schedules"])
 async def list_schedules() -> list[dict]:
     """List all scan schedules."""
-    assert _schedule_store is not None, "Schedule store not initialized"
-    return [s.model_dump() for s in _schedule_store.list_all()]
+    return [s.model_dump() for s in _get_schedule_store().list_all()]
 
 
 @app.get("/v1/schedules/{schedule_id}", tags=["schedules"])
 async def get_schedule(schedule_id: str) -> dict:
     """Get a specific schedule."""
-    assert _schedule_store is not None, "Schedule store not initialized"
-    s = _schedule_store.get(schedule_id)
+    s = _get_schedule_store().get(schedule_id)
     if s is None:
         raise HTTPException(status_code=404, detail=f"Schedule {schedule_id} not found")
     return s.model_dump()
@@ -3294,21 +2639,20 @@ async def get_schedule(schedule_id: str) -> dict:
 @app.delete("/v1/schedules/{schedule_id}", tags=["schedules"], status_code=204)
 async def delete_schedule(schedule_id: str):
     """Delete a schedule."""
-    assert _schedule_store is not None, "Schedule store not initialized"
-    if not _schedule_store.delete(schedule_id):
+    if not _get_schedule_store().delete(schedule_id):
         raise HTTPException(status_code=404, detail=f"Schedule {schedule_id} not found")
 
 
 @app.put("/v1/schedules/{schedule_id}/toggle", tags=["schedules"])
 async def toggle_schedule(schedule_id: str) -> dict:
     """Enable or disable a schedule."""
-    assert _schedule_store is not None, "Schedule store not initialized"
-    s = _schedule_store.get(schedule_id)
+    store = _get_schedule_store()
+    s = store.get(schedule_id)
     if s is None:
         raise HTTPException(status_code=404, detail=f"Schedule {schedule_id} not found")
     s.enabled = not s.enabled
     s.updated_at = datetime.now(timezone.utc).isoformat()
-    _schedule_store.put(s)
+    store.put(s)
     return s.model_dump()
 
 
@@ -3369,9 +2713,7 @@ async def delete_key(key_id: str) -> None:
     log_action("auth.key_revoked", resource=f"key/{key_id}")
 
 
-# ── Enterprise: Audit Log ────────────────────────────────────────────────────
-
-_audit_log_store: Any = None
+# ── Enterprise: Audit Log (store in stores.py) ───────────────────────────────
 
 
 @app.get("/v1/audit", tags=["enterprise"])
@@ -3402,18 +2744,7 @@ async def audit_integrity(limit: int = 1000) -> dict:
     return {"verified": verified, "tampered": tampered, "checked": verified + tampered}
 
 
-# ── Enterprise: Exception / Waiver Management ───────────────────────────────
-
-_exception_store: Any = None
-
-
-def _get_exception_store():
-    global _exception_store
-    if _exception_store is None:
-        from agent_bom.api.exception_store import InMemoryExceptionStore
-
-        _exception_store = InMemoryExceptionStore()
-    return _exception_store
+# ── Enterprise: Exception / Waiver Management (store in stores.py) ────────────
 
 
 @app.post("/v1/exceptions", tags=["enterprise"], status_code=201)
@@ -3499,19 +2830,7 @@ async def delete_exception(exception_id: str) -> None:
         raise HTTPException(status_code=404, detail=f"Exception {exception_id} not found")
 
 
-# ── Enterprise: Baseline Comparison & Trends ─────────────────────────────────
-
-_trend_store: Any = None
-_last_scan_report: dict | None = None
-
-
-def _get_trend_store():
-    global _trend_store
-    if _trend_store is None:
-        from agent_bom.baseline import InMemoryTrendStore
-
-        _trend_store = InMemoryTrendStore()
-    return _trend_store
+# ── Enterprise: Baseline Comparison & Trends (stores in stores.py) ────────────
 
 
 @app.post("/v1/baseline/compare", tags=["enterprise"])

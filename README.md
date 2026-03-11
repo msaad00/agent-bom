@@ -33,10 +33,10 @@ agent-bom scan               # auto-discover MCP configs + scan
 agent-bom scan --enrich      # + NVD CVSS + EPSS + CISA KEV enrichment
 ```
 
-That's it. agent-bom discovers your MCP client configs (Claude Desktop, Cursor, Windsurf, and 18 more), resolves every server's dependencies, checks them against OSV/NVD/GHSA, and maps the blast radius — which agents, credentials, and tools are affected by each vulnerability.
+That's it. agent-bom discovers your MCP client configs (Claude Desktop, Cursor, Windsurf, and 20 more), resolves every server's dependencies, checks them against OSV/NVD/GHSA, and maps the blast radius — which agents, credentials, and tools are affected by each vulnerability.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.69.0.gif" alt="agent-bom demo — scan, CVE check, GPU infra, runtime proxy, 30 MCP tools" width="900" />
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.65.0.gif" alt="agent-bom demo — scan, CVE check, blast radius, runtime proxy, 31 MCP tools" width="900" />
 </p>
 
 <p align="center">
@@ -76,7 +76,7 @@ CVE-2025-1234  (CRITICAL . CVSS 9.8 . CISA KEV)
 
 ## MCP server
 
-30 tools available to any MCP-compatible AI assistant.
+31 tools available to any MCP-compatible AI assistant.
 
 ```bash
 pip install 'agent-bom[mcp-server]'
@@ -314,7 +314,7 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible
 | GitHub Action | `uses: msaad00/agent-bom@v0.70.2 | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated scans (linux/amd64, linux/arm64) |
 | REST API | `agent-bom api` | Dashboards, SIEM |
-| MCP Server | `agent-bom mcp-server` (30 tools) | Inside any MCP client |
+| MCP Server | `agent-bom mcp-server` (31 tools) | Inside any MCP client |
 | Dashboard | `agent-bom serve` · [Full deploy guide](docs/DEPLOYMENT.md) | API + Next.js UI (15 pages) · Postgres/Supabase |
 | Runtime proxy | `agent-bom proxy` | Intercept + enforce MCP traffic in real time |
 | Protect engine | `agent-bom protect` | 7 behavioral detectors (rug pull, injection, exfil, credential leak) |

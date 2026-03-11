@@ -271,6 +271,7 @@ def scan(
         quiet = True
         output_format = output_format if output_format != "console" else "json"
         fail_on_severity = fail_on_severity or "critical"
+        warn_on_severity = warn_on_severity or "high"  # two-tier: warn high, fail critical
     elif preset == "enterprise":
         enrich = True
         introspect = True

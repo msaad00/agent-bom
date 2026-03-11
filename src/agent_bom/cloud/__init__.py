@@ -1,7 +1,13 @@
 """Cloud provider auto-discovery for AI agents and MCP servers.
 
-Discovers agents from AWS, Azure, GCP, CoreWeave, Databricks, Snowflake,
-Nebius, Hugging Face Hub, W&B, MLflow, OpenAI, and Ollama (local) APIs.
+Providers are split into two tiers:
+
+**Core providers** (actively developed, 80 %+ test coverage target, CIS benchmarks):
+  AWS, Azure, GCP, Snowflake, Databricks, Hugging Face Hub
+
+**Extended providers** (maintained, not actively expanded until core tier is solid):
+  CoreWeave, Nebius, W&B, MLflow, OpenAI, Ollama
+
 Each provider is an optional dependency — install with e.g. ``pip install 'agent-bom[aws]'``.
 """
 
@@ -14,20 +20,27 @@ from agent_bom.models import Agent
 
 from .base import CloudDiscoveryError
 
-_PROVIDERS: dict[str, str] = {
+# Core providers: actively developed, CIS benchmark coverage, 80%+ test coverage target.
+CORE_PROVIDERS: dict[str, str] = {
     "aws": "agent_bom.cloud.aws",
     "azure": "agent_bom.cloud.azure",
     "gcp": "agent_bom.cloud.gcp",
-    "coreweave": "agent_bom.cloud.coreweave",
-    "databricks": "agent_bom.cloud.databricks",
     "snowflake": "agent_bom.cloud.snowflake",
-    "nebius": "agent_bom.cloud.nebius",
+    "databricks": "agent_bom.cloud.databricks",
     "huggingface": "agent_bom.cloud.huggingface",
+}
+
+# Extended providers: maintained but not actively expanded until core tier is solid.
+EXTENDED_PROVIDERS: dict[str, str] = {
+    "coreweave": "agent_bom.cloud.coreweave",
+    "nebius": "agent_bom.cloud.nebius",
     "wandb": "agent_bom.cloud.wandb_provider",
     "mlflow": "agent_bom.cloud.mlflow_provider",
     "openai": "agent_bom.cloud.openai_provider",
     "ollama": "agent_bom.cloud.ollama",
 }
+
+_PROVIDERS: dict[str, str] = {**CORE_PROVIDERS, **EXTENDED_PROVIDERS}
 
 
 def discover_from_provider(
@@ -85,6 +98,8 @@ def discover_activity(
 
 __all__ = [
     "CloudDiscoveryError",
+    "CORE_PROVIDERS",
+    "EXTENDED_PROVIDERS",
     "discover_from_provider",
     "discover_governance",
     "discover_activity",

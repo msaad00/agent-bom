@@ -392,7 +392,7 @@ from agent_bom.scanners import scan_agents_sync
 @click.option("--gcp", "gcp_flag", is_flag=True, help="Discover agents from Google Cloud Vertex AI and Cloud Run")
 @click.option("--gcp-project", default=None, metavar="PROJECT", envvar="GOOGLE_CLOUD_PROJECT", help="GCP project ID")
 @click.option(
-    "--coreweave", "coreweave_flag", is_flag=True, help="Discover GPU VMs, NVIDIA NIM inference, and InfiniBand training from CoreWeave"
+    "--coreweave", "coreweave_flag", is_flag=True, help="[extended] Discover GPU VMs, NVIDIA NIM inference, and InfiniBand training from CoreWeave"
 )
 @click.option("--coreweave-context", default=None, metavar="CTX", help="kubectl context for CoreWeave cluster")
 @click.option("--coreweave-namespace", default=None, metavar="NS", help="Limit CoreWeave discovery to a namespace")
@@ -406,7 +406,7 @@ from agent_bom.scanners import scan_agents_sync
     help="Snowflake auth method: externalbrowser (SSO, default), snowflake_jwt (key-pair), oauth. No passwords stored.",
 )
 @click.option("--cortex-observability", is_flag=True, help="Include Cortex agent observability telemetry (requires --snowflake)")
-@click.option("--nebius", "nebius_flag", is_flag=True, help="Discover AI workloads from Nebius GPU cloud")
+@click.option("--nebius", "nebius_flag", is_flag=True, help="[extended] Discover AI workloads from Nebius GPU cloud")
 @click.option("--nebius-api-key", default=None, envvar="NEBIUS_API_KEY", metavar="KEY", help="Nebius API key")
 @click.option("--nebius-project-id", default=None, envvar="NEBIUS_PROJECT_ID", metavar="ID", help="Nebius project ID")
 @click.option("--aws-include-lambda", is_flag=True, help="Discover standalone Lambda functions (used with --aws)")
@@ -446,16 +446,16 @@ from agent_bom.scanners import scan_agents_sync
 @click.option("--hf-token", default=None, envvar="HF_TOKEN", metavar="TOKEN", help="Hugging Face API token")
 @click.option("--hf-username", default=None, metavar="USER", help="Hugging Face username to scope discovery")
 @click.option("--hf-organization", default=None, metavar="ORG", help="Hugging Face organization to scope discovery")
-@click.option("--wandb", "wandb_flag", is_flag=True, help="Discover runs and artifacts from Weights & Biases")
+@click.option("--wandb", "wandb_flag", is_flag=True, help="[extended] Discover runs and artifacts from Weights & Biases")
 @click.option("--wandb-api-key", default=None, envvar="WANDB_API_KEY", metavar="KEY", help="W&B API key")
 @click.option("--wandb-entity", default=None, envvar="WANDB_ENTITY", metavar="ENTITY", help="W&B entity (team or user)")
 @click.option("--wandb-project", default=None, metavar="PROJECT", help="W&B project name")
-@click.option("--mlflow", "mlflow_flag", is_flag=True, help="Discover models and experiments from MLflow")
+@click.option("--mlflow", "mlflow_flag", is_flag=True, help="[extended] Discover models and experiments from MLflow")
 @click.option("--mlflow-tracking-uri", default=None, envvar="MLFLOW_TRACKING_URI", metavar="URI", help="MLflow tracking server URI")
-@click.option("--openai", "openai_flag", is_flag=True, help="Discover assistants and fine-tuned models from OpenAI")
+@click.option("--openai", "openai_flag", is_flag=True, help="[extended] Discover assistants and fine-tuned models from OpenAI")
 @click.option("--openai-api-key", default=None, envvar="OPENAI_API_KEY", metavar="KEY", help="OpenAI API key")
 @click.option("--openai-org-id", default=None, envvar="OPENAI_ORG_ID", metavar="ORG", help="OpenAI organization ID")
-@click.option("--ollama", "ollama_flag", is_flag=True, help="Discover locally downloaded Ollama models")
+@click.option("--ollama", "ollama_flag", is_flag=True, help="[extended] Discover locally downloaded Ollama models")
 @click.option("--ollama-host", default=None, envvar="OLLAMA_HOST", metavar="URL", help="Ollama API host (default: http://localhost:11434)")
 @click.option(
     "--smithery",

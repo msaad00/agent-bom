@@ -14,22 +14,17 @@ from rich.console import Console
 
 from agent_bom.models import MCPServer, Package
 
+# Re-export Node.js parsers for backward compatibility
+from agent_bom.parsers.node_parsers import (  # noqa: F401
+    _npm_purl,
+    detect_npx_package,
+    parse_npm_packages,
+    parse_pnpm_lock,
+    parse_yarn_lock,
+)
+
 # Path to bundled MCP registry (parsers/ is a subdir of agent_bom/)
 _REGISTRY_PATH = Path(__file__).parent.parent / "mcp_registry.json"
-
-
-def _npm_purl(name: str, version: str) -> str:
-    """Build a PURL for an npm package, correctly encoding scoped names.
-
-    Per the PURL spec, ``@scope/name`` becomes ``pkg:npm/%40scope/name@version``.
-    """
-    from urllib.parse import quote
-
-    if name.startswith("@"):
-        # Encode the '@' in the scope per PURL spec
-        scope, _, pkg_name = name[1:].partition("/")
-        return f"pkg:npm/{quote('@' + scope, safe='')}/{pkg_name}@{version}"
-    return f"pkg:npm/{name}@{version}"
 
 
 _registry_cache: Optional[dict] = None
@@ -185,68 +180,6 @@ def find_server_directory(server: MCPServer) -> Optional[Path]:
                 return Path(arg).parent
 
     return None
-
-
-def parse_npm_packages(directory: Path) -> list[Package]:
-    """Parse packages from package-lock.json or node_modules."""
-    packages = []
-
-    # Try package-lock.json first (most accurate)
-    lock_file = directory / "package-lock.json"
-    if lock_file.exists():
-        try:
-            lock_data = json.loads(lock_file.read_text())
-            lock_packages = lock_data.get("packages", lock_data.get("dependencies", {}))
-
-            # Get direct dependencies from package.json
-            pkg_json = directory / "package.json"
-            direct_deps = set()
-            if pkg_json.exists():
-                pkg_data = json.loads(pkg_json.read_text())
-                direct_deps = set(pkg_data.get("dependencies", {}).keys())
-                direct_deps.update(pkg_data.get("devDependencies", {}).keys())
-
-            for name, info in lock_packages.items():
-                if not isinstance(info, dict):
-                    continue
-                # Clean package name (remove node_modules/ prefix)
-                clean_name = name.replace("node_modules/", "").lstrip("/")
-                if not clean_name:
-                    continue
-
-                version = info.get("version", "unknown")
-                packages.append(
-                    Package(
-                        name=clean_name,
-                        version=version,
-                        ecosystem="npm",
-                        purl=_npm_purl(clean_name, version),
-                        is_direct=clean_name in direct_deps,
-                    )
-                )
-        except (json.JSONDecodeError, KeyError):
-            pass
-
-    # Fallback to package.json only
-    elif (directory / "package.json").exists():
-        try:
-            pkg_data = json.loads((directory / "package.json").read_text())
-            for dep_type in ("dependencies", "devDependencies"):
-                for name, version_spec in pkg_data.get(dep_type, {}).items():
-                    version = version_spec.lstrip("^~>=<")
-                    packages.append(
-                        Package(
-                            name=name,
-                            version=version,
-                            ecosystem="npm",
-                            purl=_npm_purl(name, version),
-                            is_direct=True,
-                        )
-                    )
-        except (json.JSONDecodeError, KeyError):
-            pass
-
-    return packages
 
 
 def parse_poetry_lock(directory: Path) -> list[Package]:
@@ -406,155 +339,6 @@ def parse_conda_environment(directory: Path) -> list[Package]:
                         )
     except Exception as exc:
         logger.debug("Failed to parse conda environment at %s: %s", env_file, exc)
-
-    return packages
-
-
-def parse_yarn_lock(directory: Path) -> list[Package]:
-    """Parse packages from yarn.lock (Classic v1 and Berry v2/v3 formats).
-
-    yarn.lock v1 (Classic) uses a block format::
-
-        "name@version":
-          version "resolved_version"
-
-    yarn.lock v2+ (Berry) uses a YAML-like format with ``__metadata``
-    and entries like::
-
-        "name@npm:version":
-          version: "resolved_version"
-
-    We handle both by scanning for version lines after each package header.
-    """
-    lock_file = directory / "yarn.lock"
-    if not lock_file.exists():
-        return []
-
-    packages: list[Package] = []
-    try:
-        content = lock_file.read_text()
-        # Berry v2+ detection
-        is_berry = "__metadata:" in content
-
-        if is_berry:
-            # Berry format: entries separated by blank lines, "version: x.y.z"
-            current_names: list[str] = []
-            seen: set[tuple[str, str]] = set()
-            for line in content.splitlines():
-                stripped = line.strip()
-                # Package header lines: '"name@npm:version, name@npm:version":'
-                if stripped.startswith('"') and stripped.endswith(":") and "@npm:" in stripped:
-                    current_names = []
-                    header = stripped.rstrip(":")
-                    for part in header.strip('"').split(", "):
-                        m = re.match(r'^"?(@?[^@]+)@', part)
-                        if m:
-                            current_names.append(m.group(1))
-                elif stripped.startswith("version:") and current_names:
-                    version = stripped.split(":", 1)[1].strip().strip('"')
-                    for name in current_names:
-                        key = (name, version)
-                        if key not in seen:
-                            seen.add(key)
-                            packages.append(
-                                Package(
-                                    name=name,
-                                    version=version,
-                                    ecosystem="npm",
-                                    purl=f"pkg:npm/{name}@{version}",
-                                    is_direct=False,
-                                )
-                            )
-                    current_names = []
-        else:
-            # Classic v1: '"name@range, name@range":\n  version "x.y.z"'
-            seen = set()  # type: ignore[no-redef]
-            current_names = []  # type: ignore[no-redef]
-            for line in content.splitlines():
-                stripped = line.strip()
-                # Header: one or more "name@range" entries followed by ":"
-                if stripped.endswith(":") and not stripped.startswith("#"):
-                    current_names = []
-                    header = stripped.rstrip(":")
-                    for part in header.strip('"').split(", "):
-                        m = re.match(r'^"?(@?[^@"]+)@', part.strip('"'))
-                        if m:
-                            current_names.append(m.group(1))
-                elif stripped.startswith("version ") and current_names:
-                    version = stripped.split(" ", 1)[1].strip().strip('"')
-                    for name in current_names:
-                        key = (name, version)
-                        if key not in seen:
-                            seen.add(key)
-                            packages.append(
-                                Package(
-                                    name=name,
-                                    version=version,
-                                    ecosystem="npm",
-                                    purl=f"pkg:npm/{name}@{version}",
-                                    is_direct=False,
-                                )
-                            )
-                    current_names = []
-    except Exception as exc:
-        logger.debug("Failed to parse yarn.lock at %s: %s", lock_file, exc)
-
-    return packages
-
-
-def parse_pnpm_lock(directory: Path) -> list[Package]:
-    """Parse packages from pnpm-lock.yaml.
-
-    pnpm-lock.yaml v6+ uses a ``packages`` map with keys like
-    ``/name@version`` or ``name@version``.  Earlier versions use
-    ``/name/version``.  We support both.
-    """
-    lock_file = directory / "pnpm-lock.yaml"
-    if not lock_file.exists():
-        return []
-
-    packages: list[Package] = []
-    try:
-        try:
-            import yaml
-        except ImportError:
-            logger.debug("PyYAML not installed; skipping pnpm-lock.yaml parsing")
-            return []
-
-        data = yaml.safe_load(lock_file.read_text()) or {}
-        pkg_map = data.get("packages", {})
-        for key in pkg_map:
-            # key formats (pnpm v6): "/name@version", "/@scope/name@version"
-            # key formats (pnpm v9): "name@version", "@scope/name@version"
-            key = key.lstrip("/")
-            # Handle scoped packages: @scope/name@version
-            m = re.match(r"^(@[^/]+/[^@]+)@([^()\s]+)", key)
-            if not m:
-                # Unscoped: name@version
-                m = re.match(r"^([^@][^@]*)@([^()\s]+)", key)
-            if not m:
-                # Fallback: name/version (old pnpm)
-                parts = key.rsplit("/", 1)
-                if len(parts) == 2:
-                    name, version = parts[0], parts[1]
-                else:
-                    continue
-            else:
-                name, version = m.group(1), m.group(2)
-            name = name.strip()
-            version = version.strip()
-            if name and version:
-                packages.append(
-                    Package(
-                        name=name,
-                        version=version,
-                        ecosystem="npm",
-                        purl=f"pkg:npm/{name}@{version}",
-                        is_direct=False,  # pnpm lock is flat; all entries are resolved
-                    )
-                )
-    except Exception as exc:
-        logger.debug("Failed to parse pnpm-lock.yaml at %s: %s", lock_file, exc)
 
     return packages
 
@@ -945,34 +729,6 @@ def parse_cargo_packages(directory: Path) -> list[Package]:
                 )
                 current_name = None
                 current_version = None
-
-    return packages
-
-
-def detect_npx_package(server: MCPServer) -> list[Package]:
-    """Extract package info from npx/npm commands."""
-    packages: list[Package] = []
-    if server.command not in ("npx", "npm"):
-        return packages
-
-    for arg in server.args:
-        if arg.startswith("-"):
-            continue
-        # Parse @scope/package@version or package@version
-        match = re.match(r"^(@?[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)?)(?:@(.+))?$", arg)
-        if match:
-            name = match.group(1)
-            version = match.group(2) or "latest"
-            packages.append(
-                Package(
-                    name=name,
-                    version=version,
-                    ecosystem="npm",
-                    purl=_npm_purl(name, version),
-                    is_direct=True,
-                )
-            )
-            break  # First non-flag arg is the package
 
     return packages
 

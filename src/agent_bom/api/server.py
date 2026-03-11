@@ -46,12 +46,10 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from agent_bom import __version__
-
-if TYPE_CHECKING:
-    from agent_bom.api.schedule_store import ScheduleStore
+from agent_bom.api import stores as _stores
 from agent_bom.api.middleware import (  # noqa: E402
     APIKeyMiddleware,
     MaxBodySizeMiddleware,
@@ -83,9 +81,27 @@ from agent_bom.api.models import (  # noqa: E402
     TrainingPipelinesRequest,
     VersionInfo,
 )
+from agent_bom.api.stores import (
+    _get_exception_store,
+    _get_fleet_store,
+    _get_policy_store,
+    _get_schedule_store,
+    _get_store,
+    _get_trend_store,
+    _job_lock,
+    _jobs,
+    _jobs_get,
+    _jobs_lock,
+    _jobs_pop,
+    _jobs_put,
+    set_analytics_store,
+    set_fleet_store,
+    set_job_store,
+    set_policy_store,
+    set_schedule_store,
+)
 from agent_bom.config import API_JOB_TTL_SECONDS as _JOB_TTL_SECONDS
 from agent_bom.config import API_MAX_CONCURRENT_JOBS as _MAX_CONCURRENT_JOBS
-from agent_bom.config import API_MAX_IN_MEMORY_JOBS as _MAX_IN_MEMORY_JOBS
 from agent_bom.security import sanitize_error
 
 _logger = logging.getLogger(__name__)
@@ -118,11 +134,11 @@ async def _lifespan(app_instance: FastAPI):
         )
 
         sf = build_connection_params()
-        if _store is None:
+        if _stores._store is None:
             set_job_store(SnowflakeJobStore(sf))
-        if _fleet_store is None:
+        if _stores._fleet_store is None:
             set_fleet_store(SnowflakeFleetStore(sf))
-        if _policy_store is None:
+        if _stores._policy_store is None:
             set_policy_store(SnowflakePolicyStore(sf))
     elif os.environ.get("AGENT_BOM_POSTGRES_URL"):
         from agent_bom.api.postgres_store import (
@@ -131,45 +147,44 @@ async def _lifespan(app_instance: FastAPI):
             PostgresPolicyStore,
         )
 
-        if _store is None:
+        if _stores._store is None:
             set_job_store(PostgresJobStore())
-        if _fleet_store is None:
+        if _stores._fleet_store is None:
             set_fleet_store(PostgresFleetStore())
-        if _policy_store is None:
+        if _stores._policy_store is None:
             set_policy_store(PostgresPolicyStore())
     elif os.environ.get("AGENT_BOM_DB"):
         db_path = os.environ["AGENT_BOM_DB"]
-        if _store is None:
+        if _stores._store is None:
             from agent_bom.api.store import SQLiteJobStore
 
             set_job_store(SQLiteJobStore(db_path))
-        if _fleet_store is None:
+        if _stores._fleet_store is None:
             from agent_bom.api.fleet_store import SQLiteFleetStore
 
             set_fleet_store(SQLiteFleetStore(db_path))
-        if _policy_store is None:
+        if _stores._policy_store is None:
             from agent_bom.api.policy_store import SQLitePolicyStore
 
             set_policy_store(SQLitePolicyStore(db_path))
 
     # ── Schedule store ──
-    global _schedule_store
-    if _schedule_store is None:
+    if _stores._schedule_store is None:
         if os.environ.get("AGENT_BOM_POSTGRES_URL"):
             from agent_bom.api.postgres_store import PostgresScheduleStore
 
-            _schedule_store = PostgresScheduleStore()
+            set_schedule_store(PostgresScheduleStore())
         elif os.environ.get("AGENT_BOM_DB"):
             from agent_bom.api.schedule_store import SQLiteScheduleStore
 
-            _schedule_store = SQLiteScheduleStore(os.environ["AGENT_BOM_DB"])
+            set_schedule_store(SQLiteScheduleStore(os.environ["AGENT_BOM_DB"]))
         else:
             from agent_bom.api.schedule_store import InMemoryScheduleStore
 
-            _schedule_store = InMemoryScheduleStore()
+            set_schedule_store(InMemoryScheduleStore())
 
     # ── Analytics store (ClickHouse OLAP — optional) ──
-    if os.environ.get("AGENT_BOM_CLICKHOUSE_URL") and _analytics_store is None:
+    if os.environ.get("AGENT_BOM_CLICKHOUSE_URL") and _stores._analytics_store is None:
         try:
             from agent_bom.api.clickhouse_store import ClickHouseAnalyticsStore
 
@@ -198,7 +213,7 @@ async def _lifespan(app_instance: FastAPI):
         loop.run_in_executor(_executor, _run_scan_sync, job)
         return job.job_id
 
-    _scheduler_task = asyncio.create_task(scheduler_loop(_schedule_store, _schedule_scan))
+    _scheduler_task = asyncio.create_task(scheduler_loop(_get_schedule_store(), _schedule_scan))
 
     yield
 
@@ -291,69 +306,6 @@ def configure_api(
 
 # Thread pool for running blocking scan functions without blocking the event loop
 _executor = ThreadPoolExecutor(max_workers=min(8, (os.cpu_count() or 4) + 2))
-
-# ─── Lazy-init lock (protects _store, _fleet_store, _policy_store) ───────────
-_store_lock = threading.Lock()
-
-# ─── Job store (pluggable) ────────────────────────────────────────────────────
-# Import lazily to avoid circular import at module level
-_store: Any = None  # Initialized on first use
-
-
-def _get_store():
-    """Get the active job store, creating InMemoryJobStore if not yet set."""
-    global _store
-    if _store is None:
-        with _store_lock:
-            if _store is None:
-                from agent_bom.api.store import InMemoryJobStore
-
-                _store = InMemoryJobStore()
-    return _store
-
-
-def set_job_store(store: Any) -> None:
-    """Switch the job store backend. Call before server startup."""
-    global _store
-    _store = store
-
-
-# In-memory job refs for SSE streaming (bounded, thread-safe)
-_jobs: dict[str, "ScanJob"] = {}
-_jobs_lock = threading.Lock()
-_job_locks: dict[str, threading.Lock] = {}  # per-job locks for thread-safe field access
-
-
-def _job_lock(job_id: str) -> threading.Lock:
-    """Get or create a per-job lock for thread-safe field access."""
-    with _jobs_lock:
-        if job_id not in _job_locks:
-            _job_locks[job_id] = threading.Lock()
-        return _job_locks[job_id]
-
-
-def _jobs_put(job_id: str, job: "ScanJob") -> None:
-    """Add a job to _jobs with bounded eviction."""
-    with _jobs_lock:
-        _jobs[job_id] = job
-        if len(_jobs) > _MAX_IN_MEMORY_JOBS:
-            # Evict oldest completed jobs first
-            completed = [(jid, j) for jid, j in _jobs.items() if j.status in (JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED)]
-            completed.sort(key=lambda x: x[1].completed_at or "")
-            for jid, _ in completed[: len(_jobs) - _MAX_IN_MEMORY_JOBS]:
-                _jobs.pop(jid, None)
-
-
-def _jobs_get(job_id: str) -> "ScanJob | None":
-    """Thread-safe get from _jobs."""
-    with _jobs_lock:
-        return _jobs.get(job_id)
-
-
-def _jobs_pop(job_id: str) -> "ScanJob | None":
-    """Thread-safe pop from _jobs."""
-    with _jobs_lock:
-        return _jobs.pop(job_id, None)
 
 
 # ─── Models ───────────────────────────────────────────────────────────────────
@@ -799,7 +751,6 @@ def _run_scan_sync(job: ScanJob) -> None:
 
 _cleanup_task: asyncio.Task | None = None
 _scheduler_task: asyncio.Task | None = None
-_schedule_store: ScheduleStore | None = None
 
 
 _STUCK_JOB_TIMEOUT = 1800  # 30 minutes — mark RUNNING jobs as FAILED
@@ -2545,69 +2496,6 @@ async def scorecard_lookup(ecosystem: str, package: str) -> dict:
 
 # ─── Fleet Management ────────────────────────────────────────────────────────
 
-_fleet_store: Any = None
-
-
-def _get_fleet_store():
-    """Get the active fleet store, creating InMemoryFleetStore if not set."""
-    global _fleet_store
-    if _fleet_store is None:
-        with _store_lock:
-            if _fleet_store is None:
-                from agent_bom.api.fleet_store import InMemoryFleetStore
-
-                _fleet_store = InMemoryFleetStore()
-    return _fleet_store
-
-
-def set_fleet_store(store: Any) -> None:
-    """Switch the fleet store backend. Call before server startup."""
-    global _fleet_store
-    _fleet_store = store
-
-
-_policy_store: Any = None
-
-
-def _get_policy_store():
-    """Get the active policy store, creating InMemoryPolicyStore if not set."""
-    global _policy_store
-    if _policy_store is None:
-        with _store_lock:
-            if _policy_store is None:
-                from agent_bom.api.policy_store import InMemoryPolicyStore
-
-                _policy_store = InMemoryPolicyStore()
-    return _policy_store
-
-
-def set_policy_store(store: Any) -> None:
-    """Switch the policy store backend. Call before server startup."""
-    global _policy_store
-    _policy_store = store
-
-
-# ─── Analytics store (ClickHouse OLAP — optional) ────────────────────────────
-_analytics_store: Any = None
-
-
-def _get_analytics_store():
-    """Get the active analytics store, defaulting to NullAnalyticsStore."""
-    global _analytics_store
-    if _analytics_store is None:
-        with _store_lock:
-            if _analytics_store is None:
-                from agent_bom.api.clickhouse_store import NullAnalyticsStore
-
-                _analytics_store = NullAnalyticsStore()
-    return _analytics_store
-
-
-def set_analytics_store(store: Any) -> None:
-    """Switch the analytics store backend. Call before server startup."""
-    global _analytics_store
-    _analytics_store = store
-
 
 @app.get("/v1/fleet", tags=["fleet"])
 async def list_fleet(
@@ -3269,23 +3157,20 @@ async def create_schedule(body: ScheduleCreate) -> dict:
         updated_at=now.isoformat(),
         tenant_id=body.tenant_id,
     )
-    assert _schedule_store is not None, "Schedule store not initialized"
-    _schedule_store.put(schedule)
+    _get_schedule_store().put(schedule)
     return schedule.model_dump()
 
 
 @app.get("/v1/schedules", tags=["schedules"])
 async def list_schedules() -> list[dict]:
     """List all scan schedules."""
-    assert _schedule_store is not None, "Schedule store not initialized"
-    return [s.model_dump() for s in _schedule_store.list_all()]
+    return [s.model_dump() for s in _get_schedule_store().list_all()]
 
 
 @app.get("/v1/schedules/{schedule_id}", tags=["schedules"])
 async def get_schedule(schedule_id: str) -> dict:
     """Get a specific schedule."""
-    assert _schedule_store is not None, "Schedule store not initialized"
-    s = _schedule_store.get(schedule_id)
+    s = _get_schedule_store().get(schedule_id)
     if s is None:
         raise HTTPException(status_code=404, detail=f"Schedule {schedule_id} not found")
     return s.model_dump()
@@ -3294,21 +3179,19 @@ async def get_schedule(schedule_id: str) -> dict:
 @app.delete("/v1/schedules/{schedule_id}", tags=["schedules"], status_code=204)
 async def delete_schedule(schedule_id: str):
     """Delete a schedule."""
-    assert _schedule_store is not None, "Schedule store not initialized"
-    if not _schedule_store.delete(schedule_id):
+    if not _get_schedule_store().delete(schedule_id):
         raise HTTPException(status_code=404, detail=f"Schedule {schedule_id} not found")
 
 
 @app.put("/v1/schedules/{schedule_id}/toggle", tags=["schedules"])
 async def toggle_schedule(schedule_id: str) -> dict:
     """Enable or disable a schedule."""
-    assert _schedule_store is not None, "Schedule store not initialized"
-    s = _schedule_store.get(schedule_id)
+    s = _get_schedule_store().get(schedule_id)
     if s is None:
         raise HTTPException(status_code=404, detail=f"Schedule {schedule_id} not found")
     s.enabled = not s.enabled
     s.updated_at = datetime.now(timezone.utc).isoformat()
-    _schedule_store.put(s)
+    _get_schedule_store().put(s)
     return s.model_dump()
 
 
@@ -3404,17 +3287,6 @@ async def audit_integrity(limit: int = 1000) -> dict:
 
 # ── Enterprise: Exception / Waiver Management ───────────────────────────────
 
-_exception_store: Any = None
-
-
-def _get_exception_store():
-    global _exception_store
-    if _exception_store is None:
-        from agent_bom.api.exception_store import InMemoryExceptionStore
-
-        _exception_store = InMemoryExceptionStore()
-    return _exception_store
-
 
 @app.post("/v1/exceptions", tags=["enterprise"], status_code=201)
 async def create_exception(req: ExceptionRequest) -> dict:
@@ -3500,18 +3372,6 @@ async def delete_exception(exception_id: str) -> None:
 
 
 # ── Enterprise: Baseline Comparison & Trends ─────────────────────────────────
-
-_trend_store: Any = None
-_last_scan_report: dict | None = None
-
-
-def _get_trend_store():
-    global _trend_store
-    if _trend_store is None:
-        from agent_bom.baseline import InMemoryTrendStore
-
-        _trend_store = InMemoryTrendStore()
-    return _trend_store
 
 
 @app.post("/v1/baseline/compare", tags=["enterprise"])

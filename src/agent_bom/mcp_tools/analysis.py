@@ -123,7 +123,7 @@ async def analytics_query_impl(
 ) -> str:
     """Implementation of the analytics_query tool."""
     try:
-        from agent_bom.api.server import _get_analytics_store
+        from agent_bom.api.stores import _get_analytics_store
 
         store = _get_analytics_store()
         valid_types = {"vuln_trends", "top_cves", "posture_history", "event_summary"}

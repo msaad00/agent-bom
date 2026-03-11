@@ -47,12 +47,12 @@ def test_jobs_get_missing_returns_none():
 
 def test_jobs_bounded_eviction():
     """When _jobs exceeds _MAX_IN_MEMORY_JOBS, oldest completed jobs are evicted."""
-    from agent_bom.api import server
+    from agent_bom.api import stores as _stores
     from agent_bom.api.server import JobStatus, ScanJob, ScanRequest, _jobs, _jobs_lock, _jobs_put
 
-    original_max = server._MAX_IN_MEMORY_JOBS
+    original_max = _stores._MAX_IN_MEMORY_JOBS
     try:
-        server._MAX_IN_MEMORY_JOBS = 5  # Lower for test
+        _stores._MAX_IN_MEMORY_JOBS = 5  # Lower for test
 
         # Clear any existing jobs
         with _jobs_lock:
@@ -68,7 +68,7 @@ def test_jobs_bounded_eviction():
         with _jobs_lock:
             assert len(_jobs) <= 5
     finally:
-        server._MAX_IN_MEMORY_JOBS = original_max
+        _stores._MAX_IN_MEMORY_JOBS = original_max
         # Cleanup
         with _jobs_lock:
             for k in list(_jobs.keys()):
@@ -106,7 +106,7 @@ def test_jobs_concurrent_access():
 
 def test_store_lock_exists():
     """_store_lock is a threading.Lock."""
-    from agent_bom.api.server import _store_lock
+    from agent_bom.api.stores import _store_lock
 
     assert isinstance(_store_lock, type(threading.Lock()))
 

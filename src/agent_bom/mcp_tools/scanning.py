@@ -20,6 +20,7 @@ async def scan_impl(
     transitive: bool = False,
     verify_integrity: bool = False,
     fail_severity: str | None = None,
+    warn_severity: str | None = None,
     policy: dict | None = None,
     _run_scan_pipeline,
     _truncate_response,
@@ -79,7 +80,7 @@ async def scan_impl(
             _validate_policy(policy)
             result["policy_results"] = evaluate_policy(policy, blast_radii)
 
-        # Severity gate
+        # Severity gate (fail)
         if fail_severity:
             from agent_bom.models import Severity
 
@@ -96,6 +97,26 @@ async def scan_impl(
             )
             result["gate_status"] = "fail" if gate_fail else "pass"
             result["gate_severity"] = fail_severity.lower()
+
+        # Warn severity gate (two-tier: only fires when fail gate did not trigger)
+        if warn_severity and result.get("gate_status") != "fail":
+            from agent_bom.models import Severity
+
+            severity_order = ["critical", "high", "medium", "low"]
+            try:
+                warn_threshold = Severity(warn_severity.lower())
+                warn_threshold_idx = severity_order.index(warn_threshold.value)
+            except (ValueError, KeyError):
+                return json.dumps({"error": f"Invalid warn_severity: {warn_severity}. Use: critical, high, medium, low"})
+            warn_matches = [
+                br
+                for br in blast_radii
+                if br.vulnerability.severity.value in severity_order
+                and severity_order.index(br.vulnerability.severity.value) <= warn_threshold_idx
+            ]
+            result["warn_gate_status"] = "warn" if warn_matches else "pass"
+            result["warn_gate_severity"] = warn_severity.lower()
+            result["warn_gate_count"] = len(warn_matches)
 
         if scan_warnings:
             result["warnings"] = scan_warnings

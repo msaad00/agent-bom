@@ -289,6 +289,16 @@ def policy_options(fn):
                 type=click.Choice(["critical", "high", "medium", "low"]),
                 help="Exit 1 if vulnerabilities of this severity or higher are found",
             ),
+            click.option(
+                "--warn-on",
+                "warn_on_severity",
+                type=click.Choice(["low", "medium", "high", "critical"], case_sensitive=False),
+                default=None,
+                help=(
+                    "Warn (exit 0) when findings at or above this severity exist. "
+                    "Use with --fail-on-severity for two-tier CI gates (e.g. --warn-on medium --fail-on-severity critical)."
+                ),
+            ),
             click.option("--fail-on-kev", is_flag=True, help="Exit 1 if any finding appears in CISA KEV (must use --enrich)"),
             click.option("--fail-if-ai-risk", is_flag=True, help="Exit 1 if an AI framework package with credentials has vulnerabilities"),
             click.option("--save", "save_report", is_flag=True, help="Save this scan to ~/.agent-bom/history/ for future diffing"),

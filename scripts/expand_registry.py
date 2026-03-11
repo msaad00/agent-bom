@@ -24,15 +24,20 @@ REGISTRY_PATH = ROOT / "src" / "agent_bom" / "mcp_registry.json"
 def main() -> None:
     parser = argparse.ArgumentParser(description="Expand bundled MCP registry")
     parser.add_argument(
-        "--max-pages", type=int, default=10,
+        "--max-pages",
+        type=int,
+        default=10,
         help="Maximum pages to fetch (default: 10, ~100 servers/page)",
     )
     parser.add_argument(
-        "--page-size", type=int, default=100,
+        "--page-size",
+        type=int,
+        default=100,
         help="Servers per page (default: 100)",
     )
     parser.add_argument(
-        "--dry-run", action="store_true",
+        "--dry-run",
+        action="store_true",
         help="Show what would change without writing",
     )
     args = parser.parse_args()

@@ -41,7 +41,6 @@ import asyncio
 import logging
 import time
 import uuid
-from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any
@@ -100,7 +99,7 @@ _logger = logging.getLogger(__name__)
 # ─── Dependency check ─────────────────────────────────────────────────────────
 
 try:
-    from fastapi import FastAPI, HTTPException, WebSocket
+    from fastapi import FastAPI, HTTPException
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import RedirectResponse
     from pydantic import BaseModel  # noqa: F401 — presence check for [api] extra
@@ -315,10 +314,15 @@ from agent_bom.api.pipeline import (  # noqa: E402
 from agent_bom.api.routes.compliance import router as _compliance_router  # noqa: E402
 from agent_bom.api.routes.fleet import router as _fleet_router  # noqa: E402
 from agent_bom.api.routes.gateway import router as _gateway_router  # noqa: E402
+from agent_bom.api.routes.proxy import router as _proxy_router  # noqa: E402
 
 app.include_router(_compliance_router)
 app.include_router(_fleet_router)
 app.include_router(_gateway_router)
+app.include_router(_proxy_router)
+
+# Re-export proxy push functions for backward compatibility
+from agent_bom.api.routes.proxy import push_proxy_alert, push_proxy_metrics  # noqa: E402, F401
 
 _cleanup_task: asyncio.Task | None = None
 _scheduler_task: asyncio.Task | None = None
@@ -1319,302 +1323,6 @@ async def check_malicious(name: str, ecosystem: str = "npm") -> dict:
         "is_typosquat": typosquat_target is not None,
         "typosquat_target": typosquat_target,
     }
-
-
-# ─── Proxy Status & Alerts ──────────────────────────────────────────────────
-
-# In-process ring buffer for proxy alerts/metrics.  The proxy (when running
-# in the same process, e.g. via the API) pushes records here.  External proxy
-# processes write to the JSONL audit log, and these endpoints read it.
-#
-# _proxy_alerts is a bounded deque (O(1) append/pop from both ends).
-# _proxy_alerts_total is a monotonic counter that never decrements — WebSocket
-# clients track their position by this counter, not by deque index, so they
-# correctly detect new alerts even when old ones are evicted from the ring.
-
-_proxy_alerts: deque[dict] = deque(maxlen=1000)
-_proxy_alerts_total: int = 0
-_proxy_metrics: dict | None = None
-
-
-def push_proxy_alert(alert: dict) -> None:
-    """Called by the proxy to record a runtime alert (in-process path)."""
-    global _proxy_alerts_total
-    _proxy_alerts.append(alert)
-    _proxy_alerts_total += 1
-
-
-def push_proxy_metrics(metrics: dict) -> None:
-    """Called by the proxy to record latest metrics summary."""
-    global _proxy_metrics
-    _proxy_metrics = metrics
-
-
-def _get_configured_log_path() -> _Path | None:
-    """Return the server-configured audit log path, if set.
-
-    The path is set via the AGENT_BOM_LOG environment variable (server-side
-    config only — never from user input).  Returns None when the env var is
-    unset or the file doesn't exist.
-    """
-    import os
-
-    log_env = os.environ.get("AGENT_BOM_LOG")
-    if not log_env:
-        return None
-    path = _Path(log_env).resolve()
-    if not path.is_file() or path.suffix != ".jsonl":
-        return None
-    return path
-
-
-_MAX_LOG_LINES = 50_000  # Cap log parsing to prevent memory issues
-
-
-def _read_alerts_from_log(path: _Path) -> list[dict]:
-    """Read runtime_alert records from a JSONL audit log."""
-    import json as _json
-
-    alerts: list[dict] = []
-    try:
-        with open(path) as f:
-            for i, raw_line in enumerate(f):
-                if i >= _MAX_LOG_LINES:
-                    break
-                line = raw_line.strip()
-                if not line:
-                    continue
-                try:
-                    record = _json.loads(line)
-                    if record.get("type") == "runtime_alert":
-                        alerts.append(record)
-                except (ValueError, KeyError):
-                    continue
-    except OSError:
-        pass
-    return alerts
-
-
-def _read_metrics_from_log(path: _Path) -> dict | None:
-    """Read the last proxy_summary record from a JSONL audit log."""
-    import json as _json
-
-    last_summary = None
-    try:
-        with open(path) as f:
-            for i, raw_line in enumerate(f):
-                if i >= _MAX_LOG_LINES:
-                    break
-                line = raw_line.strip()
-                if not line:
-                    continue
-                try:
-                    record = _json.loads(line)
-                    if record.get("type") == "proxy_summary":
-                        last_summary = record
-                except (ValueError, KeyError):
-                    continue
-    except OSError:
-        pass
-    return last_summary
-
-
-@app.get("/v1/proxy/status", tags=["proxy"])
-async def proxy_status() -> dict:
-    """Get runtime proxy metrics.
-
-    Returns the latest proxy metrics summary.  Reads from the in-process
-    buffer (populated by ``push_proxy_metrics``) or from the audit log
-    configured via the ``AGENT_BOM_LOG`` environment variable.
-    """
-    if _proxy_metrics is not None:
-        return _proxy_metrics
-
-    log_path = _get_configured_log_path()
-    if log_path:
-        metrics = _read_metrics_from_log(log_path)
-        if metrics is not None:
-            return metrics
-
-    return {
-        "status": "no_proxy_session",
-        "message": "No proxy metrics available. Start a proxy session or set AGENT_BOM_LOG.",
-    }
-
-
-@app.get("/v1/proxy/alerts", tags=["proxy"])
-async def proxy_alerts(
-    severity: str | None = None,
-    detector: str | None = None,
-    limit: int = 100,
-) -> dict:
-    """Get recent runtime proxy alerts.
-
-    Returns alerts from the in-process buffer or the audit log configured
-    via the ``AGENT_BOM_LOG`` environment variable.
-
-    Query params:
-        severity: Filter by severity (critical, high, medium, low, info).
-        detector: Filter by detector name.
-        limit: Maximum number of alerts to return (default 100).
-    """
-    log_path = _get_configured_log_path()
-    if log_path and not _proxy_alerts:
-        alerts = _read_alerts_from_log(log_path)
-    else:
-        alerts = list(_proxy_alerts)
-
-    # Apply filters
-    if severity:
-        alerts = [a for a in alerts if a.get("severity", "").lower() == severity.lower()]
-    if detector:
-        alerts = [a for a in alerts if a.get("detector", "").lower() == detector.lower()]
-
-    # Newest first, apply limit
-    alerts = alerts[-limit:][::-1]
-
-    return {
-        "alerts": alerts,
-        "count": len(alerts),
-        "filters": {
-            "severity": severity,
-            "detector": detector,
-            "limit": limit,
-        },
-    }
-
-
-# ─── WebSocket: live proxy metrics stream ────────────────────────────────────
-
-
-def _ws_check_auth(websocket: WebSocket) -> bool:
-    """Return True if the WebSocket connection is authorized.
-
-    When ``AGENT_BOM_API_KEY`` is set, callers must pass ``?token=<key>`` in
-    the WebSocket URL.  When the env var is unset the endpoint is open (local
-    dev / single-user mode).
-    """
-    import os as _os
-
-    api_key = _os.environ.get("AGENT_BOM_API_KEY")
-    if not api_key:
-        return True  # no auth configured — open
-    token = websocket.query_params.get("token", "")
-    return bool(token and token == api_key)
-
-
-@app.websocket("/ws/proxy/metrics")
-async def ws_proxy_metrics(websocket: WebSocket) -> None:
-    """WebSocket endpoint — push proxy metrics every second.
-
-    Connect to ``ws://localhost:8422/ws/proxy/metrics`` to receive a live
-    stream of proxy metrics as JSON objects.  Useful for building real-time
-    dashboards without polling.
-
-    Authentication: pass ``?token=<AGENT_BOM_API_KEY>`` when the env var is set.
-
-    Message format (sent every second):
-    ::
-
-        {
-          "ts": 1234567890.123,
-          "tool_calls": {"read_file": 12, "exec": 3},
-          "blocked": {"rate_limit": 1, "policy": 2},
-          "alerts_last_60s": 4,
-          "latency_p95_ms": 45.2
-        }
-
-    Connection is closed cleanly on disconnect.
-    """
-    import asyncio
-    import time as _time
-
-    try:
-        from fastapi.websockets import WebSocketDisconnect
-    except ImportError:
-        from starlette.websockets import WebSocketDisconnect  # type: ignore[no-reattr]
-
-    if not _ws_check_auth(websocket):
-        await websocket.close(code=4001)
-        return
-
-    await websocket.accept()
-    try:
-        while True:
-            now = _time.time()
-            # Build snapshot from in-process metrics buffer
-            metrics_snapshot: dict = {}
-            if _proxy_metrics is not None:
-                metrics_snapshot = dict(_proxy_metrics)
-            else:
-                log_path = _get_configured_log_path()
-                if log_path:
-                    m = _read_metrics_from_log(log_path)
-                    if m:
-                        metrics_snapshot = m
-
-            # Count alerts in last 60 seconds
-            cutoff = now - 60
-            recent_alerts = [a for a in _proxy_alerts if a.get("ts", 0) > cutoff]
-
-            await websocket.send_json(
-                {
-                    "ts": now,
-                    "tool_calls": metrics_snapshot.get("calls_by_tool", {}),
-                    "blocked": metrics_snapshot.get("blocked_by_reason", {}),
-                    "alerts_last_60s": len(recent_alerts),
-                    "latency_p95_ms": metrics_snapshot.get("latency", {}).get("p95_ms"),
-                    "total_tool_calls": metrics_snapshot.get("total_tool_calls", 0),
-                    "total_blocked": metrics_snapshot.get("total_blocked", 0),
-                    "uptime_seconds": metrics_snapshot.get("uptime_seconds"),
-                }
-            )
-            await asyncio.sleep(1.0)
-    except WebSocketDisconnect:
-        pass
-    except Exception:  # noqa: BLE001
-        # Client disconnected or error — close quietly
-        pass
-
-
-@app.websocket("/ws/proxy/alerts")
-async def ws_proxy_alerts(websocket: WebSocket) -> None:
-    """WebSocket endpoint — push new proxy alerts as they arrive.
-
-    Streams new alerts in real time.  Each message is a single alert object.
-    Useful for live security dashboards that need immediate notification.
-
-    Authentication: pass ``?token=<AGENT_BOM_API_KEY>`` when the env var is set.
-
-    Uses a monotonic total counter (not deque length) to detect new alerts
-    correctly even when old entries are evicted from the 1000-entry ring buffer.
-    """
-    import asyncio
-
-    try:
-        from fastapi.websockets import WebSocketDisconnect
-    except ImportError:
-        from starlette.websockets import WebSocketDisconnect  # type: ignore[no-reattr]
-
-    if not _ws_check_auth(websocket):
-        await websocket.close(code=4001)
-        return
-
-    await websocket.accept()
-    seen = _proxy_alerts_total  # monotonic — tracks absolute count, not deque position
-    try:
-        while True:
-            current = _proxy_alerts_total
-            if current > seen:
-                new_count = min(current - seen, len(_proxy_alerts))
-                for alert in list(_proxy_alerts)[-new_count:]:
-                    await websocket.send_json(alert)
-                seen = current
-            await asyncio.sleep(0.25)
-    except WebSocketDisconnect:
-        pass
-    except Exception:  # noqa: BLE001
-        pass
 
 
 # ─── OpenSSF Scorecard Lookup ────────────────────────────────────────────────

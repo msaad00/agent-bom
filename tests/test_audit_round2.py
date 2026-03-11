@@ -204,7 +204,7 @@ def test_read_alerts_handles_missing_file():
     """_read_alerts_from_log returns empty on missing file."""
     from pathlib import Path
 
-    from agent_bom.api.server import _read_alerts_from_log
+    from agent_bom.api.routes.proxy import _read_alerts_from_log
 
     result = _read_alerts_from_log(Path("/nonexistent/file.jsonl"))
     assert result == []
@@ -214,7 +214,7 @@ def test_read_metrics_handles_missing_file():
     """_read_metrics_from_log returns None on missing file."""
     from pathlib import Path
 
-    from agent_bom.api.server import _read_metrics_from_log
+    from agent_bom.api.routes.proxy import _read_metrics_from_log
 
     result = _read_metrics_from_log(Path("/nonexistent/file.jsonl"))
     assert result is None
@@ -226,7 +226,7 @@ def test_read_alerts_from_log_with_valid_data():
     import tempfile
     from pathlib import Path
 
-    from agent_bom.api.server import _read_alerts_from_log
+    from agent_bom.api.routes.proxy import _read_alerts_from_log
 
     content = "\n".join(
         [

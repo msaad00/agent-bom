@@ -6,7 +6,10 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from agent_bom.finding import Finding
 
 # ─── Package name normalization ──────────────────────────────────────────────
 # PEP 503: https://peps.python.org/pep-0503/#normalized-names
@@ -452,6 +455,11 @@ class AIBOMReport:
     serving_configs: Optional[list] = None  # Serialized ServingConfig list
     browser_extensions: Optional[dict] = None  # Serialized browser extension scan results
 
+    # Unified Finding stream (issue #566 — Phase 1).
+    # Populated alongside blast_radii for backward compatibility.
+    # Future phases will migrate cloud_reports and proxy alerts here too.
+    findings: list["Finding"] = field(default_factory=list)
+
     # Scan context metadata — what input sources were actually processed.
     # Populated by the CLI/API after scan completes. Consumers use this to
     # determine which UI panels, compliance frameworks, and graphs apply.
@@ -500,3 +508,22 @@ class AIBOMReport:
     @property
     def critical_vulns(self) -> list[BlastRadius]:
         return [br for br in self.blast_radii if br.vulnerability.severity == Severity.CRITICAL]
+
+    def to_findings(self) -> "list[Finding]":
+        """Return the unified findings list, auto-populating from blast_radii if empty.
+
+        Phase 1 shim: if ``self.findings`` is already populated (dual-write path),
+        return it directly.  Otherwise convert ``blast_radii`` on the fly so callers
+        can always work with the unified model.
+        """
+        if self.findings:
+            return self.findings
+        from agent_bom.finding import blast_radius_to_finding
+
+        return [blast_radius_to_finding(br) for br in self.blast_radii]
+
+    def cve_findings(self) -> "list[Finding]":
+        """Return only CVE-type findings from the unified stream."""
+        from agent_bom.finding import FindingType
+
+        return [f for f in self.to_findings() if f.finding_type == FindingType.CVE]

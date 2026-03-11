@@ -2079,7 +2079,16 @@ def scan(
         _scan_sources.append("gpu_infra")
     if not _scan_sources:
         _scan_sources.append("agent_discovery")  # Default scan type
-    report = AIBOMReport(agents=agents, blast_radii=blast_radii, scan_sources=_scan_sources)
+    # Dual-write: populate unified findings stream alongside blast_radii (#566 Phase 1)
+    from agent_bom.finding import blast_radius_to_finding
+
+    _findings = [blast_radius_to_finding(br) for br in blast_radii]
+    report = AIBOMReport(
+        agents=agents,
+        blast_radii=blast_radii,
+        findings=_findings,
+        scan_sources=_scan_sources,
+    )
     if _skill_audit_data:
         report.skill_audit_data = _skill_audit_data
     if _trust_assessment_data:

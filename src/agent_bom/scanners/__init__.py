@@ -440,7 +440,8 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
                         # Validate response length matches batch to prevent index misattribution
                         if len(osv_results) != len(batch):
                             console.print(
-                                f"  [yellow]⚠[/yellow] OSV batch response length mismatch: sent {len(batch)} queries, got {len(osv_results)} results"
+                                f"  [yellow]⚠[/yellow] OSV batch response length mismatch:"
+                                f" sent {len(batch)} queries, got {len(osv_results)} results"
                             )
                         for i, result in enumerate(osv_results):
                             if i >= len(batch):

@@ -1234,7 +1234,9 @@ def scan(
                 for r in _hash_report.results:
                     if r.is_tampered:
                         con.print(
-                            f"    [red]✗[/red] {r.filename}  expected={(r.expected_sha256 or '?')[:16]}…  got={r.actual_sha256[:16] if r.actual_sha256 else '?'}…"
+                            f"    [red]✗[/red] {r.filename}"
+                            f"  expected={(r.expected_sha256 or '?')[:16]}…"
+                            f"  got={r.actual_sha256[:16] if r.actual_sha256 else '?'}…"
                         )
             elif _hash_report.offline > 0:
                 con.print(f"  [yellow]~[/yellow] {_hash_report.scanned} file(s) found — HuggingFace Hub unreachable, hashes unverified")
@@ -1762,7 +1764,8 @@ def scan(
                                 parts.append(f"-{len(intro_r.resources_removed)} resources")
                             drift_str = f" [yellow]drift: {', '.join(parts)}[/yellow]"
                         con.print(
-                            f"  [green]✓[/green] {intro_r.server_name}: {intro_r.tool_count} tools, {intro_r.resource_count} resources{drift_str}"
+                            f"  [green]✓[/green] {intro_r.server_name}:"
+                            f" {intro_r.tool_count} tools, {intro_r.resource_count} resources{drift_str}"
                         )
                     else:
                         con.print(f"  [dim]  {intro_r.server_name}: {intro_r.error}[/dim]")

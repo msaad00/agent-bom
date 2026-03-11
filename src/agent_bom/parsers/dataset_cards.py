@@ -182,7 +182,10 @@ def parse_dataset_info_json(path: Path) -> DatasetInfo | None:
             {
                 "severity": "MEDIUM",
                 "type": "UNLICENSED_DATASET",
-                "description": f"Dataset '{info.name}' has no license declaration. Training on unlicensed data may violate IP rights (EU AI Act Art. 10).",
+                "description": (
+                    f"Dataset '{info.name}' has no license declaration."
+                    " Training on unlicensed data may violate IP rights (EU AI Act Art. 10)."
+                ),
             }
         )
 
@@ -211,7 +214,9 @@ def parse_dataset_readme(path: Path) -> DatasetInfo | None:
             {
                 "severity": "LOW",
                 "type": "NO_DATASET_CARD",
-                "description": f"README.md in '{path.parent.name}' has no YAML frontmatter. Dataset cards improve transparency and compliance.",
+                "description": (
+                    f"README.md in '{path.parent.name}' has no YAML frontmatter. Dataset cards improve transparency and compliance."
+                ),
             }
         )
         return info
@@ -242,7 +247,9 @@ def parse_dataset_readme(path: Path) -> DatasetInfo | None:
             {
                 "severity": "MEDIUM",
                 "type": "UNLICENSED_DATASET",
-                "description": f"Dataset '{info.name}' has no license in YAML frontmatter. Training on unlicensed data may violate IP rights.",
+                "description": (
+                    f"Dataset '{info.name}' has no license in YAML frontmatter. Training on unlicensed data may violate IP rights."
+                ),
             }
         )
 

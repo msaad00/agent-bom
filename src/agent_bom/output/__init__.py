@@ -1107,49 +1107,56 @@ def print_export_hint(report: AIBOMReport) -> None:
         owasp_mcp_pct = int(len(owasp_mcp_hit) / owasp_mcp_total * 100) if owasp_mcp_total else 0
         owasp_mcp_bar = _coverage_bar(len(owasp_mcp_hit), owasp_mcp_total, "yellow")
         lines.append(
-            f"  [bold yellow]OWASP MCP Top 10 [/bold yellow]  {owasp_mcp_bar}  [yellow]{len(owasp_mcp_hit)}/{owasp_mcp_total}[/yellow] ({owasp_mcp_pct}%)"
+            f"  [bold yellow]OWASP MCP Top 10 [/bold yellow]  {owasp_mcp_bar}"
+            f"  [yellow]{len(owasp_mcp_hit)}/{owasp_mcp_total}[/yellow] ({owasp_mcp_pct}%)"
         )
 
         # OWASP Agentic bar
         owasp_agentic_pct = int(len(owasp_agentic_hit) / owasp_agentic_total * 100) if owasp_agentic_total else 0
         owasp_agentic_bar = _coverage_bar(len(owasp_agentic_hit), owasp_agentic_total, "magenta")
         lines.append(
-            f"  [bold magenta]OWASP Agentic T10[/bold magenta]  {owasp_agentic_bar}  [magenta]{len(owasp_agentic_hit)}/{owasp_agentic_total}[/magenta] ({owasp_agentic_pct}%)"
+            f"  [bold magenta]OWASP Agentic T10[/bold magenta]  {owasp_agentic_bar}"
+            f"  [magenta]{len(owasp_agentic_hit)}/{owasp_agentic_total}[/magenta] ({owasp_agentic_pct}%)"
         )
 
         # EU AI Act bar
         eu_ai_act_pct = int(len(eu_ai_act_hit) / eu_ai_act_total * 100) if eu_ai_act_total else 0
         eu_ai_act_bar = _coverage_bar(len(eu_ai_act_hit), eu_ai_act_total, "blue")
         lines.append(
-            f"  [bold blue]EU AI Act         [/bold blue]  {eu_ai_act_bar}  [blue]{len(eu_ai_act_hit)}/{eu_ai_act_total}[/blue] ({eu_ai_act_pct}%)"
+            f"  [bold blue]EU AI Act         [/bold blue]  {eu_ai_act_bar}"
+            f"  [blue]{len(eu_ai_act_hit)}/{eu_ai_act_total}[/blue] ({eu_ai_act_pct}%)"
         )
 
         # NIST CSF 2.0 bar
         nist_csf_pct = int(len(nist_csf_hit) / nist_csf_total * 100) if nist_csf_total else 0
         nist_csf_bar = _coverage_bar(len(nist_csf_hit), nist_csf_total, "bright_green")
         lines.append(
-            f"  [bold bright_green]NIST CSF 2.0      [/bold bright_green]  {nist_csf_bar}  [bright_green]{len(nist_csf_hit)}/{nist_csf_total}[/bright_green] ({nist_csf_pct}%)"
+            f"  [bold bright_green]NIST CSF 2.0      [/bold bright_green]  {nist_csf_bar}"
+            f"  [bright_green]{len(nist_csf_hit)}/{nist_csf_total}[/bright_green] ({nist_csf_pct}%)"
         )
 
         # ISO 27001:2022 bar
         iso_27001_pct = int(len(iso_27001_hit) / iso_27001_total * 100) if iso_27001_total else 0
         iso_27001_bar = _coverage_bar(len(iso_27001_hit), iso_27001_total, "bright_cyan")
         lines.append(
-            f"  [bold bright_cyan]ISO 27001:2022    [/bold bright_cyan]  {iso_27001_bar}  [bright_cyan]{len(iso_27001_hit)}/{iso_27001_total}[/bright_cyan] ({iso_27001_pct}%)"
+            f"  [bold bright_cyan]ISO 27001:2022    [/bold bright_cyan]  {iso_27001_bar}"
+            f"  [bright_cyan]{len(iso_27001_hit)}/{iso_27001_total}[/bright_cyan] ({iso_27001_pct}%)"
         )
 
         # SOC 2 TSC bar
         soc2_pct = int(len(soc2_hit) / soc2_total * 100) if soc2_total else 0
         soc2_bar = _coverage_bar(len(soc2_hit), soc2_total, "bright_yellow")
         lines.append(
-            f"  [bold bright_yellow]SOC 2 TSC         [/bold bright_yellow]  {soc2_bar}  [bright_yellow]{len(soc2_hit)}/{soc2_total}[/bright_yellow] ({soc2_pct}%)"
+            f"  [bold bright_yellow]SOC 2 TSC         [/bold bright_yellow]  {soc2_bar}"
+            f"  [bright_yellow]{len(soc2_hit)}/{soc2_total}[/bright_yellow] ({soc2_pct}%)"
         )
 
         # CIS Controls v8 bar
         cis_pct = int(len(cis_hit) / cis_total * 100) if cis_total else 0
         cis_bar = _coverage_bar(len(cis_hit), cis_total, "bright_magenta")
         lines.append(
-            f"  [bold bright_magenta]CIS Controls v8   [/bold bright_magenta]  {cis_bar}  [bright_magenta]{len(cis_hit)}/{cis_total}[/bright_magenta] ({cis_pct}%)"
+            f"  [bold bright_magenta]CIS Controls v8   [/bold bright_magenta]  {cis_bar}"
+            f"  [bright_magenta]{len(cis_hit)}/{cis_total}[/bright_magenta] ({cis_pct}%)"
         )
 
         lines.append("")

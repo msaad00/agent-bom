@@ -116,7 +116,9 @@ def _check_1_4(project_id: str) -> CISCheckResult:
         title="Ensure service account keys are not created for user-managed service accounts",
         status=CheckStatus.ERROR,
         severity="medium",
-        recommendation="Delete user-managed service account keys and use short-lived credentials via Workload Identity or impersonation instead.",
+        recommendation=(
+            "Delete user-managed service account keys and use short-lived credentials via Workload Identity or impersonation instead."
+        ),
         cis_section=_IAM_SECTION,
     )
     try:
@@ -204,7 +206,9 @@ def _check_1_6(project_id: str) -> CISCheckResult:
         title="Ensure service account has no admin privileges",
         status=CheckStatus.ERROR,
         severity="high",
-        recommendation="Remove roles/owner, roles/editor, and roles/iam.admin from service accounts. Use fine-grained predefined roles instead.",
+        recommendation=(
+            "Remove roles/owner, roles/editor, and roles/iam.admin from service accounts. Use fine-grained predefined roles instead."
+        ),
         cis_section=_IAM_SECTION,
     )
     admin_roles = {"roles/owner", "roles/editor", "roles/iam.admin"}
@@ -247,7 +251,10 @@ def _check_1_7(project_id: str) -> CISCheckResult:
         title="Ensure user-managed service accounts do not have admin privileges",
         status=CheckStatus.ERROR,
         severity="medium",
-        recommendation="Remove roles/iam.serviceAccountAdmin, roles/iam.serviceAccountKeyAdmin, and roles/compute.admin from user-managed service accounts.",
+        recommendation=(
+            "Remove roles/iam.serviceAccountAdmin, roles/iam.serviceAccountKeyAdmin,"
+            " and roles/compute.admin from user-managed service accounts."
+        ),
         cis_section=_IAM_SECTION,
     )
     sa_admin_roles = {
@@ -340,7 +347,10 @@ def _check_2_2(project_id: str) -> CISCheckResult:
         title="Ensure a log sink is configured to export all log entries",
         status=CheckStatus.ERROR,
         severity="medium",
-        recommendation="Create a log sink in Cloud Logging that exports all log entries (_Default or custom filter) to Cloud Storage, BigQuery, or Pub/Sub.",
+        recommendation=(
+            "Create a log sink in Cloud Logging that exports all log entries"
+            " (_Default or custom filter) to Cloud Storage, BigQuery, or Pub/Sub."
+        ),
         cis_section=_LOGGING_SECTION,
     )
     try:
@@ -594,7 +604,9 @@ def _check_4_1(project_id: str) -> CISCheckResult:
         title="Ensure instances are not configured to use default service account",
         status=CheckStatus.ERROR,
         severity="high",
-        recommendation="Create and assign a custom service account to each VM instance instead of using the default Compute Engine service account.",
+        recommendation=(
+            "Create and assign a custom service account to each VM instance instead of using the default Compute Engine service account."
+        ),
         cis_section=_COMPUTE_SECTION,
     )
     try:
@@ -637,7 +649,9 @@ def _check_4_3(project_id: str) -> CISCheckResult:
         title="Ensure 'Block Project-wide SSH Keys' is enabled for VM instances",
         status=CheckStatus.ERROR,
         severity="medium",
-        recommendation="Set the 'block-project-ssh-keys' metadata key to 'true' on each VM instance to prevent project-wide SSH key access.",
+        recommendation=(
+            "Set the 'block-project-ssh-keys' metadata key to 'true' on each VM instance to prevent project-wide SSH key access."
+        ),
         cis_section=_COMPUTE_SECTION,
     )
     try:

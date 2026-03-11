@@ -367,7 +367,10 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         policy: Annotated[
             dict | None,
             Field(
-                description='Policy object to evaluate alongside scan results, e.g. {"rules": [{"id": "no-critical", "severity_gte": "critical", "action": "fail"}]}.'
+                description=(
+                    "Policy object to evaluate alongside scan results,"
+                    ' e.g. {"rules": [{"id": "no-critical", "severity_gte": "critical", "action": "fail"}]}.'
+                )
             ),
         ] = None,
     ) -> str:
@@ -403,7 +406,10 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         package: Annotated[
             str,
             Field(
-                description="Package name with optional version, e.g. 'express@4.18.2', '@modelcontextprotocol/server-filesystem@2025.1.14', or 'requests' (resolves @latest)."
+                description=(
+                    "Package name with optional version, e.g. 'express@4.18.2',"
+                    " '@modelcontextprotocol/server-filesystem@2025.1.14', or 'requests' (resolves @latest)."
+                )
             ),
         ],
         ecosystem: Annotated[str, Field(description="Package ecosystem: 'npm', 'pypi', 'go', 'cargo', 'maven', or 'nuget'.")] = "npm",
@@ -466,7 +472,10 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         policy_json: Annotated[
             str,
             Field(
-                description='JSON string containing policy rules, e.g. {"rules": [{"id": "no-critical", "severity_gte": "critical", "action": "fail"}]}.'
+                description=(
+                    "JSON string containing policy rules,"
+                    ' e.g. {"rules": [{"id": "no-critical", "severity_gte": "critical", "action": "fail"}]}.'
+                )
             ),
         ],
     ) -> str:
@@ -1384,14 +1393,20 @@ _SERVER_CARD_TOOLS = [
     {"name": "blast_radius", "description": "Look up blast radius for a specific CVE", "annotations": {"readOnlyHint": True}},
     {
         "name": "policy_check",
-        "description": "Evaluate security policy rules against scan findings — supports 17 conditions including severity, KEV, EPSS, credential exposure, and custom expressions",
+        "description": (
+            "Evaluate security policy rules against scan findings — supports 17 conditions"
+            " including severity, KEV, EPSS, credential exposure, and custom expressions"
+        ),
         "annotations": {"readOnlyHint": True},
     },
     {"name": "registry_lookup", "description": "Query MCP server threat intelligence registry", "annotations": {"readOnlyHint": True}},
     {"name": "generate_sbom", "description": "Generate CycloneDX or SPDX SBOM", "annotations": {"readOnlyHint": True}},
     {
         "name": "compliance",
-        "description": "Map scan findings to 11 compliance frameworks: OWASP LLM/MCP/Agentic/AISVS, MITRE ATLAS, NIST AI RMF/CSF, EU AI Act, ISO 27001, SOC 2, CIS Controls",
+        "description": (
+            "Map scan findings to 11 compliance frameworks:"
+            " OWASP LLM/MCP/Agentic/AISVS, MITRE ATLAS, NIST AI RMF/CSF, EU AI Act, ISO 27001, SOC 2, CIS Controls"
+        ),
         "annotations": {"readOnlyHint": True},
     },
     {"name": "remediate", "description": "Generate actionable remediation plan", "annotations": {"readOnlyHint": True}},
@@ -1490,7 +1505,10 @@ _SERVER_CARD_TOOLS = [
     },
     {
         "name": "license_compliance_scan",
-        "description": "Evaluate package licenses against SPDX compliance policy — 2,500+ licenses, network-copyleft detection, deprecated ID normalization",
+        "description": (
+            "Evaluate package licenses against SPDX compliance policy"
+            " — 2,500+ licenses, network-copyleft detection, deprecated ID normalization"
+        ),
         "annotations": {"readOnlyHint": True},
     },
 ]

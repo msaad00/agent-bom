@@ -125,7 +125,9 @@ def _check_1_1(auth_client: Any, subscription_id: str) -> CISCheckResult:
         title="Ensure no subscription Owner role assigned to guest or external users",
         status=CheckStatus.ERROR,
         severity="high",
-        recommendation="Remove Owner role from any guest/external (#EXT#) accounts. Use Privileged Identity Management for just-in-time access.",
+        recommendation=(
+            "Remove Owner role from any guest/external (#EXT#) accounts. Use Privileged Identity Management for just-in-time access."
+        ),
         cis_section=_IAM_SECTION,
     )
     try:
@@ -148,7 +150,10 @@ def _check_1_1(auth_client: Any, subscription_id: str) -> CISCheckResult:
         # A more precise check requires MS Graph for UPN inspection
         if guest_owners:
             result.status = CheckStatus.PASS  # Can't confirm guest without Graph
-            result.evidence = f"Found {len(guest_owners)} Owner assignment(s). Verify none are guest (#EXT#) accounts via Azure Portal > Subscriptions > Access control."
+            result.evidence = (
+                f"Found {len(guest_owners)} Owner assignment(s)."
+                " Verify none are guest (#EXT#) accounts via Azure Portal > Subscriptions > Access control."
+            )
         else:
             result.status = CheckStatus.PASS
             result.evidence = "No Owner role assignments found on subscription."
@@ -342,7 +347,9 @@ def _check_3_2(storage_client: Any) -> CISCheckResult:
         title="Ensure that default network access rule for Storage Accounts is set to Deny",
         status=CheckStatus.ERROR,
         severity="high",
-        recommendation="Set the default network access rule to 'Deny' on all storage accounts and add explicit network rules for allowed traffic.",
+        recommendation=(
+            "Set the default network access rule to 'Deny' on all storage accounts and add explicit network rules for allowed traffic."
+        ),
         cis_section=_STORAGE_SECTION,
     )
     try:
@@ -513,7 +520,10 @@ def _check_5_1_1(monitor_client: Any, subscription_id: str) -> CISCheckResult:
         title="Ensure Diagnostic Setting exists capturing Activity Log",
         status=CheckStatus.ERROR,
         severity="medium",
-        recommendation="Create a Diagnostic Setting for the subscription Activity Log to export to a Log Analytics workspace, storage account, or Event Hub.",
+        recommendation=(
+            "Create a Diagnostic Setting for the subscription Activity Log to export"
+            " to a Log Analytics workspace, storage account, or Event Hub."
+        ),
         cis_section=_LOGGING_SECTION,
     )
     try:
@@ -539,7 +549,9 @@ def _check_5_1_2(monitor_client: Any, subscription_id: str) -> CISCheckResult:
         title="Ensure Activity Log retention is set to 365 days or greater",
         status=CheckStatus.ERROR,
         severity="medium",
-        recommendation="Update the retention policy on the Activity Log profile or Diagnostic Setting to retain logs for at least 365 days.",
+        recommendation=(
+            "Update the retention policy on the Activity Log profile or Diagnostic Setting to retain logs for at least 365 days."
+        ),
         cis_section=_LOGGING_SECTION,
     )
     try:
@@ -584,7 +596,9 @@ def _check_6_1(network_client: Any) -> CISCheckResult:
         title="Ensure that RDP access from the internet is evaluated and restricted",
         status=CheckStatus.ERROR,
         severity="critical",
-        recommendation="Remove or restrict NSG inbound rules allowing port 3389 from 0.0.0.0/0 or ::/0. Use Azure Bastion or Just-In-Time VM access.",
+        recommendation=(
+            "Remove or restrict NSG inbound rules allowing port 3389 from 0.0.0.0/0 or ::/0. Use Azure Bastion or Just-In-Time VM access."
+        ),
         cis_section=_NETWORK_SECTION,
     )
     try:
@@ -616,7 +630,9 @@ def _check_6_2(network_client: Any) -> CISCheckResult:
         title="Ensure that SSH access from the internet is evaluated and restricted",
         status=CheckStatus.ERROR,
         severity="critical",
-        recommendation="Remove or restrict NSG inbound rules allowing port 22 from 0.0.0.0/0 or ::/0. Use Azure Bastion or Just-In-Time VM access.",
+        recommendation=(
+            "Remove or restrict NSG inbound rules allowing port 22 from 0.0.0.0/0 or ::/0. Use Azure Bastion or Just-In-Time VM access."
+        ),
         cis_section=_NETWORK_SECTION,
     )
     try:
@@ -648,7 +664,10 @@ def _check_6_3(network_client: Any) -> CISCheckResult:
         title="Ensure no SQL Databases allow ingress from 0.0.0.0/0 (ANY IP)",
         status=CheckStatus.ERROR,
         severity="high",
-        recommendation="Remove or restrict NSG inbound rules allowing port 1433 from 0.0.0.0/0 or ::/0. Use private endpoints or service endpoints for SQL access.",
+        recommendation=(
+            "Remove or restrict NSG inbound rules allowing port 1433 from 0.0.0.0/0 or ::/0."
+            " Use private endpoints or service endpoints for SQL access."
+        ),
         cis_section=_NETWORK_SECTION,
     )
     try:

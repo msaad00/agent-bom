@@ -195,7 +195,10 @@ def scan_control_options(fn):
                 "--preset",
                 type=click.Choice(["ci", "enterprise", "quick"]),
                 default=None,
-                help="Scan preset: ci (quiet, json, fail-on-critical), enterprise (enrich, introspect, transitive, verify-integrity, verify-instructions), quick (no transitive, no enrich)",
+                help=(
+                    "Scan preset: ci (quiet, json, fail-on-critical), enterprise (enrich, introspect,"
+                    " transitive, verify-integrity, verify-instructions), quick (no transitive, no enrich)"
+                ),
             ),
         ]
     )(fn)
@@ -669,7 +672,10 @@ def compliance_options(fn):
                 "--gpu-scan",
                 "gpu_scan_flag",
                 is_flag=True,
-                help="Discover GPU-enabled containers and K8s nodes (NVIDIA base images, CUDA versions, DCGM endpoints). Requires docker/kubectl on PATH.",
+                help=(
+                    "Discover GPU-enabled containers and K8s nodes (NVIDIA base images, CUDA versions,"
+                    " DCGM endpoints). Requires docker/kubectl on PATH."
+                ),
             ),
             click.option(
                 "--gpu-k8s-context",
@@ -700,14 +706,20 @@ def ai_remediation_options(fn):
             click.option(
                 "--ai-enrich",
                 is_flag=True,
-                help="Enrich findings with LLM-generated risk narratives, executive summary, and threat chains. Auto-detects Ollama (free, local) or uses litellm (pip install 'agent-bom[ai-enrich]')",
+                help=(
+                    "Enrich findings with LLM-generated risk narratives, executive summary, and threat chains."
+                    " Auto-detects Ollama (free, local) or uses litellm (pip install 'agent-bom[ai-enrich]')"
+                ),
             ),
             click.option(
                 "--ai-model",
                 default="openai/gpt-4o-mini",
                 show_default=True,
                 metavar="MODEL",
-                help="LLM model for --ai-enrich. Auto-detects Ollama if running. Examples: ollama/llama3.2 (free, local), ollama/mistral, openai/gpt-4o-mini",
+                help=(
+                    "LLM model for --ai-enrich. Auto-detects Ollama if running."
+                    " Examples: ollama/llama3.2 (free, local), ollama/mistral, openai/gpt-4o-mini"
+                ),
             ),
             click.option(
                 "--remediate",

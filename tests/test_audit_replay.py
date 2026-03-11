@@ -172,12 +172,15 @@ def test_parse_full_log():
 def test_parse_ignores_invalid_json_lines():
     tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False)
     tmp.write(
-        '{"type": "tools/call", "tool": "ok", "policy": "allowed", "ts": "", "reason": "", "agent_id": "", "args": {}, "payload_sha256": "", "message_id": 1}\n'
+        '{"type": "tools/call", "tool": "ok", "policy": "allowed", "ts": "", "reason": "",'
+        ' "agent_id": "", "args": {}, "payload_sha256": "", "message_id": 1}\n'
     )
     tmp.write("not valid json\n")
     tmp.write("\n")
     tmp.write(
-        '{"type": "proxy_summary", "uptime_seconds": 1.0, "total_tool_calls": 1, "total_blocked": 0, "calls_by_tool": {}, "blocked_by_reason": {}, "latency": {}, "replay_rejections": 0, "relay_errors": 0, "runtime_alerts": 0, "ts": ""}\n'
+        '{"type": "proxy_summary", "uptime_seconds": 1.0, "total_tool_calls": 1, "total_blocked": 0,'
+        ' "calls_by_tool": {}, "blocked_by_reason": {}, "latency": {},'
+        ' "replay_rejections": 0, "relay_errors": 0, "runtime_alerts": 0, "ts": ""}\n'
     )
     tmp.close()
     log = parse_audit_log(Path(tmp.name))

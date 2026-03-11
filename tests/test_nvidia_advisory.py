@@ -175,3 +175,25 @@ def test_unrelated_package_no_nvidia_advisory():
     assert get_nvidia_products_for_package("requests") == []
     assert get_nvidia_products_for_package("flask") == []
     assert get_nvidia_products_for_package("django") == []
+
+
+# ─── NIM / NeMo / NemoClaw product map tests ─────────────────────────────────
+
+from agent_bom.scanners.nvidia_advisory import _NVIDIA_PRODUCT_MAP  # noqa: E402
+
+
+def test_nim_packages_in_nvidia_product_map():
+    """NIM product key and nvidia-nim package exist in the product map."""
+    assert "nim" in _NVIDIA_PRODUCT_MAP
+    assert "nvidia-nim" in _NVIDIA_PRODUCT_MAP["nim"]
+
+
+def test_nemo_packages_in_nvidia_product_map():
+    """NeMo product key and nemo-toolkit package exist in the product map."""
+    assert "nemo" in _NVIDIA_PRODUCT_MAP
+    assert "nemo-toolkit" in _NVIDIA_PRODUCT_MAP["nemo"]
+
+
+def test_nemoclaw_packages_in_nvidia_product_map():
+    """NemoClaw product key exists in the product map."""
+    assert "nemoclaw" in _NVIDIA_PRODUCT_MAP

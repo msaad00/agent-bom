@@ -195,6 +195,7 @@ def scan(
     smithery_flag: bool,
     smithery_token: Optional[str],
     mcp_registry_flag: bool,
+    auto_update_db: bool,
     snyk_flag: bool,
     snyk_token: Optional[str],
     snyk_org: Optional[str],
@@ -380,6 +381,20 @@ def scan(
 
     if demo:
         con.print("\n[bold yellow]Demo mode[/bold yellow] — scanning bundled inventory with known-vulnerable packages.\n")
+
+    # ── Auto-refresh stale DB if requested ───────────────────────────────────
+    if auto_update_db:
+        from agent_bom.db.schema import db_freshness_days
+        from agent_bom.db.sync import sync_db
+
+        freshness = db_freshness_days()
+        if freshness is None or freshness > 7:
+            if not quiet:
+                con.print("[dim]Refreshing local vuln DB (stale/missing) …[/dim]")
+            try:
+                sync_db()
+            except Exception as _db_exc:
+                logger.warning("Auto DB refresh failed: %s", _db_exc)
 
     # ── Dry-run: show access plan without scanning ────────────────────────────
     if dry_run:

@@ -97,6 +97,37 @@ _NVIDIA_PRODUCT_MAP: dict[str, list[str]] = {
         "tritonclient",
         "tritonclientutils",
     ],
+    "nim": [
+        # NVIDIA NIM (Inference Microservices) — containerized API for NVIDIA models
+        "nvidia-nim",
+        "nim-client",
+        "openai",  # NIM exposes OpenAI-compatible API; clients using openai SDK hit NIM endpoints
+    ],
+    "nemo": [
+        # NVIDIA NeMo — end-to-end framework for LLM training/fine-tuning
+        "nemo",
+        "nemo-toolkit",
+        "nemo-guardrails",
+        "megatron-core",
+    ],
+    "nemoclaw": [
+        # NVIDIA NemoClaw — open-source agentic AI platform (announced 2025)
+        "nemoclaw",
+        "nemo-agent",
+    ],
+    "morpheus": [
+        # NVIDIA Morpheus — AI cybersecurity framework
+        "morpheus-sdk",
+        "morpheus",
+    ],
+    "rapids": [
+        # NVIDIA RAPIDS — GPU-accelerated data science
+        "cudf",
+        "cuml",
+        "cugraph",
+        "cupy",
+        "raft-dask",
+    ],
 }
 
 # Reverse map: PyPI package name → NVIDIA product names it belongs to

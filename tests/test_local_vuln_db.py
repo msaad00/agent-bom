@@ -582,3 +582,67 @@ def test_sync_db_single_epss_source(tmp_path):
         result = sync_db(path=tmp_path / "test.db", sources=["epss"])
     assert result == {"epss": 500}
     mock_epss.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# db_freshness_days — new function
+# ---------------------------------------------------------------------------
+
+
+def test_db_freshness_days_no_db(tmp_path):
+    """Returns None when DB file doesn't exist."""
+    from agent_bom.db.schema import db_freshness_days
+
+    assert db_freshness_days(tmp_path / "nonexistent.db") is None
+
+
+def test_db_freshness_days_never_synced(tmp_path):
+    """Returns None when sync_meta is empty (never synced)."""
+    from agent_bom.db.schema import db_freshness_days, init_db
+
+    db_file = tmp_path / "fresh.db"
+    conn = init_db(db_file)
+    conn.close()
+    assert db_freshness_days(db_file) is None
+
+
+def test_db_freshness_days_just_synced(tmp_path):
+    """Returns 0 days when synced just now."""
+    from datetime import datetime, timezone
+
+    from agent_bom.db.schema import db_freshness_days, init_db
+
+    db_file = tmp_path / "fresh.db"
+    conn = init_db(db_file)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        "INSERT OR REPLACE INTO sync_meta(source, last_synced, record_count) VALUES (?, ?, ?)",
+        ("osv", now_iso, 1000),
+    )
+    conn.commit()
+    conn.close()
+
+    age = db_freshness_days(db_file)
+    assert age is not None
+    assert age == 0
+
+
+def test_db_freshness_days_old_db(tmp_path):
+    """Returns correct age for a stale database."""
+    from datetime import datetime, timedelta, timezone
+
+    from agent_bom.db.schema import db_freshness_days, init_db
+
+    db_file = tmp_path / "stale.db"
+    conn = init_db(db_file)
+    old_iso = (datetime.now(timezone.utc) - timedelta(days=15)).isoformat()
+    conn.execute(
+        "INSERT OR REPLACE INTO sync_meta(source, last_synced, record_count) VALUES (?, ?, ?)",
+        ("osv", old_iso, 100),
+    )
+    conn.commit()
+    conn.close()
+
+    age = db_freshness_days(db_file)
+    assert age is not None
+    assert age >= 14

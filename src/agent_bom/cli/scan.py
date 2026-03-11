@@ -486,6 +486,35 @@ def scan(
         )
         return
 
+    # Pre-scan: local DB freshness check
+    if not no_scan:
+        try:
+            from agent_bom.db.schema import db_freshness_days
+
+            _db_age = db_freshness_days()
+            if _db_age is None:
+                if not quiet:
+                    con.print(
+                        "[yellow]⚠ No local vulnerability DB found.[/yellow] "
+                        "Falling back to OSV API (slower). "
+                        "Run [bold]agent-bom db update[/bold] to build a local cache."
+                    )
+            elif _db_age > 14:
+                if not quiet:
+                    con.print(
+                        f"[red]⚠ Local vulnerability DB is {_db_age} days old.[/red] "
+                        "Scan results may be incomplete. "
+                        "Run [bold]agent-bom db update[/bold] before scanning."
+                    )
+            elif _db_age > 7:
+                if not quiet:
+                    con.print(
+                        f"[yellow]⚠ Local vulnerability DB is {_db_age} days old.[/yellow] "
+                        "Consider running [bold]agent-bom db update[/bold]."
+                    )
+        except Exception:
+            pass  # Never block a scan due to freshness check failure
+
     # Step 1: Discovery
     from rich.rule import Rule
 

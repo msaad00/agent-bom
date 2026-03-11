@@ -21,6 +21,9 @@ from dataclasses import dataclass, field
 
 _ADK_TOOL_RE = re.compile(r"^adk\.tool\.(.+)$")
 
+# Maximum trace file size (50 MB) — prevents OOM on adversarially large files
+_MAX_TRACE_FILE_BYTES = 50 * 1024 * 1024
+
 # GenAI span name patterns — instrumentation libraries emit these
 _ML_SPAN_PATTERNS = re.compile(
     r"^("
@@ -30,7 +33,15 @@ _ML_SPAN_PATTERNS = re.compile(
     r"ChatOpenAI|ChatAnthropic|ChatCohere|ChatBedrock|ChatVertexAI|"
     r"llm\.chat|llm\.complete|llm\.stream|"
     r"LLMChain|RetrievalQA|"
-    r"gen_ai\."
+    r"gen_ai\.|"
+    # LangGraph
+    r"langgraph\.|"
+    # CrewAI
+    r"crewai\.|"
+    # AutoGen
+    r"autogen\.|"
+    # Haystack
+    r"haystack\."
     r")",
     re.IGNORECASE,
 )
@@ -43,6 +54,10 @@ _ML_SCOPE_NAMES = {
     "opentelemetry.instrumentation.langchain",
     "opentelemetry.instrumentation.llama_index",
     "traceloop.sdk",
+    # Additional framework scopes
+    "opentelemetry.instrumentation.crewai",
+    "opentelemetry.instrumentation.autogen",
+    "haystack.tracing.opentelemetry",
 }
 
 # Known deprecated / end-of-life model patterns (prefix match on model_name)
@@ -163,12 +178,35 @@ def _is_ml_span(span: dict, scope_name: str) -> bool:
     return False
 
 
+def validate_otel_schema(trace_data: dict) -> None:
+    """Validate that trace_data conforms to OTLP JSON structure.
+
+    Raises ``ValueError`` with a clear path if the required structure is absent.
+    Accepts both ``resourceSpans`` (OTLP standard) and flat ``spans`` arrays.
+    """
+    if not isinstance(trace_data, dict):
+        raise ValueError("OTel trace must be a JSON object, got: " + type(trace_data).__name__)
+
+    has_resource_spans = "resourceSpans" in trace_data
+    has_flat_spans = "spans" in trace_data
+
+    if not has_resource_spans and not has_flat_spans:
+        raise ValueError(
+            "OTel trace missing required key 'resourceSpans' (OTLP format) or 'spans' (flat format). "
+            "Ensure the file is a valid OTel JSON export."
+        )
+
+    if has_resource_spans and not isinstance(trace_data["resourceSpans"], list):
+        raise ValueError("'resourceSpans' must be a JSON array")
+
+
 def parse_otel_traces(trace_data: dict) -> list[ToolCallTrace]:
     """Parse OTel JSON export into tool call traces.
 
     Supports OTLP JSON format (resourceSpans → scopeSpans → spans) and
     simple flat span arrays.
     """
+    validate_otel_schema(trace_data)
     traces: list[ToolCallTrace] = []
 
     # Extract spans from OTLP JSON structure
@@ -238,10 +276,11 @@ def parse_ml_api_spans(trace_data: dict) -> list[LLMAPICall]:
     Detects spans representing LLM inference calls using:
     - OpenTelemetry GenAI semantic conventions (``gen_ai.*`` attributes)
     - Instrumentation library scope names (opentelemetry-instrumentation-openai, etc.)
-    - Span name patterns (ChatOpenAI, llm.chat, etc.)
+    - Span name patterns (ChatOpenAI, llm.chat, LangGraph, CrewAI, AutoGen, Haystack, etc.)
 
     Supports OTLP JSON format (resourceSpans → scopeSpans → spans).
     """
+    validate_otel_schema(trace_data)
     calls: list[LLMAPICall] = []
 
     for rs in trace_data.get("resourceSpans", []):

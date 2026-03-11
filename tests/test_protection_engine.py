@@ -182,7 +182,7 @@ def test_alerts_dispatched_to_dispatcher():
 def test_process_trace_empty():
     engine = ProtectionEngine()
     engine.start()
-    alerts = _run(engine.process_trace({}))
+    alerts = _run(engine.process_trace({"resourceSpans": []}))
     assert alerts == []
 
 

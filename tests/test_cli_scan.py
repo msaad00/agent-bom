@@ -324,3 +324,64 @@ def test_where_runs():
     """where command shows discovery paths and exits 0."""
     result = _run(["where"])
     assert result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# db status — freshness display
+# ---------------------------------------------------------------------------
+
+
+def test_db_status_freshness_fresh(tmp_path):
+    """db status shows green 'Fresh' when synced recently."""
+    from datetime import datetime, timezone
+
+    from agent_bom.db.schema import init_db
+
+    db_file = tmp_path / "test.db"
+    conn = init_db(db_file)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        "INSERT OR REPLACE INTO sync_meta(source, last_synced, record_count) VALUES (?, ?, ?)",
+        ("osv", now_iso, 1000),
+    )
+    conn.commit()
+    conn.close()
+
+    result = _run(["db", "status", "--path", str(db_file)])
+    assert result.exit_code == 0
+    assert "Fresh" in result.output or "ago" in result.output
+
+
+def test_db_status_freshness_stale(tmp_path):
+    """db status shows red 'Stale' when DB is old."""
+    from datetime import datetime, timedelta, timezone
+
+    from agent_bom.db.schema import init_db
+
+    db_file = tmp_path / "stale.db"
+    conn = init_db(db_file)
+    old_iso = (datetime.now(timezone.utc) - timedelta(days=20)).isoformat()
+    conn.execute(
+        "INSERT OR REPLACE INTO sync_meta(source, last_synced, record_count) VALUES (?, ?, ?)",
+        ("osv", old_iso, 100),
+    )
+    conn.commit()
+    conn.close()
+
+    result = _run(["db", "status", "--path", str(db_file)])
+    assert result.exit_code == 0
+    assert "Stale" in result.output or "20d" in result.output or "ago" in result.output
+
+
+def test_db_status_no_sync_meta(tmp_path):
+    """db status with empty sync_meta shows 'No sync data' message."""
+    from agent_bom.db.schema import init_db
+
+    db_file = tmp_path / "empty.db"
+    conn = init_db(db_file)
+    conn.close()
+
+    result = _run(["db", "status", "--path", str(db_file)])
+    assert result.exit_code == 0
+    # Should show a 'no sync data' or 'db update' hint
+    assert "update" in result.output.lower() or "sync" in result.output.lower()

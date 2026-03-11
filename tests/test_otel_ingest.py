@@ -1,5 +1,7 @@
 """Tests for OpenTelemetry trace ingestion."""
 
+import pytest
+
 from agent_bom.otel_ingest import (
     LLMAPICall,
     ToolCallTrace,
@@ -115,8 +117,10 @@ def test_parse_flat_spans_format():
 
 
 def test_malformed_input():
-    traces = parse_otel_traces({})
-    assert traces == []
+    # {} is now rejected by schema validation — use pytest.raises
+    with pytest.raises(ValueError, match="resourceSpans"):
+        parse_otel_traces({})
+    # valid empty structure returns empty list
     traces = parse_otel_traces({"resourceSpans": []})
     assert traces == []
 
@@ -277,9 +281,15 @@ def test_parse_ml_span_non_ml_span_skipped():
 
 
 def test_parse_ml_span_no_spans():
-    """Empty trace returns empty list."""
-    calls = parse_ml_api_spans({})
+    """Empty trace with valid structure returns empty list."""
+    calls = parse_ml_api_spans({"resourceSpans": []})
     assert calls == []
+
+
+def test_parse_ml_span_invalid_schema():
+    """Bare empty dict is rejected by schema validation."""
+    with pytest.raises(ValueError, match="resourceSpans"):
+        parse_ml_api_spans({})
 
 
 def test_parse_ml_span_multiple_calls():
@@ -419,3 +429,43 @@ def test_flag_multiple_deprecated():
     flagged_models = {f.call.model_name for f in flagged}
     assert "text-davinci-003" in flagged_models
     assert "claude-2.0" in flagged_models
+
+
+# ---------------------------------------------------------------------------
+# validate_otel_schema — new function
+# ---------------------------------------------------------------------------
+
+
+def test_validate_otel_schema_valid_resource_spans():
+    from agent_bom.otel_ingest import validate_otel_schema
+
+    # Must not raise
+    validate_otel_schema({"resourceSpans": []})
+    validate_otel_schema({"resourceSpans": [], "extra": "ok"})
+
+
+def test_validate_otel_schema_valid_flat_spans():
+    from agent_bom.otel_ingest import validate_otel_schema
+
+    validate_otel_schema({"spans": []})
+
+
+def test_validate_otel_schema_rejects_non_dict():
+    from agent_bom.otel_ingest import validate_otel_schema
+
+    with pytest.raises(ValueError, match="JSON object"):
+        validate_otel_schema([])  # type: ignore[arg-type]
+
+
+def test_validate_otel_schema_rejects_empty_dict():
+    from agent_bom.otel_ingest import validate_otel_schema
+
+    with pytest.raises(ValueError, match="resourceSpans"):
+        validate_otel_schema({})
+
+
+def test_validate_otel_schema_rejects_non_list_resource_spans():
+    from agent_bom.otel_ingest import validate_otel_schema
+
+    with pytest.raises(ValueError, match="array"):
+        validate_otel_schema({"resourceSpans": "not-a-list"})

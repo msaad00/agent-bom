@@ -97,6 +97,19 @@ def db_status(db_path: str | None) -> None:
 
     meta = stats.get("sync_meta", {})
     if meta:
+        from agent_bom.db.schema import db_freshness_days
+
+        age = db_freshness_days(db_file)
+        if age is None:
+            freshness_msg = "[yellow]Never synced — run agent-bom db update[/yellow]"
+        elif age <= 7:
+            freshness_msg = f"[green]Fresh ({age}d ago)[/green]"
+        elif age <= 14:
+            freshness_msg = f"[yellow]Aging ({age}d ago) — consider running db update[/yellow]"
+        else:
+            freshness_msg = f"[red]Stale ({age}d ago) — run agent-bom db update[/red]"
+        con.print(f"  Freshness       : {freshness_msg}")
+
         table = Table(show_header=True, header_style="bold", box=None, padding=(0, 2))
         table.add_column("Source")
         table.add_column("Last synced")
@@ -104,6 +117,8 @@ def db_status(db_path: str | None) -> None:
         for src, info in sorted(meta.items()):
             table.add_row(src, info.get("last_synced") or "—", f"{info.get('count', 0):,}")
         con.print(table)
+    else:
+        con.print("  [yellow]No sync data — run agent-bom db update to populate.[/yellow]")
 
 
 @db_cmd.command("path")

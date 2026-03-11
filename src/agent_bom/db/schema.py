@@ -175,6 +175,47 @@ def init_db(path: Path | None = None) -> sqlite3.Connection:
     return conn
 
 
+def db_freshness_days(path: Path | None = None) -> int | None:
+    """Return the age in days of the oldest synced source, or None if DB absent / never synced.
+
+    Opens a temporary connection — safe to call before the main scan opens VulnDB.
+    """
+    from datetime import datetime, timezone
+
+    db_path = path or DB_PATH
+    if not db_path.exists():
+        return None
+    try:
+        conn = sqlite3.connect(str(db_path))
+        try:
+            rows = conn.execute("SELECT last_synced FROM sync_meta").fetchall()
+        finally:
+            conn.close()
+    except Exception:
+        return None
+
+    if not rows:
+        return None
+
+    oldest: datetime | None = None
+    now = datetime.now(timezone.utc)
+    for (ts,) in rows:
+        if not ts:
+            continue
+        try:
+            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            if oldest is None or dt < oldest:
+                oldest = dt
+        except ValueError:
+            continue
+
+    if oldest is None:
+        return None
+    return (now - oldest).days
+
+
 def db_stats(conn: sqlite3.Connection) -> dict:
     """Return a summary dict of record counts and last-sync times."""
     stats: dict = {}

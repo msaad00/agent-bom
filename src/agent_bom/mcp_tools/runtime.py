@@ -55,6 +55,15 @@ async def runtime_correlate_impl(
 
             safe_trace = _safe_path(otel_trace)
             try:
+                from agent_bom.otel_ingest import _MAX_TRACE_FILE_BYTES
+
+                file_size = safe_trace.stat().st_size
+                if file_size > _MAX_TRACE_FILE_BYTES:
+                    result["ml_api_calls"] = []
+                    result["ml_api_error"] = (
+                        f"OTel trace file too large ({file_size / 1024 / 1024:.1f} MB, max {_MAX_TRACE_FILE_BYTES // 1024 // 1024} MB)"
+                    )
+                    return _truncate_response(json.dumps(result, indent=2, default=str))
                 trace_data = _json.loads(safe_trace.read_text())
                 ml_calls = parse_ml_api_spans(trace_data)
                 flagged = flag_deprecated_models(ml_calls)

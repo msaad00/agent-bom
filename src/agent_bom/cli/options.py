@@ -219,6 +219,13 @@ def enrichment_options(fn):
     return _apply(
         [
             click.option("--enrich", is_flag=True, help="Enrich vulnerabilities with NVD, EPSS, and CISA KEV data"),
+            click.option(
+                "--auto-update-db",
+                "auto_update_db",
+                is_flag=True,
+                envvar="AGENT_BOM_AUTO_UPDATE_DB",
+                help="Automatically refresh the local vuln DB if stale (>7 days) before scanning",
+            ),
             click.option("--nvd-api-key", envvar="NVD_API_KEY", help="NVD API key for higher rate limits"),
             click.option("--scorecard", "scorecard_flag", is_flag=True, help="Enrich packages with OpenSSF Scorecard scores"),
             click.option(

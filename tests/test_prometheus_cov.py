@@ -165,3 +165,29 @@ class TestPushToGateway:
         with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("Connection refused")):
             with pytest.raises(PushgatewayError):
                 push_to_gateway("http://localhost:9091", report)
+
+
+# ── Unique tests from cov2 ──────────────────────────────────────────────────
+
+
+class TestMetricWithLabels:
+    def test_metric_with_labels(self):
+        result = _metric("vulns", 3, ("severity", "critical"))
+        assert "severity=" in result
+
+
+class TestToPrometheusCritical:
+    def test_with_critical(self):
+        vuln = Vulnerability(id="CVE-1", severity=Severity.CRITICAL, summary="test")
+        pkg = Package(name="pkg", version="1.0", ecosystem="pypi", vulnerabilities=[vuln])
+        br = BlastRadius(
+            vulnerability=vuln,
+            package=pkg,
+            affected_agents=[],
+            affected_servers=[],
+            exposed_credentials=[],
+            exposed_tools=[],
+        )
+        report = AIBOMReport(agents=[], blast_radii=[br])
+        text = to_prometheus(report, [br])
+        assert "critical" in text.lower() or "CRITICAL" in text

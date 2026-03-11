@@ -401,3 +401,60 @@ class TestGatewayEvaluator:
         assert _gateway_evaluator is fn
         # Reset
         set_gateway_evaluator(None)
+
+
+# ── Unique tests from cov2 ──────────────────────────────────────────────────
+
+
+class TestRotatingAuditLogRotation:
+    def test_rotation(self):
+        from pathlib import Path
+
+        with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as f:
+            path = f.name
+        os.unlink(path)
+
+        log = RotatingAuditLog(path, max_bytes=100)
+        for i in range(1001):
+            log.write(f'{{"i": {i}}}\n')
+        log.close()
+
+        assert Path(path).exists()
+
+
+class TestProxyMetricsSummaryNoLatency:
+    def test_empty_latency(self):
+        m = ProxyMetrics()
+        s = m.summary()
+        assert s["latency"] == {}
+
+
+class TestProxyMetricsServerPort:
+    def test_render_with_port(self):
+        m = ProxyMetrics()
+        m.record_call("read_file")
+        m.record_blocked("policy")
+        server = ProxyMetricsServer(m, port=0)
+        text = server.render_metrics()
+        assert "agent_bom_proxy_tool_calls_total" in text
+        assert "agent_bom_proxy_blocked_total" in text
+
+
+class TestProxyMetricsSummaryRelay:
+    def test_relay_errors_in_summary(self):
+        m = ProxyMetrics()
+        m.record_call("tool_a")
+        m.record_blocked("policy")
+        m.record_latency(10.0)
+        m.record_latency(20.0)
+        m.total_messages_client_to_server = 5
+        m.total_messages_server_to_client = 3
+        m.replay_rejections = 1
+        m.relay_errors = 2
+
+        s = m.summary()
+        assert s["type"] == "proxy_summary"
+        assert s["replay_rejections"] == 1
+        assert s["relay_errors"] == 2
+        assert "p50_ms" in s["latency"]
+        assert "avg_ms" in s["latency"]

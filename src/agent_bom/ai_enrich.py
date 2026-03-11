@@ -515,29 +515,6 @@ def _build_threat_chain_prompt(report: AIBOMReport) -> str:
     )
 
 
-def _build_remediation_prompt(items: list[dict]) -> str:
-    """Build a prompt for generating remediation guidance."""
-    package_lines = []
-    for item in items[:10]:
-        fix_str = f" -> {item['fix']}" if item.get("fix") else " (no fix)"
-        package_lines.append(
-            f"- {item['package']}@{item['current']} ({item['ecosystem']}){fix_str} "
-            f"| {len(item['vulns'])} vuln(s) | agents: {', '.join(item['agents'][:3])}"
-        )
-
-    return (
-        "You are an AI security engineer. Generate practical, prioritized "
-        "remediation guidance for these vulnerable packages in AI agent MCP "
-        "server configurations.\n\n"
-        f"Findings:\n{chr(10).join(package_lines)}\n\n"
-        "For each package, provide:\n"
-        "1. Specific upgrade command (npm/pip/etc)\n"
-        "2. Any breaking changes to watch for\n"
-        "3. Temporary mitigation if no fix exists\n\n"
-        "Keep each item to 2-3 lines. Be concrete and actionable."
-    )
-
-
 # ─── Enrichment functions ────────────────────────────────────────────────────
 
 

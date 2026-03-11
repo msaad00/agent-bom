@@ -13,7 +13,7 @@ import logging
 import httpx
 
 from agent_bom.http_client import create_client, request_with_retry
-from agent_bom.models import Package, Severity, Vulnerability
+from agent_bom.models import Package, Severity, Vulnerability, normalize_package_name
 
 logger = logging.getLogger(__name__)
 
@@ -50,15 +50,21 @@ def _parse_ghsa_severity(advisory: dict) -> tuple[Severity, float | None]:
     return severity, score
 
 
-def _extract_fixed_version(advisory: dict, package_name: str) -> str | None:
+def _extract_fixed_version(advisory: dict, package_name: str, ecosystem: str = "") -> str | None:
     """Extract the first patched version for a specific package.
 
     Handles range strings like ``">= 4.18.0"``, ``">= 4.18.0, < 5.0.0"``,
     and Ruby-style ``"~> 1.2.3"`` by extracting the lower bound.
+
+    Uses PEP 503 normalization for PyPI so that mixed-separator forms like
+    ``Requests_OAuthlib`` match a normalized input of ``requests-oauthlib``.
     """
+    norm_input = normalize_package_name(package_name, ecosystem)
     for vuln in advisory.get("vulnerabilities", []):
         pkg = vuln.get("package", {})
-        if pkg.get("name", "").lower() == package_name.lower():
+        pkg_eco = pkg.get("ecosystem", ecosystem)
+        osv_norm = normalize_package_name(pkg.get("name", ""), pkg_eco)
+        if osv_norm == norm_input:
             patched = vuln.get("patched_versions")
             if patched:
                 return _parse_patched_range(patched)
@@ -202,8 +208,14 @@ async def check_github_advisories(
                     # Verify this advisory actually affects the target package
                     # (GitHub API does substring matching, so "express" returns
                     # advisories for "express-session", "express-validator", etc.)
-                    advisory_pkg_names = {v.get("package", {}).get("name", "").lower() for v in advisory.get("vulnerabilities", [])}
-                    if target_pkg.name.lower() not in advisory_pkg_names:
+                    # Use PEP 503 normalization so "Requests_OAuthlib" matches
+                    # the already-normalized target name "requests-oauthlib".
+                    target_eco = target_pkg.ecosystem
+                    advisory_pkg_names = {
+                        normalize_package_name(v.get("package", {}).get("name", ""), v.get("package", {}).get("ecosystem", target_eco))
+                        for v in advisory.get("vulnerabilities", [])
+                    }
+                    if normalize_package_name(target_pkg.name, target_eco) not in advisory_pkg_names:
                         continue
 
                     existing_ids = {v.id for v in target_pkg.vulnerabilities}
@@ -213,7 +225,7 @@ async def check_github_advisories(
                     if vuln_id in existing_ids or (cve_id and cve_id in existing_ids) or (ghsa_id and ghsa_id in existing_ids):
                         continue
 
-                    fixed = _extract_fixed_version(advisory, target_pkg.name)
+                    fixed = _extract_fixed_version(advisory, target_pkg.name, target_pkg.ecosystem)
                     vuln = Vulnerability(
                         id=vuln_id,
                         summary=summary[:200],

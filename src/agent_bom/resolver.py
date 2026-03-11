@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Optional
 
 import httpx
@@ -12,6 +13,7 @@ from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.models import Package
 
 console = Console(stderr=True)
+_logger = logging.getLogger(__name__)
 
 NPM_REGISTRY = "https://registry.npmjs.org"
 PYPI_API = "https://pypi.org/pypi"
@@ -37,8 +39,8 @@ async def resolve_npm_metadata(
             if isinstance(lic, dict):
                 lic = lic.get("type")
             return version, lic if isinstance(lic, str) else None
-        except (ValueError, KeyError):
-            pass
+        except (ValueError, KeyError) as exc:
+            _logger.debug("Failed to parse npm metadata for %s: %s", package_name, exc)
     return None, None
 
 
@@ -69,8 +71,8 @@ async def resolve_npm_supply_chain(
                 pkg.author = author.get("name")
             elif isinstance(author, str):
                 pkg.author = author
-    except (ValueError, KeyError):
-        pass
+    except (ValueError, KeyError) as exc:
+        _logger.debug("Failed to parse npm supply chain metadata for %s: %s", pkg.name, exc)
 
 
 async def resolve_pypi_metadata(
@@ -92,8 +94,8 @@ async def resolve_pypi_metadata(
             if lic and lic.upper() not in ("UNKNOWN", ""):
                 return version, lic
             return version, None
-        except (ValueError, KeyError):
-            pass
+        except (ValueError, KeyError) as exc:
+            _logger.debug("Failed to parse PyPI metadata for %s: %s", package_name, exc)
     return None, None
 
 
@@ -122,8 +124,8 @@ async def resolve_pypi_supply_chain(
             pkg.author = info.get("author") or info.get("author_email") or None
         if not pkg.supplier:
             pkg.supplier = info.get("maintainer") or None
-    except (ValueError, KeyError):
-        pass
+    except (ValueError, KeyError) as exc:
+        _logger.debug("Failed to parse PyPI supply chain metadata for %s: %s", pkg.name, exc)
 
 
 async def resolve_package_version(pkg: Package, client: httpx.AsyncClient) -> bool:
@@ -227,7 +229,8 @@ async def enrich_supply_chain_metadata(
                 await resolve_pypi_supply_chain(pkg, client)
             if pkg.description or pkg.homepage or pkg.repository_url:
                 count += 1
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            _logger.warning("Failed to enrich supply chain metadata for %s@%s: %s", pkg.name, pkg.version, exc)
             continue
     return count
 

@@ -16,11 +16,29 @@ from typing import TYPE_CHECKING, Any
 from agent_bom.config import API_MAX_IN_MEMORY_JOBS as _MAX_IN_MEMORY_JOBS
 
 if TYPE_CHECKING:
+    from concurrent.futures import ThreadPoolExecutor
+
     from agent_bom.api.models import ScanJob
     from agent_bom.api.schedule_store import ScheduleStore
 
 # ─── Lazy-init lock (protects all store singletons) ─────────────────────────
 _store_lock = threading.Lock()
+
+# ─── Thread pool executor (shared across route modules) ─────────────────────
+_executor: ThreadPoolExecutor | None = None
+
+
+def get_executor() -> ThreadPoolExecutor:
+    """Return the shared thread pool executor. Must be set during server init."""
+    assert _executor is not None, "Executor not initialized — call set_executor() first"
+    return _executor
+
+
+def set_executor(executor: ThreadPoolExecutor) -> None:
+    """Set the shared thread pool executor. Called during server startup."""
+    global _executor
+    _executor = executor
+
 
 # ─── Job store (pluggable) ───────────────────────────────────────────────────
 _store: Any = None

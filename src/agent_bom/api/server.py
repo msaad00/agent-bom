@@ -60,29 +60,22 @@ from agent_bom.api.models import (  # noqa: E402
     BrowserExtensionsRequest,
     CreateKeyRequest,
     DatasetCardsRequest,
-    EvaluateRequest,
     ExceptionRequest,
-    FleetAgentUpdate,
     HealthResponse,
     JobStatus,
     ModelFilesRequest,
     ModelProvenanceRequest,
-    PolicyCreate,
-    PolicyUpdate,
     PromptScanRequest,
     PushPayload,
     ScanJob,
     ScanRequest,
     ScheduleCreate,
-    StateUpdate,
     StepStatus,  # noqa: F401 — re-exported for tests
     TrainingPipelinesRequest,
     VersionInfo,
 )
 from agent_bom.api.stores import (
     _get_exception_store,
-    _get_fleet_store,
-    _get_policy_store,
     _get_schedule_store,
     _get_store,
     _get_trend_store,
@@ -320,8 +313,12 @@ from agent_bom.api.pipeline import (  # noqa: E402
 
 # ─── Route modules ────────────────────────────────────────────────────────
 from agent_bom.api.routes.compliance import router as _compliance_router  # noqa: E402
+from agent_bom.api.routes.fleet import router as _fleet_router  # noqa: E402
+from agent_bom.api.routes.gateway import router as _gateway_router  # noqa: E402
 
 app.include_router(_compliance_router)
+app.include_router(_fleet_router)
+app.include_router(_gateway_router)
 
 _cleanup_task: asyncio.Task | None = None
 _scheduler_task: asyncio.Task | None = None
@@ -1690,327 +1687,6 @@ async def scorecard_lookup(ecosystem: str, package: str) -> dict:
         "ecosystem": ecosystem,
         "repo": repo,
         "scorecard": data,
-    }
-
-
-# ─── Fleet Management ────────────────────────────────────────────────────────
-
-
-@app.get("/v1/fleet", tags=["fleet"])
-async def list_fleet(
-    state: str | None = None,
-    environment: str | None = None,
-    min_trust: float | None = None,
-    limit: int = 50,
-    offset: int = 0,
-):
-    """List all agents in the fleet registry.
-
-    Supports pagination via ``limit`` (default 50, max 200) and ``offset``.
-    """
-    limit = max(1, min(limit, 200))
-    offset = max(0, offset)
-    agents = _get_fleet_store().list_all()
-    if state:
-        agents = [a for a in agents if a.lifecycle_state.value == state]
-    if environment:
-        agents = [a for a in agents if a.environment == environment]
-    if min_trust is not None:
-        agents = [a for a in agents if a.trust_score >= min_trust]
-    total = len(agents)
-    page = agents[offset : offset + limit]
-    return {
-        "agents": [a.model_dump() for a in page],
-        "count": len(page),
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-    }
-
-
-@app.get("/v1/fleet/stats", tags=["fleet"])
-async def fleet_stats():
-    """Fleet-wide statistics."""
-    agents = _get_fleet_store().list_all()
-    by_state: dict[str, int] = {}
-    by_env: dict[str, int] = {}
-    trust_scores: list[float] = []
-    for a in agents:
-        by_state[a.lifecycle_state.value] = by_state.get(a.lifecycle_state.value, 0) + 1
-        env = a.environment or "unset"
-        by_env[env] = by_env.get(env, 0) + 1
-        trust_scores.append(a.trust_score)
-    return {
-        "total": len(agents),
-        "by_state": by_state,
-        "by_environment": by_env,
-        "avg_trust_score": round(sum(trust_scores) / len(trust_scores), 1) if trust_scores else 0.0,
-        "low_trust_count": sum(1 for s in trust_scores if s < 50),
-    }
-
-
-@app.get("/v1/fleet/{agent_id}", tags=["fleet"])
-async def get_fleet_agent(agent_id: str):
-    """Get a single fleet agent with trust score breakdown."""
-    agent = _get_fleet_store().get(agent_id)
-    if agent is None:
-        raise HTTPException(status_code=404, detail="Fleet agent not found")
-    return agent.model_dump()
-
-
-@app.post("/v1/fleet/sync", tags=["fleet"])
-async def sync_fleet():
-    """Run discovery and sync results into the fleet registry.
-
-    New agents → state=DISCOVERED. Existing agents → counts updated.
-    Trust scores are recomputed for all synced agents.
-    """
-    from agent_bom.api.fleet_store import FleetAgent, FleetLifecycleState
-    from agent_bom.discovery import discover_all
-    from agent_bom.fleet.trust_scoring import compute_trust_score
-
-    discovered = discover_all()
-    store = _get_fleet_store()
-    now = datetime.now(timezone.utc).isoformat()
-    new_count = 0
-    updated_count = 0
-
-    for agent in discovered:
-        existing = store.get_by_name(agent.name)
-        server_count = len(agent.mcp_servers)
-        pkg_count = sum(len(s.packages) for s in agent.mcp_servers)
-        cred_count = sum(len(s.credential_names) for s in agent.mcp_servers)
-        vuln_count = sum(s.total_vulnerabilities for s in agent.mcp_servers)
-
-        score, factors = compute_trust_score(agent)
-
-        if existing:
-            existing.server_count = server_count
-            existing.package_count = pkg_count
-            existing.credential_count = cred_count
-            existing.vuln_count = vuln_count
-            existing.trust_score = score
-            existing.trust_factors = factors
-            existing.last_discovery = now
-            existing.updated_at = now
-            existing.config_path = agent.config_path or ""
-            store.put(existing)
-            updated_count += 1
-        else:
-            fleet_agent = FleetAgent(
-                agent_id=str(uuid.uuid4()),
-                name=agent.name,
-                agent_type=agent.agent_type.value if hasattr(agent.agent_type, "value") else str(agent.agent_type),
-                config_path=agent.config_path or "",
-                lifecycle_state=FleetLifecycleState.DISCOVERED,
-                trust_score=score,
-                trust_factors=factors,
-                server_count=server_count,
-                package_count=pkg_count,
-                credential_count=cred_count,
-                vuln_count=vuln_count,
-                last_discovery=now,
-                created_at=now,
-                updated_at=now,
-            )
-            store.put(fleet_agent)
-            new_count += 1
-
-    return {
-        "synced": new_count + updated_count,
-        "new": new_count,
-        "updated": updated_count,
-    }
-
-
-@app.put("/v1/fleet/{agent_id}/state", tags=["fleet"])
-async def update_fleet_state(agent_id: str, body: StateUpdate):
-    """Update agent lifecycle state."""
-    from agent_bom.api.fleet_store import FleetLifecycleState
-
-    try:
-        new_state = FleetLifecycleState(body.state)
-    except ValueError:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid state: {body.state}. Valid: {[s.value for s in FleetLifecycleState]}",
-        )
-    store = _get_fleet_store()
-    if not store.update_state(agent_id, new_state):
-        raise HTTPException(status_code=404, detail="Fleet agent not found")
-    return {"agent_id": agent_id, "lifecycle_state": new_state.value}
-
-
-@app.put("/v1/fleet/{agent_id}", tags=["fleet"])
-async def update_fleet_agent(agent_id: str, body: FleetAgentUpdate):
-    """Update agent metadata (owner, environment, tags, notes)."""
-    store = _get_fleet_store()
-    agent = store.get(agent_id)
-    if agent is None:
-        raise HTTPException(status_code=404, detail="Fleet agent not found")
-    if body.owner is not None:
-        agent.owner = body.owner
-    if body.environment is not None:
-        agent.environment = body.environment
-    if body.tags is not None:
-        agent.tags = body.tags
-    if body.notes is not None:
-        agent.notes = body.notes
-    agent.updated_at = datetime.now(timezone.utc).isoformat()
-    store.put(agent)
-    return agent.model_dump()
-
-
-# ─── Gateway Policies ────────────────────────────────────────────────────────
-
-
-@app.get("/v1/gateway/policies", tags=["gateway"])
-async def list_gateway_policies(enabled: bool | None = None, mode: str | None = None):
-    """List all gateway policies."""
-    policies = _get_policy_store().list_policies()
-    if enabled is not None:
-        policies = [p for p in policies if p.enabled == enabled]
-    if mode:
-        policies = [p for p in policies if p.mode.value == mode]
-    return {"policies": [p.model_dump() for p in policies], "count": len(policies)}
-
-
-@app.post("/v1/gateway/policies", tags=["gateway"], status_code=201)
-async def create_gateway_policy(body: PolicyCreate):
-    """Create a new gateway policy."""
-    import uuid
-
-    from agent_bom.api.policy_store import GatewayPolicy, GatewayRule, PolicyMode
-
-    try:
-        policy_mode = PolicyMode(body.mode)
-    except ValueError:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid mode: {body.mode}. Valid: {[m.value for m in PolicyMode]}",
-        )
-    now = datetime.now(timezone.utc).isoformat()
-    rules = [GatewayRule(**r) for r in body.rules]
-    policy = GatewayPolicy(
-        policy_id=str(uuid.uuid4()),
-        name=body.name,
-        description=body.description,
-        mode=policy_mode,
-        rules=rules,
-        bound_agents=body.bound_agents,
-        bound_agent_types=body.bound_agent_types,
-        bound_environments=body.bound_environments,
-        enabled=body.enabled,
-        created_at=now,
-        updated_at=now,
-    )
-    _get_policy_store().put_policy(policy)
-    return policy.model_dump()
-
-
-@app.get("/v1/gateway/policies/{policy_id}", tags=["gateway"])
-async def get_gateway_policy(policy_id: str):
-    """Get a gateway policy by ID."""
-    policy = _get_policy_store().get_policy(policy_id)
-    if policy is None:
-        raise HTTPException(status_code=404, detail="Policy not found")
-    return policy.model_dump()
-
-
-@app.put("/v1/gateway/policies/{policy_id}", tags=["gateway"])
-async def update_gateway_policy(policy_id: str, body: PolicyUpdate):
-    """Update an existing gateway policy."""
-    from agent_bom.api.policy_store import GatewayRule, PolicyMode
-
-    store = _get_policy_store()
-    policy = store.get_policy(policy_id)
-    if policy is None:
-        raise HTTPException(status_code=404, detail="Policy not found")
-    if body.name is not None:
-        policy.name = body.name
-    if body.description is not None:
-        policy.description = body.description
-    if body.mode is not None:
-        try:
-            policy.mode = PolicyMode(body.mode)
-        except ValueError:
-            raise HTTPException(status_code=400, detail=f"Invalid mode: {body.mode}")
-    if body.rules is not None:
-        policy.rules = [GatewayRule(**r) for r in body.rules]
-    if body.bound_agents is not None:
-        policy.bound_agents = body.bound_agents
-    if body.bound_agent_types is not None:
-        policy.bound_agent_types = body.bound_agent_types
-    if body.bound_environments is not None:
-        policy.bound_environments = body.bound_environments
-    if body.enabled is not None:
-        policy.enabled = body.enabled
-    policy.updated_at = datetime.now(timezone.utc).isoformat()
-    store.put_policy(policy)
-    return policy.model_dump()
-
-
-@app.delete("/v1/gateway/policies/{policy_id}", tags=["gateway"])
-async def delete_gateway_policy(policy_id: str):
-    """Delete a gateway policy."""
-    if not _get_policy_store().delete_policy(policy_id):
-        raise HTTPException(status_code=404, detail="Policy not found")
-    return {"deleted": True, "policy_id": policy_id}
-
-
-@app.post("/v1/gateway/evaluate", tags=["gateway"])
-async def evaluate_gateway(body: EvaluateRequest):
-    """Dry-run evaluation of gateway policies against a tool call."""
-    from agent_bom.gateway import evaluate_gateway_policies
-
-    policies = _get_policy_store().list_policies()
-    active = [p for p in policies if p.enabled]
-    allowed, reason, policy_id = evaluate_gateway_policies(
-        active,
-        body.tool_name,
-        body.arguments,
-    )
-    return {
-        "allowed": allowed,
-        "reason": reason,
-        "policy_id": policy_id,
-        "policies_evaluated": len(active),
-    }
-
-
-@app.get("/v1/gateway/audit", tags=["gateway"])
-async def list_gateway_audit(
-    policy_id: str | None = None,
-    agent_name: str | None = None,
-    limit: int = 100,
-):
-    """Query the gateway policy audit log."""
-    entries = _get_policy_store().list_audit_entries(
-        policy_id=policy_id,
-        agent_name=agent_name,
-        limit=limit,
-    )
-    return {"entries": [e.model_dump() for e in entries], "count": len(entries)}
-
-
-@app.get("/v1/gateway/stats", tags=["gateway"])
-async def gateway_stats():
-    """Gateway-wide statistics."""
-    policies = _get_policy_store().list_policies()
-    audit = _get_policy_store().list_audit_entries(limit=10000)
-    enforce_count = sum(1 for p in policies if p.mode.value == "enforce" and p.enabled)
-    audit_count = sum(1 for p in policies if p.mode.value == "audit" and p.enabled)
-    blocked = sum(1 for e in audit if e.action_taken == "blocked")
-    alerted = sum(1 for e in audit if e.action_taken == "alerted")
-    return {
-        "total_policies": len(policies),
-        "enforce_count": enforce_count,
-        "audit_count": audit_count,
-        "enabled_count": sum(1 for p in policies if p.enabled),
-        "total_rules": sum(len(p.rules) for p in policies),
-        "audit_entries": len(audit),
-        "blocked_count": blocked,
-        "alerted_count": alerted,
     }
 
 

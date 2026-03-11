@@ -173,7 +173,7 @@ def test_list_fleet_pagination():
         a.model_dump.return_value = {"agent_id": f"a-{i}"}
     mock_store.list_all.return_value = agents
 
-    with patch("agent_bom.api.server._get_fleet_store", return_value=mock_store):
+    with patch("agent_bom.api.routes.fleet._get_fleet_store", return_value=mock_store):
         client = TestClient(app)
         resp = client.get("/v1/fleet?limit=3&offset=5")
         assert resp.status_code == 200

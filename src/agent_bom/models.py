@@ -2,10 +2,35 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
+
+# ─── Package name normalization ──────────────────────────────────────────────
+# PEP 503: https://peps.python.org/pep-0503/#normalized-names
+# Ensures consistent matching across parsers, scanners, and cache.
+_NORMALIZE_RE = re.compile(r"[-_.]+")
+
+
+def normalize_package_name(name: str, ecosystem: str = "") -> str:
+    """Normalize a package name for consistent matching.
+
+    - **PyPI**: PEP 503 — lowercases and collapses ``-``, ``_``, ``.`` runs
+      to a single ``-``.  (e.g. ``Requests_OAuthlib`` → ``requests-oauthlib``)
+    - **npm**: lowercases only (scoped names preserved, e.g. ``@scope/Pkg`` → ``@scope/pkg``)
+    - **Other ecosystems**: lowercases only.
+
+    This is the single source of truth for name normalization across the
+    entire scanner pipeline (parsers → cache → OSV queries → result matching).
+    """
+    if not name:
+        return name
+    eco = ecosystem.lower()
+    if eco == "pypi":
+        return _NORMALIZE_RE.sub("-", name).lower()
+    return name.lower()
 
 
 class Severity(str, Enum):

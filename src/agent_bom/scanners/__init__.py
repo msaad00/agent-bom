@@ -18,6 +18,9 @@ from agent_bom.config import (
     SCANNER_BATCH_DELAY as BATCH_DELAY_SECONDS,
 )
 from agent_bom.config import (
+    SCANNER_BATCH_SIZE as _BATCH_SIZE,
+)
+from agent_bom.config import (
     SCANNER_MAX_CONCURRENT as MAX_CONCURRENT_REQUESTS,
 )
 
@@ -30,7 +33,7 @@ from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.iso_27001 import tag_blast_radius as tag_iso_27001
 from agent_bom.malicious import check_typosquat, flag_malicious_from_vulns
 from agent_bom.mitre_attack import tag_blast_radius as tag_attack_techniques
-from agent_bom.models import Agent, BlastRadius, MCPServer, Package, Severity, Vulnerability
+from agent_bom.models import Agent, BlastRadius, MCPServer, Package, Severity, Vulnerability, normalize_package_name
 from agent_bom.nist_ai_rmf import tag_blast_radius as tag_nist_ai_rmf
 from agent_bom.nist_csf import tag_blast_radius as tag_nist_csf
 from agent_bom.owasp import tag_blast_radius
@@ -365,11 +368,12 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
         osv_ecosystem = ECOSYSTEM_MAP.get(eco_key)
         if not osv_ecosystem or pkg.version in ("unknown", "latest"):
             continue
+        norm_name = normalize_package_name(pkg.name, eco_key)
         if cache:
-            cached = cache.get(eco_key, pkg.name, pkg.version)
+            cached = cache.get(eco_key, norm_name, pkg.version)
             if cached is not None:
                 if cached:  # non-empty vuln list
-                    key = f"{eco_key}:{pkg.name}@{pkg.version}"
+                    key = f"{eco_key}:{norm_name}@{pkg.version}"
                     results[key] = cached
                 continue  # skip API call (cached hit or cached "clean")
         packages_to_query.append(pkg)
@@ -386,11 +390,13 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
         if not osv_ecosystem or pkg.version in ("unknown", "latest"):
             continue
 
+        # Normalize name for consistent OSV matching (PEP 503 for PyPI)
+        norm_name = normalize_package_name(pkg.name, eco_key)
         queries.append(
             {
                 "version": pkg.version,
                 "package": {
-                    "name": pkg.name,
+                    "name": norm_name,
                     "ecosystem": osv_ecosystem,
                 },
             }
@@ -403,8 +409,8 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
     # Track which queried packages got vulns (to cache "clean" results too)
     queried_keys_with_vulns: set[str] = set()
 
-    # OSV batch API accepts up to 1000 queries; rate-limited with retries
-    batch_size = 1000
+    # OSV batch API accepts up to 1000 queries; configurable via AGENT_BOM_SCANNER_BATCH_SIZE
+    batch_size = min(_BATCH_SIZE, 1000)  # clamp to OSV API max
     semaphore = _get_api_semaphore()
     async with create_client(timeout=30.0) as client:
         for batch_start in range(0, len(queries), batch_size):
@@ -435,7 +441,8 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
                                 actual_idx = batch_start + i
                                 pkg_match = pkg_index.get(actual_idx)
                                 if pkg_match:
-                                    key = f"{pkg_match.ecosystem.lower()}:{pkg_match.name}@{pkg_match.version}"
+                                    norm = normalize_package_name(pkg_match.name, pkg_match.ecosystem)
+                                    key = f"{pkg_match.ecosystem.lower()}:{norm}@{pkg_match.version}"
                                     results[key] = vulns
                                     queried_keys_with_vulns.add(key)
                     except (ValueError, KeyError) as e:
@@ -457,9 +464,9 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
         cache_writes = [
             (
                 pkg.ecosystem.lower(),
-                pkg.name,
+                normalize_package_name(pkg.name, pkg.ecosystem),
                 pkg.version,
-                results.get(f"{pkg.ecosystem.lower()}:{pkg.name}@{pkg.version}", []),
+                results.get(f"{pkg.ecosystem.lower()}:{normalize_package_name(pkg.name, pkg.ecosystem)}@{pkg.version}", []),
             )
             for pkg in packages_to_query
         ]
@@ -521,10 +528,13 @@ def _strip_extras(name: str) -> str:
 
 async def scan_packages(packages: list[Package]) -> int:
     """Scan a list of packages for vulnerabilities. Returns count of vulns found."""
-    # Strip pip extras notation before OSV queries (OSV doesn't understand extras)
+    # Normalize package names for consistent matching (PEP 503 for PyPI)
+    # and strip pip extras notation (OSV doesn't understand extras)
     for pkg in packages:
-        if pkg.ecosystem.lower() == "pypi" and "[" in pkg.name:
-            pkg.name = _strip_extras(pkg.name)
+        if pkg.ecosystem.lower() == "pypi":
+            if "[" in pkg.name:
+                pkg.name = _strip_extras(pkg.name)
+            pkg.name = normalize_package_name(pkg.name, pkg.ecosystem)
 
     # Auto-resolve "latest"/"unknown" versions before OSV query
     unresolved = [p for p in packages if p.version in ("latest", "unknown", "") and p.ecosystem.lower() in ("npm", "pypi")]
@@ -541,6 +551,18 @@ async def scan_packages(packages: list[Package]) -> int:
     # SAST packages already carry vulns from Semgrep — skip OSV query for them
     scannable = [p for p in packages if p.version not in ("unknown", "latest") and p.ecosystem.lower() != "sast"]
 
+    # Warn about packages that could not be resolved — no silent failures
+    still_unresolved = [p for p in packages if p.version in ("unknown", "latest", "") and p.ecosystem.lower() != "sast"]
+    if still_unresolved:
+        names = ", ".join(f"{p.name}@{p.version}" for p in still_unresolved[:10])
+        suffix = f" (+{len(still_unresolved) - 10} more)" if len(still_unresolved) > 10 else ""
+        console.print(f"  [yellow]⚠[/yellow] {len(still_unresolved)} package(s) skipped (unresolved version): {names}{suffix}")
+        _logger.warning(
+            "Skipped %d package(s) with unresolved versions: %s",
+            len(still_unresolved),
+            names + suffix,
+        )
+
     if not scannable:
         return 0
 
@@ -548,7 +570,8 @@ async def scan_packages(packages: list[Package]) -> int:
 
     total_vulns = 0
     for pkg in scannable:
-        key = f"{pkg.ecosystem.lower()}:{pkg.name}@{pkg.version}"
+        norm = normalize_package_name(pkg.name, pkg.ecosystem)
+        key = f"{pkg.ecosystem.lower()}:{norm}@{pkg.version}"
         vuln_data = results.get(key, [])
         if vuln_data:
             pkg.vulnerabilities = build_vulnerabilities(vuln_data, pkg)

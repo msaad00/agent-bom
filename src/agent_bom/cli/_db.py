@@ -1,7 +1,7 @@
 """CLI commands for the local vulnerability database.
 
 Commands:
-    agent-bom db update   — sync from OSV / EPSS / KEV
+    agent-bom db update   — sync from OSV / EPSS / KEV / GHSA / NVD
     agent-bom db status   — show DB stats and last-sync timestamps
     agent-bom db path     — print the DB file path
 """
@@ -21,8 +21,10 @@ def db_cmd() -> None:
     "--source",
     "sources",
     multiple=True,
-    type=click.Choice(["osv", "epss", "kev"], case_sensitive=False),
-    help="Which sources to sync (default: all). Repeatable.",
+    type=click.Choice(["osv", "epss", "kev", "ghsa", "nvd"], case_sensitive=False),
+    help="Which sources to sync (default: osv, epss, kev). Repeatable. "
+    "Use --source ghsa to sync GitHub Security Advisories for AI/ML packages. "
+    "Use --source nvd to enrich unknown-severity CVEs from NVD (slow without NVD_API_KEY).",
 )
 @click.option("--path", "db_path", type=click.Path(), default=None, help="Override DB file path.")
 @click.option(
@@ -32,10 +34,34 @@ def db_cmd() -> None:
     help="Limit OSV entries (for testing). 0 = unlimited.",
     hidden=True,
 )
-def db_update(sources: tuple, db_path: str | None, max_osv_entries: int) -> None:
+@click.option(
+    "--max-ghsa-entries",
+    type=int,
+    default=500,
+    help="Limit GHSA advisories to ingest (default: 500).",
+    hidden=True,
+)
+@click.option(
+    "--max-nvd-entries",
+    type=int,
+    default=1000,
+    help="Limit NVD CVEs to enrich (default: 1000).",
+    hidden=True,
+)
+def db_update(
+    sources: tuple,
+    db_path: str | None,
+    max_osv_entries: int,
+    max_ghsa_entries: int,
+    max_nvd_entries: int,
+) -> None:
     """Download and sync the local vulnerability database.
 
-    Pulls from OSV.dev (bulk export), FIRST EPSS scores, and CISA KEV catalog.
+    Pulls from OSV.dev (bulk export), FIRST EPSS scores, and CISA KEV catalog by default.
+    Pass --source ghsa to also fetch GitHub Security Advisories for AI/ML Python packages.
+    Pass --source nvd to enrich CVEs missing CVSS data from the NVD API (requires NVD_API_KEY
+    for reasonable speed; without a key the rate limit is 5 req/30s).
+
     Requires internet access. First sync is ~50 MB and takes several minutes.
     Subsequent syncs are incremental (upsert by ID).
     """
@@ -54,6 +80,8 @@ def db_update(sources: tuple, db_path: str | None, max_osv_entries: int) -> None
             path=Path(db_path) if db_path else None,
             sources=selected,
             max_osv_entries=max_osv_entries,
+            max_ghsa_entries=max_ghsa_entries,
+            max_nvd_entries=max_nvd_entries,
         )
     except Exception as exc:
         con.print(f"[red]Sync failed: {exc}[/red]")

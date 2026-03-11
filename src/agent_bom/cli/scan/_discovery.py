@@ -8,7 +8,7 @@ from typing import Any
 
 from agent_bom.cli._common import _build_agents_from_inventory
 from agent_bom.cli.scan._context import ScanContext
-from agent_bom.discovery import discover_all
+from agent_bom.discovery import discover_all as _discover_all_default
 
 
 def run_local_discovery(
@@ -62,11 +62,14 @@ def run_local_discovery(
     smithery_token: Any = None,
     smithery_flag: bool = False,
     mcp_registry_flag: bool = False,
+    _discover_all: Any = None,
     **kwargs: Any,
 ) -> None:
     """Steps 1–1g4: discover agents from local sources, SBOM, images, etc."""
     from rich.rule import Rule
 
+    # Allow callers to inject discover_all (enables patch("agent_bom.cli.scan.discover_all"))
+    _discover = _discover_all if _discover_all is not None else _discover_all_default
     con = ctx.con
     con.print(Rule("Discovery", style="blue"))
 
@@ -85,7 +88,7 @@ def run_local_discovery(
     elif config_dir:
         con.print(f"\n[bold blue]Scanning config directory: {config_dir}...[/bold blue]\n")
         with con.status("[bold]Discovering agents and MCP servers...[/bold]", spinner="dots"):
-            ctx.agents = discover_all(
+            ctx.agents = _discover(
                 project_dir=config_dir,
                 dynamic=dynamic_discovery,
                 dynamic_max_depth=dynamic_max_depth,
@@ -98,7 +101,7 @@ def run_local_discovery(
             )
     else:
         with con.status("[bold]Discovering agents and MCP servers...[/bold]", spinner="dots"):
-            ctx.agents = discover_all(
+            ctx.agents = _discover(
                 project_dir=project,
                 dynamic=dynamic_discovery,
                 dynamic_max_depth=dynamic_max_depth,

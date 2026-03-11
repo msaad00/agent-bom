@@ -597,6 +597,7 @@ def scan(
         smithery_flag=smithery_flag,
         mcp_registry_flag=mcp_registry_flag,
         _any_cloud=any_cloud,
+        _discover_all=discover_all,  # pass patchable reference — tests patch agent_bom.cli.scan.discover_all
     )
 
     # Re-bind the (possibly updated) agents list

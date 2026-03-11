@@ -103,6 +103,48 @@ def _attack_flow_elements(blast_radii: list["BlastRadius"]) -> str:
 # ─── HTML sections ────────────────────────────────────────────────────────────
 
 
+def _delta_banner(report: "AIBOMReport") -> str:
+    """Render a delta mode info banner when the scan used --delta."""
+    scan_json = getattr(report, "_cached_json", None)
+    delta = (scan_json or {}).get("delta") if scan_json else None
+    if not delta or not delta.get("enabled"):
+        return ""
+    new_count = delta.get("new_count", 0)
+    pre_count = delta.get("pre_existing_count", 0)
+    baseline = _esc(str(delta.get("baseline_path") or ""))
+    parts = []
+    if new_count:
+        parts.append(f"<b>{new_count}</b> new finding(s)")
+    if pre_count:
+        parts.append(f"<b>{pre_count}</b> pre-existing (suppressed from exit code)")
+    body = " &middot; ".join(parts) if parts else "No new findings"
+    baseline_html = f' &nbsp;<span style="color:#94a3b8;font-size:.75rem">baseline: {baseline}</span>' if baseline else ""
+    return (
+        '<div style="background:#1e3a5f;border:1px solid #2563eb;border-radius:8px;'
+        'padding:10px 16px;margin-bottom:12px;font-size:.85rem;color:#93c5fd">'
+        f"&#x1f504; <b>Delta mode</b>: {body}{baseline_html}"
+        "</div>"
+    )
+
+
+def _warn_gate_banner(report: "AIBOMReport") -> str:
+    """Render a warn-gate banner when findings triggered the warn threshold."""
+    scan_json = getattr(report, "_cached_json", None)
+    if not scan_json:
+        return ""
+    if scan_json.get("warn_gate_status") != "warn":
+        return ""
+    count = scan_json.get("warn_gate_count", 0)
+    sev = _esc(str(scan_json.get("warn_gate_severity") or ""))
+    return (
+        '<div style="background:#422006;border:1px solid #d97706;border-radius:8px;'
+        'padding:10px 16px;margin-bottom:12px;font-size:.85rem;color:#fcd34d">'
+        f"&#x26a0;&#xfe0f; <b>Warn gate triggered</b>: {count} finding(s) at or above "
+        f"<b>{sev}</b> severity &mdash; exit 0 (warning only, not a hard failure)"
+        "</div>"
+    )
+
+
 def _summary_cards(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str:
     crit = sum(1 for br in blast_radii if br.vulnerability.severity.value == "critical")
     total_vulns = len(blast_radii)
@@ -185,11 +227,16 @@ def _vuln_table(blast_radii: list["BlastRadius"]) -> str:
             " ".join(f'<code style="color:#fbbf24">{_esc(c)}</code>' for c in br.exposed_credentials)
             or "<span style='color:#334155'>&mdash;</span>"
         )
+        # Vendor severity indicator: show when vendor reports different severity than CVSS
+        vendor_sev = getattr(v, "vendor_severity", None)
+        vendor_hint = ""
+        if vendor_sev and vendor_sev.lower() != sev:
+            vendor_hint = f'<br><span style="font-size:.62rem;color:#94a3b8;font-style:italic">vendor: {_esc(vendor_sev)}</span>'
         rows.append(
             f'<tr data-severity="{sev}" data-kev="{"1" if v.is_kev else "0"}" '
             f'data-cvss="{v.cvss_score if v.cvss_score else 0}">'
             f'<td><code class="vuln-id">{_esc(v.id)}</code></td>'
-            f"<td>{_sev_badge(sev)}</td>"
+            f"<td>{_sev_badge(sev)}{vendor_hint}</td>"
             f'<td><strong style="color:#e2e8f0">{_esc(br.package.name)}</strong>'
             f'<span style="color:#475569;font-size:.78rem">@{_esc(br.package.version)}</span></td>'
             f"<td>{cvss_bar}</td>"
@@ -1094,6 +1141,10 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
 </div>
 
 <div class="container">
+
+  <!-- Delta / warn-gate banners (only rendered when applicable) -->
+  {_delta_banner(report)}
+  {_warn_gate_banner(report)}
 
   <!-- Summary stat cards -->
   <section id="summary">

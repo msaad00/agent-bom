@@ -354,6 +354,8 @@ def to_json(report: AIBOMReport) -> dict:
                 "exposed_credentials": br.exposed_credentials,
                 "exposed_tools": [t.name for t in br.exposed_tools],
                 "fixed_version": br.vulnerability.fixed_version,
+                "vendor_severity": getattr(br.vulnerability, "vendor_severity", None),
+                "cvss_severity": getattr(br.vulnerability, "cvss_severity", None),
                 "ai_risk_context": br.ai_risk_context,
                 "ai_summary": br.ai_summary,
                 "owasp_tags": br.owasp_tags,

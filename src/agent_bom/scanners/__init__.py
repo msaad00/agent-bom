@@ -550,8 +550,48 @@ def _strip_extras(name: str) -> str:
     return _re.sub(r"\[.*?\]$", "", name)
 
 
+def deduplicate_packages(packages: list) -> list:
+    """Remove duplicate packages across discovery sources.
+
+    Deduplicates by (ecosystem, normalized_name, version) fingerprint.
+    When duplicates exist, the first occurrence is kept (preserves source ordering).
+
+    This prevents redundant OSV API calls and duplicate vulnerability findings
+    when the same package is discovered from multiple sources (local, K8s, cloud).
+
+    Args:
+        packages: List of Package objects from one or more discovery sources.
+
+    Returns:
+        Deduplicated list, preserving first-seen order.
+    """
+    seen: set[tuple[str, str, str]] = set()
+    result = []
+    for pkg in packages:
+        # Use normalized name for dedup (PEP 503: torch == Torch == pytorch)
+        name = getattr(pkg, "name", "") or ""
+        ecosystem = getattr(pkg, "ecosystem", "") or ""
+        version = getattr(pkg, "version", "") or ""
+        # Normalize: lowercase + replace hyphens/dots with underscores (PEP 503 compatible)
+        norm_name = name.lower().replace("-", "_").replace(".", "_")
+        key = (ecosystem.lower(), norm_name, version.lower())
+        if key not in seen:
+            seen.add(key)
+            result.append(pkg)
+    return result
+
+
 async def scan_packages(packages: list[Package]) -> int:
     """Scan a list of packages for vulnerabilities. Returns count of vulns found."""
+    # Deduplicate packages across discovery sources before scanning.
+    # Prevents redundant OSV API calls when the same package is discovered
+    # from multiple sources (local, K8s, cloud).
+    original_count = len(packages)
+    packages = deduplicate_packages(packages)
+    deduped = original_count - len(packages)
+    if deduped > 0:
+        _logger.info("Deduplicated %d duplicate packages (kept %d unique)", deduped, len(packages))
+
     # Normalize package names for consistent matching (PEP 503 for PyPI)
     # and strip pip extras notation (OSV doesn't understand extras)
     for pkg in packages:
@@ -688,14 +728,9 @@ async def scan_agents(agents: list[Agent]) -> list[BlastRadius]:
                 if agent not in pkg_to_agents[key]:
                     pkg_to_agents[key].append(agent)
 
-    # Deduplicate packages for scanning
-    seen = set()
-    unique_packages = []
-    for pkg in all_packages:
-        key = _pkg_key(pkg)
-        if key not in seen:
-            seen.add(key)
-            unique_packages.append(pkg)
+    # Deduplicate packages for scanning — uses canonical deduplicate_packages()
+    # which normalizes by (ecosystem, normalized_name, version) fingerprint.
+    unique_packages = deduplicate_packages(all_packages)
 
     console.print(f"  Scanning {len(unique_packages)} unique packages across {len(agents)} agent(s)...")
 

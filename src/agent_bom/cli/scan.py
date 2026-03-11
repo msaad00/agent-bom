@@ -79,6 +79,7 @@ def scan(
     scorecard_flag: bool,
     quiet: bool,
     fail_on_severity: Optional[str],
+    warn_on_severity: Optional[str],
     fail_on_kev: bool,
     fail_if_ai_risk: bool,
     save_report: bool,
@@ -231,6 +232,7 @@ def scan(
     \b
     Exit codes:
       0  Clean — no violations, no vulnerabilities at or above threshold
+           (also exits 0 when only --warn-on threshold is breached)
       1  Fail — policy failure, or vulnerabilities found at or above
                 --fail-on-severity / --fail-on-kev / --fail-if-ai-risk
     """
@@ -2872,6 +2874,20 @@ def scan(
                     con.print(f"\n  [red]Exiting with code 1: found {sev} vulnerability ({br.vulnerability.id})[/red]")
                 exit_code = 1
                 break
+
+    # Two-tier: warn-on threshold (exit 0 with banner) — only fires when exit_code is still 0
+    if warn_on_severity and _active_blast_radii and exit_code == 0:
+        warn_threshold = SEVERITY_ORDER.get(warn_on_severity.lower(), 0)
+        warn_matches = [
+            br for br in _active_blast_radii if SEVERITY_ORDER.get(br.vulnerability.severity.value.lower(), 0) >= warn_threshold
+        ]
+        if warn_matches:
+            if not quiet:
+                con.print(
+                    f"\n  [yellow]⚠[/yellow]  {len(warn_matches)} finding(s) at or above "
+                    f"{warn_on_severity.upper()} severity (--warn-on threshold). "
+                    f"Upgrade to --fail-on-severity to enforce."
+                )
 
     if fail_on_kev and _active_blast_radii:
         kev_findings = [br for br in _active_blast_radii if br.vulnerability.is_kev]

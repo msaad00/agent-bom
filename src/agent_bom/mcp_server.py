@@ -364,6 +364,15 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         fail_severity: Annotated[
             str | None, Field(description="Return failure status if vulns at this severity or higher: critical, high, medium, low.")
         ] = None,
+        warn_severity: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "Return warning status (gate_status=warn, exit 0) when vulns at this severity or higher exist. "
+                    "Use with fail_severity for two-tier CI gates, e.g. warn_severity='medium', fail_severity='critical'."
+                )
+            ),
+        ] = None,
         policy: Annotated[
             dict | None,
             Field(
@@ -394,6 +403,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             transitive=transitive,
             verify_integrity=verify_integrity,
             fail_severity=fail_severity,
+            warn_severity=warn_severity,
             policy=policy,
             _run_scan_pipeline=_run_scan_pipeline,
             _truncate_response=_truncate_response,

@@ -39,11 +39,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import secrets
 import threading
 import time
 import uuid
-from collections import defaultdict, deque
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from enum import Enum
@@ -52,8 +51,38 @@ from typing import TYPE_CHECKING, Any
 from agent_bom import __version__
 
 if TYPE_CHECKING:
-    from agent_bom.api.oidc import OIDCConfig
     from agent_bom.api.schedule_store import ScheduleStore
+from agent_bom.api.middleware import (  # noqa: E402
+    APIKeyMiddleware,
+    MaxBodySizeMiddleware,
+    RateLimitMiddleware,
+    TrustHeadersMiddleware,
+)
+
+# ─── Extracted modules ────────────────────────────────────────────────────────
+from agent_bom.api.models import (  # noqa: E402
+    BrowserExtensionsRequest,
+    CreateKeyRequest,
+    DatasetCardsRequest,
+    EvaluateRequest,
+    ExceptionRequest,
+    FleetAgentUpdate,
+    HealthResponse,
+    JobStatus,
+    ModelFilesRequest,
+    ModelProvenanceRequest,
+    PolicyCreate,
+    PolicyUpdate,
+    PromptScanRequest,
+    PushPayload,
+    ScanJob,
+    ScanRequest,
+    ScheduleCreate,
+    StateUpdate,
+    StepStatus,
+    TrainingPipelinesRequest,
+    VersionInfo,
+)
 from agent_bom.config import API_JOB_TTL_SECONDS as _JOB_TTL_SECONDS
 from agent_bom.config import API_MAX_CONCURRENT_JOBS as _MAX_CONCURRENT_JOBS
 from agent_bom.config import API_MAX_IN_MEMORY_JOBS as _MAX_IN_MEMORY_JOBS
@@ -67,7 +96,7 @@ try:
     from fastapi import FastAPI, HTTPException, WebSocket
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import RedirectResponse
-    from pydantic import BaseModel
+    from pydantic import BaseModel  # noqa: F401 — presence check for [api] extra
 except ImportError as exc:  # pragma: no cover
     raise ImportError("agent-bom API requires extra dependencies.\nInstall with:  pip install 'agent-bom[api]'") from exc
 
@@ -221,263 +250,8 @@ app.add_middleware(
 
 # ─── Trust headers middleware ──────────────────────────────────────────────────
 
-from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
-from starlette.requests import Request as StarletteRequest  # noqa: E402
-from starlette.responses import JSONResponse  # noqa: E402
-from starlette.types import ASGIApp  # noqa: E402
-
-
-class TrustHeadersMiddleware(BaseHTTPMiddleware):
-    """Add trust + standard security headers to every response."""
-
-    async def dispatch(self, request: StarletteRequest, call_next):
-        response = await call_next(request)
-        response.headers["X-Agent-Bom-Read-Only"] = "true"
-        response.headers["X-Agent-Bom-No-Credential-Storage"] = "true"
-        response.headers["X-Agent-Bom-Version"] = __version__
-        # Standard security headers
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Cache-Control"] = "no-store"
-        response.headers["Content-Security-Policy"] = "default-src 'self'"
-        return response
-
 
 app.add_middleware(TrustHeadersMiddleware)
-
-
-class APIKeyMiddleware(BaseHTTPMiddleware):
-    """Optional API key authentication via Bearer token or X-API-Key header.
-
-    Supports two modes:
-    - Simple mode: single static API key (backward compatible)
-    - RBAC mode: role-based access control via KeyStore with per-endpoint role checks
-    """
-
-    _EXEMPT_PATHS = {"/", "/health", "/version", "/docs", "/redoc", "/openapi.json"}
-
-    # Endpoints requiring ADMIN role (mutating / destructive operations)
-    _ADMIN_PATHS: set[tuple[str, str]] = {
-        ("DELETE", "/v1/scan/"),
-        ("POST", "/v1/gateway/policies"),
-        ("PUT", "/v1/gateway/policies/"),
-        ("DELETE", "/v1/gateway/policies/"),
-        ("POST", "/v1/fleet/sync"),
-        ("PUT", "/v1/fleet/"),
-        ("POST", "/v1/auth/keys"),
-        ("DELETE", "/v1/auth/keys/"),
-        ("POST", "/v1/exceptions"),
-        ("PUT", "/v1/exceptions/"),
-        ("DELETE", "/v1/exceptions/"),
-    }
-
-    # Endpoints requiring ANALYST role (scan + write operations)
-    _ANALYST_PATHS: set[tuple[str, str]] = {
-        ("POST", "/v1/scan"),
-        ("POST", "/v1/gateway/evaluate"),
-        ("POST", "/v1/traces"),
-        ("POST", "/v1/results/push"),
-        ("POST", "/v1/schedules"),
-        ("DELETE", "/v1/schedules/"),
-        ("PUT", "/v1/schedules/"),
-    }
-
-    def __init__(self, app: ASGIApp, api_key: str) -> None:
-        super().__init__(app)
-        self._api_key = api_key
-        # OIDC config loaded lazily from env on first request
-        self._oidc_config: OIDCConfig | None = None
-        self._oidc_checked = False
-
-    def _required_role(self, method: str, path: str) -> str:
-        """Determine the minimum role required for a request."""
-        for m, p in self._ADMIN_PATHS:
-            if method == m and path.startswith(p):
-                return "admin"
-        for m, p in self._ANALYST_PATHS:
-            if method == m and path.startswith(p):
-                return "analyst"
-        return "viewer"
-
-    async def dispatch(self, request: StarletteRequest, call_next):
-        if request.url.path in self._EXEMPT_PATHS:
-            return await call_next(request)
-
-        # Extract raw key from headers
-        raw_key = ""
-        auth = request.headers.get("authorization", "")
-        if auth.startswith("Bearer "):
-            raw_key = auth[7:]
-        if not raw_key:
-            raw_key = request.headers.get("x-api-key", "")
-
-        if not raw_key:
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "Unauthorized — provide API key via Authorization: Bearer <key> or X-API-Key header"},
-            )
-
-        # Simple mode: single static key (backward compatible, all access)
-        if secrets.compare_digest(raw_key, self._api_key):
-            request.state.api_key_name = "static-key"
-            request.state.api_key_role = "admin"
-            return await call_next(request)
-
-        # OIDC mode: try JWT verification when AGENT_BOM_OIDC_ISSUER is set
-        if not self._oidc_checked:
-            from agent_bom.api.oidc import OIDCConfig
-
-            self._oidc_config = OIDCConfig.from_env()
-            self._oidc_checked = True
-
-        oidc_cfg = self._oidc_config
-        if oidc_cfg is not None and getattr(oidc_cfg, "enabled", False) and auth.startswith("Bearer "):
-            from agent_bom.api.oidc import OIDCError
-
-            try:
-                _claims, oidc_role = oidc_cfg.verify(raw_key)
-                required = self._required_role(request.method, request.url.path)
-                from agent_bom.api.auth import _ROLE_HIERARCHY, Role
-
-                if _ROLE_HIERARCHY.get(Role(oidc_role), 0) >= _ROLE_HIERARCHY.get(Role(required), 0):
-                    request.state.api_key_name = _claims.get("email") or _claims.get("sub", "oidc-user")
-                    request.state.api_key_role = oidc_role
-                    return await call_next(request)
-                return JSONResponse(
-                    status_code=403,
-                    content={"detail": f"Forbidden — requires {required} role, OIDC token has {oidc_role}"},
-                )
-            except OIDCError as exc:
-                _logger.debug("OIDC verification failed: %s", exc)
-                # Fall through to API key check — OIDC failure is non-fatal if keys also configured
-
-        # RBAC mode: check against KeyStore
-        from agent_bom.api.auth import Role, get_key_store
-
-        store = get_key_store()
-        if store.has_keys():
-            api_key = store.verify(raw_key)
-            if api_key:
-                required = self._required_role(request.method, request.url.path)
-                required_role = Role(required)
-                if not api_key.has_role(required_role):
-                    return JSONResponse(
-                        status_code=403,
-                        content={"detail": f"Forbidden — requires {required} role, you have {api_key.role.value}"},
-                    )
-                request.state.api_key_name = api_key.name
-                request.state.api_key_role = api_key.role.value
-                return await call_next(request)
-
-        return JSONResponse(
-            status_code=401,
-            content={"detail": "Unauthorized — invalid API key"},
-        )
-
-
-class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Per-IP sliding window rate limiter with bounded memory."""
-
-    _MAX_ENTRIES = 10_000
-
-    def __init__(self, app: ASGIApp, scan_rpm: int = 60, read_rpm: int = 300):
-        super().__init__(app)
-        self._scan_rpm = scan_rpm
-        self._read_rpm = read_rpm
-        self._window = 60
-        self._hits: dict[str, list[float]] = defaultdict(list)
-        self._last_cleanup = time.time()
-
-    def _cleanup(self, now: float) -> None:
-        """Prune stale entries to prevent unbounded memory growth."""
-        if now - self._last_cleanup < self._window:
-            return
-        self._last_cleanup = now
-        stale = [k for k, v in self._hits.items() if not v or v[-1] < now - self._window]
-        for k in stale:
-            del self._hits[k]
-        if len(self._hits) > self._MAX_ENTRIES:
-            self._hits.clear()
-
-    async def dispatch(self, request: StarletteRequest, call_next):
-        client_ip = request.client.host if request.client else "unknown"
-        now = time.time()
-
-        self._cleanup(now)
-
-        is_scan = request.url.path.startswith("/v1/scan") and request.method == "POST"
-        limit = self._scan_rpm if is_scan else self._read_rpm
-
-        key = f"{client_ip}:{'scan' if is_scan else 'read'}"
-        self._hits[key] = [t for t in self._hits[key] if now - t < self._window]
-
-        if len(self._hits[key]) >= limit:
-            retry_after = max(int(self._window - (now - self._hits[key][0])), 1)
-            return JSONResponse(
-                status_code=429,
-                content={"detail": "Rate limit exceeded"},
-                headers={"Retry-After": str(retry_after)},
-            )
-
-        self._hits[key].append(now)
-        return await call_next(request)
-
-
-class MaxBodySizeMiddleware(BaseHTTPMiddleware):
-    """Reject oversized bodies and enforce a per-request read timeout (slowloris mitigation).
-
-    Two-layer protection:
-    1. Content-Length fast-path: reject before reading if header exceeds limit.
-    2. Streaming body drain with asyncio timeout: covers chunked/streaming uploads
-       that omit Content-Length — a common slowloris vector.
-    """
-
-    # 30s to fully receive a request body; covers slow legitimate clients
-    # while cutting off slowloris attacks that trickle bytes indefinitely.
-    _BODY_TIMEOUT_SECONDS = 30
-
-    def __init__(self, app: ASGIApp, max_bytes: int = 10 * 1024 * 1024):
-        super().__init__(app)
-        self._max_bytes = max_bytes
-
-    async def dispatch(self, request: StarletteRequest, call_next):
-        content_length = request.headers.get("content-length")
-        if content_length:
-            try:
-                cl = int(content_length)
-            except (ValueError, OverflowError):
-                return JSONResponse(status_code=400, content={"detail": "Invalid Content-Length header"})
-            if cl > self._max_bytes:
-                return JSONResponse(
-                    status_code=413,
-                    content={"detail": f"Request body too large (max {self._max_bytes // (1024 * 1024)}MB)"},
-                )
-        elif request.method in ("POST", "PUT", "PATCH"):
-            # No Content-Length — drain and check streaming body under timeout
-            try:
-                chunks: list[bytes] = []
-                total = 0
-                async with asyncio.timeout(self._BODY_TIMEOUT_SECONDS):
-                    async for chunk in request.stream():
-                        total += len(chunk)
-                        if total > self._max_bytes:
-                            return JSONResponse(
-                                status_code=413,
-                                content={"detail": f"Request body too large (max {self._max_bytes // (1024 * 1024)}MB)"},
-                            )
-                        chunks.append(chunk)
-            except TimeoutError:
-                return JSONResponse(status_code=408, content={"detail": "Request body read timed out"})
-
-            # Re-inject the drained body so downstream handlers can read it
-            body = b"".join(chunks)
-
-            async def _receive():
-                return {"type": "http.request", "body": body, "more_body": False}
-
-            request._receive = _receive  # type: ignore[attr-defined]
-
-        return await call_next(request)
 
 
 def configure_api(
@@ -585,103 +359,7 @@ def _jobs_pop(job_id: str) -> "ScanJob | None":
 # ─── Models ───────────────────────────────────────────────────────────────────
 
 
-class JobStatus(str, Enum):
-    PENDING = "pending"
-    RUNNING = "running"
-    DONE = "done"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-
-
-class ScanRequest(BaseModel):
-    """Options accepted by POST /v1/scan — mirrors agent-bom scan CLI flags."""
-
-    inventory: str | None = None
-    """Path to agents.json inventory file."""
-
-    images: list[str] = []
-    """Docker image references to scan (e.g. ['myapp:latest', 'redis:7'])."""
-
-    k8s: bool = False
-    """Scan running Kubernetes pods via kubectl."""
-
-    k8s_namespace: str | None = None
-    """Kubernetes namespace (None = all)."""
-
-    tf_dirs: list[str] = []
-    """Terraform directories to scan."""
-
-    gha_path: str | None = None
-    """Path to a Git repo to scan GitHub Actions workflows."""
-
-    agent_projects: list[str] = []
-    """Python project directories using AI agent frameworks."""
-
-    jupyter_dirs: list[str] = []
-    """Directories to scan for Jupyter notebooks (.ipynb) with AI library usage."""
-
-    sbom: str | None = None
-    """Path to an existing CycloneDX / SPDX SBOM file."""
-
-    enrich: bool = False
-    """Enrich with NVD CVSS, EPSS, and CISA KEV data."""
-
-    connectors: list[str] = []
-    """SaaS connectors to discover from (e.g. ['jira', 'servicenow', 'slack'])."""
-
-    filesystem_paths: list[str] = []
-    """Filesystem directories or tar archives to scan via Syft."""
-
-    format: str = "json"
-    """Output format: json | cyclonedx | sarif | spdx | html | text."""
-
-    dynamic_discovery: bool = False
-    """Enable dynamic content-based MCP config discovery."""
-
-    dynamic_max_depth: int = 4
-    """Max directory depth for dynamic discovery."""
-
-    scope_agents: list[str] = []
-    """Filter discovered agents by name (glob patterns, e.g. ['claude-*', 'cursor'])."""
-
-    scope_servers: list[str] = []
-    """Filter discovered MCP servers by name (glob patterns)."""
-
-    exclude_agents: list[str] = []
-    """Exclude agents matching these name patterns."""
-
-    exclude_servers: list[str] = []
-    """Exclude MCP servers matching these name patterns."""
-
-    min_severity: str | None = None
-    """Minimum severity to include in results (low/medium/high/critical)."""
-
-
-class ScanJob(BaseModel):
-    """Represents a running or completed scan job."""
-
-    job_id: str
-    status: JobStatus = JobStatus.PENDING
-    created_at: str
-    started_at: str | None = None
-    completed_at: str | None = None
-    request: ScanRequest
-    progress: list[str] = []
-    result: dict[str, Any] | None = None
-    error: str | None = None
-
-    model_config = {"arbitrary_types_allowed": True}
-
-
 # ─── Scan Pipeline (structured SSE events) ────────────────────────────────────
-
-
-class StepStatus(str, Enum):
-    PENDING = "pending"
-    RUNNING = "running"
-    DONE = "done"
-    FAILED = "failed"
-    SKIPPED = "skipped"
 
 
 PIPELINE_STEPS = ["discovery", "extraction", "scanning", "enrichment", "analysis", "output"]
@@ -769,17 +447,6 @@ class ScanPipeline:
                 self._job.progress.append(line)
         else:
             self._job.progress.append(line)
-
-
-class VersionInfo(BaseModel):
-    version: str
-    api_version: str = "v1"
-    python_package: str = "agent-bom"
-
-
-class HealthResponse(BaseModel):
-    status: str = "ok"
-    version: str
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1805,13 +1472,6 @@ def _sanitize_api_path(user_path: str) -> str:
     return resolved
 
 
-class DatasetCardsRequest(BaseModel):
-    """Request body for POST /v1/scan/dataset-cards."""
-
-    directories: list[str]
-    """Directories to scan for dataset cards (dataset_info.json, README.md, .dvc)."""
-
-
 @app.post("/v1/scan/dataset-cards", tags=["scan"], status_code=200)
 async def scan_dataset_cards(request: DatasetCardsRequest) -> dict:
     """Scan directories for HuggingFace dataset cards, DVC files, and data lineage.
@@ -1838,13 +1498,6 @@ async def scan_dataset_cards(request: DatasetCardsRequest) -> dict:
             raise SecurityError(f"Path escapes safe root: {d}")
 
     return {"scan_type": "dataset-cards", "directories": safe_dirs, "results": results}
-
-
-class TrainingPipelinesRequest(BaseModel):
-    """Request body for POST /v1/scan/training-pipelines."""
-
-    directories: list[str]
-    """Directories to scan for ML training artifacts (MLflow, W&B, Kubeflow)."""
 
 
 @app.post("/v1/scan/training-pipelines", tags=["scan"], status_code=200)
@@ -1875,13 +1528,6 @@ async def scan_training_pipelines(request: TrainingPipelinesRequest) -> dict:
     return {"scan_type": "training-pipelines", "directories": safe_dirs, "results": results}
 
 
-class BrowserExtensionsRequest(BaseModel):
-    """Request body for POST /v1/scan/browser-extensions."""
-
-    include_low_risk: bool = False
-    """Include low-risk extensions (default: only medium+ risk)."""
-
-
 @app.post("/v1/scan/browser-extensions", tags=["scan"], status_code=200)
 async def scan_browser_extensions_endpoint(request: BrowserExtensionsRequest) -> dict:
     """Scan installed browser extensions (Chrome, Chromium, Brave, Edge, Firefox).
@@ -1901,16 +1547,6 @@ async def scan_browser_extensions_endpoint(request: BrowserExtensionsRequest) ->
         "high": sum(1 for e in ext_dicts if e.get("risk_level") == "high"),
         "extensions": ext_dicts,
     }
-
-
-class ModelProvenanceRequest(BaseModel):
-    """Request body for POST /v1/scan/model-provenance."""
-
-    hf_models: list[str] = []
-    """HuggingFace model IDs to check (e.g. ['meta-llama/Llama-2-7b-hf'])."""
-
-    ollama_models: list[str] = []
-    """Ollama model names to check (e.g. ['llama2', 'codellama'])."""
 
 
 @app.post("/v1/scan/model-provenance", tags=["scan"], status_code=200)
@@ -1936,16 +1572,6 @@ async def scan_model_provenance(request: ModelProvenanceRequest) -> dict:
         "unsafe_format": sum(1 for r in results if not r.get("is_safe_format", True)),
         "results": results,
     }
-
-
-class PromptScanRequest(BaseModel):
-    """Request body for POST /v1/scan/prompt-scan."""
-
-    directories: list[str] = []
-    """Directories to scan for prompt files (.prompt, prompt.yaml, etc.)."""
-
-    files: list[str] = []
-    """Specific prompt files to scan."""
 
 
 @app.post("/v1/scan/prompt-scan", tags=["scan"], status_code=200)
@@ -1986,16 +1612,6 @@ async def scan_prompts(request: PromptScanRequest) -> dict:
         results.append(result.to_dict() if hasattr(result, "to_dict") else _dataclass_to_dict(result))
 
     return {"scan_type": "prompt-scan", "results": results}
-
-
-class ModelFilesRequest(BaseModel):
-    """Request body for POST /v1/scan/model-files."""
-
-    directories: list[str]
-    """Directories to scan for ML model files (.pt, .pkl, .safetensors, .gguf, etc.)."""
-
-    verify_hashes: bool = False
-    """Compute SHA-256 hashes for each model file."""
 
 
 @app.post("/v1/scan/model-files", tags=["scan"], status_code=200)
@@ -2993,18 +2609,6 @@ def set_analytics_store(store: Any) -> None:
     _analytics_store = store
 
 
-class StateUpdate(BaseModel):
-    state: str
-    reason: str = ""
-
-
-class FleetAgentUpdate(BaseModel):
-    owner: str | None = None
-    environment: str | None = None
-    tags: list[str] | None = None
-    notes: str | None = None
-
-
 @app.get("/v1/fleet", tags=["fleet"])
 async def list_fleet(
     state: str | None = None,
@@ -3171,34 +2775,6 @@ async def update_fleet_agent(agent_id: str, body: FleetAgentUpdate):
 
 
 # ─── Gateway Policies ────────────────────────────────────────────────────────
-
-
-class PolicyCreate(BaseModel):
-    name: str
-    description: str = ""
-    mode: str = "audit"
-    rules: list[dict] = []
-    bound_agents: list[str] = []
-    bound_agent_types: list[str] = []
-    bound_environments: list[str] = []
-    enabled: bool = True
-
-
-class PolicyUpdate(BaseModel):
-    name: str | None = None
-    description: str | None = None
-    mode: str | None = None
-    rules: list[dict] | None = None
-    bound_agents: list[str] | None = None
-    bound_agent_types: list[str] | None = None
-    bound_environments: list[str] | None = None
-    enabled: bool | None = None
-
-
-class EvaluateRequest(BaseModel):
-    agent_name: str = ""
-    tool_name: str
-    arguments: dict = {}
 
 
 @app.get("/v1/gateway/policies", tags=["gateway"])
@@ -3647,13 +3223,6 @@ async def ingest_traces(body: dict) -> dict:
 # ── Hybrid Push — receive results from CLI ────────────────────────────────────
 
 
-class PushPayload(BaseModel):
-    source_id: str = ""
-    agents: list = []
-    blast_radii: list = []
-    warnings: list = []
-
-
 @app.post("/v1/results/push", tags=["push"], status_code=201)
 async def receive_push(body: PushPayload) -> dict:
     """Receive pushed scan results from a CLI instance.
@@ -3679,14 +3248,6 @@ async def receive_push(body: PushPayload) -> dict:
 
 
 # ── Scheduled Scanning ───────────────────────────────────────────────────────
-
-
-class ScheduleCreate(BaseModel):
-    name: str
-    cron_expression: str
-    scan_config: dict = {}
-    enabled: bool = True
-    tenant_id: str = "default"
 
 
 @app.post("/v1/schedules", tags=["schedules"], status_code=201)
@@ -3752,13 +3313,6 @@ async def toggle_schedule(schedule_id: str) -> dict:
 
 
 # ── Enterprise: API Key Management (RBAC) ──────────────────────────────────
-
-
-class CreateKeyRequest(BaseModel):
-    name: str
-    role: str = "viewer"
-    expires_at: str | None = None
-    scopes: list[str] = []
 
 
 @app.post("/v1/auth/keys", tags=["enterprise"], status_code=201)
@@ -3860,16 +3414,6 @@ def _get_exception_store():
 
         _exception_store = InMemoryExceptionStore()
     return _exception_store
-
-
-class ExceptionRequest(BaseModel):
-    vuln_id: str
-    package_name: str
-    server_name: str = ""
-    reason: str = ""
-    requested_by: str = ""
-    expires_at: str = ""
-    tenant_id: str = "default"
 
 
 @app.post("/v1/exceptions", tags=["enterprise"], status_code=201)

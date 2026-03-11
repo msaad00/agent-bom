@@ -57,55 +57,23 @@ def test_create_mcp_server_returns_object():
     assert server.name == "agent-bom"
 
 
-def test_mcp_server_has_eighteen_tools():
-    """Server should register exactly 31 tools."""
-    from agent_bom.mcp_server import create_mcp_server
+def test_mcp_server_has_correct_tool_count():
+    """Server registers the same number of tools as _SERVER_CARD_TOOLS declares."""
+    from agent_bom.mcp_server import _SERVER_CARD_TOOLS, create_mcp_server
 
     server = create_mcp_server()
     tools = _run(server.list_tools())
-    assert len(tools) == 31
+    assert len(tools) == len(_SERVER_CARD_TOOLS)
 
 
 def test_mcp_server_tool_names():
     """Tool names should match expected set."""
-    from agent_bom.mcp_server import create_mcp_server
+    from agent_bom.mcp_server import _SERVER_CARD_TOOLS, create_mcp_server
 
     server = create_mcp_server()
     tools = _run(server.list_tools())
     names = {t.name for t in tools}
-    assert names == {
-        "scan",
-        "check",
-        "blast_radius",
-        "policy_check",
-        "registry_lookup",
-        "generate_sbom",
-        "compliance",
-        "remediate",
-        "skill_trust",
-        "verify",
-        "where",
-        "inventory",
-        "diff",
-        "marketplace_check",
-        "code_scan",
-        "context_graph",
-        "analytics_query",
-        "cis_benchmark",
-        "fleet_scan",
-        "runtime_correlate",
-        "vector_db_scan",
-        "aisvs_benchmark",
-        "gpu_infra_scan",
-        "dataset_card_scan",
-        "training_pipeline_scan",
-        "browser_extension_scan",
-        "model_provenance_scan",
-        "prompt_scan",
-        "model_file_scan",
-        "license_compliance_scan",
-        "ingest_external_scan",
-    }
+    assert names == {t["name"] for t in _SERVER_CARD_TOOLS}
 
 
 # ---------------------------------------------------------------------------

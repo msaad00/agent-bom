@@ -4,7 +4,7 @@ Start with:
     agent-bom mcp-server              # stdio (for Claude Desktop, Cursor, etc.)
     agent-bom mcp-server --sse        # SSE transport (for remote clients)
 
-Tools (30):
+Tools (31):
     scan                — Full discovery → scan → output pipeline
     check               — Check a specific package for CVEs before installing
     blast_radius        — Look up blast radius for a specific CVE
@@ -35,6 +35,7 @@ Tools (30):
     prompt_scan         — Scan prompt templates for injection risks
     model_file_scan     — Scan model files for serialization risks
     license_compliance_scan — Evaluate package licenses against SPDX compliance policy
+    ingest_external_scan   — Ingest Trivy, Grype, or Syft JSON output with blast radius analysis
 
 Resources (2):
     registry://servers  — Browse 427+ server security metadata registry
@@ -1346,6 +1347,50 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             _truncate_response=_truncate_response,
         )
 
+    # ── Tool 31: ingest_external_scan ───────────────────────────────
+
+    @mcp.tool(annotations=_READ_ONLY, title="Ingest External Scanner Report")
+    async def ingest_external_scan(
+        scan_json: Annotated[
+            str,
+            Field(
+                description="JSON string from Trivy, Grype, or Syft scan output",
+            ),
+        ],
+    ) -> dict:
+        """Ingest Trivy, Grype, or Syft JSON scan output and return packages with blast radius analysis.
+
+        Auto-detects the scanner format from the JSON structure:
+        - Trivy (``trivy fs --format json``): Results + Vulnerabilities
+        - Grype (``grype --output json``): matches array
+        - Syft (``syft --output syft-json``): artifacts + schema
+
+        Returns a summary of ingested packages and their vulnerability counts.
+        Pass the full JSON string from the scanner's ``--format json`` / ``--output json``
+        output as the ``scan_json`` argument.
+        """
+        import json as _json
+
+        from agent_bom.parsers.external_scanners import detect_and_parse
+
+        try:
+            data = _json.loads(scan_json)
+            packages = detect_and_parse(data)
+            return {
+                "packages": len(packages),
+                "ingested": [
+                    {
+                        "name": p.name,
+                        "version": p.version,
+                        "ecosystem": p.ecosystem,
+                        "vulnerabilities": len(p.vulnerabilities),
+                    }
+                    for p in packages[:50]
+                ],
+            }
+        except Exception as e:  # noqa: BLE001
+            return {"error": str(e)}
+
     # ── Custom routes: metadata + health ─────────────────────────────
 
     @mcp.custom_route("/.well-known/mcp/server-card.json", methods=["GET"])
@@ -1519,6 +1564,11 @@ _SERVER_CARD_TOOLS = [
             "Evaluate package licenses against SPDX compliance policy"
             " — 2,500+ licenses, network-copyleft detection, deprecated ID normalization"
         ),
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "ingest_external_scan",
+        "description": "Ingest Trivy, Grype, or Syft JSON scan output and return packages with blast radius analysis",
         "annotations": {"readOnlyHint": True},
     },
 ]

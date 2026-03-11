@@ -641,6 +641,9 @@ async def scan_agents(agents: list[Agent]) -> list[BlastRadius]:
     """Scan all agents' MCP server packages for vulnerabilities."""
     console.print("\n[bold blue]🛡️  Scanning for vulnerabilities...[/bold blue]\n")
 
+    def _pkg_key(pkg: Package) -> str:
+        return f"{pkg.ecosystem.lower()}:{normalize_package_name(pkg.name, pkg.ecosystem)}@{pkg.version}"
+
     # Collect all unique packages
     all_packages = []
     pkg_to_servers: dict[str, list[MCPServer]] = {}
@@ -649,7 +652,7 @@ async def scan_agents(agents: list[Agent]) -> list[BlastRadius]:
     for agent in agents:
         for server in agent.mcp_servers:
             for pkg in server.packages:
-                key = f"{pkg.ecosystem}:{pkg.name}@{pkg.version}"
+                key = _pkg_key(pkg)
                 all_packages.append(pkg)
 
                 if key not in pkg_to_servers:
@@ -665,7 +668,7 @@ async def scan_agents(agents: list[Agent]) -> list[BlastRadius]:
     seen = set()
     unique_packages = []
     for pkg in all_packages:
-        key = f"{pkg.ecosystem}:{pkg.name}@{pkg.version}"
+        key = _pkg_key(pkg)
         if key not in seen:
             seen.add(key)
             unique_packages.append(pkg)
@@ -678,15 +681,13 @@ async def scan_agents(agents: list[Agent]) -> list[BlastRadius]:
     vuln_map = {}
     for pkg in unique_packages:
         if pkg.vulnerabilities:
-            key = f"{pkg.ecosystem}:{pkg.name}@{pkg.version}"
-            vuln_map[key] = pkg.vulnerabilities
+            vuln_map[_pkg_key(pkg)] = pkg.vulnerabilities
 
     for agent in agents:
         for server in agent.mcp_servers:
             for pkg in server.packages:
-                key = f"{pkg.ecosystem}:{pkg.name}@{pkg.version}"
-                if key in vuln_map:
-                    pkg.vulnerabilities = vuln_map[key]
+                if _pkg_key(pkg) in vuln_map:
+                    pkg.vulnerabilities = vuln_map[_pkg_key(pkg)]
 
     # Build blast radius analysis
     blast_radii = []
@@ -694,7 +695,7 @@ async def scan_agents(agents: list[Agent]) -> list[BlastRadius]:
         if not pkg.vulnerabilities:
             continue
 
-        key = f"{pkg.ecosystem}:{pkg.name}@{pkg.version}"
+        key = _pkg_key(pkg)
         affected_servers = pkg_to_servers.get(key, [])
         affected_agents = pkg_to_agents.get(key, [])
 
@@ -840,7 +841,7 @@ async def scan_agents_with_enrichment(
             for agent in agents:
                 for server in agent.mcp_servers:
                     for pkg in server.packages:
-                        pk = f"{pkg.ecosystem}:{pkg.name}@{pkg.version}"
+                        pk = f"{pkg.ecosystem.lower()}:{normalize_package_name(pkg.name, pkg.ecosystem)}@{pkg.version}"
                         if pk not in seen_keys:
                             seen_keys.add(pk)
                             unique_pkgs.append(pkg)

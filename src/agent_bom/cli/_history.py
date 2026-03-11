@@ -198,13 +198,15 @@ def rescan_command(baseline: str, output: Optional[str], md: Optional[str], enri
         con.print(f"  [red]OSV query failed: {exc}[/red]")
         sys.exit(2)
 
+    from agent_bom.models import normalize_package_name
+
     # ── Optional NVD/EPSS/KEV enrichment ─────────────────────────────────────
     if enrich:
         try:
             from agent_bom.enrichment import enrich_vulnerabilities
 
             for pkg in packages:
-                key = f"{pkg.ecosystem.lower()}:{pkg.name}@{pkg.version}"
+                key = f"{pkg.ecosystem.lower()}:{normalize_package_name(pkg.name, pkg.ecosystem)}@{pkg.version}"
                 vulns = [build_vulnerabilities([v], pkg) for v in fresh_results.get(key, [])]
                 flat = [v for sub in vulns for v in sub]
                 asyncio.run(enrich_vulnerabilities(flat))
@@ -226,8 +228,8 @@ def rescan_command(baseline: str, output: Optional[str], md: Optional[str], enri
     newly_found: list[dict] = []
 
     for pkg in packages:
-        key = f"{pkg.ecosystem.lower()}:{pkg.name}@{pkg.version}"
-        baseline_key = f"{pkg.ecosystem.lower()}:{pkg.name}@{pkg.version}"
+        key = f"{pkg.ecosystem.lower()}:{normalize_package_name(pkg.name, pkg.ecosystem)}@{pkg.version}"
+        baseline_key = f"{pkg.ecosystem.lower()}:{normalize_package_name(pkg.name, pkg.ecosystem)}@{pkg.version}"
         old_ids = baseline_vuln_ids.get(baseline_key, set())
         fresh_vulns = build_vulnerabilities(fresh_results.get(key, []), pkg)
         new_ids = {v.id for v in fresh_vulns}

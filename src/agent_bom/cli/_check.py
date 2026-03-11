@@ -109,7 +109,9 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bo
 
     with console.status("[bold]Querying OSV...[/bold]", spinner="dots"):
         results = asyncio.run(query_osv_batch([pkg]))
-    key = f"{ecosystem}:{name}@{version}"
+    from agent_bom.models import normalize_package_name
+
+    key = f"{ecosystem}:{normalize_package_name(name, ecosystem)}@{version}"
     vuln_data = results.get(key, [])
 
     if not vuln_data:

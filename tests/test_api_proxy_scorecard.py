@@ -20,10 +20,10 @@ from agent_bom.api.server import (
 
 def test_proxy_status_no_session():
     """Returns no_proxy_session when no proxy has run."""
-    import agent_bom.api.server as srv
+    import agent_bom.api.routes.proxy as proxy_mod
 
     # Reset state
-    srv._proxy_metrics = None
+    proxy_mod._proxy_metrics = None
     old = os.environ.pop("AGENT_BOM_LOG", None)
     try:
         client = TestClient(app)
@@ -38,7 +38,7 @@ def test_proxy_status_no_session():
 
 def test_proxy_status_with_metrics():
     """Returns metrics when push_proxy_metrics has been called."""
-    import agent_bom.api.server as srv
+    import agent_bom.api.routes.proxy as proxy_mod
 
     metrics = {
         "type": "proxy_summary",
@@ -56,14 +56,14 @@ def test_proxy_status_with_metrics():
     assert data["total_blocked"] == 3
 
     # Cleanup
-    srv._proxy_metrics = None
+    proxy_mod._proxy_metrics = None
 
 
 def test_proxy_status_from_log():
     """Reads metrics from a JSONL audit log file via AGENT_BOM_LOG env."""
-    import agent_bom.api.server as srv
+    import agent_bom.api.routes.proxy as proxy_mod
 
-    srv._proxy_metrics = None
+    proxy_mod._proxy_metrics = None
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
         f.write(json.dumps({"type": "tools/call", "tool": "read"}) + "\n")
@@ -88,9 +88,9 @@ def test_proxy_status_from_log():
 
 def test_proxy_status_from_log_no_summary():
     """Returns no_proxy_session when log file has no proxy_summary."""
-    import agent_bom.api.server as srv
+    import agent_bom.api.routes.proxy as proxy_mod
 
-    srv._proxy_metrics = None
+    proxy_mod._proxy_metrics = None
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
         f.write(json.dumps({"type": "tools/call", "tool": "read"}) + "\n")
@@ -117,9 +117,9 @@ def test_proxy_status_from_log_no_summary():
 
 def test_proxy_alerts_empty():
     """Returns empty list when no alerts."""
-    import agent_bom.api.server as srv
+    import agent_bom.api.routes.proxy as proxy_mod
 
-    srv._proxy_alerts.clear()
+    proxy_mod._proxy_alerts.clear()
     old = os.environ.pop("AGENT_BOM_LOG", None)
     try:
         client = TestClient(app)
@@ -135,9 +135,9 @@ def test_proxy_alerts_empty():
 
 def test_proxy_alerts_with_data():
     """Returns alerts pushed via push_proxy_alert."""
-    import agent_bom.api.server as srv
+    import agent_bom.api.routes.proxy as proxy_mod
 
-    srv._proxy_alerts.clear()
+    proxy_mod._proxy_alerts.clear()
     push_proxy_alert(
         {
             "type": "runtime_alert",
@@ -162,14 +162,14 @@ def test_proxy_alerts_with_data():
     assert data["count"] == 2
 
     # Cleanup
-    srv._proxy_alerts.clear()
+    proxy_mod._proxy_alerts.clear()
 
 
 def test_proxy_alerts_filter_severity():
     """Filters alerts by severity query param."""
-    import agent_bom.api.server as srv
+    import agent_bom.api.routes.proxy as proxy_mod
 
-    srv._proxy_alerts.clear()
+    proxy_mod._proxy_alerts.clear()
     push_proxy_alert({"type": "runtime_alert", "detector": "cred", "severity": "critical", "message": "a"})
     push_proxy_alert({"type": "runtime_alert", "detector": "arg", "severity": "high", "message": "b"})
     push_proxy_alert({"type": "runtime_alert", "detector": "cred2", "severity": "critical", "message": "c"})
@@ -182,14 +182,14 @@ def test_proxy_alerts_filter_severity():
     for alert in data["alerts"]:
         assert alert["severity"] == "critical"
 
-    srv._proxy_alerts.clear()
+    proxy_mod._proxy_alerts.clear()
 
 
 def test_proxy_alerts_filter_detector():
     """Filters alerts by detector query param."""
-    import agent_bom.api.server as srv
+    import agent_bom.api.routes.proxy as proxy_mod
 
-    srv._proxy_alerts.clear()
+    proxy_mod._proxy_alerts.clear()
     push_proxy_alert({"type": "runtime_alert", "detector": "credential_leak", "severity": "critical", "message": "a"})
     push_proxy_alert({"type": "runtime_alert", "detector": "argument_analyzer", "severity": "high", "message": "b"})
 
@@ -200,14 +200,14 @@ def test_proxy_alerts_filter_detector():
     assert data["count"] == 1
     assert data["alerts"][0]["detector"] == "credential_leak"
 
-    srv._proxy_alerts.clear()
+    proxy_mod._proxy_alerts.clear()
 
 
 def test_proxy_alerts_from_log():
     """Reads alerts from a JSONL audit log file via AGENT_BOM_LOG env."""
-    import agent_bom.api.server as srv
+    import agent_bom.api.routes.proxy as proxy_mod
 
-    srv._proxy_alerts.clear()
+    proxy_mod._proxy_alerts.clear()
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
         f.write(json.dumps({"type": "tools/call", "tool": "read"}) + "\n")
@@ -233,9 +233,9 @@ def test_proxy_alerts_from_log():
 
 def test_proxy_alerts_limit():
     """Respects the limit query param."""
-    import agent_bom.api.server as srv
+    import agent_bom.api.routes.proxy as proxy_mod
 
-    srv._proxy_alerts.clear()
+    proxy_mod._proxy_alerts.clear()
     for i in range(10):
         push_proxy_alert({"type": "runtime_alert", "detector": f"d{i}", "severity": "high", "message": f"m{i}"})
 
@@ -245,7 +245,7 @@ def test_proxy_alerts_limit():
     data = resp.json()
     assert data["count"] == 3
 
-    srv._proxy_alerts.clear()
+    proxy_mod._proxy_alerts.clear()
 
 
 # ── /v1/scorecard ─────────────────────────────────────────────────────────

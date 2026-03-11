@@ -462,3 +462,123 @@ def test_init_db_passes_integrity_check(tmp_path, caplog):
         conn.close()
     # A fresh DB should pass — no integrity warning
     assert "integrity check" not in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# _cvss_to_severity — branches
+# ---------------------------------------------------------------------------
+
+
+def test_cvss_to_severity_none():
+    from agent_bom.db.sync import _cvss_to_severity
+
+    assert _cvss_to_severity(None) == "unknown"
+
+
+def test_cvss_to_severity_critical():
+    from agent_bom.db.sync import _cvss_to_severity
+
+    assert _cvss_to_severity(9.5) == "critical"
+
+
+def test_cvss_to_severity_high():
+    from agent_bom.db.sync import _cvss_to_severity
+
+    assert _cvss_to_severity(8.0) == "high"
+
+
+def test_cvss_to_severity_medium():
+    from agent_bom.db.sync import _cvss_to_severity
+
+    assert _cvss_to_severity(5.5) == "medium"
+
+
+def test_cvss_to_severity_low():
+    from agent_bom.db.sync import _cvss_to_severity
+
+    assert _cvss_to_severity(2.5) == "low"
+
+
+def test_cvss_to_severity_unknown_score():
+    from agent_bom.db.sync import _cvss_to_severity
+
+    assert _cvss_to_severity(0.0) == "unknown"
+
+
+# ---------------------------------------------------------------------------
+# _parse_osv_entry — CVSS / database_specific paths
+# ---------------------------------------------------------------------------
+
+
+def test_parse_osv_entry_with_cvss_score_str():
+    """database_specific cvss as string is cast to float."""
+    data = {
+        "id": "CVE-2024-CVSS-STR",
+        "summary": "Test with string CVSS",
+        "published": "2024-01-01T00:00:00Z",
+        "modified": "2024-01-02T00:00:00Z",
+        "database_specific": {"cvss": "7.5"},
+        "affected": [],
+    }
+    result = _parse_osv_entry(data)
+    assert result is not None
+    vuln_row, _ = result
+    assert vuln_row["cvss_score"] == 7.5
+    assert vuln_row["severity"] == "high"
+
+
+def test_parse_osv_entry_with_cvss_score_numeric():
+    """database_specific cvss as a float."""
+    data = {
+        "id": "CVE-2024-CVSS-NUM",
+        "summary": "Numeric CVSS",
+        "published": "2024-01-01T00:00:00Z",
+        "modified": "2024-01-02T00:00:00Z",
+        "database_specific": {"cvss_score": 9.8},
+        "affected": [],
+    }
+    result = _parse_osv_entry(data)
+    assert result is not None
+    vuln_row, _ = result
+    assert vuln_row["severity"] == "critical"
+
+
+def test_parse_osv_entry_with_cvss_severity_type():
+    """CVSS_V3 severity type sets cvss_vector."""
+    data = {
+        "id": "CVE-2024-VEC",
+        "summary": "CVSS vector test",
+        "published": "2024-01-01T00:00:00Z",
+        "modified": "2024-01-02T00:00:00Z",
+        "severity": [{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}],
+        "affected": [],
+    }
+    result = _parse_osv_entry(data)
+    assert result is not None
+    vuln_row, _ = result
+    assert vuln_row["cvss_vector"] is not None
+
+
+# ---------------------------------------------------------------------------
+# sync_db — dispatcher with mocked sources
+# ---------------------------------------------------------------------------
+
+
+def test_sync_db_single_kev_source(tmp_path):
+    """sync_db with sources=['kev'] only calls sync_kev."""
+    from agent_bom.db.sync import sync_db
+
+    with patch("agent_bom.db.sync.sync_kev", return_value=10) as mock_kev:
+        result = sync_db(path=tmp_path / "test.db", sources=["kev"])
+    assert result == {"kev": 10}
+    mock_kev.assert_called_once()
+
+
+def test_sync_db_single_epss_source(tmp_path):
+    """sync_db with sources=['epss'] only calls sync_epss."""
+    from agent_bom.db.sync import sync_db
+
+    with patch("agent_bom.db.sync.sync_epss", return_value=500) as mock_epss:
+        result = sync_db(path=tmp_path / "test.db", sources=["epss"])
+    assert result == {"epss": 500}
+    mock_epss.assert_called_once()

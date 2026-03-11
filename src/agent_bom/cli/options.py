@@ -303,6 +303,17 @@ def policy_options(fn):
             click.option("--fail-if-ai-risk", is_flag=True, help="Exit 1 if an AI framework package with credentials has vulnerabilities"),
             click.option("--save", "save_report", is_flag=True, help="Save this scan to ~/.agent-bom/history/ for future diffing"),
             click.option("--baseline", type=click.Path(exists=True), help="Path to a baseline report JSON to diff against current scan"),
+            click.option(
+                "--delta",
+                "delta_mode",
+                is_flag=True,
+                default=False,
+                help=(
+                    "Delta mode: report only new findings vs baseline (--baseline). "
+                    "Exit code is based on new findings only — pre-existing are suppressed. "
+                    "Use in CI to surface only what the current PR introduced."
+                ),
+            ),
             click.option("--policy", type=click.Path(exists=True), help="Policy file (JSON/YAML) with declarative security rules"),
         ]
     )(fn)

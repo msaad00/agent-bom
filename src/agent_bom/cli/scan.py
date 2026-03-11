@@ -84,6 +84,7 @@ def scan(
     fail_if_ai_risk: bool,
     save_report: bool,
     baseline: Optional[str],
+    delta_mode: bool,
     policy: Optional[str],
     sbom_file: Optional[str],
     sbom_name: Optional[str],
@@ -2718,6 +2719,39 @@ def scan(
         diff = diff_reports(baseline_data, current_report_json)
         print_diff(diff)
 
+    # Step 7a: Delta mode — exit code based on new findings only
+    _delta_result = None
+    if delta_mode:
+        from agent_bom.scan_delta import compute_delta, load_baseline
+
+        _baseline_path = baseline
+        if not _baseline_path:
+            from agent_bom.scan_delta import _DEFAULT_BASELINE_PATH
+
+            if _DEFAULT_BASELINE_PATH.exists():
+                _baseline_path = str(_DEFAULT_BASELINE_PATH)
+            else:
+                logger.warning(
+                    "Delta mode requested but no --baseline file specified and no auto-baseline found at %s. Skipping delta filter.",
+                    _DEFAULT_BASELINE_PATH,
+                )
+
+        if _baseline_path:
+            try:
+                _baseline_data = load_baseline(_baseline_path)
+                _delta_result = compute_delta(current_report_json, _baseline_data)
+                _delta_result.baseline_path = _baseline_path
+                if not quiet:
+                    from rich.console import Console as _Console
+
+                    _Console().print(f"\n[bold]Delta:[/bold] {_delta_result.summary_line()} (baseline: {_baseline_path})\n")
+                # Patch output JSON with delta info
+                from agent_bom.scan_delta import apply_delta_to_scan
+
+                current_report_json = apply_delta_to_scan(current_report_json, _delta_result)
+            except (FileNotFoundError, ValueError) as exc:
+                logger.warning("Delta baseline error: %s — skipping delta filter", exc)
+
     # Step 7b: Policy evaluation
     policy_passed = True
     if policy and blast_radii:
@@ -2908,6 +2942,13 @@ def scan(
     from agent_bom.vex import is_vex_suppressed as _is_vex_suppressed
 
     _active_blast_radii = [br for br in blast_radii if not _is_vex_suppressed(br.vulnerability)]
+
+    # Delta mode: further restrict active findings to new-only (pre-existing suppressed)
+    if _delta_result is not None:
+        _new_keys = {(d.get("vulnerability_id", "").upper(), d.get("package", "")) for d in _delta_result.new_items}
+        _active_blast_radii = [
+            br for br in _active_blast_radii if (br.vulnerability.id.upper(), f"{br.package.name}@{br.package.version}") in _new_keys
+        ]
 
     if fail_on_severity and _active_blast_radii:
         threshold = SEVERITY_ORDER.get(fail_on_severity, 0)

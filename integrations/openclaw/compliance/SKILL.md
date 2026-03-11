@@ -5,7 +5,7 @@ description: >-
   MITRE ATLAS, EU AI Act, NIST AI RMF, and custom policy-as-code rules. Generate
   SBOMs in CycloneDX or SPDX format. Use when the user mentions compliance checking,
   security policy enforcement, SBOM generation, or regulatory frameworks.
-version: 0.69.0
+version: 0.69.1
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. No credentials required for

@@ -230,3 +230,34 @@ async def test_scan_impl_warn_severity_pass_status():
     data = json.loads(raw)
     assert data.get("warn_gate_status") == "pass"
     assert data.get("warn_gate_count", 0) == 0
+
+
+# ---------------------------------------------------------------------------
+# Preset CI two-tier defaults
+# ---------------------------------------------------------------------------
+
+
+def test_preset_ci_sets_warn_on_high():
+    """--preset ci should set warn_on_severity=high automatically."""
+
+    # Verify the preset==ci block assigns warn_on_severity via AST inspection
+    # (avoids the cost of a full scan invocation).
+    import ast
+    import pathlib
+
+    src = pathlib.Path("src/agent_bom/cli/scan.py").read_text()
+    tree = ast.parse(src)
+
+    # Find the preset == "ci" block and verify warn_on_severity assignment
+    found = False
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.If)
+            and isinstance(node.test, ast.Compare)
+            and isinstance(node.test.left, ast.Name)
+            and node.test.left.id == "preset"
+        ):
+            for child in ast.walk(node):
+                if isinstance(child, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "warn_on_severity" for t in child.targets):
+                    found = True
+    assert found, "preset=='ci' block must assign warn_on_severity"

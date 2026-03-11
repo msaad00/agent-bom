@@ -225,6 +225,7 @@ def scan(
     self_scan: bool,
     demo: bool,
     correlate_log: Optional[str],
+    external_scan_path: Optional[str],
 ):
     """Discover agents, extract dependencies, scan for vulnerabilities.
 
@@ -601,6 +602,38 @@ def scan(
             sbom_packages = []  # consumed — don't merge into another server
         except (FileNotFoundError, ValueError) as e:
             con.print(f"\n  [red]SBOM error: {e}[/red]")
+            sys.exit(1)
+
+    # Step 1b2: Ingest external scanner report (--external-scan)
+    if not skill_only and external_scan_path:
+        import json as _json
+
+        from agent_bom.models import Agent, AgentType, MCPServer, TransportType
+        from agent_bom.parsers.external_scanners import detect_and_parse
+
+        try:
+            with open(external_scan_path) as _ext_f:
+                _ext_data = _json.load(_ext_f)
+            _ext_packages = detect_and_parse(_ext_data)
+            _ext_resource_name = Path(external_scan_path).stem
+            con.print(f"\n  [green]✓[/green] Ingested {len(_ext_packages)} packages from Trivy/Grype/Syft report\n")
+            _ext_server = MCPServer(
+                name=_ext_resource_name,
+                command="external-scan",
+                args=[external_scan_path],
+                transport=TransportType.STDIO,
+                packages=_ext_packages,
+            )
+            _ext_agent = Agent(
+                name=f"external-scan:{_ext_resource_name}",
+                agent_type=AgentType.CUSTOM,
+                config_path=external_scan_path,
+                source="external-scan",
+                mcp_servers=[_ext_server],
+            )
+            agents.append(_ext_agent)
+        except (FileNotFoundError, ValueError, _json.JSONDecodeError) as e:
+            con.print(f"\n  [red]External scan error: {e}[/red]")
             sys.exit(1)
 
     # Step 1c: Discover K8s container images (--k8s)
@@ -2026,6 +2059,8 @@ def scan(
         _scan_sources.append("image")
     if sbom_file:
         _scan_sources.append("sbom")
+    if external_scan_path:
+        _scan_sources.append("external_scan")
     if k8s or k8s_mcp:
         _scan_sources.append("k8s")
     if filesystem_paths:

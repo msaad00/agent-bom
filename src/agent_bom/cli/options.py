@@ -95,6 +95,13 @@ def input_options(fn):
             click.option(
                 "--demo", is_flag=True, default=False, help="Run a demo scan with bundled inventory containing known-vulnerable packages."
             ),
+            click.option(
+                "--external-scan",
+                "external_scan_path",
+                type=click.Path(exists=True),
+                default=None,
+                help="Path to Trivy, Grype, or Syft JSON output. Ingests findings and adds blast radius analysis.",
+            ),
         ]
     )(fn)
 

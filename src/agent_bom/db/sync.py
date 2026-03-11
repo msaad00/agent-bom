@@ -26,6 +26,22 @@ from typing import Optional
 
 _logger = logging.getLogger(__name__)
 
+
+def _validate_sync_url(url: str, param_name: str = "url") -> None:
+    """Reject non-HTTPS URLs for sync sources.
+
+    All sync sources must use HTTPS.  Accepting ``file://`` or ``http://``
+    custom URLs would allow an attacker who controls the environment to point
+    the syncer at a malicious local file or a plaintext server.
+
+    Raises ``ValueError`` with a descriptive message on invalid URLs.
+    """
+    if not url.startswith("https://"):
+        raise ValueError(
+            f"{param_name} must use https:// — got {url!r}. Only HTTPS URLs are accepted for vulnerability database sync sources."
+        )
+
+
 # Source URLs — all public, no auth required
 _OSV_ALL_ZIP_URL = "https://osv-vulnerabilities.storage.googleapis.com/all.zip"
 _EPSS_CSV_URL = "https://epss.cyentia.com/epss_scores-current.csv.gz"
@@ -207,6 +223,7 @@ def sync_osv(conn: sqlite3.Connection, url: Optional[str] = None, max_entries: i
     import urllib.request
 
     src = url or _OSV_ALL_ZIP_URL
+    _validate_sync_url(src, "osv url")
     _logger.info("Downloading OSV bulk export from %s …", src)
 
     try:
@@ -252,6 +269,7 @@ def sync_epss(conn: sqlite3.Connection, url: Optional[str] = None) -> int:
     import urllib.request
 
     src = url or _EPSS_CSV_URL
+    _validate_sync_url(src, "epss url")
     _logger.info("Downloading EPSS scores from %s …", src)
 
     try:
@@ -319,6 +337,7 @@ def sync_kev(conn: sqlite3.Connection, url: Optional[str] = None) -> int:
     import urllib.request
 
     src = url or _KEV_JSON_URL
+    _validate_sync_url(src, "kev url")
     _logger.info("Downloading CISA KEV catalog from %s …", src)
 
     try:

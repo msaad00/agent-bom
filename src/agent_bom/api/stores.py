@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 from agent_bom.config import API_MAX_IN_MEMORY_JOBS as _MAX_IN_MEMORY_JOBS
 
 if TYPE_CHECKING:
-    from agent_bom.api.models import JobStatus, ScanJob
+    from agent_bom.api.models import ScanJob
     from agent_bom.api.schedule_store import ScheduleStore
 
 # ─── Lazy-init lock (protects all store singletons) ─────────────────────────
@@ -65,11 +65,7 @@ def _jobs_put(job_id: str, job: ScanJob) -> None:
     with _jobs_lock:
         _jobs[job_id] = job
         if len(_jobs) > _MAX_IN_MEMORY_JOBS:
-            completed = [
-                (jid, j)
-                for jid, j in _jobs.items()
-                if j.status in (JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED)
-            ]
+            completed = [(jid, j) for jid, j in _jobs.items() if j.status in (JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED)]
             completed.sort(key=lambda x: x[1].completed_at or "")
             for jid, _ in completed[: len(_jobs) - _MAX_IN_MEMORY_JOBS]:
                 _jobs.pop(jid, None)

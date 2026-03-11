@@ -370,14 +370,10 @@ def _run_scan_sync(job: ScanJob) -> None:
             if req.scope_servers or req.exclude_servers:
                 for agent in agents:
                     if req.scope_servers:
-                        agent.mcp_servers = [
-                            s for s in agent.mcp_servers if any(fnmatch.fnmatch(s.name, pat) for pat in req.scope_servers)
-                        ]
+                        agent.mcp_servers = [s for s in agent.mcp_servers if any(fnmatch.fnmatch(s.name, pat) for pat in req.scope_servers)]
                     if req.exclude_servers:
                         agent.mcp_servers = [
-                            s
-                            for s in agent.mcp_servers
-                            if not any(fnmatch.fnmatch(s.name, pat) for pat in req.exclude_servers)
+                            s for s in agent.mcp_servers if not any(fnmatch.fnmatch(s.name, pat) for pat in req.exclude_servers)
                         ]
             filtered_count = pre_filter - len(agents)
             if filtered_count:

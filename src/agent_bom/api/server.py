@@ -43,16 +43,17 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from typing import Any
+
+import agent_bom.api.stores as _stores  # module ref for mutable globals
 from agent_bom import __version__
-from agent_bom.api.middleware import (  # noqa: E402
+from agent_bom.api.middleware import (
     APIKeyMiddleware,
     MaxBodySizeMiddleware,
     RateLimitMiddleware,
     TrustHeadersMiddleware,
 )
-
-# ─── Extracted modules ────────────────────────────────────────────────────────
-from agent_bom.api.models import (  # noqa: E402
+from agent_bom.api.models import (
     BrowserExtensionsRequest,
     CreateKeyRequest,
     DatasetCardsRequest,
@@ -71,13 +72,19 @@ from agent_bom.api.models import (  # noqa: E402
     ScanRequest,
     ScheduleCreate,
     StateUpdate,
-    StepStatus,
     TrainingPipelinesRequest,
     VersionInfo,
 )
-
-# ─── Store accessors (extracted to stores.py) ────────────────────────────────
-from agent_bom.api.stores import (  # noqa: E402
+from agent_bom.api.pipeline import (  # noqa: F401
+    _STUCK_JOB_TIMEOUT,
+    PIPELINE_STEPS,
+    ScanPipeline,
+    _cleanup_loop,
+    _now,
+    _run_scan_sync,
+    _sync_scan_agents_to_fleet,
+)
+from agent_bom.api.stores import (  # noqa: F401
     _get_analytics_store,
     _get_configured_log_path,
     _get_exception_store,
@@ -103,22 +110,8 @@ from agent_bom.api.stores import (  # noqa: E402
     set_job_store,
     set_policy_store,
 )
-
-# ─── Pipeline (extracted to pipeline.py) ─────────────────────────────────────
-from agent_bom.api.pipeline import (  # noqa: E402
-    PIPELINE_STEPS,
-    ScanPipeline,
-    _STUCK_JOB_TIMEOUT,
-    _cleanup_loop,
-    _now,
-    _run_scan_sync,
-    _sync_scan_agents_to_fleet,
-)
-import agent_bom.api.stores as _stores  # noqa: E402 — module ref for mutable globals
-
-from agent_bom.config import API_JOB_TTL_SECONDS as _JOB_TTL_SECONDS  # noqa: E402
-from agent_bom.config import API_MAX_CONCURRENT_JOBS as _MAX_CONCURRENT_JOBS  # noqa: E402
-from agent_bom.security import sanitize_error  # noqa: E402
+from agent_bom.config import API_MAX_CONCURRENT_JOBS as _MAX_CONCURRENT_JOBS
+from agent_bom.security import sanitize_error
 
 _logger = logging.getLogger(__name__)
 
@@ -140,8 +133,6 @@ from contextlib import asynccontextmanager  # noqa: E402
 @asynccontextmanager
 async def _lifespan(app_instance: FastAPI):
     """Start background cleanup task on startup, cancel on shutdown."""
-    import agent_bom.api.stores as _stores
-
     # Priority: Snowflake > SQLite > InMemory (lazy default)
     if os.environ.get("SNOWFLAKE_ACCOUNT"):
         from agent_bom.api.snowflake_store import (
@@ -327,7 +318,6 @@ _executor = ThreadPoolExecutor(max_workers=min(8, (os.cpu_count() or 4) + 2))
 
 
 # ─── (Stores moved to stores.py, pipeline moved to pipeline.py) ──────────────
-
 
 
 _cleanup_task: asyncio.Task | None = None

@@ -95,7 +95,7 @@ jobs:
         run: uv sync --extra dev --extra api --extra mcp-server
 
       - name: Run tests with coverage
-        run: uv run pytest tests/ -v --tb=short --cov=agent_bom --cov-report=term-missing --cov-fail-under=73 -m "not network"
+        run: uv run pytest tests/ -v --tb=short --cov=agent_bom --cov-report=term-missing --cov-fail-under=79 -m "not network"
 
   # 3b. PR Base Branch Guard — prevent stacked PRs targeting feature branches
   base-branch-check:

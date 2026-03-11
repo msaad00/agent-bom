@@ -13,13 +13,49 @@ from __future__ import annotations
 import logging
 import os
 import sqlite3
+import stat
+import tempfile
 from pathlib import Path
 
 _logger = logging.getLogger(__name__)
 
 # Default DB path — overridable via env var
 _DEFAULT_DB_DIR = Path.home() / ".agent-bom" / "db"
-DB_PATH: Path = Path(os.environ.get("AGENT_BOM_DB_PATH", str(_DEFAULT_DB_DIR / "vulns.db")))
+_RAW_DB_PATH = os.environ.get("AGENT_BOM_DB_PATH", str(_DEFAULT_DB_DIR / "vulns.db"))
+
+
+def _validated_db_path(raw: str) -> Path:
+    """Resolve and validate the DB path.
+
+    Accepts paths inside the user's home directory or /tmp (for tests).
+    Rejects path traversal, symlink escapes, and arbitrary filesystem locations.
+    Raises ``ValueError`` on invalid paths so callers get a clear error at startup.
+    """
+    from agent_bom.security import SecurityError, validate_path
+
+    p = Path(raw).expanduser()
+    home = Path.home().resolve()
+    # Use the real system temp dir (macOS: /private/tmp or /private/var/folders/…)
+    tmp = Path(tempfile.gettempdir()).resolve()
+
+    # Allow home subtree or system temp subtree (test fixtures land in temp)
+    try:
+        resolved = p.resolve()
+    except (OSError, RuntimeError) as exc:
+        raise ValueError(f"AGENT_BOM_DB_PATH is not a valid path: {raw!r}") from exc
+
+    if not (resolved.is_relative_to(home) or resolved.is_relative_to(tmp)):
+        raise ValueError(f"AGENT_BOM_DB_PATH must be inside the home directory or /tmp, got: {raw!r}")
+
+    try:
+        validate_path(p)
+    except SecurityError as exc:
+        raise ValueError(f"AGENT_BOM_DB_PATH failed security check: {exc}") from exc
+
+    return p
+
+
+DB_PATH: Path = _validated_db_path(_RAW_DB_PATH)
 
 # Schema version — bump when DDL changes incompatibly
 _SCHEMA_VERSION = 1
@@ -79,10 +115,33 @@ CREATE TABLE IF NOT EXISTS sync_meta (
 """
 
 
+def _set_db_permissions(db_path: Path) -> None:
+    """Restrict the DB file to owner read/write only (0600).
+
+    No-ops silently on platforms where chmod is not supported (Windows).
+    """
+    try:
+        db_path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+    except (NotImplementedError, OSError):
+        pass  # Windows or read-only filesystem — best effort
+
+
+def _check_integrity(conn: sqlite3.Connection, db_path: Path) -> None:
+    """Run SQLite integrity_check; log a warning if the DB is corrupt."""
+    result = conn.execute("PRAGMA integrity_check").fetchone()
+    if result and result[0] != "ok":
+        _logger.warning(
+            "Local vuln DB at %s failed integrity check: %s — consider deleting and re-running 'agent-bom db update'",
+            db_path,
+            result[0],
+        )
+
+
 def init_db(path: Path | None = None) -> sqlite3.Connection:
     """Open (and initialise if needed) the local vuln DB.
 
     Creates the DB file and parent directories if they don't exist.
+    Applies 0600 file permissions and runs an integrity check on open.
     Returns an open connection with WAL mode and foreign keys enabled.
     """
     db_path = path or DB_PATH
@@ -91,6 +150,12 @@ def init_db(path: Path | None = None) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     conn.executescript(_DDL)
+
+    # Lock down file permissions after first creation
+    _set_db_permissions(db_path)
+
+    # Integrity check — warn on corrupt DB, don't crash (read-only callers are safe)
+    _check_integrity(conn, db_path)
 
     # Seed schema_version on first creation
     row = conn.execute("SELECT version FROM schema_version LIMIT 1").fetchone()

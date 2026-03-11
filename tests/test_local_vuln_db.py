@@ -9,12 +9,14 @@ from unittest.mock import patch
 import pytest
 
 from agent_bom.db.lookup import VulnDB, _version_affected, lookup_package
-from agent_bom.db.schema import DB_PATH, db_stats, init_db
+from agent_bom.db.schema import DB_PATH, _validated_db_path, db_stats, init_db
 from agent_bom.db.sync import (
     _ingest_osv_file,
     _parse_osv_entry,
+    _validate_sync_url,
     sync_epss,
     sync_kev,
+    sync_osv,
 )
 
 # ---------------------------------------------------------------------------
@@ -332,7 +334,7 @@ def test_sync_kev_mocked(tmp_db):
             pass
 
     with patch("urllib.request.urlopen", return_value=_FakeResp()):
-        count = sync_kev(tmp_db, url="http://fake/kev.json")
+        count = sync_kev(tmp_db, url="https://fake/kev.json")
 
     assert count == 2
     rows = tmp_db.execute("SELECT cve_id FROM kev_entries ORDER BY cve_id").fetchall()
@@ -359,8 +361,104 @@ def test_sync_epss_mocked(tmp_db):
             pass
 
     with patch("urllib.request.urlopen", return_value=_FakeResp()):
-        count = sync_epss(tmp_db, url="http://fake/epss.csv.gz")
+        count = sync_epss(tmp_db, url="https://fake/epss.csv.gz")
 
     assert count == 2
     row = tmp_db.execute("SELECT probability FROM epss_scores WHERE cve_id='CVE-2024-1'").fetchone()
     assert row[0] == pytest.approx(0.95)
+
+
+# ---------------------------------------------------------------------------
+# Security hardening — URL validation
+# ---------------------------------------------------------------------------
+
+
+def test_validate_sync_url_accepts_https():
+    _validate_sync_url("https://example.com/data.zip")  # must not raise
+
+
+def test_validate_sync_url_rejects_http():
+    with pytest.raises(ValueError, match="https://"):
+        _validate_sync_url("http://example.com/data.zip")
+
+
+def test_validate_sync_url_rejects_file_scheme():
+    with pytest.raises(ValueError, match="https://"):
+        _validate_sync_url("file:///tmp/osv.zip")
+
+
+def test_validate_sync_url_rejects_empty():
+    with pytest.raises(ValueError, match="https://"):
+        _validate_sync_url("")
+
+
+def test_sync_osv_rejects_http_url(tmp_db):
+    with pytest.raises(ValueError, match="https://"):
+        sync_osv(tmp_db, url="http://evil.example.com/osv.zip")
+
+
+def test_sync_epss_rejects_http_url(tmp_db):
+    with pytest.raises(ValueError, match="https://"):
+        sync_epss(tmp_db, url="http://evil.example.com/epss.csv.gz")
+
+
+def test_sync_kev_rejects_http_url(tmp_db):
+    with pytest.raises(ValueError, match="https://"):
+        sync_kev(tmp_db, url="http://evil.example.com/kev.json")
+
+
+# ---------------------------------------------------------------------------
+# Security hardening — DB path validation
+# ---------------------------------------------------------------------------
+
+
+def test_validated_db_path_accepts_home_subpath(tmp_path, monkeypatch):
+    """A path under the home directory is accepted."""
+    # tmp_path is typically under /tmp which is also allowed
+    p = _validated_db_path(str(tmp_path / "vulns.db"))
+    assert p == tmp_path / "vulns.db"
+
+
+def test_validated_db_path_rejects_arbitrary_system_path():
+    with pytest.raises(ValueError, match="home directory or /tmp"):
+        _validated_db_path("/etc/passwd")
+
+
+def test_validated_db_path_rejects_traversal(tmp_path):
+    with pytest.raises(ValueError):
+        _validated_db_path(str(tmp_path / ".." / ".." / "etc" / "passwd"))
+
+
+# ---------------------------------------------------------------------------
+# Security hardening — file permissions (0600)
+# ---------------------------------------------------------------------------
+
+
+def test_init_db_sets_restrictive_permissions(tmp_path):
+    import stat as _stat
+
+    db_file = tmp_path / "perms_test.db"
+    conn = init_db(db_file)
+    conn.close()
+    mode = db_file.stat().st_mode
+    # Owner read+write must be set; group and other must NOT be set
+    assert mode & _stat.S_IRUSR
+    assert mode & _stat.S_IWUSR
+    assert not (mode & _stat.S_IRGRP)
+    assert not (mode & _stat.S_IROTH)
+
+
+# ---------------------------------------------------------------------------
+# Security hardening — integrity check
+# ---------------------------------------------------------------------------
+
+
+def test_init_db_passes_integrity_check(tmp_path, caplog):
+    import logging
+
+    db_file = tmp_path / "integrity_test.db"
+    with caplog.at_level(logging.WARNING, logger="agent_bom.db.schema"):
+        conn = init_db(db_file)
+        conn.close()
+    # A fresh DB should pass — no integrity warning
+    assert "integrity check" not in caplog.text

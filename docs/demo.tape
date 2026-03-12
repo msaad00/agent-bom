@@ -62,16 +62,25 @@ Type "agent-bom diff /tmp/baseline.json /tmp/current.json"
 Enter
 Sleep 6s
 
-# ── 7. Output formats — SARIF to GitHub Security tab ─────────────────────────
-Type "agent-bom scan --demo -f sarif -o /tmp/results.sarif -q && echo 'SARIF written → upload to GitHub Security tab'"
+# ── 7. GPU / AI compute infra — NIM containers, CUDA CVEs ───────────────────
+Type "agent-bom scan --gpu-scan -q"
+Enter
+Sleep 18s
+
+# ── 8. Output formats — SARIF, CycloneDX SBOM, HTML ─────────────────────────
+Type "agent-bom scan --demo -f sarif -o /tmp/results.sarif -q && echo 'SARIF written → GitHub/GitLab Security tab'"
+Enter
+Sleep 10s
+
+Type "agent-bom scan --demo -f cyclonedx -o /tmp/bom.cdx.json -q && echo 'CycloneDX SBOM written → compliance / procurement'"
 Enter
 Sleep 10s
 
 Type "agent-bom scan --demo -f html -o /tmp/report.html -q && echo 'HTML report written'"
 Enter
-Sleep 10s
+Sleep 8s
 
-# ── 8. Runtime proxy — intercept live MCP traffic ────────────────────────────
+# ── 10. Runtime proxy — intercept live MCP traffic ───────────────────────────
 Type "agent-bom proxy --help | head -18"
 Enter
 Sleep 4s

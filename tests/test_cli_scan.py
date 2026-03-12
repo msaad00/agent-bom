@@ -385,3 +385,105 @@ def test_db_status_no_sync_meta(tmp_path):
     assert result.exit_code == 0
     # Should show a 'no sync data' or 'db update' hint
     assert "update" in result.output.lower() or "sync" in result.output.lower()
+
+
+# ---------------------------------------------------------------------------
+# Output format integration tests — badge, svg, graph, plain (#675)
+# ---------------------------------------------------------------------------
+
+
+def test_scan_format_plain_to_stdout():
+    """--format plain writes no-color text to stdout."""
+    with (
+        patch("agent_bom.cli.scan.discover_all", return_value=[]),
+        patch("agent_bom.cli.scan.scan_agents_sync", return_value=([], [])),
+        patch("agent_bom.cli.scan.resolve_all_versions_sync", return_value=[]),
+    ):
+        result = _run(["scan", "--format", "plain", "--no-scan"])
+    assert result.exit_code == 0
+
+
+def test_scan_format_plain_alias_text():
+    """--format text (alias for plain) also exits 0."""
+    with (
+        patch("agent_bom.cli.scan.discover_all", return_value=[]),
+        patch("agent_bom.cli.scan.scan_agents_sync", return_value=([], [])),
+        patch("agent_bom.cli.scan.resolve_all_versions_sync", return_value=[]),
+    ):
+        result = _run(["scan", "--format", "text", "--no-scan"])
+    assert result.exit_code == 0
+
+
+def test_scan_format_badge_writes_json(tmp_path):
+    """--format badge writes a Shields.io-compatible JSON file."""
+    out = tmp_path / "badge.json"
+    with (
+        patch("agent_bom.cli.scan.scan_agents_sync", return_value=([], [])),
+        patch("agent_bom.cli.scan.resolve_all_versions_sync", return_value=[]),
+    ):
+        result = _run(["scan", "--demo", "--format", "badge", "--output", str(out), "--no-scan"])
+    assert result.exit_code == 0
+    assert out.exists(), "badge output file was not created"
+    data = json.loads(out.read_text())
+    assert "schemaVersion" in data or "label" in data or "message" in data
+
+
+def test_scan_format_svg_writes_file(tmp_path):
+    """--format svg writes an SVG file."""
+    out = tmp_path / "report.svg"
+    with (
+        patch("agent_bom.cli.scan.scan_agents_sync", return_value=([], [])),
+        patch("agent_bom.cli.scan.resolve_all_versions_sync", return_value=[]),
+    ):
+        result = _run(["scan", "--demo", "--format", "svg", "--output", str(out), "--no-scan"])
+    assert result.exit_code == 0
+    assert out.exists(), "svg output file was not created"
+    content = out.read_text()
+    assert "<svg" in content
+
+
+def test_scan_format_graph_writes_json(tmp_path):
+    """--format graph writes Cytoscape JSON to a file."""
+    out = tmp_path / "graph.json"
+    with (
+        patch("agent_bom.cli.scan.scan_agents_sync", return_value=([], [])),
+        patch("agent_bom.cli.scan.resolve_all_versions_sync", return_value=[]),
+    ):
+        result = _run(["scan", "--demo", "--format", "graph", "--output", str(out), "--no-scan"])
+    assert result.exit_code == 0
+    assert out.exists(), "graph output file was not created"
+    data = json.loads(out.read_text())
+    assert "elements" in data
+    assert data.get("format") == "cytoscape"
+
+
+def test_scan_format_mermaid_writes_file(tmp_path):
+    """--format mermaid writes a Mermaid diagram file."""
+    out = tmp_path / "diagram.mmd"
+    with (
+        patch("agent_bom.cli.scan.scan_agents_sync", return_value=([], [])),
+        patch("agent_bom.cli.scan.resolve_all_versions_sync", return_value=[]),
+    ):
+        result = _run(["scan", "--demo", "--format", "mermaid", "--output", str(out), "--no-scan"])
+    assert result.exit_code == 0
+    assert out.exists(), "mermaid output file was not created"
+
+
+def test_scan_format_graph_html_writes_file(tmp_path):
+    """--format graph-html writes an interactive HTML file."""
+    out = tmp_path / "graph.html"
+    with (
+        patch("agent_bom.cli.scan.scan_agents_sync", return_value=([], [])),
+        patch("agent_bom.cli.scan.resolve_all_versions_sync", return_value=[]),
+    ):
+        result = _run(["scan", "--demo", "--format", "graph-html", "--output", str(out), "--no-scan"])
+    assert result.exit_code == 0
+    assert out.exists(), "graph-html output file was not created"
+    assert "<html" in out.read_text().lower()
+
+
+def test_format_choices_include_plain():
+    """--format help text must list 'plain' as a valid choice."""
+    result = _run(["scan", "--help"])
+    assert result.exit_code == 0
+    assert "plain" in result.output

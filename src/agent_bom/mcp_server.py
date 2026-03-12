@@ -299,7 +299,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         host=host,
         port=port,
         instructions=(
-            f"agent-bom v{__version__} — AI infrastructure security scanner with 30 tools. "
+            f"agent-bom v{__version__} — AI infrastructure security scanner with 31 tools. "
             "Scans packages and images for CVEs (OSV, NVD, EPSS, CISA KEV), maps blast radius "
             "from vulnerabilities to credentials and tools, generates SBOMs (CycloneDX, SPDX), "
             "enforces security policies, and maps to 11 compliance frameworks "

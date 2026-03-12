@@ -196,7 +196,7 @@ max_response_size_kb: 512
 agent-bom mcp-server
 ```
 
-Exposes 30 tools to any MCP-compatible AI assistant. Your agent can run scans, check packages, query the registry, and generate compliance reports without leaving the chat:
+Exposes 31 tools to any MCP-compatible AI assistant. Your agent can run scans, check packages, query the registry, and generate compliance reports without leaving the chat:
 
 ```
 scan_agents         — full scan, returns JSON report

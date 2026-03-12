@@ -1,0 +1,61 @@
+# agent-bom GCP custom IAM role — least privilege, read-only.
+#
+# Create:
+#   gcloud iam roles create agentBomScanner \
+#     --project=YOUR_PROJECT_ID \
+#     --file=gcp_readonly_role.yaml
+#
+# Grant to service account (recommended — no key files):
+#   gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+#     --member="serviceAccount:agent-bom@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+#     --role="projects/YOUR_PROJECT_ID/roles/agentBomScanner"
+#
+# Recommended: use Workload Identity Federation instead of service account keys.
+#   https://cloud.google.com/iam/docs/workload-identity-federation
+#
+# Key rotation (if key files are used):
+#   gcloud iam service-accounts keys create new-key.json --iam-account agent-bom@...
+#   gcloud iam service-accounts keys delete OLD_KEY_ID --iam-account agent-bom@...
+#   Rotate every 90 days. Never commit key files.
+
+title: agent-bom Scanner
+description: Read-only role for agent-bom AI infrastructure security scanning. No write access.
+stage: GA
+includedPermissions:
+  # GKE / Kubernetes
+  - container.clusters.get
+  - container.clusters.list
+  - container.nodes.get
+  - container.nodes.list
+  - container.pods.get
+  - container.pods.list
+  - container.deployments.get
+  - container.deployments.list
+
+  # Vertex AI / Model Garden
+  - aiplatform.endpoints.get
+  - aiplatform.endpoints.list
+  - aiplatform.models.get
+  - aiplatform.models.list
+  - aiplatform.notebookRuntimes.get
+  - aiplatform.notebookRuntimes.list
+  - aiplatform.pipelineJobs.get
+  - aiplatform.pipelineJobs.list
+
+  # Cloud Run (AI workloads deployed as services)
+  - run.services.get
+  - run.services.list
+
+  # Cloud Functions (Lambda equivalent)
+  - cloudfunctions.functions.get
+  - cloudfunctions.functions.list
+
+  # Artifact Registry (container image scanning)
+  - artifactregistry.repositories.get
+  - artifactregistry.repositories.list
+  - artifactregistry.tags.get
+  - artifactregistry.tags.list
+
+  # Resource metadata
+  - resourcemanager.projects.get
+  - resourcemanager.projects.list

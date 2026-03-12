@@ -3098,7 +3098,7 @@ def test_permissions_md_has_full_config_paths():
     """PERMISSIONS.md should list all 27 discovery config paths."""
     from pathlib import Path
 
-    p = Path(__file__).parent.parent / "PERMISSIONS.md"
+    p = Path(__file__).parent.parent / "docs" / "PERMISSIONS.md"
     content = p.read_text()
     assert "claude_desktop_config.json" in content
     assert "~/.cursor/mcp.json" in content

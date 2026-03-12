@@ -627,7 +627,7 @@ class TestGrafanaInfra:
     def test_docker_compose_exists(self):
         from pathlib import Path
 
-        p = Path(__file__).parent.parent / "infra" / "clickhouse" / "docker-compose.yml"
+        p = Path(__file__).parent.parent / "deploy" / "supabase" / "clickhouse" / "docker-compose.yml"
         assert p.exists()
         content = p.read_text()
         assert "clickhouse" in content
@@ -636,7 +636,7 @@ class TestGrafanaInfra:
     def test_init_sql_has_all_tables(self):
         from pathlib import Path
 
-        p = Path(__file__).parent.parent / "infra" / "clickhouse" / "init.sql"
+        p = Path(__file__).parent.parent / "deploy" / "supabase" / "clickhouse" / "init.sql"
         assert p.exists()
         content = p.read_text()
         assert "vulnerability_scans" in content
@@ -647,7 +647,7 @@ class TestGrafanaInfra:
     def test_grafana_dashboard_valid_json(self):
         from pathlib import Path
 
-        p = Path(__file__).parent.parent / "infra" / "clickhouse" / "grafana-dashboard.json"
+        p = Path(__file__).parent.parent / "deploy" / "supabase" / "clickhouse" / "grafana-dashboard.json"
         assert p.exists()
         data = json.loads(p.read_text())
         assert data["title"] == "agent-bom Security Analytics"
@@ -656,6 +656,6 @@ class TestGrafanaInfra:
     def test_grafana_datasource_provisioning(self):
         from pathlib import Path
 
-        p = Path(__file__).parent.parent / "infra" / "clickhouse" / "grafana-provisioning" / "datasources" / "clickhouse.yml"
+        p = Path(__file__).parent.parent / "deploy" / "supabase" / "clickhouse" / "grafana-provisioning" / "datasources" / "clickhouse.yml"
         assert p.exists()
         assert "grafana-clickhouse-datasource" in p.read_text()

@@ -282,6 +282,107 @@ def parse_pip_packages(directory: Path) -> list[Package]:
     return packages
 
 
+def _parse_requirements_lines(lines: list[str], is_direct: bool = True) -> list[Package]:
+    """Parse package entries from requirements-style text lines.
+
+    Shared helper used by ``parse_pip_compile_inputs`` for both ``.in``
+    source files and ``constraints.txt`` files.  Handles pinned (``==``),
+    ranged (``>=``, ``~=``, etc.), and bare name lines.  Comment lines and
+    option flags are silently skipped.
+    """
+    packages: list[Package] = []
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#") or line.startswith("-"):
+            continue
+        m = re.match(r"^([a-zA-Z0-9_.-]+)\s*([=<>!~]+)\s*([a-zA-Z0-9_.*+-]+)", line)
+        if m:
+            req_name, _, req_version = m.groups()
+            packages.append(
+                Package(
+                    name=req_name,
+                    version=req_version,
+                    ecosystem="pypi",
+                    purl=f"pkg:pypi/{req_name}@{req_version}",
+                    is_direct=is_direct,
+                )
+            )
+        else:
+            bare = re.match(r"^([a-zA-Z0-9_.-]+)", line)
+            if bare:
+                packages.append(
+                    Package(
+                        name=bare.group(1),
+                        version="unknown",
+                        ecosystem="pypi",
+                        is_direct=is_direct,
+                    )
+                )
+    return packages
+
+
+def parse_pip_compile_inputs(directory: Path) -> list[Package]:
+    """Parse pip-compile source (``.in``) and constraints files.
+
+    pip-tools compiles abstract ``requirements.in`` files into pinned
+    ``requirements.txt`` lockfiles.  This parser handles the following cases:
+
+    * If both ``requirements.in`` and ``requirements.txt`` already exist the
+      compiled ``.txt`` is preferred (handled by ``parse_pip_packages``).
+      This function only runs when ``.in`` files exist *without* a
+      corresponding compiled ``.txt`` to avoid double-counting.
+    * ``constraints.txt`` — version constraints rather than direct installs;
+      marked ``is_direct=False``.
+
+    Candidate ``.in`` file names::
+
+        requirements.in, requirements-dev.in, requirements-prod.in,
+        base.in, dev.in, prod.in
+
+    Returns an empty list when no ``.in`` or ``constraints.txt`` files exist.
+    """
+    in_candidates = [
+        "requirements.in",
+        "requirements-dev.in",
+        "requirements-prod.in",
+        "base.in",
+        "dev.in",
+        "prod.in",
+    ]
+
+    packages: list[Package] = []
+
+    for in_name in in_candidates:
+        in_file = directory / in_name
+        if not in_file.exists():
+            continue
+        # If a compiled .txt counterpart exists, skip: parse_pip_packages handles it.
+        compiled_name = in_name.replace(".in", ".txt")
+        if (directory / compiled_name).exists():
+            logger.debug(
+                "Skipping %s — compiled %s exists and takes precedence",
+                in_file,
+                compiled_name,
+            )
+            continue
+        try:
+            in_lines = in_file.read_text(encoding="utf-8").splitlines()
+            packages.extend(_parse_requirements_lines(in_lines, is_direct=True))
+        except OSError as exc:
+            logger.debug("Failed to read %s: %s", in_file, exc)
+
+    # constraints.txt — version pins for transitive deps; not direct installs
+    constraints_file = directory / "constraints.txt"
+    if constraints_file.exists():
+        try:
+            c_lines = constraints_file.read_text(encoding="utf-8").splitlines()
+            packages.extend(_parse_requirements_lines(c_lines, is_direct=False))
+        except OSError as exc:
+            logger.debug("Failed to read %s: %s", constraints_file, exc)
+
+    return packages
+
+
 def parse_pip_environment(python_exec: str | None = None) -> list[Package]:
     """Scan an installed Python environment via ``pip list --format=json``.
 

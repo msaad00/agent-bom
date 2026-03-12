@@ -27,10 +27,7 @@ metadata:
       env: []
       credentials: none
     credential_policy: "Zero credentials required. Optional env vars below increase rate limits. They are never auto-discovered, inferred, or transmitted."
-    optional_env:
-      - name: NVD_API_KEY
-        purpose: "Increases NVD API rate limit (scanning works without it)"
-        required: false
+    optional_env: []
     optional_bins:
       - syft
       - grype

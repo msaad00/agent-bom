@@ -217,7 +217,7 @@ agent-bom introspect --all --baseline baseline.json               # exit 1 on ne
 
 </details>
 
-Auto-discovers 21 MCP client types: Claude Desktop, Claude Code, Cursor, Windsurf, Cline, VS Code Copilot, Continue, Zed, Cortex Code, Codex CLI, Gemini CLI, Goose, Snowflake CLI, OpenClaw, Roo Code, Amazon Q, ToolHive, Docker MCP Toolkit, JetBrains AI, Junie, and custom paths.
+Auto-discovers 22 MCP client types: Claude Desktop, Claude Code, Cursor, Windsurf, Cline, VS Code Copilot, Continue, Zed, Cortex Code, Codex CLI, Gemini CLI, Goose, Snowflake CLI, OpenClaw, Roo Code, Amazon Q, ToolHive, Docker MCP Toolkit, JetBrains AI, Junie, Copilot CLI, Tabnine, and custom paths.
 
 <p align="center">
   <picture>
@@ -237,7 +237,7 @@ Auto-discovers 21 MCP client types: Claude Desktop, Claude Code, Cursor, Windsur
 |---|---|---|
 | Package CVE detection | Yes | Yes (OSV + NVD + EPSS + CISA KEV + GHSA + NVIDIA CSAF) |
 | SBOM generation | Yes | Yes (CycloneDX 1.6, SPDX 3.0, SARIF) |
-| **AI agent discovery** | -- | 21 MCP client types + Docker Compose + running processes + containers + K8s pods/CRDs |
+| **AI agent discovery** | -- | 22 MCP client types + Docker Compose + running processes + containers + K8s pods/CRDs |
 | **GPU/ML package scanning** | -- | NVIDIA CSAF advisories for CUDA, cuDNN, PyTorch, TensorFlow, JAX, vLLM + AMD ROCm via OSV |
 | **AI supply chain** | -- | Model provenance (pickle risk, digest, gating), HuggingFace Hub, Ollama, MLflow, W&B |
 | **AI cloud inventory** | -- | Coreweave, Nebius, Snowflake, Databricks, OpenAI, HuggingFace Hub — config discovery + CVE tagging |
@@ -538,7 +538,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full diagrams: data flow pi
 - [ ] Trend analytics — vulnerability count over time, resolution velocity
 
 **Agents / MCP**
-- [x] 21 MCP client config discovery paths, live introspection, tool drift detection
+- [x] 22 MCP client config discovery paths, live introspection, tool drift detection
 - [x] Runtime proxy with 7 behavioral detectors (rug pull, injection, credential leak, exfil sequences, response cloaking, rate limiting, vector DB injection) + semantic injection scoring
 - [x] Semantic injection scoring — weighted 10-signal model, 0.0–1.0 risk score, MEDIUM/HIGH alerts
 - [ ] Agent memory / vector store content scanning for injected instructions

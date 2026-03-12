@@ -16,7 +16,7 @@ metadata:
   source: https://github.com/msaad00/agent-bom
   pypi: https://pypi.org/project/agent-bom/
   scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
-  tests: 4449
+  tests: 5939
   install:
     pipx: agent-bom
     pip: agent-bom

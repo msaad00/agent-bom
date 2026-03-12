@@ -8,7 +8,7 @@ Module dependency map and data flow guide for contributors.
 Discovery ──> Scanning ──> Enrichment ──> Blast Radius ──> Compliance ──> Output
     │              │            │              │                │            │
     ▼              ▼            ▼              ▼                ▼            ▼
- 21 MCP         OSV API      NVD/EPSS      Risk scoring     11 frameworks  JSON/SARIF/
+ 22 MCP         OSV API      NVD/EPSS      Risk scoring     11 frameworks  JSON/SARIF/
  clients        batch        KEV/GHSA      per CVE with     mapped per     CycloneDX/
  parsed         query        enrichment    agent/cred/tool  finding        SPDX/SVG
                                            reachability
@@ -19,7 +19,7 @@ Discovery ──> Scanning ──> Enrichment ──> Blast Radius ──> Compl
 | Entry point | File | Purpose |
 |---|---|---|
 | CLI | `cli.py` | Click-based CLI with 22+ commands and groups |
-| MCP Server | `mcp_server.py` | FastMCP server with 30 tools |
+| MCP Server | `mcp_server.py` | FastMCP server with 31 tools |
 | Proxy | `proxy.py` | MCP JSON-RPC proxy with runtime enforcement |
 | API | `api/server.py` | FastAPI REST server with job queue |
 
@@ -30,7 +30,7 @@ Discovery ──> Scanning ──> Enrichment ──> Blast Radius ──> Compl
 ```
 src/agent_bom/
 ├── discovery/           # MCP client/server discovery
-│   └── __init__.py      # CONFIG_LOCATIONS for 21 agent types, JSON/TOML/YAML parsers;
+│   └── __init__.py      # CONFIG_LOCATIONS for 22 agent types, JSON/TOML/YAML parsers;
 │                        #   discover_running_processes() (psutil), discover_container_labels()
 │                        #   (docker inspect), discover_k8s_mcp_servers() (kubectl pods + CRDs)
 ├── scanners/            # Vulnerability scanning

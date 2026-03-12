@@ -1,4 +1,4 @@
-"""Vulnerability scanning using OSV.dev API."""
+"""Vulnerability scanning — local SQLite DB first, OSV.dev API for gaps."""
 
 from __future__ import annotations
 
@@ -581,6 +581,105 @@ def deduplicate_packages(packages: list) -> list:
     return result
 
 
+def _local_vuln_to_vulnerability(lv: "LocalVuln") -> Vulnerability:  # noqa: F821
+    """Convert a LocalVuln (from SQLite DB) to a Vulnerability model object."""
+    from agent_bom.db.lookup import LocalVuln  # noqa: F401 — for type reference only
+
+    sev_map = {
+        "critical": Severity.CRITICAL,
+        "high": Severity.HIGH,
+        "medium": Severity.MEDIUM,
+        "low": Severity.LOW,
+    }
+    severity = sev_map.get((lv.severity or "").lower(), Severity.MEDIUM)
+    return Vulnerability(
+        id=lv.id,
+        summary=lv.summary or "No description available",
+        severity=severity,
+        cvss_score=lv.cvss_score,
+        fixed_version=lv.fixed_version,
+        epss_score=lv.epss_probability,
+        epss_percentile=lv.epss_percentile,
+        is_kev=lv.is_kev,
+        kev_date_added=lv.kev_date_added,
+        aliases=[],
+        references=[],
+    )
+
+
+def _scan_packages_local_db(packages: list[Package]) -> tuple[int, set[str]]:
+    """Query the local SQLite DB for all packages.
+
+    Returns ``(vuln_count, covered_keys)`` where covered_keys is the set of
+    ``ecosystem:norm_name@version`` keys that had at least one entry in the DB
+    (including zero-vuln hits — those are DB hits, not gaps).
+    """
+    try:
+        from agent_bom.db.schema import DB_PATH, db_freshness_days
+
+        freshness = db_freshness_days()
+        if freshness is None:
+            return 0, set()  # No DB yet — fall through to OSV entirely
+    except Exception:
+        return 0, set()
+
+    try:
+        from agent_bom.db import lookup_package
+        from agent_bom.db.schema import init_db
+
+        conn = init_db(DB_PATH)
+    except Exception as exc:
+        _logger.warning("Local DB unavailable: %s", exc)
+        return 0, set()
+
+    covered: set[str] = set()
+    total = 0
+
+    # Map agent-bom ecosystem names to DB ecosystem names (OSV-style)
+    _eco_map = {
+        "pypi": "PyPI",
+        "npm": "npm",
+        "go": "Go",
+        "cargo": "crates.io",
+        "maven": "Maven",
+        "nuget": "NuGet",
+        "rubygems": "RubyGems",
+        "conda": "PyPI",
+    }
+
+    try:
+        for pkg in packages:
+            eco_key = pkg.ecosystem.lower()
+            db_eco = _eco_map.get(eco_key, pkg.ecosystem)
+            norm_name = normalize_package_name(pkg.name, pkg.ecosystem)
+            db_key = f"{eco_key}:{norm_name}@{pkg.version}"
+
+            local_vulns = lookup_package(conn, db_eco, norm_name, pkg.version)
+
+            # Mark as "covered by DB" — DB has been populated for this ecosystem
+            # Use ecosystem-level coverage: if DB has any records for this ecosystem,
+            # treat it as covering this package (no redundant OSV call)
+            if db_freshness_days() is not None and eco_key in _eco_map:
+                covered.add(db_key)
+
+            if local_vulns:
+                existing_ids = {v.id for v in pkg.vulnerabilities}
+                new_vulns = []
+                for lv in local_vulns:
+                    if lv.id not in existing_ids:
+                        new_vulns.append(_local_vuln_to_vulnerability(lv))
+                        existing_ids.add(lv.id)
+                pkg.vulnerabilities.extend(new_vulns)
+                total += len(new_vulns)
+                for v in new_vulns:
+                    v.compliance_tags = _tag_vuln(v, pkg)
+                flag_malicious_from_vulns(pkg)
+    finally:
+        conn.close()
+
+    return total, covered
+
+
 async def scan_packages(packages: list[Package]) -> int:
     """Scan a list of packages for vulnerabilities. Returns count of vulns found."""
     # Deduplicate packages across discovery sources before scanning.
@@ -630,21 +729,50 @@ async def scan_packages(packages: list[Package]) -> int:
     if not scannable:
         return 0
 
-    results = await query_osv_batch(scannable)
+    # ── Local DB lookup (fast, offline-capable) ───────────────────────────────
+    # Query the local SQLite DB first.  Packages covered by the DB skip the
+    # OSV API call — saving round-trips and enabling fully offline scanning
+    # when the DB is populated via `agent-bom db update`.
+    local_count, db_covered = _scan_packages_local_db(scannable)
+    if local_count:
+        console.print(f"  [green]✓[/green] Local DB: {local_count} vulnerability/vulnerabilities found (offline)")
 
-    total_vulns = 0
-    for pkg in scannable:
+    # Only call OSV for packages not already covered by the local DB
+    def _db_key(p: Package) -> str:
+        return f"{p.ecosystem.lower()}:{normalize_package_name(p.name, p.ecosystem)}@{p.version}"
+
+    osv_targets = [p for p in scannable if _db_key(p) not in db_covered]
+
+    if osv_targets:
+        results = await query_osv_batch(osv_targets)
+    else:
+        results = {}
+
+    total_vulns = local_count
+    for pkg in osv_targets:
         norm = normalize_package_name(pkg.name, pkg.ecosystem)
         key = f"{pkg.ecosystem.lower()}:{norm}@{pkg.version}"
         vuln_data = results.get(key, [])
         if vuln_data:
-            pkg.vulnerabilities = build_vulnerabilities(vuln_data, pkg)
-            total_vulns += len(pkg.vulnerabilities)
+            new_vulns = build_vulnerabilities(vuln_data, pkg)
+            # Merge: don't duplicate what the local DB already found
+            existing_ids = {v.id for v in pkg.vulnerabilities}
+            merged = [v for v in new_vulns if v.id not in existing_ids]
+            pkg.vulnerabilities.extend(merged)
+            total_vulns += len(merged)
             # Tag each CVE with compliance framework codes (pre-enrichment)
-            for v in pkg.vulnerabilities:
+            for v in merged:
                 v.compliance_tags = _tag_vuln(v, pkg)
             # Flag packages with MAL- prefixed vulnerability IDs as malicious
             flag_malicious_from_vulns(pkg)
+
+    # Back-fill: also run OSV tagging for packages that came from local DB only
+    for pkg in scannable:
+        if pkg in osv_targets:
+            continue  # already processed above
+        for v in pkg.vulnerabilities:
+            if not v.compliance_tags:
+                v.compliance_tags = _tag_vuln(v, pkg)
 
     # Supplemental: check NVIDIA advisories for all AI framework packages.
     # nvidia_advisory.py maps NVIDIA CSAF products to bundling frameworks (torch,

@@ -1,7 +1,8 @@
-"""Go, Maven, Cargo, and uvx package parsers.
+"""Go, Maven, Cargo, Gradle, conda, and uvx package parsers.
 
-Parses go.mod/go.sum, pom.xml, Cargo.lock, and detects packages
-from uvx/uv commands.
+Parses go.mod/go.sum, pom.xml, Cargo.lock, build.gradle/build.gradle.kts/
+libs.versions.toml/gradle.lockfile, environment.yml/conda-lock.yml,
+and detects packages from uvx/uv commands.
 """
 
 from __future__ import annotations
@@ -617,6 +618,424 @@ def parse_cargo_packages(directory: Path) -> list[Package]:
                 current_version = None
 
     return packages
+
+
+def parse_gradle_packages(directory: Path) -> list[Package]:
+    """Parse packages from Gradle build files.
+
+    Supports four file formats, checked in priority order:
+
+    1. ``gradle/libs.versions.toml`` — Gradle 7+ version catalog (most accurate,
+       resolves ``version.ref`` aliases).
+    2. ``gradle.lockfile`` — resolved dependency lock file (exact versions,
+       used when present alongside build scripts).
+    3. ``build.gradle.kts`` — Kotlin DSL (double-quoted strings).
+    4. ``build.gradle`` — Groovy DSL (single- or double-quoted strings).
+
+    When a ``gradle.lockfile`` is found it supersedes any packages collected
+    from the DSL build scripts because it contains resolved, exact versions.
+
+    All dependencies use ``ecosystem="maven"`` because Gradle resolves
+    packages through Maven Central / Maven repositories.  PURL format is
+    ``pkg:maven/{groupId}/{artifactId}@{version}``.
+
+    ``testImplementation`` and ``testRuntimeOnly`` configurations are marked
+    ``is_direct=False``; all other configurations are ``is_direct=True``.
+
+    Args:
+        directory: Project directory to search for Gradle build files.
+
+    Returns:
+        List of :class:`~agent_bom.models.Package` objects.  Empty list when
+        no Gradle files are found.
+    """
+    _test_configs = frozenset({"testimplementation", "testruntimeonly", "testcompileonly"})
+
+    def _make_package(group_id: str, artifact_id: str, version: str, config: str = "") -> Package:
+        name = f"{group_id}:{artifact_id}"
+        is_direct = config.lower() not in _test_configs
+        return Package(
+            name=name,
+            version=version,
+            ecosystem="maven",
+            purl=f"pkg:maven/{group_id}/{artifact_id}@{version}",
+            is_direct=is_direct,
+        )
+
+    # ── 1. gradle/libs.versions.toml ─────────────────────────────────────────
+    def _parse_version_catalog(path: Path) -> list[Package]:
+        if not path.exists():
+            return []
+        packages: list[Package] = []
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return []
+
+        # Parse [versions] section — simple key = "value" pairs
+        versions: dict[str, str] = {}
+        in_versions = False
+        in_libraries = False
+        library_lines: list[str] = []
+
+        for line in content.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("["):
+                in_versions = stripped.startswith("[versions]")
+                in_libraries = stripped.startswith("[libraries]")
+                continue
+            if in_versions and "=" in stripped and not stripped.startswith("#"):
+                k, _, v = stripped.partition("=")
+                versions[k.strip()] = v.strip().strip('"').strip("'")
+            if in_libraries and stripped and not stripped.startswith("#"):
+                library_lines.append(stripped)
+
+        # Parse library entries in [libraries]
+        # Formats:
+        #   alias = { module = "group:artifact", version.ref = "alias" }
+        #   alias = { group = "g", name = "a", version.ref = "alias" }
+        #   alias = { module = "group:artifact", version = "1.0" }
+        for line in library_lines:
+            if "=" not in line:
+                continue
+            _, _, rest = line.partition("=")
+            rest = rest.strip()
+
+            # Extract module or group+name
+            module_m = re.search(r'module\s*=\s*["\']([^"\']+)["\']', rest)
+            group_m = re.search(r'group\s*=\s*["\']([^"\']+)["\']', rest)
+            name_m = re.search(r'\bname\s*=\s*["\']([^"\']+)["\']', rest)
+
+            if module_m:
+                parts = module_m.group(1).split(":")
+                if len(parts) != 2:
+                    continue
+                group_id, artifact_id = parts[0].strip(), parts[1].strip()
+            elif group_m and name_m:
+                group_id = group_m.group(1).strip()
+                artifact_id = name_m.group(1).strip()
+            else:
+                continue
+
+            if not group_id or not artifact_id:
+                continue
+
+            # Resolve version
+            version_ref_m = re.search(r'version\.ref\s*=\s*["\']([^"\']+)["\']', rest)
+            version_lit_m = re.search(r'\bversion\s*=\s*["\']([^"\']+)["\']', rest)
+
+            if version_ref_m:
+                ref = version_ref_m.group(1).strip()
+                version = versions.get(ref, "")
+            elif version_lit_m:
+                version = version_lit_m.group(1).strip()
+            else:
+                version = ""
+
+            if not version:
+                continue
+
+            packages.append(_make_package(group_id, artifact_id, version))
+
+        return packages
+
+    # ── 2. gradle.lockfile ────────────────────────────────────────────────────
+    def _parse_lockfile(path: Path) -> list[Package]:
+        if not path.exists():
+            return []
+        packages: list[Package] = []
+        try:
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            return []
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith("#") or line.startswith("empty="):
+                continue
+            # Format: groupId:artifactId:version=configurations
+            dep_part = line.split("=")[0].strip()
+            parts = dep_part.split(":")
+            if len(parts) >= 3:
+                group_id, artifact_id, version = parts[0], parts[1], parts[2]
+                if group_id and artifact_id and version:
+                    packages.append(_make_package(group_id, artifact_id, version))
+        return packages
+
+    # ── 3 & 4. build.gradle / build.gradle.kts ───────────────────────────────
+    def _parse_build_gradle(path: Path) -> list[Package]:
+        if not path.exists():
+            return []
+        packages: list[Package] = []
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return []
+
+        # Match Kotlin DSL: configName("group:artifact:version")
+        # and Groovy DSL:   configName 'group:artifact:version'
+        #                   configName "group:artifact:version"
+        _config_pat = (
+            r"implementation|api|runtimeOnly|compileOnly|testImplementation|"
+            r"testRuntimeOnly|testCompileOnly|annotationProcessor|kapt|"
+            r"androidTestImplementation|debugImplementation|releaseImplementation"
+        )
+        _coord_pat = r"([\w][\w.\-]*):([\w][\w.\-]*):([\w][\w.\-]*)"
+        # Kotlin DSL: configName("g:a:v") or configName( "g:a:v" )
+        kotlin_re = re.compile(
+            r"\b(" + _config_pat + r')\s*\(\s*["\']' + _coord_pat + r'["\']',
+            re.IGNORECASE,
+        )
+        # Groovy DSL: configName 'g:a:v' or configName "g:a:v"
+        groovy_re = re.compile(
+            r"\b(" + _config_pat + r')\s+["\']' + _coord_pat + r'["\']',
+            re.IGNORECASE,
+        )
+        seen_coords: set[tuple[str, str, str]] = set()
+        for pattern in (kotlin_re, groovy_re):
+            for m in pattern.finditer(content):
+                config = m.group(1)
+                group_id = m.group(2)
+                artifact_id = m.group(3)
+                version = m.group(4)
+                coord = (group_id, artifact_id, version)
+                if group_id and artifact_id and version and coord not in seen_coords:
+                    seen_coords.add(coord)
+                    packages.append(_make_package(group_id, artifact_id, version, config))
+        return packages
+
+    # ── Dispatch ──────────────────────────────────────────────────────────────
+    catalog_path = directory / "gradle" / "libs.versions.toml"
+    lockfile_path = directory / "gradle.lockfile"
+    kts_path = directory / "build.gradle.kts"
+    groovy_path = directory / "build.gradle"
+
+    catalog_pkgs = _parse_version_catalog(catalog_path)
+    lockfile_pkgs = _parse_lockfile(lockfile_path)
+    kts_pkgs = _parse_build_gradle(kts_path)
+    groovy_pkgs = _parse_build_gradle(groovy_path)
+
+    # Merge: lockfile supersedes DSL scripts (more accurate resolved versions)
+    # Catalog is supplemental (may declare deps not in lockfile for non-locked configs)
+    if lockfile_pkgs:
+        # Use lockfile as canonical; augment with catalog extras
+        seen: set[tuple[str, str]] = {(p.name, p.version) for p in lockfile_pkgs}
+        merged = list(lockfile_pkgs)
+        for p in catalog_pkgs:
+            if (p.name, p.version) not in seen:
+                seen.add((p.name, p.version))
+                merged.append(p)
+        return merged
+
+    # No lockfile: combine DSL + catalog, deduplicate
+    all_pkgs = kts_pkgs + groovy_pkgs + catalog_pkgs
+    seen_names: set[str] = set()
+    unique: list[Package] = []
+    for p in all_pkgs:
+        if p.name not in seen_names:
+            seen_names.add(p.name)
+            unique.append(p)
+    return unique
+
+
+def parse_conda_packages(directory: Path) -> list[Package]:
+    """Parse packages from conda environment files and lock files.
+
+    Supports three file formats:
+
+    * ``environment.yml`` / ``environment.yaml`` — conda environment
+      specification.  Conda packages (``name=version``) are tagged
+      ``ecosystem="conda"``; pip sub-dependencies (under the ``pip:`` key)
+      are tagged ``ecosystem="pypi"``.  Channel prefixes such as
+      ``pytorch::pytorch=2.1.0`` are stripped.
+    * ``conda-lock.yml`` — platform-resolved lock file generated by
+      ``conda-lock``.  Packages are deduplicated across platforms; the
+      ``manager`` field determines ecosystem (``conda`` or ``pip``).
+
+    Version specifiers:
+
+    * ``=1.24.0`` → exact version ``1.24.0``
+    * ``>=1.24.0`` → stored as-is (``>=1.24.0``)
+    * No version → version stored as empty string ``""``
+
+    Args:
+        directory: Project directory to search for conda manifests.
+
+    Returns:
+        List of :class:`~agent_bom.models.Package` objects.  Empty list when
+        no conda files are found.
+    """
+    packages: list[Package] = []
+
+    # ── Helper: parse environment.yml / environment.yaml ─────────────────────
+    def _parse_env_file(path: Path) -> list[Package]:
+        pkgs: list[Package] = []
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return pkgs
+
+        # Try YAML first; fall back to line-by-line
+        data: dict | None = None
+        try:
+            import yaml  # type: ignore[import-untyped]
+
+            data = yaml.safe_load(content) or {}
+        except Exception:
+            data = None
+
+        if data is not None:
+            for dep in data.get("dependencies", []):
+                if isinstance(dep, str):
+                    # Strip channel prefix: "channel::name=version" → "name=version"
+                    if "::" in dep:
+                        dep = dep.split("::", 1)[1]
+                    # Parse "name=version" or "name=version=build"
+                    parts = dep.split("=", 1)
+                    pkg_name = parts[0].strip()
+                    pkg_version = parts[1].strip() if len(parts) >= 2 else ""
+                    if pkg_name:
+                        pkgs.append(
+                            Package(
+                                name=pkg_name,
+                                version=pkg_version,
+                                ecosystem="conda",
+                                purl=f"pkg:conda/{pkg_name}@{pkg_version}" if pkg_version else None,
+                                is_direct=True,
+                            )
+                        )
+                elif isinstance(dep, dict) and "pip" in dep:
+                    for pip_dep in dep.get("pip", []):
+                        if not isinstance(pip_dep, str):
+                            continue
+                        m = re.match(r"^([a-zA-Z0-9_.-]+)\s*([=<>!~]{1,2})\s*([a-zA-Z0-9_.*+!-]+)", pip_dep)
+                        if m:
+                            pip_name = m.group(1)
+                            pip_op = m.group(2)
+                            pip_ver = m.group(3)
+                            # Normalise double-equals to bare version for ==, keep others as specifier
+                            version_str = pip_ver if pip_op == "==" else f"{pip_op}{pip_ver}"
+                            pkgs.append(
+                                Package(
+                                    name=pip_name,
+                                    version=version_str,
+                                    ecosystem="pypi",
+                                    purl=f"pkg:pypi/{pip_name}@{version_str}",
+                                    is_direct=True,
+                                )
+                            )
+        else:
+            # Fallback: line-by-line (no yaml library)
+            in_deps = False
+            in_pip = False
+            for line in content.splitlines():
+                stripped = line.strip()
+                if stripped.startswith("dependencies:"):
+                    in_deps = True
+                    in_pip = False
+                    continue
+                if in_deps:
+                    if stripped.startswith("- pip:"):
+                        in_pip = True
+                        continue
+                    if stripped.startswith("-") and not stripped.startswith("- pip"):
+                        in_pip = False
+                        dep_raw = stripped.lstrip("- ").strip()
+                        if "::" in dep_raw:
+                            dep_raw = dep_raw.split("::", 1)[1]
+                        parts = dep_raw.split("=", 1)
+                        pkg_name = parts[0].strip()
+                        pkg_version = parts[1].strip() if len(parts) >= 2 else ""
+                        if pkg_name:
+                            pkgs.append(
+                                Package(
+                                    name=pkg_name,
+                                    version=pkg_version,
+                                    ecosystem="conda",
+                                    purl=f"pkg:conda/{pkg_name}@{pkg_version}" if pkg_version else None,
+                                    is_direct=True,
+                                )
+                            )
+                    elif in_pip and stripped.startswith("-"):
+                        pip_dep = stripped.lstrip("- ").strip()
+                        m = re.match(r"^([a-zA-Z0-9_.-]+)\s*([=<>!~]{1,2})\s*([a-zA-Z0-9_.*+!-]+)", pip_dep)
+                        if m:
+                            pip_name = m.group(1)
+                            pip_op = m.group(2)
+                            pip_ver = m.group(3)
+                            version_str = pip_ver if pip_op == "==" else f"{pip_op}{pip_ver}"
+                            pkgs.append(
+                                Package(
+                                    name=pip_name,
+                                    version=version_str,
+                                    ecosystem="pypi",
+                                    purl=f"pkg:pypi/{pip_name}@{version_str}",
+                                    is_direct=True,
+                                )
+                            )
+        return pkgs
+
+    # ── Helper: parse conda-lock.yml ─────────────────────────────────────────
+    def _parse_lock_file(path: Path) -> list[Package]:
+        pkgs: list[Package] = []
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return pkgs
+
+        data: dict | None = None
+        try:
+            import yaml  # type: ignore[import-untyped]
+
+            data = yaml.safe_load(content) or {}
+        except Exception:
+            data = None
+
+        if data is None:
+            return pkgs
+
+        seen: set[tuple[str, str, str]] = set()
+        for entry in data.get("package", []):
+            name = (entry.get("name") or "").strip()
+            version = str(entry.get("version") or "").strip()
+            manager = (entry.get("manager") or "conda").strip().lower()
+            if not name or not version:
+                continue
+            key = (name, version, manager)
+            if key in seen:
+                continue
+            seen.add(key)
+            ecosystem = "pypi" if manager == "pip" else "conda"
+            pkgs.append(
+                Package(
+                    name=name,
+                    version=version,
+                    ecosystem=ecosystem,
+                    purl=f"pkg:{ecosystem}/{name}@{version}",
+                    is_direct=True,
+                )
+            )
+        return pkgs
+
+    # ── Dispatch ──────────────────────────────────────────────────────────────
+    conda_lock = directory / "conda-lock.yml"
+    if conda_lock.exists():
+        packages.extend(_parse_lock_file(conda_lock))
+
+    for env_name in ("environment.yml", "environment.yaml"):
+        env_path = directory / env_name
+        if env_path.exists():
+            packages.extend(_parse_env_file(env_path))
+            break
+
+    # Deduplicate by (name, version, ecosystem)
+    seen_keys: set[tuple[str, str, str]] = set()
+    unique: list[Package] = []
+    for p in packages:
+        key = (p.name, p.version, p.ecosystem)
+        if key not in seen_keys:
+            seen_keys.add(key)
+            unique.append(p)
+    return unique
 
 
 def detect_uvx_package(server: MCPServer) -> list[Package]:

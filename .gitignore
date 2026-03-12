@@ -24,3 +24,5 @@ site/
 ui/out/
 ui/.next/
 .coverage
+.claude/worktrees/
+AUDIT_*.md

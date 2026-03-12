@@ -52,7 +52,7 @@ That's it. agent-bom discovers your MCP client configs (Claude Desktop, Cursor, 
 > **Traditional scanners tell you a package has a CVE.**
 > **agent-bom tells you which AI agents are compromised, which credentials leak, which tools an attacker reaches — and then blocks it in real time.**
 
-Three capabilities, one tool: **scanner** (CVEs, blast radius, compliance, supply chain) + **proxy** (intercepts MCP traffic, enforces policy, detects 7 behavioral attack patterns) + **instruction file trust** (audits CLAUDE.md, .cursorrules, AGENTS.md, SKILL.md for malicious patterns, typosquatting, and Sigstore provenance). Read-only. Agentless. Open source.
+Three capabilities, one tool: **scanner** (CVEs, blast radius, compliance, supply chain) + **proxy** (intercepts MCP traffic, enforces policy, detects 6 behavioral attack patterns) + **instruction file trust** (audits CLAUDE.md, .cursorrules, AGENTS.md, SKILL.md for malicious patterns, typosquatting, and Sigstore provenance). Read-only. Agentless. Open source.
 
 ```
 CVE-2025-1234  (CRITICAL . CVSS 9.8 . CISA KEV)
@@ -317,7 +317,7 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible
 | MCP Server | `agent-bom mcp-server` (31 tools) | Inside any MCP client |
 | Dashboard | `agent-bom serve` · [Full deploy guide](docs/DEPLOYMENT.md) | API + Next.js UI (15 pages) · Postgres/Supabase |
 | Runtime proxy | `agent-bom proxy` | Intercept + enforce MCP traffic in real time |
-| Protect engine | `agent-bom protect` | 7 behavioral detectors (rug pull, injection, exfil, credential leak) |
+| Protect engine | `agent-bom protect` | 6 behavioral detectors (rug pull, injection, exfil, credential leak, response cloaking, vector DB injection) |
 | Config watcher | `agent-bom watch` | Filesystem watch on MCP configs, alert on drift |
 | Pre-install guard | `agent-bom guard pip install <pkg>` | Block vulnerable installs |
 | Snowflake | [DEPLOYMENT.md](DEPLOYMENT.md) | Snowpark + SiS |
@@ -536,7 +536,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full diagrams: data flow pi
 
 **Agents / MCP**
 - [x] 22 MCP client config discovery paths, live introspection, tool drift detection
-- [x] Runtime proxy with 7 behavioral detectors (rug pull, injection, credential leak, exfil sequences, response cloaking, vector DB injection, semantic injection scoring)
+- [x] Runtime proxy with 6 behavioral detectors (rug pull, injection, credential leak, exfil sequences, response cloaking, vector DB injection) + semantic injection scoring
 - [x] Semantic injection scoring — weighted 10-signal model, 0.0–1.0 risk score, MEDIUM/HIGH alerts
 - [ ] Agent memory / vector store content scanning for injected instructions
 - [ ] LLM API call tracing (which model was called, with what context)

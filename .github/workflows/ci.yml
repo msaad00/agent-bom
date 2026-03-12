@@ -192,7 +192,7 @@ jobs:
           # Extract Dockerfile.sse ARG VERSION
           SSE_VER=$(python -c "
           import re
-          text = open('Dockerfile.sse').read()
+          text = open('deploy/docker/Dockerfile.sse').read()
           m = re.search(r'ARG VERSION=(\S+)', text)
           print(m.group(1))
           ")
@@ -200,7 +200,7 @@ jobs:
           # Extract Dockerfile.runtime ARG VERSION
           RUNTIME_VER=$(python -c "
           import re
-          text = open('Dockerfile.runtime').read()
+          text = open('deploy/docker/Dockerfile.runtime').read()
           m = re.search(r'ARG VERSION=(\S+)', text)
           print(m.group(1))
           ")
@@ -208,7 +208,7 @@ jobs:
           # Extract Dockerfile.snowpark ARG VERSION
           SNOWPARK_VER=$(python -c "
           import re
-          text = open('Dockerfile.snowpark').read()
+          text = open('deploy/docker/Dockerfile.snowpark').read()
           m = re.search(r'ARG VERSION=(\S+)', text)
           print(m.group(1))
           ")

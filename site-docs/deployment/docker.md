@@ -20,14 +20,14 @@ docker run --rm \
 ## Self-hosted SSE server
 
 ```bash
-docker build -f Dockerfile.sse -t agent-bom-sse .
+docker build -f deploy/docker/Dockerfile.sse -t agent-bom-sse .
 docker run -p 8080:8080 agent-bom-sse
 ```
 
 ## Runtime proxy sidecar
 
 ```bash
-docker build -f Dockerfile.runtime -t agent-bom-runtime .
+docker build -f deploy/docker/Dockerfile.runtime -t agent-bom-runtime .
 docker run --rm -i \
   -v ./audit-logs:/var/log/agent-bom \
   agent-bom-runtime \
@@ -41,6 +41,6 @@ docker run --rm -i \
 | Image | Purpose |
 |-------|---------|
 | `ghcr.io/msaad00/agent-bom:latest` | CLI scanner |
-| `Dockerfile.sse` | SSE MCP server |
-| `Dockerfile.runtime` | Runtime proxy |
-| `Dockerfile.snowpark` | Snowflake Native App |
+| `deploy/docker/Dockerfile.sse` | SSE MCP server |
+| `deploy/docker/Dockerfile.runtime` | Runtime proxy |
+| `deploy/docker/Dockerfile.snowpark` | Snowflake Native App |

@@ -31,7 +31,7 @@ The proxy interposes on the stdio channel between an MCP client (Claude Desktop,
 Build the slim runtime image:
 
 ```bash
-docker build -f Dockerfile.runtime -t agent-bom-runtime .
+docker build -f deploy/docker/Dockerfile.runtime -t agent-bom-runtime .
 ```
 
 Run as a wrapper around any MCP server:
@@ -47,10 +47,10 @@ docker run --rm \
 
 ### Docker Compose
 
-Use the provided `docker-compose.runtime.yml` for a complete sidecar example:
+Use the provided `deploy/docker-compose.runtime.yml` for a complete sidecar example:
 
 ```bash
-docker compose -f docker-compose.runtime.yml up
+docker compose -f deploy/docker-compose.runtime.yml up
 ```
 
 This starts:
@@ -427,11 +427,11 @@ To disable metrics, set `--metrics-port 0`.
 
 ### Grafana dashboard
 
-A pre-built Grafana dashboard is available at [`dashboards/grafana-agent-bom.json`](../dashboards/grafana-agent-bom.json). Import it into Grafana (Dashboards > Import) to get:
+A pre-built Grafana dashboard is available at [`deploy/grafana/grafana-agent-bom.json`](../deploy/grafana/grafana-agent-bom.json). Import it into Grafana (Dashboards > Import) to get:
 
 - Severity distribution (donut + trend lines)
 - Top blast radius scores and EPSS probabilities
 - Per-agent vulnerability and credential exposure tables
 - Proxy runtime panels (call rate, block reasons, latency p50/p95, replay rejections)
 
-See [`dashboards/README.md`](../dashboards/README.md) for setup details.
+See [`deploy/grafana/README.md`](../deploy/grafana/README.md) for setup details.

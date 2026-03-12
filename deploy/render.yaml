@@ -7,7 +7,7 @@ services:
   - type: web
     name: agent-bom-mcp
     runtime: docker
-    dockerfilePath: ./Dockerfile.sse
+    dockerfilePath: ./deploy/docker/Dockerfile.sse
     plan: free
     envVars:
       - key: PORT

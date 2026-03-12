@@ -5,7 +5,7 @@ A pre-built Grafana dashboard for visualizing agent-bom Prometheus metrics.
 ## Import
 
 1. Go to **Dashboards > Import** in Grafana
-2. Upload `dashboards/grafana-agent-bom.json`
+2. Upload `deploy/grafana/grafana-agent-bom.json`
 3. Select your Prometheus data source
 4. Click **Import**
 

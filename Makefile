@@ -39,10 +39,10 @@ e2e-test:  ## Run end-to-end tests
 	./test_e2e.sh
 
 docker-compose-up:  ## Start Docker Compose services
-	docker-compose up -d
+	docker-compose -f deploy/docker-compose.yml up -d
 
 docker-compose-down:  ## Stop Docker Compose services
-	docker-compose down -v
+	docker-compose -f deploy/docker-compose.yml down -v
 
 build-ui:  ## Build Next.js dashboard and bundle into package
 	bash scripts/build-ui.sh

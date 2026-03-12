@@ -3191,7 +3191,7 @@ def test_dockerfile_non_root():
     root = Path(__file__).parent.parent
     dockerfiles = [
         root / "Dockerfile",
-        root / "Dockerfile.sse",
+        root / "deploy" / "docker" / "Dockerfile.sse",
         root / "integrations" / "toolhive" / "Dockerfile.mcp",
     ]
     for df in dockerfiles:

@@ -10,8 +10,8 @@ on:
       - '**/mcp.json'
       - '.cursor/mcp.json'
       - '.vscode/mcp.json'
-      - 'docker-compose.yml'
-      - 'docker-compose.yaml'
+      - 'deploy/docker-compose.yml'
+      - 'deploy/docker-compose.yaml'
       - 'compose.yml'
       - 'compose.yaml'
 

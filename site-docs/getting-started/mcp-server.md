@@ -48,7 +48,7 @@ Add to your MCP client config:
 ## Self-hosted SSE
 
 ```bash
-docker build -f Dockerfile.sse -t agent-bom-sse .
+docker build -f deploy/docker/Dockerfile.sse -t agent-bom-sse .
 docker run -p 8080:8080 agent-bom-sse
 ```
 

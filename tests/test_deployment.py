@@ -13,8 +13,8 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def test_dockerfile_sse_exists():
     """Dockerfile.sse should exist with SSE transport config."""
-    f = ROOT / "Dockerfile.sse"
-    assert f.exists(), "Dockerfile.sse is missing"
+    f = ROOT / "deploy" / "docker" / "Dockerfile.sse"
+    assert f.exists(), "deploy/docker/Dockerfile.sse is missing"
     content = f.read_text()
     assert "mcp-server" in content
     assert "--transport" in content
@@ -24,8 +24,8 @@ def test_dockerfile_sse_exists():
 
 def test_railway_json_valid():
     """railway.json should be valid JSON with correct deploy config."""
-    f = ROOT / "railway.json"
-    assert f.exists(), "railway.json is missing"
+    f = ROOT / "deploy" / "railway.json"
+    assert f.exists(), "deploy/railway.json is missing"
     data = json.loads(f.read_text())
     assert "build" in data
     assert "deploy" in data
@@ -37,8 +37,8 @@ def test_render_yaml_valid():
     """render.yaml should be valid YAML with service config."""
     import yaml
 
-    f = ROOT / "render.yaml"
-    assert f.exists(), "render.yaml is missing"
+    f = ROOT / "deploy" / "render.yaml"
+    assert f.exists(), "deploy/render.yaml is missing"
     data = yaml.safe_load(f.read_text())
     assert "services" in data
     assert len(data["services"]) >= 1
@@ -51,8 +51,8 @@ def test_fly_toml_valid():
     """fly.toml should be valid TOML with http_service config."""
     import toml
 
-    f = ROOT / "fly.toml"
-    assert f.exists(), "fly.toml is missing"
+    f = ROOT / "deploy" / "fly.toml"
+    assert f.exists(), "deploy/fly.toml is missing"
     data = toml.loads(f.read_text())
     assert "build" in data
     assert "http_service" in data
@@ -62,8 +62,8 @@ def test_fly_toml_valid():
 
 def test_procfile_exists():
     """Procfile should have web process with SSE transport."""
-    f = ROOT / "Procfile"
-    assert f.exists(), "Procfile is missing"
+    f = ROOT / "deploy" / "Procfile"
+    assert f.exists(), "deploy/Procfile is missing"
     content = f.read_text().strip()
     assert content.startswith("web:")
     assert "mcp-server" in content
@@ -104,7 +104,7 @@ def test_smithery_yaml_exists():
     """smithery.yaml should exist with stdio config."""
     import yaml
 
-    f = ROOT / "smithery.yaml"
+    f = ROOT / "integrations" / "smithery.yaml"
     assert f.exists()
     data = yaml.safe_load(f.read_text())
     assert data["runtime"] == "python"

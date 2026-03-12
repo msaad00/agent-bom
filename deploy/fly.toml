@@ -7,7 +7,7 @@ app = "agent-bom-mcp"
 primary_region = "iad"
 
 [build]
-  dockerfile = "Dockerfile.sse"
+  dockerfile = "deploy/docker/Dockerfile.sse"
 
 [env]
   PORT = "8423"

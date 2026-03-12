@@ -96,7 +96,7 @@ jobs:
         uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
         with:
           context: .
-          file: Dockerfile.sse
+          file: deploy/docker/Dockerfile.sse
           push: true
           build-args: |
             VERSION=${{ steps.version.outputs.version }}

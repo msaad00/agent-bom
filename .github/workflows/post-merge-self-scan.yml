@@ -41,7 +41,8 @@ jobs:
         id: dep_scan
         run: |
           set +e
-          uv run agent-bom scan --self-scan --output sarif --save sarif/self-dep.sarif --quiet
+          mkdir -p sarif
+          uv run agent-bom scan --self-scan --format sarif -o sarif/self-dep.sarif --quiet
           echo "dep_exit=$?" >> "$GITHUB_OUTPUT"
 
       - name: Run SAST scan on source code (--code)
@@ -50,20 +51,20 @@ jobs:
           set +e
           uv run agent-bom scan \
             --code src/agent_bom \
-            --output sarif \
-            --save sarif/self-sast.sarif \
+            --format sarif \
+            -o sarif/self-sast.sarif \
             --quiet
           echo "sast_exit=$?" >> "$GITHUB_OUTPUT"
 
       - name: Upload dep scan SARIF
-        if: always()
+        if: always() && hashFiles('sarif/self-dep.sarif') != ''
         uses: github/codeql-action/upload-sarif@89a39a4e59826350b863aa6b6252a07ad50cf83e # v4
         with:
           sarif_file: sarif/self-dep.sarif
           category: agent-bom-self-dep
 
       - name: Upload SAST SARIF
-        if: always()
+        if: always() && hashFiles('sarif/self-sast.sarif') != ''
         uses: github/codeql-action/upload-sarif@89a39a4e59826350b863aa6b6252a07ad50cf83e # v4
         with:
           sarif_file: sarif/self-sast.sarif
@@ -96,7 +97,7 @@ jobs:
         run: |
           mkdir -p sbom
           set +e
-          uv run agent-bom scan --self-scan --output cyclonedx --save sbom/agent-bom.cdx.json --quiet
+          uv run agent-bom scan --self-scan --format cyclonedx -o sbom/agent-bom.cdx.json --quiet
           echo "SBOM generated (exit $?)"
 
       - name: Upload SBOM artifact

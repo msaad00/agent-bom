@@ -121,13 +121,13 @@ jobs:
         run: |
           mkdir -p sarif
           uv run agent-bom scan --self-scan \
-            --output sarif \
-            --save sarif/release-self-dep.sarif \
+            --format sarif \
+            -o sarif/release-self-dep.sarif \
             --fail-on-severity critical \
             --quiet
 
       - name: Upload release self-scan SARIF
-        if: always()
+        if: always() && hashFiles('sarif/release-self-dep.sarif') != ''
         uses: github/codeql-action/upload-sarif@89a39a4e59826350b863aa6b6252a07ad50cf83e # v4
         with:
           sarif_file: sarif/release-self-dep.sarif

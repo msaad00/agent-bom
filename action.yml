@@ -20,7 +20,7 @@ inputs:
     required: false
     default: 'false'
   format:
-    description: 'Output format (sarif, json, cyclonedx, spdx, text, console, html, svg, mermaid, graph, graph-html, badge).'
+    description: 'Output format. Core: sarif (default), json, html, cyclonedx, spdx. Plain/no-color: plain (alias: text). Other: console, mermaid, svg, graph, graph-html, badge, prometheus.'
     required: false
     default: 'sarif'
   upload-sarif:

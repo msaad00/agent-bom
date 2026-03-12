@@ -240,6 +240,7 @@ def scan(
     demo: bool,
     correlate_log: Optional[str],
     external_scan_path: Optional[str],
+    ignore_file: Optional[str] = None,
 ):
     """Discover agents, extract dependencies, scan for vulnerabilities.
 
@@ -1459,6 +1460,17 @@ def scan(
                 )
         except Exception as e:
             con.print(f"\n  [yellow]⚠[/yellow] Runtime correlation failed: {e}")
+
+    # Apply ignore/allowlist file (.agent-bom-ignore.yaml or --ignore-file)
+    from agent_bom.ignores import apply_ignores, load_ignore_file
+
+    _ignore_entries = load_ignore_file(ignore_file)
+    if _ignore_entries:
+        blast_radii, _suppressed = apply_ignores(blast_radii, _ignore_entries)
+        if _suppressed and not quiet:
+            con.print(f"\n  [dim]Suppressed {_suppressed} finding(s) via ignore file[/dim]")
+        # Rebuild report.blast_radii to reflect suppressions
+        report.blast_radii = blast_radii
 
     # Attach blast_radii and report to context for downstream phases
     ctx.blast_radii = blast_radii

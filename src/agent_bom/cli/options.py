@@ -289,6 +289,17 @@ def vex_options(fn):
                 metavar="PATH",
                 help="Write generated VEX document to this file (default: agent-bom.vex.json)",
             ),
+            click.option(
+                "--ignore-file",
+                "ignore_file",
+                type=click.Path(),
+                default=None,
+                metavar="PATH",
+                help=(
+                    "Path to ignore/allowlist file (default: .agent-bom-ignore.yaml). "
+                    "Suppress known false positives by CVE ID, package, or finding type."
+                ),
+            ),
         ]
     )(fn)
 

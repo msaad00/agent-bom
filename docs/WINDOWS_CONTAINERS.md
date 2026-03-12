@@ -45,7 +45,7 @@ docker run --rm `
 
 ## Docker Compose on Windows
 
-Use the standard `docker-compose.fullstack.yml` with Windows-adjusted paths:
+Use the standard `deploy/docker-compose.fullstack.yml` with Windows-adjusted paths:
 
 ```yaml
 # docker-compose.override.yml (Windows)
@@ -61,7 +61,7 @@ services:
 Then run:
 
 ```powershell
-docker compose -f docker-compose.fullstack.yml -f docker-compose.override.yml up
+docker compose -f deploy/docker-compose.fullstack.yml -f docker-compose.override.yml up
 ```
 
 ---

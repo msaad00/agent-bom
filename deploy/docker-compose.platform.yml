@@ -10,7 +10,7 @@ version: "3.8"
 #
 # Usage:
 #   cp .env.example .env   # set POSTGRES_PASSWORD + POSTGRES_APP_PASSWORD
-#   docker compose -f docker-compose.platform.yml up --build
+#   docker compose -f deploy/docker-compose.platform.yml up --build
 
 services:
   postgres:
@@ -24,8 +24,8 @@ services:
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./infra/postgres/init-wrapper.sh:/docker-entrypoint-initdb.d/00-init-wrapper.sh:ro
-      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./supabase/postgres/init-wrapper.sh:/docker-entrypoint-initdb.d/00-init-wrapper.sh:ro
+      - ./supabase/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-agent_bom} -d ${POSTGRES_DB:-agent_bom}"]
       interval: 5s
@@ -47,7 +47,7 @@ services:
 
   api:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile
     image: agent-bom:latest
     container_name: agent-bom-api
@@ -76,7 +76,7 @@ services:
 
   ui:
     build:
-      context: ./ui
+      context: ../ui
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_URL: http://localhost:8422

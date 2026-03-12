@@ -61,12 +61,12 @@ When preparing a release, update the version in all of these files:
 1. `pyproject.toml` — `version = "X.Y.Z"`
 2. `src/agent_bom/__init__.py` — `__version__ = "X.Y.Z"`
 3. `Dockerfile` — version label
-4. `Dockerfile.sse` — `ARG VERSION=X.Y.Z`
+4. `deploy/docker/Dockerfile.sse` — `ARG VERSION=X.Y.Z`
 5. `integrations/mcp-registry/server.json` — `version`
 6. `integrations/openclaw/*/SKILL.md` — version in frontmatter (scan, compliance, registry, runtime)
 7. `action.yml` — version in description + branding
 8. `README.md` — version references in examples
-9. `PUBLISHING.md` — version references
+9. `docs/PUBLISHING.md` — version references
 10. `tests/test_version.py` — expected version string
 
 ## Honesty Rule

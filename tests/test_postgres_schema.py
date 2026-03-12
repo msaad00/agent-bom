@@ -1,4 +1,4 @@
-"""Tests for the PostgreSQL / Supabase schema (infra/postgres/init.sql).
+"""Tests for the PostgreSQL / Supabase schema (deploy/supabase/postgres/init.sql).
 
 Validates the DDL file structure without requiring a live database:
 - All expected tables are defined
@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-INIT_SQL = Path(__file__).parent.parent / "infra" / "postgres" / "init.sql"
+INIT_SQL = Path(__file__).parent.parent / "deploy" / "supabase" / "postgres" / "init.sql"
 SQL = INIT_SQL.read_text()
 
 

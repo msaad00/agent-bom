@@ -158,9 +158,9 @@ This triggers:
 | **PyPI** | `pyproject.toml` | release.yml | tag push |
 | **Docker Hub** | `Dockerfile` | release.yml | tag push |
 | **GHCR (stdio)** | `Dockerfile.mcp` | publish-mcp.yml | workflow_run |
-| **GHCR (SSE)** | `Dockerfile.sse` | publish-mcp.yml | workflow_run |
+| **GHCR (SSE)** | `deploy/docker/Dockerfile.sse` | publish-mcp.yml | workflow_run |
 | **Smithery** | workflow API | publish-registries.yml | workflow_run |
 | **ClawHub** | `integrations/openclaw/` | publish-registries.yml | workflow_run |
 | **MCP Registry** | `integrations/mcp-registry/server.json` | publish-mcp-registry.yml | workflow_run |
 | **ToolHive** | `integrations/toolhive/server.json` | — | Manual PR |
-| **Railway** | `Dockerfile.sse` | deploy-mcp-sse.yml | workflow_run |
+| **Railway** | `deploy/docker/Dockerfile.sse` | deploy-mcp-sse.yml | workflow_run |

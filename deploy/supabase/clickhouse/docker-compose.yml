@@ -1,7 +1,7 @@
 # ClickHouse + Grafana for agent-bom analytics
 #
 # Usage:
-#   cd infra/clickhouse
+#   cd deploy/supabase/clickhouse
 #   docker compose up -d
 #   # ClickHouse: http://localhost:8123
 #   # Grafana:    http://localhost:3001 (admin/admin)

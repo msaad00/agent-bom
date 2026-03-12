@@ -23,8 +23,8 @@ VERSION_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     ("pyproject.toml", re.compile(r'^(version\s*=\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
     ("src/agent_bom/__init__.py", re.compile(r'(__version__\s*=\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
     # Dockerfiles
-    ("Dockerfile.runtime", re.compile(r"^(ARG VERSION=)\S+", re.M), r"\g<1>{v}"),
-    ("Dockerfile.sse", re.compile(r"^(ARG VERSION=)\S+", re.M), r"\g<1>{v}"),
+    ("deploy/docker/Dockerfile.runtime", re.compile(r"^(ARG VERSION=)\S+", re.M), r"\g<1>{v}"),
+    ("deploy/docker/Dockerfile.sse", re.compile(r"^(ARG VERSION=)\S+", re.M), r"\g<1>{v}"),
     ("integrations/toolhive/Dockerfile.mcp", re.compile(r"^(ARG VERSION=)\S+", re.M), r"\g<1>{v}"),
     # MCP Registry server.json (version field + pypi identifier version)
     ("integrations/mcp-registry/server.json", re.compile(r'("version":\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
@@ -32,7 +32,7 @@ VERSION_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     ("integrations/toolhive/server.json", re.compile(r'("version":\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
     ("integrations/toolhive/server.json", re.compile(r"(ghcr\.io/msaad00/agent-bom:v)[^\s\"]+"), r"\g<1>{v}"),
     # Snowpark Dockerfile
-    ("Dockerfile.snowpark", re.compile(r"^(ARG VERSION=)\S+", re.M), r"\g<1>{v}"),
+    ("deploy/docker/Dockerfile.snowpark", re.compile(r"^(ARG VERSION=)\S+", re.M), r"\g<1>{v}"),
     # Helm chart
     ("deploy/helm/agent-bom/Chart.yaml", re.compile(r'^(appVersion:\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
     ("deploy/helm/agent-bom/values.yaml", re.compile(r'^(\s*tag:\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
@@ -51,9 +51,9 @@ DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     ("README.md", re.compile(r"(msaad00/agent-bom@v)[^\s\"]+"), r"\g<1>{v}"),
     ("docs/AI_INFRASTRUCTURE_SCANNING.md", re.compile(r"(msaad00/agent-bom@v)[^\s\"]+"), r"\g<1>{v}"),
     # PUBLISHING.md — version examples
-    ("PUBLISHING.md", re.compile(r'(--version\s+")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
-    ("PUBLISHING.md", re.compile(r"(git tag v)\S+", re.M), r"\g<1>{v}"),
-    ("PUBLISHING.md", re.compile(r"(git push origin v)\S+", re.M), r"\g<1>{v}"),
+    ("docs/PUBLISHING.md", re.compile(r'(--version\s+")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
+    ("docs/PUBLISHING.md", re.compile(r"(git tag v)\S+", re.M), r"\g<1>{v}"),
+    ("docs/PUBLISHING.md", re.compile(r"(git push origin v)\S+", re.M), r"\g<1>{v}"),
     # tests/test_core.py — version assertions
     ("tests/test_core.py", re.compile(r'(assert\s+__version__\s*==\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
     # Only match version assertions that currently contain a semver pattern (avoids clobbering SARIF "2.1.0")

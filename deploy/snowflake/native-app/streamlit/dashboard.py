@@ -27,26 +27,17 @@ def _query(sql: str) -> pd.DataFrame:
 
 @st.cache_data(ttl=60)
 def load_jobs() -> pd.DataFrame:
-    return _query(
-        "SELECT job_id, status, created_at, completed_at, data "
-        "FROM core.scan_jobs ORDER BY created_at DESC LIMIT 100"
-    )
+    return _query("SELECT job_id, status, created_at, completed_at, data FROM core.scan_jobs ORDER BY created_at DESC LIMIT 100")
 
 
 @st.cache_data(ttl=60)
 def load_fleet() -> pd.DataFrame:
-    return _query(
-        "SELECT agent_id, name, lifecycle_state, trust_score, updated_at, data "
-        "FROM core.fleet_agents ORDER BY name"
-    )
+    return _query("SELECT agent_id, name, lifecycle_state, trust_score, updated_at, data FROM core.fleet_agents ORDER BY name")
 
 
 @st.cache_data(ttl=60)
 def load_policies() -> pd.DataFrame:
-    return _query(
-        "SELECT policy_id, name, mode, enabled, updated_at, data "
-        "FROM core.gateway_policies ORDER BY name"
-    )
+    return _query("SELECT policy_id, name, mode, enabled, updated_at, data FROM core.gateway_policies ORDER BY name")
 
 
 @st.cache_data(ttl=60)
@@ -84,18 +75,20 @@ def _extract_vulns_from_job(job_data: dict) -> list[dict]:
         for server in agent.get("mcp_servers", []):
             for pkg in server.get("packages", []):
                 for vuln in pkg.get("vulnerabilities", []):
-                    vulns.append({
-                        "id": vuln.get("id", ""),
-                        "severity": vuln.get("severity", "unknown"),
-                        "cvss": vuln.get("cvss_score", 0),
-                        "epss": vuln.get("epss_score", 0),
-                        "kev": vuln.get("is_kev", False),
-                        "package": pkg.get("name", ""),
-                        "version": pkg.get("version", ""),
-                        "fixed_version": vuln.get("fixed_version", ""),
-                        "agent": agent_name,
-                        "server": server.get("name", ""),
-                    })
+                    vulns.append(
+                        {
+                            "id": vuln.get("id", ""),
+                            "severity": vuln.get("severity", "unknown"),
+                            "cvss": vuln.get("cvss_score", 0),
+                            "epss": vuln.get("epss_score", 0),
+                            "kev": vuln.get("is_kev", False),
+                            "package": pkg.get("name", ""),
+                            "version": pkg.get("version", ""),
+                            "fixed_version": vuln.get("fixed_version", ""),
+                            "agent": agent_name,
+                            "server": server.get("name", ""),
+                        }
+                    )
     return vulns
 
 
@@ -156,11 +149,7 @@ if not jobs_df.empty:
             job_data = _parse_variant(match)[0]
 
 all_vulns = _extract_vulns_from_job(job_data) if job_data else []
-filtered_vulns = [
-    v for v in all_vulns
-    if v["severity"].lower() in severity_filter
-    and (not agent_filter or v["agent"] in agent_filter)
-]
+filtered_vulns = [v for v in all_vulns if v["severity"].lower() in severity_filter and (not agent_filter or v["agent"] in agent_filter)]
 
 # ─── Tabs ─────────────────────────────────────────────────────────────────────
 
@@ -176,14 +165,8 @@ with tab_dash:
     result = job_data.get("result", {})
     agents = result.get("agents", [])
     total_servers = sum(len(a.get("mcp_servers", [])) for a in agents)
-    total_pkgs = sum(
-        len(s.get("packages", []))
-        for a in agents for s in a.get("mcp_servers", [])
-    )
-    total_creds = sum(
-        len(s.get("env_keys", []))
-        for a in agents for s in a.get("mcp_servers", [])
-    )
+    total_pkgs = sum(len(s.get("packages", [])) for a in agents for s in a.get("mcp_servers", []))
+    total_creds = sum(len(s.get("env_keys", [])) for a in agents for s in a.get("mcp_servers", []))
     kev_count = sum(1 for v in all_vulns if v.get("kev"))
 
     col1.metric("Agents", len(agents))
@@ -209,8 +192,10 @@ with tab_dash:
                 y="count",
                 color="severity",
                 color_discrete_map={
-                    "critical": "#dc2626", "high": "#f97316",
-                    "medium": "#eab308", "low": "#3b82f6",
+                    "critical": "#dc2626",
+                    "high": "#f97316",
+                    "medium": "#eab308",
+                    "low": "#3b82f6",
                 },
             )
             fig.update_layout(showlegend=False, height=300)
@@ -227,8 +212,10 @@ with tab_dash:
                     color="severity",
                     hover_data=["id", "package", "agent"],
                     color_discrete_map={
-                        "critical": "#dc2626", "high": "#f97316",
-                        "medium": "#eab308", "low": "#3b82f6",
+                        "critical": "#dc2626",
+                        "high": "#f97316",
+                        "medium": "#eab308",
+                        "low": "#3b82f6",
                     },
                 )
                 fig2.update_layout(height=300)
@@ -250,8 +237,10 @@ with tab_agents:
         # Color-code states
         def _state_badge(state: str) -> str:
             colors = {
-                "discovered": "🔵", "pending_review": "🟡",
-                "approved": "🟢", "quarantined": "🔴",
+                "discovered": "🔵",
+                "pending_review": "🟡",
+                "approved": "🟢",
+                "quarantined": "🔴",
                 "decommissioned": "⚫",
             }
             return f"{colors.get(state, '⚪')} {state}"

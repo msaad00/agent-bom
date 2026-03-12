@@ -3,7 +3,7 @@
 # Sits between MCP client and server, intercepting JSON-RPC messages
 # for audit logging, policy enforcement, and tool-drift detection.
 #
-# Build:   docker build -f Dockerfile.runtime -t agent-bom-runtime .
+# Build:   docker build -f deploy/docker/Dockerfile.runtime -t agent-bom-runtime .
 # Run:     docker run --rm agent-bom-runtime -- npx @mcp/server-filesystem /tmp
 #
 # Environment variables (optional):

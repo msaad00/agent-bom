@@ -38,7 +38,7 @@ Browse [`good first issue`](https://github.com/msaad00/agent-bom/issues?q=is%3Ao
 
 Typical good-first tasks:
 - **Add an MCP client** — 5–15 lines in [`src/agent_bom/discovery/__init__.py`](src/agent_bom/discovery/__init__.py). Each entry is a dict with a config path and parser.
-- **Add a registry entry** — Add a JSON object to `mcp_registry.json` (schema in `schemas/`).
+- **Add a registry entry** — Add a JSON object to `mcp_registry.json` (schema in `config/schemas/`).
 - **Fix a test** — search for `# TODO` or `pytest.mark.skip` in `tests/`.
 - **Improve a docstring** — Any function in `src/agent_bom/` without a clear docstring.
 
@@ -142,7 +142,7 @@ CI checks that run on every PR:
 
 ## Architecture overview
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the full module map. Key paths:
+See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full module map. Key paths:
 
 | Path | Purpose |
 |------|---------|
@@ -167,7 +167,7 @@ Only document and claim features that are actually implemented and tested. Do no
 
 ## Version bump
 
-Use `scripts/bump-version.py`. It updates all 19 files in one go. See `PUBLISHING.md` for the full release checklist.
+Use `scripts/bump-version.py`. It updates all 19 files in one go. See `docs/PUBLISHING.md` for the full release checklist.
 
 ---
 

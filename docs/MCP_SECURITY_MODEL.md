@@ -266,4 +266,4 @@ agent-bom proxy --command "uvx mcp-server-filesystem /" \
 - [ARCHITECTURE.md](ARCHITECTURE.md) — component diagram, data flow, module boundaries
 - [RUNTIME_MONITORING.md](RUNTIME_MONITORING.md) — proxy internals, detector configuration
 - [AI_INFRASTRUCTURE_SCANNING.md](AI_INFRASTRUCTURE_SCANNING.md) — GPU, CUDA, ML framework scanning
-- [PERMISSIONS.md](../PERMISSIONS.md) — full trust contract, what data leaves your machine
+- [PERMISSIONS.md](PERMISSIONS.md) — full trust contract, what data leaves your machine

@@ -174,10 +174,10 @@ class TestSVGStats:
 
 DOCS_TO_CHECK = [
     ROOT / "README.md",
-    ROOT / "ARCHITECTURE.md",
+    ROOT / "docs" / "ARCHITECTURE.md",
     ROOT / "CONTRIBUTING.md",
-    ROOT / "DEPLOYMENT.md",
-    ROOT / "AUDIT.md",
+    ROOT / "docs" / "DEPLOYMENT.md",
+    ROOT / "docs" / "AUDIT.md",
 ]
 
 

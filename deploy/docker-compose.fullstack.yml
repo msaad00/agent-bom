@@ -2,7 +2,7 @@
 #
 # Usage (local dev):
 #   cp .env.example .env   # fill in POSTGRES_PASSWORD at minimum
-#   docker compose -f docker-compose.fullstack.yml up
+#   docker compose -f deploy/docker-compose.fullstack.yml up
 #
 # Then open:
 #   Dashboard  →  http://localhost:3000
@@ -19,7 +19,7 @@ services:
   # ── FastAPI backend ────────────────────────────────────────────────────────
   api:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile
     image: agentbom/agent-bom:latest
     container_name: agent-bom-api
@@ -61,7 +61,7 @@ services:
   # ── Next.js dashboard ─────────────────────────────────────────────────────
   ui:
     build:
-      context: ui/
+      context: ../ui/
       dockerfile: Dockerfile
       args:
         # Baked into the Next.js build — must match the publicly reachable API URL
@@ -94,8 +94,8 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./infra/postgres/init-wrapper.sh:/docker-entrypoint-initdb.d/00-init-wrapper.sh:ro
-      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./supabase/postgres/init-wrapper.sh:/docker-entrypoint-initdb.d/00-init-wrapper.sh:ro
+      - ./supabase/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     command: >
       postgres
         -c password_encryption=scram-sha-256

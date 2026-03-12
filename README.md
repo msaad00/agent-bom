@@ -96,7 +96,7 @@ Add to your MCP client config (Claude Desktop, Cursor, etc.):
 }
 ```
 
-Also available on [Glama](https://glama.ai/mcp/servers/@msaad00/agent-bom), [Smithery](smithery.yaml), [MCP Registry](integrations/mcp-registry/server.json), and [OpenClaw](integrations/openclaw/SKILL.md).
+Also available on [Glama](https://glama.ai/mcp/servers/@msaad00/agent-bom), [Smithery](integrations/smithery.yaml), [MCP Registry](integrations/mcp-registry/server.json), and [OpenClaw](integrations/openclaw/SKILL.md).
 
 ---
 
@@ -152,7 +152,7 @@ Five trust categories, 17 behavioral risk patterns, Sigstore signature verificat
   </picture>
 </p>
 
-**Read-only guarantee.** Never writes configs, never runs servers, never stores secrets. `--dry-run` previews everything. Every release is [Sigstore-signed](PERMISSIONS.md).
+**Read-only guarantee.** Never writes configs, never runs servers, never stores secrets. `--dry-run` previews everything. Every release is [Sigstore-signed](docs/PERMISSIONS.md).
 
 ---
 
@@ -321,7 +321,7 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible
 | Protect engine | `agent-bom protect` | 7 behavioral detectors (rug pull, injection, credential leak, exfil sequences, response cloaking, rate limiting, vector DB injection) |
 | Config watcher | `agent-bom watch` | Filesystem watch on MCP configs, alert on drift |
 | Pre-install guard | `agent-bom guard pip install <pkg>` | Block vulnerable installs |
-| Snowflake | [DEPLOYMENT.md](DEPLOYMENT.md) | Snowpark + SiS |
+| Snowflake | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Snowpark + SiS |
 
 <details>
 <summary><b>Install extras</b></summary>
@@ -458,8 +458,8 @@ rm -rf ~/.agent-bom                      # remove local data
 | MCP Registry | [server.json](integrations/mcp-registry/server.json) |
 | ToolHive | [registry entry](integrations/toolhive/server.json) |
 | OpenClaw | [SKILL.md](integrations/openclaw/SKILL.md) |
-| Smithery | [smithery.yaml](smithery.yaml) |
-| Railway | [Dockerfile.sse](Dockerfile.sse) |
+| Smithery | [smithery.yaml](integrations/smithery.yaml) |
+| Railway | [Dockerfile.sse](deploy/docker/Dockerfile.sse) |
 
 ---
 
@@ -506,7 +506,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full diagrams: data flow pi
 - **OpenSSF Scorecard** -- [automated supply chain scoring](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom)
 - **OpenSSF Best Practices** -- [passing badge (100%)](https://www.bestpractices.dev/projects/12114) — 67/67 criteria
 - **Continuous fuzzing** -- [ClusterFuzzLite](https://github.com/msaad00/agent-bom/blob/main/.github/workflows/cflite-pr.yml) fuzzes SBOM parsers, policy evaluator, and skill parser
-- **[PERMISSIONS.md](PERMISSIONS.md)** -- full auditable trust contract
+- **[PERMISSIONS.md](docs/PERMISSIONS.md)** -- full auditable trust contract
 
 ---
 
@@ -575,7 +575,7 @@ pip install -e ".[dev]"
 pytest && ruff check src/
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) | [SECURITY.md](SECURITY.md) | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | [GOVERNANCE.md](GOVERNANCE.md) | [ROADMAP.md](ROADMAP.md) | [THREAT_MODEL.md](THREAT_MODEL.md)
+See [CONTRIBUTING.md](CONTRIBUTING.md) | [SECURITY.md](SECURITY.md) | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | [GOVERNANCE.md](docs/GOVERNANCE.md) | [ROADMAP.md](docs/ROADMAP.md) | [THREAT_MODEL.md](docs/THREAT_MODEL.md)
 
 ---
 

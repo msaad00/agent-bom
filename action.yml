@@ -90,6 +90,14 @@ runs:
       with:
         python-version: ${{ inputs.python-version }}
 
+    - name: Cache agent-bom vulnerability database
+      uses: actions/cache@v4
+      with:
+        path: ~/.agent-bom/vulns.db
+        key: agent-bom-vulndb-${{ runner.os }}-${{ inputs.python-version }}-v1
+        restore-keys: |
+          agent-bom-vulndb-${{ runner.os }}-
+
     - name: Install agent-bom
       shell: bash
       env:

@@ -7,8 +7,10 @@ and detects packages from uvx/uv commands.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -21,9 +23,17 @@ logger = logging.getLogger(__name__)
 
 _GOPROXY_URL = "https://proxy.golang.org"
 _CHECKSUM_DB_URL = "https://sum.golang.org"
+_MAVEN_CENTRAL_URL = "https://search.maven.org"
+_CRATES_IO_URL = "https://crates.io"
 
 # Versions that need resolution via the Go module proxy
 _UNRESOLVED_VERSIONS = frozenset({"latest", "(devel)", "", "unknown"})
+
+# Versions that require Maven Central resolution
+_MAVEN_UNRESOLVED_VERSIONS = frozenset({"RELEASE", "LATEST", "", "unknown"})
+
+# Versions that require crates.io resolution
+_CARGO_UNRESOLVED_VERSIONS = frozenset({"*", "", "latest", "unknown"})
 
 
 def _validate_https_url(url: str, param_name: str = "url") -> None:
@@ -220,6 +230,157 @@ def resolve_go_version(
 
     stable_versions.sort(key=_semver_key)
     return stable_versions[-1]
+
+
+def resolve_maven_version(
+    group_id: str,
+    artifact_id: str,
+    version: str,
+    *,
+    maven_central_url: str = _MAVEN_CENTRAL_URL,
+    timeout: int = 5,
+) -> str:
+    """Resolve a Maven artifact version using the Maven Central Search API.
+
+    Queries ``https://search.maven.org/solrsearch/select`` for the latest
+    stable release of *group_id*:*artifact_id* and returns it.
+
+    If *version* is already pinned (not ``"RELEASE"``, ``"LATEST"``, ``""``
+    or ``"unknown"``), it is returned immediately without any network call.
+
+    Skips pre-release versions with ``-SNAPSHOT``, ``-RC``, or ``-M``
+    suffixes.  Never raises — any network or parse error causes the original
+    version string to be returned so that parsing can continue uninterrupted.
+
+    Args:
+        group_id: Maven group ID (e.g. ``"org.springframework"``).
+        artifact_id: Maven artifact ID (e.g. ``"spring-core"``).
+        version: Current version string.  Pass ``"RELEASE"`` or ``"LATEST"``
+            to trigger resolution.
+        maven_central_url: Base URL of the Maven Central Search API.
+            Must be HTTPS.  Defaults to ``https://search.maven.org``.
+        timeout: HTTP request timeout in seconds.
+
+    Returns:
+        Resolved version string (e.g. ``"6.1.4"``), or *version* unchanged
+        if resolution fails or was not needed.
+    """
+    if version not in _MAVEN_UNRESOLVED_VERSIONS:
+        return version
+
+    _validate_https_url(maven_central_url, "maven_central_url")
+
+    encoded_group = urllib.parse.quote(group_id, safe="")
+    encoded_artifact = urllib.parse.quote(artifact_id, safe="")
+    query = f"g:{encoded_group}+AND+a:{encoded_artifact}"
+    api_url = f"{maven_central_url}/solrsearch/select?q={query}&rows=10&wt=json"
+
+    _maven_prerelease_re = re.compile(r"-(SNAPSHOT|RC\d*|M\d+)$", re.IGNORECASE)
+
+    try:
+        req = urllib.request.Request(api_url)  # noqa: S310  # nosec B310 — HTTPS enforced above
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310  # nosec B310
+            raw_body = resp.read().decode("utf-8", errors="replace")
+    except Exception as exc:  # noqa: BLE001 — never raise; return original on failure
+        logger.warning(
+            "Maven Central version resolution failed for %s:%s — returning original version: %s",
+            group_id,
+            artifact_id,
+            exc,
+        )
+        return version
+
+    try:
+        data = json.loads(raw_body)
+        docs = data.get("response", {}).get("docs", [])
+        for doc in docs:
+            candidate = (doc.get("v") or doc.get("latestVersion") or "").strip()
+            if not candidate:
+                continue
+            if _maven_prerelease_re.search(candidate):
+                continue
+            return candidate
+    except (ValueError, KeyError, AttributeError) as exc:
+        logger.warning(
+            "Failed to parse Maven Central response for %s:%s: %s",
+            group_id,
+            artifact_id,
+            exc,
+        )
+
+    return version
+
+
+def resolve_cargo_version(
+    crate_name: str,
+    version: str,
+    *,
+    crates_io_url: str = _CRATES_IO_URL,
+    timeout: int = 5,
+) -> str:
+    """Resolve a Cargo crate version using the crates.io REST API.
+
+    Queries ``https://crates.io/api/v1/crates/{crate_name}`` and returns
+    the ``max_stable_version`` field, which is the latest non-pre-release
+    version published for the crate.
+
+    If *version* is already pinned (not ``"*"``, ``""``, ``"latest"`` or
+    ``"unknown"``), it is returned immediately without any network call.
+
+    Respects crates.io's rate-limit policy: sleeps 1 second when a network
+    request is actually made.  Never raises — any error causes the original
+    version string to be returned.
+
+    Args:
+        crate_name: Name of the Cargo crate (e.g. ``"serde"``).
+        version: Current version string.  Pass ``"*"`` or ``""`` to trigger
+            resolution.
+        crates_io_url: Base URL of the crates.io API.  Must be HTTPS.
+            Defaults to ``https://crates.io``.
+        timeout: HTTP request timeout in seconds.
+
+    Returns:
+        Resolved version string (e.g. ``"1.0.196"``), or *version* unchanged
+        if resolution fails or was not needed.
+    """
+    if version not in _CARGO_UNRESOLVED_VERSIONS:
+        return version
+
+    _validate_https_url(crates_io_url, "crates_io_url")
+
+    encoded_name = urllib.parse.quote(crate_name, safe="")
+    api_url = f"{crates_io_url}/api/v1/crates/{encoded_name}"
+    user_agent = "agent-bom/0.70.0 (github.com/msaad00/agent-bom)"
+
+    try:
+        req = urllib.request.Request(api_url, headers={"User-Agent": user_agent})  # noqa: S310  # nosec B310 — HTTPS enforced above
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310  # nosec B310
+            raw_body = resp.read().decode("utf-8", errors="replace")
+    except Exception as exc:  # noqa: BLE001 — never raise; return original on failure
+        logger.warning(
+            "crates.io version resolution failed for %s — returning original version: %s",
+            crate_name,
+            exc,
+        )
+        return version
+    finally:
+        # Respect crates.io rate-limit policy: 1 req/sec
+        time.sleep(1)
+
+    try:
+        data = json.loads(raw_body)
+        crate_data = data.get("crate", {})
+        resolved = (crate_data.get("max_stable_version") or "").strip()
+        if resolved:
+            return resolved
+    except (ValueError, KeyError, AttributeError) as exc:
+        logger.warning(
+            "Failed to parse crates.io response for %s: %s",
+            crate_name,
+            exc,
+        )
+
+    return version
 
 
 def _parse_go_mod_requires(
@@ -559,7 +720,7 @@ def _parse_pom_modules(root_dir: Path, depth: int = 0) -> list[Package]:
     return packages
 
 
-def parse_maven_packages(directory: Path) -> list[Package]:
+def parse_maven_packages(directory: Path, *, resolve_versions: bool = False) -> list[Package]:
     """Parse packages from pom.xml (Maven/Java projects).
 
     Supports multi-module Maven projects: if the root ``pom.xml`` contains a
@@ -572,6 +733,13 @@ def parse_maven_packages(directory: Path) -> list[Package]:
     but marked ``is_direct=False`` since they are not deployed at runtime.
     Dependencies without a ``<version>`` element (version inherited via parent
     POM) are skipped — parent POM resolution requires network access.
+
+    Args:
+        directory: Project directory containing ``pom.xml``.
+        resolve_versions: When ``True``, packages with unresolved versions
+            (``"RELEASE"``, ``"LATEST"``, ``""`` or ``"unknown"``) are queried
+            against the Maven Central Search API to obtain their latest stable
+            version.  Default ``False`` — no network calls.
     """
     pom = directory / "pom.xml"
     if not pom.exists():
@@ -580,32 +748,51 @@ def parse_maven_packages(directory: Path) -> list[Package]:
     all_packages = _parse_pom_modules(directory, depth=0)
 
     # Deduplicate by (name, version) — first occurrence wins (root > submodule)
-    seen: set[tuple[str, str]] = set()
+    maven_seen: set[tuple[str, str]] = set()
     unique: list[Package] = []
     for pkg in all_packages:
-        key = (pkg.name, pkg.version)
-        if key not in seen:
-            seen.add(key)
+        maven_key = (pkg.name, pkg.version)
+        if maven_key not in maven_seen:
+            maven_seen.add(maven_key)
             unique.append(pkg)
+
+    if resolve_versions:
+        for pkg in unique:
+            if pkg.version in _MAVEN_UNRESOLVED_VERSIONS and ":" in pkg.name:
+                maven_group, maven_artifact = pkg.name.split(":", 1)
+                resolved_ver = resolve_maven_version(maven_group, maven_artifact, pkg.version)
+                if resolved_ver != pkg.version:
+                    pkg.version = resolved_ver
+                    pkg.purl = f"pkg:maven/{maven_group}/{maven_artifact}@{resolved_ver}"
+                    pkg.version_source = "registry_fallback"
 
     return unique
 
 
-def parse_cargo_packages(directory: Path) -> list[Package]:
-    """Parse packages from Cargo.lock."""
-    packages = []
+def parse_cargo_packages(directory: Path, *, resolve_versions: bool = False) -> list[Package]:
+    """Parse packages from Cargo.lock.
+
+    Args:
+        directory: Project directory containing ``Cargo.lock``.
+        resolve_versions: When ``True``, packages with unresolved versions
+            (``"*"``, ``""``, ``"latest"`` or ``"unknown"``) are queried
+            against the crates.io REST API to obtain their latest stable
+            version.  Adds a 1-second sleep between requests to respect
+            crates.io rate limits.  Default ``False`` — no network calls.
+    """
+    cargo_packages: list[Package] = []
     cargo_lock = directory / "Cargo.lock"
 
     if cargo_lock.exists():
-        current_name = None
-        current_version = None
-        for line in cargo_lock.read_text().splitlines():
-            line = line.strip()
-            if line.startswith('name = "'):
-                current_name = line.split('"')[1]
-            elif line.startswith('version = "') and current_name:
-                current_version = line.split('"')[1]
-                packages.append(
+        current_name: Optional[str] = None
+        current_version: Optional[str] = None
+        for raw_line in cargo_lock.read_text().splitlines():
+            stripped_line = raw_line.strip()
+            if stripped_line.startswith('name = "'):
+                current_name = stripped_line.split('"')[1]
+            elif stripped_line.startswith('version = "') and current_name:
+                current_version = stripped_line.split('"')[1]
+                cargo_packages.append(
                     Package(
                         name=current_name,
                         version=current_version,
@@ -617,7 +804,16 @@ def parse_cargo_packages(directory: Path) -> list[Package]:
                 current_name = None
                 current_version = None
 
-    return packages
+    if resolve_versions:
+        for pkg in cargo_packages:
+            if pkg.version in _CARGO_UNRESOLVED_VERSIONS:
+                cargo_resolved = resolve_cargo_version(pkg.name, pkg.version)
+                if cargo_resolved != pkg.version:
+                    pkg.version = cargo_resolved
+                    pkg.purl = f"pkg:cargo/{pkg.name}@{cargo_resolved}"
+                    pkg.version_source = "registry_fallback"
+
+    return cargo_packages
 
 
 def parse_gradle_packages(directory: Path) -> list[Package]:

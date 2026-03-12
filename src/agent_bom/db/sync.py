@@ -99,6 +99,17 @@ _GHSA_AI_PACKAGES = frozenset(
         "autogen",
         "semantic-kernel",
         "haystack",
+        # Active CISA KEV + fast-growing AI orchestration packages
+        "langflow",
+        "flowise",
+        "instructor",
+        "dspy",
+        "pydantic-ai",
+        "litellm",
+        "agno",
+        "smolagents",
+        "phidata",
+        "agentops",
     ]
 )
 _GHSA_AI_PREFIXES = (

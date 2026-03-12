@@ -141,6 +141,40 @@ def test_sync_ghsa_url_must_be_https() -> None:
         sync_ghsa(conn, url="http://evil.example.com/advisories")
 
 
+def test_sync_ghsa_ingests_langflow_advisory() -> None:
+    """langflow (active CISA KEV) must be accepted by the AI package filter."""
+    conn = _make_conn()
+    advisory = _make_advisory(
+        ghsa_id="GHSA-lang-flow-0001",
+        cve_id="CVE-2025-3248",
+        pkg_name="langflow",
+    )
+
+    with patch("urllib.request.urlopen", side_effect=_mock_urlopen([[advisory], []])):
+        count = sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=10)
+
+    assert count == 1
+    row = conn.execute("SELECT * FROM vulns WHERE id = 'CVE-2025-3248'").fetchone()
+    assert row is not None
+    assert row["source"] == "ghsa"
+
+
+@pytest.mark.parametrize("pkg_name", ["flowise", "instructor", "dspy", "pydantic-ai", "litellm"])
+def test_sync_ghsa_ingests_new_ai_packages(pkg_name: str) -> None:
+    """Newly added AI/orchestration packages must pass the filter."""
+    conn = _make_conn()
+    advisory = _make_advisory(
+        ghsa_id=f"GHSA-test-{pkg_name[:4]}-0001",
+        cve_id=None,
+        pkg_name=pkg_name,
+    )
+
+    with patch("urllib.request.urlopen", side_effect=_mock_urlopen([[advisory], []])):
+        count = sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=10)
+
+    assert count == 1, f"{pkg_name} was not accepted by AI package filter"
+
+
 def test_sync_ghsa_handles_missing_cve_id() -> None:
     """An advisory without a CVE ID should be ingested under its GHSA ID."""
     conn = _make_conn()

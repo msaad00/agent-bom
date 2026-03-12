@@ -1,0 +1,30 @@
+# agent-bom EKS read-only ClusterRole
+# Grants minimum Kubernetes permissions: GPU workload discovery, MCP server pods,
+# AI agent containers. Zero write access. No exec. No secrets.
+#
+# Apply: kubectl apply -f aws_eks_clusterrole.yaml
+# Docs: https://kubernetes.io/docs/reference/access-authn-authz/rbac/
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: agent-bom-readonly
+  labels:
+    app.kubernetes.io/name: agent-bom
+    app.kubernetes.io/component: security-scanner
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "nodes", "namespaces", "services", "endpoints", "configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "daemonsets", "statefulsets", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["mcp.io"]
+    resources: ["mcpservers"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["nodes/status"]
+    verbs: ["get"]
+  # Denied by default (not listed): secrets, pods/exec, pods/portforward, create/update/delete

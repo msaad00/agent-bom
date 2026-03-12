@@ -1,0 +1,130 @@
+{
+  "_comment": [
+    "agent-bom AWS read-only IAM policy — least privilege, zero write access.",
+    "Attach to an IAM role (preferred) or IAM user (CI/CD with short-lived keys).",
+    "Never attach AdministratorAccess or PowerUserAccess.",
+    "Rotate credentials every 90 days (AWS IAM Access Analyzer will alert on unused).",
+    "Recommended: use IAM Roles for EC2/EKS instead of long-lived access keys.",
+    "Docs: https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html"
+  ],
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "BedrockAgentDiscovery",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:ListAgents",
+        "bedrock:GetAgent",
+        "bedrock:ListAgentVersions",
+        "bedrock:GetAgentVersion",
+        "bedrock:ListAgentActionGroups",
+        "bedrock:GetAgentActionGroup",
+        "bedrock:ListFoundationModels",
+        "bedrock:GetFoundationModel"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "LambdaDiscovery",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:ListFunctions",
+        "lambda:GetFunction",
+        "lambda:GetFunctionConfiguration",
+        "lambda:ListLayers",
+        "lambda:GetLayerVersion",
+        "lambda:GetLayerVersionByArn",
+        "lambda:ListTags"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ECSDiscovery",
+      "Effect": "Allow",
+      "Action": [
+        "ecs:ListClusters",
+        "ecs:ListTasks",
+        "ecs:DescribeTasks",
+        "ecs:DescribeTaskDefinition",
+        "ecs:ListContainerInstances",
+        "ecs:DescribeContainerInstances"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "EKSDiscovery",
+      "Effect": "Allow",
+      "Action": [
+        "eks:ListClusters",
+        "eks:DescribeCluster",
+        "eks:ListNodegroups",
+        "eks:DescribeNodegroup",
+        "eks:ListAddons",
+        "eks:DescribeAddon"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "SageMakerDiscovery",
+      "Effect": "Allow",
+      "Action": [
+        "sagemaker:ListEndpoints",
+        "sagemaker:DescribeEndpoint",
+        "sagemaker:ListModels",
+        "sagemaker:DescribeModel",
+        "sagemaker:ListNotebookInstances",
+        "sagemaker:DescribeNotebookInstance",
+        "sagemaker:ListTrainingJobs",
+        "sagemaker:DescribeTrainingJob"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "EC2GPUDiscovery",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeInstances",
+        "ec2:DescribeInstanceTypes",
+        "ec2:DescribeImages",
+        "ec2:DescribeRegions",
+        "ec2:DescribeTags"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ECRImagePull",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:GetAuthorizationToken",
+        "ecr:DescribeRepositories",
+        "ecr:ListImages",
+        "ecr:DescribeImages",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "CloudTrailAudit",
+      "Effect": "Allow",
+      "Action": [
+        "cloudtrail:LookupEvents",
+        "cloudtrail:GetTrailStatus",
+        "cloudtrail:DescribeTrails"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "IAMReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "iam:ListRoles",
+        "iam:GetRole",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListRolePolicies",
+        "iam:GetRolePolicy"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

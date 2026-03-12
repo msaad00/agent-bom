@@ -1,0 +1,24 @@
+# agent-bom EKS ClusterRoleBinding
+# Binds the agent-bom-readonly ClusterRole to a service account.
+# Apply after aws_eks_clusterrole.yaml: kubectl apply -f aws_eks_rolebinding.yaml
+# Docs: https://docs.aws.amazon.com/eks/latest/userguide/add-user-role.html
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: agent-bom-readonly-binding
+  labels:
+    app.kubernetes.io/name: agent-bom
+    app.kubernetes.io/component: security-scanner
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: agent-bom-readonly
+subjects:
+  # Option A: IAM Role via EKS Pod Identity (recommended - no long-lived keys)
+  - kind: ServiceAccount
+    name: agent-bom
+    namespace: security
+  # Option B: Map IAM user/role via eksctl:
+  #   eksctl create iamidentitymapping --cluster <CLUSTER> \
+  #     --arn arn:aws:iam::<ACCOUNT>:role/agent-bom-scanner \
+  #     --username agent-bom --group agent-bom-readonly

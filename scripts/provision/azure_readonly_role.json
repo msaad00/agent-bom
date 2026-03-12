@@ -1,0 +1,36 @@
+{
+  "_comment": [
+    "agent-bom Azure custom role definition — least privilege, read-only.",
+    "Create via: az role definition create --role-definition azure_readonly_role.json",
+    "Then assign: az role assignment create --role 'agent-bom Scanner' --assignee <sp-id> --scope /subscriptions/<id>",
+    "Recommended: use Managed Identity (no credentials) when running in Azure.",
+    "Docs: https://learn.microsoft.com/en-us/azure/role-based-access-control/custom-roles"
+  ],
+  "Name": "agent-bom Scanner",
+  "Description": "Read-only role for agent-bom AI infrastructure security scanning. No write access.",
+  "IsCustom": true,
+  "Actions": [
+    "Microsoft.ContainerService/managedClusters/read",
+    "Microsoft.ContainerService/managedClusters/listClusterUserCredential/action",
+    "Microsoft.ContainerService/managedClusters/agentPools/read",
+    "Microsoft.ContainerInstance/containerGroups/read",
+    "Microsoft.MachineLearningServices/workspaces/read",
+    "Microsoft.MachineLearningServices/workspaces/endpoints/read",
+    "Microsoft.MachineLearningServices/workspaces/models/read",
+    "Microsoft.MachineLearningServices/workspaces/computes/read",
+    "Microsoft.CognitiveServices/accounts/read",
+    "Microsoft.CognitiveServices/accounts/deployments/read",
+    "Microsoft.Compute/virtualMachines/read",
+    "Microsoft.Compute/virtualMachines/instanceView/read",
+    "Microsoft.ContainerRegistry/registries/read",
+    "Microsoft.ContainerRegistry/registries/repositories/read",
+    "Microsoft.Resources/subscriptions/resourceGroups/read",
+    "Microsoft.Resources/subscriptions/read"
+  ],
+  "NotActions": [],
+  "DataActions": [],
+  "NotDataActions": [],
+  "AssignableScopes": [
+    "/subscriptions/<YOUR_SUBSCRIPTION_ID>"
+  ]
+}

@@ -56,7 +56,7 @@ def _severity_from_snyk(sev_str: str) -> Severity:
         "medium": Severity.MEDIUM,
         "low": Severity.LOW,
     }
-    return mapping.get(sev_str.lower(), Severity.MEDIUM)
+    return mapping.get(sev_str.lower(), Severity.UNKNOWN)
 
 
 async def fetch_snyk_issues(

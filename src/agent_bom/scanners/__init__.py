@@ -234,7 +234,7 @@ def parse_cvss_vector(vector: str) -> Optional[float]:
 def parse_osv_severity(vuln_data: dict) -> tuple[Severity, Optional[float]]:
     """Extract severity and CVSS score from OSV vulnerability data."""
     cvss_score = None
-    severity = Severity.MEDIUM  # Default
+    severity = Severity.UNKNOWN  # Default — never silently inflate to MEDIUM
 
     # Check severity array — may be numeric score or CVSS vector string
     for sev in vuln_data.get("severity", []):
@@ -262,7 +262,7 @@ def parse_osv_severity(vuln_data: dict) -> tuple[Severity, Optional[float]]:
             "MEDIUM": Severity.MEDIUM,
             "LOW": Severity.LOW,
         }
-        severity = severity_map.get(sev_str, Severity.MEDIUM)
+        severity = severity_map.get(sev_str, Severity.UNKNOWN)
 
     # CVSS score overrides label-based severity
     if cvss_score is not None:
@@ -589,7 +589,7 @@ def _local_vuln_to_vulnerability(lv: "Any") -> Vulnerability:
         "medium": Severity.MEDIUM,
         "low": Severity.LOW,
     }
-    severity = sev_map.get((lv.severity or "").lower(), Severity.MEDIUM)
+    severity = sev_map.get((lv.severity or "").lower(), Severity.UNKNOWN)
     return Vulnerability(
         id=lv.id,
         summary=lv.summary or "No description available",

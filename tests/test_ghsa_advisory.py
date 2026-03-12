@@ -48,9 +48,9 @@ def test_severity_parsing_low():
 
 
 def test_severity_parsing_missing():
-    """Missing severity defaults to MEDIUM."""
+    """Missing severity defaults to UNKNOWN — never silently inflate to MEDIUM."""
     sev, score = _parse_ghsa_severity({})
-    assert sev == Severity.MEDIUM
+    assert sev == Severity.UNKNOWN
     assert score is None
 
 

@@ -46,7 +46,7 @@ def _parse_ghsa_severity(advisory: dict) -> tuple[Severity, float | None]:
         "MEDIUM": Severity.MEDIUM,
         "LOW": Severity.LOW,
     }
-    severity = severity_map.get(sev_str, Severity.MEDIUM)
+    severity = severity_map.get(sev_str, Severity.UNKNOWN)
     return severity, score
 
 

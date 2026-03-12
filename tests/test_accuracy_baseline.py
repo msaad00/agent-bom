@@ -116,11 +116,10 @@ class TestSeverityParsing:
         assert severity in (Severity.LOW, Severity.MEDIUM)
 
     def test_no_severity_returns_default(self):
-        """No severity data → defaults to MEDIUM with None score (safe conservative default)."""
+        """No severity data → defaults to UNKNOWN (not MEDIUM — never silently inflate)."""
         vuln = {}
         severity, score = parse_osv_severity(vuln)
-        # parse_osv_severity defaults to MEDIUM when no CVSS data is present
-        assert severity in (Severity.MEDIUM, Severity.LOW, Severity.NONE)
+        assert severity == Severity.UNKNOWN
         assert score is None
 
     def test_numeric_score_fallback(self):

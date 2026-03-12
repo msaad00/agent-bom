@@ -69,7 +69,7 @@ def test_severity_mapping():
     assert _severity_from_snyk("high") == Severity.HIGH
     assert _severity_from_snyk("medium") == Severity.MEDIUM
     assert _severity_from_snyk("low") == Severity.LOW
-    assert _severity_from_snyk("unknown") == Severity.MEDIUM  # default
+    assert _severity_from_snyk("unknown") == Severity.UNKNOWN  # unknown must not inflate to MEDIUM
 
 
 # ---------------------------------------------------------------------------

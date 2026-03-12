@@ -56,7 +56,7 @@ def test_local_vuln_to_vulnerability_unknown_severity():
 
     lv = _make_local_vuln(severity="", cvss=None)
     v = _local_vuln_to_vulnerability(lv)
-    assert v.severity == Severity.MEDIUM  # default fallback for unknown severity
+    assert v.severity == Severity.UNKNOWN  # unknown severity must not silently inflate to MEDIUM
 
 
 def test_local_vuln_to_vulnerability_kev_flag():

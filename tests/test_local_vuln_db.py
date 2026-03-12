@@ -465,6 +465,62 @@ def test_init_db_passes_integrity_check(tmp_path, caplog):
 
 
 # ---------------------------------------------------------------------------
+# Schema migration framework
+# ---------------------------------------------------------------------------
+
+
+def test_schema_version_persisted(tmp_path):
+    """init_db stores the current schema version in the schema_version table."""
+    from agent_bom.db.schema import _SCHEMA_VERSION
+
+    db_file = tmp_path / "v.db"
+    conn = init_db(db_file)
+    row = conn.execute("SELECT version FROM schema_version LIMIT 1").fetchone()
+    assert row is not None
+    assert row["version"] == _SCHEMA_VERSION
+    conn.close()
+
+
+def test_migrate_applies_sequential_migrations(tmp_path, monkeypatch):
+    """_migrate applies migrations sequentially from old version to current."""
+    import agent_bom.db.schema as schema_mod
+
+    db_file = tmp_path / "v.db"
+    conn = init_db(db_file)
+    conn.close()
+
+    monkeypatch.setattr(schema_mod, "_SCHEMA_VERSION", 2)
+    monkeypatch.setattr(
+        schema_mod,
+        "_MIGRATIONS",
+        [(1, 2, "ALTER TABLE vulns ADD COLUMN test_col TEXT;")],
+    )
+
+    conn = init_db(db_file)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(vulns)").fetchall()}
+    assert "test_col" in cols
+    row = conn.execute("SELECT version FROM schema_version LIMIT 1").fetchone()
+    assert row["version"] == 2
+    conn.close()
+
+
+def test_newer_schema_warns(tmp_path, caplog):
+    """Opening a DB with a newer schema version than the code warns, not crashes."""
+    import logging
+
+    db_file = tmp_path / "v.db"
+    conn = init_db(db_file)
+    conn.execute("UPDATE schema_version SET version = 99")
+    conn.commit()
+    conn.close()
+
+    with caplog.at_level(logging.WARNING, logger="agent_bom.db.schema"):
+        conn2 = init_db(db_file)
+        conn2.close()
+    assert "newer than code" in caplog.text
+
+
+# ---------------------------------------------------------------------------
 # _cvss_to_severity — branches
 # ---------------------------------------------------------------------------
 

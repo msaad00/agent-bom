@@ -178,7 +178,7 @@ def _parse_sarif_findings(sarif: dict) -> tuple[list[SASTFinding], int, int]:
 
             files_seen.add(artifact)
 
-            severity = _SARIF_LEVEL_MAP.get(level, Severity.MEDIUM)
+            severity = _SARIF_LEVEL_MAP.get(level, Severity.UNKNOWN)
 
             # Extract CWE IDs and OWASP tags from rule metadata
             rule_meta = rules.get(rule_id, {})

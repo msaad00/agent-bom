@@ -42,6 +42,54 @@ def test_cvss_to_severity_none_score():
 
 
 # ---------------------------------------------------------------------------
+# Severity defaults — unknown/unrecognized must NEVER silently become MEDIUM
+# ---------------------------------------------------------------------------
+
+
+def test_osv_severity_unknown_label_not_medium():
+    """OSV vuln with unrecognized severity label must return UNKNOWN, not MEDIUM."""
+    vuln = {"database_specific": {"severity": "BOGUS"}}
+    severity, _ = parse_osv_severity(vuln)
+    assert severity == Severity.UNKNOWN
+
+
+def test_ghsa_severity_unknown_label_not_medium():
+    """GHSA advisory with unrecognized severity must return UNKNOWN, not MEDIUM."""
+    from agent_bom.scanners.ghsa_advisory import _parse_ghsa_severity
+
+    severity, _ = _parse_ghsa_severity({"severity": "BOGUS", "cvss": {"score": None}})
+    assert severity == Severity.UNKNOWN
+
+
+def test_snyk_severity_unknown_label_not_medium():
+    """Snyk issue with unrecognized severity must return UNKNOWN, not MEDIUM."""
+    from agent_bom.snyk import _severity_from_snyk
+
+    assert _severity_from_snyk("bogus") == Severity.UNKNOWN
+
+
+def test_local_db_severity_none_not_medium():
+    """Local DB vuln with None severity must return UNKNOWN, not MEDIUM."""
+    from types import SimpleNamespace
+
+    from agent_bom.scanners import _local_vuln_to_vulnerability
+
+    lv = SimpleNamespace(
+        id="CVE-2099-0001",
+        summary="test",
+        severity=None,
+        cvss_score=None,
+        fixed_version=None,
+        epss_probability=None,
+        epss_percentile=None,
+        is_kev=False,
+        kev_date_added=None,
+    )
+    v = _local_vuln_to_vulnerability(lv)
+    assert v.severity == Severity.UNKNOWN
+
+
+# ---------------------------------------------------------------------------
 # parse_cvss_vector — CVSS 3.x
 # ---------------------------------------------------------------------------
 
@@ -155,7 +203,7 @@ def test_parse_osv_severity_moderate():
 
 def test_parse_osv_severity_no_data():
     sev, score = parse_osv_severity({})
-    assert sev == Severity.MEDIUM
+    assert sev == Severity.UNKNOWN  # no data must not inflate to MEDIUM
     assert score is None
 
 
@@ -168,8 +216,8 @@ def test_parse_osv_severity_cvss4():
 def test_parse_osv_severity_invalid_score():
     vuln = {"severity": [{"type": "CVSS_V3", "score": "not-a-number"}]}
     sev, score = parse_osv_severity(vuln)
-    # Falls back to MEDIUM since it can't parse
-    assert sev == Severity.MEDIUM
+    # Falls back to UNKNOWN since it can't parse — not MEDIUM
+    assert sev == Severity.UNKNOWN
 
 
 def test_parse_osv_severity_out_of_range():

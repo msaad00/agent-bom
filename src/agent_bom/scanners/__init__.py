@@ -6,7 +6,7 @@ import asyncio
 import logging
 import math
 import time
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
 from rich.console import Console
@@ -581,9 +581,8 @@ def deduplicate_packages(packages: list) -> list:
     return result
 
 
-def _local_vuln_to_vulnerability(lv: "LocalVuln") -> Vulnerability:  # noqa: F821
+def _local_vuln_to_vulnerability(lv: "Any") -> Vulnerability:
     """Convert a LocalVuln (from SQLite DB) to a Vulnerability model object."""
-    from agent_bom.db.lookup import LocalVuln  # noqa: F401 — for type reference only
 
     sev_map = {
         "critical": Severity.CRITICAL,

@@ -106,7 +106,7 @@
   <text x="1010" y="280" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" fill="#8b949e">Blast radius (6-hop chains)</text>
   <text x="1010" y="300" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" fill="#8b949e">Context graph + attack paths</text>
   <text x="1010" y="320" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" fill="#8b949e">Toxic combos · Posture A-F</text>
-  <text x="1010" y="340" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" fill="#8b949e">10 compliance frameworks</text>
+  <text x="1010" y="340" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" fill="#8b949e">11 compliance frameworks</text>
 
   <rect x="930" y="368" width="160" height="26" rx="13" fill="#3f0f0f"/>
   <text x="1010" y="386" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#ff7b72">70+ MODULES</text>

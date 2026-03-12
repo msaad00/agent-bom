@@ -36,7 +36,7 @@ agent-bom scan --enrich      # + NVD CVSS + EPSS + CISA KEV enrichment
 That's it. agent-bom discovers your MCP client configs (Claude Desktop, Cursor, Windsurf, and 20 more), resolves every server's dependencies, checks them against OSV/NVD/GHSA, and maps the blast radius — which agents, credentials, and tools are affected by each vulnerability.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.65.0.gif" alt="agent-bom demo — scan, CVE check, blast radius, runtime proxy, 31 MCP tools" width="900" />
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.65.0.gif" alt="agent-bom demo — scan, CVE check, blast radius, runtime proxy, 30 MCP tools" width="900" />
 </p>
 
 <p align="center">

@@ -47,7 +47,7 @@ import operator
 import re
 from pathlib import Path
 
-SEVERITY_ORDER = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1, "NONE": 0}
+SEVERITY_ORDER = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1, "NONE": 0, "UNKNOWN": -1}
 RISK_LEVEL_ORDER = {"high": 3, "medium": 2, "low": 1}
 
 

@@ -555,10 +555,11 @@ def test_cvss_to_severity_low():
     assert _cvss_to_severity(2.5) == "low"
 
 
-def test_cvss_to_severity_unknown_score():
+def test_cvss_to_severity_zero_is_none():
+    """CVSS 0.0 means 'none' severity, not 'unknown' (unknown = missing data)."""
     from agent_bom.db.sync import _cvss_to_severity
 
-    assert _cvss_to_severity(0.0) == "unknown"
+    assert _cvss_to_severity(0.0) == "none"
 
 
 # ---------------------------------------------------------------------------

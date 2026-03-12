@@ -140,6 +140,8 @@ _CVSS_SEVERITY = {
 def _cvss_to_severity(score: Optional[float]) -> str:
     if score is None:
         return "unknown"
+    if score == 0.0:
+        return "none"
     for (lo, hi), sev in _CVSS_SEVERITY.items():
         if lo <= score <= hi:
             return sev

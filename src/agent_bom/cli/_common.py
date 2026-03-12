@@ -23,7 +23,7 @@ BANNER = r"""
   AI Bill of Materials for Agents & MCP Servers
 """
 
-SEVERITY_ORDER = {"critical": 4, "high": 3, "medium": 2, "low": 1, "none": 0}
+SEVERITY_ORDER = {"critical": 4, "high": 3, "medium": 2, "low": 1, "none": 0, "unknown": -1}
 
 
 def _make_console(quiet: bool = False, output_format: str = "console", no_color: bool = False) -> Console:

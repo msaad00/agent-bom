@@ -204,6 +204,10 @@ def test_severity_order():
 
     assert SEVERITY_ORDER["critical"] > SEVERITY_ORDER["high"]
     assert SEVERITY_ORDER["high"] > SEVERITY_ORDER["medium"]
+    assert SEVERITY_ORDER["medium"] > SEVERITY_ORDER["low"]
+    assert SEVERITY_ORDER["low"] > SEVERITY_ORDER["none"]
+    assert SEVERITY_ORDER["none"] > SEVERITY_ORDER["unknown"]
+    assert "unknown" in SEVERITY_ORDER, "UNKNOWN must be in SEVERITY_ORDER"
 
 
 def test_banner_is_string():

@@ -161,6 +161,22 @@ def test_rule_matches_severity_gte():
     assert _rule_matches(rule_high, br_low) is False
 
 
+def test_severity_order_includes_unknown():
+    """UNKNOWN must be in SEVERITY_ORDER and sort below NONE (per FIRST CVSS spec)."""
+    from agent_bom.policy import SEVERITY_ORDER
+
+    assert "UNKNOWN" in SEVERITY_ORDER, "UNKNOWN missing from SEVERITY_ORDER"
+    assert SEVERITY_ORDER["UNKNOWN"] < SEVERITY_ORDER["NONE"]
+    assert SEVERITY_ORDER["NONE"] < SEVERITY_ORDER["LOW"]
+
+
+def test_rule_matches_severity_gte_unknown():
+    """UNKNOWN severity (-1) should NOT match severity_gte: LOW (1)."""
+    br_unknown = _make_blast_radius(severity="unknown")
+    rule_low = {"id": "sev", "severity_gte": "LOW", "action": "fail"}
+    assert _rule_matches(rule_low, br_unknown) is False
+
+
 def test_rule_matches_is_kev():
     """is_kev: matches when vulnerability is in CISA KEV catalog."""
     br_kev = _make_blast_radius(is_kev=True)

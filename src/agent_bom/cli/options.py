@@ -129,11 +129,12 @@ def output_options(fn):
                     [
                         "console",
                         "json",
-                        "cyclonedx",
-                        "sarif",
-                        "spdx",
-                        "text",
                         "html",
+                        "sarif",
+                        "cyclonedx",
+                        "spdx",
+                        "plain",
+                        "text",
                         "prometheus",
                         "graph",
                         "graph-html",
@@ -143,7 +144,15 @@ def output_options(fn):
                     ]
                 ),
                 default="console",
-                help="Output format",
+                help=(
+                    "Output format.\n\n"
+                    "Core: console (default, colored terminal), json, html, sarif (GitHub/GitLab Security tab), cyclonedx (SBOM).\n"
+                    "SBOM: spdx (alternate SBOM standard).\n"
+                    "Plain: plain (no color, for piping/logging) — alias: text.\n"
+                    "Monitoring: prometheus (Prometheus exposition format).\n"
+                    "Visualization: mermaid, graph-html (interactive), svg.\n"
+                    "Other: graph (raw graph JSON), badge (single-line status)."
+                ),
             ),
             click.option(
                 "--mermaid-mode",

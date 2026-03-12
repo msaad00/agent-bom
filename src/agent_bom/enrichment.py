@@ -215,9 +215,11 @@ async def fetch_epss_scores(cve_ids: list[str], client: httpx.AsyncClient) -> di
                 for item in data.get("data", []):
                     cve = item.get("cve")
                     if cve:
+                        raw_epss = item.get("epss")
+                        raw_pct = item.get("percentile")
                         entry = {
-                            "score": float(item.get("epss", 0.0)),
-                            "percentile": float(item.get("percentile", 0.0)),
+                            "score": float(raw_epss) if raw_epss is not None else None,
+                            "percentile": float(raw_pct) if raw_pct is not None else None,
                             "date": item.get("date"),
                         }
                         scores[cve] = entry

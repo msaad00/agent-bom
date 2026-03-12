@@ -103,7 +103,7 @@ async def fetch_snyk_issues(
             {
                 "id": item.get("id", ""),
                 "title": attrs.get("title", ""),
-                "severity": attrs.get("effective_severity_level", attrs.get("severity", "medium")),
+                "severity": attrs.get("effective_severity_level") or attrs.get("severity") or "unknown",
                 "cvss_score": attrs.get("cvss_score"),
                 "cve_ids": [slot.get("value") for slot in attrs.get("slots", {}).get("references", []) if slot.get("type") == "cve"]
                 if isinstance(attrs.get("slots"), dict)
@@ -173,7 +173,7 @@ async def enrich_with_snyk(
                     Vulnerability(
                         id=vuln_id,
                         summary=f"[Snyk] {issue.get('title', '')}",
-                        severity=_severity_from_snyk(issue.get("severity", "medium")),
+                        severity=_severity_from_snyk(issue.get("severity") or "unknown"),
                         cvss_score=issue.get("cvss_score"),
                         references=[f"https://security.snyk.io/vuln/{snyk_id}"] if snyk_id else [],
                     )

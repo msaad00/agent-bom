@@ -195,7 +195,7 @@ def _parse_osv_entry(data: dict) -> Optional[tuple[dict, list[dict]]]:
             except ValueError:
                 cvss_score = None
         elif cvss_score is not None:
-            cvss_score = float(cvss_score) if cvss_score else None
+            cvss_score = float(cvss_score) if cvss_score is not None else None
 
     severity = _cvss_to_severity(cvss_score)
 

@@ -117,12 +117,12 @@ jobs:
           python-version: "3.11"
 
       - name: Install agent-bom (from source)
-        run: uv pip install -e ".[dev]" --system
+        run: uv sync --extra dev
 
       - name: Self dep scan — block release on critical CVE
         run: |
           mkdir -p sarif
-          agent-bom scan --self-scan \
+          uv run agent-bom scan --self-scan \
             --output sarif \
             --save sarif/release-self-dep.sarif \
             --fail-on-severity critical \

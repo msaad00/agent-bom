@@ -11,6 +11,25 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
+# Stable namespace for agent-bom deterministic UUIDs
+# Using a fixed UUID so IDs are reproducible across machines and versions
+_AGENT_BOM_NS = uuid.UUID("7f3e4b2a-9c1d-5f8e-a0b4-12c3d4e5f6a7")
+
+
+def _stable_id(*parts: str) -> str:
+    """Compute a deterministic UUID v5 from content parts.
+
+    Same inputs always produce the same UUID. Use this for asset IDs
+    and finding IDs so the same entity is tracked consistently across scans.
+    """
+    fingerprint = ":".join(p.lower().strip() for p in parts if p)
+    return str(uuid.uuid5(_AGENT_BOM_NS, fingerprint))
+
+
+def stable_id(*parts: str) -> str:
+    """Public alias for _stable_id — importable for use across modules."""
+    return _stable_id(*parts)
+
 
 class FindingType(str, Enum):
     """What category of issue this finding represents."""
@@ -52,6 +71,16 @@ class Asset:
     asset_type: str  # "mcp_server" | "package" | "container" | "cloud_resource" | "agent"
     identifier: Optional[str] = None  # purl, ARN, image digest, etc.
     location: Optional[str] = None  # file path, URL, cloud region
+
+    @property
+    def stable_id(self) -> str:
+        """Deterministic UUID derived from asset content.
+
+        Same asset type + identifier always produces the same ID across scans.
+        This enables tracking: first seen, last seen, resolved, re-emerged.
+        """
+        identifier = self.identifier or f"{self.name}:{self.location or ''}"
+        return _stable_id(self.asset_type, identifier)
 
 
 @dataclass
@@ -106,8 +135,29 @@ class Finding:
     # Risk
     risk_score: float = 0.0  # 0-10 unified risk score
 
-    # Unique ID — auto-generated if not provided
-    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    # Unique ID — deterministic UUID v5 based on content (computed in __post_init__)
+    # Pass an explicit id= to override (e.g. when ingesting from external scanner)
+    id: str = field(default="")
+
+    def __post_init__(self) -> None:
+        """Compute stable ID from finding content if not explicitly set."""
+        if not self.id:
+            # Deterministic ID: same CVE on same asset always same ID
+            cve_part = self.cve_id or self.title
+            pkg_name = ""
+            pkg_version = ""
+            if self.asset.asset_type == "package" and self.asset.identifier:
+                # purl like "pkg:pypi/torch@2.3.0" — extract name/version
+                purl = self.asset.identifier
+                pkg_part = purl.split("/")[-1] if "/" in purl else purl
+                if "@" in pkg_part:
+                    pkg_name, pkg_version = pkg_part.rsplit("@", 1)
+            self.id = _stable_id(
+                self.asset.stable_id,
+                cve_part,
+                pkg_name,
+                pkg_version,
+            )
 
     def all_compliance_tags(self) -> list[str]:
         """Return deduplicated union of all compliance tag lists."""

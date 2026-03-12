@@ -142,7 +142,8 @@ def test_finding_auto_id():
     assert len(finding.id) == 36  # UUID4 format
 
 
-def test_finding_two_instances_have_different_ids():
+def test_finding_same_content_produces_same_id():
+    """IDs are now deterministic — same content always yields same ID."""
     f1 = Finding(
         finding_type=FindingType.CVE,
         source=FindingSource.MCP_SCAN,
@@ -153,6 +154,23 @@ def test_finding_two_instances_have_different_ids():
         finding_type=FindingType.CVE,
         source=FindingSource.MCP_SCAN,
         asset=Asset(name="pkg", asset_type="package"),
+        severity="HIGH",
+    )
+    assert f1.id == f2.id
+
+
+def test_finding_different_assets_produce_different_ids():
+    """Different assets → different Finding IDs even with same CVE."""
+    f1 = Finding(
+        finding_type=FindingType.CVE,
+        source=FindingSource.MCP_SCAN,
+        asset=Asset(name="pkg-a", asset_type="package"),
+        severity="HIGH",
+    )
+    f2 = Finding(
+        finding_type=FindingType.CVE,
+        source=FindingSource.MCP_SCAN,
+        asset=Asset(name="pkg-b", asset_type="package"),
         severity="HIGH",
     )
     assert f1.id != f2.id

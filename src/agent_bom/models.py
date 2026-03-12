@@ -186,6 +186,20 @@ class Package:
     source_repo: Optional[str] = None
 
     @property
+    def stable_id(self) -> str:
+        """Deterministic ID for this package instance.
+
+        Same ecosystem/name/version (or purl when available) always produces
+        the same ID across scans — enables first-seen/last-seen tracking.
+        """
+        import uuid as _uuid
+
+        _ns = _uuid.UUID("7f3e4b2a-9c1d-5f8e-a0b4-12c3d4e5f6a7")
+        purl = self.purl or f"pkg:{self.ecosystem}/{self.name}@{self.version}"
+        fingerprint = f"package:{purl.lower().strip()}"
+        return str(_uuid.uuid5(_ns, fingerprint))
+
+    @property
     def has_vulnerabilities(self) -> bool:
         return len(self.vulnerabilities) > 0
 
@@ -272,6 +286,20 @@ class MCPServer:
     security_warnings: list[str] = field(default_factory=list)  # Security issues found during discovery
 
     @property
+    def stable_id(self) -> str:
+        """Deterministic ID for this MCP server.
+
+        Uses registry_id when available (most stable identifier), otherwise
+        falls back to name+command so the same server is always the same ID.
+        """
+        import uuid as _uuid
+
+        _ns = _uuid.UUID("7f3e4b2a-9c1d-5f8e-a0b4-12c3d4e5f6a7")
+        identifier = self.registry_id or f"{self.name}:{self.command}"
+        fingerprint = f"mcp_server:{identifier.lower().strip()}"
+        return str(_uuid.uuid5(_ns, fingerprint))
+
+    @property
     def vulnerable_packages(self) -> list[Package]:
         return [p for p in self.packages if p.has_vulnerabilities]
 
@@ -307,6 +335,19 @@ class Agent:
     status: AgentStatus = AgentStatus.CONFIGURED
     parent_agent: Optional[str] = None  # Parent agent name (for spawn tree / delegation)
     metadata: dict = field(default_factory=dict)  # Extra config data (permissions, hooks, etc.)
+
+    @property
+    def stable_id(self) -> str:
+        """Deterministic ID for this agent.
+
+        Canonical identity: agent_type + name. Same agent configuration
+        always resolves to the same ID across scans.
+        """
+        import uuid as _uuid
+
+        _ns = _uuid.UUID("7f3e4b2a-9c1d-5f8e-a0b4-12c3d4e5f6a7")
+        fingerprint = f"agent:{self.agent_type.value}:{self.name.lower().strip()}"
+        return str(_uuid.uuid5(_ns, fingerprint))
 
     @property
     def total_packages(self) -> int:

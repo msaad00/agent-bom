@@ -358,7 +358,7 @@ def test_compliance_no_agents(mock_pipeline):
     assert result["overall_score"] == 100.0
     assert result["overall_status"] == "pass"
     assert len(result["owasp_llm_top10"]) == 10
-    assert len(result["mitre_atlas"]) == 13
+    assert len(result["mitre_atlas"]) >= 50
     assert len(result["nist_ai_rmf"]) == 14
 
 

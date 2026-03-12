@@ -2156,8 +2156,8 @@ def test_atlas_module_imports():
 
     assert "AML.T0010" in ATLAS_TECHNIQUES
     assert "AML.T0051" in ATLAS_TECHNIQUES
-    assert "AML.T0062" in ATLAS_TECHNIQUES
-    assert len(ATLAS_TECHNIQUES) >= 10
+    assert "AML.T0053" in ATLAS_TECHNIQUES  # AI Agent Tool Invocation (current ID)
+    assert len(ATLAS_TECHNIQUES) >= 50
 
 
 def test_atlas_supply_chain_always_present():
@@ -2176,8 +2176,8 @@ def test_atlas_supply_chain_always_present():
     assert "AML.T0010" in tags
 
 
-def test_atlas_exfiltration_via_agent_tool():
-    """AML.T0062 is tagged when credentials are exposed."""
+def test_atlas_unsecured_credentials():
+    """AML.T0055 (Unsecured Credentials) is tagged when credentials are exposed."""
     from agent_bom.atlas import tag_blast_radius as tag_atlas
 
     br = BlastRadius(
@@ -2189,11 +2189,11 @@ def test_atlas_exfiltration_via_agent_tool():
         exposed_tools=[],
     )
     tags = tag_atlas(br)
-    assert "AML.T0062" in tags
+    assert "AML.T0055" in tags
 
 
-def test_atlas_agent_tools_broad_surface():
-    """AML.T0061 is tagged when >3 tools are reachable."""
+def test_atlas_agent_tool_invocation():
+    """AML.T0053 (AI Agent Tool Invocation) is tagged when tools are reachable."""
     from agent_bom.atlas import tag_blast_radius as tag_atlas
     from agent_bom.models import MCPTool
 
@@ -2207,7 +2207,7 @@ def test_atlas_agent_tools_broad_surface():
         exposed_tools=tools,
     )
     tags = tag_atlas(br)
-    assert "AML.T0061" in tags
+    assert "AML.T0053" in tags
 
 
 def test_atlas_prompt_injection_surface():
@@ -2277,8 +2277,8 @@ def test_atlas_poison_training_data():
     assert "AML.T0020" in tags
 
 
-def test_atlas_context_poisoning():
-    """AML.T0058 is tagged when AI framework + creds + HIGH+ severity."""
+def test_atlas_exfil_via_inference_api():
+    """AML.T0024 + AML.T0055 are tagged when AI framework + creds are present."""
     from agent_bom.atlas import tag_blast_radius as tag_atlas
 
     br = BlastRadius(
@@ -2290,8 +2290,8 @@ def test_atlas_context_poisoning():
         exposed_tools=[],
     )
     tags = tag_atlas(br)
-    assert "AML.T0058" in tags
-    assert "AML.T0024" in tags  # also exfil via inference API
+    assert "AML.T0055" in tags  # unsecured credentials
+    assert "AML.T0024" in tags  # exfil via AI inference API (AI pkg + creds)
 
 
 def test_atlas_label_formatting():
@@ -2409,10 +2409,10 @@ def test_scenario_enterprise_multi_agent():
     assert "LLM06" in br1.owasp_tags  # credentials exposed
     assert "LLM07" in br1.owasp_tags  # read_file tool
 
-    # ATLAS: supply chain + exfil + prompt extraction
+    # ATLAS: supply chain + credentials + prompt extraction
     assert "AML.T0010" in br1.atlas_tags
-    assert "AML.T0062" in br1.atlas_tags  # cred exposure
-    assert "AML.T0056" in br1.atlas_tags  # read_file = data access
+    assert "AML.T0055" in br1.atlas_tags  # cred exposure → unsecured credentials
+    assert "AML.T0056" in br1.atlas_tags  # read_file = extract system prompt
 
     # Agent 2 has no CVEs, no blast radius
     assert len(srv3.packages[0].vulnerabilities) == 0
@@ -2565,14 +2565,13 @@ def test_scenario_high_privilege_mcp_server():
     assert "LLM04" in br.owasp_tags  # AI framework + CRITICAL
 
     # ATLAS: maximum threat surface
-    assert "AML.T0010" in br.atlas_tags  # supply chain
-    assert "AML.T0062" in br.atlas_tags  # exfil via tools
-    assert "AML.T0061" in br.atlas_tags  # broad tool surface (6 tools)
+    assert "AML.T0010" in br.atlas_tags  # supply chain (always)
+    assert "AML.T0055" in br.atlas_tags  # unsecured credentials
+    assert "AML.T0053" in br.atlas_tags  # AI agent tool invocation (tools present)
     assert "AML.T0043" in br.atlas_tags  # shell = craft adversarial data
     assert "AML.T0051" in br.atlas_tags  # prompt access
-    assert "AML.T0056" in br.atlas_tags  # file read = meta prompt extraction
+    assert "AML.T0056" in br.atlas_tags  # file read = extract system prompt
     assert "AML.T0020" in br.atlas_tags  # AI + CRITICAL = poisoning
-    assert "AML.T0058" in br.atlas_tags  # AI + creds + CRITICAL = context poisoning
     assert "AML.T0024" in br.atlas_tags  # AI + creds = exfil via inference
 
 
@@ -2689,7 +2688,7 @@ def test_json_threat_framework_summary(sample_report):
 
     # ATLAS section
     assert "mitre_atlas" in summary
-    assert len(summary["mitre_atlas"]) == 13  # Full catalog
+    assert len(summary["mitre_atlas"]) >= 50  # Full catalog (expanded)
     assert "total_atlas_triggered" in summary
     assert summary["total_atlas_triggered"] > 0
 

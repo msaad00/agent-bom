@@ -27,7 +27,7 @@
   ],
   "_meta": {
     "io.modelcontextprotocol.registry/publisher-provided": {
-      "io.github.msaad00": {
+      "io.github.stacklok": {
         "ghcr.io/msaad00/agent-bom:v0.70.5": {
           "tier": "Community",
           "status": "Active",
@@ -69,7 +69,8 @@
             "model_provenance_scan",
             "prompt_scan",
             "model_file_scan",
-            "license_compliance_scan"
+            "license_compliance_scan",
+            "ingest_external_scan"
           ]
         }
       }

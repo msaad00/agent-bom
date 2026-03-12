@@ -15,6 +15,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -41,6 +43,7 @@ jobs:
           fi
 
       - name: Build and push MCP container (stdio)
+        id: build-stdio
         uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
         with:
           context: .
@@ -51,6 +54,13 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/agent-bom:${{ steps.version.outputs.tag }}
             ghcr.io/${{ github.repository_owner }}/agent-bom:latest
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: ghcr.io/${{ github.repository_owner }}/agent-bom
+          subject-digest: ${{ steps.build-stdio.outputs.digest }}
+          push-to-registry: true
 
   publish-sse:
     runs-on: ubuntu-latest

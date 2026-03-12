@@ -58,7 +58,7 @@ def _chart_data(blast_radii: list["BlastRadius"]) -> str:
     """Build Chart.js dataset JSON for severity donut + blast radius bar chart."""
     from agent_bom.models import Severity
 
-    sev_counts: dict[str, int] = {s.value: 0 for s in Severity if s not in (Severity.NONE, Severity.UNKNOWN)}
+    sev_counts: dict[str, int] = {s.value: 0 for s in Severity}
     for br in blast_radii:
         sev = br.vulnerability.severity.value
         if sev in sev_counts:

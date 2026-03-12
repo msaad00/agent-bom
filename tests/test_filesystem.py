@@ -1,13 +1,16 @@
 """Tests for filesystem/disk snapshot scanning via Syft."""
 
 import json
+import sqlite3
 import subprocess
 
 import pytest
 
 from agent_bom.filesystem import (
     FilesystemScanError,
+    _parse_rpm_sqlite,
     _run_syft,
+    parse_rpm_packages,
     scan_filesystem,
     scan_filesystem_batch,
 )
@@ -270,3 +273,111 @@ def test_run_syft_captures_stderr(monkeypatch):
 
     with pytest.raises(FilesystemScanError, match="syft exited 2"):
         _run_syft("dir:/tmp/test", timeout=60)
+
+
+# ─── RPM SQLite parser ────────────────────────────────────────────────────────
+
+
+def _make_rpm_sqlite(db_path, rows):
+    """Helper: create a minimal SQLite RPM DB with given rows."""
+    con = sqlite3.connect(str(db_path))
+    con.execute("CREATE TABLE Packages (name TEXT, version TEXT, release TEXT, epoch INTEGER, arch TEXT)")
+    con.executemany("INSERT INTO Packages VALUES (?,?,?,?,?)", rows)
+    con.commit()
+    con.close()
+
+
+def test_parse_rpm_sqlite_db(tmp_path):
+    """_parse_rpm_sqlite reads Packages table and returns Package objects."""
+    db = tmp_path / "rpmdb.sqlite"
+    _make_rpm_sqlite(db, [("bash", "5.1.8", "6.el9", 0, "x86_64")])
+
+    pkgs = _parse_rpm_sqlite(db)
+    assert len(pkgs) == 1
+    assert pkgs[0].name == "bash"
+    assert pkgs[0].ecosystem == "rpm"
+    assert "5.1.8" in pkgs[0].version
+
+
+def test_parse_rpm_sqlite_epoch_in_version(tmp_path):
+    """Packages with non-zero epoch include it in the version string."""
+    db = tmp_path / "rpmdb.sqlite"
+    _make_rpm_sqlite(db, [("openssl", "1.1.1", "34.el9_0", 1, "x86_64")])
+
+    pkgs = _parse_rpm_sqlite(db)
+    assert len(pkgs) == 1
+    assert pkgs[0].version.startswith("1:")
+
+
+def test_rpm_purl_with_epoch(tmp_path):
+    """PURL includes epoch when non-zero."""
+    db = tmp_path / "rpmdb.sqlite"
+    _make_rpm_sqlite(db, [("curl", "7.76.1", "14.el9_0.2", 1, "x86_64")])
+
+    pkgs = _parse_rpm_sqlite(db)
+    assert len(pkgs) == 1
+    assert "1:7.76.1-14.el9_0.2" in pkgs[0].purl
+
+
+def test_rpm_purl_without_epoch(tmp_path):
+    """PURL omits epoch when epoch is 0."""
+    db = tmp_path / "rpmdb.sqlite"
+    _make_rpm_sqlite(db, [("gzip", "1.10", "1.el9", 0, "x86_64")])
+
+    pkgs = _parse_rpm_sqlite(db)
+    assert len(pkgs) == 1
+    assert "pkg:rpm/rhel/gzip@1.10-1.el9" in pkgs[0].purl
+
+
+def test_parse_rpm_sqlite_missing_file(tmp_path):
+    """Returns empty list when the database file does not exist."""
+    pkgs = _parse_rpm_sqlite(tmp_path / "nonexistent.sqlite")
+    assert pkgs == []
+
+
+def test_parse_rpm_sqlite_multiple_packages(tmp_path):
+    """All rows in the Packages table are returned."""
+    db = tmp_path / "rpmdb.sqlite"
+    _make_rpm_sqlite(
+        db,
+        [
+            ("bash", "5.1.8", "6.el9", 0, "x86_64"),
+            ("coreutils", "8.32", "34.el9", 0, "x86_64"),
+            ("systemd", "250", "12.el9_1.3", 0, "x86_64"),
+        ],
+    )
+
+    pkgs = _parse_rpm_sqlite(db)
+    assert len(pkgs) == 3
+    names = {p.name for p in pkgs}
+    assert names == {"bash", "coreutils", "systemd"}
+
+
+def test_parse_rpm_packages_no_binary(monkeypatch, tmp_path):
+    """When rpm binary is absent and no SQLite DB, returns empty list gracefully."""
+    monkeypatch.setattr("shutil.which", lambda name: None)
+
+    pkgs = parse_rpm_packages(tmp_path)
+    assert pkgs == []
+
+
+def test_parse_rpm_packages_uses_sqlite_when_present(tmp_path):
+    """parse_rpm_packages prefers SQLite DB over rpm binary."""
+    rpm_dir = tmp_path / "var" / "lib" / "rpm"
+    rpm_dir.mkdir(parents=True)
+    db = rpm_dir / "rpmdb.sqlite"
+    _make_rpm_sqlite(db, [("bash", "5.1.8", "6.el9", 0, "x86_64")])
+
+    pkgs = parse_rpm_packages(tmp_path)
+    assert len(pkgs) == 1
+    assert pkgs[0].name == "bash"
+
+
+def test_parse_rpm_sqlite_arch_in_purl(tmp_path):
+    """Architecture is included as a query parameter in the PURL."""
+    db = tmp_path / "rpmdb.sqlite"
+    _make_rpm_sqlite(db, [("kernel", "5.14.0", "70.13.1.el9_0", 0, "x86_64")])
+
+    pkgs = _parse_rpm_sqlite(db)
+    assert len(pkgs) == 1
+    assert "arch=x86_64" in pkgs[0].purl

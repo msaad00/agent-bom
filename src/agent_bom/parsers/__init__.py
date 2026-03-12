@@ -17,9 +17,11 @@ from agent_bom.models import MCPServer, Package
 # Re-export Go/Maven/Cargo/uvx parsers for backward compatibility
 from agent_bom.parsers.compiled_parsers import (  # noqa: F401
     _parse_go_mod_requires,
+    _parse_pom_modules,
     detect_uvx_package,
     parse_cargo_packages,
     parse_go_packages,
+    parse_go_workspace,
     parse_maven_packages,
 )
 

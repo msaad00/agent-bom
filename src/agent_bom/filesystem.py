@@ -231,12 +231,79 @@ def parse_apk_installed(installed_file: Path) -> list[Package]:
     return packages
 
 
+def _parse_rpm_sqlite(db_path: Path) -> list[Package]:
+    """Parse a RHEL 9+ SQLite RPM database directly (no ``rpm`` binary needed).
+
+    Reads the ``Packages`` table from the SQLite database at *db_path* and
+    extracts ``name``, ``version``, ``release``, ``epoch``, and ``arch``
+    columns.  The PURL epoch is omitted when it is ``0`` or absent.
+
+    Args:
+        db_path: Path to ``rpmdb.sqlite`` (typically
+            ``<root>/var/lib/rpm/rpmdb.sqlite``).
+
+    Returns:
+        List of :class:`~agent_bom.models.Package` objects with
+        ``ecosystem="rpm"``.  Returns an empty list on any error.
+    """
+    import sqlite3
+
+    if not db_path.exists():
+        return []
+
+    packages: list[Package] = []
+    try:
+        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        try:
+            cur = con.execute("SELECT name, version, release, epoch, arch FROM Packages")
+            rows = cur.fetchall()
+        finally:
+            con.close()
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("RPM SQLite parse failed for %s: %s", db_path, exc)
+        return []
+
+    for row in rows:
+        name, version, release, epoch, arch = row
+        if not name or not version:
+            continue
+
+        # Build version string: epoch:version-release (omit epoch when 0)
+        epoch_str = str(epoch).strip() if epoch is not None else "0"
+        ver_release = f"{version}-{release}" if release else version
+        if epoch_str and epoch_str != "0":
+            full_version = f"{epoch_str}:{ver_release}"
+        else:
+            full_version = ver_release
+
+        # PURL: pkg:rpm/rhel/name@epoch:version-release?arch=x86_64
+        purl = f"pkg:rpm/rhel/{name}@{full_version}"
+        if arch:
+            purl += f"?arch={arch}"
+
+        packages.append(
+            Package(
+                name=name,
+                version=full_version,
+                ecosystem="rpm",
+                purl=purl,
+                is_direct=True,
+            )
+        )
+
+    return packages
+
+
 def parse_rpm_packages(root: Path) -> list[Package]:
     """Query installed RPM packages from an RPM database.
 
-    For live systems, runs ``rpm -qa`` if the binary is on PATH.
-    For mounted snapshots, tries ``rpm --dbpath <root>/var/lib/rpm -qa``.
-    Returns empty list if rpm is not available.
+    Resolution order:
+
+    1. **SQLite DB** (RHEL 9+): reads ``<root>/var/lib/rpm/rpmdb.sqlite``
+       directly — no ``rpm`` binary required.
+    2. **rpm binary**: falls back to ``rpm --dbpath <root>/var/lib/rpm -qa``
+       for older RPM DB formats.  Returns an empty list if ``rpm`` is not on
+       PATH (logs a debug message rather than failing silently).
 
     Args:
         root: Filesystem root (``/`` for live, ``/mnt/snapshot`` for VMs).
@@ -245,7 +312,18 @@ def parse_rpm_packages(root: Path) -> list[Package]:
         List of :class:`~agent_bom.models.Package` objects with
         ``ecosystem="rpm"``.
     """
+    # Prefer SQLite DB (RHEL 9+ — no binary dependency)
+    sqlite_db = root / "var" / "lib" / "rpm" / "rpmdb.sqlite"
+    if sqlite_db.exists():
+        pkgs = _parse_rpm_sqlite(sqlite_db)
+        if pkgs:
+            return pkgs
+
     if not shutil.which("rpm"):
+        logger.debug(
+            "rpm binary not found on PATH and no SQLite RPM DB at %s — skipping RPM scan",
+            sqlite_db,
+        )
         return []
 
     rpm_db_candidate = root / "var" / "lib" / "rpm"
@@ -257,7 +335,7 @@ def parse_rpm_packages(root: Path) -> list[Package]:
     cmd = ["rpm"]
     if rpm_db:
         cmd += ["--dbpath", str(rpm_db)]
-    cmd += ["-qa", "--qf", "%{NAME}\\t%{VERSION}-%{RELEASE}\\t%{ARCH}\\n"]
+    cmd += ["-qa", "--qf", "%{NAME}\\t%{EPOCH}\\t%{VERSION}\\t%{RELEASE}\\t%{ARCH}\\n"]
 
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
@@ -270,18 +348,34 @@ def parse_rpm_packages(root: Path) -> list[Package]:
     packages: list[Package] = []
     for line in result.stdout.splitlines():
         parts = line.strip().split("\t")
-        if len(parts) >= 2:
-            name, version = parts[0], parts[1]
-            if name and version:
-                packages.append(
-                    Package(
-                        name=name,
-                        version=version,
-                        ecosystem="rpm",
-                        purl=f"pkg:rpm/redhat/{name}@{version}",
-                        is_direct=True,
-                    )
+        if len(parts) >= 3:
+            name = parts[0]
+            epoch = parts[1] if len(parts) > 1 else "0"
+            version = parts[2] if len(parts) > 2 else ""
+            release = parts[3] if len(parts) > 3 else ""
+            arch = parts[4] if len(parts) > 4 else ""
+
+            if not name or not version:
+                continue
+
+            ver_release = f"{version}-{release}" if release else version
+            # Epoch "(none)" means 0 in RPM output
+            epoch_clean = epoch.strip() if epoch and epoch not in ("(none)", "0", "") else ""
+            full_version = f"{epoch_clean}:{ver_release}" if epoch_clean else ver_release
+
+            purl = f"pkg:rpm/redhat/{name}@{full_version}"
+            if arch:
+                purl += f"?arch={arch}"
+
+            packages.append(
+                Package(
+                    name=name,
+                    version=full_version,
+                    ecosystem="rpm",
+                    purl=purl,
+                    is_direct=True,
                 )
+            )
 
     return packages
 

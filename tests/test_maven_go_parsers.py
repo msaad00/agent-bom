@@ -14,6 +14,7 @@ import textwrap
 from agent_bom.parsers import (
     _parse_go_mod_requires,
     parse_go_packages,
+    parse_go_workspace,
     parse_maven_packages,
     scan_project_directory,
 )
@@ -378,3 +379,292 @@ class TestProjectModeMavenGo:
         go_pkgs = [p for p in pkgs if p.ecosystem == "go"]
         assert maven_pkgs, "Expected Maven packages"
         assert go_pkgs, "Expected Go packages"
+
+
+# ── parse_go_workspace ────────────────────────────────────────────────────────
+
+GO_WORK_SINGLE = textwrap.dedent("""\
+    go 1.21
+
+    use ./app
+""")
+
+GO_WORK_MULTI = textwrap.dedent("""\
+    go 1.21
+
+    use (
+        ./app
+        ./lib
+    )
+""")
+
+GO_MOD_APP = textwrap.dedent("""\
+    module example.com/app
+
+    go 1.21
+
+    require (
+        github.com/gin-gonic/gin v1.9.1
+        github.com/stretchr/testify v1.8.4 // indirect
+    )
+""")
+
+GO_MOD_LIB = textwrap.dedent("""\
+    module example.com/lib
+
+    go 1.21
+
+    require (
+        github.com/pkg/errors v0.9.1
+        github.com/gin-gonic/gin v1.9.1
+    )
+""")
+
+
+class TestParseGoWorkspace:
+    def test_returns_empty_when_no_go_work(self, tmp_path):
+        assert parse_go_workspace(tmp_path) == []
+
+    def test_parse_go_workspace_single_module(self, tmp_path):
+        """go.work with one use directive returns that module's packages."""
+        app_dir = tmp_path / "app"
+        app_dir.mkdir()
+        (tmp_path / "go.work").write_text(GO_WORK_SINGLE)
+        (app_dir / "go.mod").write_text(GO_MOD_APP)
+
+        pkgs = parse_go_workspace(tmp_path)
+        names = {p.name for p in pkgs}
+        assert "github.com/gin-gonic/gin" in names
+        assert "github.com/stretchr/testify" in names
+
+    def test_parse_go_workspace_multi_module(self, tmp_path):
+        """go.work with two use directives merges packages from both."""
+        app_dir = tmp_path / "app"
+        lib_dir = tmp_path / "lib"
+        app_dir.mkdir()
+        lib_dir.mkdir()
+        (tmp_path / "go.work").write_text(GO_WORK_MULTI)
+        (app_dir / "go.mod").write_text(GO_MOD_APP)
+        (lib_dir / "go.mod").write_text(GO_MOD_LIB)
+
+        pkgs = parse_go_workspace(tmp_path)
+        names = {p.name for p in pkgs}
+        # packages from both modules should be present
+        assert "github.com/gin-gonic/gin" in names
+        assert "github.com/pkg/errors" in names
+        assert "github.com/stretchr/testify" in names
+
+    def test_parse_go_workspace_missing_file(self, tmp_path):
+        """No go.work file returns empty list."""
+        assert parse_go_workspace(tmp_path) == []
+
+    def test_go_workspace_deduplicates(self, tmp_path):
+        """Same package appearing in multiple modules is returned once."""
+        app_dir = tmp_path / "app"
+        lib_dir = tmp_path / "lib"
+        app_dir.mkdir()
+        lib_dir.mkdir()
+        (tmp_path / "go.work").write_text(GO_WORK_MULTI)
+        (app_dir / "go.mod").write_text(GO_MOD_APP)
+        (lib_dir / "go.mod").write_text(GO_MOD_LIB)
+
+        pkgs = parse_go_workspace(tmp_path)
+        gin_pkgs = [p for p in pkgs if p.name == "github.com/gin-gonic/gin"]
+        assert len(gin_pkgs) == 1
+
+    def test_go_workspace_direct_wins_over_indirect(self, tmp_path):
+        """When a package is direct in one module and indirect in another, is_direct=True."""
+        app_dir = tmp_path / "app"
+        lib_dir = tmp_path / "lib"
+        app_dir.mkdir()
+        lib_dir.mkdir()
+        (tmp_path / "go.work").write_text(GO_WORK_MULTI)
+        # app marks testify as indirect; lib marks gin as direct
+        (app_dir / "go.mod").write_text(GO_MOD_APP)
+        (lib_dir / "go.mod").write_text(GO_MOD_LIB)
+
+        pkgs = {p.name: p for p in parse_go_workspace(tmp_path)}
+        # gin is direct in lib, indirect in app (via GO_MOD_APP it's direct) — still True
+        assert pkgs["github.com/gin-gonic/gin"].is_direct is True
+
+    def test_go_purl_format_workspace(self, tmp_path):
+        """PURLs from workspace modules use pkg:golang/ scheme."""
+        app_dir = tmp_path / "app"
+        app_dir.mkdir()
+        (tmp_path / "go.work").write_text(GO_WORK_SINGLE)
+        (app_dir / "go.mod").write_text(GO_MOD_APP)
+
+        pkgs = {p.name: p for p in parse_go_workspace(tmp_path)}
+        assert pkgs["github.com/gin-gonic/gin"].purl.startswith("pkg:golang/")
+
+    def test_go_packages_delegates_to_workspace(self, tmp_path):
+        """parse_go_packages() uses workspace mode when go.work is present."""
+        app_dir = tmp_path / "app"
+        app_dir.mkdir()
+        (tmp_path / "go.work").write_text(GO_WORK_SINGLE)
+        (app_dir / "go.mod").write_text(GO_MOD_APP)
+
+        pkgs = parse_go_packages(tmp_path)
+        names = {p.name for p in pkgs}
+        assert "github.com/gin-gonic/gin" in names
+
+    def test_go_purl_format(self, tmp_path):
+        """Verify go.mod packages have pkg:golang/ PURL scheme."""
+        (tmp_path / "go.mod").write_text(GO_MOD_BASIC)
+        pkgs = {p.name: p for p in parse_go_packages(tmp_path)}
+        assert pkgs["github.com/gin-gonic/gin"].purl == "pkg:golang/github.com/gin-gonic/gin@v1.9.1"
+
+
+# ── Maven multi-module ────────────────────────────────────────────────────────
+
+MAVEN_POM_PARENT = textwrap.dedent("""\
+    <?xml version="1.0" encoding="UTF-8"?>
+    <project xmlns="http://maven.apache.org/POM/4.0.0">
+        <modelVersion>4.0.0</modelVersion>
+        <groupId>com.example</groupId>
+        <artifactId>parent</artifactId>
+        <version>1.0.0</version>
+        <packaging>pom</packaging>
+        <dependencies>
+            <dependency>
+                <groupId>org.apache.logging.log4j</groupId>
+                <artifactId>log4j-core</artifactId>
+                <version>2.14.1</version>
+            </dependency>
+        </dependencies>
+        <modules>
+            <module>child-a</module>
+            <module>child-b</module>
+        </modules>
+    </project>
+""")
+
+MAVEN_POM_CHILD_A = textwrap.dedent("""\
+    <?xml version="1.0" encoding="UTF-8"?>
+    <project xmlns="http://maven.apache.org/POM/4.0.0">
+        <modelVersion>4.0.0</modelVersion>
+        <artifactId>child-a</artifactId>
+        <dependencies>
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-databind</artifactId>
+                <version>2.13.0</version>
+            </dependency>
+        </dependencies>
+    </project>
+""")
+
+MAVEN_POM_CHILD_B = textwrap.dedent("""\
+    <?xml version="1.0" encoding="UTF-8"?>
+    <project xmlns="http://maven.apache.org/POM/4.0.0">
+        <modelVersion>4.0.0</modelVersion>
+        <artifactId>child-b</artifactId>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework</groupId>
+                <artifactId>spring-core</artifactId>
+                <version>5.3.18</version>
+            </dependency>
+        </dependencies>
+    </project>
+""")
+
+
+class TestParseMavenMultiModule:
+    def test_parse_maven_multi_module(self, tmp_path):
+        """Root pom with <modules> parses children's dependencies."""
+        child_a = tmp_path / "child-a"
+        child_b = tmp_path / "child-b"
+        child_a.mkdir()
+        child_b.mkdir()
+        (tmp_path / "pom.xml").write_text(MAVEN_POM_PARENT)
+        (child_a / "pom.xml").write_text(MAVEN_POM_CHILD_A)
+        (child_b / "pom.xml").write_text(MAVEN_POM_CHILD_B)
+
+        pkgs = parse_maven_packages(tmp_path)
+        names = {p.name for p in pkgs}
+        assert "org.apache.logging.log4j:log4j-core" in names
+        assert "com.fasterxml.jackson.core:jackson-databind" in names
+        assert "org.springframework:spring-core" in names
+
+    def test_parse_maven_single_module(self, tmp_path):
+        """No <modules> section — works exactly as before."""
+        (tmp_path / "pom.xml").write_text(MAVEN_POM_BASIC)
+        pkgs = parse_maven_packages(tmp_path)
+        names = {p.name for p in pkgs}
+        assert "org.apache.logging.log4j:log4j-core" in names
+
+    def test_parse_maven_depth_limit(self, tmp_path):
+        """Recursion stops at depth 3 — 4-level nesting returns partial results."""
+        # Build 4 levels: root → l1 → l2 → l3 → l4 (l4 should NOT be parsed)
+        dirs = [tmp_path]
+        module_name = "child"
+        for i in range(1, 5):
+            d = dirs[-1] / module_name
+            d.mkdir()
+            dirs.append(d)
+
+        def _pom(module_ref: str | None, dep_artifact: str) -> str:
+            modules_block = f"<modules><module>{module_ref}</module></modules>" if module_ref else ""
+            return textwrap.dedent(f"""\
+                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                    <dependencies>
+                        <dependency>
+                            <groupId>com.example</groupId>
+                            <artifactId>{dep_artifact}</artifactId>
+                            <version>1.0.0</version>
+                        </dependency>
+                    </dependencies>
+                    {modules_block}
+                </project>
+            """)
+
+        (dirs[0] / "pom.xml").write_text(_pom(module_name, "level0-dep"))
+        (dirs[1] / "pom.xml").write_text(_pom(module_name, "level1-dep"))
+        (dirs[2] / "pom.xml").write_text(_pom(module_name, "level2-dep"))
+        (dirs[3] / "pom.xml").write_text(_pom(module_name, "level3-dep"))
+        (dirs[4] / "pom.xml").write_text(_pom(None, "level4-dep"))
+
+        pkgs = parse_maven_packages(tmp_path)
+        names = {p.name for p in pkgs}
+        # Levels 0-3 are within depth limit (0,1,2,3), level 4 is excluded
+        assert "com.example:level0-dep" in names
+        assert "com.example:level1-dep" in names
+        assert "com.example:level2-dep" in names
+        assert "com.example:level3-dep" in names
+        assert "com.example:level4-dep" not in names
+
+    def test_parse_maven_multi_module_deduplicates(self, tmp_path):
+        """Same dependency in parent and child appears only once."""
+        child_a = tmp_path / "child-a"
+        child_a.mkdir()
+        (tmp_path / "pom.xml").write_text(
+            textwrap.dedent("""\
+            <project xmlns="http://maven.apache.org/POM/4.0.0">
+                <dependencies>
+                    <dependency>
+                        <groupId>org.apache.logging.log4j</groupId>
+                        <artifactId>log4j-core</artifactId>
+                        <version>2.14.1</version>
+                    </dependency>
+                </dependencies>
+                <modules><module>child-a</module></modules>
+            </project>
+        """)
+        )
+        (child_a / "pom.xml").write_text(
+            textwrap.dedent("""\
+            <project xmlns="http://maven.apache.org/POM/4.0.0">
+                <dependencies>
+                    <dependency>
+                        <groupId>org.apache.logging.log4j</groupId>
+                        <artifactId>log4j-core</artifactId>
+                        <version>2.14.1</version>
+                    </dependency>
+                </dependencies>
+            </project>
+        """)
+        )
+        pkgs = parse_maven_packages(tmp_path)
+        log4j_pkgs = [p for p in pkgs if p.name == "org.apache.logging.log4j:log4j-core"]
+        assert len(log4j_pkgs) == 1

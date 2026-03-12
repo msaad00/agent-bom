@@ -98,7 +98,7 @@ def _get_scan_cache():  # noqa: ANN202
 # Map CVSS scores to severity
 def cvss_to_severity(score: Optional[float]) -> Severity:
     if score is None:
-        return Severity.MEDIUM
+        return Severity.UNKNOWN
     if score >= 9.0:
         return Severity.CRITICAL
     if score >= 7.0:
@@ -572,8 +572,7 @@ def deduplicate_packages(packages: list) -> list:
         name = getattr(pkg, "name", "") or ""
         ecosystem = getattr(pkg, "ecosystem", "") or ""
         version = getattr(pkg, "version", "") or ""
-        # Normalize: lowercase + replace hyphens/dots with underscores (PEP 503 compatible)
-        norm_name = name.lower().replace("-", "_").replace(".", "_")
+        norm_name = normalize_package_name(name, ecosystem)
         key = (ecosystem.lower(), norm_name, version.lower())
         if key not in seen:
             seen.add(key)
@@ -647,6 +646,8 @@ def _scan_packages_local_db(packages: list[Package]) -> tuple[int, set[str]]:
     }
 
     try:
+        from agent_bom.db.lookup import package_in_db
+
         for pkg in packages:
             eco_key = pkg.ecosystem.lower()
             db_eco = _eco_map.get(eco_key, pkg.ecosystem)
@@ -655,10 +656,11 @@ def _scan_packages_local_db(packages: list[Package]) -> tuple[int, set[str]]:
 
             local_vulns = lookup_package(conn, db_eco, norm_name, pkg.version)
 
-            # Mark as "covered by DB" — DB has been populated for this ecosystem
-            # Use ecosystem-level coverage: if DB has any records for this ecosystem,
-            # treat it as covering this package (no redundant OSV call)
-            if db_freshness_days() is not None and eco_key in _eco_map:
+            # Only mark as "covered by DB" when the package name actually exists in the
+            # affected table — not just because the ecosystem is mapped. This prevents
+            # false negatives where a package has no DB entry but is silently skipped
+            # (no OSV fallback) because the ecosystem is present.
+            if package_in_db(conn, db_eco, norm_name):
                 covered.add(db_key)
 
             if local_vulns:

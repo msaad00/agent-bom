@@ -18,7 +18,7 @@ from agent_bom.scanners import (
 
 
 def test_cvss_to_severity_none():
-    assert cvss_to_severity(None) == Severity.MEDIUM
+    assert cvss_to_severity(None) == Severity.UNKNOWN
 
 
 def test_cvss_to_severity_critical():

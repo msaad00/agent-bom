@@ -42,6 +42,7 @@ class Severity(str, Enum):
     MEDIUM = "medium"
     LOW = "low"
     NONE = "none"
+    UNKNOWN = "unknown"  # No CVSS/severity data available — not the same as NONE (no vulnerability)
 
 
 class AgentType(str, Enum):

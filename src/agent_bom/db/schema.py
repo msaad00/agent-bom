@@ -60,6 +60,13 @@ DB_PATH: Path = _validated_db_path(_RAW_DB_PATH)
 # Schema version — bump when DDL changes incompatibly
 _SCHEMA_VERSION = 1
 
+# Migration scripts: list of (from_version, to_version, sql) tuples.
+# Add a new entry here whenever _SCHEMA_VERSION is bumped.
+# Each migration must be idempotent (use IF NOT EXISTS / IF EXISTS guards).
+_MIGRATIONS: list[tuple[int, int, str]] = [
+    # (1, 2, "ALTER TABLE vulns ADD COLUMN new_col TEXT;"),  # example
+]
+
 _DDL = """
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;
@@ -166,13 +173,44 @@ def init_db(path: Path | None = None) -> sqlite3.Connection:
     else:
         current = row["version"]
         if current < _SCHEMA_VERSION:
+            _migrate(conn, current)
+        elif current > _SCHEMA_VERSION:
             _logger.warning(
-                "DB schema v%d is older than code v%d — run 'agent-bom db update' to migrate",
+                "DB schema v%d is newer than code v%d — upgrade agent-bom",
                 current,
                 _SCHEMA_VERSION,
             )
 
     return conn
+
+
+def _migrate(conn: sqlite3.Connection, from_version: int) -> None:
+    """Apply sequential migrations from *from_version* up to _SCHEMA_VERSION."""
+    current = from_version
+    for src, dst, sql in _MIGRATIONS:
+        if current == src:
+            _logger.info("Migrating local vuln DB schema v%d → v%d", src, dst)
+            try:
+                conn.executescript(sql)
+                conn.execute("UPDATE schema_version SET version = ?", (dst,))
+                conn.commit()
+                current = dst
+                _logger.info("Migration v%d → v%d complete", src, dst)
+            except Exception as exc:
+                _logger.error(
+                    "Migration v%d → v%d failed: %s — DB may be in a partial state. "
+                    "Delete the DB and re-run 'agent-bom db update' to rebuild.",
+                    src,
+                    dst,
+                    exc,
+                )
+                raise
+    if current < _SCHEMA_VERSION:
+        _logger.warning(
+            "DB schema v%d is older than code v%d — no migration path found. Delete the DB and re-run 'agent-bom db update' to rebuild.",
+            current,
+            _SCHEMA_VERSION,
+        )
 
 
 def db_freshness_days(path: Path | None = None) -> int | None:

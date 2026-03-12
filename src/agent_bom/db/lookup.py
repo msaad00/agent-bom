@@ -137,6 +137,22 @@ def _version_affected(
         return True
 
 
+def package_in_db(conn: sqlite3.Connection, ecosystem: str, name: str) -> bool:
+    """Return True if *any* affected record exists for this package in the DB.
+
+    Used to decide whether the DB is authoritative for a package (and OSV fallback
+    can be skipped) vs. the package simply not being indexed yet.
+    """
+    from agent_bom.models import normalize_package_name
+
+    norm_name = normalize_package_name(name, ecosystem)
+    row = conn.execute(
+        "SELECT 1 FROM affected WHERE LOWER(ecosystem) = ? AND package_name = ? LIMIT 1",
+        (ecosystem.lower(), norm_name),
+    ).fetchone()
+    return row is not None
+
+
 class VulnDB:
     """Context-manager wrapper for the local vuln DB connection."""
 

@@ -49,9 +49,9 @@ def _map_severity(raw: str) -> Severity:
         "low": Severity.LOW,
         "none": Severity.NONE,
         "negligible": Severity.NONE,
-        "unknown": Severity.NONE,
+        "unknown": Severity.UNKNOWN,
     }
-    return mapping.get(raw.lower(), Severity.NONE)
+    return mapping.get(raw.lower(), Severity.UNKNOWN)
 
 
 # ── Trivy parser ─────────────────────────────────────────────────────────────

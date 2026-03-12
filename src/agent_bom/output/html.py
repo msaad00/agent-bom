@@ -31,8 +31,9 @@ _SEV_COLOR = {
     "medium": "#d97706",
     "low": "#6b7280",
     "none": "#16a34a",
+    "unknown": "#9ca3af",
 }
-_SEV_ORDER = {"critical": 4, "high": 3, "medium": 2, "low": 1, "none": 0}
+_SEV_ORDER = {"critical": 4, "high": 3, "medium": 2, "low": 1, "none": 0, "unknown": -1}
 
 # Max packages shown per server before collapsing
 _PKG_PREVIEW = 15
@@ -57,7 +58,7 @@ def _chart_data(blast_radii: list["BlastRadius"]) -> str:
     """Build Chart.js dataset JSON for severity donut + blast radius bar chart."""
     from agent_bom.models import Severity
 
-    sev_counts: dict[str, int] = {s.value: 0 for s in Severity if s != Severity.NONE}
+    sev_counts: dict[str, int] = {s.value: 0 for s in Severity if s not in (Severity.NONE, Severity.UNKNOWN)}
     for br in blast_radii:
         sev = br.vulnerability.severity.value
         if sev in sev_counts:

@@ -7,7 +7,7 @@ description: >-
   and vector database security checks. Use when the user mentions vulnerability
   scanning, MCP server trust, compliance, SBOM generation, CIS benchmarks,
   blast radius, or AI supply chain risk.
-version: 0.68.1
+version: 0.70.5
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. No credentials required for
@@ -19,11 +19,11 @@ metadata:
   source: https://github.com/msaad00/agent-bom
   pypi: https://pypi.org/project/agent-bom/
   scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
-  tests: 5939
+  tests: 5987
   install:
     pipx: agent-bom
     pip: agent-bom
-    docker: ghcr.io/msaad00/agent-bom:0.68.1
+    docker: ghcr.io/msaad00/agent-bom:0.70.5
   openclaw:
     requires:
       bins: []
@@ -37,9 +37,6 @@ metadata:
       sanitize_env_vars() in the installed code — verify at
       https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py#L159
     optional_env:
-      - name: NVD_API_KEY
-        purpose: "Increases NVD API rate limit (scanning works without it)"
-        required: false
       - name: SNYK_TOKEN
         purpose: "Snyk vulnerability enrichment for code_scan (optional)"
         required: false
@@ -152,7 +149,7 @@ metadata:
         purpose: "OSV vulnerability database — batch CVE lookup for packages"
         auth: false
       - url: "https://services.nvd.nist.gov/rest/json/cves/2.0"
-        purpose: "NVD CVSS v4 enrichment — optional API key increases rate limit"
+        purpose: "NVD secondary enrichment — adds CWE IDs, dates, references (no key required)"
         auth: false
       - url: "https://api.first.org/data/v1/epss"
         purpose: "EPSS exploit probability scores"
@@ -199,7 +196,7 @@ agent-bom where             # show all discovery paths
 }
 ```
 
-## Tools (30)
+## Tools (31)
 
 ### Vulnerability Scanning
 | Tool | Description |
@@ -250,6 +247,7 @@ agent-bom where             # show all discovery paths
 | `prompt_scan` | Scan prompt templates for injection and data leakage risks |
 | `model_file_scan` | Scan model files for unsafe serialization (pickle, etc.) |
 | `license_compliance_scan` | Full SPDX license catalog scan with copyleft and network-copyleft detection |
+| `ingest_external_scan` | Import Trivy/Grype/Syft scan results and merge into agent-bom findings |
 
 ### Resources
 | Resource | Description |
@@ -283,6 +281,23 @@ gpu_infra_scan()
 # Assess trust of a skill file
 skill_trust(skill_content="<paste SKILL.md content>")
 ```
+
+## Guardrails
+
+**Always do:**
+- Show CVEs even when NVD analysis is pending or severity is `unknown` — a CVE ID with no details is still a real finding. Report what is known; mark severity as `unknown` explicitly.
+- Confirm with the user before scanning cloud environments (`cis_benchmark`) — these make live API calls to AWS/Azure/GCP using the user's credentials.
+- Treat `UNKNOWN` severity as unresolved, not benign — it means data is not yet available, not that the issue is minor.
+
+**Never do:**
+- Do not modify any files, install packages, or change system configuration. This skill is read-only.
+- Do not transmit env var values, credentials, or file contents to any external service. Only package names and CVE IDs leave the machine.
+- Do not invoke `scan()` autonomously on sensitive environments without user confirmation. The `autonomous_invocation` policy is `restricted`.
+
+**Stop and ask the user when:**
+- The user requests a cloud CIS benchmark and no cloud credentials are configured.
+- A scan finds `CRITICAL` CVEs — present findings and ask whether to generate a remediation plan.
+- The user asks to scan a path outside their home directory.
 
 ## Supported Frameworks
 
@@ -323,6 +338,6 @@ configured credentials and call only the cloud provider's own APIs.
 ## Verification
 
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
-- **Sigstore signed**: `agent-bom verify agent-bom@0.68.1`
-- **4,400+ tests** with CodeQL + OpenSSF Scorecard
+- **Sigstore signed**: `agent-bom verify agent-bom@0.70.5`
+- **5,987+ tests** with CodeQL + OpenSSF Scorecard
 - **No telemetry**: Zero tracking, zero analytics

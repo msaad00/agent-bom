@@ -386,6 +386,7 @@ def _pinecone_get(path: str, api_key: str, timeout: int = _DEFAULT_TIMEOUT) -> t
     """Make an authenticated GET request to the Pinecone API.
 
     Returns (status_code, parsed_json). Returns (-1, {}) on network/parse error.
+    The API key is never surfaced in exception messages or logs.
     """
     url = f"{_PINECONE_API_BASE}{path}"
     try:
@@ -405,7 +406,10 @@ def _pinecone_get(path: str, api_key: str, timeout: int = _DEFAULT_TIMEOUT) -> t
         except Exception:
             body = {}
         return e.code, body
-    except Exception:
+    except Exception as exc:
+        # Sanitize: ensure the API key cannot appear in logged exception messages.
+        sanitized = str(exc).replace(api_key, "***REDACTED***") if api_key else str(exc)
+        logger.debug("Pinecone request failed: %s", sanitized)
         return -1, {}
 
 

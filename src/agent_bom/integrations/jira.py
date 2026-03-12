@@ -10,6 +10,7 @@ import logging
 from typing import Optional
 
 from agent_bom.http_client import create_client, request_with_retry
+from agent_bom.security import validate_url
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,7 @@ async def create_jira_ticket(
         }
     }
 
+    validate_url(jira_url)
     url = f"{jira_url.rstrip('/')}/rest/api/3/issue"
 
     async with create_client(timeout=15.0) as client:

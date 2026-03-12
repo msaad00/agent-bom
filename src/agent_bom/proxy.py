@@ -277,10 +277,11 @@ class ProxyMetricsServer:
                     if header_str.lower().startswith("authorization:"):
                         auth_header = header_str.split(":", 1)[1].strip()
 
-                # Bearer token auth (optional — enabled via --metrics-token)
+                # Bearer token auth (optional — enabled via --metrics-token).
+                # hmac.compare_digest prevents timing-based token enumeration.
                 if self.token:
                     expected = f"Bearer {self.token}"
-                    if auth_header != expected:
+                    if not hmac.compare_digest(auth_header or "", expected):
                         response = "HTTP/1.1 401 Unauthorized\r\nContent-Length: 12\r\n\r\nUnauthorized"
                         writer.write(response.encode())
                         await writer.drain()

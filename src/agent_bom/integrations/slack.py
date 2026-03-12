@@ -9,6 +9,7 @@ import logging
 from typing import Any
 
 from agent_bom.http_client import create_client, request_with_retry
+from agent_bom.security import validate_url
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +104,7 @@ async def send_slack_alert(
     Returns:
         True if message was sent successfully.
     """
+    validate_url(webhook_url)
     blocks = _build_slack_blocks(finding)
     payload = {"blocks": blocks}
 
@@ -126,6 +128,7 @@ async def send_slack_alert(
 
 async def send_slack_payload(webhook_url: str, payload: dict) -> bool:
     """Send a raw Slack payload to a webhook URL."""
+    validate_url(webhook_url)
     async with create_client(timeout=10.0) as client:
         response = await request_with_retry(
             client,

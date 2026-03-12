@@ -1,70 +1,99 @@
-# agent-bom v0.69.0 demo — run with: vhs docs/demo.tape
-# Install vhs: brew install vhs  (or https://github.com/charmbracelet/vhs)
+# agent-bom v0.70.4 demo — run with: vhs docs/demo.tape
+#
+# Install vhs:  brew install vhs
 # Prereqs:
-#   pip install agent-bom
-#   docker running (for --gpu-scan section)
-#   Run before recording: docker run -d --name gpu-demo \
-#     --label com.nvidia.cuda.version=12.3.0 \
-#     node:18-slim sleep 3600
+#   pip install agent-bom==0.70.4
+#   Stage scans before recording:
+#     agent-bom scan --demo -f json -o /tmp/baseline.json
+#     agent-bom scan --demo -f json -o /tmp/current.json
+# Optional (GPU scene — requires Docker):
+#   docker run -d --name nim-demo \
+#     --label com.nvidia.cuda.version=12.4.0 \
+#     --label com.nvidia.nim.model=meta/llama-3.1-8b-instruct \
+#     node:20-slim sleep 3600
 
-Output docs/images/demo-v0.69.0.gif
+Output docs/images/demo-v0.70.4.gif
 
 Set Shell "bash"
-Set FontSize 14
+Set FontSize 13
 Set Width 1200
 Set Height 700
 Set Theme "Dracula"
-Set Padding 20
+Set Padding 24
 Set TypingSpeed 40ms
-Set PlaybackSpeed 1.2
+Set PlaybackSpeed 1.0
 
-# ── 1. Auto-discover your MCP setup ─────────────────────────────────────────
-# Discovers 22 MCP clients, scans CVEs, maps blast radius, 11-framework compliance
-Type "agent-bom scan"
-Sleep 300ms
+# ── 0. Version ────────────────────────────────────────────────────────────────
+Type "agent-bom --version"
 Enter
-Sleep 10s
+Sleep 3s
 
-# ── 2. Find a critical CVE before installing ─────────────────────────────────
+# ── 1. CLI overview ───────────────────────────────────────────────────────────
+Type "agent-bom --help"
+Enter
+Sleep 5s
+
+# ── 2. Instant discovery — no CVE scan, just what's there ─────────────────────
+Type "agent-bom inventory"
+Enter
+Sleep 8s
+
+# ── 3. Pre-install guard — catch CVEs before they land ────────────────────────
 Type "agent-bom check lodash@4.17.20 --ecosystem npm"
-Sleep 300ms
 Enter
-Sleep 5s
+Sleep 6s
 
-# ── 3. Fix it — scan the patched version ─────────────────────────────────────
 Type "agent-bom check lodash@4.17.23 --ecosystem npm"
-Sleep 300ms
-Enter
-Sleep 5s
-
-# ── 4. GPU/AI compute infra scan ─────────────────────────────────────────────
-# Detects CUDA containers, DCGM endpoints, GPU workload security
-Type "agent-bom scan --gpu-scan"
-Sleep 300ms
-Enter
-Sleep 12s
-
-# ── 5. Output formats — SARIF, CycloneDX, SPDX, HTML, Mermaid ──────────────
-Type "agent-bom scan -f sarif -o results.sarif && echo '13 output formats: SARIF, CycloneDX 1.6, SPDX 3.0, HTML, Mermaid, SVG, Prometheus, Badge...'"
-Sleep 300ms
 Enter
 Sleep 4s
 
-# ── 6. Runtime proxy — intercept MCP traffic with 7 detectors ───────────────
-# SQL injection, credential leak, prompt injection, tool drift detection
-Type "agent-bom proxy --detect-credentials --block-undeclared -- npx @modelcontextprotocol/server-fs /tmp &"
-Sleep 300ms
+# ── 4. Full scan with enrichment ──────────────────────────────────────────────
+Type "agent-bom scan --demo --enrich"
 Enter
-Sleep 3s
-Type "# ↑ Proxy running: 71 security patterns, Cortex AI model tracking, SQL injection detection"
-Sleep 300ms
+Sleep 20s
+
+# ── 5. Two-tier CI gate — warn on high, fail on critical ──────────────────────
+Type "agent-bom scan --demo --warn-on high --fail-on-severity critical"
+Enter
+Sleep 14s
+
+# ── 6. Delta mode — only new findings since baseline ──────────────────────────
+Type "agent-bom diff /tmp/baseline.json /tmp/current.json"
+Enter
+Sleep 6s
+
+# ── 7. GPU / AI compute infra — NIM containers, CUDA CVEs ───────────────────
+Type "agent-bom scan --gpu-scan -q"
+Enter
+Sleep 18s
+
+# ── 8. Output formats — SARIF, CycloneDX SBOM, HTML ─────────────────────────
+Type "agent-bom scan --demo -f sarif -o /tmp/results.sarif -q && echo 'SARIF written → GitHub/GitLab Security tab'"
+Enter
+Sleep 10s
+
+Type "agent-bom scan --demo -f cyclonedx -o /tmp/bom.cdx.json -q && echo 'CycloneDX SBOM written → compliance / procurement'"
+Enter
+Sleep 10s
+
+Type "agent-bom scan --demo -f html -o /tmp/report.html -q && echo 'HTML report written'"
+Enter
+Sleep 8s
+
+# ── 10. Runtime proxy — intercept live MCP traffic ───────────────────────────
+Type "agent-bom proxy --help | head -18"
+Enter
+Sleep 4s
+
+# ── 9. What you get ───────────────────────────────────────────────────────────
+Type "echo '30 MCP tools  |  21 MCP client types  |  12 cloud providers  |  7 runtime detectors'"
 Enter
 Sleep 2s
-
-# ── 7. Show 30 MCP server tools ─────────────────────────────────────────────
-Type "agent-bom mcp-server --help | head -5 && echo '30 MCP tools | 12 cloud providers | 7 runtime detectors'"
-Sleep 300ms
+Type "echo '11 compliance frameworks  |  delta scanning  |  local SQLite DB  |  Trivy/Grype ingestion'"
+Enter
+Sleep 2s
+Type "echo 'Go · Gradle · Bun · NuGet · conda parsers  |  SARIF · CycloneDX · SPDX · HTML outputs'"
 Enter
 Sleep 3s
 
-Sleep 2s
+Sleep 1s

@@ -27,10 +27,14 @@ from agent_bom.parsers.compiled_parsers import (  # noqa: F401
     parse_maven_packages,
 )
 
+# Re-export .NET/NuGet parsers
+from agent_bom.parsers.dotnet_parsers import parse_nuget_packages  # noqa: F401
+
 # Re-export Node.js parsers for backward compatibility
 from agent_bom.parsers.node_parsers import (  # noqa: F401
     _npm_purl,
     detect_npx_package,
+    parse_bun_packages,
     parse_npm_packages,
     parse_pnpm_lock,
     parse_yarn_lock,
@@ -39,6 +43,7 @@ from agent_bom.parsers.node_parsers import (  # noqa: F401
 # Re-export Python parsers for backward compatibility
 from agent_bom.parsers.python_parsers import (  # noqa: F401
     parse_conda_environment,
+    parse_pip_compile_inputs,
     parse_pip_environment,
     parse_pip_packages,
     parse_poetry_lock,
@@ -235,13 +240,16 @@ def extract_packages(
         packages.extend(parse_npm_packages(server_dir))
         packages.extend(parse_yarn_lock(server_dir))
         packages.extend(parse_pnpm_lock(server_dir))
+        packages.extend(parse_bun_packages(server_dir))
         packages.extend(parse_pip_packages(server_dir))  # includes poetry.lock + uv.lock
+        packages.extend(parse_pip_compile_inputs(server_dir))
         packages.extend(parse_conda_environment(server_dir))
         packages.extend(parse_conda_packages(server_dir))
         packages.extend(parse_go_packages(server_dir))
         packages.extend(parse_cargo_packages(server_dir))
         packages.extend(parse_maven_packages(server_dir))
         packages.extend(parse_gradle_packages(server_dir))
+        packages.extend(parse_nuget_packages(server_dir))
 
     # If we only got npx/uvx packages (no local directory), resolve transitive deps
     if resolve_transitive and (npx_packages or uvx_packages) and not server_dir:
@@ -329,7 +337,11 @@ _MANIFEST_FILES = frozenset(
         "package-lock.json",
         "yarn.lock",
         "pnpm-lock.yaml",
+        "bun.lock",
+        "bun.lockb",
         "requirements.txt",
+        "requirements.in",
+        "constraints.txt",
         "Pipfile.lock",
         "pyproject.toml",
         "poetry.lock",
@@ -345,6 +357,7 @@ _MANIFEST_FILES = frozenset(
         "build.gradle",
         "build.gradle.kts",
         "gradle.lockfile",
+        "packages.lock.json",
     }
 )
 
@@ -408,13 +421,16 @@ def scan_project_directory(
             pkgs.extend(parse_npm_packages(directory))
             pkgs.extend(parse_yarn_lock(directory))
             pkgs.extend(parse_pnpm_lock(directory))
+            pkgs.extend(parse_bun_packages(directory))
             pkgs.extend(parse_pip_packages(directory))
+            pkgs.extend(parse_pip_compile_inputs(directory))
             pkgs.extend(parse_conda_environment(directory))
             pkgs.extend(parse_conda_packages(directory))
             pkgs.extend(parse_go_packages(directory))
             pkgs.extend(parse_cargo_packages(directory))
             pkgs.extend(parse_maven_packages(directory))
             pkgs.extend(parse_gradle_packages(directory))
+            pkgs.extend(parse_nuget_packages(directory))
 
             # Deduplicate within this directory
             seen: set[tuple] = set()

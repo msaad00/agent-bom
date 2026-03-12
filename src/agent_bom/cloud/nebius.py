@@ -38,6 +38,42 @@ def _nebius_get(url: str, api_key: str, params: dict | None = None) -> dict:
     return resp.json()
 
 
+def _nebius_get_all(url: str, api_key: str, items_key: str, params: dict | None = None) -> list:
+    """Paginate through a Nebius REST API list endpoint.
+
+    Nebius uses ``nextPageToken`` / ``pageToken`` for cursor-based pagination.
+    Fetches all pages and returns the merged items list.
+
+    Args:
+        url: Full endpoint URL.
+        api_key: Nebius API key.
+        items_key: Top-level key containing the list (e.g. ``"models"``, ``"instances"``).
+        params: Additional query parameters.
+    """
+    import requests
+
+    headers = {"Authorization": f"Bearer {api_key}", "Accept": "application/json"}
+    all_items: list = []
+    page_params = dict(params or {})
+    _max_pages = 50  # safety cap — prevents infinite loops on malformed responses
+
+    for _ in range(_max_pages):
+        resp = requests.get(url, headers=headers, params=page_params, timeout=_API_TIMEOUT)
+        resp.raise_for_status()
+        data = resp.json()
+
+        # Nebius API uses both "models"/"instances" keys and a generic "data" fallback
+        items = data.get(items_key, data.get("data", []))
+        all_items.extend(items if isinstance(items, list) else [])
+
+        next_token = data.get("nextPageToken") or data.get("next_page_token", "")
+        if not next_token:
+            break
+        page_params["pageToken"] = next_token
+
+    return all_items
+
+
 def discover(
     api_key: str | None = None,
     project_id: str | None = None,
@@ -123,13 +159,12 @@ def _discover_ai_studio(
     warnings: list[str] = []
 
     try:
-        data = _nebius_get(
+        models = _nebius_get_all(
             "https://api.ai.nebius.cloud/v1/models",
             api_key,
+            items_key="models",
             params={"project_id": project_id},
         )
-
-        models = data.get("models", data.get("data", []))
 
         for model in models:
             model_id = model.get("id", "unknown")
@@ -194,13 +229,12 @@ def _discover_gpu_instances(
     warnings: list[str] = []
 
     try:
-        data = _nebius_get(
+        instances = _nebius_get_all(
             "https://compute.api.nebius.cloud/v1/instances",
             api_key,
+            items_key="instances",
             params={"project_id": project_id},
         )
-
-        instances = data.get("instances", data.get("data", []))
 
         for inst in instances:
             inst_id = inst.get("id", "unknown")
@@ -382,13 +416,12 @@ def _discover_container_services(
     warnings: list[str] = []
 
     try:
-        data = _nebius_get(
+        services = _nebius_get_all(
             "https://serverless.api.nebius.cloud/v1/containers",
             api_key,
+            items_key="containers",
             params={"project_id": project_id},
         )
-
-        services = data.get("containers", data.get("data", []))
 
         for svc in services:
             svc_id = svc.get("id", "unknown")

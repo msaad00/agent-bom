@@ -17,6 +17,8 @@ The files in this directory are tailored per-provider — not generic templates.
 | Weights & Biases (Runs, Artifacts, Model Registry) | `wandb_token_setup.md` | API key (Viewer role) |
 | Nebius AI Cloud (GPU instances, AI Studio, K8s) | `nebius_token_setup.md` | IAM service account key |
 | OpenAI / MLflow / Ollama | `openai_mlflow_ollama_setup.md` | Project API key / token / none |
+| CoreWeave (VirtualServers, KServe, NIM pods) | `coreweave_readonly.md` | kubeconfig + namespace-scoped RBAC |
+| NVIDIA (NIM, NGC, DCGM, GPU infra) | `nvidia_ngc_setup.md` | NGC Viewer key (optional) + kubectl |
 
 ---
 

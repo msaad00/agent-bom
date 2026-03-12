@@ -116,7 +116,10 @@ def discover(
         for ep in endpoints:
             ep_name = getattr(ep, "name", "unknown")
             ep_state = getattr(ep, "state", None)
-            state_str = str(getattr(ep_state, "ready", "")).upper() if ep_state else ""
+            # ep_state.ready is an EndpointStateReady enum — use .value to get
+            # the raw string ("READY" / "NOT_READY") rather than the repr.
+            ready_enum = getattr(ep_state, "ready", None) if ep_state else None
+            state_str = getattr(ready_enum, "value", str(ready_enum or "")).upper()
             if state_str not in ("READY", "NOT_READY"):
                 continue
 

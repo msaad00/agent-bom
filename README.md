@@ -36,7 +36,7 @@ agent-bom scan --enrich      # + NVD CVSS + EPSS + CISA KEV enrichment
 That's it. agent-bom discovers your MCP client configs (Claude Desktop, Cursor, Windsurf, and 20 more), resolves every server's dependencies, checks them against OSV/NVD/GHSA, and maps the blast radius — which agents, credentials, and tools are affected by each vulnerability.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.65.0.gif" alt="agent-bom demo — scan, CVE check, blast radius, runtime proxy, 30 MCP tools" width="900" />
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.70.4.gif" alt="agent-bom demo — scan, CVE check, blast radius, GPU scan, delta mode, runtime proxy, 30 MCP tools" width="900" />
 </p>
 
 <p align="center">
@@ -76,7 +76,7 @@ CVE-2025-1234  (CRITICAL . CVSS 9.8 . CISA KEV)
 
 ## MCP server
 
-31 tools available to any MCP-compatible AI assistant.
+30 tools available to any MCP-compatible AI assistant.
 
 ```bash
 pip install 'agent-bom[mcp-server]'
@@ -167,6 +167,7 @@ agent-bom scan --enrich                            # + NVD CVSS + EPSS + CISA KE
 agent-bom scan -f html -o report.html              # HTML dashboard
 agent-bom scan --enforce                           # tool poisoning detection
 agent-bom scan --fail-on-severity high -q          # CI gate
+agent-bom scan --ignore-file .agent-bom-ignore.yaml  # suppress known false positives
 agent-bom scan --image myapp:latest                # Docker image scanning
 agent-bom scan --k8s --all-namespaces              # K8s image scanning (cluster-wide)
 agent-bom scan --k8s-mcp                           # Discover MCP pods + CRDs in Kubernetes
@@ -216,7 +217,7 @@ agent-bom introspect --all --baseline baseline.json               # exit 1 on ne
 
 </details>
 
-Auto-discovers 22 MCP clients: Claude Desktop, Claude Code, Cursor, Windsurf, Cline, VS Code Copilot, Continue, Zed, Cortex Code, Codex CLI, Gemini CLI, Goose, Snowflake CLI, OpenClaw, Roo Code, Amazon Q, ToolHive, Docker MCP Toolkit, JetBrains AI, Junie, and custom paths.
+Auto-discovers 21 MCP client types: Claude Desktop, Claude Code, Cursor, Windsurf, Cline, VS Code Copilot, Continue, Zed, Cortex Code, Codex CLI, Gemini CLI, Goose, Snowflake CLI, OpenClaw, Roo Code, Amazon Q, ToolHive, Docker MCP Toolkit, JetBrains AI, Junie, and custom paths.
 
 <p align="center">
   <picture>
@@ -236,7 +237,7 @@ Auto-discovers 22 MCP clients: Claude Desktop, Claude Code, Cursor, Windsurf, Cl
 |---|---|---|
 | Package CVE detection | Yes | Yes (OSV + NVD + EPSS + CISA KEV + GHSA + NVIDIA CSAF) |
 | SBOM generation | Yes | Yes (CycloneDX 1.6, SPDX 3.0, SARIF) |
-| **AI agent discovery** | -- | 22 MCP clients + Docker Compose + running processes + containers + K8s pods/CRDs |
+| **AI agent discovery** | -- | 21 MCP client types + Docker Compose + running processes + containers + K8s pods/CRDs |
 | **GPU/ML package scanning** | -- | NVIDIA CSAF advisories for CUDA, cuDNN, PyTorch, TensorFlow, JAX, vLLM + AMD ROCm via OSV |
 | **AI supply chain** | -- | Model provenance (pickle risk, digest, gating), HuggingFace Hub, Ollama, MLflow, W&B |
 | **AI cloud inventory** | -- | Coreweave, Nebius, Snowflake, Databricks, OpenAI, HuggingFace Hub — config discovery + CVE tagging |
@@ -314,7 +315,7 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible
 | GitHub Action | `uses: msaad00/agent-bom@v0.70.4 | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated scans (linux/amd64, linux/arm64) |
 | REST API | `agent-bom api` | Dashboards, SIEM |
-| MCP Server | `agent-bom mcp-server` (31 tools) | Inside any MCP client |
+| MCP Server | `agent-bom mcp-server` (30 tools) | Inside any MCP client |
 | Dashboard | `agent-bom serve` · [Full deploy guide](docs/DEPLOYMENT.md) | API + Next.js UI (15 pages) · Postgres/Supabase |
 | Runtime proxy | `agent-bom proxy` | Intercept + enforce MCP traffic in real time |
 | Protect engine | `agent-bom protect` | 7 behavioral detectors (rug pull, injection, credential leak, exfil sequences, response cloaking, rate limiting, vector DB injection) |
@@ -485,6 +486,8 @@ rm -rf ~/.agent-bom                      # remove local data
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full diagrams: data flow pipeline, blast radius propagation, compliance framework mapping, integration architecture, and deployment topology.
 
+**New to MCP security?** [docs/MCP_SECURITY_MODEL.md](docs/MCP_SECURITY_MODEL.md) explains the MCP ecosystem, where attacks happen (supply chain, tool poisoning, rug pull, credential exfil, instruction file compromise), and exactly how agent-bom's scanner, proxy, and MCP server each address them.
+
 ---
 
 ## Trust & permissions
@@ -535,7 +538,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full diagrams: data flow pi
 - [ ] Trend analytics — vulnerability count over time, resolution velocity
 
 **Agents / MCP**
-- [x] 22 MCP client config discovery paths, live introspection, tool drift detection
+- [x] 21 MCP client config discovery paths, live introspection, tool drift detection
 - [x] Runtime proxy with 7 behavioral detectors (rug pull, injection, credential leak, exfil sequences, response cloaking, rate limiting, vector DB injection) + semantic injection scoring
 - [x] Semantic injection scoring — weighted 10-signal model, 0.0–1.0 risk score, MEDIUM/HIGH alerts
 - [ ] Agent memory / vector store content scanning for injected instructions

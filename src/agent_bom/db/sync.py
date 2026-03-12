@@ -2,7 +2,7 @@
 
 Sources:
     osv   — OSV.dev all-ecosystems bulk export (zip of per-ecosystem JSON files)
-    epss  — FIRST EPSS CSV bulk export
+    epss  — FIRST EPSS v4 CSV bulk export
     kev   — CISA KEV JSON catalog
     ghsa  — GitHub Security Advisories for AI/ML Python packages
     nvd   — NVD CVSS enrichment for CVEs missing severity data

@@ -32,6 +32,49 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.70.4] – 2026-03-11
+
+### Added
+- **Cloud provisioning scripts** — read-only, least-privilege provisioning for all 11 providers (AWS IAM + EKS RBAC, Azure Managed Identity, GCP Workload Identity, Snowflake key-pair JWT, Databricks PAT/OAuth, HuggingFace fine-grained token, W&B Viewer service account, Nebius IAM, CoreWeave namespace RBAC, NVIDIA NGC Viewer key) in `scripts/provision/`
+- **Nebius pagination** — cursor-based pagination with `nextPageToken`/`next_page_token` wired into all 3 discovery functions
+- **Post-merge self-scan** — GitHub Actions workflow scans agent-bom with agent-bom on every merge; blocks release on critical CVE (#648)
+- **Two-tier severity gate** — `--warn-on` for CI warning gates, `--fail-on-severity` for hard failures (#625)
+- **Trivy/Grype/Syft ingestion** — import external scanner JSON output with blast radius enrichment (#624)
+- **Delta scanning** — `--delta` flag reports only new findings since last scan; exit code based on new-only (#630)
+- **Local embedded vulnerability database** — SQLite schema, OSV/EPSS/KEV sync, fast lookup (#631)
+- **Bun, NuGet (.NET), pip-compile parsers** (#660)
+- **Gradle and conda parsers** for AI/ML ecosystems (#659)
+- **go.sum integrity verification** + GOPROXY version resolution (#658)
+- **Maven Central and crates.io** version resolution for unpinned deps (#661)
+- **GHSA and NVD local DB sync** sources (#653)
+- **Multi-source asset deduplication** — cross-cloud dedup with stable IDs (#654)
+- **Deterministic UUID v5 stable IDs** for assets and findings (#655)
+- **Auto-refresh stale vuln DB flag** — `--auto-refresh-db`, NIM/NeMo/NemoClaw NVIDIA tracking
+- **Production-quality Go/Maven/RPM** parser improvements (#656)
+
+### Fixed
+- **Credential security** — URL validation (jira.py, slack.py), timing-safe metrics token compare (proxy.py), API key sanitization from exception messages (vector_db.py) (#662)
+- **Databricks enum bug** — `EndpointStateReady.value` fix; `str(enum)` returned full name not value, causing all serving endpoints to be skipped (#664)
+- **CoreWeave/NVIDIA provisioning** — kubeconfig + namespace RBAC, NGC Viewer key, DCGM exposure detection (#664)
+- **Normalization gaps** — CLI check, scan_agents, rescan, postgres cache (#615)
+- **GHSA PEP 503 normalization** — advisory matching + resolver debug logging (#619)
+- **Multi-arch container rescan** — arm64 support, SARIF to Security tab (#650)
+- **OTel hardening** — schema validation, file size cap, framework expansion (#642)
+- **Stale DB warning** on outdated local cache (#642)
+- **Local vuln DB security** — chmod 0600, HTTPS-only sync, path validation, integrity check (#634)
+- **HTML report** — delta/warn-gate banners, vendor_severity display (#632)
+- **Silent exception handlers** — logging added to all bare `except` blocks (#620)
+- **Documentation accuracy** — detector count (6→7), architecture client and tool counts (#657)
+- **MCP tool count** — replaced hardcoded counts with dynamic assertions (#626)
+
+### Changed
+- **`cli/scan.py` refactored** — 3,079L monolith → modular `scan/` package (#651)
+- **Unified Finding model Phase 1** — core dataclasses, BlastRadius migration shim, dual-write (#628)
+- **PEP 503 name normalization** — configurable batch size, unresolved package warnings (#614)
+- **server.py routes extracted** — scan, discovery, connectors, governance, enterprise, schedules, observability, assets (#612, #613)
+
+---
+
 ## [0.60.1] – 2026-03-08
 
 ### Fixed

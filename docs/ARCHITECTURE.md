@@ -171,6 +171,7 @@ graph TD
     OWASP_LLM["OWASP LLM Top 10\nLLM01 - LLM10"]
     OWASP_MCP["OWASP MCP Top 10\nMCP01 - MCP10"]
     OWASP_AGT["OWASP Agentic Top 10\nASI01 - ASI10"]
+    OWASP_AISVS["OWASP AISVS v1.0\nAI Supply Chain / Runtime Controls"]
     ATLAS["MITRE ATLAS\nAML.T0010 / T0043 / T0051"]
     NIST_AI["NIST AI RMF 1.0\nGovern / Map / Measure / Manage"]
     EU_AI["EU AI Act\nART-5 through ART-17"]
@@ -182,6 +183,7 @@ graph TD
     Finding --> OWASP_LLM
     Finding --> OWASP_MCP
     Finding --> OWASP_AGT
+    Finding --> OWASP_AISVS
     Finding --> ATLAS
     Finding --> NIST_AI
     Finding --> EU_AI
@@ -195,6 +197,7 @@ graph TD
     OWASP_LLM --> Tagged
     OWASP_MCP --> Tagged
     OWASP_AGT --> Tagged
+    OWASP_AISVS --> Tagged
     ATLAS --> Tagged
     NIST_AI --> Tagged
     EU_AI --> Tagged

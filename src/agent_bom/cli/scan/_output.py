@@ -179,7 +179,7 @@ def render_output(
         else:
             print_compact_remediation(report)
             print_compact_export_hint(report)
-    elif output_format == "text" and not output:
+    elif output_format in ("text", "plain") and not output:
         _print_text(report, blast_radii)
     elif output_format == "json":
         out_path = output or "agent-bom-report.json"
@@ -262,9 +262,9 @@ def render_output(
         export_badge(report, out_path)
         con.print(f"\n  [green]✓[/green] Badge JSON: {out_path}")
         con.print("  [dim]Use with: https://img.shields.io/endpoint?url=<public-url-to-badge-json>[/dim]")
-    elif output_format == "text" and output:
+    elif output_format in ("text", "plain") and output:
         Path(output).write_text(_format_text(report, blast_radii))
-        con.print(f"\n  [green]✓[/green] Text report: {output}")
+        con.print(f"\n  [green]✓[/green] Plain text report: {output}")
     elif output:
         if output.endswith(".cdx.json"):
             export_cyclonedx(report, output)

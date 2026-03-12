@@ -240,6 +240,82 @@ def parse_pnpm_lock(directory: Path) -> list[Package]:
     return packages
 
 
+def parse_bun_packages(directory: Path) -> list[Package]:
+    """Parse packages from bun.lock (text format, Bun 1.2+) or fall back gracefully.
+
+    Bun uses a binary ``bun.lockb`` that cannot be read without the Bun
+    runtime.  Bun 1.2+ also writes a text ``bun.lock`` (YAML-like format)
+    which we prefer.  If only the binary lock exists we log a debug message
+    and return an empty list rather than crashing.
+
+    ``bun.lock`` format::
+
+        lockfileVersion: 0
+        packages:
+          "react@19.0.0":
+            resolution: {integrity: sha512-...}
+        dependencies:
+          "react": "19.0.0"
+        devDependencies:
+          "@types/node": "22.0.0"
+
+    We parse the ``dependencies`` and ``devDependencies`` sections by looking
+    for quoted ``"name": "version"`` pairs.  The ``packages:`` metadata block
+    is skipped.
+    """
+    bun_lock = directory / "bun.lock"
+    bun_lockb = directory / "bun.lockb"
+
+    if not bun_lock.exists():
+        if bun_lockb.exists():
+            logger.debug(
+                "bun.lockb found at %s but binary format is unreadable; run 'bun install' with Bun 1.2+ to generate bun.lock",
+                bun_lockb,
+            )
+        return []
+
+    packages: list[Package] = []
+    try:
+        content = bun_lock.read_text(encoding="utf-8")
+        # State machine: track which top-level section we are in.
+        # We only care about "dependencies" and "devDependencies".
+        deps_sections = {"dependencies:", "devDependencies:"}
+        skip_sections = {"packages:", "patchedDependencies:", "workspaces:"}
+        in_deps = False
+
+        for raw_line in content.splitlines():
+            stripped = raw_line.strip()
+
+            # Detect section headers (no leading whitespace on section keys)
+            if not raw_line.startswith(" ") and not raw_line.startswith("\t"):
+                in_deps = stripped in deps_sections
+                if stripped in skip_sections:
+                    in_deps = False
+                continue
+
+            if not in_deps:
+                continue
+
+            # Match: "name": "version" — both quoted
+            bun_entry = re.match(r'^\s*"([^"]+)":\s*"([^"]+)"\s*$', raw_line)
+            if bun_entry:
+                pkg_name = bun_entry.group(1)
+                pkg_version = bun_entry.group(2)
+                packages.append(
+                    Package(
+                        name=pkg_name,
+                        version=pkg_version,
+                        ecosystem="npm",
+                        purl=_npm_purl(pkg_name, pkg_version),
+                        is_direct=True,
+                    )
+                )
+    except Exception as exc:
+        logger.debug("Failed to parse bun.lock at %s: %s", bun_lock, exc)
+
+    return packages
+
+
 def detect_npx_package(server: MCPServer) -> list[Package]:
     """Extract package info from npx/npm commands."""
     packages: list[Package] = []

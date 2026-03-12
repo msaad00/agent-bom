@@ -36,20 +36,20 @@ jobs:
           python-version: "3.11"
 
       - name: Install agent-bom (from source)
-        run: uv pip install -e ".[dev]" --system
+        run: uv sync --extra dev
 
       - name: Run self dep scan (--self-scan)
         id: dep_scan
         run: |
           set +e
-          agent-bom scan --self-scan --output sarif --save sarif/self-dep.sarif --quiet
+          uv run agent-bom scan --self-scan --output sarif --save sarif/self-dep.sarif --quiet
           echo "dep_exit=$?" >> "$GITHUB_OUTPUT"
 
       - name: Run SAST scan on source code (--code)
         id: sast_scan
         run: |
           set +e
-          agent-bom scan \
+          uv run agent-bom scan \
             --code src/agent_bom \
             --output sarif \
             --save sarif/self-sast.sarif \
@@ -92,13 +92,13 @@ jobs:
           python-version: "3.11"
 
       - name: Install agent-bom (from source)
-        run: uv pip install -e ".[dev]" --system
+        run: uv sync --extra dev
 
       - name: Generate CycloneDX SBOM
         run: |
           mkdir -p sbom
           set +e
-          agent-bom scan --self-scan --output cyclonedx --save sbom/agent-bom.cdx.json --quiet
+          uv run agent-bom scan --self-scan --output cyclonedx --save sbom/agent-bom.cdx.json --quiet
           echo "SBOM generated (exit $?)"
 
       - name: Upload SBOM artifact

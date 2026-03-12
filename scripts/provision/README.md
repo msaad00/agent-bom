@@ -1,7 +1,22 @@
 # agent-bom Provisioning Scripts
 
-Read-only, least-privilege provisioning for each cloud provider.
+Read-only, least-privilege provisioning for every cloud and AI platform agent-bom supports.
 **Zero write access. Credentials never stored by agent-bom.**
+
+Each provider has a different auth model, role structure, permission scope, and API surface.
+The files in this directory are tailored per-provider — not generic templates.
+
+| Provider | File | Auth Model |
+|---|---|---|
+| AWS (EC2, ECS, EKS, Bedrock, SageMaker, Lambda, ECR) | `aws_readonly_policy.json` + `aws_eks_*.yaml` | IAM role + K8s RBAC |
+| Azure (AKS, Azure ML, Cognitive Services, ACR) | `azure_readonly_role.json` | Managed Identity / Service Principal |
+| GCP (GKE, Vertex AI, Cloud Run, Artifact Registry) | `gcp_readonly_role.yaml` | Workload Identity / Service Account |
+| Snowflake (Cortex, Notebooks, UDFs, CIS Benchmark) | `snowflake_readonly.sql` | Key-pair JWT / SSO OAuth |
+| Databricks (Model Serving, Unity Catalog, MLflow) | `databricks_readonly.sh` | PAT or OAuth M2M |
+| Hugging Face (Models, Spaces, Inference Endpoints) | `huggingface_token_setup.md` | Fine-grained read token |
+| Weights & Biases (Runs, Artifacts, Model Registry) | `wandb_token_setup.md` | API key (Viewer role) |
+| Nebius AI Cloud (GPU instances, AI Studio, K8s) | `nebius_token_setup.md` | IAM service account key |
+| OpenAI / MLflow / Ollama | `openai_mlflow_ollama_setup.md` | Project API key / token / none |
 
 ---
 

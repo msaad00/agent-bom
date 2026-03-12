@@ -6,6 +6,7 @@ No SDK dependencies — pure httpx.
 
 from __future__ import annotations
 
+import base64
 import logging
 from typing import Optional
 
@@ -90,8 +91,6 @@ async def create_jira_ticket(
     url = f"{jira_url.rstrip('/')}/rest/api/3/issue"
 
     async with create_client(timeout=15.0) as client:
-        import base64
-
         auth_str = base64.b64encode(f"{email}:{api_token}".encode()).decode()
         headers = {
             "Authorization": f"Basic {auth_str}",

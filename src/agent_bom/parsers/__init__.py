@@ -14,14 +14,16 @@ from rich.console import Console
 
 from agent_bom.models import MCPServer, Package
 
-# Re-export Go/Maven/Cargo/uvx parsers for backward compatibility
+# Re-export Go/Maven/Cargo/Gradle/conda/uvx parsers for backward compatibility
 from agent_bom.parsers.compiled_parsers import (  # noqa: F401
     _parse_go_mod_requires,
     _parse_pom_modules,
     detect_uvx_package,
     parse_cargo_packages,
+    parse_conda_packages,
     parse_go_packages,
     parse_go_workspace,
+    parse_gradle_packages,
     parse_maven_packages,
 )
 
@@ -235,9 +237,11 @@ def extract_packages(
         packages.extend(parse_pnpm_lock(server_dir))
         packages.extend(parse_pip_packages(server_dir))  # includes poetry.lock + uv.lock
         packages.extend(parse_conda_environment(server_dir))
+        packages.extend(parse_conda_packages(server_dir))
         packages.extend(parse_go_packages(server_dir))
         packages.extend(parse_cargo_packages(server_dir))
         packages.extend(parse_maven_packages(server_dir))
+        packages.extend(parse_gradle_packages(server_dir))
 
     # If we only got npx/uvx packages (no local directory), resolve transitive deps
     if resolve_transitive and (npx_packages or uvx_packages) and not server_dir:
@@ -332,11 +336,15 @@ _MANIFEST_FILES = frozenset(
         "uv.lock",
         "environment.yml",
         "environment.yaml",
+        "conda-lock.yml",
         "go.mod",
         "go.sum",
         "Cargo.toml",
         "Cargo.lock",
         "pom.xml",
+        "build.gradle",
+        "build.gradle.kts",
+        "gradle.lockfile",
     }
 )
 
@@ -402,9 +410,11 @@ def scan_project_directory(
             pkgs.extend(parse_pnpm_lock(directory))
             pkgs.extend(parse_pip_packages(directory))
             pkgs.extend(parse_conda_environment(directory))
+            pkgs.extend(parse_conda_packages(directory))
             pkgs.extend(parse_go_packages(directory))
             pkgs.extend(parse_cargo_packages(directory))
             pkgs.extend(parse_maven_packages(directory))
+            pkgs.extend(parse_gradle_packages(directory))
 
             # Deduplicate within this directory
             seen: set[tuple] = set()

@@ -515,7 +515,7 @@ ScanRequest → _run_scan_sync() [ThreadPoolExecutor]
 | Claim | Verified |
 |-------|---------|
 | "22 MCP clients" (README) | ✓ 20 named AgentType values + CUSTOM = 21 |
-| "31 MCP tools" | ✓ meta-test enforces this |
+| "32 MCP tools" | ✓ meta-test enforces this |
 | "10 compliance frameworks" | ✓ 10 tagging modules |
 | "52 CWE compliance mappings" | ✓ CWE_COMPLIANCE_MAP count |
 | "12 cloud providers" | ✓ cloud/__init__.py _PROVIDERS |

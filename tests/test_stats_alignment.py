@@ -157,7 +157,7 @@ class TestSVGStats:
         """No SVG should contain '22 tools' or '23 tools' — must match actual."""
         for svg in SVG_DIR.glob("*.svg"):
             text = svg.read_text()
-            for stale in ["22 tools", "23 tools", "30 tools", "22 MCP tools", "23 MCP tools", "30 MCP tools"]:
+            for stale in ["22 tools", "23 tools", "30 tools", "31 tools", "22 MCP tools", "23 MCP tools", "30 MCP tools", "31 MCP tools"]:
                 assert stale not in text, f"{svg.name} contains stale '{stale}' — actual MCP tool count is {ACTUAL_MCP_TOOLS}"
 
     def test_no_stale_client_count_in_svgs(self):
@@ -189,7 +189,7 @@ class TestMarkdownStats:
         if not doc.exists():
             pytest.skip(f"{doc.name} not found")
         text = doc.read_text()
-        for stale in ["22 tools", "23 tools", "30 tools", "22 MCP tool", "23 MCP tool", "30 MCP tool"]:
+        for stale in ["22 tools", "23 tools", "30 tools", "31 tools", "22 MCP tool", "23 MCP tool", "30 MCP tool", "31 MCP tool"]:
             assert stale not in text, f"{doc.name} contains stale '{stale}' — actual is {ACTUAL_MCP_TOOLS} tools"
 
     @pytest.mark.parametrize("doc", DOCS_TO_CHECK, ids=lambda p: p.name)
@@ -216,7 +216,7 @@ class TestIntegrationStats:
         if not path.exists():
             pytest.skip("toolhive server.json not found")
         text = path.read_text()
-        for stale in ["22 tools", "23 tools", "30 tools", "22 MCP", "23 MCP", "30 MCP"]:
+        for stale in ["22 tools", "23 tools", "30 tools", "31 tools", "22 MCP", "23 MCP", "30 MCP", "31 MCP"]:
             assert stale not in text, f"toolhive server.json contains stale '{stale}'"
 
     def test_mcp_registry_version_matches(self):
@@ -243,7 +243,7 @@ class TestPyProjectStats:
         assert desc_match, "No description in pyproject.toml"
         desc = desc_match.group(1)
         assert "20 clients" not in desc, "pyproject.toml description has stale '20 clients'"
-        for _stale in ["22 tools", "23 tools", "30 tools"]:
+        for _stale in ["22 tools", "23 tools", "30 tools", "31 tools"]:
             assert _stale not in desc, f"pyproject.toml description has stale '{_stale}'"
 
 

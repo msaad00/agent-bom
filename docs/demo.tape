@@ -86,7 +86,7 @@ Enter
 Sleep 4s
 
 # ── 9. What you get ───────────────────────────────────────────────────────────
-Type "echo '31 MCP tools  |  21 MCP client types  |  12 cloud providers  |  7 runtime detectors'"
+Type "echo '32 MCP tools  |  21 MCP client types  |  12 cloud providers  |  7 runtime detectors'"
 Enter
 Sleep 2s
 Type "echo '11 compliance frameworks  |  delta scanning  |  local SQLite DB  |  Trivy/Grype ingestion'"

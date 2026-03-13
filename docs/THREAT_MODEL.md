@@ -13,7 +13,7 @@ agent-bom operates in four modes:
 1. **Scanner** — reads local config files + public APIs, produces reports
 2. **Proxy** — sits between an MCP client and server, inspects STDIO traffic
 3. **API server** — exposes REST/WebSocket endpoints for the dashboard
-4. **MCP server** — exposes 31 tools to AI assistants (Claude, Cursor, etc.)
+4. **MCP server** — exposes 32 tools to AI assistants (Claude, Cursor, etc.)
 
 ## Trust boundaries
 

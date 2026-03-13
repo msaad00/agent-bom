@@ -3109,7 +3109,7 @@ def test_openclaw_registry_skill_minimal_surface():
 
 
 def test_openclaw_skills_all_tools_covered():
-    """Core 31 MCP tools should be covered in the consolidated skill."""
+    """Core 32 MCP tools should be covered in the consolidated skill."""
     from pathlib import Path
 
     p = Path(__file__).parent.parent / "integrations" / "openclaw" / "SKILL.md"

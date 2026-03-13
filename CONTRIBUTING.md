@@ -153,7 +153,7 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full module map. Key paths:
 | `src/agent_bom/models.py` | Core data models (Package, Vulnerability, Agent…) |
 | `src/agent_bom/runtime/` | Proxy detectors (7 detectors) |
 | `src/agent_bom/api/server.py` | FastAPI REST server |
-| `src/agent_bom/mcp_server.py` | MCP server (31 tools) |
+| `src/agent_bom/mcp_server.py` | MCP server (32 tools) |
 
 The scan pipeline: **discover** MCP configs → **parse** packages → **scan** via OSV batch API → **enrich** full vuln details → **optional** NVD/EPSS/KEV enrichment → **output** (table, JSON, SARIF, CycloneDX…).
 

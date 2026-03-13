@@ -1,6 +1,6 @@
 # MCP Tools Reference
 
-agent-bom exposes 31 tools via its MCP server.
+agent-bom exposes 32 tools via its MCP server.
 
 ## Tools
 

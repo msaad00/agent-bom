@@ -216,7 +216,7 @@ agent-bom where             # show all discovery paths
 }
 ```
 
-## Tools (31)
+## Tools (32)
 
 ### Vulnerability Scanning
 | Tool | Description |

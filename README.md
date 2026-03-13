@@ -19,8 +19,8 @@
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center">
-  <b>AI BOM, security scanner, and supply chain protection for AI infrastructure.</b><br>
-  Discover → Scan → Analyze → Enforce — across 22 MCP clients, 12 cloud providers, and 11 compliance frameworks.
+  <b>Security scanner for AI infrastructure and supply chain.</b><br>
+  Discover → Scan → Analyze → Enforce — AI BOM generation, CVEs, blast radius, runtime proxy, 11 compliance frameworks.
 </p>
 
 ---
@@ -54,10 +54,10 @@ That's it. agent-bom discovers your MCP client configs (Claude Desktop, Cursor, 
 
 Four capabilities, one tool:
 
-1. **AI BOM** — inventory every AI agent, MCP server, cloud AI service, model file, and GPU resource across your infrastructure
-2. **Security scanner** — CVEs (OSV + NVD + GHSA + EPSS + CISA KEV), blast radius mapping, credential exposure analysis
-3. **Runtime proxy** — intercept MCP traffic, enforce policy, detect 7 behavioral attack patterns in real time
-4. **Instruction file trust** — audit CLAUDE.md, .cursorrules, AGENTS.md, SKILL.md for malicious patterns, typosquatting, and Sigstore provenance
+1. **Scan** — discover AI agents, MCP servers, cloud services, model files, GPU resources. Generate an AI BOM. Check every dependency against OSV + NVD + GHSA + EPSS + CISA KEV.
+2. **Analyze** — blast radius mapping (CVE → package → server → agent → credentials → tools), credential exposure, posture scoring, 11-framework compliance
+3. **Enforce** — runtime MCP proxy with 7 behavioral detectors (rug pull, injection, credential leak, exfil, cloaking, rate limiting, vector DB injection), policy-as-code
+4. **Trust** — audit CLAUDE.md, .cursorrules, AGENTS.md, SKILL.md for malicious patterns, typosquatting, and Sigstore provenance
 
 Read-only. Agentless. Open source.
 

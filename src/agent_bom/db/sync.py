@@ -4,7 +4,7 @@ Sources:
     osv   — OSV.dev all-ecosystems bulk export (zip of per-ecosystem JSON files)
     epss  — FIRST EPSS v4 CSV bulk export
     kev   — CISA KEV JSON catalog
-    ghsa  — GitHub Security Advisories for AI/ML Python packages
+    ghsa  — GitHub Security Advisories across all supported ecosystems
     nvd   — NVD CVSS enrichment for CVEs missing severity data
 
 Usage:
@@ -53,8 +53,9 @@ _KEV_JSON_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_
 _GHSA_REST_URL = "https://api.github.com/advisories"
 _NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 
-# AI/ML Python package filter for GHSA ingestion
-_GHSA_AI_PACKAGES = frozenset(
+# AI/ML package names — kept for reference/priority tracking, NOT used as a filter.
+# As of v0.71.0, GHSA ingestion fetches ALL advisories across supported ecosystems.
+_AI_ML_PACKAGES = frozenset(
     [
         "torch",
         "torchvision",
@@ -99,7 +100,6 @@ _GHSA_AI_PACKAGES = frozenset(
         "autogen",
         "semantic-kernel",
         "haystack",
-        # Active CISA KEV + fast-growing AI orchestration packages
         "langflow",
         "flowise",
         "instructor",
@@ -112,17 +112,16 @@ _GHSA_AI_PACKAGES = frozenset(
         "agentops",
     ]
 )
-_GHSA_AI_PREFIXES = (
-    "nvidia-",
-    "langchain-",
-    "llama-",
-    "azure-ai-",
-    "google-cloud-",
-    "amazon-",
-    "aws-",
-    "anthropic-",
-    "openai-",
-    "mcp-",
+
+# Supported GHSA ecosystems — maps to GitHub API ecosystem parameter values
+GHSA_ECOSYSTEMS = (
+    "pip",
+    "npm",
+    "go",
+    "maven",
+    "nuget",
+    "rubygems",
+    "cargo",
 )
 
 # Batch insert size for performance
@@ -477,14 +476,6 @@ def sync_kev(conn: sqlite3.Connection, url: Optional[str] = None) -> int:
 # ---------------------------------------------------------------------------
 
 
-def _is_ai_package(name: str) -> bool:
-    """Return True if *name* matches the AI/ML package allow-list."""
-    normalized = name.lower().replace("_", "-")
-    if normalized in _GHSA_AI_PACKAGES:
-        return True
-    return any(normalized.startswith(prefix) for prefix in _GHSA_AI_PREFIXES)
-
-
 def _parse_ghsa_version_range(version_range: Optional[str]) -> tuple[str, str]:
     """Parse a GHSA version range string into (introduced, fixed).
 
@@ -504,22 +495,138 @@ def _parse_ghsa_version_range(version_range: Optional[str]) -> tuple[str, str]:
     return introduced, fixed
 
 
+def _ingest_ghsa_advisory(
+    conn: sqlite3.Connection,
+    advisory: dict,
+    normalize_package_name: object,
+) -> bool:
+    """Ingest a single GHSA advisory into the DB. Returns True if ingested."""
+    ghsa_id = advisory.get("ghsa_id", "")
+    cve_id = advisory.get("cve_id") or ""
+    # Use CVE ID if available (allows dedup with OSV entries), else GHSA ID
+    vuln_id = cve_id if cve_id else ghsa_id
+    if not vuln_id:
+        return False
+
+    summary = (advisory.get("summary") or "")[:500]
+    severity_raw = (advisory.get("severity") or "unknown").lower()
+    severity = severity_raw if severity_raw in ("critical", "high", "medium", "low") else "unknown"
+
+    cvss_score: Optional[float] = None
+    cvss_vector: Optional[str] = None
+    cvss_obj = advisory.get("cvss") or {}
+    if cvss_obj:
+        raw_score = cvss_obj.get("score")
+        if raw_score is not None:
+            try:
+                cvss_score = float(raw_score)
+            except (TypeError, ValueError):
+                pass
+        cvss_vector = cvss_obj.get("vector_string")
+
+    # If CVSS score present but severity not, derive it
+    if severity == "unknown" and cvss_score is not None:
+        severity = _cvss_to_severity(cvss_score)
+
+    published = advisory.get("published_at") or ""
+    modified = advisory.get("updated_at") or ""
+
+    # Collect affected package rows
+    vulnerabilities = advisory.get("vulnerabilities") or []
+    fixed_version: Optional[str] = None
+    affected_rows: list[dict] = []
+
+    for vuln in vulnerabilities:
+        pkg = vuln.get("package") or {}
+        ecosystem = pkg.get("ecosystem", "")
+        pkg_name = pkg.get("name", "")
+        if not ecosystem or not pkg_name:
+            continue
+
+        norm_name = normalize_package_name(pkg_name, ecosystem)  # type: ignore[operator]
+        version_range = vuln.get("vulnerable_version_range") or ""
+        patched = vuln.get("first_patched_version") or ""
+        introduced, fixed = _parse_ghsa_version_range(version_range)
+
+        # Prefer explicit patched version over parsed fixed
+        if patched and not fixed:
+            fixed = patched
+        if fixed and fixed_version is None:
+            fixed_version = fixed
+
+        affected_rows.append(
+            {
+                "vuln_id": vuln_id,
+                "ecosystem": ecosystem.lower(),
+                "package_name": norm_name,
+                "introduced": introduced,
+                "fixed": fixed,
+                "last_affected": "",
+            }
+        )
+
+    # Extract CWE IDs from GHSA advisory
+    ghsa_cwes: list[str] = []
+    for cwe_entry in advisory.get("cwes", []):
+        cwe_val = cwe_entry.get("cwe_id", "") if isinstance(cwe_entry, dict) else ""
+        if cwe_val.startswith("CWE-"):
+            ghsa_cwes.append(cwe_val)
+
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO vulns
+            (id, summary, severity, cvss_score, cvss_vector, fixed_version, cwe_ids, published, modified, source)
+        VALUES
+            (:id, :summary, :severity, :cvss_score, :cvss_vector, :fixed_version, :cwe_ids, :published, :modified, :source)
+        """,
+        {
+            "id": vuln_id,
+            "summary": summary,
+            "severity": severity,
+            "cvss_score": cvss_score,
+            "cvss_vector": cvss_vector,
+            "fixed_version": fixed_version,
+            "cwe_ids": ",".join(ghsa_cwes),
+            "published": published,
+            "modified": modified,
+            "source": "ghsa",
+        },
+    )
+    for aff in affected_rows:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO affected
+                (vuln_id, ecosystem, package_name, introduced, fixed, last_affected)
+            VALUES
+                (:vuln_id, :ecosystem, :package_name, :introduced, :fixed, :last_affected)
+            """,
+            aff,
+        )
+    return True
+
+
 def sync_ghsa(
     conn: sqlite3.Connection,
     url: Optional[str] = None,
     github_token: Optional[str] = None,
-    max_entries: int = 500,
+    max_entries: int = 5000,
+    ecosystems: Optional[list[str]] = None,
 ) -> int:
-    """Fetch GitHub Security Advisories for AI/ML Python packages and store in DB.
+    """Fetch GitHub Security Advisories across all supported ecosystems and store in DB.
+
+    Iterates over each ecosystem (pip, npm, go, maven, nuget, rubygems, cargo)
+    and paginates through ALL reviewed advisories.  No package-name filtering is
+    applied — every advisory for the requested ecosystems is ingested.
 
     Uses the GHSA REST API (``GET /advisories``).  If *github_token* is provided
-    (or ``GITHUB_TOKEN`` env var is set), higher rate limits apply.
+    (or ``GITHUB_TOKEN`` env var is set), higher rate limits apply (5000/hr vs 60/hr).
 
     Args:
         conn: open DB connection.
         url: base URL override (for testing — must be HTTPS).
         github_token: GitHub personal access token or Actions token.
-        max_entries: maximum number of advisories to ingest (default 500).
+        max_entries: maximum total advisories to ingest across all ecosystems (default 5000).
+        ecosystems: list of GHSA ecosystem names to sync (default: all from GHSA_ECOSYSTEMS).
 
     Returns the number of advisories ingested.
     """
@@ -531,163 +638,74 @@ def sync_ghsa(
     _validate_sync_url(base_url, "ghsa url")
 
     token = github_token or os.environ.get("GITHUB_TOKEN")
+    target_ecosystems = ecosystems or list(GHSA_ECOSYSTEMS)
 
-    _logger.info("Fetching GHSA advisories from %s …", base_url)
+    _logger.info(
+        "Fetching GHSA advisories from %s for ecosystems: %s",
+        base_url,
+        ", ".join(target_ecosystems),
+    )
 
     count = 0
-    page = 1
     per_page = 100
+    eco_counts: dict[str, int] = {}
 
     from agent_bom.models import normalize_package_name
 
-    while count < max_entries:
-        fetch_url = f"{base_url}?type=reviewed&ecosystem=pip&per_page={per_page}&page={page}"
-        req = urllib.request.Request(fetch_url)  # noqa: S310  # nosec B310 — HTTPS enforced above
-        req.add_header("Accept", "application/vnd.github+json")
-        req.add_header("X-GitHub-Api-Version", "2022-11-28")
-        if token:
-            req.add_header("Authorization", f"Bearer {token}")
-
-        try:
-            with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310  # nosec B310
-                advisories = json.loads(resp.read())
-        except Exception as exc:
-            _logger.error("Failed to fetch GHSA page %d: %s", page, exc)
+    for ecosystem in target_ecosystems:
+        if count >= max_entries:
             break
 
-        if not advisories:
-            break  # No more pages
+        eco_count = 0
+        page = 1
 
-        for advisory in advisories:
-            if count >= max_entries:
+        while count < max_entries:
+            fetch_url = f"{base_url}?type=reviewed&ecosystem={ecosystem}&per_page={per_page}&page={page}"
+            req = urllib.request.Request(fetch_url)  # noqa: S310  # nosec B310 — HTTPS enforced above
+            req.add_header("Accept", "application/vnd.github+json")
+            req.add_header("X-GitHub-Api-Version", "2022-11-28")
+            if token:
+                req.add_header("Authorization", f"Bearer {token}")
+
+            try:
+                with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310  # nosec B310
+                    advisories = json.loads(resp.read())
+            except Exception as exc:
+                _logger.error("Failed to fetch GHSA page %d for %s: %s", page, ecosystem, exc)
                 break
 
-            # Filter: at least one affected package must be an AI/ML package
-            vulnerabilities = advisory.get("vulnerabilities") or []
-            ai_packages = [
-                v
-                for v in vulnerabilities
-                if (v.get("package") or {}).get("ecosystem", "").lower() == "pip"
-                and _is_ai_package((v.get("package") or {}).get("name", ""))
-            ]
-            if not ai_packages:
-                continue
+            if not advisories:
+                break  # No more pages for this ecosystem
 
-            ghsa_id = advisory.get("ghsa_id", "")
-            cve_id = advisory.get("cve_id") or ""
-            # Use CVE ID if available (allows dedup with OSV entries), else GHSA ID
-            vuln_id = cve_id if cve_id else ghsa_id
-            if not vuln_id:
-                continue
+            for advisory in advisories:
+                if count >= max_entries:
+                    break
 
-            summary = (advisory.get("summary") or "")[:500]
-            severity_raw = (advisory.get("severity") or "unknown").lower()
-            severity = severity_raw if severity_raw in ("critical", "high", "medium", "low") else "unknown"
+                if _ingest_ghsa_advisory(conn, advisory, normalize_package_name):
+                    count += 1
+                    eco_count += 1
 
-            cvss_score: Optional[float] = None
-            cvss_vector: Optional[str] = None
-            cvss_obj = advisory.get("cvss") or {}
-            if cvss_obj:
-                raw_score = cvss_obj.get("score")
-                if raw_score is not None:
-                    try:
-                        cvss_score = float(raw_score)
-                    except (TypeError, ValueError):
-                        pass
-                cvss_vector = cvss_obj.get("vector_string")
+                    if count % _BATCH_SIZE == 0:
+                        conn.commit()
+                        _logger.debug("Ingested %d GHSA advisories …", count)
 
-            # If CVSS score present but severity not, derive it
-            if severity == "unknown" and cvss_score is not None:
-                severity = _cvss_to_severity(cvss_score)
+            page += 1
 
-            published = advisory.get("published_at") or ""
-            modified = advisory.get("updated_at") or ""
+            # Respect GitHub unauthenticated rate limit — brief pause between pages
+            if not token:
+                time.sleep(1)
 
-            # Collect affected package rows
-            fixed_version: Optional[str] = None
-            affected_rows: list[dict] = []
-
-            for vuln in vulnerabilities:
-                pkg = vuln.get("package") or {}
-                ecosystem = pkg.get("ecosystem", "")
-                pkg_name = pkg.get("name", "")
-                if not ecosystem or not pkg_name:
-                    continue
-
-                norm_name = normalize_package_name(pkg_name, ecosystem)
-                version_range = vuln.get("vulnerable_version_range") or ""
-                patched = vuln.get("first_patched_version") or ""
-                introduced, fixed = _parse_ghsa_version_range(version_range)
-
-                # Prefer explicit patched version over parsed fixed
-                if patched and not fixed:
-                    fixed = patched
-                if fixed and fixed_version is None:
-                    fixed_version = fixed
-
-                affected_rows.append(
-                    {
-                        "vuln_id": vuln_id,
-                        "ecosystem": ecosystem.lower(),
-                        "package_name": norm_name,
-                        "introduced": introduced,
-                        "fixed": fixed,
-                        "last_affected": "",
-                    }
-                )
-
-            # Extract CWE IDs from GHSA advisory
-            ghsa_cwes: list[str] = []
-            for cwe_entry in advisory.get("cwes", []):
-                cwe_val = cwe_entry.get("cwe_id", "") if isinstance(cwe_entry, dict) else ""
-                if cwe_val.startswith("CWE-"):
-                    ghsa_cwes.append(cwe_val)
-
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO vulns
-                    (id, summary, severity, cvss_score, cvss_vector, fixed_version, cwe_ids, published, modified, source)
-                VALUES
-                    (:id, :summary, :severity, :cvss_score, :cvss_vector, :fixed_version, :cwe_ids, :published, :modified, :source)
-                """,
-                {
-                    "id": vuln_id,
-                    "summary": summary,
-                    "severity": severity,
-                    "cvss_score": cvss_score,
-                    "cvss_vector": cvss_vector,
-                    "fixed_version": fixed_version,
-                    "cwe_ids": ",".join(ghsa_cwes),
-                    "published": published,
-                    "modified": modified,
-                    "source": "ghsa",
-                },
-            )
-            for aff in affected_rows:
-                conn.execute(
-                    """
-                    INSERT OR REPLACE INTO affected
-                        (vuln_id, ecosystem, package_name, introduced, fixed, last_affected)
-                    VALUES
-                        (:vuln_id, :ecosystem, :package_name, :introduced, :fixed, :last_affected)
-                    """,
-                    aff,
-                )
-            count += 1
-
-            if count % _BATCH_SIZE == 0:
-                conn.commit()
-                _logger.debug("Ingested %d GHSA advisories …", count)
-
-        page += 1
-
-        # Respect GitHub unauthenticated rate limit — brief pause between pages
-        if not token:
-            time.sleep(1)
+        eco_counts[ecosystem] = eco_count
 
     conn.commit()
     _update_sync_meta(conn, "ghsa", count)
-    _logger.info("GHSA sync complete: %d AI/ML advisories ingested", count)
+    eco_summary = ", ".join(f"{e}={c}" for e, c in eco_counts.items() if c > 0)
+    _logger.info(
+        "GHSA sync complete: ingested %d advisories across %d ecosystems (%s)",
+        count,
+        len([c for c in eco_counts.values() if c > 0]),
+        eco_summary or "none",
+    )
     return count
 
 
@@ -845,10 +863,11 @@ def sync_db(
     ghsa_url: Optional[str] = None,
     nvd_url: Optional[str] = None,
     max_osv_entries: int = 0,
-    max_ghsa_entries: int = 500,
+    max_ghsa_entries: int = 5000,
     max_nvd_entries: int = 1000,
     github_token: Optional[str] = None,
     nvd_api_key: Optional[str] = None,
+    ghsa_ecosystems: Optional[list[str]] = None,
 ) -> dict:
     """Sync the local vuln DB from all (or selected) upstream sources.
 
@@ -858,10 +877,11 @@ def sync_db(
                  Note: "nvd" is NOT in the default set — it is slow without an API key.
         osv_url / epss_url / kev_url / ghsa_url / nvd_url: URL overrides (for testing).
         max_osv_entries: limit for OSV entries (0 = unlimited; for tests).
-        max_ghsa_entries: limit for GHSA entries (default 500).
+        max_ghsa_entries: limit for GHSA entries (default 5000).
         max_nvd_entries: limit for NVD enrichment (default 1000).
         github_token: override GITHUB_TOKEN env var for GHSA fetches.
         nvd_api_key: override NVD_API_KEY env var for NVD fetches.
+        ghsa_ecosystems: list of GHSA ecosystem names to sync (default: all supported).
 
     Returns a dict of {source: record_count}.
     """
@@ -888,6 +908,7 @@ def sync_db(
                 url=ghsa_url,
                 github_token=token,
                 max_entries=max_ghsa_entries,
+                ecosystems=ghsa_ecosystems,
             )
         if "nvd" in enabled:
             key = nvd_api_key or os.environ.get("NVD_API_KEY")

@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from agent_bom.db.schema import init_db
-from agent_bom.db.sync import sync_ghsa
+from agent_bom.db.sync import GHSA_ECOSYSTEMS, sync_ghsa
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -71,18 +71,48 @@ def _mock_urlopen(pages: list[list[dict]]):
     return side_effect
 
 
+def _mock_urlopen_by_ecosystem(eco_pages: dict[str, list[list[dict]]]):
+    """Return a mock that dispatches pages based on ecosystem= in the URL."""
+    eco_counters: dict[str, int] = {}
+
+    def side_effect(req, timeout=30):
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        # Extract ecosystem from URL query string
+        eco = None
+        for param in url.split("?", 1)[-1].split("&"):
+            if param.startswith("ecosystem="):
+                eco = param.split("=", 1)[1]
+                break
+
+        if eco not in eco_counters:
+            eco_counters[eco] = 0
+        idx = eco_counters[eco]
+        eco_counters[eco] += 1
+
+        pages = eco_pages.get(eco, [])
+        payload = pages[idx] if idx < len(pages) else []
+
+        cm = MagicMock()
+        cm.__enter__ = MagicMock(return_value=cm)
+        cm.__exit__ = MagicMock(return_value=False)
+        cm.read = MagicMock(return_value=json.dumps(payload).encode())
+        return cm
+
+    return side_effect
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 
 
-def test_sync_ghsa_ingests_ai_package_advisory() -> None:
+def test_sync_ghsa_ingests_advisory() -> None:
     """A torch advisory should land in both vulns and affected tables."""
     conn = _make_conn()
     advisory = _make_advisory(pkg_name="torch")
 
     with patch("urllib.request.urlopen", side_effect=_mock_urlopen([[advisory], []])):
-        count = sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=10)
+        count = sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=10, ecosystems=["pip"])
 
     assert count == 1
 
@@ -94,22 +124,49 @@ def test_sync_ghsa_ingests_ai_package_advisory() -> None:
     aff = conn.execute("SELECT * FROM affected WHERE vuln_id = 'CVE-2024-12345' AND package_name = 'torch'").fetchone()
     assert aff is not None
     assert aff["introduced"] == "1.0"
-    # fixed comes from version_range parse ("< 2.0" → "2.0"); first_patched_version only
-    # used as fallback when the range string has no upper bound.
     assert aff["fixed"] == "2.0"
 
 
-def test_sync_ghsa_skips_non_ai_packages() -> None:
-    """An advisory for a non-AI package (e.g. ruby gem served via pip name) should be skipped."""
+def test_sync_ghsa_ingests_non_ai_packages() -> None:
+    """Non-AI packages (e.g., 'express', 'django') are now ingested — no package name filter."""
     conn = _make_conn()
-    advisory = _make_advisory(ghsa_id="GHSA-xxxx-yyyy-zzzz", cve_id=None, pkg_name="some-random-ruby-library")
+    advisory = _make_advisory(
+        ghsa_id="GHSA-xxxx-yyyy-zzzz",
+        cve_id="CVE-2024-99999",
+        pkg_name="django",
+        ecosystem="pip",
+    )
 
     with patch("urllib.request.urlopen", side_effect=_mock_urlopen([[advisory], []])):
-        count = sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=10)
+        count = sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=10, ecosystems=["pip"])
 
-    assert count == 0
-    row = conn.execute("SELECT * FROM vulns WHERE id = 'GHSA-xxxx-yyyy-zzzz'").fetchone()
-    assert row is None
+    assert count == 1
+    row = conn.execute("SELECT * FROM vulns WHERE id = 'CVE-2024-99999'").fetchone()
+    assert row is not None
+    assert row["source"] == "ghsa"
+
+
+def test_sync_ghsa_ingests_npm_advisory() -> None:
+    """Advisories from non-pip ecosystems (npm) are ingested."""
+    conn = _make_conn()
+    advisory = _make_advisory(
+        ghsa_id="GHSA-npm1-aaaa-bbbb",
+        cve_id="CVE-2024-88888",
+        pkg_name="express",
+        ecosystem="npm",
+    )
+
+    with patch("urllib.request.urlopen", side_effect=_mock_urlopen([[advisory], []])):
+        count = sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=10, ecosystems=["npm"])
+
+    assert count == 1
+    row = conn.execute("SELECT * FROM vulns WHERE id = 'CVE-2024-88888'").fetchone()
+    assert row is not None
+
+    aff = conn.execute("SELECT * FROM affected WHERE vuln_id = 'CVE-2024-88888'").fetchone()
+    assert aff is not None
+    assert aff["ecosystem"] == "npm"
+    assert aff["package_name"] == "express"
 
 
 def test_sync_ghsa_deduplicates_by_id() -> None:
@@ -120,12 +177,12 @@ def test_sync_ghsa_deduplicates_by_id() -> None:
     pages = [[advisory], []]
 
     with patch("urllib.request.urlopen", side_effect=_mock_urlopen(pages)):
-        count1 = sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=10)
+        count1 = sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=10, ecosystems=["pip"])
 
     # Second sync — reset the side_effect mock
     pages2 = [[advisory], []]
     with patch("urllib.request.urlopen", side_effect=_mock_urlopen(pages2)):
-        count2 = sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=10)
+        count2 = sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=10, ecosystems=["pip"])
 
     assert count1 == 1
     assert count2 == 1
@@ -141,40 +198,6 @@ def test_sync_ghsa_url_must_be_https() -> None:
         sync_ghsa(conn, url="http://evil.example.com/advisories")
 
 
-def test_sync_ghsa_ingests_langflow_advisory() -> None:
-    """langflow (active CISA KEV) must be accepted by the AI package filter."""
-    conn = _make_conn()
-    advisory = _make_advisory(
-        ghsa_id="GHSA-lang-flow-0001",
-        cve_id="CVE-2025-3248",
-        pkg_name="langflow",
-    )
-
-    with patch("urllib.request.urlopen", side_effect=_mock_urlopen([[advisory], []])):
-        count = sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=10)
-
-    assert count == 1
-    row = conn.execute("SELECT * FROM vulns WHERE id = 'CVE-2025-3248'").fetchone()
-    assert row is not None
-    assert row["source"] == "ghsa"
-
-
-@pytest.mark.parametrize("pkg_name", ["flowise", "instructor", "dspy", "pydantic-ai", "litellm"])
-def test_sync_ghsa_ingests_new_ai_packages(pkg_name: str) -> None:
-    """Newly added AI/orchestration packages must pass the filter."""
-    conn = _make_conn()
-    advisory = _make_advisory(
-        ghsa_id=f"GHSA-test-{pkg_name[:4]}-0001",
-        cve_id=None,
-        pkg_name=pkg_name,
-    )
-
-    with patch("urllib.request.urlopen", side_effect=_mock_urlopen([[advisory], []])):
-        count = sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=10)
-
-    assert count == 1, f"{pkg_name} was not accepted by AI package filter"
-
-
 def test_sync_ghsa_handles_missing_cve_id() -> None:
     """An advisory without a CVE ID should be ingested under its GHSA ID."""
     conn = _make_conn()
@@ -185,7 +208,7 @@ def test_sync_ghsa_handles_missing_cve_id() -> None:
     )
 
     with patch("urllib.request.urlopen", side_effect=_mock_urlopen([[advisory], []])):
-        count = sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=10)
+        count = sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=10, ecosystems=["pip"])
 
     assert count == 1
     row = conn.execute("SELECT * FROM vulns WHERE id = 'GHSA-1111-2222-3333'").fetchone()
@@ -195,3 +218,87 @@ def test_sync_ghsa_handles_missing_cve_id() -> None:
     aff = conn.execute("SELECT * FROM affected WHERE vuln_id = 'GHSA-1111-2222-3333'").fetchone()
     assert aff is not None
     assert aff["package_name"] == "langchain"
+
+
+def test_sync_ghsa_multiple_ecosystems() -> None:
+    """sync_ghsa iterates over multiple ecosystems and ingests from each."""
+    conn = _make_conn()
+    pip_advisory = _make_advisory(
+        ghsa_id="GHSA-pip1-aaaa-bbbb",
+        cve_id="CVE-2024-11111",
+        pkg_name="requests",
+        ecosystem="pip",
+    )
+    npm_advisory = _make_advisory(
+        ghsa_id="GHSA-npm1-cccc-dddd",
+        cve_id="CVE-2024-22222",
+        pkg_name="lodash",
+        ecosystem="npm",
+    )
+
+    eco_pages = {
+        "pip": [[pip_advisory], []],
+        "npm": [[npm_advisory], []],
+    }
+
+    with patch("urllib.request.urlopen", side_effect=_mock_urlopen_by_ecosystem(eco_pages)):
+        count = sync_ghsa(
+            conn,
+            url="https://api.github.com/advisories",
+            max_entries=100,
+            ecosystems=["pip", "npm"],
+        )
+
+    assert count == 2
+    assert conn.execute("SELECT COUNT(*) FROM vulns WHERE source = 'ghsa'").fetchone()[0] == 2
+
+
+def test_sync_ghsa_ecosystem_filtering() -> None:
+    """When ecosystems param is set, only those ecosystems are queried."""
+    conn = _make_conn()
+    advisory = _make_advisory(pkg_name="torch")
+
+    # Only pass pip ecosystem — should only make requests for pip
+    with patch("urllib.request.urlopen", side_effect=_mock_urlopen([[advisory], []])) as mock_open:
+        sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=10, ecosystems=["pip"])
+
+    # All requests should contain ecosystem=pip
+    for call_args in mock_open.call_args_list:
+        req = call_args[0][0]
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        assert "ecosystem=pip" in url
+
+
+def test_sync_ghsa_default_ecosystems() -> None:
+    """When no ecosystems are specified, all GHSA_ECOSYSTEMS are used."""
+    assert len(GHSA_ECOSYSTEMS) == 7
+    assert "pip" in GHSA_ECOSYSTEMS
+    assert "npm" in GHSA_ECOSYSTEMS
+    assert "go" in GHSA_ECOSYSTEMS
+    assert "maven" in GHSA_ECOSYSTEMS
+    assert "nuget" in GHSA_ECOSYSTEMS
+    assert "rubygems" in GHSA_ECOSYSTEMS
+    assert "cargo" in GHSA_ECOSYSTEMS
+
+
+def test_sync_ghsa_pagination() -> None:
+    """sync_ghsa paginates through multiple pages per ecosystem."""
+    conn = _make_conn()
+    page1 = [_make_advisory(ghsa_id=f"GHSA-p1-{i:04d}-aaaa", cve_id=f"CVE-2024-{1000 + i}", pkg_name="torch") for i in range(3)]
+    page2 = [_make_advisory(ghsa_id=f"GHSA-p2-{i:04d}-bbbb", cve_id=f"CVE-2024-{2000 + i}", pkg_name="numpy") for i in range(2)]
+
+    with patch("urllib.request.urlopen", side_effect=_mock_urlopen([page1, page2, []])):
+        count = sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=100, ecosystems=["pip"])
+
+    assert count == 5
+
+
+def test_sync_ghsa_respects_max_entries() -> None:
+    """sync_ghsa stops when max_entries is reached."""
+    conn = _make_conn()
+    advisories = [_make_advisory(ghsa_id=f"GHSA-max-{i:04d}-aaaa", cve_id=f"CVE-2024-{3000 + i}", pkg_name="torch") for i in range(10)]
+
+    with patch("urllib.request.urlopen", side_effect=_mock_urlopen([advisories])):
+        count = sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=3, ecosystems=["pip"])
+
+    assert count == 3

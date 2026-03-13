@@ -1,8 +1,8 @@
-# agent-bom v0.70.4 demo — run with: vhs docs/demo.tape
+# agent-bom v0.70.7 demo — run with: vhs docs/demo.tape
 #
 # Install vhs:  brew install vhs
 # Prereqs:
-#   pip install agent-bom==0.70.4
+#   pip install agent-bom==0.70.7
 #   Stage scans before recording:
 #     agent-bom scan --demo -f json -o /tmp/baseline.json
 #     agent-bom scan --demo -f json -o /tmp/current.json
@@ -12,7 +12,7 @@
 #     --label com.nvidia.nim.model=meta/llama-3.1-8b-instruct \
 #     node:20-slim sleep 3600
 
-Output docs/images/demo-v0.70.4.gif
+Output docs/images/demo-v0.70.7.gif
 
 Set Shell "bash"
 Set FontSize 13
@@ -47,27 +47,32 @@ Type "agent-bom check lodash@4.17.23 --ecosystem npm"
 Enter
 Sleep 4s
 
-# ── 4. Full scan with enrichment ──────────────────────────────────────────────
+# ── 4. Full scan — progress bar + timing breakdown + next-steps ───────────────
 Type "agent-bom scan --demo --enrich"
 Enter
 Sleep 20s
 
-# ── 5. Two-tier CI gate — warn on high, fail on critical ──────────────────────
+# ── 5. AI component detection — SDK imports, shadow AI, deprecated models ─────
+Type "agent-bom scan --demo --ai-inventory"
+Enter
+Sleep 14s
+
+# ── 6. Two-tier CI gate — warn on high, fail on critical ──────────────────────
 Type "agent-bom scan --demo --warn-on high --fail-on-severity critical"
 Enter
 Sleep 14s
 
-# ── 6. Delta mode — only new findings since baseline ──────────────────────────
+# ── 7. Delta mode — only new findings since baseline ──────────────────────────
 Type "agent-bom diff /tmp/baseline.json /tmp/current.json"
 Enter
 Sleep 6s
 
-# ── 7. GPU / AI compute infra — NIM containers, CUDA CVEs ───────────────────
+# ── 8. GPU / AI compute infra — NIM containers, CUDA CVEs ───────────────────
 Type "agent-bom scan --gpu-scan -q"
 Enter
 Sleep 18s
 
-# ── 8. Output formats — SARIF, CycloneDX SBOM, HTML ─────────────────────────
+# ── 9. Output formats — SARIF, CycloneDX SBOM, HTML ─────────────────────────
 Type "agent-bom scan --demo -f sarif -o /tmp/results.sarif -q && echo 'SARIF written → GitHub/GitLab Security tab'"
 Enter
 Sleep 10s
@@ -85,14 +90,14 @@ Type "agent-bom proxy --help | head -18"
 Enter
 Sleep 4s
 
-# ── 9. What you get ───────────────────────────────────────────────────────────
-Type "echo '32 MCP tools  |  21 MCP client types  |  12 cloud providers  |  7 runtime detectors'"
+# ── 11. What you get ──────────────────────────────────────────────────────────
+Type "echo '32 MCP tools  |  22 MCP client types  |  12 cloud providers  |  7 runtime detectors'"
 Enter
 Sleep 2s
 Type "echo '11 compliance frameworks  |  delta scanning  |  local SQLite DB  |  Trivy/Grype ingestion'"
 Enter
 Sleep 2s
-Type "echo 'Go · Gradle · Bun · NuGet · conda parsers  |  SARIF · CycloneDX · SPDX · HTML outputs'"
+Type "echo 'AI component detection  |  progress bar + timing  |  DeepSeek + GlassWorm defense'"
 Enter
 Sleep 3s
 

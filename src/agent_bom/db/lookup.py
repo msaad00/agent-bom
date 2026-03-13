@@ -131,9 +131,10 @@ def _version_affected(
         if last and ver > Version(last):
             return False
         return True
-    except Exception:
+    except Exception as exc:
         # Fall back to lexicographic comparison if packaging not available
         # or version strings are non-standard
+        _logger.debug("Semantic version comparison failed for %r (falling back to lexicographic): %s", version, exc)
         if intro and version < intro:
             return False
         if fix and version >= fix:

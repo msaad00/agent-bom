@@ -489,18 +489,21 @@ def test_migrate_applies_sequential_migrations(tmp_path, monkeypatch):
     conn = init_db(db_file)
     conn.close()
 
-    monkeypatch.setattr(schema_mod, "_SCHEMA_VERSION", 2)
+    # Current schema is v2; simulate a v2→v3 migration
+    current_version = schema_mod._SCHEMA_VERSION
+    target_version = current_version + 1
+    monkeypatch.setattr(schema_mod, "_SCHEMA_VERSION", target_version)
     monkeypatch.setattr(
         schema_mod,
         "_MIGRATIONS",
-        [(1, 2, "ALTER TABLE vulns ADD COLUMN test_col TEXT;")],
+        schema_mod._MIGRATIONS + [(current_version, target_version, "ALTER TABLE vulns ADD COLUMN test_col TEXT;")],
     )
 
     conn = init_db(db_file)
     cols = {r[1] for r in conn.execute("PRAGMA table_info(vulns)").fetchall()}
     assert "test_col" in cols
     row = conn.execute("SELECT version FROM schema_version LIMIT 1").fetchone()
-    assert row["version"] == 2
+    assert row["version"] == target_version
     conn.close()
 
 

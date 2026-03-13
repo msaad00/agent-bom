@@ -9,7 +9,7 @@ level in each framework's ``tag_blast_radius()`` function.
 
 from __future__ import annotations
 
-from agent_bom.constants import AI_PACKAGES, SAST_CWE_MAP, TRAINING_DATA_PACKAGES
+from agent_bom.constants import AI_PACKAGES, CWE_COMPLIANCE_MAP, TRAINING_DATA_PACKAGES
 from agent_bom.models import Package, Severity, Vulnerability
 
 _HIGH_RISK = frozenset({Severity.CRITICAL, Severity.HIGH})
@@ -28,7 +28,6 @@ def tag_vulnerability(vuln: Vulnerability, package: Package) -> dict[str, list[s
     is_ai = pkg_lower in AI_PACKAGES
     is_training = pkg_lower in TRAINING_DATA_PACKAGES
     is_malicious = package.is_malicious
-    is_sast = package.ecosystem == "sast"
     cwe_ids = vuln.cwe_ids
 
     tags: dict[str, list[str]] = {}
@@ -41,9 +40,9 @@ def tag_vulnerability(vuln: Vulnerability, package: Package) -> dict[str, list[s
         owasp_llm.append("LLM03")
     if is_ai and is_high:
         owasp_llm.append("LLM04")
-    if is_sast and cwe_ids:
+    if cwe_ids:
         for cwe in cwe_ids:
-            for t in SAST_CWE_MAP.get(cwe, {}).get("owasp_llm", []):
+            for t in CWE_COMPLIANCE_MAP.get(cwe, {}).get("owasp_llm", []):
                 if t not in owasp_llm:
                     owasp_llm.append(t)
     if owasp_llm:
@@ -83,9 +82,9 @@ def tag_vulnerability(vuln: Vulnerability, package: Package) -> dict[str, list[s
         nist_csf.append("RS.AN-03")
     if is_kev:
         nist_csf.append("RS.MI-02")
-    if is_sast and cwe_ids:
+    if cwe_ids:
         for cwe in cwe_ids:
-            for t in SAST_CWE_MAP.get(cwe, {}).get("nist_csf", []):
+            for t in CWE_COMPLIANCE_MAP.get(cwe, {}).get("nist_csf", []):
                 if t not in nist_csf:
                     nist_csf.append(t)
     tags["nist_csf"] = sorted(set(nist_csf))
@@ -100,9 +99,9 @@ def tag_vulnerability(vuln: Vulnerability, package: Package) -> dict[str, list[s
         cis.append("CIS-07.4")
     if is_kev:
         cis.append("CIS-16.12")
-    if is_sast and cwe_ids:
+    if cwe_ids:
         for cwe in cwe_ids:
-            for t in SAST_CWE_MAP.get(cwe, {}).get("cis", []):
+            for t in CWE_COMPLIANCE_MAP.get(cwe, {}).get("cis", []):
                 if t not in cis:
                     cis.append(t)
     tags["cis"] = sorted(set(cis))
@@ -117,9 +116,9 @@ def tag_vulnerability(vuln: Vulnerability, package: Package) -> dict[str, list[s
         iso.append("A.5.28")
     if has_fix:
         iso.append("A.8.28")
-    if is_sast and cwe_ids:
+    if cwe_ids:
         for cwe in cwe_ids:
-            for t in SAST_CWE_MAP.get(cwe, {}).get("iso_27001", []):
+            for t in CWE_COMPLIANCE_MAP.get(cwe, {}).get("iso_27001", []):
                 if t not in iso:
                     iso.append(t)
     tags["iso_27001"] = sorted(set(iso))
@@ -134,9 +133,9 @@ def tag_vulnerability(vuln: Vulnerability, package: Package) -> dict[str, list[s
         soc2.append("CC7.4")
     if has_fix:
         soc2.append("CC8.1")
-    if is_sast and cwe_ids:
+    if cwe_ids:
         for cwe in cwe_ids:
-            for t in SAST_CWE_MAP.get(cwe, {}).get("soc2", []):
+            for t in CWE_COMPLIANCE_MAP.get(cwe, {}).get("soc2", []):
                 if t not in soc2:
                     soc2.append(t)
     tags["soc2"] = sorted(set(soc2))

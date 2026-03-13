@@ -58,13 +58,13 @@ def _validated_db_path(raw: str) -> Path:
 DB_PATH: Path = _validated_db_path(_RAW_DB_PATH)
 
 # Schema version — bump when DDL changes incompatibly
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
 
 # Migration scripts: list of (from_version, to_version, sql) tuples.
 # Add a new entry here whenever _SCHEMA_VERSION is bumped.
 # Each migration must be idempotent (use IF NOT EXISTS / IF EXISTS guards).
 _MIGRATIONS: list[tuple[int, int, str]] = [
-    # (1, 2, "ALTER TABLE vulns ADD COLUMN new_col TEXT;"),  # example
+    (1, 2, "ALTER TABLE vulns ADD COLUMN cwe_ids TEXT DEFAULT '';"),
 ]
 
 _DDL = """
@@ -83,6 +83,7 @@ CREATE TABLE IF NOT EXISTS vulns (
     cvss_score      REAL,
     cvss_vector     TEXT,
     fixed_version   TEXT,
+    cwe_ids         TEXT DEFAULT '',    -- comma-separated CWE IDs (e.g. "CWE-79,CWE-89")
     published       TEXT,               -- ISO-8601
     modified        TEXT,               -- ISO-8601
     source          TEXT NOT NULL       -- osv | nvd | ghsa | nvidia

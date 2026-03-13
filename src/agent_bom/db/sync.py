@@ -240,6 +240,13 @@ def _parse_osv_entry(data: dict) -> Optional[tuple[dict, list[dict]]]:
                 }
             )
 
+    # Extract CWE IDs from database_specific (GHSA advisories store them here)
+    cwe_ids_list: list[str] = []
+    if isinstance(db_specific, dict):
+        raw_cwes = db_specific.get("cwe_ids", [])
+        if isinstance(raw_cwes, list):
+            cwe_ids_list = [c for c in raw_cwes if isinstance(c, str) and c.startswith("CWE-")]
+
     vuln_row = {
         "id": vuln_id,
         "summary": summary[:500],
@@ -247,6 +254,7 @@ def _parse_osv_entry(data: dict) -> Optional[tuple[dict, list[dict]]]:
         "cvss_score": cvss_score,
         "cvss_vector": cvss_vector,
         "fixed_version": fixed_version,
+        "cwe_ids": ",".join(cwe_ids_list),
         "published": published,
         "modified": modified,
         "source": "osv",
@@ -271,9 +279,9 @@ def _ingest_osv_file(conn: sqlite3.Connection, content: bytes, filename: str) ->
     conn.execute(
         """
         INSERT OR REPLACE INTO vulns
-            (id, summary, severity, cvss_score, cvss_vector, fixed_version, published, modified, source)
+            (id, summary, severity, cvss_score, cvss_vector, fixed_version, cwe_ids, published, modified, source)
         VALUES
-            (:id, :summary, :severity, :cvss_score, :cvss_vector, :fixed_version, :published, :modified, :source)
+            (:id, :summary, :severity, :cvss_score, :cvss_vector, :fixed_version, :cwe_ids, :published, :modified, :source)
         """,
         vuln_row,
     )
@@ -628,12 +636,19 @@ def sync_ghsa(
                     }
                 )
 
+            # Extract CWE IDs from GHSA advisory
+            ghsa_cwes: list[str] = []
+            for cwe_entry in advisory.get("cwes", []):
+                cwe_val = cwe_entry.get("cwe_id", "") if isinstance(cwe_entry, dict) else ""
+                if cwe_val.startswith("CWE-"):
+                    ghsa_cwes.append(cwe_val)
+
             conn.execute(
                 """
                 INSERT OR REPLACE INTO vulns
-                    (id, summary, severity, cvss_score, cvss_vector, fixed_version, published, modified, source)
+                    (id, summary, severity, cvss_score, cvss_vector, fixed_version, cwe_ids, published, modified, source)
                 VALUES
-                    (:id, :summary, :severity, :cvss_score, :cvss_vector, :fixed_version, :published, :modified, :source)
+                    (:id, :summary, :severity, :cvss_score, :cvss_vector, :fixed_version, :cwe_ids, :published, :modified, :source)
                 """,
                 {
                     "id": vuln_id,
@@ -642,6 +657,7 @@ def sync_ghsa(
                     "cvss_score": cvss_score,
                     "cvss_vector": cvss_vector,
                     "fixed_version": fixed_version,
+                    "cwe_ids": ",".join(ghsa_cwes),
                     "published": published,
                     "modified": modified,
                     "source": "ghsa",

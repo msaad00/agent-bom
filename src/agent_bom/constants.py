@@ -214,11 +214,11 @@ def is_credential_key(name: str) -> bool:
     return any(pat in low for pat in SENSITIVE_PATTERNS)
 
 
-# ── CWE-to-Compliance Mapping (for SAST findings) ──────────────────────────
+# ── CWE-to-Compliance Mapping ────────────────────────────────────────────────
 # Maps CWE weakness IDs to applicable compliance framework tags.
-# Used by compliance taggers when processing SAST findings (ecosystem="sast").
+# Used by compliance taggers for ALL vulnerabilities with CWE data (OSV, NVD, GHSA, SAST).
 
-SAST_CWE_MAP: dict[str, dict[str, list[str]]] = {
+CWE_COMPLIANCE_MAP: dict[str, dict[str, list[str]]] = {
     "CWE-78": {  # OS Command Injection
         "owasp_llm": ["LLM02"],
         "iso_27001": ["A.8.28"],

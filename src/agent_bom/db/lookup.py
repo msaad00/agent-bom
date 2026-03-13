@@ -36,6 +36,7 @@ class LocalVuln:
     package_name: str = ""
     introduced: Optional[str] = None
     aliases: list[str] = field(default_factory=list)
+    cwe_ids: list[str] = field(default_factory=list)
 
 
 def lookup_package(
@@ -58,7 +59,7 @@ def lookup_package(
     rows = conn.execute(
         """
         SELECT
-            v.id, v.summary, v.severity, v.cvss_score, v.fixed_version, v.source,
+            v.id, v.summary, v.severity, v.cvss_score, v.fixed_version, v.cwe_ids, v.source,
             a.ecosystem, a.package_name, a.introduced, a.fixed, a.last_affected,
             e.probability AS epss_prob, e.percentile AS epss_pct,
             k.date_added AS kev_date
@@ -76,6 +77,10 @@ def lookup_package(
     for row in rows:
         if version and not _version_affected(version, row["introduced"], row["fixed"], row["last_affected"]):
             continue
+        # Parse comma-separated CWE IDs from DB column
+        raw_cwes = row["cwe_ids"] or ""
+        cwe_list = [c for c in raw_cwes.split(",") if c] if raw_cwes else []
+
         results.append(
             LocalVuln(
                 id=row["id"],
@@ -91,6 +96,7 @@ def lookup_package(
                 ecosystem=row["ecosystem"],
                 package_name=row["package_name"],
                 introduced=row["introduced"],
+                cwe_ids=cwe_list,
             )
         )
     return results

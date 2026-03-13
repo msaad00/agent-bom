@@ -129,12 +129,12 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     if br.vulnerability.is_kev:
         tags.add("RS.MI-02")
 
-    # CWE-based tagging for SAST findings
-    if br.package.ecosystem == "sast" and br.vulnerability.cwe_ids:
-        from agent_bom.constants import SAST_CWE_MAP
+    # CWE-based compliance tagging (applies to all vulns with CWE data)
+    if br.vulnerability.cwe_ids:
+        from agent_bom.constants import CWE_COMPLIANCE_MAP
 
         for cwe in br.vulnerability.cwe_ids:
-            for tag in SAST_CWE_MAP.get(cwe.upper(), {}).get("nist_csf", []):
+            for tag in CWE_COMPLIANCE_MAP.get(cwe.upper(), {}).get("nist_csf", []):
                 tags.add(tag)
 
     return sorted(tags)

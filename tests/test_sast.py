@@ -390,26 +390,26 @@ def test_scan_code_clean(monkeypatch, tmp_path):
 
 
 def test_sast_cwe_map_has_common_weaknesses():
-    """SAST_CWE_MAP covers common OWASP Top 10 weakness types."""
-    from agent_bom.constants import SAST_CWE_MAP
+    """CWE_COMPLIANCE_MAP covers common OWASP Top 10 weakness types."""
+    from agent_bom.constants import CWE_COMPLIANCE_MAP
 
-    assert "CWE-89" in SAST_CWE_MAP  # SQL injection
-    assert "CWE-79" in SAST_CWE_MAP  # XSS
-    assert "CWE-798" in SAST_CWE_MAP  # hardcoded creds
-    assert "CWE-78" in SAST_CWE_MAP  # OS command injection
-    assert "CWE-22" in SAST_CWE_MAP  # path traversal
+    assert "CWE-89" in CWE_COMPLIANCE_MAP  # SQL injection
+    assert "CWE-79" in CWE_COMPLIANCE_MAP  # XSS
+    assert "CWE-798" in CWE_COMPLIANCE_MAP  # hardcoded creds
+    assert "CWE-78" in CWE_COMPLIANCE_MAP  # OS command injection
+    assert "CWE-22" in CWE_COMPLIANCE_MAP  # path traversal
 
 
 def test_sast_cwe_map_frameworks():
     """CWE mappings include expected framework keys."""
-    from agent_bom.constants import SAST_CWE_MAP
+    from agent_bom.constants import CWE_COMPLIANCE_MAP
 
-    sql_inj = SAST_CWE_MAP["CWE-89"]
+    sql_inj = CWE_COMPLIANCE_MAP["CWE-89"]
     assert "iso_27001" in sql_inj
     assert "nist_csf" in sql_inj
     assert "owasp_llm" in sql_inj
 
-    hardcoded = SAST_CWE_MAP["CWE-798"]
+    hardcoded = CWE_COMPLIANCE_MAP["CWE-798"]
     assert "soc2" in hardcoded
     assert "owasp_llm" in hardcoded
 

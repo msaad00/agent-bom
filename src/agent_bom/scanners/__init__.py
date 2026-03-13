@@ -532,6 +532,14 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
         if vuln_id != canonical_id:
             all_aliases.append(vuln_id)
 
+        # Extract CWE IDs from database_specific (GHSA entries store them here)
+        cwe_ids: list[str] = []
+        db_specific = vuln_data.get("database_specific", {})
+        if isinstance(db_specific, dict):
+            raw_cwes = db_specific.get("cwe_ids", [])
+            if isinstance(raw_cwes, list):
+                cwe_ids = [c for c in raw_cwes if isinstance(c, str) and c.startswith("CWE-")]
+
         vulns.append(
             Vulnerability(
                 id=canonical_id,
@@ -541,6 +549,7 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
                 fixed_version=fixed,
                 references=references,
                 aliases=all_aliases,
+                cwe_ids=cwe_ids,
             )
         )
 
@@ -604,6 +613,7 @@ def _local_vuln_to_vulnerability(lv: "Any") -> Vulnerability:
         epss_percentile=lv.epss_percentile,
         is_kev=lv.is_kev,
         kev_date_added=lv.kev_date_added,
+        cwe_ids=getattr(lv, "cwe_ids", []),
         aliases=[],
         references=[],
     )

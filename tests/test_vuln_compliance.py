@@ -270,13 +270,13 @@ class TestCweMappingTags:
         assert "PR.AA-01" in tags["nist_csf"]
         assert "CIS-16.1" in tags["cis"]
 
-    def test_non_sast_ecosystem_skips_cwe_mapping(self):
+    def test_non_sast_ecosystem_gets_cwe_mapping(self):
         tags = tag_vulnerability(
             _vuln(cwe_ids=["CWE-79"], fixed_version=None),
             _pkg(name="lodash", ecosystem="npm"),
         )
-        # CWE mapping only applies to SAST ecosystem
-        assert "LLM02" not in tags.get("owasp_llm", [])
+        # CWE mapping applies to ALL ecosystems (not just SAST)
+        assert "LLM02" in tags.get("owasp_llm", [])
 
     def test_multiple_cwes(self):
         tags = tag_vulnerability(

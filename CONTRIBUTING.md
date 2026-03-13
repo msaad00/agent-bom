@@ -52,9 +52,13 @@ Typical help-wanted tasks:
 - **Dashboard improvements** — Next.js components in `ui/` (TypeScript, Tailwind)
 - **Output format** — New `--format` target (CSV, Markdown table, etc.) in `src/agent_bom/output/`
 
-### Priority features
+### Critical — P0 issues
 
-See [open issues labeled P1](https://github.com/msaad00/agent-bom/issues?q=is%3Aopen+label%3AP1) for the highest-impact work.
+See [open issues labeled P0](https://github.com/msaad00/agent-bom/issues?q=is%3Aopen+label%3AP0) for the most impactful work. These close core coverage gaps (OS-level scanning, container image analysis, CWE enrichment, IaC misconfiguration, compliance frameworks). Comment on the issue before starting — these require coordination.
+
+### Priority — P1 features
+
+See [open issues labeled P1](https://github.com/msaad00/agent-bom/issues?q=is%3Aopen+label%3AP1) for high-impact work that's well-scoped and ready to pick up.
 
 ---
 

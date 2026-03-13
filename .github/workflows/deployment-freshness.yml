@@ -1,0 +1,103 @@
+name: Deployment Freshness
+
+# Checks that all live deployments (Railway/Smithery) serve the latest
+# released version.  Runs daily and on-demand.  Opens an issue if stale.
+
+on:
+  schedule:
+    - cron: "0 8 * * *"  # daily at 08:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Get expected version from repo
+        id: expected
+        run: |
+          VERSION=$(python3 -c "
+          import re, pathlib
+          text = pathlib.Path('pyproject.toml').read_text()
+          m = re.search(r'version\s*=\s*\"([^\"]+)\"', text)
+          print(m.group(1))
+          ")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Expected version: $VERSION"
+
+      - name: Check Railway deployment
+        id: railway
+        continue-on-error: true
+        run: |
+          DEPLOY_URL="https://agent-bom-mcp.up.railway.app"
+          echo "Checking $DEPLOY_URL/health ..."
+          RESPONSE=$(curl -sf --max-time 15 "$DEPLOY_URL/health" 2>/dev/null || echo '{}')
+          DEPLOYED=$(echo "$RESPONSE" | python3 -c "
+          import sys, json
+          try:
+              data = json.load(sys.stdin)
+              print(data.get('version', 'unknown'))
+          except Exception:
+              print('unreachable')
+          ")
+          echo "railway_version=$DEPLOYED" >> "$GITHUB_OUTPUT"
+          echo "Railway version: $DEPLOYED (expected: ${{ steps.expected.outputs.version }})"
+          if [ "$DEPLOYED" != "${{ steps.expected.outputs.version }}" ]; then
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check Smithery tool count
+        id: smithery
+        continue-on-error: true
+        run: |
+          DEPLOY_URL="https://agent-bom-mcp.up.railway.app"
+          # Connect to MCP endpoint and check capabilities
+          RESPONSE=$(curl -sf --max-time 15 "$DEPLOY_URL/health" 2>/dev/null || echo '{}')
+          TOOL_COUNT=$(echo "$RESPONSE" | python3 -c "
+          import sys, json
+          try:
+              data = json.load(sys.stdin)
+              print(data.get('tools', 'unknown'))
+          except Exception:
+              print('unknown')
+          ")
+          echo "tool_count=$TOOL_COUNT" >> "$GITHUB_OUTPUT"
+          echo "Deployed tool count: $TOOL_COUNT"
+
+      - name: Open issue if stale
+        if: steps.railway.outputs.stale == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          EXPECTED="${{ steps.expected.outputs.version }}"
+          RAILWAY="${{ steps.railway.outputs.railway_version }}"
+          TOOLS="${{ steps.smithery.outputs.tool_count }}"
+
+          # Check if an issue already exists
+          EXISTING=$(gh issue list --label "deployment-stale" --state open --json number --jq 'length')
+          if [ "$EXISTING" -gt "0" ]; then
+            echo "Stale deployment issue already open — skipping"
+            exit 0
+          fi
+
+          gh issue create \
+            --title "Deployment stale: Railway serving $RAILWAY, expected $EXPECTED" \
+            --label "deployment-stale,bug" \
+            --body "$(cat <<EOF
+          ## Deployment Freshness Check Failed
+
+          | Surface | Deployed | Expected |
+          |---------|----------|----------|
+          | Railway | $RAILWAY | $EXPECTED |
+          | Tool count | $TOOLS | (check mcp_server.py) |
+
+          **Action**: Re-run the Deploy MCP SSE workflow or trigger a new release.
+
+          This issue was auto-created by the deployment-freshness workflow.
+          EOF
+          )"

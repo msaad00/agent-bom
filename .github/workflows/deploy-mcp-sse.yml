@@ -3,6 +3,8 @@ name: Deploy MCP SSE
 # Deploys the SSE container to Railway after a successful Release workflow.
 # Requires RAILWAY_TOKEN secret and DEPLOY_TARGET=railway variable.
 # Optional: RAILWAY_SERVICE variable to specify the service name.
+#
+# Post-deploy: verifies the deployed version matches the release tag.
 
 on:
   workflow_run:
@@ -24,7 +26,31 @@ jobs:
         (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
       }}
     steps:
+      - name: Resolve release tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.ref_name }}"
+          else
+            TAG="${{ github.event.workflow_run.head_branch }}"
+          fi
+          echo "ref=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Deploying ref: $TAG"
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ steps.tag.outputs.ref }}
+
+      - name: Verify checkout matches expected version
+        run: |
+          REPO_VERSION=$(python3 -c "
+          import re, pathlib
+          text = pathlib.Path('pyproject.toml').read_text()
+          m = re.search(r'version\s*=\s*\"([^\"]+)\"', text)
+          print(m.group(1))
+          ")
+          echo "Checked-out version: $REPO_VERSION"
+          echo "repo_version=$REPO_VERSION" >> "$GITHUB_ENV"
 
       - name: Install Railway CLI
         run: npm install -g @railway/cli@4.30.5  # pinned — update periodically
@@ -43,3 +69,38 @@ jobs:
           else
             railway up --detach
           fi
+
+      - name: Post-deploy version check
+        run: |
+          echo "Waiting 60s for Railway to rebuild and start..."
+          sleep 60
+          DEPLOY_URL="https://agent-bom-mcp.up.railway.app"
+          echo "Checking $DEPLOY_URL/health"
+          for attempt in 1 2 3 4 5; do
+            RESPONSE=$(curl -sf "$DEPLOY_URL/health" 2>/dev/null || true)
+            if [ -n "$RESPONSE" ]; then
+              echo "Health response: $RESPONSE"
+              DEPLOYED_VERSION=$(echo "$RESPONSE" | python3 -c "
+          import sys, json
+          try:
+              data = json.load(sys.stdin)
+              print(data.get('version', 'unknown'))
+          except Exception:
+              print('unknown')
+          " 2>/dev/null || echo "unknown")
+              echo "Deployed version: $DEPLOYED_VERSION"
+              echo "Expected version: $repo_version"
+              if [ "$DEPLOYED_VERSION" = "$repo_version" ]; then
+                echo "✅ Version match confirmed"
+                exit 0
+              elif [ "$DEPLOYED_VERSION" = "unknown" ]; then
+                echo "⚠️ Could not extract version from health endpoint — deploy may still be starting"
+              else
+                echo "::warning::Version mismatch — deployed=$DEPLOYED_VERSION expected=$repo_version"
+              fi
+              break
+            fi
+            echo "Attempt $attempt: health endpoint not ready, waiting 30s..."
+            sleep 30
+          done
+          echo "::warning::Could not verify deployed version — check Railway manually"

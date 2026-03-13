@@ -28,11 +28,15 @@ jobs:
     steps:
       - name: Resolve release tag
         id: tag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          WORKFLOW_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG="${{ github.ref_name }}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            TAG="$REF_NAME"
           else
-            TAG="${{ github.event.workflow_run.head_branch }}"
+            TAG="$WORKFLOW_HEAD_BRANCH"
           fi
           echo "ref=$TAG" >> "$GITHUB_OUTPUT"
           echo "Deploying ref: $TAG"

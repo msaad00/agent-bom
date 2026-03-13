@@ -121,6 +121,10 @@ PYTHON_SDK_PATTERNS: list[SDKPattern] = [
     SDKPattern(re.compile(_py_import("litellm")), "litellm", AIComponentType.LLM_PROVIDER, "litellm", "pypi", "python"),
     SDKPattern(re.compile(_py_import("ollama")), "ollama", AIComponentType.LLM_PROVIDER, "ollama", "pypi", "python"),
     SDKPattern(re.compile(_py_import("replicate")), "replicate", AIComponentType.LLM_PROVIDER, "replicate", "pypi", "python"),
+    SDKPattern(re.compile(_py_import("deepseek")), "deepseek", AIComponentType.LLM_PROVIDER, "deepseek", "pypi", "python"),
+    SDKPattern(re.compile(_py_import("fireworks")), "fireworks", AIComponentType.LLM_PROVIDER, "fireworks-ai", "pypi", "python"),
+    SDKPattern(re.compile(_py_import("ai21")), "ai21", AIComponentType.LLM_PROVIDER, "ai21", "pypi", "python"),
+    SDKPattern(re.compile(_py_import("cerebras")), "cerebras", AIComponentType.LLM_PROVIDER, "cerebras-cloud-sdk", "pypi", "python"),
     # Agent frameworks
     SDKPattern(
         re.compile(_py_import("langchain")),
@@ -570,6 +574,12 @@ MODEL_PATTERNS: list[ModelPattern] = [
     ModelPattern(re.compile(rf"{_WB}codestral(?:-latest|-\d+)?{_WB}"), "mistral"),
     # Cohere models
     ModelPattern(re.compile(rf"{_WB}command-r(?:-plus)?(?:-\d+)?{_WB}"), "cohere"),
+    # DeepSeek models
+    ModelPattern(re.compile(rf"{_WB}deepseek-(?:chat|coder|reasoner)(?:-v\d+(?:\.\d+)?)?{_WB}"), "deepseek"),
+    ModelPattern(re.compile(rf"{_WB}deepseek-r1(?:-\d+b)?(?:-distill)?{_WB}", re.I), "deepseek"),
+    ModelPattern(re.compile(rf"{_WB}deepseek-v[23](?:\.\d+)?(?:-\d+b)?{_WB}", re.I), "deepseek"),
+    # Qwen models
+    ModelPattern(re.compile(rf"{_WB}qwen-?[23](?:\.\d+)?(?:-\d+b)?(?:-instruct)?{_WB}", re.I), "alibaba"),
     # Embedding models
     ModelPattern(re.compile(rf"{_WB}text-embedding-ada-002{_WB}"), "openai"),
 ]
@@ -695,6 +705,55 @@ API_KEY_PATTERNS: list[APIKeyPattern] = [
         re.compile(r"""(?:['"])(xai-[A-Za-z0-9]{20,})(?:['"])"""),
         "xai",
         "xAI API key hardcoded in source",
+    ),
+]
+
+# ── Invisible Unicode patterns (GlassWorm / supply chain attacks) ────────────
+# Detects zero-width characters, RTL overrides, tag characters, and homoglyphs
+# hidden in source code — the exact attack vector used in GlassWorm malware.
+
+
+@dataclass(frozen=True)
+class InvisibleUnicodePattern:
+    """A pattern for detecting invisible/malicious Unicode in source code."""
+
+    regex: re.Pattern[str]
+    name: str
+    description: str
+    severity: AIComponentSeverity = AIComponentSeverity.CRITICAL
+
+
+INVISIBLE_UNICODE_PATTERNS: list[InvisibleUnicodePattern] = [
+    InvisibleUnicodePattern(
+        re.compile(r"[\u200b\u200c\u200d\ufeff]{2,}"),
+        "zero-width-cluster",
+        "Zero-width space/joiner cluster — may hide malicious code (GlassWorm attack vector)",
+    ),
+    InvisibleUnicodePattern(
+        re.compile(r"[\u202e\u2066\u2067\u2068\u202a\u202b\u202c\u202d]"),
+        "bidi-override",
+        "Bidirectional text override — can reverse displayed code direction to hide true logic",
+    ),
+    InvisibleUnicodePattern(
+        re.compile(r"[\U000e0001-\U000e007f]{2,}"),
+        "tag-characters",
+        "Unicode tag characters — invisible control sequences used for code obfuscation",
+    ),
+    InvisibleUnicodePattern(
+        re.compile(r"[\u0410-\u044f](?=[a-zA-Z])|(?<=[a-zA-Z])[\u0410-\u044f]"),
+        "homoglyph-mixing",
+        "Cyrillic/Latin homoglyph mixing — visually identical but different characters (typosquat vector)",
+        severity=AIComponentSeverity.HIGH,
+    ),
+    InvisibleUnicodePattern(
+        re.compile(r"[\u2800-\u28ff]{3,}"),
+        "braille-pattern-cluster",
+        "Braille pattern characters used as invisible payload carriers",
+    ),
+    InvisibleUnicodePattern(
+        re.compile(r"[\ufe00-\ufe0f\U000e0100-\U000e01ef]{2,}"),
+        "variation-selector-abuse",
+        "Variation selector sequences — can alter character rendering to hide code",
     ),
 ]
 

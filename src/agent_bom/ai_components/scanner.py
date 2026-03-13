@@ -28,6 +28,7 @@ from agent_bom.ai_components.patterns import (
     API_KEY_PATTERNS,
     DEPRECATED_MODEL_PATTERNS,
     EXTENSION_TO_LANGUAGE,
+    INVISIBLE_UNICODE_PATTERNS,
     MODEL_PATTERNS,
     SDK_PATTERNS_BY_LANGUAGE,
 )
@@ -245,6 +246,27 @@ def _scan_file(
                 matched_text=masked,  # never store full key
                 severity=key_pat.severity,
                 description=key_pat.description,
+            )
+            report.components.append(comp)
+
+    # 5. Invisible Unicode detection (GlassWorm / supply-chain attack vectors)
+    for unicode_pat in INVISIBLE_UNICODE_PATTERNS:
+        for match in unicode_pat.regex.finditer(content):
+            line_num = content[: match.start()].count("\n") + 1
+            dedup_key = f"{rel_path}:{line_num}:unicode:{unicode_pat.name}"
+            if dedup_key in seen_keys:
+                continue
+            seen_keys.add(dedup_key)
+
+            comp = AIComponent(
+                component_type=AIComponentType.INVISIBLE_UNICODE,
+                name=unicode_pat.name,
+                language=language,
+                file_path=rel_path,
+                line_number=line_num,
+                matched_text=f"<{unicode_pat.name}>",  # don't store invisible chars
+                severity=unicode_pat.severity,
+                description=unicode_pat.description,
             )
             report.components.append(comp)
 

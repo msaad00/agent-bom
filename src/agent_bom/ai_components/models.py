@@ -25,6 +25,7 @@ class AIComponentType(str, Enum):
     DEPRECATED_MODEL = "deprecated_model"  # gpt-3.5-turbo, text-davinci-003
     MLOPS = "mlops"  # mlflow, wandb, neptune
     INFERENCE_SERVER = "inference_server"  # vllm, triton, tgi
+    INVISIBLE_UNICODE = "invisible_unicode"  # GlassWorm-style zero-width / RTL override chars in source
 
 
 class AIComponentSeverity(str, Enum):

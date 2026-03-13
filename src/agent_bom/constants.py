@@ -43,6 +43,10 @@ AI_PACKAGES: frozenset[str] = frozenset(
         "google-generativeai",
         "google-cloud-aiplatform",
         "boto3",
+        "deepseek",
+        "fireworks-ai",
+        "ai21",
+        "cerebras-cloud-sdk",
         # Model inference
         "transformers",
         "huggingface-hub",

@@ -143,6 +143,104 @@ def _version_affected(
         return True
 
 
+def lookup_packages_batch(
+    conn: sqlite3.Connection,
+    packages: list[tuple[str, str, str]],
+) -> dict[tuple[str, str, str], list[LocalVuln]]:
+    """Batch lookup vulnerabilities for multiple packages in a single query.
+
+    *packages* is a list of ``(ecosystem, normalized_name, version)`` tuples.
+
+    Returns a dict mapping each input tuple to its list of matching
+    :class:`LocalVuln` records.  Version range matching uses the same logic
+    as :func:`lookup_package`.
+
+    The query fetches all rows for the unique ``(ecosystem, package_name)``
+    pairs, then filters by version in-memory.  SQLite's variable limit
+    (default 999) is respected by chunking into groups of 400 pairs.
+    """
+    if not packages:
+        return {}
+
+    chunk_size = 400  # 400 pairs = 800 params, well under SQLite's 999
+
+    # Deduplicate (ecosystem, name) pairs for the SQL query; keep version
+    # info for in-memory filtering afterwards.
+    pair_set: set[tuple[str, str]] = set()
+    for eco, name, _ver in packages:
+        pair_set.add((eco.lower(), name))
+
+    pairs = list(pair_set)
+
+    # Fetch all rows in chunks
+    all_rows: list[sqlite3.Row] = []
+    for start in range(0, len(pairs), chunk_size):
+        chunk = pairs[start : start + chunk_size]
+        placeholders = ", ".join(["(?, ?)"] * len(chunk))
+        params: list[str] = []
+        for eco, nm in chunk:
+            params.extend([eco, nm])
+
+        # placeholders is only "(?, ?)" repeated — no user data in the SQL string.
+        query = f"""
+            SELECT
+                v.id, v.summary, v.severity, v.cvss_score, v.fixed_version, v.cwe_ids, v.source,
+                a.ecosystem, a.package_name, a.introduced, a.fixed, a.last_affected,
+                e.probability AS epss_prob, e.percentile AS epss_pct,
+                k.date_added AS kev_date
+            FROM affected a
+            JOIN vulns v ON v.id = a.vuln_id
+            LEFT JOIN epss_scores e ON e.cve_id = v.id
+            LEFT JOIN kev_entries k ON k.cve_id = v.id
+            WHERE (LOWER(a.ecosystem), a.package_name) IN (VALUES {placeholders})
+            ORDER BY v.cvss_score DESC NULLS LAST
+        """  # nosec B608
+        all_rows.extend(conn.execute(query, params).fetchall())
+
+    # Group rows by (lower_ecosystem, package_name)
+    from collections import defaultdict
+
+    grouped: dict[tuple[str, str], list[sqlite3.Row]] = defaultdict(list)
+    for row in all_rows:
+        grouped[(row["ecosystem"].lower(), row["package_name"])].append(row)
+
+    # Build results per input package (with version filtering)
+    results: dict[tuple[str, str, str], list[LocalVuln]] = {}
+    for eco, name, version in packages:
+        key = (eco, name, version)
+        eco_lower = eco.lower()
+        rows = grouped.get((eco_lower, name), [])
+
+        vulns: list[LocalVuln] = []
+        for row in rows:
+            if version and not _version_affected(version, row["introduced"], row["fixed"], row["last_affected"]):
+                continue
+            raw_cwes = row["cwe_ids"] or ""
+            cwe_list = [c for c in raw_cwes.split(",") if c] if raw_cwes else []
+
+            vulns.append(
+                LocalVuln(
+                    id=row["id"],
+                    summary=row["summary"],
+                    severity=row["severity"],
+                    cvss_score=row["cvss_score"],
+                    fixed_version=row["fixed_version"] or row["fixed"],
+                    epss_probability=row["epss_prob"],
+                    epss_percentile=row["epss_pct"],
+                    is_kev=row["kev_date"] is not None,
+                    kev_date_added=row["kev_date"],
+                    source=row["source"],
+                    ecosystem=row["ecosystem"],
+                    package_name=row["package_name"],
+                    introduced=row["introduced"],
+                    cwe_ids=cwe_list,
+                )
+            )
+        results[key] = vulns
+
+    return results
+
+
 def package_in_db(conn: sqlite3.Connection, ecosystem: str, name: str) -> bool:
     """Return True if *any* affected record exists for this package in the DB.
 

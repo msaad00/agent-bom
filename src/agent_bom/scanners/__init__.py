@@ -619,6 +619,12 @@ def _local_vuln_to_vulnerability(lv: "Any") -> Vulnerability:
     )
 
 
+# Threshold above which batch DB lookup is used instead of per-package queries.
+# Batch mode issues a single SQL query per chunk (400 pairs) vs. N individual
+# queries — a significant win for scans with thousands of packages.
+_BATCH_DB_THRESHOLD = 50
+
+
 def _scan_packages_local_db(packages: list[Package]) -> tuple[int, set[str]]:
     """Query the local SQLite DB for all packages.
 
@@ -662,37 +668,90 @@ def _scan_packages_local_db(packages: list[Package]) -> tuple[int, set[str]]:
     try:
         from agent_bom.db.lookup import package_in_db
 
-        for pkg in packages:
-            eco_key = pkg.ecosystem.lower()
-            db_eco = _eco_map.get(eco_key, pkg.ecosystem)
-            norm_name = normalize_package_name(pkg.name, pkg.ecosystem)
-            db_key = f"{eco_key}:{norm_name}@{pkg.version}"
+        if len(packages) > _BATCH_DB_THRESHOLD:
+            total = _scan_packages_local_db_batch(conn, packages, _eco_map, covered)
+        else:
+            for pkg in packages:
+                eco_key = pkg.ecosystem.lower()
+                db_eco = _eco_map.get(eco_key, pkg.ecosystem)
+                norm_name = normalize_package_name(pkg.name, pkg.ecosystem)
+                db_key = f"{eco_key}:{norm_name}@{pkg.version}"
 
-            local_vulns = lookup_package(conn, db_eco, norm_name, pkg.version)
+                local_vulns = lookup_package(conn, db_eco, norm_name, pkg.version)
 
-            # Only mark as "covered by DB" when the package name actually exists in the
-            # affected table — not just because the ecosystem is mapped. This prevents
-            # false negatives where a package has no DB entry but is silently skipped
-            # (no OSV fallback) because the ecosystem is present.
-            if package_in_db(conn, db_eco, norm_name):
-                covered.add(db_key)
+                # Only mark as "covered by DB" when the package name actually exists in the
+                # affected table — not just because the ecosystem is mapped. This prevents
+                # false negatives where a package has no DB entry but is silently skipped
+                # (no OSV fallback) because the ecosystem is present.
+                if package_in_db(conn, db_eco, norm_name):
+                    covered.add(db_key)
 
-            if local_vulns:
-                existing_ids = {v.id for v in pkg.vulnerabilities}
-                new_vulns = []
-                for lv in local_vulns:
-                    if lv.id not in existing_ids:
-                        new_vulns.append(_local_vuln_to_vulnerability(lv))
-                        existing_ids.add(lv.id)
-                pkg.vulnerabilities.extend(new_vulns)
-                total += len(new_vulns)
-                for v in new_vulns:
-                    v.compliance_tags = _tag_vuln(v, pkg)
-                flag_malicious_from_vulns(pkg)
+                if local_vulns:
+                    existing_ids = {v.id for v in pkg.vulnerabilities}
+                    new_vulns = []
+                    for lv in local_vulns:
+                        if lv.id not in existing_ids:
+                            new_vulns.append(_local_vuln_to_vulnerability(lv))
+                            existing_ids.add(lv.id)
+                    pkg.vulnerabilities.extend(new_vulns)
+                    total += len(new_vulns)
+                    for v in new_vulns:
+                        v.compliance_tags = _tag_vuln(v, pkg)
+                    flag_malicious_from_vulns(pkg)
     finally:
         conn.close()
 
     return total, covered
+
+
+def _scan_packages_local_db_batch(
+    conn: Any,
+    packages: list[Package],
+    eco_map: dict[str, str],
+    covered: set[str],
+) -> int:
+    """Batch variant of the local DB scan — fewer SQL round-trips.
+
+    Uses :func:`lookup_packages_batch` to fetch all vulnerabilities in bulk,
+    then applies the same dedup / tagging logic as the per-package path.
+    """
+    from agent_bom.db.lookup import lookup_packages_batch, package_in_db
+
+    # Build batch keys: (db_ecosystem, normalized_name, version)
+    pkg_index: list[tuple[Package, str, str, str]] = []  # (pkg, db_eco, norm_name, db_key)
+    batch_keys: list[tuple[str, str, str]] = []
+
+    for pkg in packages:
+        eco_key = pkg.ecosystem.lower()
+        db_eco = eco_map.get(eco_key, pkg.ecosystem)
+        norm_name = normalize_package_name(pkg.name, pkg.ecosystem)
+        db_key = f"{eco_key}:{norm_name}@{pkg.version}"
+        pkg_index.append((pkg, db_eco, norm_name, db_key))
+        batch_keys.append((db_eco, norm_name, pkg.version))
+
+    batch_results = lookup_packages_batch(conn, batch_keys)
+
+    total = 0
+    for (pkg, db_eco, norm_name, db_key), batch_key in zip(pkg_index, batch_keys):
+        local_vulns = batch_results.get(batch_key, [])
+
+        if package_in_db(conn, db_eco, norm_name):
+            covered.add(db_key)
+
+        if local_vulns:
+            existing_ids = {v.id for v in pkg.vulnerabilities}
+            new_vulns = []
+            for lv in local_vulns:
+                if lv.id not in existing_ids:
+                    new_vulns.append(_local_vuln_to_vulnerability(lv))
+                    existing_ids.add(lv.id)
+            pkg.vulnerabilities.extend(new_vulns)
+            total += len(new_vulns)
+            for v in new_vulns:
+                v.compliance_tags = _tag_vuln(v, pkg)
+            flag_malicious_from_vulns(pkg)
+
+    return total
 
 
 async def scan_packages(packages: list[Package]) -> int:

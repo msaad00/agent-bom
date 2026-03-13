@@ -43,17 +43,31 @@ def test_auto_update_db_skips_when_fresh():
         assert result.exit_code == 0
 
 
-def test_auto_update_db_off_by_default():
-    """Without --auto-update-db, sync_db() must never be called."""
+def test_auto_update_db_opt_out():
+    """With --no-auto-update-db, sync_db() must never be called."""
     with (
         patch("agent_bom.db.schema.db_freshness_days") as mock_fresh,
         patch("agent_bom.db.sync.sync_db") as mock_sync,
         patch("agent_bom.cli.scan.discover_all", return_value=[]),
         patch("agent_bom.cli.scan.scan_agents_sync", return_value=[]),
     ):
-        result = _invoke("--no-scan")
+        result = _invoke("--no-auto-update-db", "--no-scan")
         mock_fresh.assert_not_called()
         mock_sync.assert_not_called()
+        assert result.exit_code == 0
+
+
+def test_auto_update_db_on_by_default():
+    """Default behavior: auto-update-db is ON, sync_db() called when stale."""
+    with (
+        patch("agent_bom.db.schema.db_freshness_days", return_value=10) as mock_fresh,
+        patch("agent_bom.db.sync.sync_db") as mock_sync,
+        patch("agent_bom.cli.scan.discover_all", return_value=[]),
+        patch("agent_bom.cli.scan.scan_agents_sync", return_value=[]),
+    ):
+        result = _invoke("--no-scan")
+        mock_fresh.assert_called_once()
+        mock_sync.assert_called_once()
         assert result.exit_code == 0
 
 

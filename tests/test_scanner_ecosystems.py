@@ -161,6 +161,7 @@ async def test_scan_packages_maven_go_query_construction():
 
     with (
         patch("agent_bom.scanners._get_scan_cache", return_value=None),
+        patch("agent_bom.scanners._scan_packages_local_db", return_value=(0, set())),
         patch("agent_bom.scanners.request_with_retry", side_effect=mock_request_with_retry),
         patch("agent_bom.scanners.create_client") as mock_create_client,
     ):
@@ -209,6 +210,7 @@ async def test_scan_packages_maven_vuln_attached():
 
     with (
         patch("agent_bom.scanners._get_scan_cache", return_value=None),
+        patch("agent_bom.scanners._scan_packages_local_db", return_value=(0, set())),
         patch("agent_bom.scanners.request_with_retry", side_effect=mock_request),
         patch("agent_bom.scanners.create_client") as mock_create_client,
     ):

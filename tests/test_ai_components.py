@@ -1,4 +1,4 @@
-"""Tests for AI component source scanning — SDK imports, model refs, API keys, shadow AI."""
+"""Tests for AI component source scanning — SDK imports, model refs, API keys, shadow AI, invisible Unicode."""
 
 from __future__ import annotations
 
@@ -552,3 +552,104 @@ class TestEdgeCases:
         comps = [c for c in report.components if c.name == "openai" and c.component_type == AIComponentType.LLM_PROVIDER]
         assert comps
         assert comps[0].file_path == "app.py"
+
+
+class TestDeepSeekDetection:
+    """Tests for DeepSeek SDK and model detection."""
+
+    def test_deepseek_python_import(self, tmp_path: Path):
+        f = tmp_path / "app.py"
+        f.write_text("from openai import OpenAI\nimport deepseek\n")
+        report = scan_source(str(tmp_path))
+        names = [c.name for c in report.components if c.component_type == AIComponentType.LLM_PROVIDER]
+        assert "deepseek" in names
+
+    def test_deepseek_chat_model_ref(self, tmp_path: Path):
+        f = tmp_path / "app.py"
+        f.write_text('model = "deepseek-chat"\n')
+        report = scan_source(str(tmp_path))
+        models = [c.name for c in report.components if c.component_type == AIComponentType.MODEL_REFERENCE]
+        assert "deepseek-chat" in models
+
+    def test_deepseek_r1_model_ref(self, tmp_path: Path):
+        f = tmp_path / "app.py"
+        f.write_text('model = "deepseek-r1"\n')
+        report = scan_source(str(tmp_path))
+        models = [c.name for c in report.components if c.component_type == AIComponentType.MODEL_REFERENCE]
+        assert "deepseek-r1" in models
+
+    def test_deepseek_v3_model_ref(self, tmp_path: Path):
+        f = tmp_path / "app.py"
+        f.write_text('model = "deepseek-v3"\n')
+        report = scan_source(str(tmp_path))
+        models = [c.name for c in report.components if c.component_type == AIComponentType.MODEL_REFERENCE]
+        assert "deepseek-v3" in models
+
+
+class TestInvisibleUnicodeDetection:
+    """Tests for GlassWorm-style invisible Unicode supply-chain attack detection."""
+
+    def test_zero_width_cluster(self, tmp_path: Path):
+        f = tmp_path / "app.py"
+        f.write_text("x = 1\u200b\u200b\u200b\n")  # 3 zero-width spaces
+        report = scan_source(str(tmp_path))
+        unicode_comps = [c for c in report.components if c.component_type == AIComponentType.INVISIBLE_UNICODE]
+        assert len(unicode_comps) >= 1
+        assert unicode_comps[0].name == "zero-width-cluster"
+
+    def test_bidi_override(self, tmp_path: Path):
+        f = tmp_path / "app.py"
+        f.write_text("# \u202emalicious\n")  # RTL override
+        report = scan_source(str(tmp_path))
+        unicode_comps = [c for c in report.components if c.component_type == AIComponentType.INVISIBLE_UNICODE]
+        assert len(unicode_comps) >= 1
+        assert unicode_comps[0].name == "bidi-override"
+
+    def test_tag_characters(self, tmp_path: Path):
+        f = tmp_path / "app.py"
+        f.write_text("x = '\U000e0001\U000e0002\U000e0003'\n")  # tag chars
+        report = scan_source(str(tmp_path))
+        unicode_comps = [c for c in report.components if c.component_type == AIComponentType.INVISIBLE_UNICODE]
+        assert len(unicode_comps) >= 1
+        assert unicode_comps[0].name == "tag-characters"
+
+    def test_homoglyph_mixing(self, tmp_path: Path):
+        f = tmp_path / "app.py"
+        # Cyrillic 'а' (U+0430) next to Latin 'b'
+        f.write_text("x = '\u0430b'\n")
+        report = scan_source(str(tmp_path))
+        unicode_comps = [c for c in report.components if c.component_type == AIComponentType.INVISIBLE_UNICODE]
+        assert len(unicode_comps) >= 1
+        assert unicode_comps[0].name == "homoglyph-mixing"
+
+    def test_severity_is_critical_by_default(self, tmp_path: Path):
+        f = tmp_path / "app.py"
+        f.write_text("x = 1\u200b\u200b\n")
+        report = scan_source(str(tmp_path))
+        unicode_comps = [c for c in report.components if c.component_type == AIComponentType.INVISIBLE_UNICODE]
+        assert unicode_comps
+        assert unicode_comps[0].severity == AIComponentSeverity.CRITICAL
+
+    def test_homoglyph_severity_is_high(self, tmp_path: Path):
+        f = tmp_path / "app.py"
+        f.write_text("x = '\u0430b'\n")
+        report = scan_source(str(tmp_path))
+        unicode_comps = [c for c in report.components if c.component_type == AIComponentType.INVISIBLE_UNICODE]
+        assert unicode_comps
+        assert unicode_comps[0].severity == AIComponentSeverity.HIGH
+
+    def test_matched_text_does_not_store_invisible_chars(self, tmp_path: Path):
+        f = tmp_path / "app.py"
+        f.write_text("x = 1\u200b\u200b\u200b\n")
+        report = scan_source(str(tmp_path))
+        unicode_comps = [c for c in report.components if c.component_type == AIComponentType.INVISIBLE_UNICODE]
+        assert unicode_comps
+        # Should be a readable label, not invisible chars
+        assert "<" in unicode_comps[0].matched_text
+
+    def test_clean_file_no_unicode_findings(self, tmp_path: Path):
+        f = tmp_path / "app.py"
+        f.write_text("import openai\nx = 1\n")
+        report = scan_source(str(tmp_path))
+        unicode_comps = [c for c in report.components if c.component_type == AIComponentType.INVISIBLE_UNICODE]
+        assert len(unicode_comps) == 0

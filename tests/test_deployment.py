@@ -24,8 +24,8 @@ def test_dockerfile_sse_exists():
 
 def test_railway_json_valid():
     """railway.json should be valid JSON with correct deploy config."""
-    f = ROOT / "deploy" / "railway.json"
-    assert f.exists(), "deploy/railway.json is missing"
+    f = ROOT / "railway.json"
+    assert f.exists(), "railway.json must be at project root (Railway reads it from working directory)"
     data = json.loads(f.read_text())
     assert "build" in data
     assert "deploy" in data
@@ -61,13 +61,13 @@ def test_fly_toml_valid():
 
 
 def test_procfile_exists():
-    """Procfile should have web process with SSE transport."""
+    """Procfile should have web process with streamable-http transport."""
     f = ROOT / "deploy" / "Procfile"
     assert f.exists(), "deploy/Procfile is missing"
     content = f.read_text().strip()
     assert content.startswith("web:")
     assert "mcp-server" in content
-    assert "sse" in content
+    assert "streamable-http" in content
 
 
 # ---------------------------------------------------------------------------

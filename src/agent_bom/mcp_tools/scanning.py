@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import logging
 
+from mcp.server.fastmcp.exceptions import ToolError
+
 from agent_bom.security import sanitize_error
 
 logger = logging.getLogger(__name__)
@@ -21,6 +23,9 @@ async def scan_impl(
     verify_integrity: bool = False,
     fail_severity: str | None = None,
     warn_severity: str | None = None,
+    auto_update_db: bool = True,
+    db_sources: str | None = None,
+    output_format: str = "json",
     policy: dict | None = None,
     _run_scan_pipeline,
     _truncate_response,
@@ -29,6 +34,19 @@ async def scan_impl(
     try:
         from agent_bom.models import AIBOMReport
         from agent_bom.output import to_json
+
+        # Auto-refresh stale DB before scanning
+        if auto_update_db:
+            try:
+                from agent_bom.db.schema import db_freshness_days
+                from agent_bom.db.sync import sync_db
+
+                freshness = db_freshness_days()
+                source_list = [s.strip() for s in db_sources.split(",")] if db_sources else None
+                if freshness is None or freshness > 7 or source_list:
+                    sync_db(sources=source_list)
+            except Exception as exc:
+                logger.warning("Auto DB refresh failed: %s", exc)
 
         agents, blast_radii, scan_warnings, scan_sources = await _run_scan_pipeline(
             config_path,
@@ -71,6 +89,14 @@ async def scan_impl(
                 logger.debug("Scorecard enrichment failed: %s", exc)
 
         report = AIBOMReport(agents=agents, blast_radii=blast_radii, scan_sources=scan_sources)
+
+        # Format selection
+        if output_format == "sarif":
+            from agent_bom.output.sarif import to_sarif
+
+            sarif_result = to_sarif(report)
+            return _truncate_response(json.dumps(sarif_result, indent=2, default=str))
+
         result = to_json(report)
 
         # Policy evaluation
@@ -89,7 +115,7 @@ async def scan_impl(
                 threshold = Severity(fail_severity.lower())
                 threshold_idx = severity_order.index(threshold.value)
             except (ValueError, KeyError):
-                return json.dumps({"error": f"Invalid severity: {fail_severity}. Use: critical, high, medium, low"})
+                raise ToolError(f"Invalid severity: {fail_severity}. Use: critical, high, medium, low")
             gate_fail = any(
                 severity_order.index(sev) <= threshold_idx
                 for br in blast_radii
@@ -107,7 +133,7 @@ async def scan_impl(
                 warn_threshold = Severity(warn_severity.lower())
                 warn_threshold_idx = severity_order.index(warn_threshold.value)
             except (ValueError, KeyError):
-                return json.dumps({"error": f"Invalid warn_severity: {warn_severity}. Use: critical, high, medium, low"})
+                raise ToolError(f"Invalid warn_severity: {warn_severity}. Use: critical, high, medium, low")
             warn_matches = [
                 br
                 for br in blast_radii
@@ -123,7 +149,7 @@ async def scan_impl(
         return _truncate_response(json.dumps(result, indent=2, default=str))
     except Exception as exc:
         logger.exception("MCP tool error")
-        return json.dumps({"error": sanitize_error(exc)})
+        raise ToolError(sanitize_error(exc)) from exc
 
 
 async def check_impl(
@@ -151,8 +177,7 @@ async def check_impl(
         try:
             eco = _validate_ecosystem(ecosystem)
         except ValueError as exc:
-            logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+            raise ToolError(sanitize_error(exc)) from exc
         pkg = Pkg(name=name, version=version, ecosystem=eco)
 
         # Resolve "latest" via registry
@@ -214,9 +239,11 @@ async def check_impl(
                 default=str,
             )
         )
+    except ToolError:
+        raise
     except Exception as exc:
         logger.exception("MCP tool error")
-        return json.dumps({"error": sanitize_error(exc)})
+        raise ToolError(sanitize_error(exc)) from exc
 
 
 async def code_scan_impl(
@@ -230,7 +257,7 @@ async def code_scan_impl(
     try:
         scan_path = _safe_path(path)
     except ValueError as exc:
-        return json.dumps({"error": sanitize_error(exc)})
+        raise ToolError(sanitize_error(exc)) from exc
 
     try:
         from agent_bom.sast import SASTScanError, scan_code
@@ -238,7 +265,7 @@ async def code_scan_impl(
         _packages, sast_result = scan_code(str(scan_path), config=config)
         return _truncate_response(json.dumps(sast_result.to_dict(), indent=2))
     except SASTScanError as exc:
-        return json.dumps({"error": sanitize_error(exc)})
+        raise ToolError(sanitize_error(exc)) from exc
     except Exception as exc:
         logger.error("code_scan error: %s", exc)
-        return json.dumps({"error": sanitize_error(exc)})
+        raise ToolError(sanitize_error(exc)) from exc

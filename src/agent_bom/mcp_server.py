@@ -374,6 +374,15 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                 )
             ),
         ] = None,
+        auto_update_db: Annotated[bool, Field(description="Auto-refresh local vuln DB if stale (>7 days) before scanning.")] = True,
+        db_sources: Annotated[
+            str | None,
+            Field(description="Comma-separated DB sources to sync before scanning (e.g. 'nvd,ghsa,osv,epss,kev')."),
+        ] = None,
+        output_format: Annotated[
+            str,
+            Field(description="Output format: 'json' (default) or 'sarif' for GitHub Security tab integration."),
+        ] = "json",
         policy: Annotated[
             dict | None,
             Field(
@@ -405,6 +414,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             verify_integrity=verify_integrity,
             fail_severity=fail_severity,
             warn_severity=warn_severity,
+            auto_update_db=auto_update_db,
+            db_sources=db_sources,
+            output_format=output_format,
             policy=policy,
             _run_scan_pipeline=_run_scan_pipeline,
             _truncate_response=_truncate_response,

@@ -75,7 +75,11 @@ def parse_npm_packages(directory: Path) -> list[Package]:
             pkg_data = json.loads((directory / "package.json").read_text())
             for dep_type in ("dependencies", "devDependencies"):
                 for name, version_spec in pkg_data.get(dep_type, {}).items():
-                    version = version_spec.lstrip("^~>=<")
+                    version = version_spec.lstrip("^~>=< ")
+                    # Validate: must look like a semver (at least major.minor.patch)
+                    # Otherwise mark as "latest" for resolver to handle
+                    if not re.match(r"^\d+\.\d+\.\d+", version):
+                        version = "latest"
                     packages.append(
                         Package(
                             name=name,

@@ -356,7 +356,7 @@ async def _enrich_results_if_needed(results: dict[str, list[dict]]) -> dict[str,
         for key, vuln_list in results.items():
             results[key] = [{**v, **details_map.get(v.get("id", ""), {})} for v in vuln_list]
     except Exception as exc:
-        _logger.debug("OSV detail enrichment skipped: %s", exc)
+        _logger.warning("OSV detail enrichment skipped (vulnerability summaries may be incomplete): %s", exc)
     return results
 
 
@@ -705,7 +705,7 @@ async def scan_packages(packages: list[Package]) -> int:
             pkg.name = normalize_package_name(pkg.name, pkg.ecosystem)
 
     # Auto-resolve "latest"/"unknown" versions before OSV query
-    unresolved = [p for p in packages if p.version in ("latest", "unknown", "") and p.ecosystem.lower() in ("npm", "pypi")]
+    unresolved = [p for p in packages if p.version in ("latest", "unknown", "") and p.ecosystem.lower() in ("npm", "pypi", "conda")]
     if unresolved:
         try:
             from agent_bom.resolver import resolve_all_versions

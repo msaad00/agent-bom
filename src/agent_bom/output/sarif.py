@@ -45,6 +45,10 @@ def to_sarif(report: AIBOMReport) -> dict:
             # Use actual CVSS score when available, otherwise map from severity
             sec_sev = str(vuln.cvss_score) if vuln.cvss_score is not None else _SECURITY_SEVERITY_SCORE.get(vuln.severity, "0.0")
             rule_props: dict = {"security-severity": sec_sev}
+            if vuln.epss_score is not None:
+                rule_props["epss-score"] = round(vuln.epss_score, 5)
+            if vuln.is_kev:
+                rule_props["kev"] = True
             if vuln.cwe_ids:
                 rule_props["tags"] = vuln.cwe_ids
             rule: dict = {
@@ -67,10 +71,11 @@ def to_sarif(report: AIBOMReport) -> dict:
         fp_input = f"{rule_id}:{br.package.name}:{br.package.version}:{config_path}"
         fingerprint = hashlib.sha256(fp_input.encode()).hexdigest()
 
+        kind = "informational" if vuln.severity == Severity.NONE else "fail"
         result: dict = {
             "ruleId": rule_id,
             "level": level,
-            "kind": "fail",
+            "kind": kind,
             "message": {"text": message_text},
             "fingerprints": {
                 "agent-bom/v1": fingerprint,
@@ -115,6 +120,8 @@ def to_sarif(report: AIBOMReport) -> dict:
                 "soc2_tags": br.soc2_tags,
                 "cis_tags": br.cis_tags,
                 "blast_score": br.risk_score,
+                "epss_score": vuln.epss_score,
+                "is_kev": vuln.is_kev,
                 "exposed_credentials": br.exposed_credentials,
             }
         results.append(result)

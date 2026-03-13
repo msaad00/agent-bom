@@ -144,6 +144,9 @@ async def resolve_package_version(pkg: Package, client: httpx.AsyncClient) -> bo
         from agent_bom.version_utils import resolve_cargo_metadata
 
         version, lic = await resolve_cargo_metadata(pkg.name, client)
+    elif pkg.ecosystem == "conda":
+        # Conda packages often have PyPI equivalents — try PyPI resolution
+        version, lic = await resolve_pypi_metadata(pkg.name, client)
     elif pkg.ecosystem == "maven" and ":" in pkg.name:
         from agent_bom.version_utils import resolve_maven_metadata
 

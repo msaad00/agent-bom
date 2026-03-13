@@ -334,6 +334,51 @@ def test_sarif_unknown_severity_maps_to_note():
     assert result["level"] == "note"
 
 
+def test_sarif_epss_in_rule_properties():
+    """SARIF rule properties include EPSS score when available."""
+    vuln = Vulnerability(id="CVE-2099-EPSS", summary="Test", severity=Severity.HIGH, epss_score=0.85)
+    pkg = Package(name="pkg", version="1.0", ecosystem="npm", vulnerabilities=[vuln])
+    server = MCPServer(name="s", command="x", args=[], packages=[pkg])
+    agent = Agent(name="a", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/c.json", mcp_servers=[server])
+    br = BlastRadius(
+        vulnerability=vuln, package=pkg, affected_agents=[agent], affected_servers=[server], exposed_credentials=[], exposed_tools=[]
+    )
+    report = AIBOMReport(agents=[agent], blast_radii=[br])
+    sarif = to_sarif(report)
+    rule = sarif["runs"][0]["tool"]["driver"]["rules"][0]
+    assert rule["properties"]["epss-score"] == 0.85
+
+
+def test_sarif_none_severity_kind_informational():
+    """NONE severity results use kind='informational', not 'fail'."""
+    vuln = Vulnerability(id="CVE-2099-NONE", summary="Test", severity=Severity.NONE)
+    pkg = Package(name="pkg", version="1.0", ecosystem="npm", vulnerabilities=[vuln])
+    server = MCPServer(name="s", command="x", args=[], packages=[pkg])
+    agent = Agent(name="a", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/c.json", mcp_servers=[server])
+    br = BlastRadius(
+        vulnerability=vuln, package=pkg, affected_agents=[agent], affected_servers=[server], exposed_credentials=[], exposed_tools=[]
+    )
+    report = AIBOMReport(agents=[agent], blast_radii=[br])
+    sarif = to_sarif(report)
+    result = sarif["runs"][0]["results"][0]
+    assert result["kind"] == "informational"
+
+
+def test_sarif_high_severity_kind_fail():
+    """HIGH severity results use kind='fail'."""
+    vuln = Vulnerability(id="CVE-2099-HIGH", summary="Test", severity=Severity.HIGH)
+    pkg = Package(name="pkg", version="1.0", ecosystem="npm", vulnerabilities=[vuln])
+    server = MCPServer(name="s", command="x", args=[], packages=[pkg])
+    agent = Agent(name="a", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/c.json", mcp_servers=[server])
+    br = BlastRadius(
+        vulnerability=vuln, package=pkg, affected_agents=[agent], affected_servers=[server], exposed_credentials=[], exposed_tools=[]
+    )
+    report = AIBOMReport(agents=[agent], blast_radii=[br])
+    sarif = to_sarif(report)
+    result = sarif["runs"][0]["results"][0]
+    assert result["kind"] == "fail"
+
+
 def test_sarif_empty_report(empty_report):
     sarif = to_sarif(empty_report)
     assert sarif["runs"][0]["results"] == []

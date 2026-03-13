@@ -179,8 +179,8 @@ def _scan_file(
             report.components.append(comp)
 
     # 2. Model string references (all languages)
-    for pattern in MODEL_PATTERNS:
-        for match in pattern.regex.finditer(content):
+    for model_pat in MODEL_PATTERNS:
+        for match in model_pat.regex.finditer(content):
             model_name = match.group(0)
             line_num = content[: match.start()].count("\n") + 1
             dedup_key = f"{rel_path}:{line_num}:model:{model_name}"
@@ -195,14 +195,14 @@ def _scan_file(
                 file_path=rel_path,
                 line_number=line_num,
                 matched_text=match.group(0),
-                severity=pattern.severity,
-                description=f"{pattern.provider} model reference",
+                severity=model_pat.severity,
+                description=f"{model_pat.provider} model reference",
             )
             report.components.append(comp)
 
     # 3. Deprecated model detection (all languages)
-    for pattern in DEPRECATED_MODEL_PATTERNS:
-        for match in pattern.regex.finditer(content):
+    for dep_pat in DEPRECATED_MODEL_PATTERNS:
+        for match in dep_pat.regex.finditer(content):
             model_name = match.group(0)
             line_num = content[: match.start()].count("\n") + 1
             dedup_key = f"{rel_path}:{line_num}:deprecated:{model_name}"
@@ -217,21 +217,21 @@ def _scan_file(
                 file_path=rel_path,
                 line_number=line_num,
                 matched_text=match.group(0),
-                severity=pattern.severity,
+                severity=dep_pat.severity,
                 package_name=None,
-                description=f"Deprecated {pattern.provider} model",
-                deprecated_replacement=pattern.replacement,
+                description=f"Deprecated {dep_pat.provider} model",
+                deprecated_replacement=dep_pat.replacement,
             )
             report.components.append(comp)
 
     # 4. API key detection (all languages)
-    for pattern in API_KEY_PATTERNS:
-        for match in pattern.regex.finditer(content):
+    for key_pat in API_KEY_PATTERNS:
+        for match in key_pat.regex.finditer(content):
             key_value = match.group(1)
             line_num = content[: match.start()].count("\n") + 1
             # Mask the key for safe display
             masked = key_value[:8] + "..." + key_value[-4:] if len(key_value) > 12 else key_value[:4] + "..."
-            dedup_key = f"{rel_path}:{line_num}:apikey:{pattern.provider}"
+            dedup_key = f"{rel_path}:{line_num}:apikey:{key_pat.provider}"
             if dedup_key in seen_keys:
                 continue
             seen_keys.add(dedup_key)
@@ -243,8 +243,8 @@ def _scan_file(
                 file_path=rel_path,
                 line_number=line_num,
                 matched_text=masked,  # never store full key
-                severity=pattern.severity,
-                description=pattern.description,
+                severity=key_pat.severity,
+                description=key_pat.description,
             )
             report.components.append(comp)
 

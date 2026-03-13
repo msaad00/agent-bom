@@ -450,7 +450,8 @@ def run_local_discovery(
             "components": [
                 {
                     "type": c.component_type.value,
-                    "name": c.name,
+                    # Redact credential fragments — never persist key material in report data
+                    "name": "[REDACTED]" if c.component_type.value == "api_key" else c.name,
                     "language": c.language,
                     "file": c.file_path,
                     "line": c.line_number,

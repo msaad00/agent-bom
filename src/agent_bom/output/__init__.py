@@ -1592,6 +1592,10 @@ from agent_bom.output.badge import (  # noqa: E402
 from agent_bom.output.compliance_export import (  # noqa: E402
     export_compliance_bundle,  # noqa: F401
 )
+from agent_bom.output.csv_fmt import (  # noqa: E402
+    export_csv,  # noqa: F401
+    to_csv,  # noqa: F401
+)
 from agent_bom.output.cyclonedx_fmt import (  # noqa: E402
     export_cyclonedx,  # noqa: F401
     to_cyclonedx,  # noqa: F401
@@ -1602,6 +1606,14 @@ from agent_bom.output.json_fmt import (  # noqa: E402
     _risk_narrative,  # noqa: F401
     export_json,  # noqa: F401
     to_json,  # noqa: F401
+)
+from agent_bom.output.junit import (  # noqa: E402
+    export_junit,  # noqa: F401
+    to_junit,  # noqa: F401
+)
+from agent_bom.output.markdown import (  # noqa: E402
+    export_markdown,  # noqa: F401
+    to_markdown,  # noqa: F401
 )
 from agent_bom.output.sarif import (  # noqa: E402
     export_sarif,  # noqa: F401

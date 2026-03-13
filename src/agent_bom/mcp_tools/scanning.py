@@ -96,6 +96,26 @@ async def scan_impl(
 
             sarif_result = to_sarif(report)
             return _truncate_response(json.dumps(sarif_result, indent=2, default=str))
+        if output_format == "cyclonedx":
+            from agent_bom.output import to_cyclonedx
+
+            return _truncate_response(json.dumps(to_cyclonedx(report), indent=2, default=str))
+        if output_format == "spdx":
+            from agent_bom.output import to_spdx
+
+            return _truncate_response(json.dumps(to_spdx(report), indent=2, default=str))
+        if output_format == "junit":
+            from agent_bom.output import to_junit
+
+            return _truncate_response(to_junit(report, blast_radii))
+        if output_format == "csv":
+            from agent_bom.output import to_csv
+
+            return _truncate_response(to_csv(report, blast_radii))
+        if output_format == "markdown":
+            from agent_bom.output import to_markdown
+
+            return _truncate_response(to_markdown(report, blast_radii))
 
         result = to_json(report)
 

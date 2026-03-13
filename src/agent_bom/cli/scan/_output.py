@@ -11,9 +11,12 @@ from agent_bom.cli.scan._context import ScanContext
 from agent_bom.models import AIBOMReport
 from agent_bom.output import (
     export_badge,
+    export_csv,
     export_cyclonedx,
     export_html,
     export_json,
+    export_junit,
+    export_markdown,
     export_prometheus,
     export_sarif,
     export_spdx,
@@ -33,8 +36,11 @@ from agent_bom.output import (
     print_threat_frameworks,
     push_otlp,
     push_to_gateway,
+    to_csv,
     to_cyclonedx,
     to_json,
+    to_junit,
+    to_markdown,
     to_prometheus,
     to_sarif,
     to_spdx,
@@ -101,6 +107,12 @@ def render_output(
             from agent_bom.output.svg import to_svg
 
             sys.stdout.write(to_svg(report, blast_radii))
+        elif output_format == "junit":
+            sys.stdout.write(to_junit(report, blast_radii))
+        elif output_format == "csv":
+            sys.stdout.write(to_csv(report, blast_radii))
+        elif output_format == "markdown":
+            sys.stdout.write(to_markdown(report, blast_radii))
         elif output_format == "graph-html":
             import click
 
@@ -197,6 +209,18 @@ def render_output(
         out_path = output or "agent-bom.spdx.json"
         export_spdx(report, out_path)
         con.print(f"\n  [green]✓[/green] SPDX 3.0 BOM: {out_path}")
+    elif output_format == "junit":
+        out_path = output or "agent-bom-results.xml"
+        export_junit(report, out_path, blast_radii)
+        con.print(f"\n  [green]✓[/green] JUnit XML: {out_path}")
+    elif output_format == "csv":
+        out_path = output or "agent-bom-results.csv"
+        export_csv(report, out_path, blast_radii)
+        con.print(f"\n  [green]✓[/green] CSV report: {out_path}")
+    elif output_format == "markdown":
+        out_path = output or "agent-bom-report.md"
+        export_markdown(report, out_path, blast_radii)
+        con.print(f"\n  [green]✓[/green] Markdown report: {out_path}")
     elif output_format == "html":
         out_path = output or "agent-bom-report.html"
         export_html(report, out_path, blast_radii)
@@ -274,6 +298,12 @@ def render_output(
             export_spdx(report, output)
         elif output.endswith(".html"):
             export_html(report, output, blast_radii)
+        elif output.endswith(".xml"):
+            export_junit(report, output, blast_radii)
+        elif output.endswith(".csv"):
+            export_csv(report, output, blast_radii)
+        elif output.endswith(".md"):
+            export_markdown(report, output, blast_radii)
         else:
             export_json(report, output)
         con.print(f"\n  [green]✓[/green] Report: {output}")

@@ -133,6 +133,9 @@ def output_options(fn):
                         "sarif",
                         "cyclonedx",
                         "spdx",
+                        "junit",
+                        "csv",
+                        "markdown",
                         "plain",
                         "text",
                         "prometheus",
@@ -148,6 +151,7 @@ def output_options(fn):
                     "Output format.\n\n"
                     "Core: console (default, colored terminal), json, html, sarif (GitHub/GitLab Security tab), cyclonedx (SBOM).\n"
                     "SBOM: spdx (alternate SBOM standard).\n"
+                    "CI/CD: junit (JUnit XML for Jenkins/GitLab/Azure DevOps), csv (spreadsheet/SIEM), markdown (PR comments/wiki).\n"
                     "Plain: plain (no color, for piping/logging) — alias: text.\n"
                     "Monitoring: prometheus (Prometheus exposition format).\n"
                     "Visualization: mermaid, graph-html (interactive), svg.\n"

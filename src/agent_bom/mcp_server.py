@@ -381,7 +381,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         ] = None,
         output_format: Annotated[
             str,
-            Field(description="Output format: 'json' (default) or 'sarif' for GitHub Security tab integration."),
+            Field(description="Output format: 'json' (default), 'sarif', 'cyclonedx', 'spdx', 'junit', 'csv', or 'markdown'."),
         ] = "json",
         policy: Annotated[
             dict | None,

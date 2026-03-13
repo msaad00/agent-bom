@@ -770,7 +770,9 @@ def test_registry_cache_returns_same_instance():
 
 
 def test_scan_with_invalid_severity_gate():
-    """Invalid fail_severity should return error, not crash."""
+    """Invalid fail_severity should raise ToolError (isError=True in MCP protocol)."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
     from agent_bom.mcp_server import create_mcp_server
     from agent_bom.models import Agent, AgentType, MCPServer, TransportType
 
@@ -784,9 +786,8 @@ def test_scan_with_invalid_severity_gate():
         )
         mock_pipeline.return_value = ([mock_agent], [], [], ["agent_discovery"])
 
-        result = _call_tool(server, "scan", {"fail_severity": "invalid_sev"})
-        assert "error" in result
-        assert "Invalid severity" in result["error"]
+        with pytest.raises(ToolError, match="Invalid severity"):
+            _call_tool(server, "scan", {"fail_severity": "invalid_sev"})
 
 
 def test_scan_surfaces_warnings():

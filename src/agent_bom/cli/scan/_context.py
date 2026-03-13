@@ -33,6 +33,8 @@ class ScanContext:
     delta_result: Any = None
     policy_passed: bool = True
     exit_code: int = 0
+    # per-step timing breakdown (step_name → seconds)
+    step_timings: dict = field(default_factory=dict)
     # internal references used for AI enrichment
     _skill_result_obj: Any = None
     _skill_audit_obj: Any = None

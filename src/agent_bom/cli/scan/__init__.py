@@ -592,6 +592,7 @@ def scan(
     )
 
     # Step 1–1g4: Local discovery
+    _step_t0 = _time.monotonic()
     run_local_discovery(
         ctx,
         project=project,
@@ -647,10 +648,13 @@ def scan(
         _discover_all=discover_all,  # pass patchable reference — tests patch agent_bom.cli.scan.discover_all
     )
 
+    ctx.step_timings["discovery"] = _time.monotonic() - _step_t0
+
     # Re-bind the (possibly updated) agents list
     agents = ctx.agents
 
     # Step 1h + 1y + 1z: Cloud discovery, SaaS connectors, correlation
+    _step_t0 = _time.monotonic()
     run_cloud_discovery(
         ctx,
         skill_only=skill_only,
@@ -736,8 +740,10 @@ def scan(
 
     # Keep local reference up-to-date (cloud discovery may have extended agents)
     agents = ctx.agents
+    ctx.step_timings["cloud"] = _time.monotonic() - _step_t0
 
     # Step 2: Extract packages
+    _step_t0 = _time.monotonic()
     total_packages = 0
     if skill_only:
         blast_radii: list[Any] = []
@@ -959,12 +965,15 @@ def scan(
                 for d in outdated:
                     con.print(f"    {d.package}: {d.installed} → {d.latest}")
 
+        ctx.step_timings["extraction"] = _time.monotonic() - _step_t0
+
         # Step 4: Vulnerability scan
         from rich.rule import Rule
 
         con.print()
         con.print(Rule("Vulnerability Scan", style="red"))
         con.print()
+        _step_t0 = _time.monotonic()
         blast_radii = []
         if no_scan:
             con.print("  [dim]Vulnerability scanning skipped (--no-scan)[/dim]")
@@ -972,8 +981,27 @@ def scan(
             con.print("  [dim]No packages to scan[/dim]")
         else:
             _unique_pkgs = len({(p.name, p.version, p.ecosystem) for a in agents for s in a.mcp_servers for p in s.packages})
-            with con.status(f"[bold]Scanning {_unique_pkgs} unique package(s) — OSV · NVD · KEV · EPSS...[/bold]", spinner="dots"):
+            from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[bold]{task.description}[/bold]"),
+                BarColumn(bar_width=30),
+                MofNCompleteColumn(),
+                TextColumn("[dim]{task.fields[phase]}[/dim]"),
+                TimeElapsedColumn(),
+                console=con,
+                transient=True,
+            ) as progress:
+                scan_task = progress.add_task(
+                    f"Scanning {_unique_pkgs} packages",
+                    total=4,
+                    phase="local DB + OSV + GHSA",
+                )
+                progress.update(scan_task, completed=1, phase="querying vulnerability databases...")
                 blast_radii = scan_agents_sync(agents, enable_enrichment=enrich, nvd_api_key=nvd_api_key)
+                progress.update(scan_task, completed=3, phase="building blast radius analysis")
+                progress.update(scan_task, completed=4, phase="done")
             if blast_radii:
                 con.print(f"  [red]⚠[/red] Scan complete — [bold]{len(blast_radii)}[/bold] finding(s)")
             else:
@@ -1505,11 +1533,14 @@ def scan(
         # Rebuild report.blast_radii to reflect suppressions
         report.blast_radii = blast_radii
 
+    ctx.step_timings["scanning"] = _time.monotonic() - _step_t0
+
     # Attach blast_radii and report to context for downstream phases
     ctx.blast_radii = blast_radii
     ctx.report = report
 
     # Step 5: Output
+    _step_t0 = _time.monotonic()
     render_output(
         ctx,
         output=output,
@@ -1596,16 +1627,59 @@ def scan(
             except (FileNotFoundError, ValueError) as exc:
                 logger.warning("Delta baseline error: %s — skipping delta filter", exc)
 
-    # Scan completion divider
-    _elapsed = _scan_start  # re-use import; compute elapsed below
-    import time as _time2
+    ctx.step_timings["output"] = _time.monotonic() - _step_t0
 
-    _elapsed = _time2.monotonic() - _scan_start
+    # Scan completion divider
+    _elapsed = _time.monotonic() - _scan_start
     if output_format == "console" and not output and not quiet:
         from rich.rule import Rule
 
         con.print()
         con.print(Rule(f"Scan Complete — {_elapsed:.1f}s", style="green" if not blast_radii else "yellow"))
+
+        # Per-step timing breakdown
+        _timings = ctx.step_timings
+        _timing_parts = []
+        for _step_name in ("discovery", "cloud", "extraction", "scanning", "output"):
+            _t = _timings.get(_step_name, 0.0)
+            if _t >= 0.1:
+                _timing_parts.append(f"{_step_name}: {_t:.1f}s")
+        if _timing_parts:
+            _breakdown = " · ".join(_timing_parts)
+            con.print(f"  [dim]{_breakdown}[/dim]")
+
+        # Next-steps suggestions based on findings
+        _next_steps: list[str] = []
+        if blast_radii:
+            _crit_count = sum(1 for br in blast_radii if br.vulnerability.severity.value == "critical")
+            _high_count = sum(1 for br in blast_radii if br.vulnerability.severity.value == "high")
+            _kev_count = sum(1 for br in blast_radii if getattr(br.vulnerability, "kev", False))
+            _fixable = sum(1 for br in blast_radii if br.vulnerability.fixed_version)
+
+            if _crit_count or _high_count:
+                _next_steps.append(
+                    f"[red bold]→[/red bold] {_crit_count} critical + {_high_count} high — "
+                    "run [bold]agent-bom scan --fail-on critical[/bold] in CI to gate deployments"
+                )
+            if _fixable:
+                _next_steps.append(
+                    f"[green]→[/green] {_fixable} fixable — run [bold]agent-bom scan --remediate plan.md[/bold] for upgrade steps"
+                )
+            if not enrich:
+                _next_steps.append("[cyan]→[/cyan] run with [bold]--enrich[/bold] for EPSS exploit probability + KEV + CVSS v4 data")
+            _next_steps.append(
+                "[blue]→[/blue] export: [bold]-f html[/bold] (interactive report) · "
+                "[bold]-f sarif[/bold] (GitHub Security) · [bold]-f cyclonedx[/bold] (SBOM)"
+            )
+        elif not no_scan and total_packages > 0:
+            _next_steps.append("[green]→[/green] no vulnerabilities found — your supply chain looks clean")
+            _next_steps.append("[cyan]→[/cyan] run [bold]agent-bom scan --enrich --transitive[/bold] for deeper analysis")
+
+        if _next_steps:
+            con.print()
+            con.print("  [bold]Next steps:[/bold]")
+            for _ns in _next_steps:
+                con.print(f"    {_ns}")
 
     # Step 8: Enterprise integrations + SIEM + policy (post-scan)
     run_integrations(

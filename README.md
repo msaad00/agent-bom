@@ -19,8 +19,8 @@
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center">
-  <b>Scan your AI infrastructure. Enforce it at runtime.</b><br>
-  CVEs, blast radius, credential exposure, 11 compliance frameworks — then proxy MCP traffic and enforce policy in real time.
+  <b>AI BOM, security scanner, and supply chain protection for AI infrastructure.</b><br>
+  Discover → Scan → Analyze → Enforce — across 22 MCP clients, 12 cloud providers, and 11 compliance frameworks.
 </p>
 
 ---
@@ -52,7 +52,14 @@ That's it. agent-bom discovers your MCP client configs (Claude Desktop, Cursor, 
 > **Traditional scanners tell you a package has a CVE.**
 > **agent-bom tells you which AI agents are compromised, which credentials leak, which tools an attacker reaches — and then blocks it in real time.**
 
-Three capabilities, one tool: **scanner** (CVEs, blast radius, compliance, supply chain) + **proxy** (intercepts MCP traffic, enforces policy, detects 7 behavioral attack patterns) + **instruction file trust** (audits CLAUDE.md, .cursorrules, AGENTS.md, SKILL.md for malicious patterns, typosquatting, and Sigstore provenance). Read-only. Agentless. Open source.
+Four capabilities, one tool:
+
+1. **AI BOM** — inventory every AI agent, MCP server, cloud AI service, model file, and GPU resource across your infrastructure
+2. **Security scanner** — CVEs (OSV + NVD + GHSA + EPSS + CISA KEV), blast radius mapping, credential exposure analysis
+3. **Runtime proxy** — intercept MCP traffic, enforce policy, detect 7 behavioral attack patterns in real time
+4. **Instruction file trust** — audit CLAUDE.md, .cursorrules, AGENTS.md, SKILL.md for malicious patterns, typosquatting, and Sigstore provenance
+
+Read-only. Agentless. Open source.
 
 ```
 CVE-2025-1234  (CRITICAL . CVSS 9.8 . CISA KEV)
@@ -143,7 +150,7 @@ Five trust categories, 17 behavioral risk patterns, Sigstore signature verificat
 2. **Scan** -- send package names + versions to public APIs (OSV.dev, NVD, EPSS, CISA KEV). No secrets leave your machine.
 3. **Analyze** -- blast radius mapping, tool poisoning detection, compliance tagging, posture scoring
 4. **Track** -- persistent asset database records first_seen, last_seen, resolved status, and MTTR per vulnerability across scans
-5. **Report** -- JSON, SARIF, CycloneDX, SPDX, HTML, Mermaid, or console. Alert dispatch to Slack/webhooks.
+5. **Report** -- 16 output formats: JSON, SARIF, CycloneDX 1.6, SPDX 3.0, HTML, JUnit XML, CSV, Markdown, Mermaid, SVG, Prometheus, and more. Alert dispatch to Slack/webhooks.
 
 <p align="center">
   <picture>
@@ -231,35 +238,58 @@ Auto-discovers 22 MCP client types: Claude Desktop, Claude Code, Cursor, Windsur
 ## What it covers
 
 <details>
-<summary><b>agent-bom vs. traditional scanners</b></summary>
+<summary><b>Capability comparison</b></summary>
 
-| | Traditional scanners | agent-bom |
-|---|---|---|
-| Package CVE detection | Yes | Yes (OSV + NVD + EPSS + CISA KEV + GHSA + NVIDIA CSAF) |
-| SBOM generation | Yes | Yes (CycloneDX 1.6, SPDX 3.0, SARIF) |
-| **AI agent discovery** | -- | 22 MCP client types + Docker Compose + running processes + containers + K8s pods/CRDs |
-| **GPU/ML package scanning** | -- | NVIDIA CSAF advisories for CUDA, cuDNN, PyTorch, TensorFlow, JAX, vLLM + AMD ROCm via OSV |
-| **AI supply chain** | -- | Model provenance (pickle risk, digest, gating), HuggingFace Hub, Ollama, MLflow, W&B |
-| **AI cloud inventory** | -- | Coreweave, Nebius, Snowflake, Databricks, OpenAI, HuggingFace Hub — config discovery + CVE tagging |
-| **Blast radius mapping** | -- | CVE -> package -> server -> agent -> credentials -> tools |
-| **Credential exposure** | -- | Which secrets leak per vulnerability, per agent |
-| **Tool poisoning detection** | -- | Description injection, capability combos, drift detection |
-| **Privilege detection** | -- | root, shell access, privileged containers, per-tool permissions |
-| **11-framework compliance** | -- | OWASP LLM + MCP + Agentic + AISVS v1.0, MITRE ATLAS, NIST AI RMF + CSF, EU AI Act, SOC 2, ISO 27001, CIS |
-| **MITRE ATT&CK mapping** | -- | Dynamic technique lookup by tactic phase (no hardcoded T-codes) |
-| **Posture scorecard** | -- | Letter grade (A-F), 6 dimensions, incident correlation (P1-P4) |
-| **Policy-as-code + Jira** | -- | 17 conditions, CI gate, auto-create Jira tickets for violations |
-| **SIEM push** | -- | Splunk HEC, Datadog Logs, Elasticsearch — raw or OCSF format |
-| **Proxy auto-configure** | -- | Wrap every MCP server config with `agent-bom proxy` in one command |
-| **Server health checks** | -- | Lightweight liveness probe — reachable, tool count, latency, protocol |
-| **Lateral movement analysis** | -- | Agent context graph, shared credentials, BFS attack paths |
-| **427+ server MCP registry** | -- | Risk levels, tool inventories, auto-synced weekly |
-| **Cloud vector DB scanning** | -- | Pinecone index inventory, risk flags, replica counts via API key |
-| **Dependency graph export** | -- | DOT, Mermaid, JSON — agent → server → package → CVE graph |
-| **OIDC/SSO authentication** | -- | JWT verification (Okta, Google, Azure AD, Auth0) for REST API |
-| **Instruction file trust** | -- | SKILL.md/CLAUDE.md/.cursorrules — 17 behavioral patterns, typosquat detection, Sigstore provenance verification |
-| **Browser extension scanning** | -- | Chrome/Edge/Firefox manifest.json — nativeMessaging, dangerous permissions, AI assistant domain access |
-| **Persistent asset tracking** | -- | SQLite DB — first_seen/last_seen/resolved/reopened per vulnerability, MTTR calculation, scan-over-scan diff |
+| Capability | Trivy / Grype | AI BOM tools | agent-bom |
+|---|---|---|---|
+| **CVE vulnerability scanning** | Yes | No | Yes (OSV + NVD + EPSS + CISA KEV + GHSA) |
+| **SBOM generation** | CycloneDX, SPDX | CycloneDX | CycloneDX 1.6, SPDX 3.0, SARIF |
+| **OS / system package scanning** | Yes | No | Via Docker image scan (Grype/Syft) |
+| **AI agent discovery** | No | Partial | 22 MCP client types + Docker + K8s + processes |
+| **GPU/ML package scanning** | No | No | NVIDIA CSAF + CUDA/cuDNN/PyTorch/TF/JAX/vLLM |
+| **Blast radius mapping** | No | No | CVE → package → server → agent → credentials → tools |
+| **Credential exposure analysis** | No | No | Which secrets leak per vulnerability, per agent |
+| **Runtime proxy / enforcement** | No | No | 7 behavioral detectors, policy-as-code, per-tool rate limiting |
+| **Instruction file trust** | No | No | CLAUDE.md/.cursorrules — 17 patterns, typosquat, Sigstore |
+| **Compliance frameworks** | No | No | 11 frameworks (OWASP, MITRE, NIST, EU AI Act, CIS, SOC 2) |
+| **Cloud AI inventory** | No | Partial | 12 providers (AWS, Azure, GCP, Snowflake, Databricks, ...) |
+| **Model file scanning** | No | Extension-based | 13 formats + SHA-256 + provenance + pickle risk |
+| **MCP server registry** | No | No | 427+ servers with risk levels and tool inventories |
+| **Policy-as-code + CI gate** | No | Partial | 17 conditions, severity gates, Jira auto-create |
+| **Output formats** | JSON, SARIF | JSON, CycloneDX | 16 formats (JSON, SARIF, HTML, JUnit, CSV, Markdown, ...) |
+| **SIEM integration** | No | No | Splunk HEC, Datadog, Elasticsearch (raw + OCSF) |
+| **Lateral movement analysis** | No | No | Agent context graph, shared credentials, BFS attack paths |
+| **Asset tracking / MTTR** | No | No | SQLite DB — first_seen/resolved/reopened, scan-over-scan diff |
+
+</details>
+
+<details>
+<summary><b>What it scans — full coverage</b></summary>
+
+| Capability | Details |
+|---|---|
+| **AI agent discovery** | 22 MCP client types + Docker Compose + running processes + containers + K8s pods/CRDs |
+| **GPU/ML package scanning** | NVIDIA CSAF advisories for CUDA, cuDNN, PyTorch, TensorFlow, JAX, vLLM + AMD ROCm via OSV |
+| **AI supply chain** | Model provenance (pickle risk, digest, gating), HuggingFace Hub, Ollama, MLflow, W&B |
+| **AI cloud inventory** | Coreweave, Nebius, Snowflake, Databricks, OpenAI, HuggingFace Hub — config discovery + CVE tagging |
+| **Blast radius mapping** | CVE → package → server → agent → credentials → tools |
+| **Credential exposure** | Which secrets leak per vulnerability, per agent |
+| **Tool poisoning detection** | Description injection, capability combos, drift detection |
+| **Privilege detection** | root, shell access, privileged containers, per-tool permissions |
+| **11-framework compliance** | OWASP LLM + MCP + Agentic + AISVS v1.0, MITRE ATLAS, NIST AI RMF + CSF, EU AI Act, SOC 2, ISO 27001, CIS |
+| **MITRE ATT&CK mapping** | Dynamic technique lookup by tactic phase (no hardcoded T-codes) |
+| **Posture scorecard** | Letter grade (A-F), 6 dimensions, incident correlation (P1-P4) |
+| **Policy-as-code + Jira** | 17 conditions, CI gate, auto-create Jira tickets for violations |
+| **SIEM push** | Splunk HEC, Datadog Logs, Elasticsearch — raw or OCSF format |
+| **Server health checks** | Lightweight liveness probe — reachable, tool count, latency, protocol |
+| **Lateral movement analysis** | Agent context graph, shared credentials, BFS attack paths |
+| **427+ server MCP registry** | Risk levels, tool inventories, auto-synced weekly |
+| **Cloud vector DB scanning** | Pinecone index inventory, risk flags, replica counts via API key |
+| **Dependency graph export** | DOT, Mermaid, JSON — agent → server → package → CVE graph |
+| **OIDC/SSO authentication** | JWT verification (Okta, Google, Azure AD, Auth0) for REST API |
+| **Instruction file trust** | SKILL.md/CLAUDE.md/.cursorrules — 17 behavioral patterns, typosquat detection, Sigstore provenance verification |
+| **Browser extension scanning** | Chrome/Edge/Firefox manifest.json — nativeMessaging, dangerous permissions, AI assistant domain access |
+| **Persistent asset tracking** | SQLite DB — first_seen/last_seen/resolved/reopened per vulnerability, MTTR calculation, scan-over-scan diff |
 
 </details>
 
@@ -284,16 +314,35 @@ Auto-discovers 22 MCP client types: Claude Desktop, Claude Code, Cursor, Windsur
 </details>
 
 <details>
-<summary><b>What it outputs</b></summary>
+<summary><b>What it outputs — 16 formats</b></summary>
 
-Console, JSON, HTML, SARIF, CycloneDX 1.6, SPDX 3.0, Mermaid, SVG, Graph (DOT/JSON/HTML), Prometheus, Badge, REST API — 13 formats total.
+| Format | Flag | Use case |
+|--------|------|----------|
+| Console (default) | — | Rich terminal output with color-coded severity |
+| Console (verbose) | `--verbose` | Full output: agent tree, severity chart, attack flow, frameworks |
+| JSON | `-f json` | Programmatic consumption, dashboards |
+| HTML | `-f html` | Shareable interactive dashboard — no server required |
+| SARIF 2.1.0 | `-f sarif` | GitHub Code Scanning inline annotations |
+| CycloneDX 1.6 | `-f cyclonedx` | Industry-standard SBOM, OWASP Dependency-Track |
+| SPDX 3.0 | `-f spdx` | SPDX-compatible AI BOM with AI extensions |
+| JUnit XML | `-f junit` | CI/CD integration (Jenkins, GitLab CI, Azure DevOps) |
+| CSV | `-f csv` | Spreadsheet import, SIEM ingestion |
+| Markdown | `-f markdown` | PR comments, wiki pages, issue bodies |
+| Mermaid | `-f mermaid` | Supply chain / attack flow / lifecycle diagrams |
+| SVG | `-f svg` | Embeddable vector diagrams |
+| Graph JSON | `-f graph` | Cytoscape.js-compatible element list |
+| Graph HTML | `-f graph-html` | Interactive graph viewer — open in browser |
+| Prometheus | `-f prometheus` | Metrics scraping, Pushgateway, OTLP export |
+| Badge | `-f badge` | Shields.io endpoint JSON |
 
 ```bash
 agent-bom scan -f cyclonedx -o ai-bom.cdx.json   # CycloneDX 1.6
-agent-bom scan -f spdx -o ai-bom.spdx.json       # SPDX 3.0
 agent-bom scan -f sarif -o results.sarif           # GitHub Security tab
 agent-bom scan -f html -o report.html              # Interactive dashboard
-agent-bom scan -f graph -o graph.json              # Cytoscape-compatible
+agent-bom scan -f junit -o results.xml             # JUnit for CI/CD
+agent-bom scan -f csv -o findings.csv              # Spreadsheet/SIEM
+agent-bom scan -f markdown -o report.md            # PR comments
+agent-bom scan -o -                                # Pipe any format to stdout
 ```
 
 </details>
@@ -312,7 +361,7 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible
 | Mode | Command | Best for |
 |------|---------|----------|
 | CLI | `agent-bom scan` | Local audit |
-| GitHub Action | `uses: msaad00/agent-bom@v0.70.6 | CI/CD + SARIF |
+| GitHub Action | `uses: msaad00/agent-bom@v0.70.7 | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated scans (linux/amd64, linux/arm64) |
 | REST API | `agent-bom api` | Dashboards, SIEM |
 | MCP Server | `agent-bom mcp-server` (31 tools) | Inside any MCP client |
@@ -342,7 +391,7 @@ agent-bom scan -f graph -o graph.json              # Cytoscape-compatible
 <summary><b>GitHub Action</b></summary>
 
 ```yaml
-- uses: msaad00/agent-bom@v0.70.6
+- uses: msaad00/agent-bom@v0.70.7
   with:
     severity-threshold: high
     upload-sarif: true
@@ -453,7 +502,7 @@ rm -rf ~/.agent-bom                      # remove local data
 |----------|------|
 | PyPI | `pip install agent-bom` |
 | Docker | `docker run agentbom/agent-bom scan` |
-| GitHub Action | `uses: msaad00/agent-bom@v0.70.6 |
+| GitHub Action | `uses: msaad00/agent-bom@v0.70.7 |
 | Glama | [glama.ai/mcp/servers/@msaad00/agent-bom](https://glama.ai/mcp/servers/@msaad00/agent-bom) |
 | MCP Registry | [server.json](integrations/mcp-registry/server.json) |
 | ToolHive | [registry entry](integrations/toolhive/server.json) |

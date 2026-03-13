@@ -1,9 +1,9 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.msaad00/agent-bom",
-  "description": "Security scanner for AI infrastructure — CVEs, blast radius, compliance, policy, SBOMs",
+  "description": "AI BOM and security scanner for AI infrastructure — CVEs, blast radius, compliance, policy, 16 output formats",
   "title": "agent-bom",
-  "version": "0.70.6",
+  "version": "0.70.7",
   "repository": {
     "url": "https://github.com/msaad00/agent-bom",
     "source": "github"
@@ -12,7 +12,7 @@
     {
       "registryType": "pypi",
       "identifier": "agent-bom",
-      "version": "0.70.6",
+      "version": "0.70.7",
       "transport": {
         "type": "stdio"
       },

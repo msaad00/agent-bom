@@ -1,13 +1,13 @@
 ---
 name: agent-bom
 description: >-
-  AI agent infrastructure security scanner — discovers MCP clients and servers,
-  scans for CVEs, maps blast radius, runs CIS benchmarks (AWS, Azure, GCP,
-  Snowflake), OWASP/NIST/MITRE compliance, AISVS v1.0, MAESTRO layer tagging,
-  and vector database security checks. Use when the user mentions vulnerability
-  scanning, MCP server trust, compliance, SBOM generation, CIS benchmarks,
-  blast radius, or AI supply chain risk.
-version: 0.70.6
+  AI BOM and security scanner for AI infrastructure — discovers MCP clients and
+  servers, scans for CVEs, maps blast radius, runs CIS benchmarks (AWS, Azure,
+  GCP, Snowflake), OWASP/NIST/MITRE compliance, AISVS v1.0, MAESTRO layer
+  tagging, and vector database security checks. Use when the user mentions AI
+  BOM, vulnerability scanning, MCP server trust, compliance, SBOM generation,
+  CIS benchmarks, blast radius, or AI supply chain risk.
+version: 0.70.7
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. No credentials required for
@@ -23,7 +23,7 @@ metadata:
   install:
     pipx: agent-bom
     pip: agent-bom
-    docker: ghcr.io/msaad00/agent-bom:0.70.6
+    docker: ghcr.io/msaad00/agent-bom:0.70.7
   openclaw:
     requires:
       bins: []
@@ -358,6 +358,6 @@ configured credentials and call only the cloud provider's own APIs.
 ## Verification
 
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
-- **Sigstore signed**: `agent-bom verify agent-bom@0.70.6`
+- **Sigstore signed**: `agent-bom verify agent-bom@0.70.7`
 - **6,040+ tests** with CodeQL + OpenSSF Scorecard
 - **No telemetry**: Zero tracking, zero analytics

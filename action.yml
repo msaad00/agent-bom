@@ -1,5 +1,5 @@
 name: 'agent-bom Scan'
-description: 'AI infrastructure security scanner — CVEs, blast radius, credential exposure, runtime enforcement.'
+description: 'AI BOM and security scanner — CVEs, blast radius, credential exposure, runtime enforcement.'
 author: 'agent-bom'
 
 branding:

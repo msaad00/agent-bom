@@ -207,6 +207,7 @@ def scan(
     apply_dry_run: bool,
     code_paths: tuple,
     sast_config: str,
+    ai_inventory_paths: tuple,
     filesystem_paths: tuple,
     jira_url: Optional[str],
     jira_user: Optional[str],
@@ -441,6 +442,8 @@ def scan(
                 reads.append(f"  [green]Would read:[/green]   {path}  ({client})")
         for cp in code_paths:
             reads.append(f"  [green]Would scan:[/green]   {cp}  (SAST via semgrep)")
+        for aip in ai_inventory_paths:
+            reads.append(f"  [green]Would scan:[/green]   {aip}  (AI component source scan)")
         for tf_dir in tf_dirs:
             reads.append(f"  [green]Would read:[/green]   {tf_dir}  (Terraform .tf files)")
         for ap in agent_projects:
@@ -628,6 +631,7 @@ def scan(
         filesystem_paths=filesystem_paths,
         code_paths=code_paths,
         sast_config=sast_config,
+        ai_inventory_paths=ai_inventory_paths,
         tf_dirs=tf_dirs,
         gha_path=gha_path,
         agent_projects=agent_projects,
@@ -1151,6 +1155,8 @@ def scan(
         report.enforcement_data = ctx.enforcement_data
     if ctx.sast_data:
         report.sast_data = ctx.sast_data
+    if ctx.ai_inventory_data:
+        report.ai_inventory_data = ctx.ai_inventory_data
 
     # Attach benchmark reports
     if ctx.cis_benchmark_report is not None:

@@ -1,0 +1,45 @@
+{
+  "name": "@agent-bom/runtime",
+  "version": "0.1.0",
+  "description": "Runtime security detectors for MCP traffic — credential leak, prompt injection, tool drift, rate limiting",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test tests/*.test.js",
+    "pretest": "tsc",
+    "lint": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "mcp",
+    "security",
+    "runtime",
+    "detectors",
+    "credential-leak",
+    "prompt-injection"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/msaad00/agent-bom",
+    "directory": "sdks/typescript"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "typescript": "^5.7.0"
+  }
+}

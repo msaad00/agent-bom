@@ -375,6 +375,7 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
     cache = _get_scan_cache()
     results: dict[str, list[dict]] = {}
     packages_to_query: list[Package] = []
+    skipped_versions = 0
 
     # Check cache first
     for pkg in packages:
@@ -383,6 +384,14 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
         eco_key = pkg.ecosystem.lower()
         osv_ecosystem = ECOSYSTEM_MAP.get(eco_key)
         if not osv_ecosystem or pkg.version in ("unknown", "latest"):
+            if pkg.version in ("unknown", "latest"):
+                _logger.warning(
+                    "Skipping package %s/%s: unresolvable version %r",
+                    pkg.ecosystem,
+                    pkg.name,
+                    pkg.version,
+                )
+                skipped_versions += 1
             continue
         norm_name = normalize_package_name(pkg.name, eco_key)
         if cache:
@@ -395,6 +404,13 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
         packages_to_query.append(pkg)
 
     if not packages_to_query:
+        scanned = len(packages) - skipped_versions
+        if skipped_versions:
+            _logger.info(
+                "Scan complete: %d packages scanned, %d skipped (unresolvable versions)",
+                scanned,
+                skipped_versions,
+            )
         return await _enrich_results_if_needed(results)
 
     queries = []
@@ -503,6 +519,13 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
         ]
         await asyncio.to_thread(cache.put_many, cache_writes)
 
+    scanned = len(packages) - skipped_versions
+    if skipped_versions:
+        _logger.info(
+            "Scan complete: %d packages scanned, %d skipped (unresolvable versions)",
+            scanned,
+            skipped_versions,
+        )
     return results
 
 

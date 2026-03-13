@@ -495,7 +495,9 @@ def _ai_inventory_section(report: "AIBOMReport") -> str:
     for c in components:
         sev = c.get("severity", "info")
         comp_type = c.get("type", "").replace("_", " ")
-        name = _esc(c.get("name", ""))
+        # Redact API key values — never render credential fragments in HTML
+        raw_name = c.get("name", "")
+        name = "[REDACTED]" if c.get("type") == "api_key" else _esc(raw_name)
         shadow_tag = ' <span style="color:#eab308;font-size:.7rem">(shadow)</span>' if c.get("is_shadow") else ""
         replacement = c.get("deprecated_replacement", "")
         repl_tag = f'<br><span style="color:#64748b;font-size:.7rem">&rarr; {_esc(replacement)}</span>' if replacement else ""

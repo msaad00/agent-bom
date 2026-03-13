@@ -136,7 +136,9 @@ def to_sarif(report: AIBOMReport) -> dict:
             if sev not in ("critical", "high", "medium"):
                 continue  # only actionable findings in SARIF
             comp_type = comp.get("type", "unknown")
-            name = comp.get("name", "")
+            # Redact credential fragments — never embed key material in SARIF
+            raw_name = comp.get("name", "")
+            name = "[REDACTED]" if comp_type == "api_key" else raw_name
             rule_id = f"ai-inventory/{comp_type}/{name}"
             level = ai_sev_map.get(sev, "warning")
 

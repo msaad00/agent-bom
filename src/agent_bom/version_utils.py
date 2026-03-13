@@ -7,9 +7,12 @@ Maven (flexible versioning).
 
 from __future__ import annotations
 
+import logging
 import re
 
 from agent_bom.http_client import request_with_retry
+
+_logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Validation patterns
@@ -46,6 +49,7 @@ def validate_version(version: str, ecosystem: str) -> bool:
     Returns True if the version matches the ecosystem's version format.
     """
     if not version or version in ("latest", "unknown"):
+        _logger.debug("Invalid version %r for ecosystem %s", version, ecosystem)
         return False
 
     if ecosystem in ("npm", "cargo"):

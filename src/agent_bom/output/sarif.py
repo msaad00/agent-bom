@@ -126,6 +126,55 @@ def to_sarif(report: AIBOMReport) -> dict:
             }
         results.append(result)
 
+    # AI inventory findings (shadow AI, deprecated models, API keys, invisible Unicode)
+    ai_inv = getattr(report, "ai_inventory_data", None)
+    if ai_inv:
+        ai_sev_map = {"critical": "error", "high": "error", "medium": "warning", "low": "note", "info": "none"}
+        ai_sev_score = {"critical": "9.0", "high": "7.0", "medium": "4.0", "low": "1.0", "info": "0.0"}
+        for comp in ai_inv.get("components", []):
+            sev = comp.get("severity", "info")
+            if sev not in ("critical", "high", "medium"):
+                continue  # only actionable findings in SARIF
+            comp_type = comp.get("type", "unknown")
+            # Redact credential fragments — never embed key material in SARIF
+            raw_name = comp.get("name", "")
+            name = "[REDACTED]" if comp_type == "api_key" else raw_name
+            rule_id = f"ai-inventory/{comp_type}/{name}"
+            level = ai_sev_map.get(sev, "warning")
+
+            if rule_id not in seen_rule_ids:
+                seen_rule_ids.add(rule_id)
+                rules.append(
+                    {
+                        "id": rule_id,
+                        "shortDescription": {"text": f"{sev.upper()}: {comp_type.replace('_', ' ')} — {name}"},
+                        "fullDescription": {"text": comp.get("description", "") or f"AI component finding: {name}"},
+                        "defaultConfiguration": {"level": level},
+                        "properties": {"security-severity": ai_sev_score.get(sev, "0.0")},
+                    }
+                )
+
+            fp_input = f"{rule_id}:{comp.get('file', '')}:{comp.get('line', 1)}"
+            fingerprint = hashlib.sha256(fp_input.encode()).hexdigest()
+            desc = comp.get("description", "") or f"{comp_type.replace('_', ' ')}: {name}"
+            results.append(
+                {
+                    "ruleId": rule_id,
+                    "level": level,
+                    "kind": "fail",
+                    "message": {"text": desc},
+                    "fingerprints": {"agent-bom/v1": fingerprint},
+                    "locations": [
+                        {
+                            "physicalLocation": {
+                                "artifactLocation": {"uri": comp.get("file", "unknown"), "uriBaseId": "%SRCROOT%"},
+                                "region": {"startLine": comp.get("line", 1), "startColumn": 1},
+                            },
+                        }
+                    ],
+                }
+            )
+
     return {
         "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
         "version": "2.1.0",

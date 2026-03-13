@@ -446,6 +446,8 @@ def to_json(report: AIBOMReport) -> dict:
         result["serving_configs"] = report.serving_configs
     if report.browser_extensions:
         result["browser_extensions"] = report.browser_extensions
+    if report.ai_inventory_data:
+        result["ai_inventory"] = report.ai_inventory_data
 
     # Posture scorecard
     from agent_bom.posture import (

@@ -353,11 +353,69 @@ def run_local_discovery(
 
         con.print(f"\n[bold blue]Scanning {len(ai_inventory_paths)} path(s) for AI components...[/bold blue]\n")
         ai_report = scan_source(*ai_inventory_paths, manifest_packages=manifest_pkgs)
-        con.print(
-            f"  [green]\u2713[/green] {ai_report.files_scanned} files scanned \u2014 "
-            f"{ai_report.total} components, {len(ai_report.shadow_ai)} shadow AI, "
-            f"{len(ai_report.deprecated_models)} deprecated, {len(ai_report.api_keys)} hardcoded keys"
-        )
+
+        # Rich table for AI component findings (show critical/high/medium first, limit display)
+        actionable = [c for c in ai_report.components if c.severity.value in ("critical", "high", "medium")]
+        if actionable:
+            from rich.panel import Panel as AiPanel
+            from rich.table import Table as AiTable
+
+            sev_colors = {"critical": "red bold", "high": "red", "medium": "yellow", "low": "dim", "info": "dim"}
+            sev_icons = {"critical": "\U0001f534", "high": "\U0001f7e0", "medium": "\U0001f7e1", "low": "\u26aa", "info": "\u26aa"}
+
+            ai_table = AiTable(
+                title=f"AI Component Inventory \u2014 {ai_report.total} components across {ai_report.files_scanned} files",
+                expand=True,
+                padding=(0, 1),
+                title_style="bold cyan",
+            )
+            ai_table.add_column("Sev", justify="center", no_wrap=True, width=10)
+            ai_table.add_column("Type", no_wrap=True, width=18)
+            ai_table.add_column("Name", ratio=2)
+            ai_table.add_column("File", ratio=2)
+            ai_table.add_column("Lang", no_wrap=True, width=6)
+
+            display_limit = 15
+            for comp in actionable[:display_limit]:
+                sev = comp.severity.value
+                style = sev_colors.get(sev, "white")
+                icon = sev_icons.get(sev, "\u26aa")
+                sev_cell = f"{icon} [{style}]{sev.upper()}[/{style}]"
+                type_label = comp.component_type.value.replace("_", " ")
+                name_cell = f"[bold]{comp.name}[/bold]"
+                if comp.is_shadow:
+                    name_cell += " [yellow](shadow)[/yellow]"
+                if comp.deprecated_replacement:
+                    name_cell += f"\n[dim]\u2192 {comp.deprecated_replacement}[/dim]"
+                file_cell = f"[dim]{comp.file_path}:{comp.line_number}[/dim]"
+                ai_table.add_row(sev_cell, type_label, name_cell, file_cell, f"[cyan]{comp.language}[/cyan]")
+
+            if len(actionable) > display_limit:
+                ai_table.add_row("[dim]...[/dim]", "", f"[dim]+{len(actionable) - display_limit} more[/dim]", "", "")
+
+            crit = sum(1 for c in ai_report.components if c.severity.value == "critical")
+            high = sum(1 for c in ai_report.components if c.severity.value == "high")
+            shadow = len(ai_report.shadow_ai)
+            depr = len(ai_report.deprecated_models)
+            keys = len(ai_report.api_keys)
+            stats_parts = []
+            if crit:
+                stats_parts.append(f"[red bold]{crit} critical[/red bold]")
+            if high:
+                stats_parts.append(f"[red]{high} high[/red]")
+            if shadow:
+                stats_parts.append(f"[yellow]{shadow} shadow AI[/yellow]")
+            if depr:
+                stats_parts.append(f"{depr} deprecated")
+            if keys:
+                stats_parts.append(f"[red]{keys} hardcoded key(s)[/red]")
+            stats = "[dim]" + " \u00b7 ".join(stats_parts) + "[/dim]" if stats_parts else ""
+            con.print(AiPanel(ai_table, subtitle=stats, border_style="cyan"))
+        else:
+            con.print(
+                f"  [green]\u2713[/green] {ai_report.files_scanned} files scanned \u2014 "
+                f"{ai_report.total} components, no critical/high/medium findings"
+            )
 
         # Create synthetic packages for SDK components -> feed into CVE scanning
         ai_packages: list[Package] = []
@@ -392,7 +450,8 @@ def run_local_discovery(
             "components": [
                 {
                     "type": c.component_type.value,
-                    "name": c.name,
+                    # Redact credential fragments — never persist key material in report data
+                    "name": "[REDACTED]" if c.component_type.value == "api_key" else c.name,
                     "language": c.language,
                     "file": c.file_path,
                     "line": c.line_number,

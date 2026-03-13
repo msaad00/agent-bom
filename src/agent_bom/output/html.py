@@ -455,6 +455,81 @@ def _skill_audit_section(report: "AIBOMReport") -> str:
     )
 
 
+def _ai_inventory_section(report: "AIBOMReport") -> str:
+    """Build the AI component inventory section if data is available."""
+    data = getattr(report, "ai_inventory_data", None)
+    if not data:
+        return ""
+
+    components = data.get("components", [])
+    total = data.get("total_components", 0)
+    files_scanned = data.get("files_scanned", 0)
+    shadow_count = data.get("shadow_ai_count", 0)
+    deprecated_count = data.get("deprecated_models_count", 0)
+    keys_count = data.get("api_keys_count", 0)
+    unique_sdks = data.get("unique_sdks", [])
+    unique_models = data.get("unique_models", [])
+
+    stats_html = (
+        f'<div style="display:flex;gap:24px;margin-bottom:16px;font-size:.82rem;color:#94a3b8">'
+        f"<span>Files scanned: <strong>{files_scanned}</strong></span>"
+        f"<span>Components: <strong>{total}</strong></span>"
+        f"<span>SDKs: <strong>{len(unique_sdks)}</strong></span>"
+        f"<span>Models: <strong>{len(unique_models)}</strong></span>"
+        + (f'<span>Shadow AI: <strong style="color:#eab308">{shadow_count}</strong></span>' if shadow_count else "")
+        + (f'<span>Deprecated: <strong style="color:#f97316">{deprecated_count}</strong></span>' if deprecated_count else "")
+        + (f'<span>Hardcoded keys: <strong style="color:#ef4444">{keys_count}</strong></span>' if keys_count else "")
+        + "</div>"
+    )
+
+    if not components:
+        return (
+            f'<section id="aiinventory">'
+            f'<div class="sec-title">&#x1f916; AI Component Inventory</div>'
+            f'<div class="panel">{stats_html}'
+            f'<div class="empty-state">&#x2705; No AI components detected.</div>'
+            f"</div></section>"
+        )
+
+    rows = []
+    for c in components:
+        sev = c.get("severity", "info")
+        comp_type = c.get("type", "").replace("_", " ")
+        # Redact API key values — never render credential fragments in HTML
+        raw_name = c.get("name", "")
+        name = "[REDACTED]" if c.get("type") == "api_key" else _esc(raw_name)
+        shadow_tag = ' <span style="color:#eab308;font-size:.7rem">(shadow)</span>' if c.get("is_shadow") else ""
+        replacement = c.get("deprecated_replacement", "")
+        repl_tag = f'<br><span style="color:#64748b;font-size:.7rem">&rarr; {_esc(replacement)}</span>' if replacement else ""
+        file_loc = f"{_esc(c.get('file', ''))}:{c.get('line', '')}"
+        rows.append(
+            f"<tr>"
+            f"<td>{_sev_badge(sev)}</td>"
+            f'<td><code style="color:#94a3b8;font-size:.75rem">{_esc(comp_type)}</code></td>'
+            f'<td style="color:#e2e8f0;font-weight:600;font-size:.85rem">{name}{shadow_tag}{repl_tag}</td>'
+            f'<td style="font-size:.75rem;color:#64748b">{file_loc}</td>'
+            f'<td style="font-size:.75rem;color:#67e8f9">{_esc(c.get("language", ""))}</td>'
+            f"</tr>"
+        )
+
+    headers = ["Severity", "Type", "Name", "File", "Language"]
+    table_html = (
+        '<div class="table-wrap"><table class="data-table sortable">'
+        + "<thead><tr>"
+        + "".join(f'<th data-col="{i}">{h} <span class="sort-arrow"></span></th>' for i, h in enumerate(headers))
+        + "</tr></thead>"
+        + f"<tbody>{''.join(rows)}</tbody></table></div>"
+    )
+
+    return (
+        f'<section id="aiinventory">'
+        f'<div class="sec-title">&#x1f916; AI Component Inventory'
+        f'<sup style="font-size:.7rem;color:#475569;margin-left:6px">{total}</sup></div>'
+        f'<div class="panel">{stats_html}{table_html}</div>'
+        f"</section>"
+    )
+
+
 def _trust_assessment_section(report: "AIBOMReport") -> str:
     """Build the trust assessment section if data is available."""
     data = getattr(report, "trust_assessment_data", None)
@@ -909,6 +984,10 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     compliance_html = _compliance_section(blast_radii)
     compliance_nav = '<a href="#compliance">Compliance</a>' if compliance_html else ""
 
+    # AI inventory section
+    ai_inv_section = _ai_inventory_section(report)
+    ai_inv_nav = '<a href="#aiinventory">AI Inventory</a>' if ai_inv_section else ""
+
     # Skill audit section
     skill_section = _skill_audit_section(report)
     skill_nav = '<a href="#skillaudit">Skill Audit</a>' if skill_section else ""
@@ -1117,6 +1196,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     <a href="#charts">Charts</a>
     <a href="#riskmap">Risk Map</a>
     <a href="#inventory">Inventory</a>
+    {ai_inv_nav}
     {skill_nav}
     {trust_nav}
     {enforce_nav}
@@ -1214,6 +1294,9 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     <input type="text" class="inv-search" id="invSearch" placeholder="Search agents, servers, packages&hellip;">
     {_inventory_cards(report)}
   </section>
+
+  <!-- AI component inventory -->
+  {ai_inv_section}
 
   <!-- Skill audit -->
   {skill_section}

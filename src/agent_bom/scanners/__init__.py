@@ -176,7 +176,8 @@ def _parse_cvss4_vector(vector: str) -> Optional[float]:
         raw = min(10.0, 1.1 * (6.42 * impact + 8.22 * exploit * 0.6))
 
         return math.ceil(raw * 10) / 10.0
-    except Exception:
+    except Exception as exc:
+        _logger.debug("CVSS 4.0 vector parse failed for %r: %s", vector, exc)
         return None
 
 
@@ -231,7 +232,8 @@ def parse_cvss_vector(vector: str) -> Optional[float]:
         # Roundup to one decimal (CVSS spec: ceiling to 1 decimal)
         return math.ceil(raw * 10) / 10.0
 
-    except Exception:
+    except Exception as exc:
+        _logger.debug("CVSS vector parse failed for %r: %s", vector, exc)
         return None
 
 
@@ -303,8 +305,9 @@ def parse_fixed_version(vuln_data: dict, package_name: str, ecosystem: str = "")
                             # Remember pre-release as fallback
                             if prerelease_candidate is None:
                                 prerelease_candidate = fixed
-                        except Exception:  # noqa: BLE001
+                        except Exception as exc:  # noqa: BLE001
                             # Can't parse (e.g. non-PEP440 npm version) — return as-is
+                            _logger.debug("Version parse failed for %r (returning as-is): %s", fixed, exc)
                             return fixed
     return prerelease_candidate
 
@@ -632,7 +635,8 @@ def _scan_packages_local_db(packages: list[Package]) -> tuple[int, set[str]]:
         freshness = db_freshness_days()
         if freshness is None:
             return 0, set()  # No DB yet — fall through to OSV entirely
-    except Exception:
+    except Exception as exc:
+        _logger.debug("Local DB freshness check failed (falling through to OSV): %s", exc)
         return 0, set()
 
     try:
@@ -724,6 +728,7 @@ async def scan_packages(packages: list[Package]) -> int:
             if resolved_count:
                 console.print(f"  [green]✓[/green] Auto-resolved {resolved_count} package version(s)")
         except Exception as exc:
+            _logger.warning("Version resolution failed for %d package(s): %s", len(unresolved), exc)
             console.print(f"  [yellow]⚠[/yellow] Version resolution skipped: {exc}")
 
     # SAST packages already carry vulns from Semgrep — skip OSV query for them
@@ -810,6 +815,7 @@ async def scan_packages(packages: list[Package]) -> int:
                 total_vulns += nvidia_new
                 console.print(f"  [green]✓[/green] NVIDIA advisories: {nvidia_new} additional CVE(s)")
         except Exception as exc:
+            _logger.warning("NVIDIA advisory check failed for %d package(s): %s", len(nvidia_packages), exc)
             console.print(f"  [yellow]⚠[/yellow] NVIDIA advisory check skipped: {exc}")
 
     # Supplemental: check GitHub Security Advisories for all packages
@@ -822,6 +828,7 @@ async def scan_packages(packages: list[Package]) -> int:
                 total_vulns += ghsa_new
                 console.print(f"  [green]✓[/green] GHSA advisories: {ghsa_new} additional CVE(s)")
         except Exception as exc:
+            _logger.warning("GHSA advisory check failed for %d package(s): %s", len(scannable), exc)
             console.print(f"  [yellow]⚠[/yellow] GHSA advisory check skipped: {exc}")
 
     # Typosquat detection for all scanned packages
@@ -843,7 +850,7 @@ async def scan_packages(packages: list[Package]) -> int:
                 total_vulns -= suppressed
                 console.print(f"  [yellow]⚠[/yellow] Suppressed {suppressed} finding(s) via .agent-bom-ignore")
     except Exception as exc:
-        _logger.debug("Ignore file processing skipped: %s", exc)
+        _logger.warning("Ignore file processing skipped: %s", exc)
 
     return total_vulns
 
@@ -997,6 +1004,14 @@ async def scan_agents(agents: list[Agent]) -> list[BlastRadius]:
         console.print(f"  [red]⚠ Found {total_vulns} vulnerabilities across {len(blast_radii)} findings[/red]")
     else:
         console.print("  [green]✓ No known vulnerabilities found[/green]")
+
+    _logger.info(
+        "Scan summary: %d packages scanned, %d vulnerabilities, %d blast radius findings across %d agent(s)",
+        len(unique_packages),
+        total_vulns,
+        len(blast_radii),
+        len(agents),
+    )
 
     return blast_radii
 

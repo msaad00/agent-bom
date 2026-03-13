@@ -672,6 +672,7 @@ def test_osv_empty_response_yields_no_blast_radii(monkeypatch):
         return {}
 
     monkeypatch.setattr("agent_bom.scanners.query_osv_batch", _empty_osv)
+    monkeypatch.setattr("agent_bom.scanners._scan_packages_local_db", lambda pkgs: (0, set()))
 
     async def _no_ghsa(packages, **kwargs):
         return 0

@@ -76,6 +76,7 @@ def scan(
     output: Optional[str],
     output_format: str,
     dry_run: bool,
+    offline: bool,
     no_scan: bool,
     no_tree: bool,
     transitive: bool,
@@ -196,6 +197,7 @@ def scan(
     smithery_token: Optional[str],
     mcp_registry_flag: bool,
     auto_update_db: bool,
+    db_sources: Optional[str],
     snyk_flag: bool,
     snyk_token: Optional[str],
     snyk_org: Optional[str],
@@ -383,17 +385,42 @@ def scan(
     if demo:
         con.print("\n[bold yellow]Demo mode[/bold yellow] — scanning bundled inventory with known-vulnerable packages.\n")
 
+    # ── Offline mode: disable all network calls ──────────────────────────────
+    if offline:
+        import agent_bom.scanners as _scanners_mod
+
+        _scanners_mod.offline_mode = True
+        auto_update_db = False
+        enrich = False
+        scorecard_flag = False
+        deps_dev = False
+        snyk_flag = False
+        if not quiet:
+            from agent_bom.db.schema import db_freshness_days as _offline_freshness
+
+            days = _offline_freshness()
+            if days is None:
+                con.print(
+                    "[bold yellow]⚠ Offline mode[/bold yellow] — no local DB found. Run 'agent-bom db update' first for vulnerability data."
+                )
+            elif days > 7:
+                con.print(f"[bold yellow]⚠ Offline mode[/bold yellow] — local DB is {days} days old. Run 'agent-bom db update' to refresh.")
+            else:
+                con.print("[dim]Offline mode — scanning against local DB only[/dim]")
+
     # ── Auto-refresh stale DB if requested ───────────────────────────────────
     if auto_update_db:
         from agent_bom.db.schema import db_freshness_days
         from agent_bom.db.sync import sync_db
 
         freshness = db_freshness_days()
-        if freshness is None or freshness > 7:
+        source_list = [s.strip() for s in db_sources.split(",")] if db_sources else None
+        if freshness is None or freshness > 7 or source_list:
             if not quiet:
-                con.print("[dim]Refreshing local vuln DB (stale/missing) …[/dim]")
+                src_msg = f" (sources: {', '.join(source_list)})" if source_list else ""
+                con.print(f"[dim]Refreshing local vuln DB{src_msg} …[/dim]")
             try:
-                sync_db()
+                sync_db(sources=source_list)
             except Exception as _db_exc:
                 logger.warning("Auto DB refresh failed: %s", _db_exc)
 

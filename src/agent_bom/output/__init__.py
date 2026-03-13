@@ -42,6 +42,21 @@ def print_summary(report: AIBOMReport) -> None:
     table.add_row("Total packages", str(report.total_packages))
     table.add_row("Vulnerabilities", str(report.total_vulnerabilities))
     table.add_row("Critical findings", str(len(report.critical_vulns)))
+
+    # AI inventory stats (if scan was run)
+    ai_inv = getattr(report, "ai_inventory_data", None)
+    if ai_inv and ai_inv.get("total_components", 0) > 0:
+        table.add_row("AI components", str(ai_inv["total_components"]))
+        shadow = ai_inv.get("shadow_ai_count", 0)
+        if shadow:
+            table.add_row("Shadow AI", f"[yellow]{shadow}[/yellow]")
+        depr = ai_inv.get("deprecated_models_count", 0)
+        if depr:
+            table.add_row("Deprecated models", str(depr))
+        keys = ai_inv.get("api_keys_count", 0)
+        if keys:
+            table.add_row("Hardcoded API keys", f"[red]{keys}[/red]")
+
     console.print(table)
 
 
@@ -206,6 +221,36 @@ def print_posture_summary(report: AIBOMReport) -> None:
             kev_flag = ", [red bold]CISA KEV[/red bold]" if info["kev"] else ""
             agents_str = ", ".join(sorted(info["agents"]))
             lines.append(f"    {pkg_name} ({info['eco']})    {', '.join(sev_parts)}{kev_flag} — affects {agents_str}")
+
+    # AI inventory summary (when scan was run)
+    ai_inv = getattr(report, "ai_inventory_data", None)
+    if ai_inv and ai_inv.get("total_components", 0) > 0:
+        lines.append("")
+        lines.append("  [bold]AI Component Inventory[/bold]")
+        lines.append(f"    Components: {ai_inv['total_components']}  \u00b7  Files scanned: {ai_inv.get('files_scanned', 0)}")
+        sdks = ai_inv.get("unique_sdks", [])
+        models = ai_inv.get("unique_models", [])
+        if sdks:
+            sdk_str = ", ".join(sdks[:6]) + (f" +{len(sdks) - 6}" if len(sdks) > 6 else "")
+            lines.append(f"    SDKs: [cyan]{sdk_str}[/cyan]")
+        if models:
+            model_str = ", ".join(models[:6]) + (f" +{len(models) - 6}" if len(models) > 6 else "")
+            lines.append(f"    Models: [cyan]{model_str}[/cyan]")
+        shadow = ai_inv.get("shadow_ai_count", 0)
+        depr = ai_inv.get("deprecated_models_count", 0)
+        keys = ai_inv.get("api_keys_count", 0)
+        risk_parts = []
+        if keys:
+            risk_parts.append(f"[red]{keys} hardcoded key(s)[/red]")
+        if shadow:
+            risk_parts.append(f"[yellow]{shadow} shadow AI[/yellow]")
+        if depr:
+            risk_parts.append(f"{depr} deprecated model(s)")
+        if risk_parts:
+            risk_str = " \u00b7 ".join(risk_parts)
+            lines.append(f"    Risks: {risk_str}")
+        else:
+            lines.append("    Risks: [green]none[/green]")
 
     content = "\n".join(lines)
     console.print(Panel(content, border_style=border_style, padding=(1, 1)))
@@ -1252,6 +1297,26 @@ def print_compact_summary(report: AIBOMReport) -> None:
         lines.append(f"  [yellow]Credentials:[/yellow]  {names}{more}")
     if elevated:
         lines.append(f"  [red]Privileges:[/red]  {elevated} server(s) elevated")
+
+    # AI inventory stats (if scan was run)
+    ai_inv = getattr(report, "ai_inventory_data", None)
+    if ai_inv and ai_inv.get("total_components", 0) > 0:
+        ai_parts = [f"[bold]{ai_inv['total_components']}[/bold] components"]
+        shadow = ai_inv.get("shadow_ai_count", 0)
+        depr = ai_inv.get("deprecated_models_count", 0)
+        keys = ai_inv.get("api_keys_count", 0)
+        if keys:
+            ai_parts.append(f"[red]{keys} hardcoded key(s)[/red]")
+        if shadow:
+            ai_parts.append(f"[yellow]{shadow} shadow AI[/yellow]")
+        if depr:
+            ai_parts.append(f"{depr} deprecated")
+        sdks = ai_inv.get("unique_sdks", [])
+        if sdks:
+            sdk_str = ", ".join(sdks[:4]) + (f" +{len(sdks) - 4}" if len(sdks) > 4 else "")
+            ai_parts.append(f"SDKs: [cyan]{sdk_str}[/cyan]")
+        ai_str = " \u00b7 ".join(ai_parts)
+        lines.append(f"  [bold]AI Inventory:[/bold]  {ai_str}")
 
     console.print(
         Panel(

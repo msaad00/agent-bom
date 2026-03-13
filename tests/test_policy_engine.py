@@ -143,6 +143,61 @@ def test_validate_policy_invalid_action():
         _validate_policy({"rules": [{"id": "bad", "action": "ignore"}]})
 
 
+def test_validate_policy_field_type_int():
+    """min_agents must be an integer."""
+    with pytest.raises(ValueError, match="must be an integer"):
+        _validate_policy({"rules": [{"id": "r1", "action": "fail", "min_agents": "two"}]})
+
+
+def test_validate_policy_field_type_float():
+    """max_epss_score must be a number."""
+    with pytest.raises(ValueError, match="must be a number"):
+        _validate_policy({"rules": [{"id": "r1", "action": "fail", "max_epss_score": "high"}]})
+
+
+def test_validate_policy_field_type_str():
+    """ecosystem must be a string."""
+    with pytest.raises(ValueError, match="must be a string"):
+        _validate_policy({"rules": [{"id": "r1", "action": "fail", "ecosystem": 123}]})
+
+
+def test_validate_policy_field_type_bool():
+    """is_kev must be a boolean."""
+    with pytest.raises(ValueError, match="must be a boolean"):
+        _validate_policy({"rules": [{"id": "r1", "action": "fail", "is_kev": "yes"}]})
+
+
+def test_validate_policy_invalid_severity_gte():
+    """severity_gte with invalid severity value raises ValueError."""
+    with pytest.raises(ValueError, match="is not valid"):
+        _validate_policy({"rules": [{"id": "r1", "action": "fail", "severity_gte": "MEGA"}]})
+
+
+def test_validate_policy_invalid_registry_risk():
+    """registry_risk_gte with invalid risk level raises ValueError."""
+    with pytest.raises(ValueError, match="is not valid"):
+        _validate_policy({"rules": [{"id": "r1", "action": "fail", "registry_risk_gte": "extreme"}]})
+
+
+def test_validate_policy_valid_fields_pass():
+    """Valid declarative fields pass validation."""
+    _validate_policy(
+        {
+            "rules": [
+                {
+                    "id": "r1",
+                    "action": "fail",
+                    "severity_gte": "HIGH",
+                    "min_agents": 2,
+                    "max_epss_score": 0.7,
+                    "ecosystem": "pypi",
+                    "is_kev": True,
+                }
+            ]
+        }
+    )
+
+
 # ---------------------------------------------------------------------------
 # _rule_matches
 # ---------------------------------------------------------------------------

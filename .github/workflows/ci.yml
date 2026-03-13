@@ -368,9 +368,57 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Run agent-bom action from local checkout
+      # 7a. Basic SARIF scan (clean SBOM)
+      - name: "Dogfood: SARIF format (clean SBOM)"
         uses: ./
         with:
           sbom: tests/fixtures/test-sbom.cdx.json
           format: sarif
           upload-sarif: 'false'
+
+      # 7b. JSON format
+      - name: "Dogfood: JSON format"
+        uses: ./
+        with:
+          sbom: tests/fixtures/test-sbom.cdx.json
+          format: json
+          output: dogfood-results.json
+
+      - name: Verify JSON output exists
+        run: test -f dogfood-results.json && echo "JSON output verified"
+
+      # 7c. Policy gate (should pass — clean SBOM has no critical CVEs)
+      - name: "Dogfood: policy gate (clean SBOM)"
+        uses: ./
+        with:
+          sbom: tests/fixtures/test-sbom.cdx.json
+          policy: tests/fixtures/test-policy.json
+          format: json
+
+      # 7d. Severity threshold (should pass — clean SBOM, no critical CVEs)
+      - name: "Dogfood: severity threshold (clean SBOM)"
+        uses: ./
+        with:
+          sbom: tests/fixtures/test-sbom.cdx.json
+          severity-threshold: critical
+          format: json
+
+      # 7e. Badge generation
+      - name: "Dogfood: badge output"
+        uses: ./
+        with:
+          sbom: tests/fixtures/test-sbom.cdx.json
+          badge: dogfood-badge.json
+          format: json
+
+      - name: Verify badge output exists
+        run: test -f dogfood-badge.json && echo "Badge output verified"
+
+      # 7f. Two-tier severity gates
+      - name: "Dogfood: two-tier severity gates"
+        uses: ./
+        with:
+          sbom: tests/fixtures/test-sbom.cdx.json
+          severity-threshold: critical
+          warn-on-severity: medium
+          format: json

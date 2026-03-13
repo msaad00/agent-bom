@@ -409,6 +409,29 @@ def _validate_policy(policy: dict) -> None:
             except ValueError as e:
                 raise ValueError(f"Rule '{rule['id']}' has invalid condition syntax: {e}") from e
 
+        # Validate declarative field types
+        rid = rule.get("id", f"index-{i}")
+        int_fields = ("min_agents", "min_tools")
+        float_fields = ("max_epss_score", "min_scorecard_score")
+        str_fields = ("severity_gte", "ecosystem", "package_name_contains", "owasp_tag", "owasp_mcp_tag", "registry_risk_gte")
+        bool_fields = ("is_kev", "ai_risk", "has_credentials", "unverified_server", "has_fix")
+        for f in int_fields:
+            if f in rule and not isinstance(rule[f], int):
+                raise ValueError(f"Rule '{rid}' field '{f}' must be an integer")
+        for f in float_fields:
+            if f in rule and not isinstance(rule[f], (int, float)):
+                raise ValueError(f"Rule '{rid}' field '{f}' must be a number")
+        for f in str_fields:
+            if f in rule and not isinstance(rule[f], str):
+                raise ValueError(f"Rule '{rid}' field '{f}' must be a string")
+        for f in bool_fields:
+            if f in rule and not isinstance(rule[f], bool):
+                raise ValueError(f"Rule '{rid}' field '{f}' must be a boolean")
+        if "severity_gte" in rule and rule["severity_gte"].upper() not in SEVERITY_ORDER:
+            raise ValueError(f"Rule '{rid}' severity_gte '{rule['severity_gte']}' is not valid. Use: CRITICAL, HIGH, MEDIUM, LOW, NONE")
+        if "registry_risk_gte" in rule and rule["registry_risk_gte"].lower() not in RISK_LEVEL_ORDER:
+            raise ValueError(f"Rule '{rid}' registry_risk_gte '{rule['registry_risk_gte']}' is not valid. Use: high, medium, low")
+
 
 def _rule_matches(rule: dict, br) -> bool:
     """Check if a BlastRadius finding matches a policy rule.

@@ -49,7 +49,7 @@ ENV PORT=8423
 EXPOSE ${PORT}
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD agent-bom --version || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT:-8423}/health')" || exit 1
 
 # Use shell form so $PORT is expanded at runtime (Railway/Render inject PORT)
 CMD agent-bom mcp-server --transport streamable-http --host 0.0.0.0 --port ${PORT}

@@ -19,7 +19,7 @@ metadata:
   source: https://github.com/msaad00/agent-bom
   pypi: https://pypi.org/project/agent-bom/
   scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
-  tests: 5987
+  tests: 6040
   install:
     pipx: agent-bom
     pip: agent-bom
@@ -91,12 +91,16 @@ metadata:
       ***REDACTED*** by sanitize_env_vars() in the installed code. Verify at
       https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py#L159
     data_flow: >-
-      All scanning is local-first. Only public package names and CVE IDs are
-      sent to vulnerability databases (OSV, NVD, EPSS, GitHub Advisories).
-      Registry data (427+ MCP server metadata) is bundled in the package —
-      lookups are in-memory with zero network calls. CIS benchmark checks call
-      cloud provider APIs using locally configured credentials only. No config
-      files, credentials, or env var values ever leave the machine.
+      Scanning is local-first. What leaves the machine: (1) public package names
+      and CVE IDs sent to vulnerability databases (OSV, NVD, EPSS, GitHub
+      Advisories) for CVE lookup; (2) CIS benchmark checks make read-only API
+      calls to cloud providers (AWS/Azure/GCP/Snowflake) using your locally
+      configured credentials, only when explicitly invoked. What stays local:
+      all config file contents, env var values, credentials, scan results,
+      compliance tags, and SBOM data. Registry lookups (427+ MCP servers) are
+      bundled in-package with zero network calls. Env var values in discovered
+      config files are replaced with ***REDACTED*** by sanitize_env_vars() in
+      the installed code.
     file_reads:
       # Claude Desktop
       - "~/Library/Application Support/Claude/claude_desktop_config.json"
@@ -160,6 +164,22 @@ metadata:
       - url: "https://api.snyk.io"
         purpose: "Snyk vulnerability enrichment for code_scan (requires SNYK_TOKEN)"
         auth: true
+      - url: "https://*.amazonaws.com"
+        purpose: "AWS CIS benchmark checks — read-only API calls (optional, user-initiated)"
+        auth: true
+        optional: true
+      - url: "https://management.azure.com"
+        purpose: "Azure CIS benchmark checks — read-only API calls (optional, user-initiated)"
+        auth: true
+        optional: true
+      - url: "https://*.googleapis.com"
+        purpose: "GCP CIS benchmark checks — read-only API calls (optional, user-initiated)"
+        auth: true
+        optional: true
+      - url: "https://*.snowflakecomputing.com"
+        purpose: "Snowflake CIS benchmark checks — read-only API calls (optional, user-initiated)"
+        auth: true
+        optional: true
     telemetry: false
     persistence: false
     privilege_escalation: false
@@ -339,5 +359,5 @@ configured credentials and call only the cloud provider's own APIs.
 
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
 - **Sigstore signed**: `agent-bom verify agent-bom@0.70.6`
-- **5,987+ tests** with CodeQL + OpenSSF Scorecard
+- **6,040+ tests** with CodeQL + OpenSSF Scorecard
 - **No telemetry**: Zero tracking, zero analytics

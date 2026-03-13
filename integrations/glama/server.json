@@ -1,6 +1,6 @@
 {
   "name": "agent-bom",
-  "description": "Security scanner for AI infrastructure — CVEs, blast radius, AI BOM, compliance, 16 output formats",
+  "description": "Security scanner for AI infrastructure and supply chain — CVEs, blast radius, credential exposure, runtime enforcement across MCP servers, containers, cloud, and GPU",
   "version": "0.70.7",
   "license": "Apache-2.0",
   "repository": "https://github.com/msaad00/agent-bom",

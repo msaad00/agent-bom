@@ -1422,7 +1422,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             {
                 "name": "agent-bom",
                 "version": __version__,
-                "description": "AI supply chain security scanner",
+                "description": "Security scanner for AI infrastructure and supply chain",
                 "homepage": "https://github.com/msaad00/agent-bom",
                 "source": "https://github.com/msaad00/agent-bom",
                 "license": "Apache-2.0",
@@ -1604,7 +1604,7 @@ def build_server_card() -> dict:
         "name": "agent-bom",
         "version": __version__,
         "description": (
-            "AI supply chain security scanner — CVE scanning, blast radius analysis, "
+            "Security scanner for AI infrastructure and supply chain — CVE scanning, blast radius analysis, "
             "policy enforcement, and SBOM generation for MCP servers and AI agents."
         ),
         "repository": "https://github.com/msaad00/agent-bom",

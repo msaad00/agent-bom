@@ -1,5 +1,5 @@
 name: 'agent-bom Scan'
-description: 'Security scanner for AI infrastructure — CVEs, blast radius, AI BOM, runtime enforcement.'
+description: 'Security scanner for AI infrastructure and supply chain — CVEs, blast radius, runtime enforcement.'
 author: 'agent-bom'
 
 branding:

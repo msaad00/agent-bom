@@ -1,7 +1,7 @@
 ---
 name: agent-bom-scan
 description: >-
-  AI agent infrastructure vulnerability scanner — discovers MCP clients and servers,
+  Security scanner for AI infrastructure — discovers MCP clients and servers,
   checks packages for CVEs (OSV, NVD, EPSS, KEV), maps blast radius, and generates
   remediation plans. Use when the user mentions vulnerability scanning, dependency
   security, CVE lookup, blast radius analysis, or AI supply chain risk.

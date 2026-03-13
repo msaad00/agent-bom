@@ -1,6 +1,6 @@
 # agent-bom
 
-**Security scanner for AI agent infrastructure.**
+**Security scanner for AI infrastructure and supply chain.**
 
 Find CVEs, map blast radius, detect credential exposure across MCP agents, containers, Kubernetes, cloud, and GPU workloads.
 

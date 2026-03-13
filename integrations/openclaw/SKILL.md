@@ -2,11 +2,11 @@
 name: agent-bom
 description: >-
   Security scanner for AI infrastructure and supply chain — discovers MCP clients
-  and servers, generates AI BOMs, scans for CVEs, maps blast radius, runs CIS
+  and servers, scans for CVEs, maps blast radius, generates SBOMs, runs CIS
   benchmarks (AWS, Azure, GCP, Snowflake), OWASP/NIST/MITRE compliance, AISVS
   v1.0, MAESTRO layer tagging, and vector database security checks. Use when the
-  user mentions vulnerability scanning, AI BOM, MCP server trust, compliance,
-  SBOM generation, CIS benchmarks, blast radius, or AI supply chain risk.
+  user mentions vulnerability scanning, MCP server trust, compliance, SBOM
+  generation, CIS benchmarks, blast radius, or AI supply chain risk.
 version: 0.70.7
 license: Apache-2.0
 compatibility: >-

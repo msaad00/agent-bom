@@ -14,6 +14,18 @@ _SARIF_SEVERITY_MAP = {
     Severity.MEDIUM: "warning",
     Severity.LOW: "note",
     Severity.NONE: "none",
+    Severity.UNKNOWN: "note",
+}
+
+# GitHub Security tab uses security-severity (0.0–10.0) for granular sorting.
+# Ranges per docs.github.com: >9.0=critical, 7.0–8.9=high, 4.0–6.9=medium, 0.1–3.9=low
+_SECURITY_SEVERITY_SCORE = {
+    Severity.CRITICAL: "9.5",
+    Severity.HIGH: "7.5",
+    Severity.MEDIUM: "5.5",
+    Severity.LOW: "2.5",
+    Severity.NONE: "0.0",
+    Severity.UNKNOWN: "0.0",
 }
 
 
@@ -30,15 +42,19 @@ def to_sarif(report: AIBOMReport) -> dict:
 
         if rule_id not in seen_rule_ids:
             seen_rule_ids.add(rule_id)
+            # Use actual CVSS score when available, otherwise map from severity
+            sec_sev = str(vuln.cvss_score) if vuln.cvss_score is not None else _SECURITY_SEVERITY_SCORE.get(vuln.severity, "0.0")
+            rule_props: dict = {"security-severity": sec_sev}
+            if vuln.cwe_ids:
+                rule_props["tags"] = vuln.cwe_ids
             rule: dict = {
                 "id": rule_id,
                 "shortDescription": {"text": f"{vuln.severity.value.upper()}: {vuln.id} in {br.package.name}@{br.package.version}"},
                 "fullDescription": {"text": vuln.summary or f"Vulnerability {vuln.id}"},
                 "helpUri": f"https://osv.dev/vulnerability/{vuln.id}",
                 "defaultConfiguration": {"level": level},
+                "properties": rule_props,
             }
-            if vuln.cwe_ids:
-                rule["properties"] = {"tags": vuln.cwe_ids}
             rules.append(rule)
 
         affected = ", ".join(a.name for a in br.affected_agents)

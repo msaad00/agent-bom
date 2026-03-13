@@ -262,6 +262,9 @@ jobs:
           fi
           echo "All version numbers aligned at $PYPROJECT_VER"
 
+      - name: Verify SDK patterns.json is up-to-date
+        run: python sdks/shared/generate-patterns.py --check
+
   # 4. Build Python Package
   build:
     name: Build Package

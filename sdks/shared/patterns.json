@@ -1,0 +1,414 @@
+{
+  "_comment": "Auto-generated from src/agent_bom/runtime/patterns.py — do not edit manually",
+  "credential_patterns": [
+    {
+      "name": "AWS Access Key",
+      "pattern": "AKIA[0-9A-Z]{16}",
+      "flags": ""
+    },
+    {
+      "name": "AWS Secret Key",
+      "pattern": "(?:aws_secret_access_key|secret_?key)\\s*[=:]\\s*[A-Za-z0-9/+=]{40}",
+      "flags": "i"
+    },
+    {
+      "name": "GitHub Token",
+      "pattern": "gh[pousr]_[A-Za-z0-9_]{36,}",
+      "flags": ""
+    },
+    {
+      "name": "GitLab Token",
+      "pattern": "glpat-[A-Za-z0-9\\-_]{20,}",
+      "flags": ""
+    },
+    {
+      "name": "OpenAI API Key",
+      "pattern": "sk-[A-Za-z0-9]{20,}",
+      "flags": ""
+    },
+    {
+      "name": "Anthropic API Key",
+      "pattern": "sk-ant-[A-Za-z0-9\\-_]{20,}",
+      "flags": ""
+    },
+    {
+      "name": "Slack Token",
+      "pattern": "xox[bporas]-[A-Za-z0-9\\-]{10,}",
+      "flags": ""
+    },
+    {
+      "name": "Stripe Key",
+      "pattern": "[sr]k_(live|test)_[A-Za-z0-9]{20,}",
+      "flags": ""
+    },
+    {
+      "name": "Generic Bearer Token",
+      "pattern": "Bearer\\s+[A-Za-z0-9\\-_.~+/]+=*",
+      "flags": "i"
+    },
+    {
+      "name": "Generic API Key",
+      "pattern": "(?:api[_-]?key|apikey|access[_-]?token)\\s*[=:]\\s*['\\\"]?[A-Za-z0-9\\-_.]{20,}",
+      "flags": "i"
+    },
+    {
+      "name": "Private Key Block",
+      "pattern": "-----BEGIN (?:RSA |EC |DSA )?PRIVATE KEY-----",
+      "flags": ""
+    },
+    {
+      "name": "Connection String",
+      "pattern": "(?:mongodb|postgres|mysql|redis)://[^\\s]{10,}",
+      "flags": "i"
+    }
+  ],
+  "dangerous_arg_patterns": [
+    {
+      "name": "Shell metacharacter",
+      "pattern": "[;&|`$]|\\$\\(|>\\s*/|<\\s*/",
+      "flags": ""
+    },
+    {
+      "name": "Path traversal",
+      "pattern": "\\.\\./|\\.\\.\\\\|%2e%2e",
+      "flags": ""
+    },
+    {
+      "name": "Command injection",
+      "pattern": "\\b(?:curl|wget|nc|ncat|bash|sh|python|perl|ruby)\\s",
+      "flags": "i"
+    },
+    {
+      "name": "Environment variable access",
+      "pattern": "\\$\\{?(?:HOME|PATH|USER|AWS_[A-Z_]+|ANTHROPIC_[A-Z_]+|OPENAI_[A-Z_]+|GITHUB_[A-Z_]+)\\b",
+      "flags": "i"
+    },
+    {
+      "name": "Credential-like value",
+      "pattern": "(?:password|secret|token|key)\\s*[=:]\\s*\\S{8,}",
+      "flags": "i"
+    },
+    {
+      "name": "Base64 encoded payload",
+      "pattern": "(?:^|[^A-Za-z0-9])(?:[A-Za-z0-9+/]{40,}={0,2})(?:$|[^A-Za-z0-9])",
+      "flags": ""
+    },
+    {
+      "name": "Hex encoded payload",
+      "pattern": "\\\\x[0-9a-fA-F]{2}(?:\\\\x[0-9a-fA-F]{2}){9,}",
+      "flags": ""
+    },
+    {
+      "name": "SQL DROP statement",
+      "pattern": "\\bDROP\\s+(?:TABLE|DATABASE|SCHEMA|VIEW|FUNCTION|PROCEDURE|USER|ROLE)\\b",
+      "flags": "i"
+    },
+    {
+      "name": "SQL TRUNCATE statement",
+      "pattern": "\\bTRUNCATE\\s+(?:TABLE\\s+)?\\w",
+      "flags": "i"
+    },
+    {
+      "name": "SQL GRANT/REVOKE",
+      "pattern": "\\b(?:GRANT|REVOKE)\\s+(?:ALL|SELECT|INSERT|UPDATE|DELETE|EXECUTE|OWNERSHIP|CREATE)\\b",
+      "flags": "i"
+    },
+    {
+      "name": "SQL ALTER privilege",
+      "pattern": "\\bALTER\\s+(?:USER|ROLE|ACCOUNT|SECURITY)\\b",
+      "flags": "i"
+    },
+    {
+      "name": "SQL data exfiltration",
+      "pattern": "\\bCOPY\\s+INTO\\s+['\\\"]?(?:s3://|gcs://|azure://|@)",
+      "flags": "i"
+    },
+    {
+      "name": "SQL external stage access",
+      "pattern": "\\bCREATE\\s+(?:OR\\s+REPLACE\\s+)?STAGE\\b",
+      "flags": "i"
+    },
+    {
+      "name": "SQL network rule",
+      "pattern": "\\bCREATE\\s+(?:OR\\s+REPLACE\\s+)?(?:NETWORK\\s+RULE|EXTERNAL\\s+ACCESS)\\b",
+      "flags": "i"
+    },
+    {
+      "name": "SQL EXECUTE IMMEDIATE",
+      "pattern": "\\bEXECUTE\\s+IMMEDIATE\\b",
+      "flags": "i"
+    }
+  ],
+  "cortex_model_patterns": [
+    {
+      "name": "Cortex COMPLETE",
+      "pattern": "\\b(?:SNOWFLAKE\\.)?CORTEX\\.COMPLETE\\s*\\(\\s*['\\\"]([^'\\\"]+)['\\\"]",
+      "flags": "i"
+    },
+    {
+      "name": "Cortex EMBED",
+      "pattern": "\\b(?:SNOWFLAKE\\.)?CORTEX\\.EMBED(?:_TEXT)?(?:_\\d+)?\\s*\\(\\s*['\\\"]([^'\\\"]+)['\\\"]",
+      "flags": "i"
+    },
+    {
+      "name": "Cortex AI function",
+      "pattern": "\\b(?:SNOWFLAKE\\.)?CORTEX\\.(?:SENTIMENT|SUMMARIZE|TRANSLATE|EXTRACT_ANSWER|CLASSIFY_TEXT)\\s*\\(",
+      "flags": "i"
+    },
+    {
+      "name": "Cortex Python SDK",
+      "pattern": "\\b(?:cortex\\.)?Complete(?:\\.create)?\\s*\\(\\s*(?:model\\s*=\\s*)?['\\\"]([^'\\\"]+)['\\\"]",
+      "flags": "i"
+    }
+  ],
+  "response_cloaking_patterns": [
+    {
+      "name": "CSS display:none",
+      "pattern": "display\\s*:\\s*none",
+      "flags": "i"
+    },
+    {
+      "name": "CSS visibility:hidden",
+      "pattern": "visibility\\s*:\\s*hidden",
+      "flags": "i"
+    },
+    {
+      "name": "CSS opacity:0",
+      "pattern": "opacity\\s*:\\s*0(?:[;\\s\\\"]|$)",
+      "flags": "i"
+    },
+    {
+      "name": "CSS position offscreen",
+      "pattern": "position\\s*:\\s*absolute[^}]*(?:left|top)\\s*:\\s*-\\d{4,}px",
+      "flags": "i"
+    },
+    {
+      "name": "CSS font-size:0",
+      "pattern": "font-size\\s*:\\s*0(?:px|em|rem|%)?[;\\s\\\"]",
+      "flags": "i"
+    },
+    {
+      "name": "CSS color transparent",
+      "pattern": "color\\s*:\\s*(?:transparent|rgba\\s*\\([^)]*,\\s*0\\s*\\))",
+      "flags": "i"
+    },
+    {
+      "name": "HTML hidden attribute",
+      "pattern": "<[^>]+\\bhidden\\b[^>]*>",
+      "flags": "i"
+    },
+    {
+      "name": "HTML aria-hidden",
+      "pattern": "aria-hidden\\s*=\\s*[\"\\']true[\"\\']",
+      "flags": "i"
+    }
+  ],
+  "response_svg_patterns": [
+    {
+      "name": "SVG script tag",
+      "pattern": "<script[^>]*>",
+      "flags": "i"
+    },
+    {
+      "name": "SVG foreignObject",
+      "pattern": "<foreignObject[^>]*>",
+      "flags": "i"
+    },
+    {
+      "name": "SVG onload handler",
+      "pattern": "\\bon(?:load|error|click|mouseover)\\s*=",
+      "flags": "i"
+    },
+    {
+      "name": "SVG xlink:href javascript",
+      "pattern": "xlink:href\\s*=\\s*[\"\\']javascript:",
+      "flags": "i"
+    },
+    {
+      "name": "SVG use href data URI",
+      "pattern": "href\\s*=\\s*[\"\\']data:",
+      "flags": "i"
+    }
+  ],
+  "response_invisible_chars": [
+    {
+      "name": "Zero-width space cluster",
+      "pattern": "[\\u200b\\u200c\\u200d\\ufeff]{3,}",
+      "flags": ""
+    },
+    {
+      "name": "Zero-width joiner sequence",
+      "pattern": "(?:\\u200d.){4,}",
+      "flags": ""
+    },
+    {
+      "name": "Homoglyph substitution",
+      "pattern": "[\\u0410-\\u044f](?=[a-zA-Z])|(?<=[a-zA-Z])[\\u0410-\\u044f]",
+      "flags": ""
+    },
+    {
+      "name": "Right-to-left override",
+      "pattern": "[\\u202e\\u2066\\u2067\\u2068\\u202a\\u202b]",
+      "flags": ""
+    },
+    {
+      "name": "Tag characters",
+      "pattern": "[\\U000e0001-\\U000e007f]{3,}",
+      "flags": ""
+    }
+  ],
+  "response_base64_pattern": {
+    "pattern": "(?:(?:^|[^A-Za-z0-9+/]))([A-Za-z0-9+/]{60,}={0,2})(?:$|[^A-Za-z0-9+/])",
+    "flags": "m"
+  },
+  "response_injection_patterns": [
+    {
+      "name": "Role override",
+      "pattern": "\\b(?:ignore|disregard|forget|override)\\b.{0,40}\\b(?:instructions?|system\\s+prompt|previous|above|rules?|constraints?)\\b",
+      "flags": "i"
+    },
+    {
+      "name": "System prompt injection",
+      "pattern": "<(?:system|assistant|user|im_start|im_end)[>\\s]",
+      "flags": "i"
+    },
+    {
+      "name": "Jailbreak trigger",
+      "pattern": "\\b(?:DAN|jailbreak|do\\s+anything\\s+now|developer\\s+mode|god\\s+mode|unrestricted\\s+mode|sudo\\s+mode)\\b",
+      "flags": "i"
+    },
+    {
+      "name": "Instruction injection",
+      "pattern": "\\b(?:new\\s+instruction|additional\\s+instruction|important\\s+instruction|secret\\s+instruction|hidden\\s+instruction)\\b",
+      "flags": "i"
+    },
+    {
+      "name": "Task hijack",
+      "pattern": "\\b(?:instead(?:\\s+of)?|actually|your\\s+real\\s+task|your\\s+actual\\s+(?:goal|purpose|job)|from\\s+now\\s+on)\\b.{0,60}\\b(?:you\\s+(?:must|should|will|are\\s+to)|please|task)\\b",
+      "flags": "i"
+    },
+    {
+      "name": "Exfil instruction",
+      "pattern": "\\b(?:send|post|forward|transmit|upload|exfiltrate)\\b.{0,60}\\b(?:this\\s+(?:conversation|context|data|prompt)|user\\s+data|api\\s+key|token|secret)\\b",
+      "flags": "i"
+    },
+    {
+      "name": "Prompt delimiter attack",
+      "pattern": "(?:###\\s*(?:SYSTEM|INSTRUCTION|CONTEXT)|---\\s*(?:SYSTEM|NEW\\s+PROMPT)|={3,}\\s*(?:SYSTEM|INSTRUCTION))",
+      "flags": "i"
+    }
+  ],
+  "suspicious_sequences": [
+    {
+      "name": "data_exfiltration",
+      "steps": [
+        "read",
+        "http|fetch|request|curl|post"
+      ],
+      "description": "Read followed by network request — potential data exfiltration"
+    },
+    {
+      "name": "credential_harvest",
+      "steps": [
+        "read|list|get",
+        "write|create|send|post"
+      ],
+      "description": "Read/list followed by write/send — potential credential harvesting"
+    },
+    {
+      "name": "privilege_escalation",
+      "steps": [
+        "exec|run|shell|command",
+        "write|create|chmod"
+      ],
+      "description": "Command execution followed by file write — potential privilege escalation"
+    },
+    {
+      "name": "reconnaissance",
+      "steps": [
+        "list|search|find|glob",
+        "list|search|find|glob",
+        "read"
+      ],
+      "description": "Multiple list/search operations followed by read — reconnaissance pattern"
+    }
+  ],
+  "semantic_injection_signals": [
+    {
+      "name": "you_are_now",
+      "pattern": "\\byou\\s+are\\s+(?:now\\s+)?(?:a|an|the)\\b",
+      "flags": "i",
+      "weight": 0.3
+    },
+    {
+      "name": "your_real_role",
+      "pattern": "\\byour\\s+(?:new|actual|real|true)\\s+(?:role|task|job|purpose|goal|instructions?)\\b",
+      "flags": "i",
+      "weight": 0.4
+    },
+    {
+      "name": "assistant_data_prefix",
+      "pattern": "^(?:assistant|ai|system|human)\\s*:",
+      "flags": "im",
+      "weight": 0.4
+    },
+    {
+      "name": "identity_claim",
+      "pattern": "\\bI\\s+am\\s+(?:your|the)\\s+(?:developer|creator|admin|operator|owner|architect)\\b",
+      "flags": "i",
+      "weight": 0.35
+    },
+    {
+      "name": "context_reset",
+      "pattern": "\\b(?:start\\s+(?:over|fresh|again)|reset\\s+(?:context|conversation|instructions?)|beginning\\s+of\\s+(?:a\\s+new\\s+)?(?:context|conversation))\\b",
+      "flags": "i",
+      "weight": 0.3
+    },
+    {
+      "name": "trust_manipulation",
+      "pattern": "\\b(?:trust\\s+me|this\\s+is\\s+(?:safe|ok|fine|legitimate|authorized|allowed|normal))\\b",
+      "flags": "i",
+      "weight": 0.2
+    },
+    {
+      "name": "imperative_restrict",
+      "pattern": "\\b(?:always|never|must|shall)\\b.{0,60}\\b(?:tell|share|reveal|say|mention|discuss|disclose)\\b",
+      "flags": "i",
+      "weight": 0.25
+    },
+    {
+      "name": "do_not_tell",
+      "pattern": "\\b(?:do\\s+not|don'?t)\\s+(?:tell|mention|say|reveal|disclose|share)\\b",
+      "flags": "i",
+      "weight": 0.25
+    },
+    {
+      "name": "you_should_must",
+      "pattern": "\\byou\\s+(?:should|must|need\\s+to|have\\s+to|are\\s+required\\s+to)\\b",
+      "flags": "i",
+      "weight": 0.1
+    },
+    {
+      "name": "action_directive",
+      "pattern": "\\b(?:please|now)\\s+(?:do|perform|execute|run|call|invoke|send|fetch|retrieve)\\b",
+      "flags": "i",
+      "weight": 0.1
+    },
+    {
+      "name": "from_now_on",
+      "pattern": "\\bfrom\\s+(?:now|this\\s+point|here)\\s+(?:on|forward|onwards?)\\b",
+      "flags": "i",
+      "weight": 0.15
+    }
+  ],
+  "thresholds": {
+    "semantic_injection_suspicious": 0.4,
+    "semantic_injection_high": 0.7,
+    "rate_limit_default_threshold": 50,
+    "rate_limit_default_window_seconds": 60,
+    "max_message_bytes": 10485760,
+    "client_readline_timeout_seconds": 120,
+    "replay_window_seconds": 300,
+    "replay_max_entries": 10000
+  }
+}

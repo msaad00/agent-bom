@@ -203,6 +203,12 @@ def scan_control_options(fn):
     return _apply(
         [
             click.option("--dry-run", is_flag=True, help="Show what files and APIs would be accessed without scanning, then exit 0"),
+            click.option(
+                "--offline",
+                is_flag=True,
+                envvar="AGENT_BOM_OFFLINE",
+                help="Scan only against local DB — skip all network calls. Use after 'db update'.",
+            ),
             click.option("--no-scan", is_flag=True, help="Skip vulnerability scanning (inventory only)"),
             click.option("--no-tree", is_flag=True, help="Skip dependency tree output"),
             click.option("--transitive", is_flag=True, help="Resolve transitive dependencies for npx/uvx packages"),
@@ -229,11 +235,20 @@ def enrichment_options(fn):
         [
             click.option("--enrich", is_flag=True, help="Enrich vulnerabilities with NVD, EPSS, and CISA KEV data"),
             click.option(
-                "--auto-update-db",
+                "--auto-update-db/--no-auto-update-db",
                 "auto_update_db",
-                is_flag=True,
+                default=True,
                 envvar="AGENT_BOM_AUTO_UPDATE_DB",
-                help="Automatically refresh the local vuln DB if stale (>7 days) before scanning",
+                show_default=True,
+                help="Auto-refresh local vuln DB if stale (>7 days). --no-auto-update-db to disable.",
+            ),
+            click.option(
+                "--db-source",
+                "db_sources",
+                type=str,
+                default=None,
+                envvar="AGENT_BOM_DB_SOURCES",
+                help="Comma-separated DB sources to sync before scanning (e.g. nvd,ghsa,osv,epss,kev).",
             ),
             click.option("--nvd-api-key", envvar="NVD_API_KEY", help="NVD API key for higher rate limits"),
             click.option("--scorecard", "scorecard_flag", is_flag=True, help="Enrich packages with OpenSSF Scorecard scores"),

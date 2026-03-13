@@ -45,6 +45,10 @@ from agent_bom.vuln_compliance import tag_vulnerability as _tag_vuln
 console = Console(stderr=True)
 _logger = logging.getLogger(__name__)
 
+# Module-level offline flag — when True, skip all OSV API calls and scan
+# only against the local SQLite DB.  Set by CLI --offline before scanning.
+offline_mode: bool = False
+
 OSV_API_URL = "https://api.osv.dev/v1"
 OSV_BATCH_URL = f"{OSV_API_URL}/querybatch"
 # Max pipeline-level pause when OSV returns persistent 429 after all per-request retries.
@@ -744,7 +748,11 @@ async def scan_packages(packages: list[Package]) -> int:
 
     osv_targets = [p for p in scannable if _db_key(p) not in db_covered]
 
-    if osv_targets:
+    if offline_mode:
+        if osv_targets:
+            _logger.info("Offline mode: skipping OSV API for %d package(s) not in local DB", len(osv_targets))
+        results = {}
+    elif osv_targets:
         results = await query_osv_batch(osv_targets)
     else:
         results = {}

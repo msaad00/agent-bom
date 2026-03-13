@@ -11,6 +11,10 @@ inputs:
     description: 'Fail if vulnerabilities at or above this severity (critical, high, medium, low). Empty = no gate.'
     required: false
     default: ''
+  warn-on-severity:
+    description: 'Warn (non-blocking) if vulnerabilities at or above this severity. Use with severity-threshold for two-tier gates.'
+    required: false
+    default: ''
   policy:
     description: 'Path to policy file (JSON/YAML) for policy-as-code gates.'
     required: false
@@ -23,10 +27,18 @@ inputs:
     description: 'Output format. Core: sarif (default), json, html, cyclonedx, spdx. Plain/no-color: plain (alias: text). Other: console, mermaid, svg, graph, graph-html, badge, prometheus.'
     required: false
     default: 'sarif'
+  output:
+    description: 'Output file path for scan results. Default: agent-bom-results.sarif (for SARIF format).'
+    required: false
+    default: ''
   upload-sarif:
     description: 'Upload SARIF results to GitHub Security tab.'
     required: false
     default: 'false'
+  auto-update-db:
+    description: 'Auto-update vulnerability database if stale (>7 days). Disable for air-gapped or fully cached runs.'
+    required: false
+    default: 'true'
   fail-on-kev:
     description: 'Fail if any CISA Known Exploited Vulnerability is found.'
     required: false
@@ -88,7 +100,7 @@ outputs:
     value: ${{ steps.scan.outputs.vuln_count }}
   badge-file:
     description: 'Path to generated badge JSON (if badge input is set).'
-    value: ${{ steps.badge.outputs.badge_file }}
+    value: ${{ steps.scan.outputs.badge_file }}
 
 runs:
   using: 'composite'
@@ -127,9 +139,12 @@ runs:
       shell: bash
       env:
         INPUT_FORMAT: ${{ inputs.format }}
+        INPUT_OUTPUT: ${{ inputs.output }}
         INPUT_SEVERITY: ${{ inputs.severity-threshold }}
+        INPUT_WARN_ON: ${{ inputs.warn-on-severity }}
         INPUT_POLICY: ${{ inputs.policy }}
         INPUT_ENRICH: ${{ inputs.enrich }}
+        INPUT_AUTO_UPDATE_DB: ${{ inputs.auto-update-db }}
         INPUT_FAIL_ON_KEV: ${{ inputs.fail-on-kev }}
         INPUT_AI_ENRICH: ${{ inputs.ai-enrich }}
         INPUT_AI_MODEL: ${{ inputs.ai-model }}
@@ -140,7 +155,12 @@ runs:
         INPUT_BADGE: ${{ inputs.badge }}
         INPUT_IGNORE_FILE: ${{ inputs.ignore-file }}
       run: |
-        SARIF_FILE="agent-bom-results.sarif"
+        # Determine output file path
+        if [ -n "$INPUT_OUTPUT" ]; then
+          SARIF_FILE="$INPUT_OUTPUT"
+        else
+          SARIF_FILE="agent-bom-results.sarif"
+        fi
         ARGS="scan"
 
         # Output format
@@ -148,11 +168,19 @@ runs:
           ARGS="$ARGS -f sarif -o $SARIF_FILE"
         elif [ -n "$INPUT_FORMAT" ]; then
           ARGS="$ARGS -f $INPUT_FORMAT"
+          if [ -n "$INPUT_OUTPUT" ]; then
+            ARGS="$ARGS -o $INPUT_OUTPUT"
+          fi
         fi
 
         # Severity gate
         if [ -n "$INPUT_SEVERITY" ]; then
           ARGS="$ARGS --fail-on-severity $INPUT_SEVERITY"
+        fi
+
+        # Warn-on severity (non-blocking)
+        if [ -n "$INPUT_WARN_ON" ]; then
+          ARGS="$ARGS --warn-on $INPUT_WARN_ON"
         fi
 
         # Policy file
@@ -163,6 +191,11 @@ runs:
         # Enrichment
         if [ "$INPUT_ENRICH" = "true" ]; then
           ARGS="$ARGS --enrich"
+        fi
+
+        # Auto-update vulnerability database
+        if [ "$INPUT_AUTO_UPDATE_DB" = "true" ]; then
+          ARGS="$ARGS --auto-update-db"
         fi
 
         # KEV gate
@@ -203,11 +236,6 @@ runs:
           ARGS="$ARGS --ignore-file $INPUT_IGNORE_FILE"
         fi
 
-        # Badge generation (run alongside main scan)
-        if [ -n "$INPUT_BADGE" ]; then
-          agent-bom scan -f badge -o "$INPUT_BADGE" 2>/dev/null || true
-        fi
-
         # Run scan, capture exit code
         set +e
         agent-bom $ARGS
@@ -220,22 +248,47 @@ runs:
           VULN_COUNT=$(python3 -c "import json; d=json.load(open('$SARIF_FILE')); print(len(d.get('runs',[{}])[0].get('results',[])))" 2>/dev/null || echo 0)
         fi
 
+        # Generate badge from SARIF results (no second scan)
+        BADGE_FILE=""
+        if [ -n "$INPUT_BADGE" ] && [ -f "$SARIF_FILE" ]; then
+          python3 -c "
+        import json, sys
+        try:
+            results = json.load(open('$SARIF_FILE')).get('runs', [{}])[0].get('results', [])
+            rules = {r['id']: r for r in json.load(open('$SARIF_FILE')).get('runs', [{}])[0].get('tool', {}).get('driver', {}).get('rules', [])}
+            critical = high = 0
+            for r in results:
+                rid = r.get('ruleId', '')
+                rule = rules.get(rid, {})
+                score = float(rule.get('properties', {}).get('security-severity', '0'))
+                if score > 9.0: critical += 1
+                elif score >= 7.0: high += 1
+            total = len(results)
+            if critical > 0:
+                color, msg = 'critical', f'{critical} critical, {high} high'
+            elif high > 0:
+                color, msg = 'orange', f'{high} high, {total} total'
+            elif total > 0:
+                color, msg = 'yellow', f'{total} findings'
+            else:
+                color, msg = 'brightgreen', 'clean'
+            badge = {'schemaVersion': 1, 'label': 'agent-bom', 'message': msg, 'color': color, 'namedLogo': 'shield'}
+            with open('$INPUT_BADGE', 'w') as f:
+                json.dump(badge, f, indent=2)
+        except Exception as e:
+            print(f'Badge generation failed: {e}', file=sys.stderr)
+        " 2>/dev/null || true
+          if [ -f "$INPUT_BADGE" ]; then
+            BADGE_FILE="$INPUT_BADGE"
+          fi
+        fi
+
         echo "sarif_file=$SARIF_FILE" >> "$GITHUB_OUTPUT"
         echo "exit_code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
         echo "vuln_count=$VULN_COUNT" >> "$GITHUB_OUTPUT"
+        echo "badge_file=$BADGE_FILE" >> "$GITHUB_OUTPUT"
 
         exit $EXIT_CODE
-
-    - name: Set badge output
-      id: badge
-      if: inputs.badge != ''
-      shell: bash
-      env:
-        BADGE_PATH: ${{ inputs.badge }}
-      run: |
-        if [ -f "$BADGE_PATH" ]; then
-          echo "badge_file=$BADGE_PATH" >> "$GITHUB_OUTPUT"
-        fi
 
     - name: Post PR comment with findings summary
       if: inputs.pr-comment == 'true' && github.event_name == 'pull_request'
@@ -243,8 +296,8 @@ runs:
       env:
         GH_TOKEN: ${{ github.token }}
         SARIF_FILE: ${{ steps.scan.outputs.sarif_file }}
-        VULN_COUNT: ${{ steps.scan.outputs.vulnerability-count }}
-        EXIT_CODE: ${{ steps.scan.outputs.exit-code }}
+        VULN_COUNT: ${{ steps.scan.outputs.vuln_count }}
+        EXIT_CODE: ${{ steps.scan.outputs.exit_code }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
         REPO: ${{ github.repository }}
       run: |
@@ -259,15 +312,32 @@ runs:
 
         status = "✅ Clean — no violations found" if exit_code == "0" else f"⚠️ {vuln_count} vulnerability finding(s)"
 
+        # Map SARIF security-severity scores to agent-bom severity labels
+        def _score_to_severity(score: float) -> str:
+            if score > 9.0:
+                return "CRITICAL"
+            if score >= 7.0:
+                return "HIGH"
+            if score >= 4.0:
+                return "MEDIUM"
+            if score >= 0.1:
+                return "LOW"
+            return "NONE"
+
         findings_lines = []
         if sarif_file and os.path.isfile(sarif_file):
             try:
-                results = json.load(open(sarif_file)).get("runs", [{}])[0].get("results", [])
+                sarif = json.load(open(sarif_file))
+                run = sarif.get("runs", [{}])[0]
+                results = run.get("results", [])
+                rules = {r["id"]: r for r in run.get("tool", {}).get("driver", {}).get("rules", [])}
                 for r in results[:10]:
-                    level = r.get("level", "note").upper()
-                    rule = r.get("ruleId", "")
+                    rule_id = r.get("ruleId", "")
+                    rule = rules.get(rule_id, {})
+                    score = float(rule.get("properties", {}).get("security-severity", "0"))
+                    severity = _score_to_severity(score)
                     msg = r.get("message", {}).get("text", "")
-                    findings_lines.append(f"- **{level}** `{rule}` — {msg}")
+                    findings_lines.append(f"- **{severity}** `{rule_id}` — {msg}")
                 if len(results) > 10:
                     findings_lines.append(f"- ... and {len(results) - 10} more")
             except Exception:

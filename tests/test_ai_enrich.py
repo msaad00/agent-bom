@@ -643,6 +643,22 @@ def test_action_yml_has_required_inputs():
     assert "format" in inputs
 
 
+def test_action_yml_has_new_inputs():
+    """action.yml should have warn-on-severity, output, auto-update-db inputs."""
+    from pathlib import Path
+
+    import yaml
+
+    action_path = Path(__file__).parent.parent / "action.yml"
+    with open(action_path) as f:
+        data = yaml.safe_load(f)
+    inputs = data.get("inputs", {})
+    assert "warn-on-severity" in inputs, "missing warn-on-severity input"
+    assert "output" in inputs, "missing output input"
+    assert "auto-update-db" in inputs, "missing auto-update-db input"
+    assert inputs["auto-update-db"]["default"] == "true", "auto-update-db should default to true"
+
+
 def test_action_yml_has_outputs():
     """action.yml should have expected outputs."""
     from pathlib import Path

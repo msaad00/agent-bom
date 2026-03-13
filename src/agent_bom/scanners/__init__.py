@@ -176,7 +176,8 @@ def _parse_cvss4_vector(vector: str) -> Optional[float]:
         raw = min(10.0, 1.1 * (6.42 * impact + 8.22 * exploit * 0.6))
 
         return math.ceil(raw * 10) / 10.0
-    except Exception:
+    except Exception as exc:
+        _logger.debug("CVSS 4.0 vector parse failed for %r: %s", vector, exc)
         return None
 
 
@@ -231,7 +232,8 @@ def parse_cvss_vector(vector: str) -> Optional[float]:
         # Roundup to one decimal (CVSS spec: ceiling to 1 decimal)
         return math.ceil(raw * 10) / 10.0
 
-    except Exception:
+    except Exception as exc:
+        _logger.debug("CVSS vector parse failed for %r: %s", vector, exc)
         return None
 
 
@@ -303,8 +305,9 @@ def parse_fixed_version(vuln_data: dict, package_name: str, ecosystem: str = "")
                             # Remember pre-release as fallback
                             if prerelease_candidate is None:
                                 prerelease_candidate = fixed
-                        except Exception:  # noqa: BLE001
+                        except Exception as exc:  # noqa: BLE001
                             # Can't parse (e.g. non-PEP440 npm version) — return as-is
+                            _logger.debug("Version parse failed for %r (returning as-is): %s", fixed, exc)
                             return fixed
     return prerelease_candidate
 
@@ -642,6 +645,12 @@ def _local_vuln_to_vulnerability(lv: "Any") -> Vulnerability:
     )
 
 
+# Threshold above which batch DB lookup is used instead of per-package queries.
+# Batch mode issues a single SQL query per chunk (400 pairs) vs. N individual
+# queries — a significant win for scans with thousands of packages.
+_BATCH_DB_THRESHOLD = 50
+
+
 def _scan_packages_local_db(packages: list[Package]) -> tuple[int, set[str]]:
     """Query the local SQLite DB for all packages.
 
@@ -655,7 +664,8 @@ def _scan_packages_local_db(packages: list[Package]) -> tuple[int, set[str]]:
         freshness = db_freshness_days()
         if freshness is None:
             return 0, set()  # No DB yet — fall through to OSV entirely
-    except Exception:
+    except Exception as exc:
+        _logger.debug("Local DB freshness check failed (falling through to OSV): %s", exc)
         return 0, set()
 
     try:
@@ -685,37 +695,90 @@ def _scan_packages_local_db(packages: list[Package]) -> tuple[int, set[str]]:
     try:
         from agent_bom.db.lookup import package_in_db
 
-        for pkg in packages:
-            eco_key = pkg.ecosystem.lower()
-            db_eco = _eco_map.get(eco_key, pkg.ecosystem)
-            norm_name = normalize_package_name(pkg.name, pkg.ecosystem)
-            db_key = f"{eco_key}:{norm_name}@{pkg.version}"
+        if len(packages) > _BATCH_DB_THRESHOLD:
+            total = _scan_packages_local_db_batch(conn, packages, _eco_map, covered)
+        else:
+            for pkg in packages:
+                eco_key = pkg.ecosystem.lower()
+                db_eco = _eco_map.get(eco_key, pkg.ecosystem)
+                norm_name = normalize_package_name(pkg.name, pkg.ecosystem)
+                db_key = f"{eco_key}:{norm_name}@{pkg.version}"
 
-            local_vulns = lookup_package(conn, db_eco, norm_name, pkg.version)
+                local_vulns = lookup_package(conn, db_eco, norm_name, pkg.version)
 
-            # Only mark as "covered by DB" when the package name actually exists in the
-            # affected table — not just because the ecosystem is mapped. This prevents
-            # false negatives where a package has no DB entry but is silently skipped
-            # (no OSV fallback) because the ecosystem is present.
-            if package_in_db(conn, db_eco, norm_name):
-                covered.add(db_key)
+                # Only mark as "covered by DB" when the package name actually exists in the
+                # affected table — not just because the ecosystem is mapped. This prevents
+                # false negatives where a package has no DB entry but is silently skipped
+                # (no OSV fallback) because the ecosystem is present.
+                if package_in_db(conn, db_eco, norm_name):
+                    covered.add(db_key)
 
-            if local_vulns:
-                existing_ids = {v.id for v in pkg.vulnerabilities}
-                new_vulns = []
-                for lv in local_vulns:
-                    if lv.id not in existing_ids:
-                        new_vulns.append(_local_vuln_to_vulnerability(lv))
-                        existing_ids.add(lv.id)
-                pkg.vulnerabilities.extend(new_vulns)
-                total += len(new_vulns)
-                for v in new_vulns:
-                    v.compliance_tags = _tag_vuln(v, pkg)
-                flag_malicious_from_vulns(pkg)
+                if local_vulns:
+                    existing_ids = {v.id for v in pkg.vulnerabilities}
+                    new_vulns = []
+                    for lv in local_vulns:
+                        if lv.id not in existing_ids:
+                            new_vulns.append(_local_vuln_to_vulnerability(lv))
+                            existing_ids.add(lv.id)
+                    pkg.vulnerabilities.extend(new_vulns)
+                    total += len(new_vulns)
+                    for v in new_vulns:
+                        v.compliance_tags = _tag_vuln(v, pkg)
+                    flag_malicious_from_vulns(pkg)
     finally:
         conn.close()
 
     return total, covered
+
+
+def _scan_packages_local_db_batch(
+    conn: Any,
+    packages: list[Package],
+    eco_map: dict[str, str],
+    covered: set[str],
+) -> int:
+    """Batch variant of the local DB scan — fewer SQL round-trips.
+
+    Uses :func:`lookup_packages_batch` to fetch all vulnerabilities in bulk,
+    then applies the same dedup / tagging logic as the per-package path.
+    """
+    from agent_bom.db.lookup import lookup_packages_batch, package_in_db
+
+    # Build batch keys: (db_ecosystem, normalized_name, version)
+    pkg_index: list[tuple[Package, str, str, str]] = []  # (pkg, db_eco, norm_name, db_key)
+    batch_keys: list[tuple[str, str, str]] = []
+
+    for pkg in packages:
+        eco_key = pkg.ecosystem.lower()
+        db_eco = eco_map.get(eco_key, pkg.ecosystem)
+        norm_name = normalize_package_name(pkg.name, pkg.ecosystem)
+        db_key = f"{eco_key}:{norm_name}@{pkg.version}"
+        pkg_index.append((pkg, db_eco, norm_name, db_key))
+        batch_keys.append((db_eco, norm_name, pkg.version))
+
+    batch_results = lookup_packages_batch(conn, batch_keys)
+
+    total = 0
+    for (pkg, db_eco, norm_name, db_key), batch_key in zip(pkg_index, batch_keys):
+        local_vulns = batch_results.get(batch_key, [])
+
+        if package_in_db(conn, db_eco, norm_name):
+            covered.add(db_key)
+
+        if local_vulns:
+            existing_ids = {v.id for v in pkg.vulnerabilities}
+            new_vulns = []
+            for lv in local_vulns:
+                if lv.id not in existing_ids:
+                    new_vulns.append(_local_vuln_to_vulnerability(lv))
+                    existing_ids.add(lv.id)
+            pkg.vulnerabilities.extend(new_vulns)
+            total += len(new_vulns)
+            for v in new_vulns:
+                v.compliance_tags = _tag_vuln(v, pkg)
+            flag_malicious_from_vulns(pkg)
+
+    return total
 
 
 async def scan_packages(packages: list[Package]) -> int:
@@ -747,6 +810,7 @@ async def scan_packages(packages: list[Package]) -> int:
             if resolved_count:
                 console.print(f"  [green]✓[/green] Auto-resolved {resolved_count} package version(s)")
         except Exception as exc:
+            _logger.warning("Version resolution failed for %d package(s): %s", len(unresolved), exc)
             console.print(f"  [yellow]⚠[/yellow] Version resolution skipped: {exc}")
 
     # SAST packages already carry vulns from Semgrep — skip OSV query for them
@@ -833,6 +897,7 @@ async def scan_packages(packages: list[Package]) -> int:
                 total_vulns += nvidia_new
                 console.print(f"  [green]✓[/green] NVIDIA advisories: {nvidia_new} additional CVE(s)")
         except Exception as exc:
+            _logger.warning("NVIDIA advisory check failed for %d package(s): %s", len(nvidia_packages), exc)
             console.print(f"  [yellow]⚠[/yellow] NVIDIA advisory check skipped: {exc}")
 
     # Supplemental: check GitHub Security Advisories for all packages
@@ -845,6 +910,7 @@ async def scan_packages(packages: list[Package]) -> int:
                 total_vulns += ghsa_new
                 console.print(f"  [green]✓[/green] GHSA advisories: {ghsa_new} additional CVE(s)")
         except Exception as exc:
+            _logger.warning("GHSA advisory check failed for %d package(s): %s", len(scannable), exc)
             console.print(f"  [yellow]⚠[/yellow] GHSA advisory check skipped: {exc}")
 
     # Typosquat detection for all scanned packages
@@ -866,7 +932,7 @@ async def scan_packages(packages: list[Package]) -> int:
                 total_vulns -= suppressed
                 console.print(f"  [yellow]⚠[/yellow] Suppressed {suppressed} finding(s) via .agent-bom-ignore")
     except Exception as exc:
-        _logger.debug("Ignore file processing skipped: %s", exc)
+        _logger.warning("Ignore file processing skipped: %s", exc)
 
     return total_vulns
 
@@ -1020,6 +1086,14 @@ async def scan_agents(agents: list[Agent]) -> list[BlastRadius]:
         console.print(f"  [red]⚠ Found {total_vulns} vulnerabilities across {len(blast_radii)} findings[/red]")
     else:
         console.print("  [green]✓ No known vulnerabilities found[/green]")
+
+    _logger.info(
+        "Scan summary: %d packages scanned, %d vulnerabilities, %d blast radius findings across %d agent(s)",
+        len(unique_packages),
+        total_vulns,
+        len(blast_radii),
+        len(agents),
+    )
 
     return blast_radii
 

@@ -23,7 +23,7 @@ def db_cmd() -> None:
     multiple=True,
     type=click.Choice(["osv", "epss", "kev", "ghsa", "nvd"], case_sensitive=False),
     help="Which sources to sync (default: osv, epss, kev). Repeatable. "
-    "Use --source ghsa to sync GitHub Security Advisories for AI/ML packages. "
+    "Use --source ghsa to sync GitHub Security Advisories (all ecosystems). "
     "Use --source nvd to enrich unknown-severity CVEs from NVD (slow without NVD_API_KEY).",
 )
 @click.option("--path", "db_path", type=click.Path(), default=None, help="Override DB file path.")
@@ -37,8 +37,8 @@ def db_cmd() -> None:
 @click.option(
     "--max-ghsa-entries",
     type=int,
-    default=500,
-    help="Limit GHSA advisories to ingest (default: 500).",
+    default=5000,
+    help="Limit GHSA advisories to ingest (default: 5000).",
     hidden=True,
 )
 @click.option(
@@ -48,17 +48,26 @@ def db_cmd() -> None:
     help="Limit NVD CVEs to enrich (default: 1000).",
     hidden=True,
 )
+@click.option(
+    "--ghsa-ecosystems",
+    "ghsa_ecosystems",
+    multiple=True,
+    type=click.Choice(["pip", "npm", "go", "maven", "nuget", "rubygems", "cargo"], case_sensitive=False),
+    help="Filter GHSA sync to specific ecosystems (default: all). Repeatable.",
+)
 def db_update(
     sources: tuple,
     db_path: str | None,
     max_osv_entries: int,
     max_ghsa_entries: int,
     max_nvd_entries: int,
+    ghsa_ecosystems: tuple,
 ) -> None:
     """Download and sync the local vulnerability database.
 
     Pulls from OSV.dev (bulk export), FIRST EPSS scores, and CISA KEV catalog by default.
-    Pass --source ghsa to also fetch GitHub Security Advisories for AI/ML Python packages.
+    Pass --source ghsa to also fetch GitHub Security Advisories across all supported
+    ecosystems (pip, npm, go, maven, nuget, rubygems, cargo).
     Pass --source nvd to enrich CVEs missing CVSS data from the NVD API (requires NVD_API_KEY
     for reasonable speed; without a key the rate limit is 5 req/30s).
 
@@ -82,6 +91,7 @@ def db_update(
             max_osv_entries=max_osv_entries,
             max_ghsa_entries=max_ghsa_entries,
             max_nvd_entries=max_nvd_entries,
+            ghsa_ecosystems=list(ghsa_ecosystems) if ghsa_ecosystems else None,
         )
     except Exception as exc:
         con.print(f"[red]Sync failed: {exc}[/red]")

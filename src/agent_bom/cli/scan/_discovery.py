@@ -412,9 +412,15 @@ def run_local_discovery(
             stats = "[dim]" + " \u00b7 ".join(stats_parts) + "[/dim]" if stats_parts else ""
             con.print(AiPanel(ai_table, subtitle=stats, border_style="cyan"))
         else:
+            sdks = sorted(ai_report.unique_sdks)
+            models = sorted(ai_report.unique_models)
+            sdk_str = ", ".join(sdks[:5]) + (f" +{len(sdks) - 5}" if len(sdks) > 5 else "") if sdks else "none"
+            model_str = ", ".join(models[:4]) + (f" +{len(models) - 4}" if len(models) > 4 else "") if models else "none"
             con.print(
                 f"  [green]\u2713[/green] {ai_report.files_scanned} files scanned \u2014 "
-                f"{ai_report.total} components, no critical/high/medium findings"
+                f"[bold]{ai_report.total}[/bold] components, [green]all safe[/green]\n"
+                f"    SDKs: [cyan]{sdk_str}[/cyan]\n"
+                f"    Models: [cyan]{model_str}[/cyan]"
             )
 
         # Create synthetic packages for SDK components -> feed into CVE scanning

@@ -294,6 +294,46 @@ def test_sarif_severity_mapping(sample_report):
     assert result["level"] == "error"  # HIGH maps to error
 
 
+def test_sarif_security_severity_from_cvss(sample_report):
+    """security-severity uses actual CVSS score when available (GitHub Security tab)."""
+    sarif = to_sarif(sample_report)
+    rule = sarif["runs"][0]["tool"]["driver"]["rules"][0]
+    assert "properties" in rule
+    assert rule["properties"]["security-severity"] == "8.5"
+
+
+def test_sarif_security_severity_fallback():
+    """security-severity falls back to mapped score when CVSS is None."""
+    from agent_bom.output.sarif import _SECURITY_SEVERITY_SCORE
+
+    vuln = Vulnerability(id="CVE-2099-0001", summary="Test", severity=Severity.CRITICAL, cvss_score=None)
+    pkg = Package(name="pkg", version="1.0", ecosystem="npm", vulnerabilities=[vuln])
+    server = MCPServer(name="s", command="x", args=[], packages=[pkg])
+    agent = Agent(name="a", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/c.json", mcp_servers=[server])
+    br = BlastRadius(
+        vulnerability=vuln, package=pkg, affected_agents=[agent], affected_servers=[server], exposed_credentials=[], exposed_tools=[]
+    )
+    report = AIBOMReport(agents=[agent], blast_radii=[br])
+    sarif = to_sarif(report)
+    rule = sarif["runs"][0]["tool"]["driver"]["rules"][0]
+    assert rule["properties"]["security-severity"] == _SECURITY_SEVERITY_SCORE[Severity.CRITICAL]
+
+
+def test_sarif_unknown_severity_maps_to_note():
+    """UNKNOWN severity maps to SARIF 'note' level, not 'warning'."""
+    vuln = Vulnerability(id="CVE-2099-0002", summary="Test", severity=Severity.UNKNOWN)
+    pkg = Package(name="pkg", version="1.0", ecosystem="npm", vulnerabilities=[vuln])
+    server = MCPServer(name="s", command="x", args=[], packages=[pkg])
+    agent = Agent(name="a", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/c.json", mcp_servers=[server])
+    br = BlastRadius(
+        vulnerability=vuln, package=pkg, affected_agents=[agent], affected_servers=[server], exposed_credentials=[], exposed_tools=[]
+    )
+    report = AIBOMReport(agents=[agent], blast_radii=[br])
+    sarif = to_sarif(report)
+    result = sarif["runs"][0]["results"][0]
+    assert result["level"] == "note"
+
+
 def test_sarif_empty_report(empty_report):
     sarif = to_sarif(empty_report)
     assert sarif["runs"][0]["results"] == []

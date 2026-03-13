@@ -171,3 +171,50 @@ async def model_file_scan_impl(
     except Exception as exc:
         logger.exception("MCP tool error")
         return json.dumps({"error": sanitize_error(exc)})
+
+
+async def ai_inventory_scan_impl(
+    *,
+    directory: str,
+    _truncate_response,
+) -> str:
+    """Implementation of the ai_inventory_scan tool."""
+    try:
+        from agent_bom.security import validate_path
+
+        path = validate_path(directory, must_exist=True, restrict_to_home=True)
+        from agent_bom.ai_components import scan_source
+
+        report = scan_source(str(path))
+        return _truncate_response(
+            json.dumps(
+                {
+                    "total_components": report.total,
+                    "files_scanned": report.files_scanned,
+                    "shadow_ai_count": len(report.shadow_ai),
+                    "deprecated_models_count": len(report.deprecated_models),
+                    "api_keys_count": len(report.api_keys),
+                    "unique_sdks": sorted(report.unique_sdks),
+                    "unique_models": sorted(report.unique_models),
+                    "components": [
+                        {
+                            "type": c.component_type.value,
+                            "name": c.name,
+                            "language": c.language,
+                            "file": c.file_path,
+                            "line": c.line_number,
+                            "severity": c.severity.value,
+                            "is_shadow": c.is_shadow,
+                            "description": c.description,
+                        }
+                        for c in report.components
+                    ],
+                    "warnings": report.warnings,
+                },
+                indent=2,
+                default=str,
+            )
+        )
+    except Exception as exc:
+        logger.exception("MCP tool error")
+        return json.dumps({"error": sanitize_error(exc)})

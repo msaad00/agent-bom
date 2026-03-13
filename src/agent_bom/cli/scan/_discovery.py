@@ -338,6 +338,75 @@ def run_local_discovery(
             except SASTScanError as e:
                 con.print(f"  [yellow]![/yellow] {code_path}: {e}")
 
+    # Step 1d3b: AI component source scan (--ai-inventory)
+    ai_inventory_paths = kwargs.get("ai_inventory_paths", ())
+    if not skill_only and ai_inventory_paths:
+        from agent_bom.ai_components import scan_source
+        from agent_bom.models import Agent, AgentType, MCPServer, Package
+
+        # Collect manifest packages for shadow AI detection
+        manifest_pkgs: set[str] = set()
+        for ag in ctx.agents:
+            for srv in ag.mcp_servers:
+                for pkg in srv.packages:
+                    manifest_pkgs.add(pkg.name)
+
+        con.print(f"\n[bold blue]Scanning {len(ai_inventory_paths)} path(s) for AI components...[/bold blue]\n")
+        ai_report = scan_source(*ai_inventory_paths, manifest_packages=manifest_pkgs)
+        con.print(
+            f"  [green]\u2713[/green] {ai_report.files_scanned} files scanned \u2014 "
+            f"{ai_report.total} components, {len(ai_report.shadow_ai)} shadow AI, "
+            f"{len(ai_report.deprecated_models)} deprecated, {len(ai_report.api_keys)} hardcoded keys"
+        )
+
+        # Create synthetic packages for SDK components -> feed into CVE scanning
+        ai_packages: list[Package] = []
+        seen_pkgs: set[str] = set()
+        for comp in ai_report.components:
+            if comp.package_name and comp.ecosystem:
+                pkg_key = f"{comp.ecosystem}:{comp.package_name}"
+                if pkg_key not in seen_pkgs:
+                    seen_pkgs.add(pkg_key)
+                    ai_packages.append(Package(name=comp.package_name, version="latest", ecosystem=comp.ecosystem))
+
+        if ai_packages:
+            server = MCPServer(name="ai-inventory")
+            server.packages = ai_packages
+            ai_agent = Agent(
+                name="ai-inventory",
+                agent_type=AgentType.CUSTOM,
+                config_path=str(ai_inventory_paths[0]),
+                source="ai-inventory",
+                mcp_servers=[server],
+            )
+            ctx.agents.append(ai_agent)
+
+        ctx.ai_inventory_data = {
+            "total_components": ai_report.total,
+            "shadow_ai_count": len(ai_report.shadow_ai),
+            "deprecated_models_count": len(ai_report.deprecated_models),
+            "api_keys_count": len(ai_report.api_keys),
+            "unique_sdks": sorted(ai_report.unique_sdks),
+            "unique_models": sorted(ai_report.unique_models),
+            "files_scanned": ai_report.files_scanned,
+            "components": [
+                {
+                    "type": c.component_type.value,
+                    "name": c.name,
+                    "language": c.language,
+                    "file": c.file_path,
+                    "line": c.line_number,
+                    "severity": c.severity.value,
+                    "is_shadow": c.is_shadow,
+                    "package": c.package_name,
+                    "ecosystem": c.ecosystem,
+                    "description": c.description,
+                    "deprecated_replacement": c.deprecated_replacement,
+                }
+                for c in ai_report.components
+            ],
+        }
+
     # Step 1d4: Project package scan fallback
     if not skill_only and project and not ctx.agents and not images and not code_paths and not sbom_file:
         from agent_bom.models import Agent, AgentType, MCPServer, TransportType

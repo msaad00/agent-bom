@@ -496,6 +496,7 @@ class AIBOMReport:
     dataset_cards: Optional[dict] = None  # Serialized DatasetScanResult
     serving_configs: Optional[list] = None  # Serialized ServingConfig list
     browser_extensions: Optional[dict] = None  # Serialized browser extension scan results
+    ai_inventory_data: Optional[dict] = None  # AI component source scan results (SDK imports, models, keys)
 
     # Unified Finding stream (issue #566 — Phase 1).
     # Populated alongside blast_radii for backward compatibility.

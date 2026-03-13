@@ -424,6 +424,14 @@ def discovery_options(fn):
                 "--model-provenance", is_flag=True, help="Enable SHA-256 hash and Sigstore signature checks for --model-files scans"
             ),
             click.option(
+                "--ai-inventory",
+                "ai_inventory_paths",
+                multiple=True,
+                type=click.Path(exists=True),
+                metavar="DIR",
+                help="Scan source code for AI SDK imports, model references, API keys, and shadow AI. Repeatable.",
+            ),
+            click.option(
                 "--dataset-cards",
                 "dataset_dirs",
                 multiple=True,

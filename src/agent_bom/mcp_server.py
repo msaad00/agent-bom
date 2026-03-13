@@ -4,7 +4,7 @@ Start with:
     agent-bom mcp-server              # stdio (for Claude Desktop, Cursor, etc.)
     agent-bom mcp-server --sse        # SSE transport (for remote clients)
 
-Tools (31):
+Tools (32):
     scan                — Full discovery → scan → output pipeline
     check               — Check a specific package for CVEs before installing
     blast_radius        — Look up blast radius for a specific CVE
@@ -34,6 +34,7 @@ Tools (31):
     model_provenance_scan  — Check ML model provenance from HuggingFace/Ollama
     prompt_scan         — Scan prompt templates for injection risks
     model_file_scan     — Scan model files for serialization risks
+    ai_inventory_scan   — Scan source code for AI SDK imports, model references, shadow AI
     license_compliance_scan — Evaluate package licenses against SPDX compliance policy
     ingest_external_scan   — Ingest Trivy, Grype, or Syft JSON output with blast radius analysis
 
@@ -339,6 +340,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
     from agent_bom.mcp_tools.sbom import diff_impl, generate_sbom_impl, remediate_impl
     from agent_bom.mcp_tools.scanning import check_impl, code_scan_impl, scan_impl
     from agent_bom.mcp_tools.specialized import (
+        ai_inventory_scan_impl,
         browser_extension_scan_impl,
         dataset_card_scan_impl,
         model_file_scan_impl,
@@ -1317,7 +1319,32 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             _truncate_response=_truncate_response,
         )
 
-    # ── Tool 30: license_compliance_scan ────────────────────────────
+    # ── Tool 30: ai_inventory_scan ────────────────────────────────
+
+    @mcp.tool(annotations=_READ_ONLY, title="AI Inventory Scan")
+    async def ai_inventory_scan(
+        directory: Annotated[
+            str,
+            Field(description="Directory to scan for AI SDK imports, model refs, API keys, shadow AI (Python/JS/TS/Java/Go/Rust/Ruby)."),
+        ],
+    ) -> str:
+        """Scan source code for AI component usage patterns.
+
+        Detects:
+        - AI SDK imports (openai, anthropic, langchain, etc.) across 7 languages
+        - Model string references (gpt-4o, claude-3-5-sonnet, llama-3, etc.)
+        - Hardcoded API keys (sk-proj-*, sk-ant-*, hf_*, etc.)
+        - Deprecated model usage with recommended replacements
+        - Shadow AI: SDKs imported in code but not declared in package manifests
+
+        Returns structured inventory with severity classification.
+        """
+        return await ai_inventory_scan_impl(
+            directory=directory,
+            _truncate_response=_truncate_response,
+        )
+
+    # ── Tool 31: license_compliance_scan ────────────────────────────
 
     @mcp.tool(annotations=_READ_ONLY, title="License Compliance Scan")
     async def license_compliance_scan(
@@ -1359,7 +1386,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             _truncate_response=_truncate_response,
         )
 
-    # ── Tool 31: ingest_external_scan ───────────────────────────────
+    # ── Tool 32: ingest_external_scan ───────────────────────────────
 
     @mcp.tool(annotations=_READ_ONLY, title="Ingest External Scanner Report")
     async def ingest_external_scan(
@@ -1568,6 +1595,11 @@ _SERVER_CARD_TOOLS = [
     {
         "name": "model_file_scan",
         "description": "Scan model files (.gguf, .safetensors, .pkl, .pt) for serialization risks and format metadata",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "ai_inventory_scan",
+        "description": "Scan source code for AI SDK imports, model refs, API keys, shadow AI, deprecated models (7 languages)",
         "annotations": {"readOnlyHint": True},
     },
     {

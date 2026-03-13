@@ -8,16 +8,17 @@ description: >-
 version: 0.70.6
 license: Apache-2.0
 compatibility: >-
-  Requires Python 3.11+. Install via pipx or pip. No credentials required for
-  OWASP/NIST/EU AI Act evaluation. CIS benchmark checks optionally use cloud
-  SDK credentials (AWS/Azure/GCP/Snowflake) if provided.
+  Requires Python 3.11+. Install via pipx or pip. OWASP/NIST/EU AI Act/MITRE
+  evaluation and SBOM generation are fully local with zero credentials. CIS
+  benchmark checks optionally use cloud SDK credentials (AWS/Azure/GCP/Snowflake)
+  and make read-only API calls to cloud providers when explicitly invoked.
 metadata:
   author: msaad00
   homepage: https://github.com/msaad00/agent-bom
   source: https://github.com/msaad00/agent-bom
   pypi: https://pypi.org/project/agent-bom/
   scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
-  tests: 5939
+  tests: 6040
   install:
     pipx: agent-bom
     pip: agent-bom
@@ -64,12 +65,33 @@ metadata:
       - darwin
       - linux
       - windows
-    data_flow: "Purely local for OWASP/NIST/EU AI Act/MITRE/SBOM features. CIS benchmark checks call cloud provider APIs (AWS/Azure/GCP/Snowflake) using locally configured credentials — no data is stored or transmitted beyond the cloud provider's own API. Zero file reads beyond user-provided SBOMs."
+    data_flow: >-
+      OWASP/NIST/EU AI Act/MITRE/SBOM evaluation is purely local — zero network
+      calls. CIS benchmark checks (optional, user-initiated) call cloud provider
+      APIs (AWS/Azure/GCP/Snowflake) using locally configured credentials. No data
+      is stored or transmitted beyond the cloud provider's own API. File reads are
+      limited to user-provided SBOMs and policy files.
     file_reads:
       - "user-provided SBOM files (CycloneDX/SPDX JSON)"
       - "user-provided policy files (YAML/JSON policy-as-code)"
     file_writes: []
-    network_endpoints: []
+    network_endpoints:
+      - url: "https://*.amazonaws.com"
+        purpose: "AWS CIS benchmark checks — read-only API calls (IAM, S3, CloudTrail, etc.)"
+        auth: true
+        optional: true
+      - url: "https://management.azure.com"
+        purpose: "Azure CIS benchmark checks — read-only API calls (Azure Resource Manager)"
+        auth: true
+        optional: true
+      - url: "https://*.googleapis.com"
+        purpose: "GCP CIS benchmark checks — read-only API calls (Cloud Resource Manager, IAM, etc.)"
+        auth: true
+        optional: true
+      - url: "https://*.snowflakecomputing.com"
+        purpose: "Snowflake CIS benchmark checks — read-only API calls (ACCOUNT_USAGE views)"
+        auth: true
+        optional: true
     telemetry: false
     persistence: false
     privilege_escalation: false
@@ -123,12 +145,18 @@ generate_sbom(format="cyclonedx")
 
 ## Privacy & Data Handling
 
-All compliance evaluation runs **locally on scan data already in memory**.
-No files are read from disk (except user-provided SBOMs). No network calls.
-No credentials needed.
+**OWASP, NIST, EU AI Act, MITRE ATLAS, SBOM generation, and policy checks**
+run entirely locally on scan data already in memory. No network calls, no
+credentials needed for these features.
+
+**CIS benchmark checks** (optional, user-initiated) call cloud provider APIs
+using your locally configured credentials. These are read-only API calls to
+AWS, Azure, GCP, or Snowflake. No data is stored or transmitted beyond the
+cloud provider's own API. You must explicitly run `cis_benchmark(provider=...)`
+and confirm before any cloud API calls are made.
 
 ## Verification
 
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
-- **4,400+ tests** with CodeQL + OpenSSF Scorecard
+- **6,040+ tests** with CodeQL + OpenSSF Scorecard
 - **No telemetry**: Zero tracking, zero analytics

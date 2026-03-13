@@ -517,7 +517,7 @@ ScanRequest → _run_scan_sync() [ThreadPoolExecutor]
 | "22 MCP clients" (README) | ✓ 20 named AgentType values + CUSTOM = 21 |
 | "31 MCP tools" | ✓ meta-test enforces this |
 | "10 compliance frameworks" | ✓ 10 tagging modules |
-| "52 SAST CWE mappings" | ✓ SAST_CWE_MAP count |
+| "52 CWE compliance mappings" | ✓ CWE_COMPLIANCE_MAP count |
 | "12 cloud providers" | ✓ cloud/__init__.py _PROVIDERS |
 | OSV as primary vuln source | ✓ |
 | scrypt KDF for API keys | ✓ auth.py (n=16384, r=8, p=1) |

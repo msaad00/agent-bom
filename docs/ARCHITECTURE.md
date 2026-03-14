@@ -162,7 +162,7 @@ graph LR
 
 ## 4. Compliance Framework Mapping
 
-Every blast radius finding is tagged against 11 compliance frameworks simultaneously.
+Every blast radius finding is tagged against 13 compliance frameworks simultaneously.
 
 ```mermaid
 graph TD

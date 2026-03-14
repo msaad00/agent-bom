@@ -109,7 +109,7 @@
     </g>
     <!-- Tag pill -->
     <rect x="16" y="158" width="132" height="22" rx="11" fill="#bc8cff" opacity="0.1"/>
-    <text x="82" y="173" text-anchor="middle" class="engine-tag" fill="#8250df">11 compliance frameworks</text>
+    <text x="82" y="173" text-anchor="middle" class="engine-tag" fill="#8250df">13 compliance frameworks</text>
   </g>
 
   <!-- Arrow 3→4 -->

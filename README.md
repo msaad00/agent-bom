@@ -20,7 +20,7 @@
 
 <p align="center">
   <b>Security scanner for AI infrastructure and supply chain.</b><br>
-  Discover → Scan → Analyze → Enforce — AI BOM generation, CVEs, blast radius, runtime proxy, 11 compliance frameworks.
+  Discover → Scan → Analyze → Enforce — AI BOM generation, CVEs, blast radius, runtime proxy, 13 compliance frameworks.
 </p>
 
 ---

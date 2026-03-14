@@ -48,7 +48,7 @@ ENV PORT=8423
 
 EXPOSE ${PORT}
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT:-8423}/health')" || exit 1
 
 # Use shell form so $PORT is expanded at runtime (Railway/Render inject PORT)

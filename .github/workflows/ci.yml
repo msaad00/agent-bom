@@ -47,7 +47,13 @@ jobs:
           scan-ref: .
           format: table
           severity: HIGH,CRITICAL
-          exit-code: '0'
+          exit-code: '1'
+
+      - name: npm audit (ui/ transitive deps)
+        run: |
+          cd ui
+          npm ci --ignore-scripts
+          npm audit --audit-level=high
 
   # 2. Linting + Type Checking
   lint:

@@ -174,7 +174,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                         "type": "application",
                         "name": "agent-bom",
                         "version": report.tool_version,
-                        "description": "AI Bill of Materials generator for AI agents and MCP servers",
+                        "description": "Security scanner for AI infrastructure — from agent to runtime",
                     }
                 ]
             },

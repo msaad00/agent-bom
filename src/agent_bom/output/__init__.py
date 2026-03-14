@@ -18,6 +18,36 @@ from agent_bom.models import Agent, AgentStatus, AIBOMReport, BlastRadius, Sever
 
 console = Console()
 
+# ─── Centralized severity styling ────────────────────────────────────────────
+
+SEVERITY_BADGES: dict[Severity, str] = {
+    Severity.CRITICAL: "white on red",
+    Severity.HIGH: "white on #c0392b",
+    Severity.MEDIUM: "black on yellow",
+    Severity.LOW: "white on #555555",
+}
+
+SEVERITY_TEXT: dict[Severity, str] = {
+    Severity.CRITICAL: "red bold",
+    Severity.HIGH: "red",
+    Severity.MEDIUM: "yellow",
+    Severity.LOW: "dim",
+}
+
+
+def _sev_badge(severity: Severity) -> str:
+    """Render a severity badge with background color: ` CRIT `, ` HIGH `, etc."""
+    style = SEVERITY_BADGES.get(severity, "white")
+    labels = {
+        Severity.CRITICAL: " CRIT ",
+        Severity.HIGH: " HIGH ",
+        Severity.MEDIUM: " MED  ",
+        Severity.LOW: " LOW  ",
+    }
+    label = labels.get(severity, f" {severity.value.upper()} ")
+    return f"[{style}]{label}[/{style}]"
+
+
 # ─── Console Output ─────────────────────────────────────────────────────────
 
 
@@ -369,15 +399,8 @@ def print_blast_radius(report: AIBOMReport) -> None:
     table.add_column("Threats", ratio=3)
     table.add_column("Fix", ratio=2)
 
-    severity_colors = {
-        Severity.CRITICAL: "red bold",
-        Severity.HIGH: "red",
-        Severity.MEDIUM: "yellow",
-        Severity.LOW: "dim",
-    }
-
     for br in report.blast_radii[:25]:  # Top 25
-        sev_style = severity_colors.get(br.vulnerability.severity, "white")
+        sev_style = SEVERITY_TEXT.get(br.vulnerability.severity, "white")
         if br.vulnerability.fixed_version:
             fix = f"[green]✓ {br.vulnerability.fixed_version}[/green]"
         else:
@@ -461,7 +484,7 @@ def print_blast_radius(report: AIBOMReport) -> None:
         table.add_row(
             f"[{sev_style}]{br.risk_score:.1f}[/{sev_style}]",
             vuln_display,
-            f"[{sev_style} reverse] {br.vulnerability.severity.value.upper()} [/{sev_style} reverse]",
+            _sev_badge(br.vulnerability.severity),
             epss_display,
             kev_display,
             blast_display,
@@ -1262,15 +1285,32 @@ def print_compact_summary(report: AIBOMReport) -> None:
         sev_counts[br.vulnerability.severity.value.upper()] += 1
 
     if report.total_vulnerabilities == 0:
-        posture = "[bold green]CLEAN[/bold green]"
+        posture = "[bold white on green] CLEAN [/bold white on green]"
         border_style = "green"
     elif sev_counts.get("CRITICAL", 0) > 0:
-        parts = [f"{sev_counts[s]} {s}" for s in ("CRITICAL", "HIGH", "MEDIUM", "LOW") if sev_counts.get(s)]
-        posture = "[bold red]" + ", ".join(parts) + "[/bold red]"
+        badge_parts = []
+        sev_map = [
+            ("CRITICAL", Severity.CRITICAL),
+            ("HIGH", Severity.HIGH),
+            ("MEDIUM", Severity.MEDIUM),
+            ("LOW", Severity.LOW),
+        ]
+        for sev_name, sev_enum in sev_map:
+            if sev_counts.get(sev_name):
+                badge_parts.append(f"{_sev_badge(sev_enum)} {sev_counts[sev_name]}")
+        posture = "  ".join(badge_parts)
         border_style = "red"
     else:
-        parts = [f"{sev_counts[s]} {s}" for s in ("HIGH", "MEDIUM", "LOW") if sev_counts.get(s)]
-        posture = "[bold yellow]" + ", ".join(parts) + "[/bold yellow]"
+        badge_parts = []
+        sev_map = [
+            ("HIGH", Severity.HIGH),
+            ("MEDIUM", Severity.MEDIUM),
+            ("LOW", Severity.LOW),
+        ]
+        for sev_name, sev_enum in sev_map:
+            if sev_counts.get(sev_name):
+                badge_parts.append(f"{_sev_badge(sev_enum)} {sev_counts[sev_name]}")
+        posture = "  ".join(badge_parts)
         border_style = "yellow"
 
     # Credential count
@@ -1321,7 +1361,7 @@ def print_compact_summary(report: AIBOMReport) -> None:
     console.print(
         Panel(
             "\n".join(lines),
-            title=f"[bold]AI-BOM Report[/bold]  v{report.tool_version}",
+            title=f"[bold]agent-bom[/bold]  v{report.tool_version}",
             border_style=border_style,
             padding=(0, 1),
         )
@@ -1334,6 +1374,8 @@ def print_compact_agents(report: AIBOMReport) -> None:
     if not configured:
         return
 
+    console.print()
+    console.print(Rule("[bold]Agents[/bold]", style="dim"))
     table = Table(box=None, padding=(0, 2), show_header=True, header_style="bold dim")
     table.add_column("Agent")
     table.add_column("Type", style="dim")
@@ -1369,8 +1411,9 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10) -> None:
     console.print()
     total = len(report.blast_radii)
     title = f"Top Findings ({min(limit, total)} of {total})" if total > limit else f"Findings ({total})"
+    console.print(Rule(f"[bold]{title}[/bold]", style="dim"))
 
-    table = Table(title=title, expand=True, padding=(0, 1))
+    table = Table(expand=True, padding=(0, 1))
     table.add_column("Vuln", no_wrap=True, ratio=2)
     table.add_column("Sev", no_wrap=True)
     table.add_column("EPSS", justify="center", no_wrap=True)
@@ -1380,15 +1423,7 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10) -> None:
     table.add_column("Frameworks", ratio=2)
     table.add_column("Fix", ratio=1)
 
-    severity_colors = {
-        Severity.CRITICAL: "red bold",
-        Severity.HIGH: "red",
-        Severity.MEDIUM: "yellow",
-        Severity.LOW: "dim",
-    }
-
     for br in report.blast_radii[:limit]:
-        sev_style = severity_colors.get(br.vulnerability.severity, "white")
         fix = f"[green]{br.vulnerability.fixed_version}[/green]" if br.vulnerability.fixed_version else "[red dim]—[/red dim]"
         n_agents = len(br.affected_agents)
         n_creds = len(br.exposed_credentials)
@@ -1438,7 +1473,7 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10) -> None:
 
         table.add_row(
             f"{br.vulnerability.id}{kev}",
-            f"[{sev_style}]{br.vulnerability.severity.value.upper()}[/{sev_style}]",
+            _sev_badge(br.vulnerability.severity),
             epss_display,
             f"{br.package.name}@{br.package.version}",
             agent_display,
@@ -1450,6 +1485,18 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10) -> None:
     console.print(table)
     if total > limit:
         console.print(f"  [dim]... {total - limit} more (use --verbose for full list)[/dim]")
+
+    # Status bar
+    console.print()
+    fixable = sum(1 for br in report.blast_radii if br.vulnerability.fixed_version)
+    kev_count = sum(1 for br in report.blast_radii if br.vulnerability.is_kev)
+    hints = ["[dim]--verbose[/dim] full details", "[dim]-f html[/dim] interactive report"]
+    if fixable:
+        hints.insert(0, f"[green]{fixable} fixable[/green]")
+    if kev_count:
+        hints.insert(0, f"[red]{kev_count} KEV[/red]")
+    console.print(Rule(style="dim"))
+    console.print(f"  {' · '.join(hints)}")
 
 
 def print_compact_remediation(report: AIBOMReport, limit: int = 5) -> None:

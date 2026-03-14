@@ -735,6 +735,14 @@ def iac_sast_options(fn):
                 metavar="CONFIG",
                 help="Semgrep config for --code scans (e.g. 'p/security-audit'). Default: auto.",
             ),
+            click.option(
+                "--iac",
+                "iac_paths",
+                multiple=True,
+                type=click.Path(exists=True),
+                metavar="PATH",
+                help="Scan IaC files for misconfigurations (Dockerfile, K8s YAML, Terraform). Repeatable.",
+            ),
         ]
     )(fn)
 

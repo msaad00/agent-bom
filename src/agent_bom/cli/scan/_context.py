@@ -30,6 +30,7 @@ class ScanContext:
     enforcement_data: Any = None
     sast_data: Any = None
     ai_inventory_data: Any = None
+    iac_findings_data: Any = None
     delta_result: Any = None
     policy_passed: bool = True
     exit_code: int = 0

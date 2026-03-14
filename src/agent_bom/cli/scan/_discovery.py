@@ -57,6 +57,7 @@ def run_local_discovery(
     scan_prompts: bool,
     browser_extensions: bool,
     jupyter_dirs: tuple,
+    iac_paths: tuple = (),
     verbose: bool = False,
     quiet: bool = False,
     smithery_token: Any = None,
@@ -914,3 +915,83 @@ def run_local_discovery(
                 ctx.agents.extend(j_agents)
             else:
                 con.print("  [dim]  No AI library usage detected in notebooks[/dim]")
+
+    # Step 1g5: IaC misconfiguration scan (--iac)
+    if not skill_only and iac_paths:
+        from agent_bom.iac import scan_iac_directory
+
+        con.print(f"\n[bold blue]Scanning {len(iac_paths)} path(s) for IaC misconfigurations...[/bold blue]\n")
+        all_iac_findings: list = []
+        for iac_path in iac_paths:
+            iac_findings = scan_iac_directory(iac_path)
+            all_iac_findings.extend(iac_findings)
+            if iac_findings:
+                by_sev: dict[str, int] = {}
+                for f in iac_findings:
+                    by_sev[f.severity] = by_sev.get(f.severity, 0) + 1
+                sev_parts = []
+                for sev in ("critical", "high", "medium", "low"):
+                    if sev in by_sev:
+                        sev_colors = {"critical": "red bold", "high": "red", "medium": "yellow", "low": "dim"}
+                        style = sev_colors.get(sev, "white")
+                        sev_parts.append(f"[{style}]{by_sev[sev]} {sev}[/{style}]")
+                con.print(f"  [green]\u2713[/green] {iac_path}: {len(iac_findings)} finding(s) ({', '.join(sev_parts)})")
+            else:
+                con.print(f"  [dim]  {iac_path}: no misconfigurations found[/dim]")
+
+        if all_iac_findings:
+            from rich.panel import Panel
+            from rich.table import Table as IaCTable
+
+            sev_colors = {"critical": "red bold", "high": "red", "medium": "yellow", "low": "dim"}
+            sev_icons = {"critical": "\U0001f534", "high": "\U0001f7e0", "medium": "\U0001f7e1", "low": "\u26aa"}
+
+            iac_table = IaCTable(
+                title=f"IaC Misconfigurations \u2014 {len(all_iac_findings)} finding(s)",
+                expand=True,
+                padding=(0, 1),
+                title_style="bold cyan",
+            )
+            iac_table.add_column("Sev", justify="center", no_wrap=True, width=10)
+            iac_table.add_column("Rule", no_wrap=True, width=12)
+            iac_table.add_column("Finding", ratio=3)
+            iac_table.add_column("File", ratio=2, style="dim")
+
+            display_limit = 20
+            for iac_f in all_iac_findings[:display_limit]:
+                sev = iac_f.severity
+                style = sev_colors.get(sev, "white")
+                icon = sev_icons.get(sev, "\u26aa")
+                sev_cell = f"{icon} [{style}]{sev.upper()}[/{style}]"
+                rule_cell = f"[cyan]{iac_f.rule_id}[/cyan]"
+                detail_parts = [f"[bold]{iac_f.title}[/bold]"]
+                detail_parts.append(f"[dim]{iac_f.message}[/dim]")
+                detail_cell = "\n".join(detail_parts)
+                file_cell = f"{Path(iac_f.file_path).name}:{iac_f.line_number}"
+                iac_table.add_row(sev_cell, rule_cell, detail_cell, file_cell)
+
+            if len(all_iac_findings) > display_limit:
+                iac_table.add_row("[dim]...[/dim]", "", f"[dim]+{len(all_iac_findings) - display_limit} more[/dim]", "")
+
+            crit = sum(1 for f in all_iac_findings if f.severity == "critical")
+            high = sum(1 for f in all_iac_findings if f.severity == "high")
+            stats = f"[dim]{crit} critical \u00b7 {high} high \u00b7 scan complete[/dim]"
+            con.print()
+            con.print(Panel(iac_table, subtitle=stats, border_style="cyan"))
+
+        ctx.iac_findings_data = {
+            "total": len(all_iac_findings),
+            "findings": [
+                {
+                    "rule_id": f.rule_id,
+                    "severity": f.severity,
+                    "title": f.title,
+                    "message": f.message,
+                    "file_path": f.file_path,
+                    "line_number": f.line_number,
+                    "category": f.category,
+                    "compliance": f.compliance,
+                }
+                for f in all_iac_findings
+            ],
+        }

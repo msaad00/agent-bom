@@ -383,21 +383,31 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
     packages_to_query: list[Package] = []
     skipped_versions = 0
 
+    skipped_ecosystems = 0
+
     # Check cache first
     for pkg in packages:
         # Normalize ecosystem case — ECOSYSTEM_MAP keys are all lowercase.
         # Accepts "PyPI", "NPM", "PYPI", etc. from external callers.
         eco_key = pkg.ecosystem.lower()
         osv_ecosystem = ECOSYSTEM_MAP.get(eco_key)
-        if not osv_ecosystem or pkg.version in ("unknown", "latest"):
-            if pkg.version in ("unknown", "latest"):
-                _logger.warning(
-                    "Skipping package %s/%s: unresolvable version %r",
-                    pkg.ecosystem,
-                    pkg.name,
-                    pkg.version,
-                )
-                skipped_versions += 1
+        if not osv_ecosystem:
+            _logger.warning(
+                "Skipping package %s/%s: unknown ecosystem %r (not in ECOSYSTEM_MAP)",
+                pkg.ecosystem,
+                pkg.name,
+                pkg.ecosystem,
+            )
+            skipped_ecosystems += 1
+            continue
+        if pkg.version in ("unknown", "latest"):
+            _logger.warning(
+                "Skipping package %s/%s: unresolvable version %r",
+                pkg.ecosystem,
+                pkg.name,
+                pkg.version,
+            )
+            skipped_versions += 1
             continue
         norm_name = normalize_package_name(pkg.name, eco_key)
         if cache:
@@ -413,9 +423,10 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
         scanned = len(packages) - skipped_versions
         if skipped_versions:
             _logger.info(
-                "Scan complete: %d packages scanned, %d skipped (unresolvable versions)",
+                "Scan complete: %d packages scanned, %d skipped (unresolvable versions), %d skipped (unknown ecosystem)",
                 scanned,
                 skipped_versions,
+                skipped_ecosystems,
             )
         return await _enrich_results_if_needed(results)
 
@@ -426,7 +437,7 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
         eco_key = pkg.ecosystem.lower()
         osv_ecosystem = ECOSYSTEM_MAP.get(eco_key)
         if not osv_ecosystem or pkg.version in ("unknown", "latest"):
-            continue
+            continue  # already logged in cache-check loop above
 
         # Normalize name for consistent OSV matching (PEP 503 for PyPI)
         norm_name = normalize_package_name(pkg.name, eco_key)

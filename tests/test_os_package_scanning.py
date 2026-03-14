@@ -135,6 +135,28 @@ class TestOSPackagesNotSkipped:
         assert osv_eco == "Linux"
 
 
+# ── Unknown ecosystem warning (no silent failures) ──────────────────────────
+
+
+class TestUnknownEcosystemWarning:
+    """Packages with ecosystems not in ECOSYSTEM_MAP must produce a warning."""
+
+    def test_unknown_ecosystem_logs_warning(self, caplog):
+        """Scanner must warn when it skips a package due to unmapped ecosystem."""
+        import asyncio
+        import logging
+
+        from agent_bom.scanners import scan_packages
+
+        pkg = Package(name="somelib", version="1.0.0", ecosystem="pacman")
+        with caplog.at_level(logging.WARNING, logger="agent_bom.scanners"):
+            asyncio.run(scan_packages([pkg]))
+
+        assert any("unknown ecosystem" in r.message.lower() for r in caplog.records), (
+            "Expected a warning about unknown ecosystem 'pacman', got: " + "; ".join(r.message for r in caplog.records)
+        )
+
+
 # ── CLI flag existence ───────────────────────────────────────────────────────
 
 

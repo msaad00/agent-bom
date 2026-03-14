@@ -1,9 +1,17 @@
-"""Tests for CWE enrichment — OSV extraction, compliance tagging, local DB round-trip."""
+"""Tests for CWE enrichment — NVD extraction, DB storage, skip optimization, compliance tagging."""
 
 from __future__ import annotations
 
+import json
 import sqlite3
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
+import pytest
+
+from agent_bom.db.schema import init_db
+from agent_bom.db.sync import sync_nvd
+from agent_bom.enrichment import enrich_vulnerabilities
 from agent_bom.models import BlastRadius, Package, Severity, Vulnerability
 
 # ── OSV CWE extraction ──────────────────────────────────────────────────────
@@ -306,3 +314,267 @@ def test_db_migration_v1_to_v2(tmp_path):
     assert row[0] == ""  # default empty string
 
     conn.close()
+
+
+# ── sync_nvd CWE extraction ───────────────────────────────────────────────
+
+
+def _make_conn() -> sqlite3.Connection:
+    return init_db(Path(":memory:"))
+
+
+def _insert_vuln(
+    conn: sqlite3.Connection,
+    cve_id: str,
+    severity: str = "unknown",
+    cvss_score: float | None = None,
+    cwe_ids: str = "",
+) -> None:
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO vulns
+            (id, summary, severity, cvss_score, cvss_vector, fixed_version, cwe_ids, published, modified, source)
+        VALUES (?, ?, ?, ?, NULL, NULL, ?, '', '', 'osv')
+        """,
+        (cve_id, f"Test {cve_id}", severity, cvss_score, cwe_ids),
+    )
+    conn.commit()
+
+
+def _nvd_response_with_cwes(
+    cve_id: str,
+    score: float = 8.1,
+    severity: str = "HIGH",
+    cwes: list[str] | None = None,
+) -> bytes:
+    weaknesses = []
+    if cwes:
+        weaknesses = [{"source": "nvd@nist.gov", "description": [{"lang": "en", "value": c} for c in cwes]}]
+    payload = {
+        "vulnerabilities": [
+            {
+                "cve": {
+                    "id": cve_id,
+                    "weaknesses": weaknesses,
+                    "metrics": {
+                        "cvssMetricV31": [
+                            {
+                                "cvssData": {
+                                    "baseScore": score,
+                                    "baseSeverity": severity,
+                                    "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+                                }
+                            }
+                        ]
+                    },
+                }
+            }
+        ]
+    }
+    return json.dumps(payload).encode()
+
+
+def _mock_urlopen_with_cwes(cwes: list[str], score: float = 8.1, severity: str = "HIGH"):
+    def side_effect(req, timeout=30):
+        from urllib.parse import parse_qs, urlparse
+
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        parsed = urlparse(url)
+        qs = parse_qs(parsed.query)
+        cve_id = qs.get("cveId", ["CVE-UNKNOWN"])[0]
+        cm = MagicMock()
+        cm.__enter__ = MagicMock(return_value=cm)
+        cm.__exit__ = MagicMock(return_value=False)
+        cm.read = MagicMock(return_value=_nvd_response_with_cwes(cve_id, score, severity, cwes))
+        return cm
+
+    return side_effect
+
+
+def test_sync_nvd_stores_cwe_ids() -> None:
+    """sync_nvd should extract CWE IDs from NVD response and store in DB."""
+    conn = _make_conn()
+    _insert_vuln(conn, "CVE-2024-99010", severity="unknown")
+
+    with patch("urllib.request.urlopen", side_effect=_mock_urlopen_with_cwes(["CWE-79", "CWE-89"])):
+        with patch("time.sleep"):
+            count = sync_nvd(conn, url="https://services.nvd.nist.gov/rest/json/cves/2.0", max_entries=10)
+
+    assert count == 1
+    row = conn.execute("SELECT cwe_ids FROM vulns WHERE id = 'CVE-2024-99010'").fetchone()
+    cwes = set(row["cwe_ids"].split(","))
+    assert cwes == {"CWE-79", "CWE-89"}
+
+
+def test_sync_nvd_merges_cwe_ids_with_existing() -> None:
+    """NVD CWE IDs should be merged with existing ones from OSV/GHSA."""
+    conn = _make_conn()
+    _insert_vuln(conn, "CVE-2024-99011", severity="unknown", cwe_ids="CWE-79")
+
+    with patch("urllib.request.urlopen", side_effect=_mock_urlopen_with_cwes(["CWE-89"])):
+        with patch("time.sleep"):
+            sync_nvd(conn, url="https://services.nvd.nist.gov/rest/json/cves/2.0", max_entries=10)
+
+    row = conn.execute("SELECT cwe_ids FROM vulns WHERE id = 'CVE-2024-99011'").fetchone()
+    cwes = set(row["cwe_ids"].split(","))
+    assert cwes == {"CWE-79", "CWE-89"}
+
+
+def test_sync_nvd_preserves_existing_cwes_when_nvd_has_none() -> None:
+    """When NVD response has no CWE data, existing CWE IDs must not be lost."""
+    conn = _make_conn()
+    _insert_vuln(conn, "CVE-2024-99014", severity="unknown", cwe_ids="CWE-79")
+
+    with patch("urllib.request.urlopen", side_effect=_mock_urlopen_with_cwes([], score=7.5)):
+        with patch("time.sleep"):
+            sync_nvd(conn, url="https://services.nvd.nist.gov/rest/json/cves/2.0", max_entries=10)
+
+    row = conn.execute("SELECT cwe_ids FROM vulns WHERE id = 'CVE-2024-99014'").fetchone()
+    assert row["cwe_ids"] == "CWE-79"
+
+
+def test_sync_nvd_cwe_only_no_cvss() -> None:
+    """NVD response with CWEs but no CVSS metrics should still store CWEs."""
+    conn = _make_conn()
+    _insert_vuln(conn, "CVE-2024-99013", severity="unknown")
+
+    def urlopen_cwe_only(req, timeout=30):
+        from urllib.parse import parse_qs, urlparse
+
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        parsed = urlparse(url)
+        qs = parse_qs(parsed.query)
+        cve_id = qs.get("cveId", ["CVE-UNKNOWN"])[0]
+        payload = {
+            "vulnerabilities": [
+                {
+                    "cve": {
+                        "id": cve_id,
+                        "weaknesses": [{"source": "nvd@nist.gov", "description": [{"lang": "en", "value": "CWE-352"}]}],
+                        "metrics": {},
+                    }
+                }
+            ]
+        }
+        cm = MagicMock()
+        cm.__enter__ = MagicMock(return_value=cm)
+        cm.__exit__ = MagicMock(return_value=False)
+        cm.read = MagicMock(return_value=json.dumps(payload).encode())
+        return cm
+
+    with patch("urllib.request.urlopen", side_effect=urlopen_cwe_only):
+        with patch("time.sleep"):
+            count = sync_nvd(conn, url="https://services.nvd.nist.gov/rest/json/cves/2.0", max_entries=10)
+
+    assert count == 1
+    row = conn.execute("SELECT cwe_ids FROM vulns WHERE id = 'CVE-2024-99013'").fetchone()
+    assert row["cwe_ids"] == "CWE-352"
+
+
+# ── enrichment.py skip optimization ────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_enrich_skips_nvd_when_cwe_known() -> None:
+    """CVEs with existing CWE data should skip NVD API call (#689)."""
+    vuln_with_cwe = Vulnerability(
+        id="CVE-2024-1111",
+        summary="test",
+        severity=Severity.HIGH,
+        cwe_ids=["CWE-79"],
+    )
+    vuln_without_cwe = Vulnerability(
+        id="CVE-2024-2222",
+        summary="test",
+        severity=Severity.MEDIUM,
+    )
+
+    fetch_calls: list[str] = []
+
+    async def tracking_fetch(cve_id, client, api_key=None):
+        fetch_calls.append(cve_id)
+        return {
+            "weaknesses": [{"description": [{"value": "CWE-89"}]}],
+            "published": "2024-01-01",
+            "lastModified": "2024-06-01",
+        }
+
+    with (
+        patch("agent_bom.enrichment.fetch_nvd_data", side_effect=tracking_fetch),
+        patch("agent_bom.enrichment.fetch_epss_scores", return_value={}),
+        patch("agent_bom.enrichment.fetch_cisa_kev_catalog", return_value={}),
+        patch("agent_bom.enrichment._save_enrichment_cache"),
+    ):
+        await enrich_vulnerabilities(
+            [vuln_with_cwe, vuln_without_cwe],
+            enable_nvd=True,
+            enable_epss=False,
+            enable_kev=False,
+        )
+
+    assert "CVE-2024-2222" in fetch_calls
+    assert "CVE-2024-1111" not in fetch_calls
+
+
+@pytest.mark.asyncio
+async def test_enrich_skips_nvd_entirely_when_all_have_cwe() -> None:
+    """When all CVEs have CWE data, NVD should not be called at all."""
+    vulns = [
+        Vulnerability(id="CVE-2024-3333", summary="t", severity=Severity.HIGH, cwe_ids=["CWE-79"]),
+        Vulnerability(id="CVE-2024-4444", summary="t", severity=Severity.LOW, cwe_ids=["CWE-89"]),
+    ]
+
+    fetch_calls: list[str] = []
+
+    async def tracking_fetch(cve_id, client, api_key=None):
+        fetch_calls.append(cve_id)
+        return None
+
+    with (
+        patch("agent_bom.enrichment.fetch_nvd_data", side_effect=tracking_fetch),
+        patch("agent_bom.enrichment.fetch_epss_scores", return_value={}),
+        patch("agent_bom.enrichment.fetch_cisa_kev_catalog", return_value={}),
+        patch("agent_bom.enrichment._save_enrichment_cache"),
+    ):
+        await enrich_vulnerabilities(
+            vulns,
+            enable_nvd=True,
+            enable_epss=False,
+            enable_kev=False,
+        )
+
+    assert fetch_calls == []
+
+
+@pytest.mark.asyncio
+async def test_enrich_extracts_cwe_from_nvd_response() -> None:
+    """CWE IDs from NVD weaknesses should be added to the vulnerability."""
+    vuln = Vulnerability(id="CVE-2024-5555", summary="test", severity=Severity.HIGH)
+
+    async def mock_fetch(cve_id, client, api_key=None):
+        return {
+            "weaknesses": [
+                {"description": [{"value": "CWE-79"}, {"value": "CWE-89"}]},
+                {"description": [{"value": "NVD-CWE-noinfo"}]},
+            ],
+            "published": "2024-01-01",
+            "lastModified": "2024-06-01",
+        }
+
+    with (
+        patch("agent_bom.enrichment.fetch_nvd_data", side_effect=mock_fetch),
+        patch("agent_bom.enrichment.fetch_epss_scores", return_value={}),
+        patch("agent_bom.enrichment.fetch_cisa_kev_catalog", return_value={}),
+        patch("agent_bom.enrichment._save_enrichment_cache"),
+    ):
+        count = await enrich_vulnerabilities(
+            [vuln],
+            enable_nvd=True,
+            enable_epss=False,
+            enable_kev=False,
+        )
+
+    assert count == 1
+    assert "CWE-79" in vuln.cwe_ids
+    assert "CWE-89" in vuln.cwe_ids
+    assert "NVD-CWE-noinfo" not in vuln.cwe_ids

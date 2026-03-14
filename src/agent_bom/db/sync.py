@@ -793,7 +793,8 @@ def sync_nvd(
             time.sleep(sleep_seconds)
             continue
 
-        metrics = (cve_items[0].get("cve") or {}).get("metrics") or {}
+        cve_data = cve_items[0].get("cve") or {}
+        metrics = cve_data.get("metrics") or {}
         cvss_score: Optional[float] = None
         cvss_vector: Optional[str] = None
         severity: Optional[str] = None
@@ -816,17 +817,47 @@ def sync_nvd(
                 severity = raw_sev
             break
 
-        if cvss_score is None:
+        # Extract CWE IDs from NVD weaknesses
+        nvd_cwes: list[str] = []
+        for weakness in cve_data.get("weaknesses", []):
+            for desc in weakness.get("description", []):
+                cwe_val = desc.get("value", "")
+                if cwe_val.startswith("CWE-") and cwe_val not in nvd_cwes:
+                    nvd_cwes.append(cwe_val)
+
+        if cvss_score is None and not nvd_cwes:
             time.sleep(sleep_seconds)
             continue
 
-        if not severity:
+        if not severity and cvss_score is not None:
             severity = _cvss_to_severity(cvss_score)
 
-        conn.execute(
-            "UPDATE vulns SET cvss_score=?, cvss_vector=?, severity=? WHERE id=?",
-            (cvss_score, cvss_vector, severity, cve_id),
-        )
+        # Merge NVD CWE IDs with any existing ones (from OSV/GHSA)
+        if nvd_cwes:
+            existing_cwes_raw = conn.execute("SELECT cwe_ids FROM vulns WHERE id=?", (cve_id,)).fetchone()
+            existing_cwes = set((existing_cwes_raw[0] or "").split(",")) if existing_cwes_raw and existing_cwes_raw[0] else set()
+            existing_cwes.discard("")
+            merged = list(existing_cwes | set(nvd_cwes))
+            merged_str = ",".join(sorted(merged))
+        else:
+            merged_str = None  # no update needed
+
+        if cvss_score is not None:
+            if merged_str is not None:
+                conn.execute(
+                    "UPDATE vulns SET cvss_score=?, cvss_vector=?, severity=?, cwe_ids=? WHERE id=?",
+                    (cvss_score, cvss_vector, severity, merged_str, cve_id),
+                )
+            else:
+                conn.execute(
+                    "UPDATE vulns SET cvss_score=?, cvss_vector=?, severity=? WHERE id=?",
+                    (cvss_score, cvss_vector, severity, cve_id),
+                )
+        elif merged_str is not None:
+            conn.execute(
+                "UPDATE vulns SET cwe_ids=? WHERE id=?",
+                (merged_str, cve_id),
+            )
         enriched += 1
 
         if enriched % _BATCH_SIZE == 0:

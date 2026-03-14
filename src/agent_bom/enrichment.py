@@ -413,26 +413,43 @@ async def enrich_vulnerabilities(
             else:
                 console.print("  [green]✓[/green] No CVEs in CISA KEV catalog")
 
-        # Fetch NVD data — all CVEs with proper rate limiting
+        # Fetch NVD data — skip CVEs that already have CWE data (from OSV/GHSA)
+        # to reduce NVD rate limit pressure (#689)
         # Limits: 5 req/30s without API key, 50 req/30s with API key
         nvd_data: dict[str, dict] = {}
         if enable_nvd and cve_ids:
-            console.print(f"  [cyan]→[/cyan] Fetching NVD metadata for {len(cve_ids)} CVE(s)...")
-            batch_size = 50 if nvd_api_key else 5
-            sleep_secs = 1.0 if nvd_api_key else 6.0
+            # Build set of CVE IDs that already have CWE data
+            cves_with_cwes: set[str] = set()
+            for vuln in vulnerabilities:
+                if vuln.cwe_ids:
+                    if vuln.id.startswith("CVE-"):
+                        cves_with_cwes.add(vuln.id)
+                    for alias in vuln.aliases:
+                        if alias.startswith("CVE-"):
+                            cves_with_cwes.add(alias)
 
-            for batch_start in range(0, len(cve_ids), batch_size):
-                batch = cve_ids[batch_start : batch_start + batch_size]
-                tasks = [fetch_nvd_data(cve_id, client, nvd_api_key) for cve_id in batch]
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                for cve_id, result in zip(batch, results):
-                    if result and not isinstance(result, BaseException):
-                        nvd_data[cve_id] = result
-                if batch_start + batch_size < len(cve_ids):
-                    await asyncio.sleep(sleep_secs)
+            nvd_needed = [c for c in cve_ids if c not in cves_with_cwes]
+            skipped = len(cve_ids) - len(nvd_needed)
+            if skipped:
+                console.print(f"  [dim]Skipping NVD fetch for {skipped} CVE(s) with existing CWE data[/dim]")
+
+            if nvd_needed:
+                console.print(f"  [cyan]→[/cyan] Fetching NVD metadata for {len(nvd_needed)} CVE(s)...")
+                batch_size = 50 if nvd_api_key else 5
+                sleep_secs = 1.0 if nvd_api_key else 6.0
+
+                for batch_start in range(0, len(nvd_needed), batch_size):
+                    batch = nvd_needed[batch_start : batch_start + batch_size]
+                    tasks = [fetch_nvd_data(cve_id, client, nvd_api_key) for cve_id in batch]
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
+                    for cve_id, result in zip(batch, results):
+                        if result and not isinstance(result, BaseException):
+                            nvd_data[cve_id] = result
+                    if batch_start + batch_size < len(nvd_needed):
+                        await asyncio.sleep(sleep_secs)
 
             if nvd_data:
-                console.print(f"  [green]✓[/green] Retrieved NVD data for {len(nvd_data)}/{len(cve_ids)} CVE(s)")
+                console.print(f"  [green]✓[/green] Retrieved NVD data for {len(nvd_data)}/{len(nvd_needed)} CVE(s)")
             else:
                 console.print("  [yellow]⚠[/yellow] NVD data unavailable (API unreachable or rate-limited)")
 

@@ -20,7 +20,7 @@ BANNER = r"""
  / __ |/ _ `/ -_) _ \/ __/_  / / __  / / / / /|_/ /
 /_/ |_/\_, /\__/_//_/\__/ /_/ /____/\____/_/  /_/
       /___/
-  AI Bill of Materials for Agents & MCP Servers
+  Security scanner for AI infrastructure
 """
 
 SEVERITY_ORDER = {"critical": 4, "high": 3, "medium": 2, "low": 1, "none": 0, "unknown": -1}

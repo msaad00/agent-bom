@@ -1230,7 +1230,7 @@ def print_export_hint(report: AIBOMReport) -> None:
         lines.append("")
 
     # ── Identity ──
-    lines.append("[bold]AI Bill of Materials (AI-BOM)[/bold]")
+    lines.append("[bold]AI Infrastructure Security Report[/bold]")
     lines.append(
         f"[dim]{report.total_agents} agents · {report.total_servers} MCP servers · "
         f"{report.total_packages} packages · {report.total_vulnerabilities} vulnerabilities[/dim]"

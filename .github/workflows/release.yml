@@ -98,7 +98,7 @@ jobs:
             org.opencontainers.image.version=${{ steps.meta.outputs.version }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.title=agent-bom
-            org.opencontainers.image.description=AI Bill of Materials generator for AI agents and MCP servers
+            org.opencontainers.image.description=Security scanner for AI infrastructure — from agent to runtime
 
   self-scan-gate:
     name: Self-scan release gate

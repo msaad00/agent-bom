@@ -86,7 +86,7 @@
   <rect x="342" y="210" width="50" height="15" rx="4" fill="#3fb950"/>
   <text x="367" y="221" text-anchor="middle" class="badge">ACTION</text>
   <text x="402" y="221" class="mode-title" fill="#3fb950">GitHub Action</text>
-  <text x="342" y="238" class="mode-cmd">uses: msaad00/agent-bom@v0.70.7</text>
+  <text x="342" y="238" class="mode-cmd">uses: msaad00/agent-bom@v0.70.8</text>
   <text x="342" y="254" class="mode-feat">CI/CD gate: fail on severity threshold</text>
   <text x="342" y="268" class="mode-feat">PR comments with scan summary</text>
   <text x="342" y="282" class="mode-feat">SARIF upload to GitHub Code Scanning</text>

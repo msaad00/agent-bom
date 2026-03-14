@@ -122,6 +122,11 @@ GHSA_ECOSYSTEMS = (
     "nuget",
     "rubygems",
     "cargo",
+    "composer",
+    "swift",
+    "pub",
+    "erlang",
+    "actions",
 )
 
 # Batch insert size for performance

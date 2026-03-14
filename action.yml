@@ -1,5 +1,5 @@
 name: 'agent-bom Scan'
-description: 'Security scanner for AI infrastructure and supply chain — CVEs, blast radius, MCP runtime proxy.'
+description: 'Security scanner for AI infrastructure and supply chain — CVEs, blast radius, IaC misconfigs, AI inventory, compliance, runtime proxy.'
 author: 'agent-bom'
 
 branding:
@@ -87,6 +87,30 @@ inputs:
     description: 'Path to ignore/allowlist file (default: .agent-bom-ignore.yaml). Suppress known false positives by CVE ID, package, or finding type.'
     required: false
     default: ''
+  iac:
+    description: 'Path(s) to scan for IaC misconfigurations (Dockerfile, Kubernetes, Terraform, CloudFormation). Comma-separated.'
+    required: false
+    default: ''
+  ai-inventory:
+    description: 'Path(s) to scan for AI component inventory (SDK imports, model references, deprecated models). Comma-separated.'
+    required: false
+    default: ''
+  os-packages:
+    description: 'Enable OS-level package scanning (dpkg/rpm/apk).'
+    required: false
+    default: 'false'
+  baseline:
+    description: 'Path to a baseline report JSON for delta scanning (only report new findings).'
+    required: false
+    default: ''
+  skill-only:
+    description: 'Scan ONLY skill/instruction files (CLAUDE.md, .cursorrules, AGENTS.md); skip agent/package/CVE scanning.'
+    required: false
+    default: 'false'
+  gpu-scan:
+    description: 'Enable GPU infrastructure scanning (NVIDIA NIM/CUDA containers, DCGM).'
+    required: false
+    default: 'false'
 
 outputs:
   sarif-file:
@@ -154,6 +178,12 @@ runs:
         INPUT_REMEDIATE: ${{ inputs.remediate }}
         INPUT_BADGE: ${{ inputs.badge }}
         INPUT_IGNORE_FILE: ${{ inputs.ignore-file }}
+        INPUT_IAC: ${{ inputs.iac }}
+        INPUT_AI_INVENTORY: ${{ inputs.ai-inventory }}
+        INPUT_OS_PACKAGES: ${{ inputs.os-packages }}
+        INPUT_BASELINE: ${{ inputs.baseline }}
+        INPUT_SKILL_ONLY: ${{ inputs.skill-only }}
+        INPUT_GPU_SCAN: ${{ inputs.gpu-scan }}
       run: |
         # Determine output file path
         if [ -n "$INPUT_OUTPUT" ]; then
@@ -234,6 +264,42 @@ runs:
         # Ignore file
         if [ -n "$INPUT_IGNORE_FILE" ]; then
           ARGS="$ARGS --ignore-file $INPUT_IGNORE_FILE"
+        fi
+
+        # IaC scanning paths
+        if [ -n "$INPUT_IAC" ]; then
+          IFS=',' read -ra IAC_PATHS <<< "$INPUT_IAC"
+          for p in "${IAC_PATHS[@]}"; do
+            ARGS="$ARGS --iac $(echo "$p" | xargs)"
+          done
+        fi
+
+        # AI inventory scanning paths
+        if [ -n "$INPUT_AI_INVENTORY" ]; then
+          IFS=',' read -ra AI_PATHS <<< "$INPUT_AI_INVENTORY"
+          for p in "${AI_PATHS[@]}"; do
+            ARGS="$ARGS --ai-inventory $(echo "$p" | xargs)"
+          done
+        fi
+
+        # OS package scanning
+        if [ "$INPUT_OS_PACKAGES" = "true" ]; then
+          ARGS="$ARGS --os-packages"
+        fi
+
+        # Delta scanning baseline
+        if [ -n "$INPUT_BASELINE" ]; then
+          ARGS="$ARGS --baseline $INPUT_BASELINE --delta-mode new-only"
+        fi
+
+        # Skill-only mode
+        if [ "$INPUT_SKILL_ONLY" = "true" ]; then
+          ARGS="$ARGS --skill-only"
+        fi
+
+        # GPU infrastructure scanning
+        if [ "$INPUT_GPU_SCAN" = "true" ]; then
+          ARGS="$ARGS --gpu-scan"
         fi
 
         # Run scan, capture exit code

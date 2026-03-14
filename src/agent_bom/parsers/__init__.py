@@ -50,6 +50,9 @@ from agent_bom.parsers.python_parsers import (  # noqa: F401
     parse_uv_lock,
 )
 
+# Re-export Ruby parsers
+from agent_bom.parsers.ruby_parsers import parse_ruby_packages  # noqa: F401
+
 # Path to bundled MCP registry (parsers/ is a subdir of agent_bom/)
 _REGISTRY_PATH = Path(__file__).parent.parent / "mcp_registry.json"
 
@@ -358,6 +361,8 @@ _MANIFEST_FILES = frozenset(
         "build.gradle.kts",
         "gradle.lockfile",
         "packages.lock.json",
+        "Gemfile",
+        "Gemfile.lock",
     }
 )
 
@@ -431,6 +436,7 @@ def scan_project_directory(
             pkgs.extend(parse_maven_packages(directory))
             pkgs.extend(parse_gradle_packages(directory))
             pkgs.extend(parse_nuget_packages(directory))
+            pkgs.extend(parse_ruby_packages(directory))
 
             # Deduplicate within this directory
             seen: set[tuple] = set()

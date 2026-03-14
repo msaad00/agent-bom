@@ -36,7 +36,7 @@ agent-bom scan --enrich      # + NVD CVSS + EPSS + CISA KEV enrichment
 That's it. agent-bom discovers your MCP client configs (Claude Desktop, Cursor, Windsurf, and 20 more), resolves every server's dependencies, checks them against OSV/NVD/GHSA, and maps the blast radius — which agents, credentials, and tools are affected by each vulnerability.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.70.7.gif" alt="agent-bom demo — scan with progress bar, CVE check, AI component detection, blast radius, GPU scan, delta mode, runtime proxy, 32 MCP tools" width="900" />
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.70.8.gif" alt="agent-bom demo — scan with progress bar, CVE check, AI component detection, blast radius, GPU scan, delta mode, runtime proxy, 32 MCP tools" width="900" />
 </p>
 
 <p align="center">
@@ -55,7 +55,7 @@ That's it. agent-bom discovers your MCP client configs (Claude Desktop, Cursor, 
 Four capabilities, one tool:
 
 1. **Scan** — discover AI agents, MCP servers, cloud services, model files, GPU resources. Generate an AI BOM. Check every dependency against OSV + NVD + GHSA + EPSS + CISA KEV.
-2. **Analyze** — blast radius mapping (CVE → package → server → agent → credentials → tools), credential exposure, posture scoring, 11-framework compliance
+2. **Analyze** — blast radius mapping (CVE → package → server → agent → credentials → tools), credential exposure, posture scoring, 13-framework compliance
 3. **Enforce** — runtime MCP proxy with 7 behavioral detectors (rug pull, injection, credential leak, exfil, cloaking, rate limiting, vector DB injection), policy-as-code
 4. **Trust** — audit CLAUDE.md, .cursorrules, AGENTS.md, SKILL.md for malicious patterns, typosquatting, and Sigstore provenance
 
@@ -276,7 +276,7 @@ Auto-discovers 22 MCP client types: Claude Desktop, Claude Code, Cursor, Windsur
 | **Credential exposure** | Which secrets leak per vulnerability, per agent |
 | **Tool poisoning detection** | Description injection, capability combos, drift detection |
 | **Privilege detection** | root, shell access, privileged containers, per-tool permissions |
-| **11-framework compliance** | OWASP LLM + MCP + Agentic + AISVS v1.0, MITRE ATLAS, NIST AI RMF + CSF, EU AI Act, SOC 2, ISO 27001, CIS |
+| **13-framework compliance** | OWASP LLM + MCP + Agentic + AISVS v1.0, MITRE ATLAS, NIST AI RMF + CSF + 800-53, FedRAMP, EU AI Act, SOC 2, ISO 27001, CIS |
 | **MITRE ATT&CK mapping** | Dynamic technique lookup by tactic phase (no hardcoded T-codes) |
 | **Posture scorecard** | Letter grade (A-F), 6 dimensions, incident correlation (P1-P4) |
 | **Policy-as-code + Jira** | 17 conditions, CI gate, auto-create Jira tickets for violations |
@@ -361,7 +361,7 @@ agent-bom scan -o -                                # Pipe any format to stdout
 | Mode | Command | Best for |
 |------|---------|----------|
 | CLI | `agent-bom scan` | Local audit |
-| GitHub Action | `uses: msaad00/agent-bom@v0.70.7 | CI/CD + SARIF |
+| GitHub Action | `uses: msaad00/agent-bom@v0.70.8 | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated scans (linux/amd64, linux/arm64) |
 | REST API | `agent-bom api` | Dashboards, SIEM |
 | MCP Server | `agent-bom mcp-server` (32 tools) | Inside any MCP client |
@@ -391,7 +391,7 @@ agent-bom scan -o -                                # Pipe any format to stdout
 <summary><b>GitHub Action</b></summary>
 
 ```yaml
-- uses: msaad00/agent-bom@v0.70.7
+- uses: msaad00/agent-bom@v0.70.8
   with:
     severity-threshold: high
     upload-sarif: true
@@ -415,7 +415,7 @@ agent-bom api --api-key $SECRET --rate-limit 30   # http://127.0.0.1:8422/docs
 | `GET /v1/scan/{id}` | Results + status |
 | `GET /v1/scan/{id}/attack-flow` | Per-CVE blast radius graph |
 | `GET /v1/registry` | 427+ server registry |
-| `GET /v1/compliance` | Full 11-framework compliance posture |
+| `GET /v1/compliance` | Full 13-framework compliance posture |
 | `GET /v1/posture` | Enterprise posture scorecard (A-F) |
 | `GET /v1/posture/credentials` | Credential risk ranking |
 | `GET /v1/posture/incidents` | Incident correlation (P1-P4) |
@@ -502,7 +502,7 @@ rm -rf ~/.agent-bom                      # remove local data
 |----------|------|
 | PyPI | `pip install agent-bom` |
 | Docker | `docker run agentbom/agent-bom scan` |
-| GitHub Action | `uses: msaad00/agent-bom@v0.70.7 |
+| GitHub Action | `uses: msaad00/agent-bom@v0.70.8 |
 | Glama | [glama.ai/mcp/servers/@msaad00/agent-bom](https://glama.ai/mcp/servers/@msaad00/agent-bom) |
 | MCP Registry | [server.json](integrations/mcp-registry/server.json) |
 | ToolHive | [registry entry](integrations/toolhive/server.json) |

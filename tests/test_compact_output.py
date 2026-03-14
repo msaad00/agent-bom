@@ -113,7 +113,7 @@ def test_compact_summary_with_vulns():
     br = _blast(vuln, pkg, [agent], [server])
     report = AIBOMReport(agents=[agent], blast_radii=[br])
     output = _capture(print_compact_summary, report)
-    assert "CRITICAL" in output
+    assert "CRIT" in output  # Badge shows " CRIT " not "CRITICAL"
     assert "Vulns" in output
 
 
@@ -184,9 +184,13 @@ def test_compact_blast_radius_limit():
         radii.append(_blast(v, pkg, [agent], [server]))
     report = AIBOMReport(agents=[agent], blast_radii=radii)
     output = _capture(print_compact_blast_radius, report, limit=3)
-    assert "3 of 8" in output
-    assert "more" in output
-    assert "--verbose" in output
+    # Title rendered via Rule may have ANSI codes between characters — strip them
+    import re
+
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", output)
+    assert "3 of 8" in plain
+    assert "more" in plain
+    assert "--verbose" in plain
 
 
 def test_compact_blast_radius_empty():

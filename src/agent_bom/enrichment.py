@@ -392,33 +392,26 @@ async def enrich_vulnerabilities(
     enriched_count = 0
 
     async with create_client(timeout=30.0) as client:
-        # Fetch EPSS scores (batch)
-        epss_data = {}
-        if enable_epss:
-            console.print("  [cyan]→[/cyan] Fetching EPSS exploit prediction scores...")
-            epss_data = await fetch_epss_scores(cve_ids, client)
-            if epss_data:
-                console.print(f"  [green]✓[/green] Retrieved EPSS data for {len(epss_data)} CVE(s)")
-            else:
-                console.print("  [yellow]⚠[/yellow] EPSS data unavailable (API unreachable or no matches)")
+        # ── Parallel enrichment: EPSS + KEV + NVD run concurrently ──
+        # EPSS and KEV are single-call fetches. NVD needs CWE pre-check
+        # (local, no network) then batched fetch. All three are independent.
+        console.print("  [cyan]→[/cyan] Fetching EPSS + KEV + NVD in parallel...")
 
-        # Fetch CISA KEV catalog (cached)
-        kev_data = {}
-        if enable_kev:
-            console.print("  [cyan]→[/cyan] Checking CISA Known Exploited Vulnerabilities...")
-            kev_data = await fetch_cisa_kev_catalog(client)
-            kev_count = sum(1 for vuln in vulnerabilities if vuln.id in kev_data)
-            if kev_count:
-                console.print(f"  [red]⚠[/red] Found {kev_count} actively exploited CVE(s) in CISA KEV!")
-            else:
-                console.print("  [green]✓[/green] No CVEs in CISA KEV catalog")
+        async def _fetch_epss() -> dict:
+            if not enable_epss:
+                return {}
+            data = await fetch_epss_scores(cve_ids, client)
+            return data or {}
 
-        # Fetch NVD data — skip CVEs that already have CWE data (from OSV/GHSA)
-        # to reduce NVD rate limit pressure (#689)
-        # Limits: 5 req/30s without API key, 50 req/30s with API key
-        nvd_data: dict[str, dict] = {}
-        if enable_nvd and cve_ids:
-            # Build set of CVE IDs that already have CWE data
+        async def _fetch_kev() -> dict:
+            if not enable_kev:
+                return {}
+            return await fetch_cisa_kev_catalog(client)
+
+        async def _fetch_nvd() -> tuple[dict[str, dict], int, int]:
+            if not enable_nvd or not cve_ids:
+                return {}, 0, 0
+            # Build set of CVE IDs that already have CWE data (local check)
             cves_with_cwes: set[str] = set()
             for vuln in vulnerabilities:
                 if vuln.cwe_ids:
@@ -430,28 +423,47 @@ async def enrich_vulnerabilities(
 
             nvd_needed = [c for c in cve_ids if c not in cves_with_cwes]
             skipped = len(cve_ids) - len(nvd_needed)
-            if skipped:
-                console.print(f"  [dim]Skipping NVD fetch for {skipped} CVE(s) with existing CWE data[/dim]")
+            if not nvd_needed:
+                return {}, skipped, 0
 
-            if nvd_needed:
-                console.print(f"  [cyan]→[/cyan] Fetching NVD metadata for {len(nvd_needed)} CVE(s)...")
-                batch_size = 50 if nvd_api_key else 5
-                sleep_secs = 1.0 if nvd_api_key else 6.0
+            batch_size = 50 if nvd_api_key else 5
+            sleep_secs = 1.0 if nvd_api_key else 6.0
+            result_data: dict[str, dict] = {}
 
-                for batch_start in range(0, len(nvd_needed), batch_size):
-                    batch = nvd_needed[batch_start : batch_start + batch_size]
-                    tasks = [fetch_nvd_data(cve_id, client, nvd_api_key) for cve_id in batch]
-                    results = await asyncio.gather(*tasks, return_exceptions=True)
-                    for cve_id, result in zip(batch, results):
-                        if result and not isinstance(result, BaseException):
-                            nvd_data[cve_id] = result
-                    if batch_start + batch_size < len(nvd_needed):
-                        await asyncio.sleep(sleep_secs)
+            for batch_start in range(0, len(nvd_needed), batch_size):
+                batch = nvd_needed[batch_start : batch_start + batch_size]
+                tasks = [fetch_nvd_data(cve_id, client, nvd_api_key) for cve_id in batch]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                for cve_id, result in zip(batch, results):
+                    if result and not isinstance(result, BaseException):
+                        result_data[cve_id] = result
+                if batch_start + batch_size < len(nvd_needed):
+                    await asyncio.sleep(sleep_secs)
 
-            if nvd_data:
-                console.print(f"  [green]✓[/green] Retrieved NVD data for {len(nvd_data)}/{len(nvd_needed)} CVE(s)")
-            else:
-                console.print("  [yellow]⚠[/yellow] NVD data unavailable (API unreachable or rate-limited)")
+            return result_data, skipped, len(nvd_needed)
+
+        # Run all three concurrently
+        epss_data, kev_data, nvd_result = await asyncio.gather(_fetch_epss(), _fetch_kev(), _fetch_nvd())
+        nvd_data, nvd_skipped, nvd_total = nvd_result
+
+        # Report results
+        if epss_data:
+            console.print(f"  [green]✓[/green] EPSS: {len(epss_data)} CVE(s)")
+        elif enable_epss:
+            console.print("  [yellow]⚠[/yellow] EPSS data unavailable")
+
+        kev_count = sum(1 for vuln in vulnerabilities if vuln.id in kev_data) if kev_data else 0
+        if kev_count:
+            console.print(f"  [red]⚠[/red] KEV: {kev_count} actively exploited CVE(s)!")
+        elif enable_kev:
+            console.print("  [green]✓[/green] KEV: no actively exploited CVEs")
+
+        if nvd_skipped:
+            console.print(f"  [dim]NVD: skipped {nvd_skipped} CVE(s) with existing CWE data[/dim]")
+        if nvd_data:
+            console.print(f"  [green]✓[/green] NVD: {len(nvd_data)}/{nvd_total} CVE(s)")
+        elif enable_nvd and nvd_total:
+            console.print("  [yellow]⚠[/yellow] NVD data unavailable")
 
         # Enrich each vulnerability — match by primary ID or CVE aliases
         for vuln in vulnerabilities:

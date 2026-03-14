@@ -114,7 +114,7 @@
   <!-- ═══ SUMMARY BAR ═══ -->
   <rect x="20" y="236" width="920" height="32" rx="8" fill="#18181b" stroke="#27272a" stroke-width="1"/>
 
-  <text x="80" y="258" text-anchor="middle" class="summary-num" fill="#3b82f6">10</text>
+  <text x="80" y="258" text-anchor="middle" class="summary-num" fill="#3b82f6">13</text>
   <text x="126" y="258" class="summary-label">frameworks</text>
 
   <rect x="186" y="244" width="1" height="16" fill="#27272a"/>

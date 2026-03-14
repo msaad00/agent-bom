@@ -606,6 +606,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full diagrams: data flow pi
 - [ ] Workflow engine scanning (n8n, Zapier, Make)
 
 **Ecosystem coverage**
+- [x] Ruby (Gemfile.lock + Gemfile) — v0.70.8
 - [ ] Maven / Go ecosystem — test coverage thin (PyPI, npm, cargo, pip best covered)
 - [x] Windows platform docs + Docker Desktop guidance ([WINDOWS_CONTAINERS.md](docs/WINDOWS_CONTAINERS.md))
 - [ ] Windows-native container images (nanoserver/servercore)

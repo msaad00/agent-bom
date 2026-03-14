@@ -78,6 +78,7 @@ def scan(
     dry_run: bool,
     offline: bool,
     no_scan: bool,
+    blast_radius_depth: int,
     no_tree: bool,
     transitive: bool,
     max_depth: int,
@@ -999,7 +1000,12 @@ def scan(
                     phase="local DB + OSV + GHSA",
                 )
                 progress.update(scan_task, completed=1, phase="querying vulnerability databases...")
-                blast_radii = scan_agents_sync(agents, enable_enrichment=enrich, nvd_api_key=nvd_api_key)
+                blast_radii = scan_agents_sync(
+                    agents,
+                    enable_enrichment=enrich,
+                    nvd_api_key=nvd_api_key,
+                    blast_radius_depth=blast_radius_depth,
+                )
                 progress.update(scan_task, completed=3, phase="building blast radius analysis")
                 progress.update(scan_task, completed=4, phase="done")
             if blast_radii:

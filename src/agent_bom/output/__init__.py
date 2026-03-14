@@ -1392,7 +1392,11 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10) -> None:
         fix = f"[green]{br.vulnerability.fixed_version}[/green]" if br.vulnerability.fixed_version else "[red dim]—[/red dim]"
         n_agents = len(br.affected_agents)
         n_creds = len(br.exposed_credentials)
+        n_transitive = len(getattr(br, "transitive_agents", []))
         blast = f"{n_agents}A"
+        if n_transitive:
+            hop = getattr(br, "hop_depth", 1)
+            blast += f"+[cyan]{n_transitive}T({hop}h)[/cyan]"
         if n_creds:
             blast += f"/[yellow]{n_creds}C[/yellow]"
         kev = " [red]KEV[/red]" if br.vulnerability.is_kev else ""

@@ -214,6 +214,18 @@ def scan_control_options(fn):
                 help="Scan only against local DB — skip all network calls. Use after 'db update'.",
             ),
             click.option("--no-scan", is_flag=True, help="Skip vulnerability scanning (inventory only)"),
+            click.option(
+                "--blast-radius-depth",
+                type=int,
+                default=1,
+                show_default=True,
+                metavar="N",
+                help=(
+                    "Multi-hop blast radius depth (1-5). Traces agent-to-agent delegation chains "
+                    "through shared MCP servers. Higher values reveal transitive risk but increase "
+                    "analysis time. Default 1 = direct impact only."
+                ),
+            ),
             click.option("--no-tree", is_flag=True, help="Skip dependency tree output"),
             click.option("--transitive", is_flag=True, help="Resolve transitive dependencies for npx/uvx packages"),
             click.option("--max-depth", type=int, default=3, help="Maximum depth for transitive dependency resolution"),

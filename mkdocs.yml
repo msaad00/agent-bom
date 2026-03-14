@@ -35,6 +35,17 @@ theme:
 
 plugins:
   - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_source: true
+            show_root_heading: true
+            heading_level: 2
+            members_order: source
+            show_signature_annotations: true
+            separate_signature: true
 
 markdown_extensions:
   - admonition
@@ -90,6 +101,12 @@ nav:
       - MCP Tools: reference/mcp-tools.md
       - CLI Commands: reference/cli.md
       - Configuration: reference/configuration.md
+  - API Reference:
+      - Models: api/models.md
+      - Output: api/output.md
+      - Scanners: api/scanners.md
+      - Parsers: api/parsers.md
+      - Finding: api/finding.md
   - Skills:
       - Overview: skills/index.md
   - Contributing: contributing.md

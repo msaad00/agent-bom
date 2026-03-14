@@ -117,6 +117,12 @@ jobs:
       - name: Install agent-bom (from source)
         run: uv sync --extra dev
 
+      - name: npm audit (ui/ deps) — block release on high/critical
+        run: |
+          cd ui
+          npm ci --ignore-scripts
+          npm audit --audit-level=high
+
       - name: Self dep scan — block release on critical CVE
         run: |
           mkdir -p sarif

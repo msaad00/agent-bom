@@ -112,6 +112,10 @@ cloud = [
     "agent-bom[mlflow]",
     "agent-bom[openai]",
 ]
+docs = [
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.24",
+]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",

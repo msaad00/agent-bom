@@ -81,14 +81,16 @@ metadata:
       - linux
       - windows
     install_verification: >-
-      Before running with sensitive data: (1) pip install agent-bom;
-      (2) agent-bom verify agent-bom; (3) review security.py#L159
-      (sanitize_env_vars) and discovery/__init__.py to confirm redaction
-      behavior.
+      VERIFY BEFORE running with any config files: (1) pip install agent-bom;
+      (2) Review sanitize_env_vars() at security.py#L159 — confirms env value
+      redaction; (3) Review discovery/__init__.py — confirms only structural
+      config data extracted; (4) agent-bom verify agent-bom — Sigstore
+      provenance check; (5) Only then run agent-bom scan
     credential_handling: >-
-      MCP config files are parsed as JSON/TOML/YAML. Only server names,
-      commands, args, and URLs are extracted. Env var values are replaced with
-      ***REDACTED*** by sanitize_env_vars() in the installed code. Verify at
+      Env var values are NEVER extracted from config files. sanitize_env_vars()
+      replaces all env values with ***REDACTED*** BEFORE any config data is
+      processed or stored. Only structural data (server names, commands, URLs)
+      passes through. Source:
       https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py#L159
     data_flow: >-
       Scanning is local-first. What leaves the machine: (1) public package names
@@ -127,8 +129,6 @@ metadata:
       - "~/.continue/config.json"
       # Zed
       - "~/.config/zed/settings.json"
-      # OpenClaw
-      - "~/.openclaw/openclaw.json"
       # Roo Code
       - "~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json"
       # Amazon Q
@@ -138,6 +138,18 @@ metadata:
       - "~/.config/github-copilot/intellij/mcp.json"
       # Junie
       - "~/.junie/mcp/mcp.json"
+      # GitHub Copilot CLI
+      - "~/.copilot/mcp-config.json"
+      # Tabnine
+      - "~/.tabnine/mcp_servers.json"
+      # Cortex Code (Snowflake)
+      - "~/.snowflake/cortex/mcp.json"
+      - "~/.snowflake/cortex/settings.json"
+      - "~/.snowflake/cortex/permissions.json"
+      - "~/.snowflake/cortex/hooks.json"
+      # Snowflake CLI
+      - "~/.snowflake/connections.toml"
+      - "~/.snowflake/config.toml"
       # Project-level configs
       - ".mcp.json"
       - ".vscode/mcp.json"
@@ -189,7 +201,7 @@ metadata:
 
 # agent-bom — AI Agent Infrastructure Security Scanner
 
-Discovers MCP clients and servers across 20+ AI tools, scans for CVEs, maps
+Discovers MCP clients and servers across 22 AI tools, scans for CVEs, maps
 blast radius, runs cloud CIS benchmarks, checks OWASP/NIST/MITRE compliance,
 generates SBOMs, and assesses AI infrastructure against AISVS v1.0 and MAESTRO
 framework layers.
@@ -333,27 +345,34 @@ skill_trust(skill_content="<paste SKILL.md content>")
 
 ## Privacy & Data Handling
 
-This skill installs agent-bom from PyPI. The redaction behavior described here
-is implemented in the installed package — **verify before running with
-sensitive data**:
+This skill installs agent-bom from PyPI. **Verify the redaction behavior
+before running with any config files:**
 
 ```bash
-# 1. Verify package integrity (Sigstore)
-agent-bom verify agent-bom
+# Step 1: Install
+pip install agent-bom
 
-# 2. Review the redaction code directly
-# security.py L159: sanitize_env_vars() — replaces env values with ***REDACTED***
+# Step 2: Review redaction logic BEFORE scanning
+# sanitize_env_vars() replaces ALL env var values with ***REDACTED***
+# BEFORE any config data is processed or stored:
 # https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py#L159
 
-# 3. Review config parsing
+# Step 3: Review config parsing — only structural data extracted:
 # https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/discovery/__init__.py
+
+# Step 4: Verify package provenance (Sigstore)
+agent-bom verify agent-bom
+
+# Step 5: Only then run scans
+agent-bom scan
 ```
 
-Discovery reads local MCP client config files. Only server names, commands,
-args, and URLs are extracted. Env var values are replaced with `***REDACTED***`
-by `sanitize_env_vars()` in the installed code. Only public package names and
-CVE IDs are sent to vulnerability databases. Cloud CIS checks use locally
-configured credentials and call only the cloud provider's own APIs.
+**What is extracted**: Server names, commands, args, and URLs from MCP client
+config files across 22 AI tools. **What is NOT extracted**: Env var values are
+replaced with `***REDACTED***` by `sanitize_env_vars()` before any processing.
+Only public package names and CVE IDs are sent to vulnerability databases.
+Cloud CIS checks use locally configured credentials and call only the cloud
+provider's own APIs.
 
 ## Verification
 

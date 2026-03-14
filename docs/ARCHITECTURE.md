@@ -24,7 +24,7 @@ graph TB
         Parser["Package Parser"]
         Scanner["Vulnerability Scanner\nOSV + NVD + EPSS + KEV"]
         Blast["Blast Radius Analyzer"]
-        Compliance["Compliance Tagger\n11 Frameworks"]
+        Compliance["Compliance Tagger\n13 Frameworks"]
         Assets["Asset Tracker\nfirst_seen / resolved / MTTR"]
         Posture["Posture Scorer"]
     end

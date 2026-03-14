@@ -138,7 +138,7 @@ An agent operating autonomously can be steered into a multi-step exfiltration se
 │  2. PROXY         Sits between client and server, intercepts     │
 │     (agent-bom proxy) every JSON-RPC message, enforces policy    │
 │                                                                  │
-│  3. MCP SERVER    Exposes 30 scan/governance tools to any agent  │
+│  3. MCP SERVER    Exposes 32 scan/governance tools to any agent  │
 │     (agent-bom mcp-server)  — scan, check, registry, compliance  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -224,7 +224,7 @@ blast_radius        — blast radius for a specific CVE
 ### CI/CD (GitHub Action)
 
 ```yaml
-- uses: msaad00/agent-bom@v0.70.4
+- uses: msaad00/agent-bom@v0.70.8
   with:
     format: sarif
     upload-sarif: 'true'

@@ -122,9 +122,9 @@ AI_PACKAGES constant covers 40+ GPU/ML packages including torch, tensorflow, vll
 
 ### MCP server (`mcp_server.py`)
 
-- 30 `@mcp.tool` decorators registered
-- 30 entries in `_SERVER_CARD_TOOLS` (server card metadata)
-- Meta-test (`test_mcp_server.py:66`) asserts `len(tools) == 30` — passes
+- 32 `@mcp.tool` decorators registered
+- 32 entries in `_SERVER_CARD_TOOLS` (server card metadata)
+- Meta-test (`test_mcp_server.py:66`) asserts `len(tools) == 32` — passes
 - **Fixed**: `cis_benchmark` tool description updated to include Azure, GCP, and Databricks
 
 ### API layer (`api/`)

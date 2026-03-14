@@ -32,7 +32,7 @@ graph LR
 | Protection | `src/agent_bom/runtime/` | 7-detector anomaly engine |
 | Enforcement | `src/agent_bom/enforcement.py` | Tool poisoning detection |
 | Security | `src/agent_bom/security.py` | Path validation, credential redaction |
-| MCP Server | `src/agent_bom/mcp_server.py` | 30-tool FastMCP server |
+| MCP Server | `src/agent_bom/mcp_server.py` | 32-tool FastMCP server |
 | API | `src/agent_bom/api/` | REST API (FastAPI) |
 | Output | `src/agent_bom/output/` | HTML, Prometheus, Mermaid, SVG, STIX |
 

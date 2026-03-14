@@ -350,7 +350,9 @@ def resolve_cargo_version(
 
     encoded_name = urllib.parse.quote(crate_name, safe="")
     api_url = f"{crates_io_url}/api/v1/crates/{encoded_name}"
-    user_agent = "agent-bom/0.70.7 (github.com/msaad00/agent-bom)"
+    from agent_bom import __version__
+
+    user_agent = f"agent-bom/{__version__} (github.com/msaad00/agent-bom)"
 
     try:
         req = urllib.request.Request(api_url, headers={"User-Agent": user_agent})  # noqa: S310  # nosec B310 — HTTPS enforced above

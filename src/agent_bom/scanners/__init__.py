@@ -66,6 +66,10 @@ ECOSYSTEM_MAP = {
     "maven": "Maven",
     "nuget": "NuGet",
     "rubygems": "RubyGems",
+    "composer": "Packagist",
+    "swift": "SwiftURL",
+    "pub": "Pub",
+    "hex": "Hex",
     # conda packages are pip-installable and tracked under PyPI in OSV
     "conda": "PyPI",
     # OS package ecosystems (native dpkg/rpm/apk parsers in filesystem.py)

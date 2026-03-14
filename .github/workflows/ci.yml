@@ -86,7 +86,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.11', '3.12', '3.13']
+        python-version: ['3.11', '3.13', '3.14']
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -297,8 +297,10 @@ jobs:
           path: dist/
 
   # 5. Docker Build + Scan (multi-arch)
+  # Runs on main push only — Docker builds are slow and not needed per-PR
   docker:
     name: Docker (multi-arch)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -339,8 +341,10 @@ jobs:
           exit-code: '0'
 
   # 6. agent-bom Self-Scan (dogfooding with test SBOM)
+  # Runs on main push only — not needed on every PR
   agent-bom-scan:
     name: agent-bom Self-Scan
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     needs: [test]
     permissions:

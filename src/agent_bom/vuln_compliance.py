@@ -89,6 +89,28 @@ def tag_vulnerability(vuln: Vulnerability, package: Package) -> dict[str, list[s
                     nist_csf.append(t)
     tags["nist_csf"] = sorted(set(nist_csf))
 
+    # ── NIST 800-53 Rev 5 ───────────────────────────────────────────────
+    nist_53: list[str] = ["CM-8", "RA-5", "SI-2", "SR-3"]
+    if is_high:
+        nist_53.extend(["IR-5", "RA-7", "SI-4"])
+    if is_ai:
+        nist_53.extend(["SR-11", "SR-4"])
+    if is_kev:
+        nist_53.extend(["IR-6", "SI-5"])
+    if has_fix:
+        nist_53.append("CM-6")
+    if cwe_ids:
+        for cwe in cwe_ids:
+            for t in CWE_COMPLIANCE_MAP.get(cwe, {}).get("nist_800_53", []):
+                if t not in nist_53:
+                    nist_53.append(t)
+    tags["nist_800_53"] = sorted(set(nist_53))
+
+    # ── FedRAMP (Moderate baseline) ──────────────────────────────────
+    from agent_bom.fedramp import FEDRAMP_MODERATE
+
+    tags["fedramp"] = sorted(f"FedRAMP-{t}" for t in tags["nist_800_53"] if t in FEDRAMP_MODERATE)
+
     # ── CIS Controls v8 ────────────────────────────────────────────────
     cis: list[str] = ["CIS-02.1", "CIS-07.1", "CIS-07.5"]
     if is_high:

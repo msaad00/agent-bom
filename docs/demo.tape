@@ -1,8 +1,10 @@
-# agent-bom v0.70.7 demo — run with: vhs docs/demo.tape
+# agent-bom demo — run with: vhs docs/demo.tape
 #
 # Install vhs:  brew install vhs
-# Prereqs:
-#   pip install agent-bom==0.70.7
+# Prereqs (run in a CLEAN venv to avoid ModuleNotFoundError):
+#   python -m venv /tmp/abom-demo && source /tmp/abom-demo/bin/activate
+#   pip install agent-bom
+#   Verify: agent-bom --version  (must show no errors)
 #   Stage scans before recording:
 #     agent-bom scan --demo -f json -o /tmp/baseline.json
 #     agent-bom scan --demo -f json -o /tmp/current.json
@@ -11,13 +13,17 @@
 #     --label com.nvidia.cuda.version=12.4.0 \
 #     --label com.nvidia.nim.model=meta/llama-3.1-8b-instruct \
 #     node:20-slim sleep 3600
+#
+# IMPORTANT: Run every command manually BEFORE recording to verify success.
+# A demo with errors is worse than no demo.
 
-Output docs/images/demo-v0.70.7.gif
+# Output filename — update README.md img src to match after recording
+Output docs/images/demo-v0.70.8.gif
 
 Set Shell "bash"
-Set FontSize 13
-Set Width 1200
-Set Height 700
+Set FontSize 15
+Set Width 1400
+Set Height 800
 Set Theme "Dracula"
 Set Padding 24
 Set TypingSpeed 40ms
@@ -29,7 +35,7 @@ Enter
 Sleep 3s
 
 # ── 1. CLI overview ───────────────────────────────────────────────────────────
-Type "agent-bom --help"
+Type "agent-bom scan --help | head -30"
 Enter
 Sleep 5s
 
@@ -53,7 +59,7 @@ Enter
 Sleep 20s
 
 # ── 5. AI component detection — SDK imports, shadow AI, deprecated models ─────
-Type "agent-bom scan --demo --ai-inventory"
+Type "agent-bom scan --demo --ai-inventory ."
 Enter
 Sleep 14s
 
@@ -72,16 +78,12 @@ Type "agent-bom scan --gpu-scan -q"
 Enter
 Sleep 18s
 
-# ── 9. Output formats — SARIF, CycloneDX SBOM, HTML ─────────────────────────
-Type "agent-bom scan --demo -f sarif -o /tmp/results.sarif -q && echo 'SARIF written → GitHub/GitLab Security tab'"
+# ── 9. Output formats — SARIF, CycloneDX SBOM ─────────────────────────────
+Type "agent-bom scan --demo -f sarif -o /tmp/results.sarif -q && echo 'SARIF written'"
 Enter
-Sleep 10s
+Sleep 8s
 
-Type "agent-bom scan --demo -f cyclonedx -o /tmp/bom.cdx.json -q && echo 'CycloneDX SBOM written → compliance / procurement'"
-Enter
-Sleep 10s
-
-Type "agent-bom scan --demo -f html -o /tmp/report.html -q && echo 'HTML report written'"
+Type "agent-bom scan --demo -f cyclonedx -o /tmp/bom.cdx.json -q && echo 'CycloneDX SBOM written'"
 Enter
 Sleep 8s
 
@@ -94,10 +96,10 @@ Sleep 4s
 Type "echo '32 MCP tools  |  22 MCP client types  |  12 cloud providers  |  7 runtime detectors'"
 Enter
 Sleep 2s
-Type "echo '11 compliance frameworks  |  delta scanning  |  local SQLite DB  |  Trivy/Grype ingestion'"
+Type "echo '13 compliance frameworks  |  delta scanning  |  local SQLite DB  |  Trivy/Grype ingestion'"
 Enter
 Sleep 2s
-Type "echo 'AI component detection  |  progress bar + timing  |  DeepSeek + GlassWorm defense'"
+Type "echo 'IaC scanning (Dockerfile + K8s + Terraform + CloudFormation)  |  OS package scanning'"
 Enter
 Sleep 3s
 

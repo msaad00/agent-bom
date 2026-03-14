@@ -14,7 +14,7 @@ import click
 
 from agent_bom import __version__
 from agent_bom.cli._common import (
-    BANNER,
+    BANNER,  # noqa: F401 — re-export for backward compatibility
     SEVERITY_ORDER,
     _build_agents_from_inventory,
     _check_for_update_bg,

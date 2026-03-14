@@ -10,7 +10,6 @@ import click
 from rich.console import Console
 
 from agent_bom import __version__
-from agent_bom.cli._common import BANNER
 
 
 def _parse_package_spec(
@@ -199,8 +198,6 @@ def verify(package_spec: Optional[str], ecosystem: Optional[str], as_json: bool,
     from agent_bom.models import Package
 
     console = Console()
-    if not quiet:
-        console.print(BANNER, style="bold blue")
 
     # Determine target
     if package_spec is None:

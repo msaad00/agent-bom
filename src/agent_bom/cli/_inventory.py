@@ -10,7 +10,7 @@ from typing import Optional
 import click
 from rich.console import Console
 
-from agent_bom.cli._common import BANNER, _make_console
+from agent_bom.cli._common import _make_console
 from agent_bom.discovery import discover_all
 from agent_bom.models import AIBOMReport
 from agent_bom.output import print_agent_tree, print_summary
@@ -30,8 +30,6 @@ def inventory(config: Optional[str], project: Optional[str], transitive: bool, m
     import agent_bom.output as _out
 
     _out.console = con
-
-    con.print(BANNER, style="bold blue")
 
     if config:
         config_path = Path(config)
@@ -89,7 +87,6 @@ def validate(inventory_file: str):
       1  Invalid — schema violations found
     """
     console = Console()
-    console.print(BANNER, style="bold blue")
 
     try:
         import jsonschema
@@ -182,7 +179,6 @@ def where(as_json: bool):
         return
 
     console = Console()
-    console.print(BANNER, style="bold blue")
     console.print("\n[bold]MCP Client Configuration Locations[/bold]\n")
 
     total_paths = 0

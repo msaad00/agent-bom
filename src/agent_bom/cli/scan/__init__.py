@@ -16,7 +16,6 @@ from typing import Any, Optional
 import click
 
 from agent_bom.cli._common import (
-    BANNER,
     SEVERITY_ORDER,
     _build_agents_from_inventory,
     _make_console,
@@ -383,8 +382,6 @@ def scan(
     import agent_bom.output as _out
 
     _out.console = con
-
-    con.print(BANNER, style="bold blue")
 
     if demo:
         con.print("\n[bold yellow]Demo mode[/bold yellow] — scanning bundled inventory with known-vulnerable packages.\n")

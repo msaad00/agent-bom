@@ -10,7 +10,6 @@ from typing import Optional
 import click
 from rich.console import Console
 
-from agent_bom.cli._common import BANNER
 from agent_bom.output import print_diff
 
 logger = logging.getLogger(__name__)
@@ -23,7 +22,6 @@ def history_cmd(limit: int):
     from agent_bom.history import list_reports, load_report
 
     console = Console()
-    console.print(BANNER, style="bold blue")
 
     reports = list_reports()
     if not reports:

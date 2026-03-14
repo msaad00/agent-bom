@@ -1404,13 +1404,23 @@ def print_compact_agents(report: AIBOMReport) -> None:
 
 
 def print_compact_blast_radius(report: AIBOMReport, limit: int = 10) -> None:
-    """Show top N blast radius findings in a compact table."""
+    """Show top N blast radius findings in a compact table.
+
+    Default mode shows only critical/high findings. Use --verbose for all.
+    """
     if not report.blast_radii:
         return
 
+    # Filter: show critical/high by default, count the rest
+    priority = [br for br in report.blast_radii if br.vulnerability.severity in (Severity.CRITICAL, Severity.HIGH)]
+    rest_count = len(report.blast_radii) - len(priority)
+    # If no critical/high, fall back to showing all
+    display_list = priority if priority else report.blast_radii
+    shown = display_list[:limit]
+
     console.print()
-    total = len(report.blast_radii)
-    title = f"Top Findings ({min(limit, total)} of {total})" if total > limit else f"Findings ({total})"
+    total = len(display_list)
+    title = f"Top Findings ({min(limit, total)} of {total})" if total > limit else f"Findings ({len(shown)})"
     console.print(Rule(f"[bold]{title}[/bold]", style="dim"))
 
     table = Table(expand=True, padding=(0, 1))
@@ -1423,7 +1433,7 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10) -> None:
     table.add_column("Frameworks", ratio=2)
     table.add_column("Fix", ratio=1)
 
-    for br in report.blast_radii[:limit]:
+    for br in shown:
         fix = f"[green]{br.vulnerability.fixed_version}[/green]" if br.vulnerability.fixed_version else "[red dim]—[/red dim]"
         n_agents = len(br.affected_agents)
         n_creds = len(br.exposed_credentials)
@@ -1483,8 +1493,14 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10) -> None:
         )
 
     console.print(table)
-    if total > limit:
-        console.print(f"  [dim]... {total - limit} more (use --verbose for full list)[/dim]")
+    overflow = total - len(shown)
+    if overflow > 0 or rest_count > 0:
+        parts = []
+        if overflow > 0:
+            parts.append(f"{overflow} more critical/high")
+        if rest_count > 0:
+            parts.append(f"{rest_count} medium/low hidden")
+        console.print(f"  [dim]+ {' · '.join(parts)} — use --verbose for full list[/dim]")
 
     # Status bar
     console.print()

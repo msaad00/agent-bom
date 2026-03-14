@@ -7,8 +7,6 @@ import sys
 import click
 from rich.console import Console
 
-from agent_bom.cli._common import BANNER
-
 
 @click.command("proxy")
 @click.option("--policy", type=click.Path(exists=True), help="Policy file for runtime enforcement")
@@ -350,7 +348,6 @@ def watch_cmd(webhook, alert_log, interval):
     )
 
     console = Console()
-    console.print(BANNER, style="bold blue")
 
     sinks = [ConsoleAlertSink()]
     if webhook:

@@ -38,7 +38,7 @@
   <!-- Config files -->
   <rect x="34" y="90" width="232" height="74" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
   <text x="150" y="106" text-anchor="middle" class="label" fill="#58a6ff">MCP Config Files</text>
-  <text x="150" y="120" text-anchor="middle" class="sub">18 client paths auto-discovered</text>
+  <text x="150" y="120" text-anchor="middle" class="sub">22 client paths auto-discovered</text>
   <text x="42" y="136" class="data" fill="#3fb950">EXTRACTED:</text>
   <text x="120" y="136" class="data" fill="#8b949e">server names, package names,</text>
   <text x="42" y="150" class="data" fill="#8b949e">env var NAMES, tool lists</text>

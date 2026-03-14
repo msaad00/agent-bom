@@ -363,9 +363,14 @@ Resources:
 
 ---
 
-## ❄️ Snowflake Deployment
+## ❄️ Snowflake Integration
 
-### Architecture
+> **Note**: agent-bom integrates with Snowflake for **scanning Cortex Agents,
+> CoCo skills, and Snowpark resources** — not as a deployed Native App.
+> The architecture below is a proposed reference pattern for enterprise
+> teams that want to run agent-bom inside Snowflake infrastructure.
+
+### Reference Architecture
 
 ```
               Snowflake Account

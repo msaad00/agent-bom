@@ -311,13 +311,25 @@ class TestMaliciousTags:
 
 class TestAllFrameworks:
     def test_all_10_frameworks_populated(self):
-        """Every CVE should have tags from all 10 frameworks (some may be empty for OWASP LLM)."""
+        """Every CVE should have tags from all 12 frameworks (some may be empty for OWASP LLM)."""
         tags = tag_vulnerability(
             _vuln(severity=Severity.CRITICAL, is_kev=True, fixed_version="2.0"),
             _pkg(name="torch"),
         )
         # These always have at least base tags
-        for fw in ["atlas", "nist_ai_rmf", "nist_csf", "cis", "iso_27001", "soc2", "eu_ai_act", "owasp_mcp", "owasp_agentic"]:
+        for fw in [
+            "atlas",
+            "nist_ai_rmf",
+            "nist_csf",
+            "nist_800_53",
+            "fedramp",
+            "cis",
+            "iso_27001",
+            "soc2",
+            "eu_ai_act",
+            "owasp_mcp",
+            "owasp_agentic",
+        ]:
             assert fw in tags, f"Missing framework: {fw}"
             assert len(tags[fw]) > 0, f"Empty tags for: {fw}"
 

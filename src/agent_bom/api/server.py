@@ -184,7 +184,7 @@ async def _lifespan(app_instance: FastAPI):
 
 app = FastAPI(
     title="agent-bom API",
-    description=("AI Bill of Materials — map the full trust chain from AI agents and MCP servers to CVEs, credentials, and blast radius."),
+    description=("Security scanner for AI infrastructure — map the full trust chain from agents to CVEs, credentials, and blast radius."),
     version=__version__,
     docs_url="/docs",
     redoc_url="/redoc",

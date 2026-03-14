@@ -1,10 +1,10 @@
 # AI-BOM Generator
 
-> Full AI asset discovery, vulnerability scanning, threat mapping, and AI Bill of Materials generation.
+> Security scanner for AI infrastructure — full asset discovery, vulnerability scanning, threat mapping, and SBOM generation.
 
 ## Goal
 
-Produce a complete **AI Bill of Materials (AI-BOM)** — a structured inventory of every AI agent, MCP server, package, credential, and tool in the target environment, enriched with CVE data, blast radius analysis, OWASP LLM Top 10, and MITRE ATLAS threat mappings.
+Produce a complete **AI infrastructure security report** — a structured inventory of every AI agent, MCP server, package, credential, and tool in the target environment, enriched with CVE data, blast radius analysis, OWASP LLM Top 10, and MITRE ATLAS threat mappings.
 
 ## Prerequisites
 

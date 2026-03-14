@@ -1,4 +1,4 @@
-"""agent-bom: AI Bill of Materials generator for AI agents and MCP servers."""
+"""agent-bom: Security scanner for AI infrastructure — from agent to runtime."""
 
 from importlib.metadata import PackageNotFoundError, version
 

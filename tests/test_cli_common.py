@@ -214,4 +214,4 @@ def test_banner_is_string():
     from agent_bom.cli._common import BANNER
 
     assert isinstance(BANNER, str)
-    assert "Agent" in BANNER or "BOM" in BANNER
+    assert "agent" in BANNER.lower() or "bom" in BANNER.lower() or "security" in BANNER.lower()

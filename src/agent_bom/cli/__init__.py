@@ -44,7 +44,7 @@ from agent_bom.discovery import discover_all  # noqa: F401
     message=(f"agent-bom {__version__}\nPython {sys.version.split()[0]} · {sys.platform}\nDocs:  https://github.com/msaad00/agent-bom"),
 )
 def main():
-    """agent-bom — AI Bill of Materials for agents, MCP servers, containers & IaC.
+    """agent-bom — Security scanner for AI infrastructure.
 
     \b
     Maps the full trust chain: agent → MCP server → packages → CVEs → blast radius.

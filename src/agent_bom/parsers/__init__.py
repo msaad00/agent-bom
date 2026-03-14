@@ -39,6 +39,7 @@ from agent_bom.parsers.node_parsers import (  # noqa: F401
     parse_pnpm_lock,
     parse_yarn_lock,
 )
+from agent_bom.parsers.php_parsers import parse_php_packages  # noqa: F401
 
 # Re-export Python parsers for backward compatibility
 from agent_bom.parsers.python_parsers import (  # noqa: F401
@@ -50,7 +51,7 @@ from agent_bom.parsers.python_parsers import (  # noqa: F401
     parse_uv_lock,
 )
 
-# Re-export Ruby parsers
+# Re-export Ruby and PHP parsers
 from agent_bom.parsers.ruby_parsers import parse_ruby_packages  # noqa: F401
 
 # Path to bundled MCP registry (parsers/ is a subdir of agent_bom/)
@@ -363,6 +364,8 @@ _MANIFEST_FILES = frozenset(
         "packages.lock.json",
         "Gemfile",
         "Gemfile.lock",
+        "composer.json",
+        "composer.lock",
     }
 )
 
@@ -437,6 +440,7 @@ def scan_project_directory(
             pkgs.extend(parse_gradle_packages(directory))
             pkgs.extend(parse_nuget_packages(directory))
             pkgs.extend(parse_ruby_packages(directory))
+            pkgs.extend(parse_php_packages(directory))
 
             # Deduplicate within this directory
             seen: set[tuple] = set()

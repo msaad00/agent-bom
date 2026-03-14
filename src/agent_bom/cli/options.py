@@ -102,6 +102,13 @@ def input_options(fn):
                 default=None,
                 help="Path to Trivy, Grype, or Syft JSON output. Ingests findings and adds blast radius analysis.",
             ),
+            click.option(
+                "--os-packages",
+                "os_packages",
+                is_flag=True,
+                default=False,
+                help="Scan the host OS for installed system packages (dpkg/rpm/apk) and check them for CVEs.",
+            ),
         ]
     )(fn)
 

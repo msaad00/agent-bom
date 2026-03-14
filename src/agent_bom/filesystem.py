@@ -42,6 +42,35 @@ class FilesystemScanError(Exception):
     """Raised when a filesystem path cannot be scanned."""
 
 
+def detect_linux_distro(root: Path) -> str:
+    """Detect the Linux distribution from ``<root>/etc/os-release``.
+
+    Returns a short distro identifier (e.g. ``"debian"``, ``"alpine"``,
+    ``"rhel"``, ``"rocky"``, ``"almalinux"``, ``"fedora"``).  Falls back to
+    ``"linux"`` when the file is missing or the ``ID`` field is absent.
+
+    Args:
+        root: Filesystem root (``/`` for live, ``/mnt/snapshot`` for VMs).
+
+    Returns:
+        Lowercase distro identifier string.
+    """
+    os_release = root / "etc" / "os-release"
+    if not os_release.exists():
+        return "linux"
+
+    try:
+        for line in os_release.read_text(errors="replace").splitlines():
+            if line.startswith("ID="):
+                # ID may be quoted: ID="rocky" or ID=alpine
+                value = line.split("=", 1)[1].strip().strip('"').strip("'")
+                return value.lower() if value else "linux"
+    except OSError:
+        pass
+
+    return "linux"
+
+
 # ── Syft-based scanning ───────────────────────────────────────────────────────
 
 

@@ -68,6 +68,12 @@ ECOSYSTEM_MAP = {
     "rubygems": "RubyGems",
     # conda packages are pip-installable and tracked under PyPI in OSV
     "conda": "PyPI",
+    # OS package ecosystems (native dpkg/rpm/apk parsers in filesystem.py)
+    "deb": "Debian",
+    "apk": "Alpine",
+    # RPM covers RHEL, CentOS, Fedora, Rocky, Alma — OSV "Linux" is the
+    # cross-distro ecosystem that matches all RPM-based advisories.
+    "rpm": "Linux",
 }
 
 

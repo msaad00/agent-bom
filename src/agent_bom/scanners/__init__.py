@@ -1163,8 +1163,131 @@ async def scan_agents_with_enrichment(
     return blast_radii
 
 
-def scan_agents_sync(agents: list[Agent], enable_enrichment: bool = False, nvd_api_key: Optional[str] = None) -> list[BlastRadius]:
+# ── Multi-hop risk amplification factors per hop distance ─────────────────
+_HOP_RISK_FACTORS: dict[int, float] = {
+    1: 1.0,
+    2: 0.7,
+    3: 0.5,
+    4: 0.35,
+    5: 0.25,
+}
+
+
+def expand_blast_radius_hops(
+    blast_radii: list[BlastRadius],
+    agents: list[Agent],
+    max_depth: int = 1,
+) -> None:
+    """Expand blast radii with multi-hop delegation chain analysis.
+
+    For each blast radius, traces agent→server→agent delegation chains
+    beyond the initial (1-hop) affected agents. Uses BFS with cycle
+    detection to avoid infinite loops.
+
+    When ``max_depth`` is 1 (default), this is a no-op — zero overhead.
+
+    Args:
+        blast_radii: Existing 1-hop blast radius findings (mutated in place).
+        agents: All discovered agents (for cross-referencing servers).
+        max_depth: Maximum hop depth (1-5). Clamped to [1, 5].
+    """
+    max_depth = max(1, min(max_depth, 5))
+    if max_depth <= 1:
+        return
+
+    # Build lookup: server_name → list of agents that use that server
+    server_to_agents: dict[str, list[Agent]] = {}
+    for agent in agents:
+        for server in agent.mcp_servers:
+            server_to_agents.setdefault(server.name, []).append(agent)
+
+    # Build lookup: agent_name → list of server names it uses
+    agent_to_servers: dict[str, list[str]] = {}
+    for agent in agents:
+        agent_to_servers[agent.name] = [s.name for s in agent.mcp_servers]
+
+    for br in blast_radii:
+        direct_agent_names = {a.name for a in br.affected_agents}
+        direct_server_names = {s.name for s in br.affected_servers}
+
+        # BFS: queue items are (agent_name, current_hop, chain_so_far)
+        visited_agents: set[str] = set(direct_agent_names)
+        visited_servers: set[str] = set(direct_server_names)
+        transitive_agents: list[dict] = []
+        transitive_creds: list[str] = []
+        chains: list[str] = []
+
+        # Seed BFS from direct agents
+        queue: list[tuple[str, int, list[str]]] = []
+        for agent in br.affected_agents:
+            for srv_name in agent_to_servers.get(agent.name, []):
+                if srv_name not in direct_server_names:
+                    queue.append((agent.name, 1, [agent.name, srv_name]))
+                    visited_servers.add(srv_name)
+
+        max_hop_reached = 1
+        while queue:
+            agent_name, hop, chain = queue.pop(0)
+            if hop >= max_depth:
+                continue
+
+            # The last element in chain is a server name — find agents on it
+            current_server = chain[-1]
+            for next_agent in server_to_agents.get(current_server, []):
+                if next_agent.name in visited_agents:
+                    continue
+                visited_agents.add(next_agent.name)
+                next_hop = hop + 1
+                max_hop_reached = max(max_hop_reached, next_hop)
+
+                new_chain = chain + [next_agent.name]
+                chain_str = "\u2192".join(new_chain)
+                chains.append(chain_str)
+
+                # Collect transitive agent info
+                agent_creds = []
+                for srv in next_agent.mcp_servers:
+                    agent_creds.extend(srv.credential_names)
+                agent_creds = list(set(agent_creds))
+
+                transitive_agents.append(
+                    {
+                        "name": next_agent.name,
+                        "type": next_agent.agent_type.value,
+                        "hop": next_hop,
+                        "chain": chain_str,
+                    }
+                )
+                transitive_creds.extend(agent_creds)
+
+                # Continue BFS: look at servers this agent connects to
+                if next_hop < max_depth:
+                    for srv_name in agent_to_servers.get(next_agent.name, []):
+                        if srv_name not in visited_servers:
+                            visited_servers.add(srv_name)
+                            queue.append((next_agent.name, next_hop, new_chain + [srv_name]))
+
+        if transitive_agents:
+            br.hop_depth = max_hop_reached
+            br.delegation_chain = chains
+            br.transitive_agents = transitive_agents
+            br.transitive_credentials = list(set(transitive_creds))
+            # Transitive risk = base risk * hop factor
+            factor = _HOP_RISK_FACTORS.get(max_hop_reached, 0.25)
+            br.transitive_risk_score = round(br.risk_score * factor, 2)
+
+
+def scan_agents_sync(
+    agents: list[Agent],
+    enable_enrichment: bool = False,
+    nvd_api_key: Optional[str] = None,
+    blast_radius_depth: int = 1,
+) -> list[BlastRadius]:
     """Synchronous wrapper for scan_agents."""
     if enable_enrichment:
-        return asyncio.run(scan_agents_with_enrichment(agents, nvd_api_key, enable_enrichment))
-    return asyncio.run(scan_agents(agents))
+        blast_radii = asyncio.run(scan_agents_with_enrichment(agents, nvd_api_key, enable_enrichment))
+    else:
+        blast_radii = asyncio.run(scan_agents(agents))
+    if blast_radius_depth > 1:
+        expand_blast_radius_hops(blast_radii, agents, max_depth=blast_radius_depth)
+    return blast_radii

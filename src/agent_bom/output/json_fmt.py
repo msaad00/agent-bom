@@ -369,6 +369,11 @@ def to_json(report: AIBOMReport) -> dict:
                 "iso_27001_tags": br.iso_27001_tags,
                 "soc2_tags": br.soc2_tags,
                 "cis_tags": br.cis_tags,
+                "hop_depth": getattr(br, "hop_depth", 1),
+                "delegation_chain": getattr(br, "delegation_chain", []),
+                "transitive_agents": getattr(br, "transitive_agents", []),
+                "transitive_credentials": getattr(br, "transitive_credentials", []),
+                "transitive_risk_score": getattr(br, "transitive_risk_score", 0.0),
             }
             for br in report.blast_radii
         ],

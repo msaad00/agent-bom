@@ -392,6 +392,13 @@ class BlastRadius:
     cis_tags: list[str] = field(default_factory=list)  # CIS Controls v8, e.g. ["CIS-07.1"]
     ai_summary: Optional[str] = None  # LLM-generated contextual risk narrative
 
+    # Multi-hop delegation fields
+    hop_depth: int = 1  # How many hops from the vulnerable package (1 = direct)
+    delegation_chain: list[str] = field(default_factory=list)  # e.g. ["server1→agent1→server2→agent2"]
+    transitive_agents: list[dict] = field(default_factory=list)  # Agents reached via delegation
+    transitive_credentials: list[str] = field(default_factory=list)  # Credentials exposed transitively
+    transitive_risk_score: float = 0.0  # Risk score weighted by hop distance
+
     def calculate_risk_score(self) -> float:
         """Calculate contextual risk score based on blast radius.
 

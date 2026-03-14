@@ -245,6 +245,7 @@ def scan(
     correlate_log: Optional[str],
     external_scan_path: Optional[str],
     os_packages: bool,
+    iac_paths: tuple = (),
     ignore_file: Optional[str] = None,
 ):
     """Discover agents, extract dependencies, scan for vulnerabilities.
@@ -647,6 +648,7 @@ def scan(
         smithery_flag=smithery_flag,
         mcp_registry_flag=mcp_registry_flag,
         os_packages=os_packages,
+        iac_paths=iac_paths,
         _any_cloud=any_cloud,
         _discover_all=discover_all,  # pass patchable reference — tests patch agent_bom.cli.scan.discover_all
     )

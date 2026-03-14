@@ -51,8 +51,9 @@ from agent_bom.parsers.python_parsers import (  # noqa: F401
     parse_uv_lock,
 )
 
-# Re-export Ruby and PHP parsers
+# Re-export Ruby, PHP, and Swift parsers
 from agent_bom.parsers.ruby_parsers import parse_ruby_packages  # noqa: F401
+from agent_bom.parsers.swift_parsers import parse_swift_packages  # noqa: F401
 
 # Path to bundled MCP registry (parsers/ is a subdir of agent_bom/)
 _REGISTRY_PATH = Path(__file__).parent.parent / "mcp_registry.json"
@@ -366,6 +367,7 @@ _MANIFEST_FILES = frozenset(
         "Gemfile.lock",
         "composer.json",
         "composer.lock",
+        "Package.resolved",
     }
 )
 
@@ -441,6 +443,7 @@ def scan_project_directory(
             pkgs.extend(parse_nuget_packages(directory))
             pkgs.extend(parse_ruby_packages(directory))
             pkgs.extend(parse_php_packages(directory))
+            pkgs.extend(parse_swift_packages(directory))
 
             # Deduplicate within this directory
             seen: set[tuple] = set()

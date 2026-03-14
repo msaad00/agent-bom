@@ -1,19 +1,26 @@
 """Terraform security misconfiguration scanner.
 
 Complements the existing ``terraform.py`` AI resource discovery module by
-adding **security-focused** misconfig rules for AWS/cloud resources.
-Uses regex-based scanning of ``.tf`` files — same approach as ``terraform.py``,
-no HCL parser needed.
+adding **security-focused** misconfig rules for AWS/cloud resources against
+**cloud provider official documentation and best practices**:
+
+- AWS Well-Architected Framework (Security Pillar)
+- AWS Security Best Practices (SEC01-SEC11)
+- CIS AWS Foundations Benchmark v2.0
+
+Rules are mapped to applicable compliance frameworks (CIS-AWS, NIST SP 800-53)
+where the mapping is well-established.  Uses regex-based scanning of ``.tf``
+files — same approach as ``terraform.py``, no HCL parser needed.
 
 Rules
 -----
-TF-SEC-001  S3 bucket without encryption
-TF-SEC-002  S3 bucket with public ACL
-TF-SEC-003  Security group with 0.0.0.0/0 ingress on non-443/80 port
-TF-SEC-004  IAM policy with Action: * or Resource: *
-TF-SEC-005  RDS without encryption (storage_encrypted missing/false)
-TF-SEC-006  CloudWatch logging not enabled
-TF-SEC-007  SSH key hardcoded in resource
+TF-SEC-001  S3 bucket without encryption (AWS SEC08, CIS 2.1.1)
+TF-SEC-002  S3 bucket with public ACL (AWS SEC01, CIS 2.1.2)
+TF-SEC-003  Security group with 0.0.0.0/0 ingress on non-443/80 port (CIS 5.2)
+TF-SEC-004  IAM policy with Action: * or Resource: * (AWS SEC03, CIS 1.16)
+TF-SEC-005  RDS without encryption (AWS SEC08, CIS 2.3.1)
+TF-SEC-006  CloudWatch logging not enabled (AWS SEC04, CIS 3.1)
+TF-SEC-007  SSH key hardcoded in resource (AWS SEC02, CIS 1.14)
 """
 
 from __future__ import annotations

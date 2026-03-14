@@ -1,7 +1,11 @@
-"""IaC misconfiguration scanning — Dockerfile, Kubernetes, Terraform security.
+"""IaC misconfiguration scanning — Dockerfile, Kubernetes, Terraform, CloudFormation.
 
 Coordinator module that discovers and scans IaC files across all supported
 formats.  Each scanner is regex/YAML-based with zero external dependencies.
+
+Rules are aligned with cloud provider official documentation and best practices
+(AWS Well-Architected, CIS Benchmarks) and mapped to applicable compliance
+frameworks (NIST, CIS-AWS, SOC 2) where relevant.
 
 Usage::
 
@@ -14,6 +18,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from agent_bom.iac.cloudformation import _is_cloudformation, scan_cloudformation
 from agent_bom.iac.dockerfile import scan_dockerfile
 from agent_bom.iac.kubernetes import scan_k8s_manifest
 from agent_bom.iac.models import IaCFinding
@@ -64,8 +69,9 @@ def _is_k8s_manifest(path: Path) -> bool:
 def scan_iac_directory(root: str | Path) -> list[IaCFinding]:
     """Scan a directory tree for IaC misconfigurations across all supported formats.
 
-    Discovers Dockerfiles, Kubernetes YAML manifests, and Terraform ``.tf``
-    files, then runs the appropriate scanner on each.
+    Discovers Dockerfiles, Kubernetes YAML manifests, Terraform ``.tf``
+    files, and CloudFormation templates, then runs the appropriate scanner
+    on each.
 
     Parameters
     ----------
@@ -99,7 +105,11 @@ def scan_iac_directory(root: str | Path) -> list[IaCFinding]:
         elif path.suffix == ".tf":
             findings.extend(scan_terraform_security(path))
         elif _is_k8s_manifest(path):
+            # K8s check before CloudFormation — both match .yaml/.yml but
+            # K8s markers (apiVersion + kind) are more specific than "Resources:"
             findings.extend(scan_k8s_manifest(path))
+        elif _is_cloudformation(path):
+            findings.extend(scan_cloudformation(path))
 
     # Sort: critical first, then by file path
     findings.sort(key=lambda f: (severity_order.get(f.severity, 9), f.file_path, f.line_number))

@@ -1,0 +1,52 @@
+# OSV-Scanner configuration — suppress false positives
+#
+# The OpenSSF Scorecard Vulnerabilities check runs osv-scanner against the repo.
+# Some advisories are flagged even though our pinned versions already include fixes.
+# Each ignore entry below documents the advisory, the affected package, and why
+# the suppression is safe.
+#
+# Re-audit this file on every dependency bump.
+
+[[IgnoredVulns]]
+id = "GHSA-2g68-c3qc-8985"
+reason = "Werkzeug debugger RCE — fixed in 3.0.3; we pin >= 3.1.6 (uv.lock: 3.1.6)"
+
+[[IgnoredVulns]]
+id = "GHSA-29vq-49wr-vm6x"
+reason = "Werkzeug safe_join Windows device names — fixed in 3.1.6; we pin 3.1.6"
+
+[[IgnoredVulns]]
+id = "GHSA-87hc-h4r5-73f7"
+reason = "Werkzeug safe_join compound extensions — fixed in 3.1.5; we pin >= 3.1.6"
+
+[[IgnoredVulns]]
+id = "GHSA-f9vj-2wh5-fj8j"
+reason = "Werkzeug safe_join Windows — fixed in 3.0.6; we pin >= 3.1.6"
+
+[[IgnoredVulns]]
+id = "GHSA-hgf8-39gv-g3f2"
+reason = "Werkzeug safe_join Windows device — fixed in 3.1.4; we pin >= 3.1.6"
+
+[[IgnoredVulns]]
+id = "GHSA-hrfv-mqp8-q5rw"
+reason = "Werkzeug multipart DoS — fixed in 3.0.1; we pin >= 3.1.6"
+
+[[IgnoredVulns]]
+id = "GHSA-px8h-6qxv-m22q"
+reason = "Werkzeug nameless cookies — fixed in 2.2.3; we pin >= 3.1.6"
+
+[[IgnoredVulns]]
+id = "GHSA-q34m-jh98-gwm2"
+reason = "Werkzeug form resource exhaustion — fixed in 3.0.6; we pin >= 3.1.6"
+
+[[IgnoredVulns]]
+id = "GHSA-xg9f-g7g7-2323"
+reason = "Werkzeug multipart high resource — fixed in 2.2.3; we pin >= 3.1.6"
+
+[[IgnoredVulns]]
+id = "GHSA-68rp-wp8r-4726"
+reason = "Flask Vary:Cookie low-severity — fixed in 3.1.1; we pin 3.1.3 (uv.lock)"
+
+[[IgnoredVulns]]
+id = "GHSA-m2qf-hxjv-5gpq"
+reason = "Flask session cookie disclosure — fixed in 2.3.8; we pin 3.1.3 (uv.lock)"

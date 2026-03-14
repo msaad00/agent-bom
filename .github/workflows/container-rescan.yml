@@ -11,7 +11,6 @@ on:
 
 permissions:
   contents: read
-  security-events: write
 
 jobs:
   rescan:
@@ -19,7 +18,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
-      security-events: write
+      security-events: write  # required: SARIF upload to GitHub Security tab
     strategy:
       fail-fast: false
       matrix:

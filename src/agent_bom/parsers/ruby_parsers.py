@@ -91,12 +91,12 @@ def parse_gemfile_lock(directory: str | Path) -> list[Package]:
             continue
 
         # Match top-level gems (4-space indent)
-        m = gem_pattern.match(line)
-        if not m:
+        gm = gem_pattern.match(line)
+        if not gm:
             continue
 
-        name = m.group(1)
-        version = m.group(2)
+        name = gm.group(1)
+        version = gm.group(2)
         key = (name.lower(), version)
         if key in seen:
             continue

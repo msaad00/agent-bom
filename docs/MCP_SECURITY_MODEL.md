@@ -152,7 +152,7 @@ agent-bom scan --enforce    # + static tool poisoning analysis
 agent-bom scan --gpu-scan   # + GPU containers, CUDA versions, DCGM exposure
 ```
 
-Outputs: blast radius tree, compliance mapping (11 frameworks), posture score, SARIF/CycloneDX/SPDX/HTML.
+Outputs: blast radius tree, compliance mapping (13 frameworks), posture score, SARIF/CycloneDX/SPDX/HTML.
 
 ### 4.2 Proxy mode
 

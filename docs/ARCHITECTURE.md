@@ -94,7 +94,7 @@ sequenceDiagram
     BlastRadius-->>CLI: Blast radius chains
 
     CLI->>ComplianceTagger: Findings
-    ComplianceTagger->>ComplianceTagger: Tag 11 frameworks
+    ComplianceTagger->>ComplianceTagger: Tag 13 frameworks
     ComplianceTagger-->>CLI: Tagged findings
 
     CLI->>CLI: Asset tracking (first_seen / resolved / MTTR)

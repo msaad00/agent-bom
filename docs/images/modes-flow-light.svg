@@ -137,7 +137,7 @@
 
   <rect x="536" y="386" width="116" height="44" rx="5" fill="#ffffff" stroke="#bc4c00" stroke-width="0.8"/>
   <text x="594" y="402" text-anchor="middle" class="engine-mod" fill="#bc4c00">Compliance</text>
-  <text x="594" y="416" text-anchor="middle" class="engine-detail">11 frameworks</text>
+  <text x="594" y="416" text-anchor="middle" class="engine-detail">13 frameworks</text>
 
   <rect x="662" y="386" width="116" height="44" rx="5" fill="#ffffff" stroke="#cf222e" stroke-width="0.8"/>
   <text x="720" y="402" text-anchor="middle" class="engine-mod" fill="#cf222e">Policy</text>

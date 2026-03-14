@@ -167,7 +167,7 @@ CREATE TABLE IF NOT EXISTS findings (
     affected_agent_count  INTEGER NOT NULL DEFAULT 0,
     exposed_credentials   JSONB NOT NULL DEFAULT '[]'::jsonb,  -- array of cred var names
 
-    -- Compliance tags from 11 frameworks
+    -- Compliance tags from 13 frameworks
     compliance_tags       JSONB NOT NULL DEFAULT '{}'::jsonb,  -- {owasp_llm: [...], atlas: [...], ...}
 
     -- CWE lineage

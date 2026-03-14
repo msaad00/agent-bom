@@ -59,7 +59,7 @@ All agent-bom MCP tools become available in Cortex Code:
 | `policy_check` | Evaluate security policy against findings |
 | `registry_lookup` | Query 427+ MCP server security metadata |
 | `generate_sbom` | Generate CycloneDX or SPDX SBOM |
-| `compliance` | Map findings to 10 compliance frameworks |
+| `compliance` | Map findings to 13 compliance frameworks |
 | `remediate` | Prioritized remediation plan |
 | `skill_trust` | Trust assessment for SKILL.md files |
 | `code_scan` | SAST scanning with CWE mapping |
@@ -86,7 +86,7 @@ agent-bom fills these security gaps in Cortex Code:
 | "Only install from trusted sources" | Trust assessment with 17 behavioral risk patterns |
 | Manual permission review | Blast radius analysis showing credential exposure |
 | No CVE scanning | Full enrichment: OSV + NVD + EPSS + CISA KEV |
-| No compliance mapping | 10 frameworks: OWASP, NIST, EU AI Act, ISO 27001 |
+| No compliance mapping | 13 frameworks: OWASP, NIST, EU AI Act, ISO 27001 |
 | No runtime enforcement | Proxy with 7 real-time detectors |
 
 ## Auto-Discovery

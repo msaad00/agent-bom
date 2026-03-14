@@ -28,7 +28,7 @@ vulnerable packages to the credentials and tools they can reach.
 - **CVE scanning** with enrichment from OSV, NVD, EPSS, CISA KEV
 - **MCP server discovery** across 21 AI tools (including Cortex Code)
 - **Blast radius mapping** — which agents, credentials, and tools are exposed
-- **10 compliance frameworks** per finding (OWASP LLM/MCP/Agentic, MITRE ATLAS, NIST, EU AI Act)
+- **13 compliance frameworks** per finding (OWASP LLM/MCP/Agentic, MITRE ATLAS, NIST, EU AI Act)
 - **Runtime proxy** for MCP traffic interception and policy enforcement
 - **SKILL.md trust assessment** with 17 behavioral risk patterns
 

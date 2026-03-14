@@ -305,12 +305,12 @@ class TestMaliciousTags:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 9. All 10 frameworks present
+# 9. All frameworks present
 # ═══════════════════════════════════════════════════════════════════════════
 
 
 class TestAllFrameworks:
-    def test_all_10_frameworks_populated(self):
+    def test_all_frameworks_populated(self):
         """Every CVE should have tags from all 12 frameworks (some may be empty for OWASP LLM)."""
         tags = tag_vulnerability(
             _vuln(severity=Severity.CRITICAL, is_kev=True, fixed_version="2.0"),

@@ -1323,12 +1323,18 @@ def print_compact_summary(report: AIBOMReport) -> None:
     # Privilege count
     elevated = sum(1 for a in report.agents for s in a.mcp_servers if s.permission_profile and s.permission_profile.is_elevated)
 
+    # Direct vs transitive package counts
+    all_pkgs = [p for a in report.agents for s in a.mcp_servers for p in s.packages]
+    n_direct = sum(1 for p in all_pkgs if p.is_direct)
+    n_transitive = len(all_pkgs) - n_direct
+    pkg_detail = f" ({n_direct}D/{n_transitive}T)" if n_transitive else ""
+
     lines = [
         f"  [bold]SECURITY POSTURE:[/bold]  {posture}",
         "",
         f"  Agents  [bold]{report.total_agents}[/bold]    "
         f"Servers  [bold]{report.total_servers}[/bold]    "
-        f"Packages  [bold]{report.total_packages}[/bold]    "
+        f"Packages  [bold]{report.total_packages}[/bold][dim]{pkg_detail}[/dim]    "
         f"Vulns  [bold]{report.total_vulnerabilities}[/bold]",
     ]
     if cred_names:
@@ -1485,7 +1491,7 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10) -> None:
             f"{br.vulnerability.id}{kev}",
             _sev_badge(br.vulnerability.severity),
             epss_display,
-            f"{br.package.name}@{br.package.version}",
+            f"{br.package.name}@{br.package.version}" + ("" if br.package.is_direct else " [dim]T[/dim]"),
             agent_display,
             blast,
             fw_display,

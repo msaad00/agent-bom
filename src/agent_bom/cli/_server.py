@@ -223,30 +223,39 @@ def mcp_server_cmd(transport: str, port: int, host: str, log_level: str, log_jso
     Requires:  pip install 'agent-bom[mcp-server]'
 
     \b
-    Exposes 23 security tools via MCP protocol:
-      scan              Full scan — CVEs, config security, blast radius, compliance
-      check             Check a specific package for CVEs before installing
-      blast_radius      Look up blast radius for a specific CVE
-      policy_check      Evaluate policy rules against scan findings
-      registry_lookup   Query the MCP server security metadata registry
-      generate_sbom     Generate CycloneDX or SPDX SBOM
-      compliance        10-framework compliance posture
-      remediate         Generate actionable remediation plan
-      skill_trust       ClawHub-style trust assessment for SKILL.md files
-      verify            Package integrity + SLSA provenance verification
-      where             Show all MCP discovery paths + existence status
-      inventory         List agents/servers without CVE scanning
-      diff              Compare scan against baseline for new/resolved vulns
-      marketplace_check Pre-install marketplace trust check
-      code_scan         SAST scanning via Semgrep with CWE mapping
-      context_graph     Agent context graph with lateral movement analysis
-      analytics_query   Query vulnerability trends from ClickHouse
-      cis_benchmark     Run CIS benchmark checks (AWS/Snowflake)
-      fleet_scan        Batch registry lookup for fleet inventories
-      runtime_correlate Cross-reference runtime audit logs with CVE findings
-      vector_db_scan    Discover vector databases and assess auth exposure
-      aisvs_benchmark   OWASP AISVS v1.0 compliance checks
-      gpu_infra_scan    GPU container and K8s node inventory + DCGM probe
+    Exposes 32 security tools via MCP protocol:
+      scan                   Full scan — CVEs, config security, blast radius, compliance
+      check                  Check a specific package for CVEs before installing
+      blast_radius           Look up blast radius for a specific CVE
+      policy_check           Evaluate policy rules against scan findings
+      registry_lookup        Query MCP server security metadata registry
+      generate_sbom          Generate CycloneDX or SPDX SBOM
+      compliance             13-framework compliance posture
+      remediate              Generate actionable remediation plan
+      skill_trust            Trust assessment for SKILL.md files
+      verify                 Package integrity + SLSA provenance verification
+      where                  Show all MCP discovery paths + existence status
+      inventory              List agents/servers without CVE scanning
+      diff                   Compare scan against baseline for new/resolved vulns
+      marketplace_check      Pre-install marketplace trust check
+      code_scan              SAST scanning via Semgrep with CWE mapping
+      context_graph          Agent context graph with lateral movement analysis
+      analytics_query        Query vulnerability trends from ClickHouse
+      cis_benchmark          Run CIS benchmark checks (AWS/Snowflake)
+      fleet_scan             Batch registry lookup for fleet inventories
+      runtime_correlate      Cross-reference runtime logs with CVE findings
+      vector_db_scan         Discover vector databases and assess auth exposure
+      aisvs_benchmark        OWASP AISVS v1.0 compliance checks
+      gpu_infra_scan         GPU container and K8s node inventory + DCGM probe
+      ai_inventory_scan      Detect AI SDK imports, shadow AI, deprecated models
+      browser_extension_scan Audit browser extensions for AI/MCP capabilities
+      dataset_card_scan      Scan dataset cards for license and provenance
+      ingest_external_scan   Import Trivy/Grype/Syft scan results
+      license_compliance_scan License risk detection for dependencies
+      model_file_scan        Scan ML model files for security risks
+      model_provenance_scan  Verify model origin and supply chain integrity
+      prompt_scan            Detect prompt injection patterns
+      training_pipeline_scan Audit ML training pipeline configurations
 
     \b
     Usage:

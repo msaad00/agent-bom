@@ -7,7 +7,7 @@ description: >-
   v1.0, MAESTRO layer tagging, and vector database security checks. Use when the
   user mentions vulnerability scanning, MCP server trust, compliance, SBOM
   generation, CIS benchmarks, blast radius, or AI supply chain risk.
-version: 0.70.10
+version: 0.70.11
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. No credentials required for
@@ -23,7 +23,7 @@ metadata:
   install:
     pipx: agent-bom
     pip: agent-bom
-    docker: ghcr.io/msaad00/agent-bom:0.70.10
+    docker: ghcr.io/msaad00/agent-bom:0.70.11
   openclaw:
     requires:
       bins: []
@@ -377,6 +377,6 @@ provider's own APIs.
 ## Verification
 
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
-- **Sigstore signed**: `agent-bom verify agent-bom@0.70.10`
+- **Sigstore signed**: `agent-bom verify agent-bom@0.70.11`
 - **6,040+ tests** with CodeQL + OpenSSF Scorecard
 - **No telemetry**: Zero tracking, zero analytics

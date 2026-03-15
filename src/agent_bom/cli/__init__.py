@@ -140,6 +140,63 @@ from agent_bom.cli._db import db_cmd  # noqa: E402
 
 main.add_command(db_cmd, "db")
 
+
+# ---------------------------------------------------------------------------
+# Upgrade command
+# ---------------------------------------------------------------------------
+
+
+@main.command("upgrade")
+@click.option("--check", "check_only", is_flag=True, help="Only check for updates, don't install.")
+def upgrade_cmd(check_only: bool) -> None:
+    """Check for and install the latest version of agent-bom."""
+    import subprocess as sp
+    import urllib.request
+
+    from packaging.version import Version
+    from rich.console import Console
+
+    con = Console(stderr=True)
+    con.print(f"  Current version: [bold]{__version__}[/bold]")
+
+    try:
+        with urllib.request.urlopen(  # noqa: S310  # nosec B310
+            "https://pypi.org/pypi/agent-bom/json",
+            timeout=5,
+        ) as resp:
+            import json
+
+            data = json.loads(resp.read())
+        latest = data["info"]["version"]
+    except Exception:
+        con.print("  [red]Could not reach PyPI to check for updates.[/red]")
+        raise SystemExit(1)
+
+    if Version(latest) <= Version(__version__):
+        con.print(f"  Latest version:  [bold]{latest}[/bold]")
+        con.print("  [green]You are up to date.[/green]")
+        return
+
+    con.print(f"  Latest version:  [bold yellow]{latest}[/bold yellow]")
+
+    if check_only:
+        con.print("\n  Run: [cyan]pip install --upgrade agent-bom[/cyan]")
+        return
+
+    con.print(f"\n  Upgrading agent-bom {__version__} → {latest}...")
+    result = sp.run(
+        [sys.executable, "-m", "pip", "install", "--upgrade", "agent-bom"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        con.print(f"  [green]Upgraded to agent-bom {latest}[/green]")
+    else:
+        con.print(f"  [red]Upgrade failed:[/red] {result.stderr.strip()[:200]}")
+        con.print("  Try manually: [cyan]pip install --upgrade agent-bom[/cyan]")
+        raise SystemExit(1)
+
+
 # ---------------------------------------------------------------------------
 # Backward-compatible re-exports used by tests
 # ---------------------------------------------------------------------------

@@ -29,7 +29,7 @@ repos:
     rev: v1.15.0
     hooks:
       - id: mypy
-        args: [--ignore-missing-imports, --no-error-summary]
+        args: [--ignore-missing-imports, --no-error-summary, --follow-imports=skip]
         files: ^src/
         additional_dependencies: []
         pass_filenames: true

@@ -39,19 +39,14 @@ Type "agent-bom scan --help | head -30"
 Enter
 Sleep 5s
 
-# ── 2. Instant discovery — no CVE scan, just what's there ─────────────────────
-Type "agent-bom inventory"
-Enter
-Sleep 8s
-
-# ── 3. Pre-install guard — catch CVEs before they land ────────────────────────
-Type "agent-bom check lodash@4.17.20 --ecosystem npm"
+# ── 2. Pre-install guard — catch CVEs before they land ────────────────────────
+Type "agent-bom check django@3.2.0 --ecosystem pypi"
 Enter
 Sleep 6s
 
-Type "agent-bom check lodash@4.17.23 --ecosystem npm"
+Type "agent-bom check lodash@4.17.20 --ecosystem npm"
 Enter
-Sleep 4s
+Sleep 6s
 
 # ── 4. Full scan — progress bar + timing breakdown + next-steps ───────────────
 Type "agent-bom scan --demo --enrich"
@@ -74,7 +69,7 @@ Enter
 Sleep 6s
 
 # ── 8. GPU / AI compute infra — NIM containers, CUDA CVEs ───────────────────
-Type "agent-bom scan --gpu-scan -q"
+Type "agent-bom scan --demo --gpu-scan -q"
 Enter
 Sleep 18s
 

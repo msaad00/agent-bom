@@ -29,33 +29,26 @@
 
 ```bash
 pip install agent-bom
+agent-bom scan                              # discover agents + scan for CVEs
+agent-bom check flask@2.0.0                 # pre-install CVE gate
+agent-bom scan --fail-on-severity critical  # CI/CD gate
 ```
+
+<details>
+<summary><b>More scan types</b></summary>
 
 ```bash
-# Discover & scan — find all MCP agents, servers, packages, and CVEs
-agent-bom scan
-
-# Pre-install CVE gate — check before you install
-agent-bom check flask@2.0.0
-
-# CI/CD pipeline — break build on critical CVEs
-agent-bom scan --fail-on-severity critical -f sarif -o results.sarif
-
-# Container & VM scanning
-agent-bom scan --image nginx:latest
-agent-bom scan --filesystem /mnt/vm-snapshot
-
-# Infrastructure misconfigurations (Dockerfile, K8s, Terraform, CloudFormation)
-agent-bom scan --iac Dockerfile k8s/
-
-# Runtime enforcement — intercept live MCP traffic
-agent-bom proxy --command "npx @modelcontextprotocol/server-github"
-
-# Enrich with CVSS scores, exploit probability, known exploited vulns
-agent-bom scan --enrich
+agent-bom scan --image nginx:latest              # container image
+agent-bom scan --filesystem /mnt/vm-snapshot      # VM disk snapshot
+agent-bom scan --iac Dockerfile k8s/              # infrastructure misconfig
+agent-bom proxy --command "npx server-github"     # runtime enforcement
+agent-bom scan --enrich                           # + CVSS + EPSS + KEV
+agent-bom scan -f sarif -o results.sarif          # GitHub Security tab
 ```
 
-Discovers 22 MCP client types (Claude Desktop, Cursor, Windsurf, and more), resolves every server's dependencies, scans against OSV/NVD/GHSA, and maps the blast radius — which agents, credentials, and tools are affected by each vulnerability.
+</details>
+
+Discovers 22 MCP client types, resolves server dependencies, scans against OSV/NVD/GHSA, and maps blast radius — which agents, credentials, and tools each CVE affects.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.70.11.gif" alt="agent-bom demo — scan with progress bar, CVE check, AI component detection, blast radius, GPU scan, delta mode, runtime proxy, 32 MCP tools" width="900" />

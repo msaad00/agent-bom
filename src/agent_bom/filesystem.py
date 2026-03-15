@@ -552,10 +552,15 @@ def scan_disk_path_native(root: Path) -> list[Package]:
             packages.extend(sp_pkgs)
 
     # Lock files (requirements.txt, package.json, go.mod, Cargo.toml, etc.)
-    from agent_bom.parsers import scan_project_directory
+    # Skip for root filesystem scans — too broad and hits inaccessible paths
+    if str(root) != "/":
+        from agent_bom.parsers import scan_project_directory
 
-    for dir_pkgs in scan_project_directory(root, max_depth=5).values():
-        packages.extend(dir_pkgs)
+        try:
+            for dir_pkgs in scan_project_directory(root, max_depth=5).values():
+                packages.extend(dir_pkgs)
+        except OSError as exc:
+            logger.debug("Lock file scan skipped due to OS error: %s", exc)
 
     # Deduplicate by (name, version, ecosystem)
     seen: set[tuple[str, str, str]] = set()

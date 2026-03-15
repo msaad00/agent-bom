@@ -41,7 +41,7 @@ agent-bom scan --fail-on-severity critical  # CI/CD gate
 agent-bom scan --image nginx:latest              # container image
 agent-bom scan --filesystem /mnt/vm-snapshot      # VM disk snapshot
 agent-bom scan --iac Dockerfile k8s/              # infrastructure misconfig
-agent-bom proxy --command "npx server-github"     # runtime enforcement
+agent-bom proxy "npx @modelcontextprotocol/server-github"  # runtime enforcement
 agent-bom scan --enrich                           # + CVSS + EPSS + KEV
 agent-bom scan -f sarif -o results.sarif          # GitHub Security tab
 ```

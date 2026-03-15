@@ -18,7 +18,7 @@
 # A demo with errors is worse than no demo.
 
 # Output filename — update README.md img src to match after recording
-Output docs/images/demo-v0.70.8.gif
+Output docs/images/demo-v0.70.9.gif
 
 Set Shell "bash"
 Set FontSize 15
@@ -93,13 +93,13 @@ Enter
 Sleep 4s
 
 # ── 11. What you get ──────────────────────────────────────────────────────────
-Type "echo '32 MCP tools  |  22 MCP client types  |  12 cloud providers  |  7 runtime detectors'"
+Type "echo '32 MCP tools  |  22 MCP client types  |  11 ecosystems  |  7 runtime detectors'"
 Enter
 Sleep 2s
-Type "echo '13 compliance frameworks  |  delta scanning  |  local SQLite DB  |  Trivy/Grype ingestion'"
+Type "echo '13 compliance frameworks  |  5 cloud + 7 AI platforms  |  CVE canonical dedup'"
 Enter
 Sleep 2s
-Type "echo 'IaC scanning (Dockerfile + K8s + Terraform + CloudFormation)  |  OS package scanning'"
+Type "echo 'Native scanning (no Grype/Syft required)  |  VM snapshot MCP discovery'"
 Enter
 Sleep 3s
 

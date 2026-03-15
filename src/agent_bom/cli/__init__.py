@@ -163,6 +163,13 @@ main.add_command(fs_cmd)
 main.add_command(iac_cmd)
 main.add_command(sbom_cmd)
 
+# ---------------------------------------------------------------------------
+# Cloud command group — `agent-bom cloud [aws|azure|gcp]`
+# ---------------------------------------------------------------------------
+from agent_bom.cli._cloud_group import cloud_group  # noqa: E402
+
+main.add_command(cloud_group)
+
 
 # ---------------------------------------------------------------------------
 # Upgrade command

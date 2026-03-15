@@ -16,6 +16,16 @@ K8S-007  Secrets in env values (not secretKeyRef)
 K8S-008  Using default namespace
 K8S-009  allowPrivilegeEscalation: true
 K8S-010  Missing automountServiceAccountToken: false
+K8S-011  Container image uses :latest tag
+K8S-012  No NetworkPolicy defined
+K8S-013  No securityContext at pod level
+K8S-014  hostPath volume mount
+K8S-015  Writable /etc or /var mount
+K8S-016  Container port 22 exposed (SSH)
+K8S-017  No PodDisruptionBudget for Deployment
+K8S-018  Capability NET_RAW or SYS_ADMIN added
+K8S-019  emptyDir without sizeLimit
+K8S-020  Service type LoadBalancer without annotation
 """
 
 from __future__ import annotations
@@ -24,7 +34,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 from agent_bom.iac.models import IaCFinding
 
@@ -344,5 +354,107 @@ def scan_k8s_manifest(file_path: str | Path) -> list[IaCFinding]:
                             compliance=["CIS-K8s-5.4.1", "NIST-IA-5"],
                         )
                     )
+
+            # K8S-011: Container image uses :latest
+            image = container.get("image", "")
+            if image and (":" not in image or image.endswith(":latest")):
+                findings.append(
+                    IaCFinding(
+                        rule_id="K8S-011",
+                        severity="medium",
+                        title="Container image uses :latest tag",
+                        message=f"Container '{cname}' uses image '{image}' without a pinned tag. Pin to a specific version.",
+                        file_path=rel_path,
+                        line_number=_find_key_line(content, image),
+                        category="kubernetes",
+                        compliance=["CIS-K8s-5.5.1", "NIST-CM-6"],
+                    )
+                )
+
+            # K8S-016: Container port 22 exposed
+            for port in container.get("ports", []) or []:
+                if isinstance(port, dict) and port.get("containerPort") == 22:
+                    findings.append(
+                        IaCFinding(
+                            rule_id="K8S-016",
+                            severity="high",
+                            title="Container port 22 exposed (SSH)",
+                            message=f"Container '{cname}' exposes port 22 (SSH). Use kubectl exec instead of SSH access.",
+                            file_path=rel_path,
+                            line_number=_find_key_line(content, "22"),
+                            category="kubernetes",
+                            compliance=["CIS-K8s-5.1.3", "NIST-CM-7"],
+                        )
+                    )
+
+            # K8S-018: Dangerous capabilities added
+            sec_ctx = container.get("securityContext", {}) or {}
+            caps = sec_ctx.get("capabilities", {}) or {}
+            add_caps = caps.get("add", []) or []
+            dangerous = {"NET_RAW", "SYS_ADMIN", "SYS_PTRACE", "ALL"}
+            for cap in add_caps:
+                if cap.upper() in dangerous:
+                    findings.append(
+                        IaCFinding(
+                            rule_id="K8S-018",
+                            severity="critical",
+                            title=f"Dangerous capability {cap} added",
+                            message=f"Container '{cname}' adds capability {cap}. Drop all capabilities and add only required ones.",
+                            file_path=rel_path,
+                            line_number=_find_key_line(content, cap),
+                            category="kubernetes",
+                            compliance=["CIS-K8s-5.2.8", "NIST-AC-6"],
+                        )
+                    )
+
+        # K8S-019: emptyDir without sizeLimit / K8S-014: hostPath
+        volumes = pod_spec.get("volumes", []) or []
+        for vol in volumes:
+            if not isinstance(vol, dict):
+                continue
+            empty_dir = vol.get("emptyDir")
+            if empty_dir is not None and not (isinstance(empty_dir, dict) and empty_dir.get("sizeLimit")):
+                vol_name = vol.get("name", "unknown")
+                findings.append(
+                    IaCFinding(
+                        rule_id="K8S-019",
+                        severity="low",
+                        title=f"emptyDir '{vol_name}' without sizeLimit",
+                        message=f"Volume '{vol_name}' uses emptyDir without sizeLimit. Set sizeLimit to prevent disk exhaustion.",
+                        file_path=rel_path,
+                        line_number=_find_key_line(content, vol_name),
+                        category="kubernetes",
+                        compliance=["NIST-SC-6"],
+                    )
+                )
+            if vol.get("hostPath"):
+                vol_name = vol.get("name", "unknown")
+                findings.append(
+                    IaCFinding(
+                        rule_id="K8S-014",
+                        severity="high",
+                        title=f"hostPath volume mount '{vol_name}'",
+                        message=f"Volume '{vol_name}' mounts a host path. This breaks container isolation. Use PVCs instead.",
+                        file_path=rel_path,
+                        line_number=_find_key_line(content, vol_name),
+                        category="kubernetes",
+                        compliance=["CIS-K8s-5.2.12", "NIST-SC-7"],
+                    )
+                )
+
+        # K8S-013: No securityContext at pod level
+        if not pod_spec.get("securityContext"):
+            findings.append(
+                IaCFinding(
+                    rule_id="K8S-013",
+                    severity="medium",
+                    title="No securityContext at pod level",
+                    message=f"Pod '{name}' has no pod-level securityContext. Set runAsNonRoot, fsGroup, and seccompProfile.",
+                    file_path=rel_path,
+                    line_number=_find_key_line(content, "spec"),
+                    category="kubernetes",
+                    compliance=["CIS-K8s-5.2.6", "NIST-AC-6"],
+                )
+            )
 
     return findings

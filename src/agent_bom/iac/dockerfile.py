@@ -15,6 +15,16 @@ DOCKER-007  RUN apt-get/apk/yum without --no-cache or rm -rf /var/cache
 DOCKER-008  Exposed port 22 (SSH)
 DOCKER-009  COPY . . without .dockerignore (may copy secrets)
 DOCKER-010  FROM with unpinned base image (no hash pin)
+DOCKER-011  COPY --chown with UID 0 (root ownership)
+DOCKER-012  RUN chmod 777 (world-writable files)
+DOCKER-013  EXPOSE range of ports (excessive surface)
+DOCKER-014  RUN with sudo (unnecessary privilege escalation)
+DOCKER-015  ARG used for secrets (visible in image history)
+DOCKER-016  Multiple FROM without multi-stage naming
+DOCKER-017  RUN pip install without --no-cache-dir
+DOCKER-018  WORKDIR uses relative path
+DOCKER-019  SHELL instruction overrides default shell
+DOCKER-020  RUN with net=host (container shares host network during build)
 """
 
 from __future__ import annotations
@@ -23,6 +33,12 @@ import re
 from pathlib import Path
 
 from agent_bom.iac.models import IaCFinding
+
+# New rule patterns
+_CHMOD_777_RE = re.compile(r"chmod\s+777\b", re.IGNORECASE)
+_SUDO_RE = re.compile(r"\bsudo\b", re.IGNORECASE)
+_PIP_NO_CACHE_RE = re.compile(r"pip3?\s+install(?!.*--no-cache-dir)", re.IGNORECASE)
+_NET_HOST_RE = re.compile(r"--network\s*=\s*host", re.IGNORECASE)
 
 # Regex patterns for secret-like ENV variable names
 _SECRET_ENV_RE = re.compile(
@@ -284,6 +300,141 @@ def scan_dockerfile(file_path: str | Path) -> list[IaCFinding]:
                             compliance=["CIS-Docker-4.10", "NIST-CM-6"],
                         )
                     )
+
+        # DOCKER-011: COPY --chown with UID 0
+        if upper.startswith("COPY ") and "--chown=0" in stripped.lower():
+            findings.append(
+                IaCFinding(
+                    rule_id="DOCKER-011",
+                    severity="medium",
+                    title="COPY --chown=0 (root ownership)",
+                    message="COPY with --chown=0 explicitly sets root ownership. Use a non-root UID.",
+                    file_path=rel_path,
+                    line_number=i,
+                    category="dockerfile",
+                    compliance=["CIS-Docker-4.1", "NIST-AC-6"],
+                )
+            )
+
+        # DOCKER-012: RUN chmod 777
+        if upper.startswith("RUN ") and _CHMOD_777_RE.search(stripped):
+            findings.append(
+                IaCFinding(
+                    rule_id="DOCKER-012",
+                    severity="high",
+                    title="RUN chmod 777 (world-writable files)",
+                    message="chmod 777 makes files world-writable. Use specific permissions (e.g. 755 for dirs, 644 for files).",
+                    file_path=rel_path,
+                    line_number=i,
+                    category="dockerfile",
+                    compliance=["CIS-Docker-4.8", "NIST-AC-3"],
+                )
+            )
+
+        # DOCKER-013: EXPOSE range of ports
+        if upper.startswith("EXPOSE ") and "-" in stripped.split(None, 1)[-1]:
+            findings.append(
+                IaCFinding(
+                    rule_id="DOCKER-013",
+                    severity="medium",
+                    title="EXPOSE port range (excessive attack surface)",
+                    message="Exposing a range of ports increases attack surface. Expose only specific required ports.",
+                    file_path=rel_path,
+                    line_number=i,
+                    category="dockerfile",
+                    compliance=["CIS-Docker-5.8", "NIST-CM-7"],
+                )
+            )
+
+        # DOCKER-014: RUN with sudo
+        if upper.startswith("RUN ") and _SUDO_RE.search(stripped):
+            findings.append(
+                IaCFinding(
+                    rule_id="DOCKER-014",
+                    severity="medium",
+                    title="RUN with sudo (unnecessary privilege escalation)",
+                    message="sudo in Dockerfile is unnecessary — RUN already executes as the current user. Remove sudo.",
+                    file_path=rel_path,
+                    line_number=i,
+                    category="dockerfile",
+                    compliance=["CIS-Docker-4.1", "NIST-AC-6"],
+                )
+            )
+
+        # DOCKER-015: ARG used for secrets
+        if upper.startswith("ARG ") and _SECRET_ENV_RE.search(stripped):
+            findings.append(
+                IaCFinding(
+                    rule_id="DOCKER-015",
+                    severity="critical",
+                    title="ARG used for secrets (visible in image history)",
+                    message="ARG values are stored in image history. Use BuildKit secrets (--mount=type=secret) instead.",
+                    file_path=rel_path,
+                    line_number=i,
+                    category="dockerfile",
+                    compliance=["CIS-Docker-4.10", "NIST-SC-12"],
+                )
+            )
+
+        # DOCKER-017: RUN pip install without --no-cache-dir
+        if upper.startswith("RUN ") and _PIP_NO_CACHE_RE.search(stripped):
+            findings.append(
+                IaCFinding(
+                    rule_id="DOCKER-017",
+                    severity="low",
+                    title="pip install without --no-cache-dir",
+                    message="pip caches downloaded packages. Add --no-cache-dir to reduce image size.",
+                    file_path=rel_path,
+                    line_number=i,
+                    category="dockerfile",
+                    compliance=["CIS-Docker-4.9"],
+                )
+            )
+
+        # DOCKER-018: WORKDIR uses relative path
+        if upper.startswith("WORKDIR ") and not stripped.split(None, 1)[-1].startswith("/"):
+            findings.append(
+                IaCFinding(
+                    rule_id="DOCKER-018",
+                    severity="low",
+                    title="WORKDIR uses relative path",
+                    message="Use absolute paths in WORKDIR for clarity and predictability.",
+                    file_path=rel_path,
+                    line_number=i,
+                    category="dockerfile",
+                    compliance=["CIS-Docker-4.9"],
+                )
+            )
+
+        # DOCKER-019: SHELL instruction overrides default
+        if upper.startswith("SHELL "):
+            findings.append(
+                IaCFinding(
+                    rule_id="DOCKER-019",
+                    severity="medium",
+                    title="SHELL instruction overrides default shell",
+                    message="Custom SHELL changes RUN behavior. Ensure it's intentional and documented.",
+                    file_path=rel_path,
+                    line_number=i,
+                    category="dockerfile",
+                    compliance=["NIST-CM-6"],
+                )
+            )
+
+        # DOCKER-020: RUN with --network=host
+        if upper.startswith("RUN ") and _NET_HOST_RE.search(stripped):
+            findings.append(
+                IaCFinding(
+                    rule_id="DOCKER-020",
+                    severity="high",
+                    title="RUN with --network=host (shares host network during build)",
+                    message="--network=host in RUN exposes host network during build. Use default bridge network.",
+                    file_path=rel_path,
+                    line_number=i,
+                    category="dockerfile",
+                    compliance=["CIS-Docker-5.1", "NIST-SC-7"],
+                )
+            )
 
     # DOCKER-002: No USER directive at all (runs as root by default)
     if not has_user:

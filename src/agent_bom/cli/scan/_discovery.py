@@ -127,13 +127,16 @@ def run_local_discovery(
         and not images
         and not k8s
         and not code_paths
-        and not project  # --project: package scan fallback runs below
+        and not project
         and not sbom_file
         and not tf_dirs
         and not gha_path
         and not agent_projects
         and not jupyter_dirs
         and not any_cloud
+        and not filesystem_paths
+        and not image_tars
+        and not os_packages
     ):
         con.print("\n[bold yellow]No MCP configurations found on this machine.[/bold yellow]")
         con.print()

@@ -1465,26 +1465,26 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10) -> None:
         if len(agent_names) > 1:
             agent_display += f" +{len(agent_names) - 1}"
 
-        # Framework tags (compact)
+        # Framework tags (compact — max 3 frameworks, 1 tag each)
+        _fw_sources = [
+            ("owasp_tags", "purple", "OWASP"),
+            ("owasp_mcp_tags", "yellow", "MCP"),
+            ("atlas_tags", "cyan", "ATLAS"),
+            ("nist_csf_tags", "bright_green", "NIST"),
+            ("cis_tags", "bright_magenta", "CIS"),
+            ("iso_27001_tags", "bright_cyan", "ISO"),
+            ("soc2_tags", "bright_yellow", "SOC2"),
+        ]
         tags = []
-        if hasattr(br, "owasp_tags") and br.owasp_tags:
-            tags.append(f"[purple]{' '.join(list(br.owasp_tags)[:2])}[/purple]")
-        if hasattr(br, "owasp_mcp_tags") and br.owasp_mcp_tags:
-            tags.append(f"[yellow]{' '.join(list(br.owasp_mcp_tags)[:2])}[/yellow]")
-        if hasattr(br, "owasp_agentic_tags") and br.owasp_agentic_tags:
-            tags.append(f"[magenta]{' '.join(list(br.owasp_agentic_tags)[:2])}[/magenta]")
-        if hasattr(br, "eu_ai_act_tags") and br.eu_ai_act_tags:
-            tags.append(f"[blue]{' '.join(list(br.eu_ai_act_tags)[:2])}[/blue]")
-        if hasattr(br, "nist_csf_tags") and br.nist_csf_tags:
-            tags.append(f"[bright_green]{' '.join(list(br.nist_csf_tags)[:2])}[/bright_green]")
-        if hasattr(br, "iso_27001_tags") and br.iso_27001_tags:
-            tags.append(f"[bright_cyan]{' '.join(list(br.iso_27001_tags)[:2])}[/bright_cyan]")
-        if hasattr(br, "soc2_tags") and br.soc2_tags:
-            tags.append(f"[bright_yellow]{' '.join(list(br.soc2_tags)[:2])}[/bright_yellow]")
-        if hasattr(br, "cis_tags") and br.cis_tags:
-            tags.append(f"[bright_magenta]{' '.join(list(br.cis_tags)[:2])}[/bright_magenta]")
-        if hasattr(br, "atlas_tags") and br.atlas_tags:
-            tags.append(f"[cyan]{' '.join(list(br.atlas_tags)[:1])}[/cyan]")
+        for attr, color, _label in _fw_sources:
+            fw_tags = getattr(br, attr, None)
+            if fw_tags:
+                tags.append(f"[{color}]{list(fw_tags)[0]}[/{color}]")
+            if len(tags) >= 3:
+                break
+        total_fw = sum(1 for attr, _, _ in _fw_sources if getattr(br, attr, None))
+        if total_fw > 3:
+            tags.append(f"[dim]+{total_fw - 3}[/dim]")
         fw_display = " ".join(tags) if tags else "[dim]—[/dim]"
 
         table.add_row(
@@ -1512,11 +1512,14 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10) -> None:
     console.print()
     fixable = sum(1 for br in report.blast_radii if br.vulnerability.fixed_version)
     kev_count = sum(1 for br in report.blast_radii if br.vulnerability.is_kev)
+    unknown_sev = sum(1 for br in report.blast_radii if br.vulnerability.severity == Severity.NONE)
     hints = ["[dim]--verbose[/dim] full details", "[dim]-f html[/dim] interactive report"]
     if fixable:
         hints.insert(0, f"[green]{fixable} fixable[/green]")
     if kev_count:
         hints.insert(0, f"[red]{kev_count} KEV[/red]")
+    if unknown_sev > 0 and unknown_sev == len(report.blast_radii):
+        hints.insert(0, "[yellow]--enrich[/yellow] for severity scores")
     console.print(Rule(style="dim"))
     console.print(f"  {' · '.join(hints)}")
 

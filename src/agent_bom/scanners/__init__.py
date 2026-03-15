@@ -949,7 +949,7 @@ async def scan_packages(packages: list[Package]) -> int:
         for p in scannable
         if p.name.lower().replace("-", "_") in _AI_FRAMEWORK_PACKAGES or p.name.lower().replace("-", "") in _AI_FRAMEWORK_PACKAGES
     ]
-    if nvidia_packages:
+    if nvidia_packages and not offline_mode:
         try:
             from agent_bom.scanners.nvidia_advisory import check_nvidia_advisories
 
@@ -962,7 +962,7 @@ async def scan_packages(packages: list[Package]) -> int:
             console.print(f"  [yellow]⚠[/yellow] NVIDIA advisory check skipped: {exc}")
 
     # Supplemental: check GitHub Security Advisories for all packages
-    if scannable:
+    if scannable and not offline_mode:
         try:
             from agent_bom.scanners.ghsa_advisory import check_github_advisories
 

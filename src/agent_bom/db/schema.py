@@ -137,8 +137,13 @@ def _set_db_permissions(db_path: Path) -> None:
 
 
 def _check_integrity(conn: sqlite3.Connection, db_path: Path) -> None:
-    """Run SQLite integrity_check; log a warning if the DB is corrupt."""
-    result = conn.execute("PRAGMA integrity_check").fetchone()
+    """Run SQLite quick_check (fast header-only validation).
+
+    Full ``integrity_check`` scans every page (~4s on 700K records) —
+    too expensive for every scan.  Use ``quick_check`` which validates
+    the B-tree structure without reading every row.
+    """
+    result = conn.execute("PRAGMA quick_check").fetchone()
     if result and result[0] != "ok":
         _logger.warning(
             "Local vuln DB at %s failed integrity check: %s — consider deleting and re-running 'agent-bom db update'",

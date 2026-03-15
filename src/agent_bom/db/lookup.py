@@ -67,7 +67,7 @@ def lookup_package(
         JOIN vulns v ON v.id = a.vuln_id
         LEFT JOIN epss_scores e ON e.cve_id = v.id
         LEFT JOIN kev_entries k ON k.cve_id = v.id
-        WHERE LOWER(a.ecosystem) = ? AND a.package_name = ?
+        WHERE a.ecosystem = ? AND a.package_name = ?
         ORDER BY v.cvss_score DESC NULLS LAST
         """,
         (eco_lower, norm_name),
@@ -196,7 +196,7 @@ def lookup_packages_batch(
             JOIN vulns v ON v.id = a.vuln_id
             LEFT JOIN epss_scores e ON e.cve_id = v.id
             LEFT JOIN kev_entries k ON k.cve_id = v.id
-            WHERE (LOWER(a.ecosystem), a.package_name) IN (VALUES {placeholders})
+            WHERE (a.ecosystem, a.package_name) IN (VALUES {placeholders})
             ORDER BY v.cvss_score DESC NULLS LAST
         """  # nosec B608
         all_rows.extend(conn.execute(query, params).fetchall())
@@ -255,7 +255,7 @@ def package_in_db(conn: sqlite3.Connection, ecosystem: str, name: str) -> bool:
 
     norm_name = normalize_package_name(name, ecosystem)
     row = conn.execute(
-        "SELECT 1 FROM affected WHERE LOWER(ecosystem) = ? AND package_name = ? LIMIT 1",
+        "SELECT 1 FROM affected WHERE ecosystem = ? AND package_name = ? LIMIT 1",
         (ecosystem.lower(), norm_name),
     ).fetchone()
     return row is not None

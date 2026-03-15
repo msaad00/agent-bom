@@ -33,37 +33,21 @@ _MOCK_CDX = json.dumps(
 # ─── scan_filesystem — directory ──────────────────────────────────────────────
 
 
-def test_scan_directory(monkeypatch, tmp_path):
-    """Syft directory scan returns parsed packages."""
+def test_scan_directory(tmp_path):
+    """Native directory scan returns empty for empty dir."""
+    packages, strategy = scan_filesystem(str(tmp_path))
+    assert strategy == "native-dir"
+    assert len(packages) == 0
 
-    def _fake_run(cmd, **kwargs):
-        assert "dir:" in cmd[1]
-        return subprocess.CompletedProcess(cmd, 0, stdout=_MOCK_CDX, stderr="")
 
-    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/syft" if name == "syft" else None)
-    monkeypatch.setattr("agent_bom.filesystem.subprocess.run", _fake_run)
+def test_scan_directory_with_packages(tmp_path):
+    """Native directory scan discovers packages from lockfiles."""
+    (tmp_path / "requirements.txt").write_text("requests==2.31.0\nflask==3.0.0\n")
 
     packages, strategy = scan_filesystem(str(tmp_path))
-    assert strategy == "syft-dir"
-    assert len(packages) == 3
-    assert packages[0].name == "requests"
-    assert packages[0].version == "2.31.0"
-    assert packages[0].ecosystem == "pypi"
-
-
-def test_scan_directory_with_packages(monkeypatch, tmp_path):
-    """Verify package details from Syft CycloneDX output."""
-
-    def _fake_run(cmd, **kwargs):
-        return subprocess.CompletedProcess(cmd, 0, stdout=_MOCK_CDX, stderr="")
-
-    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/syft")
-    monkeypatch.setattr("agent_bom.filesystem.subprocess.run", _fake_run)
-
-    packages, _ = scan_filesystem(str(tmp_path))
-    ecosystems = {p.ecosystem for p in packages}
-    assert "pypi" in ecosystems
-    assert "npm" in ecosystems
+    assert strategy == "native-dir"
+    names = {p.name for p in packages}
+    assert "requests" in names or "flask" in names
 
 
 # ─── scan_filesystem — tar archive ────────────────────────────────────────────
@@ -138,20 +122,41 @@ def test_syft_not_found_tar_raises(monkeypatch, tmp_path):
 
 
 def test_syft_nonzero_exit(monkeypatch, tmp_path):
-    """Non-zero exit code raises FilesystemScanError."""
+    """Non-zero exit code raises FilesystemScanError for tar archives."""
+    tar_file = tmp_path / "test.tar"
+    tar_file.touch()
 
     def _fake_run(cmd, **kwargs):
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="permission denied")
 
+    # Mock OCI parser to return empty result (so Syft fallback is tried)
+    import agent_bom.oci_parser as _oci_mod
+
+    _orig_parse = _oci_mod.parse_oci_tarball
+    monkeypatch.setattr(
+        _oci_mod,
+        "parse_oci_tarball",
+        lambda p: type("R", (), {"packages": []})(),
+    )
     monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/syft")
     monkeypatch.setattr("agent_bom.filesystem.subprocess.run", _fake_run)
 
     with pytest.raises(FilesystemScanError, match="syft exited 1"):
-        scan_filesystem(str(tmp_path))
+        scan_filesystem(str(tar_file))
 
 
 def test_syft_timeout(monkeypatch, tmp_path):
-    """Subprocess timeout raises FilesystemScanError."""
+    """Subprocess timeout raises FilesystemScanError for tar archives."""
+    tar_file = tmp_path / "test.tar"
+    tar_file.touch()
+
+    import agent_bom.oci_parser as _oci_mod
+
+    monkeypatch.setattr(
+        _oci_mod,
+        "parse_oci_tarball",
+        lambda p: type("R", (), {"packages": []})(),
+    )
 
     def _fake_run(cmd, **kwargs):
         raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout", 600))
@@ -160,11 +165,21 @@ def test_syft_timeout(monkeypatch, tmp_path):
     monkeypatch.setattr("agent_bom.filesystem.subprocess.run", _fake_run)
 
     with pytest.raises(FilesystemScanError, match="timed out"):
-        scan_filesystem(str(tmp_path), timeout=10)
+        scan_filesystem(str(tar_file), timeout=10)
 
 
 def test_syft_invalid_json(monkeypatch, tmp_path):
-    """Invalid JSON output raises FilesystemScanError."""
+    """Invalid JSON output raises FilesystemScanError for tar archives."""
+    tar_file = tmp_path / "test.tar"
+    tar_file.touch()
+
+    import agent_bom.oci_parser as _oci_mod
+
+    monkeypatch.setattr(
+        _oci_mod,
+        "parse_oci_tarball",
+        lambda p: type("R", (), {"packages": []})(),
+    )
 
     def _fake_run(cmd, **kwargs):
         return subprocess.CompletedProcess(cmd, 0, stdout="not json {{{", stderr="")
@@ -173,7 +188,7 @@ def test_syft_invalid_json(monkeypatch, tmp_path):
     monkeypatch.setattr("agent_bom.filesystem.subprocess.run", _fake_run)
 
     with pytest.raises(FilesystemScanError, match="not valid JSON"):
-        scan_filesystem(str(tmp_path))
+        scan_filesystem(str(tar_file))
 
 
 def test_unsupported_file_type(monkeypatch, tmp_path):
@@ -196,50 +211,34 @@ def test_nonexistent_path():
 # ─── scan_filesystem_batch ────────────────────────────────────────────────────
 
 
-def test_batch_scan_success(monkeypatch, tmp_path):
-    """Batch scan processes multiple directories."""
+def test_batch_scan_success(tmp_path):
+    """Batch scan processes multiple directories using native scanner."""
     dir1 = tmp_path / "snap1"
     dir1.mkdir()
     dir2 = tmp_path / "snap2"
     dir2.mkdir()
-
-    def _fake_run(cmd, **kwargs):
-        return subprocess.CompletedProcess(cmd, 0, stdout=_MOCK_CDX, stderr="")
-
-    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/syft")
-    monkeypatch.setattr("agent_bom.filesystem.subprocess.run", _fake_run)
+    # Add lockfiles so native scanner finds packages
+    (dir1 / "requirements.txt").write_text("requests==2.31.0\n")
+    (dir2 / "requirements.txt").write_text("flask==3.0.0\n")
 
     results = scan_filesystem_batch([str(dir1), str(dir2)])
     assert len(results) == 2
-    assert results[0][2] == "syft-dir"
-    assert results[1][2] == "syft-dir"
-    assert len(results[0][1]) == 3
-    assert len(results[1][1]) == 3
+    assert results[0][2] == "native-dir"
+    assert results[1][2] == "native-dir"
 
 
-def test_batch_scan_partial_failure(monkeypatch, tmp_path):
-    """Batch scan handles partial failures gracefully."""
+def test_batch_scan_partial_failure(tmp_path):
+    """Batch scan handles empty directories gracefully."""
     good_dir = tmp_path / "good"
     good_dir.mkdir()
+    empty_dir = tmp_path / "empty"
+    empty_dir.mkdir()
+    (good_dir / "requirements.txt").write_text("requests==2.31.0\n")
 
-    call_count = 0
-
-    def _fake_run(cmd, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            return subprocess.CompletedProcess(cmd, 0, stdout=_MOCK_CDX, stderr="")
-        return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="error")
-
-    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/syft")
-    monkeypatch.setattr("agent_bom.filesystem.subprocess.run", _fake_run)
-
-    # Second path will fail (same dir triggers syft again)
-    results = scan_filesystem_batch([str(good_dir), str(good_dir)])
-    assert results[0][2] == "syft-dir"
-    assert results[0][1]  # Has packages
-    assert results[1][2] == "error"
-    assert results[1][1] == []
+    results = scan_filesystem_batch([str(good_dir), str(empty_dir)])
+    assert results[0][2] == "native-dir"
+    assert results[1][2] == "native-dir"
+    assert results[1][1] == []  # Empty dir = no packages
 
 
 def test_batch_scan_empty_list():

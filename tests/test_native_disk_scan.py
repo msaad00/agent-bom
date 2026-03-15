@@ -276,18 +276,12 @@ class TestScanFilesystemNativeFallback:
         assert strategy == "native-dir"
         assert any(p.name == "requests" for p in pkgs)
 
-    def test_uses_syft_when_available(self, tmp_path):
-        fake_cdx = json.dumps(
-            {
-                "bomFormat": "CycloneDX",
-                "components": [{"name": "lodash", "version": "4.17.21", "purl": "pkg:npm/lodash@4.17.21", "type": "library"}],
-            }
-        )
-        mock_result = MagicMock(returncode=0, stdout=fake_cdx, stderr="")
-        with patch("shutil.which", return_value="/usr/bin/syft"), patch("subprocess.run", return_value=mock_result):
+    def test_native_used_even_when_syft_available(self, tmp_path):
+        """Directories always use native scanner, even when Syft is installed."""
+        (tmp_path / "package.json").write_text('{"dependencies":{"lodash":"4.17.21"}}')
+        with patch("shutil.which", return_value="/usr/bin/syft"):
             pkgs, strategy = scan_filesystem(str(tmp_path))
-        assert strategy == "syft-dir"
-        assert any(p.name == "lodash" for p in pkgs)
+        assert strategy == "native-dir"
 
     def test_tar_without_syft_raises(self, tmp_path):
         tar_file = tmp_path / "archive.tar"

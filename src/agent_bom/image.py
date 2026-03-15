@@ -619,8 +619,10 @@ def scan_image(
 ) -> tuple[list[Package], str]:
     """Scan a Docker image and return (packages, strategy_used).
 
-    Tries Grype first (packages + CVEs in one call), then Syft (packages
-    only, CVEs added by OSV query later), then Docker CLI as a last resort.
+    Strategy order (native first, external tools as fallback):
+    1. Docker CLI export → native OCI parser (no Grype/Syft needed)
+    2. Grype fallback (if installed — provides packages + CVEs in one call)
+    3. Syft fallback (if installed — packages only)
 
     Args:
         image_ref: Docker image reference, e.g. ``myapp:latest``,
@@ -631,7 +633,7 @@ def scan_image(
 
     Returns:
         A tuple ``(packages, strategy)`` where strategy is one of
-        ``"grype"``, ``"syft"``, ``"docker"``.
+        ``"native"``, ``"grype"``, ``"syft"``.
 
     Raises:
         ImageScanError: If no scanner is available or the image cannot
@@ -639,21 +641,27 @@ def scan_image(
     """
     validate_image_ref(image_ref)
 
+    # Strategy 1: Native — Docker export + OCI parser (preferred, no external scanner)
+    if _docker_available():
+        try:
+            packages = _scan_with_docker(image_ref, platform)
+            if packages:
+                return packages, "native"
+        except Exception as exc:
+            _logger.debug("Native image scan failed, trying fallbacks: %s", exc)
+
+    # Strategy 2: Grype fallback (packages + CVEs in one call)
     if _grype_available():
         packages = _scan_with_grype(image_ref, registry_user, registry_pass, platform)
         return packages, "grype"
 
+    # Strategy 3: Syft fallback (packages only, CVEs added by OSV later)
     if _syft_available():
         packages = _scan_with_syft(image_ref, registry_user, registry_pass, platform)
         return packages, "syft"
 
-    if _docker_available():
-        packages = _scan_with_docker(image_ref, platform)
-        return packages, "docker"
-
     raise ImageScanError(
-        "Neither 'grype', 'syft', nor 'docker' found on PATH. "
-        "Install Grype (https://github.com/anchore/grype) to enable image scanning, "
+        "Docker is not available. Install Docker to enable native image scanning, "
         "or use 'docker save <image> -o image.tar' and pass the tarball with --image-tar."
     )
 

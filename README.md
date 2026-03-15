@@ -51,7 +51,7 @@ agent-bom scan -f sarif -o results.sarif          # GitHub Security tab
 Discovers 22 MCP client types, resolves server dependencies, scans against OSV/NVD/GHSA, and maps blast radius — which agents, credentials, and tools each CVE affects.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.70.11.gif" alt="agent-bom demo — scan with progress bar, CVE check, AI component detection, blast radius, GPU scan, delta mode, runtime proxy, 32 MCP tools" width="900" />
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.70.12.gif" alt="agent-bom demo — scan with progress bar, CVE check, AI component detection, blast radius, GPU scan, delta mode, runtime proxy, 32 MCP tools" width="900" />
 </p>
 
 <p align="center">
@@ -376,7 +376,7 @@ agent-bom scan -o -                                # Pipe any format to stdout
 | Mode | Command | Best for |
 |------|---------|----------|
 | CLI | `agent-bom scan` | Local audit |
-| GitHub Action | `uses: msaad00/agent-bom@v0.70.11 | CI/CD + SARIF |
+| GitHub Action | `uses: msaad00/agent-bom@v0.70.12 | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated scans (linux/amd64, linux/arm64) |
 | REST API | `agent-bom api` | Dashboards, SIEM |
 | MCP Server | `agent-bom mcp-server` (32 tools) | Inside any MCP client |
@@ -405,7 +405,7 @@ agent-bom scan -o -                                # Pipe any format to stdout
 <summary><b>GitHub Action</b></summary>
 
 ```yaml
-- uses: msaad00/agent-bom@v0.70.11
+- uses: msaad00/agent-bom@v0.70.12
   with:
     severity-threshold: high
     upload-sarif: true
@@ -516,7 +516,7 @@ rm -rf ~/.agent-bom                      # remove local data
 |----------|------|
 | PyPI | `pip install agent-bom` |
 | Docker | `docker run agentbom/agent-bom scan` |
-| GitHub Action | `uses: msaad00/agent-bom@v0.70.11 |
+| GitHub Action | `uses: msaad00/agent-bom@v0.70.12 |
 | Glama | [glama.ai/mcp/servers/@msaad00/agent-bom](https://glama.ai/mcp/servers/@msaad00/agent-bom) |
 | MCP Registry | [server.json](integrations/mcp-registry/server.json) |
 | ToolHive | [registry entry](integrations/toolhive/server.json) |
@@ -649,8 +649,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full diagrams: data flow pi
 - [x] .NET (*.deps.json, packages.lock.json)
 - [x] Ruby (Gemfile.lock + Gemfile) — v0.70.8
 - [x] Conda (environment.yml, conda-lock.yml)
-- [x] PHP (composer.lock) — v0.70.11
-- [x] Swift (Package.resolved v2/v3) — v0.70.11
+- [x] PHP (composer.lock) — v0.70.12
+- [x] Swift (Package.resolved v2/v3) — v0.70.12
 - [x] MCP (claude_desktop_config.json, mcp.json)
 - [x] Windows platform docs + Docker Desktop guidance ([WINDOWS_CONTAINERS.md](docs/WINDOWS_CONTAINERS.md))
 - [ ] Windows-native container images (nanoserver/servercore)

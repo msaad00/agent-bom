@@ -925,7 +925,7 @@ def test_image_scan_no_tools(monkeypatch):
     from agent_bom.image import ImageScanError, scan_image
 
     monkeypatch.setattr(shutil, "which", lambda _: None)
-    with pytest.raises(ImageScanError, match="Neither"):
+    with pytest.raises(ImageScanError, match="Docker is not available"):
         scan_image("nginx:latest")
 
 

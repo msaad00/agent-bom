@@ -101,9 +101,10 @@ def scan_filesystem(path: str, timeout: int = 600) -> tuple[list[Package], str]:
     if validated.suffix in (".tar", ".gz", ".tgz"):
         # Try native OCI parser first for tar archives
         try:
-            from agent_bom.oci_parser import parse_image_tarball
+            from agent_bom.oci_parser import parse_oci_tarball
 
-            pkgs = parse_image_tarball(str(validated))
+            result = parse_oci_tarball(validated)
+            pkgs = result.packages
             if pkgs:
                 return pkgs, "native-tar"
         except Exception:

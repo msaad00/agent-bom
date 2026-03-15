@@ -370,7 +370,6 @@ agent-bom scan -o -                                # Pipe any format to stdout
 | Protect engine | `agent-bom protect` | 7 behavioral detectors (rug pull, injection, credential leak, exfil sequences, response cloaking, rate limiting, vector DB injection) |
 | Config watcher | `agent-bom watch` | Filesystem watch on MCP configs, alert on drift |
 | Pre-install guard | `agent-bom guard pip install <pkg>` | Block vulnerable installs |
-| Snowflake | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Snowpark + SiS |
 
 <details>
 <summary><b>Install extras</b></summary>

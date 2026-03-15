@@ -538,23 +538,44 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full diagrams: data flow pi
 
 ---
 
-## Trust & permissions
+## Trust & transparency
 
-- **Read-only** -- never writes configs, runs servers, provisions resources, or stores secrets
+**What data leaves your machine?**
+
+| When | What's sent | Where | Opt out |
+|---|---|---|---|
+| `agent-bom scan` | Package names + versions only | OSV API | `--offline` |
+| `--enrich` | CVE IDs only | NVD, EPSS, KEV APIs | Don't use `--enrich` |
+| `agent-bom upgrade --check` | Nothing (reads PyPI JSON) | PyPI | `--no-update-check` |
+| Everything else | **Nothing** | Nowhere | N/A |
+
+**No source code, no secrets, no telemetry, no analytics ever leave your machine.**
+
+**Security guarantees:**
+
+- **Agentless / read-only** -- never writes configs, runs servers, provisions resources, or stores secrets
+- **No telemetry** -- zero analytics, zero phone-home, zero tracking
+- **Ephemeral credentials** -- cloud provider keys used only during scan, never persisted to disk
 - **Credential redaction** -- only env var **names** in reports; values never read or logged
 - **No shell injection** -- subprocess uses `asyncio.create_subprocess_exec`; command + args validated before every spawn
 - **No SSRF** -- all outbound URLs hardcoded or validated; DNS rebinding defense blocks private/loopback/cloud-metadata ranges
 - **No path traversal** -- `validate_path(restrict_to_home=True)` on all user-supplied paths; MCP tool inputs sanitized
 - **No SQL injection** -- all database queries use parameterized statements
-- **Proxy size guard** -- messages >10 MB dropped before parsing; protects against DoS
-- **Audit integrity** -- JSONL audit logs stored at `0600`, HMAC-signed (SHA-256). Set `AGENT_BOM_AUDIT_HMAC_KEY` in production for cross-restart verifiability.
-- **API security** -- scrypt KDF for API keys, RBAC (admin/analyst/viewer), OIDC/JWT (RS256/ES256, `none` algorithm rejected), constant-time comparison
+- **Proxy MITM-safe** -- size guard (10 MB), rate limiting, credential leak detection, audit trail
+- **Audit integrity** -- JSONL audit logs stored at `0600`, HMAC-signed (SHA-256)
+- **API security** -- scrypt KDF for API keys, RBAC (admin/analyst/viewer), OIDC/JWT (RS256/ES256, `none` algorithm rejected)
 - **`--dry-run`** -- preview every file and API URL before access
+
+**Supply chain integrity:**
+
 - **Sigstore signed** -- releases v0.7.0+ signed via cosign OIDC
+- **SLSA provenance** -- build provenance attestation on every release
+- **Self-scanning** -- CI scans agent-bom's own dependencies before every release
 - **OpenSSF Scorecard** -- [automated supply chain scoring](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom)
-- **OpenSSF Best Practices** -- [passing badge (100%)](https://www.bestpractices.dev/projects/12114) — 67/67 criteria
+- **OpenSSF Best Practices** -- [Silver badge (100%)](https://www.bestpractices.dev/projects/12114)
 - **Continuous fuzzing** -- [ClusterFuzzLite](https://github.com/msaad00/agent-bom/blob/main/.github/workflows/cflite-pr.yml) fuzzes SBOM parsers, policy evaluator, and skill parser
 - **[PERMISSIONS.md](docs/PERMISSIONS.md)** -- full auditable trust contract
+- **[SECURITY_ARCHITECTURE.md](docs/SECURITY_ARCHITECTURE.md)** -- enterprise security design documentation
 
 ---
 

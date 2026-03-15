@@ -28,12 +28,34 @@
 ## Quick start
 
 ```bash
-pip install agent-bom        # install
-agent-bom scan               # auto-discover MCP configs + scan
-agent-bom scan --enrich      # + NVD CVSS + EPSS + CISA KEV enrichment
+pip install agent-bom
 ```
 
-That's it. agent-bom discovers your MCP client configs (Claude Desktop, Cursor, Windsurf, and 20 more), resolves every server's dependencies, checks them against OSV/NVD/GHSA, and maps the blast radius — which agents, credentials, and tools are affected by each vulnerability.
+```bash
+# Discover & scan — find all MCP agents, servers, packages, and CVEs
+agent-bom scan
+
+# Pre-install CVE gate — check before you install
+agent-bom check flask@2.0.0
+
+# CI/CD pipeline — break build on critical CVEs
+agent-bom scan --fail-on-severity critical -f sarif -o results.sarif
+
+# Container & VM scanning
+agent-bom scan --image nginx:latest
+agent-bom scan --filesystem /mnt/vm-snapshot
+
+# Infrastructure misconfigurations (Dockerfile, K8s, Terraform, CloudFormation)
+agent-bom scan --iac Dockerfile k8s/
+
+# Runtime enforcement — intercept live MCP traffic
+agent-bom proxy --command "npx @modelcontextprotocol/server-github"
+
+# Enrich with CVSS scores, exploit probability, known exploited vulns
+agent-bom scan --enrich
+```
+
+Discovers 22 MCP client types (Claude Desktop, Cursor, Windsurf, and more), resolves every server's dependencies, scans against OSV/NVD/GHSA, and maps the blast radius — which agents, credentials, and tools are affected by each vulnerability.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.70.11.gif" alt="agent-bom demo — scan with progress bar, CVE check, AI component detection, blast radius, GPU scan, delta mode, runtime proxy, 32 MCP tools" width="900" />

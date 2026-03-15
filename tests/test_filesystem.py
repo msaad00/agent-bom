@@ -380,3 +380,46 @@ def test_parse_rpm_sqlite_arch_in_purl(tmp_path):
     pkgs = _parse_rpm_sqlite(db)
     assert len(pkgs) == 1
     assert "arch=x86_64" in pkgs[0].purl
+
+
+# ─── discover_filesystem_mcps ─────────────────────────────────────────────────
+
+
+def test_discover_filesystem_mcps_finds_claude(tmp_path):
+    """Discover MCP configs inside a mounted filesystem."""
+    from agent_bom.discovery import discover_filesystem_mcps
+
+    # Create a fake home with Claude Desktop config
+    home = tmp_path / "home" / "user"
+    config_dir = home / ".config" / "Claude"
+    config_dir.mkdir(parents=True)
+    config_file = config_dir / "claude_desktop_config.json"
+    config_file.write_text('{"mcpServers":{"myserver":{"command":"npx","args":["@myorg/mcp-server"]}}}')
+
+    agents = discover_filesystem_mcps(tmp_path)
+    assert len(agents) >= 1
+    assert any("claude" in a.name.lower() for a in agents)
+    assert agents[0].mcp_servers  # Has at least one server
+
+
+def test_discover_filesystem_mcps_empty_dir(tmp_path):
+    """No MCP configs in empty dir returns empty list."""
+    from agent_bom.discovery import discover_filesystem_mcps
+
+    agents = discover_filesystem_mcps(tmp_path)
+    assert agents == []
+
+
+def test_discover_filesystem_mcps_blocks_symlink_escape(tmp_path):
+    """Symlinks escaping root are rejected."""
+    from agent_bom.discovery import discover_filesystem_mcps
+
+    home = tmp_path / "home" / "user" / ".config" / "Claude"
+    home.mkdir(parents=True)
+    # Create a symlink that points outside the root
+    link = home / "claude_desktop_config.json"
+    link.symlink_to("/etc/passwd")
+
+    agents = discover_filesystem_mcps(tmp_path)
+    # Should not parse /etc/passwd
+    assert agents == []

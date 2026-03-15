@@ -298,11 +298,11 @@ def run_local_discovery(
         from agent_bom.filesystem import FilesystemScanError, scan_filesystem
         from agent_bom.models import Agent, AgentType, MCPServer
 
-        con.print(f"\n[bold blue]Scanning {len(filesystem_paths)} filesystem path(s) via Syft...[/bold blue]\n")
+        con.print(f"\n[bold blue]Scanning {len(filesystem_paths)} filesystem path(s)...[/bold blue]\n")
         for fs_path in filesystem_paths:
             try:
                 fs_packages, fs_strategy = scan_filesystem(fs_path)
-                con.print(f"  [green]v[/green] {fs_path}: {len(fs_packages)} package(s) [dim](via {fs_strategy})[/dim]")
+                con.print(f"  [green]\u2713[/green] {fs_path}: {len(fs_packages)} package(s) [dim](via {fs_strategy})[/dim]")
                 server = MCPServer(name=f"fs:{fs_path}")
                 server.packages = fs_packages
                 fs_agent = Agent(
@@ -315,6 +315,16 @@ def run_local_discovery(
                 ctx.agents.append(fs_agent)
             except FilesystemScanError as e:
                 con.print(f"  [yellow]![/yellow] {fs_path}: {e}")
+
+            # Auto-discover MCP configs inside directory (VM snapshots, mounts)
+            fs_dir = Path(fs_path)
+            if fs_dir.is_dir():
+                from agent_bom.discovery import discover_filesystem_mcps
+
+                fs_mcp_agents = discover_filesystem_mcps(fs_dir)
+                if fs_mcp_agents:
+                    con.print(f"  [green]\u2713[/green] Discovered {len(fs_mcp_agents)} MCP agent(s) inside {fs_path}")
+                    ctx.agents.extend(fs_mcp_agents)
 
     # Step 1d3a: Host OS package scan (--os-packages)
     if not skill_only and os_packages:

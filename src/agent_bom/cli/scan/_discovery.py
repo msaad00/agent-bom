@@ -134,6 +134,9 @@ def run_local_discovery(
         and not agent_projects
         and not jupyter_dirs
         and not any_cloud
+        and not filesystem_paths
+        and not image_tars
+        and not os_packages
     ):
         con.print("\n[bold yellow]No MCP configurations found on this machine.[/bold yellow]")
         con.print()

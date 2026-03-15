@@ -251,6 +251,10 @@ def _parse_osv_entry(data: dict) -> Optional[tuple[dict, list[dict]]]:
         if isinstance(raw_cwes, list):
             cwe_ids_list = [c for c in raw_cwes if isinstance(c, str) and c.startswith("CWE-")]
 
+    # Store aliases for cross-reference deduplication (PYSEC↔GHSA↔CVE)
+    aliases_list = data.get("aliases", [])
+    aliases_str = ",".join(a for a in aliases_list if isinstance(a, str))
+
     vuln_row = {
         "id": vuln_id,
         "summary": summary[:500],
@@ -259,6 +263,7 @@ def _parse_osv_entry(data: dict) -> Optional[tuple[dict, list[dict]]]:
         "cvss_vector": cvss_vector,
         "fixed_version": fixed_version,
         "cwe_ids": ",".join(cwe_ids_list),
+        "aliases": aliases_str,
         "published": published,
         "modified": modified,
         "source": "osv",
@@ -283,9 +288,9 @@ def _ingest_osv_file(conn: sqlite3.Connection, content: bytes, filename: str) ->
     conn.execute(
         """
         INSERT OR REPLACE INTO vulns
-            (id, summary, severity, cvss_score, cvss_vector, fixed_version, cwe_ids, published, modified, source)
+            (id, summary, severity, cvss_score, cvss_vector, fixed_version, cwe_ids, aliases, published, modified, source)
         VALUES
-            (:id, :summary, :severity, :cvss_score, :cvss_vector, :fixed_version, :cwe_ids, :published, :modified, :source)
+            (:id, :summary, :severity, :cvss_score, :cvss_vector, :fixed_version, :cwe_ids, :aliases, :published, :modified, :source)
         """,
         vuln_row,
     )
@@ -580,9 +585,9 @@ def _ingest_ghsa_advisory(
     conn.execute(
         """
         INSERT OR REPLACE INTO vulns
-            (id, summary, severity, cvss_score, cvss_vector, fixed_version, cwe_ids, published, modified, source)
+            (id, summary, severity, cvss_score, cvss_vector, fixed_version, cwe_ids, aliases, published, modified, source)
         VALUES
-            (:id, :summary, :severity, :cvss_score, :cvss_vector, :fixed_version, :cwe_ids, :published, :modified, :source)
+            (:id, :summary, :severity, :cvss_score, :cvss_vector, :fixed_version, :cwe_ids, :aliases, :published, :modified, :source)
         """,
         {
             "id": vuln_id,
@@ -592,6 +597,7 @@ def _ingest_ghsa_advisory(
             "cvss_vector": cvss_vector,
             "fixed_version": fixed_version,
             "cwe_ids": ",".join(ghsa_cwes),
+            "aliases": ",".join(filter(None, [ghsa_id if vuln_id != ghsa_id else "", cve_id if vuln_id != cve_id else ""])),
             "published": published,
             "modified": modified,
             "source": "ghsa",

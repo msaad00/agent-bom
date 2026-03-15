@@ -59,7 +59,7 @@ def lookup_package(
     rows = conn.execute(
         """
         SELECT
-            v.id, v.summary, v.severity, v.cvss_score, v.fixed_version, v.cwe_ids, v.source,
+            v.id, v.summary, v.severity, v.cvss_score, v.fixed_version, v.cwe_ids, COALESCE(v.aliases, '') AS aliases, v.source,
             a.ecosystem, a.package_name, a.introduced, a.fixed, a.last_affected,
             e.probability AS epss_prob, e.percentile AS epss_pct,
             k.date_added AS kev_date
@@ -80,6 +80,8 @@ def lookup_package(
         # Parse comma-separated CWE IDs from DB column
         raw_cwes = row["cwe_ids"] or ""
         cwe_list = [c for c in raw_cwes.split(",") if c] if raw_cwes else []
+        raw_aliases = row["aliases"] or ""
+        alias_list = [a for a in raw_aliases.split(",") if a] if raw_aliases else []
 
         results.append(
             LocalVuln(
@@ -96,6 +98,7 @@ def lookup_package(
                 ecosystem=row["ecosystem"],
                 package_name=row["package_name"],
                 introduced=row["introduced"],
+                aliases=alias_list,
                 cwe_ids=cwe_list,
             )
         )
@@ -185,7 +188,7 @@ def lookup_packages_batch(
         # placeholders is only "(?, ?)" repeated — no user data in the SQL string.
         query = f"""
             SELECT
-                v.id, v.summary, v.severity, v.cvss_score, v.fixed_version, v.cwe_ids, v.source,
+                v.id, v.summary, v.severity, v.cvss_score, v.fixed_version, v.cwe_ids, COALESCE(v.aliases, '') AS aliases, v.source,
                 a.ecosystem, a.package_name, a.introduced, a.fixed, a.last_affected,
                 e.probability AS epss_prob, e.percentile AS epss_pct,
                 k.date_added AS kev_date

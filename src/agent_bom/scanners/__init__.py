@@ -551,26 +551,36 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
 
 
 def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[Vulnerability]:
-    """Convert OSV response data to Vulnerability objects."""
+    """Convert OSV response data to Vulnerability objects.
+
+    Deduplicates by canonical CVE ID — if GHSA-xxxx and PYSEC-yyyy both
+    map to CVE-2021-xxxxx, only one Vulnerability is created. The first
+    advisory seen wins; later aliases are merged into its aliases list.
+    """
     vulns = []
-    seen_ids = set()
+    seen_ids: set[str] = set()
 
     for vuln_data in vuln_data_list:
         vuln_id = vuln_data.get("id", "unknown")
-        if vuln_id in seen_ids:
+
+        # Compute canonical ID early so dedup catches alias overlaps
+        aliases = vuln_data.get("aliases", [])
+        cve_alias = next((a for a in aliases if a.startswith("CVE-")), None)
+        canonical_id = cve_alias if cve_alias and not vuln_id.startswith("CVE-") else vuln_id
+
+        # Deduplicate by canonical ID AND raw ID — prevents PYSEC/GHSA duplicates
+        if canonical_id in seen_ids or vuln_id in seen_ids:
             continue
+        seen_ids.add(canonical_id)
         seen_ids.add(vuln_id)
+        # Also mark all aliases as seen to prevent future duplicates
+        for alias in aliases:
+            seen_ids.add(alias)
 
         severity, cvss_score = parse_osv_severity(vuln_data)
         fixed = parse_fixed_version(vuln_data, package.name, package.ecosystem)
 
         references = [ref.get("url", "") for ref in vuln_data.get("references", []) if ref.get("url")]
-
-        # Use aliases to surface CVE ID when primary ID is GHSA/OSV/RUSTSEC
-        aliases = vuln_data.get("aliases", [])
-        cve_alias = next((a for a in aliases if a.startswith("CVE-")), None)
-        # Use CVE alias as the canonical ID so EPSS/NVD enrichment picks it up
-        canonical_id = cve_alias if cve_alias and not vuln_id.startswith("CVE-") else vuln_id
 
         summary = vuln_data.get("summary", vuln_data.get("details", "No description available"))[:200]
 
@@ -661,7 +671,7 @@ def _local_vuln_to_vulnerability(lv: "Any") -> Vulnerability:
         is_kev=lv.is_kev,
         kev_date_added=lv.kev_date_added,
         cwe_ids=getattr(lv, "cwe_ids", []),
-        aliases=[],
+        aliases=getattr(lv, "aliases", []),
         references=[],
     )
 
@@ -736,11 +746,18 @@ def _scan_packages_local_db(packages: list[Package]) -> tuple[int, set[str]]:
 
                 if local_vulns:
                     existing_ids = {v.id for v in pkg.vulnerabilities}
+                    # Also track aliases to prevent PYSEC/GHSA/CVE duplicates
+                    for v in pkg.vulnerabilities:
+                        existing_ids.update(v.aliases)
                     new_vulns = []
                     for lv in local_vulns:
-                        if lv.id not in existing_ids:
-                            new_vulns.append(_local_vuln_to_vulnerability(lv))
-                            existing_ids.add(lv.id)
+                        # Skip if this vuln or any of its aliases already seen
+                        lv_all_ids = {lv.id} | set(getattr(lv, "aliases", []))
+                        if lv_all_ids & existing_ids:
+                            continue
+                        new_vulns.append(_local_vuln_to_vulnerability(lv))
+                        existing_ids.add(lv.id)
+                        existing_ids.update(getattr(lv, "aliases", []))
                     pkg.vulnerabilities.extend(new_vulns)
                     total += len(new_vulns)
                     for v in new_vulns:

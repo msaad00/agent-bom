@@ -138,9 +138,10 @@ def _check_for_update_bg() -> None:
             data = json.loads(resp.read())
         latest = data["info"]["version"]
 
-        from packaging.version import Version
+        def _vt(v: str) -> tuple[int, ...]:
+            return tuple(int(x) for x in v.split(".") if x.isdigit())
 
-        if Version(latest) > Version(__version__):
+        if _vt(latest) > _vt(__version__):
             msg = (
                 f"[yellow]Update available:[/yellow] agent-bom {__version__} → [bold]{latest}[/bold]\n"
                 f"  Run: [cyan]pip install --upgrade agent-bom[/cyan]"

@@ -153,8 +153,10 @@ def upgrade_cmd(check_only: bool) -> None:
     import subprocess as sp
     import urllib.request
 
-    from packaging.version import Version
     from rich.console import Console
+
+    def _ver_tuple(v: str) -> tuple[int, ...]:
+        return tuple(int(x) for x in v.split(".") if x.isdigit())
 
     con = Console(stderr=True)
     con.print(f"  Current version: [bold]{__version__}[/bold]")
@@ -172,7 +174,7 @@ def upgrade_cmd(check_only: bool) -> None:
         con.print("  [red]Could not reach PyPI to check for updates.[/red]")
         raise SystemExit(1)
 
-    if Version(latest) <= Version(__version__):
+    if _ver_tuple(latest) <= _ver_tuple(__version__):
         con.print(f"  Latest version:  [bold]{latest}[/bold]")
         con.print("  [green]You are up to date.[/green]")
         return

@@ -160,7 +160,7 @@ The proxy wraps any MCP server without modifying it. The client connects to `age
 
 ```bash
 # stdio server
-agent-bom proxy --command "uvx mcp-server-filesystem /" --policy policy.yml
+agent-bom proxy "uvx mcp-server-filesystem /" --policy policy.yml
 
 # SSE server
 agent-bom proxy --url http://localhost:3000 --policy policy.yml
@@ -254,7 +254,7 @@ echo "ignores:\n  - id: CVE-2024-1234\n    reason: 'Not reachable'\n    expires:
 agent-bom proxy-configure --apply
 
 # Or wrap a single server manually
-agent-bom proxy --command "uvx mcp-server-filesystem /" \
+agent-bom proxy "uvx mcp-server-filesystem /" \
   --policy policy.yml \
   --audit-log /var/log/mcp-audit.jsonl
 ```

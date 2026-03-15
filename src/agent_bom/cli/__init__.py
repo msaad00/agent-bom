@@ -55,7 +55,7 @@ def main():
       agent-bom check lodash@4.17.20        pre-install CVE check
       agent-bom scan --enrich               add NVD CVSS + EPSS + CISA KEV
       agent-bom scan -f html -o report.html --open   HTML dashboard
-      agent-bom proxy --command "uvx ..."   runtime enforcement proxy
+      agent-bom proxy "uvx ..."             runtime enforcement proxy
       agent-bom introspect --all            live server tool listing
       agent-bom api                         start REST API (port 8422)
       agent-bom serve                       API + dashboard (port 8422)

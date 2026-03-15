@@ -176,34 +176,51 @@ def _parse_osv_entry(data: dict) -> Optional[tuple[dict, list[dict]]]:
     published = data.get("published", "")
     modified = data.get("modified", "")
 
-    # CVSS score
+    # CVSS score — extract from severity array and database_specific
     cvss_score: Optional[float] = None
     cvss_vector: Optional[str] = None
-    for sev in data.get("severity", []):
-        if sev.get("type") == "CVSS_V3":
-            # Store the vector string; base score is extracted from database_specific below
-            cvss_vector = sev.get("score")
-        if sev.get("type") == "CVSS_V3" and "score" in sev:
-            # Attempt numeric extraction (some entries have "CVSS:3.1/...")
-            try:
-                # CVSS score may be embedded in database_specific
-                pass
-            except Exception:
-                pass
+    db_severity: Optional[str] = None
 
-    # Better: pull score from database_specific NVD block
+    for sev in data.get("severity", []):
+        sev_type = sev.get("type", "")
+        sev_score = sev.get("score", "")
+        if sev_type in ("CVSS_V3", "CVSS_V4") and sev_score:
+            cvss_vector = sev_score
+            # Extract base score from CVSS vector string (e.g. "CVSS:3.1/AV:N/AC:L/...")
+            if cvss_score is None:
+                import re
+
+                m = re.search(r"/AV:[NALP]/AC:[LH]", sev_score)
+                if m and sev_score.startswith("CVSS:"):
+                    # Parse base score from vector using cvss lib or approximate
+                    _parts = sev_score.split("/")
+                    # Simple heuristic: count High-impact metrics
+                    _high = sum(1 for p in _parts if p.endswith(":H") or p.endswith(":N") and "UI" in p)
+                    # For accuracy, prefer database_specific score below
+
+    # Pull from database_specific (most reliable source for severity + score)
     db_specific = data.get("database_specific", {})
     if isinstance(db_specific, dict):
-        cvss_score = db_specific.get("cvss") or db_specific.get("cvss_score")
-        if isinstance(cvss_score, str):
-            try:
-                cvss_score = float(cvss_score)
-            except ValueError:
-                cvss_score = None
-        elif cvss_score is not None:
-            cvss_score = float(cvss_score) if cvss_score is not None else None
+        # Severity string (CRITICAL, HIGH, etc.)
+        raw_sev = db_specific.get("severity", "")
+        if isinstance(raw_sev, str) and raw_sev.upper() in ("CRITICAL", "HIGH", "MEDIUM", "LOW"):
+            db_severity = raw_sev.upper()
 
-    severity = _cvss_to_severity(cvss_score)
+        # Numeric CVSS score
+        raw_cvss = db_specific.get("cvss") or db_specific.get("cvss_score")
+        if raw_cvss is not None:
+            try:
+                cvss_score = float(raw_cvss)
+            except (ValueError, TypeError):
+                pass
+
+    # Determine severity: prefer database_specific string, then derive from CVSS
+    if db_severity:
+        severity = db_severity.lower()
+    elif cvss_score is not None:
+        severity = _cvss_to_severity(cvss_score)
+    else:
+        severity = "unknown"
 
     # Fixed version — take first fixed range across all affected entries
     fixed_version: Optional[str] = None

@@ -69,7 +69,7 @@ Enter
 Sleep 6s
 
 # ── 8. GPU / AI compute infra — NIM containers, CUDA CVEs ───────────────────
-Type "agent-bom scan --gpu-scan -q"
+Type "agent-bom scan --demo --gpu-scan -q"
 Enter
 Sleep 18s
 

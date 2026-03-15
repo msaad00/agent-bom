@@ -1127,7 +1127,7 @@ def discover_filesystem_mcps(root: Path) -> list[Agent]:
                         config_data = json.loads(config_path.read_text(encoding="utf-8"))
                         servers = parse_mcp_config(config_data, str(config_path))
                     elif config_path.suffix == ".toml" and agent_type == AgentType.CODEX_CLI:
-                        servers = parse_codex_config(config_path)
+                        servers = parse_codex_config(str(config_path))
 
                     if servers:
                         agent = Agent(

@@ -304,14 +304,21 @@ def test_db_migration_v1_to_v2(tmp_path):
 
     conn = init_db(db_path)
 
-    # Verify schema version bumped
+    # Verify schema version bumped (v1 → v2 → v3 via chained migrations)
+    from agent_bom.db.schema import _SCHEMA_VERSION
+
     version = conn.execute("SELECT version FROM schema_version").fetchone()[0]
-    assert version == 2
+    assert version == _SCHEMA_VERSION
 
     # Verify cwe_ids column exists and old data has default
     row = conn.execute("SELECT cwe_ids FROM vulns WHERE id = 'CVE-OLD'").fetchone()
     assert row is not None
     assert row[0] == ""  # default empty string
+
+    # Verify aliases column exists (v2 → v3 migration)
+    aliases_row = conn.execute("SELECT aliases FROM vulns WHERE id = 'CVE-OLD'").fetchone()
+    assert aliases_row is not None
+    assert aliases_row[0] == ""  # default empty string
 
     conn.close()
 

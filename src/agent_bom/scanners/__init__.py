@@ -651,8 +651,10 @@ def deduplicate_packages(packages: list) -> list:
 
 
 def _local_vuln_to_vulnerability(lv: "Any") -> Vulnerability:
-    """Convert a LocalVuln (from SQLite DB) to a Vulnerability model object."""
+    """Convert a LocalVuln (from SQLite DB) to a Vulnerability model object.
 
+    Canonicalizes ID to CVE when available (prefer CVE-xxxx over GHSA/PYSEC).
+    """
     sev_map = {
         "critical": Severity.CRITICAL,
         "high": Severity.HIGH,
@@ -660,8 +662,21 @@ def _local_vuln_to_vulnerability(lv: "Any") -> Vulnerability:
         "low": Severity.LOW,
     }
     severity = sev_map.get((lv.severity or "").lower(), Severity.UNKNOWN)
+
+    # Canonicalize: prefer CVE ID over GHSA/PYSEC for consistency with Trivy/NVD
+    raw_id = lv.id
+    aliases = getattr(lv, "aliases", [])
+    cve_alias = next((a for a in aliases if a.startswith("CVE-")), None)
+    if cve_alias and not raw_id.startswith("CVE-"):
+        canonical_id = cve_alias
+        all_aliases = [a for a in aliases if a != canonical_id]
+        all_aliases.append(raw_id)
+    else:
+        canonical_id = raw_id
+        all_aliases = [a for a in aliases if a != canonical_id]
+
     return Vulnerability(
-        id=lv.id,
+        id=canonical_id,
         summary=lv.summary or "No description available",
         severity=severity,
         cvss_score=lv.cvss_score,
@@ -671,7 +686,7 @@ def _local_vuln_to_vulnerability(lv: "Any") -> Vulnerability:
         is_kev=lv.is_kev,
         kev_date_added=lv.kev_date_added,
         cwe_ids=getattr(lv, "cwe_ids", []),
-        aliases=getattr(lv, "aliases", []),
+        aliases=all_aliases,
         references=[],
     )
 

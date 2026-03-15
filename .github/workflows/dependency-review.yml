@@ -51,4 +51,14 @@ jobs:
             pkg:pypi/safety,
             pkg:pypi/scikit-learn,
             pkg:pypi/typing-extensions,
-            pkg:pypi/wcwidth
+            pkg:pypi/wcwidth,
+            pkg:pypi/backrefs,
+            pkg:pypi/griffe,
+            pkg:pypi/griffelib,
+            pkg:pypi/markdown,
+            pkg:pypi/mkdocs-autorefs,
+            pkg:pypi/mkdocs-get-deps,
+            pkg:pypi/mkdocs-material,
+            pkg:pypi/mkdocstrings,
+            pkg:pypi/mkdocstrings-python,
+            pkg:pypi/pymdown-extensions

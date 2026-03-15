@@ -101,6 +101,10 @@ def run_local_discovery(
                 k8s_all_namespaces=k8s_all_namespaces,
                 k8s_context=k8s_mcp_context,
             )
+    elif sbom_file or filesystem_paths or images:
+        # Skip MCP auto-discovery when scanning a specific target
+        # (SBOM, filesystem, or image) — saves ~3s startup
+        ctx.agents = []
     else:
         with con.status("[bold]Discovering agents and MCP servers...[/bold]", spinner="dots"):
             ctx.agents = _discover(

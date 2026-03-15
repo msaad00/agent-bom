@@ -49,6 +49,10 @@ _logger = logging.getLogger(__name__)
 # only against the local SQLite DB.  Set by CLI --offline before scanning.
 offline_mode: bool = False
 
+# When True, prefer local DB results and only fall back to OSV API for
+# packages not found in the DB. Set automatically when DB is <24h old.
+prefer_local_db: bool = False
+
 OSV_API_URL = "https://api.osv.dev/v1"
 OSV_BATCH_URL = f"{OSV_API_URL}/querybatch"
 # Max pipeline-level pause when OSV returns persistent 429 after all per-request retries.
@@ -898,10 +902,14 @@ async def scan_packages(packages: list[Package]) -> int:
 
     osv_targets = [p for p in scannable if _db_key(p) not in db_covered]
 
-    if offline_mode:
-        if osv_targets:
+    if offline_mode or (prefer_local_db and not osv_targets):
+        if osv_targets and offline_mode:
             _logger.info("Offline mode: skipping OSV API for %d package(s) not in local DB", len(osv_targets))
         results = {}
+    elif prefer_local_db and osv_targets:
+        # DB is fresh — only query OSV for packages genuinely missing from DB
+        _logger.debug("Local DB preferred: querying OSV for %d uncovered package(s) only", len(osv_targets))
+        results = await query_osv_batch(osv_targets)
     elif osv_targets:
         results = await query_osv_batch(osv_targets)
     else:

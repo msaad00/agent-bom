@@ -185,3 +185,4 @@ ignore = []
 "__init__.py" = ["F401"]  # Allow unused imports in __init__.py
 "fuzz/*.py" = ["N802"]  # TestOneInput is the required atheris entry-point name
 "src/agent_bom/output/html.py" = ["E501"]  # Inline HTML/CSS/JS template strings cannot be meaningfully wrapped
+"src/agent_bom/cloud/*_cis_benchmark.py" = ["E501"]  # CIS benchmark remediation strings are naturally long

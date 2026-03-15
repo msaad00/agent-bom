@@ -1,5 +1,5 @@
 {
-  "version": "1",
+  "version": "2",
   "name": "my-security-policy",
   "rules": [
     {
@@ -20,6 +20,18 @@
       "ai_risk": true,
       "has_credentials": true,
       "severity_gte": "HIGH",
+      "action": "fail"
+    },
+    {
+      "id": "high-epss-with-creds",
+      "description": "High exploit probability with exposed credentials",
+      "condition": "epss_score > 0.7 and has_credentials",
+      "action": "fail"
+    },
+    {
+      "id": "risky-ai-or-kev",
+      "description": "AI packages that are either KEV or have poor maintainer reputation",
+      "condition": "ai_risk and (is_kev or scorecard_score < 3.0)",
       "action": "fail"
     },
     {
@@ -45,7 +57,7 @@
     {
       "id": "warn-excessive-agency",
       "description": "Servers with >5 tools and any CVE trigger excessive agency warning",
-      "min_tools": 6,
+      "condition": "tool_count > 5",
       "action": "warn"
     },
     {
@@ -53,6 +65,12 @@
       "description": "High-risk registry servers must not have critical CVEs",
       "registry_risk_gte": "high",
       "severity_gte": "CRITICAL",
+      "action": "fail"
+    },
+    {
+      "id": "wide-blast-radius",
+      "description": "Vulnerabilities affecting 3+ agents with credentials",
+      "condition": "agent_count >= 3 and credential_count > 0 and severity >= MEDIUM",
       "action": "fail"
     }
   ]

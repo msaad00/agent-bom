@@ -11,18 +11,29 @@ from agent_bom.cloud.aws_cis_benchmark import (
     CheckStatus,
     CISBenchmarkReport,
     CISCheckResult,
+    _check_1_1,
+    _check_1_2,
+    _check_1_3,
     _check_1_4,
     _check_1_5,
     _check_1_6,
+    _check_1_7,
     _check_1_8,
     _check_1_9,
     _check_1_10,
+    _check_1_11,
     _check_1_12,
+    _check_1_13,
     _check_1_14,
     _check_1_15,
     _check_1_16,
+    _check_1_17,
+    _check_1_19,
+    _check_1_20,
+    _check_1_22,
     _check_2_1_1,
     _check_2_1_2,
+    _check_2_1_3,
     _check_2_1_4,
     _check_2_2_1,
     _check_2_3_1,
@@ -35,13 +46,30 @@ from agent_bom.cloud.aws_cis_benchmark import (
     _check_3_5,
     _check_3_6,
     _check_3_7,
+    _check_3_9,
+    _check_3_10,
+    _check_3_11,
+    _check_4_1,
+    _check_4_2,
     _check_4_3,
     _check_4_4,
     _check_4_5,
+    _check_4_6,
+    _check_4_7,
+    _check_4_8,
+    _check_4_9,
+    _check_4_10,
+    _check_4_11,
+    _check_4_12,
+    _check_4_13,
+    _check_4_14,
+    _check_4_15,
+    _check_4_16,
     _check_5_1,
     _check_5_2,
     _check_5_3,
     _check_5_4,
+    _check_5_5,
     _check_5_6,
     run_benchmark,
 )
@@ -1304,6 +1332,1038 @@ class TestCheck54:
 
 
 # ---------------------------------------------------------------------------
+# 1.1 — Maintain current contact details
+# ---------------------------------------------------------------------------
+
+
+class TestCheck11:
+    def test_pass_contact_details_present(self):
+        client = MagicMock()
+        client.get_contact_information.return_value = {"ContactInformation": {"FullName": "Alice Admin", "PhoneNumber": "+15551234567"}}
+        result = _check_1_1(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "1.1"
+
+    def test_fail_incomplete_contact(self):
+        client = MagicMock()
+        client.get_contact_information.return_value = {"ContactInformation": {"FullName": "", "PhoneNumber": "+15551234567"}}
+        result = _check_1_1(client)
+        assert result.status == CheckStatus.FAIL
+        assert "incomplete" in result.evidence
+
+    def test_error_on_api_failure(self):
+        client = MagicMock()
+        exc = Exception("AccessDenied")
+        exc.response = {"Error": {"Code": "AccessDenied"}}
+        client.get_contact_information.side_effect = exc
+        result = _check_1_1(client)
+        assert result.status == CheckStatus.ERROR
+
+
+# ---------------------------------------------------------------------------
+# 1.2 — Security contact information registered
+# ---------------------------------------------------------------------------
+
+
+class TestCheck12:
+    def test_pass_security_contact_registered(self):
+        client = MagicMock()
+        client.get_alternate_contact.return_value = {"AlternateContact": {"EmailAddress": "security@example.com"}}
+        result = _check_1_2(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "1.2"
+
+    def test_fail_no_email(self):
+        client = MagicMock()
+        client.get_alternate_contact.return_value = {"AlternateContact": {"EmailAddress": ""}}
+        result = _check_1_2(client)
+        assert result.status == CheckStatus.FAIL
+
+    def test_fail_resource_not_found(self):
+        client = MagicMock()
+        exc = Exception("ResourceNotFoundException")
+        exc.response = {"Error": {"Code": "ResourceNotFoundException"}}
+        client.get_alternate_contact.side_effect = exc
+        result = _check_1_2(client)
+        assert result.status == CheckStatus.FAIL
+        assert "No security alternate contact" in result.evidence
+
+    def test_error_on_other_exception(self):
+        client = MagicMock()
+        exc = Exception("InternalError")
+        exc.response = {"Error": {"Code": "InternalError"}}
+        client.get_alternate_contact.side_effect = exc
+        result = _check_1_2(client)
+        assert result.status == CheckStatus.ERROR
+
+
+# ---------------------------------------------------------------------------
+# 1.3 — Security questions (manual check)
+# ---------------------------------------------------------------------------
+
+
+class TestCheck13:
+    def test_not_applicable(self):
+        result = _check_1_3()
+        assert result.status == CheckStatus.NOT_APPLICABLE
+        assert result.check_id == "1.3"
+        assert "Manual check" in result.evidence
+
+
+# ---------------------------------------------------------------------------
+# 1.7 — Eliminate root user usage
+# ---------------------------------------------------------------------------
+
+
+class TestCheck17:
+    def test_pass_root_not_recently_used(self):
+        client = _iam_client()
+        client.generate_credential_report.return_value = {"State": "COMPLETE"}
+        client.get_credential_report.return_value = {
+            "Content": ("user,password_last_used\n<root_account>,2020-01-01T00:00:00+00:00\n").encode()
+        }
+        result = _check_1_7(client)
+        assert result.status == CheckStatus.PASS
+
+    def test_fail_root_recently_used(self):
+        client = _iam_client()
+        client.generate_credential_report.return_value = {"State": "COMPLETE"}
+        # Use a date within the last 90 days
+        recent = datetime.now(tz=timezone.utc) - timedelta(days=5)
+        client.get_credential_report.return_value = {
+            "Content": (f"user,password_last_used\n<root_account>,{recent.isoformat()}\n").encode()
+        }
+        result = _check_1_7(client)
+        assert result.status == CheckStatus.FAIL
+        assert "day(s) ago" in result.evidence
+
+    def test_pass_root_never_used(self):
+        client = _iam_client()
+        client.generate_credential_report.return_value = {"State": "COMPLETE"}
+        client.get_credential_report.return_value = {"Content": ("user,password_last_used\n<root_account>,N/A\n").encode()}
+        result = _check_1_7(client)
+        assert result.status == CheckStatus.PASS
+
+    def test_error_report_not_present(self):
+        client = _iam_client()
+        client.generate_credential_report.return_value = {"State": "STARTED"}
+        exc = Exception("ReportNotPresent")
+        exc.response = {"Error": {"Code": "ReportNotPresent"}}
+        client.get_credential_report.side_effect = exc
+        result = _check_1_7(client)
+        assert result.status == CheckStatus.ERROR
+
+
+# ---------------------------------------------------------------------------
+# 1.11 — No access keys during initial user setup
+# ---------------------------------------------------------------------------
+
+
+class TestCheck111:
+    def test_pass_no_initial_keys(self):
+        client = _iam_client()
+        client.generate_credential_report.return_value = {"State": "COMPLETE"}
+        client.get_credential_report.return_value = {
+            "Content": (
+                "user,user_creation_time,access_key_1_active,access_key_1_last_rotated,access_key_2_active,access_key_2_last_rotated\n"
+                "<root_account>,2020-01-01T00:00:00+00:00,false,N/A,false,N/A\n"
+                "alice,2024-01-01T00:00:00+00:00,true,2024-06-01T00:00:00+00:00,false,N/A\n"
+            ).encode()
+        }
+        result = _check_1_11(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "1.11"
+
+    def test_fail_key_created_at_setup(self):
+        client = _iam_client()
+        client.generate_credential_report.return_value = {"State": "COMPLETE"}
+        client.get_credential_report.return_value = {
+            "Content": (
+                "user,user_creation_time,access_key_1_active,access_key_1_last_rotated,access_key_2_active,access_key_2_last_rotated\n"
+                "<root_account>,2020-01-01T00:00:00+00:00,false,N/A,false,N/A\n"
+                "bob,2024-01-01T00:00:00+00:00,true,2024-01-01T00:00:30+00:00,false,N/A\n"
+            ).encode()
+        }
+        result = _check_1_11(client)
+        assert result.status == CheckStatus.FAIL
+        assert "bob" in result.evidence
+
+    def test_error_report_not_present(self):
+        client = _iam_client()
+        client.generate_credential_report.return_value = {"State": "STARTED"}
+        exc = Exception("ReportNotPresent")
+        exc.response = {"Error": {"Code": "ReportNotPresent"}}
+        client.get_credential_report.side_effect = exc
+        result = _check_1_11(client)
+        assert result.status == CheckStatus.ERROR
+
+
+# ---------------------------------------------------------------------------
+# 1.13 — Only one active access key per user
+# ---------------------------------------------------------------------------
+
+
+class TestCheck113:
+    def test_pass_single_key(self):
+        client = _iam_client()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"Users": [{"UserName": "alice"}]}]
+        client.get_paginator.return_value = paginator
+        client.list_access_keys.return_value = {"AccessKeyMetadata": [{"AccessKeyId": "AKIA1", "Status": "Active"}]}
+        result = _check_1_13(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "1.13"
+
+    def test_fail_multiple_active_keys(self):
+        client = _iam_client()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"Users": [{"UserName": "bob"}]}]
+        client.get_paginator.return_value = paginator
+        client.list_access_keys.return_value = {
+            "AccessKeyMetadata": [
+                {"AccessKeyId": "AKIA1", "Status": "Active"},
+                {"AccessKeyId": "AKIA2", "Status": "Active"},
+            ]
+        }
+        result = _check_1_13(client)
+        assert result.status == CheckStatus.FAIL
+        assert "bob" in result.evidence
+
+    def test_pass_one_active_one_inactive(self):
+        client = _iam_client()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"Users": [{"UserName": "carol"}]}]
+        client.get_paginator.return_value = paginator
+        client.list_access_keys.return_value = {
+            "AccessKeyMetadata": [
+                {"AccessKeyId": "AKIA1", "Status": "Active"},
+                {"AccessKeyId": "AKIA2", "Status": "Inactive"},
+            ]
+        }
+        result = _check_1_13(client)
+        assert result.status == CheckStatus.PASS
+
+
+# ---------------------------------------------------------------------------
+# 1.17 — Support role exists
+# ---------------------------------------------------------------------------
+
+
+class TestCheck117:
+    def test_pass_support_role_attached(self):
+        client = _iam_client()
+        client.list_entities_for_policy.return_value = {
+            "PolicyRoles": [{"RoleName": "SupportRole"}],
+            "PolicyGroups": [],
+            "PolicyUsers": [],
+        }
+        result = _check_1_17(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "1.17"
+        assert "SupportRole" in result.evidence
+
+    def test_fail_no_entities_attached(self):
+        client = _iam_client()
+        client.list_entities_for_policy.return_value = {
+            "PolicyRoles": [],
+            "PolicyGroups": [],
+            "PolicyUsers": [],
+        }
+        result = _check_1_17(client)
+        assert result.status == CheckStatus.FAIL
+        assert "not attached" in result.evidence
+
+    def test_error_on_exception(self):
+        client = _iam_client()
+        exc = Exception("AccessDenied")
+        exc.response = {"Error": {"Code": "AccessDenied"}}
+        client.list_entities_for_policy.side_effect = exc
+        result = _check_1_17(client)
+        assert result.status == CheckStatus.ERROR
+
+
+# ---------------------------------------------------------------------------
+# 1.19 — IAM instance roles on EC2 instances
+# ---------------------------------------------------------------------------
+
+
+class TestCheck119:
+    def test_pass_all_instances_have_profile(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "Reservations": [
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-123",
+                                "State": {"Name": "running"},
+                                "IamInstanceProfile": {"Arn": "arn:aws:iam::123:instance-profile/role"},
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_1_19(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "1.19"
+
+    def test_fail_instance_without_profile(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "Reservations": [
+                    {
+                        "Instances": [
+                            {"InstanceId": "i-bad", "State": {"Name": "running"}},
+                        ]
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_1_19(client)
+        assert result.status == CheckStatus.FAIL
+        assert "i-bad" in result.evidence
+
+    def test_pass_terminated_instance_skipped(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "Reservations": [
+                    {
+                        "Instances": [
+                            {"InstanceId": "i-term", "State": {"Name": "terminated"}},
+                        ]
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_1_19(client)
+        assert result.status == CheckStatus.PASS
+
+
+# ---------------------------------------------------------------------------
+# 1.20 — IAM Access Analyzer enabled
+# ---------------------------------------------------------------------------
+
+
+class TestCheck120:
+    def test_pass_analyzer_active(self):
+        client = MagicMock()
+        client.list_analyzers.return_value = {"analyzers": [{"name": "my-analyzer", "status": "ACTIVE"}]}
+        result = _check_1_20(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "1.20"
+
+    def test_fail_no_active_analyzer(self):
+        client = MagicMock()
+        client.list_analyzers.return_value = {"analyzers": []}
+        result = _check_1_20(client)
+        assert result.status == CheckStatus.FAIL
+        assert "No active" in result.evidence
+
+    def test_error_on_exception(self):
+        client = MagicMock()
+        exc = Exception("AccessDenied")
+        exc.response = {"Error": {"Code": "AccessDenied"}}
+        client.list_analyzers.side_effect = exc
+        result = _check_1_20(client)
+        assert result.status == CheckStatus.ERROR
+
+
+# ---------------------------------------------------------------------------
+# 1.22 — AWSCloudShellFullAccess restricted
+# ---------------------------------------------------------------------------
+
+
+class TestCheck122:
+    def test_pass_not_attached(self):
+        client = _iam_client()
+        client.list_entities_for_policy.return_value = {
+            "PolicyRoles": [],
+            "PolicyGroups": [],
+            "PolicyUsers": [],
+        }
+        result = _check_1_22(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "1.22"
+
+    def test_fail_attached_to_user(self):
+        client = _iam_client()
+        client.list_entities_for_policy.return_value = {
+            "PolicyRoles": [],
+            "PolicyGroups": [],
+            "PolicyUsers": [{"UserName": "dev-user"}],
+        }
+        result = _check_1_22(client)
+        assert result.status == CheckStatus.FAIL
+        assert "dev-user" in result.evidence
+
+    def test_error_on_exception(self):
+        client = _iam_client()
+        exc = Exception("AccessDenied")
+        exc.response = {"Error": {"Code": "AccessDenied"}}
+        client.list_entities_for_policy.side_effect = exc
+        result = _check_1_22(client)
+        assert result.status == CheckStatus.ERROR
+
+
+# ---------------------------------------------------------------------------
+# 2.1.3 — S3 MFA Delete
+# ---------------------------------------------------------------------------
+
+
+class TestCheck213:
+    def test_pass_mfa_delete_enabled(self):
+        client = MagicMock()
+        client.list_buckets.return_value = {"Buckets": [{"Name": "my-bucket"}]}
+        client.get_bucket_versioning.return_value = {"MFADelete": "Enabled"}
+        result = _check_2_1_3(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "2.1.3"
+
+    def test_fail_mfa_delete_not_enabled(self):
+        client = MagicMock()
+        client.list_buckets.return_value = {"Buckets": [{"Name": "no-mfa"}]}
+        client.get_bucket_versioning.return_value = {}
+        result = _check_2_1_3(client)
+        assert result.status == CheckStatus.FAIL
+        assert "no-mfa" in result.evidence
+
+    def test_pass_no_buckets(self):
+        client = MagicMock()
+        client.list_buckets.return_value = {"Buckets": []}
+        result = _check_2_1_3(client)
+        assert result.status == CheckStatus.PASS
+
+
+# ---------------------------------------------------------------------------
+# 3.9 — VPC flow logging in all VPCs
+# ---------------------------------------------------------------------------
+
+
+class TestCheck39:
+    def test_pass_all_vpcs_covered(self):
+        client = MagicMock()
+        client.describe_vpcs.return_value = {"Vpcs": [{"VpcId": "vpc-1"}]}
+        client.describe_flow_logs.return_value = {"FlowLogs": [{"ResourceId": "vpc-1", "FlowLogStatus": "ACTIVE"}]}
+        result = _check_3_9(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "3.9"
+
+    def test_fail_missing_flow_log(self):
+        client = MagicMock()
+        client.describe_vpcs.return_value = {"Vpcs": [{"VpcId": "vpc-1"}, {"VpcId": "vpc-2"}]}
+        client.describe_flow_logs.return_value = {"FlowLogs": [{"ResourceId": "vpc-1", "FlowLogStatus": "ACTIVE"}]}
+        result = _check_3_9(client)
+        assert result.status == CheckStatus.FAIL
+        assert "vpc-2" in result.evidence
+
+    def test_not_applicable_no_vpcs(self):
+        client = MagicMock()
+        client.describe_vpcs.return_value = {"Vpcs": []}
+        result = _check_3_9(client)
+        assert result.status == CheckStatus.NOT_APPLICABLE
+
+
+# ---------------------------------------------------------------------------
+# 3.10 — Object-level logging for write events
+# ---------------------------------------------------------------------------
+
+
+class TestCheck310:
+    def test_pass_write_event_logging_enabled(self):
+        client = MagicMock()
+        client.describe_trails.return_value = {"trailList": [{"TrailARN": "arn:trail", "Name": "main"}]}
+        client.get_event_selectors.return_value = {
+            "EventSelectors": [
+                {
+                    "ReadWriteType": "All",
+                    "DataResources": [{"Type": "AWS::S3::Object", "Values": ["arn:aws:s3"]}],
+                }
+            ],
+            "AdvancedEventSelectors": [],
+        }
+        result = _check_3_10(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "3.10"
+
+    def test_fail_no_write_logging(self):
+        client = MagicMock()
+        client.describe_trails.return_value = {"trailList": [{"TrailARN": "arn:trail", "Name": "main"}]}
+        client.get_event_selectors.return_value = {
+            "EventSelectors": [],
+            "AdvancedEventSelectors": [],
+        }
+        result = _check_3_10(client)
+        assert result.status == CheckStatus.FAIL
+
+    def test_fail_no_trails(self):
+        client = MagicMock()
+        client.describe_trails.return_value = {"trailList": []}
+        result = _check_3_10(client)
+        assert result.status == CheckStatus.FAIL
+
+
+# ---------------------------------------------------------------------------
+# 3.11 — Object-level logging for read events
+# ---------------------------------------------------------------------------
+
+
+class TestCheck311:
+    def test_pass_read_event_logging_enabled(self):
+        client = MagicMock()
+        client.describe_trails.return_value = {"trailList": [{"TrailARN": "arn:trail", "Name": "main"}]}
+        client.get_event_selectors.return_value = {
+            "EventSelectors": [
+                {
+                    "ReadWriteType": "ReadOnly",
+                    "DataResources": [{"Type": "AWS::S3::Object", "Values": ["arn:aws:s3"]}],
+                }
+            ],
+            "AdvancedEventSelectors": [],
+        }
+        result = _check_3_11(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "3.11"
+
+    def test_fail_no_read_logging(self):
+        client = MagicMock()
+        client.describe_trails.return_value = {"trailList": [{"TrailARN": "arn:trail", "Name": "main"}]}
+        client.get_event_selectors.return_value = {
+            "EventSelectors": [],
+            "AdvancedEventSelectors": [],
+        }
+        result = _check_3_11(client)
+        assert result.status == CheckStatus.FAIL
+
+    def test_fail_no_trails(self):
+        client = MagicMock()
+        client.describe_trails.return_value = {"trailList": []}
+        result = _check_3_11(client)
+        assert result.status == CheckStatus.FAIL
+
+
+# ---------------------------------------------------------------------------
+# 4.1 — Metric filter for unauthorized API calls
+# ---------------------------------------------------------------------------
+
+
+class TestCheck41:
+    def test_pass_filter_exists(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"metricFilters": [{"filterPattern": "{ $.errorCode = AccessDenied }"}]}]
+        client.get_paginator.return_value = paginator
+        result = _check_4_1(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "4.1"
+
+    def test_fail_no_filter(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"metricFilters": []}]
+        client.get_paginator.return_value = paginator
+        result = _check_4_1(client)
+        assert result.status == CheckStatus.FAIL
+        assert "No metric filter" in result.evidence
+
+
+# ---------------------------------------------------------------------------
+# 4.2 — Metric filter for console sign-in without MFA
+# ---------------------------------------------------------------------------
+
+
+class TestCheck42:
+    def test_pass_filter_exists(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {"metricFilters": [{"filterPattern": '{ $.eventName = ConsoleLogin && $.additionalEventData.MFAUsed != "Yes" }'}]}
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_4_2(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "4.2"
+
+    def test_fail_no_filter(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"metricFilters": []}]
+        client.get_paginator.return_value = paginator
+        result = _check_4_2(client)
+        assert result.status == CheckStatus.FAIL
+
+    def test_fail_partial_match(self):
+        """Filter with only ConsoleLogin (missing MFAUsed) should fail."""
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"metricFilters": [{"filterPattern": "{ $.eventName = ConsoleLogin }"}]}]
+        client.get_paginator.return_value = paginator
+        result = _check_4_2(client)
+        assert result.status == CheckStatus.FAIL
+
+
+# ---------------------------------------------------------------------------
+# 4.6 — Metric filter for console authentication failures
+# ---------------------------------------------------------------------------
+
+
+class TestCheck46:
+    def test_pass_filter_exists(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {"metricFilters": [{"filterPattern": '{ $.eventName = ConsoleLogin && $.errorMessage = "Failed authentication" }'}]}
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_4_6(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "4.6"
+
+    def test_fail_no_filter(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"metricFilters": []}]
+        client.get_paginator.return_value = paginator
+        result = _check_4_6(client)
+        assert result.status == CheckStatus.FAIL
+
+
+# ---------------------------------------------------------------------------
+# 4.7 — Metric filter for CMK disabling/deletion
+# ---------------------------------------------------------------------------
+
+
+class TestCheck47:
+    def test_pass_filter_exists(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {"metricFilters": [{"filterPattern": "{ $.eventName = DisableKey || $.eventName = ScheduleKeyDeletion }"}]}
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_4_7(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "4.7"
+
+    def test_fail_no_filter(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"metricFilters": []}]
+        client.get_paginator.return_value = paginator
+        result = _check_4_7(client)
+        assert result.status == CheckStatus.FAIL
+
+
+# ---------------------------------------------------------------------------
+# 4.8 — Metric filter for S3 bucket policy changes
+# ---------------------------------------------------------------------------
+
+
+class TestCheck48:
+    def test_pass_filter_exists(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "metricFilters": [
+                    {
+                        "filterPattern": (
+                            "{ ($.eventName = PutBucketAcl) || ($.eventName = PutBucketPolicy) || ($.eventName = DeleteBucketPolicy) }"
+                        )
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_4_8(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "4.8"
+
+    def test_fail_no_filter(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"metricFilters": []}]
+        client.get_paginator.return_value = paginator
+        result = _check_4_8(client)
+        assert result.status == CheckStatus.FAIL
+
+
+# ---------------------------------------------------------------------------
+# 4.9 — Metric filter for AWS Config changes
+# ---------------------------------------------------------------------------
+
+
+class TestCheck49:
+    def test_pass_filter_exists(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "metricFilters": [
+                    {
+                        "filterPattern": (
+                            "{ ($.eventName = StopConfigurationRecorder) || ($.eventName = DeleteDeliveryChannel) "
+                            "|| ($.eventName = PutDeliveryChannel) }"
+                        )
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_4_9(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "4.9"
+
+    def test_fail_no_filter(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"metricFilters": []}]
+        client.get_paginator.return_value = paginator
+        result = _check_4_9(client)
+        assert result.status == CheckStatus.FAIL
+
+
+# ---------------------------------------------------------------------------
+# 4.10 — Metric filter for security group changes
+# ---------------------------------------------------------------------------
+
+
+class TestCheck410:
+    def test_pass_filter_exists(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "metricFilters": [
+                    {
+                        "filterPattern": (
+                            "{ ($.eventName = AuthorizeSecurityGroupIngress) "
+                            "|| ($.eventName = RevokeSecurityGroupIngress) "
+                            "|| ($.eventName = CreateSecurityGroup) }"
+                        )
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_4_10(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "4.10"
+
+    def test_fail_no_filter(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"metricFilters": []}]
+        client.get_paginator.return_value = paginator
+        result = _check_4_10(client)
+        assert result.status == CheckStatus.FAIL
+
+
+# ---------------------------------------------------------------------------
+# 4.11 — Metric filter for NACL changes
+# ---------------------------------------------------------------------------
+
+
+class TestCheck411:
+    def test_pass_filter_exists(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "metricFilters": [
+                    {
+                        "filterPattern": (
+                            "{ ($.eventName = CreateNetworkAcl) "
+                            "|| ($.eventName = DeleteNetworkAcl) "
+                            "|| ($.eventName = ReplaceNetworkAclEntry) }"
+                        )
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_4_11(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "4.11"
+
+    def test_fail_no_filter(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"metricFilters": []}]
+        client.get_paginator.return_value = paginator
+        result = _check_4_11(client)
+        assert result.status == CheckStatus.FAIL
+
+
+# ---------------------------------------------------------------------------
+# 4.12 — Metric filter for network gateway changes
+# ---------------------------------------------------------------------------
+
+
+class TestCheck412:
+    def test_pass_filter_exists(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "metricFilters": [
+                    {
+                        "filterPattern": (
+                            "{ ($.eventName = CreateCustomerGateway) "
+                            "|| ($.eventName = AttachInternetGateway) "
+                            "|| ($.eventName = DeleteInternetGateway) }"
+                        )
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_4_12(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "4.12"
+
+    def test_fail_no_filter(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"metricFilters": []}]
+        client.get_paginator.return_value = paginator
+        result = _check_4_12(client)
+        assert result.status == CheckStatus.FAIL
+
+
+# ---------------------------------------------------------------------------
+# 4.13 — Metric filter for route table changes
+# ---------------------------------------------------------------------------
+
+
+class TestCheck413:
+    def test_pass_filter_exists(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "metricFilters": [
+                    {
+                        "filterPattern": (
+                            "{ ($.eventName = CreateRoute) || ($.eventName = CreateRouteTable) || ($.eventName = ReplaceRoute) }"
+                        )
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_4_13(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "4.13"
+
+    def test_fail_no_filter(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"metricFilters": []}]
+        client.get_paginator.return_value = paginator
+        result = _check_4_13(client)
+        assert result.status == CheckStatus.FAIL
+
+
+# ---------------------------------------------------------------------------
+# 4.14 — Metric filter for VPC changes
+# ---------------------------------------------------------------------------
+
+
+class TestCheck414:
+    def test_pass_filter_exists(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "metricFilters": [
+                    {"filterPattern": ("{ ($.eventName = CreateVpc) || ($.eventName = DeleteVpc) || ($.eventName = ModifyVpcAttribute) }")}
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_4_14(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "4.14"
+
+    def test_fail_no_filter(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"metricFilters": []}]
+        client.get_paginator.return_value = paginator
+        result = _check_4_14(client)
+        assert result.status == CheckStatus.FAIL
+
+
+# ---------------------------------------------------------------------------
+# 4.15 — Metric filter for AWS Organizations changes
+# ---------------------------------------------------------------------------
+
+
+class TestCheck415:
+    def test_pass_filter_exists(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "metricFilters": [
+                    {
+                        "filterPattern": (
+                            "{ ($.eventName = InviteAccountToOrganization) "
+                            "|| ($.eventName = LeaveOrganization) "
+                            "|| ($.eventName = CreateOrganization) }"
+                        )
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_4_15(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "4.15"
+
+    def test_fail_no_filter(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"metricFilters": []}]
+        client.get_paginator.return_value = paginator
+        result = _check_4_15(client)
+        assert result.status == CheckStatus.FAIL
+
+
+# ---------------------------------------------------------------------------
+# 4.16 — AWS Security Hub enabled
+# ---------------------------------------------------------------------------
+
+
+class TestCheck416:
+    def test_pass_security_hub_enabled(self):
+        client = MagicMock()
+        client.describe_hub.return_value = {"HubArn": "arn:aws:securityhub:us-east-1:123:hub/default"}
+        result = _check_4_16(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "4.16"
+
+    def test_fail_no_hub_arn(self):
+        client = MagicMock()
+        client.describe_hub.return_value = {}
+        result = _check_4_16(client)
+        assert result.status == CheckStatus.FAIL
+
+    def test_fail_not_enabled(self):
+        client = MagicMock()
+        exc = Exception("InvalidAccessException")
+        exc.response = {"Error": {"Code": "InvalidAccessException"}}
+        client.describe_hub.side_effect = exc
+        result = _check_4_16(client)
+        assert result.status == CheckStatus.FAIL
+
+    def test_error_on_other_exception(self):
+        client = MagicMock()
+        exc = Exception("InternalError")
+        exc.response = {"Error": {"Code": "InternalError"}}
+        client.describe_hub.side_effect = exc
+        result = _check_4_16(client)
+        assert result.status == CheckStatus.ERROR
+
+
+# ---------------------------------------------------------------------------
+# 5.5 — No security groups allow unrestricted ingress to all ports
+# ---------------------------------------------------------------------------
+
+
+class TestCheck55:
+    def test_pass_no_open_all_ports(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "SecurityGroups": [
+                    {
+                        "GroupId": "sg-1",
+                        "IpPermissions": [
+                            {"IpProtocol": "tcp", "FromPort": 443, "ToPort": 443, "IpRanges": [{"CidrIp": "0.0.0.0/0"}], "Ipv6Ranges": []},
+                        ],
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_5_5(client)
+        assert result.status == CheckStatus.PASS
+        assert result.check_id == "5.5"
+
+    def test_fail_all_traffic_open(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "SecurityGroups": [
+                    {
+                        "GroupId": "sg-wide-open",
+                        "IpPermissions": [
+                            {"IpProtocol": "-1", "IpRanges": [{"CidrIp": "0.0.0.0/0"}], "Ipv6Ranges": []},
+                        ],
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_5_5(client)
+        assert result.status == CheckStatus.FAIL
+        assert "sg-wide-open" in result.evidence
+
+    def test_fail_all_ports_ipv6(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "SecurityGroups": [
+                    {
+                        "GroupId": "sg-v6",
+                        "IpPermissions": [
+                            {"IpProtocol": "-1", "IpRanges": [], "Ipv6Ranges": [{"CidrIpv6": "::/0"}]},
+                        ],
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_5_5(client)
+        assert result.status == CheckStatus.FAIL
+        assert "sg-v6" in result.evidence
+
+    def test_fail_full_port_range(self):
+        client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "SecurityGroups": [
+                    {
+                        "GroupId": "sg-full-range",
+                        "IpPermissions": [
+                            {"IpProtocol": "tcp", "FromPort": 0, "ToPort": 65535, "IpRanges": [{"CidrIp": "0.0.0.0/0"}], "Ipv6Ranges": []},
+                        ],
+                    }
+                ]
+            }
+        ]
+        client.get_paginator.return_value = paginator
+        result = _check_5_5(client)
+        assert result.status == CheckStatus.FAIL
+        assert "sg-full-range" in result.evidence
+
+
+# ---------------------------------------------------------------------------
 # Report model
 # ---------------------------------------------------------------------------
 
@@ -1453,8 +2513,7 @@ class TestRunBenchmark:
 
             report = run_benchmark()
             assert report.account_id == "111222333444"
-            # 28 _CHECKS + 4 _SPECIAL_CHECKS = 32 total
-            assert report.total == 32
+            assert report.total == 60
 
     def test_filter_checks(self):
         modules_patch, mock_boto3 = _mock_boto3_modules()

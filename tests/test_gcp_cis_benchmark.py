@@ -12,17 +12,25 @@ from agent_bom.cloud.aws_cis_benchmark import CheckStatus, CISCheckResult
 from agent_bom.cloud.base import CloudDiscoveryError
 from agent_bom.cloud.gcp_cis_benchmark import (
     GCPCISReport,
+    _check_1_1,
+    _check_1_2,
     _check_1_6,
     _check_1_7,
+    _check_2_3,
     _check_3_1,
     _check_3_2,
+    _check_3_3,
     _check_3_6,
     _check_3_7,
     _check_3_9,
     _check_4_1,
+    _check_4_2,
     _check_4_3,
     _check_5_1,
+    _check_5_2,
     _check_6_1,
+    _check_6_2,
+    _check_7_1,
     run_benchmark,
 )
 
@@ -665,6 +673,369 @@ def test_check_6_1_pass_multiple_instances_all_ssl():
         result = _check_6_1("my-project")
     assert result.status == CheckStatus.PASS
     assert "2 Cloud SQL" in result.evidence
+
+
+# ---------------------------------------------------------------------------
+# _check_1_1 — Corporate login credentials (gmail check)
+# ---------------------------------------------------------------------------
+
+
+def test_check_1_1_pass_no_gmail_accounts():
+    mock_crm = _mock_crm_with_policy(
+        [
+            {"role": "roles/viewer", "members": ["user:alice@corp.com"]},
+        ]
+    )
+    with patch("googleapiclient.discovery.build", return_value=mock_crm):
+        result = _check_1_1("my-project")
+    assert result.status == CheckStatus.PASS
+    assert "No gmail.com" in result.evidence
+
+
+def test_check_1_1_fail_gmail_account():
+    mock_crm = _mock_crm_with_policy(
+        [
+            {"role": "roles/editor", "members": ["user:dev@gmail.com"]},
+        ]
+    )
+    with patch("googleapiclient.discovery.build", return_value=mock_crm):
+        result = _check_1_1("my-project")
+    assert result.status == CheckStatus.FAIL
+    assert "dev@gmail.com" in result.evidence
+
+
+def test_check_1_1_pass_mixed_no_gmail():
+    mock_crm = _mock_crm_with_policy(
+        [
+            {"role": "roles/viewer", "members": ["user:admin@corp.com", "serviceAccount:sa@proj.iam.gserviceaccount.com"]},
+        ]
+    )
+    with patch("googleapiclient.discovery.build", return_value=mock_crm):
+        result = _check_1_1("my-project")
+    assert result.status == CheckStatus.PASS
+
+
+def test_check_1_1_error_on_exception():
+    _ensure_googleapiclient_namespace()
+    mock_crm = MagicMock()
+    mock_crm.projects.return_value.getIamPolicy.return_value.execute.side_effect = Exception("API error")
+    with patch("googleapiclient.discovery.build", return_value=mock_crm):
+        result = _check_1_1("my-project")
+    assert result.status == CheckStatus.ERROR
+
+
+# ---------------------------------------------------------------------------
+# _check_1_2 — NOT_APPLICABLE (MFA enforcement)
+# ---------------------------------------------------------------------------
+
+
+def test_check_1_2_returns_not_applicable():
+    result = _check_1_2("my-project")
+    assert result.status == CheckStatus.NOT_APPLICABLE
+    assert "MFA" in result.evidence or "manual" in result.evidence.lower() or "Workspace" in result.evidence
+
+
+# ---------------------------------------------------------------------------
+# _check_2_3 — Log metric filter for Project Ownership changes
+# ---------------------------------------------------------------------------
+
+
+def _install_mock_gcp_logging(metrics=None):
+    """Install a fake google.cloud.logging_v2 with MetricsServiceV2Client."""
+    google_mod, google_cloud = _ensure_google_namespace()
+    logging_mod = types.ModuleType("google.cloud.logging_v2")
+
+    mock_client = MagicMock()
+    mock_client.return_value.list_log_metrics.return_value = metrics or []
+    logging_mod.MetricsServiceV2Client = mock_client
+
+    # Also add ConfigServiceV2Client for other 2.x checks
+    mock_config_client = MagicMock()
+    logging_mod.ConfigServiceV2Client = mock_config_client
+
+    google_cloud.logging_v2 = logging_mod
+    sys.modules["google.cloud.logging_v2"] = logging_mod
+    return logging_mod
+
+
+def _make_log_metric(filter_str: str):
+    """Create a mock log metric with a filter string."""
+    metric = MagicMock()
+    metric.filter = filter_str
+    return metric
+
+
+def test_check_2_3_pass_filter_exists():
+    metrics = [_make_log_metric('protoPayload.serviceName="cloudresourcemanager" AND ProjectOwnership')]
+    _install_mock_gcp_logging(metrics=metrics)
+    result = _check_2_3("my-project")
+    assert result.status == CheckStatus.PASS
+    assert "exists" in result.evidence.lower() or "Project Ownership" in result.evidence
+
+
+def test_check_2_3_fail_no_filter():
+    metrics = [_make_log_metric("some.unrelated.filter")]
+    _install_mock_gcp_logging(metrics=metrics)
+    result = _check_2_3("my-project")
+    assert result.status == CheckStatus.FAIL
+    assert "No log metric" in result.evidence
+
+
+def test_check_2_3_fail_empty_metrics():
+    _install_mock_gcp_logging(metrics=[])
+    result = _check_2_3("my-project")
+    assert result.status == CheckStatus.FAIL
+
+
+def test_check_2_3_pass_projectownerinvitee_keyword():
+    metrics = [_make_log_metric("resource.type=project AND projectOwnerInvitee")]
+    _install_mock_gcp_logging(metrics=metrics)
+    result = _check_2_3("my-project")
+    assert result.status == CheckStatus.PASS
+
+
+# ---------------------------------------------------------------------------
+# _check_3_3 — DNSSEC enabled for Cloud DNS
+# ---------------------------------------------------------------------------
+
+
+def _mock_dns_with_zones(zones):
+    """Install fake googleapiclient and return a DNS mock with given zones."""
+    _ensure_googleapiclient_namespace()
+    mock_dns = MagicMock()
+    mock_dns.managedZones.return_value.list.return_value.execute.return_value = {
+        "managedZones": zones,
+    }
+    return mock_dns
+
+
+def test_check_3_3_pass_dnssec_enabled():
+    zones = [
+        {"name": "example-zone", "visibility": "public", "dnssecConfig": {"state": "on"}},
+    ]
+    mock_dns = _mock_dns_with_zones(zones)
+    with patch("googleapiclient.discovery.build", return_value=mock_dns):
+        result = _check_3_3("my-project")
+    assert result.status == CheckStatus.PASS
+    assert "1 public" in result.evidence or "enabled" in result.evidence.lower()
+
+
+def test_check_3_3_fail_dnssec_not_enabled():
+    zones = [
+        {"name": "insecure-zone", "visibility": "public", "dnssecConfig": {"state": "off"}},
+    ]
+    mock_dns = _mock_dns_with_zones(zones)
+    with patch("googleapiclient.discovery.build", return_value=mock_dns):
+        result = _check_3_3("my-project")
+    assert result.status == CheckStatus.FAIL
+    assert "insecure-zone" in result.evidence
+
+
+def test_check_3_3_pass_private_zone_ignored():
+    zones = [
+        {"name": "private-zone", "visibility": "private", "dnssecConfig": {"state": "off"}},
+    ]
+    mock_dns = _mock_dns_with_zones(zones)
+    with patch("googleapiclient.discovery.build", return_value=mock_dns):
+        result = _check_3_3("my-project")
+    assert result.status == CheckStatus.PASS
+
+
+def test_check_3_3_fail_no_dnssec_config():
+    zones = [
+        {"name": "no-config-zone", "visibility": "public"},
+    ]
+    mock_dns = _mock_dns_with_zones(zones)
+    with patch("googleapiclient.discovery.build", return_value=mock_dns):
+        result = _check_3_3("my-project")
+    assert result.status == CheckStatus.FAIL
+    assert "no-config-zone" in result.evidence
+
+
+# ---------------------------------------------------------------------------
+# _check_4_2 — Default SA with full API access on instances
+# ---------------------------------------------------------------------------
+
+
+def _make_instance_with_scopes(name: str, sa_email: str | None = None, scopes=None):
+    """Create a mock compute instance with service account scopes."""
+    instance = MagicMock()
+    instance.name = name
+    if sa_email:
+        sa = MagicMock()
+        sa.email = sa_email
+        sa.scopes = scopes or []
+        instance.service_accounts = [sa]
+    else:
+        instance.service_accounts = []
+    instance.network_interfaces = []
+    return instance
+
+
+def test_check_4_2_pass_custom_sa():
+    inst = _make_instance_with_scopes(
+        "vm-1", sa_email="custom-sa@proj.iam.gserviceaccount.com", scopes=["https://www.googleapis.com/auth/cloud-platform"]
+    )
+    response = MagicMock()
+    response.instances = [inst]
+    _install_mock_gcp_compute_extended(instances_aggregated=[("us-central1-a", response)])
+    result = _check_4_2("my-project")
+    assert result.status == CheckStatus.PASS
+
+
+def test_check_4_2_fail_default_sa_full_access():
+    inst = _make_instance_with_scopes(
+        "vm-bad", sa_email="123456-compute@developer.gserviceaccount.com", scopes=["https://www.googleapis.com/auth/cloud-platform"]
+    )
+    response = MagicMock()
+    response.instances = [inst]
+    _install_mock_gcp_compute_extended(instances_aggregated=[("us-central1-a", response)])
+    result = _check_4_2("my-project")
+    assert result.status == CheckStatus.FAIL
+    assert "vm-bad" in result.evidence
+
+
+def test_check_4_2_pass_default_sa_limited_scopes():
+    inst = _make_instance_with_scopes(
+        "vm-limited",
+        sa_email="123456-compute@developer.gserviceaccount.com",
+        scopes=["https://www.googleapis.com/auth/devstorage.read_only"],
+    )
+    response = MagicMock()
+    response.instances = [inst]
+    _install_mock_gcp_compute_extended(instances_aggregated=[("us-central1-a", response)])
+    result = _check_4_2("my-project")
+    assert result.status == CheckStatus.PASS
+
+
+# ---------------------------------------------------------------------------
+# _check_5_2 — Uniform bucket-level access
+# ---------------------------------------------------------------------------
+
+
+def test_check_5_2_pass_uniform_access_enabled():
+    bucket = MagicMock()
+    bucket.name = "good-bucket"
+    bucket.iam_configuration.uniform_bucket_level_access_enabled = True
+    _install_mock_gcp_storage(buckets=[bucket])
+    result = _check_5_2("my-project")
+    assert result.status == CheckStatus.PASS
+    assert "1 bucket" in result.evidence or "uniform" in result.evidence.lower()
+
+
+def test_check_5_2_fail_uniform_access_disabled():
+    bucket = MagicMock()
+    bucket.name = "bad-bucket"
+    bucket.iam_configuration.uniform_bucket_level_access_enabled = False
+    _install_mock_gcp_storage(buckets=[bucket])
+    result = _check_5_2("my-project")
+    assert result.status == CheckStatus.FAIL
+    assert "bad-bucket" in result.evidence
+
+
+def test_check_5_2_pass_multiple_buckets_all_uniform():
+    b1 = MagicMock()
+    b1.name = "bucket-a"
+    b1.iam_configuration.uniform_bucket_level_access_enabled = True
+    b2 = MagicMock()
+    b2.name = "bucket-b"
+    b2.iam_configuration.uniform_bucket_level_access_enabled = True
+    _install_mock_gcp_storage(buckets=[b1, b2])
+    result = _check_5_2("my-project")
+    assert result.status == CheckStatus.PASS
+    assert "2 bucket" in result.evidence
+
+
+# ---------------------------------------------------------------------------
+# _check_6_2 — Cloud SQL instances with public IPs
+# ---------------------------------------------------------------------------
+
+
+def test_check_6_2_pass_no_public_ips():
+    mock_sqladmin = _mock_sqladmin_with_instances(
+        [
+            {"name": "db-private", "ipAddresses": [{"type": "PRIVATE", "ipAddress": "10.0.0.1"}]},
+        ]
+    )
+    with patch("googleapiclient.discovery.build", return_value=mock_sqladmin):
+        result = _check_6_2("my-project")
+    assert result.status == CheckStatus.PASS
+
+
+def test_check_6_2_fail_public_ip():
+    mock_sqladmin = _mock_sqladmin_with_instances(
+        [
+            {"name": "db-public", "ipAddresses": [{"type": "PRIMARY", "ipAddress": "34.1.2.3"}]},
+        ]
+    )
+    with patch("googleapiclient.discovery.build", return_value=mock_sqladmin):
+        result = _check_6_2("my-project")
+    assert result.status == CheckStatus.FAIL
+    assert "db-public" in result.evidence
+
+
+def test_check_6_2_pass_no_ip_addresses():
+    mock_sqladmin = _mock_sqladmin_with_instances(
+        [
+            {"name": "db-noip", "ipAddresses": []},
+        ]
+    )
+    with patch("googleapiclient.discovery.build", return_value=mock_sqladmin):
+        result = _check_6_2("my-project")
+    assert result.status == CheckStatus.PASS
+
+
+# ---------------------------------------------------------------------------
+# _check_7_1 — BigQuery public dataset access
+# ---------------------------------------------------------------------------
+
+
+def _mock_bigquery_with_datasets(datasets_list, dataset_details=None):
+    """Install fake googleapiclient and return a BigQuery mock."""
+    _ensure_googleapiclient_namespace()
+    mock_bq = MagicMock()
+    mock_bq.datasets.return_value.list.return_value.execute.return_value = {
+        "datasets": datasets_list,
+    }
+    if dataset_details:
+        mock_bq.datasets.return_value.get.return_value.execute.side_effect = dataset_details
+    return mock_bq
+
+
+def test_check_7_1_pass_no_public_datasets():
+    datasets = [{"datasetReference": {"datasetId": "private_ds"}}]
+    detail = [{"access": [{"role": "READER", "userByEmail": "analyst@corp.com"}]}]
+    mock_bq = _mock_bigquery_with_datasets(datasets, dataset_details=detail)
+    with patch("googleapiclient.discovery.build", return_value=mock_bq):
+        result = _check_7_1("my-project")
+    assert result.status == CheckStatus.PASS
+
+
+def test_check_7_1_fail_allusers_access():
+    datasets = [{"datasetReference": {"datasetId": "public_ds"}}]
+    detail = [{"access": [{"role": "READER", "specialGroup": "allUsers"}]}]
+    mock_bq = _mock_bigquery_with_datasets(datasets, dataset_details=detail)
+    with patch("googleapiclient.discovery.build", return_value=mock_bq):
+        result = _check_7_1("my-project")
+    assert result.status == CheckStatus.FAIL
+    assert "public_ds" in result.evidence
+
+
+def test_check_7_1_fail_allauthenticatedusers_access():
+    datasets = [{"datasetReference": {"datasetId": "semi_public"}}]
+    detail = [{"access": [{"role": "WRITER", "specialGroup": "allAuthenticatedUsers"}]}]
+    mock_bq = _mock_bigquery_with_datasets(datasets, dataset_details=detail)
+    with patch("googleapiclient.discovery.build", return_value=mock_bq):
+        result = _check_7_1("my-project")
+    assert result.status == CheckStatus.FAIL
+    assert "semi_public" in result.evidence
+
+
+def test_check_7_1_pass_empty_datasets():
+    mock_bq = _mock_bigquery_with_datasets([], dataset_details=[])
+    with patch("googleapiclient.discovery.build", return_value=mock_bq):
+        result = _check_7_1("my-project")
+    assert result.status == CheckStatus.PASS
 
 
 # ---------------------------------------------------------------------------

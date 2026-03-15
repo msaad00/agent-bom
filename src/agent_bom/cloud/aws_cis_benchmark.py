@@ -18,6 +18,10 @@ Required IAM permissions (all read-only, covered by SecurityAudit policy):
     iam:GetPolicyVersion
     iam:GenerateCredentialReport
     iam:GetCredentialReport
+    iam:ListEntitiesForPolicy
+    account:GetContactInformation
+    account:GetAlternateContact
+    access-analyzer:ListAnalyzers
     cloudtrail:DescribeTrails
     cloudtrail:GetTrailStatus
     cloudtrail:GetEventSelectors
@@ -32,12 +36,14 @@ Required IAM permissions (all read-only, covered by SecurityAudit policy):
     ec2:DescribeVpcs
     ec2:DescribeNetworkAcls
     ec2:DescribeRouteTables
+    ec2:DescribeInstances
     ec2:GetEbsEncryptionByDefault
     rds:DescribeDBInstances
     kms:ListKeys
     kms:GetKeyRotationStatus
     kms:DescribeKey
     logs:DescribeMetricFilters
+    securityhub:DescribeHub
 
 Install: ``pip install 'agent-bom[aws]'``
 """
@@ -147,6 +153,73 @@ class CISBenchmarkReport:
 _IAM_SECTION = "1 - Identity and Access Management"
 
 
+def _check_1_1(account_client: Any) -> CISCheckResult:
+    """CIS 1.1 — Maintain current contact details."""
+    result = CISCheckResult(
+        check_id="1.1",
+        title="Maintain current contact details",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_IAM_SECTION,
+        recommendation="Ensure account contact details are current via AWS Account settings.",
+    )
+    try:
+        contact = account_client.get_contact_information()
+        info = contact.get("ContactInformation", {})
+        if not info.get("FullName") or not info.get("PhoneNumber"):
+            result.status = CheckStatus.FAIL
+            result.evidence = "Account contact information is incomplete."
+        else:
+            result.evidence = "Account contact details are configured."
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not retrieve contact information: {error_code or exc}"
+    return result
+
+
+def _check_1_2(account_client: Any) -> CISCheckResult:
+    """CIS 1.2 — Ensure security contact information is registered."""
+    result = CISCheckResult(
+        check_id="1.2",
+        title="Ensure security contact information is registered",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_IAM_SECTION,
+        recommendation="Register a security contact via AWS Account > Alternate contacts.",
+    )
+    try:
+        resp = account_client.get_alternate_contact(AlternateContactType="SECURITY")
+        contact = resp.get("AlternateContact", {})
+        if not contact.get("EmailAddress"):
+            result.status = CheckStatus.FAIL
+            result.evidence = "Security alternate contact has no email address."
+        else:
+            result.evidence = "Security alternate contact is registered."
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        if error_code == "ResourceNotFoundException":
+            result.status = CheckStatus.FAIL
+            result.evidence = "No security alternate contact is registered."
+        else:
+            result.status = CheckStatus.ERROR
+            result.evidence = f"Could not retrieve security contact: {error_code or exc}"
+    return result
+
+
+def _check_1_3() -> CISCheckResult:
+    """CIS 1.3 — Ensure security questions are not the only way to authenticate to root."""
+    return CISCheckResult(
+        check_id="1.3",
+        title="Ensure security questions are not the only way to authenticate to root",
+        status=CheckStatus.NOT_APPLICABLE,
+        severity="medium",
+        cis_section=_IAM_SECTION,
+        recommendation="Enable MFA for root and do not rely solely on security questions.",
+        evidence="Manual check — cannot be verified programmatically.",
+    )
+
+
 def _check_1_4(iam_client: Any) -> CISCheckResult:
     """CIS 1.4 — Ensure no 'root' user account access key exists."""
     result = CISCheckResult(
@@ -217,6 +290,61 @@ def _check_1_6(iam_client: Any) -> CISCheckResult:
     return result
 
 
+def _check_1_7(iam_client: Any) -> CISCheckResult:
+    """CIS 1.7 — Eliminate use of the root user for administrative and daily tasks."""
+    result = CISCheckResult(
+        check_id="1.7",
+        title="Eliminate use of the root user for administrative and daily tasks",
+        status=CheckStatus.PASS,
+        severity="high",
+        cis_section=_IAM_SECTION,
+        recommendation="Avoid using the root account; use IAM users or roles instead.",
+    )
+    # Generate credential report
+    for _ in range(10):
+        resp = iam_client.generate_credential_report()
+        if resp.get("State") == "COMPLETE":
+            break
+        time.sleep(1)
+
+    try:
+        report_resp = iam_client.get_credential_report()
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        if error_code == "ReportNotPresent":
+            result.status = CheckStatus.ERROR
+            result.evidence = "Credential report not available."
+            return result
+        raise
+
+    content = report_resp["Content"]
+    if isinstance(content, bytes):
+        content = content.decode("utf-8")
+
+    reader = csv.DictReader(io.StringIO(content))
+    now = datetime.now(tz=timezone.utc)
+
+    for row in reader:
+        if row.get("user") != "<root_account>":
+            continue
+        last_used = row.get("password_last_used", "N/A")
+        if last_used in ("N/A", "no_information", "not_supported", ""):
+            result.evidence = "Root account password has never been used (or no data)."
+            break
+        try:
+            used_dt = datetime.fromisoformat(last_used.replace("Z", "+00:00"))
+            days_ago = (now - used_dt).days
+            if days_ago <= 90:
+                result.status = CheckStatus.FAIL
+                result.evidence = f"Root account was last used {days_ago} day(s) ago."
+            else:
+                result.evidence = f"Root account last used {days_ago} days ago (>90 days)."
+        except (ValueError, TypeError):
+            result.evidence = f"Could not parse root last-used date: {last_used}"
+        break
+    return result
+
+
 def _check_1_8(iam_client: Any) -> CISCheckResult:
     """CIS 1.8 — Ensure IAM password policy requires minimum length >= 14."""
     result = CISCheckResult(
@@ -279,6 +407,76 @@ def _check_1_10(iam_client: Any) -> CISCheckResult:
         result.resource_ids = [f"arn:aws:iam::user/{u}" for u in users_without_mfa]
     else:
         result.evidence = "All console users have MFA enabled."
+    return result
+
+
+def _check_1_11(iam_client: Any) -> CISCheckResult:
+    """CIS 1.11 — Do not setup access keys during initial user setup."""
+    result = CISCheckResult(
+        check_id="1.11",
+        title="Do not setup access keys during initial user setup",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_IAM_SECTION,
+        recommendation="Remove access keys created at user creation time; create keys only when needed.",
+    )
+    # Generate credential report
+    for _ in range(10):
+        resp = iam_client.generate_credential_report()
+        if resp.get("State") == "COMPLETE":
+            break
+        time.sleep(1)
+
+    try:
+        report_resp = iam_client.get_credential_report()
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        if error_code == "ReportNotPresent":
+            result.status = CheckStatus.ERROR
+            result.evidence = "Credential report not available."
+            return result
+        raise
+
+    content = report_resp["Content"]
+    if isinstance(content, bytes):
+        content = content.decode("utf-8")
+
+    reader = csv.DictReader(io.StringIO(content))
+    users_with_initial_keys: list[str] = []
+
+    for row in reader:
+        username = row.get("user", "<root_account>")
+        if username == "<root_account>":
+            continue
+        user_creation = row.get("user_creation_time", "")
+        for key_idx in ("1", "2"):
+            key_active = row.get(f"access_key_{key_idx}_active", "false")
+            key_last_rotated = row.get(f"access_key_{key_idx}_last_rotated", "N/A")
+            if key_active != "true":
+                continue
+            if key_last_rotated in ("N/A", "not_supported", ""):
+                continue
+            # If key creation time matches user creation time (same minute), flag it
+            try:
+                user_dt = datetime.fromisoformat(user_creation.replace("Z", "+00:00"))
+                key_dt = datetime.fromisoformat(key_last_rotated.replace("Z", "+00:00"))
+                # Within 2 minutes suggests created at initial setup
+                if abs((key_dt - user_dt).total_seconds()) < 120:
+                    users_with_initial_keys.append(username)
+                    break
+            except (ValueError, TypeError):
+                continue
+
+    if users_with_initial_keys:
+        result.status = CheckStatus.FAIL
+        result.evidence = (
+            f"{len(users_with_initial_keys)} user(s) with access keys created at setup: {', '.join(users_with_initial_keys[:5])}"
+        )
+        if len(users_with_initial_keys) > 5:
+            result.evidence += f" (+{len(users_with_initial_keys) - 5} more)"
+        result.resource_ids = [f"arn:aws:iam::user/{u}" for u in users_with_initial_keys]
+    else:
+        result.evidence = "No users have access keys created during initial setup."
     return result
 
 
@@ -351,6 +549,38 @@ def _check_1_12(iam_client: Any) -> CISCheckResult:
         result.resource_ids = [f"arn:aws:iam::user/{u}" for u in stale_users]
     else:
         result.evidence = "No credentials unused for 45+ days."
+    return result
+
+
+def _check_1_13(iam_client: Any) -> CISCheckResult:
+    """CIS 1.13 — Ensure there is only one active access key available for any single IAM user."""
+    result = CISCheckResult(
+        check_id="1.13",
+        title="Ensure there is only one active access key available for any single IAM user",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_IAM_SECTION,
+        recommendation="Remove extra active access keys so each user has at most one.",
+    )
+    paginator = iam_client.get_paginator("list_users")
+    multi_key_users: list[str] = []
+
+    for page in paginator.paginate():
+        for user in page["Users"]:
+            username = user["UserName"]
+            keys = iam_client.list_access_keys(UserName=username).get("AccessKeyMetadata", [])
+            active_keys = [k for k in keys if k.get("Status") == "Active"]
+            if len(active_keys) > 1:
+                multi_key_users.append(username)
+
+    if multi_key_users:
+        result.status = CheckStatus.FAIL
+        result.evidence = f"{len(multi_key_users)} user(s) with multiple active access keys: {', '.join(multi_key_users[:5])}"
+        if len(multi_key_users) > 5:
+            result.evidence += f" (+{len(multi_key_users) - 5} more)"
+        result.resource_ids = [f"arn:aws:iam::user/{u}" for u in multi_key_users]
+    else:
+        result.evidence = "All IAM users have at most one active access key."
     return result
 
 
@@ -508,6 +738,132 @@ def _check_1_16(iam_client: Any) -> CISCheckResult:
     return result
 
 
+def _check_1_17(iam_client: Any) -> CISCheckResult:
+    """CIS 1.17 — Ensure a support role has been created to manage incidents with AWS Support."""
+    result = CISCheckResult(
+        check_id="1.17",
+        title="Ensure a support role has been created to manage incidents with AWS Support",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_IAM_SECTION,
+        recommendation="Create an IAM role with AWSSupportAccess policy attached.",
+    )
+    try:
+        resp = iam_client.list_entities_for_policy(
+            PolicyArn="arn:aws:iam::aws:policy/AWSSupportAccess",
+        )
+        roles = resp.get("PolicyRoles", [])
+        groups = resp.get("PolicyGroups", [])
+        users = resp.get("PolicyUsers", [])
+        if not roles and not groups and not users:
+            result.status = CheckStatus.FAIL
+            result.evidence = "AWSSupportAccess policy is not attached to any entity."
+        else:
+            entities = [r["RoleName"] for r in roles] + [g["GroupName"] for g in groups] + [u["UserName"] for u in users]
+            result.evidence = f"AWSSupportAccess is attached to: {', '.join(entities[:5])}"
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not check AWSSupportAccess attachment: {error_code or exc}"
+    return result
+
+
+def _check_1_19(ec2_client: Any) -> CISCheckResult:
+    """CIS 1.19 — Ensure that IAM instance roles are used for AWS resource access from instances."""
+    result = CISCheckResult(
+        check_id="1.19",
+        title="Ensure that IAM instance roles are used for AWS resource access from instances",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_IAM_SECTION,
+        recommendation="Attach IAM instance profiles to all EC2 instances instead of embedding credentials.",
+    )
+    try:
+        paginator = ec2_client.get_paginator("describe_instances")
+        no_role: list[str] = []
+        for page in paginator.paginate():
+            for reservation in page["Reservations"]:
+                for instance in reservation["Instances"]:
+                    state = instance.get("State", {}).get("Name", "")
+                    if state == "terminated":
+                        continue
+                    if not instance.get("IamInstanceProfile"):
+                        no_role.append(instance["InstanceId"])
+
+        if no_role:
+            result.status = CheckStatus.FAIL
+            result.evidence = f"{len(no_role)} running instance(s) without IAM instance profile: {', '.join(no_role[:5])}"
+            if len(no_role) > 5:
+                result.evidence += f" (+{len(no_role) - 5} more)"
+            result.resource_ids = no_role[:20]
+        else:
+            result.evidence = "All running EC2 instances have IAM instance profiles."
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not check EC2 instances: {error_code or exc}"
+    return result
+
+
+def _check_1_20(accessanalyzer_client: Any) -> CISCheckResult:
+    """CIS 1.20 — Ensure that IAM Access Analyzer is enabled for all regions."""
+    result = CISCheckResult(
+        check_id="1.20",
+        title="Ensure that IAM Access Analyzer is enabled for all regions",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_IAM_SECTION,
+        recommendation="Enable IAM Access Analyzer in every region via the IAM console.",
+    )
+    try:
+        resp = accessanalyzer_client.list_analyzers(type="ACCOUNT")
+        analyzers = resp.get("analyzers", [])
+        active = [a for a in analyzers if a.get("status") == "ACTIVE"]
+        if not active:
+            result.status = CheckStatus.FAIL
+            result.evidence = "No active IAM Access Analyzer found in this region."
+        else:
+            result.evidence = f"IAM Access Analyzer is active: {active[0].get('name', 'unnamed')}"
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not check IAM Access Analyzer: {error_code or exc}"
+    return result
+
+
+def _check_1_22(iam_client: Any) -> CISCheckResult:
+    """CIS 1.22 — Ensure access to AWSCloudShellFullAccess is restricted."""
+    result = CISCheckResult(
+        check_id="1.22",
+        title="Ensure access to AWSCloudShellFullAccess is restricted",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_IAM_SECTION,
+        recommendation="Remove AWSCloudShellFullAccess from users/groups/roles that do not need it.",
+    )
+    try:
+        resp = iam_client.list_entities_for_policy(
+            PolicyArn="arn:aws:iam::aws:policy/AWSCloudShellFullAccess",
+        )
+        roles = resp.get("PolicyRoles", [])
+        groups = resp.get("PolicyGroups", [])
+        users = resp.get("PolicyUsers", [])
+        entities = [r["RoleName"] for r in roles] + [g["GroupName"] for g in groups] + [u["UserName"] for u in users]
+        if entities:
+            result.status = CheckStatus.FAIL
+            result.evidence = f"AWSCloudShellFullAccess is attached to {len(entities)} entity(ies): {', '.join(entities[:5])}"
+            if len(entities) > 5:
+                result.evidence += f" (+{len(entities) - 5} more)"
+            result.resource_ids = entities[:20]
+        else:
+            result.evidence = "AWSCloudShellFullAccess is not attached to any entity."
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not check AWSCloudShellFullAccess: {error_code or exc}"
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Individual checks — CIS 2.x (Storage / S3)
 # ---------------------------------------------------------------------------
@@ -574,6 +930,38 @@ def _check_2_1_2(s3_client: Any) -> CISCheckResult:
         result.resource_ids = [f"arn:aws:s3:::{b}" for b in unencrypted]
     else:
         result.evidence = f"All {len(buckets)} bucket(s) have server-side encryption enabled."
+    return result
+
+
+def _check_2_1_3(s3_client: Any) -> CISCheckResult:
+    """CIS 2.1.3 — Ensure MFA Delete is enabled on S3 buckets."""
+    result = CISCheckResult(
+        check_id="2.1.3",
+        title="Ensure MFA Delete is enabled on S3 buckets",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_STORAGE_SECTION,
+        recommendation="Enable MFA Delete on S3 bucket versioning configuration.",
+    )
+    buckets = s3_client.list_buckets().get("Buckets", [])
+    no_mfa_delete: list[str] = []
+    for bucket in buckets:
+        name = bucket["Name"]
+        try:
+            versioning = s3_client.get_bucket_versioning(Bucket=name)
+            if versioning.get("MFADelete") != "Enabled":
+                no_mfa_delete.append(name)
+        except Exception as exc:
+            logger.debug("Could not check MFA Delete for bucket %s: %s", name, exc)
+
+    if no_mfa_delete:
+        result.status = CheckStatus.FAIL
+        result.evidence = f"{len(no_mfa_delete)} bucket(s) without MFA Delete: {', '.join(no_mfa_delete[:5])}"
+        if len(no_mfa_delete) > 5:
+            result.evidence += f" (+{len(no_mfa_delete) - 5} more)"
+        result.resource_ids = [f"arn:aws:s3:::{b}" for b in no_mfa_delete]
+    else:
+        result.evidence = f"All {len(buckets)} bucket(s) have MFA Delete enabled."
     return result
 
 
@@ -991,6 +1379,159 @@ def _check_3_7(cloudtrail_client: Any) -> CISCheckResult:
     return result
 
 
+def _check_3_9(ec2_client: Any) -> CISCheckResult:
+    """CIS 3.9 — Ensure VPC flow logging is enabled in all VPCs."""
+    result = CISCheckResult(
+        check_id="3.9",
+        title="Ensure VPC flow logging is enabled in all VPCs",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_LOGGING_SECTION,
+        recommendation="Enable VPC Flow Logs for all VPCs (reject or all traffic).",
+    )
+    vpcs = ec2_client.describe_vpcs().get("Vpcs", [])
+    if not vpcs:
+        result.status = CheckStatus.NOT_APPLICABLE
+        result.evidence = "No VPCs found."
+        return result
+
+    vpc_ids = {v["VpcId"] for v in vpcs}
+    flow_logs = ec2_client.describe_flow_logs(
+        Filters=[{"Name": "resource-type", "Values": ["VPC"]}],
+    ).get("FlowLogs", [])
+    covered_vpcs = {fl["ResourceId"] for fl in flow_logs if fl.get("FlowLogStatus") == "ACTIVE"}
+
+    missing = vpc_ids - covered_vpcs
+    if missing:
+        result.status = CheckStatus.FAIL
+        missing_list = sorted(missing)
+        result.evidence = f"{len(missing)} VPC(s) without flow logging: {', '.join(missing_list[:5])}"
+        if len(missing_list) > 5:
+            result.evidence += f" (+{len(missing_list) - 5} more)"
+        result.resource_ids = missing_list[:20]
+    else:
+        result.evidence = f"All {len(vpcs)} VPC(s) have flow logging enabled."
+    return result
+
+
+def _check_3_10(cloudtrail_client: Any) -> CISCheckResult:
+    """CIS 3.10 — Ensure Object-level logging for write events is enabled for S3 buckets."""
+    result = CISCheckResult(
+        check_id="3.10",
+        title="Ensure Object-level logging for write events is enabled for S3 buckets",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_LOGGING_SECTION,
+        recommendation="Enable S3 object-level write event logging in at least one CloudTrail trail.",
+    )
+    try:
+        trails = cloudtrail_client.describe_trails(includeShadowTrails=False).get("trailList", [])
+        if not trails:
+            result.status = CheckStatus.FAIL
+            result.evidence = "No CloudTrail trails configured."
+            return result
+
+        found = False
+        for trail in trails:
+            try:
+                selectors = cloudtrail_client.get_event_selectors(TrailName=trail["TrailARN"])
+                # Check standard event selectors
+                for es in selectors.get("EventSelectors", []):
+                    for dr in es.get("DataResources", []):
+                        if dr.get("Type") == "AWS::S3::Object":
+                            rw = es.get("ReadWriteType", "")
+                            if rw in ("WriteOnly", "All"):
+                                found = True
+                                break
+                    if found:
+                        break
+                # Check advanced event selectors
+                for aes in selectors.get("AdvancedEventSelectors", []):
+                    has_s3 = False
+                    has_write = False
+                    for fs in aes.get("FieldSelectors", []):
+                        if fs.get("Field") == "resources.type" and "AWS::S3::Object" in fs.get("Equals", []):
+                            has_s3 = True
+                        if fs.get("Field") == "readOnly" and "false" in [str(v).lower() for v in fs.get("Equals", [])]:
+                            has_write = True
+                    if has_s3 and has_write:
+                        found = True
+                        break
+            except Exception:
+                continue
+            if found:
+                break
+
+        if not found:
+            result.status = CheckStatus.FAIL
+            result.evidence = "No trail has S3 object-level write event logging enabled."
+        else:
+            result.evidence = "S3 object-level write event logging is enabled."
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not check object-level logging: {error_code or exc}"
+    return result
+
+
+def _check_3_11(cloudtrail_client: Any) -> CISCheckResult:
+    """CIS 3.11 — Ensure Object-level logging for read events is enabled for S3 buckets."""
+    result = CISCheckResult(
+        check_id="3.11",
+        title="Ensure Object-level logging for read events is enabled for S3 buckets",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_LOGGING_SECTION,
+        recommendation="Enable S3 object-level read event logging in at least one CloudTrail trail.",
+    )
+    try:
+        trails = cloudtrail_client.describe_trails(includeShadowTrails=False).get("trailList", [])
+        if not trails:
+            result.status = CheckStatus.FAIL
+            result.evidence = "No CloudTrail trails configured."
+            return result
+
+        found = False
+        for trail in trails:
+            try:
+                selectors = cloudtrail_client.get_event_selectors(TrailName=trail["TrailARN"])
+                for es in selectors.get("EventSelectors", []):
+                    for dr in es.get("DataResources", []):
+                        if dr.get("Type") == "AWS::S3::Object":
+                            rw = es.get("ReadWriteType", "")
+                            if rw in ("ReadOnly", "All"):
+                                found = True
+                                break
+                    if found:
+                        break
+                for aes in selectors.get("AdvancedEventSelectors", []):
+                    has_s3 = False
+                    has_read = False
+                    for fs in aes.get("FieldSelectors", []):
+                        if fs.get("Field") == "resources.type" and "AWS::S3::Object" in fs.get("Equals", []):
+                            has_s3 = True
+                        if fs.get("Field") == "readOnly" and "true" in [str(v).lower() for v in fs.get("Equals", [])]:
+                            has_read = True
+                    if has_s3 and has_read:
+                        found = True
+                        break
+            except Exception:
+                continue
+            if found:
+                break
+
+        if not found:
+            result.status = CheckStatus.FAIL
+            result.evidence = "No trail has S3 object-level read event logging enabled."
+        else:
+            result.evidence = "S3 object-level read event logging is enabled."
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not check object-level logging: {error_code or exc}"
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Individual checks — CIS 4.x (Monitoring)
 # ---------------------------------------------------------------------------
@@ -1147,6 +1688,515 @@ def _check_4_5(logs_client: Any, cloudtrail_client: Any) -> CISCheckResult:
     return result
 
 
+def _check_4_1(logs_client: Any) -> CISCheckResult:
+    """CIS 4.1 — Ensure a metric filter and alarm exist for unauthorized API calls."""
+    result = CISCheckResult(
+        check_id="4.1",
+        title="Ensure a metric filter and alarm exist for unauthorized API calls",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_MONITORING_SECTION,
+        recommendation="Create a CloudWatch metric filter and alarm for unauthorized API calls.",
+    )
+    patterns = ["UnauthorizedAccess", "AccessDenied"]
+    try:
+        paginator = logs_client.get_paginator("describe_metric_filters")
+        found = False
+        for page in paginator.paginate():
+            for mf in page.get("metricFilters", []):
+                pattern = mf.get("filterPattern", "")
+                if any(p.lower() in pattern.lower() for p in patterns):
+                    found = True
+                    break
+            if found:
+                break
+        if not found:
+            result.status = CheckStatus.FAIL
+            result.evidence = "No metric filter found for unauthorized API calls."
+        else:
+            result.evidence = "Metric filter for unauthorized API calls exists."
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not query metric filters: {error_code or exc}"
+    return result
+
+
+def _check_4_2(logs_client: Any) -> CISCheckResult:
+    """CIS 4.2 — Ensure a metric filter and alarm exist for console sign-in without MFA."""
+    result = CISCheckResult(
+        check_id="4.2",
+        title="Ensure a metric filter and alarm exist for console sign-in without MFA",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_MONITORING_SECTION,
+        recommendation="Create a CloudWatch metric filter and alarm for console sign-in without MFA.",
+    )
+    patterns = ["ConsoleLogin", "MFAUsed"]
+    try:
+        paginator = logs_client.get_paginator("describe_metric_filters")
+        found = False
+        for page in paginator.paginate():
+            for mf in page.get("metricFilters", []):
+                pattern = mf.get("filterPattern", "")
+                if all(p.lower() in pattern.lower() for p in patterns):
+                    found = True
+                    break
+            if found:
+                break
+        if not found:
+            result.status = CheckStatus.FAIL
+            result.evidence = "No metric filter found for console sign-in without MFA."
+        else:
+            result.evidence = "Metric filter for console sign-in without MFA exists."
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not query metric filters: {error_code or exc}"
+    return result
+
+
+def _check_4_6(logs_client: Any) -> CISCheckResult:
+    """CIS 4.6 — Ensure a metric filter and alarm exist for console authentication failures."""
+    result = CISCheckResult(
+        check_id="4.6",
+        title="Ensure a metric filter and alarm exist for console authentication failures",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_MONITORING_SECTION,
+        recommendation="Create a CloudWatch metric filter and alarm for console authentication failures.",
+    )
+    patterns = ["ConsoleLogin", "Failed"]
+    try:
+        paginator = logs_client.get_paginator("describe_metric_filters")
+        found = False
+        for page in paginator.paginate():
+            for mf in page.get("metricFilters", []):
+                pattern = mf.get("filterPattern", "")
+                if all(p.lower() in pattern.lower() for p in patterns):
+                    found = True
+                    break
+            if found:
+                break
+        if not found:
+            result.status = CheckStatus.FAIL
+            result.evidence = "No metric filter found for console authentication failures."
+        else:
+            result.evidence = "Metric filter for console authentication failures exists."
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not query metric filters: {error_code or exc}"
+    return result
+
+
+def _check_4_7(logs_client: Any) -> CISCheckResult:
+    """CIS 4.7 — Ensure a metric filter and alarm exist for disabling or scheduled deletion of CMKs."""
+    result = CISCheckResult(
+        check_id="4.7",
+        title="Ensure a metric filter and alarm exist for disabling or scheduled deletion of CMKs",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_MONITORING_SECTION,
+        recommendation="Create a CloudWatch metric filter and alarm for KMS key disabling/deletion.",
+    )
+    kms_event_names = ["DisableKey", "ScheduleKeyDeletion"]
+    try:
+        paginator = logs_client.get_paginator("describe_metric_filters")
+        found = False
+        for page in paginator.paginate():
+            for mf in page.get("metricFilters", []):
+                pattern = mf.get("filterPattern", "")
+                matches = sum(1 for e in kms_event_names if e in pattern)
+                if matches >= 1:
+                    found = True
+                    break
+            if found:
+                break
+        if not found:
+            result.status = CheckStatus.FAIL
+            result.evidence = "No metric filter found for CMK disabling/deletion."
+        else:
+            result.evidence = "Metric filter for CMK disabling/deletion exists."
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not query metric filters: {error_code or exc}"
+    return result
+
+
+def _check_4_8(logs_client: Any) -> CISCheckResult:
+    """CIS 4.8 — Ensure a metric filter and alarm exist for S3 bucket policy changes."""
+    result = CISCheckResult(
+        check_id="4.8",
+        title="Ensure a metric filter and alarm exist for S3 bucket policy changes",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_MONITORING_SECTION,
+        recommendation="Create a CloudWatch metric filter and alarm for S3 bucket policy changes.",
+    )
+    s3_event_names = [
+        "PutBucketAcl",
+        "PutBucketPolicy",
+        "PutBucketCors",
+        "PutBucketLifecycle",
+        "PutBucketReplication",
+        "DeleteBucketPolicy",
+        "DeleteBucketCors",
+        "DeleteBucketLifecycle",
+        "DeleteBucketReplication",
+    ]
+    try:
+        paginator = logs_client.get_paginator("describe_metric_filters")
+        found = False
+        for page in paginator.paginate():
+            for mf in page.get("metricFilters", []):
+                pattern = mf.get("filterPattern", "")
+                matches = sum(1 for e in s3_event_names if e in pattern)
+                if matches >= 3:
+                    found = True
+                    break
+            if found:
+                break
+        if not found:
+            result.status = CheckStatus.FAIL
+            result.evidence = "No metric filter found for S3 bucket policy changes."
+        else:
+            result.evidence = "Metric filter for S3 bucket policy changes exists."
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not query metric filters: {error_code or exc}"
+    return result
+
+
+def _check_4_9(logs_client: Any) -> CISCheckResult:
+    """CIS 4.9 — Ensure a metric filter and alarm exist for AWS Config configuration changes."""
+    result = CISCheckResult(
+        check_id="4.9",
+        title="Ensure a metric filter and alarm exist for AWS Config configuration changes",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_MONITORING_SECTION,
+        recommendation="Create a CloudWatch metric filter and alarm for AWS Config changes.",
+    )
+    config_event_names = [
+        "StopConfigurationRecorder",
+        "DeleteDeliveryChannel",
+        "PutDeliveryChannel",
+        "PutConfigurationRecorder",
+    ]
+    try:
+        paginator = logs_client.get_paginator("describe_metric_filters")
+        found = False
+        for page in paginator.paginate():
+            for mf in page.get("metricFilters", []):
+                pattern = mf.get("filterPattern", "")
+                matches = sum(1 for e in config_event_names if e in pattern)
+                if matches >= 2:
+                    found = True
+                    break
+            if found:
+                break
+        if not found:
+            result.status = CheckStatus.FAIL
+            result.evidence = "No metric filter found for AWS Config changes."
+        else:
+            result.evidence = "Metric filter for AWS Config changes exists."
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not query metric filters: {error_code or exc}"
+    return result
+
+
+def _check_4_10(logs_client: Any) -> CISCheckResult:
+    """CIS 4.10 — Ensure a metric filter and alarm exist for security group changes."""
+    result = CISCheckResult(
+        check_id="4.10",
+        title="Ensure a metric filter and alarm exist for security group changes",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_MONITORING_SECTION,
+        recommendation="Create a CloudWatch metric filter and alarm for security group changes.",
+    )
+    sg_event_names = [
+        "AuthorizeSecurityGroupIngress",
+        "AuthorizeSecurityGroupEgress",
+        "RevokeSecurityGroupIngress",
+        "RevokeSecurityGroupEgress",
+        "CreateSecurityGroup",
+        "DeleteSecurityGroup",
+    ]
+    try:
+        paginator = logs_client.get_paginator("describe_metric_filters")
+        found = False
+        for page in paginator.paginate():
+            for mf in page.get("metricFilters", []):
+                pattern = mf.get("filterPattern", "")
+                matches = sum(1 for e in sg_event_names if e in pattern)
+                if matches >= 3:
+                    found = True
+                    break
+            if found:
+                break
+        if not found:
+            result.status = CheckStatus.FAIL
+            result.evidence = "No metric filter found for security group changes."
+        else:
+            result.evidence = "Metric filter for security group changes exists."
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not query metric filters: {error_code or exc}"
+    return result
+
+
+def _check_4_11(logs_client: Any) -> CISCheckResult:
+    """CIS 4.11 — Ensure a metric filter and alarm exist for changes to Network Access Control Lists."""
+    result = CISCheckResult(
+        check_id="4.11",
+        title="Ensure a metric filter and alarm exist for changes to NACLs",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_MONITORING_SECTION,
+        recommendation="Create a CloudWatch metric filter and alarm for NACL changes.",
+    )
+    nacl_event_names = [
+        "CreateNetworkAcl",
+        "CreateNetworkAclEntry",
+        "DeleteNetworkAcl",
+        "DeleteNetworkAclEntry",
+        "ReplaceNetworkAclEntry",
+        "ReplaceNetworkAclAssociation",
+    ]
+    try:
+        paginator = logs_client.get_paginator("describe_metric_filters")
+        found = False
+        for page in paginator.paginate():
+            for mf in page.get("metricFilters", []):
+                pattern = mf.get("filterPattern", "")
+                matches = sum(1 for e in nacl_event_names if e in pattern)
+                if matches >= 3:
+                    found = True
+                    break
+            if found:
+                break
+        if not found:
+            result.status = CheckStatus.FAIL
+            result.evidence = "No metric filter found for NACL changes."
+        else:
+            result.evidence = "Metric filter for NACL changes exists."
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not query metric filters: {error_code or exc}"
+    return result
+
+
+def _check_4_12(logs_client: Any) -> CISCheckResult:
+    """CIS 4.12 — Ensure a metric filter and alarm exist for changes to network gateways."""
+    result = CISCheckResult(
+        check_id="4.12",
+        title="Ensure a metric filter and alarm exist for changes to network gateways",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_MONITORING_SECTION,
+        recommendation="Create a CloudWatch metric filter and alarm for network gateway changes.",
+    )
+    gw_event_names = [
+        "CreateCustomerGateway",
+        "DeleteCustomerGateway",
+        "AttachInternetGateway",
+        "CreateInternetGateway",
+        "DeleteInternetGateway",
+        "DetachInternetGateway",
+    ]
+    try:
+        paginator = logs_client.get_paginator("describe_metric_filters")
+        found = False
+        for page in paginator.paginate():
+            for mf in page.get("metricFilters", []):
+                pattern = mf.get("filterPattern", "")
+                matches = sum(1 for e in gw_event_names if e in pattern)
+                if matches >= 3:
+                    found = True
+                    break
+            if found:
+                break
+        if not found:
+            result.status = CheckStatus.FAIL
+            result.evidence = "No metric filter found for network gateway changes."
+        else:
+            result.evidence = "Metric filter for network gateway changes exists."
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not query metric filters: {error_code or exc}"
+    return result
+
+
+def _check_4_13(logs_client: Any) -> CISCheckResult:
+    """CIS 4.13 — Ensure a metric filter and alarm exist for route table changes."""
+    result = CISCheckResult(
+        check_id="4.13",
+        title="Ensure a metric filter and alarm exist for route table changes",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_MONITORING_SECTION,
+        recommendation="Create a CloudWatch metric filter and alarm for route table changes.",
+    )
+    rt_event_names = [
+        "CreateRoute",
+        "CreateRouteTable",
+        "ReplaceRoute",
+        "ReplaceRouteTableAssociation",
+        "DeleteRouteTable",
+        "DeleteRoute",
+        "DisassociateRouteTable",
+    ]
+    try:
+        paginator = logs_client.get_paginator("describe_metric_filters")
+        found = False
+        for page in paginator.paginate():
+            for mf in page.get("metricFilters", []):
+                pattern = mf.get("filterPattern", "")
+                matches = sum(1 for e in rt_event_names if e in pattern)
+                if matches >= 3:
+                    found = True
+                    break
+            if found:
+                break
+        if not found:
+            result.status = CheckStatus.FAIL
+            result.evidence = "No metric filter found for route table changes."
+        else:
+            result.evidence = "Metric filter for route table changes exists."
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not query metric filters: {error_code or exc}"
+    return result
+
+
+def _check_4_14(logs_client: Any) -> CISCheckResult:
+    """CIS 4.14 — Ensure a metric filter and alarm exist for VPC changes."""
+    result = CISCheckResult(
+        check_id="4.14",
+        title="Ensure a metric filter and alarm exist for VPC changes",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_MONITORING_SECTION,
+        recommendation="Create a CloudWatch metric filter and alarm for VPC changes.",
+    )
+    vpc_event_names = [
+        "CreateVpc",
+        "DeleteVpc",
+        "ModifyVpcAttribute",
+        "AcceptVpcPeeringConnection",
+        "CreateVpcPeeringConnection",
+        "DeleteVpcPeeringConnection",
+        "RejectVpcPeeringConnection",
+        "AttachClassicLinkVpc",
+        "DetachClassicLinkVpc",
+        "DisableVpcClassicLink",
+        "EnableVpcClassicLink",
+    ]
+    try:
+        paginator = logs_client.get_paginator("describe_metric_filters")
+        found = False
+        for page in paginator.paginate():
+            for mf in page.get("metricFilters", []):
+                pattern = mf.get("filterPattern", "")
+                matches = sum(1 for e in vpc_event_names if e in pattern)
+                if matches >= 3:
+                    found = True
+                    break
+            if found:
+                break
+        if not found:
+            result.status = CheckStatus.FAIL
+            result.evidence = "No metric filter found for VPC changes."
+        else:
+            result.evidence = "Metric filter for VPC changes exists."
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not query metric filters: {error_code or exc}"
+    return result
+
+
+def _check_4_15(logs_client: Any) -> CISCheckResult:
+    """CIS 4.15 — Ensure a metric filter and alarm exist for AWS Organizations changes."""
+    result = CISCheckResult(
+        check_id="4.15",
+        title="Ensure a metric filter and alarm exist for AWS Organizations changes",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_MONITORING_SECTION,
+        recommendation="Create a CloudWatch metric filter and alarm for AWS Organizations changes.",
+    )
+    org_event_names = [
+        "InviteAccountToOrganization",
+        "LeaveOrganization",
+        "CreateOrganization",
+        "DeleteOrganization",
+        "AcceptHandshake",
+        "CreateAccount",
+        "RemoveAccountFromOrganization",
+    ]
+    try:
+        paginator = logs_client.get_paginator("describe_metric_filters")
+        found = False
+        for page in paginator.paginate():
+            for mf in page.get("metricFilters", []):
+                pattern = mf.get("filterPattern", "")
+                matches = sum(1 for e in org_event_names if e in pattern)
+                if matches >= 2:
+                    found = True
+                    break
+            if found:
+                break
+        if not found:
+            result.status = CheckStatus.FAIL
+            result.evidence = "No metric filter found for AWS Organizations changes."
+        else:
+            result.evidence = "Metric filter for AWS Organizations changes exists."
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        result.status = CheckStatus.ERROR
+        result.evidence = f"Could not query metric filters: {error_code or exc}"
+    return result
+
+
+def _check_4_16(securityhub_client: Any) -> CISCheckResult:
+    """CIS 4.16 — Ensure AWS Security Hub is enabled."""
+    result = CISCheckResult(
+        check_id="4.16",
+        title="Ensure AWS Security Hub is enabled",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_MONITORING_SECTION,
+        recommendation="Enable AWS Security Hub in all regions.",
+    )
+    try:
+        resp = securityhub_client.describe_hub()
+        if resp.get("HubArn"):
+            result.evidence = f"Security Hub is enabled: {resp['HubArn']}"
+        else:
+            result.status = CheckStatus.FAIL
+            result.evidence = "Security Hub is not enabled."
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        if error_code in ("InvalidAccessException", "ResourceNotFoundException"):
+            result.status = CheckStatus.FAIL
+            result.evidence = "Security Hub is not enabled in this region."
+        else:
+            result.status = CheckStatus.ERROR
+            result.evidence = f"Could not check Security Hub: {error_code or exc}"
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Individual checks — CIS 5.x (Networking)
 # ---------------------------------------------------------------------------
@@ -1229,6 +2279,53 @@ def _check_5_3(ec2_client: Any) -> CISCheckResult:
         result.resource_ids = open_defaults[:20]
     else:
         result.evidence = "All default security groups restrict all traffic."
+    return result
+
+
+def _check_5_5(ec2_client: Any) -> CISCheckResult:
+    """CIS 5.5 — Ensure no security groups allow ingress from 0.0.0.0/0 or ::/0 to all ports."""
+    result = CISCheckResult(
+        check_id="5.5",
+        title="Ensure no security groups allow ingress from 0.0.0.0/0 or ::/0 to all ports",
+        status=CheckStatus.PASS,
+        severity="high",
+        cis_section=_NETWORKING_SECTION,
+        recommendation="Remove security group rules that allow unrestricted ingress to all ports.",
+    )
+    open_sgs: list[str] = []
+
+    paginator = ec2_client.get_paginator("describe_security_groups")
+    for page in paginator.paginate():
+        for sg in page["SecurityGroups"]:
+            for perm in sg.get("IpPermissions", []):
+                # Check for all-ports rules (protocol -1 means all)
+                protocol = perm.get("IpProtocol", "")
+                if protocol != "-1":
+                    # Also catch from_port=0,to_port=65535
+                    from_port = perm.get("FromPort", -1)
+                    to_port = perm.get("ToPort", -1)
+                    if not (from_port == 0 and to_port == 65535):
+                        continue
+                for ip_range in perm.get("IpRanges", []):
+                    if ip_range.get("CidrIp") == "0.0.0.0/0":
+                        open_sgs.append(sg["GroupId"])
+                        break
+                else:
+                    for ip_range in perm.get("Ipv6Ranges", []):
+                        if ip_range.get("CidrIpv6") == "::/0":
+                            open_sgs.append(sg["GroupId"])
+                            break
+
+    open_sgs = list(dict.fromkeys(open_sgs))
+
+    if open_sgs:
+        result.status = CheckStatus.FAIL
+        result.evidence = f"{len(open_sgs)} security group(s) allow unrestricted ingress to all ports: {', '.join(open_sgs[:5])}"
+        if len(open_sgs) > 5:
+            result.evidence += f" (+{len(open_sgs) - 5} more)"
+        result.resource_ids = open_sgs[:20]
+    else:
+        result.evidence = "No security groups allow unrestricted ingress to all ports."
     return result
 
 
@@ -1373,15 +2470,21 @@ _CHECKS: list[tuple[str, Callable]] = [
     ("iam", _check_1_4),
     ("iam", _check_1_5),
     ("iam", _check_1_6),
+    ("iam", _check_1_7),
     ("iam", _check_1_8),
     ("iam", _check_1_9),
     ("iam", _check_1_10),
+    ("iam", _check_1_11),
     ("iam", _check_1_12),
+    ("iam", _check_1_13),
     ("iam", _check_1_14),
     ("iam", _check_1_15),
     ("iam", _check_1_16),
+    ("iam", _check_1_17),
+    ("iam", _check_1_22),
     # Storage (section 2)
     ("s3", _check_2_1_2),
+    ("s3", _check_2_1_3),
     ("s3", _check_2_1_4),
     ("ec2", _check_2_2_1),
     ("rds", _check_2_3_1),
@@ -1393,23 +2496,45 @@ _CHECKS: list[tuple[str, Callable]] = [
     ("cloudtrail", _check_3_4),
     ("cloudtrail", _check_3_5),
     ("cloudtrail", _check_3_7),
+    ("cloudtrail", _check_3_10),
+    ("cloudtrail", _check_3_11),
     # Monitoring (section 4)
+    ("logs", _check_4_1),
+    ("logs", _check_4_2),
     ("logs", _check_4_3),
     ("logs", _check_4_4),
+    ("logs", _check_4_6),
+    ("logs", _check_4_7),
+    ("logs", _check_4_8),
+    ("logs", _check_4_9),
+    ("logs", _check_4_10),
+    ("logs", _check_4_11),
+    ("logs", _check_4_12),
+    ("logs", _check_4_13),
+    ("logs", _check_4_14),
+    ("logs", _check_4_15),
     # Networking (section 5)
     ("ec2", _check_5_1),
     ("ec2", _check_5_2),
     ("ec2", _check_5_3),
     ("ec2", _check_5_4),
+    ("ec2", _check_5_5),
     ("ec2", _check_5_6),
 ]
 
 # Checks that need special handling (multiple clients or account_id)
 _SPECIAL_CHECKS: list[tuple[str, Callable]] = [
+    ("account", _check_1_1),  # needs account client
+    ("account", _check_1_2),  # needs account client
+    ("manual", _check_1_3),  # manual check, no client needed
+    ("ec2", _check_1_19),  # needs ec2 client (special: IAM section but ec2 service)
+    ("accessanalyzer", _check_1_20),  # needs access-analyzer client
     ("s3control", _check_2_1_1),  # needs account_id
     ("s3+cloudtrail", _check_3_3),  # needs both s3 and cloudtrail clients
     ("s3+cloudtrail", _check_3_6),  # needs both s3 and cloudtrail clients
+    ("ec2", _check_3_9),  # VPC flow logging (logging section but ec2 service)
     ("logs+cloudtrail", _check_4_5),  # needs logs + cloudtrail clients
+    ("securityhub", _check_4_16),  # needs securityhub client
 ]
 
 
@@ -1510,11 +2635,18 @@ def run_benchmark(
     for service, check_fn in _CHECKS:
         _run_check(_extract_check_id(check_fn), check_fn, _get_client(service))
 
-    # Special checks requiring multiple clients or account_id
+    # Special checks requiring multiple clients, account_id, or no client
+    _run_check("1.1", _check_1_1, _get_client("account"))
+    _run_check("1.2", _check_1_2, _get_client("account"))
+    _run_check("1.3", _check_1_3)
+    _run_check("1.19", _check_1_19, _get_client("ec2"))
+    _run_check("1.20", _check_1_20, _get_client("accessanalyzer"))
     _run_check("2.1.1", _check_2_1_1, _get_client("s3control"), account_id)
     _run_check("3.3", _check_3_3, _get_client("s3"), _get_client("cloudtrail"))
     _run_check("3.6", _check_3_6, _get_client("s3"), _get_client("cloudtrail"))
+    _run_check("3.9", _check_3_9, _get_client("ec2"))
     _run_check("4.5", _check_4_5, _get_client("logs"), _get_client("cloudtrail"))
+    _run_check("4.16", _check_4_16, _get_client("securityhub"))
 
     # Sort checks by check_id for consistent output
     report.checks.sort(key=lambda c: [int(x) if x.isdigit() else x for x in c.check_id.replace(".", " ").split()])

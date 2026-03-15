@@ -14,6 +14,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from agent_bom.atlas import tag_blast_radius as tag_atlas_techniques
 from agent_bom.cis_controls import tag_blast_radius as tag_cis_controls
+from agent_bom.cmmc import tag_blast_radius as tag_cmmc
 from agent_bom.config import (
     SCANNER_BATCH_DELAY as BATCH_DELAY_SECONDS,
 )
@@ -1138,6 +1139,7 @@ async def scan_agents(agents: list[Agent]) -> list[BlastRadius]:
             br.iso_27001_tags = tag_iso_27001(br)
             br.soc2_tags = tag_soc2(br)
             br.cis_tags = tag_cis_controls(br)
+            br.cmmc_tags = tag_cmmc(br)
             blast_radii.append(br)
 
     # Sort by risk score descending

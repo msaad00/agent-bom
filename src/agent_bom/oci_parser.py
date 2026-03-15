@@ -501,6 +501,81 @@ def _extract_packages_from_layer(
         except Exception:
             _logger.debug("Skipped deps.json: %s", member_name)
 
+    # --- PHP: composer.lock ---
+    for composer_path in (
+        "app/composer.lock",
+        "var/www/composer.lock",
+        "var/www/html/composer.lock",
+        "srv/composer.lock",
+        "home/composer.lock",
+    ):
+        # Also check with ./ prefix
+        for prefix in ("", "./"):
+            path = prefix + composer_path
+            if path not in names or _is_deleted(path):
+                continue
+            try:
+                f = layer_tf.extractfile(layer_tf.getmember(path))
+                if f is None:
+                    continue
+                data = json.loads(f.read().decode("utf-8", errors="ignore"))
+                for section in ("packages", "packages-dev"):
+                    for pkg in data.get(section, []):
+                        name = pkg.get("name", "")
+                        version = pkg.get("version", "unknown").lstrip("v")
+                        if name:
+                            _add_package(seen, packages, name, version, "composer", f"pkg:composer/{name}@{version}")
+            except Exception:
+                _logger.debug("Failed to parse composer.lock: %s", path)
+
+    # --- Rust: Cargo.lock ---
+    for cargo_path in ("app/Cargo.lock", "usr/src/Cargo.lock", "home/Cargo.lock", "opt/Cargo.lock", "srv/Cargo.lock"):
+        for prefix in ("", "./"):
+            path = prefix + cargo_path
+            if path not in names or _is_deleted(path):
+                continue
+            try:
+                f = layer_tf.extractfile(layer_tf.getmember(path))
+                if f is None:
+                    continue
+                content = f.read().decode("utf-8", errors="ignore")
+                # Parse TOML-style [[package]] sections
+                import re as _re
+
+                for block in _re.split(r"\[\[package\]\]", content):
+                    name_m = _re.search(r'name\s*=\s*"([^"]+)"', block)
+                    ver_m = _re.search(r'version\s*=\s*"([^"]+)"', block)
+                    if name_m and ver_m:
+                        _add_package(
+                            seen, packages, name_m.group(1), ver_m.group(1), "cargo", f"pkg:cargo/{name_m.group(1)}@{ver_m.group(1)}"
+                        )
+            except Exception:
+                _logger.debug("Failed to parse Cargo.lock: %s", path)
+
+    # --- Swift: Package.resolved ---
+    for swift_path in ("app/Package.resolved", "Package.resolved", "Sources/Package.resolved"):
+        for prefix in ("", "./"):
+            path = prefix + swift_path
+            if path not in names or _is_deleted(path):
+                continue
+            try:
+                f = layer_tf.extractfile(layer_tf.getmember(path))
+                if f is None:
+                    continue
+                data = json.loads(f.read().decode("utf-8", errors="ignore"))
+                pins = data.get("pins", [])
+                if not pins and "object" in data:
+                    pins = data["object"].get("pins", [])
+                for pin in pins:
+                    identity = pin.get("identity", "")
+                    location = pin.get("location", pin.get("repositoryURL", ""))
+                    version = pin.get("state", {}).get("version") or "unknown"
+                    name = identity or (location.rstrip("/").rsplit("/", 1)[-1].removesuffix(".git") if location else "")
+                    if name:
+                        _add_package(seen, packages, name, version, "swift", f"pkg:swift/{name}@{version}")
+            except Exception:
+                _logger.debug("Failed to parse Package.resolved: %s", path)
+
     return whiteouts
 
 

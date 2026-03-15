@@ -77,8 +77,8 @@ def detect_linux_distro(root: Path) -> str:
 def scan_filesystem(path: str, timeout: int = 600) -> tuple[list[Package], str]:
     """Scan a filesystem directory or tar archive for packages.
 
-    Tries Syft first; falls back to native parsers for directories when
-    Syft is not installed.
+    Uses native parsers first (no external dependencies). Falls back to
+    Syft only for tar archives when native parsing isn't sufficient.
 
     Args:
         path: Directory path or tar archive path.
@@ -86,7 +86,7 @@ def scan_filesystem(path: str, timeout: int = 600) -> tuple[list[Package], str]:
 
     Returns:
         ``(packages, strategy)`` where *strategy* is one of:
-        ``"syft-dir"``, ``"syft-tar"``, ``"native-dir"``.
+        ``"native-dir"``, ``"syft-tar"``, ``"native-tar"``.
 
     Raises:
         FilesystemScanError: if all strategies fail.
@@ -94,17 +94,27 @@ def scan_filesystem(path: str, timeout: int = 600) -> tuple[list[Package], str]:
     validated = validate_path(path, must_exist=True)
 
     if validated.is_dir():
-        if shutil.which("syft"):
-            return _scan_directory(validated, timeout), "syft-dir"
-        # Native fallback — no Syft required
+        # Native scanner — no external tools needed
         pkgs = scan_disk_path_native(validated)
         return pkgs, "native-dir"
 
     if validated.suffix in (".tar", ".gz", ".tgz"):
+        # Try native OCI parser first for tar archives
+        try:
+            from agent_bom.oci_parser import parse_image_tarball
+
+            pkgs = parse_image_tarball(str(validated))
+            if pkgs:
+                return pkgs, "native-tar"
+        except Exception:
+            logger.debug("Native tar parsing failed, trying Syft fallback")
+
+        # Syft fallback for tar archives
         if shutil.which("syft"):
             return _scan_archive(validated, timeout), "syft-tar"
         raise FilesystemScanError(
-            "syft not found on PATH — required for tar/archive scanning. Install from https://github.com/anchore/syft"
+            "Could not parse tar archive natively and syft not found on PATH. "
+            "Install syft from https://github.com/anchore/syft for fallback support."
         )
 
     # Provide helpful guidance for disk image formats

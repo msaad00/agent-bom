@@ -109,6 +109,7 @@ from agent_bom.cli._registry import registry, schedule  # noqa: E402
 main.add_command(schedule)
 main.add_command(registry)
 
+
 from agent_bom.cli._runtime import (  # noqa: E402
     _NoOpDetector,
     audit_replay_cmd,
@@ -139,6 +140,18 @@ main.add_command(introspect_cmd, "introspect")
 from agent_bom.cli._db import db_cmd  # noqa: E402
 
 main.add_command(db_cmd, "db")
+
+# ---------------------------------------------------------------------------
+# MCP command group — `agent-bom mcp [inventory|introspect|registry|server]`
+# ---------------------------------------------------------------------------
+from agent_bom.cli._mcp_group import mcp_group  # noqa: E402
+
+mcp_group.add_command(inventory, "inventory")
+mcp_group.add_command(introspect_cmd, "introspect")
+mcp_group.add_command(registry, "registry")
+mcp_group.add_command(mcp_server_cmd, "server")
+mcp_group.add_command(where, "where")
+main.add_command(mcp_group)
 
 
 # ---------------------------------------------------------------------------

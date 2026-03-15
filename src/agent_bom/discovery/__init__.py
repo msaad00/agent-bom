@@ -1070,6 +1070,86 @@ def discover_k8s_mcp_servers(
     )
 
 
+def discover_filesystem_mcps(root: Path) -> list[Agent]:
+    """Discover MCP configs inside a mounted filesystem (VM snapshot, container).
+
+    Searches for known MCP client config files relative to every home
+    directory found under *root* (e.g. ``/mnt/snapshot/home/user/.cursor/mcp.json``).
+
+    This enables agent → server → package → CVE chain mapping for VM
+    disk snapshots without requiring the VM to be running.
+
+    Security: only reads JSON/TOML config files — no execution, no symlink
+    traversal outside the root, no environment variable expansion.
+    """
+    agents: list[Agent] = []
+    root = root.resolve()
+    if not root.is_dir():
+        return agents
+
+    # Collect all home-like directories inside the root
+    # Patterns: /home/*/  /root/  /Users/*/  (Linux, macOS layouts)
+    home_dirs: list[Path] = []
+    for pattern in ["home/*", "root", "Users/*"]:
+        home_dirs.extend(p for p in root.glob(pattern) if p.is_dir())
+    # Also check root itself (if someone mounted just a home dir)
+    home_dirs.append(root)
+
+    # Extract the relative portion of each CONFIG_LOCATIONS path (strip ~/  prefix)
+    # and search for them under each home dir
+    for agent_type, locations in CONFIG_LOCATIONS.items():
+        # Check all platform paths (VM might be a different OS)
+        all_paths: set[str] = set()
+        for plat_paths in locations.values():
+            for p in plat_paths:
+                # Strip ~/ prefix to get relative path
+                rel = p.lstrip("~").lstrip("/")
+                all_paths.add(rel)
+
+        for home in home_dirs:
+            for rel_path in all_paths:
+                config_path = home / rel_path
+                # Security: ensure resolved path stays inside root
+                try:
+                    resolved = config_path.resolve()
+                    if not resolved.is_relative_to(root):
+                        logger.warning("Skipping path outside root: %s", config_path)
+                        continue
+                except (OSError, ValueError):
+                    continue
+
+                if not config_path.exists() or not config_path.is_file():
+                    continue
+
+                try:
+                    servers: list[MCPServer] = []
+                    if config_path.suffix == ".json":
+                        config_data = json.loads(config_path.read_text(encoding="utf-8"))
+                        servers = parse_mcp_config(config_data, str(config_path))
+                    elif config_path.suffix == ".toml" and agent_type == AgentType.CODEX_CLI:
+                        servers = parse_codex_config(str(config_path))
+
+                    if servers:
+                        agent = Agent(
+                            name=f"{agent_type.value}@{home.name}",
+                            agent_type=agent_type,
+                            config_path=str(config_path),
+                            mcp_servers=servers,
+                            status=AgentStatus.CONFIGURED,
+                        )
+                        agents.append(agent)
+                        logger.info(
+                            "Discovered %s with %d server(s) in filesystem: %s",
+                            agent_type.value,
+                            len(servers),
+                            config_path,
+                        )
+                except Exception:
+                    logger.debug("Failed to parse %s", config_path, exc_info=True)
+
+    return agents
+
+
 def discover_all(
     project_dir: Optional[str] = None,
     dynamic: bool = False,

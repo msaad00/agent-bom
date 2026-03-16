@@ -160,6 +160,7 @@ server = "agent_bom.mcp_server:create_smithery_server"
 
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
+pythonpath = ["src"]
 markers = [
     "network: tests that require network access (OSV API)",
 ]

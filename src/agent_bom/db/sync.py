@@ -403,7 +403,11 @@ def sync_epss(conn: sqlite3.Connection, url: Optional[str] = None) -> int:
     count = 0
     batch: list[tuple] = []
 
-    reader = csv.DictReader(io.StringIO(content))
+    # EPSS CSV may have comment lines (starting with #) before the header.
+    # Strip them so csv.DictReader sees "cve,epss,percentile" as the header.
+    lines = content.splitlines(keepends=True)
+    clean_content = "".join(line for line in lines if not line.startswith("#"))
+    reader = csv.DictReader(io.StringIO(clean_content))
     for row in reader:
         cve_id = row.get("cve", "").strip()
         prob_str = row.get("epss", "").strip()

@@ -280,28 +280,20 @@ Auto-discovers 22 MCP client types: Claude Desktop, Claude Code, Cursor, Windsur
 ## What it covers
 
 <details>
-<summary><b>Capability comparison</b></summary>
+<summary><b>Key capabilities</b></summary>
 
-| Capability | Trivy / Grype | AI BOM tools | agent-bom |
-|---|---|---|---|
-| **CVE vulnerability scanning** | Yes | No | Yes (OSV + NVD + EPSS + CISA KEV + GHSA) |
-| **SBOM generation** | CycloneDX, SPDX | CycloneDX | CycloneDX 1.6, SPDX 3.0, SARIF |
-| **OS / system package scanning** | Yes | No | Via Docker image scan (Grype/Syft) |
-| **AI agent discovery** | No | Partial | 22 MCP client types + Docker + K8s + processes |
-| **GPU/ML package scanning** | No | No | NVIDIA CSAF + CUDA/cuDNN/PyTorch/TF/JAX/vLLM |
-| **Blast radius mapping** | No | No | CVE → package → server → agent → credentials → tools |
-| **Credential exposure analysis** | No | No | Which secrets leak per vulnerability, per agent |
-| **Runtime proxy / enforcement** | No | No | 7 behavioral detectors, policy-as-code, per-tool rate limiting |
-| **Instruction file trust** | No | No | CLAUDE.md/.cursorrules — 17 patterns, typosquat, Sigstore |
-| **Compliance frameworks** | No | No | 14 frameworks (OWASP, MITRE, NIST, FedRAMP, EU AI Act, CIS, SOC 2) |
-| **Cloud AI inventory** | No | Partial | 12 providers (AWS, Azure, GCP, Snowflake, Databricks, ...) |
-| **Model file scanning** | No | Extension-based | 13 formats + SHA-256 + provenance + pickle risk |
-| **MCP server registry** | No | No | 427+ servers with risk levels and tool inventories |
-| **Policy-as-code + CI gate** | No | Partial | 17 conditions, severity gates, Jira auto-create |
-| **Output formats** | JSON, SARIF | JSON, CycloneDX | 16 formats (JSON, SARIF, HTML, JUnit, CSV, Markdown, ...) |
-| **SIEM integration** | No | No | Splunk HEC, Datadog, Elasticsearch (raw + OCSF) |
-| **Lateral movement analysis** | No | No | Agent context graph, shared credentials, BFS attack paths |
-| **Asset tracking / MTTR** | No | No | SQLite DB — first_seen/resolved/reopened, scan-over-scan diff |
+| Capability | Details |
+|---|---|
+| **CVE scanning** | OSV + NVD + GHSA + EPSS + CISA KEV, 11 ecosystems, severity on basic scan |
+| **AI agent discovery** | 22 MCP client types + Docker + K8s + running processes |
+| **Blast radius mapping** | CVE → package → server → agent → credentials → tools |
+| **Runtime proxy** | 7 behavioral detectors, policy-as-code, per-tool rate limiting |
+| **IaC scanning** | 82 rules across Dockerfile, K8s, Terraform, CloudFormation |
+| **Cloud posture** | AWS (60), Azure (95), GCP (59) CIS benchmark checks |
+| **Compliance** | 14 frameworks (OWASP, NIST, MITRE, CIS, ISO, SOC 2, CMMC, EU AI Act) |
+| **Instruction file trust** | CLAUDE.md/.cursorrules — 17 patterns, typosquat, Sigstore |
+| **AI platform discovery** | HuggingFace, OpenAI, Ollama, W&B, MLflow |
+| **Output formats** | 16 formats (JSON, SARIF, HTML, CycloneDX, SPDX, JUnit, CSV, ...) |
 
 </details>
 
@@ -494,17 +486,28 @@ Options:
 </details>
 
 <details>
-<summary><b>Cloud providers</b></summary>
+<summary><b>Cloud + AI platforms</b></summary>
 
-| Provider | Depth | Install |
-|----------|-------|---------|
-| **Snowflake** | Deep (Cortex, MCP, governance, observability) | `pip install 'agent-bom[snowflake]'` |
-| **AWS** | Standard (Bedrock, Lambda, EKS, ECS, SageMaker) | `pip install 'agent-bom[aws]'` |
-| **Azure** | Standard (OpenAI, Functions, AI Foundry, Container Apps) | `pip install 'agent-bom[azure]'` |
-| **GCP** | Standard (Vertex AI, Cloud Functions, GKE, Cloud Run) | `pip install 'agent-bom[gcp]'` |
-| **Databricks** | Preview (Cluster packages, model serving) | `pip install 'agent-bom[databricks]'` |
-| **Nebius** | Preview (Managed K8s, containers) | `pip install 'agent-bom[nebius]'` |
-| **CoreWeave** | Via K8s | `--k8s --context=coreweave-cluster` |
+**Cloud infrastructure** (requires credentials):
+
+| Provider | What it scans | CIS checks |
+|----------|--------------|------------|
+| **AWS** | Bedrock, Lambda, ECS, EKS, SageMaker | 60 checks (v3.0) |
+| **Azure** | AI Foundry, Container Apps, Functions | 95 checks (v2.0) |
+| **GCP** | Vertex AI, Cloud Run, GKE | 59 checks (v3.0) |
+
+**AI platform discovery** (API key based):
+
+| Platform | What it discovers |
+|----------|------------------|
+| **HuggingFace** | Models, spaces, inference endpoints, provenance |
+| **OpenAI** | Assistants, fine-tuned models, files |
+| **Ollama** | Locally downloaded models (zero config) |
+| **W&B** | Runs, artifacts, model registry |
+| **MLflow** | Models, experiments, deployments |
+
+**MCP scanning** (zero config):
+- Snowflake Cortex Code (CoCo) — via MCP discovery, no Snowflake credentials needed
 
 </details>
 

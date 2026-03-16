@@ -801,7 +801,7 @@ def scan(
                     pre_str = f" ({len(pre_populated)} from inventory)" if pre_populated else ""
                     con.print(
                         f"  [green]✓[/green] {server.name}: {len(server.packages)} package(s) "
-                        f"({server.packages[0].ecosystem}){transitive_str}{pre_str}"
+                        f"({server.packages[0].ecosystem if server.packages else 'unknown'}){transitive_str}{pre_str}"
                     )
                 else:
                     con.print(f"  [dim]  {server.name}: no local packages found[/dim]")
@@ -1211,7 +1211,6 @@ def scan(
     _findings = [blast_radius_to_finding(br) for br in blast_radii]
 
     # Generate deterministic scan ID from content fingerprint (same inputs → same ID)
-    import hashlib as _hashlib
     import uuid as _uuid
 
     _scan_ns = _uuid.UUID("7f3e4b2a-9c1d-5f8e-a0b4-12c3d4e5f6a7")

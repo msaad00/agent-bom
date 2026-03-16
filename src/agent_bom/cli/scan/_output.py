@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from agent_bom.cli.scan._context import ScanContext
 from agent_bom.models import AIBOMReport
@@ -45,6 +46,21 @@ from agent_bom.output import (
     to_sarif,
     to_spdx,
 )
+
+_logger = logging.getLogger(__name__)
+
+
+def _safe_export(fn: Callable, *args: Any, label: str = "report", path: str = "") -> bool:
+    """Call an export function, catching file I/O errors gracefully."""
+    try:
+        fn(*args)
+        return True
+    except (PermissionError, OSError) as exc:
+        _logger.error("Failed to write %s to %s: %s", label, path, exc)
+        import click
+
+        click.echo(f"Error: cannot write {label} to {path}: {exc}", err=True)
+        return False
 
 
 def render_output(
@@ -195,36 +211,36 @@ def render_output(
         _print_text(report, blast_radii)
     elif output_format == "json":
         out_path = output or "agent-bom-report.json"
-        export_json(report, out_path)
-        con.print(f"\n  [green]✓[/green] JSON report: {out_path}")
+        if _safe_export(export_json, report, out_path, label="JSON report", path=out_path):
+            con.print(f"\n  [green]✓[/green] JSON report: {out_path}")
     elif output_format == "cyclonedx":
         out_path = output or "agent-bom.cdx.json"
-        export_cyclonedx(report, out_path)
-        con.print(f"\n  [green]✓[/green] CycloneDX BOM: {out_path}")
+        if _safe_export(export_cyclonedx, report, out_path, label="CycloneDX BOM", path=out_path):
+            con.print(f"\n  [green]✓[/green] CycloneDX BOM: {out_path}")
     elif output_format == "sarif":
         out_path = output or "agent-bom.sarif"
-        export_sarif(report, out_path)
-        con.print(f"\n  [green]✓[/green] SARIF report: {out_path}")
+        if _safe_export(export_sarif, report, out_path, label="SARIF report", path=out_path):
+            con.print(f"\n  [green]✓[/green] SARIF report: {out_path}")
     elif output_format == "spdx":
         out_path = output or "agent-bom.spdx.json"
-        export_spdx(report, out_path)
-        con.print(f"\n  [green]✓[/green] SPDX 3.0 BOM: {out_path}")
+        if _safe_export(export_spdx, report, out_path, label="SPDX 3.0 BOM", path=out_path):
+            con.print(f"\n  [green]✓[/green] SPDX 3.0 BOM: {out_path}")
     elif output_format == "junit":
         out_path = output or "agent-bom-results.xml"
-        export_junit(report, out_path, blast_radii)
-        con.print(f"\n  [green]✓[/green] JUnit XML: {out_path}")
+        if _safe_export(export_junit, report, out_path, blast_radii, label="JUnit XML", path=out_path):
+            con.print(f"\n  [green]✓[/green] JUnit XML: {out_path}")
     elif output_format == "csv":
         out_path = output or "agent-bom-results.csv"
-        export_csv(report, out_path, blast_radii)
-        con.print(f"\n  [green]✓[/green] CSV report: {out_path}")
+        if _safe_export(export_csv, report, out_path, blast_radii, label="CSV report", path=out_path):
+            con.print(f"\n  [green]✓[/green] CSV report: {out_path}")
     elif output_format == "markdown":
         out_path = output or "agent-bom-report.md"
-        export_markdown(report, out_path, blast_radii)
-        con.print(f"\n  [green]✓[/green] Markdown report: {out_path}")
+        if _safe_export(export_markdown, report, out_path, blast_radii, label="Markdown report", path=out_path):
+            con.print(f"\n  [green]✓[/green] Markdown report: {out_path}")
     elif output_format == "html":
         out_path = output or "agent-bom-report.html"
-        export_html(report, out_path, blast_radii)
-        con.print(f"\n  [green]✓[/green] HTML report: {out_path}")
+        if _safe_export(export_html, report, out_path, blast_radii, label="HTML report", path=out_path):
+            con.print(f"\n  [green]✓[/green] HTML report: {out_path}")
         if open_report:
             import webbrowser
 
@@ -234,8 +250,8 @@ def render_output(
             con.print(f"  [dim]Open with:[/dim] open {out_path}")
     elif output_format == "prometheus":
         out_path = output or "agent-bom-metrics.prom"
-        export_prometheus(report, out_path, blast_radii)
-        con.print(f"\n  [green]✓[/green] Prometheus metrics: {out_path}")
+        if _safe_export(export_prometheus, report, out_path, blast_radii, label="Prometheus metrics", path=out_path):
+            con.print(f"\n  [green]✓[/green] Prometheus metrics: {out_path}")
         con.print("  [dim]Scrape with node_exporter textfile or push via --push-gateway[/dim]")
     elif output_format == "graph":
         from agent_bom.output.graph import build_graph_elements

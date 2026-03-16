@@ -35,6 +35,7 @@ dependencies = [
     "pydantic>=2.0",
     "cyclonedx-python-lib>=11.6",  # Updated for better CycloneDX 1.6 support
     "packageurl-python>=0.17",
+    "packaging>=24.0",
     "toml>=0.10",
     "pyyaml>=6.0",
     "jsonschema>=4.0",

@@ -191,16 +191,9 @@ jobs:
           # Extract Dockerfile.mcp ARG VERSION
           DOCKER_VER=$(python -c "
           import re
-          text = open('integrations/toolhive/Dockerfile.mcp').read()
+          text = open('deploy/docker/Dockerfile.mcp').read()
           m = re.search(r'ARG VERSION=(\S+)', text)
           print(m.group(1))
-          ")
-
-          # Extract server.json version
-          SERVER_VER=$(python -c "
-          import json
-          data = json.load(open('integrations/toolhive/server.json'))
-          print(data['version'])
           ")
 
           # Extract Dockerfile.sse ARG VERSION
@@ -248,7 +241,6 @@ jobs:
           echo "Dockerfile.sse:       $SSE_VER"
           echo "Dockerfile.runtime:   $RUNTIME_VER"
           echo "Dockerfile.snowpark:  $SNOWPARK_VER"
-          echo "server.json (TH):     $SERVER_VER"
           echo "server.json (MCP):    $REGISTRY_VER"
           echo "Chart.yaml:           $HELM_VER"
 
@@ -259,7 +251,6 @@ jobs:
             "Dockerfile.sse:$SSE_VER" \
             "Dockerfile.runtime:$RUNTIME_VER" \
             "Dockerfile.snowpark:$SNOWPARK_VER" \
-            "server.json (ToolHive):$SERVER_VER" \
             "server.json (MCP Registry):$REGISTRY_VER" \
             "Chart.yaml appVersion:$HELM_VER"; do
             LABEL="${LABEL_VER%%:*}"

@@ -257,6 +257,7 @@ def enrichment_options(fn):
     return _apply(
         [
             click.option("--enrich", is_flag=True, help="Enrich vulnerabilities with NVD, EPSS, and CISA KEV data"),
+            click.option("--compliance", is_flag=True, help="Tag findings with compliance frameworks (OWASP, NIST, CIS, ISO, SOC2, CMMC)"),
             click.option(
                 "--auto-update-db/--no-auto-update-db",
                 "auto_update_db",

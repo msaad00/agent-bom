@@ -87,6 +87,7 @@ def scan(
     generate_vex_flag: bool,
     vex_output_path: Optional[str],
     enrich: bool,
+    compliance: bool,
     nvd_api_key: Optional[str],
     scorecard_flag: bool,
     quiet: bool,
@@ -1024,6 +1025,7 @@ def scan(
                     enable_enrichment=enrich,
                     nvd_api_key=nvd_api_key,
                     blast_radius_depth=blast_radius_depth,
+                    compliance_enabled=compliance,
                 )
                 progress.update(scan_task, completed=3, phase="building blast radius analysis")
                 progress.update(scan_task, completed=4, phase="done")

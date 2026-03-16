@@ -54,6 +54,9 @@ offline_mode: bool = False
 # packages not found in the DB. Set automatically when DB is <24h old.
 prefer_local_db: bool = False
 
+# When False, skip compliance framework tagging on findings (faster for individual scans)
+compliance_mode: bool = False
+
 OSV_API_URL = "https://api.osv.dev/v1"
 OSV_BATCH_URL = f"{OSV_API_URL}/querybatch"
 # Max pipeline-level pause when OSV returns persistent 429 after all per-request retries.
@@ -781,7 +784,8 @@ def _scan_packages_local_db(packages: list[Package]) -> tuple[int, set[str]]:
                     pkg.vulnerabilities.extend(new_vulns)
                     total += len(new_vulns)
                     for v in new_vulns:
-                        v.compliance_tags = _tag_vuln(v, pkg)
+                        if compliance_mode:
+                            v.compliance_tags = _tag_vuln(v, pkg)
                     flag_malicious_from_vulns(pkg)
     finally:
         conn.close()
@@ -833,7 +837,8 @@ def _scan_packages_local_db_batch(
             pkg.vulnerabilities.extend(new_vulns)
             total += len(new_vulns)
             for v in new_vulns:
-                v.compliance_tags = _tag_vuln(v, pkg)
+                if compliance_mode:
+                    v.compliance_tags = _tag_vuln(v, pkg)
             flag_malicious_from_vulns(pkg)
 
     return total
@@ -930,7 +935,8 @@ async def scan_packages(packages: list[Package]) -> int:
             total_vulns += len(merged)
             # Tag each CVE with compliance framework codes (pre-enrichment)
             for v in merged:
-                v.compliance_tags = _tag_vuln(v, pkg)
+                if compliance_mode:
+                    v.compliance_tags = _tag_vuln(v, pkg)
             # Flag packages with MAL- prefixed vulnerability IDs as malicious
             flag_malicious_from_vulns(pkg)
 
@@ -940,7 +946,8 @@ async def scan_packages(packages: list[Package]) -> int:
             continue  # already processed above
         for v in pkg.vulnerabilities:
             if not v.compliance_tags:
-                v.compliance_tags = _tag_vuln(v, pkg)
+                if compliance_mode:
+                    v.compliance_tags = _tag_vuln(v, pkg)
 
     # Supplemental: check NVIDIA advisories for all AI framework packages.
     # nvidia_advisory.py maps NVIDIA CSAF products to bundling frameworks (torch,
@@ -999,8 +1006,10 @@ async def scan_packages(packages: list[Package]) -> int:
     return total_vulns
 
 
-async def scan_agents(agents: list[Agent]) -> list[BlastRadius]:
+async def scan_agents(agents: list[Agent], *, compliance_enabled: bool = False) -> list[BlastRadius]:
     """Scan all agents' MCP server packages for vulnerabilities."""
+    global compliance_mode  # noqa: PLW0603
+    compliance_mode = compliance_enabled
     console.print("\n[bold blue]🛡️  Scanning for vulnerabilities...[/bold blue]\n")
 
     def _pkg_key(pkg: Package) -> str:
@@ -1128,18 +1137,20 @@ async def scan_agents(agents: list[Agent]) -> list[BlastRadius]:
                 ai_risk_context=ai_risk_context,
             )
             br.calculate_risk_score()
-            br.owasp_tags = tag_blast_radius(br)
-            br.atlas_tags = tag_atlas_techniques(br)
-            br.attack_tags = tag_attack_techniques(br)
-            br.nist_ai_rmf_tags = tag_nist_ai_rmf(br)
-            br.owasp_mcp_tags = tag_owasp_mcp(br)
-            br.owasp_agentic_tags = tag_owasp_agentic(br)
-            br.eu_ai_act_tags = tag_eu_ai_act(br)
-            br.nist_csf_tags = tag_nist_csf(br)
-            br.iso_27001_tags = tag_iso_27001(br)
-            br.soc2_tags = tag_soc2(br)
-            br.cis_tags = tag_cis_controls(br)
-            br.cmmc_tags = tag_cmmc(br)
+            # Compliance tagging — opt-in via --compliance flag
+            if compliance_enabled:
+                br.owasp_tags = tag_blast_radius(br)
+                br.atlas_tags = tag_atlas_techniques(br)
+                br.attack_tags = tag_attack_techniques(br)
+                br.nist_ai_rmf_tags = tag_nist_ai_rmf(br)
+                br.owasp_mcp_tags = tag_owasp_mcp(br)
+                br.owasp_agentic_tags = tag_owasp_agentic(br)
+                br.eu_ai_act_tags = tag_eu_ai_act(br)
+                br.nist_csf_tags = tag_nist_csf(br)
+                br.iso_27001_tags = tag_iso_27001(br)
+                br.soc2_tags = tag_soc2(br)
+                br.cis_tags = tag_cis_controls(br)
+                br.cmmc_tags = tag_cmmc(br)
             blast_radii.append(br)
 
     # Sort by risk score descending
@@ -1195,7 +1206,8 @@ async def scan_agents_with_enrichment(
                 for server in agent.mcp_servers:
                     for pkg in server.packages:
                         for v in pkg.vulnerabilities:
-                            v.compliance_tags = _tag_vuln(v, pkg)
+                            if compliance_mode:
+                                v.compliance_tags = _tag_vuln(v, pkg)
 
         # Scorecard enrichment — adds supply-chain quality signal
         try:
@@ -1345,12 +1357,13 @@ def scan_agents_sync(
     enable_enrichment: bool = False,
     nvd_api_key: Optional[str] = None,
     blast_radius_depth: int = 1,
+    compliance_enabled: bool = False,
 ) -> list[BlastRadius]:
     """Synchronous wrapper for scan_agents."""
     if enable_enrichment:
         blast_radii = asyncio.run(scan_agents_with_enrichment(agents, nvd_api_key, enable_enrichment))
     else:
-        blast_radii = asyncio.run(scan_agents(agents))
+        blast_radii = asyncio.run(scan_agents(agents, compliance_enabled=compliance_enabled))
     if blast_radius_depth > 1:
         expand_blast_radius_hops(blast_radii, agents, max_depth=blast_radius_depth)
     return blast_radii

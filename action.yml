@@ -59,6 +59,10 @@ inputs:
     description: 'agent-bom package version to install (e.g. 0.13.0). Empty = latest.'
     required: false
     default: ''
+  install-from-source:
+    description: 'Install agent-bom from local source (pyproject.toml) instead of PyPI. Use in CI dogfood to test unreleased code.'
+    required: false
+    default: 'false'
   image:
     description: 'Docker image to scan (e.g. nginx:1.25).'
     required: false
@@ -147,15 +151,25 @@ runs:
       env:
         AGENT_BOM_VERSION: ${{ inputs.agent-bom-version }}
         AI_ENRICH: ${{ inputs.ai-enrich }}
+        INSTALL_FROM_SOURCE: ${{ inputs.install-from-source }}
       run: |
-        PKG="agent-bom"
-        if [ -n "$AGENT_BOM_VERSION" ]; then
-          PKG="agent-bom==$AGENT_BOM_VERSION"
-        fi
-        if [ "$AI_ENRICH" = "true" ]; then
-          pip install "${PKG}[ai-enrich]" packaging
+        if [ "$INSTALL_FROM_SOURCE" = "true" ]; then
+          # Install from local source (pyproject.toml) — used by CI dogfood to test unreleased code
+          if [ "$AI_ENRICH" = "true" ]; then
+            pip install ".[ai-enrich]" packaging
+          else
+            pip install "." packaging
+          fi
         else
-          pip install "$PKG" packaging
+          PKG="agent-bom"
+          if [ -n "$AGENT_BOM_VERSION" ]; then
+            PKG="agent-bom==$AGENT_BOM_VERSION"
+          fi
+          if [ "$AI_ENRICH" = "true" ]; then
+            pip install "${PKG}[ai-enrich]" packaging
+          else
+            pip install "$PKG" packaging
+          fi
         fi
 
     - name: Run agent-bom scan

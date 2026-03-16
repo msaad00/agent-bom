@@ -48,6 +48,7 @@ jobs:
           format: table
           severity: HIGH,CRITICAL
           exit-code: '1'
+          trivyignores: .trivyignore
 
       - name: npm audit (ui/ transitive deps)
         run: |
@@ -387,6 +388,7 @@ jobs:
           sbom: tests/fixtures/test-sbom.cdx.json
           format: sarif
           upload-sarif: 'false'
+          install-from-source: 'true'
 
       # 7b. JSON format
       - name: "Dogfood: JSON format"
@@ -395,6 +397,7 @@ jobs:
           sbom: tests/fixtures/test-sbom.cdx.json
           format: json
           output: dogfood-results.json
+          install-from-source: 'true'
 
       - name: Verify JSON output exists
         run: test -f dogfood-results.json && echo "JSON output verified"
@@ -406,6 +409,7 @@ jobs:
           sbom: tests/fixtures/test-sbom.cdx.json
           policy: tests/fixtures/test-policy.json
           format: json
+          install-from-source: 'true'
 
       # 7d. Severity threshold (should pass — clean SBOM, no critical CVEs)
       - name: "Dogfood: severity threshold (clean SBOM)"
@@ -414,6 +418,7 @@ jobs:
           sbom: tests/fixtures/test-sbom.cdx.json
           severity-threshold: critical
           format: json
+          install-from-source: 'true'
 
       # 7e. Badge generation
       - name: "Dogfood: badge output"
@@ -422,6 +427,7 @@ jobs:
           sbom: tests/fixtures/test-sbom.cdx.json
           badge: dogfood-badge.json
           format: json
+          install-from-source: 'true'
 
       - name: Verify badge output exists
         run: test -f dogfood-badge.json && echo "Badge output verified"
@@ -434,3 +440,4 @@ jobs:
           severity-threshold: critical
           warn-on-severity: medium
           format: json
+          install-from-source: 'true'

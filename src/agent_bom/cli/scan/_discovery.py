@@ -370,13 +370,12 @@ def run_local_discovery(
 
     # Step 1d3a: Host OS package scan (--os-packages)
     if not skill_only and os_packages:
-        from agent_bom.filesystem import scan_disk_path_native
         from agent_bom.models import Agent, AgentType, MCPServer
+        from agent_bom.parsers.os_parsers import scan_os_packages
 
         con.print("\n[bold blue]Scanning host OS for installed system packages...[/bold blue]\n")
-        os_pkgs = scan_disk_path_native(Path("/"))
-        # Filter to only OS-level ecosystems (deb/rpm/apk)
-        os_level_pkgs = [p for p in os_pkgs if p.ecosystem in ("deb", "rpm", "apk")]
+        # scan_os_packages: tries live commands (dpkg-query/rpm/apk) first, falls back to files
+        os_level_pkgs = scan_os_packages(Path("/"))
         if os_level_pkgs:
             con.print(f"  [green]\u2713[/green] Found {len(os_level_pkgs)} OS package(s)")
             server = MCPServer(name="os-packages")

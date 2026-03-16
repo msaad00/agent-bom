@@ -39,6 +39,14 @@ from agent_bom.parsers.node_parsers import (  # noqa: F401
     parse_pnpm_lock,
     parse_yarn_lock,
 )
+
+# Re-export OS package parsers (dpkg/rpm/apk — live system and mounted snapshots)
+from agent_bom.parsers.os_parsers import (  # noqa: F401
+    parse_apk_packages,
+    parse_dpkg_packages,
+    parse_rpm_packages,
+    scan_os_packages,
+)
 from agent_bom.parsers.php_parsers import parse_php_packages  # noqa: F401
 
 # Re-export Python parsers for backward compatibility

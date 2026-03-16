@@ -84,6 +84,116 @@ jobs:
           Path("/tmp/new_count").write_text(str(len(new_servers)))
           EOF
 
+      - name: Fetch ToolHive catalog servers
+        id: toolhive
+        run: |
+          uv run python - <<'EOF'
+          import json
+          import urllib.request
+          import sys
+          from pathlib import Path
+
+          CATALOG_API = "https://api.github.com/repos/stacklok/toolhive-catalog/contents/servers"
+          REGISTRY_PATH = Path("src/agent_bom/mcp_registry.json")
+
+          # Load existing registry
+          existing = json.loads(REGISTRY_PATH.read_text())
+          known_packages = set(existing["servers"].keys())
+          # Also collect known OCI images to prevent duplicates by image identifier
+          known_oci_images = {
+              entry.get("package", "") for entry in existing["servers"].values()
+          }
+
+          # Fetch the directory listing from GitHub API
+          try:
+              req = urllib.request.Request(
+                  CATALOG_API,
+                  headers={"Accept": "application/vnd.github+json", "User-Agent": "agent-bom-sync"},
+              )
+              with urllib.request.urlopen(req, timeout=30) as resp:
+                  catalog_entries = json.loads(resp.read())
+          except Exception as exc:
+              print(f"ToolHive catalog unavailable — skipping: {exc}", file=sys.stderr)
+              Path("/tmp/toolhive_count").write_text("0")
+              sys.exit(0)
+
+          if not isinstance(catalog_entries, list):
+              print("Unexpected ToolHive catalog format — skipping", file=sys.stderr)
+              Path("/tmp/toolhive_count").write_text("0")
+              sys.exit(0)
+
+          new_servers = {}
+          for file_obj in catalog_entries:
+              download_url = file_obj.get("download_url")
+              if not download_url:
+                  continue
+              # Only process .json files
+              if not file_obj.get("name", "").endswith(".json"):
+                  continue
+              try:
+                  req2 = urllib.request.Request(
+                      download_url,
+                      headers={"User-Agent": "agent-bom-sync"},
+                  )
+                  with urllib.request.urlopen(req2, timeout=15) as resp2:
+                      server_data = json.loads(resp2.read())
+              except Exception as exc:
+                  print(f"Failed to fetch {download_url}: {exc}", file=sys.stderr)
+                  continue
+
+              if not isinstance(server_data, dict):
+                  continue
+
+              server_name = server_data.get("name", "")
+              description = server_data.get("description", "")
+
+              # Extract OCI image from packages array
+              oci_image = None
+              for pkg in server_data.get("packages", []):
+                  if pkg.get("registryType") == "oci":
+                      # image is typically in pkg["name"] or derived from registry fields
+                      oci_image = pkg.get("name") or pkg.get("image") or ""
+                      if not oci_image:
+                          # Try to reconstruct from registry fields
+                          registry = pkg.get("registry", "")
+                          image_name = pkg.get("imageName") or server_name
+                          tag = pkg.get("tag", "latest")
+                          if registry and image_name:
+                              oci_image = f"{registry}/{image_name}:{tag}"
+                      break
+
+              if not oci_image and server_name:
+                  # Fallback: skip entries with no usable OCI image
+                  continue
+
+              # Use OCI image as the registry key (unique identifier)
+              entry_key = oci_image
+
+              # Skip if already known by OCI image or by server name
+              if entry_key in known_packages or entry_key in known_oci_images:
+                  continue
+              if server_name in known_packages:
+                  continue
+
+              new_servers[entry_key] = {
+                  "ecosystem": "oci",
+                  "package": oci_image,
+                  "description": description,
+                  "command_patterns": [server_name] if server_name else [entry_key.split("/")[-1]],
+                  "category": "toolhive-catalog",
+                  "source": "toolhive-catalog",
+              }
+
+          if new_servers:
+              existing["servers"].update(new_servers)
+              from datetime import datetime, timezone
+              existing["_updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+              REGISTRY_PATH.write_text(json.dumps(existing, indent=2) + "\n")
+              print(f"Added {len(new_servers)} ToolHive server(s): {', '.join(new_servers.keys())}")
+
+          Path("/tmp/toolhive_count").write_text(str(len(new_servers)))
+          EOF
+
       - name: Refresh registry versions from npm/PyPI
         id: refresh
         run: |
@@ -163,14 +273,16 @@ jobs:
         id: count
         run: |
           echo "new_count=$(cat /tmp/new_count)" >> "$GITHUB_OUTPUT"
+          echo "toolhive_count=$(cat /tmp/toolhive_count 2>/dev/null || echo 0)" >> "$GITHUB_OUTPUT"
           echo "version_count=$(cat /tmp/version_count 2>/dev/null || echo 0)" >> "$GITHUB_OUTPUT"
           echo "cve_count=$(cat /tmp/cve_count 2>/dev/null || echo 0)" >> "$GITHUB_OUTPUT"
 
       - name: Create PR if registry changed
-        if: steps.count.outputs.new_count != '0' || steps.count.outputs.version_count != '0' || steps.count.outputs.cve_count != '0'
+        if: steps.count.outputs.new_count != '0' || steps.count.outputs.toolhive_count != '0' || steps.count.outputs.version_count != '0' || steps.count.outputs.cve_count != '0'
         env:
           GH_TOKEN: ${{ github.token }}
           NEW_COUNT: ${{ steps.count.outputs.new_count }}
+          TOOLHIVE_COUNT: ${{ steps.count.outputs.toolhive_count }}
           VERSION_COUNT: ${{ steps.count.outputs.version_count }}
           CVE_COUNT: ${{ steps.count.outputs.cve_count }}
         run: |
@@ -179,13 +291,14 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
           git add src/agent_bom/mcp_registry.json
-          git commit -m "chore: sync MCP registry — ${NEW_COUNT} new, ${VERSION_COUNT} versions, ${CVE_COUNT} with CVEs"
+          git commit -m "chore: sync MCP registry — ${NEW_COUNT} new, ${TOOLHIVE_COUNT} from toolhive, ${VERSION_COUNT} versions, ${CVE_COUNT} with CVEs"
           git push origin "$BRANCH"
           gh pr create \
-            --title "chore: MCP registry sync — ${NEW_COUNT} new, ${VERSION_COUNT} versions, ${CVE_COUNT} CVE-enriched" \
-            --body "Automated weekly sync from the official MCP server registry.
+            --title "chore: sync MCP registry — ${NEW_COUNT} new, ${TOOLHIVE_COUNT} from toolhive, ${VERSION_COUNT} versions, ${CVE_COUNT} CVE-enriched" \
+            --body "Automated weekly sync from the official MCP server registry and ToolHive catalog.
 
-          **New servers added:** ${NEW_COUNT}
+          **New servers added (MCP official):** ${NEW_COUNT}
+          **New servers added (ToolHive catalog):** ${TOOLHIVE_COUNT}
           **Versions refreshed:** ${VERSION_COUNT}
           **Servers with CVE data:** ${CVE_COUNT}
 
@@ -193,5 +306,5 @@ jobs:
             --base main
 
       - name: No changes
-        if: steps.count.outputs.new_count == '0' && steps.count.outputs.version_count == '0' && steps.count.outputs.cve_count == '0'
+        if: steps.count.outputs.new_count == '0' && steps.count.outputs.toolhive_count == '0' && steps.count.outputs.version_count == '0' && steps.count.outputs.cve_count == '0'
         run: echo "MCP registry is up to date — no new servers, version changes, or CVE updates found."

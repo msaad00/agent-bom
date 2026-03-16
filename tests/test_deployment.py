@@ -245,3 +245,12 @@ def test_deploy_sse_workflow_exists():
     """deploy-mcp-sse.yml should exist."""
     f = ROOT / ".github" / "workflows" / "deploy-mcp-sse.yml"
     assert f.exists()
+
+
+def test_mcp_registry_has_source_metadata():
+    """mcp_registry.json must declare its feed sources."""
+    f = ROOT / "src" / "agent_bom" / "mcp_registry.json"
+    assert f.exists(), "mcp_registry.json is missing"
+    data = json.loads(f.read_text())
+    assert "_sources" in data, "mcp_registry.json is missing '_sources' key"
+    assert "toolhive-catalog" in data["_sources"], f"'toolhive-catalog' not in _sources: {data['_sources']}"

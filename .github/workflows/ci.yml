@@ -98,7 +98,12 @@ jobs:
         run: uv sync --extra dev --extra api --extra mcp-server
 
       - name: Run tests with coverage
-        run: uv run pytest tests/ -v --tb=short --cov=agent_bom --cov-report=term-missing --cov-fail-under=75 -m "not network"
+        run: |
+          if [ "${{ matrix.python-version }}" = "3.11" ]; then
+            uv run pytest tests/ -v --tb=short --cov=agent_bom --cov-report=term-missing --cov-fail-under=75 -m "not network"
+          else
+            uv run pytest tests/ -q --tb=short -m "not network"
+          fi
 
   # 3b. Alpine/musl compatibility test
   # Runs the test suite inside an Alpine Linux container (musl libc) to catch
@@ -115,16 +120,20 @@ jobs:
 
       - name: Install build deps (Alpine)
         run: |
-          apk add --no-cache gcc musl-dev libffi-dev openssl-dev git
+          apk add --no-cache gcc musl-dev libffi-dev openssl-dev git curl
 
       - name: Install uv
-        run: pip install uv --quiet
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
 
       - name: Install project dependencies
-        run: uv sync --extra dev --extra api --extra mcp-server
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          uv sync --extra dev --extra api --extra mcp-server
 
       - name: Run tests (musl)
-        run: uv run pytest tests/ -q --tb=short -m "not network" -x
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          uv run pytest tests/ -q --tb=short -m "not network" -x
 
   # 3c. PR Base Branch Guard — prevent stacked PRs targeting feature branches
   base-branch-check:
@@ -157,8 +166,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      - uses: ./.github/actions/setup-python
         with:
           python-version: '3.11'
 

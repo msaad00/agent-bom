@@ -51,14 +51,14 @@ def main():
 
     \b
     Quick start:
-      agent-bom scan                        auto-discover local agents
-      agent-bom check lodash@4.17.20        pre-install CVE check
-      agent-bom scan --enrich               add NVD CVSS + EPSS + CISA KEV
-      agent-bom scan -f html -o report.html --open   HTML dashboard
-      agent-bom proxy "uvx ..."             runtime enforcement proxy
-      agent-bom introspect --all            live server tool listing
-      agent-bom api                         start REST API (port 8422)
-      agent-bom serve                       API + dashboard (port 8422)
+      agent-bom scan                        auto-detect + scan everything
+      agent-bom check flask@2.0.0           pre-install CVE gate
+      agent-bom mcp                         discover + scan MCP agents
+      agent-bom image nginx:latest          container image scan
+      agent-bom fs .                        filesystem / VM scan
+      agent-bom iac Dockerfile              IaC misconfigurations
+      agent-bom cloud aws                   cloud posture + CIS
+      agent-bom proxy "npx server"          runtime enforcement
 
     \b
     Docs:  https://github.com/msaad00/agent-bom

@@ -29,21 +29,30 @@
 
 ```bash
 pip install agent-bom
-agent-bom scan                              # discover agents + scan for CVEs
-agent-bom check flask@2.0.0                 # pre-install CVE gate
-agent-bom scan --fail-on-severity critical  # CI/CD gate
+agent-bom scan                     # auto-detect MCP agents + scan for CVEs
+agent-bom check flask@2.0.0       # pre-install CVE gate
 ```
 
 <details>
-<summary><b>More scan types</b></summary>
+<summary><b>Focused commands</b></summary>
 
 ```bash
-agent-bom scan --image nginx:latest              # container image
-agent-bom scan --filesystem /mnt/vm-snapshot      # VM disk snapshot
-agent-bom scan --iac Dockerfile k8s/              # infrastructure misconfig
-agent-bom proxy "npx @modelcontextprotocol/server-github"     # runtime enforcement
-agent-bom scan --enrich                           # + CVSS + EPSS + KEV
-agent-bom scan -f sarif -o results.sarif          # GitHub Security tab
+# MCP agents
+agent-bom mcp                     # discover + scan MCP agents
+agent-bom mcp inventory           # discover only, no CVE scan
+
+# Container & filesystem
+agent-bom image nginx:latest      # container image scan
+agent-bom fs /mnt/vm-snapshot     # filesystem / VM disk snapshot
+agent-bom sbom vendor-bom.json    # ingest existing SBOM
+
+# Infrastructure
+agent-bom iac Dockerfile k8s/     # misconfig scanning (82 rules)
+agent-bom cloud aws               # AWS posture + CIS benchmark (60 checks)
+
+# Runtime & CI/CD
+agent-bom proxy "npx server"      # MCP traffic enforcement
+agent-bom scan --fail-on-severity critical -f sarif -o results.sarif
 ```
 
 </details>
@@ -181,31 +190,50 @@ Five trust categories, 17 behavioral risk patterns, Sigstore signature verificat
 ## CLI reference
 
 <details>
-<summary><b>Scanning options</b></summary>
+<summary><b>Scan commands</b></summary>
 
 ```bash
-agent-bom scan                                     # auto-discover + scan
-agent-bom scan --enrich                            # + NVD CVSS + EPSS + CISA KEV
-agent-bom scan -f html -o report.html              # HTML dashboard
-agent-bom scan --enforce                           # tool poisoning detection
-agent-bom scan --fail-on-severity high -q          # CI gate
-agent-bom scan --ignore-file .agent-bom-ignore.yaml  # suppress known false positives
-agent-bom scan --image myapp:latest                # Docker image scanning
-agent-bom scan --k8s --all-namespaces              # K8s image scanning (cluster-wide)
-agent-bom scan --k8s-mcp                           # Discover MCP pods + CRDs in Kubernetes
-agent-bom scan --include-processes                 # Scan running host MCP processes (psutil)
-agent-bom scan --include-containers                # Scan Docker containers for MCP servers
-agent-bom scan --health-check                      # Probe discovered servers for liveness
-agent-bom scan --siem splunk --siem-url https://...  # Push findings to SIEM
-agent-bom scan --aws --snowflake --databricks      # Multi-cloud
-agent-bom scan --hf-model meta-llama/Llama-3.1-8B  # model provenance
-agent-bom scan --vector-db-scan                    # Scan self-hosted + Pinecone cloud vector DBs
-agent-bom scan --gpu-scan                          # Discover GPU containers + K8s nodes, detect unauthenticated DCGM exporters
-agent-bom scan --browser-extensions               # Scan Chrome/Edge/Firefox extensions for dangerous permissions
-agent-bom scan --skill-only                       # Audit AI instruction files (CLAUDE.md, .cursorrules, AGENTS.md)
-agent-bom scan --save report.json                  # Save + track assets (first_seen, resolved, MTTR)
-agent-bom graph report.json --format dot           # Export dependency graph (DOT/Mermaid/JSON)
-agent-bom proxy-configure --apply                  # Auto-wrap MCP configs with security proxy
+# Auto-detect — discovers MCP agents, packages, IaC, and scans everything
+agent-bom scan                              # full auto-detect scan
+agent-bom scan --enrich                     # + NVD CVSS + EPSS + CISA KEV
+agent-bom scan -f html -o report.html       # HTML interactive report
+agent-bom scan --fail-on-severity high -q   # CI/CD gate
+
+# Focused commands — fast, specific, fewer flags
+agent-bom image nginx:latest                # container image scan
+agent-bom fs /mnt/vm-snapshot               # filesystem / VM disk snapshot
+agent-bom fs . --offline                    # scan current directory (offline)
+agent-bom iac Dockerfile k8s/ infra/        # IaC misconfigurations (82 rules)
+agent-bom sbom vendor-bom.json              # ingest CycloneDX/SPDX SBOM
+agent-bom check flask@2.0.0                 # pre-install CVE gate
+```
+
+</details>
+
+<details>
+<summary><b>MCP commands</b></summary>
+
+```bash
+agent-bom mcp                               # discover + scan MCP agents
+agent-bom mcp inventory                      # discover agents/servers (no CVE scan)
+agent-bom mcp introspect --all               # live server tool listing
+agent-bom mcp registry                       # browse MCP server security registry
+agent-bom mcp where                          # show config file locations
+agent-bom mcp server                         # start agent-bom as MCP server
+```
+
+</details>
+
+<details>
+<summary><b>Cloud commands</b></summary>
+
+Requires cloud provider credentials (aws/az/gcloud CLI configured).
+
+```bash
+agent-bom cloud aws                          # AWS posture + CIS v3.0 (60 checks)
+agent-bom cloud azure                        # Azure posture + CIS v2.0 (95 checks)
+agent-bom cloud gcp                          # GCP posture + CIS v3.0 (59 checks)
+agent-bom cloud                              # scan all configured providers
 ```
 
 </details>
@@ -216,19 +244,18 @@ agent-bom proxy-configure --apply                  # Auto-wrap MCP configs with 
 Sit between your MCP client and server, enforce policy in real time:
 
 ```bash
-# Wrap a single server — intercept every tool call
+# Intercept every tool call — 7 detectors active
 agent-bom proxy "uvx mcp-server-filesystem /" --policy policy.yml
 
-# Protect mode — run standalone detector engine
+# Standalone protection engine
 agent-bom protect --mode http
 
-# Watch MCP configs for drift — alert on changes
+# Watch MCP configs for drift
 agent-bom watch --webhook https://hooks.slack.com/...
 
-# Introspect a live MCP server — list tools, detect drift
-agent-bom introspect --command "uvx mcp-server-filesystem /"
-agent-bom introspect --all                                         # auto-discover all configured servers
-agent-bom introspect --all --baseline baseline.json               # exit 1 on new/removed tools
+# Introspect live servers — list tools, detect drift
+agent-bom mcp introspect --all
+agent-bom mcp introspect --all --baseline baseline.json
 
 # Policy file — 17 conditions, zero code required
 # policy.yml:

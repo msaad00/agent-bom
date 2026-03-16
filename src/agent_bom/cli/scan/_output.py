@@ -299,30 +299,34 @@ def render_output(
             con.print(f"  [dim]Open with:[/dim] open {out_path}")
     elif output_format == "badge":
         out_path = output or "agent-bom-badge.json"
-        export_badge(report, out_path)
-        con.print(f"\n  [green]✓[/green] Badge JSON: {out_path}")
-        con.print("  [dim]Use with: https://img.shields.io/endpoint?url=<public-url-to-badge-json>[/dim]")
+        if _safe_export(export_badge, report, out_path, label="Badge JSON", path=out_path):
+            con.print(f"\n  [green]✓[/green] Badge JSON: {out_path}")
+            con.print("  [dim]Use with: https://img.shields.io/endpoint?url=<public-url-to-badge-json>[/dim]")
     elif output_format in ("text", "plain") and output:
-        Path(output).write_text(_format_text(report, blast_radii))
-        con.print(f"\n  [green]✓[/green] Plain text report: {output}")
+        if _safe_export(Path(output).write_text, _format_text(report, blast_radii), label="Plain text report", path=output):
+            con.print(f"\n  [green]✓[/green] Plain text report: {output}")
     elif output:
+        # Auto-detect format from file extension
+        _ext_fn: Callable = export_json  # default fallback
+        _ext_args: tuple = (report, output)
         if output.endswith(".cdx.json"):
-            export_cyclonedx(report, output)
+            _ext_fn, _ext_args = export_cyclonedx, (report, output)
         elif output.endswith(".sarif"):
-            export_sarif(report, output)
+            _ext_fn, _ext_args = export_sarif, (report, output)
         elif output.endswith(".spdx.json"):
-            export_spdx(report, output)
+            _ext_fn, _ext_args = export_spdx, (report, output)
         elif output.endswith(".html"):
-            export_html(report, output, blast_radii)
+            _ext_fn, _ext_args = export_html, (report, output, blast_radii)
         elif output.endswith(".xml"):
-            export_junit(report, output, blast_radii)
+            _ext_fn, _ext_args = export_junit, (report, output, blast_radii)
         elif output.endswith(".csv"):
-            export_csv(report, output, blast_radii)
+            _ext_fn, _ext_args = export_csv, (report, output, blast_radii)
         elif output.endswith(".md"):
-            export_markdown(report, output, blast_radii)
+            _ext_fn, _ext_args = export_markdown, (report, output, blast_radii)
         else:
-            export_json(report, output)
-        con.print(f"\n  [green]✓[/green] Report: {output}")
+            _ext_fn, _ext_args = export_json, (report, output)
+        if _safe_export(_ext_fn, *_ext_args, label="Report", path=output):
+            con.print(f"\n  [green]✓[/green] Report: {output}")
 
     # Step 5b: Push to Prometheus Pushgateway (if requested)
     if push_gateway:

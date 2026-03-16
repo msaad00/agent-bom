@@ -3031,19 +3031,6 @@ def test_print_export_hint_no_crash(sample_report):
 # ---------------------------------------------------------------------------
 
 
-def test_toolhive_server_json_valid():
-    """ToolHive server.json should be valid JSON with required fields."""
-    import json as _json
-    from pathlib import Path
-
-    p = Path(__file__).parent.parent / "integrations" / "toolhive" / "server.json"
-    data = _json.loads(p.read_text())
-    assert data["name"] == "io.github.msaad00/agent-bom"
-    assert data["version"] == "0.71.0"
-    assert "packages" in data
-    assert data["packages"][0]["registryType"] == "oci"
-
-
 def test_mcp_registry_server_json_valid():
     """MCP registry server.json should be valid JSON with required fields."""
     import json as _json
@@ -3278,7 +3265,7 @@ def test_dockerfile_non_root():
     dockerfiles = [
         root / "Dockerfile",
         root / "deploy" / "docker" / "Dockerfile.sse",
-        root / "integrations" / "toolhive" / "Dockerfile.mcp",
+        root / "deploy" / "docker" / "Dockerfile.mcp",
     ]
     for df in dockerfiles:
         content = df.read_text()

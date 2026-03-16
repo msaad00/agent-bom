@@ -153,9 +153,9 @@ runs:
           PKG="agent-bom==$AGENT_BOM_VERSION"
         fi
         if [ "$AI_ENRICH" = "true" ]; then
-          pip install "${PKG}[ai-enrich]"
+          pip install "${PKG}[ai-enrich]" packaging
         else
-          pip install "$PKG"
+          pip install "$PKG" packaging
         fi
 
     - name: Run agent-bom scan

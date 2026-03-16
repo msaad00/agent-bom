@@ -264,7 +264,7 @@ async def resolve_all_versions(packages: list[Package], *, quiet: bool = False) 
                     lic_tag = ""
                     if unresolved[i].license:
                         # Cap license display to SPDX-style short string
-                        short_lic = unresolved[i].license.split("\n", 1)[0][:60]
+                        short_lic = (unresolved[i].license or "").split("\n", 1)[0][:60]
                         lic_tag = f" ({short_lic})"
                     console.print(f"  [green]✓[/green] Resolved {unresolved[i].name} → {unresolved[i].version}{lic_tag}")
             elif isinstance(result, Exception):

@@ -400,7 +400,7 @@ agent-bom scan -o -                                # Pipe any format to stdout
 | Mode | Command | Best for |
 |------|---------|----------|
 | CLI | `agent-bom scan` | Local audit |
-| GitHub Action | `uses: msaad00/agent-bom@v0.71.0 | CI/CD + SARIF |
+| GitHub Action | `uses: msaad00/agent-bom@v0.71.1 | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated scans (linux/amd64, linux/arm64) |
 | REST API | `agent-bom api` | Dashboards, SIEM |
 | MCP Server | `agent-bom mcp-server` (32 tools) | Inside any MCP client |
@@ -429,7 +429,7 @@ agent-bom scan -o -                                # Pipe any format to stdout
 <summary><b>GitHub Action</b></summary>
 
 ```yaml
-- uses: msaad00/agent-bom@v0.71.0
+- uses: msaad00/agent-bom@v0.71.1
   with:
     severity-threshold: high
     upload-sarif: true
@@ -551,7 +551,7 @@ rm -rf ~/.agent-bom                      # remove local data
 |----------|------|
 | PyPI | `pip install agent-bom` |
 | Docker | `docker run agentbom/agent-bom scan` |
-| GitHub Action | `uses: msaad00/agent-bom@v0.71.0 |
+| GitHub Action | `uses: msaad00/agent-bom@v0.71.1 |
 | Glama | [glama.ai/mcp/servers/@msaad00/agent-bom](https://glama.ai/mcp/servers/@msaad00/agent-bom) |
 | MCP Registry | [server.json](integrations/mcp-registry/server.json) |
 | OpenClaw | [SKILL.md](integrations/openclaw/SKILL.md) |

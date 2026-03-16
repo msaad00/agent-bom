@@ -1,7 +1,7 @@
 {
   "_comment": "agent-bom MCP Server Registry \u2014 security metadata database for known MCP servers",
   "_schema_version": "2.0",
-  "_updated": "2026-02-24",
+  "_updated": "2026-03-16",
   "_total_servers": 427,
   "_differentiator": "Security metadata database \u2014 not just a catalog. Each entry has risk_level (category-derived), tools, credential_env_vars (heuristic-inferred) for blast radius pre-computation.",
   "_source": "https://github.com/msaad00/agent-bom/blob/main/data/mcp-registry.yaml",
@@ -576,7 +576,7 @@
     "mcp-atlassian": {
       "package": "mcp-atlassian",
       "ecosystem": "pypi",
-      "latest_version": "0.16.1",
+      "latest_version": "0.21.0",
       "description": "Jira and Confluence integration",
       "name": "Atlassian",
       "risk_justification": "Read/write access to Jira and Confluence via ATLASSIAN_API_TOKEN. Token exposure enables workspace-wide access.",
@@ -689,7 +689,7 @@
     "awslabs.core-mcp-server": {
       "package": "awslabs.core-mcp-server",
       "ecosystem": "pypi",
-      "latest_version": "1.0.23",
+      "latest_version": "1.0.25",
       "description": "AWS services (S3, Lambda, DynamoDB, Bedrock)",
       "name": "AWS Core",
       "risk_justification": "Full AWS service access via AWS credentials. Credential exposure enables account-wide operations across S3, Lambda, DynamoDB, and Bedrock.",
@@ -720,7 +720,7 @@
     "awslabs.bedrock-kb-retrieval-mcp-server": {
       "package": "awslabs.bedrock-kb-retrieval-mcp-server",
       "ecosystem": "pypi",
-      "latest_version": "1.0.16",
+      "latest_version": "1.0.19",
       "description": "AWS Bedrock Knowledge Base queries",
       "name": "AWS Bedrock KB",
       "risk_justification": "Read-only access to AWS Bedrock Knowledge Bases via AWS credentials. Token exposure enables knowledge base queries across the account.",
@@ -771,7 +771,7 @@
     "mongodb-mcp-server": {
       "package": "mongodb-mcp-server",
       "ecosystem": "npm",
-      "latest_version": "1.6.0",
+      "latest_version": "1.8.1",
       "description": "Query and modify MongoDB collections",
       "name": "MongoDB",
       "risk_justification": "Executes arbitrary MongoDB queries via MONGODB_URI. Full data read/write/delete possible across all collections.",
@@ -802,7 +802,7 @@
     "@supabase/mcp-server-supabase": {
       "package": "@supabase/mcp-server-supabase",
       "ecosystem": "npm",
-      "latest_version": "0.6.3",
+      "latest_version": "0.7.0",
       "description": "Read/write Supabase tables, storage, Edge Functions",
       "name": "Supabase",
       "risk_justification": "Executes raw SQL and manages Edge Functions via SUPABASE_SERVICE_ROLE_KEY. Key exposure enables full database and serverless function control.",
@@ -918,7 +918,7 @@
     "mcp-server-kubernetes": {
       "package": "mcp-server-kubernetes",
       "ecosystem": "npm",
-      "latest_version": "3.2.1",
+      "latest_version": "3.3.0",
       "description": "Kubernetes cluster management",
       "name": "Kubernetes",
       "risk_justification": "Full Kubernetes cluster management via KUBECONFIG. Can apply manifests, scale deployments, and delete resources.",
@@ -979,7 +979,7 @@
     "@notionhq/notion-mcp-server": {
       "package": "@notionhq/notion-mcp-server",
       "ecosystem": "npm",
-      "latest_version": "2.1.0",
+      "latest_version": "2.2.1",
       "description": "Read and write Notion pages, databases, blocks",
       "name": "Notion",
       "risk_justification": "Read/write access to Notion pages and databases via NOTION_API_KEY. Token exposure enables workspace-wide content manipulation.",
@@ -1016,7 +1016,7 @@
     "exa-mcp-server": {
       "package": "exa-mcp-server",
       "ecosystem": "npm",
-      "latest_version": "3.1.8",
+      "latest_version": "3.1.9",
       "description": "AI-native web search via Exa",
       "name": "Exa",
       "risk_justification": "Read-only web search via EXA_API_KEY. No write capability.",
@@ -1041,7 +1041,7 @@
     "tavily-mcp": {
       "package": "tavily-mcp",
       "ecosystem": "npm",
-      "latest_version": "0.2.17",
+      "latest_version": "0.2.18",
       "description": "Real-time web search for AI agents",
       "name": "Tavily",
       "risk_justification": "Read-only web search via TAVILY_API_KEY. No write capability.",
@@ -1065,7 +1065,7 @@
     "duckduckgo-mcp-server": {
       "package": "duckduckgo-mcp-server",
       "ecosystem": "pypi",
-      "latest_version": "0.1.1",
+      "latest_version": "0.1.2",
       "description": "Privacy-first web search via DuckDuckGo",
       "name": "DuckDuckGo",
       "risk_justification": "Local search proxy only. No credential exposure or write capability.",
@@ -1112,7 +1112,7 @@
     "mcp-grafana": {
       "package": "mcp-grafana",
       "ecosystem": "pypi",
-      "latest_version": "0.1.2",
+      "latest_version": "0.11.3",
       "description": "Query Grafana dashboards and alerts",
       "name": "Grafana",
       "risk_justification": "Read/write access to Grafana dashboards and alerts via GRAFANA_API_KEY. Token exposure enables dashboard and alert rule manipulation.",
@@ -1297,7 +1297,7 @@
     "langsmith-mcp-server": {
       "package": "langsmith-mcp-server",
       "ecosystem": "pypi",
-      "latest_version": "0.1.0",
+      "latest_version": "0.1.1",
       "description": "Query LangSmith traces and evaluations",
       "name": "LangSmith",
       "risk_justification": "Read-only access to LangSmith traces and evaluations via LANGSMITH_API_KEY. No write capability.",
@@ -2425,7 +2425,7 @@
     "mcp-server-github-actions": {
       "package": "mcp-server-github-actions",
       "ecosystem": "npm",
-      "latest_version": "1.0.0",
+      "latest_version": "1.0.1",
       "description": "GitHub Actions workflow management",
       "name": "GitHub Actions",
       "risk_justification": "Triggers and manages GitHub Actions workflows via GITHUB_TOKEN. Token exposure enables arbitrary workflow execution.",
@@ -2689,7 +2689,7 @@
     "openclaw": {
       "package": "openclaw",
       "ecosystem": "npm",
-      "latest_version": "2026.2.22-2",
+      "latest_version": "2026.3.13",
       "description": "OpenClaw personal AI assistant \u2014 multi-channel gateway (WhatsApp, Telegram, Slack, Discord, iMessage, Teams) with 214k+ GitHub stars",
       "name": "OpenClaw",
       "risk_justification": "Full system access including filesystem, browser, code execution, and multi-channel messaging via OPENAI_API_KEY and ANTHROPIC_API_KEY. Credential exposure enables complete agent takeover.",
@@ -2895,7 +2895,7 @@
     "resend-mcp": {
       "package": "resend-mcp",
       "ecosystem": "npm",
-      "latest_version": "2.0.1",
+      "latest_version": "2.2.0",
       "description": "Send transactional emails via Resend API",
       "name": "Resend",
       "risk_justification": "Sends emails from your Resend-verified domains via RESEND_API_KEY. Key exposure enables email spoofing from your domain.",

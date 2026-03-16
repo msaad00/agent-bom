@@ -138,18 +138,14 @@ def run_local_discovery(
         and not image_tars
         and not os_packages
     ):
-        con.print("\n[bold yellow]No MCP configurations found on this machine.[/bold yellow]")
+        con.print(f"\n[dim]No MCP configs or scannable files found in {Path.cwd()}[/dim]")
         con.print()
-        con.print("  [bold]Quick start options:[/bold]")
-        con.print("    [cyan]agent-bom scan --project .[/cyan]        scan all packages in current directory")
-        con.print("    [cyan]agent-bom scan --image myapp:latest[/cyan] scan a Docker image")
-        con.print("    [cyan]agent-bom scan --sbom sbom.json[/cyan]   ingest an existing SBOM (CycloneDX / SPDX)")
-        con.print("    [cyan]agent-bom check requests@2.25.0[/cyan]   check a single package for CVEs")
-        con.print("    [cyan]agent-bom scan --config-dir PATH[/cyan]  point to a directory with MCP configs")
-        con.print()
-        con.print("  [dim]Supported MCP clients: Claude Desktop, Cursor, VS Code, Windsurf, and 16 more.[/dim]")
-        con.print("  [dim]Full options: agent-bom scan --help[/dim]")
-        con.print("  [dim]Docs: https://github.com/msaad00/agent-bom[/dim]")
+        con.print("  [bold]Quick start:[/bold]")
+        con.print("    [cyan]agent-bom scan[/cyan]             run from a project directory")
+        con.print("    [cyan]agent-bom mcp[/cyan]              discover MCP agents on this machine")
+        con.print("    [cyan]agent-bom image nginx[/cyan]      scan a container image")
+        con.print("    [cyan]agent-bom fs /path[/cyan]         scan a directory")
+        con.print("    [cyan]agent-bom check pkg@ver[/cyan]    check a single package")
         con.print()
         sys.exit(0)
 
@@ -295,6 +291,47 @@ def run_local_discovery(
                 ctx.agents.append(tar_agent)
             except ImageScanError as e:
                 con.print(f"  [yellow]⚠[/yellow] {tar_path}: {e}")
+
+    # Auto-detect: scan current directory for lockfiles and IaC (always, not just when no MCP)
+    if not filesystem_paths and not project and not skill_only:
+        cwd = Path.cwd()
+        _lockfile_patterns = [
+            "requirements.txt",
+            "Pipfile.lock",
+            "poetry.lock",
+            "uv.lock",
+            "package-lock.json",
+            "yarn.lock",
+            "pnpm-lock.yaml",
+            "go.sum",
+            "Cargo.lock",
+            "Gemfile.lock",
+            "composer.lock",
+            "Package.resolved",
+            "packages.lock.json",
+        ]
+        if any((cwd / f).exists() for f in _lockfile_patterns):
+            filesystem_paths = (str(cwd),)
+            con.print(f"\n[bold blue]Auto-detected lockfiles in {cwd}[/bold blue]")
+
+    if not iac_paths and not skill_only:
+        cwd = Path.cwd()
+        _auto_iac: list[str] = []
+        for name in ["Dockerfile", "docker-compose.yml", "docker-compose.yaml"]:
+            if (cwd / name).exists():
+                _auto_iac.append(str(cwd / name))
+        for f in cwd.glob("*.tf"):
+            _auto_iac.append(str(f))
+        for f in cwd.glob("*.yaml"):
+            try:
+                head = f.read_text(errors="replace")[:200]
+                if "apiVersion:" in head and "kind:" in head:
+                    _auto_iac.append(str(f))
+            except OSError:
+                pass
+        if _auto_iac:
+            iac_paths = tuple(_auto_iac)
+            con.print(f"[bold blue]Auto-detected {len(_auto_iac)} IaC file(s)[/bold blue]")
 
     # Step 1d3: Filesystem / disk snapshot scan (--filesystem)
     if not skill_only and filesystem_paths:
@@ -944,8 +981,8 @@ def run_local_discovery(
             all_iac_findings.extend(iac_findings)
             if iac_findings:
                 by_sev: dict[str, int] = {}
-                for f in iac_findings:
-                    by_sev[f.severity] = by_sev.get(f.severity, 0) + 1
+                for iac_f in iac_findings:
+                    by_sev[iac_f.severity] = by_sev.get(iac_f.severity, 0) + 1
                 sev_parts = []
                 for sev in ("critical", "high", "medium", "low"):
                     if sev in by_sev:

@@ -11,8 +11,9 @@ version: 0.71.0
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. No credentials required for
-  basic scanning. CIS benchmark checks optionally use cloud SDK credentials
-  (AWS/Azure/GCP/Snowflake). Optional: Grype/Syft for container image scanning.
+  basic scanning. Native container image scanning (no Grype/Syft required).
+  CIS benchmark checks optionally use cloud SDK credentials
+  (AWS/Azure/GCP/Snowflake).
 metadata:
   author: msaad00
   homepage: https://github.com/msaad00/agent-bom
@@ -68,8 +69,6 @@ metadata:
         purpose: "Snowflake auth method (default: externalbrowser SSO)"
         required: false
     optional_bins:
-      - syft
-      - grype
       - semgrep
       - kubectl
     emoji: "\U0001F6E1"
@@ -212,6 +211,10 @@ framework layers.
 pipx install agent-bom
 agent-bom scan              # auto-discover + scan
 agent-bom check langchain   # check a specific package
+agent-bom fs .              # scan filesystem packages
+agent-bom image nginx:1.25  # scan container image (native, no Syft)
+agent-bom cloud aws         # AWS CIS benchmark
+agent-bom iac infra/        # scan Terraform/CloudFormation
 agent-bom where             # show all discovery paths
 ```
 
@@ -331,17 +334,22 @@ skill_trust(skill_content="<paste SKILL.md content>")
 - A scan finds `CRITICAL` CVEs — present findings and ask whether to generate a remediation plan.
 - The user asks to scan a path outside their home directory.
 
-## Supported Frameworks
+## Supported Frameworks (14)
 
 - **OWASP LLM Top 10** (2025) — prompt injection, supply chain, data leakage
+- **OWASP MCP Top 10** — MCP-specific security risks
 - **OWASP Agentic Top 10** — tool poisoning, rug pulls, credential theft
 - **OWASP AISVS v1.0** — AI Security Verification Standard (9 checks)
 - **MITRE ATLAS** — adversarial ML threat framework
-- **MITRE ATT&CK Enterprise** — cloud/infra T-code mapping on CIS failures
-- **MAESTRO** — KC1–KC6 layer tagging on all findings
-- **EU AI Act** — risk classification, transparency, SBOM requirements
 - **NIST AI RMF** — govern, map, measure, manage lifecycle
-- **CIS Foundations** — AWS, Azure v3.0, GCP v3.0, Snowflake benchmarks
+- **NIST CSF 2.0** — identify, protect, detect, respond, recover
+- **NIST 800-53 Rev 5** — federal security controls (CM-8, RA-5, SI-2, SR-3)
+- **FedRAMP Moderate** — derived from NIST 800-53 controls
+- **EU AI Act** — risk classification, transparency, SBOM requirements
+- **ISO 27001:2022** — information security controls (Annex A)
+- **SOC 2** — Trust Services Criteria
+- **CIS Controls v8** — implementation groups IG1/IG2/IG3
+- **CMMC 2.0** — cybersecurity maturity model (Level 1-3)
 
 ## Privacy & Data Handling
 

@@ -252,8 +252,8 @@ def parse_pip_packages(directory: Path) -> list[Package]:
                                 is_direct=section == "default",
                             )
                         )
-        except (json.JSONDecodeError, KeyError):
-            pass
+        except (json.JSONDecodeError, KeyError) as exc:
+            logger.debug("Failed to parse Pipfile.lock in %s: %s", directory, exc)
 
     # Try pyproject.toml
     pyproject = directory / "pyproject.toml"

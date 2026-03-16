@@ -554,7 +554,7 @@ def _rule_matches(rule: dict, br) -> bool:
 
     # has_kev_with_no_fix: KEV vulnerabilities without a known fix
     if rule.get("has_kev_with_no_fix"):
-        if not br.vulnerability.is_kev or br.vulnerability.fixed_version:
+        if not (br.vulnerability.is_kev and not br.vulnerability.fixed_version):
             return False
 
     return True

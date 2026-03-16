@@ -788,7 +788,7 @@ def parse_cargo_packages(directory: Path, *, resolve_versions: bool = False) -> 
     if cargo_lock.exists():
         current_name: Optional[str] = None
         current_version: Optional[str] = None
-        for raw_line in cargo_lock.read_text().splitlines():
+        for raw_line in cargo_lock.read_text(encoding="utf-8", errors="replace").splitlines():
             stripped_line = raw_line.strip()
             if stripped_line.startswith('name = "'):
                 current_name = stripped_line.split('"')[1]

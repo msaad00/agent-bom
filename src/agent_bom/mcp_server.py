@@ -303,7 +303,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             f"agent-bom v{__version__} — AI infrastructure security scanner with 32 tools. "
             "Scans packages and images for CVEs (OSV, NVD, EPSS, CISA KEV), maps blast radius "
             "from vulnerabilities to credentials and tools, generates SBOMs (CycloneDX, SPDX), "
-            "enforces security policies, and maps to 13 compliance frameworks "
+            "enforces security policies, and maps to 14 compliance frameworks "
             "(OWASP LLM/MCP/Agentic, MITRE ATLAS, NIST AI RMF/CSF/800-53, FedRAMP, EU AI Act, ISO 27001, SOC 2). "
             "Discovers 22 MCP clients. Read-only, agentless, no credentials required."
         ),
@@ -1498,7 +1498,7 @@ _SERVER_CARD_TOOLS = [
     {
         "name": "compliance",
         "description": (
-            "Map scan findings to 13 compliance frameworks:"
+            "Map scan findings to 14 compliance frameworks:"
             " OWASP LLM/MCP/Agentic, MITRE ATLAS, NIST AI RMF/CSF/800-53, FedRAMP, EU AI Act, ISO 27001, SOC 2, CIS Controls"
         ),
         "annotations": {"readOnlyHint": True},

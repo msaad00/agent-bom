@@ -660,7 +660,7 @@ with tabs[6]:
         "Enrichment": "Add licenses, EPSS scores, KEV status, NVD data, scorecards",
         "Scanning": "Match packages against OSV, NVD, GitHub Advisories for CVEs",
         "Blast Radius": "Map CVE → package → server → credentials → tools → agents",
-        "Compliance": "Tag findings against 13 frameworks (OWASP, ATLAS, NIST, EU AI Act, ...)",
+        "Compliance": "Tag findings against 14 frameworks (OWASP, ATLAS, NIST, EU AI Act, ...)",
         "Output": "JSON, CycloneDX SBOM, SPDX SBOM, HTML, SARIF, Prometheus, Badge",
     }
 

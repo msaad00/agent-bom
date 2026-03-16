@@ -91,7 +91,7 @@ Sleep 4s
 Type "echo '32 MCP tools  |  22 MCP client types  |  11 ecosystems  |  7 runtime detectors'"
 Enter
 Sleep 2s
-Type "echo '13 compliance frameworks  |  5 cloud + 7 AI platforms  |  CVE canonical dedup'"
+Type "echo '14 compliance frameworks  |  5 cloud + 7 AI platforms  |  CVE canonical dedup'"
 Enter
 Sleep 2s
 Type "echo 'Native scanning (no Grype/Syft required)  |  VM snapshot MCP discovery'"

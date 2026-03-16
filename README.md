@@ -20,7 +20,7 @@
 
 <p align="center">
   <b>Security scanner for AI infrastructure and supply chain.</b><br>
-  Discover → Scan → Analyze → Enforce — AI BOM generation, CVEs, blast radius, runtime proxy, 13 compliance frameworks.
+  Discover → Scan → Analyze → Enforce — AI BOM generation, CVEs, blast radius, runtime proxy, 14 compliance frameworks.
 </p>
 
 ---
@@ -79,7 +79,7 @@ Discovers 22 MCP client types, resolves server dependencies, scans against OSV/N
 Four capabilities, one tool:
 
 1. **Scan** — discover AI agents, MCP servers, cloud services, model files, GPU resources. Generate an AI BOM. Check every dependency against OSV + NVD + GHSA + EPSS + CISA KEV.
-2. **Analyze** — blast radius mapping (CVE → package → server → agent → credentials → tools), credential exposure, posture scoring, 13-framework compliance
+2. **Analyze** — blast radius mapping (CVE → package → server → agent → credentials → tools), credential exposure, posture scoring, 14-framework compliance
 3. **Enforce** — runtime MCP proxy with 7 behavioral detectors (rug pull, injection, credential leak, exfil, cloaking, rate limiting, vector DB injection), policy-as-code
 4. **Trust** — audit CLAUDE.md, .cursorrules, AGENTS.md, SKILL.md for malicious patterns, typosquatting, and Sigstore provenance
 
@@ -293,7 +293,7 @@ Auto-discovers 22 MCP client types: Claude Desktop, Claude Code, Cursor, Windsur
 | **Credential exposure analysis** | No | No | Which secrets leak per vulnerability, per agent |
 | **Runtime proxy / enforcement** | No | No | 7 behavioral detectors, policy-as-code, per-tool rate limiting |
 | **Instruction file trust** | No | No | CLAUDE.md/.cursorrules — 17 patterns, typosquat, Sigstore |
-| **Compliance frameworks** | No | No | 13 frameworks (OWASP, MITRE, NIST, FedRAMP, EU AI Act, CIS, SOC 2) |
+| **Compliance frameworks** | No | No | 14 frameworks (OWASP, MITRE, NIST, FedRAMP, EU AI Act, CIS, SOC 2) |
 | **Cloud AI inventory** | No | Partial | 12 providers (AWS, Azure, GCP, Snowflake, Databricks, ...) |
 | **Model file scanning** | No | Extension-based | 13 formats + SHA-256 + provenance + pickle risk |
 | **MCP server registry** | No | No | 427+ servers with risk levels and tool inventories |
@@ -318,7 +318,7 @@ Auto-discovers 22 MCP client types: Claude Desktop, Claude Code, Cursor, Windsur
 | **Credential exposure** | Which secrets leak per vulnerability, per agent |
 | **Tool poisoning detection** | Description injection, capability combos, drift detection |
 | **Privilege detection** | root, shell access, privileged containers, per-tool permissions |
-| **13-framework compliance** | OWASP LLM + MCP + Agentic + AISVS v1.0, MITRE ATLAS, NIST AI RMF + CSF + 800-53, FedRAMP, EU AI Act, SOC 2, ISO 27001, CIS |
+| **14-framework compliance** | OWASP LLM + MCP + Agentic + AISVS v1.0, MITRE ATLAS, NIST AI RMF + CSF + 800-53, FedRAMP, EU AI Act, SOC 2, ISO 27001, CIS |
 | **MITRE ATT&CK mapping** | Dynamic technique lookup by tactic phase (no hardcoded T-codes) |
 | **Posture scorecard** | Letter grade (A-F), 6 dimensions, incident correlation (P1-P4) |
 | **Policy-as-code + Jira** | 17 conditions, CI gate, auto-create Jira tickets for violations |
@@ -456,7 +456,7 @@ agent-bom api --api-key $SECRET --rate-limit 30   # http://127.0.0.1:8422/docs
 | `GET /v1/scan/{id}` | Results + status |
 | `GET /v1/scan/{id}/attack-flow` | Per-CVE blast radius graph |
 | `GET /v1/registry` | 427+ server registry |
-| `GET /v1/compliance` | Full 13-framework compliance posture |
+| `GET /v1/compliance` | Full 14-framework compliance posture |
 | `GET /v1/posture` | Enterprise posture scorecard (A-F) |
 | `GET /v1/posture/credentials` | Credential risk ranking |
 | `GET /v1/posture/incidents` | Incident correlation (P1-P4) |
@@ -662,7 +662,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full diagrams: data flow pi
 - [ ] Agent-to-agent permission boundary enforcement
 
 **Compliance / standards**
-- [x] 13 frameworks: OWASP LLM, OWASP MCP, OWASP Agentic, OWASP AISVS v1.0, ATLAS, NIST AI RMF, NIST CSF, NIST 800-53, FedRAMP, EU AI Act, ISO 27001, SOC 2, CIS Controls
+- [x] 14 frameworks: OWASP LLM, OWASP MCP, OWASP Agentic, OWASP AISVS v1.0, ATLAS, NIST AI RMF, NIST CSF, NIST 800-53, FedRAMP, EU AI Act, ISO 27001, SOC 2, CIS Controls
 - [ ] CIS AI benchmarks (pending CIS publication)
 - [ ] License compliance engine (OSS license risk flagging)
 - [ ] Workflow engine scanning (n8n, Zapier, Make)

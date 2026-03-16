@@ -40,7 +40,7 @@ OpenSSF Scorecard (enrichment)       maintainer quality signal
 **CVSS parsing**: v3.1 and v4.0 implemented from spec, not from a library.
 **Blast radius**: CVE → packages → servers → agents → tools → credentials → risk score.
 **Risk score formula**: base_severity + agent_reach + cred_exposure + tool_count + AI_boost + KEV_boost + EPSS_boost + scorecard_boost (all configurable via env vars).
-**Compliance tagging**: 13 frameworks on every blast radius — OWASP LLM, OWASP MCP, OWASP Agentic, ATLAS, NIST AI RMF, EU AI Act, NIST CSF, ISO 27001, SOC 2, CIS Controls.
+**Compliance tagging**: 14 frameworks on every blast radius — OWASP LLM, OWASP MCP, OWASP Agentic, ATLAS, NIST AI RMF, EU AI Act, NIST CSF, ISO 27001, SOC 2, CIS Controls.
 **Toxic combos**: 8 patterns — CRED_BLAST, KEV_WITH_CREDS, EXECUTE_EXPLOIT, MULTI_AGENT_CVE, TRANSITIVE_CRITICAL, LATERAL_CHAIN, CACHE_POISON, CROSS_AGENT_POISON.
 **Typosquat + malicious**: MAL-prefixed OSV IDs flagged, Levenshtein typosquat check.
 
@@ -228,7 +228,7 @@ Modules with no test file (functionality tested indirectly via integration tests
 | MCP Layer | STRONG | Config discovery (22 clients), proxy intercept, drift detection, enforcement |
 | Governance Layer | GOOD | CIS benchmarks (5 cloud platforms), AISVS, policy-as-code, audit logs |
 | Monitoring & Observability | GOOD | Runtime proxy (JSONL audit), OTel ingest, Prometheus metrics, watch (config drift) |
-| Compliance & Regulation | STRONG | 13 frameworks mapped on every finding (OWASP LLM/MCP/Agentic, ATLAS, NIST AI RMF, EU AI Act, NIST CSF, ISO 27001, SOC 2, CIS Controls) |
+| Compliance & Regulation | STRONG | 14 frameworks mapped on every finding (OWASP LLM/MCP/Agentic, ATLAS, NIST AI RMF, EU AI Act, NIST CSF, ISO 27001, SOC 2, CIS Controls) |
 
 **Weakest layer**: Identity (no OIDC/IdP integration, no NHI management). Strongest: Tool Security and MCP layers.
 
@@ -268,7 +268,7 @@ Blast Radius Analysis (agent-bom's core intelligence)
 ├── Tool exposure: what tools are reachable through the vulnerable path
 ├── Credential exposure: what secrets are at risk
 ├── Risk score: CVSS + reach + AI context + KEV + EPSS + Scorecard
-└── Compliance tagging: 13 frameworks per finding
+└── Compliance tagging: 14 frameworks per finding
         |
         v
 Toxic Combo Detection (multi-factor risk patterns)
@@ -432,7 +432,7 @@ ScanRequest → _run_scan_sync() [ThreadPoolExecutor]
           risk_score = base_severity + agent_reach + cred_exposure
                      + tool_count + AI_boost + KEV_boost + EPSS_boost
                      + scorecard_boost
-          compliance tagging: 13 frameworks per finding
+          compliance tagging: 14 frameworks per finding
                 │
                 ▼
         toxic_combos.py → 8 multi-factor risk patterns
@@ -516,7 +516,7 @@ ScanRequest → _run_scan_sync() [ThreadPoolExecutor]
 |-------|---------|
 | "22 MCP clients" (README) | ✓ 20 named AgentType values + CUSTOM = 21 |
 | "32 MCP tools" | ✓ meta-test enforces this |
-| "13 compliance frameworks" | ✓ 10 tagging modules |
+| "14 compliance frameworks" | ✓ 10 tagging modules |
 | "52 CWE compliance mappings" | ✓ CWE_COMPLIANCE_MAP count |
 | "12 cloud providers" | ✓ cloud/__init__.py _PROVIDERS |
 | OSV as primary vuln source | ✓ |

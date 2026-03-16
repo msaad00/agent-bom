@@ -208,7 +208,7 @@ Claude Desktop, Claude Code, Cursor, Windsurf, Cline, Continue, Zed, VS Code Cop
 3. **Runtime proxy with enforcement**: Not just scanning — real-time interception, rate limiting, credential leak blocking, rug pull detection
 4. **32 MCP tools**: Deepest MCP server integration — usable by any AI assistant
 5. **12 cloud provider coverage**: AWS/Azure/GCP + AI-specific (CoreWeave, Databricks, Snowflake, HuggingFace, W&B, MLflow, OpenAI, Ollama, Nebius)
-6. **13 compliance frameworks**: Every finding mapped to OWASP LLM/MCP/Agentic, ATLAS, NIST, EU AI Act, ISO 27001, SOC 2, CIS
+6. **14 compliance frameworks**: Every finding mapped to OWASP LLM/MCP/Agentic, ATLAS, NIST, EU AI Act, ISO 27001, SOC 2, CIS
 7. **Enrichment depth**: OSV + GHSA + NVD + EPSS + CISA KEV + NVIDIA + OpenSSF Scorecard + MITRE ATT&CK
 8. **Browser extension scanning**: AI assistant domain access detection — unique capability
 9. **SKILL.md behavioral analysis**: 17 risk patterns + typosquat + Sigstore provenance

@@ -28,7 +28,7 @@ vulnerable packages to the credentials and tools they can reach.
 - **CVE scanning** with enrichment from OSV, NVD, EPSS, CISA KEV
 - **MCP server discovery** across 21 AI tools (including Cortex Code)
 - **Blast radius mapping** — which agents, credentials, and tools are exposed
-- **13 compliance frameworks** per finding (OWASP LLM/MCP/Agentic, MITRE ATLAS, NIST, EU AI Act)
+- **14 compliance frameworks** per finding (OWASP LLM/MCP/Agentic, MITRE ATLAS, NIST, EU AI Act)
 - **Runtime proxy** for MCP traffic interception and policy enforcement
 - **SKILL.md trust assessment** with 17 behavioral risk patterns
 
@@ -88,7 +88,7 @@ agent-bom mcp-server
 ### Proxy MCP traffic with policy enforcement
 
 ```bash
-agent-bom proxy --command "npx @modelcontextprotocol/server-filesystem /tmp" --policy policy.yml
+agent-bom proxy "npx @modelcontextprotocol/server-filesystem /tmp" --policy policy.yml
 ```
 
 ## Common Patterns

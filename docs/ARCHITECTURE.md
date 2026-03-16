@@ -96,7 +96,7 @@ sequenceDiagram
     BlastRadius-->>CLI: Blast radius chains
 
     CLI->>ComplianceTagger: Findings
-    ComplianceTagger->>ComplianceTagger: Tag 13 frameworks
+    ComplianceTagger->>ComplianceTagger: Tag 14 frameworks
     ComplianceTagger-->>CLI: Tagged findings
 
     CLI->>CLI: Asset tracking (first_seen / resolved / MTTR)
@@ -164,7 +164,7 @@ graph LR
 
 ## 4. Compliance Framework Mapping
 
-Every blast radius finding is tagged against 13 compliance frameworks simultaneously.
+Every blast radius finding is tagged against 14 compliance frameworks simultaneously.
 
 ```mermaid
 graph TD

@@ -230,7 +230,7 @@ def mcp_server_cmd(transport: str, port: int, host: str, log_level: str, log_jso
       policy_check           Evaluate policy rules against scan findings
       registry_lookup        Query MCP server security metadata registry
       generate_sbom          Generate CycloneDX or SPDX SBOM
-      compliance             13-framework compliance posture
+      compliance             14-framework compliance posture
       remediate              Generate actionable remediation plan
       skill_trust            Trust assessment for SKILL.md files
       verify                 Package integrity + SLSA provenance verification

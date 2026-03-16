@@ -204,6 +204,7 @@ agent-bom fs /mnt/vm-snapshot               # filesystem / VM disk snapshot
 agent-bom fs . --offline                    # scan current directory (offline)
 agent-bom iac Dockerfile k8s/ infra/        # IaC misconfigurations (82 rules)
 agent-bom sbom vendor-bom.json              # ingest CycloneDX/SPDX SBOM
+agent-bom scan --os-packages                # scan host OS packages (dpkg/rpm/apk)
 agent-bom check flask@2.0.0                 # pre-install CVE gate
 ```
 

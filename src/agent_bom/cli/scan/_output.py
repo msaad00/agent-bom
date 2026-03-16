@@ -51,7 +51,25 @@ _logger = logging.getLogger(__name__)
 
 
 def _safe_export(fn: Callable, *args: Any, label: str = "report", path: str = "") -> bool:
-    """Call an export function, catching file I/O errors gracefully."""
+    """Call an export function, catching file I/O errors gracefully.
+
+    Also rejects symlink targets and paths with ``..`` components to prevent
+    symlink-following attacks and path traversal on ``--output``.
+    """
+    if path:
+        p = Path(path)
+        # Block symlink targets (prevents overwriting arbitrary files)
+        if p.exists() and p.is_symlink():
+            import click
+
+            click.echo(f"Error: output path is a symlink (rejected for safety): {path}", err=True)
+            return False
+        # Block path traversal
+        if ".." in p.parts:
+            import click
+
+            click.echo(f"Error: output path contains '..' (rejected for safety): {path}", err=True)
+            return False
     try:
         fn(*args)
         return True

@@ -89,17 +89,6 @@ def test_mcp_registry_entry_valid():
     assert pkg["transport"]["type"] == "stdio"
 
 
-def test_toolhive_entry_valid():
-    """ToolHive entry should be valid JSON with OCI transport."""
-    f = ROOT / "integrations" / "toolhive" / "server.json"
-    assert f.exists()
-    data = json.loads(f.read_text())
-    assert data["name"] == "io.github.msaad00/agent-bom"
-    pkg = data["packages"][0]
-    assert pkg["registryType"] == "oci"
-    assert pkg["identifier"].startswith("ghcr.io/msaad00/agent-bom:")
-
-
 def test_smithery_yaml_exists():
     """smithery.yaml should exist with stdio config."""
     import yaml

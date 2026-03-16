@@ -25,12 +25,9 @@ VERSION_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     # Dockerfiles
     ("deploy/docker/Dockerfile.runtime", re.compile(r"^(ARG VERSION=)\S+", re.M), r"\g<1>{v}"),
     ("deploy/docker/Dockerfile.sse", re.compile(r"^(ARG VERSION=)\S+", re.M), r"\g<1>{v}"),
-    ("integrations/toolhive/Dockerfile.mcp", re.compile(r"^(ARG VERSION=)\S+", re.M), r"\g<1>{v}"),
+    ("deploy/docker/Dockerfile.mcp", re.compile(r"^(ARG VERSION=)\S+", re.M), r"\g<1>{v}"),
     # MCP Registry server.json (version field + pypi identifier version)
     ("integrations/mcp-registry/server.json", re.compile(r'("version":\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
-    # ToolHive server.json (version field + OCI image tags)
-    ("integrations/toolhive/server.json", re.compile(r'("version":\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
-    ("integrations/toolhive/server.json", re.compile(r"(ghcr\.io/msaad00/agent-bom:v)[^\s\"]+"), r"\g<1>{v}"),
     # Snowpark Dockerfile
     ("deploy/docker/Dockerfile.snowpark", re.compile(r"^(ARG VERSION=)\S+", re.M), r"\g<1>{v}"),
     # Helm chart

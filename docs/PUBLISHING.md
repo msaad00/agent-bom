@@ -53,45 +53,7 @@ Search for "agent-bom" at: https://registry.modelcontextprotocol.io
 
 ---
 
-## 3. ToolHive
-
-ToolHive uses OCI containers from GHCR.
-
-### Step 1: Ensure GHCR image is published
-
-The `publish-mcp.yml` CI workflow pushes to GHCR on each release:
-- `ghcr.io/msaad00/agent-bom:latest` (stdio)
-- `ghcr.io/msaad00/agent-bom-sse:latest` (SSE)
-
-### Step 2: Submit to ToolHive catalog
-
-```bash
-# Fork the ToolHive catalog repo
-gh repo fork stacklok/toolhive-catalog --clone
-
-# Copy our entry
-cp integrations/toolhive/server.json toolhive-catalog/servers/agent-bom.json
-
-# Submit PR
-cd toolhive-catalog
-git checkout -b add-agent-bom
-git add servers/agent-bom.json
-git commit -m "feat: add agent-bom MCP server"
-git push origin add-agent-bom
-gh pr create --title "feat: add agent-bom security scanner" \
-  --body "Adds agent-bom — AI supply chain security scanner with 32 MCP tools."
-```
-
-### Verification
-
-After the PR is merged:
-```bash
-thv run agent-bom
-```
-
----
-
-## 4. ClawHub / OpenClaw
+## 3. ClawHub / OpenClaw
 
 Automated via `publish-registries.yml` using `CLAWHUB_TOKEN`.
 
@@ -162,5 +124,4 @@ This triggers:
 | **Smithery** | workflow API | publish-registries.yml | workflow_run |
 | **ClawHub** | `integrations/openclaw/` | publish-registries.yml | workflow_run |
 | **MCP Registry** | `integrations/mcp-registry/server.json` | publish-mcp-registry.yml | workflow_run |
-| **ToolHive** | `integrations/toolhive/server.json` | — | Manual PR |
 | **Railway** | `deploy/docker/Dockerfile.sse` | deploy-mcp-sse.yml | workflow_run |

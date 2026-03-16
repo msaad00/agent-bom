@@ -18,7 +18,7 @@
 # A demo with errors is worse than no demo.
 
 # Output filename — update README.md img src to match after recording
-Output docs/images/demo-v0.70.12.gif
+Output docs/images/demo-v0.71.0.gif
 
 Set Shell "bash"
 Set FontSize 15

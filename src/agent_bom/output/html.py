@@ -896,7 +896,7 @@ def _compliance_section(blast_radii: list["BlastRadius"]) -> str:
 
     total = (op + of + ow) + (ap + af + aw) + (atp + atf + atw) + (np_ + nf + nw) + (oap + oaf + oaw) + (ep + ef_ + ew)
     total_pass = op + ap + atp + np_ + oap + ep
-    score = round((total_pass / total) * 100, 1) if total > 0 else 100.0
+    score = round((total_pass / total) * 100, 1) if total > 0 else 0.0
     has_fail = (of + af + atf + nf + oaf + ef_) > 0
     has_warn = (ow + aw + atw + nw + oaw + ew) > 0
     overall = "fail" if has_fail else ("warning" if has_warn else "pass")

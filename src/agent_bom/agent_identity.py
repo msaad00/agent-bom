@@ -160,7 +160,7 @@ def _verify_jwt_signature(token: str, jwks_uri: str) -> tuple[bool, str | None]:
                 options={"verify_exp": False, "verify_aud": False},
             )
             return True, None
-        except Exception:  # noqa: BLE001
+        except (ValueError, KeyError, TypeError, pyjwt.PyJWTError):
             continue
 
     return False, "JWT signature verification failed (no matching key succeeded)"
@@ -185,7 +185,7 @@ def _decode_jwt_payload(token: str) -> dict | None:
     try:
         payload_bytes = base64.urlsafe_b64decode(payload_b64)
         return json.loads(payload_bytes.decode("utf-8"))
-    except Exception:  # noqa: BLE001
+    except (ValueError, KeyError, UnicodeDecodeError, json.JSONDecodeError):
         return None
 
 

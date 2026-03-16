@@ -654,7 +654,11 @@ async def run_proxy(
     # Load policy if provided
     policy: dict = {}
     if policy_path:
-        policy = json.loads(Path(policy_path).read_text())
+        try:
+            policy = json.loads(Path(policy_path).read_text())
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.error("Failed to load policy from %s: %s", policy_path, exc)
+            raise SystemExit(1) from exc
 
     # Open audit log with restricted permissions (0o600)
     # Reject symlinks to prevent log injection attacks (attacker creates

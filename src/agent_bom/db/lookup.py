@@ -249,6 +249,8 @@ def lookup_packages_batch(
                 continue
             raw_cwes = row["cwe_ids"] or ""
             cwe_list = [c for c in raw_cwes.split(",") if c] if raw_cwes else []
+            raw_aliases = row["aliases"] or ""
+            alias_list = [a for a in raw_aliases.split(",") if a] if raw_aliases else []
 
             vulns.append(
                 LocalVuln(
@@ -265,6 +267,7 @@ def lookup_packages_batch(
                     ecosystem=row["ecosystem"],
                     package_name=row["package_name"],
                     introduced=row["introduced"],
+                    aliases=alias_list,
                     cwe_ids=cwe_list,
                 )
             )

@@ -6,54 +6,56 @@ This document describes the architecture of agent-bom through five diagrams cove
 
 ## 1. System Architecture Overview
 
-High-level view of input sources, the core processing engine, and output channels.
+High-level view of CLI commands, the core processing engine, and output channels.
 
 ```mermaid
 graph TB
-    subgraph Input["Input Sources"]
-        MCP["MCP Configs\n22 Clients"]
-        Docker["Docker Images"]
-        K8s["Kubernetes"]
-        Cloud["Cloud APIs\nAWS / Azure / GCP / Snowflake"]
-        SBOM["Existing SBOMs\nCycloneDX / SPDX"]
-        AI["AI Platforms\nHuggingFace / W&B / MLflow"]
+    subgraph Commands["CLI Commands"]
+        Scan["agent-bom scan\nAuto-detect everything"]
+        MCP_Cmd["agent-bom mcp\nMCP agents + servers"]
+        Image_Cmd["agent-bom image\nContainer images"]
+        FS_Cmd["agent-bom fs\nFilesystem / VM"]
+        IAC_Cmd["agent-bom iac\nDockerfile / K8s / TF / CFN"]
+        SBOM_Cmd["agent-bom sbom\nIngest CycloneDX / SPDX"]
+        Cloud_Cmd["agent-bom cloud\nAWS / Azure / GCP"]
+        Check_Cmd["agent-bom check\nPre-install CVE gate"]
     end
 
     subgraph Core["Core Engine"]
-        Discovery["Discovery Engine"]
-        Parser["Package Parser"]
-        Scanner["Vulnerability Scanner\nOSV + NVD + EPSS + KEV"]
-        Blast["Blast Radius Analyzer"]
-        Compliance["Compliance Tagger\n13 Frameworks"]
-        Assets["Asset Tracker\nfirst_seen / resolved / MTTR"]
-        Posture["Posture Scorer"]
+        Discovery["Discovery\n22 MCP clients + auto-detect"]
+        Parser["Package Parser\n11 ecosystems"]
+        Scanner["CVE Scanner\nOSV + NVD + GHSA + local DB"]
+        Blast["Blast Radius\nAgent → CVE → credential chain"]
+        Enrichment["Enrichment\nEPSS + KEV + NVD CVSS"]
+        IaC_Engine["IaC Engine\n82 rules, 4 formats"]
+        CIS["CIS Benchmarks\nAWS 60 + Azure 95 + GCP 59"]
     end
 
-    subgraph Output["Output Channels"]
-        Console["Console / HTML"]
-        SBOM_Out["CycloneDX / SPDX / SARIF"]
-        API["REST API + MCP Server"]
-        Alerts["Slack / Webhook / Jira"]
+    subgraph Output["Output"]
+        Console["Console\nCompact / verbose"]
+        Formats["17 formats\nJSON / SARIF / HTML / CycloneDX"]
+        API["REST API\n+ 32 MCP tools"]
+        Proxy["Runtime Proxy\n7 detectors"]
     end
 
-    MCP --> Discovery
-    Docker --> Discovery
-    K8s --> Discovery
-    Cloud --> Discovery
-    SBOM --> Discovery
-    AI --> Discovery
+    Scan --> Discovery
+    MCP_Cmd --> Discovery
+    Image_Cmd --> Parser
+    FS_Cmd --> Parser
+    SBOM_Cmd --> Parser
+    IAC_Cmd --> IaC_Engine
+    Cloud_Cmd --> CIS
+    Check_Cmd --> Scanner
 
     Discovery --> Parser
     Parser --> Scanner
     Scanner --> Blast
-    Blast --> Compliance
-    Compliance --> Assets
-    Assets --> Posture
-
-    Posture --> Console
-    Posture --> SBOM_Out
-    Posture --> API
-    Posture --> Alerts
+    Scanner --> Enrichment
+    Blast --> Console
+    Blast --> Formats
+    Blast --> API
+    IaC_Engine --> Console
+    CIS --> Console
 ```
 
 ---

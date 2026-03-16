@@ -58,6 +58,7 @@ def main():
       agent-bom fs .                        filesystem / VM scan
       agent-bom iac Dockerfile              IaC misconfigurations
       agent-bom cloud aws                   cloud posture + CIS
+      agent-bom run "npx/@mcp/server-fs /tmp" zero-config proxy launch
       agent-bom proxy "npx server"          runtime enforcement
 
     \b
@@ -169,6 +170,13 @@ main.add_command(sbom_cmd)
 from agent_bom.cli._cloud_group import cloud_group  # noqa: E402
 
 main.add_command(cloud_group)
+
+# ---------------------------------------------------------------------------
+# Run command — `agent-bom run <server>`
+# ---------------------------------------------------------------------------
+from agent_bom.cli.run import run_cmd  # noqa: E402
+
+main.add_command(run_cmd, "run")
 
 
 # ---------------------------------------------------------------------------

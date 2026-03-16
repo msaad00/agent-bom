@@ -142,6 +142,10 @@ main.add_command(graph_cmd, "graph")
 main.add_command(dashboard_cmd, "dashboard")
 main.add_command(introspect_cmd, "introspect")
 
+from agent_bom.cli._chat import chat_cmd  # noqa: E402
+
+main.add_command(chat_cmd, "chat")
+
 # ---------------------------------------------------------------------------
 # Backward-compatible re-exports used by tests
 # ---------------------------------------------------------------------------

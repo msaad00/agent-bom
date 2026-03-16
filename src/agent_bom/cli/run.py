@@ -190,6 +190,11 @@ def run_cmd(
 
     cmd = _resolve_server_command(server)
 
+    if not cmd:
+        click.echo("Error: server spec is empty or invalid.", err=True)
+        ctx.exit(1)
+        return
+
     if not quiet:
         click.echo(
             f"agent-bom: launching {cmd[0]!r} through runtime proxy",

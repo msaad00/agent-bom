@@ -164,3 +164,17 @@ def test_run_quiet_flag_suppresses_stderr():
     with patch("agent_bom.cli.run.asyncio.run", return_value=0), patch("agent_bom.project_config.load_project_config", return_value=None):
         result = runner.invoke(run_cmd, ["uvx/mcp-server-git", "--quiet"])
     assert result.exit_code == 0
+
+
+def test_resolve_empty_string_returns_empty():
+    """Empty server spec resolves to an empty list."""
+    assert _resolve_server_command("") == []
+
+
+def test_run_empty_server_rejected():
+    """agent-bom run '' must exit non-zero with an error message, not crash."""
+    runner = CliRunner()
+    with patch("agent_bom.project_config.load_project_config", return_value=None):
+        result = runner.invoke(run_cmd, [""])
+    assert result.exit_code != 0
+    assert "empty" in result.output.lower() or "invalid" in result.output.lower()

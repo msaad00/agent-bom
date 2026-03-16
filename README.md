@@ -60,7 +60,7 @@ agent-bom scan --fail-on-severity critical -f sarif -o results.sarif
 Discovers 22 MCP client types, resolves server dependencies, scans against OSV/NVD/GHSA, and maps blast radius — which agents, credentials, and tools each CVE affects.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.71.0.gif" alt="agent-bom demo — scan with progress bar, CVE check, AI component detection, blast radius, GPU scan, delta mode, runtime proxy, 32 MCP tools" width="900" />
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.71.0.gif" alt="agent-bom demo — pre-install CVE check, full scan with blast radius analysis, SARIF export, runtime proxy, 32 MCP tools" width="900" />
 </p>
 
 <p align="center">
@@ -174,7 +174,7 @@ Five trust categories, 17 behavioral risk patterns, Sigstore signature verificat
 2. **Scan** -- send package names + versions to public APIs (OSV.dev, NVD, EPSS, CISA KEV). No secrets leave your machine.
 3. **Analyze** -- blast radius mapping, tool poisoning detection, compliance tagging, posture scoring
 4. **Track** -- persistent asset database records first_seen, last_seen, resolved status, and MTTR per vulnerability across scans
-5. **Report** -- 16 output formats: JSON, SARIF, CycloneDX 1.6, SPDX 3.0, HTML, JUnit XML, CSV, Markdown, Mermaid, SVG, Prometheus, and more. Alert dispatch to Slack/webhooks.
+5. **Report** -- 17 output formats: JSON, SARIF, CycloneDX 1.6, SPDX 3.0, HTML, JUnit XML, CSV, Markdown, Mermaid, SVG, Prometheus, and more. Alert dispatch to Slack/webhooks.
 
 <p align="center">
   <picture>
@@ -293,7 +293,7 @@ Auto-discovers 22 MCP client types: Claude Desktop, Claude Code, Cursor, Windsur
 | **Compliance** | 14 frameworks (OWASP, NIST, MITRE, CIS, ISO, SOC 2, CMMC, EU AI Act) |
 | **Instruction file trust** | CLAUDE.md/.cursorrules — 17 patterns, typosquat, Sigstore |
 | **AI platform discovery** | HuggingFace, OpenAI, Ollama, W&B, MLflow |
-| **Output formats** | 16 formats (JSON, SARIF, HTML, CycloneDX, SPDX, JUnit, CSV, ...) |
+| **Output formats** | 17 formats (JSON, SARIF, HTML, CycloneDX, SPDX, JUnit, CSV, ...) |
 
 </details>
 
@@ -348,7 +348,7 @@ Auto-discovers 22 MCP client types: Claude Desktop, Claude Code, Cursor, Windsur
 </details>
 
 <details>
-<summary><b>What it outputs — 16 formats</b></summary>
+<summary><b>What it outputs — 17 formats</b></summary>
 
 | Format | Flag | Use case |
 |--------|------|----------|
@@ -558,12 +558,17 @@ rm -rf ~/.agent-bom                      # remove local data
 
 ## Architecture
 
+<details>
+<summary><b>Architecture stack</b></summary>
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-stack-dark.svg">
     <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-stack-light.svg" alt="Architecture stack" width="800" />
   </picture>
 </p>
+
+</details>
 
 <details>
 <summary><b>Engine internals</b></summary>
@@ -665,7 +670,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full diagrams: data flow pi
 - [ ] Agent-to-agent permission boundary enforcement
 
 **Compliance / standards**
-- [x] 14 frameworks: OWASP LLM, OWASP MCP, OWASP Agentic, OWASP AISVS v1.0, ATLAS, NIST AI RMF, NIST CSF, NIST 800-53, FedRAMP, EU AI Act, ISO 27001, SOC 2, CIS Controls
+- [x] 14 frameworks: OWASP LLM, OWASP MCP, OWASP Agentic, OWASP AISVS v1.0, ATLAS, NIST AI RMF, NIST CSF, NIST 800-53, FedRAMP, EU AI Act, ISO 27001, SOC 2, CIS Controls, CMMC 2.0
 - [ ] CIS AI benchmarks (pending CIS publication)
 - [ ] License compliance engine (OSS license risk flagging)
 - [ ] Workflow engine scanning (n8n, Zapier, Make)

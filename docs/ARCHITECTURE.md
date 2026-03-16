@@ -176,11 +176,14 @@ graph TD
     OWASP_AISVS["OWASP AISVS v1.0\nAI Supply Chain / Runtime Controls"]
     ATLAS["MITRE ATLAS\nAML.T0010 / T0043 / T0051"]
     NIST_AI["NIST AI RMF 1.0\nGovern / Map / Measure / Manage"]
-    EU_AI["EU AI Act\nART-5 through ART-17"]
     NIST_CSF["NIST CSF 2.0\nIdentify / Protect / Detect / Respond"]
+    NIST_53["NIST 800-53 Rev 5\nCM-8 / RA-5 / SI-2 / SR-3"]
+    FEDRAMP["FedRAMP Moderate\nDerived from 800-53 controls"]
+    EU_AI["EU AI Act\nART-5 through ART-17"]
     ISO["ISO 27001\nAnnex A controls"]
     SOC2["SOC 2\nTrust Services Criteria"]
     CIS["CIS Controls v8\nIG1 / IG2 / IG3"]
+    CMMC["CMMC 2.0\nLevel 1-3 practices"]
 
     Finding --> OWASP_LLM
     Finding --> OWASP_MCP
@@ -188,11 +191,14 @@ graph TD
     Finding --> OWASP_AISVS
     Finding --> ATLAS
     Finding --> NIST_AI
-    Finding --> EU_AI
     Finding --> NIST_CSF
+    Finding --> NIST_53
+    Finding --> FEDRAMP
+    Finding --> EU_AI
     Finding --> ISO
     Finding --> SOC2
     Finding --> CIS
+    Finding --> CMMC
 
     Tagged["Tagged Finding\nAll framework controls attached"]
 
@@ -202,11 +208,14 @@ graph TD
     OWASP_AISVS --> Tagged
     ATLAS --> Tagged
     NIST_AI --> Tagged
-    EU_AI --> Tagged
     NIST_CSF --> Tagged
+    NIST_53 --> Tagged
+    FEDRAMP --> Tagged
+    EU_AI --> Tagged
     ISO --> Tagged
     SOC2 --> Tagged
     CIS --> Tagged
+    CMMC --> Tagged
 
     style Finding fill:#dc2626,color:#fff
     style Tagged fill:#059669,color:#fff

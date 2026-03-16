@@ -90,8 +90,19 @@ async def resolve_pypi_metadata(
             info = response.json().get("info", {})
             version = info.get("version")
             lic = info.get("license")
-            # PyPI license can be empty string or "UNKNOWN"
+            # PyPI license can be empty string, "UNKNOWN", or full license text.
+            # Prefer the SPDX classifier; fall back to first line of license field.
             if lic and lic.upper() not in ("UNKNOWN", ""):
+                # If license field is multi-line (full text), extract SPDX from classifiers
+                if "\n" in lic or len(lic) > 120:
+                    classifiers = info.get("classifiers") or []
+                    for c in classifiers:
+                        if c.startswith("License :: OSI Approved :: "):
+                            lic = c.split(" :: ")[-1]
+                            break
+                    else:
+                        # No classifier — take first line, capped
+                        lic = lic.split("\n", 1)[0][:80]
                 return version, lic
             return version, None
         except (ValueError, KeyError) as exc:
@@ -238,7 +249,7 @@ async def enrich_supply_chain_metadata(
     return count
 
 
-async def resolve_all_versions(packages: list[Package]) -> int:
+async def resolve_all_versions(packages: list[Package], *, quiet: bool = False) -> int:
     unresolved = [p for p in packages if p.version in ("latest", "unknown", "")]
     if not unresolved:
         return 0
@@ -249,19 +260,25 @@ async def resolve_all_versions(packages: list[Package]) -> int:
         for i, result in enumerate(results):
             if result is True:
                 resolved_count += 1
-                lic_tag = f" ({unresolved[i].license})" if unresolved[i].license else ""
-                console.print(f"  [green]✓[/green] Resolved {unresolved[i].name} → {unresolved[i].version}{lic_tag}")
+                if not quiet:
+                    lic_tag = ""
+                    if unresolved[i].license:
+                        # Cap license display to SPDX-style short string
+                        short_lic = unresolved[i].license.split("\n", 1)[0][:60]
+                        lic_tag = f" ({short_lic})"
+                    console.print(f"  [green]✓[/green] Resolved {unresolved[i].name} → {unresolved[i].version}{lic_tag}")
             elif isinstance(result, Exception):
-                console.print(f"  [yellow]⚠[/yellow] Failed to resolve {unresolved[i].name}: {result}")
+                if not quiet:
+                    console.print(f"  [yellow]⚠[/yellow] Failed to resolve {unresolved[i].name}: {result}")
         # Enrich licenses for packages that already had versions
         lic_count = await enrich_licenses(packages, client)
-        if lic_count:
+        if lic_count and not quiet:
             console.print(f"  [green]✓[/green] Enriched {lic_count} package license(s)")
     return resolved_count
 
 
-def resolve_all_versions_sync(packages: list[Package]) -> int:
-    return asyncio.run(resolve_all_versions(packages))
+def resolve_all_versions_sync(packages: list[Package], *, quiet: bool = False) -> int:
+    return asyncio.run(resolve_all_versions(packages, quiet=quiet))
 
 
 # Backward-compatible aliases (used by registry.py)

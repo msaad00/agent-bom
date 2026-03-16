@@ -829,11 +829,18 @@ def _scan_packages_local_db_batch(
 
         if local_vulns:
             existing_ids = {v.id for v in pkg.vulnerabilities}
+            # Also track aliases to prevent PYSEC/GHSA/CVE duplicates
+            for v in pkg.vulnerabilities:
+                existing_ids.update(v.aliases)
             new_vulns = []
             for lv in local_vulns:
-                if lv.id not in existing_ids:
-                    new_vulns.append(_local_vuln_to_vulnerability(lv))
-                    existing_ids.add(lv.id)
+                # Skip if this vuln or any of its aliases already seen
+                lv_all_ids = {lv.id} | set(getattr(lv, "aliases", []))
+                if lv_all_ids & existing_ids:
+                    continue
+                new_vulns.append(_local_vuln_to_vulnerability(lv))
+                existing_ids.add(lv.id)
+                existing_ids.update(getattr(lv, "aliases", []))
             pkg.vulnerabilities.extend(new_vulns)
             total += len(new_vulns)
             for v in new_vulns:

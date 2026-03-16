@@ -111,33 +111,30 @@ def _version_affected(
     fixed: Optional[str],
     last_affected: Optional[str],
 ) -> bool:
-    """Simple version-in-range check.
+    """Semantic version-in-range check.
 
     Returns True when ``version`` is in [introduced, fixed) or [introduced, last_affected].
     Empty/None introduced means "since beginning of time" (all earlier versions).
     Empty/None fixed means "no fix yet" (all later versions affected).
+
+    When range boundaries are unparseable (e.g. git commit hashes from OSV GIT
+    ranges), the advisory is skipped (return False) to avoid false positives.
+    Lexicographic comparison is only used when the installed version itself is
+    non-standard (e.g. a nightly tag).
     """
     # Normalise: empty string = None
     intro = introduced or None
     fix = fixed or None
     last = last_affected or None
 
+    from packaging.version import InvalidVersion, Version
+
+    # Try to parse the installed version first
     try:
-        from packaging.version import Version
-
         ver = Version(version)
-
-        if intro and ver < Version(intro):
-            return False
-        if fix and ver >= Version(fix):
-            return False
-        if last and ver > Version(last):
-            return False
-        return True
-    except Exception as exc:
-        # Fall back to lexicographic comparison if packaging not available
-        # or version strings are non-standard
-        _logger.debug("Semantic version comparison failed for %r (falling back to lexicographic): %s", version, exc)
+    except InvalidVersion:
+        # Installed version is non-standard — fall back to lexicographic
+        _logger.debug("Non-standard installed version %r, falling back to lexicographic", version)
         if intro and version < intro:
             return False
         if fix and version >= fix:
@@ -145,6 +142,37 @@ def _version_affected(
         if last and version > last:
             return False
         return True
+
+    # Installed version is valid semver — compare each boundary individually.
+    # If a boundary can't be parsed (commit hash, etc.), skip it rather than
+    # assuming the package is affected (prevents false positives).
+    if intro:
+        try:
+            if ver < Version(intro):
+                return False
+        except InvalidVersion:
+            pass  # unparseable introduced — ignore (assume "since epoch")
+
+    if fix:
+        try:
+            if ver >= Version(fix):
+                return False
+        except InvalidVersion:
+            # Fixed version is a commit hash — we can't compare, so assume
+            # the package is NOT affected (conservative: avoids false positive).
+            _logger.debug("Unparseable fixed version %r for %r — skipping advisory", fix, version)
+            return False
+
+    if last:
+        try:
+            if ver > Version(last):
+                return False
+        except InvalidVersion:
+            # Unparseable last_affected — can't determine range, skip it.
+            _logger.debug("Unparseable last_affected %r for %r — skipping advisory", last, version)
+            return False
+
+    return True
 
 
 def lookup_packages_batch(

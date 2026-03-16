@@ -1396,7 +1396,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                 description="JSON string from Trivy, Grype, or Syft scan output",
             ),
         ],
-    ) -> dict:
+    ) -> str:
         """Ingest Trivy, Grype, or Syft JSON scan output and return packages with blast radius analysis.
 
         Auto-detects the scanner format from the JSON structure:
@@ -1415,20 +1415,22 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         try:
             data = _json.loads(scan_json)
             packages = detect_and_parse(data)
-            return {
-                "packages": len(packages),
-                "ingested": [
-                    {
-                        "name": p.name,
-                        "version": p.version,
-                        "ecosystem": p.ecosystem,
-                        "vulnerabilities": len(p.vulnerabilities),
-                    }
-                    for p in packages[:50]
-                ],
-            }
+            return _json.dumps(
+                {
+                    "packages": len(packages),
+                    "ingested": [
+                        {
+                            "name": p.name,
+                            "version": p.version,
+                            "ecosystem": p.ecosystem,
+                            "vulnerabilities": len(p.vulnerabilities),
+                        }
+                        for p in packages[:50]
+                    ],
+                }
+            )
         except Exception as e:  # noqa: BLE001
-            return {"error": str(e)}
+            return _json.dumps({"error": str(e)})
 
     # ── Custom routes: metadata + health ─────────────────────────────
 

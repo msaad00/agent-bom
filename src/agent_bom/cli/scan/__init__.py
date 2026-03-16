@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import sys
+from contextlib import nullcontext as _nullcontext
 from pathlib import Path
 from typing import Any, Optional
 
@@ -950,10 +951,12 @@ def scan(
         all_packages = [p for a in agents for s in a.mcp_servers for p in s.packages]
         unresolved = [p for p in all_packages if p.version in ("latest", "unknown", "")]
         if unresolved:
-            con.print(f"\n[bold blue]Resolving {len(unresolved)} package version(s)...[/bold blue]\n")
-            with con.status("[bold]Querying package registries...[/bold]", spinner="dots"):
-                resolved = resolve_all_versions_sync(all_packages)
-            con.print(f"\n  [bold]Resolved {resolved}/{len(unresolved)} version(s).[/bold]")
+            if not quiet:
+                con.print(f"\n[bold blue]Resolving {len(unresolved)} package version(s)...[/bold blue]\n")
+            with con.status("[bold]Querying package registries...[/bold]", spinner="dots") if not quiet else _nullcontext():
+                resolved = resolve_all_versions_sync(all_packages, quiet=quiet)
+            if not quiet:
+                con.print(f"\n  [bold]Resolved {resolved}/{len(unresolved)} version(s).[/bold]")
 
         # Step 3b: Auto-discover metadata for unknown packages
         unknown_pkgs = [
@@ -969,10 +972,12 @@ def scan(
 
             from agent_bom.autodiscover import enrich_unknown_packages
 
-            con.print(f"\n[bold blue]Auto-discovering metadata for {len(unknown_pkgs)} package(s)...[/bold blue]\n")
-            with con.status("[bold]Fetching package metadata...[/bold]", spinner="dots"):
+            if not quiet:
+                con.print(f"\n[bold blue]Auto-discovering metadata for {len(unknown_pkgs)} package(s)...[/bold blue]\n")
+            with con.status("[bold]Fetching package metadata...[/bold]", spinner="dots") if not quiet else _nullcontext():
                 enriched_count = _asyncio_ad.run(enrich_unknown_packages(unknown_pkgs))
-            con.print(f"  [green]✓[/green] Auto-discovered metadata for {enriched_count} package(s)")
+            if not quiet:
+                con.print(f"  [green]✓[/green] Auto-discovered metadata for {enriched_count} package(s)")
 
         # Step 3c: Version drift detection
         registry_pkgs = [p for p in all_packages if p.resolved_from_registry]
@@ -989,37 +994,51 @@ def scan(
         ctx.step_timings["extraction"] = _time.monotonic() - _step_t0
 
         # Step 4: Vulnerability scan
-        from rich.rule import Rule
+        if not quiet:
+            from rich.rule import Rule
 
-        con.print()
-        con.print(Rule("Vulnerability Scan", style="red"))
-        con.print()
+            con.print()
+            con.print(Rule("Vulnerability Scan", style="red"))
+            con.print()
         _step_t0 = _time.monotonic()
         blast_radii = []
         if no_scan:
-            con.print("  [dim]Vulnerability scanning skipped (--no-scan)[/dim]")
+            if not quiet:
+                con.print("  [dim]Vulnerability scanning skipped (--no-scan)[/dim]")
         elif total_packages == 0:
-            con.print("  [dim]No packages to scan[/dim]")
+            if not quiet:
+                con.print("  [dim]No packages to scan[/dim]")
         else:
             _unique_pkgs = len({(p.name, p.version, p.ecosystem) for a in agents for s in a.mcp_servers for p in s.packages})
-            from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+            if not quiet:
+                from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[bold]{task.description}[/bold]"),
-                BarColumn(bar_width=30),
-                MofNCompleteColumn(),
-                TextColumn("[dim]{task.fields[phase]}[/dim]"),
-                TimeElapsedColumn(),
-                console=con,
-                transient=True,
-            ) as progress:
-                scan_task = progress.add_task(
-                    f"Scanning {_unique_pkgs} packages",
-                    total=4,
-                    phase="local DB + OSV + GHSA",
-                )
-                progress.update(scan_task, completed=1, phase="querying vulnerability databases...")
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[bold]{task.description}[/bold]"),
+                    BarColumn(bar_width=30),
+                    MofNCompleteColumn(),
+                    TextColumn("[dim]{task.fields[phase]}[/dim]"),
+                    TimeElapsedColumn(),
+                    console=con,
+                    transient=True,
+                ) as progress:
+                    scan_task = progress.add_task(
+                        f"Scanning {_unique_pkgs} packages",
+                        total=4,
+                        phase="local DB + OSV + GHSA",
+                    )
+                    progress.update(scan_task, completed=1, phase="querying vulnerability databases...")
+                    blast_radii = scan_agents_sync(
+                        agents,
+                        enable_enrichment=enrich,
+                        nvd_api_key=nvd_api_key,
+                        blast_radius_depth=blast_radius_depth,
+                        compliance_enabled=compliance,
+                    )
+                    progress.update(scan_task, completed=3, phase="building blast radius analysis")
+                    progress.update(scan_task, completed=4, phase="done")
+            else:
                 blast_radii = scan_agents_sync(
                     agents,
                     enable_enrichment=enrich,
@@ -1027,8 +1046,6 @@ def scan(
                     blast_radius_depth=blast_radius_depth,
                     compliance_enabled=compliance,
                 )
-                progress.update(scan_task, completed=3, phase="building blast radius analysis")
-                progress.update(scan_task, completed=4, phase="done")
             if blast_radii:
                 con.print(f"  [red]⚠[/red] Scan complete — [bold]{len(blast_radii)}[/bold] finding(s)")
             else:

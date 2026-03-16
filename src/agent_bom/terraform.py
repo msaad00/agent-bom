@@ -315,7 +315,7 @@ def scan_terraform_dir(tf_dir: str) -> tuple[list[Agent], list[str]]:
                 Package(
                     name=go_module,
                     version=version,
-                    ecosystem="Go",
+                    ecosystem="go",
                     purl=f"pkg:golang/{go_module}@{version}",
                 )
             )

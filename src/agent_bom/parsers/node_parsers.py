@@ -66,8 +66,8 @@ def parse_npm_packages(directory: Path) -> list[Package]:
                         is_direct=clean_name in direct_deps,
                     )
                 )
-        except (json.JSONDecodeError, KeyError):
-            pass
+        except (json.JSONDecodeError, KeyError) as exc:
+            logger.debug("Failed to parse package-lock.json in %s: %s", directory, exc)
 
     # Fallback to package.json only
     elif (directory / "package.json").exists():
@@ -89,8 +89,8 @@ def parse_npm_packages(directory: Path) -> list[Package]:
                             is_direct=True,
                         )
                     )
-        except (json.JSONDecodeError, KeyError):
-            pass
+        except (json.JSONDecodeError, KeyError) as exc:
+            logger.debug("Failed to parse package.json in %s: %s", directory, exc)
 
     return packages
 

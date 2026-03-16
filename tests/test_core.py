@@ -1503,7 +1503,7 @@ resource "aws_bedrockagent_agent" "analyst" {
     assert agent.source == "terraform"
     # Provider package should be Go ecosystem
     pkgs = [p for srv in agent.mcp_servers for p in srv.packages]
-    assert any(p.ecosystem == "Go" for p in pkgs)
+    assert any(p.ecosystem == "go" for p in pkgs)
 
 
 def test_terraform_scan_empty_dir(tmp_path):

@@ -207,7 +207,10 @@ def _extract_packages_from_layer(
         Set of paths marked as whiteout in THIS layer (for caller to accumulate).
     """
     whiteouts: set[str] = set()
-    names = set(layer_tf.getnames())
+    raw_names = set(layer_tf.getnames())
+
+    # Filter out path traversal attempts (malicious tar members with ../)
+    names = {n for n in raw_names if ".." not in n.split("/") and not n.startswith("/")}
 
     # Collect whiteout paths from this layer
     for member_name in names:
@@ -650,8 +653,13 @@ def _parse_layers_from_tarball(
             warnings.append(f"Layer is not a regular file: {layer_path}")
             continue
 
-        # Read into memory to allow tarfile to seek
-        layer_bytes = layer_fobj.read()
+        # Read into memory to allow tarfile to seek.
+        # Cap at 2 GB to prevent OOM on very large image layers (e.g. ML model weights).
+        max_layer_bytes = 2 * 1024 * 1024 * 1024  # 2 GB
+        layer_bytes = layer_fobj.read(max_layer_bytes + 1)
+        if len(layer_bytes) > max_layer_bytes:
+            warnings.append(f"Layer {layer_path} exceeds 2 GB — skipped to avoid OOM")
+            continue
         try:
             with tarfile.open(fileobj=io.BytesIO(layer_bytes), mode="r:*") as layer_tf:
                 whiteouts = _extract_packages_from_layer(layer_tf, seen, packages, all_deleted)

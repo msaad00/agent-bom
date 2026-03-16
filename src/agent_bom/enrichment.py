@@ -154,6 +154,10 @@ async def fetch_nvd_data(cve_id: str, client: httpx.AsyncClient, api_key: Option
                 return result
         except (ValueError, KeyError) as e:
             console.print(f"  [dim yellow]NVD parse error for {cve_id}: {e}[/dim yellow]")
+    elif response and response.status_code == 403:
+        _logger.warning("NVD rate limited (HTTP 403) for %s — consider using NVD_API_KEY", cve_id)
+    elif response and response.status_code not in (200, 404):
+        _logger.warning("NVD returned HTTP %d for %s", response.status_code, cve_id)
 
     return None
 

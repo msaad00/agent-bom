@@ -243,6 +243,11 @@ agent-bom cloud                              # scan all configured providers
 Sit between your MCP client and server, enforce policy in real time:
 
 ```bash
+# Launch MCP server through the runtime proxy — zero-config
+agent-bom run "npx/@modelcontextprotocol/server-filesystem /tmp"
+agent-bom run "uvx/mcp-server-git" --policy policy.yml
+agent-bom run "ghcr.io/owner/mcp-server:latest"
+
 # Intercept every tool call — 7 detectors active
 agent-bom proxy "uvx mcp-server-filesystem /" --policy policy.yml
 

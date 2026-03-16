@@ -153,6 +153,16 @@ mcp_group.add_command(mcp_server_cmd, "server")
 mcp_group.add_command(where, "where")
 main.add_command(mcp_group)
 
+# ---------------------------------------------------------------------------
+# Focused scan commands — `agent-bom image`, `agent-bom fs`, etc.
+# ---------------------------------------------------------------------------
+from agent_bom.cli._scan_commands import fs_cmd, iac_cmd, image_cmd, sbom_cmd  # noqa: E402
+
+main.add_command(image_cmd)
+main.add_command(fs_cmd)
+main.add_command(iac_cmd)
+main.add_command(sbom_cmd)
+
 
 # ---------------------------------------------------------------------------
 # Upgrade command

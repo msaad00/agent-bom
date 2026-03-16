@@ -475,6 +475,7 @@ class AIBOMReport:
     agents: list[Agent] = field(default_factory=list)
     blast_radii: list[BlastRadius] = field(default_factory=list)
     generated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    scan_id: str = ""  # Deterministic UUID v5 from scan inputs (set by CLI after discovery)
     tool_version: str = ""
     executive_summary: Optional[str] = None  # LLM-generated executive summary
     ai_threat_chains: list[str] = field(default_factory=list)  # LLM-generated threat chain analyses

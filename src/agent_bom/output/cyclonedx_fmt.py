@@ -164,7 +164,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
     cdx = {
         "bomFormat": "CycloneDX",
         "specVersion": "1.6",
-        "serialNumber": f"urn:uuid:{uuid4()}",
+        "serialNumber": f"urn:uuid:{report.scan_id}" if report.scan_id else f"urn:uuid:{uuid4()}",
         "version": 1,
         "metadata": {
             "timestamp": report.generated_at.isoformat(),

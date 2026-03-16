@@ -233,6 +233,7 @@ def to_json(report: AIBOMReport) -> dict:
     result = {
         "document_type": "AI-BOM",
         "spec_version": "1.0",
+        "scan_id": report.scan_id,
         "ai_bom_version": report.tool_version,
         "generated_at": report.generated_at.isoformat(),
         "scan_sources": report.scan_sources,

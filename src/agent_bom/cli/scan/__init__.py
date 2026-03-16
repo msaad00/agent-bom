@@ -1209,11 +1209,22 @@ def scan(
     from agent_bom.finding import blast_radius_to_finding
 
     _findings = [blast_radius_to_finding(br) for br in blast_radii]
+
+    # Generate deterministic scan ID from content fingerprint (same inputs → same ID)
+    import hashlib as _hashlib
+    import uuid as _uuid
+
+    _scan_ns = _uuid.UUID("7f3e4b2a-9c1d-5f8e-a0b4-12c3d4e5f6a7")
+    _pkg_fingerprints = sorted(f"{p.ecosystem}:{p.name}@{p.version}" for a in agents for s in a.mcp_servers for p in s.packages)
+    _scan_fingerprint = "|".join(_pkg_fingerprints) or "empty"
+    _scan_id = str(_uuid.uuid5(_scan_ns, f"scan:{_scan_fingerprint}"))
+
     report = AIBOMReport(
         agents=agents,
         blast_radii=blast_radii,
         findings=_findings,
         scan_sources=_scan_sources,
+        scan_id=_scan_id,
     )
 
     # Attach skill/trust/prompt/enforcement data from context
@@ -1271,9 +1282,10 @@ def scan(
         _gb = _from_cg(report.context_graph_data, backend=graph_backend)
         _centrality = _gb.centrality_scores()
         _bottlenecks = _gb.bottleneck_nodes(top_n=5)
-        report.context_graph_data["centrality"] = _centrality
-        report.context_graph_data["bottleneck_nodes"] = [{"id": nid, "score": score} for nid, score in _bottlenecks]
-        report.context_graph_data["stats"]["graph_backend"] = type(_gb).__name__
+        if report.context_graph_data is not None:
+            report.context_graph_data["centrality"] = _centrality
+            report.context_graph_data["bottleneck_nodes"] = [{"id": nid, "score": score} for nid, score in _bottlenecks]
+            report.context_graph_data["stats"]["graph_backend"] = type(_gb).__name__
 
         _n_paths = len(_all_paths)
         _n_risks = len(_cg_risks)

@@ -189,6 +189,7 @@ def to_sarif(report: AIBOMReport) -> dict:
                     }
                 },
                 "results": results,
+                **({"automationDetails": {"id": f"agent-bom/{report.scan_id}"}} if report.scan_id else {}),
             }
         ],
     }

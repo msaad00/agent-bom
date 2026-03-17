@@ -101,13 +101,20 @@ jobs:
             org.opencontainers.image.description=Security scanner for AI infrastructure — from agent to runtime
 
       - name: Sync Docker Hub README
-        uses: peter-evans/dockerhub-description@e98e4d1628a5f3be2be7c231e50981aee98723ae # v4.0.0
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: agentbom/agent-bom
-          readme-filepath: ./DOCKER_HUB_README.md
-          short-description: "Security scanner for AI infrastructure — from agent to runtime"
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          TOKEN=$(curl -s -X POST "https://hub.docker.com/v2/users/login" \
+            -H "Content-Type: application/json" \
+            -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}" \
+            | jq -r '.token')
+          DESCRIPTION=$(cat DOCKER_HUB_README.md | jq -Rs .)
+          curl -s -o /dev/null -w "%{http_code}" -X PATCH \
+            "https://hub.docker.com/v2/repositories/agentbom/agent-bom/" \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"full_description\": ${DESCRIPTION}, \"description\": \"Security scanner for AI infrastructure — from agent to runtime\"}"
 
   self-scan-gate:
     name: Self-scan release gate

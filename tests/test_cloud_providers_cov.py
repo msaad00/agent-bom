@@ -621,3 +621,123 @@ class TestHuggingFaceHelpers:
             agents, _ = huggingface.discover(token="hf_test", username="user")
             space_agents = [a for a in agents if "hf-space:" in a.name]
             assert len(space_agents) >= 1
+
+
+# ===
+# Cloud container image auto-scan (Step 1h2 in _cloud.py)
+# ===
+
+_CLOUD_DISCOVERY_NO_PROVIDERS = dict(
+    skill_only=False,
+    aws=False,
+    aws_region=None,
+    aws_profile=None,
+    aws_include_lambda=False,
+    aws_include_eks=False,
+    aws_include_step_functions=False,
+    aws_include_ec2=False,
+    aws_ec2_tag=None,
+    azure_flag=False,
+    azure_subscription=None,
+    gcp_flag=False,
+    gcp_project=None,
+    coreweave_flag=False,
+    coreweave_context=None,
+    coreweave_namespace=None,
+    databricks_flag=False,
+    snowflake_flag=False,
+    snowflake_authenticator=None,
+    nebius_flag=False,
+    nebius_api_key=None,
+    nebius_project_id=None,
+    hf_flag=False,
+    hf_token=None,
+    hf_username=None,
+    hf_organization=None,
+    wandb_flag=False,
+    wandb_api_key=None,
+    wandb_entity=None,
+    wandb_project=None,
+    mlflow_flag=False,
+    mlflow_tracking_uri=None,
+    openai_flag=False,
+    openai_api_key=None,
+    openai_org_id=None,
+    ollama_flag=False,
+    ollama_host=None,
+)
+
+
+def test_cloud_container_image_autoscan_populates_packages():
+    """When a cloud provider returns an agent with a docker image, packages are populated.
+
+    Step 1h2 detects MCPServer objects with command="docker" args=["run", <image>]
+    added during cloud discovery, calls scan_image(), and populates server.packages.
+    """
+    from unittest.mock import patch
+
+    from rich.console import Console
+
+    from agent_bom.cli.scan._cloud import run_cloud_discovery
+    from agent_bom.cli.scan._context import ScanContext
+    from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
+
+    server = MCPServer(
+        name="container:my-app",
+        command="docker",
+        args=["run", "myregistry.io/my-app:v2"],
+        transport=TransportType.STDIO,
+        packages=[],
+    )
+    cloud_agent = Agent(
+        name="gcp-cloud-run:my-service",
+        agent_type=AgentType.CUSTOM,
+        config_path="gcp://my-service",
+        mcp_servers=[server],
+    )
+
+    fake_pkg = Package(name="requests", version="2.28.0", ecosystem="pypi")
+    ctx = ScanContext(con=Console(quiet=True))
+
+    # Patch at the module-level attribute in the source modules (lazy imports fetch from here)
+    with patch("agent_bom.cloud.discover_from_provider", return_value=([cloud_agent], [])):
+        with patch("agent_bom.image.scan_image", return_value=([fake_pkg], "native")) as mock_scan:
+            run_cloud_discovery(ctx, **{**_CLOUD_DISCOVERY_NO_PROVIDERS, "azure_flag": True})
+
+    mock_scan.assert_called_once_with("myregistry.io/my-app:v2")
+    assert server.packages == [fake_pkg]
+
+
+def test_cloud_container_image_autoscan_skips_already_populated():
+    """If a cloud-discovered server already has packages, scan_image is NOT called."""
+    from unittest.mock import patch
+
+    from rich.console import Console
+
+    from agent_bom.cli.scan._cloud import run_cloud_discovery
+    from agent_bom.cli.scan._context import ScanContext
+    from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
+
+    existing_pkg = Package(name="numpy", version="1.24.0", ecosystem="pypi")
+    server = MCPServer(
+        name="container:pre-scanned",
+        command="docker",
+        args=["run", "myregistry.io/pre-scanned:v1"],
+        transport=TransportType.STDIO,
+        packages=[existing_pkg],  # already populated
+    )
+    cloud_agent = Agent(
+        name="azure-container-app:pre-scanned",
+        agent_type=AgentType.CUSTOM,
+        config_path="azure://pre-scanned",
+        mcp_servers=[server],
+    )
+
+    ctx = ScanContext(con=Console(quiet=True))
+
+    with patch("agent_bom.cloud.discover_from_provider", return_value=([cloud_agent], [])):
+        with patch("agent_bom.image.scan_image") as mock_scan:
+            run_cloud_discovery(ctx, **{**_CLOUD_DISCOVERY_NO_PROVIDERS, "azure_flag": True})
+
+    mock_scan.assert_not_called()
+    assert server.packages == [existing_pkg]  # unchanged

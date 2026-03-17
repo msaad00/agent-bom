@@ -428,6 +428,9 @@ def to_json(report: AIBOMReport) -> dict:
     if report.sast_data:
         result["sast"] = report.sast_data
 
+    if report.iac_findings_data:
+        result["iac_findings"] = report.iac_findings_data
+
     if report.cis_benchmark_data:
         result["cis_benchmark"] = report.cis_benchmark_data
 

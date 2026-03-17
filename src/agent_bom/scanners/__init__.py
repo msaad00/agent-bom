@@ -453,9 +453,12 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
 
         # Normalize name for consistent OSV matching (PEP 503 for PyPI)
         norm_name = normalize_package_name(pkg.name, eco_key)
+        # Go module versions are stored without 'v' prefix internally but OSV
+        # Go ecosystem expects the canonical semver 'v' prefix.
+        osv_version = f"v{pkg.version}" if eco_key == "go" and not pkg.version.startswith("v") else pkg.version
         queries.append(
             {
-                "version": pkg.version,
+                "version": osv_version,
                 "package": {
                     "name": norm_name,
                     "ecosystem": osv_ecosystem,

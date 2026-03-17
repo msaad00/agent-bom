@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import secrets
 import time
 from collections import defaultdict
@@ -46,7 +47,9 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     - RBAC mode: role-based access control via KeyStore with per-endpoint role checks
     """
 
-    _EXEMPT_PATHS = {"/", "/health", "/version", "/docs", "/redoc", "/openapi.json"}
+    # Set AGENT_BOM_DISABLE_DOCS=1 in production to block /docs and /redoc
+    _DOCS_DISABLED = os.environ.get("AGENT_BOM_DISABLE_DOCS", "").strip() in ("1", "true", "yes")
+    _EXEMPT_PATHS = {"/", "/health", "/version", "/docs", "/redoc", "/openapi.json"} if not _DOCS_DISABLED else {"/", "/health", "/version"}
 
     # Endpoints requiring ADMIN role (mutating / destructive operations)
     _ADMIN_PATHS: set[tuple[str, str]] = {

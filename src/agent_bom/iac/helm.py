@@ -43,6 +43,8 @@ _PLACEHOLDER_VALUES = frozenset(
 )
 
 _PLACEHOLDER_PREFIX_RE = re.compile(r"^your[-_]", re.IGNORECASE)
+# Helm/Jinja template expressions — resolved at deploy time, never hardcoded secrets
+_TEMPLATE_VAR_RE = re.compile(r"\{\{.*?\}\}", re.DOTALL)
 
 
 def _find_line(content: str, key: str, value: Any, start_line: int = 1) -> int:
@@ -71,6 +73,9 @@ def _is_placeholder(value: str) -> bool:
     if value in _PLACEHOLDER_VALUES:
         return True
     if _PLACEHOLDER_PREFIX_RE.match(value):
+        return True
+    # Helm/Jinja template expressions ({{ .Values.* }}) are resolved at deploy time
+    if _TEMPLATE_VAR_RE.search(value):
         return True
     return False
 

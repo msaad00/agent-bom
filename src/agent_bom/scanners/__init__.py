@@ -88,6 +88,26 @@ ECOSYSTEM_MAP = {
     "rpm": "Linux",
 }
 
+# Known non-OSV ecosystems: valid discovery artifacts that cannot be queried
+# against OSV/NVD. These are silently skipped (DEBUG) rather than flagged as
+# errors — the scanner handles them through other pipelines (OCI image scan,
+# model provenance checks, cloud runtime inventory, etc.).
+_NON_OSV_ECOSYSTEMS: frozenset[str] = frozenset(
+    {
+        "docker",  # Image stubs from MCP configs / docker-compose / running containers
+        "container",  # GPU infra image refs (cuda-toolkit, cudnn)
+        "container-image",  # CoreWeave / Nebius pod images
+        "ollama",  # Ollama model names — no OSV advisory DB
+        "smithery",  # Smithery MCP marketplace stubs
+        "mcp-registry",  # MCP Registry stubs
+        "azure-runtime",  # Azure Functions / ACA runtime images
+        "nebius-ai-studio",  # Nebius AI Studio model artifacts
+        "nebius-compute-image",  # Nebius compute node images
+        "sast",  # SAST findings represented as packages
+        "unknown",  # Packages with unresolvable ecosystem (e.g. --sbom ingest)
+    }
+)
+
 
 def _get_api_semaphore() -> asyncio.Semaphore:
     """Create a semaphore bound to the current event loop.
@@ -404,12 +424,20 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
         eco_key = pkg.ecosystem.lower()
         osv_ecosystem = ECOSYSTEM_MAP.get(eco_key)
         if not osv_ecosystem:
-            _logger.warning(
-                "Skipping package %s/%s: unknown ecosystem %r (not in ECOSYSTEM_MAP)",
-                pkg.ecosystem,
-                pkg.name,
-                pkg.ecosystem,
-            )
+            if eco_key in _NON_OSV_ECOSYSTEMS:
+                _logger.debug(
+                    "Skipping package %s/%s: ecosystem %r is not OSV-queryable (handled by other pipeline)",
+                    pkg.ecosystem,
+                    pkg.name,
+                    pkg.ecosystem,
+                )
+            else:
+                _logger.warning(
+                    "Skipping package %s/%s: unknown ecosystem %r — add to ECOSYSTEM_MAP or _NON_OSV_ECOSYSTEMS",
+                    pkg.ecosystem,
+                    pkg.name,
+                    pkg.ecosystem,
+                )
             skipped_ecosystems += 1
             continue
         if pkg.version in ("unknown", "latest"):

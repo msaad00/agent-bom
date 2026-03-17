@@ -224,3 +224,36 @@ async def test_scan_packages_maven_vuln_attached():
     assert len(pkg.vulnerabilities) >= 1
     vuln_ids = [v.id for v in pkg.vulnerabilities]
     assert "CVE-2021-44228" in vuln_ids
+
+
+def test_non_osv_ecosystems_not_empty():
+    """_NON_OSV_ECOSYSTEMS must cover docker and other known non-queryable ecosystems."""
+    from agent_bom.scanners import _NON_OSV_ECOSYSTEMS
+
+    for eco in ("docker", "container", "container-image", "ollama", "smithery", "sast", "unknown"):
+        assert eco in _NON_OSV_ECOSYSTEMS, f"Expected {eco!r} in _NON_OSV_ECOSYSTEMS"
+
+
+@pytest.mark.asyncio
+async def test_docker_ecosystem_skipped_at_debug_not_warning(caplog):
+    """Packages with ecosystem='docker' should be skipped silently (DEBUG) not WARNING."""
+    import logging
+
+    from agent_bom.scanners import scan_packages
+
+    pkg = Package(name="mcp/playwright", version="1.0.0", ecosystem="docker")
+
+    with (
+        patch("agent_bom.scanners._get_scan_cache", return_value=None),
+        patch("agent_bom.scanners._scan_packages_local_db", return_value=(0, set())),
+        caplog.at_level(logging.DEBUG, logger="agent_bom.scanners"),
+    ):
+        await scan_packages([pkg])
+
+    # Must not emit a WARNING for docker ecosystem
+    warning_msgs = [r for r in caplog.records if r.levelno == logging.WARNING and "docker" in r.message]
+    assert not warning_msgs, f"Unexpected WARNING for docker ecosystem: {warning_msgs}"
+
+    # Should emit a DEBUG skip message
+    debug_msgs = [r for r in caplog.records if r.levelno == logging.DEBUG and "not OSV-queryable" in r.message]
+    assert debug_msgs, "Expected a DEBUG skip message for docker ecosystem"

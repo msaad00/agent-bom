@@ -95,11 +95,29 @@ def run_integrations(
                     "epss_score": getattr(br.vulnerability, "epss_score", 0.0) or 0.0,
                     "severity": br.vulnerability.severity.value.lower(),
                     "source": getattr(br.vulnerability, "source", "osv"),
+                    "cmmc_tags": list(br.cmmc_tags) if br.cmmc_tags else [],
                 }
                 for br in blast_radii
             ]
             for agent in ctx.agents:
                 _ch_store.record_scan(_scan_id, agent.name, vuln_dicts)
+            if ctx.report:
+                _rpt = ctx.report
+                _ch_store.record_scan_metadata(
+                    {
+                        "scan_id": _scan_id,
+                        "agent_count": _rpt.total_agents,
+                        "package_count": _rpt.total_packages,
+                        "vuln_count": _rpt.total_vulnerabilities,
+                        "critical_count": len(_rpt.critical_vulns),
+                        "high_count": sum(1 for br in _rpt.blast_radii if br.vulnerability.severity.value.lower() == "high"),
+                        "posture_grade": "",
+                        "scan_duration_ms": 0,
+                        "source": "cli",
+                        "aisvs_score": float((_rpt.aisvs_benchmark_data or {}).get("overall_score", 0.0)),
+                        "has_runtime_correlation": bool(_rpt.runtime_correlation),
+                    }
+                )
             if not quiet:
                 con.print(f"  [green]✓[/green] Analytics: {len(vuln_dicts)} finding(s) recorded to ClickHouse")
         except Exception as _ch_exc:

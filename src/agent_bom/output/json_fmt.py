@@ -370,6 +370,7 @@ def to_json(report: AIBOMReport) -> dict:
                 "iso_27001_tags": br.iso_27001_tags,
                 "soc2_tags": br.soc2_tags,
                 "cis_tags": br.cis_tags,
+                "cmmc_tags": br.cmmc_tags,
                 "hop_depth": getattr(br, "hop_depth", 1),
                 "delegation_chain": getattr(br, "delegation_chain", []),
                 "transitive_agents": getattr(br, "transitive_agents", []),
@@ -442,6 +443,12 @@ def to_json(report: AIBOMReport) -> dict:
 
     if report.databricks_cis_benchmark_data:
         result["databricks_cis_benchmark"] = report.databricks_cis_benchmark_data
+
+    if report.aisvs_benchmark_data:
+        result["aisvs_benchmark"] = report.aisvs_benchmark_data
+
+    if report.runtime_correlation:
+        result["runtime_correlation"] = report.runtime_correlation
 
     # Training pipeline lineage + dataset cards
     if report.training_pipelines:

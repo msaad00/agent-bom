@@ -131,6 +131,7 @@ class ClickHouseAnalyticsStore:
                 "source": v.get("source", "osv"),
                 "agent_name": agent_name,
                 "environment": v.get("environment", ""),
+                "cmmc_tags": list(v.get("cmmc_tags", [])),
             }
             for v in vulns
         ]
@@ -214,6 +215,8 @@ class ClickHouseAnalyticsStore:
             "posture_grade": metadata.get("posture_grade", ""),
             "scan_duration_ms": int(metadata.get("scan_duration_ms", 0)),
             "source": metadata.get("source", "cli"),
+            "aisvs_score": float(metadata.get("aisvs_score", 0.0)),
+            "has_runtime_correlation": int(bool(metadata.get("has_runtime_correlation", False))),
         }
         self._client.insert_json("scan_metadata", [row])
 

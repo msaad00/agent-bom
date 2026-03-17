@@ -44,11 +44,11 @@ class ClickHouseClient:
         database: str = "agent_bom",
         timeout: int = _DEFAULT_TIMEOUT,
     ) -> None:
-        self.url = (url or os.environ.get("AGENT_BOM_CLICKHOUSE_URL", "")).rstrip("/")
+        self.url: str = ((url or os.environ.get("AGENT_BOM_CLICKHOUSE_URL")) or "").rstrip("/")
         if not self.url:
             raise ClickHouseError("ClickHouse URL required. Set AGENT_BOM_CLICKHOUSE_URL or pass url=.")
-        self.user = user or os.environ.get("AGENT_BOM_CLICKHOUSE_USER", "default")
-        self.password = password or os.environ.get("AGENT_BOM_CLICKHOUSE_PASSWORD", "")
+        self.user: str = (user or os.environ.get("AGENT_BOM_CLICKHOUSE_USER")) or "default"
+        self.password: str = (password or os.environ.get("AGENT_BOM_CLICKHOUSE_PASSWORD")) or ""
         self.database = database
         self.timeout = timeout
 
@@ -125,7 +125,8 @@ CREATE TABLE IF NOT EXISTS vulnerability_scans (
     severity LowCardinality(String),
     source LowCardinality(String),
     agent_name String,
-    environment LowCardinality(String)
+    environment LowCardinality(String),
+    cmmc_tags Array(String)
 ) ENGINE = MergeTree()
 ORDER BY (scan_timestamp, severity, agent_name)
 PARTITION BY toYYYYMM(scan_timestamp)""",
@@ -171,7 +172,9 @@ CREATE TABLE IF NOT EXISTS scan_metadata (
     high_count UInt32,
     posture_grade LowCardinality(String),
     scan_duration_ms UInt32,
-    source LowCardinality(String)
+    source LowCardinality(String),
+    aisvs_score Float32 DEFAULT 0.0,
+    has_runtime_correlation UInt8 DEFAULT 0
 ) ENGINE = MergeTree()
 ORDER BY (scan_timestamp, scan_id)
 PARTITION BY toYYYYMM(scan_timestamp)

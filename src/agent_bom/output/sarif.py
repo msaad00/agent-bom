@@ -106,6 +106,7 @@ def to_sarif(report: AIBOMReport) -> dict:
             or br.iso_27001_tags
             or br.soc2_tags
             or br.cis_tags
+            or br.cmmc_tags
         ):
             result["properties"] = {
                 "owasp_tags": br.owasp_tags,
@@ -119,6 +120,7 @@ def to_sarif(report: AIBOMReport) -> dict:
                 "iso_27001_tags": br.iso_27001_tags,
                 "soc2_tags": br.soc2_tags,
                 "cis_tags": br.cis_tags,
+                "cmmc_tags": br.cmmc_tags,
                 "blast_score": br.risk_score,
                 "epss_score": vuln.epss_score,
                 "is_kev": vuln.is_kev,

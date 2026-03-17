@@ -28,7 +28,7 @@ jobs:
             CC0-1.0, MPL-2.0, OFL-1.1, ZPL-2.1, HPND-Markus-Kuhn,
             LGPL-3.0-only
           # Packages whitelisted by PURL:
-          # - jinja2/werkzeug: BSD-3-Clause but GitHub can't resolve from pins
+          # - jinja2/werkzeug/flask: BSD-3-Clause but GitHub can't resolve from pins
           # - recharts: Apache-2.0 but npm metadata returns null
           # - victory-vendor: ISC+JSON+MIT (JSON not in allow list)
           # - uv.lock transitive deps with LicenseRef-scancode-* identifiers
@@ -36,6 +36,7 @@ jobs:
           allow-dependencies-licenses: >-
             pkg:pypi/jinja2,
             pkg:pypi/werkzeug,
+            pkg:pypi/flask,
             pkg:npm/recharts,
             pkg:npm/victory-vendor,
             pkg:pypi/aiohappyeyeballs,
@@ -48,7 +49,6 @@ jobs:
             pkg:pypi/pillow,
             pkg:pypi/protobuf,
             pkg:pypi/psycopg-pool,
-            pkg:pypi/safety,
             pkg:pypi/scikit-learn,
             pkg:pypi/typing-extensions,
             pkg:pypi/wcwidth,

@@ -366,10 +366,18 @@ async def check_nvidia_advisories(
                     for v in pkg.vulnerabilities:
                         existing_ids.update(v.aliases)
                     for vuln in csaf_vulns:
-                        if vuln.id not in existing_ids:
-                            pkg.vulnerabilities.append(vuln)
-                            existing_ids.add(vuln.id)
-                            total_new += 1
+                        if vuln.id in existing_ids:
+                            continue
+                        # Skip if the installed version is already at or beyond
+                        # the fix — same guard as ghsa_advisory.py.
+                        if vuln.fixed_version and pkg.version:
+                            from agent_bom.version_utils import compare_versions
+
+                            if not compare_versions(pkg.version, vuln.fixed_version, pkg.ecosystem):
+                                continue
+                        pkg.vulnerabilities.append(vuln)
+                        existing_ids.add(vuln.id)
+                        total_new += 1
 
     if total_new:
         logger.info("NVIDIA advisories: found %d new CVE(s)", total_new)

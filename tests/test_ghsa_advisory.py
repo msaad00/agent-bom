@@ -269,3 +269,48 @@ def test_alias_aware_dedup_skips_known_cve():
     count = asyncio.run(run())
     assert count == 0  # Should be deduped
     assert len(pkg.vulnerabilities) == 1  # Only the original
+
+
+def test_already_patched_version_not_flagged():
+    """GHSA advisory must not flag a package whose version is >= the fix version.
+
+    Regression test for false positive where authlib@1.6.9 was flagged by
+    CVE-2026-27962 even though 1.6.9 is the fix (vulnerable range <= 1.6.8).
+    """
+    from unittest.mock import AsyncMock, patch
+
+    pkg = Package(name="authlib", version="1.6.9", ecosystem="pypi")
+
+    # Advisory: CVE-2026-27962, patched in 1.6.9 (so <= 1.6.8 is vulnerable)
+    ghsa_advisory = {
+        "ghsa_id": "GHSA-wvwj-cvrp-7pv5",
+        "cve_id": "CVE-2026-27962",
+        "severity": "critical",
+        "cvss": {"score": 9.1},
+        "summary": "authlib OIDC auth bypass",
+        "html_url": "https://github.com/advisories/GHSA-wvwj-cvrp-7pv5",
+        "cwes": [],
+        "vulnerabilities": [
+            {
+                "package": {"name": "authlib", "ecosystem": "pip"},
+                "patched_versions": ">= 1.6.9",
+            }
+        ],
+    }
+
+    import asyncio
+
+    from agent_bom.scanners.ghsa_advisory import check_github_advisories
+
+    async def run():
+        with patch(
+            "agent_bom.scanners.ghsa_advisory._fetch_advisories_for_package",
+            new_callable=AsyncMock,
+        ) as mock_fetch:
+            mock_fetch.return_value = [ghsa_advisory]
+            count = await check_github_advisories([pkg])
+        return count
+
+    count = asyncio.run(run())
+    assert count == 0, "Patched version must not be flagged as vulnerable"
+    assert len(pkg.vulnerabilities) == 0, "No vulnerabilities should be added for an already-patched package"

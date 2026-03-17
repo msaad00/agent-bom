@@ -226,6 +226,17 @@ async def check_github_advisories(
                         continue
 
                     fixed = _extract_fixed_version(advisory, target_pkg.name, target_pkg.ecosystem)
+
+                    # Skip if the installed version is already at or beyond the fix.
+                    # compare_versions(current, fix) returns True only when fix > current
+                    # (i.e. an upgrade is needed).  If it returns False the package is
+                    # already patched — skip to avoid false positives.
+                    if fixed and target_pkg.version:
+                        from agent_bom.version_utils import compare_versions
+
+                        if not compare_versions(target_pkg.version, fixed, target_pkg.ecosystem):
+                            continue
+
                     vuln = Vulnerability(
                         id=vuln_id,
                         summary=summary[:200],

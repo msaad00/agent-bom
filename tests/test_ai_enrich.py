@@ -619,8 +619,7 @@ def test_action_yml_valid_yaml():
     import yaml
 
     action_path = Path(__file__).parent.parent / "action.yml"
-    with open(action_path) as f:
-        data = yaml.safe_load(f)
+    data = yaml.safe_load(action_path.read_text())
     assert data is not None
     assert "name" in data
     assert "runs" in data
@@ -633,8 +632,7 @@ def test_action_yml_has_required_inputs():
     import yaml
 
     action_path = Path(__file__).parent.parent / "action.yml"
-    with open(action_path) as f:
-        data = yaml.safe_load(f)
+    data = yaml.safe_load(action_path.read_text())
     inputs = data.get("inputs", {})
     assert "severity-threshold" in inputs
     assert "upload-sarif" in inputs
@@ -650,8 +648,7 @@ def test_action_yml_has_new_inputs():
     import yaml
 
     action_path = Path(__file__).parent.parent / "action.yml"
-    with open(action_path) as f:
-        data = yaml.safe_load(f)
+    data = yaml.safe_load(action_path.read_text())
     inputs = data.get("inputs", {})
     assert "warn-on-severity" in inputs, "missing warn-on-severity input"
     assert "output" in inputs, "missing output input"
@@ -666,8 +663,7 @@ def test_action_yml_has_outputs():
     import yaml
 
     action_path = Path(__file__).parent.parent / "action.yml"
-    with open(action_path) as f:
-        data = yaml.safe_load(f)
+    data = yaml.safe_load(action_path.read_text())
     outputs = data.get("outputs", {})
     assert "sarif-file" in outputs
     assert "exit-code" in outputs
@@ -681,8 +677,7 @@ def test_action_yml_composite():
     import yaml
 
     action_path = Path(__file__).parent.parent / "action.yml"
-    with open(action_path) as f:
-        data = yaml.safe_load(f)
+    data = yaml.safe_load(action_path.read_text())
     assert data["runs"]["using"] == "composite"
 
 

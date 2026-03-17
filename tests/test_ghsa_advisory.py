@@ -420,3 +420,33 @@ def test_installed_version_is_affected_helpers():
     assert _installed_version_is_affected("26.0.0", ">= 22.0.0, < 26.0.0") is False
     # compound range: 21.0.0 is NOT in '>= 22.0.0, < 26.0.0'
     assert _installed_version_is_affected("21.0.0", ">= 22.0.0, < 26.0.0") is False
+
+
+def test_multi_range_advisory_or_semantics():
+    """Multi-entry advisories for same package use OR logic — affected if in ANY range."""
+    from agent_bom.scanners.ghsa_advisory import _get_vulnerable_ranges_for_package
+
+    advisory = {
+        "vulnerabilities": [
+            {
+                "package": {"ecosystem": "pip", "name": "mylib"},
+                "vulnerable_version_range": "< 1.0",
+            },
+            {
+                "package": {"ecosystem": "pip", "name": "mylib"},
+                "vulnerable_version_range": ">= 1.5, < 2.0",
+            },
+        ]
+    }
+    ranges = _get_vulnerable_ranges_for_package(advisory, "mylib", "pypi")
+    assert len(ranges) == 2
+    # 0.9 is in '< 1.0'
+    from agent_bom.scanners.ghsa_advisory import _installed_version_is_affected
+
+    assert any(_installed_version_is_affected("0.9", r) for r in ranges) is True
+    # 1.2 is NOT in either range (patched window between 1.0 and 1.5)
+    assert any(_installed_version_is_affected("1.2", r) for r in ranges) is False
+    # 1.7 is in '>= 1.5, < 2.0' (second range — previously missed)
+    assert any(_installed_version_is_affected("1.7", r) for r in ranges) is True
+    # 2.0 is not in any range
+    assert any(_installed_version_is_affected("2.0", r) for r in ranges) is False

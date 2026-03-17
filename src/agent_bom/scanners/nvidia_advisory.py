@@ -240,23 +240,29 @@ def _word_boundary_match(product: str, text: str) -> bool:
 
 
 def _csaf_affects_product(csaf: dict, product_names: set[str]) -> bool:
-    """Check if a CSAF advisory affects any of the given NVIDIA product names."""
+    """Check if a CSAF advisory affects any of the given NVIDIA product names.
+
+    Recursively traverses product_tree.branches at any depth — NVIDIA CSAF documents
+    can nest product entries more than 2 levels deep.
+    """
     title = (csaf.get("document", {}).get("title", "") or "").lower()
     for product in product_names:
         if _word_boundary_match(product, title):
             return True
-    # Also check product_tree branches
-    for branch in csaf.get("product_tree", {}).get("branches", []):
-        _name = (branch.get("name", "") or "").lower()
-        for product in product_names:
-            if _word_boundary_match(product, _name):
-                return True
-        for sub in branch.get("branches", []):
-            _sname = (sub.get("name", "") or "").lower()
+
+    def _search_branches(branches: list, depth: int = 0) -> bool:
+        if depth > 8:  # safety cap — CSAF docs are never this deep
+            return False
+        for branch in branches:
+            _name = (branch.get("name", "") or "").lower()
             for product in product_names:
-                if _word_boundary_match(product, _sname):
+                if _word_boundary_match(product, _name):
                     return True
-    return False
+            if _search_branches(branch.get("branches", []), depth + 1):
+                return True
+        return False
+
+    return _search_branches(csaf.get("product_tree", {}).get("branches", []))
 
 
 def extract_vulns_from_csaf(csaf: dict) -> list[Vulnerability]:

@@ -101,6 +101,7 @@ def run_cloud_discovery(
     if not skill_only and ollama_flag:
         cloud_providers.append(("ollama", {"host": ollama_host}))
 
+    _pre_cloud_idx = len(ctx.agents)
     for provider_name, provider_kwargs in cloud_providers:
         from agent_bom.cloud import CloudDiscoveryError, discover_from_provider
 
@@ -117,6 +118,39 @@ def run_cloud_discovery(
                 con.print(f"  [dim]  No AI agents found in {provider_name.upper()}[/dim]")
         except CloudDiscoveryError as exc:
             con.print(f"\n  [red]{provider_name.upper()} discovery error: {exc}[/red]")
+
+    # Step 1h2: Auto-scan container images discovered from cloud providers (Azure, GCP, etc.)
+    # Cloud providers discover container refs but cannot scan them — bridge that gap here.
+    _cloud_image_targets: list[tuple[str, Any]] = []  # (image_ref, MCPServer to populate)
+    for agent in ctx.agents[_pre_cloud_idx:]:
+        for server in agent.mcp_servers:
+            if (
+                server.command == "docker"
+                and len(server.args) >= 2
+                and server.args[0] == "run"
+                and not server.packages
+            ):
+                _cloud_image_targets.append((server.args[1], server))
+
+    if _cloud_image_targets:
+        from agent_bom.image import ImageScanError, scan_image
+
+        # Deduplicate: if multiple agents share the same image, scan once and share packages
+        _seen: dict[str, list] = {}
+        for img_ref, srv in _cloud_image_targets:
+            _seen.setdefault(img_ref, []).append(srv)
+
+        con.print(f"\n[bold blue]Scanning {len(_seen)} cloud container image(s)...[/bold blue]\n")
+        for img_ref, servers in _seen.items():
+            try:
+                img_packages, strategy = scan_image(img_ref)
+                for srv in servers:
+                    srv.packages = img_packages
+                con.print(f"  [green]✓[/green] {img_ref}: {len(img_packages)} package(s) [dim](via {strategy})[/dim]")
+            except ImageScanError as exc:
+                con.print(f"  [yellow]⚠[/yellow] cloud image {img_ref}: {exc}")
+            except Exception as exc:
+                con.print(f"  [yellow]⚠[/yellow] cloud image {img_ref}: could not scan — {exc}")
 
     # Step 1y: SaaS connector discovery
     saas_connectors: list[tuple[str, dict]] = []

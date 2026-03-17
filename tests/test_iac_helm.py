@@ -222,6 +222,22 @@ class TestValuesYamlSecrets:
         findings = scan_values_yaml(p)
         assert "HELM-003" in _rule_ids(findings)
 
+    def test_jinja_template_variable_not_flagged(self, tmp_path):
+        """{{ .Values.* }} template references must NOT trigger HELM-003 — they
+        are resolved at deploy time and are not hardcoded secrets."""
+        p = _write(
+            tmp_path,
+            "values.yaml",
+            """\
+            app:
+              apiKey: "{{ .Values.global.apiKey }}"
+              password: "{{ .Values.db.password }}"
+              token: "{{ .Values.auth.token | default '' }}"
+        """,
+        )
+        findings = scan_values_yaml(p)
+        assert "HELM-003" not in _rule_ids(findings), "Jinja/Helm template variables should not be flagged as hardcoded secrets"
+
     def test_helm003_finding_has_critical_severity(self, tmp_path):
         p = _write(
             tmp_path,

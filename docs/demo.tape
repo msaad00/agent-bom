@@ -36,12 +36,12 @@ Enter
 Sleep 6s
 
 # ── 2. Full scan — discovery + vuln scan + blast radius ───────────────────────
-Type "cd /tmp && agent-bom scan --demo -p /tmp"
+Type "agent-bom scan --demo"
 Enter
 Sleep 18s
 
 # ── 3. Output formats — SARIF for GitHub Security tab ─────────────────────────
-Type "agent-bom scan --demo -p /tmp -f sarif -o /tmp/results.sarif -q && echo '✓ SARIF written to /tmp/results.sarif'"
+Type "agent-bom scan --demo -f sarif -o /tmp/results.sarif -q && echo '✓ SARIF written to /tmp/results.sarif'"
 Enter
 Sleep 8s
 

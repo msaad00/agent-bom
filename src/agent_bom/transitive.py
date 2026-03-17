@@ -499,6 +499,7 @@ async def resolve_transitive_dependencies(
     async with create_client(timeout=30.0) as client:
         tasks = []
 
+        unsupported_logged: set[str] = set()
         for pkg in packages:
             if pkg.ecosystem == "npm":
                 tasks.append(resolve_npm_dependencies(pkg, client, max_depth))
@@ -506,6 +507,13 @@ async def resolve_transitive_dependencies(
                 tasks.append(resolve_pypi_dependencies(pkg, client, max_depth))
             elif pkg.ecosystem in ("go", "golang"):
                 tasks.append(resolve_go_dependencies(pkg, client, max_depth))
+            elif pkg.ecosystem not in unsupported_logged:
+                _logger.debug(
+                    "Transitive resolution not available for ecosystem %r — skipping %s",
+                    pkg.ecosystem,
+                    pkg.name,
+                )
+                unsupported_logged.add(pkg.ecosystem)
 
         if tasks:
             results = await asyncio.gather(*tasks, return_exceptions=True)

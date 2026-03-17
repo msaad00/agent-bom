@@ -264,7 +264,7 @@ agent-bom mcp introspect --all --baseline baseline.json
 
 # Policy file — 17 conditions, zero code required
 # policy.yml:
-#   blocked_tools: [run_shell, exec_command]
+#   block_tools: [run_shell, exec_command]
 #   require_agent_identity: true
 #   rate_limit: {threshold: 50, window_seconds: 60}
 ```

@@ -278,6 +278,20 @@ def compute_exit_code(
                 exit_code = 1
                 break
 
+    # IaC findings also respect --fail-on-severity
+    if fail_on_severity and exit_code == 0 and report and report.iac_findings_data:
+        threshold = SEVERITY_ORDER.get(fail_on_severity, 0)
+        for f in report.iac_findings_data.get("findings", []):
+            sev = (f.get("severity") or "medium").lower()
+            if SEVERITY_ORDER.get(sev, 0) >= threshold:
+                if not quiet:
+                    con.print(
+                        f"\n  [red]Exiting with code 1: IaC {sev} misconfiguration"
+                        f" ({f.get('rule_id', '?')} in {f.get('file_path', '?')})[/red]"
+                    )
+                exit_code = 1
+                break
+
     # Two-tier: warn-on threshold (exit 0 with banner)
     if warn_on_severity and _active_blast_radii and exit_code == 0:
         warn_threshold = SEVERITY_ORDER.get(warn_on_severity.lower(), 0)

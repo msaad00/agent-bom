@@ -128,6 +128,54 @@ def to_sarif(report: AIBOMReport) -> dict:
             }
         results.append(result)
 
+    # IaC misconfiguration findings (Dockerfile, K8s, Terraform, CloudFormation)
+    iac_data = getattr(report, "iac_findings_data", None)
+    if iac_data:
+        iac_sev_map = {"critical": "error", "high": "error", "medium": "warning", "low": "note", "info": "none"}
+        iac_sev_score = {"critical": "9.0", "high": "7.0", "medium": "4.0", "low": "1.0", "info": "0.0"}
+        for finding in iac_data.get("findings", []):
+            sev = finding.get("severity", "medium").lower()
+            rule_id = f"iac/{finding.get('rule_id', 'unknown')}"
+            level = iac_sev_map.get(sev, "warning")
+            file_path = finding.get("file_path", "unknown") or "unknown"
+            line_num = finding.get("line_number") or 1
+
+            if rule_id not in seen_rule_ids:
+                seen_rule_ids.add(rule_id)
+                rules.append(
+                    {
+                        "id": rule_id,
+                        "shortDescription": {"text": finding.get("title", rule_id)},
+                        "fullDescription": {"text": finding.get("message", finding.get("title", ""))},
+                        "defaultConfiguration": {"level": level},
+                        "properties": {
+                            "security-severity": iac_sev_score.get(sev, "4.0"),
+                            "category": finding.get("category", "iac"),
+                            "compliance": finding.get("compliance", []),
+                        },
+                    }
+                )
+
+            fp_input = f"{rule_id}:{file_path}:{line_num}"
+            fingerprint = hashlib.sha256(fp_input.encode()).hexdigest()
+            results.append(
+                {
+                    "ruleId": rule_id,
+                    "level": level,
+                    "kind": "fail",
+                    "message": {"text": finding.get("message", finding.get("title", "IaC misconfiguration"))},
+                    "fingerprints": {"agent-bom/v1": fingerprint},
+                    "locations": [
+                        {
+                            "physicalLocation": {
+                                "artifactLocation": {"uri": file_path, "uriBaseId": "%SRCROOT%"},
+                                "region": {"startLine": line_num, "startColumn": 1},
+                            },
+                        }
+                    ],
+                }
+            )
+
     # AI inventory findings (shadow AI, deprecated models, API keys, invisible Unicode)
     ai_inv = getattr(report, "ai_inventory_data", None)
     if ai_inv:

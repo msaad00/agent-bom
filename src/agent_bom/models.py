@@ -500,6 +500,7 @@ class AIBOMReport:
     aisvs_benchmark_data: Optional[dict] = None  # Serialized AISVS compliance results
     vector_db_scan_data: Optional[list] = None  # Serialized vector DB security assessments
     gpu_infra_data: Optional[dict] = None  # Serialized GPU/AI compute infra scan results
+    iac_findings_data: Optional[dict] = None  # Serialized IaC misconfiguration findings (set by CLI)
     runtime_correlation: Optional[dict] = None  # Runtime ↔ scan correlation (proxy audit vs CVE findings)
     training_pipelines: Optional[dict] = None  # Serialized TrainingPipelineScanResult
     dataset_cards: Optional[dict] = None  # Serialized DatasetScanResult

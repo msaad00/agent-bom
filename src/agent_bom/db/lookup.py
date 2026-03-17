@@ -158,19 +158,20 @@ def _version_affected(
             if ver >= Version(fix):
                 return False
         except InvalidVersion:
-            # Fixed version is a commit hash — we can't compare, so assume
-            # the package is NOT affected (conservative: avoids false positive).
-            _logger.debug("Unparseable fixed version %r for %r — skipping advisory", fix, version)
-            return False
+            # Fixed version is a commit hash or non-semver string — we can't compare.
+            # Conservatively assume the package IS affected until a parseable fix is known.
+            # Returning True (affected) is the safe default; returning False would silently
+            # drop real CVEs from scan results.
+            _logger.warning("Unparseable fixed version %r for %r — assuming affected", fix, version)
 
     if last:
         try:
             if ver > Version(last):
                 return False
         except InvalidVersion:
-            # Unparseable last_affected — can't determine range, skip it.
-            _logger.debug("Unparseable last_affected %r for %r — skipping advisory", last, version)
-            return False
+            # Unparseable last_affected — can't determine the upper bound; conservatively
+            # assume the package is still within the affected range.
+            _logger.warning("Unparseable last_affected %r for %r — assuming affected", last, version)
 
     return True
 

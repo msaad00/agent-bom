@@ -19,6 +19,7 @@ graph TB
         SBOM_Cmd["agent-bom sbom\nIngest CycloneDX / SPDX"]
         Cloud_Cmd["agent-bom cloud\nAWS / Azure / GCP"]
         Check_Cmd["agent-bom check\nPre-install CVE gate"]
+        Run_Cmd["agent-bom run\nRuntime MCP proxy"]
     end
 
     subgraph Core["Core Engine"]
@@ -46,6 +47,7 @@ graph TB
     IAC_Cmd --> IaC_Engine
     Cloud_Cmd --> CIS
     Check_Cmd --> Scanner
+    Run_Cmd --> Proxy
 
     Discovery --> Parser
     Parser --> Scanner

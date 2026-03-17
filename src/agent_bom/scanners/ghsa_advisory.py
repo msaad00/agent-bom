@@ -85,16 +85,31 @@ def _extract_fixed_version(advisory: dict, package_name: str, ecosystem: str = "
     return None
 
 
-def _get_vulnerable_range_for_package(advisory: dict, package_name: str, ecosystem: str = "") -> str | None:
-    """Return the ``vulnerable_version_range`` string for *package_name* in *advisory*."""
+def _get_vulnerable_ranges_for_package(advisory: dict, package_name: str, ecosystem: str = "") -> list[str]:
+    """Return all ``vulnerable_version_range`` strings for *package_name* in *advisory*.
+
+    An advisory may have multiple entries for the same package covering disjoint version
+    windows (e.g., "< 1.0" AND ">= 1.5, < 2.0").  All must be checked — affected if ANY
+    range matches (OR semantics across entries).
+    """
     norm_input = normalize_package_name(package_name, ecosystem)
+    ranges: list[str] = []
     for vuln in advisory.get("vulnerabilities", []):
         pkg = vuln.get("package", {})
         pkg_eco = pkg.get("ecosystem", ecosystem)
         osv_norm = normalize_package_name(pkg.get("name", ""), pkg_eco)
         if osv_norm == norm_input:
-            return vuln.get("vulnerable_version_range") or None
-    return None
+            r = vuln.get("vulnerable_version_range")
+            if r:
+                ranges.append(r)
+    return ranges
+
+
+# Kept for backwards compatibility with any external callers.
+def _get_vulnerable_range_for_package(advisory: dict, package_name: str, ecosystem: str = "") -> str | None:
+    """Return the first ``vulnerable_version_range`` for *package_name*, or None."""
+    ranges = _get_vulnerable_ranges_for_package(advisory, package_name, ecosystem)
+    return ranges[0] if ranges else None
 
 
 def _installed_version_is_affected(installed: str, vuln_range: str) -> bool:
@@ -302,8 +317,10 @@ async def check_github_advisories(
                             # patched_versions is null in current GHSA API responses.
                             # Use vulnerable_version_range to check whether the
                             # installed version actually falls in the affected range.
-                            vuln_range = _get_vulnerable_range_for_package(advisory, target_pkg.name, target_pkg.ecosystem)
-                            if vuln_range and not _installed_version_is_affected(target_pkg.version, vuln_range):
+                            # An advisory may list MULTIPLE disjoint ranges for the same
+                            # package — version is affected if it matches ANY of them.
+                            vuln_ranges = _get_vulnerable_ranges_for_package(advisory, target_pkg.name, target_pkg.ecosystem)
+                            if vuln_ranges and not any(_installed_version_is_affected(target_pkg.version, r) for r in vuln_ranges):
                                 continue
 
                     vuln = Vulnerability(

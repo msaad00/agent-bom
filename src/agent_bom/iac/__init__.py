@@ -1,4 +1,4 @@
-"""IaC misconfiguration scanning — Dockerfile, Kubernetes, Terraform, CloudFormation.
+"""IaC misconfiguration scanning — Dockerfile, Kubernetes, Terraform, CloudFormation, Helm.
 
 Coordinator module that discovers and scans IaC files across all supported
 formats.  Each scanner is regex/YAML-based with zero external dependencies.
@@ -16,13 +16,21 @@ Usage::
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from agent_bom.iac.cloudformation import _is_cloudformation, scan_cloudformation
 from agent_bom.iac.dockerfile import scan_dockerfile
+from agent_bom.iac.helm import scan_chart_yaml, scan_values_yaml
 from agent_bom.iac.kubernetes import scan_k8s_manifest
 from agent_bom.iac.models import IaCFinding
 from agent_bom.iac.terraform_security import scan_terraform_security
+
+__all__ = [
+    "scan_iac_directory",
+    "scan_chart_yaml",
+    "scan_values_yaml",
+]
 
 # Dockerfile filename patterns
 _DOCKERFILE_NAMES = frozenset(
@@ -38,6 +46,22 @@ _DOCKERFILE_NAMES = frozenset(
 
 # K8s manifest filename suffixes + directory hints
 _K8S_DIRS = frozenset({"k8s", "kubernetes", "deploy", "manifests", "helm"})
+
+# Helm Chart.yaml names (case-insensitive)
+_CHART_YAML_NAMES = frozenset({"Chart.yaml", "chart.yaml"})
+
+# values.yaml / values-*.yaml pattern
+_VALUES_YAML_RE = re.compile(r"^values(?:-[a-zA-Z0-9_-]+)?\.ya?ml$")
+
+
+def _is_chart_yaml(path: Path) -> bool:
+    """Check if a file is a Helm Chart.yaml."""
+    return path.name in _CHART_YAML_NAMES
+
+
+def _is_values_yaml(path: Path) -> bool:
+    """Check if a file is a Helm values file (values.yaml or values-*.yaml)."""
+    return bool(_VALUES_YAML_RE.match(path.name))
 
 
 def _is_dockerfile(path: Path) -> bool:
@@ -100,7 +124,11 @@ def scan_iac_directory(root: str | Path) -> list[IaCFinding]:
         if "node_modules" in path.parts or "__pycache__" in path.parts:
             continue
 
-        if _is_dockerfile(path):
+        if _is_chart_yaml(path):
+            findings.extend(scan_chart_yaml(path))
+        elif _is_values_yaml(path):
+            findings.extend(scan_values_yaml(path))
+        elif _is_dockerfile(path):
             findings.extend(scan_dockerfile(path))
         elif path.suffix == ".tf":
             findings.extend(scan_terraform_security(path))

@@ -182,7 +182,7 @@ Policy conditions (17 declarative + expression engine):
 
 ```yaml
 # policy.yml
-blocked_tools: [run_shell, exec_command, delete_file]
+block_tools: [run_shell, exec_command, delete_file]
 require_agent_identity: true
 rate_limit:
   threshold: 50

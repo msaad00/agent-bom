@@ -121,8 +121,8 @@ class RotatingAuditLog:
                 Path(self._path).rename(rotated)
                 self._file = self._open(self._path)
                 logger.info("Rotated audit log at %d bytes", size)
-        except OSError:
-            pass
+        except OSError as _exc:
+            logger.warning("Audit log rotation failed: %s — log may grow unbounded", _exc)
 
 
 # ─── Proxy metrics ──────────────────────────────────────────────────────────
@@ -881,6 +881,24 @@ async def run_proxy(
                     if rate_tracker:
                         rate_alerts = rate_tracker.record(tool_name)
                         _handle_alerts(rate_alerts, log_file)
+                        if rate_alerts and not log_only:
+                            rl_reason = rate_alerts[0].message
+                            metrics.record_blocked("rate_limit")
+                            if log_file:
+                                log_tool_call(
+                                    log_file,
+                                    tool_name,
+                                    arguments,
+                                    "blocked",
+                                    rl_reason,
+                                    payload_sha256=p_hash,
+                                    message_id=msg_id,
+                                    agent_id=agent_id,
+                                )
+                            error_resp = make_error_response(msg_id, -32600, rl_reason)
+                            sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
+                            sys.stdout.buffer.flush()
+                            continue
 
                     # Runtime detectors: sequence analysis
                     seq_alerts = seq_analyzer.record(tool_name)
@@ -972,9 +990,11 @@ async def run_proxy(
                     drift_alerts = drift_detector.check(new_tools)
                     _handle_alerts(drift_alerts, log_file)
 
-                # Runtime detector: credential leak in responses
-                if cred_detector and "result" in msg:
-                    result_text = json.dumps(msg.get("result", ""))
+                # Runtime detector: credential leak in responses AND errors
+                # Error fields can contain exception messages that include secrets.
+                if cred_detector and ("result" in msg or "error" in msg):
+                    resp_content = msg.get("result") if "result" in msg else msg.get("error", "")
+                    result_text = json.dumps(resp_content)
                     resp_id = msg.get("id")
                     tool_for_resp = ""
                     if resp_id is not None and resp_id in pending_calls:

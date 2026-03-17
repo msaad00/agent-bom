@@ -558,6 +558,29 @@ def test_build_remediation_plan_with_items():
     assert plan[0]["package"] == "lodash"
 
 
+def test_build_remediation_plan_no_downgrade():
+    """Regression: multi-branch OSV advisories must not produce downgrade entries.
+
+    Django 3.2.0 CVE has two fix branches: 2.2.26 (older branch) and 3.2.14.
+    The remediation plan must emit exactly ONE entry for django@3.2.0 pointing
+    to 3.2.14 — not a second entry pointing backward to 2.2.26.
+    """
+    pkg = Package(name="django", version="3.2.0", ecosystem="pypi", vulnerabilities=[])
+    vuln_downgrade = Vulnerability(
+        id="CVE-2025-9999", severity=Severity.HIGH, summary="Django XSS", fixed_version="2.2.26"
+    )
+    vuln_valid = Vulnerability(
+        id="CVE-2025-9999", severity=Severity.HIGH, summary="Django XSS", fixed_version="3.2.14"
+    )
+    br1 = BlastRadius(vulnerability=vuln_downgrade, package=pkg, affected_agents=[], affected_servers=[], exposed_credentials=[], exposed_tools=[])
+    br2 = BlastRadius(vulnerability=vuln_valid, package=pkg, affected_agents=[], affected_servers=[], exposed_credentials=[], exposed_tools=[])
+    plan = build_remediation_plan([br1, br2])
+    # Must be exactly one entry (grouped by package+ecosystem+version)
+    assert len(plan) == 1
+    # fix must be the forward upgrade, not the downgrade
+    assert plan[0]["fix"] == "3.2.14"
+
+
 # ── to_json (from cov2) ─────────────────────────────────────────────────────
 
 

@@ -929,12 +929,23 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
     severity_order = {Severity.CRITICAL: 4, Severity.HIGH: 3, Severity.MEDIUM: 2, Severity.LOW: 1, Severity.NONE: 0}
 
     for br in blast_radii:
-        key = (br.package.name, br.package.ecosystem, br.package.version, br.vulnerability.fixed_version)
+        key = (br.package.name, br.package.ecosystem, br.package.version)
         g = groups[key]
         g["package"] = br.package.name
         g["ecosystem"] = br.package.ecosystem
         g["current"] = br.package.version
-        g["fix"] = br.vulnerability.fixed_version
+        # Only accept fixed_version that is a forward upgrade; pick the minimum valid fix
+        fv = br.vulnerability.fixed_version
+        if fv:
+            try:
+                from packaging.version import Version as _PkgV
+
+                if _PkgV(fv) > _PkgV(br.package.version):
+                    if g["fix"] is None or _PkgV(fv) < _PkgV(g["fix"]):
+                        g["fix"] = fv
+            except Exception:
+                if g["fix"] is None:
+                    g["fix"] = fv
         g["vulns"].append(br.vulnerability.id)
         for a in br.affected_agents:
             g["agents"].add(a.name)

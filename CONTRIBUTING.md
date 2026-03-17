@@ -146,20 +146,9 @@ CI checks that run on every PR:
 
 ## Architecture overview
 
-See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full module map. Key paths:
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for system diagrams and the full module map.
 
-| Path | Purpose |
-|------|---------|
-| `src/agent_bom/cli.py` | All CLI commands (Click) |
-| `src/agent_bom/scanners/__init__.py` | OSV batch scan + detail enrichment |
-| `src/agent_bom/enrichment.py` | NVD + EPSS + CISA KEV enrichment |
-| `src/agent_bom/discovery/__init__.py` | MCP client config discovery (22 clients) |
-| `src/agent_bom/models.py` | Core data models (Package, Vulnerability, Agent…) |
-| `src/agent_bom/runtime/` | Proxy detectors (7 detectors) |
-| `src/agent_bom/api/server.py` | FastAPI REST server |
-| `src/agent_bom/mcp_server.py` | MCP server (32 tools) |
-
-The scan pipeline: **discover** MCP configs → **parse** packages → **scan** via OSV batch API → **enrich** full vuln details → **optional** NVD/EPSS/KEV enrichment → **output** (table, JSON, SARIF, CycloneDX…).
+Pipeline at a glance: **discover** MCP configs → **parse** packages → **scan** via OSV/NVD/GHSA → **enrich** (EPSS + KEV) → **blast radius** → **compliance tag** (14 frameworks) → **output** (JSON / SARIF / CycloneDX / console).
 
 ---
 

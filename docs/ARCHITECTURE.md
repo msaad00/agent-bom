@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the architecture of agent-bom through five diagrams covering the system overview, data flow pipeline, blast radius propagation, compliance framework mapping, and integration architecture.
+Five focused diagrams: system overview, scan pipeline, blast radius propagation, compliance tagging, and integration.
 
 ---
 
-## 1. System Architecture Overview
+## 1. System Overview
 
-High-level view of CLI commands, the core processing engine, and output channels.
+CLI commands, core engine, and output channels.
 
 ```mermaid
 graph TB
@@ -23,48 +23,38 @@ graph TB
     end
 
     subgraph Core["Core Engine"]
-        Discovery["Discovery\n22 MCP clients + auto-detect"]
+        Discovery["Discovery\n22 MCP clients"]
         Parser["Package Parser\n11 ecosystems"]
-        Scanner["CVE Scanner\nOSV + NVD + GHSA + local DB"]
-        Blast["Blast Radius\nAgent → CVE → credential chain"]
-        Enrichment["Enrichment\nEPSS + KEV + NVD CVSS"]
-        IaC_Engine["IaC Engine\n82 rules, 4 formats"]
-        CIS["CIS Benchmarks\nAWS 60 + Azure 95 + GCP 59"]
+        Scanner["CVE Scanner\nOSV + NVD + GHSA"]
+        Blast["Blast Radius\nCVE → agent → credentials → tools"]
+        IaC["IaC Engine\n82 rules"]
+        CIS["CIS Benchmarks\nAWS / Azure / GCP"]
     end
 
     subgraph Output["Output"]
-        Console["Console\nCompact / verbose"]
-        Formats["17 formats\nJSON / SARIF / HTML / CycloneDX"]
-        API["REST API\n+ 32 MCP tools"]
+        Console["Console\nTable / verbose"]
+        Formats["Formats\nJSON / SARIF / HTML / CycloneDX"]
+        API["REST API + MCP\n32 tools"]
         Proxy["Runtime Proxy\n7 detectors"]
     end
 
-    Scan --> Discovery
-    MCP_Cmd --> Discovery
-    Image_Cmd --> Parser
-    FS_Cmd --> Parser
-    SBOM_Cmd --> Parser
-    IAC_Cmd --> IaC_Engine
+    Scan & MCP_Cmd --> Discovery
+    Image_Cmd & FS_Cmd & SBOM_Cmd --> Parser
+    IAC_Cmd --> IaC
     Cloud_Cmd --> CIS
     Check_Cmd --> Scanner
     Run_Cmd --> Proxy
 
-    Discovery --> Parser
-    Parser --> Scanner
-    Scanner --> Blast
-    Scanner --> Enrichment
-    Blast --> Console
-    Blast --> Formats
-    Blast --> API
-    IaC_Engine --> Console
-    CIS --> Console
+    Discovery --> Parser --> Scanner --> Blast
+    Blast --> Console & Formats & API
+    IaC & CIS --> Console
 ```
 
 ---
 
-## 2. Data Flow Pipeline
+## 2. Scan Pipeline
 
-Sequence of operations from user invocation through enrichment to final report generation.
+Sequence of operations from invocation to report.
 
 ```mermaid
 sequenceDiagram
@@ -74,7 +64,6 @@ sequenceDiagram
     participant Scanner
     participant Enrichment
     participant BlastRadius
-    participant ComplianceTagger
     participant Reporter
 
     User->>CLI: agent-bom scan [options]
@@ -86,204 +75,117 @@ sequenceDiagram
     Scanner-->>CLI: Raw CVE results
 
     CLI->>Enrichment: CVE IDs
-    Enrichment->>Enrichment: NVD CVSS v4
-    Enrichment->>Enrichment: EPSS exploit probability
-    Enrichment->>Enrichment: CISA KEV check
-    Enrichment->>Enrichment: GHSA + NVIDIA CSAF
+    Enrichment->>Enrichment: NVD CVSS · EPSS · CISA KEV · GHSA
     Enrichment-->>CLI: Enriched vulnerabilities
 
     CLI->>BlastRadius: Vulns + topology
-    BlastRadius->>BlastRadius: Map CVE to package to server
-    BlastRadius->>BlastRadius: Map server to agents + credentials + tools
-    BlastRadius-->>CLI: Blast radius chains
-
-    CLI->>ComplianceTagger: Findings
-    ComplianceTagger->>ComplianceTagger: Tag 14 frameworks
-    ComplianceTagger-->>CLI: Tagged findings
-
-    CLI->>CLI: Asset tracking (first_seen / resolved / MTTR)
+    BlastRadius->>BlastRadius: CVE → package → server → agent → creds → tools
+    BlastRadius->>BlastRadius: Tag 14 compliance frameworks
+    BlastRadius-->>CLI: Scored + tagged findings
 
     CLI->>Reporter: Full results
-    Reporter-->>User: Console / JSON / HTML / SBOM / SARIF
+    Reporter-->>User: Console / JSON / SARIF / HTML / SBOM
 ```
 
 ---
 
 ## 3. Blast Radius Propagation
 
-How a single CVE propagates through the AI agent stack, exposing credentials and tools.
+How one CVE propagates through the AI agent stack.
 
 ```mermaid
 graph LR
-    CVE["CVE-2025-XXXX\nCRITICAL CVSS 9.8"]
+    CVE["CVE-2025-XXXX\nCRITICAL · CVSS 9.8"]
     PKG["Vulnerable Package\nnpm / PyPI / Go"]
-    SRV["MCP Server\nunverified / root"]
+    SRV["MCP Server\nunverified · root"]
 
-    AGT1["Agent: Cursor IDE\n4 servers / 12 tools"]
-    AGT2["Agent: Claude Desktop\n3 servers / 8 tools"]
+    AGT1["Cursor IDE\n4 servers · 12 tools"]
+    AGT2["Claude Desktop\n3 servers · 8 tools"]
 
-    CRED1["ANTHROPIC_KEY"]
-    CRED2["AWS_SECRET"]
-    CRED3["DB_URL"]
+    CRED["ANTHROPIC_KEY\nAWS_SECRET · DB_URL"]
+    TOOL["query_db · read_file\nwrite_file · run_shell"]
 
-    TOOL1["query_db"]
-    TOOL2["read_file"]
-    TOOL3["write_file"]
-    TOOL4["run_shell"]
-
-    CVE -->|"affects"| PKG
-    PKG -->|"dependency of"| SRV
-
-    SRV -->|"used by"| AGT1
-    SRV -->|"used by"| AGT2
-
-    AGT1 -->|"exposes"| CRED1
-    AGT1 -->|"exposes"| CRED2
-    AGT2 -->|"exposes"| CRED3
-
-    AGT1 -->|"reaches"| TOOL1
-    AGT1 -->|"reaches"| TOOL2
-    AGT2 -->|"reaches"| TOOL3
-    AGT2 -->|"reaches"| TOOL4
+    CVE -->|affects| PKG
+    PKG -->|dependency of| SRV
+    SRV -->|used by| AGT1 & AGT2
+    AGT1 & AGT2 -->|exposes| CRED
+    AGT1 & AGT2 -->|reaches| TOOL
 
     style CVE fill:#dc2626,color:#fff
     style PKG fill:#ea580c,color:#fff
     style SRV fill:#d97706,color:#fff
     style AGT1 fill:#2563eb,color:#fff
     style AGT2 fill:#2563eb,color:#fff
-    style CRED1 fill:#7c3aed,color:#fff
-    style CRED2 fill:#7c3aed,color:#fff
-    style CRED3 fill:#7c3aed,color:#fff
-    style TOOL1 fill:#059669,color:#fff
-    style TOOL2 fill:#059669,color:#fff
-    style TOOL3 fill:#059669,color:#fff
-    style TOOL4 fill:#059669,color:#fff
+    style CRED fill:#7c3aed,color:#fff
+    style TOOL fill:#059669,color:#fff
 ```
 
-**Color key:** Red = CVE, Orange = Package, Amber = Server, Blue = Agent, Purple = Credential, Green = Tool
+**Color key:** Red = CVE · Orange = Package · Amber = Server · Blue = Agent · Purple = Credentials · Green = Tools
 
 ---
 
-## 4. Compliance Framework Mapping
+## 4. Compliance Tagging
 
-Every blast radius finding is tagged against 14 compliance frameworks simultaneously.
+Every finding is tagged against 14 frameworks, grouped into four families.
 
 ```mermaid
-graph TD
-    Finding["Blast Radius Finding\nCVE + severity + context"]
+graph LR
+    F["Finding\nCVE + severity + context"]
 
-    OWASP_LLM["OWASP LLM Top 10\nLLM01 - LLM10"]
-    OWASP_MCP["OWASP MCP Top 10\nMCP01 - MCP10"]
-    OWASP_AGT["OWASP Agentic Top 10\nASI01 - ASI10"]
-    OWASP_AISVS["OWASP AISVS v1.0\nAI Supply Chain / Runtime Controls"]
-    ATLAS["MITRE ATLAS\nAML.T0010 / T0043 / T0051"]
-    NIST_AI["NIST AI RMF 1.0\nGovern / Map / Measure / Manage"]
-    NIST_CSF["NIST CSF 2.0\nIdentify / Protect / Detect / Respond"]
-    NIST_53["NIST 800-53 Rev 5\nCM-8 / RA-5 / SI-2 / SR-3"]
-    FEDRAMP["FedRAMP Moderate\nDerived from 800-53 controls"]
-    EU_AI["EU AI Act\nART-5 through ART-17"]
-    ISO["ISO 27001\nAnnex A controls"]
-    SOC2["SOC 2\nTrust Services Criteria"]
-    CIS["CIS Controls v8\nIG1 / IG2 / IG3"]
-    CMMC["CMMC 2.0\nLevel 1-3 practices"]
+    subgraph OWASP["OWASP"]
+        O1["LLM Top 10"]
+        O2["MCP Top 10"]
+        O3["Agentic Top 10"]
+        O4["AISVS v1.0"]
+    end
 
-    Finding --> OWASP_LLM
-    Finding --> OWASP_MCP
-    Finding --> OWASP_AGT
-    Finding --> OWASP_AISVS
-    Finding --> ATLAS
-    Finding --> NIST_AI
-    Finding --> NIST_CSF
-    Finding --> NIST_53
-    Finding --> FEDRAMP
-    Finding --> EU_AI
-    Finding --> ISO
-    Finding --> SOC2
-    Finding --> CIS
-    Finding --> CMMC
+    subgraph NIST["NIST / FedRAMP"]
+        N1["AI RMF 1.0"]
+        N2["CSF 2.0"]
+        N3["800-53 Rev 5"]
+        N4["FedRAMP"]
+    end
 
-    Tagged["Tagged Finding\nAll framework controls attached"]
+    subgraph INTL["Regulatory"]
+        I1["EU AI Act"]
+        I2["ISO 27001"]
+        I3["SOC 2"]
+        I4["CIS Controls v8"]
+        I5["CMMC 2.0"]
+    end
 
-    OWASP_LLM --> Tagged
-    OWASP_MCP --> Tagged
-    OWASP_AGT --> Tagged
-    OWASP_AISVS --> Tagged
-    ATLAS --> Tagged
-    NIST_AI --> Tagged
-    NIST_CSF --> Tagged
-    NIST_53 --> Tagged
-    FEDRAMP --> Tagged
-    EU_AI --> Tagged
-    ISO --> Tagged
-    SOC2 --> Tagged
-    CIS --> Tagged
-    CMMC --> Tagged
+    ATL["MITRE ATLAS"]
 
-    style Finding fill:#dc2626,color:#fff
-    style Tagged fill:#059669,color:#fff
+    F --> OWASP & NIST & INTL & ATL
+
+    T["Tagged Finding\n14 controls attached"]
+    OWASP & NIST & INTL & ATL --> T
+
+    style F fill:#dc2626,color:#fff
+    style T fill:#059669,color:#fff
 ```
 
 ---
 
-## 5. Integration Architecture
+## 5. Integration
 
-How agent-bom integrates with CI/CD pipelines, runtime environments, cloud providers, and enterprise systems.
+How agent-bom fits into CI/CD, runtime, cloud, and enterprise tooling.
 
 ```mermaid
 graph TB
-    subgraph CICD["CI/CD Pipeline"]
-        GHA["GitHub Actions"]
-        Policy["Policy Gate\n--fail-on-severity"]
-        SARIF["SARIF Upload\nGitHub Security Tab"]
-    end
-
-    subgraph Runtime["Runtime"]
-        Proxy["MCP Proxy\nPayload Integrity"]
-        Sidecar["Runtime Sidecar\nDocker Container"]
-        OTel["OpenTelemetry\nTrace Ingestion"]
-    end
-
-    subgraph Hosts["MCP Hosts"]
-        Claude["Claude Desktop / Code"]
-        Cursor["Cursor IDE"]
-        Codex["Codex CLI"]
-        Gemini["Gemini CLI"]
-        Others["14 more clients"]
-    end
-
-    subgraph CloudProv["Cloud Providers"]
-        AWS["AWS\nBedrock / Lambda / EKS"]
-        Azure["Azure\nAI Foundry / Functions"]
-        GCP["GCP\nVertex AI / GKE"]
-        Snow["Snowflake\nCortex / MCP / Snowpark"]
-    end
-
-    subgraph Export["Enterprise Export"]
-        SIEM["SIEM / Splunk"]
-        Slack["Slack Alerts"]
-        Jira["Jira Tickets"]
-        Webhook["Webhooks"]
-        Prom["Prometheus / Grafana"]
-    end
-
     AB["agent-bom\nCore Engine"]
 
-    GHA -->|"scan step"| AB
-    AB -->|"pass/fail"| Policy
-    AB -->|"upload"| SARIF
+    CI["CI/CD\nGitHub Actions · Policy Gate · SARIF Upload"]
+    RT["Runtime\nMCP Proxy · Docker Sidecar · OpenTelemetry"]
+    HOSTS["MCP Hosts\n22 client types"]
+    CLOUD["Cloud Providers\nAWS · Azure · GCP · Snowflake"]
+    ENT["Enterprise\nSIEM · Slack · Jira · Webhooks · Prometheus"]
 
-    Proxy -->|"intercept"| AB
-    Sidecar -->|"monitor"| AB
-    OTel -->|"traces"| AB
-
-    Hosts -->|"config discovery"| AB
-    CloudProv -->|"API discovery"| AB
-
-    AB -->|"alerts"| Slack
-    AB -->|"tickets"| Jira
-    AB -->|"events"| Webhook
-    AB -->|"metrics"| Prom
-    AB -->|"logs"| SIEM
+    CI -->|scan step| AB
+    RT -->|intercept / monitor| AB
+    HOSTS -->|config discovery| AB
+    CLOUD -->|API discovery| AB
+    AB -->|alerts / tickets / metrics| ENT
 
     style AB fill:#2563eb,color:#fff
 ```
@@ -294,20 +196,17 @@ graph TB
 
 | Module | Path | Responsibility |
 |--------|------|----------------|
-| CLI | `src/agent_bom/cli.py` | Click entry point, flag parsing |
+| CLI | `src/agent_bom/cli/` | Click entry point, command dispatch |
 | Discovery | `src/agent_bom/discovery/__init__.py` | MCP client config discovery (22 clients) |
 | Parsers | `src/agent_bom/parsers/__init__.py` | Package extraction + MCP registry lookup |
-| Skill Parsers | `src/agent_bom/parsers/skills.py` + `skill_audit.py` | SKILL.md/CLAUDE.md behavioral audit, typosquat, Sigstore trust |
-| Browser Extensions | `src/agent_bom/parsers/browser_extensions.py` | Chrome/Edge/Brave/Firefox manifest.json permission auditor |
-| Scanners | `src/agent_bom/scanners/__init__.py` | OSV batch scan + CVSS + AI risk tagging |
-| Output | `src/agent_bom/output/__init__.py` | JSON, CycloneDX, SARIF, SPDX, console output |
-| Policy | `src/agent_bom/policy.py` | Policy-as-code engine |
-| SBOM | `src/agent_bom/sbom.py` | SBOM ingestion (CycloneDX, SPDX) |
-| Image | `src/agent_bom/image.py` | Docker image scanning |
+| Scanners | `src/agent_bom/scanners/__init__.py` | OSV batch scan + CVSS + compliance tagging |
+| Enrichment | `src/agent_bom/enrichment.py` | NVD + EPSS + CISA KEV enrichment |
+| Models | `src/agent_bom/models.py` | Core data models (Package, Vulnerability, Agent, BlastRadius) |
+| Output | `src/agent_bom/output/__init__.py` | JSON, CycloneDX, SARIF, SPDX, console |
+| Policy | `src/agent_bom/policy.py` | Policy-as-code engine (17 conditions) |
+| Proxy | `src/agent_bom/proxy.py` | Runtime MCP proxy (7 behavioral detectors) |
 | MCP Server | `src/agent_bom/mcp_server.py` | FastMCP server (32 tools) |
+| Cloud | `src/agent_bom/cloud/` | AWS, Azure, GCP, Snowflake, Databricks, ClickHouse |
 | Asset Tracker | `src/agent_bom/asset_tracker.py` | Persistent vuln tracking — first_seen, resolved, MTTR |
 | Context Graph | `src/agent_bom/context_graph.py` | Lateral movement analysis |
-| Cloud | `src/agent_bom/cloud/` | AWS, Azure, GCP, Snowflake, Databricks, Nebius |
-| Logging | `src/agent_bom/logging_config.py` | Structured JSON/console logging, env var config |
 | Guard | `src/agent_bom/guard.py` | Pre-install CVE scan for pip/npm packages |
-| Glama | `src/agent_bom/glama.py` | Glama.ai registry sync (18,000+ MCP servers) |

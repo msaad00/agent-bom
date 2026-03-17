@@ -18,11 +18,13 @@ _logger = logging.getLogger(__name__)
 
 NPM_REGISTRY = "https://registry.npmjs.org"
 PYPI_API = "https://pypi.org/pypi"
+GO_PROXY = "https://proxy.golang.org"
 
 # Cache to avoid re-fetching the same package metadata (bounded)
 _MAX_TRANSITIVE_CACHE = 5_000
 _npm_cache: dict[str, dict] = {}
 _pypi_cache: dict[str, dict] = {}
+_go_cache: dict[str, str] = {}
 
 
 def _cache_put(cache: dict[str, dict], key: str, value: dict) -> None:
@@ -367,6 +369,126 @@ async def resolve_pypi_dependencies(
     return dependencies
 
 
+def _go_encode_module(module: str) -> str:
+    """Encode a Go module path for proxy.golang.org.
+
+    The Go module proxy uses case-encoding: uppercase letters become
+    ``!`` + lowercase (e.g., ``GitHub.com`` → ``!github.com``).
+    Forward slashes are kept as literal path separators in the URL.
+    """
+    parts: list[str] = []
+    for ch in module:
+        if ch.isupper():
+            parts.append("!")
+            parts.append(ch.lower())
+        else:
+            parts.append(ch)
+    return "".join(parts)
+
+
+def _parse_go_mod_requires(go_mod_text: str) -> list[tuple[str, str]]:
+    """Parse ``require`` directives from go.mod content.
+
+    Handles both single-line (``require module version``) and
+    block-style (``require ( ... )``) forms.  Lines ending with
+    ``// indirect`` are included — callers decide what to do with them.
+
+    Returns a list of ``(module, version)`` tuples.
+    """
+    requires: list[tuple[str, str]] = []
+    in_block = False
+    for raw_line in go_mod_text.splitlines():
+        line = raw_line.strip()
+        # Strip inline comments
+        if "//" in line:
+            line = line[: line.index("//")].strip()
+        if not line:
+            continue
+        if line.startswith("require ("):
+            in_block = True
+            continue
+        if in_block:
+            if line == ")":
+                in_block = False
+                continue
+            parts = line.split()
+            if len(parts) >= 2:
+                requires.append((parts[0], parts[1]))
+        elif line.startswith("require "):
+            parts = line[len("require ") :].split()
+            if len(parts) >= 2:
+                requires.append((parts[0], parts[1]))
+    return requires
+
+
+async def fetch_go_mod(module: str, version: str, client: httpx.AsyncClient) -> Optional[str]:
+    """Fetch the go.mod file for a specific Go module version from the module proxy.
+
+    Returns the raw go.mod text on success, or ``None`` on any failure.
+    """
+    cache_key = f"{module}@{version}"
+    if cache_key in _go_cache:
+        return _go_cache[cache_key]
+
+    encoded = _go_encode_module(module)
+    url = f"{GO_PROXY}/{encoded}/@v/{version}.mod"
+    response = await request_with_retry(client, "GET", url)
+    if response and response.status_code == 200:
+        text = response.text
+        _cache_put(_go_cache, cache_key, text)  # type: ignore[arg-type]
+        return text
+    return None
+
+
+async def resolve_go_dependencies(
+    package: Package,
+    client: httpx.AsyncClient,
+    max_depth: int = 3,
+    current_depth: int = 0,
+    seen: Optional[set] = None,
+) -> list[Package]:
+    """Recursively resolve Go module dependencies via proxy.golang.org."""
+    if seen is None:
+        seen = set()
+
+    if current_depth >= max_depth:
+        return []
+
+    pkg_key = f"{package.name}@{package.version}"
+    if pkg_key in seen:
+        return []
+    seen.add(pkg_key)
+
+    go_mod_text = await fetch_go_mod(package.name, package.version, client)
+    if not go_mod_text:
+        return []
+
+    dependencies: list[Package] = []
+    for dep_module, dep_version in _parse_go_mod_requires(go_mod_text):
+        transitive_pkg = Package(
+            name=dep_module,
+            version=dep_version,
+            ecosystem="go",
+            purl=f"pkg:golang/{dep_module}@{dep_version}",
+            is_direct=False,
+            parent_package=package.name,
+            dependency_depth=current_depth + 1,
+            resolved_from_registry=True,
+        )
+        dependencies.append(transitive_pkg)
+
+        nested_deps = await resolve_go_dependencies(
+            transitive_pkg,
+            client,
+            max_depth,
+            current_depth + 1,
+            seen,
+        )
+        dependencies.extend(nested_deps)
+
+    return dependencies
+
+
 async def resolve_transitive_dependencies(
     packages: list[Package],
     max_depth: int = 3,
@@ -382,6 +504,8 @@ async def resolve_transitive_dependencies(
                 tasks.append(resolve_npm_dependencies(pkg, client, max_depth))
             elif pkg.ecosystem == "pypi":
                 tasks.append(resolve_pypi_dependencies(pkg, client, max_depth))
+            elif pkg.ecosystem in ("go", "golang"):
+                tasks.append(resolve_go_dependencies(pkg, client, max_depth))
 
         if tasks:
             results = await asyncio.gather(*tasks, return_exceptions=True)

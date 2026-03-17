@@ -1258,6 +1258,8 @@ def scan(
         report.vector_db_scan_data = [r.to_dict() for r in ctx.vector_db_results]
     if ctx.gpu_infra_report is not None:
         report.gpu_infra_data = ctx.gpu_infra_report.risk_summary
+    if ctx.iac_findings_data:
+        report.iac_findings_data = ctx.iac_findings_data
 
     # ── Context graph: lateral movement analysis ────────────────────
     if context_graph_flag and report.blast_radii:

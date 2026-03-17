@@ -187,3 +187,33 @@ def test_batch_parity_with_individual(tmp_db):
         batch_vulns = batch[(eco, name, version)]
         assert len(batch_vulns) == len(individual), f"Mismatch for {eco}:{name}@{version}"
         assert {v.id for v in batch_vulns} == {v.id for v in individual}
+
+
+# ---------------------------------------------------------------------------
+# Regression: unparseable fixed_version must not silently drop CVEs
+# ---------------------------------------------------------------------------
+
+
+def test_unparseable_fixed_version_reports_affected(tmp_db):
+    """Regression: when fixed version is a git hash, package is still reported as affected.
+
+    Previously, InvalidVersion caused a silent return False (not affected),
+    meaning real CVEs were dropped from scan results.
+    """
+    _insert_vuln(tmp_db, vuln_id="CVE-2024-HASH")
+    # Insert with a git commit hash as the fixed version — non-parseable by packaging.version
+    tmp_db.execute(
+        "INSERT OR REPLACE INTO affected(vuln_id,ecosystem,package_name,introduced,fixed,last_affected)"
+        " VALUES (?,?,?,?,?,'')",
+        ("CVE-2024-HASH", "pypi", "some-lib", "1.0.0", "abc123def456git"),
+    )
+    tmp_db.commit()
+
+    # Package is at version 1.5.0 — AFTER "introduced" but fix version is unparseable
+    vulns = lookup_package(tmp_db, "pypi", "some-lib", "1.5.0")
+    # Must be reported as affected (not silently dropped)
+    cve_ids = {v.id for v in vulns}
+    assert "CVE-2024-HASH" in cve_ids, (
+        "CVE with unparseable fixed version (git hash) was silently dropped; "
+        "should be conservatively reported as affected"
+    )

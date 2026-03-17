@@ -423,11 +423,29 @@ def log_tool_call(
 
 
 def _truncate_args(args: dict, max_value_len: int = 200) -> dict:
-    """Truncate long argument values for logging."""
+    """Truncate long argument values for logging; redact credential keys/values.
+
+    Applies the same key-name (SENSITIVE_PATTERNS) and value-pattern
+    (_VALUE_CREDENTIAL_PATTERNS) redaction used by ``sanitize_env_vars()``
+    so that tool call arguments containing API keys, tokens, or passwords
+    are never written to the audit log in plaintext.
+    """
+    from agent_bom.security import sanitize_env_vars
+
+    # Only string values are eligible for credential detection; collect them.
+    str_vals = {k: v for k, v in args.items() if isinstance(v, str)}
+    sanitized = sanitize_env_vars(str_vals)
+
     result = {}
     for k, v in args.items():
-        if isinstance(v, str) and len(v) > max_value_len:
-            result[k] = v[:max_value_len] + "...<truncated>"
+        if isinstance(v, str):
+            san = sanitized.get(k, v)
+            if san == "***REDACTED***":
+                result[k] = san
+            elif len(san) > max_value_len:
+                result[k] = san[:max_value_len] + "...<truncated>"
+            else:
+                result[k] = san
         else:
             result[k] = v
     return result
@@ -651,12 +669,15 @@ async def run_proxy(
 
     Returns the server process exit code.
     """
-    # Load policy if provided
+    # Load policy if provided — use validate_json_file for path validation,
+    # 10 MB size cap (DoS prevention), and safe JSON parsing.
     policy: dict = {}
     if policy_path:
         try:
-            policy = json.loads(Path(policy_path).read_text())
-        except (json.JSONDecodeError, OSError) as exc:
+            from agent_bom.security import SecurityError, validate_json_file
+
+            policy = validate_json_file(Path(policy_path))
+        except (json.JSONDecodeError, OSError, SecurityError) as exc:
             logger.error("Failed to load policy from %s: %s", policy_path, exc)
             raise SystemExit(1) from exc
 

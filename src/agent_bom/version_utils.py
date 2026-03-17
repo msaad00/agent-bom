@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+from urllib.parse import quote as _url_quote
 
 from agent_bom.http_client import request_with_retry
 
@@ -211,7 +212,7 @@ async def resolve_cargo_metadata(
     Returns (version, license).
     """
 
-    url = f"https://crates.io/api/v1/crates/{crate_name}"
+    url = f"https://crates.io/api/v1/crates/{_url_quote(crate_name, safe='')}"
     response = await request_with_retry(client, "GET", url)  # type: ignore[arg-type]
     if response and response.status_code == 200:
         try:
@@ -235,7 +236,9 @@ async def resolve_maven_metadata(
     Returns (version, None).
     """
 
-    url = f"https://search.maven.org/solrsearch/select?q=g:{group_id}+AND+a:{artifact_id}&rows=1&wt=json"
+    g = _url_quote(group_id, safe="")
+    a = _url_quote(artifact_id, safe="")
+    url = f"https://search.maven.org/solrsearch/select?q=g:{g}+AND+a:{a}&rows=1&wt=json"
     response = await request_with_retry(client, "GET", url)  # type: ignore[arg-type]
     if response and response.status_code == 200:
         try:

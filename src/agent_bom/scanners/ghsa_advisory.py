@@ -53,12 +53,16 @@ def _parse_ghsa_severity(advisory: dict) -> tuple[Severity, float | None]:
 def _extract_fixed_version(advisory: dict, package_name: str, ecosystem: str = "") -> str | None:
     """Extract the first patched version for a specific package.
 
-    Handles range strings like ``">= 4.18.0"``, ``">= 4.18.0, < 5.0.0"``,
-    and Ruby-style ``"~> 1.2.3"`` by extracting the lower bound.
+    Checks ``patched_versions`` first (older GHSA API format).  When that
+    field is null (current API behaviour), falls back to
+    ``vulnerable_version_range`` and extracts the exclusive upper bound for
+    ``< X`` constraints (the fix version is X in that case).
 
     Uses PEP 503 normalization for PyPI so that mixed-separator forms like
     ``Requests_OAuthlib`` match a normalized input of ``requests-oauthlib``.
     """
+    import re as _re
+
     norm_input = normalize_package_name(package_name, ecosystem)
     for vuln in advisory.get("vulnerabilities", []):
         pkg = vuln.get("package", {})
@@ -68,7 +72,65 @@ def _extract_fixed_version(advisory: dict, package_name: str, ecosystem: str = "
             patched = vuln.get("patched_versions")
             if patched:
                 return _parse_patched_range(patched)
+            # patched_versions is null in current GHSA API responses —
+            # attempt to derive the fix from an exclusive upper-bound range.
+            vuln_range = vuln.get("vulnerable_version_range") or ""
+            for part in vuln_range.split(","):
+                part = part.strip()
+                # "< X" → fix version is X (exclusive upper bound)
+                if part.startswith("<") and not part.startswith("<="):
+                    bound = part[1:].strip()
+                    if bound and _re.match(r"\d", bound):
+                        return bound
     return None
+
+
+def _get_vulnerable_range_for_package(advisory: dict, package_name: str, ecosystem: str = "") -> str | None:
+    """Return the ``vulnerable_version_range`` string for *package_name* in *advisory*."""
+    norm_input = normalize_package_name(package_name, ecosystem)
+    for vuln in advisory.get("vulnerabilities", []):
+        pkg = vuln.get("package", {})
+        pkg_eco = pkg.get("ecosystem", ecosystem)
+        osv_norm = normalize_package_name(pkg.get("name", ""), pkg_eco)
+        if osv_norm == norm_input:
+            return vuln.get("vulnerable_version_range") or None
+    return None
+
+
+def _installed_version_is_affected(installed: str, vuln_range: str) -> bool:
+    """Return True if *installed* falls within the GHSA vulnerable_version_range.
+
+    Range format examples::
+
+        '<= 1.6.8'             → affected if version <= 1.6.8
+        '< 4.5.2'              → affected if version < 4.5.2
+        '>= 22.0.0, < 26.0.0'  → affected if 22.0.0 <= version < 26.0.0
+
+    Returns ``False`` when the installed version is outside the vulnerable
+    range (i.e. already patched / not affected).  Returns ``True`` on parse
+    error (conservative: assume affected).
+    """
+    try:
+        from packaging.version import Version
+
+        ver = Version(installed)
+        for constraint in vuln_range.split(","):
+            constraint = constraint.strip()
+            if constraint.startswith("<="):
+                if not (ver <= Version(constraint[2:].strip())):
+                    return False
+            elif constraint.startswith("<"):
+                if not (ver < Version(constraint[1:].strip())):
+                    return False
+            elif constraint.startswith(">="):
+                if not (ver >= Version(constraint[2:].strip())):
+                    return False
+            elif constraint.startswith(">"):
+                if not (ver > Version(constraint[1:].strip())):
+                    return False
+        return True
+    except Exception:
+        return True  # unknown — conservatively assume affected
 
 
 def _parse_patched_range(patched: str) -> str | None:
@@ -228,14 +290,21 @@ async def check_github_advisories(
                     fixed = _extract_fixed_version(advisory, target_pkg.name, target_pkg.ecosystem)
 
                     # Skip if the installed version is already at or beyond the fix.
-                    # compare_versions(current, fix) returns True only when fix > current
-                    # (i.e. an upgrade is needed).  If it returns False the package is
-                    # already patched — skip to avoid false positives.
-                    if fixed and target_pkg.version:
-                        from agent_bom.version_utils import compare_versions
+                    if target_pkg.version:
+                        if fixed:
+                            # compare_versions returns True only when fix > current
+                            # (upgrade needed).  False = already patched → skip.
+                            from agent_bom.version_utils import compare_versions
 
-                        if not compare_versions(target_pkg.version, fixed, target_pkg.ecosystem):
-                            continue
+                            if not compare_versions(target_pkg.version, fixed, target_pkg.ecosystem):
+                                continue
+                        else:
+                            # patched_versions is null in current GHSA API responses.
+                            # Use vulnerable_version_range to check whether the
+                            # installed version actually falls in the affected range.
+                            vuln_range = _get_vulnerable_range_for_package(advisory, target_pkg.name, target_pkg.ecosystem)
+                            if vuln_range and not _installed_version_is_affected(target_pkg.version, vuln_range):
+                                continue
 
                     vuln = Vulnerability(
                         id=vuln_id,

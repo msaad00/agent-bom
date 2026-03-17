@@ -314,3 +314,109 @@ def test_already_patched_version_not_flagged():
     count = asyncio.run(run())
     assert count == 0, "Patched version must not be flagged as vulnerable"
     assert len(pkg.vulnerabilities) == 0, "No vulnerabilities should be added for an already-patched package"
+
+
+def test_patched_versions_null_lte_range_not_flagged():
+    """When patched_versions is null, use vulnerable_version_range to skip safe versions.
+
+    Current GHSA API returns patched_versions=null and uses vulnerable_version_range
+    like '<= 1.6.8'.  authlib@1.6.9 must NOT be flagged.
+    """
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+
+    from agent_bom.scanners.ghsa_advisory import check_github_advisories
+
+    pkg = Package(name="authlib", version="1.6.9", ecosystem="pypi")
+
+    # Real-world format: patched_versions=None, range='<= 1.6.8'
+    ghsa_advisory = {
+        "ghsa_id": "GHSA-wvwj-cvrp-7pv5",
+        "cve_id": "CVE-2026-27962",
+        "severity": "critical",
+        "cvss": {"score": 9.1},
+        "summary": "authlib OIDC auth bypass",
+        "html_url": "https://github.com/advisories/GHSA-wvwj-cvrp-7pv5",
+        "cwes": [],
+        "vulnerabilities": [
+            {
+                "package": {"name": "authlib", "ecosystem": "pip"},
+                "patched_versions": None,
+                "vulnerable_version_range": "<= 1.6.8",
+            }
+        ],
+    }
+
+    async def run():
+        with patch(
+            "agent_bom.scanners.ghsa_advisory._fetch_advisories_for_package",
+            new_callable=AsyncMock,
+        ) as mock_fetch:
+            mock_fetch.return_value = [ghsa_advisory]
+            count = await check_github_advisories([pkg])
+        return count
+
+    count = asyncio.run(run())
+    assert count == 0, "Version outside vulnerable range must not be flagged"
+    assert len(pkg.vulnerabilities) == 0
+
+
+def test_patched_versions_null_lt_range_affected_version_flagged():
+    """When patched_versions is null and range is '< 4.5.2', version 4.5.1 IS affected."""
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+
+    from agent_bom.scanners.ghsa_advisory import check_github_advisories
+
+    pkg = Package(name="somelib", version="4.5.1", ecosystem="pypi")
+
+    ghsa_advisory = {
+        "ghsa_id": "GHSA-test-1234-5678",
+        "cve_id": "CVE-2026-99999",
+        "severity": "high",
+        "cvss": {"score": 7.5},
+        "summary": "Test vulnerability",
+        "html_url": "https://github.com/advisories/GHSA-test-1234-5678",
+        "cwes": [],
+        "vulnerabilities": [
+            {
+                "package": {"name": "somelib", "ecosystem": "pip"},
+                "patched_versions": None,
+                "vulnerable_version_range": "< 4.5.2",
+            }
+        ],
+    }
+
+    async def run():
+        with patch(
+            "agent_bom.scanners.ghsa_advisory._fetch_advisories_for_package",
+            new_callable=AsyncMock,
+        ) as mock_fetch:
+            mock_fetch.return_value = [ghsa_advisory]
+            count = await check_github_advisories([pkg])
+        return count
+
+    count = asyncio.run(run())
+    assert count == 1, "Version inside vulnerable range must be flagged"
+    assert len(pkg.vulnerabilities) == 1
+    assert pkg.vulnerabilities[0].fixed_version == "4.5.2"
+
+
+def test_installed_version_is_affected_helpers():
+    """Unit tests for the _installed_version_is_affected helper."""
+    from agent_bom.scanners.ghsa_advisory import _installed_version_is_affected
+
+    # <= range: 1.6.9 is NOT in '<= 1.6.8'
+    assert _installed_version_is_affected("1.6.9", "<= 1.6.8") is False
+    # <= range: 1.6.8 IS in '<= 1.6.8'
+    assert _installed_version_is_affected("1.6.8", "<= 1.6.8") is True
+    # < range: 4.5.2 is NOT in '< 4.5.2'
+    assert _installed_version_is_affected("4.5.2", "< 4.5.2") is False
+    # < range: 4.5.1 IS in '< 4.5.2'
+    assert _installed_version_is_affected("4.5.1", "< 4.5.2") is True
+    # compound range: 25.0.0 IS in '>= 22.0.0, < 26.0.0'
+    assert _installed_version_is_affected("25.0.0", ">= 22.0.0, < 26.0.0") is True
+    # compound range: 26.0.0 is NOT in '>= 22.0.0, < 26.0.0'
+    assert _installed_version_is_affected("26.0.0", ">= 22.0.0, < 26.0.0") is False
+    # compound range: 21.0.0 is NOT in '>= 22.0.0, < 26.0.0'
+    assert _installed_version_is_affected("21.0.0", ">= 22.0.0, < 26.0.0") is False

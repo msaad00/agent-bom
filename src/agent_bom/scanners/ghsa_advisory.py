@@ -121,29 +121,16 @@ def _installed_version_is_affected(installed: str, vuln_range: str) -> bool:
         '< 4.5.2'              → affected if version < 4.5.2
         '>= 22.0.0, < 26.0.0'  → affected if 22.0.0 <= version < 26.0.0
 
-    Returns ``False`` when the installed version is outside the vulnerable
-    range (i.e. already patched / not affected).  Returns ``True`` on parse
-    error (conservative: assume affected).
+    Uses ``packaging.specifiers.SpecifierSet`` for full PEP 440 compliance
+    (handles pre-release versions, epochs, and complex specifier combinations).
+    Returns ``True`` on parse error (conservative: assume affected).
     """
     try:
+        from packaging.specifiers import SpecifierSet
         from packaging.version import Version
 
-        ver = Version(installed)
-        for constraint in vuln_range.split(","):
-            constraint = constraint.strip()
-            if constraint.startswith("<="):
-                if not (ver <= Version(constraint[2:].strip())):
-                    return False
-            elif constraint.startswith("<"):
-                if not (ver < Version(constraint[1:].strip())):
-                    return False
-            elif constraint.startswith(">="):
-                if not (ver >= Version(constraint[2:].strip())):
-                    return False
-            elif constraint.startswith(">"):
-                if not (ver > Version(constraint[1:].strip())):
-                    return False
-        return True
+        spec = SpecifierSet(vuln_range, prereleases=True)
+        return Version(installed) in spec
     except Exception:
         return True  # unknown — conservatively assume affected
 

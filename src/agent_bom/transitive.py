@@ -167,8 +167,8 @@ async def fetch_npm_metadata(package_name: str, version: str, client: httpx.Asyn
                 if metadata:
                     _cache_put(_npm_cache, cache_key, metadata)
                     return metadata
-            except (ValueError, KeyError):
-                pass
+            except (ValueError, KeyError) as exc:
+                _logger.warning("Failed to parse npm metadata for %s@%s: %s", package_name, version, exc)
     else:
         response = await request_with_retry(
             client,
@@ -180,8 +180,8 @@ async def fetch_npm_metadata(package_name: str, version: str, client: httpx.Asyn
                 metadata = response.json()
                 _cache_put(_npm_cache, cache_key, metadata)
                 return metadata
-            except (ValueError, KeyError):
-                pass
+            except (ValueError, KeyError) as exc:
+                _logger.warning("Failed to parse npm metadata for %s@%s: %s", package_name, version, exc)
 
     return None
 
@@ -217,8 +217,8 @@ async def fetch_pypi_metadata(package_name: str, version: str, client: httpx.Asy
                         return data
                 _cache_put(_pypi_cache, cache_key, pkg_data)
                 return pkg_data
-            except (ValueError, KeyError):
-                pass
+            except (ValueError, KeyError) as exc:
+                _logger.warning("Failed to parse PyPI metadata for %s@%s: %s", package_name, version, exc)
     else:
         response = await request_with_retry(
             client,
@@ -230,8 +230,8 @@ async def fetch_pypi_metadata(package_name: str, version: str, client: httpx.Asy
                 data = response.json()
                 _cache_put(_pypi_cache, cache_key, data)
                 return data
-            except (ValueError, KeyError):
-                pass
+            except (ValueError, KeyError) as exc:
+                _logger.warning("Failed to parse PyPI metadata for %s@%s: %s", package_name, version, exc)
 
     return None
 
@@ -390,6 +390,7 @@ async def resolve_transitive_dependencies(
                 if isinstance(result, list):
                     all_transitive.extend(result)
                 elif isinstance(result, Exception):
+                    _logger.warning("Error resolving transitive deps: %s", result)
                     console.print(f"  [yellow]⚠ Error resolving transitive deps: {result}[/yellow]")
 
     # Deduplicate

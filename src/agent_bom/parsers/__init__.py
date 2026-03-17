@@ -430,9 +430,15 @@ def scan_project_directory(
     root = Path(root).resolve()
     results: dict[Path, list[Package]] = {}
 
+    visited_real: set[str] = set()
+
     def _walk(directory: Path, depth: int) -> None:
         if depth > max_depth:
             return
+        real = str(directory.resolve())
+        if real in visited_real:
+            return
+        visited_real.add(real)
 
         if _has_manifest(directory):
             pkgs: list[Package] = []

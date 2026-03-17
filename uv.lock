@@ -10,11 +10,12 @@ resolution-markers = [
 
 [[package]]
 name = "agent-bom"
-version = "0.71.1"
+version = "0.71.2"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
     { name = "cyclonedx-python-lib" },
+    { name = "flask" },
     { name = "httpx" },
     { name = "jinja2" },
     { name = "jsonschema" },
@@ -182,6 +183,7 @@ requires-dist = [
     { name = "cyclonedx-python-lib", specifier = ">=11.6" },
     { name = "databricks-sdk", marker = "extra == 'databricks'", specifier = ">=0.20" },
     { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.115" },
+    { name = "flask", specifier = ">=3.1.3" },
     { name = "google-cloud-aiplatform", marker = "extra == 'gcp'", specifier = ">=1.38" },
     { name = "google-cloud-container", marker = "extra == 'gcp'", specifier = ">=2.36" },
     { name = "google-cloud-functions", marker = "extra == 'gcp'", specifier = ">=1.16" },

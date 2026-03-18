@@ -1,0 +1,240 @@
+[
+  {
+    "name": "scan",
+    "description": "Run a full AI supply chain security scan — discovers MCP agents, scans all packages for CVEs, maps blast radius, returns findings with EPSS scores and remediation plan.",
+    "arguments": [
+      {"name": "project_path", "type": "string", "desc": "Directory to scan for MCP agent configs (default: auto-detect)"},
+      {"name": "fail_on_severity", "type": "string", "desc": "Exit non-zero if findings at this severity or above: critical, high, medium, low"},
+      {"name": "output_format", "type": "string", "desc": "Output format: json, cyclonedx, spdx, sarif, html (default: json)"},
+      {"name": "transitive", "type": "boolean", "desc": "Resolve transitive dependencies for npm/pypi/go packages"}
+    ]
+  },
+  {
+    "name": "check",
+    "description": "Check a specific package for known CVEs before installing — pre-install gate.",
+    "arguments": [
+      {"name": "package", "type": "string", "desc": "Package name and version, e.g. 'flask@2.0.0' or 'lodash@4.17.20'"},
+      {"name": "ecosystem", "type": "string", "desc": "Package ecosystem: pypi, npm, cargo, go, maven, nuget, hex, pub, rubygems"}
+    ]
+  },
+  {
+    "name": "blast_radius",
+    "description": "Look up the blast radius of a specific CVE — shows which agents, credentials, and tools are affected.",
+    "arguments": [
+      {"name": "cve_id", "type": "string", "desc": "CVE identifier, e.g. CVE-2023-44270"}
+    ]
+  },
+  {
+    "name": "policy_check",
+    "description": "Evaluate a security policy against current scan results — returns pass/fail per rule.",
+    "arguments": [
+      {"name": "policy_file", "type": "string", "desc": "Path to policy JSON/YAML file"},
+      {"name": "scan_results", "type": "string", "desc": "Path to scan results JSON (uses last scan if omitted)"}
+    ]
+  },
+  {
+    "name": "registry_lookup",
+    "description": "Query the agent-bom MCP server threat intelligence registry for a server's risk level, credential heuristics, and verification status.",
+    "arguments": [
+      {"name": "server_name", "type": "string", "desc": "MCP server package name or identifier"}
+    ]
+  },
+  {
+    "name": "generate_sbom",
+    "description": "Generate a Software Bill of Materials (SBOM) for your AI agent setup in CycloneDX or SPDX format.",
+    "arguments": [
+      {"name": "format", "type": "string", "desc": "SBOM format: cyclonedx or spdx"},
+      {"name": "output_path", "type": "string", "desc": "Output file path"}
+    ]
+  },
+  {
+    "name": "compliance",
+    "description": "Get compliance posture for OWASP LLM Top 10, MITRE ATLAS, NIST AI RMF, EU AI Act, SOC 2, ISO 27001, CMMC, FedRAMP, and more.",
+    "arguments": [
+      {"name": "framework", "type": "string", "desc": "Framework: owasp_llm, mitre_atlas, nist_ai_rmf, eu_ai_act, soc2, iso_27001, cmmc, fedramp, nist_csf, aisvs"},
+      {"name": "scan_results", "type": "string", "desc": "Path to scan results JSON (uses last scan if omitted)"}
+    ]
+  },
+  {
+    "name": "remediate",
+    "description": "Generate a remediation plan — ordered upgrade recommendations that clear the most vulnerabilities per change.",
+    "arguments": [
+      {"name": "scan_results", "type": "string", "desc": "Path to scan results JSON (uses last scan if omitted)"},
+      {"name": "output_path", "type": "string", "desc": "Write plan to this file path (optional)"}
+    ]
+  },
+  {
+    "name": "skill_trust",
+    "description": "Assess the trust level of a SKILL (AI agent skill/extension) — checks provenance, permissions, and risk.",
+    "arguments": [
+      {"name": "skill_path", "type": "string", "desc": "Path to SKILL.md or skill directory"}
+    ]
+  },
+  {
+    "name": "verify",
+    "description": "Verify package integrity and SLSA provenance against registries.",
+    "arguments": [
+      {"name": "package", "type": "string", "desc": "Package name@version to verify"},
+      {"name": "ecosystem", "type": "string", "desc": "Package ecosystem"}
+    ]
+  },
+  {
+    "name": "where",
+    "description": "Show all MCP discovery paths and which config files exist on this system.",
+    "arguments": []
+  },
+  {
+    "name": "inventory",
+    "description": "List all discovered MCP configurations and servers without running a CVE scan.",
+    "arguments": [
+      {"name": "project_path", "type": "string", "desc": "Directory to scan (default: auto-detect)"},
+      {"name": "output_format", "type": "string", "desc": "Output format: json, table"}
+    ]
+  },
+  {
+    "name": "diff",
+    "description": "Compare a fresh scan against a baseline to find new and resolved vulnerabilities.",
+    "arguments": [
+      {"name": "baseline_path", "type": "string", "desc": "Path to baseline scan results JSON"},
+      {"name": "current_path", "type": "string", "desc": "Path to current scan results JSON (runs fresh scan if omitted)"}
+    ]
+  },
+  {
+    "name": "marketplace_check",
+    "description": "Pre-install trust check for an MCP server package — verifies before adding to your agent config.",
+    "arguments": [
+      {"name": "server_name", "type": "string", "desc": "MCP server package name, e.g. '@anthropic/web-search-mcp'"}
+    ]
+  },
+  {
+    "name": "code_scan",
+    "description": "Run SAST (Static Application Security Testing) on source code via Semgrep.",
+    "arguments": [
+      {"name": "path", "type": "string", "desc": "Directory or file to scan"},
+      {"name": "severity", "type": "string", "desc": "Minimum severity to report: critical, high, medium, low"}
+    ]
+  },
+  {
+    "name": "context_graph",
+    "description": "Build an agent context graph with lateral movement analysis — visualizes agent-to-agent trust chains.",
+    "arguments": [
+      {"name": "project_path", "type": "string", "desc": "Directory to analyze"},
+      {"name": "output_format", "type": "string", "desc": "Output format: json, dot"}
+    ]
+  },
+  {
+    "name": "analytics_query",
+    "description": "Query vulnerability trends, posture history, and runtime event summaries from Claude Desktop's local analytics.",
+    "arguments": [
+      {"name": "query_type", "type": "string", "desc": "Query type: trends, history, events, summary"}
+    ]
+  },
+  {
+    "name": "cis_benchmark",
+    "description": "Run CIS benchmark checks against a cloud account (AWS, Azure, GCP, Snowflake, Databricks).",
+    "arguments": [
+      {"name": "provider", "type": "string", "desc": "Cloud provider: aws, azure, gcp, snowflake, databricks"}
+    ]
+  },
+  {
+    "name": "fleet_scan",
+    "description": "Batch-scan a list of MCP server names against the security metadata registry.",
+    "arguments": [
+      {"name": "servers", "type": "array", "desc": "List of MCP server package names to scan"}
+    ]
+  },
+  {
+    "name": "runtime_correlate",
+    "description": "Cross-reference vulnerability scan results with proxy runtime audit logs to find exploited CVEs.",
+    "arguments": [
+      {"name": "scan_results", "type": "string", "desc": "Path to scan results JSON"},
+      {"name": "audit_log", "type": "string", "desc": "Path to proxy audit log"}
+    ]
+  },
+  {
+    "name": "vector_db_scan",
+    "description": "Scan for running vector databases and assess their security posture (auth, encryption, exposure).",
+    "arguments": [
+      {"name": "host", "type": "string", "desc": "Host to scan (default: localhost)"}
+    ]
+  },
+  {
+    "name": "aisvs_benchmark",
+    "description": "Run AISVS v1 (AI Security Verification Standard) benchmark against your AI infrastructure.",
+    "arguments": [
+      {"name": "project_path", "type": "string", "desc": "Directory to benchmark"}
+    ]
+  },
+  {
+    "name": "gpu_infra_scan",
+    "description": "Discover GPU/AI compute infrastructure: containers, K8s nodes, and DCGM endpoints.",
+    "arguments": [
+      {"name": "namespace", "type": "string", "desc": "Kubernetes namespace (optional)"}
+    ]
+  },
+  {
+    "name": "dataset_card_scan",
+    "description": "Scan a directory for ML dataset card metadata and provenance — checks for license and sourcing issues.",
+    "arguments": [
+      {"name": "path", "type": "string", "desc": "Directory containing dataset cards"}
+    ]
+  },
+  {
+    "name": "training_pipeline_scan",
+    "description": "Scan a directory for ML training pipeline lineage and provenance artifacts.",
+    "arguments": [
+      {"name": "path", "type": "string", "desc": "Directory containing training pipeline files"}
+    ]
+  },
+  {
+    "name": "browser_extension_scan",
+    "description": "Scan installed browser extensions for dangerous permissions and supply chain risk.",
+    "arguments": [
+      {"name": "browser", "type": "string", "desc": "Browser to scan: chrome, firefox, edge (default: all detected)"}
+    ]
+  },
+  {
+    "name": "model_provenance_scan",
+    "description": "Check ML model provenance and supply chain metadata — verifies model cards and source integrity.",
+    "arguments": [
+      {"name": "path", "type": "string", "desc": "Directory containing model files or model card"}
+    ]
+  },
+  {
+    "name": "prompt_scan",
+    "description": "Scan prompt template files for injection risks and security issues.",
+    "arguments": [
+      {"name": "path", "type": "string", "desc": "Directory or file containing prompt templates"}
+    ]
+  },
+  {
+    "name": "model_file_scan",
+    "description": "Scan a directory for ML model files and assess serialization risks (pickle, safetensors, GGUF).",
+    "arguments": [
+      {"name": "path", "type": "string", "desc": "Directory to scan for model files"}
+    ]
+  },
+  {
+    "name": "ai_inventory_scan",
+    "description": "Scan source code for AI component usage patterns — identifies LLM calls, embedding models, and vector DB usage.",
+    "arguments": [
+      {"name": "path", "type": "string", "desc": "Source code directory to scan"}
+    ]
+  },
+  {
+    "name": "license_compliance_scan",
+    "description": "Evaluate package licenses against compliance policy — flags GPL, AGPL, or other restricted licenses.",
+    "arguments": [
+      {"name": "project_path", "type": "string", "desc": "Project directory"},
+      {"name": "policy_file", "type": "string", "desc": "License policy file (optional)"}
+    ]
+  },
+  {
+    "name": "ingest_external_scan",
+    "description": "Ingest Trivy, Grype, or Syft JSON scan output and return packages with blast radius analysis.",
+    "arguments": [
+      {"name": "scan_file", "type": "string", "desc": "Path to Trivy/Grype/Syft JSON output file"},
+      {"name": "format", "type": "string", "desc": "Scanner format: trivy, grype, syft (auto-detected if omitted)"}
+    ]
+  }
+]

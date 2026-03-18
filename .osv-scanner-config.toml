@@ -15,3 +15,23 @@ NOT EXPLOITABLE: agent-bom does not use DTLS; the vulnerability is in DTLS recor
 which is only reached when pyopenssl's DTLS context is explicitly invoked.
 Re-evaluate when snowflake-connector-python drops the <26.0.0 cap.
 """
+
+[[IgnoredVulns]]
+id = "GHSA-5pwr-322w-8jr4"
+reason = """
+pyopenssl vulnerability (fixed in pyopenssl>=26.0.0).
+BLOCKER: snowflake-connector-python requires pyopenssl<26.0.0 (checked: v4.3.0 still caps at <26.0.0).
+NOT DIRECTLY EXPLOITABLE: agent-bom does not use the affected pyopenssl code paths.
+Re-evaluate when snowflake-connector-python drops the <26.0.0 cap.
+Tracked: https://github.com/msaad00/agent-bom/issues/930
+"""
+
+[[IgnoredVulns]]
+id = "GHSA-vp96-hxj8-p424"
+reason = """
+pyopenssl vulnerability (fixed in pyopenssl>=26.0.0).
+BLOCKER: snowflake-connector-python requires pyopenssl<26.0.0 (checked: v4.3.0 still caps at <26.0.0).
+NOT DIRECTLY EXPLOITABLE: agent-bom does not use the affected pyopenssl code paths.
+Re-evaluate when snowflake-connector-python drops the <26.0.0 cap.
+Tracked: https://github.com/msaad00/agent-bom/issues/930
+"""

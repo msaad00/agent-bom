@@ -45,9 +45,10 @@ dependencies = [
     "flask>=3.1.3",  # GHSA-68rp-wp8r-4726, GHSA-m2qf-hxjv-5gpq (Vary: Cookie session exposure; transitive via mlflow)
     "requests>=2.32.4",  # GHSA-9hjg-9r4m-mvj7, GHSA-j8r2-6x86-q33q (session cookie leak)
     "nltk>=3.9.3",  # CVE-2025-14009 (fixed in 3.9.3) — transitive via safety
-    # NOTE: pyopenssl (transitive via snowflake[cloud] extra) — GHSA-68rp-wp8r-4726 (DTLS overflow) fixed in 26.0.0,
-    # but snowflake-connector-python requires pyopenssl<26.0.0. Cannot upgrade until upstream drops that cap.
-    # Tracked: https://github.com/msaad00/agent-bom/issues/930 (not exploitable: agent-bom does not use DTLS)
+    # NOTE: pyopenssl (transitive via snowflake[cloud] extra) — GHSA-68rp-wp8r-4726, GHSA-5pwr-322w-8jr4,
+    # GHSA-vp96-hxj8-p424 — all fixed in pyopenssl>=26.0.0, but snowflake-connector-python requires pyopenssl<26.0.0.
+    # Cannot upgrade until upstream drops that cap. Not exploitable: agent-bom does not use affected pyopenssl paths.
+    # Tracked: https://github.com/msaad00/agent-bom/issues/930
 ]
 
 [project.optional-dependencies]

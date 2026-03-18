@@ -41,10 +41,34 @@ jobs:
         run: |
           set +e
           mkdir -p sarif
-          # Only upload HIGH+ to Security tab — low/medium visible in workflow logs only
-          uv run agent-bom scan --self-scan --format sarif -o sarif/self-dep.sarif \
+          uv run agent-bom scan --self-scan --format sarif -o sarif/self-dep-full.sarif \
             --fail-on-severity high --quiet
           echo "dep_exit=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Filter SARIF to HIGH+ only (strip low/medium noise from Security tab)
+        if: always()
+        run: |
+          python3 -c "
+          import json, sys
+          try:
+              d = json.load(open('sarif/self-dep-full.sarif'))
+              for run in d.get('runs', []):
+                  results = run.get('results', [])
+                  # Keep only error-level results (HIGH/CRITICAL in SARIF)
+                  filtered = [r for r in results if r.get('level') == 'error']
+                  # Keep only rules referenced by filtered results
+                  kept_ids = {r['ruleId'] for r in filtered}
+                  rules = run.get('tool', {}).get('driver', {}).get('rules', [])
+                  run['tool']['driver']['rules'] = [r for r in rules if r['id'] in kept_ids]
+                  run['results'] = filtered
+              json.dump(d, open('sarif/self-dep.sarif', 'w'), indent=2)
+              print(f'SARIF filtered: {len(results)} total → {len(filtered)} HIGH+ results')
+          except Exception as e:
+              print(f'SARIF filter error: {e}')
+              # Fall back to full SARIF if filtering fails
+              import shutil
+              shutil.copy('sarif/self-dep-full.sarif', 'sarif/self-dep.sarif')
+          "
 
       - name: Print full dep scan summary (all severities, for logs)
         if: always()

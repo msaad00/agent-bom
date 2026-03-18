@@ -68,12 +68,17 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write       # required for SLSA provenance attestation
+      attestations: write   # required for SBOM + provenance attestations
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Extract version from tag
         id: meta
         run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU (multi-arch)
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
@@ -91,6 +96,8 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           build-args: VERSION=${{ steps.meta.outputs.version }}
+          provenance: true   # SLSA provenance attestation — enables Docker Scout policy evaluation
+          sbom: true         # SBOM attestation — enables Docker Scout supply chain policies
           tags: |
             agentbom/agent-bom:${{ steps.meta.outputs.version }}
             agentbom/agent-bom:latest
@@ -99,6 +106,22 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.title=agent-bom
             org.opencontainers.image.description=Security scanner for AI infrastructure — from agent to runtime
+
+      - name: Sync Docker Hub README
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          TOKEN=$(curl -s -X POST "https://hub.docker.com/v2/users/login" \
+            -H "Content-Type: application/json" \
+            -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}" \
+            | jq -r '.token')
+          DESCRIPTION=$(cat DOCKER_HUB_README.md | jq -Rs .)
+          curl -s -o /dev/null -w "%{http_code}" -X PATCH \
+            "https://hub.docker.com/v2/repositories/agentbom/agent-bom/" \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"full_description\": ${DESCRIPTION}, \"description\": \"Security scanner for AI infrastructure — from agent to runtime\"}"
 
   self-scan-gate:
     name: Self-scan release gate
@@ -169,6 +192,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       id-token: write  # required for Sigstore OIDC
     steps:
       - name: Download dist artifacts

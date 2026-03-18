@@ -882,7 +882,7 @@ def _scan_packages_local_db_batch(
     return total
 
 
-async def scan_packages(packages: list[Package]) -> int:
+async def scan_packages(packages: list[Package], *, resolve_transitive: bool = False) -> int:
     """Scan a list of packages for vulnerabilities. Returns count of vulns found."""
     # Deduplicate packages across discovery sources before scanning.
     # Prevents redundant OSV API calls when the same package is discovered
@@ -913,6 +913,30 @@ async def scan_packages(packages: list[Package]) -> int:
         except Exception as exc:
             _logger.warning("Version resolution failed for %d package(s): %s", len(unresolved), exc)
             console.print(f"  [yellow]⚠[/yellow] Version resolution skipped: {exc}")
+
+    # ── Transitive dependency resolution (npm / PyPI / Go) ───────────────────
+    if resolve_transitive and not offline_mode:
+        transitive_ecosystems = {"npm", "pypi", "go"}
+        eligible = [p for p in packages if p.ecosystem.lower() in transitive_ecosystems]
+        if eligible:
+            try:
+                from agent_bom.transitive import resolve_transitive_dependencies
+
+                _logger.info("Resolving transitive dependencies for %d package(s)...", len(eligible))
+                transitive_pkgs = await resolve_transitive_dependencies(eligible)
+                if transitive_pkgs:
+                    existing_keys = {f"{p.ecosystem.lower()}:{normalize_package_name(p.name, p.ecosystem)}@{p.version}" for p in packages}
+                    new_pkgs = [
+                        p
+                        for p in transitive_pkgs
+                        if f"{p.ecosystem.lower()}:{normalize_package_name(p.name, p.ecosystem)}@{p.version}" not in existing_keys
+                    ]
+                    if new_pkgs:
+                        packages = packages + new_pkgs
+                        packages = deduplicate_packages(packages)
+                        console.print(f"  [cyan]→[/cyan] Transitive resolution: {len(new_pkgs)} additional package(s) queued")
+            except Exception as exc:  # noqa: BLE001
+                _logger.warning("Transitive resolution failed, scanning direct dependencies only: %s", exc)
 
     # SAST packages already carry vulns from Semgrep — skip OSV query for them
     scannable = [p for p in packages if p.version not in ("unknown", "latest", "") and p.ecosystem.lower() != "sast"]
@@ -1044,7 +1068,7 @@ async def scan_packages(packages: list[Package]) -> int:
     return total_vulns
 
 
-async def scan_agents(agents: list[Agent], *, compliance_enabled: bool = False) -> list[BlastRadius]:
+async def scan_agents(agents: list[Agent], *, compliance_enabled: bool = False, resolve_transitive: bool = False) -> list[BlastRadius]:
     """Scan all agents' MCP server packages for vulnerabilities."""
     global compliance_mode  # noqa: PLW0603
     compliance_mode = compliance_enabled
@@ -1079,7 +1103,7 @@ async def scan_agents(agents: list[Agent], *, compliance_enabled: bool = False) 
 
     console.print(f"  Scanning {len(unique_packages)} unique packages across {len(agents)} agent(s)...")
 
-    total_vulns = await scan_packages(unique_packages)
+    total_vulns = await scan_packages(unique_packages, resolve_transitive=resolve_transitive)
 
     # Propagate vulnerabilities back to all instances
     vuln_map = {}
@@ -1396,12 +1420,13 @@ def scan_agents_sync(
     nvd_api_key: Optional[str] = None,
     blast_radius_depth: int = 1,
     compliance_enabled: bool = False,
+    resolve_transitive: bool = False,
 ) -> list[BlastRadius]:
     """Synchronous wrapper for scan_agents."""
     if enable_enrichment:
         blast_radii = asyncio.run(scan_agents_with_enrichment(agents, nvd_api_key, enable_enrichment))
     else:
-        blast_radii = asyncio.run(scan_agents(agents, compliance_enabled=compliance_enabled))
+        blast_radii = asyncio.run(scan_agents(agents, compliance_enabled=compliance_enabled, resolve_transitive=resolve_transitive))
     if blast_radius_depth > 1:
         expand_blast_radius_hops(blast_radii, agents, max_depth=blast_radius_depth)
     return blast_radii

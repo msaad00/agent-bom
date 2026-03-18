@@ -1,0 +1,49 @@
+name: agent-bom
+image: agentbom/agent-bom
+type: server
+
+meta:
+  category: security
+  tags:
+    - security
+    - ai
+    - supply-chain
+    - sbom
+    - vulnerability-scanning
+    - mcp
+    - compliance
+    - devops
+
+about:
+  title: agent-bom
+  description: >-
+    Security scanner for AI infrastructure. Discovers MCP servers and AI agents,
+    scans all dependencies for CVEs (OSV/NVD/GHSA/EPSS/CISA KEV), maps blast radius
+    showing which credentials and tools each vulnerability reaches, enforces policy,
+    and generates SBOMs + compliance evidence for 14 frameworks including OWASP LLM
+    Top 10, MITRE ATLAS, NIST AI RMF, and EU AI Act.
+  icon: https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/logo-dark.svg
+
+source:
+  project: https://github.com/msaad00/agent-bom
+  commit: cc4640f10e4428f0c76ff989e0dd7bdf5c159239
+
+run:
+  env:
+    - name: NVD_API_KEY
+      description: NVD API key for higher rate limits on vulnerability enrichment (optional)
+  allowHosts:
+    - api.osv.dev:443
+    - services.nvd.nist.gov:443
+    - api.first.org:443
+    - api.github.com:443
+    - registry.npmjs.org:443
+    - pypi.org:443
+    - proxy.golang.org:443
+
+config:
+  secrets:
+    - name: agent-bom.nvd_api_key
+      env: NVD_API_KEY
+      example: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+      description: "NVD API key — optional, increases rate limits for vulnerability enrichment"

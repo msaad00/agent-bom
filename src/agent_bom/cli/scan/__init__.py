@@ -1035,6 +1035,7 @@ def scan(
                         nvd_api_key=nvd_api_key,
                         blast_radius_depth=blast_radius_depth,
                         compliance_enabled=compliance,
+                        resolve_transitive=transitive,
                     )
                     progress.update(scan_task, completed=3, phase="building blast radius analysis")
                     progress.update(scan_task, completed=4, phase="done")
@@ -1045,6 +1046,7 @@ def scan(
                     nvd_api_key=nvd_api_key,
                     blast_radius_depth=blast_radius_depth,
                     compliance_enabled=compliance,
+                    resolve_transitive=transitive,
                 )
             if blast_radii:
                 con.print(f"  [red]⚠[/red] Scan complete — [bold]{len(blast_radii)}[/bold] finding(s)")

@@ -79,7 +79,12 @@ def run_local_discovery(
     if skill_only:
         ctx.agents = []  # skill-only: no agent discovery
     elif inventory:
-        label = "stdin" if inventory == "-" else inventory
+        if inventory == "-":
+            label = "stdin"
+        elif "agent-bom-demo-" in inventory:
+            label = "bundled demo inventory"
+        else:
+            label = inventory
         con.print(f"\n[bold blue]Loading inventory from {label}...[/bold blue]\n")
 
         from agent_bom.inventory import load_inventory

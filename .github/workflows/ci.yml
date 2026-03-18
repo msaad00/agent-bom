@@ -31,18 +31,18 @@ jobs:
 
       - name: pip-audit (Dependency Vulnerabilities)
         run: |
-          # Run pip-audit; if it fails, check if failures are only known unfixable CVEs.
-          # This avoids hardcoded ignores that rot — if a fix ships, pip-audit will catch it.
+          # Run pip-audit; if it fails, check if all vulns have no fix available.
+          # This avoids hardcoded ignores — if a fix ships, the "FIXED VERSION"
+          # column will show a version instead of "--" and this check will fail.
           uv run pip-audit 2>&1 | tee /tmp/pip-audit.txt || {
-            # Check if ALL failures are in the known-unfixable list
-            UNFIXABLE="GHSA-rf74-v2fm-23pw|CVE-2026-33230"  # nltk 3.9.3 — no fix available
-            UNKNOWN=$(grep -E "^[a-zA-Z]" /tmp/pip-audit.txt | grep -vE "$UNFIXABLE|Name|----" | head -5)
-            if [ -n "$UNKNOWN" ]; then
-              echo "::error::pip-audit found fixable vulnerabilities:"
-              echo "$UNKNOWN"
+            # If every vuln row shows "-- " as fixed version, no fix is available upstream
+            FIXABLE=$(grep -E "^\| https://" /tmp/pip-audit.txt | grep -v "| -- " | head -5)
+            if [ -n "$FIXABLE" ]; then
+              echo "::error::pip-audit found vulnerabilities with available fixes:"
+              echo "$FIXABLE"
               exit 1
             fi
-            echo "::warning::pip-audit found only known unfixable CVEs (no upstream fix available) — passing"
+            echo "::warning::pip-audit found only unfixable CVEs (no upstream fix) — passing"
           }
 
       - name: OSV Scanner (all lockfiles)

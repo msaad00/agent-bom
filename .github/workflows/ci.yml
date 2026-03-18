@@ -123,7 +123,7 @@ jobs:
     permissions:
       contents: read
     container:
-      image: python:3.12-alpine  # Scorecard: pinning by digest breaks CI cache; version tag is acceptable
+      image: python:3.12-alpine@sha256:7747d47f92cfca63a6e2b50275e23dba8407c30d8ae929a88ddd49a5d3f2d331
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 

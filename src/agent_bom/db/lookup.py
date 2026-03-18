@@ -131,9 +131,16 @@ def _version_affected(
 
     from packaging.version import InvalidVersion, Version
 
+    _go_pseudo_re = re.compile(r"^v\d+\.\d+\.\d+-(\d{14})-[0-9a-f]{12}$")
+
     def _is_commit_sha(v: str) -> bool:
         """Detect git commit SHAs that leaked from OSV data as version boundaries."""
         return bool(re.fullmatch(r"[0-9a-f]{40}", v))
+
+    def _go_pseudo_timestamp(v: str) -> str | None:
+        """Extract YYYYMMDDHHMMSS timestamp from Go pseudo-version for comparison."""
+        m = _go_pseudo_re.match(v)
+        return m.group(1) if m else None
 
     def _try_parse(v: str) -> Version | None:
         """Parse a version string, returning None for commit SHAs or unparseable values."""
@@ -143,6 +150,23 @@ def _version_affected(
             return Version(v)
         except InvalidVersion:
             return None
+
+    # Go pseudo-version comparison (v0.0.0-YYYYMMDDHHMMSS-abcdef123456)
+    # These encode timestamps — compare by timestamp, not semver.
+    ver_ts = _go_pseudo_timestamp(version)
+    if ver_ts:
+        for boundary, is_lower in [(intro, True), (fix, False), (last, False)]:
+            if not boundary:
+                continue
+            bnd_ts = _go_pseudo_timestamp(boundary)
+            if bnd_ts:
+                if is_lower and ver_ts < bnd_ts:
+                    return False  # installed predates introduced
+                if not is_lower and boundary == fix and ver_ts >= bnd_ts:
+                    return False  # installed at or after fix
+                if not is_lower and boundary == last and ver_ts > bnd_ts:
+                    return False  # installed after last_affected
+        return True  # within affected range or boundaries are non-pseudo
 
     # Try to parse the installed version first
     try:

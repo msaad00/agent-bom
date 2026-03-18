@@ -440,7 +440,7 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
                 )
             skipped_ecosystems += 1
             continue
-        if pkg.version in ("unknown", "latest"):
+        if not pkg.version or pkg.version in ("unknown", "latest"):
             _logger.warning(
                 "Skipping package %s/%s: unresolvable version %r",
                 pkg.ecosystem,

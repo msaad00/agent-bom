@@ -103,6 +103,7 @@ async def get_compliance() -> dict:
         return controls
 
     from agent_bom.cis_controls import CIS_CONTROLS
+    from agent_bom.cmmc import CMMC_PRACTICES
     from agent_bom.eu_ai_act import EU_AI_ACT
     from agent_bom.iso_27001 import ISO_27001
     from agent_bom.nist_csf import NIST_CSF
@@ -120,6 +121,7 @@ async def get_compliance() -> dict:
     iso27001 = _build_controls(ISO_27001, "iso_27001_tags", "code")
     soc2 = _build_controls(SOC2_TSC, "soc2_tags", "code")
     cis = _build_controls(CIS_CONTROLS, "cis_tags", "code")
+    cmmc = _build_controls(CMMC_PRACTICES, "cmmc_tags", "code")
 
     def _count_statuses(controls: list[dict]) -> tuple[int, int, int]:
         p = sum(1 for c in controls if c["status"] == "pass")
@@ -127,7 +129,7 @@ async def get_compliance() -> dict:
         f = sum(1 for c in controls if c["status"] == "fail")
         return p, w, f
 
-    all_frameworks = [owasp, owasp_mcp, atlas, nist, owasp_agentic, eu_ai_act, nist_csf, iso27001, soc2, cis]
+    all_frameworks = [owasp, owasp_mcp, atlas, nist, owasp_agentic, eu_ai_act, nist_csf, iso27001, soc2, cis, cmmc]
     total_controls = sum(len(fw) for fw in all_frameworks)
     total_pass = sum(_count_statuses(fw)[0] for fw in all_frameworks)
     any_fail = any(_count_statuses(fw)[2] > 0 for fw in all_frameworks)
@@ -151,6 +153,7 @@ async def get_compliance() -> dict:
     ip, iw, if2 = _count_statuses(iso27001)
     sp, sw, sf = _count_statuses(soc2)
     cp, cw, cf = _count_statuses(cis)
+    cmp, cmw, cmf = _count_statuses(cmmc)
 
     return {
         "overall_score": overall_score,
@@ -170,6 +173,7 @@ async def get_compliance() -> dict:
         "iso_27001": iso27001,
         "soc2": soc2,
         "cis_controls": cis,
+        "cmmc": cmmc,
         "summary": {
             "owasp_pass": op,
             "owasp_warn": ow,
@@ -201,6 +205,9 @@ async def get_compliance() -> dict:
             "cis_pass": cp,
             "cis_warn": cw,
             "cis_fail": cf,
+            "cmmc_pass": cmp,
+            "cmmc_warn": cmw,
+            "cmmc_fail": cmf,
         },
     }
 
@@ -210,7 +217,7 @@ async def get_compliance_by_framework(framework: str) -> dict:
     """Get compliance posture for a single framework.
 
     Supported frameworks: owasp-llm, owasp-mcp, atlas, nist, owasp-agentic, eu-ai-act,
-    nist-csf, iso-27001, soc2, cis
+    nist-csf, iso-27001, soc2, cis, cmmc
     """
     full = await get_compliance()
 
@@ -225,6 +232,7 @@ async def get_compliance_by_framework(framework: str) -> dict:
         "iso-27001": "iso_27001",
         "soc2": "soc2",
         "cis": "cis_controls",
+        "cmmc": "cmmc",
     }
 
     key = framework_map.get(framework.lower())

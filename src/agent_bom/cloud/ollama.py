@@ -148,9 +148,9 @@ def _discover_via_api(host: str) -> list[dict] | None:
         url = f"{host}/api/tags"
         if not url.startswith(("http://", "https://")):
             return None
-        resp = sync_get(url, timeout=3)
-        if resp is not None and resp.status_code == 200:
-            data = resp.json()
+        fallback_resp = sync_get(url, timeout=3)
+        if fallback_resp is not None and fallback_resp.status_code == 200:
+            data = fallback_resp.json()
             return data.get("models", [])
     except (OSError, ValueError) as exc:
         logger.debug("Ollama sync API probe failed: %s", exc)

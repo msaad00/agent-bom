@@ -7,6 +7,20 @@
 #   4. An issue is open to track re-evaluation when the constraint is lifted
 
 [[IgnoredVulns]]
+id = "GHSA-gfwx-w7gr-fvh7"
+reason = """
+nltk 3.9.3 — no fix available upstream (3.9.3 is latest).
+0 vulnerabilities can be fixed. Re-evaluate when nltk ships a new release.
+"""
+
+[[IgnoredVulns]]
+id = "GHSA-rf74-v2fm-23pw"
+reason = """
+nltk 3.9.3 — no fix available upstream (3.9.3 is latest).
+0 vulnerabilities can be fixed. Re-evaluate when nltk ships a new release.
+"""
+
+[[IgnoredVulns]]
 id = "GHSA-68rp-wp8r-4726"
 reason = """
 pyopenssl DTLS buffer overflow (fixed in pyopenssl>=26.0.0).

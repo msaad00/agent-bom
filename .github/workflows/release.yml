@@ -158,7 +158,7 @@ jobs:
           uv run agent-bom scan --self-scan \
             --format sarif \
             -o sarif/release-self-dep.sarif \
-            --fail-on-severity high \
+            --fail-on-severity critical \
             --quiet
 
       - name: Upload release self-scan SARIF

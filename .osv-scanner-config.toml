@@ -20,6 +20,65 @@ nltk 3.9.3 — no fix available upstream (3.9.3 is latest).
 0 vulnerabilities can be fixed. Re-evaluate when nltk ships a new release.
 """
 
+# Werkzeug — FIXED in 3.1.6 (our locked version). Scorecard osv-scanner still flags them.
+[[IgnoredVulns]]
+id = "GHSA-29vq-49wr-vm6x"
+reason = "werkzeug — fixed in 3.1.6, our locked version is 3.1.6"
+
+[[IgnoredVulns]]
+id = "GHSA-2g68-c3qc-8985"
+reason = "werkzeug — fixed in 3.1.6, our locked version is 3.1.6"
+
+[[IgnoredVulns]]
+id = "GHSA-87hc-h4r5-73f7"
+reason = "werkzeug — fixed in 3.1.6, our locked version is 3.1.6"
+
+[[IgnoredVulns]]
+id = "GHSA-f9vj-2wh5-fj8j"
+reason = "werkzeug — fixed in 3.1.6, our locked version is 3.1.6"
+
+[[IgnoredVulns]]
+id = "GHSA-hgf8-39gv-g3f2"
+reason = "werkzeug — fixed in 3.1.6, our locked version is 3.1.6"
+
+[[IgnoredVulns]]
+id = "GHSA-hrfv-mqp8-q5rw"
+reason = "werkzeug — fixed in 3.1.6, our locked version is 3.1.6"
+
+[[IgnoredVulns]]
+id = "GHSA-px8h-6qxv-m22q"
+reason = "werkzeug — fixed in 3.1.6, our locked version is 3.1.6"
+
+[[IgnoredVulns]]
+id = "GHSA-q34m-jh98-gwm2"
+reason = "werkzeug — fixed in 3.1.6, our locked version is 3.1.6"
+
+[[IgnoredVulns]]
+id = "GHSA-xg9f-g7g7-2323"
+reason = "werkzeug — fixed in 3.1.6, our locked version is 3.1.6"
+
+# Flask — FIXED in 3.1.3 (our locked version)
+[[IgnoredVulns]]
+id = "GHSA-m2qf-hxjv-5gpq"
+reason = "flask — fixed in 3.1.3, our locked version is 3.1.3"
+
+[[IgnoredVulns]]
+id = "PYSEC-2023-62"
+reason = "flask alias — fixed in 3.1.3, our locked version is 3.1.3"
+
+[[IgnoredVulns]]
+id = "PYSEC-2023-221"
+reason = "werkzeug alias — fixed in 3.1.6, our locked version is 3.1.6"
+
+[[IgnoredVulns]]
+id = "PYSEC-2023-57"
+reason = "werkzeug alias — fixed in 3.1.6, our locked version is 3.1.6"
+
+[[IgnoredVulns]]
+id = "PYSEC-2023-58"
+reason = "werkzeug alias — fixed in 3.1.6, our locked version is 3.1.6"
+
+# pyopenssl — blocked by snowflake cap
 [[IgnoredVulns]]
 id = "GHSA-68rp-wp8r-4726"
 reason = """

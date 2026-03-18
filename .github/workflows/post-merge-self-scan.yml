@@ -41,8 +41,15 @@ jobs:
         run: |
           set +e
           mkdir -p sarif
-          uv run agent-bom scan --self-scan --format sarif -o sarif/self-dep.sarif --quiet
+          # Only upload HIGH+ to Security tab — low/medium visible in workflow logs only
+          uv run agent-bom scan --self-scan --format sarif -o sarif/self-dep.sarif \
+            --fail-on-severity high --quiet
           echo "dep_exit=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Print full dep scan summary (all severities, for logs)
+        if: always()
+        run: |
+          uv run agent-bom scan --self-scan --quiet 2>&1 | tail -20 || true
 
       - name: Run SAST scan on source code (--code)
         id: sast_scan

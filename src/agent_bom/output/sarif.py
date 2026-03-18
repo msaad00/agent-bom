@@ -29,6 +29,33 @@ _SECURITY_SEVERITY_SCORE = {
 }
 
 
+def _to_relative_path(path: str) -> str:
+    """Convert an absolute path to a relative path suitable for SARIF.
+
+    GitHub Code Scanning requires relative paths from the repo root.
+    Absolute paths cause "No summary of scanned files" in the Security tab.
+    For dependency findings, points to the most likely manifest file.
+    """
+
+    p = Path(path)
+    # If it's a directory (e.g., project root from --self-scan), point to manifest
+    if p.is_dir():
+        for manifest in ("pyproject.toml", "package.json", "go.mod", "Cargo.toml", "requirements.txt"):
+            if (p / manifest).exists():
+                return manifest
+        return "pyproject.toml"  # default fallback for Python projects
+
+    # If it's an absolute path, try to make it relative to cwd
+    if p.is_absolute():
+        try:
+            return str(p.relative_to(Path.cwd()))
+        except ValueError:
+            # Can't make relative — extract just the filename
+            return p.name
+
+    return path
+
+
 def to_sarif(report: AIBOMReport) -> dict:
     """Convert report to SARIF 2.1.0 dict for GitHub Security tab."""
     rules = []
@@ -66,7 +93,10 @@ def to_sarif(report: AIBOMReport) -> dict:
         if vuln.fixed_version:
             message_text += f" Fix: upgrade to {vuln.fixed_version}."
 
-        config_path = br.affected_agents[0].config_path if br.affected_agents else "unknown"
+        raw_config_path = br.affected_agents[0].config_path if br.affected_agents else "unknown"
+        # SARIF requires relative paths from repo root for GitHub Security tab.
+        # Absolute paths cause "No summary of scanned files" in GitHub UI.
+        config_path = _to_relative_path(raw_config_path)
 
         fp_input = f"{rule_id}:{br.package.name}:{br.package.version}:{config_path}"
         fingerprint = hashlib.sha256(fp_input.encode()).hexdigest()

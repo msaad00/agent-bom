@@ -27,8 +27,9 @@ LABEL org.opencontainers.image.licenses="Apache-2.0"
 COPY --from=builder /install /usr/local
 COPY --from=builder /app/LICENSE /app/LICENSE
 
-# Apply latest OS security patches (fixes base-image CVEs visible in Docker Scout)
-RUN apt-get update && apt-get upgrade -y --no-install-recommends && rm -rf /var/lib/apt/lists/*
+# Apply latest OS security patches + upgrade pip (fixes CVE-2025-8869, CVE-2026-1703)
+RUN apt-get update && apt-get upgrade -y --no-install-recommends && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir --upgrade pip
 
 # Create non-root user for least-privilege execution
 RUN addgroup --system abom && adduser --system --ingroup abom abom

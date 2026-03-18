@@ -38,9 +38,10 @@ jobs:
             https://github.com/google/osv-scanner/releases/download/v2.3.3/osv-scanner_linux_amd64
           chmod +x /usr/local/bin/osv-scanner
           # Scan main lockfile (all pinned deps for every extra, including transitive)
-          osv-scanner scan lockfile --config .osv-scanner-config.toml uv.lock
+          # osv-scanner v2 syntax: scan --lockfile=<path>
+          osv-scanner scan --config .osv-scanner-config.toml --lockfile=uv.lock
           # Scan dashboard deps (separate requirements.txt, not covered by uv.lock)
-          osv-scanner scan lockfile --config .osv-scanner-config.toml dashboard/requirements.txt
+          osv-scanner scan --config .osv-scanner-config.toml --lockfile=dashboard/requirements.txt
 
       - name: Trivy filesystem scan
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0

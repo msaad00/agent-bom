@@ -328,6 +328,7 @@ def build_context_graph(
 # ── Lateral path finder (BFS) ─────────────────────────────────────────────
 
 _MAX_PATHS = 100
+_MAX_QUEUE_SIZE = 10_000  # Prevent OOM on large graphs (100+ agents)
 
 
 def find_lateral_paths(
@@ -355,14 +356,14 @@ def find_lateral_paths(
     source_agent = source_node.label if source_node.kind == NodeKind.AGENT else source_node.metadata.get("agent", "")
 
     paths: list[LateralPath] = []
-    # BFS: queue items are (current_node_id, path_of_node_ids, path_of_edge_kinds)
-    queue: deque[tuple[str, list[str], list[EdgeKind]]] = deque()
-    queue.append((source_node_id, [source_node_id], []))
+    # BFS: queue items are (current_node_id, path_of_node_ids, path_of_edge_kinds, visited_set)
+    queue: deque[tuple[str, list[str], list[EdgeKind], frozenset[str]]] = deque()
+    queue.append((source_node_id, [source_node_id], [], frozenset([source_node_id])))
 
     visited_paths: set[tuple[str, ...]] = set()
 
     while queue and len(paths) < _MAX_PATHS:
-        current_id, path_nodes, path_edges = queue.popleft()
+        current_id, path_nodes, path_edges, visited = queue.popleft()
 
         if len(path_nodes) > max_depth + 1:
             continue
@@ -394,15 +395,18 @@ def find_lateral_paths(
                         paths.append(lp)
                         continue  # Don't expand further from this target
 
-        # Expand neighbors
+        # Expand neighbors (bounded queue prevents OOM on dense graphs)
+        if len(queue) >= _MAX_QUEUE_SIZE:
+            continue
         for edge in graph.adjacency.get(current_id, []):
             neighbor = edge.target
-            if neighbor not in path_nodes:  # Avoid cycles
+            if neighbor not in visited:  # O(1) cycle check via frozenset
                 queue.append(
                     (
                         neighbor,
                         path_nodes + [neighbor],
                         path_edges + [edge.kind],
+                        visited | {neighbor},
                     )
                 )
 

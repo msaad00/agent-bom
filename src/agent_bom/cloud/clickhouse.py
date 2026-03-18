@@ -10,8 +10,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import urllib.error
-import urllib.request
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -64,15 +62,18 @@ class ClickHouseClient:
             "X-ClickHouse-Database": self.database,
         }
         data = query.encode("utf-8")
-        req = urllib.request.Request(self.url, data=data, headers=headers, method="POST")
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:  # nosec B310 — URL scheme is user-configured
-                return resp.read().decode("utf-8")
-        except urllib.error.HTTPError as exc:
-            body = exc.read().decode("utf-8", errors="replace")
-            raise ClickHouseError(f"ClickHouse HTTP {exc.code}: {body[:500]}") from exc
-        except urllib.error.URLError as exc:
-            raise ClickHouseError(f"ClickHouse connection error: {exc.reason}") from exc
+            from agent_bom.http_client import create_sync_client, sync_request_with_retry
+
+            with create_sync_client(timeout=self.timeout) as client:
+                resp = sync_request_with_retry(client, "POST", self.url, headers=headers, content=data)
+            if resp is None:
+                raise ClickHouseError("ClickHouse connection timed out after retries")
+            if resp.status_code >= 400:
+                raise ClickHouseError(f"ClickHouse HTTP {resp.status_code}: {resp.text[:500]}")
+            return resp.text
+        except ClickHouseError:
+            raise
         except TimeoutError as exc:
             raise ClickHouseError(f"ClickHouse request timed out after {self.timeout}s") from exc
 

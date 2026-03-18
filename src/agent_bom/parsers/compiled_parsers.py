@@ -120,10 +120,10 @@ def verify_go_checksums(
         # Fetch expected hash from the checksum database
         lookup_url = f"{checksum_db_url}/lookup/{mod}@{ver_key}"
         try:
-            req = urllib.request.Request(lookup_url)  # noqa: S310  # nosec B310 — HTTPS enforced above
-            with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310  # nosec B310
-                body = resp.read().decode("utf-8", errors="replace")
-        except (urllib.error.URLError, OSError, ValueError) as exc:
+            from agent_bom.http_client import fetch_bytes
+
+            body = fetch_bytes(lookup_url, timeout=timeout).decode("utf-8", errors="replace")
+        except (OSError, ValueError, ConnectionError) as exc:
             logger.warning(
                 "go.sum verification skipped for %s — checksum DB unreachable: %s",
                 key,
@@ -191,9 +191,9 @@ def resolve_go_version(
     list_url = f"{proxy_url}/{encoded_module}/@v/list"
 
     try:
-        req = urllib.request.Request(list_url)  # noqa: S310  # nosec B310 — HTTPS enforced above
-        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310  # nosec B310
-            body = resp.read().decode("utf-8", errors="replace")
+        from agent_bom.http_client import fetch_bytes
+
+        body = fetch_bytes(list_url, timeout=timeout).decode("utf-8", errors="replace")
     except Exception as exc:  # noqa: BLE001 — never raise; return original version on any failure
         logger.warning(
             "GOPROXY version resolution failed for %s — returning original version: %s",
@@ -278,9 +278,9 @@ def resolve_maven_version(
     _maven_prerelease_re = re.compile(r"-(SNAPSHOT|RC\d*|M\d+)$", re.IGNORECASE)
 
     try:
-        req = urllib.request.Request(api_url)  # noqa: S310  # nosec B310 — HTTPS enforced above
-        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310  # nosec B310
-            raw_body = resp.read().decode("utf-8", errors="replace")
+        from agent_bom.http_client import fetch_bytes
+
+        raw_body = fetch_bytes(api_url, timeout=timeout).decode("utf-8", errors="replace")
     except Exception as exc:  # noqa: BLE001 — never raise; return original on failure
         logger.warning(
             "Maven Central version resolution failed for %s:%s — returning original version: %s",
@@ -355,9 +355,9 @@ def resolve_cargo_version(
     user_agent = f"agent-bom/{__version__} (github.com/msaad00/agent-bom)"
 
     try:
-        req = urllib.request.Request(api_url, headers={"User-Agent": user_agent})  # noqa: S310  # nosec B310 — HTTPS enforced above
-        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310  # nosec B310
-            raw_body = resp.read().decode("utf-8", errors="replace")
+        from agent_bom.http_client import fetch_bytes
+
+        raw_body = fetch_bytes(api_url, timeout=timeout, headers={"User-Agent": user_agent}).decode("utf-8", errors="replace")
     except Exception as exc:  # noqa: BLE001 — never raise; return original on failure
         logger.warning(
             "crates.io version resolution failed for %s — returning original version: %s",

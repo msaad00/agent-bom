@@ -7,10 +7,7 @@ Detects common model file formats and flags security risks
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
-import urllib.error
-import urllib.request
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -255,11 +252,12 @@ def check_huggingface_provenance(
 
     url = f"https://huggingface.co/api/models/{model_name}"
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "agent-bom"})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:  # nosec B310 — URL prefix is hardcoded https://huggingface.co
-            data = json.loads(resp.read().decode())
-    except urllib.error.HTTPError as exc:
-        if exc.code == 404:
+        from agent_bom.http_client import sync_get
+
+        resp = sync_get(url, timeout=timeout, headers={"User-Agent": "agent-bom"})
+        if resp is None:
+            raise ConnectionError("HuggingFace API unreachable after retries")
+        if resp.status_code == 404:
             result["security_flags"].append(
                 {
                     "severity": "HIGH",
@@ -267,16 +265,10 @@ def check_huggingface_provenance(
                     "description": f"Model '{model_name}' not found on HuggingFace. Cannot verify provenance.",
                 }
             )
-        else:
-            result["security_flags"].append(
-                {
-                    "severity": "MEDIUM",
-                    "type": "PROVENANCE_CHECK_FAILED",
-                    "description": f"HuggingFace API error {exc.code}: {exc.reason}",
-                }
-            )
-        return result
-    except (urllib.error.URLError, OSError, ValueError) as exc:
+            return result
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as exc:
         result["security_flags"].append(
             {
                 "severity": "MEDIUM",

@@ -11,8 +11,7 @@ Covers:
 from __future__ import annotations
 
 import textwrap
-import urllib.error
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -58,13 +57,9 @@ _PROXY_LIST_WITH_PRERELEASE = "v1.2.3\nv1.3.0-rc1\nv1.3.0-alpha\nv1.4.0-beta.2\n
 _PROXY_LIST_EMPTY = ""
 
 
-def _make_urlopen_response(body: str):
-    """Return a mock context-manager response for urllib.request.urlopen."""
-    mock_resp = MagicMock()
-    mock_resp.read.return_value = body.encode("utf-8")
-    mock_resp.__enter__ = lambda s: s
-    mock_resp.__exit__ = MagicMock(return_value=False)
-    return mock_resp
+def _as_bytes(body: str) -> bytes:
+    """Encode a string to bytes, matching fetch_bytes return type."""
+    return body.encode("utf-8")
 
 
 # ===========================================================================
@@ -80,7 +75,7 @@ class TestVerifyGoChecksumsOk:
         go_sum.write_text(GO_SUM_CONTENT)
         modules = [("github.com/gin-gonic/gin", "v1.9.1")]
 
-        with patch("urllib.request.urlopen", return_value=_make_urlopen_response(_DB_RESPONSE_OK)):
+        with patch("agent_bom.http_client.fetch_bytes", return_value=_as_bytes(_DB_RESPONSE_OK)):
             result = verify_go_checksums(go_sum, modules)
 
         assert result["github.com/gin-gonic/gin@v1.9.1"] == "ok"
@@ -91,7 +86,7 @@ class TestVerifyGoChecksumsOk:
         go_sum.write_text(GO_SUM_CONTENT)
         modules = [("github.com/gin-gonic/gin", "v1.9.1")]
 
-        with patch("urllib.request.urlopen", return_value=_make_urlopen_response(_DB_RESPONSE_OK)):
+        with patch("agent_bom.http_client.fetch_bytes", return_value=_as_bytes(_DB_RESPONSE_OK)):
             result = verify_go_checksums(go_sum, modules)
 
         # Just status; callers decide what to do with it
@@ -107,8 +102,8 @@ class TestVerifyGoChecksumsMismatch:
         modules = [("github.com/gin-gonic/gin", "v1.9.1")]
 
         with patch(
-            "urllib.request.urlopen",
-            return_value=_make_urlopen_response(_DB_RESPONSE_MISMATCH),
+            "agent_bom.http_client.fetch_bytes",
+            return_value=_as_bytes(_DB_RESPONSE_MISMATCH),
         ):
             result = verify_go_checksums(go_sum, modules)
 
@@ -120,8 +115,8 @@ class TestVerifyGoChecksumsMismatch:
         (tmp_path / "go.sum").write_text(GO_SUM_CONTENT)
 
         with patch(
-            "urllib.request.urlopen",
-            return_value=_make_urlopen_response(_DB_RESPONSE_MISMATCH),
+            "agent_bom.http_client.fetch_bytes",
+            return_value=_as_bytes(_DB_RESPONSE_MISMATCH),
         ):
             pkgs = parse_go_packages(tmp_path, verify_checksums=True)
 
@@ -134,8 +129,8 @@ class TestVerifyGoChecksumsMismatch:
         (tmp_path / "go.sum").write_text(GO_SUM_CONTENT)
 
         with patch(
-            "urllib.request.urlopen",
-            return_value=_make_urlopen_response(_DB_RESPONSE_MISMATCH),
+            "agent_bom.http_client.fetch_bytes",
+            return_value=_as_bytes(_DB_RESPONSE_MISMATCH),
         ):
             pkgs = parse_go_packages(tmp_path, verify_checksums=True)
 
@@ -165,7 +160,7 @@ class TestVerifyGoChecksumsMissing:
             "github.com/stretchr/testify v1.8.4 h1:EEFFGGHH==\ngithub.com/stretchr/testify v1.8.4/go.mod h1:IIJJKKLL==\n"
         )
 
-        with patch("urllib.request.urlopen", return_value=_make_urlopen_response(_DB_RESPONSE_OK)):
+        with patch("agent_bom.http_client.fetch_bytes", return_value=_as_bytes(_DB_RESPONSE_OK)):
             pkgs = parse_go_packages(tmp_path, verify_checksums=True)
 
         gin_pkg = next((p for p in pkgs if p.name == "github.com/gin-gonic/gin"), None)
@@ -182,8 +177,8 @@ class TestVerifyGoChecksumsNetworkFailure:
         modules = [("github.com/gin-gonic/gin", "v1.9.1")]
 
         with patch(
-            "urllib.request.urlopen",
-            side_effect=urllib.error.URLError("connection refused"),
+            "agent_bom.http_client.fetch_bytes",
+            side_effect=ConnectionError("connection refused"),
         ):
             # Must not raise
             result = verify_go_checksums(go_sum, modules)
@@ -196,7 +191,7 @@ class TestVerifyGoChecksumsNetworkFailure:
         go_sum.write_text(GO_SUM_CONTENT)
         modules = [("github.com/gin-gonic/gin", "v1.9.1")]
 
-        with patch("urllib.request.urlopen", side_effect=OSError("timeout")):
+        with patch("agent_bom.http_client.fetch_bytes", side_effect=OSError("timeout")):
             result = verify_go_checksums(go_sum, modules)
 
         assert "github.com/gin-gonic/gin@v1.9.1" not in result
@@ -232,8 +227,8 @@ class TestResolveGoVersionLatest:
 
     def test_resolves_latest_to_highest_stable(self):
         with patch(
-            "urllib.request.urlopen",
-            return_value=_make_urlopen_response(_PROXY_LIST_STABLE),
+            "agent_bom.http_client.fetch_bytes",
+            return_value=_as_bytes(_PROXY_LIST_STABLE),
         ):
             result = resolve_go_version("github.com/gin-gonic/gin", "latest")
 
@@ -241,8 +236,8 @@ class TestResolveGoVersionLatest:
 
     def test_resolves_empty_string_version(self):
         with patch(
-            "urllib.request.urlopen",
-            return_value=_make_urlopen_response(_PROXY_LIST_STABLE),
+            "agent_bom.http_client.fetch_bytes",
+            return_value=_as_bytes(_PROXY_LIST_STABLE),
         ):
             result = resolve_go_version("github.com/gin-gonic/gin", "")
 
@@ -250,8 +245,8 @@ class TestResolveGoVersionLatest:
 
     def test_resolves_devel_version(self):
         with patch(
-            "urllib.request.urlopen",
-            return_value=_make_urlopen_response(_PROXY_LIST_STABLE),
+            "agent_bom.http_client.fetch_bytes",
+            return_value=_as_bytes(_PROXY_LIST_STABLE),
         ):
             result = resolve_go_version("github.com/gin-gonic/gin", "(devel)")
 
@@ -259,8 +254,8 @@ class TestResolveGoVersionLatest:
 
     def test_resolves_unknown_version(self):
         with patch(
-            "urllib.request.urlopen",
-            return_value=_make_urlopen_response(_PROXY_LIST_STABLE),
+            "agent_bom.http_client.fetch_bytes",
+            return_value=_as_bytes(_PROXY_LIST_STABLE),
         ):
             result = resolve_go_version("github.com/gin-gonic/gin", "unknown")
 
@@ -272,8 +267,8 @@ class TestResolveGoVersionSkipsPrerelease:
 
     def test_skips_rc_versions(self):
         with patch(
-            "urllib.request.urlopen",
-            return_value=_make_urlopen_response(_PROXY_LIST_WITH_PRERELEASE),
+            "agent_bom.http_client.fetch_bytes",
+            return_value=_as_bytes(_PROXY_LIST_WITH_PRERELEASE),
         ):
             result = resolve_go_version("github.com/example/mod", "latest")
 
@@ -286,8 +281,8 @@ class TestResolveGoVersionSkipsPrerelease:
     def test_all_prerelease_returns_original_version(self):
         all_pre = "v1.0.0-rc1\nv1.0.0-alpha\n"
         with patch(
-            "urllib.request.urlopen",
-            return_value=_make_urlopen_response(all_pre),
+            "agent_bom.http_client.fetch_bytes",
+            return_value=_as_bytes(all_pre),
         ):
             result = resolve_go_version("github.com/example/mod", "latest")
 
@@ -298,34 +293,34 @@ class TestResolveGoVersionAlreadyPinned:
     """A pinned version string must be returned unchanged — no network call made."""
 
     def test_pinned_version_returns_immediately(self):
-        with patch("urllib.request.urlopen") as mock_urlopen:
+        with patch("agent_bom.http_client.fetch_bytes") as mock_fetch:
             result = resolve_go_version("github.com/gin-gonic/gin", "v1.9.1")
 
-        mock_urlopen.assert_not_called()
+        mock_fetch.assert_not_called()
         assert result == "v1.9.1"
 
     def test_semver_with_patch_not_queried(self):
-        with patch("urllib.request.urlopen") as mock_urlopen:
+        with patch("agent_bom.http_client.fetch_bytes") as mock_fetch:
             result = resolve_go_version("github.com/pkg/errors", "v0.9.1")
 
-        mock_urlopen.assert_not_called()
+        mock_fetch.assert_not_called()
         assert result == "v0.9.1"
 
 
 class TestResolveGoVersionNetworkFailure:
     """Network failure must return the original version without raising."""
 
-    def test_url_error_returns_original_version(self):
+    def test_connection_error_returns_original_version(self):
         with patch(
-            "urllib.request.urlopen",
-            side_effect=urllib.error.URLError("connection refused"),
+            "agent_bom.http_client.fetch_bytes",
+            side_effect=ConnectionError("connection refused"),
         ):
             result = resolve_go_version("github.com/gin-gonic/gin", "latest")
 
         assert result == "latest"
 
     def test_oserror_returns_original_version(self):
-        with patch("urllib.request.urlopen", side_effect=OSError("timeout")):
+        with patch("agent_bom.http_client.fetch_bytes", side_effect=OSError("timeout")):
             result = resolve_go_version("github.com/gin-gonic/gin", "latest")
 
         assert result == "latest"
@@ -333,7 +328,7 @@ class TestResolveGoVersionNetworkFailure:
     def test_no_exception_propagated(self):
         """resolve_go_version must never raise regardless of network conditions."""
         with patch(
-            "urllib.request.urlopen",
+            "agent_bom.http_client.fetch_bytes",
             side_effect=Exception("unexpected error"),
         ):
             # Should not raise
@@ -355,11 +350,11 @@ class TestParseGoPackagesResolveVersions:
         """Default resolve_versions=False must not call the proxy."""
         (tmp_path / "go.mod").write_text(GO_MOD_BASIC)
 
-        with patch("urllib.request.urlopen") as mock_urlopen:
+        with patch("agent_bom.http_client.fetch_bytes") as mock_fetch:
             pkgs = parse_go_packages(tmp_path, verify_checksums=False, resolve_versions=False)
 
         # No proxy call for version resolution (checksums off too)
-        mock_urlopen.assert_not_called()
+        mock_fetch.assert_not_called()
         assert pkgs  # packages still parsed
 
     def test_verify_checksums_false_skips_checksum_db(self, tmp_path):
@@ -367,8 +362,8 @@ class TestParseGoPackagesResolveVersions:
         (tmp_path / "go.mod").write_text(GO_MOD_BASIC)
         (tmp_path / "go.sum").write_text(GO_SUM_CONTENT)
 
-        with patch("urllib.request.urlopen") as mock_urlopen:
+        with patch("agent_bom.http_client.fetch_bytes") as mock_fetch:
             pkgs = parse_go_packages(tmp_path, verify_checksums=False, resolve_versions=False)
 
-        mock_urlopen.assert_not_called()
+        mock_fetch.assert_not_called()
         assert pkgs

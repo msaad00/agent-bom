@@ -6,7 +6,6 @@ the ``~/.ollama/models`` manifest directory.  No extra dependencies required.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from pathlib import Path
@@ -34,7 +33,7 @@ def discover(
     agents: list[Agent] = []
     warnings: list[str] = []
 
-    resolved_host = host or os.environ.get("OLLAMA_HOST", _DEFAULT_OLLAMA_HOST)
+    resolved_host: str = host or os.environ.get("OLLAMA_HOST") or _DEFAULT_OLLAMA_HOST
 
     # ── Strategy 1: Ollama API ───────────────────────────────────────────
     api_models = _discover_via_api(resolved_host)
@@ -142,20 +141,19 @@ def _discover_via_api(host: str) -> list[dict] | None:
     except (ImportError, OSError) as exc:
         logger.debug("Ollama httpx API probe failed: %s", exc)
 
-    # Fallback: try with urllib (no extra dep)
+    # Fallback: try with sync httpx client (retry-capable)
     try:
-        import urllib.request
+        from agent_bom.http_client import sync_get
 
         url = f"{host}/api/tags"
         if not url.startswith(("http://", "https://")):
             return None
-        req = urllib.request.Request(url, method="GET")
-        with urllib.request.urlopen(req, timeout=3) as resp:  # nosec B310
-            if resp.status == 200:
-                data = json.loads(resp.read())
-                return data.get("models", [])
-    except (OSError, json.JSONDecodeError) as exc:
-        logger.debug("Ollama urllib API probe failed: %s", exc)
+        fallback_resp = sync_get(url, timeout=3)
+        if fallback_resp is not None and fallback_resp.status_code == 200:
+            data = fallback_resp.json()
+            return data.get("models", [])
+    except (OSError, ValueError) as exc:
+        logger.debug("Ollama sync API probe failed: %s", exc)
 
     return None
 

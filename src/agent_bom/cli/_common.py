@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import threading
 from pathlib import Path
@@ -118,8 +117,6 @@ def _check_for_update_bg() -> None:
     """Background thread: compare __version__ against PyPI latest. Non-blocking."""
     global _update_check_result  # noqa: PLW0603
     try:
-        import urllib.request
-
         cache_dir = Path.home() / ".cache" / "agent-bom"
         cache_file = cache_dir / "update-check.txt"
         cache_dir.mkdir(parents=True, exist_ok=True)
@@ -132,10 +129,9 @@ def _check_for_update_bg() -> None:
             _update_check_done.set()
             return
 
-        with urllib.request.urlopen(  # noqa: S310  # nosec B310
-            "https://pypi.org/pypi/agent-bom/json", timeout=5
-        ) as resp:
-            data = json.loads(resp.read())
+        from agent_bom.http_client import fetch_json
+
+        data = fetch_json("https://pypi.org/pypi/agent-bom/json", timeout=5)
         latest = data["info"]["version"]
 
         def _vt(v: str) -> tuple[int, ...]:

@@ -277,7 +277,7 @@ def check_ollama_model(
     """
     import os
 
-    resolved_host = host or os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+    resolved_host: str = host or os.environ.get("OLLAMA_HOST") or "http://localhost:11434"
     base_name = model_name.split(":")[0] if ":" in model_name else model_name
     tag = model_name.split(":")[1] if ":" in model_name else "latest"
 
@@ -341,20 +341,18 @@ def check_ollama_model(
 def _get_ollama_manifest_api(host: str, model_name: str) -> dict | None:
     """Fetch model manifest from Ollama API /api/show."""
     try:
-        import urllib.error
-        import urllib.request
+        from agent_bom.http_client import create_sync_client, sync_request_with_retry
 
         url = f"{host}/api/show"
         if not url.startswith(("http://", "https://")):
             return None
 
         payload = json.dumps({"name": model_name}).encode()
-        req = urllib.request.Request(url, data=payload, method="POST", headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=5) as resp:  # nosec B310
-            if resp.status == 200:
-                data = json.loads(resp.read())
-                # /api/show returns model_info; extract manifest-like structure
-                return data
+        with create_sync_client(timeout=5) as client:
+            resp = sync_request_with_retry(client, "POST", url, content=payload, headers={"Content-Type": "application/json"})
+        if resp is not None and resp.status_code == 200:
+            data = resp.json()
+            return data
     except (OSError, json.JSONDecodeError) as exc:
         _safe_name = model_name.replace("\n", "").replace("\r", "") if model_name else ""
         logger.debug("Could not fetch Ollama model info for %s: %s", _safe_name, exc)

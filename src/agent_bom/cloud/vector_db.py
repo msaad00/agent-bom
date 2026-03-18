@@ -28,8 +28,6 @@ from __future__ import annotations
 import json
 import logging
 import socket
-import urllib.error
-import urllib.request
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -139,11 +137,12 @@ def _http_get(host: str, port: int, path: str, timeout: int = _DEFAULT_TIMEOUT) 
     if not url.startswith(("http://", "https://")):  # defensive
         return -1, b""
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "agent-bom/vectordb-check"})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:  # nosec B310
-            return resp.status, resp.read()
-    except urllib.error.HTTPError as e:
-        return e.code, b""
+        from agent_bom.http_client import sync_get
+
+        resp = sync_get(url, timeout=timeout, headers={"User-Agent": "agent-bom/vectordb-check"})
+        if resp is None:
+            return -1, b""
+        return resp.status_code, resp.content
     except Exception:
         return -1, b""
 
@@ -390,22 +389,22 @@ def _pinecone_get(path: str, api_key: str, timeout: int = _DEFAULT_TIMEOUT) -> t
     """
     url = f"{_PINECONE_API_BASE}{path}"
     try:
-        req = urllib.request.Request(
-            url,
-            headers={
-                "Api-Key": api_key,
-                "User-Agent": "agent-bom/pinecone-scan",
-                "Accept": "application/json",
-            },
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:  # nosec B310
-            return resp.status, json.loads(resp.read())
-    except urllib.error.HTTPError as e:
+        from agent_bom.http_client import create_sync_client, sync_request_with_retry
+
+        hdrs = {
+            "Api-Key": api_key,
+            "User-Agent": "agent-bom/pinecone-scan",
+            "Accept": "application/json",
+        }
+        with create_sync_client(timeout=timeout) as client:
+            resp = sync_request_with_retry(client, "GET", url, headers=hdrs)
+        if resp is None:
+            return -1, {}
         try:
-            body = json.loads(e.read())
+            body = resp.json()
         except Exception:
             body = {}
-        return e.code, body
+        return resp.status_code, body
     except Exception as exc:
         # Sanitize: ensure the API key cannot appear in logged exception messages.
         sanitized = str(exc).replace(api_key, "***REDACTED***") if api_key else str(exc)

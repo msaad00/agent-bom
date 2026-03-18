@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import json
-import urllib.error
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
+
+import httpx
 
 from agent_bom.model_files import (
     check_huggingface_provenance,
@@ -115,18 +115,19 @@ class TestCheckSigstoreSignature:
 # ── check_huggingface_provenance ─────────────────────────────────
 
 
-class TestCheckHuggingFaceProvenance:
-    def _mock_response(self, data: dict):
-        """Create a mock urllib response."""
-        mock_resp = MagicMock()
-        mock_resp.read.return_value = json.dumps(data).encode()
-        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
-        mock_resp.__exit__ = MagicMock(return_value=False)
-        return mock_resp
+def _mock_hf_response(data: dict, status_code: int = 200) -> httpx.Response:
+    """Create a mock httpx.Response for sync_get."""
+    return httpx.Response(
+        status_code=status_code,
+        json=data,
+        request=httpx.Request("GET", "https://huggingface.co/api/models/test"),
+    )
 
-    @patch("agent_bom.model_files.urllib.request.urlopen")
-    def test_success_full_metadata(self, mock_urlopen):
-        mock_urlopen.return_value = self._mock_response(
+
+class TestCheckHuggingFaceProvenance:
+    @patch("agent_bom.http_client.sync_get")
+    def test_success_full_metadata(self, mock_sync_get):
+        mock_sync_get.return_value = _mock_hf_response(
             {
                 "author": "meta-llama",
                 "cardData": {"license": "llama3.1"},
@@ -147,9 +148,9 @@ class TestCheckHuggingFaceProvenance:
         assert result["downloads"] == 500000
         assert result["security_flags"] == []
 
-    @patch("agent_bom.model_files.urllib.request.urlopen")
-    def test_no_model_card_flags(self, mock_urlopen):
-        mock_urlopen.return_value = self._mock_response(
+    @patch("agent_bom.http_client.sync_get")
+    def test_no_model_card_flags(self, mock_sync_get):
+        mock_sync_get.return_value = _mock_hf_response(
             {
                 "author": "someone",
                 "gated": False,
@@ -163,9 +164,9 @@ class TestCheckHuggingFaceProvenance:
         flag_types = [f["type"] for f in result["security_flags"]]
         assert "NO_MODEL_CARD" in flag_types
 
-    @patch("agent_bom.model_files.urllib.request.urlopen")
-    def test_no_author_flags(self, mock_urlopen):
-        mock_urlopen.return_value = self._mock_response(
+    @patch("agent_bom.http_client.sync_get")
+    def test_no_author_flags(self, mock_sync_get):
+        mock_sync_get.return_value = _mock_hf_response(
             {
                 "cardData": {"license": "mit"},
                 "gated": False,
@@ -179,43 +180,39 @@ class TestCheckHuggingFaceProvenance:
         flag_types = [f["type"] for f in result["security_flags"]]
         assert "NO_AUTHOR" in flag_types
 
-    @patch("agent_bom.model_files.urllib.request.urlopen")
-    def test_model_not_found_404(self, mock_urlopen):
-        mock_urlopen.side_effect = urllib.error.HTTPError(
-            url="https://huggingface.co/api/models/nope/nope",
-            code=404,
-            msg="Not Found",
-            hdrs=None,
-            fp=None,
+    @patch("agent_bom.http_client.sync_get")
+    def test_model_not_found_404(self, mock_sync_get):
+        mock_sync_get.return_value = httpx.Response(
+            status_code=404,
+            json={"error": "Not Found"},
+            request=httpx.Request("GET", "https://huggingface.co/api/models/nope/nope"),
         )
         result = check_huggingface_provenance("nope/nope")
         assert result["author"] is None
         assert len(result["security_flags"]) == 1
         assert result["security_flags"][0]["type"] == "NO_PROVENANCE"
 
-    @patch("agent_bom.model_files.urllib.request.urlopen")
-    def test_api_error_500(self, mock_urlopen):
-        mock_urlopen.side_effect = urllib.error.HTTPError(
-            url="https://huggingface.co/api/models/err/err",
-            code=500,
-            msg="Internal Server Error",
-            hdrs=None,
-            fp=None,
+    @patch("agent_bom.http_client.sync_get")
+    def test_api_error_500(self, mock_sync_get):
+        mock_sync_get.return_value = httpx.Response(
+            status_code=500,
+            text="Internal Server Error",
+            request=httpx.Request("GET", "https://huggingface.co/api/models/err/err"),
         )
         result = check_huggingface_provenance("err/err")
         assert len(result["security_flags"]) == 1
         assert result["security_flags"][0]["type"] == "PROVENANCE_CHECK_FAILED"
 
-    @patch("agent_bom.model_files.urllib.request.urlopen")
-    def test_network_error(self, mock_urlopen):
-        mock_urlopen.side_effect = urllib.error.URLError("Connection refused")
+    @patch("agent_bom.http_client.sync_get")
+    def test_network_error(self, mock_sync_get):
+        mock_sync_get.return_value = None  # sync_get returns None on failure
         result = check_huggingface_provenance("some/model")
         assert len(result["security_flags"]) == 1
         assert result["security_flags"][0]["type"] == "PROVENANCE_CHECK_FAILED"
 
-    @patch("agent_bom.model_files.urllib.request.urlopen")
-    def test_sha256_not_available(self, mock_urlopen):
-        mock_urlopen.return_value = self._mock_response(
+    @patch("agent_bom.http_client.sync_get")
+    def test_sha256_not_available(self, mock_sync_get):
+        mock_sync_get.return_value = _mock_hf_response(
             {
                 "author": "test",
                 "cardData": {"license": "mit"},

@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import json
 import sqlite3
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -51,33 +50,23 @@ def _make_advisory(
     }
 
 
-def _mock_urlopen(pages: list[list[dict]]):
-    """Return a context-manager mock that yields pages in sequence."""
+def _mock_fetch_json(pages: list[list[dict]]):
+    """Return a side_effect for fetch_json that returns pages in sequence."""
     call_count = [0]
 
-    def side_effect(req, timeout=30):
+    def side_effect(url: str, *, timeout: int = 30, headers: dict | None = None):
         idx = call_count[0]
         call_count[0] += 1
-        if idx >= len(pages):
-            payload = []
-        else:
-            payload = pages[idx]
-        cm = MagicMock()
-        cm.__enter__ = MagicMock(return_value=cm)
-        cm.__exit__ = MagicMock(return_value=False)
-        cm.read = MagicMock(return_value=json.dumps(payload).encode())
-        return cm
+        return pages[idx] if idx < len(pages) else []
 
     return side_effect
 
 
-def _mock_urlopen_by_ecosystem(eco_pages: dict[str, list[list[dict]]]):
-    """Return a mock that dispatches pages based on ecosystem= in the URL."""
+def _mock_fetch_json_by_ecosystem(eco_pages: dict[str, list[list[dict]]]):
+    """Return a side_effect for fetch_json that dispatches by ecosystem= in URL."""
     eco_counters: dict[str, int] = {}
 
-    def side_effect(req, timeout=30):
-        url = req.full_url if hasattr(req, "full_url") else str(req)
-        # Extract ecosystem from URL query string
+    def side_effect(url: str, *, timeout: int = 30, headers: dict | None = None):
         eco = None
         for param in url.split("?", 1)[-1].split("&"):
             if param.startswith("ecosystem="):
@@ -90,13 +79,7 @@ def _mock_urlopen_by_ecosystem(eco_pages: dict[str, list[list[dict]]]):
         eco_counters[eco] += 1
 
         pages = eco_pages.get(eco, [])
-        payload = pages[idx] if idx < len(pages) else []
-
-        cm = MagicMock()
-        cm.__enter__ = MagicMock(return_value=cm)
-        cm.__exit__ = MagicMock(return_value=False)
-        cm.read = MagicMock(return_value=json.dumps(payload).encode())
-        return cm
+        return pages[idx] if idx < len(pages) else []
 
     return side_effect
 
@@ -111,7 +94,7 @@ def test_sync_ghsa_ingests_advisory() -> None:
     conn = _make_conn()
     advisory = _make_advisory(pkg_name="torch")
 
-    with patch("urllib.request.urlopen", side_effect=_mock_urlopen([[advisory], []])):
+    with patch("agent_bom.http_client.fetch_json", side_effect=_mock_fetch_json([[advisory], []])):
         count = sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=10, ecosystems=["pip"])
 
     assert count == 1
@@ -137,7 +120,7 @@ def test_sync_ghsa_ingests_non_ai_packages() -> None:
         ecosystem="pip",
     )
 
-    with patch("urllib.request.urlopen", side_effect=_mock_urlopen([[advisory], []])):
+    with patch("agent_bom.http_client.fetch_json", side_effect=_mock_fetch_json([[advisory], []])):
         count = sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=10, ecosystems=["pip"])
 
     assert count == 1
@@ -156,7 +139,7 @@ def test_sync_ghsa_ingests_npm_advisory() -> None:
         ecosystem="npm",
     )
 
-    with patch("urllib.request.urlopen", side_effect=_mock_urlopen([[advisory], []])):
+    with patch("agent_bom.http_client.fetch_json", side_effect=_mock_fetch_json([[advisory], []])):
         count = sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=10, ecosystems=["npm"])
 
     assert count == 1
@@ -176,12 +159,12 @@ def test_sync_ghsa_deduplicates_by_id() -> None:
 
     pages = [[advisory], []]
 
-    with patch("urllib.request.urlopen", side_effect=_mock_urlopen(pages)):
+    with patch("agent_bom.http_client.fetch_json", side_effect=_mock_fetch_json(pages)):
         count1 = sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=10, ecosystems=["pip"])
 
     # Second sync — reset the side_effect mock
     pages2 = [[advisory], []]
-    with patch("urllib.request.urlopen", side_effect=_mock_urlopen(pages2)):
+    with patch("agent_bom.http_client.fetch_json", side_effect=_mock_fetch_json(pages2)):
         count2 = sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=10, ecosystems=["pip"])
 
     assert count1 == 1
@@ -207,7 +190,7 @@ def test_sync_ghsa_handles_missing_cve_id() -> None:
         pkg_name="langchain",
     )
 
-    with patch("urllib.request.urlopen", side_effect=_mock_urlopen([[advisory], []])):
+    with patch("agent_bom.http_client.fetch_json", side_effect=_mock_fetch_json([[advisory], []])):
         count = sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=10, ecosystems=["pip"])
 
     assert count == 1
@@ -241,7 +224,7 @@ def test_sync_ghsa_multiple_ecosystems() -> None:
         "npm": [[npm_advisory], []],
     }
 
-    with patch("urllib.request.urlopen", side_effect=_mock_urlopen_by_ecosystem(eco_pages)):
+    with patch("agent_bom.http_client.fetch_json", side_effect=_mock_fetch_json_by_ecosystem(eco_pages)):
         count = sync_ghsa(
             conn,
             url="https://api.github.com/advisories",
@@ -259,7 +242,7 @@ def test_sync_ghsa_ecosystem_filtering() -> None:
     advisory = _make_advisory(pkg_name="torch")
 
     # Only pass pip ecosystem — should only make requests for pip
-    with patch("urllib.request.urlopen", side_effect=_mock_urlopen([[advisory], []])) as mock_open:
+    with patch("agent_bom.http_client.fetch_json", side_effect=_mock_fetch_json([[advisory], []])) as mock_open:
         sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=10, ecosystems=["pip"])
 
     # All requests should contain ecosystem=pip
@@ -285,7 +268,7 @@ def test_sync_ghsa_pagination() -> None:
     page1 = [_make_advisory(ghsa_id=f"GHSA-p1-{i:04d}-aaaa", cve_id=f"CVE-2024-{1000 + i}", pkg_name="torch") for i in range(3)]
     page2 = [_make_advisory(ghsa_id=f"GHSA-p2-{i:04d}-bbbb", cve_id=f"CVE-2024-{2000 + i}", pkg_name="numpy") for i in range(2)]
 
-    with patch("urllib.request.urlopen", side_effect=_mock_urlopen([page1, page2, []])):
+    with patch("agent_bom.http_client.fetch_json", side_effect=_mock_fetch_json([page1, page2, []])):
         count = sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=100, ecosystems=["pip"])
 
     assert count == 5
@@ -296,7 +279,7 @@ def test_sync_ghsa_respects_max_entries() -> None:
     conn = _make_conn()
     advisories = [_make_advisory(ghsa_id=f"GHSA-max-{i:04d}-aaaa", cve_id=f"CVE-2024-{3000 + i}", pkg_name="torch") for i in range(10)]
 
-    with patch("urllib.request.urlopen", side_effect=_mock_urlopen([advisories])):
+    with patch("agent_bom.http_client.fetch_json", side_effect=_mock_fetch_json([advisories])):
         count = sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=3, ecosystems=["pip"])
 
     assert count == 3

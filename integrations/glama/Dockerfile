@@ -33,4 +33,7 @@ USER abom
 # Verify entry point is on PATH
 RUN agent-bom --version
 
+HEALTHCHECK --interval=60s --timeout=10s --start-period=10s --retries=3 \
+    CMD agent-bom --version || exit 1
+
 ENTRYPOINT ["agent-bom", "mcp-server"]

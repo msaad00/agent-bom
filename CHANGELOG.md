@@ -7,6 +7,23 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.71.3] – 2026-03-18
+
+### Fixed
+- **Scanner accuracy**: empty string versions no longer silently bypass OSV queries — now logged as unresolvable (#933)
+- **HTTP reliability**: all 19 `urllib.request.urlopen` callers migrated to httpx with exponential backoff, Retry-After handling, and configurable timeouts (#878, #932)
+- **Context graph OOM**: BFS queue bounded at 10,000 entries + O(1) cycle check via frozenset to prevent memory explosion on dense deployments (#877, #930)
+- **Docker Hub token leak**: `release.yml` now masks API token with `::add-mask::`, validates before use (#929)
+- **CI self-scan gap**: added `agent-bom scan --os-packages` inside built Docker image to catch base-image CVEs (glibc, sqlite3, dpkg) that Docker Hub found but CI missed (#931)
+- **Alpine CI image**: pinned `python:3.12-alpine` by SHA256 digest (#929)
+- **Glama Dockerfile**: added missing HEALTHCHECK (#929)
+- **Container rescan**: weekly Trivy scan escalated from informational to exit-code 1 with warning annotation (#931)
+- **action.yml**: shortened description to 91 chars (was 141, GitHub Marketplace truncates at 125) (#933)
+
+### Added
+- **CMMC 2.0 in REST API**: wired 17 CMMC practices into `/v1/compliance` endpoint — 11 frameworks now accessible via API (#933)
+- **Sync HTTP client**: `create_sync_client()`, `sync_request_with_retry()`, `fetch_bytes()`, `fetch_json()` in `http_client.py` (#932)
+
 ## [Unreleased]
 
 ### Added

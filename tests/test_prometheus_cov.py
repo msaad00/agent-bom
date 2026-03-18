@@ -6,6 +6,7 @@ import os
 import tempfile
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
 from agent_bom.models import (
@@ -134,37 +135,50 @@ class TestPushToGateway:
 
     def test_successful_push(self):
         report = AIBOMReport(agents=[])
-        mock_resp = MagicMock()
-        mock_resp.status = 200
-        mock_resp.__enter__ = lambda self: self
-        mock_resp.__exit__ = lambda self, *args: None
-        with patch("urllib.request.urlopen", return_value=mock_resp):
-            push_to_gateway("http://localhost:9091", report, job="test")
+        mock_resp = httpx.Response(
+            status_code=200,
+            request=httpx.Request("POST", "http://localhost:9091/metrics/job/agent-bom"),
+        )
+        with patch("agent_bom.http_client.sync_request_with_retry", return_value=mock_resp):
+            with patch("agent_bom.http_client.create_sync_client") as mock_client_factory:
+                mock_client_factory.return_value.__enter__ = MagicMock(return_value=MagicMock())
+                mock_client_factory.return_value.__exit__ = MagicMock(return_value=False)
+                push_to_gateway("http://localhost:9091", report, job="test")
 
     def test_with_instance(self):
         report = AIBOMReport(agents=[])
-        mock_resp = MagicMock()
-        mock_resp.status = 200
-        mock_resp.__enter__ = lambda self: self
-        mock_resp.__exit__ = lambda self, *args: None
-        with patch("urllib.request.urlopen", return_value=mock_resp):
-            push_to_gateway("http://localhost:9091", report, instance="host1")
+        mock_resp = httpx.Response(
+            status_code=200,
+            request=httpx.Request("POST", "http://localhost:9091/metrics/job/agent-bom/instance/host1"),
+        )
+        with patch("agent_bom.http_client.sync_request_with_retry", return_value=mock_resp):
+            with patch("agent_bom.http_client.create_sync_client") as mock_client_factory:
+                mock_client_factory.return_value.__enter__ = MagicMock(return_value=MagicMock())
+                mock_client_factory.return_value.__exit__ = MagicMock(return_value=False)
+                push_to_gateway("http://localhost:9091", report, instance="host1")
 
     def test_http_error_raises(self):
-        import urllib.error
-
         report = AIBOMReport(agents=[])
-        with patch("urllib.request.urlopen", side_effect=urllib.error.HTTPError("http://localhost:9091", 500, "Server Error", {}, None)):
-            with pytest.raises(PushgatewayError):
-                push_to_gateway("http://localhost:9091", report)
+        mock_resp = httpx.Response(
+            status_code=500,
+            text="Server Error",
+            request=httpx.Request("POST", "http://localhost:9091/metrics/job/agent-bom"),
+        )
+        with patch("agent_bom.http_client.sync_request_with_retry", return_value=mock_resp):
+            with patch("agent_bom.http_client.create_sync_client") as mock_client_factory:
+                mock_client_factory.return_value.__enter__ = MagicMock(return_value=MagicMock())
+                mock_client_factory.return_value.__exit__ = MagicMock(return_value=False)
+                with pytest.raises(PushgatewayError):
+                    push_to_gateway("http://localhost:9091", report)
 
     def test_url_error_raises(self):
-        import urllib.error
-
         report = AIBOMReport(agents=[])
-        with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("Connection refused")):
-            with pytest.raises(PushgatewayError):
-                push_to_gateway("http://localhost:9091", report)
+        with patch("agent_bom.http_client.sync_request_with_retry", return_value=None):
+            with patch("agent_bom.http_client.create_sync_client") as mock_client_factory:
+                mock_client_factory.return_value.__enter__ = MagicMock(return_value=MagicMock())
+                mock_client_factory.return_value.__exit__ = MagicMock(return_value=False)
+                with pytest.raises(PushgatewayError):
+                    push_to_gateway("http://localhost:9091", report)
 
 
 # ── Unique tests from cov2 ──────────────────────────────────────────────────

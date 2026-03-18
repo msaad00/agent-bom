@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -15,14 +15,9 @@ from agent_bom.parsers.compiled_parsers import (
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _make_urlopen_response(body: dict) -> MagicMock:
-    """Return a mock context-manager suitable for patching urllib.request.urlopen."""
-    raw = json.dumps(body).encode("utf-8")
-    mock_resp = MagicMock()
-    mock_resp.read.return_value = raw
-    mock_resp.__enter__ = lambda s: s
-    mock_resp.__exit__ = MagicMock(return_value=False)
-    return mock_resp
+def _make_fetch_bytes_response(body: dict) -> bytes:
+    """Return JSON-encoded bytes suitable for patching fetch_bytes."""
+    return json.dumps(body).encode("utf-8")
 
 
 # ── Maven Central tests ───────────────────────────────────────────────────────
@@ -40,7 +35,7 @@ class TestResolveMavenVersion:
                 ]
             }
         }
-        with patch("urllib.request.urlopen", return_value=_make_urlopen_response(body)):
+        with patch("agent_bom.http_client.fetch_bytes", return_value=_make_fetch_bytes_response(body)):
             result = resolve_maven_version("org.springframework", "spring-core", "RELEASE")
         assert result == "6.1.4"
 
@@ -56,15 +51,15 @@ class TestResolveMavenVersion:
         }
         # "33.0.0-jre" does not match the SNAPSHOT/RC/M prerelease pattern so it
         # is the first stable doc returned — resolver should return it.
-        with patch("urllib.request.urlopen", return_value=_make_urlopen_response(body)):
+        with patch("agent_bom.http_client.fetch_bytes", return_value=_make_fetch_bytes_response(body)):
             result = resolve_maven_version("com.google.guava", "guava", "LATEST")
         assert result == "33.0.0-jre"
 
     def test_resolve_maven_version_pinned(self):
         """A pinned version is returned immediately without any network call."""
-        with patch("urllib.request.urlopen") as mock_open:
+        with patch("agent_bom.http_client.fetch_bytes") as mock_fetch:
             result = resolve_maven_version("org.springframework", "spring-core", "5.3.30")
-        mock_open.assert_not_called()
+        mock_fetch.assert_not_called()
         assert result == "5.3.30"
 
     def test_resolve_maven_version_skips_snapshot(self):
@@ -78,15 +73,13 @@ class TestResolveMavenVersion:
                 ]
             }
         }
-        with patch("urllib.request.urlopen", return_value=_make_urlopen_response(body)):
+        with patch("agent_bom.http_client.fetch_bytes", return_value=_make_fetch_bytes_response(body)):
             result = resolve_maven_version("com.example", "lib", "RELEASE")
         assert result == "1.8.5"
 
     def test_resolve_maven_version_network_failure(self):
         """A network error returns the original version string without raising."""
-        import urllib.error
-
-        with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("timeout")):
+        with patch("agent_bom.http_client.fetch_bytes", side_effect=ConnectionError("timeout")):
             result = resolve_maven_version("org.apache", "commons-lang3", "RELEASE")
         assert result == "RELEASE"
 
@@ -115,15 +108,15 @@ class TestResolveCargoVersion:
                 "newest_version": "1.0.197-beta.1",
             }
         }
-        with patch("urllib.request.urlopen", return_value=_make_urlopen_response(body)), patch("time.sleep"):
+        with patch("agent_bom.http_client.fetch_bytes", return_value=_make_fetch_bytes_response(body)), patch("time.sleep"):
             result = resolve_cargo_version("serde", "*")
         assert result == "1.0.196"
 
     def test_resolve_cargo_version_pinned(self):
         """A pinned version is returned immediately without any network call."""
-        with patch("urllib.request.urlopen") as mock_open, patch("time.sleep"):
+        with patch("agent_bom.http_client.fetch_bytes") as mock_fetch, patch("time.sleep"):
             result = resolve_cargo_version("serde", "1.76.0")
-        mock_open.assert_not_called()
+        mock_fetch.assert_not_called()
         assert result == "1.76.0"
 
     def test_resolve_cargo_version_uses_max_stable(self):
@@ -134,16 +127,14 @@ class TestResolveCargoVersion:
                 "newest_version": "0.12.0-alpha.3",
             }
         }
-        with patch("urllib.request.urlopen", return_value=_make_urlopen_response(body)), patch("time.sleep"):
+        with patch("agent_bom.http_client.fetch_bytes", return_value=_make_fetch_bytes_response(body)), patch("time.sleep"):
             result = resolve_cargo_version("tokio", "*")
         assert result == "0.11.0"
         assert result != "0.12.0-alpha.3"
 
     def test_resolve_cargo_version_network_failure(self):
         """A network error returns the original version string without raising."""
-        import urllib.error
-
-        with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("refused")), patch("time.sleep"):
+        with patch("agent_bom.http_client.fetch_bytes", side_effect=ConnectionError("refused")), patch("time.sleep"):
             result = resolve_cargo_version("serde", "*")
         assert result == "*"
 
@@ -155,17 +146,16 @@ class TestResolveCargoVersion:
                 "newest_version": "2.0.0",
             }
         }
-        captured_requests: list = []
+        captured_calls: list = []
 
-        def _capture_urlopen(req, timeout=5):
-            captured_requests.append(req)
-            return _make_urlopen_response(body)
+        def _capture_fetch_bytes(url, *, timeout=5, headers=None):
+            captured_calls.append({"url": url, "headers": headers})
+            return _make_fetch_bytes_response(body)
 
-        with patch("urllib.request.urlopen", side_effect=_capture_urlopen), patch("time.sleep"):
+        with patch("agent_bom.http_client.fetch_bytes", side_effect=_capture_fetch_bytes), patch("time.sleep"):
             resolve_cargo_version("rand", "")
 
-        assert len(captured_requests) == 1
-        ua = captured_requests[0].get_header("User-agent")
-        assert ua is not None
+        assert len(captured_calls) == 1
+        ua = captured_calls[0]["headers"].get("User-Agent", "")
         assert "agent-bom" in ua
         assert "github.com/msaad00/agent-bom" in ua

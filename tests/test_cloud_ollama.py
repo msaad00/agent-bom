@@ -26,7 +26,7 @@ def test_discover_via_api_both_fail():
     from agent_bom.cloud.ollama import _discover_via_api
 
     with patch("httpx.get", side_effect=OSError("refused")):
-        with patch("urllib.request.urlopen", side_effect=OSError("refused")):
+        with patch("agent_bom.http_client.sync_get", return_value=None):
             result = _discover_via_api("http://localhost:11434")
             assert result is None
 

@@ -321,19 +321,8 @@ def test_sync_kev_mocked(tmp_db):
             {"cveID": "CVE-2024-KEV-2", "dateAdded": "2024-01-02", "dueDate": "", "product": "Baz", "vendorProject": "Corp"},
         ]
     }
-    kev_bytes = json.dumps(kev_data).encode()
 
-    class _FakeResp:
-        def read(self):
-            return kev_bytes
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_):
-            pass
-
-    with patch("urllib.request.urlopen", return_value=_FakeResp()):
+    with patch("agent_bom.http_client.fetch_json", return_value=kev_data):
         count = sync_kev(tmp_db, url="https://fake/kev.json")
 
     assert count == 2
@@ -350,17 +339,7 @@ def test_sync_kev_mocked(tmp_db):
 def test_sync_epss_mocked(tmp_db):
     csv_content = b"cve,epss,percentile\nCVE-2024-1,0.95,99.5\nCVE-2024-2,0.10,50.0\n"
 
-    class _FakeResp:
-        def read(self):
-            return csv_content  # not gzipped — sync_epss handles both
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_):
-            pass
-
-    with patch("urllib.request.urlopen", return_value=_FakeResp()):
+    with patch("agent_bom.http_client.fetch_bytes", return_value=csv_content):
         count = sync_epss(tmp_db, url="https://fake/epss.csv.gz")
 
     assert count == 2

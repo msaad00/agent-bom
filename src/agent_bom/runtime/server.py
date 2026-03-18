@@ -126,7 +126,8 @@ async def run_http_mode(engine: ProtectionEngine, host: str, port: int) -> None:
             # Reject oversized payloads before reading body
             if content_length > max_body_size:
                 resp = json.dumps({"error": "payload too large"})
-                writer.write(f"HTTP/1.1 413 Payload Too Large\r\nContent-Type: application/json\r\nContent-Length: {len(resp)}\r\n\r\n{resp}".encode())
+                header = f"HTTP/1.1 413 Payload Too Large\r\nContent-Type: application/json\r\nContent-Length: {len(resp)}\r\n\r\n"
+                writer.write((header + resp).encode())
                 await writer.drain()
                 writer.close()
                 return

@@ -7,8 +7,8 @@
 # Provide this Dockerfile via Glama Admin > Server Settings > Build.
 
 ## ── Builder stage ────────────────────────────────────────────────────────────
-# python:3.12-slim (pinned by hash for OpenSSF Scorecard — same as main Dockerfile)
-FROM python:3.12-slim@sha256:39e4e1ccb01578e3c86f7a0cf7b7fd89b8dbe2c27a88de11cf726ba669469f49 AS builder
+# python:3.12.13-slim — pinned to same digest as main Dockerfile for Scorecard
+FROM python:3.12.13-slim@sha256:7026274c107626d7e940e0e5d6730481a4600ae95d5ca7eb532dd4180313fea9 AS builder
 
 WORKDIR /app
 
@@ -18,10 +18,13 @@ COPY src/ ./src/
 RUN pip install --no-cache-dir --prefix=/install ".[mcp-server]"
 
 ## ── Runtime stage ────────────────────────────────────────────────────────────
-FROM python:3.12-slim@sha256:39e4e1ccb01578e3c86f7a0cf7b7fd89b8dbe2c27a88de11cf726ba669469f49
+FROM python:3.12.13-slim@sha256:7026274c107626d7e940e0e5d6730481a4600ae95d5ca7eb532dd4180313fea9
 
 COPY --from=builder /install /usr/local
 COPY --from=builder /app/LICENSE /app/LICENSE
+
+# Apply latest OS security patches (fixes base-image CVEs visible in Docker Scout)
+RUN apt-get update && apt-get upgrade -y --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user for least-privilege execution
 RUN addgroup --system abom && adduser --system --ingroup abom abom

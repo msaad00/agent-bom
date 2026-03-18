@@ -5,8 +5,7 @@ on:
     tags:
       - "v*.*.*"  # semver only — excludes floating tags like v0
 
-permissions:
-  contents: read
+permissions: {}  # all permissions denied by default; jobs declare only what they need
 
 jobs:
   build:
@@ -106,6 +105,8 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.title=agent-bom
             org.opencontainers.image.description=Security scanner for AI infrastructure — from agent to runtime
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+            org.opencontainers.image.revision=${{ github.sha }}
 
       - name: Sync Docker Hub README
         env:

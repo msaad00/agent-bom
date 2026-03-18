@@ -338,7 +338,8 @@ jobs:
           image-ref: agent-bom:test
           format: table
           severity: HIGH,CRITICAL
-          exit-code: '0'
+          exit-code: '1'
+          trivyignores: .trivyignore
 
   # 6. agent-bom Self-Scan (dogfooding with test SBOM)
   # Runs on main push only — not needed on every PR

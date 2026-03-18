@@ -5,8 +5,7 @@ on:
     - cron: "0 9 * * 1"   # Every Monday at 09:00 UTC
   workflow_dispatch:        # Also triggerable manually from the Actions tab
 
-permissions:
-  contents: read
+permissions: {}  # all permissions denied by default; jobs declare only what they need
 
 jobs:
   sync:

@@ -18,8 +18,6 @@ Usage from cli.py::
 
 from __future__ import annotations
 
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Optional
 
@@ -264,22 +262,26 @@ def push_to_gateway(
         url += f"/instance/{instance}"
 
     data = text.encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=data,
-        method="POST",
-        headers={"Content-Type": "text/plain; version=0.0.4; charset=utf-8"},
-    )
 
     try:
-        # nosec B310 — URL scheme restricted to http/https above
-        with urllib.request.urlopen(req, timeout=timeout) as resp:  # nosec B310
-            if resp.status not in (200, 202):
-                raise PushgatewayError(f"Pushgateway returned HTTP {resp.status}")
-    except urllib.error.HTTPError as e:
-        raise PushgatewayError(f"Pushgateway HTTP {e.code}: {e.reason}") from e
-    except urllib.error.URLError as e:
-        raise PushgatewayError(f"Cannot reach Pushgateway at {gateway_url}: {e.reason}") from e
+        from agent_bom.http_client import create_sync_client, sync_request_with_retry
+
+        with create_sync_client(timeout=timeout) as client:
+            resp = sync_request_with_retry(
+                client,
+                "POST",
+                url,
+                content=data,
+                headers={"Content-Type": "text/plain; version=0.0.4; charset=utf-8"},
+            )
+        if resp is None:
+            raise PushgatewayError(f"Cannot reach Pushgateway at {gateway_url} after retries")
+        if resp.status_code not in (200, 202):
+            raise PushgatewayError(f"Pushgateway returned HTTP {resp.status_code}")
+    except PushgatewayError:
+        raise
+    except Exception as e:
+        raise PushgatewayError(f"Cannot reach Pushgateway at {gateway_url}: {e}") from e
 
 
 # ─── OpenTelemetry OTLP export (optional dep) ─────────────────────────────

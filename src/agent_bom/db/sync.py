@@ -334,15 +334,14 @@ def sync_osv(conn: sqlite3.Connection, url: Optional[str] = None, max_entries: i
 
     Returns the number of advisories ingested.
     """
-    import urllib.request
+    from agent_bom.http_client import fetch_bytes
 
     src = url or _OSV_ALL_ZIP_URL
     _validate_sync_url(src, "osv url")
     _logger.info("Downloading OSV bulk export from %s …", src)
 
     try:
-        with urllib.request.urlopen(src, timeout=60) as resp:  # noqa: S310  # nosec B310 — intentional HTTP fetch to public HTTPS sources
-            data = resp.read()
+        data = fetch_bytes(src, timeout=60)
     except Exception as exc:
         _logger.error("Failed to download OSV export: %s", exc)
         raise
@@ -380,15 +379,15 @@ def sync_epss(conn: sqlite3.Connection, url: Optional[str] = None) -> int:
     Returns the number of CVE scores upserted.
     """
     import gzip
-    import urllib.request
+
+    from agent_bom.http_client import fetch_bytes
 
     src = url or _EPSS_CSV_URL
     _validate_sync_url(src, "epss url")
     _logger.info("Downloading EPSS scores from %s …", src)
 
     try:
-        with urllib.request.urlopen(src, timeout=30) as resp:  # noqa: S310  # nosec B310 — intentional HTTP fetch to public HTTPS sources
-            raw = resp.read()
+        raw = fetch_bytes(src, timeout=30)
     except Exception as exc:
         _logger.error("Failed to download EPSS data: %s", exc)
         raise
@@ -452,15 +451,14 @@ def sync_kev(conn: sqlite3.Connection, url: Optional[str] = None) -> int:
 
     Returns the number of KEV entries upserted.
     """
-    import urllib.request
+    from agent_bom.http_client import fetch_json
 
     src = url or _KEV_JSON_URL
     _validate_sync_url(src, "kev url")
     _logger.info("Downloading CISA KEV catalog from %s …", src)
 
     try:
-        with urllib.request.urlopen(src, timeout=30) as resp:  # noqa: S310  # nosec B310 — intentional HTTP fetch to public HTTPS sources
-            data = json.loads(resp.read())
+        data = fetch_json(src, timeout=30)
     except Exception as exc:
         _logger.error("Failed to download KEV catalog: %s", exc)
         raise
@@ -664,7 +662,8 @@ def sync_ghsa(
     """
     import os
     import time
-    import urllib.request
+
+    from agent_bom.http_client import fetch_json
 
     base_url = url or _GHSA_REST_URL
     _validate_sync_url(base_url, "ghsa url")
@@ -693,15 +692,15 @@ def sync_ghsa(
 
         while count < max_entries:
             fetch_url = f"{base_url}?type=reviewed&ecosystem={ecosystem}&per_page={per_page}&page={page}"
-            req = urllib.request.Request(fetch_url)  # noqa: S310  # nosec B310 — HTTPS enforced above
-            req.add_header("Accept", "application/vnd.github+json")
-            req.add_header("X-GitHub-Api-Version", "2022-11-28")
+            hdrs: dict[str, str] = {
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            }
             if token:
-                req.add_header("Authorization", f"Bearer {token}")
+                hdrs["Authorization"] = f"Bearer {token}"
 
             try:
-                with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310  # nosec B310
-                    advisories = json.loads(resp.read())
+                advisories = fetch_json(fetch_url, timeout=30, headers=hdrs)
             except Exception as exc:
                 _logger.error("Failed to fetch GHSA page %d for %s: %s", page, ecosystem, exc)
                 break
@@ -772,7 +771,8 @@ def sync_nvd(
     import os
     import time
     import urllib.parse
-    import urllib.request
+
+    from agent_bom.http_client import fetch_json
 
     base_url = url or _NVD_API_URL
     _validate_sync_url(base_url, "nvd url")
@@ -808,12 +808,8 @@ def sync_nvd(
             params["apiKey"] = api_key
         fetch_url = f"{base_url}?{urllib.parse.urlencode(params)}"
 
-        req = urllib.request.Request(fetch_url)  # noqa: S310  # nosec B310 — HTTPS enforced above
-        req.add_header("Accept", "application/json")
-
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310  # nosec B310
-                data = json.loads(resp.read())
+            data = fetch_json(fetch_url, timeout=30, headers={"Accept": "application/json"})
         except Exception as exc:
             _logger.debug("NVD API error for %s: %s", cve_id, exc)
             time.sleep(sleep_seconds)

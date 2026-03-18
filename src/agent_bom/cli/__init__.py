@@ -200,13 +200,9 @@ def upgrade_cmd(check_only: bool) -> None:
     con.print(f"  Current version: [bold]{__version__}[/bold]")
 
     try:
-        with urllib.request.urlopen(  # noqa: S310  # nosec B310
-            "https://pypi.org/pypi/agent-bom/json",
-            timeout=5,
-        ) as resp:
-            import json
+        from agent_bom.http_client import fetch_json
 
-            data = json.loads(resp.read())
+        data = fetch_json("https://pypi.org/pypi/agent-bom/json", timeout=5)
         latest = data["info"]["version"]
     except Exception:
         con.print("  [red]Could not reach PyPI to check for updates.[/red]")

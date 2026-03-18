@@ -9,8 +9,7 @@ on:
     - cron: "0 8 * * 3"   # Wednesday 08:00 UTC
   workflow_dispatch:
 
-permissions:
-  contents: read
+permissions: {}  # all permissions denied by default; jobs declare only what they need
 
 jobs:
   rescan:

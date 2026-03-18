@@ -127,7 +127,22 @@ def _version_affected(
     fix = fixed or None
     last = last_affected or None
 
+    import re
+
     from packaging.version import InvalidVersion, Version
+
+    def _is_commit_sha(v: str) -> bool:
+        """Detect git commit SHAs that leaked from OSV data as version boundaries."""
+        return bool(re.fullmatch(r"[0-9a-f]{40}", v))
+
+    def _try_parse(v: str) -> Version | None:
+        """Parse a version string, returning None for commit SHAs or unparseable values."""
+        if _is_commit_sha(v):
+            return None  # Not a version boundary — skip silently
+        try:
+            return Version(v)
+        except InvalidVersion:
+            return None
 
     # Try to parse the installed version first
     try:
@@ -137,41 +152,35 @@ def _version_affected(
         _logger.debug("Non-standard installed version %r, falling back to lexicographic", version)
         if intro and version < intro:
             return False
-        if fix and version >= fix:
+        if fix and not _is_commit_sha(fix) and version >= fix:
             return False
-        if last and version > last:
+        if last and not _is_commit_sha(last) and version > last:
             return False
         return True
 
     # Installed version is valid semver — compare each boundary individually.
-    # If a boundary can't be parsed (commit hash, etc.), skip it rather than
-    # assuming the package is affected (prevents false positives).
+    # Skip boundaries that are commit SHAs or unparseable (prevents false positives).
     if intro:
-        try:
-            if ver < Version(intro):
-                return False
-        except InvalidVersion:
-            pass  # unparseable introduced — ignore (assume "since epoch")
+        intro_ver = _try_parse(intro)
+        if intro_ver is not None and ver < intro_ver:
+            return False
 
     if fix:
-        try:
-            if ver >= Version(fix):
+        fix_ver = _try_parse(fix)
+        if fix_ver is not None:
+            if ver >= fix_ver:
                 return False
-        except InvalidVersion:
-            # Fixed version is a commit hash or non-semver string — we can't compare.
-            # Conservatively assume the package IS affected until a parseable fix is known.
-            # Returning True (affected) is the safe default; returning False would silently
-            # drop real CVEs from scan results.
-            _logger.warning("Unparseable fixed version %r for %r — assuming affected", fix, version)
+        elif not _is_commit_sha(fix):
+            # Non-SHA, non-parseable (e.g., "canary") — log but don't assume affected
+            _logger.debug("Skipping unparseable fixed version %r for %r", fix, version)
 
     if last:
-        try:
-            if ver > Version(last):
+        last_ver = _try_parse(last)
+        if last_ver is not None:
+            if ver > last_ver:
                 return False
-        except InvalidVersion:
-            # Unparseable last_affected — can't determine the upper bound; conservatively
-            # assume the package is still within the affected range.
-            _logger.warning("Unparseable last_affected %r for %r — assuming affected", last, version)
+        elif not _is_commit_sha(last):
+            _logger.debug("Skipping unparseable last_affected %r for %r", last, version)
 
     return True
 

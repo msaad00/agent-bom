@@ -6,8 +6,7 @@ on:
     types: [completed]
   workflow_dispatch:
 
-permissions:
-  contents: read
+permissions: {}  # all permissions denied by default; jobs declare only what they need
 
 jobs:
   publish-stdio:
@@ -15,8 +14,8 @@ jobs:
     permissions:
       contents: read
       packages: write
-      id-token: write
-      attestations: write
+      id-token: write       # required for SLSA provenance attestation
+      attestations: write   # required for SBOM + provenance attestations
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -49,11 +48,20 @@ jobs:
           context: .
           file: deploy/docker/Dockerfile.mcp
           push: true
+          provenance: true
+          sbom: true
           build-args: |
             VERSION=${{ steps.version.outputs.version }}
           tags: |
             ghcr.io/${{ github.repository_owner }}/agent-bom:${{ steps.version.outputs.tag }}
             ghcr.io/${{ github.repository_owner }}/agent-bom:latest
+          labels: |
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.title=agent-bom
+            org.opencontainers.image.description=Security scanner for AI infrastructure — MCP server (stdio)
+            org.opencontainers.image.created=${{ github.event.workflow_run.created_at || github.event.repository.updated_at }}
+            org.opencontainers.image.revision=${{ github.sha }}
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
@@ -67,6 +75,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write       # required for SLSA provenance attestation
+      attestations: write   # required for SBOM + provenance attestations
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -93,13 +103,30 @@ jobs:
           fi
 
       - name: Build and push MCP container (SSE)
+        id: build-sse
         uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
         with:
           context: .
           file: deploy/docker/Dockerfile.sse
           push: true
+          provenance: true
+          sbom: true
           build-args: |
             VERSION=${{ steps.version.outputs.version }}
           tags: |
             ghcr.io/${{ github.repository_owner }}/agent-bom-sse:${{ steps.version.outputs.tag }}
             ghcr.io/${{ github.repository_owner }}/agent-bom-sse:latest
+          labels: |
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.title=agent-bom-sse
+            org.opencontainers.image.description=Security scanner for AI infrastructure — MCP server (streamable HTTP)
+            org.opencontainers.image.created=${{ github.event.workflow_run.created_at || github.event.repository.updated_at }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: ghcr.io/${{ github.repository_owner }}/agent-bom-sse
+          subject-digest: ${{ steps.build-sse.outputs.digest }}
+          push-to-registry: true

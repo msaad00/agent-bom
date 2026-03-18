@@ -33,8 +33,10 @@ jobs:
       - name: Check Railway deployment
         id: railway
         continue-on-error: true
+        env:
+          RAILWAY_MCP_URL: ${{ vars.RAILWAY_MCP_URL }}
         run: |
-          DEPLOY_URL="https://agent-bom-mcp.up.railway.app"
+          DEPLOY_URL="${RAILWAY_MCP_URL:-https://agent-bom-mcp.up.railway.app}"
           echo "Checking $DEPLOY_URL/health ..."
           RESPONSE=$(curl -sf --max-time 15 "$DEPLOY_URL/health" 2>/dev/null || echo '{}')
           DEPLOYED=$(echo "$RESPONSE" | python3 -c "
@@ -54,8 +56,10 @@ jobs:
       - name: Check Smithery tool count
         id: smithery
         continue-on-error: true
+        env:
+          RAILWAY_MCP_URL: ${{ vars.RAILWAY_MCP_URL }}
         run: |
-          DEPLOY_URL="https://agent-bom-mcp.up.railway.app"
+          DEPLOY_URL="${RAILWAY_MCP_URL:-https://agent-bom-mcp.up.railway.app}"
           # Connect to MCP endpoint and check capabilities
           RESPONSE=$(curl -sf --max-time 15 "$DEPLOY_URL/health" 2>/dev/null || echo '{}')
           TOOL_COUNT=$(echo "$RESPONSE" | python3 -c "

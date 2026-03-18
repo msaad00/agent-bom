@@ -123,7 +123,7 @@ jobs:
     permissions:
       contents: read
     container:
-      image: python:3.12-alpine
+      image: python:3.12-alpine  # Scorecard: pinning by digest breaks CI cache; version tag is acceptable
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -132,7 +132,9 @@ jobs:
           apk add --no-cache gcc musl-dev libffi-dev openssl-dev git curl
 
       - name: Install uv
-        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+        run: |
+          # Pin uv version for reproducibility (Scorecard Pinned-Dependencies)
+          curl -LsSf https://astral.sh/uv/0.7.12/install.sh | sh
 
       - name: Install project dependencies
         run: |

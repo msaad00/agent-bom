@@ -31,12 +31,19 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           REF_NAME: ${{ github.ref_name }}
-          WORKFLOW_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          # Use head_branch (tag name like "v0.71.2"), NOT head_sha —
+          # head_sha is flagged by CodeQL as untrusted code in privileged context.
+          WORKFLOW_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             REF="$REF_NAME"
           else
-            REF="$WORKFLOW_HEAD_SHA"
+            REF="$WORKFLOW_HEAD_BRANCH"
+          fi
+          # Verify ref matches a semver tag pattern (rejects arbitrary branches)
+          if ! echo "$REF" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+'; then
+            echo "::error::Refusing to deploy non-semver ref: $REF"
+            exit 1
           fi
           echo "ref=$REF" >> "$GITHUB_OUTPUT"
           echo "Deploying ref: $REF"
@@ -44,6 +51,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           ref: ${{ steps.tag.outputs.ref }}
+          persist-credentials: false
 
       - name: Verify checkout matches expected version
         run: |
@@ -75,10 +83,12 @@ jobs:
           fi
 
       - name: Post-deploy version check
+        env:
+          RAILWAY_MCP_URL: ${{ vars.RAILWAY_MCP_URL }}
         run: |
           echo "Waiting 60s for Railway to rebuild and start..."
           sleep 60
-          DEPLOY_URL="https://agent-bom-mcp.up.railway.app"
+          DEPLOY_URL="${RAILWAY_MCP_URL:-https://agent-bom-mcp.up.railway.app}"
           echo "Checking $DEPLOY_URL/health"
           for attempt in 1 2 3 4 5; do
             RESPONSE=$(curl -sf "$DEPLOY_URL/health" 2>/dev/null || true)

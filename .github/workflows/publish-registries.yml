@@ -90,13 +90,18 @@ jobs:
             if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
               echo "Smithery publish succeeded"
               break
+            elif [ "$HTTP_STATUS" -eq 429 ] && [ "$ATTEMPT" -lt 3 ]; then
+              DELAY=$((ATTEMPT * 15))
+              echo "Rate limited — retrying in ${DELAY}s..."
+              sleep "$DELAY"
             elif [ "$HTTP_STATUS" -ge 500 ] && [ "$ATTEMPT" -lt 3 ]; then
               DELAY=$((ATTEMPT * 10))
               echo "Server error — retrying in ${DELAY}s..."
               sleep "$DELAY"
             else
               echo "::error::Smithery publish failed with HTTP ${HTTP_STATUS}"
-              cat /tmp/smithery-response.json
+              # Log only error message, not full response (may contain auth context)
+              jq -r '.error // .message // "unknown error"' /tmp/smithery-response.json 2>/dev/null || echo "(non-JSON response)"
               exit 1
             fi
           done
@@ -211,12 +216,15 @@ jobs:
                 "${CURL_ARGS[@]}")
               if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
                 echo "ClawHub ${SLUG} v${VERSION} published (HTTP ${HTTP_CODE})"
-                cat /tmp/clawhub_resp.json
-                echo ""
                 return 0
               else
-                echo "ClawHub ${SLUG} failed (HTTP ${HTTP_CODE}): $(cat /tmp/clawhub_resp.json)"
-                [ "$ATTEMPT" -lt 3 ] && sleep $((ATTEMPT * 10))
+                echo "ClawHub ${SLUG} failed (HTTP ${HTTP_CODE})"
+                jq -r '.error // .message // "unknown error"' /tmp/clawhub_resp.json 2>/dev/null || echo "(non-JSON response)"
+                if [ "$HTTP_CODE" -eq 429 ] && [ "$ATTEMPT" -lt 3 ]; then
+                  sleep $((ATTEMPT * 15))
+                elif [ "$ATTEMPT" -lt 3 ]; then
+                  sleep $((ATTEMPT * 10))
+                fi
               fi
             done
             if [ "$FATAL" = "true" ]; then

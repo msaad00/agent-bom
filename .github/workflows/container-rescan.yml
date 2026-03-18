@@ -9,7 +9,7 @@ on:
     - cron: "0 8 * * 3"   # Wednesday 08:00 UTC
   workflow_dispatch:
 
-permissions: {}  # all permissions denied by default; jobs declare only what they need
+permissions: {}  # deny all by default; jobs declare only what they need
 
 jobs:
   rescan:
@@ -33,12 +33,14 @@ jobs:
         run: docker pull --platform ${{ matrix.platform }} agentbom/agent-bom:latest
 
       - name: Trivy scan — table (HIGH/CRITICAL)
+        id: trivy-table
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
           image-ref: agentbom/agent-bom:latest
           format: table
           severity: HIGH,CRITICAL
-          exit-code: "0"
+          exit-code: "1"
+        continue-on-error: true
 
       - name: Trivy scan — SARIF
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
@@ -55,3 +57,8 @@ jobs:
         with:
           sarif_file: trivy-${{ matrix.sarif_category }}.sarif
           category: ${{ matrix.sarif_category }}
+
+      - name: Flag HIGH/CRITICAL CVEs found
+        if: steps.trivy-table.outcome == 'failure'
+        run: |
+          echo "::warning::Trivy found HIGH/CRITICAL CVEs in agentbom/agent-bom:latest (${{ matrix.platform }}). Check SARIF in Security tab."

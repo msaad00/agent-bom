@@ -34,6 +34,36 @@ TF-SEC-017  ElastiCache without encryption in transit (AWS SEC08)
 TF-SEC-018  DynamoDB without point-in-time recovery (AWS SEC08, CIS 2.4)
 TF-SEC-019  API Gateway without access logging (AWS SEC04)
 TF-SEC-020  KMS key without rotation (AWS SEC08, CIS 3.8)
+TF-SEC-021  S3 bucket versioning not enabled (AWS SEC08, CIS 2.1.3)
+TF-SEC-022  S3 bucket public access block missing (AWS SEC01, CIS 2.1.5)
+TF-SEC-023  S3 bucket logging not enabled (AWS SEC04, CIS 3.6)
+TF-SEC-024  RDS public accessibility enabled (AWS SEC01, CIS 2.3.2)
+TF-SEC-025  RDS backup retention period < 7 days (AWS SEC08, CIS 2.3.3)
+TF-SEC-026  RDS multi-AZ not enabled (AWS SEC08)
+TF-SEC-027  EBS volume not encrypted (AWS SEC08, CIS 2.2.1)
+TF-SEC-028  EBS snapshot not encrypted (AWS SEC08)
+TF-SEC-029  ALB/ELB access logging not enabled (AWS SEC04, CIS 3.10)
+TF-SEC-030  ALB/NLB deletion protection disabled (AWS SEC05)
+TF-SEC-031  CloudTrail not enabled for all regions (AWS SEC04, CIS 3.1)
+TF-SEC-032  CloudTrail log file validation disabled (AWS SEC04, CIS 3.2)
+TF-SEC-033  SNS topic not encrypted (AWS SEC08, CIS 2.5)
+TF-SEC-034  SQS queue not encrypted (AWS SEC08, CIS 2.6)
+TF-SEC-035  ECR repository scan on push disabled (AWS SEC01)
+TF-SEC-036  ECR repository image tag mutability enabled (AWS SEC01)
+TF-SEC-037  ECS task definition with host networking (AWS SEC01)
+TF-SEC-038  ECS task definition running as root (AWS SEC03)
+TF-SEC-039  Secrets Manager secret without KMS encryption (AWS SEC08)
+TF-SEC-040  SSM Parameter with plaintext SecureString (AWS SEC08)
+TF-SEC-041  VPC default security group allows traffic (AWS SEC01, CIS 5.3)
+TF-SEC-042  RDS instance without deletion protection (AWS SEC05)
+TF-SEC-043  Elasticsearch/OpenSearch without encryption at rest (AWS SEC08)
+TF-SEC-044  Elasticsearch/OpenSearch without node-to-node encryption (AWS SEC08)
+TF-SEC-045  Lambda function without VPC configuration (AWS SEC01)
+TF-SEC-046  Lambda environment variables with sensitive values (AWS SEC02)
+TF-SEC-047  Redshift cluster without encryption (AWS SEC08, CIS 2.7)
+TF-SEC-048  Redshift cluster publicly accessible (AWS SEC01)
+TF-SEC-049  WAF not associated with ALB/CloudFront (AWS SEC05)
+TF-SEC-050  GuardDuty not enabled (AWS SEC04, CIS 4.1)
 """
 
 from __future__ import annotations
@@ -108,6 +138,99 @@ _ACCESS_LOG_SETTINGS_RE = re.compile(r"access_log_settings\s*\{", re.IGNORECASE)
 
 # TF-SEC-020: KMS key rotation
 _KEY_ROTATION_RE = re.compile(r"enable_key_rotation\s*=\s*true", re.IGNORECASE)
+
+# TF-SEC-021: S3 bucket versioning
+_VERSIONING_RE = re.compile(r"versioning\s*\{", re.IGNORECASE)
+_VERSIONING_ENABLED_RE = re.compile(r"enabled\s*=\s*true", re.IGNORECASE)
+
+# TF-SEC-022: S3 public access block
+_PUBLIC_ACCESS_BLOCK_RE = re.compile(r"aws_s3_bucket_public_access_block", re.IGNORECASE)
+
+# TF-SEC-023: S3 bucket logging
+_S3_LOGGING_RE = re.compile(r"logging\s*\{", re.IGNORECASE)
+
+# TF-SEC-024: RDS public accessibility
+_PUBLICLY_ACCESSIBLE_TRUE_RE = re.compile(r"publicly_accessible\s*=\s*true", re.IGNORECASE)
+
+# TF-SEC-025: RDS backup retention
+_BACKUP_RETENTION_RE = re.compile(r"backup_retention_period\s*=\s*(\d+)", re.IGNORECASE)
+
+# TF-SEC-026: RDS multi-AZ
+_MULTI_AZ_TRUE_RE = re.compile(r"multi_az\s*=\s*true", re.IGNORECASE)
+
+# TF-SEC-027/028: EBS encryption
+_EBS_ENCRYPTED_TRUE_RE = re.compile(r"encrypted\s*=\s*true", re.IGNORECASE)
+
+# TF-SEC-029: ALB/ELB access logging
+_LB_ACCESS_LOGS_RE = re.compile(r"access_logs\s*\{", re.IGNORECASE)
+_LB_ACCESS_LOGS_ENABLED_RE = re.compile(r"enabled\s*=\s*true", re.IGNORECASE)
+
+# TF-SEC-030: ALB/NLB deletion protection
+_DELETION_PROTECTION_TRUE_RE = re.compile(r"enable_deletion_protection\s*=\s*true", re.IGNORECASE)
+
+# TF-SEC-031: CloudTrail multi-region
+_IS_MULTI_REGION_RE = re.compile(r"is_multi_region_trail\s*=\s*true", re.IGNORECASE)
+
+# TF-SEC-032: CloudTrail log file validation
+_LOG_FILE_VALIDATION_RE = re.compile(r"enable_log_file_validation\s*=\s*true", re.IGNORECASE)
+
+# TF-SEC-033/034: SNS/SQS encryption
+_KMS_MASTER_KEY_RE = re.compile(r"kms_master_key_id\s*=", re.IGNORECASE)
+
+# TF-SEC-035: ECR scan on push
+_SCAN_ON_PUSH_RE = re.compile(r"scan_on_push\s*=\s*true", re.IGNORECASE)
+_IMAGE_SCANNING_RE = re.compile(r"image_scanning_configuration\s*\{", re.IGNORECASE)
+
+# TF-SEC-036: ECR image tag mutability
+_TAG_IMMUTABLE_RE = re.compile(r'image_tag_mutability\s*=\s*"IMMUTABLE"', re.IGNORECASE)
+
+# TF-SEC-037: ECS host networking
+_NETWORK_MODE_HOST_RE = re.compile(r'network_mode\s*=\s*"host"', re.IGNORECASE)
+
+# TF-SEC-038: ECS running as root (user not set or user = root)
+_USER_NONROOT_RE = re.compile(r'user\s*=\s*"(?!root)[^"]+', re.IGNORECASE)
+
+# TF-SEC-039: Secrets Manager KMS
+_SECRETS_KMS_RE = re.compile(r"kms_key_id\s*=", re.IGNORECASE)
+
+# TF-SEC-040: SSM SecureString plaintext
+_SSM_VALUE_RE = re.compile(r'type\s*=\s*"SecureString"', re.IGNORECASE)
+_SSM_KEY_ID_RE = re.compile(r"key_id\s*=", re.IGNORECASE)
+
+# TF-SEC-041: VPC default security group
+_DEFAULT_SG_INGRESS_RE = re.compile(r"ingress\s*\{", re.IGNORECASE)
+_DEFAULT_SG_EGRESS_RE = re.compile(r"egress\s*\{", re.IGNORECASE)
+
+# TF-SEC-042: RDS deletion protection
+_RDS_DELETION_PROTECTION_RE = re.compile(r"deletion_protection\s*=\s*true", re.IGNORECASE)
+
+# TF-SEC-043: Elasticsearch/OpenSearch encryption at rest
+_ENCRYPT_AT_REST_RE = re.compile(r"encrypt_at_rest\s*\{", re.IGNORECASE)
+_ENCRYPT_AT_REST_ENABLED_RE = re.compile(r"enabled\s*=\s*true", re.IGNORECASE)
+
+# TF-SEC-044: Elasticsearch/OpenSearch node-to-node encryption
+_NODE_TO_NODE_RE = re.compile(r"node_to_node_encryption\s*\{", re.IGNORECASE)
+
+# TF-SEC-045: Lambda VPC config
+_VPC_CONFIG_RE = re.compile(r"vpc_config\s*\{", re.IGNORECASE)
+
+# TF-SEC-046: Lambda sensitive env vars
+_ENV_SENSITIVE_RE = re.compile(
+    r'(?:password|secret|api_key|access_key|token|credential)\s*=\s*"[^"]+',
+    re.IGNORECASE,
+)
+
+# TF-SEC-047: Redshift encryption
+_REDSHIFT_ENCRYPTED_RE = re.compile(r"encrypted\s*=\s*true", re.IGNORECASE)
+
+# TF-SEC-048: Redshift public access
+_REDSHIFT_PUBLIC_RE = re.compile(r"publicly_accessible\s*=\s*true", re.IGNORECASE)
+
+# TF-SEC-049: WAF association (file-level check)
+_WAF_ASSOC_RE = re.compile(r"aws_wafv2_web_acl_association", re.IGNORECASE)
+
+# TF-SEC-050: GuardDuty (file-level check)
+_GUARDDUTY_RE = re.compile(r"aws_guardduty_detector", re.IGNORECASE)
 
 # Non-standard ports (80 and 443 are typically fine for web traffic)
 _WEB_PORTS = frozenset({80, 443})
@@ -633,6 +756,740 @@ def scan_terraform_security(file_path: str | Path) -> list[IaCFinding]:
                         line_number=block_start_line,
                         category="terraform",
                         compliance=["CIS-AWS-3.8", "NIST-SC-12"],
+                    )
+                )
+
+        # TF-SEC-021: S3 bucket versioning not enabled
+        if rtype == "aws_s3_bucket":
+            versioning_m = _VERSIONING_RE.search(block)
+            if versioning_m:
+                v_block = _extract_block(block, versioning_m.end())
+                if not _VERSIONING_ENABLED_RE.search(v_block):
+                    findings.append(
+                        IaCFinding(
+                            rule_id="TF-SEC-021",
+                            severity="medium",
+                            title="S3 bucket versioning not enabled",
+                            message=(
+                                f"S3 bucket '{rname}' has a versioning block but "
+                                "enabled is not set to true. Enable versioning to "
+                                "protect against accidental deletion."
+                            ),
+                            file_path=rel_path,
+                            line_number=block_start_line,
+                            category="terraform",
+                            compliance=["CIS-AWS-2.1.3", "NIST-CP-9"],
+                        )
+                    )
+            else:
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-021",
+                        severity="medium",
+                        title="S3 bucket versioning not enabled",
+                        message=(
+                            f"S3 bucket '{rname}' does not have a versioning block. "
+                            "Enable versioning to protect against accidental "
+                            "deletion and enable recovery."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["CIS-AWS-2.1.3", "NIST-CP-9"],
+                    )
+                )
+
+        # TF-SEC-022: S3 bucket public access block missing
+        if rtype == "aws_s3_bucket":
+            if not _PUBLIC_ACCESS_BLOCK_RE.search(content):
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-022",
+                        severity="high",
+                        title="S3 bucket public access block missing",
+                        message=(
+                            f"S3 bucket '{rname}' does not have an associated "
+                            "aws_s3_bucket_public_access_block resource in this "
+                            "file. Add a public access block to prevent public "
+                            "bucket exposure."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["CIS-AWS-2.1.5", "NIST-AC-3"],
+                    )
+                )
+
+        # TF-SEC-023: S3 bucket logging not enabled
+        if rtype == "aws_s3_bucket":
+            if not _S3_LOGGING_RE.search(block):
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-023",
+                        severity="medium",
+                        title="S3 bucket logging not enabled",
+                        message=(
+                            f"S3 bucket '{rname}' does not have a logging block. "
+                            "Enable server access logging to track requests for "
+                            "security auditing."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["CIS-AWS-3.6", "NIST-AU-2"],
+                    )
+                )
+
+        # TF-SEC-024: RDS public accessibility enabled
+        if rtype in ("aws_db_instance", "aws_rds_cluster"):
+            if _PUBLICLY_ACCESSIBLE_TRUE_RE.search(block):
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-024",
+                        severity="critical",
+                        title="RDS public accessibility enabled",
+                        message=(
+                            f"RDS instance '{rname}' has publicly_accessible = true. "
+                            "Databases should not be directly accessible from the "
+                            "internet. Set publicly_accessible = false."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["CIS-AWS-2.3.2", "NIST-AC-4"],
+                    )
+                )
+
+        # TF-SEC-025: RDS backup retention period < 7 days
+        if rtype in ("aws_db_instance", "aws_rds_cluster"):
+            retention_m = _BACKUP_RETENTION_RE.search(block)
+            if retention_m:
+                days = int(retention_m.group(1))
+                if days < 7:
+                    findings.append(
+                        IaCFinding(
+                            rule_id="TF-SEC-025",
+                            severity="medium",
+                            title="RDS backup retention period too short",
+                            message=(
+                                f"RDS instance '{rname}' has "
+                                f"backup_retention_period = {days}. Set to at least "
+                                "7 days for adequate disaster recovery."
+                            ),
+                            file_path=rel_path,
+                            line_number=block_start_line,
+                            category="terraform",
+                            compliance=["CIS-AWS-2.3.3", "NIST-CP-9"],
+                        )
+                    )
+            else:
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-025",
+                        severity="medium",
+                        title="RDS backup retention period not configured",
+                        message=(
+                            f"RDS instance '{rname}' does not set "
+                            "backup_retention_period. Default may be 0 (no "
+                            "backups). Set to at least 7 days."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["CIS-AWS-2.3.3", "NIST-CP-9"],
+                    )
+                )
+
+        # TF-SEC-026: RDS multi-AZ not enabled
+        if rtype == "aws_db_instance":
+            if not _MULTI_AZ_TRUE_RE.search(block):
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-026",
+                        severity="medium",
+                        title="RDS multi-AZ not enabled",
+                        message=(
+                            f"RDS instance '{rname}' does not have multi_az = true. "
+                            "Enable multi-AZ deployment for high availability and "
+                            "automatic failover."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["NIST-CP-10", "NIST-SC-36"],
+                    )
+                )
+
+        # TF-SEC-027: EBS volume not encrypted
+        if rtype == "aws_ebs_volume":
+            if not _EBS_ENCRYPTED_TRUE_RE.search(block):
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-027",
+                        severity="high",
+                        title="EBS volume not encrypted",
+                        message=(
+                            f"EBS volume '{rname}' does not have encrypted = true. "
+                            "Enable encryption at rest for EBS volumes to protect "
+                            "sensitive data."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["CIS-AWS-2.2.1", "NIST-SC-28"],
+                    )
+                )
+
+        # TF-SEC-028: EBS snapshot not encrypted
+        if rtype == "aws_ebs_snapshot":
+            if not _EBS_ENCRYPTED_TRUE_RE.search(block):
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-028",
+                        severity="high",
+                        title="EBS snapshot not encrypted",
+                        message=(
+                            f"EBS snapshot '{rname}' is not encrypted. Ensure the "
+                            "source EBS volume is encrypted or copy the snapshot "
+                            "with encryption enabled."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["NIST-SC-28"],
+                    )
+                )
+
+        # TF-SEC-029: ALB/ELB access logging not enabled
+        if rtype in ("aws_lb", "aws_alb", "aws_elb"):
+            al_m = _LB_ACCESS_LOGS_RE.search(block)
+            if al_m:
+                al_block = _extract_block(block, al_m.end())
+                if not _LB_ACCESS_LOGS_ENABLED_RE.search(al_block):
+                    findings.append(
+                        IaCFinding(
+                            rule_id="TF-SEC-029",
+                            severity="medium",
+                            title="Load balancer access logging not enabled",
+                            message=(
+                                f"Load balancer '{rname}' has access_logs block but "
+                                "enabled is not true. Enable access logging for "
+                                "security monitoring and compliance."
+                            ),
+                            file_path=rel_path,
+                            line_number=block_start_line,
+                            category="terraform",
+                            compliance=["CIS-AWS-3.10", "NIST-AU-2"],
+                        )
+                    )
+            else:
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-029",
+                        severity="medium",
+                        title="Load balancer access logging not enabled",
+                        message=(
+                            f"Load balancer '{rname}' ({rtype}) does not have an "
+                            "access_logs block. Enable access logging for security "
+                            "monitoring and compliance."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["CIS-AWS-3.10", "NIST-AU-2"],
+                    )
+                )
+
+        # TF-SEC-030: ALB/NLB deletion protection disabled
+        if rtype in ("aws_lb", "aws_alb"):
+            if not _DELETION_PROTECTION_TRUE_RE.search(block):
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-030",
+                        severity="medium",
+                        title="Load balancer deletion protection disabled",
+                        message=(
+                            f"Load balancer '{rname}' does not have "
+                            "enable_deletion_protection = true. Enable deletion "
+                            "protection to prevent accidental removal."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["NIST-CP-9"],
+                    )
+                )
+
+        # TF-SEC-031: CloudTrail not enabled for all regions
+        if rtype == "aws_cloudtrail":
+            if not _IS_MULTI_REGION_RE.search(block):
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-031",
+                        severity="high",
+                        title="CloudTrail not enabled for all regions",
+                        message=(
+                            f"CloudTrail '{rname}' does not have "
+                            "is_multi_region_trail = true. Enable multi-region "
+                            "trailing to capture API calls in all AWS regions."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["CIS-AWS-3.1", "NIST-AU-2"],
+                    )
+                )
+
+        # TF-SEC-032: CloudTrail log file validation disabled
+        if rtype == "aws_cloudtrail":
+            if not _LOG_FILE_VALIDATION_RE.search(block):
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-032",
+                        severity="medium",
+                        title="CloudTrail log file validation disabled",
+                        message=(
+                            f"CloudTrail '{rname}' does not have "
+                            "enable_log_file_validation = true. Enable log file "
+                            "validation to detect tampering of log files."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["CIS-AWS-3.2", "NIST-AU-9"],
+                    )
+                )
+
+        # TF-SEC-033: SNS topic not encrypted
+        if rtype == "aws_sns_topic":
+            if not _KMS_MASTER_KEY_RE.search(block):
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-033",
+                        severity="medium",
+                        title="SNS topic not encrypted",
+                        message=(
+                            f"SNS topic '{rname}' does not have "
+                            "kms_master_key_id set. Enable server-side encryption "
+                            "with a KMS key to protect messages at rest."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["CIS-AWS-2.5", "NIST-SC-28"],
+                    )
+                )
+
+        # TF-SEC-034: SQS queue not encrypted
+        if rtype == "aws_sqs_queue":
+            if not _KMS_MASTER_KEY_RE.search(block):
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-034",
+                        severity="medium",
+                        title="SQS queue not encrypted",
+                        message=(
+                            f"SQS queue '{rname}' does not have "
+                            "kms_master_key_id set. Enable server-side encryption "
+                            "with a KMS key to protect messages at rest."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["CIS-AWS-2.6", "NIST-SC-28"],
+                    )
+                )
+
+        # TF-SEC-035: ECR repository scan on push disabled
+        if rtype == "aws_ecr_repository":
+            scan_m = _IMAGE_SCANNING_RE.search(block)
+            if scan_m:
+                scan_block = _extract_block(block, scan_m.end())
+                if not _SCAN_ON_PUSH_RE.search(scan_block):
+                    findings.append(
+                        IaCFinding(
+                            rule_id="TF-SEC-035",
+                            severity="medium",
+                            title="ECR scan on push disabled",
+                            message=(
+                                f"ECR repository '{rname}' has "
+                                "image_scanning_configuration but scan_on_push is "
+                                "not true. Enable scan on push to detect "
+                                "vulnerabilities in container images."
+                            ),
+                            file_path=rel_path,
+                            line_number=block_start_line,
+                            category="terraform",
+                            compliance=["NIST-RA-5", "NIST-SI-2"],
+                        )
+                    )
+            else:
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-035",
+                        severity="medium",
+                        title="ECR scan on push disabled",
+                        message=(
+                            f"ECR repository '{rname}' does not have an "
+                            "image_scanning_configuration block. Enable scan on "
+                            "push to detect vulnerabilities in container images."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["NIST-RA-5", "NIST-SI-2"],
+                    )
+                )
+
+        # TF-SEC-036: ECR image tag mutability enabled
+        if rtype == "aws_ecr_repository":
+            if not _TAG_IMMUTABLE_RE.search(block):
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-036",
+                        severity="medium",
+                        title="ECR image tag mutability enabled",
+                        message=(
+                            f"ECR repository '{rname}' does not set "
+                            'image_tag_mutability = "IMMUTABLE". Mutable tags '
+                            "allow image replacement, which can introduce supply "
+                            "chain risks."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["NIST-SI-7", "NIST-SA-10"],
+                    )
+                )
+
+        # TF-SEC-037: ECS task definition with host networking
+        if rtype == "aws_ecs_task_definition":
+            if _NETWORK_MODE_HOST_RE.search(block):
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-037",
+                        severity="high",
+                        title="ECS task definition with host networking",
+                        message=(
+                            f"ECS task definition '{rname}' uses "
+                            'network_mode = "host". Host networking bypasses '
+                            "container network isolation. Use awsvpc or bridge "
+                            "mode instead."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["NIST-AC-4", "NIST-SC-7"],
+                    )
+                )
+
+        # TF-SEC-038: ECS task definition running as root
+        if rtype == "aws_ecs_task_definition":
+            # Check container definitions for user field
+            if not _USER_NONROOT_RE.search(block):
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-038",
+                        severity="high",
+                        title="ECS task definition running as root",
+                        message=(
+                            f"ECS task definition '{rname}' does not specify a "
+                            "non-root user. Running containers as root increases "
+                            "the blast radius of container escapes. Set a non-root "
+                            "user in the container definition."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["NIST-AC-6", "NIST-CM-7"],
+                    )
+                )
+
+        # TF-SEC-039: Secrets Manager secret without KMS encryption
+        if rtype == "aws_secretsmanager_secret":
+            if not _SECRETS_KMS_RE.search(block):
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-039",
+                        severity="medium",
+                        title="Secrets Manager secret without KMS encryption",
+                        message=(
+                            f"Secrets Manager secret '{rname}' does not set "
+                            "kms_key_id. Without a customer-managed KMS key, "
+                            "the secret is encrypted with the default AWS key. "
+                            "Use a CMK for better key management and audit trail."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["NIST-SC-12", "NIST-SC-28"],
+                    )
+                )
+
+        # TF-SEC-040: SSM Parameter with plaintext SecureString
+        if rtype == "aws_ssm_parameter":
+            if _SSM_VALUE_RE.search(block) and not _SSM_KEY_ID_RE.search(block):
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-040",
+                        severity="medium",
+                        title="SSM SecureString without CMK encryption",
+                        message=(
+                            f"SSM parameter '{rname}' is a SecureString but does "
+                            "not specify key_id for a customer-managed KMS key. "
+                            "Use a CMK for enhanced encryption control."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["NIST-SC-12", "NIST-SC-28"],
+                    )
+                )
+
+        # TF-SEC-041: VPC default security group allows traffic
+        if rtype == "aws_default_security_group":
+            if _DEFAULT_SG_INGRESS_RE.search(block) or _DEFAULT_SG_EGRESS_RE.search(block):
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-041",
+                        severity="high",
+                        title="VPC default security group allows traffic",
+                        message=(
+                            f"Default security group '{rname}' has ingress or "
+                            "egress rules defined. The VPC default security group "
+                            "should have no rules to ensure all traffic goes "
+                            "through explicitly managed security groups."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["CIS-AWS-5.3", "NIST-AC-4"],
+                    )
+                )
+
+        # TF-SEC-042: RDS instance without deletion protection
+        if rtype in ("aws_db_instance", "aws_rds_cluster"):
+            if not _RDS_DELETION_PROTECTION_RE.search(block):
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-042",
+                        severity="medium",
+                        title="RDS instance without deletion protection",
+                        message=(
+                            f"RDS resource '{rname}' does not have "
+                            "deletion_protection = true. Enable deletion "
+                            "protection to prevent accidental database removal."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["NIST-CP-9", "NIST-SC-28"],
+                    )
+                )
+
+        # TF-SEC-043: Elasticsearch/OpenSearch without encryption at rest
+        if rtype in ("aws_elasticsearch_domain", "aws_opensearch_domain"):
+            enc_m = _ENCRYPT_AT_REST_RE.search(block)
+            if enc_m:
+                enc_block = _extract_block(block, enc_m.end())
+                if not _ENCRYPT_AT_REST_ENABLED_RE.search(enc_block):
+                    findings.append(
+                        IaCFinding(
+                            rule_id="TF-SEC-043",
+                            severity="high",
+                            title="Elasticsearch/OpenSearch without encryption at rest",
+                            message=(
+                                f"Domain '{rname}' ({rtype}) has encrypt_at_rest "
+                                "block but enabled is not true. Enable encryption "
+                                "at rest to protect stored data."
+                            ),
+                            file_path=rel_path,
+                            line_number=block_start_line,
+                            category="terraform",
+                            compliance=["NIST-SC-28"],
+                        )
+                    )
+            else:
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-043",
+                        severity="high",
+                        title="Elasticsearch/OpenSearch without encryption at rest",
+                        message=(
+                            f"Domain '{rname}' ({rtype}) does not have an "
+                            "encrypt_at_rest block. Enable encryption at rest "
+                            "to protect stored data."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["NIST-SC-28"],
+                    )
+                )
+
+        # TF-SEC-044: Elasticsearch/OpenSearch without node-to-node encryption
+        if rtype in ("aws_elasticsearch_domain", "aws_opensearch_domain"):
+            n2n_m = _NODE_TO_NODE_RE.search(block)
+            if n2n_m:
+                n2n_block = _extract_block(block, n2n_m.end())
+                if not _PITR_ENABLED_RE.search(n2n_block):  # reuse enabled=true check
+                    findings.append(
+                        IaCFinding(
+                            rule_id="TF-SEC-044",
+                            severity="high",
+                            title="Elasticsearch/OpenSearch without node-to-node encryption",
+                            message=(
+                                f"Domain '{rname}' ({rtype}) has "
+                                "node_to_node_encryption block but enabled is not "
+                                "true. Enable node-to-node encryption to protect "
+                                "data in transit between nodes."
+                            ),
+                            file_path=rel_path,
+                            line_number=block_start_line,
+                            category="terraform",
+                            compliance=["NIST-SC-8"],
+                        )
+                    )
+            else:
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-044",
+                        severity="high",
+                        title="Elasticsearch/OpenSearch without node-to-node encryption",
+                        message=(
+                            f"Domain '{rname}' ({rtype}) does not have a "
+                            "node_to_node_encryption block. Enable node-to-node "
+                            "encryption to protect data in transit between nodes."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["NIST-SC-8"],
+                    )
+                )
+
+        # TF-SEC-045: Lambda function without VPC configuration
+        if rtype == "aws_lambda_function":
+            if not _VPC_CONFIG_RE.search(block):
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-045",
+                        severity="low",
+                        title="Lambda function without VPC configuration",
+                        message=(
+                            f"Lambda function '{rname}' does not have a "
+                            "vpc_config block. Consider placing the function in "
+                            "a VPC if it accesses private resources."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["NIST-AC-4", "NIST-SC-7"],
+                    )
+                )
+
+        # TF-SEC-046: Lambda environment variables with sensitive values
+        if rtype == "aws_lambda_function":
+            if _ENV_SENSITIVE_RE.search(block):
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-046",
+                        severity="critical",
+                        title="Lambda environment variables with sensitive values",
+                        message=(
+                            f"Lambda function '{rname}' appears to have sensitive "
+                            "values (password, secret, api_key, token) in "
+                            "environment variables. Use AWS Secrets Manager or "
+                            "SSM Parameter Store instead."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["NIST-IA-5", "NIST-SC-28"],
+                    )
+                )
+
+        # TF-SEC-047: Redshift cluster without encryption
+        if rtype == "aws_redshift_cluster":
+            if not _REDSHIFT_ENCRYPTED_RE.search(block):
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-047",
+                        severity="high",
+                        title="Redshift cluster without encryption",
+                        message=(
+                            f"Redshift cluster '{rname}' does not have "
+                            "encrypted = true. Enable encryption at rest to "
+                            "protect data warehouse contents."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["CIS-AWS-2.7", "NIST-SC-28"],
+                    )
+                )
+
+        # TF-SEC-048: Redshift cluster publicly accessible
+        if rtype == "aws_redshift_cluster":
+            if _REDSHIFT_PUBLIC_RE.search(block):
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-048",
+                        severity="critical",
+                        title="Redshift cluster publicly accessible",
+                        message=(
+                            f"Redshift cluster '{rname}' has "
+                            "publicly_accessible = true. Data warehouses should "
+                            "not be directly accessible from the internet. Set "
+                            "publicly_accessible = false."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["NIST-AC-4", "NIST-SC-7"],
+                    )
+                )
+
+        # TF-SEC-049: WAF not associated with ALB/CloudFront
+        if rtype in ("aws_lb", "aws_alb", "aws_cloudfront_distribution"):
+            if not _WAF_ASSOC_RE.search(content):
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-049",
+                        severity="medium",
+                        title="WAF not associated with resource",
+                        message=(
+                            f"Resource '{rname}' ({rtype}) does not have an "
+                            "associated aws_wafv2_web_acl_association in this "
+                            "file. Attach a WAF web ACL to protect against "
+                            "common web exploits."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["NIST-SC-7", "NIST-SI-4"],
+                    )
+                )
+
+        # TF-SEC-050: GuardDuty not enabled
+        if rtype == "aws_guardduty_detector":
+            # Check if enable is explicitly set to false
+            enable_false_m = re.search(r"enable\s*=\s*false", block, re.IGNORECASE)
+            if enable_false_m:
+                findings.append(
+                    IaCFinding(
+                        rule_id="TF-SEC-050",
+                        severity="high",
+                        title="GuardDuty detector disabled",
+                        message=(
+                            f"GuardDuty detector '{rname}' has enable = false. "
+                            "Enable GuardDuty for continuous threat detection "
+                            "and monitoring of malicious activity."
+                        ),
+                        file_path=rel_path,
+                        line_number=block_start_line,
+                        category="terraform",
+                        compliance=["CIS-AWS-4.1", "NIST-SI-4"],
                     )
                 )
 

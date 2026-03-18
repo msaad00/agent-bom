@@ -351,6 +351,30 @@ jobs:
           exit-code: '1'
           trivyignores: .trivyignore
 
+      - name: agent-bom image OS scan (dogfood — catches glibc/sqlite/dpkg CVEs)
+        run: |
+          # Scan OS packages inside the built Docker image using agent-bom itself.
+          # This closes the gap where CI only scanned Python deps (uv.lock) but
+          # not base-image OS packages (glibc, sqlite3, dpkg) that Docker Hub catches.
+          docker run --rm --entrypoint sh agent-bom:test -c \
+            "agent-bom scan --os-packages -f json" > /tmp/image-os-scan.json 2>&1 || true
+          echo "=== agent-bom OS package scan (inside Docker image) ==="
+          python3 -c "
+          import json, sys
+          try:
+              d = json.load(open('/tmp/image-os-scan.json'))
+              f = d.get('findings', d.get('vulnerabilities', []))
+              sev = lambda s: sum(1 for x in f if x.get('severity','').lower() == s)
+              c, h = sev('critical'), sev('high')
+              print(f'OS packages: {len(f)} findings | Critical: {c} | High: {h}')
+              for x in f:
+                  if x.get('severity','').lower() in ('critical', 'high'):
+                      pkg = x.get('package', {})
+                      print(f'  {x.get(\"id\",\"?\")} ({x.get(\"severity\",\"?\")}) — {pkg.get(\"name\",\"?\")} {pkg.get(\"version\",\"?\")}')
+          except Exception as e:
+              print(f'OS scan parse error (non-blocking): {e}')
+          " || true
+
   # 6. agent-bom Self-Scan (dogfooding with test SBOM)
   # Runs on main push only — not needed on every PR
   agent-bom-scan:

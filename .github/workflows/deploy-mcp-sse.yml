@@ -75,10 +75,12 @@ jobs:
           fi
 
       - name: Post-deploy version check
+        env:
+          RAILWAY_MCP_URL: ${{ vars.RAILWAY_MCP_URL }}
         run: |
           echo "Waiting 60s for Railway to rebuild and start..."
           sleep 60
-          DEPLOY_URL="https://agent-bom-mcp.up.railway.app"
+          DEPLOY_URL="${RAILWAY_MCP_URL:-https://agent-bom-mcp.up.railway.app}"
           echo "Checking $DEPLOY_URL/health"
           for attempt in 1 2 3 4 5; do
             RESPONSE=$(curl -sf "$DEPLOY_URL/health" 2>/dev/null || true)

@@ -94,6 +94,9 @@ async def run_http_mode(engine: ProtectionEngine, host: str, port: int) -> None:
     """Start an asyncio HTTP server that accepts tool call JSON via POST."""
     engine.start()
 
+    # 10 MB — matches proxy.py MAX_MESSAGE_SIZE
+    max_body_size = 10 * 1024 * 1024
+
     async def handle_request(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         try:
             # Read HTTP request line + headers
@@ -115,7 +118,18 @@ async def run_http_mode(engine: ProtectionEngine, host: str, port: int) -> None:
                 if not header_str:
                     break
                 if header_str.lower().startswith("content-length:"):
-                    content_length = int(header_str.split(":", 1)[1].strip())
+                    try:
+                        content_length = int(header_str.split(":", 1)[1].strip())
+                    except ValueError:
+                        content_length = 0
+
+            # Reject oversized payloads before reading body
+            if content_length > max_body_size:
+                resp = json.dumps({"error": "payload too large"})
+                writer.write(f"HTTP/1.1 413 Payload Too Large\r\nContent-Type: application/json\r\nContent-Length: {len(resp)}\r\n\r\n{resp}".encode())
+                await writer.drain()
+                writer.close()
+                return
 
             # Read body
             body = b""

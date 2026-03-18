@@ -32,13 +32,15 @@ jobs:
       - name: pip-audit (Dependency Vulnerabilities)
         run: uv run pip-audit  # all vulns must be fixed; no ignores
 
-      - name: OSV Scanner (declared dep ranges)
+      - name: OSV Scanner (all lockfiles)
         run: |
           curl -fsSL -o /usr/local/bin/osv-scanner \
-            https://github.com/google/osv-scanner/releases/download/v1.9.2/osv-scanner_linux_amd64
+            https://github.com/google/osv-scanner/releases/download/v2.3.3/osv-scanner_linux_amd64
           chmod +x /usr/local/bin/osv-scanner
-          osv-scanner --lockfile dashboard/requirements.txt
-          # pyproject.toml is covered by pip-audit above (installs + scans the full dep tree)
+          # Scan main lockfile (all pinned deps for every extra, including transitive)
+          osv-scanner scan lockfile --config .osv-scanner-config.toml uv.lock
+          # Scan dashboard deps (separate requirements.txt, not covered by uv.lock)
+          osv-scanner scan lockfile --config .osv-scanner-config.toml dashboard/requirements.txt
 
       - name: Trivy filesystem scan
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
@@ -363,19 +365,41 @@ jobs:
           python-version: '3.11'
 
       - name: Install agent-bom from source
-        run: uv sync
+        run: uv sync --extra dev
 
-      - name: Run agent-bom scan (ingest test SBOM)
+      - name: Generate real SBOM from installed packages (pip-audit CycloneDX)
         run: |
-          uv run agent-bom scan --sbom tests/fixtures/test-sbom.cdx.json -f sarif -o results.sarif || true
+          # Generate a real CycloneDX SBOM from all packages installed in the venv.
+          # This is what agent-bom actually scans — its own supply chain, not test fixtures.
+          uv run pip-audit --format=cyclonedx-json --output /tmp/agent-bom-self-scan.cdx.json \
+            --skip-editable || true
+          if [ ! -f /tmp/agent-bom-self-scan.cdx.json ]; then
+            echo '{"bomFormat":"CycloneDX","specVersion":"1.4","components":[]}' \
+              > /tmp/agent-bom-self-scan.cdx.json
+          fi
+
+      - name: Run agent-bom scan (real installed packages)
+        run: |
+          # Scan the real venv SBOM — dogfoods the scanner against actual deps.
+          # Any CVE here is a real vulnerability in agent-bom's supply chain.
+          uv run agent-bom scan --sbom /tmp/agent-bom-self-scan.cdx.json \
+            -f json -o /tmp/agent-bom-self-scan-results.json || true
+          # Also generate SARIF for potential future upload
+          uv run agent-bom scan --sbom /tmp/agent-bom-self-scan.cdx.json \
+            -f sarif -o results.sarif || true
           if [ ! -f results.sarif ]; then
             echo '{"$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json","version":"2.1.0","runs":[{"tool":{"driver":{"name":"agent-bom"}},"results":[]}]}' > results.sarif
           fi
+          # Print summary so it's visible in workflow output
+          echo "=== agent-bom self-scan summary ==="
+          if [ -f /tmp/agent-bom-self-scan-results.json ]; then
+            python3 -c "import json,sys; d=json.load(open('/tmp/agent-bom-self-scan-results.json')); f=d.get('findings',d.get('vulnerabilities',[])); sev=lambda s: sum(1 for x in f if x.get('severity','').lower()==s); c,h,m,lo=sev('critical'),sev('high'),sev('medium'),sev('low'); print('Total:',len(f),'| Critical:',c,'| High:',h,'| Medium:',m,'| Low:',lo); [print('WARNING: CVE in own deps:',x.get('id','?'),x.get('package',{}).get('name','?'),x.get('package',{}).get('version','?')) for x in f if x.get('severity','').lower() in ('critical','high')]" || true
+          fi
 
-      # SARIF upload removed: uploading a non-CodeQL SARIF category from CI
-      # creates a "code scanning configuration" that GitHub expects on every PR.
-      # If any PR run skips or fails, it shows "1 configuration not found".
-      # Scan results are visible in the workflow output instead.
+      # SARIF upload intentionally omitted: a schedule/push-only SARIF category
+      # creates a "code scanning configuration" GitHub expects on every PR.
+      # When any PR run skips it, GitHub shows "1 configuration not found".
+      # Results are fully visible in the workflow output above.
 
   # 7. Dogfood GitHub Action (test action.yml via uses: ./)
   action-dogfood:

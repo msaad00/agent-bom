@@ -1,0 +1,17 @@
+# OSV Scanner configuration — suppressed vulnerabilities (documented upstream blockers)
+#
+# Only add entries here when:
+#   1. The vulnerability has a fix available upstream
+#   2. We have verified it is not directly exploitable by agent-bom
+#   3. Upgrading is blocked by a hard transitive constraint we do not control
+#   4. An issue is open to track re-evaluation when the constraint is lifted
+
+[[IgnoredVulns]]
+id = "GHSA-68rp-wp8r-4726"
+reason = """
+pyopenssl DTLS buffer overflow (fixed in pyopenssl>=26.0.0).
+BLOCKER: snowflake-connector-python requires pyopenssl<26.0.0 (checked: v4.3.0 still caps at <26.0.0).
+NOT EXPLOITABLE: agent-bom does not use DTLS; the vulnerability is in DTLS record parsing
+which is only reached when pyopenssl's DTLS context is explicitly invoked.
+Re-evaluate when snowflake-connector-python drops the <26.0.0 cap.
+"""

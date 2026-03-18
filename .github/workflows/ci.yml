@@ -88,6 +88,11 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ['3.11', '3.13', '3.14']
+        include:
+          - python-version: '3.14'
+            experimental: true
+    # 3.14 is pre-release — failures are allowed but still reported
+    continue-on-error: ${{ matrix.experimental == true }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 

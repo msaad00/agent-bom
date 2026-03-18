@@ -241,6 +241,28 @@ class TestLateralPaths:
         paths = find_lateral_paths(graph, "agent:nonexistent")
         assert paths == []
 
+    def test_bfs_queue_bound_on_dense_graph(self):
+        """BFS terminates without OOM on a dense graph with many interconnections."""
+        from agent_bom.context_graph import _MAX_QUEUE_SIZE
+
+        # 15 agents sharing the same server — creates O(n^2) cross-links
+        agents = [
+            _agent(
+                name=f"agent-{i}",
+                servers=[
+                    _server(name="shared", env={"KEY": "x"}, tools=[_tool("exec", "run code")]),
+                ],
+            )
+            for i in range(15)
+        ]
+        graph = build_context_graph(agents, [])
+        # Must complete quickly without hanging or OOM
+        paths = find_lateral_paths(graph, "agent:agent-0", max_depth=4)
+        assert isinstance(paths, list)
+        assert len(paths) <= 100
+        # Verify the constant is defined (regression guard)
+        assert _MAX_QUEUE_SIZE > 0
+
 
 # ---------------------------------------------------------------------------
 # TestInteractionRisks

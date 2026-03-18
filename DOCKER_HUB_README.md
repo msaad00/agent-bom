@@ -45,7 +45,7 @@ docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest iac /workspace
 | Tag | Description |
 |-----|-------------|
 | `latest` | Most recent stable release |
-| `v0.71.3` | Current stable version (pinned) |
+| `v0.71.4` | Current stable version (pinned) |
 
 ## Links
 

@@ -16,14 +16,14 @@ FROM python:3.12.13-slim@sha256:7026274c107626d7e940e0e5d6730481a4600ae95d5ca7eb
 WORKDIR /app
 COPY LICENSE ./
 
-ARG VERSION=0.71.3
+ARG VERSION=0.71.4
 
 RUN pip install --no-cache-dir --prefix=/install agent-bom==${VERSION}
 
 ## ── Runtime stage ────────────────────────────────────────────────────────────
 FROM python:3.12.13-slim@sha256:7026274c107626d7e940e0e5d6730481a4600ae95d5ca7eb532dd4180313fea9
 
-ARG VERSION=0.71.3
+ARG VERSION=0.71.4
 
 LABEL org.opencontainers.image.title="agent-bom runtime proxy"
 LABEL org.opencontainers.image.description="MCP runtime security proxy — intercepts JSON-RPC for audit logging and policy enforcement"

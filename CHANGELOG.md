@@ -7,6 +7,15 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.71.4] – 2026-03-18
+
+### Fixed
+- **SARIF output**: paths were absolute (`/Users/.../Agent-Bom`) causing GitHub Security tab to show "No summary of scanned files". Now relative paths pointing to manifest files (#945)
+- **Scanner accuracy**: git commit SHAs in `fixed_version` from OSV data no longer generate false positive "assuming affected" warnings — silently skipped as non-version data (#946)
+- **Docker pip CVEs**: upgraded pip in all 6 Docker images — fixes CVE-2025-8869 (5.9M) and CVE-2026-1703 (2.0L) (#947)
+- **Release pipeline**: self-scan gate now blocks ALL publish jobs (PyPI, Docker, GHCR, Sigstore, SLSA). No release ships with HIGH+ CVEs (#944)
+- **Self-scan noise**: post-merge scan now only uploads HIGH+ findings to GitHub Security tab (was uploading all severities, flooding with 78 low-severity base-image CVEs) (#945)
+
 ## [0.71.3] – 2026-03-18
 
 ### Fixed

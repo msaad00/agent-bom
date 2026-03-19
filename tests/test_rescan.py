@@ -97,7 +97,7 @@ class TestRescanCommand:
 
     def test_empty_baseline_exits_0(self, tmp_path):
         p = self._write_baseline(BASELINE_EMPTY, tmp_path)
-        result = self.runner.invoke(main, ["rescan", str(p)])
+        result = self.runner.invoke(main, ["report", "rescan", str(p)])
         assert result.exit_code == 0
 
     def test_all_resolved_exits_0(self, tmp_path):
@@ -111,7 +111,7 @@ class TestRescanCommand:
             mock_cache_cls.return_value.evict_many.return_value = 2
             # OSV returns empty — all vulns resolved
             mock_osv.return_value = {}
-            result = self.runner.invoke(main, ["rescan", str(p)])
+            result = self.runner.invoke(main, ["report", "rescan", str(p)])
         assert result.exit_code == 0, result.output
         assert "Resolved" in result.output
 
@@ -135,7 +135,7 @@ class TestRescanCommand:
                 ],
                 "pypi:flask@2.2.0": [],  # flask resolved
             }
-            result = self.runner.invoke(main, ["rescan", str(p)])
+            result = self.runner.invoke(main, ["report", "rescan", str(p)])
         assert result.exit_code == 1, result.output
         assert "Remaining" in result.output
 
@@ -149,7 +149,7 @@ class TestRescanCommand:
             mock_cache_cls.return_value = MagicMock()
             mock_cache_cls.return_value.evict_many.return_value = 2
             mock_osv.return_value = {}
-            self.runner.invoke(main, ["rescan", str(p), "--output", str(out)])
+            self.runner.invoke(main, ["report", "rescan", str(p), "--output", str(out)])
         assert out.exists()
         data = json.loads(out.read_text())
         assert data["type"] == "remediation_verification"
@@ -167,14 +167,14 @@ class TestRescanCommand:
             mock_cache_cls.return_value = MagicMock()
             mock_cache_cls.return_value.evict_many.return_value = 2
             mock_osv.return_value = {}
-            self.runner.invoke(main, ["rescan", str(p), "--md", str(md)])
+            self.runner.invoke(main, ["report", "rescan", str(p), "--md", str(md)])
         assert md.exists()
         content = md.read_text()
         assert "Remediation Verification Report" in content
         assert "Resolved" in content
 
     def test_baseline_not_found_fails(self, tmp_path):
-        result = self.runner.invoke(main, ["rescan", str(tmp_path / "nonexistent.json")])
+        result = self.runner.invoke(main, ["report", "rescan", str(tmp_path / "nonexistent.json")])
         assert result.exit_code != 0
 
     def test_newly_found_included_in_output(self, tmp_path):
@@ -200,7 +200,7 @@ class TestRescanCommand:
                     }
                 ]
             }
-            self.runner.invoke(main, ["rescan", str(p), "--output", str(out)])
+            self.runner.invoke(main, ["report", "rescan", str(p), "--output", str(out)])
         data = json.loads(out.read_text())
         assert len(data["newly_found"]) == 1
         assert data["newly_found"][0]["id"] == "CVE-NEW-999"

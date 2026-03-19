@@ -410,7 +410,7 @@ def test_where_shows_binary_info():
     from agent_bom.cli import main
 
     runner = CliRunner()
-    result = runner.invoke(main, ["where"])
+    result = runner.invoke(main, ["mcp", "where"])
     assert result.exit_code == 0
     # Should mention binary detection
     assert "binary:" in result.output or "toolhive" in result.output.lower()
@@ -446,7 +446,7 @@ def test_where_json_output():
     from agent_bom.cli import main
 
     runner = CliRunner()
-    result = runner.invoke(main, ["where", "--json"])
+    result = runner.invoke(main, ["mcp", "where", "--json"])
     assert result.exit_code == 0
     data = json.loads(result.output)
     assert "platform" in data
@@ -465,7 +465,7 @@ def test_where_shows_totals():
     from agent_bom.cli import main
 
     runner = CliRunner()
-    result = runner.invoke(main, ["where"])
+    result = runner.invoke(main, ["mcp", "where"])
     assert result.exit_code == 0
     assert "Total:" in result.output
     assert "paths checked" in result.output

@@ -139,7 +139,7 @@ def test_watch_cli_help():
     from agent_bom.cli import main
 
     runner = CliRunner()
-    result = runner.invoke(main, ["watch", "--help"])
+    result = runner.invoke(main, ["runtime", "watch", "--help"])
 
     assert result.exit_code == 0
     assert "Watch MCP configs" in result.output

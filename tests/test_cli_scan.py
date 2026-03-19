@@ -322,7 +322,7 @@ def test_verify_help():
 
 def test_where_runs():
     """where command shows discovery paths and exits 0."""
-    result = _run(["where"])
+    result = _run(["mcp", "where"])
     assert result.exit_code == 0
 
 

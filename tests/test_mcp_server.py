@@ -328,7 +328,7 @@ def test_generate_sbom_no_agents(mock_pipeline):
 def test_cli_mcp_server_help():
     """CLI should have mcp-server subcommand."""
     runner = CliRunner()
-    result = runner.invoke(main, ["mcp-server", "--help"])
+    result = runner.invoke(main, ["mcp", "server", "--help"])
     assert result.exit_code == 0
     assert "MCP server" in result.output or "mcp" in result.output.lower()
 
@@ -336,7 +336,7 @@ def test_cli_mcp_server_help():
 def test_cli_mcp_server_transport_options():
     """CLI should accept --transport, --port, --host options."""
     runner = CliRunner()
-    result = runner.invoke(main, ["mcp-server", "--help"])
+    result = runner.invoke(main, ["mcp", "server", "--help"])
     assert "--transport" in result.output
     assert "--port" in result.output
     assert "--host" in result.output

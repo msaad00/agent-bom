@@ -561,13 +561,13 @@ def test_cli_check_help():
 
 def test_cli_history_help():
     runner = CliRunner()
-    result = runner.invoke(main, ["history", "--help"])
+    result = runner.invoke(main, ["report", "history", "--help"])
     assert result.exit_code == 0
 
 
 def test_cli_diff_help():
     runner = CliRunner()
-    result = runner.invoke(main, ["diff", "--help"])
+    result = runner.invoke(main, ["report", "diff", "--help"])
     assert result.exit_code == 0
     assert "baseline" in result.output.lower()
 
@@ -664,7 +664,7 @@ def test_policy_template_command():
     runner = CliRunner()
     with tempfile.TemporaryDirectory() as tmpdir:
         out_file = str(Path(tmpdir) / "policy.json")
-        result = runner.invoke(main, ["policy-template", "-o", out_file])
+        result = runner.invoke(main, ["policy", "template", "-o", out_file])
         assert result.exit_code == 0
         data = json.loads(Path(out_file).read_text())
         assert "rules" in data

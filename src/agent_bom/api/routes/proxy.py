@@ -1,8 +1,11 @@
-"""Proxy status, alerts, and WebSocket streaming API routes.
+"""Proxy status, alerts, shield, and WebSocket streaming API routes.
 
 Endpoints:
     GET       /v1/proxy/status       proxy metrics summary
     GET       /v1/proxy/alerts       recent proxy alerts (filterable)
+    POST      /v1/shield/start       start deep defense protection engine
+    GET       /v1/shield/status      shield threat assessment
+    POST      /v1/shield/unblock     deactivate kill-switch
     WebSocket /ws/proxy/metrics      live metrics stream (1 Hz)
     WebSocket /ws/proxy/alerts       live alert stream
 """
@@ -314,3 +317,94 @@ async def ws_proxy_alerts(websocket: WebSocket) -> None:
         pass
     except Exception:  # noqa: BLE001
         pass
+
+
+# ── Shield / Deep Defense endpoints ──────────────────────────────────────────
+
+# Module-level protection engine — shared by shield endpoints.
+# Lazy-initialized on first POST /v1/shield/start.
+_shield_engine = None
+
+
+@router.post("/v1/shield/start", tags=["shield"])
+async def shield_start(correlation_window: float = 30.0) -> dict:
+    """Start the deep defense protection engine.
+
+    Activates correlated multi-detector threat scoring with automatic
+    threat-level escalation and kill-switch capability.
+
+    Query params:
+        correlation_window: Alert correlation window in seconds (default 30).
+    """
+    global _shield_engine
+
+    from agent_bom.alerts.dispatcher import AlertDispatcher
+    from agent_bom.runtime.protection import ProtectionEngine
+
+    if _shield_engine is not None and _shield_engine.active:
+        return {
+            "status": "already_active",
+            **_shield_engine.status(),
+        }
+
+    dispatcher = AlertDispatcher()
+    # Route shield alerts to the proxy alert ring buffer
+    from agent_bom.api.routes.proxy import push_proxy_alert
+
+    class _RingBufferChannel:
+        async def send(self, alert: dict) -> bool:
+            push_proxy_alert(alert)
+            return True
+
+    dispatcher.add_channel(_RingBufferChannel())
+
+    _shield_engine = ProtectionEngine(
+        dispatcher=dispatcher,
+        shield=True,
+        correlation_window=correlation_window,
+    )
+    _shield_engine.start()
+    return {"status": "started", **_shield_engine.status()}
+
+
+@router.get("/v1/shield/status", tags=["shield"])
+async def shield_status() -> dict:
+    """Get current shield threat assessment.
+
+    Returns threat level, composite score, active detectors,
+    correlation window stats, and kill-switch status.
+    """
+    if _shield_engine is None or not _shield_engine.active:
+        return {
+            "active": False,
+            "message": "Shield not started. POST /v1/shield/start to activate.",
+        }
+
+    assessment = _shield_engine.assess_threat()
+    return {
+        **_shield_engine.status(),
+        "assessment": {
+            "threat_level": assessment.threat_level.value,
+            "composite_score": assessment.composite_score,
+            "detectors_triggered": assessment.detectors_triggered,
+            "alert_count_in_window": assessment.alert_count_in_window,
+            "blocked": assessment.blocked,
+        },
+    }
+
+
+@router.post("/v1/shield/unblock", tags=["shield"])
+async def shield_unblock() -> dict:
+    """Deactivate kill-switch and reset threat level to ELEVATED.
+
+    Use this after investigating a CRITICAL threat escalation to
+    resume normal tool call processing.
+    """
+    if _shield_engine is None or not _shield_engine.active:
+        return {"status": "not_active", "message": "Shield not started."}
+
+    if not _shield_engine.is_blocked:
+        return {"status": "not_blocked", "message": "Kill-switch is not active."}
+
+    _shield_engine.unblock()
+    return {"status": "unblocked", **_shield_engine.status()}

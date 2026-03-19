@@ -1,0 +1,105 @@
+# OSV Scanner configuration — suppressed vulnerabilities
+#
+# Scorecard's osv-scanner auto-discovers this file by name (must be
+# `osv-scanner.toml`, NOT `.osv-scanner.toml` or `.osv-scanner-config.toml`).
+#
+# Only add entries here when:
+#   1. The vulnerability has a fix available upstream AND we already pin it, OR
+#   2. No fix exists upstream and the code path is not reachable
+#   3. An issue is open to track re-evaluation when constraints change
+#
+# Re-audit this file on every dependency bump.
+
+# ── nltk — NO FIX available upstream (3.9.3 is latest) ──────────────────────
+
+[[IgnoredVulns]]
+id = "GHSA-gfwx-w7gr-fvh7"
+reason = "nltk 3.9.3 — XSS in WordNet Browser. No fix available upstream. Re-evaluate when nltk ships a new release."
+
+[[IgnoredVulns]]
+id = "GHSA-rf74-v2fm-23pw"
+reason = "nltk 3.9.3 — unbounded recursion in JSONTaggedDecoder. No fix available upstream. Re-evaluate when nltk ships a new release."
+
+# ── Werkzeug — FIXED in 3.1.6 (our locked version) ──────────────────────────
+
+[[IgnoredVulns]]
+id = "GHSA-29vq-49wr-vm6x"
+reason = "werkzeug safe_join Windows — fixed in 3.1.6, our locked version is 3.1.6"
+
+[[IgnoredVulns]]
+id = "GHSA-2g68-c3qc-8985"
+reason = "werkzeug debugger RCE — fixed in 3.0.3, our locked version is 3.1.6"
+
+[[IgnoredVulns]]
+id = "GHSA-87hc-h4r5-73f7"
+reason = "werkzeug safe_join compound extensions — fixed in 3.1.5, our locked version is 3.1.6"
+
+[[IgnoredVulns]]
+id = "GHSA-f9vj-2wh5-fj8j"
+reason = "werkzeug safe_join Windows — fixed in 3.0.6, our locked version is 3.1.6"
+
+[[IgnoredVulns]]
+id = "GHSA-hgf8-39gv-g3f2"
+reason = "werkzeug safe_join Windows device — fixed in 3.1.4, our locked version is 3.1.6"
+
+[[IgnoredVulns]]
+id = "GHSA-hrfv-mqp8-q5rw"
+reason = "werkzeug multipart DoS — fixed in 3.0.1, our locked version is 3.1.6"
+
+[[IgnoredVulns]]
+id = "GHSA-px8h-6qxv-m22q"
+reason = "werkzeug nameless cookies — fixed in 2.2.3, our locked version is 3.1.6"
+
+[[IgnoredVulns]]
+id = "GHSA-q34m-jh98-gwm2"
+reason = "werkzeug form resource exhaustion — fixed in 3.0.6, our locked version is 3.1.6"
+
+[[IgnoredVulns]]
+id = "GHSA-xg9f-g7g7-2323"
+reason = "werkzeug multipart high resource — fixed in 2.2.3, our locked version is 3.1.6"
+
+[[IgnoredVulns]]
+id = "PYSEC-2023-221"
+reason = "werkzeug alias (GHSA-hrfv-mqp8-q5rw) — fixed in 3.1.6"
+
+[[IgnoredVulns]]
+id = "PYSEC-2023-57"
+reason = "werkzeug alias (GHSA-px8h-6qxv-m22q) — fixed in 3.1.6"
+
+[[IgnoredVulns]]
+id = "PYSEC-2023-58"
+reason = "werkzeug alias (GHSA-xg9f-g7g7-2323) — fixed in 3.1.6"
+
+# ── Flask — FIXED in 3.1.3 (our locked version) ─────────────────────────────
+
+[[IgnoredVulns]]
+id = "GHSA-68rp-wp8r-4726"
+reason = "Flask Vary:Cookie low-severity — fixed in 3.1.1, our locked version is 3.1.3"
+
+[[IgnoredVulns]]
+id = "GHSA-m2qf-hxjv-5gpq"
+reason = "Flask session cookie disclosure — fixed in 2.3.8, our locked version is 3.1.3"
+
+[[IgnoredVulns]]
+id = "PYSEC-2023-62"
+reason = "Flask alias (GHSA-m2qf-hxjv-5gpq) — fixed in 3.1.3"
+
+# ── pyopenssl — blocked by snowflake-connector-python <26.0.0 cap ────────────
+
+[[IgnoredVulns]]
+id = "GHSA-5pwr-322w-8jr4"
+reason = """
+pyopenssl vulnerability (fixed in pyopenssl>=26.0.0).
+BLOCKER: snowflake-connector-python requires pyopenssl<26.0.0.
+NOT DIRECTLY EXPLOITABLE: agent-bom does not use the affected code paths.
+Tracked: https://github.com/msaad00/agent-bom/issues/930
+"""
+
+[[IgnoredVulns]]
+id = "GHSA-vp96-hxj8-p424"
+reason = """
+pyopenssl vulnerability (fixed in pyopenssl>=26.0.0).
+BLOCKER: snowflake-connector-python requires pyopenssl<26.0.0.
+NOT DIRECTLY EXPLOITABLE: agent-bom does not use the affected code paths.
+Tracked: https://github.com/msaad00/agent-bom/issues/930
+"""

@@ -53,7 +53,7 @@ jobs:
           # Scan main lockfile (all pinned deps for every extra, including transitive)
           # osv-scanner v2 syntax: scan --lockfile=<path>
           # Scan main lockfile — pass if only unfixable CVEs remain (FIXED VERSION = --)
-          osv-scanner scan --config .osv-scanner-config.toml --lockfile=uv.lock 2>&1 | tee /tmp/osv-uv.txt || {
+          osv-scanner scan --config osv-scanner.toml --lockfile=uv.lock 2>&1 | tee /tmp/osv-uv.txt || {
             FIXABLE=$(grep -E "^\|" /tmp/osv-uv.txt | grep -v "| -- " | grep -v "OSV URL" | grep -v "+--" | head -5)
             if [ -n "$FIXABLE" ]; then
               echo "::error::osv-scanner found vulnerabilities with available fixes:"
@@ -63,7 +63,7 @@ jobs:
             echo "::warning::osv-scanner found only unfixable CVEs (no upstream fix) — passing"
           }
           # Scan dashboard deps
-          osv-scanner scan --config .osv-scanner-config.toml --lockfile=dashboard/requirements.txt
+          osv-scanner scan --config osv-scanner.toml --lockfile=dashboard/requirements.txt
 
       - name: Trivy filesystem scan
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0

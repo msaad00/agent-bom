@@ -56,8 +56,14 @@ def _to_relative_path(path: str) -> str:
     return path
 
 
-def to_sarif(report: AIBOMReport) -> dict:
-    """Convert report to SARIF 2.1.0 dict for GitHub Security tab."""
+def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
+    """Convert report to SARIF 2.1.0 dict for GitHub Security tab.
+
+    Args:
+        exclude_unfixable: If True, skip findings where no fix is available
+            (fixed_version is None/empty). Reduces noise in GitHub Security tab
+            from CVEs that can't be acted on.
+    """
     rules = []
     results = []
     seen_rule_ids: set[str] = set()
@@ -65,6 +71,11 @@ def to_sarif(report: AIBOMReport) -> dict:
     for br in report.blast_radii:
         vuln = br.vulnerability
         rule_id = vuln.id
+
+        # Skip unfixable findings when requested (no upstream fix available)
+        if exclude_unfixable and not vuln.fixed_version:
+            continue
+
         level = _SARIF_SEVERITY_MAP.get(vuln.severity, "warning")
 
         if rule_id not in seen_rule_ids:
@@ -275,7 +286,12 @@ def to_sarif(report: AIBOMReport) -> dict:
     }
 
 
-def export_sarif(report: AIBOMReport, output_path: str) -> None:
+def export_sarif(
+    report: AIBOMReport,
+    output_path: str,
+    *,
+    exclude_unfixable: bool = False,
+) -> None:
     """Export report as SARIF 2.1.0 JSON file."""
-    data = to_sarif(report)
+    data = to_sarif(report, exclude_unfixable=exclude_unfixable)
     Path(output_path).write_text(json.dumps(data, indent=2))

@@ -393,6 +393,54 @@ def test_sarif_export_file(sample_report, tmp_path):
     assert len(data["runs"][0]["results"]) == 1
 
 
+def test_sarif_exclude_unfixable():
+    """exclude_unfixable=True drops findings without a fixed_version."""
+    unfixable_vuln = Vulnerability(
+        id="CVE-2024-9999",
+        summary="No fix available",
+        severity=Severity.HIGH,
+        cvss_score=7.5,
+        fixed_version=None,
+    )
+    fixable_vuln = Vulnerability(
+        id="CVE-2024-1111",
+        summary="Fix available",
+        severity=Severity.HIGH,
+        cvss_score=8.0,
+        fixed_version="2.0.0",
+    )
+    pkg = Package(name="pkg", version="1.0.0", ecosystem="npm", vulnerabilities=[unfixable_vuln, fixable_vuln])
+    server = MCPServer(name="s", command="node", args=[], packages=[pkg])
+    agent = Agent(name="a", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/c.json", mcp_servers=[server])
+    br1 = BlastRadius(
+        vulnerability=unfixable_vuln,
+        package=pkg,
+        affected_servers=[server],
+        affected_agents=[agent],
+        exposed_credentials=[],
+        exposed_tools=[],
+    )
+    br2 = BlastRadius(
+        vulnerability=fixable_vuln,
+        package=pkg,
+        affected_servers=[server],
+        affected_agents=[agent],
+        exposed_credentials=[],
+        exposed_tools=[],
+    )
+    report = AIBOMReport(agents=[agent], blast_radii=[br1, br2])
+
+    # Without flag: both findings present
+    sarif_all = to_sarif(report)
+    assert len(sarif_all["runs"][0]["results"]) == 2
+
+    # With flag: only fixable finding present
+    sarif_filtered = to_sarif(report, exclude_unfixable=True)
+    assert len(sarif_filtered["runs"][0]["results"]) == 1
+    assert sarif_filtered["runs"][0]["results"][0]["ruleId"] == "CVE-2024-1111"
+    assert len(sarif_filtered["runs"][0]["tool"]["driver"]["rules"]) == 1
+
+
 # ─── JSON / CycloneDX Output Tests ───────────────────────────────────────────
 
 

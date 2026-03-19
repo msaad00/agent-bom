@@ -246,6 +246,7 @@ def scan(
     correlate_log: Optional[str],
     external_scan_path: Optional[str],
     os_packages: bool,
+    exclude_unfixable: bool = False,
     iac_paths: tuple = (),
     ignore_file: Optional[str] = None,
 ):
@@ -1616,6 +1617,7 @@ def scan(
         baseline=baseline,
         delta_mode=delta_mode,
         verbose=verbose,
+        exclude_unfixable=exclude_unfixable,
     )
 
     # Step 6: Save report to history + asset tracking

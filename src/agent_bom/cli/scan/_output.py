@@ -63,6 +63,7 @@ def render_output(
     baseline: Any,
     delta_mode: bool,
     verbose: bool = False,
+    exclude_unfixable: bool = False,
     **kwargs: Any,
 ) -> None:
     """Step 5: render report to console/file. Also Steps 5b, 5c, 5d."""
@@ -76,7 +77,7 @@ def render_output(
         if output_format == "cyclonedx":
             sys.stdout.write(json.dumps(to_cyclonedx(report), indent=2))
         elif output_format == "sarif":
-            sys.stdout.write(json.dumps(to_sarif(report), indent=2))
+            sys.stdout.write(json.dumps(to_sarif(report, exclude_unfixable=exclude_unfixable), indent=2))
         elif output_format == "spdx":
             sys.stdout.write(json.dumps(to_spdx(report), indent=2))
         elif output_format == "html":
@@ -203,7 +204,7 @@ def render_output(
         con.print(f"\n  [green]✓[/green] CycloneDX BOM: {out_path}")
     elif output_format == "sarif":
         out_path = output or "agent-bom.sarif"
-        export_sarif(report, out_path)
+        export_sarif(report, out_path, exclude_unfixable=exclude_unfixable)
         con.print(f"\n  [green]✓[/green] SARIF report: {out_path}")
     elif output_format == "spdx":
         out_path = output or "agent-bom.spdx.json"
@@ -293,7 +294,7 @@ def render_output(
         if output.endswith(".cdx.json"):
             export_cyclonedx(report, output)
         elif output.endswith(".sarif"):
-            export_sarif(report, output)
+            export_sarif(report, output, exclude_unfixable=exclude_unfixable)
         elif output.endswith(".spdx.json"):
             export_spdx(report, output)
         elif output.endswith(".html"):

@@ -202,6 +202,12 @@ def output_options(fn):
             click.option("--log-file", "log_file", type=click.Path(), default=None, help="Write JSON logs to file"),
             click.option("--no-color", is_flag=True, help="Disable colored output (useful for piping, CI logs, accessibility)"),
             click.option("--quiet", "-q", is_flag=True, help="Suppress all output except results (for scripting)"),
+            click.option(
+                "--exclude-unfixable",
+                is_flag=True,
+                default=False,
+                help="Exclude findings with no available fix from SARIF output (reduces GitHub Security tab noise)",
+            ),
         ]
     )(fn)
 

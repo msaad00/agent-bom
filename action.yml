@@ -7,6 +7,14 @@ branding:
   color: 'green'
 
 inputs:
+  scan-type:
+    description: 'Scan type: scan (full auto-detect), image (container), fs (filesystem), iac (infrastructure-as-code), sbom (ingest SBOM). Like Trivy scan-type.'
+    required: false
+    default: 'scan'
+  scan-ref:
+    description: 'Target for the scan — image reference, filesystem path, SBOM file path, or IaC paths (comma-separated). Required for image/fs/sbom/iac scan types.'
+    required: false
+    default: ''
   severity-threshold:
     description: 'Fail if vulnerabilities at or above this severity (critical, high, medium, low). Empty = no gate.'
     required: false
@@ -176,6 +184,8 @@ runs:
       id: scan
       shell: bash
       env:
+        INPUT_SCAN_TYPE: ${{ inputs.scan-type }}
+        INPUT_SCAN_REF: ${{ inputs.scan-ref }}
         INPUT_FORMAT: ${{ inputs.format }}
         INPUT_OUTPUT: ${{ inputs.output }}
         INPUT_SEVERITY: ${{ inputs.severity-threshold }}
@@ -205,7 +215,59 @@ runs:
         else
           SARIF_FILE="agent-bom-results.sarif"
         fi
-        ARGS="scan"
+
+        # Map scan-type to focused command (Trivy-style)
+        #   scan  → agent-bom scan (full auto-detect, default)
+        #   image → agent-bom image <ref>
+        #   fs    → agent-bom fs <path>
+        #   sbom  → agent-bom sbom <path>
+        #   iac   → agent-bom iac <paths...>
+        case "${INPUT_SCAN_TYPE:-scan}" in
+          image)
+            if [ -z "$INPUT_SCAN_REF" ] && [ -n "$INPUT_IMAGE" ]; then
+              INPUT_SCAN_REF="$INPUT_IMAGE"
+            fi
+            if [ -z "$INPUT_SCAN_REF" ]; then
+              echo "::error::scan-type=image requires scan-ref (image reference) or image input"
+              exit 1
+            fi
+            ARGS="image $INPUT_SCAN_REF"
+            ;;
+          fs)
+            ARGS="fs ${INPUT_SCAN_REF:-.}"
+            ;;
+          sbom)
+            if [ -z "$INPUT_SCAN_REF" ] && [ -n "$INPUT_SBOM" ]; then
+              INPUT_SCAN_REF="$INPUT_SBOM"
+            fi
+            if [ -z "$INPUT_SCAN_REF" ]; then
+              echo "::error::scan-type=sbom requires scan-ref (SBOM file path) or sbom input"
+              exit 1
+            fi
+            ARGS="sbom $INPUT_SCAN_REF"
+            ;;
+          iac)
+            if [ -z "$INPUT_SCAN_REF" ] && [ -n "$INPUT_IAC" ]; then
+              INPUT_SCAN_REF="$INPUT_IAC"
+            fi
+            if [ -z "$INPUT_SCAN_REF" ]; then
+              echo "::error::scan-type=iac requires scan-ref (IaC paths) or iac input"
+              exit 1
+            fi
+            ARGS="iac"
+            IFS=',' read -ra IAC_REFS <<< "$INPUT_SCAN_REF"
+            for p in "${IAC_REFS[@]}"; do
+              ARGS="$ARGS $(echo "$p" | xargs)"
+            done
+            ;;
+          scan|"")
+            ARGS="scan"
+            ;;
+          *)
+            echo "::error::Unknown scan-type: $INPUT_SCAN_TYPE. Use: scan, image, fs, sbom, iac"
+            exit 1
+            ;;
+        esac
 
         # Output format
         if [ "$INPUT_FORMAT" = "sarif" ]; then
@@ -247,8 +309,8 @@ runs:
           ARGS="$ARGS --fail-on-kev"
         fi
 
-        # Docker image
-        if [ -n "$INPUT_IMAGE" ]; then
+        # Docker image (skip if scan-type=image — already in command)
+        if [ -n "$INPUT_IMAGE" ] && [ "$INPUT_SCAN_TYPE" != "image" ]; then
           ARGS="$ARGS --image $INPUT_IMAGE"
         fi
 
@@ -257,8 +319,8 @@ runs:
           ARGS="$ARGS --config-dir $INPUT_CONFIG_DIR"
         fi
 
-        # Existing SBOM
-        if [ -n "$INPUT_SBOM" ]; then
+        # Existing SBOM (skip if scan-type=sbom — already in command)
+        if [ -n "$INPUT_SBOM" ] && [ "$INPUT_SCAN_TYPE" != "sbom" ]; then
           ARGS="$ARGS --sbom $INPUT_SBOM"
         fi
 
@@ -280,8 +342,8 @@ runs:
           ARGS="$ARGS --ignore-file $INPUT_IGNORE_FILE"
         fi
 
-        # IaC scanning paths
-        if [ -n "$INPUT_IAC" ]; then
+        # IaC scanning paths (skip if scan-type=iac — already in command)
+        if [ -n "$INPUT_IAC" ] && [ "$INPUT_SCAN_TYPE" != "iac" ]; then
           IFS=',' read -ra IAC_PATHS <<< "$INPUT_IAC"
           for p in "${IAC_PATHS[@]}"; do
             ARGS="$ARGS --iac $(echo "$p" | xargs)"

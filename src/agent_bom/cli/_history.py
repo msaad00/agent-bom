@@ -67,8 +67,8 @@ def diff_cmd(baseline: str, current: Optional[str]):
 
     \b
     Usage:
-      agent-bom diff baseline.json                # diff against latest saved scan
-      agent-bom diff baseline.json current.json   # diff two specific files
+      agent-bom report diff baseline.json                # diff against latest saved scan
+      agent-bom report diff baseline.json current.json   # diff two specific files
 
     \b
     Exit codes:
@@ -122,9 +122,9 @@ def rescan_command(baseline: str, output: Optional[str], md: Optional[str], enri
     \b
     Typical remediation verification workflow:
       agent-bom scan --format json --output before.json
-      # ... apply fixes: agent-bom apply before.json  OR  pip install -U ...
-      agent-bom rescan before.json
-      agent-bom rescan before.json --output verification.json --md verification.md
+      # ... apply fixes: agent-bom policy apply before.json  OR  pip install -U ...
+      agent-bom report rescan before.json
+      agent-bom report rescan before.json --output verification.json --md verification.md
 
     \b
     Exit codes:

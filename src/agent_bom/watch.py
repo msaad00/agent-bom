@@ -283,7 +283,7 @@ def start_watching(
         from watchdog.events import FileSystemEventHandler
         from watchdog.observers import Observer
     except ImportError:
-        raise ImportError("watchdog is required for `agent-bom watch`.\nInstall with: pip install 'agent-bom[watch]'") from None
+        raise ImportError("watchdog is required for `agent-bom runtime watch`.\nInstall with: pip install 'agent-bom[watch]'") from None
 
     handler = ConfigChangeHandler(alert_sinks, debounce_seconds)
 

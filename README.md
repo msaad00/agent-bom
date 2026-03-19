@@ -110,7 +110,7 @@ CVE-2025-1234  (CRITICAL . CVSS 9.8 . CISA KEV)
 
 ```bash
 pip install 'agent-bom[mcp-server]'
-agent-bom mcp-server
+agent-bom mcp server
 ```
 
 Add to your MCP client config (Claude Desktop, Cursor, etc.):
@@ -120,7 +120,7 @@ Add to your MCP client config (Claude Desktop, Cursor, etc.):
   "mcpServers": {
     "agent-bom": {
       "command": "agent-bom",
-      "args": ["mcp-server"]
+      "args": ["mcp", "server"]
     }
   }
 }
@@ -135,7 +135,7 @@ Also available on [Glama](https://glama.ai/mcp/servers/@msaad00/agent-bom), [Smi
 ```bash
 docker run --rm -v ~/.config:/root/.config:ro agentbom/agent-bom scan
 docker run --rm agentbom/agent-bom scan --image nginx:latest
-docker run --rm agentbom/agent-bom mcp-server   # MCP server mode
+docker run --rm agentbom/agent-bom mcp server   # MCP server mode
 ```
 
 ---
@@ -403,11 +403,11 @@ agent-bom scan -o -                                # Pipe any format to stdout
 | GitHub Action | `uses: msaad00/agent-bom@v0.71.4 | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom scan` | Isolated scans (linux/amd64, linux/arm64) |
 | REST API | `agent-bom api` | Dashboards, SIEM |
-| MCP Server | `agent-bom mcp-server` (32 tools) | Inside any MCP client |
+| MCP Server | `agent-bom mcp server` (32 tools) | Inside any MCP client |
 | Dashboard | `agent-bom serve` · [Full deploy guide](docs/DEPLOYMENT.md) | API + Next.js UI (15 pages) · Postgres/Supabase |
-| Runtime proxy | `agent-bom proxy` | Intercept + enforce MCP traffic in real time |
-| Protect engine | `agent-bom protect` | 7 behavioral detectors (rug pull, injection, credential leak, exfil sequences, response cloaking, rate limiting, vector DB injection) |
-| Config watcher | `agent-bom watch` | Filesystem watch on MCP configs, alert on drift |
+| Runtime proxy | `agent-bom runtime proxy` | Intercept + enforce MCP traffic in real time |
+| Protect engine | `agent-bom runtime protect` | 7 behavioral detectors (rug pull, injection, credential leak, exfil sequences, response cloaking, rate limiting, vector DB injection) |
+| Config watcher | `agent-bom runtime watch` | Filesystem watch on MCP configs, alert on drift |
 | Pre-install guard | `agent-bom guard pip install <pkg>` | Block vulnerable installs |
 
 <details>

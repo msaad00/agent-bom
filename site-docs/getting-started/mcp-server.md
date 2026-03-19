@@ -13,7 +13,7 @@ Add to your MCP client config:
       "mcpServers": {
         "agent-bom": {
           "command": "uvx",
-          "args": ["agent-bom", "mcp-server"]
+          "args": ["agent-bom", "mcp", "server"]
         }
       }
     }
@@ -26,7 +26,7 @@ Add to your MCP client config:
       "mcpServers": {
         "agent-bom": {
           "command": "uvx",
-          "args": ["agent-bom", "mcp-server"]
+          "args": ["agent-bom", "mcp", "server"]
         }
       }
     }
@@ -39,7 +39,7 @@ Add to your MCP client config:
       "mcpServers": {
         "agent-bom": {
           "command": "uvx",
-          "args": ["agent-bom", "mcp-server"]
+          "args": ["agent-bom", "mcp", "server"]
         }
       }
     }

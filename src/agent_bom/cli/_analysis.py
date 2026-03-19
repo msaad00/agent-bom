@@ -214,11 +214,11 @@ def introspect_cmd(server_command, server_url, timeout, introspect_all, baseline
 
     \b
     Usage:
-      agent-bom introspect --command "npx @mcp/server-filesystem /"
-      agent-bom introspect --url http://localhost:8080/sse
-      agent-bom introspect --all                           # all discovered servers
-      agent-bom introspect --all --baseline baseline.json  # drift report
-      agent-bom introspect --all --format json             # machine-readable
+      agent-bom mcp introspect --command "npx @mcp/server-filesystem /"
+      agent-bom mcp introspect --url http://localhost:8080/sse
+      agent-bom mcp introspect --all                           # all discovered servers
+      agent-bom mcp introspect --all --baseline baseline.json  # drift report
+      agent-bom mcp introspect --all --format json             # machine-readable
 
     \b
     Requires: pip install 'agent-bom[mcp-server]'  (for MCP SDK)

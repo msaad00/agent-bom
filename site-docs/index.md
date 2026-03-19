@@ -48,7 +48,7 @@ agent-bom check langchain   # check a specific package
 | Mode | Command |
 |---|---|
 | CLI | `pip install agent-bom` |
-| MCP server | `agent-bom mcp-server` |
+| MCP server | `agent-bom mcp server` |
 | Docker | `docker run ghcr.io/msaad00/agent-bom scan` |
 | GitHub Action | `uses: msaad00/agent-bom@v0` |
 | Kubernetes | Helm chart + CronJob + DaemonSet |

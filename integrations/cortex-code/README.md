@@ -9,7 +9,7 @@ Add to `~/.snowflake/cortex/mcp.json`:
   "mcpServers": {
     "agent-bom": {
       "command": "uvx",
-      "args": ["agent-bom", "mcp-server"]
+      "args": ["agent-bom", "mcp", "server"]
     }
   }
 }
@@ -22,7 +22,7 @@ Or if installed via pip/pipx:
   "mcpServers": {
     "agent-bom": {
       "command": "agent-bom",
-      "args": ["mcp-server"]
+      "args": ["mcp", "server"]
     }
   }
 }
@@ -66,7 +66,7 @@ All agent-bom MCP tools become available in Cortex Code:
 | `context_graph` | Lateral movement analysis |
 | `cis_benchmark` | CIS benchmark for AWS/Azure/GCP/Snowflake |
 | `gpu_infra_scan` | GPU/AI compute infrastructure scanning |
-| ... and 10 more | See `agent-bom mcp-server --help` |
+| ... and 10 more | See `agent-bom mcp server --help` |
 
 ### As Skill
 

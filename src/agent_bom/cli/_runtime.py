@@ -128,8 +128,8 @@ def proxy_configure_cmd(policy, log_dir, detect_credentials, block_undeclared, a
 
     \b
     Example:
-      agent-bom proxy-configure --log-dir ~/.agent-bom/logs --detect-credentials
-      agent-bom proxy-configure --policy policy.json --block-undeclared --apply
+      agent-bom runtime configure --log-dir ~/.agent-bom/logs --detect-credentials
+      agent-bom runtime configure --policy policy.json --block-undeclared --apply
     """
     from agent_bom.discovery import discover_all
     from agent_bom.proxy_configure import apply_proxy_configs, auto_configure_proxies
@@ -198,12 +198,12 @@ def protect_cmd(mode, port, host, detectors, alert_file, alert_webhook, log_leve
 
     \b
     stdin mode (default) — pipe line-delimited JSON:
-      echo '{"tool_name":"exec","arguments":{"cmd":"rm -rf /"}}' | agent-bom protect
-      cat otel-export.jsonl | agent-bom protect --alert-file alerts.jsonl
+      echo '{"tool_name":"exec","arguments":{"cmd":"rm -rf /"}}' | agent-bom runtime protect
+      cat otel-export.jsonl | agent-bom runtime protect --alert-file alerts.jsonl
 
     \b
     http mode — start an HTTP endpoint:
-      agent-bom protect --mode http --port 8423
+      agent-bom runtime protect --mode http --port 8423
       # POST /tool-call, /tool-response, /drift-check; GET /status
 
     \b
@@ -335,9 +335,9 @@ def watch_cmd(webhook, alert_log, interval):
 
     \b
     Usage:
-      agent-bom watch
-      agent-bom watch --webhook https://hooks.slack.com/services/...
-      agent-bom watch --log alerts.jsonl
+      agent-bom runtime watch
+      agent-bom runtime watch --webhook https://hooks.slack.com/services/...
+      agent-bom runtime watch --log alerts.jsonl
     """
     from agent_bom.watch import (
         ConsoleAlertSink,
@@ -395,12 +395,12 @@ def audit_replay_cmd(log_path, tool, entry_type, blocked_only, alerts_only, sign
 
     \b
     Examples:
-      agent-bom audit-replay audit.jsonl
-      agent-bom audit-replay audit.jsonl --blocked-only
-      agent-bom audit-replay audit.jsonl --alerts-only
-      agent-bom audit-replay audit.jsonl --tool read_file
-      agent-bom audit-replay audit.jsonl --sign-key $SECRET --verify-hmac
-      agent-bom audit-replay audit.jsonl --json
+      agent-bom runtime audit audit.jsonl
+      agent-bom runtime audit audit.jsonl --blocked-only
+      agent-bom runtime audit audit.jsonl --alerts-only
+      agent-bom runtime audit audit.jsonl --tool read_file
+      agent-bom runtime audit audit.jsonl --sign-key $SECRET --verify-hmac
+      agent-bom runtime audit audit.jsonl --json
     """
     from agent_bom.audit_replay import replay
 

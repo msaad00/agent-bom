@@ -18,7 +18,7 @@ docker run --rm agentbom/agent-bom scan
 docker run --rm -v "${env:APPDATA}:/root/.config:ro" agentbom/agent-bom scan
 
 # MCP server mode
-docker run --rm -p 8423:8423 agentbom/agent-bom mcp-server --transport streamable-http --host 0.0.0.0 --port 8423
+docker run --rm -p 8423:8423 agentbom/agent-bom mcp server --transport streamable-http --host 0.0.0.0 --port 8423
 ```
 
 ### Volume mount paths

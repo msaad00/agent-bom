@@ -56,4 +56,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT:-8423}/health')" || exit 1
 
 # Use shell form so $PORT is expanded at runtime (Railway/Render inject PORT)
-CMD agent-bom mcp-server --transport streamable-http --host 0.0.0.0 --port ${PORT}
+CMD agent-bom mcp server --transport streamable-http --host 0.0.0.0 --port ${PORT}

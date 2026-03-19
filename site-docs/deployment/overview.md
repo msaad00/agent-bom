@@ -3,12 +3,12 @@
 | Mode | Best for | Command |
 |------|----------|---------|
 | **CLI** | Local scanning, CI/CD | `pip install agent-bom` |
-| **MCP Server** | AI agent integration | `agent-bom mcp-server` |
+| **MCP Server** | AI agent integration | `agent-bom mcp server` |
 | **Docker** | Isolated scanning | `docker run ghcr.io/msaad00/agent-bom scan` |
 | **GitHub Action** | PR checks | `uses: msaad00/agent-bom@v0` |
 | **Kubernetes** | Fleet monitoring | Helm chart |
 | **REST API** | Platform integration | `agent-bom serve` |
-| **Runtime Proxy** | Real-time enforcement | `agent-bom proxy` |
+| **Runtime Proxy** | Real-time enforcement | `agent-bom runtime proxy` |
 
 ## Available on
 

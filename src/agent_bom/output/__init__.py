@@ -1252,9 +1252,9 @@ def print_export_hint(report: AIBOMReport) -> None:
 
     # ── Runtime ──
     lines.append("[bold]Runtime Security[/bold]")
-    lines.append("  [green]agent-bom proxy -- npx @mcp/server ...[/green]       [dim]Intercept & audit MCP tool calls[/dim]")
-    lines.append("  [green]agent-bom watch --webhook <url>[/green]              [dim]Continuous config monitoring + alerts[/dim]")
-    lines.append("  [green]agent-bom scan --remediate fix.md[/green]            [dim]Generate actionable fix commands[/dim]")
+    lines.append("  [green]agent-bom runtime proxy -- npx @mcp/server ...[/green]  [dim]Intercept & audit MCP tool calls[/dim]")
+    lines.append("  [green]agent-bom runtime watch --webhook <url>[/green]         [dim]Continuous config monitoring + alerts[/dim]")
+    lines.append("  [green]agent-bom scan --remediate fix.md[/green]               [dim]Generate actionable fix commands[/dim]")
     lines.append("")
 
     # ── Export ──

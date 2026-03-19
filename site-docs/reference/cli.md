@@ -6,11 +6,18 @@
 |---------|-------------|
 | `scan` | Discover MCP clients + scan for vulnerabilities |
 | `check` | Check a specific package for CVEs |
-| `mcp-server` | Start MCP server (stdio) |
+| `image` | Container image scan |
+| `fs` | Filesystem / VM scan |
+| `iac` | Infrastructure-as-code misconfigurations |
+| `mcp` | Discover, scan, and manage MCP agents |
+| `mcp server` | Start MCP server (stdio) |
+| `cloud` | Cloud posture + CIS benchmarks |
+| `runtime proxy` | Runtime MCP proxy with enforcement |
+| `runtime protect` | 7-detector anomaly engine |
+| `runtime watch` | Config file change monitoring |
+| `report` | History, diff, analytics, dashboard |
+| `policy` | Templates and remediation |
 | `serve` | Start REST API server |
-| `proxy` | Runtime MCP proxy with enforcement |
-| `protect` | 5-detector anomaly engine |
-| `watch` | Config file change monitoring |
 | `guard` | Pre-install CVE check |
 | `registry` | Registry management (list, search, update) |
 

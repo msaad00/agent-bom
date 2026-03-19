@@ -82,7 +82,7 @@ agent-bom scan --gpu-scan
 ### Run as MCP server (for other AI tools)
 
 ```bash
-agent-bom mcp-server
+agent-bom mcp server
 ```
 
 ### Proxy MCP traffic with policy enforcement

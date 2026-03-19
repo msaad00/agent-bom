@@ -259,13 +259,13 @@ def mcp_server_cmd(transport: str, port: int, host: str, log_level: str, log_jso
 
     \b
     Usage:
-      agent-bom mcp-server                                # stdio (Claude Desktop, Cursor)
-      agent-bom mcp-server --transport sse                # SSE (remote clients)
-      agent-bom mcp-server --transport streamable-http    # Streamable HTTP (Smithery, etc.)
+      agent-bom mcp server                                # stdio (Claude Desktop, Cursor)
+      agent-bom mcp server --transport sse                # SSE (remote clients)
+      agent-bom mcp server --transport streamable-http    # Streamable HTTP (Smithery, etc.)
 
     \b
     Claude Desktop config (~/.claude/claude_desktop_config.json):
-      {"mcpServers": {"agent-bom": {"command": "agent-bom", "args": ["mcp-server"]}}}
+      {"mcpServers": {"agent-bom": {"command": "agent-bom", "args": ["mcp", "server"]}}}
     """
     from agent_bom.logging_config import setup_logging
 
@@ -275,7 +275,7 @@ def mcp_server_cmd(transport: str, port: int, host: str, log_level: str, log_jso
         from agent_bom.mcp_server import create_mcp_server
     except ImportError:
         click.echo(
-            "ERROR: mcp SDK is required for `agent-bom mcp-server`.\nInstall it with:  pip install 'agent-bom[mcp-server]'",
+            "ERROR: mcp SDK is required for `agent-bom mcp server`.\nInstall it with:  pip install 'agent-bom[mcp-server]'",
             err=True,
         )
         sys.exit(1)

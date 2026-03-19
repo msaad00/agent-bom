@@ -16,7 +16,7 @@ def test_dockerfile_sse_exists():
     f = ROOT / "deploy" / "docker" / "Dockerfile.sse"
     assert f.exists(), "deploy/docker/Dockerfile.sse is missing"
     content = f.read_text()
-    assert "mcp-server" in content
+    assert "mcp" in content and "server" in content
     assert "--transport" in content
     assert "sse" in content
     assert "EXPOSE" in content
@@ -66,7 +66,7 @@ def test_procfile_exists():
     assert f.exists(), "deploy/Procfile is missing"
     content = f.read_text().strip()
     assert content.startswith("web:")
-    assert "mcp-server" in content
+    assert "mcp" in content and "server" in content
     assert "streamable-http" in content
 
 

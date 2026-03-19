@@ -1,8 +1,8 @@
 """agent-bom MCP Server — expose security scanning as MCP tools.
 
 Start with:
-    agent-bom mcp-server              # stdio (for Claude Desktop, Cursor, etc.)
-    agent-bom mcp-server --sse        # SSE transport (for remote clients)
+    agent-bom mcp server              # stdio (for Claude Desktop, Cursor, etc.)
+    agent-bom mcp server --sse        # SSE transport (for remote clients)
 
 Tools (32):
     scan                — Full discovery → scan → output pipeline

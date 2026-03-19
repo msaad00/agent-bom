@@ -20,7 +20,12 @@
       "packageArguments": [
         {
           "type": "positional",
-          "value": "mcp-server",
+          "value": "mcp",
+          "isRepeated": false
+        },
+        {
+          "type": "positional",
+          "value": "server",
           "isRepeated": false
         }
       ],

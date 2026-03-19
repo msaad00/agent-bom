@@ -6,7 +6,7 @@
   "repository": "https://github.com/msaad00/agent-bom",
   "transport": "stdio",
   "command": "agent-bom",
-  "args": ["mcp-server"],
+  "args": ["mcp", "server"],
   "dockerfile": "integrations/glama/Dockerfile",
   "environmentVariables": {
     "NVD_API_KEY": {

@@ -139,7 +139,7 @@ An agent operating autonomously can be steered into a multi-step exfiltration se
 │     (agent-bom proxy) every JSON-RPC message, enforces policy    │
 │                                                                  │
 │  3. MCP SERVER    Exposes 32 scan/governance tools to any agent  │
-│     (agent-bom mcp-server)  — scan, check, registry, compliance  │
+│     (agent-bom mcp server)  — scan, check, registry, compliance  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -193,7 +193,7 @@ max_response_size_kb: 512
 ### 4.3 MCP server mode
 
 ```bash
-agent-bom mcp-server
+agent-bom mcp server
 ```
 
 Exposes 32 tools to any MCP-compatible AI assistant. Your agent can run scans, check packages, query the registry, and generate compliance reports without leaving the chat:
@@ -213,7 +213,7 @@ blast_radius        — blast radius for a specific CVE
 
 - **Does not run MCP servers.** Read-only. Never starts or restarts a server.
 - **Does not store credentials.** Only env var *names* (not values) appear in reports.
-- **Does not modify MCP configs** unless you explicitly run `agent-bom proxy-configure --apply`.
+- **Does not modify MCP configs** unless you explicitly run `agent-bom runtime configure --apply`.
 - **Does not send telemetry.** Only package name + version leaves your machine for CVE lookups (OSV, NVD, EPSS). See [PERMISSIONS.md](../PERMISSIONS.md).
 - **Does not replace IAM or network controls.** It is a detection and enforcement layer, not a perimeter.
 
@@ -251,7 +251,7 @@ echo "ignores:\n  - id: CVE-2024-1234\n    reason: 'Not reachable'\n    expires:
 
 ```bash
 # Wrap every MCP server in your Claude Desktop config
-agent-bom proxy-configure --apply
+agent-bom runtime configure --apply
 
 # Or wrap a single server manually
 agent-bom proxy "uvx mcp-server-filesystem /" \

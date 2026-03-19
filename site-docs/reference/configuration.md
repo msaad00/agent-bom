@@ -47,7 +47,7 @@ Supports 17 conditions (16 declarative + expression engine):
   "mcpServers": {
     "agent-bom": {
       "command": "uvx",
-      "args": ["agent-bom", "mcp-server"]
+      "args": ["agent-bom", "mcp", "server"]
     }
   }
 }

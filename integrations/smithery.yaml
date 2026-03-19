@@ -20,7 +20,7 @@ startCommand:
   commandFunction: |-
     config => ({
       command: 'uvx',
-      args: ['agent-bom[mcp-server]', 'mcp-server'],
+      args: ['agent-bom[mcp-server]', 'mcp', 'server'],
       env: {
         ...(config.nvdApiKey ? { NVD_API_KEY: config.nvdApiKey } : {}),
         ...(config.clickhouseUrl ? { AGENT_BOM_CLICKHOUSE_URL: config.clickhouseUrl } : {}),

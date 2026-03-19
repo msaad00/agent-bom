@@ -2,6 +2,8 @@
 
 Security scanner for AI infrastructure — from agent to runtime.
 
+5 products in 1 package: **agent-bom** (BOM + scanning), **agent-shield** (runtime protection), **agent-cloud** (cloud posture), **agent-iac** (IaC security), **agent-claw** (fleet governance).
+
 Discovers AI agents and MCP servers, scans all dependencies against OSV/NVD/GHSA, maps blast radius (which credentials and tools each CVE reaches), enforces policy in real time, and generates compliance evidence for 14 frameworks.
 
 ## Quick start
@@ -10,14 +12,17 @@ Discovers AI agents and MCP servers, scans all dependencies against OSV/NVD/GHSA
 # Scan your AI agent environment
 docker run --rm agentbom/agent-bom:latest scan
 
-# Pre-install CVE gate — check before you install
+# Pre-install CVE gate
 docker run --rm agentbom/agent-bom:latest check flask@2.0.0
 
-# Scan a specific project directory
+# Scan a project directory
 docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest scan -p /workspace
 
-# Export SBOM (CycloneDX / SPDX) or SARIF for GitHub Security tab
+# Export CycloneDX ML BOM (with modelCard, dataset, training metadata)
 docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest scan -p /workspace -f cyclonedx -o /workspace/sbom.json
+
+# Export dependency graph for Neo4j
+docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest graph /workspace/report.json -f cypher -o /workspace/import.cypher
 
 # IaC misconfiguration scan
 docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest iac /workspace

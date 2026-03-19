@@ -4,7 +4,7 @@ Start with:
     agent-bom mcp server              # stdio (for Claude Desktop, Cursor, etc.)
     agent-bom mcp server --sse        # SSE transport (for remote clients)
 
-Tools (32):
+Tools (33):
     scan                — Full discovery → scan → output pipeline
     check               — Check a specific package for CVEs before installing
     blast_radius        — Look up blast radius for a specific CVE
@@ -849,6 +849,91 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             _truncate_response=_truncate_response,
         )
 
+    # ── Tool: graph_export ──────────────────────────────────
+
+    @mcp.tool(annotations=_READ_ONLY, title="Graph Export")
+    async def graph_export(
+        config_path: Annotated[
+            str | None,
+            Field(description="Path to MCP config directory. Omit to auto-discover."),
+        ] = None,
+        format: Annotated[
+            str,
+            Field(description="Export format: graphml, cypher, dot, mermaid, or json (default)."),
+        ] = "json",
+    ) -> str:
+        """Export the agent dependency graph in graph-native formats.
+
+        Formats:
+        - **graphml** — yEd, Gephi, NetworkX compatible with AIBOM-typed attributes
+        - **cypher** — Neo4j import script with AIBOM node labels (AIAgent, MCPServer, Package, Vulnerability)
+        - **dot** — Graphviz (pipe through ``dot -Tsvg``)
+        - **mermaid** — embed in markdown, GitHub, Notion
+        - **json** — machine-readable nodes/edges list
+
+        Returns:
+            Graph in the requested format as a string.
+        """
+        result = await _run_scan_pipeline(config_path=config_path)
+        agents_data = result.get("agents", []) if isinstance(result, dict) else []
+
+        from agent_bom.output.graph_export import (
+            DepGraph,
+        )
+        from agent_bom.output.graph_export import (
+            to_cypher as _to_cypher,
+        )
+        from agent_bom.output.graph_export import (
+            to_dot as _to_dot,
+        )
+        from agent_bom.output.graph_export import (
+            to_graphml as _to_graphml,
+        )
+        from agent_bom.output.graph_export import (
+            to_json as _graph_to_json,
+        )
+        from agent_bom.output.graph_export import (
+            to_mermaid as _to_mermaid,
+        )
+
+        graph = DepGraph()
+        for agent in agents_data:
+            aname = agent.get("name", "unknown")
+            source = agent.get("source") or "local"
+            sid = f"provider:{source}"
+            graph.add_node(sid, source, "provider")
+            aid = f"agent:{aname}"
+            graph.add_node(aid, aname, "agent")
+            graph.add_edge(sid, aid, "hosts")
+            for srv in agent.get("mcp_servers", []):
+                sname = srv.get("name", "unknown")
+                svid = f"server:{aname}/{sname}"
+                graph.add_node(svid, sname, "server_cred" if srv.get("has_credentials") else "server")
+                graph.add_edge(aid, svid, "uses")
+                for pkg in srv.get("packages", []):
+                    pn = pkg.get("name", "?")
+                    pv = pkg.get("version", "")
+                    pe = pkg.get("ecosystem", "")
+                    vulns = pkg.get("vulnerabilities", [])
+                    pid = f"pkg:{pe}/{pn}@{pv}"
+                    graph.add_node(pid, f"{pn}@{pv}" if pv else pn, "pkg_vuln" if vulns else "pkg")
+                    graph.add_edge(svid, pid, "depends_on")
+                    for v in vulns:
+                        vid = f"cve:{v.get('id', '?')}"
+                        graph.add_node(vid, v.get("id", "?"), "cve", v.get("severity", "").lower())
+                        graph.add_edge(pid, vid, "affects")
+
+        _fmt = format.lower()
+        if _fmt == "graphml":
+            return _truncate_response(_to_graphml(graph))
+        if _fmt == "cypher":
+            return _truncate_response(_to_cypher(graph))
+        if _fmt == "dot":
+            return _truncate_response(_to_dot(graph))
+        if _fmt == "mermaid":
+            return _truncate_response(_to_mermaid(graph))
+        return _truncate_response(json.dumps(_graph_to_json(graph), indent=2))
+
     @mcp.tool(annotations=_READ_ONLY, title="Analytics Query")
     async def analytics_query(
         query_type: Annotated[
@@ -1534,6 +1619,11 @@ _SERVER_CARD_TOOLS = [
         "annotations": {"readOnlyHint": True},
     },
     {"name": "context_graph", "description": "Agent context graph with lateral movement analysis", "annotations": {"readOnlyHint": True}},
+    {
+        "name": "graph_export",
+        "description": "Export dependency graph in graph-native formats (GraphML, Neo4j Cypher, DOT, Mermaid)",
+        "annotations": {"readOnlyHint": True},
+    },
     {
         "name": "analytics_query",
         "description": "Query vulnerability trends, posture history, and runtime events from ClickHouse",

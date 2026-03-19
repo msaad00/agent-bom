@@ -1,25 +1,46 @@
 # Architecture
 
-Five focused diagrams: system overview, scan pipeline, blast radius propagation, compliance tagging, and integration.
+Five products, one package. System overview, scan pipeline, blast radius, compliance, and integration.
 
 ---
 
-## 1. System Overview
+## 1. System Overview — 5 Products
 
-CLI commands, core engine, and output channels.
+```
+pip install agent-bom    → 5 CLI entry points, shared core engine
+```
 
 ```mermaid
 graph TB
-    subgraph Commands["CLI Commands"]
-        Scan["agent-bom scan\nAuto-detect everything"]
-        MCP_Cmd["agent-bom mcp\nMCP agents + servers"]
-        Image_Cmd["agent-bom image\nContainer images"]
-        FS_Cmd["agent-bom fs\nFilesystem / VM"]
-        IAC_Cmd["agent-bom iac\nDockerfile / K8s / TF / CFN"]
-        SBOM_Cmd["agent-bom sbom\nIngest CycloneDX / SPDX"]
-        Cloud_Cmd["agent-bom cloud\nAWS / Azure / GCP"]
-        Check_Cmd["agent-bom check\nPre-install CVE gate"]
-        Run_Cmd["agent-bom run\nRuntime MCP proxy"]
+    subgraph BOM["agent-bom — BOM + Scanning"]
+        Scan["scan\nFull 12-step pipeline"]
+        Check_Cmd["check\nPre-install CVE gate"]
+        Image_Cmd["image / fs / sbom\nContainer + filesystem"]
+        Graph_Cmd["graph\nGraphML / Neo4j / DOT"]
+        MCP_Cmd["mcp\ninventory / introspect / registry"]
+    end
+
+    subgraph Shield["agent-shield — Runtime Protection"]
+        Proxy["proxy\nMCP proxy + audit"]
+        Protect["protect --shield\n7 detectors + deep defense"]
+        Run_Cmd["run\nZero-config proxy"]
+    end
+
+    subgraph Cloud["agent-cloud — Cloud Posture"]
+        AWS["aws / azure / gcp\nCIS benchmarks"]
+        Platforms["snowflake / databricks\nhuggingface / ollama"]
+        Posture["posture\nCross-cloud summary"]
+    end
+
+    subgraph IAC["agent-iac — IaC Security"]
+        IaCScan["scan\n89 rules × 5 formats"]
+        Policy["policy\ntemplate / apply"]
+    end
+
+    subgraph Claw["agent-claw — Fleet Governance"]
+        Fleet["fleet\nsync / list / stats"]
+        Serve["serve / api\nDashboard + REST"]
+        Report["report\nhistory / analytics"]
     end
 
     subgraph Core["Core Engine"]

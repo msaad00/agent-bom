@@ -1,16 +1,13 @@
-# agent-bom demo — run with: vhs docs/demo.tape
+# agent-bom v0.72.0 demo — run with: vhs docs/demo.tape
 #
-# Install vhs:  brew install vhs
-# Prereqs (run in a CLEAN venv to avoid ModuleNotFoundError):
-#   python -m venv /tmp/abom-demo && source /tmp/abom-demo/bin/activate
-#   pip install agent-bom
-#   Verify: agent-bom --version  (must show no errors)
+# 3 hero commands that show what agent-bom does:
+# 1. scan --demo  → discovery + blast radius + remediation (the core value)
+# 2. check        → pre-install CVE gate (simple, powerful)
+# 3. scan -f cyclonedx → AI BOM export with tool capabilities
 #
-# IMPORTANT: Run every command manually BEFORE recording to verify success.
-# A demo with errors is worse than no demo.
+# All output is real — --demo uses bundled inventory, no mocked data.
 
-# Output filename — update README.md img src to match after recording
-Output docs/images/demo-v0.71.0.gif
+Output docs/images/demo-v0.72.0.gif
 
 Set Shell "bash"
 Set FontSize 15
@@ -18,40 +15,29 @@ Set Width 1400
 Set Height 800
 Set Theme "Dracula"
 Set Padding 24
-Set TypingSpeed 40ms
+Set TypingSpeed 35ms
 Set PlaybackSpeed 1.0
 
-# ── 0. Version ────────────────────────────────────────────────────────────────
-Type "agent-bom --version"
+# Setup: correct binary, clean prompt, no personal paths
+Hide
+Type "export PS1='$ ' && export PATH=/opt/homebrew/Caskroom/miniconda/base/bin:$PATH && mkdir -p /tmp/abom-demo && cd /tmp/abom-demo && clear"
 Enter
-Sleep 3s
+Sleep 1s
+Show
 
-# ── 1. Pre-install guard — catch CVEs before they land ────────────────────────
+# ── Hero 1: Full scan — blast radius mapping (the core product) ──────────────
+Type "agent-bom scan --demo"
+Enter
+Sleep 22s
+
+# ── Hero 2: Pre-install CVE gate — one command, instant answer ───────────────
 Type "agent-bom check django@3.2.0 --ecosystem pypi"
 Enter
 Sleep 8s
 
-Type "agent-bom check lodash@4.17.20 --ecosystem npm"
+# ── Hero 3: AI BOM export — CycloneDX with MCP tool capabilities ────────────
+Type "agent-bom scan --demo -f cyclonedx -o sbom.json -q && echo '✓ AI BOM exported' && head -25 sbom.json"
 Enter
 Sleep 6s
 
-# ── 2. Full scan — discovery + vuln scan + blast radius ───────────────────────
-Type "agent-bom scan --demo"
-Enter
-Sleep 18s
-
-# ── 3. Output formats — SARIF for GitHub Security tab ─────────────────────────
-Type "agent-bom scan --demo -f sarif -o /tmp/results.sarif -q && echo '✓ SARIF written to /tmp/results.sarif'"
-Enter
-Sleep 8s
-
-# ── 4. Focused commands — fs, cloud, proxy ────────────────────────────────────
-Type "agent-bom fs --help | head -8"
-Enter
-Sleep 4s
-
-Type "agent-bom proxy --help | head -12"
-Enter
-Sleep 5s
-
-Sleep 1s
+Sleep 2s

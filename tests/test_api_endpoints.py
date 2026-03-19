@@ -3,12 +3,22 @@
 from __future__ import annotations
 
 import uuid
+from unittest.mock import patch
 
 from starlette.testclient import TestClient
 
 from agent_bom import __version__
 from agent_bom.api.server import _jobs, app, set_job_store
 from agent_bom.api.store import InMemoryJobStore
+
+# Prevent real MCP discovery during scan tests — the scan endpoint calls
+# loop.run_in_executor(_executor, _run_scan_sync, job) which triggers
+# discover_all() scanning the local machine. Mock the executor to no-op.
+_noop_executor = patch(
+    "agent_bom.api.routes.scan._run_scan_sync",
+    lambda job: None,
+)
+_noop_executor.start()
 
 # ---------------------------------------------------------------------------
 # Helper

@@ -338,6 +338,8 @@ def to_json(report: AIBOMReport) -> dict:
         "blast_radius": [
             {
                 "risk_score": br.risk_score,
+                "reachability": br.reachability,
+                "actionable": br.is_actionable,
                 "vulnerability_id": br.vulnerability.id,
                 "severity": br.vulnerability.severity.value,
                 "cvss_score": br.vulnerability.cvss_score,

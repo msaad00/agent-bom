@@ -475,6 +475,49 @@ class BlastRadius:
         )
         return self.risk_score
 
+    @property
+    def reachability(self) -> str:
+        """Classify how reachable this vulnerability is through the blast radius.
+
+        Returns:
+            "confirmed"  — credentials OR tools exposed + direct dependency
+            "likely"     — credentials OR tools exposed OR direct dep with agents
+            "unlikely"   — transitive dep, no creds, no tools, LOW severity
+            "unknown"    — insufficient data to determine
+        """
+        has_creds = bool(self.exposed_credentials)
+        has_tools = bool(self.exposed_tools)
+        is_direct = self.package.is_direct
+        is_high = self.vulnerability.severity in (Severity.CRITICAL, Severity.HIGH)
+        has_agents = bool(self.affected_agents)
+
+        if (has_creds or has_tools) and is_direct:
+            return "confirmed"
+        if has_creds or has_tools or (is_direct and has_agents) or is_high:
+            return "likely"
+        if not is_direct and not has_creds and not has_tools:
+            return "unlikely"
+        return "unknown"
+
+    @property
+    def is_actionable(self) -> bool:
+        """Whether this finding warrants user attention in default output.
+
+        LOW/MEDIUM transitive deps with no blast radius context are noise.
+        Users can still see them with --verbose.
+        """
+        if self.vulnerability.is_kev:
+            return True  # KEV = always actionable
+        if self.vulnerability.severity in (Severity.CRITICAL, Severity.HIGH):
+            return True
+        if self.exposed_credentials or self.exposed_tools:
+            return True
+        if self.package.is_direct:
+            return True
+        if self.package.is_malicious:
+            return True
+        return False
+
 
 @dataclass
 class AIBOMReport:

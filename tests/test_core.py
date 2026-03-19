@@ -254,9 +254,16 @@ def empty_report():
 
 
 def test_version_sync():
+    """Version in __init__.py must match pyproject.toml."""
+    import re
+    from pathlib import Path
+
     from agent_bom import __version__
 
-    assert __version__ == "0.71.4"
+    pyproject = Path(__file__).parent.parent / "pyproject.toml"
+    m = re.search(r'version\s*=\s*"([^"]+)"', pyproject.read_text())
+    assert m, "Could not find version in pyproject.toml"
+    assert __version__ == m.group(1)
 
 
 def test_report_version_matches():

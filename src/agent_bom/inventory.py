@@ -41,6 +41,9 @@ logger = logging.getLogger(__name__)
 # Required CSV columns for package scanning.
 _CSV_REQUIRED_COLUMNS = frozenset({"name", "version", "ecosystem"})
 
+# Size guard to prevent OOM on malicious/huge inputs.
+_MAX_INVENTORY_SIZE = 100 * 1024 * 1024  # 100 MB
+
 
 def load_inventory(source: str) -> dict:
     """Load inventory from a file path or stdin (``-``).
@@ -66,6 +69,10 @@ def load_inventory(source: str) -> dict:
     if not path.exists():
         raise FileNotFoundError(f"Inventory file not found: {source}")
 
+    file_size = path.stat().st_size
+    if file_size > _MAX_INVENTORY_SIZE:
+        raise ValueError(f"Inventory file exceeds {_MAX_INVENTORY_SIZE // (1024 * 1024)} MB size limit: {source}")
+
     if path.suffix.lower() == ".csv":
         with open(path, newline="", encoding="utf-8") as fp:
             return _load_csv_inventory(fp)
@@ -76,7 +83,9 @@ def load_inventory(source: str) -> dict:
 
 def _load_from_stdin() -> dict:
     """Read inventory from stdin, auto-detecting format."""
-    content = sys.stdin.read()
+    content = sys.stdin.read(_MAX_INVENTORY_SIZE + 1)
+    if len(content) > _MAX_INVENTORY_SIZE:
+        raise ValueError(f"Stdin input exceeds {_MAX_INVENTORY_SIZE // (1024 * 1024)} MB size limit")
     if not content.strip():
         raise ValueError("Empty input on stdin")
 

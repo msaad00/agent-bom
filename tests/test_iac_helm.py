@@ -408,6 +408,324 @@ class TestValuesYamlRbac:
 
 
 # ---------------------------------------------------------------------------
+# scan_values_yaml — HELM-008 (Ingress without TLS)
+# ---------------------------------------------------------------------------
+
+
+class TestValuesYamlIngressTLS:
+    def test_ingress_without_tls_flagged(self, tmp_path):
+        p = _write(
+            tmp_path,
+            "values.yaml",
+            """\
+            ingress:
+              enabled: true
+              hosts:
+                - host: example.com
+        """,
+        )
+        findings = scan_values_yaml(p)
+        assert "HELM-008" in _rule_ids(findings)
+
+    def test_ingress_with_tls_ok(self, tmp_path):
+        p = _write(
+            tmp_path,
+            "values.yaml",
+            """\
+            ingress:
+              enabled: true
+              tls:
+                - secretName: tls-secret
+                  hosts:
+                    - example.com
+        """,
+        )
+        findings = scan_values_yaml(p)
+        assert "HELM-008" not in _rule_ids(findings)
+
+    def test_ingress_disabled_ok(self, tmp_path):
+        p = _write(
+            tmp_path,
+            "values.yaml",
+            """\
+            ingress:
+              enabled: false
+        """,
+        )
+        findings = scan_values_yaml(p)
+        assert "HELM-008" not in _rule_ids(findings)
+
+
+# ---------------------------------------------------------------------------
+# scan_values_yaml — HELM-009 (externalTrafficPolicy: Cluster)
+# ---------------------------------------------------------------------------
+
+
+class TestValuesYamlExternalTrafficPolicy:
+    def test_cluster_policy_flagged(self, tmp_path):
+        p = _write(
+            tmp_path,
+            "values.yaml",
+            """\
+            service:
+              type: LoadBalancer
+              externalTrafficPolicy: Cluster
+        """,
+        )
+        findings = scan_values_yaml(p)
+        assert "HELM-009" in _rule_ids(findings)
+
+    def test_local_policy_ok(self, tmp_path):
+        p = _write(
+            tmp_path,
+            "values.yaml",
+            """\
+            service:
+              type: LoadBalancer
+              externalTrafficPolicy: Local
+        """,
+        )
+        findings = scan_values_yaml(p)
+        assert "HELM-009" not in _rule_ids(findings)
+
+
+# ---------------------------------------------------------------------------
+# scan_values_yaml — HELM-010 (PVC without storageClassName)
+# ---------------------------------------------------------------------------
+
+
+class TestValuesYamlPersistence:
+    def test_no_storage_class_flagged(self, tmp_path):
+        p = _write(
+            tmp_path,
+            "values.yaml",
+            """\
+            persistence:
+              enabled: true
+              size: 10Gi
+        """,
+        )
+        findings = scan_values_yaml(p)
+        assert "HELM-010" in _rule_ids(findings)
+
+    def test_with_storage_class_ok(self, tmp_path):
+        p = _write(
+            tmp_path,
+            "values.yaml",
+            """\
+            persistence:
+              enabled: true
+              storageClassName: gp3
+              size: 10Gi
+        """,
+        )
+        findings = scan_values_yaml(p)
+        assert "HELM-010" not in _rule_ids(findings)
+
+
+# ---------------------------------------------------------------------------
+# scan_values_yaml — HELM-011 (resources without memory limits)
+# ---------------------------------------------------------------------------
+
+
+class TestValuesYamlMemoryLimits:
+    def test_no_memory_limit_flagged(self, tmp_path):
+        p = _write(
+            tmp_path,
+            "values.yaml",
+            """\
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 500m
+        """,
+        )
+        findings = scan_values_yaml(p)
+        assert "HELM-011" in _rule_ids(findings)
+
+    def test_with_memory_limit_ok(self, tmp_path):
+        p = _write(
+            tmp_path,
+            "values.yaml",
+            """\
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 500m
+                memory: 256Mi
+        """,
+        )
+        findings = scan_values_yaml(p)
+        assert "HELM-011" not in _rule_ids(findings)
+
+
+# ---------------------------------------------------------------------------
+# scan_values_yaml — HELM-012 (missing podSecurityContext)
+# ---------------------------------------------------------------------------
+
+
+class TestValuesYamlPodSecurityContext:
+    def test_no_pod_security_context_flagged(self, tmp_path):
+        p = _write(
+            tmp_path,
+            "values.yaml",
+            """\
+            replicaCount: 3
+            image:
+              repository: nginx
+              tag: "1.25"
+        """,
+        )
+        findings = scan_values_yaml(p)
+        assert "HELM-012" in _rule_ids(findings)
+
+    def test_with_pod_security_context_ok(self, tmp_path):
+        p = _write(
+            tmp_path,
+            "values.yaml",
+            """\
+            podSecurityContext:
+              runAsNonRoot: true
+              fsGroup: 1000
+        """,
+        )
+        findings = scan_values_yaml(p)
+        assert "HELM-012" not in _rule_ids(findings)
+
+
+# ---------------------------------------------------------------------------
+# scan_values_yaml — HELM-013 (default admin password)
+# ---------------------------------------------------------------------------
+
+
+class TestValuesYamlAdminPassword:
+    def test_admin_password_flagged(self, tmp_path):
+        p = _write(
+            tmp_path,
+            "values.yaml",
+            """\
+            adminPassword: supersecret123
+        """,
+        )
+        findings = scan_values_yaml(p)
+        assert "HELM-013" in _rule_ids(findings)
+
+    def test_admin_password_placeholder_ok(self, tmp_path):
+        p = _write(
+            tmp_path,
+            "values.yaml",
+            """\
+            adminPassword: changeme
+        """,
+        )
+        findings = scan_values_yaml(p)
+        assert "HELM-013" not in _rule_ids(findings)
+
+    def test_helm013_finding_has_critical_severity(self, tmp_path):
+        p = _write(
+            tmp_path,
+            "values.yaml",
+            """\
+            adminPassword: realpassword123
+        """,
+        )
+        findings = scan_values_yaml(p)
+        helm013 = [f for f in findings if f.rule_id == "HELM-013"][0]
+        assert helm013.severity == "critical"
+
+
+# ---------------------------------------------------------------------------
+# scan_values_yaml — HELM-014 (missing livenessProbe)
+# ---------------------------------------------------------------------------
+
+
+class TestValuesYamlLivenessProbe:
+    def test_no_liveness_probe_flagged(self, tmp_path):
+        p = _write(
+            tmp_path,
+            "values.yaml",
+            """\
+            replicaCount: 2
+            image:
+              repository: nginx
+              tag: "1.25"
+        """,
+        )
+        findings = scan_values_yaml(p)
+        assert "HELM-014" in _rule_ids(findings)
+
+    def test_with_liveness_probe_ok(self, tmp_path):
+        p = _write(
+            tmp_path,
+            "values.yaml",
+            """\
+            livenessProbe:
+              httpGet:
+                path: /healthz
+                port: http
+        """,
+        )
+        findings = scan_values_yaml(p)
+        assert "HELM-014" not in _rule_ids(findings)
+
+
+# ---------------------------------------------------------------------------
+# scan_values_yaml — HELM-015 (replicas set to 1)
+# ---------------------------------------------------------------------------
+
+
+class TestValuesYamlReplicas:
+    def test_single_replica_flagged(self, tmp_path):
+        p = _write(
+            tmp_path,
+            "values.yaml",
+            """\
+            replicaCount: 1
+        """,
+        )
+        findings = scan_values_yaml(p)
+        assert "HELM-015" in _rule_ids(findings)
+
+    def test_multiple_replicas_ok(self, tmp_path):
+        p = _write(
+            tmp_path,
+            "values.yaml",
+            """\
+            replicaCount: 3
+        """,
+        )
+        findings = scan_values_yaml(p)
+        assert "HELM-015" not in _rule_ids(findings)
+
+    def test_replicas_key_also_works(self, tmp_path):
+        p = _write(
+            tmp_path,
+            "values.yaml",
+            """\
+            replicas: 1
+        """,
+        )
+        findings = scan_values_yaml(p)
+        assert "HELM-015" in _rule_ids(findings)
+
+    def test_helm015_finding_has_low_severity(self, tmp_path):
+        p = _write(
+            tmp_path,
+            "values.yaml",
+            """\
+            replicaCount: 1
+        """,
+        )
+        findings = scan_values_yaml(p)
+        helm015 = [f for f in findings if f.rule_id == "HELM-015"][0]
+        assert helm015.severity == "low"
+
+
+# ---------------------------------------------------------------------------
 # scan_iac_directory — end-to-end integration
 # ---------------------------------------------------------------------------
 

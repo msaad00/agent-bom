@@ -26,6 +26,19 @@ K8S-017  No PodDisruptionBudget for Deployment
 K8S-018  Capability NET_RAW or SYS_ADMIN added
 K8S-019  emptyDir without sizeLimit
 K8S-020  Service type LoadBalancer without annotation
+K8S-021  Missing PodDisruptionBudget for Deployments
+K8S-022  Container without liveness probe
+K8S-023  Container without readiness probe
+K8S-024  ServiceAccount with automountServiceAccountToken: true
+K8S-025  ClusterRoleBinding with cluster-admin role
+K8S-026  Pod with hostPort specified
+K8S-027  Container with writable /var/run/docker.sock mount
+K8S-028  NetworkPolicy missing egress rules
+K8S-029  Container image from untrusted registry
+K8S-030  Deployment without PodAntiAffinity (single point of failure)
+K8S-031  Missing seccompProfile
+K8S-032  Container with NET_ADMIN capability
+K8S-033  Pod with shareProcessNamespace: true
 """
 
 from __future__ import annotations
@@ -55,6 +68,20 @@ _WORKLOAD_KINDS = frozenset(
         "ReplicaSet",
         "Job",
         "CronJob",
+    }
+)
+
+# Trusted container image registries (K8S-029)
+_TRUSTED_REGISTRIES = frozenset(
+    {
+        "docker.io",
+        "gcr.io",
+        "ghcr.io",
+        "registry.k8s.io",
+        "quay.io",
+        "mcr.microsoft.com",
+        "public.ecr.aws",
+        "nvcr.io",
     }
 )
 
@@ -94,6 +121,19 @@ def _find_key_line(content: str, key: str, start_line: int = 1) -> int:
     return start_line
 
 
+def _is_trusted_registry(image: str) -> bool:
+    """Return True if the container image is from a trusted registry."""
+    # Images without a '/' are Docker Hub library images (e.g. "nginx:1.25")
+    if "/" not in image:
+        return True
+    # Images like "library/nginx" or "myuser/myimage" are Docker Hub
+    registry = image.split("/")[0]
+    # A registry hostname must contain a '.' or ':'
+    if "." not in registry and ":" not in registry:
+        return True  # Docker Hub user/image
+    return registry in _TRUSTED_REGISTRIES
+
+
 def scan_k8s_manifest(file_path: str | Path) -> list[IaCFinding]:
     """Scan a single Kubernetes YAML manifest for misconfigurations.
 
@@ -125,6 +165,74 @@ def scan_k8s_manifest(file_path: str | Path) -> list[IaCFinding]:
             continue
 
         kind = doc.get("kind", "")
+        metadata = doc.get("metadata", {}) or {}
+        name = metadata.get("name", kind)
+
+        # ── Non-workload resource checks ──────────────────────────────
+
+        # K8S-024: ServiceAccount with automountServiceAccountToken: true
+        if kind == "ServiceAccount":
+            if doc.get("automountServiceAccountToken") is True:
+                findings.append(
+                    IaCFinding(
+                        rule_id="K8S-024",
+                        severity="medium",
+                        title="ServiceAccount auto-mounts token",
+                        message=(
+                            f"ServiceAccount '{name}' sets automountServiceAccountToken: true. "
+                            "Set to false and only mount tokens in pods that need API access."
+                        ),
+                        file_path=rel_path,
+                        line_number=_find_line(content, "automountServiceAccountToken", True),
+                        category="kubernetes",
+                        compliance=["CIS-K8s-5.1.6", "NIST-AC-6"],
+                    )
+                )
+
+        # K8S-025: ClusterRoleBinding with cluster-admin role
+        if kind == "ClusterRoleBinding":
+            role_ref = doc.get("roleRef", {}) or {}
+            if role_ref.get("name") == "cluster-admin":
+                findings.append(
+                    IaCFinding(
+                        rule_id="K8S-025",
+                        severity="critical",
+                        title="ClusterRoleBinding grants cluster-admin",
+                        message=(
+                            f"ClusterRoleBinding '{name}' binds to the cluster-admin role. "
+                            "This grants full cluster access. Use least-privilege roles instead."
+                        ),
+                        file_path=rel_path,
+                        line_number=_find_key_line(content, "cluster-admin"),
+                        category="kubernetes",
+                        compliance=["CIS-K8s-5.1.1", "NIST-AC-6"],
+                    )
+                )
+
+        # K8S-028: NetworkPolicy missing egress rules
+        if kind == "NetworkPolicy":
+            spec = doc.get("spec", {}) or {}
+            policy_types = spec.get("policyTypes", []) or []
+            if "Egress" not in policy_types or not spec.get("egress"):
+                findings.append(
+                    IaCFinding(
+                        rule_id="K8S-028",
+                        severity="medium",
+                        title="NetworkPolicy missing egress rules",
+                        message=(
+                            f"NetworkPolicy '{name}' does not define egress rules. "
+                            "Without egress rules, pods can reach any external endpoint. "
+                            "Add egress rules to restrict outbound traffic."
+                        ),
+                        file_path=rel_path,
+                        line_number=_find_key_line(content, "spec"),
+                        category="kubernetes",
+                        compliance=["CIS-K8s-5.3.2", "NIST-SC-7"],
+                    )
+                )
+
+        # ── Workload resource checks ─────────────────────────────────
+
         if kind not in _WORKLOAD_KINDS:
             continue
 
@@ -132,9 +240,7 @@ def scan_k8s_manifest(file_path: str | Path) -> list[IaCFinding]:
         if not pod_spec:
             continue
 
-        metadata = doc.get("metadata", {}) or {}
         namespace = metadata.get("namespace", "")
-        name = metadata.get("name", kind)
 
         # K8S-002: hostNetwork
         if pod_spec.get("hostNetwork") is True:
@@ -208,6 +314,47 @@ def scan_k8s_manifest(file_path: str | Path) -> list[IaCFinding]:
                     compliance=["CIS-K8s-5.1.6", "NIST-AC-6"],
                 )
             )
+
+        # K8S-033: shareProcessNamespace: true
+        if pod_spec.get("shareProcessNamespace") is True:
+            findings.append(
+                IaCFinding(
+                    rule_id="K8S-033",
+                    severity="medium",
+                    title="shareProcessNamespace enabled",
+                    message=(
+                        f"Resource '{name}' sets shareProcessNamespace: true. "
+                        "All containers in the pod share the same PID namespace, "
+                        "allowing them to signal each other's processes. "
+                        "Only enable when explicitly required."
+                    ),
+                    file_path=rel_path,
+                    line_number=_find_line(content, "shareProcessNamespace", True),
+                    category="kubernetes",
+                    compliance=["CIS-K8s-5.2.2", "NIST-CM-7"],
+                )
+            )
+
+        # K8S-030: Deployment without PodAntiAffinity
+        if kind == "Deployment":
+            affinity = pod_spec.get("affinity", {}) or {}
+            if not affinity.get("podAntiAffinity"):
+                findings.append(
+                    IaCFinding(
+                        rule_id="K8S-030",
+                        severity="low",
+                        title="Deployment without PodAntiAffinity",
+                        message=(
+                            f"Deployment '{name}' does not define podAntiAffinity. "
+                            "Without anti-affinity, all replicas may be scheduled on the same node, "
+                            "creating a single point of failure."
+                        ),
+                        file_path=rel_path,
+                        line_number=_find_key_line(content, "spec"),
+                        category="kubernetes",
+                        compliance=["NIST-CP-10"],
+                    )
+                )
 
         # Per-container checks
         containers = pod_spec.get("containers", []) or []
@@ -407,6 +554,149 @@ def scan_k8s_manifest(file_path: str | Path) -> list[IaCFinding]:
                         )
                     )
 
+            # K8S-022: Container without liveness probe
+            if not container.get("livenessProbe"):
+                findings.append(
+                    IaCFinding(
+                        rule_id="K8S-022",
+                        severity="medium",
+                        title="Container without liveness probe",
+                        message=(
+                            f"Container '{cname}' in '{name}' has no livenessProbe. "
+                            "Without a liveness probe, Kubernetes cannot detect and restart "
+                            "deadlocked or unresponsive containers."
+                        ),
+                        file_path=rel_path,
+                        line_number=_find_key_line(content, cname),
+                        category="kubernetes",
+                        compliance=["NIST-SI-13"],
+                    )
+                )
+
+            # K8S-023: Container without readiness probe
+            if not container.get("readinessProbe"):
+                findings.append(
+                    IaCFinding(
+                        rule_id="K8S-023",
+                        severity="medium",
+                        title="Container without readiness probe",
+                        message=(
+                            f"Container '{cname}' in '{name}' has no readinessProbe. "
+                            "Without a readiness probe, traffic is sent to pods before "
+                            "they are ready to serve requests."
+                        ),
+                        file_path=rel_path,
+                        line_number=_find_key_line(content, cname),
+                        category="kubernetes",
+                        compliance=["NIST-SI-13"],
+                    )
+                )
+
+            # K8S-026: Pod with hostPort specified
+            for port in container.get("ports", []) or []:
+                if isinstance(port, dict) and port.get("hostPort"):
+                    findings.append(
+                        IaCFinding(
+                            rule_id="K8S-026",
+                            severity="medium",
+                            title="Container uses hostPort",
+                            message=(
+                                f"Container '{cname}' in '{name}' specifies hostPort {port['hostPort']}. "
+                                "hostPort ties the pod to a specific node and limits scheduling. "
+                                "Use a Service or Ingress instead."
+                            ),
+                            file_path=rel_path,
+                            line_number=_find_key_line(content, "hostPort"),
+                            category="kubernetes",
+                            compliance=["CIS-K8s-5.2.13", "NIST-CM-7"],
+                        )
+                    )
+
+            # K8S-027: Container with writable /var/run/docker.sock mount
+            vol_mounts = container.get("volumeMounts", []) or []
+            for vm in vol_mounts:
+                if isinstance(vm, dict) and vm.get("mountPath") == "/var/run/docker.sock":
+                    read_only = vm.get("readOnly", False)
+                    if not read_only:
+                        findings.append(
+                            IaCFinding(
+                                rule_id="K8S-027",
+                                severity="critical",
+                                title="Writable Docker socket mount",
+                                message=(
+                                    f"Container '{cname}' in '{name}' mounts /var/run/docker.sock "
+                                    "without readOnly: true. This allows full Docker daemon access "
+                                    "and container escape. Remove the mount or set readOnly: true."
+                                ),
+                                file_path=rel_path,
+                                line_number=_find_key_line(content, "docker.sock"),
+                                category="kubernetes",
+                                compliance=["CIS-K8s-5.2.12", "NIST-AC-6"],
+                            )
+                        )
+
+            # K8S-029: Container image from untrusted registry
+            image = container.get("image", "")
+            if image and not _is_trusted_registry(image):
+                findings.append(
+                    IaCFinding(
+                        rule_id="K8S-029",
+                        severity="high",
+                        title="Container image from untrusted registry",
+                        message=(
+                            f"Container '{cname}' in '{name}' uses image '{image}' "
+                            "from an untrusted registry. Use images from trusted registries "
+                            "(Docker Hub, GCR, GHCR, Quay, ECR, MCR, NVCR, registry.k8s.io)."
+                        ),
+                        file_path=rel_path,
+                        line_number=_find_key_line(content, image),
+                        category="kubernetes",
+                        compliance=["CIS-K8s-5.5.1", "NIST-CM-11"],
+                    )
+                )
+
+            # K8S-031: Missing seccompProfile
+            sec_profile = sec_ctx.get("seccompProfile")
+            pod_sec_ctx = pod_spec.get("securityContext", {}) or {}
+            pod_seccomp = pod_sec_ctx.get("seccompProfile")
+            if not sec_profile and not pod_seccomp:
+                findings.append(
+                    IaCFinding(
+                        rule_id="K8S-031",
+                        severity="medium",
+                        title="Missing seccompProfile",
+                        message=(
+                            f"Container '{cname}' in '{name}' has no seccompProfile set "
+                            "at container or pod level. Set seccompProfile.type to "
+                            "RuntimeDefault or Localhost to restrict syscalls."
+                        ),
+                        file_path=rel_path,
+                        line_number=_find_key_line(content, cname),
+                        category="kubernetes",
+                        compliance=["CIS-K8s-5.7.2", "NIST-CM-6"],
+                    )
+                )
+
+            # K8S-032: Container with NET_ADMIN capability
+            for cap in add_caps:
+                if cap.upper() == "NET_ADMIN":
+                    findings.append(
+                        IaCFinding(
+                            rule_id="K8S-032",
+                            severity="high",
+                            title="NET_ADMIN capability added",
+                            message=(
+                                f"Container '{cname}' in '{name}' adds NET_ADMIN capability. "
+                                "This allows network configuration changes including iptables "
+                                "manipulation. Remove unless explicitly required."
+                            ),
+                            file_path=rel_path,
+                            line_number=_find_key_line(content, "NET_ADMIN"),
+                            category="kubernetes",
+                            compliance=["CIS-K8s-5.2.8", "NIST-AC-6"],
+                        )
+                    )
+
         # K8S-019: emptyDir without sizeLimit / K8S-014: hostPath
         volumes = pod_spec.get("volumes", []) or []
         for vol in volumes:
@@ -454,6 +744,45 @@ def scan_k8s_manifest(file_path: str | Path) -> list[IaCFinding]:
                     line_number=_find_key_line(content, "spec"),
                     category="kubernetes",
                     compliance=["CIS-K8s-5.2.6", "NIST-AC-6"],
+                )
+            )
+
+    # ── Cross-document checks ───────────────────────────────────────────
+
+    # K8S-021: Missing PodDisruptionBudget for Deployments
+    # Collect Deployment names and PDB matchLabels from the same manifest
+    deployment_names: set[str] = set()
+    pdb_selectors: set[str] = set()
+    for doc in docs:
+        if not isinstance(doc, dict):
+            continue
+        dk = doc.get("kind", "")
+        dm = doc.get("metadata", {}) or {}
+        if dk == "Deployment":
+            deployment_names.add(dm.get("name", ""))
+        if dk == "PodDisruptionBudget":
+            selector = doc.get("spec", {}).get("selector", {}) or {}
+            match_labels = selector.get("matchLabels", {}) or {}
+            # Track the app label value as a proxy for deployment name
+            for _lbl_key, lbl_val in match_labels.items():
+                pdb_selectors.add(lbl_val)
+
+    for dep_name in deployment_names:
+        if dep_name and dep_name not in pdb_selectors:
+            findings.append(
+                IaCFinding(
+                    rule_id="K8S-021",
+                    severity="low",
+                    title=f"No PodDisruptionBudget for Deployment '{dep_name}'",
+                    message=(
+                        f"Deployment '{dep_name}' has no matching PodDisruptionBudget "
+                        "in the same manifest. A PDB ensures minimum availability "
+                        "during voluntary disruptions like node drains."
+                    ),
+                    file_path=rel_path,
+                    line_number=_find_key_line(content, dep_name),
+                    category="kubernetes",
+                    compliance=["NIST-CP-10"],
                 )
             )
 

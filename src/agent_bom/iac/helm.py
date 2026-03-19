@@ -12,6 +12,14 @@ HELM-004  values.yaml has image tag set to "latest" (unpinned mutable tag)
 HELM-005  values.yaml has service.type: NodePort (exposes on all node IPs/ports)
 HELM-006  values.yaml has networkPolicy.enabled: false (disables network isolation)
 HELM-007  values.yaml has rbac.create: false or serviceAccount.create: false
+HELM-008  Ingress without TLS configuration
+HELM-009  Service with externalTrafficPolicy: Cluster (source IP lost)
+HELM-010  PersistentVolumeClaim without storageClassName
+HELM-011  Container resources without memory limits
+HELM-012  Missing podSecurityContext
+HELM-013  Values with default admin password
+HELM-014  Missing livenessProbe in templates
+HELM-015  Deployment replicas set to 1 (no HA)
 """
 
 from __future__ import annotations
@@ -324,5 +332,171 @@ def scan_values_yaml(file_path: str | Path) -> list[IaCFinding]:
                     compliance=["CIS-K8s-5.1.6", "NIST-AC-6"],
                 )
             )
+
+    # HELM-008: Ingress without TLS configuration
+    ingress_section = doc.get("ingress")
+    if isinstance(ingress_section, dict):
+        if ingress_section.get("enabled") is not False and not ingress_section.get("tls"):
+            findings.append(
+                IaCFinding(
+                    rule_id="HELM-008",
+                    severity="high",
+                    title="Ingress without TLS configuration",
+                    message=(
+                        "values.yaml defines an ingress without TLS configuration. "
+                        "Traffic will be served over plain HTTP, exposing data in transit. "
+                        "Configure ingress.tls with a certificate secret."
+                    ),
+                    file_path=rel_path,
+                    line_number=_find_key_line(content, "ingress"),
+                    category="helm",
+                    compliance=["CIS-K8s-5.4.1", "NIST-SC-8"],
+                )
+            )
+
+    # HELM-009: Service with externalTrafficPolicy: Cluster
+    if isinstance(service_section, dict):
+        if service_section.get("externalTrafficPolicy") == "Cluster":
+            findings.append(
+                IaCFinding(
+                    rule_id="HELM-009",
+                    severity="low",
+                    title="Service externalTrafficPolicy set to Cluster",
+                    message=(
+                        "values.yaml sets service.externalTrafficPolicy to 'Cluster'. "
+                        "This causes source IP to be lost via SNAT. Set to 'Local' to "
+                        "preserve client source IP for auditing and network policy enforcement."
+                    ),
+                    file_path=rel_path,
+                    line_number=_find_line(content, "externalTrafficPolicy", "Cluster"),
+                    category="helm",
+                    compliance=["NIST-AU-3"],
+                )
+            )
+
+    # HELM-010: PersistentVolumeClaim without storageClassName
+    persistence_section = doc.get("persistence")
+    if isinstance(persistence_section, dict):
+        if persistence_section.get("enabled") is not False and not persistence_section.get("storageClassName"):
+            findings.append(
+                IaCFinding(
+                    rule_id="HELM-010",
+                    severity="low",
+                    title="PersistentVolumeClaim without storageClassName",
+                    message=(
+                        "values.yaml defines persistence without an explicit storageClassName. "
+                        "The default storage class may not meet performance or encryption "
+                        "requirements. Specify storageClassName explicitly."
+                    ),
+                    file_path=rel_path,
+                    line_number=_find_key_line(content, "persistence"),
+                    category="helm",
+                    compliance=["NIST-SC-28"],
+                )
+            )
+
+    # HELM-011: Container resources without memory limits
+    resources_section = doc.get("resources")
+    if isinstance(resources_section, dict):
+        limits = resources_section.get("limits")
+        if not isinstance(limits, dict) or not limits.get("memory"):
+            findings.append(
+                IaCFinding(
+                    rule_id="HELM-011",
+                    severity="medium",
+                    title="Container resources without memory limits",
+                    message=(
+                        "values.yaml defines resources without memory limits. "
+                        "Without memory limits, a container can consume all node memory "
+                        "and cause OOM kills on other workloads. Set resources.limits.memory."
+                    ),
+                    file_path=rel_path,
+                    line_number=_find_key_line(content, "resources"),
+                    category="helm",
+                    compliance=["CIS-K8s-5.4.1", "NIST-SC-6"],
+                )
+            )
+
+    # HELM-012: Missing podSecurityContext
+    if not doc.get("podSecurityContext"):
+        findings.append(
+            IaCFinding(
+                rule_id="HELM-012",
+                severity="medium",
+                title="Missing podSecurityContext in values.yaml",
+                message=(
+                    "values.yaml does not define podSecurityContext. "
+                    "Set podSecurityContext with runAsNonRoot: true, fsGroup, and "
+                    "seccompProfile to enforce pod-level security defaults."
+                ),
+                file_path=rel_path,
+                line_number=1,
+                category="helm",
+                compliance=["CIS-K8s-5.2.6", "NIST-AC-6"],
+            )
+        )
+
+    # HELM-013: Values with default admin password
+    _admin_pw_keys = {"adminPassword", "admin_password", "adminPass", "admin_pass"}
+    for admin_key in _admin_pw_keys:
+        admin_val = doc.get(admin_key)
+        if isinstance(admin_val, str) and admin_val and not _is_placeholder(admin_val):
+            findings.append(
+                IaCFinding(
+                    rule_id="HELM-013",
+                    severity="critical",
+                    title=f"Default admin password in values.yaml: '{admin_key}'",
+                    message=(
+                        f"values.yaml sets '{admin_key}' to a non-placeholder value. "
+                        "Default admin passwords are a common attack vector. "
+                        "Use a Kubernetes Secret or external secret manager instead."
+                    ),
+                    file_path=rel_path,
+                    line_number=_find_key_line(content, admin_key),
+                    category="helm",
+                    compliance=["CIS-K8s-5.4.1", "NIST-IA-5"],
+                )
+            )
+
+    # HELM-014: Missing livenessProbe in templates
+    if not doc.get("livenessProbe"):
+        findings.append(
+            IaCFinding(
+                rule_id="HELM-014",
+                severity="medium",
+                title="Missing livenessProbe in values.yaml",
+                message=(
+                    "values.yaml does not define livenessProbe defaults. "
+                    "Without a liveness probe, Kubernetes cannot detect and restart "
+                    "deadlocked containers. Define livenessProbe with httpGet or tcpSocket."
+                ),
+                file_path=rel_path,
+                line_number=1,
+                category="helm",
+                compliance=["NIST-SI-13"],
+            )
+        )
+
+    # HELM-015: Deployment replicas set to 1 (no HA)
+    replicas = doc.get("replicaCount")
+    if replicas is None:
+        replicas = doc.get("replicas")
+    if isinstance(replicas, int) and replicas == 1:
+        findings.append(
+            IaCFinding(
+                rule_id="HELM-015",
+                severity="low",
+                title="Deployment replicas set to 1",
+                message=(
+                    "values.yaml sets replicaCount/replicas to 1. "
+                    "A single replica provides no high availability. "
+                    "Set replicas >= 2 for production workloads to ensure uptime."
+                ),
+                file_path=rel_path,
+                line_number=_find_key_line(content, "replicaCount") if doc.get("replicaCount") else _find_key_line(content, "replicas"),
+                category="helm",
+                compliance=["NIST-CP-10"],
+            )
+        )
 
     return findings

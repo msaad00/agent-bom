@@ -23,7 +23,7 @@
     },
     {
       "name": "OpenAI API Key",
-      "pattern": "sk-[A-Za-z0-9]{20,}",
+      "pattern": "sk-(?:proj-)?[A-Za-z0-9\\-_]{20,}",
       "flags": ""
     },
     {
@@ -59,6 +59,101 @@
     {
       "name": "Connection String",
       "pattern": "(?:mongodb|postgres|mysql|redis)://[^\\s]{10,}",
+      "flags": "i"
+    },
+    {
+      "name": "Google API Key",
+      "pattern": "AIza[0-9A-Za-z\\-_]{35}",
+      "flags": ""
+    },
+    {
+      "name": "Google OAuth Token",
+      "pattern": "ya29\\.[0-9A-Za-z\\-_]+",
+      "flags": ""
+    },
+    {
+      "name": "Twilio API Key",
+      "pattern": "SK[0-9a-fA-F]{32}",
+      "flags": ""
+    },
+    {
+      "name": "SendGrid API Key",
+      "pattern": "SG\\.[A-Za-z0-9\\-_]{22}\\.[A-Za-z0-9\\-_]{43}",
+      "flags": ""
+    },
+    {
+      "name": "Mailgun API Key",
+      "pattern": "key-[0-9a-zA-Z]{32}",
+      "flags": ""
+    },
+    {
+      "name": "Square Access Token",
+      "pattern": "sq0atp-[0-9A-Za-z\\-_]{22}",
+      "flags": ""
+    },
+    {
+      "name": "Square OAuth Secret",
+      "pattern": "sq0csp-[0-9A-Za-z\\-_]{43}",
+      "flags": ""
+    },
+    {
+      "name": "Heroku API Key",
+      "pattern": "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+      "flags": ""
+    },
+    {
+      "name": "npm Token",
+      "pattern": "npm_[A-Za-z0-9]{36}",
+      "flags": ""
+    },
+    {
+      "name": "PyPI Token",
+      "pattern": "pypi-[A-Za-z0-9\\-_]{100,}",
+      "flags": ""
+    },
+    {
+      "name": "Discord Bot Token",
+      "pattern": "[MN][A-Za-z\\d]{23,}\\.[\\w-]{6}\\.[\\w-]{27,}",
+      "flags": ""
+    },
+    {
+      "name": "Telegram Bot Token",
+      "pattern": "\\d{8,10}:[A-Za-z0-9_-]{35}",
+      "flags": ""
+    },
+    {
+      "name": "Azure Storage Key",
+      "pattern": "DefaultEndpointsProtocol=https;AccountName=[^;]+;AccountKey=[A-Za-z0-9+/=]{88}",
+      "flags": ""
+    },
+    {
+      "name": "Datadog API Key",
+      "pattern": "[a-f0-9]{32}",
+      "flags": "i"
+    },
+    {
+      "name": "Supabase Key",
+      "pattern": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\\.[A-Za-z0-9\\-_]+\\.[A-Za-z0-9\\-_]+",
+      "flags": ""
+    },
+    {
+      "name": "JWT Token",
+      "pattern": "eyJ[A-Za-z0-9\\-_]+\\.eyJ[A-Za-z0-9\\-_]+\\.[A-Za-z0-9\\-_]+",
+      "flags": ""
+    },
+    {
+      "name": "Shopify Access Token",
+      "pattern": "shpat_[A-Fa-f0-9]{32}",
+      "flags": ""
+    },
+    {
+      "name": "Databricks Token",
+      "pattern": "dapi[a-f0-9]{32}",
+      "flags": ""
+    },
+    {
+      "name": "Snowflake JWT",
+      "pattern": "(?:snowflake_jwt|sf_token)\\s*[=:]\\s*['\\\"]?[A-Za-z0-9\\-_.]{20,}",
       "flags": "i"
     }
   ],
@@ -295,6 +390,46 @@
     {
       "name": "Prompt delimiter attack",
       "pattern": "(?:###\\s*(?:SYSTEM|INSTRUCTION|CONTEXT)|---\\s*(?:SYSTEM|NEW\\s+PROMPT)|={3,}\\s*(?:SYSTEM|INSTRUCTION))",
+      "flags": "i"
+    },
+    {
+      "name": "Markdown injection",
+      "pattern": "\\[(?:system|admin|developer)\\]\\((?:data|javascript|vbscript):",
+      "flags": "i"
+    },
+    {
+      "name": "XML injection",
+      "pattern": "<\\?xml[^>]*>|<!DOCTYPE[^>]*>|<!ENTITY[^>]*>",
+      "flags": "i"
+    },
+    {
+      "name": "JSON injection",
+      "pattern": "\"(?:__proto__|constructor|prototype)\"\\s*:",
+      "flags": "i"
+    },
+    {
+      "name": "Unicode encoding attack",
+      "pattern": "(?:%u[0-9a-fA-F]{4}){3,}|(?:\\\\u[0-9a-fA-F]{4}){3,}",
+      "flags": ""
+    },
+    {
+      "name": "Tool call forgery",
+      "pattern": "\\b(?:call|invoke|execute|use)\\s+(?:tool|function)\\s*[:\\(]",
+      "flags": "i"
+    },
+    {
+      "name": "Output manipulation",
+      "pattern": "\\b(?:respond|reply|output|return|print|echo)\\s+(?:only|exactly|just)\\s*[:\\\"]",
+      "flags": "i"
+    },
+    {
+      "name": "Persona swap",
+      "pattern": "\\b(?:pretend|act|behave|roleplay|role-?play)\\s+(?:as|like|you\\s+are)\\b",
+      "flags": "i"
+    },
+    {
+      "name": "Multi-turn injection",
+      "pattern": "\\b(?:in\\s+(?:the\\s+)?next\\s+(?:turn|response|message)|after\\s+this)\\s+(?:you|please|always)\\b",
       "flags": "i"
     }
   ],

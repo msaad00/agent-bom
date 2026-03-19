@@ -30,6 +30,9 @@ from agent_bom.runtime.patterns import (
     detect_cortex_models,
     score_semantic_injection,
 )
+from agent_bom.runtime.patterns import (
+    PII_PATTERNS as _PII_PATTERNS,
+)
 
 
 class AlertSeverity(str, Enum):
@@ -175,19 +178,22 @@ class ArgumentAnalyzer:
 
 
 class CredentialLeakDetector:
-    """Detect API keys and tokens in tool response content.
+    """Detect and optionally redact API keys, tokens, and PII in tool responses.
 
     Scans the text content of tool call responses for known credential
-    patterns (AWS keys, GitHub tokens, OpenAI keys, etc.).
+    patterns (AWS keys, GitHub tokens, OpenAI keys, etc.) and PII
+    (email addresses, phone numbers, SSNs, credit card numbers).
+
+    When ``redact=True``, returns sanitized text with sensitive values
+    replaced by ``[REDACTED:<type>]`` markers.
     """
 
     def check(self, tool_name: str, response_text: str) -> list[Alert]:
-        """Scan response text for credential patterns."""
+        """Scan response text for credential and PII patterns."""
         alerts: list[Alert] = []
         for cred_name, pattern in CREDENTIAL_PATTERNS:
             matches = pattern.findall(response_text)
             if matches:
-                # Redact the actual credential value
                 redacted = [m[:4] + "..." if len(m) > 4 else "***" for m in matches[:3]]
                 alerts.append(
                     Alert(
@@ -202,7 +208,37 @@ class CredentialLeakDetector:
                         },
                     )
                 )
+        # PII detection
+        for pii_name, pattern in _PII_PATTERNS:
+            matches = pattern.findall(response_text)
+            if matches:
+                alerts.append(
+                    Alert(
+                        detector="pii_leak",
+                        severity=AlertSeverity.HIGH,
+                        message=f"PII detected: {pii_name} in response from {tool_name}",
+                        details={
+                            "tool": tool_name,
+                            "pii_type": pii_name,
+                            "match_count": len(matches),
+                        },
+                    )
+                )
         return alerts
+
+    @staticmethod
+    def redact(text: str) -> str:
+        """Return a copy of *text* with credentials and PII replaced.
+
+        Replaces matched values with ``[REDACTED:<type>]`` markers.
+        The original text is never modified.
+        """
+        result = text
+        for cred_name, pattern in CREDENTIAL_PATTERNS:
+            result = pattern.sub(f"[REDACTED:{cred_name}]", result)
+        for pii_name, pattern in _PII_PATTERNS:
+            result = pattern.sub(f"[REDACTED:{pii_name}]", result)
+        return result
 
 
 # ─── Rate Limit Tracker ──────────────────────────────────────────────────────

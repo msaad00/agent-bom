@@ -16,7 +16,7 @@ CREDENTIAL_PATTERNS: list[tuple[str, re.Pattern]] = [
     ("AWS Secret Key", re.compile(r"(?:aws_secret_access_key|secret_?key)\s*[=:]\s*[A-Za-z0-9/+=]{40}", re.IGNORECASE)),
     ("GitHub Token", re.compile(r"gh[pousr]_[A-Za-z0-9_]{36,}")),
     ("GitLab Token", re.compile(r"glpat-[A-Za-z0-9\-_]{20,}")),
-    ("OpenAI API Key", re.compile(r"sk-[A-Za-z0-9]{20,}")),
+    ("OpenAI API Key", re.compile(r"sk-(?:proj-)?[A-Za-z0-9\-_]{20,}")),
     ("Anthropic API Key", re.compile(r"sk-ant-[A-Za-z0-9\-_]{20,}")),
     ("Slack Token", re.compile(r"xox[bporas]-[A-Za-z0-9\-]{10,}")),
     ("Stripe Key", re.compile(r"[sr]k_(live|test)_[A-Za-z0-9]{20,}")),
@@ -24,6 +24,43 @@ CREDENTIAL_PATTERNS: list[tuple[str, re.Pattern]] = [
     ("Generic API Key", re.compile(r"(?:api[_-]?key|apikey|access[_-]?token)\s*[=:]\s*['\"]?[A-Za-z0-9\-_.]{20,}", re.IGNORECASE)),
     ("Private Key Block", re.compile(r"-----BEGIN (?:RSA |EC |DSA )?PRIVATE KEY-----")),
     ("Connection String", re.compile(r"(?:mongodb|postgres|mysql|redis)://[^\s]{10,}", re.IGNORECASE)),
+    # Additional credential patterns for parity
+    ("Google API Key", re.compile(r"AIza[0-9A-Za-z\-_]{35}")),
+    ("Google OAuth Token", re.compile(r"ya29\.[0-9A-Za-z\-_]+")),
+    ("Twilio API Key", re.compile(r"SK[0-9a-fA-F]{32}")),
+    ("SendGrid API Key", re.compile(r"SG\.[A-Za-z0-9\-_]{22}\.[A-Za-z0-9\-_]{43}")),
+    ("Mailgun API Key", re.compile(r"key-[0-9a-zA-Z]{32}")),
+    ("Square Access Token", re.compile(r"sq0atp-[0-9A-Za-z\-_]{22}")),
+    ("Square OAuth Secret", re.compile(r"sq0csp-[0-9A-Za-z\-_]{43}")),
+    ("Heroku API Key", re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")),
+    ("npm Token", re.compile(r"npm_[A-Za-z0-9]{36}")),
+    ("PyPI Token", re.compile(r"pypi-[A-Za-z0-9\-_]{100,}")),
+    ("Discord Bot Token", re.compile(r"[MN][A-Za-z\d]{23,}\.[\w-]{6}\.[\w-]{27,}")),
+    ("Telegram Bot Token", re.compile(r"\d{8,10}:[A-Za-z0-9_-]{35}")),
+    ("Azure Storage Key", re.compile(r"DefaultEndpointsProtocol=https;AccountName=[^;]+;AccountKey=[A-Za-z0-9+/=]{88}")),
+    ("Datadog API Key", re.compile(r"[a-f0-9]{32}", re.IGNORECASE)),
+    ("Supabase Key", re.compile(r"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+")),
+    ("JWT Token", re.compile(r"eyJ[A-Za-z0-9\-_]+\.eyJ[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+")),
+    ("Shopify Access Token", re.compile(r"shpat_[A-Fa-f0-9]{32}")),
+    ("Databricks Token", re.compile(r"dapi[a-f0-9]{32}")),
+    ("Snowflake JWT", re.compile(r"(?:snowflake_jwt|sf_token)\s*[=:]\s*['\"]?[A-Za-z0-9\-_.]{20,}", re.IGNORECASE)),
+]
+
+# ─── PII patterns ────────────────────────────────────────────────────────────
+
+# Personal Identifiable Information patterns for detection and redaction
+PII_PATTERNS: list[tuple[str, re.Pattern]] = [
+    ("Email Address", re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b")),
+    ("US Phone Number", re.compile(r"\b(?:\+1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b")),
+    ("US SSN", re.compile(r"\b\d{3}[-.\s]?\d{2}[-.\s]?\d{4}\b")),
+    ("Credit Card (Visa)", re.compile(r"\b4\d{3}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b")),
+    ("Credit Card (Mastercard)", re.compile(r"\b5[1-5]\d{2}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b")),
+    ("Credit Card (Amex)", re.compile(r"\b3[47]\d{2}[-\s]?\d{6}[-\s]?\d{5}\b")),
+    ("IP Address (IPv4)", re.compile(r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b")),
+    ("Date of Birth", re.compile(r"\b(?:DOB|date\s*of\s*birth|birthday)\s*[=:]\s*\d{1,4}[/\-]\d{1,2}[/\-]\d{1,4}\b", re.IGNORECASE)),
+    ("Passport Number", re.compile(r"\b(?:passport)\s*[#:]\s*[A-Z0-9]{6,9}\b", re.IGNORECASE)),
+    ("IBAN", re.compile(r"\b[A-Z]{2}\d{2}\s?[A-Z0-9]{4}\s?(?:\d{4}\s?){2,7}\d{1,4}\b")),
+    ("Medical Record Number", re.compile(r"\b(?:MRN|medical\s*record)\s*[#:]\s*[A-Z0-9]{6,12}\b", re.IGNORECASE)),
 ]
 
 
@@ -188,6 +225,62 @@ RESPONSE_INJECTION_PATTERNS: list[tuple[str, re.Pattern]] = [
         "Prompt delimiter attack",
         re.compile(
             r"(?:###\s*(?:SYSTEM|INSTRUCTION|CONTEXT)|---\s*(?:SYSTEM|NEW\s+PROMPT)|={3,}\s*(?:SYSTEM|INSTRUCTION))",
+            re.IGNORECASE,
+        ),
+    ),
+    # Multi-language injection patterns
+    (
+        "Markdown injection",
+        re.compile(
+            r"\[(?:system|admin|developer)\]\((?:data|javascript|vbscript):",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "XML injection",
+        re.compile(
+            r"<\?xml[^>]*>|<!DOCTYPE[^>]*>|<!ENTITY[^>]*>",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "JSON injection",
+        re.compile(
+            r'"(?:__proto__|constructor|prototype)"\s*:',
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Unicode encoding attack",
+        re.compile(
+            r"(?:%u[0-9a-fA-F]{4}){3,}|(?:\\u[0-9a-fA-F]{4}){3,}",
+        ),
+    ),
+    (
+        "Tool call forgery",
+        re.compile(
+            r"\b(?:call|invoke|execute|use)\s+(?:tool|function)\s*[:\(]",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Output manipulation",
+        re.compile(
+            r"\b(?:respond|reply|output|return|print|echo)\s+(?:only|exactly|just)\s*[:\"]",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Persona swap",
+        re.compile(
+            r"\b(?:pretend|act|behave|roleplay|role-?play)\s+(?:as|like|you\s+are)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Multi-turn injection",
+        re.compile(
+            r"\b(?:in\s+(?:the\s+)?next\s+(?:turn|response|message)|after\s+this)\s+(?:you|please|always)\b",
             re.IGNORECASE,
         ),
     ),

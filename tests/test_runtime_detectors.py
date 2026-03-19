@@ -201,6 +201,82 @@ def test_cred_leak_multiple_types():
     assert len(alerts) >= 2
 
 
+# ─── PII Detection ──────────────────────────────────────────────────────────
+
+
+def test_pii_email_detected():
+    d = CredentialLeakDetector()
+    alerts = d.check("read_file", "Contact: admin@example.com for support")
+    pii_alerts = [a for a in alerts if a.detector == "pii_leak"]
+    assert len(pii_alerts) >= 1
+    assert pii_alerts[0].details["pii_type"] == "Email Address"
+
+
+def test_pii_ssn_detected():
+    d = CredentialLeakDetector()
+    alerts = d.check("query", "SSN: 123-45-6789")
+    pii_alerts = [a for a in alerts if a.detector == "pii_leak"]
+    assert len(pii_alerts) >= 1
+
+
+def test_pii_credit_card_detected():
+    d = CredentialLeakDetector()
+    alerts = d.check("query", "Card: 4111111111111111")
+    pii_alerts = [a for a in alerts if a.detector == "pii_leak"]
+    assert len(pii_alerts) >= 1
+
+
+def test_pii_phone_detected():
+    d = CredentialLeakDetector()
+    alerts = d.check("read_file", "Call +1 (555) 123-4567")
+    pii_alerts = [a for a in alerts if a.detector == "pii_leak"]
+    assert len(pii_alerts) >= 1
+
+
+# ─── PII Redaction ──────────────────────────────────────────────────────────
+
+
+def test_redact_credentials():
+    text = "Key: sk-proj-abc123def456ghi789jkl012mno345pqr"
+    result = CredentialLeakDetector.redact(text)
+    assert "sk-proj" not in result
+    assert "[REDACTED:" in result
+
+
+def test_redact_pii_email():
+    text = "Send to admin@example.com"
+    result = CredentialLeakDetector.redact(text)
+    assert "admin@example.com" not in result
+    assert "[REDACTED:Email Address]" in result
+
+
+def test_redact_pii_ssn():
+    text = "SSN 123-45-6789"
+    result = CredentialLeakDetector.redact(text)
+    assert "123-45-6789" not in result
+    assert "[REDACTED:US SSN]" in result
+
+
+def test_redact_pii_credit_card():
+    text = "Card 4111111111111111"
+    result = CredentialLeakDetector.redact(text)
+    assert "4111111111111111" not in result
+
+
+def test_redact_preserves_non_sensitive():
+    text = "Hello world, this is safe text with no secrets."
+    result = CredentialLeakDetector.redact(text)
+    assert result == text
+
+
+def test_redact_multiple():
+    text = "Email: john@acme.com, key: AKIAIOSFODNN7EXAMPLE, SSN: 987-65-4321"
+    result = CredentialLeakDetector.redact(text)
+    assert "john@acme.com" not in result
+    assert "AKIAIOSFODNN7EXAMPLE" not in result
+    assert "987-65-4321" not in result
+
+
 # ─── RateLimitTracker ────────────────────────────────────────────────────────
 
 

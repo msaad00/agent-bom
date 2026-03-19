@@ -1236,33 +1236,29 @@ def print_export_hint(report: AIBOMReport) -> None:
 
         lines.append("")
 
-    # ── Identity ──
+    # ── Summary ──
+    vuln_color = "red" if report.total_vulnerabilities > 0 else "green"
     lines.append("[bold]AI Infrastructure Security Report[/bold]")
     lines.append(
-        f"[dim]{report.total_agents} agents · {report.total_servers} MCP servers · "
-        f"{report.total_packages} packages · {report.total_vulnerabilities} vulnerabilities[/dim]"
+        f"  [dim]{report.total_agents} agents · {report.total_servers} MCP servers · "
+        f"{report.total_packages} packages ·[/dim] "
+        f"[bold {vuln_color}]{report.total_vulnerabilities} vulnerabilities[/bold {vuln_color}]"
     )
     lines.append("")
 
-    # ── Explore ──
-    lines.append("[bold]Explore & Analyze[/bold]")
-    lines.append("  [green]agent-bom serve[/green]                              [dim]API server + Next.js dashboard[/dim]")
-    lines.append("  [green]agent-bom scan -f html -o report.html[/green]        [dim]Self-contained HTML report[/dim]")
+    # ── Contextual next steps ──
+    lines.append("[bold]Next steps[/bold]")
+    if report.total_vulnerabilities > 0:
+        lines.append("  [green]agent-bom scan --remediate fix.md[/green]               [dim]Generate fix commands[/dim]")
+        lines.append("  [green]agent-bom scan -f sarif -o results.sarif[/green]        [dim]Upload to GitHub Security[/dim]")
+    if report.total_servers > 0:
+        lines.append("  [green]agent-bom runtime proxy -- npx @mcp/server ...[/green]  [dim]Enforce MCP traffic[/dim]")
+    lines.append("  [green]agent-bom scan -f html -o report.html[/green]           [dim]Interactive HTML report[/dim]")
     lines.append("")
 
-    # ── Runtime ──
-    lines.append("[bold]Runtime Security[/bold]")
-    lines.append("  [green]agent-bom runtime proxy -- npx @mcp/server ...[/green]  [dim]Intercept & audit MCP tool calls[/dim]")
-    lines.append("  [green]agent-bom runtime watch --webhook <url>[/green]         [dim]Continuous config monitoring + alerts[/dim]")
-    lines.append("  [green]agent-bom scan --remediate fix.md[/green]               [dim]Generate actionable fix commands[/dim]")
-    lines.append("")
-
-    # ── Export ──
-    lines.append("[bold]Export AI-BOM[/bold]")
-    lines.append("  [green]agent-bom scan -f cyclonedx -o ai-bom.cdx.json[/green]   [dim]CycloneDX 1.6[/dim]")
-    lines.append("  [green]agent-bom scan -f spdx -o ai-bom.spdx.json[/green]       [dim]SPDX 3.0[/dim]")
-    lines.append("  [green]agent-bom scan -f sarif -o results.sarif[/green]         [dim]GitHub Security tab[/dim]")
-    lines.append("  [green]agent-bom scan -f json -o ai-bom.json[/green]            [dim]Full AI-BOM JSON[/dim]")
+    # ── Export (compact) ──
+    lines.append("[bold]Export[/bold]")
+    lines.append("  [green]-f[/green] json · cyclonedx · spdx · sarif · html · junit   [dim]15 formats[/dim]")
 
     console.print()
     console.print(Panel("\n".join(lines), border_style="blue", padding=(1, 2)))
@@ -1570,14 +1566,15 @@ def print_compact_remediation(report: AIBOMReport, limit: int = 5) -> None:
 
 def print_compact_export_hint(report: AIBOMReport) -> None:
     """Minimal 3-line export hint."""
+    vuln_color = "red" if report.total_vulnerabilities > 0 else "green"
     lines = [
         f"\n  [bold]{report.total_agents} agents[/bold] · "
         f"[bold]{report.total_servers} servers[/bold] · "
         f"[bold]{report.total_packages} packages[/bold] · "
-        f"[bold]{report.total_vulnerabilities} vulns[/bold]",
+        f"[bold {vuln_color}]{report.total_vulnerabilities} vulns[/bold {vuln_color}]",
         "",
-        "  [green]agent-bom scan -f[/green] json | cyclonedx | sarif | spdx | html",
-        "  [green]agent-bom serve[/green]  [dim]API + dashboard[/dim]    [green]--verbose[/green]  [dim]full tree & details[/dim]",
+        "  [green]-f[/green] json | cyclonedx | spdx | sarif | html | junit   [dim]15 formats[/dim]",
+        "  [green]--verbose[/green]  [dim]full tree & details[/dim]    [green]agent-bom serve[/green]  [dim]dashboard[/dim]",
     ]
     console.print(Panel("\n".join(lines), border_style="blue", padding=(0, 1)))
 

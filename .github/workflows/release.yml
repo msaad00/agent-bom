@@ -129,6 +129,33 @@ jobs:
             -H "Content-Type: application/json" \
             -d "{\"full_description\": ${DESCRIPTION}, \"description\": \"Security scanner for AI infrastructure — from agent to runtime\"}"
 
+      - name: Clean up old Docker Hub tags (keep last 10)
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          REPO="agentbom/agent-bom"
+          TOKEN=$(curl -sf -X POST "https://hub.docker.com/v2/users/login" \
+            -H "Content-Type: application/json" \
+            -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}" \
+            | jq -r '.token')
+          [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ] && { echo "::warning::Docker Hub login failed — skipping cleanup"; exit 0; }
+          echo "::add-mask::$TOKEN"
+
+          ALL_TAGS=$(curl -sf "https://hub.docker.com/v2/repositories/${REPO}/tags/?page_size=100&ordering=-last_updated" \
+            -H "Authorization: Bearer $TOKEN" | jq -r '.results[].name')
+          SEMVER_TAGS=$(echo "$ALL_TAGS" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true)
+          KEEP=$(echo "$SEMVER_TAGS" | head -n 10)
+
+          for tag in $ALL_TAGS; do
+            echo "$tag" | grep -qE '^(latest|0)$' && continue
+            echo "$KEEP" | grep -qxF "$tag" && continue
+            echo "Deleting $tag"
+            curl -sf -o /dev/null -X DELETE \
+              "https://hub.docker.com/v2/repositories/${REPO}/tags/${tag}" \
+              -H "Authorization: Bearer $TOKEN" || true
+          done
+
   self-scan-gate:
     name: Self-scan release gate
     needs: build

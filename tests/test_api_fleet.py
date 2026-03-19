@@ -96,10 +96,12 @@ def test_list_filter_state():
 
 def test_list_filter_min_trust():
     client, store = _fresh_client()
-    store.put(_make(agent_id="a-1", trust_score=30.0))
-    store.put(_make(agent_id="a-2", trust_score=80.0))
+    store.put(_make(agent_id="a-1", trust_score=10.0))
+    store.put(_make(agent_id="a-2", trust_score=90.0))
     resp = client.get("/v1/fleet?min_trust=50")
-    assert resp.json()["count"] == 1
+    data = resp.json()
+    assert data["count"] == 1, f"Expected 1 agent with trust >= 50, got {data['count']}: {[a.get('trust_score') for a in data['agents']]}"
+    assert data["agents"][0]["agent_id"] == "a-2"
 
 
 # ── Get ───────────────────────────────────────────────────────────────────────

@@ -42,7 +42,8 @@ async def list_fleet(
     if environment:
         agents = [a for a in agents if a.environment == environment]
     if min_trust is not None:
-        agents = [a for a in agents if a.trust_score >= min_trust]
+        _threshold = float(min_trust)
+        agents = [a for a in agents if (a.trust_score or 0.0) >= _threshold]
     total = len(agents)
     page = agents[offset : offset + limit]
     return {

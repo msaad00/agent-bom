@@ -14,17 +14,44 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Allowed executables for MCP servers (security allowlist)
+# Allowed executables for MCP servers (security allowlist).
+# Includes package managers, runtimes, and container tools commonly used
+# to launch MCP servers. Adding a binary here means discovery won't block
+# the server — it does NOT mean the binary is safe to run untrusted.
 ALLOWED_COMMANDS = {
+    # JavaScript/TypeScript runtimes & package managers
     "npx",
-    "uvx",
-    "python",
-    "python3",
+    "npm",
     "node",
     "deno",
     "bun",
-    "npm",
+    "tsx",
+    # Python runtimes & package managers
+    "python",
+    "python3",
+    "uvx",
     "uv",
+    "pipx",
+    # Go
+    "go",
+    # Java/JVM
+    "java",
+    "mvn",
+    "gradle",
+    # .NET
+    "dotnet",
+    # Ruby
+    "ruby",
+    "bundle",
+    # Rust
+    "cargo",
+    # Container tools (MCP servers often run in containers)
+    "docker",
+    "podman",
+    # Common MCP server launchers
+    "mcp",
+    "mcp-server",
+    "thv",
 }
 
 # Dangerous environment variables that should never be set

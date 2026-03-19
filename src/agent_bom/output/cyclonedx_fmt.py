@@ -59,16 +59,32 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
             ]
             if server.has_credentials:
                 server_props.append({"name": "agent-bom:has-credentials", "value": "true"})
+            if server.tools:
+                server_props.append({"name": "agent-bom:tool-count", "value": str(len(server.tools))})
+                # Export each tool as a property for SBOM consumers
+                for tool in server.tools:
+                    tool_val = tool.name
+                    if tool.description:
+                        tool_val = f"{tool.name}: {tool.description[:120]}"
+                    server_props.append({"name": "agent-bom:mcp-tool", "value": tool_val})
 
-            components.append(
-                {
-                    "type": "application",
-                    "bom-ref": server_ref,
-                    "name": server.name,
-                    "description": f"MCP Server ({server.transport.value})",
-                    "properties": server_props,
-                }
-            )
+            server_component: dict = {
+                "type": "application",
+                "bom-ref": server_ref,
+                "name": server.name,
+                "description": f"MCP Server ({server.transport.value})",
+                "properties": server_props,
+            }
+            # Add MCP tool capabilities as services (CycloneDX 1.6 services array)
+            if server.tools:
+                server_component["services"] = [
+                    {
+                        "name": tool.name,
+                        "description": tool.description or "",
+                    }
+                    for tool in server.tools
+                ]
+            components.append(server_component)
             agent_deps.append(server_ref)
 
             for pkg in server.packages:
@@ -80,6 +96,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                     {"name": "agent-bom:is-direct", "value": str(pkg.is_direct).lower()},
                     {"name": "agent-bom:dependency-depth", "value": str(pkg.dependency_depth)},
                     {"name": "agent-bom:resolved-from-registry", "value": str(pkg.resolved_from_registry).lower()},
+                    {"name": "agent-bom:version-source", "value": pkg.version_source},
                 ]
                 if pkg.parent_package:
                     pkg_properties.append({"name": "agent-bom:parent-package", "value": pkg.parent_package})
@@ -95,8 +112,14 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                     "properties": pkg_properties,
                 }
                 if pkg.license_expression or pkg.license:
-                    lic_id = pkg.license_expression or pkg.license
-                    pkg_component["licenses"] = [{"license": {"id": lic_id}}]
+                    lic_val = pkg.license_expression or pkg.license or ""
+                    # CycloneDX 1.6: compound expressions (AND/OR/WITH) use
+                    # "expression" at the licenses array level, not "license.id".
+                    # Single SPDX IDs use "license.id".
+                    if any(op in lic_val for op in (" AND ", " OR ", " WITH ")):
+                        pkg_component["licenses"] = [{"expression": lic_val}]
+                    else:
+                        pkg_component["licenses"] = [{"license": {"id": lic_val}}]
                 if pkg.supplier:
                     pkg_component["supplier"] = {"name": pkg.supplier}
                 if pkg.author:

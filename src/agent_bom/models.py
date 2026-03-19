@@ -68,6 +68,14 @@ class AgentType(str, Enum):
     JUNIE = "junie"  # JetBrains Junie coding agent
     COPILOT_CLI = "copilot-cli"  # GitHub Copilot CLI (standalone)
     TABNINE = "tabnine"  # Tabnine AI assistant
+    SOURCEGRAPH_CODY = "sourcegraph-cody"  # Sourcegraph Cody AI assistant
+    AIDER = "aider"  # Aider AI pair programming
+    REPLIT_AGENT = "replit-agent"  # Replit Agent
+    VOID_EDITOR = "void"  # Void editor (open-source Cursor alternative)
+    AIDE = "aide"  # Aide AI IDE (VS Code fork)
+    TRAE = "trae"  # Trae AI IDE (ByteDance)
+    PIECES = "pieces"  # Pieces for Developers
+    MCP_CLI = "mcp-cli"  # mcp-cli standalone tool
     CUSTOM = "custom"
 
 
@@ -507,6 +515,8 @@ class AIBOMReport:
     serving_configs: Optional[list] = None  # Serialized ServingConfig list
     browser_extensions: Optional[dict] = None  # Serialized browser extension scan results
     ai_inventory_data: Optional[dict] = None  # AI component source scan results (SDK imports, models, keys)
+    introspection_data: Optional[dict] = None  # Runtime MCP introspection results (tools, resources, drift)
+    health_check_data: Optional[dict] = None  # MCP server reachability/health results
 
     # Unified Finding stream (issue #566 — Phase 1).
     # Populated alongside blast_radii for backward compatibility.

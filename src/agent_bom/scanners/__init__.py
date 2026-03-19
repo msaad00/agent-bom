@@ -901,17 +901,87 @@ async def scan_packages(packages: list[Package], *, resolve_transitive: bool = F
                 pkg.name = _strip_extras(pkg.name)
             pkg.name = normalize_package_name(pkg.name, pkg.ecosystem)
 
-    # Auto-resolve "latest"/"unknown" versions before OSV query
-    unresolved = [p for p in packages if p.version in ("latest", "unknown", "") and p.ecosystem.lower() in ("npm", "pypi", "conda")]
+    # ── Local version resolution (installed packages) ──────────────────────
+    # Try resolving versions from locally installed packages FIRST.
+    # This is more accurate than registry fallback because it reflects
+    # what's actually on disk (e.g. npm list, pip list).
+    unresolved = [p for p in packages if p.version in ("latest", "unknown", "") and p.ecosystem.lower() in ("npm", "pypi", "go")]
     if unresolved:
+        try:
+            from agent_bom.resolvers.runtime_resolver import (
+                resolve_go_versions,
+                resolve_npm_versions,
+                resolve_pip_versions,
+            )
+
+            local_resolved = 0
+
+            # Resolve pip packages from locally installed versions
+            pip_unresolved = [p for p in unresolved if p.ecosystem.lower() == "pypi"]
+            if pip_unresolved:
+                pip_versions = resolve_pip_versions()
+                for pkg in pip_unresolved:
+                    installed_ver = (
+                        pip_versions.get(pkg.name.lower())
+                        or pip_versions.get(pkg.name.lower().replace("-", "_"))
+                        or pip_versions.get(pkg.name.lower().replace("_", "-"))
+                    )
+                    if installed_ver:
+                        pkg.version = installed_ver
+                        pkg.purl = f"pkg:{pkg.ecosystem}/{pkg.name}@{installed_ver}"
+                        pkg.version_source = "installed"
+                        local_resolved += 1
+
+            # Resolve npm packages from locally installed versions
+            npm_unresolved = [p for p in unresolved if p.ecosystem.lower() == "npm"]
+            if npm_unresolved:
+                from pathlib import Path as _NpmPath
+
+                # Try CWD — npm ls reports the full dependency tree
+                npm_versions = resolve_npm_versions(_NpmPath.cwd())
+                for pkg in npm_unresolved:
+                    installed_ver = npm_versions.get(pkg.name)
+                    if installed_ver:
+                        pkg.version = installed_ver
+                        pkg.purl = f"pkg:{pkg.ecosystem}/{pkg.name}@{installed_ver}"
+                        pkg.version_source = "installed"
+                        local_resolved += 1
+
+            # Resolve Go packages from locally installed versions
+            go_unresolved = [p for p in unresolved if p.ecosystem.lower() == "go"]
+            if go_unresolved:
+                from pathlib import Path as _GoPath
+
+                go_versions = resolve_go_versions(_GoPath.cwd())
+                for pkg in go_unresolved:
+                    installed_ver = go_versions.get(pkg.name)
+                    if installed_ver:
+                        pkg.version = installed_ver
+                        pkg.purl = f"pkg:{pkg.ecosystem}/{pkg.name}@{installed_ver}"
+                        pkg.version_source = "installed"
+                        local_resolved += 1
+
+            if local_resolved:
+                console.print(f"  [green]✓[/green] Resolved {local_resolved} package version(s) from local install")
+        except Exception as exc:
+            _logger.debug("Local version resolution failed: %s", exc)
+
+    # ── Registry fallback for still-unresolved versions ──────────────────
+    # Only hit npm/PyPI registries for packages we couldn't resolve locally.
+    still_unresolved = [p for p in packages if p.version in ("latest", "unknown", "") and p.ecosystem.lower() in ("npm", "pypi", "conda")]
+    if still_unresolved:
         try:
             from agent_bom.resolver import resolve_all_versions
 
-            resolved_count = await resolve_all_versions(unresolved)
+            resolved_count = await resolve_all_versions(still_unresolved)
             if resolved_count:
-                console.print(f"  [green]✓[/green] Auto-resolved {resolved_count} package version(s)")
+                # Mark these as registry-resolved so output shows confidence
+                for pkg in still_unresolved:
+                    if pkg.version not in ("latest", "unknown", ""):
+                        pkg.version_source = "registry_fallback"
+                console.print(f"  [green]✓[/green] Auto-resolved {resolved_count} package version(s) from registry")
         except Exception as exc:
-            _logger.warning("Version resolution failed for %d package(s): %s", len(unresolved), exc)
+            _logger.warning("Version resolution failed for %d package(s): %s", len(still_unresolved), exc)
             console.print(f"  [yellow]⚠[/yellow] Version resolution skipped: {exc}")
 
     # ── Transitive dependency resolution (npm / PyPI / Go) ───────────────────
@@ -1130,14 +1200,20 @@ async def scan_agents(agents: list[Agent], *, compliance_enabled: bool = False, 
         # Collect exposed credentials and tools — enrich from registry when server
         # config doesn't have explicit tool/credential data.
         # Cache registry lookups per server to avoid duplicate tool creation.
+        #
+        # IMPORTANT: Registry-sourced tools are "phantom" — they reflect what
+        # the registry CLAIMS the server has, not what was introspected.
+        # We include them for visibility but mark them so blast radius
+        # consumers can distinguish confirmed vs phantom tools.
         from agent_bom.parsers import get_registry_entry
 
         exposed_creds: list[str] = []
         exposed_tools: list = []
         _registry_cache: dict[str, dict | None] = {}
+        _has_phantom_tools = False
         for server in affected_servers:
             server_creds = server.credential_names
-            server_tools = server.tools
+            server_tools = list(server.tools)  # copy — don't mutate server
 
             # Registry enrichment: if no tools/creds known from config, use registry
             if not server_tools or not server_creds:
@@ -1148,7 +1224,9 @@ async def scan_agents(agents: list[Agent], *, compliance_enabled: bool = False, 
                     if not server_tools and reg.get("tools"):
                         from agent_bom.models import MCPTool
 
-                        server_tools = [MCPTool(name=t, description="") for t in reg["tools"]]
+                        # Mark as registry-sourced (phantom) — not confirmed by introspection
+                        server_tools = [MCPTool(name=t, description="(registry — unverified)") for t in reg["tools"]]
+                        _has_phantom_tools = True
                     if not server_creds and reg.get("credential_env_vars"):
                         server_creds = reg["credential_env_vars"]
 
@@ -1173,9 +1251,10 @@ async def scan_agents(agents: list[Agent], *, compliance_enabled: bool = False, 
         has_creds = bool(exposed_creds_deduped)
         has_tools = bool(exposed_tools)
         if is_ai_framework and has_creds and has_tools:
+            phantom_note = " (some tools unverified — from registry)" if _has_phantom_tools else ""
             ai_risk_context = (
                 f"AI framework '{pkg.name}' runs inside an agent with {len(exposed_creds_deduped)} "
-                f"exposed credential(s) and {len(exposed_tools)} reachable tool(s). "
+                f"exposed credential(s) and {len(exposed_tools)} reachable tool(s){phantom_note}. "
                 f"A compromise here gives an attacker both identity and capability."
             )
         elif is_ai_framework and has_creds:

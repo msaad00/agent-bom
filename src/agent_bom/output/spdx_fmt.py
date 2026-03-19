@@ -77,15 +77,31 @@ def to_spdx(report: AIBOMReport) -> dict:
         for server in agent.mcp_servers:
             server_id = _next_id("SPDXRef-MCPServer")
 
-            server_element = {
+            server_desc = f"MCP Server ({server.transport.value})"
+            if server.tools:
+                server_desc += f" — {len(server.tools)} tool(s): {', '.join(t.name for t in server.tools[:10])}"
+                if len(server.tools) > 10:
+                    server_desc += f" (+{len(server.tools) - 10} more)"
+            server_element: dict[str, Any] = {
                 "type": "SOFTWARE_PACKAGE",
                 "spdxId": server_id,
                 "name": server.name,
                 "primaryPurpose": "APPLICATION",
-                "description": f"MCP Server ({server.transport.value})",
+                "description": server_desc,
             }
             if server.mcp_version:
                 server_element["versionInfo"] = server.mcp_version
+            # Export MCP tool capabilities as annotations
+            if server.tools:
+                server_element["annotation"] = [
+                    {
+                        "type": "Annotation",
+                        "annotationType": "OTHER",
+                        "subject": server_id,
+                        "statement": f"agent-bom:mcp-tool={tool.name}" + (f": {tool.description[:120]}" if tool.description else ""),
+                    }
+                    for tool in server.tools
+                ]
             elements.append(server_element)
 
             relationships.append(

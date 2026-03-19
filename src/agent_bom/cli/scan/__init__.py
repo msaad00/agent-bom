@@ -894,6 +894,7 @@ def scan(
                 con.print(f"  [yellow]⚠[/yellow] {exc}")
 
         # Step 2b-hc: Post-discovery health checks (--health-check)
+        _hc_results = None
         if health_check:
             from agent_bom.mcp_introspect import IntrospectionError as _HCError
             from agent_bom.mcp_introspect import health_check_servers_sync
@@ -911,6 +912,7 @@ def scan(
                     else:
                         con.print(f"  [red]✗[/red] {h.server_name}: {h.error or 'unreachable'}")
                 con.print(f"\n  [bold]{reachable}/{len(hc_results)} server(s) reachable.[/bold]")
+                _hc_results = hc_results
             except _HCError as exc:
                 con.print(f"  [yellow]⚠[/yellow] {exc}")
 
@@ -1263,6 +1265,48 @@ def scan(
         report.gpu_infra_data = ctx.gpu_infra_report.risk_summary
     if ctx.iac_findings_data:
         report.iac_findings_data = ctx.iac_findings_data
+
+    # Attach introspection / health check results so they're in JSON/BOM exports
+    if _intro_report is not None:
+        report.introspection_data = {
+            "total_servers": _intro_report.total_servers,
+            "successful": _intro_report.successful,
+            "failed": _intro_report.failed,
+            "total_tools": _intro_report.total_tools,
+            "total_resources": _intro_report.total_resources,
+            "drift_count": _intro_report.drift_count,
+            "results": [
+                {
+                    "server_name": r.server_name,
+                    "success": r.success,
+                    "tool_count": r.tool_count,
+                    "resource_count": r.resource_count,
+                    "tools_added": r.tools_added,
+                    "tools_removed": r.tools_removed,
+                    "resources_added": r.resources_added,
+                    "resources_removed": r.resources_removed,
+                    "has_drift": r.has_drift,
+                    "error": r.error,
+                }
+                for r in _intro_report.results
+            ],
+        }
+    if _hc_results is not None:
+        report.health_check_data = {
+            "total": len(_hc_results),
+            "reachable": sum(1 for h in _hc_results if h.reachable),
+            "results": [
+                {
+                    "server_name": h.server_name,
+                    "reachable": h.reachable,
+                    "latency_ms": h.latency_ms,
+                    "protocol_version": h.protocol_version,
+                    "tool_count": h.tool_count,
+                    "error": h.error,
+                }
+                for h in _hc_results
+            ],
+        }
 
     # ── Context graph: lateral movement analysis ────────────────────
     if context_graph_flag and report.blast_radii:

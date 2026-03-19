@@ -66,10 +66,19 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     - MANAGE-2.4:  AI framework + credentials + HIGH+ → remediation required.
     - MANAGE-4.1:  Credentials exposed + tools → post-deployment monitoring.
     """
-    tags: set[str] = {
-        "GOVERN-1.7",  # always — third-party AI component risk
-        "MAP-3.5",  # always — supply chain risk assessed
-    }
+    tags: set[str] = set()
+
+    # GOVERN-1.7 and MAP-3.5 only apply when the vulnerability is in an
+    # AI-relevant context: the package is an AI framework, the server has
+    # credentials/tools (agent infrastructure), or the vulnerability is HIGH+.
+    # Previously these were applied to EVERY finding, drowning signal in noise.
+    is_ai_pkg = br.package.name.lower() in _AI_PACKAGES
+    has_agent_context = bool(br.exposed_credentials) or bool(br.exposed_tools)
+    is_high = br.vulnerability.severity in _HIGH_RISK
+
+    if is_ai_pkg or has_agent_context or is_high:
+        tags.add("GOVERN-1.7")  # third-party AI component risk
+        tags.add("MAP-3.5")  # supply chain risk assessed
 
     has_exec = False
     has_read = False
@@ -100,9 +109,6 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     # MANAGE-4.1 — post-deployment monitoring (credentials + tools)
     if br.exposed_credentials and br.exposed_tools:
         tags.add("MANAGE-4.1")
-
-    is_ai_pkg = br.package.name.lower() in _AI_PACKAGES
-    is_high = br.vulnerability.severity in _HIGH_RISK
 
     # MEASURE-2.5 — security testing (AI framework + HIGH+ CVE)
     if is_ai_pkg and is_high:

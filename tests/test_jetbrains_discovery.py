@@ -208,8 +208,8 @@ def test_discovery_paths_include_jetbrains():
 
 
 def test_client_count_is_22():
-    """Verify we now have 22 MCP client types (20 original + Copilot CLI + Tabnine)."""
+    """Verify we now have 30 MCP client types (CUSTOM is not in CONFIG_LOCATIONS)."""
     from agent_bom.discovery import CONFIG_LOCATIONS
 
-    # CUSTOM is not in CONFIG_LOCATIONS, so count should be 22
-    assert len(CONFIG_LOCATIONS) == 22
+    # CUSTOM is not in CONFIG_LOCATIONS, so count should be 30
+    assert len(CONFIG_LOCATIONS) == 30

@@ -48,11 +48,31 @@ def _make_br(
 
 
 def test_always_tags():
-    """Any finding should always get GOVERN-1.7 and MAP-3.5."""
+    """GOVERN-1.7 and MAP-3.5 apply when AI-relevant context is present.
+
+    A MEDIUM vuln in a non-AI package with no credentials or tools
+    should NOT get these tags (noise reduction). They apply when:
+    - Package is an AI framework, OR
+    - Credentials or tools are exposed, OR
+    - Severity is HIGH+
+    """
+    # No creds, no tools, non-AI, MEDIUM → no baseline tags
     br = _make_br()
     tags = tag_blast_radius(br)
-    assert "GOVERN-1.7" in tags
-    assert "MAP-3.5" in tags
+    assert "GOVERN-1.7" not in tags
+    assert "MAP-3.5" not in tags
+
+    # HIGH severity → baseline tags apply
+    br_high = _make_br(severity=Severity.HIGH)
+    tags_high = tag_blast_radius(br_high)
+    assert "GOVERN-1.7" in tags_high
+    assert "MAP-3.5" in tags_high
+
+    # With credentials → baseline tags apply
+    br_creds = _make_br(creds=["API_KEY"])
+    tags_creds = tag_blast_radius(br_creds)
+    assert "GOVERN-1.7" in tags_creds
+    assert "MAP-3.5" in tags_creds
 
 
 # ─── Credential exposure → MANAGE-2.2 + MANAGE-4.1 ──────────────────────────

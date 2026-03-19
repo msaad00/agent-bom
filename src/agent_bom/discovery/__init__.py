@@ -192,6 +192,63 @@ CONFIG_LOCATIONS: dict[AgentType, dict[str, list[str]]] = {
         "Linux": ["~/.tabnine/mcp_servers.json"],
         "Windows": ["~/.tabnine/mcp_servers.json"],
     },
+    AgentType.SOURCEGRAPH_CODY: {
+        # Sourcegraph Cody — VS Code extension + standalone config
+        "Darwin": [
+            "~/Library/Application Support/Code/User/globalStorage/sourcegraph.cody-ai/mcp.json",
+            "~/.cody/mcp.json",
+        ],
+        "Linux": [
+            "~/.config/Code/User/globalStorage/sourcegraph.cody-ai/mcp.json",
+            "~/.cody/mcp.json",
+        ],
+        "Windows": [
+            "~/AppData/Roaming/Code/User/globalStorage/sourcegraph.cody-ai/mcp.json",
+            "~/.cody/mcp.json",
+        ],
+    },
+    AgentType.AIDER: {
+        # Aider AI pair programming — YAML config with mcpServers
+        "Darwin": ["~/.aider/mcp.json", "~/.aider.conf.yml"],
+        "Linux": ["~/.aider/mcp.json", "~/.aider.conf.yml"],
+        "Windows": ["~/.aider/mcp.json", "~/.aider.conf.yml"],
+    },
+    AgentType.REPLIT_AGENT: {
+        # Replit Agent — .replit config or MCP config in workspace
+        "Darwin": [],
+        "Linux": [],
+        "Windows": [],
+    },
+    AgentType.VOID_EDITOR: {
+        # Void editor (open-source Cursor alternative) — uses VS Code-style config
+        "Darwin": ["~/.void/mcp.json", "~/Library/Application Support/Void/User/globalStorage/void.mcp/mcp.json"],
+        "Linux": ["~/.void/mcp.json", "~/.config/Void/User/globalStorage/void.mcp/mcp.json"],
+        "Windows": ["~/.void/mcp.json", "~/AppData/Roaming/Void/User/globalStorage/void.mcp/mcp.json"],
+    },
+    AgentType.AIDE: {
+        # Aide AI IDE (VS Code fork) — standard mcpServers format
+        "Darwin": ["~/.aide/mcp.json", "~/Library/Application Support/Aide/User/mcp.json"],
+        "Linux": ["~/.aide/mcp.json", "~/.config/Aide/User/mcp.json"],
+        "Windows": ["~/.aide/mcp.json", "~/AppData/Roaming/Aide/User/mcp.json"],
+    },
+    AgentType.TRAE: {
+        # Trae AI IDE (ByteDance) — standard mcpServers format
+        "Darwin": ["~/.trae/mcp.json", "~/Library/Application Support/Trae/User/mcp.json"],
+        "Linux": ["~/.trae/mcp.json", "~/.config/Trae/User/mcp.json"],
+        "Windows": ["~/.trae/mcp.json", "~/AppData/Roaming/Trae/User/mcp.json"],
+    },
+    AgentType.PIECES: {
+        # Pieces for Developers — desktop app + VS Code extension
+        "Darwin": ["~/Library/Application Support/com.pieces.os/mcp.json", "~/.pieces/mcp.json"],
+        "Linux": ["~/.pieces/mcp.json"],
+        "Windows": ["~/AppData/Roaming/Pieces/mcp.json", "~/.pieces/mcp.json"],
+    },
+    AgentType.MCP_CLI: {
+        # mcp-cli standalone tool — config in ~/.mcp/
+        "Darwin": ["~/.mcp/config.json"],
+        "Linux": ["~/.mcp/config.json"],
+        "Windows": ["~/.mcp/config.json"],
+    },
 }
 
 # Map agent types to their CLI binary names for installed-but-not-configured detection
@@ -208,6 +265,11 @@ AGENT_BINARIES: dict[AgentType, str] = {
     AgentType.GOOSE: "goose",
     AgentType.SNOWFLAKE_CLI: "snow",
     AgentType.JUNIE: "junie",
+    AgentType.AIDER: "aider",
+    AgentType.VOID_EDITOR: "void",
+    AgentType.AIDE: "aide",
+    AgentType.TRAE: "trae",
+    AgentType.MCP_CLI: "mcp",
 }
 
 # Project-level config files to search for

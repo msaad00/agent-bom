@@ -249,31 +249,59 @@ async def enrich_supply_chain_metadata(
     return count
 
 
-async def resolve_all_versions(packages: list[Package], *, quiet: bool = False) -> int:
+async def resolve_all_versions(
+    packages: list[Package],
+    *,
+    quiet: bool = False,
+    global_timeout: float = 30.0,
+) -> int:
+    """Resolve unresolved package versions from registries.
+
+    Args:
+        packages: Packages to resolve.
+        quiet: Suppress console output.
+        global_timeout: Max total seconds for all resolution (prevents hangs).
+    """
     unresolved = [p for p in packages if p.version in ("latest", "unknown", "")]
     if not unresolved:
         return 0
     resolved_count = 0
-    async with create_client(timeout=15.0) as client:
-        tasks = [resolve_package_version(pkg, client) for pkg in unresolved]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        for i, result in enumerate(results):
-            if result is True:
-                resolved_count += 1
-                if not quiet:
-                    lic_tag = ""
-                    if unresolved[i].license:
-                        # Cap license display to SPDX-style short string
-                        short_lic = (unresolved[i].license or "").split("\n", 1)[0][:60]
-                        lic_tag = f" ({short_lic})"
-                    console.print(f"  [green]✓[/green] Resolved {unresolved[i].name} → {unresolved[i].version}{lic_tag}")
-            elif isinstance(result, Exception):
-                if not quiet:
-                    console.print(f"  [yellow]⚠[/yellow] Failed to resolve {unresolved[i].name}: {result}")
-        # Enrich licenses for packages that already had versions
-        lic_count = await enrich_licenses(packages, client)
-        if lic_count and not quiet:
-            console.print(f"  [green]✓[/green] Enriched {lic_count} package license(s)")
+    try:
+        async with create_client(timeout=10.0) as client:
+            tasks = [resolve_package_version(pkg, client) for pkg in unresolved]
+            # Global timeout prevents the entire batch from hanging
+            results = await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True),
+                timeout=global_timeout,
+            )
+            for i, result in enumerate(results):
+                if result is True:
+                    resolved_count += 1
+                    if not quiet:
+                        lic_tag = ""
+                        if unresolved[i].license:
+                            short_lic = (unresolved[i].license or "").split("\n", 1)[0][:60]
+                            lic_tag = f" ({short_lic})"
+                        console.print(f"  [green]✓[/green] Resolved {unresolved[i].name} → {unresolved[i].version}{lic_tag}")
+                elif isinstance(result, Exception):
+                    if not quiet:
+                        console.print(f"  [yellow]⚠[/yellow] Failed to resolve {unresolved[i].name}: {result}")
+            # Enrich licenses for packages that already had versions
+            lic_count = await enrich_licenses(packages, client)
+            if lic_count and not quiet:
+                console.print(f"  [green]✓[/green] Enriched {lic_count} package license(s)")
+    except asyncio.TimeoutError:
+        _logger.warning(
+            "Version resolution timed out after %.0fs (%d/%d resolved)",
+            global_timeout,
+            resolved_count,
+            len(unresolved),
+        )
+        if not quiet:
+            n_done, n_total = resolved_count, len(unresolved)
+            console.print(
+                f"  [yellow]⚠[/yellow] Version resolution timed out ({n_done}/{n_total} resolved) — scanning with available versions"
+            )
     return resolved_count
 
 

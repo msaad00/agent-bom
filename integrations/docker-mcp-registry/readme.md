@@ -19,7 +19,7 @@ docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom scan -p /workspace -f 
 
 ## What it scans
 
-- **22 MCP client types** — Claude Desktop, Cursor, Windsurf, VS Code Copilot, and more
+- **30 MCP client types** — Claude Desktop, Cursor, Windsurf, VS Code Copilot, and more
 - **Packages** — npm, pip, cargo, go modules, OS packages via OSV, NVD, EPSS, CISA KEV
 - **Containers** — Docker images via Grype + Syft
 - **IaC** — Dockerfile, Kubernetes, Terraform, CloudFormation, Helm (89 rules)

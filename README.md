@@ -38,7 +38,7 @@ agent-bom scan
 ```
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.71.0.gif" alt="agent-bom scan demo" width="900" />
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.72.0.gif" alt="agent-bom scan demo" width="900" />
 </p>
 
 ---
@@ -47,7 +47,7 @@ agent-bom scan
 
 Security scanner purpose-built for AI infrastructure and supply chain.
 
-1. **Discovers** AI agents and MCP servers — auto-detects configs across Claude Desktop, Cursor, Windsurf, VS Code Copilot, and 18 more clients
+1. **Discovers** AI agents and MCP servers — auto-detects configs across Claude Desktop, Cursor, Windsurf, VS Code Copilot, and 26 more clients (30 total)
 2. **Generates an AI BOM** — inventory of every agent, server, package, credential, and tool in your AI stack
 3. **Scans for CVEs** — checks every dependency against OSV + NVD + GHSA + EPSS + CISA KEV
 4. **Maps blast radius** — shows which agents, credentials, and tools each CVE can reach
@@ -195,7 +195,7 @@ docker run --rm agentbom/agent-bom scan  # Docker (linux/amd64 + arm64)
 
 | Source | How |
 |--------|-----|
-| MCP configs | Auto-discover (22 clients + Docker Compose) |
+| MCP configs | Auto-discover (30 clients + Docker Compose) |
 | Docker images | Grype / Syft / Docker CLI fallback |
 | Kubernetes | kubectl across namespaces |
 | Cloud providers | AWS, Azure, GCP, Databricks, Snowflake |

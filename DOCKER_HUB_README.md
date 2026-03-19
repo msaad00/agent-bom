@@ -25,7 +25,7 @@ docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest iac /workspace
 
 ## What it scans
 
-- **22 MCP client types** — Claude Desktop, Cursor, Windsurf, VS Code Copilot, Cline, Continue, Zed, Cortex Code, Codex CLI, Gemini CLI, and more
+- **30 MCP client types** — Claude Desktop, Cursor, Windsurf, VS Code Copilot, Cline, Continue, Zed, Cortex Code, Codex CLI, Gemini CLI, Sourcegraph Cody, Aider, Trae, Aide, and more
 - **Packages** — npm, pip, cargo, go modules, os packages (dpkg/rpm/apk) via OSV, NVD, EPSS, CISA KEV
 - **Containers** — Docker images via Grype + Syft
 - **Cloud AI** — AWS Bedrock, Azure OpenAI, GCP Vertex AI, Snowflake Cortex, and 8 more providers (12 total)
@@ -45,7 +45,7 @@ docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest iac /workspace
 | Tag | Description |
 |-----|-------------|
 | `latest` | Most recent stable release |
-| `v0.71.4` | Current stable version (pinned) |
+| `v0.72.0` | Current stable version (pinned) |
 
 ## Links
 

@@ -721,7 +721,7 @@ def scan_with_audit(user, target):
 
 | Feature | agent-bom | Syft | Grype | Snyk | Wiz |
 |---------|-----------|------|-------|------|-----|
-| AI agent config discovery | ✅ (22 MCP clients) | ❌ | ❌ | ❌ | ❌ |
+| AI agent config discovery | ✅ (30 MCP clients) | ❌ | ❌ | ❌ | ❌ |
 | MCP server support | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Transitive deps | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Blast radius (AI-specific) | ✅ | ❌ | ❌ | ❌ | ❌ |

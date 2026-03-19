@@ -305,7 +305,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             "from vulnerabilities to credentials and tools, generates SBOMs (CycloneDX, SPDX), "
             "enforces security policies, and maps to 14 compliance frameworks "
             "(OWASP LLM/MCP/Agentic, MITRE ATLAS, NIST AI RMF/CSF/800-53, FedRAMP, EU AI Act, ISO 27001, SOC 2). "
-            "Discovers 22 MCP clients. Read-only, agentless, no credentials required."
+            "Discovers 30 MCP clients. Read-only, agentless, no credentials required."
         ),
     )
     # Set the actual agent-bom version (FastMCP defaults to SDK version)
@@ -1514,7 +1514,7 @@ _SERVER_CARD_TOOLS = [
     },
     {
         "name": "where",
-        "description": "List all 22 MCP client config discovery paths with existence status — useful for debugging discovery issues",
+        "description": "List all 30 MCP client config discovery paths with existence status — useful for debugging discovery issues",
         "annotations": {"readOnlyHint": True},
     },
     {

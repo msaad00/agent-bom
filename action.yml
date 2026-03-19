@@ -1,5 +1,5 @@
 name: 'agent-bom Scan'
-description: 'Security scanner for AI infrastructure — CVEs, blast radius, compliance, IaC, runtime proxy.'
+description: 'Security scanner for AI infrastructure — 30 MCP clients, AI BOM with tool capabilities, CVEs with version-accurate resolution, blast radius mapping, compliance, IaC, runtime proxy.'
 author: 'agent-bom'
 
 branding:

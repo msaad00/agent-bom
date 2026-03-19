@@ -127,7 +127,7 @@ jobs:
             "https://hub.docker.com/v2/repositories/agentbom/agent-bom/" \
             -H "Authorization: Bearer ${TOKEN}" \
             -H "Content-Type: application/json" \
-            -d "{\"full_description\": ${DESCRIPTION}, \"description\": \"Security scanner for AI infrastructure — from agent to runtime\"}"
+            -d "{\"full_description\": ${DESCRIPTION}, \"description\": \"Security scanner for AI infrastructure — 30 MCP clients, AI BOMs, CVEs, blast radius, runtime proxy\"}"
 
       - name: Clean up old Docker Hub tags (keep last 10)
         env:

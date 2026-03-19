@@ -148,7 +148,9 @@ CI checks that run on every PR:
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for system diagrams and the full module map.
 
-Pipeline at a glance: **discover** MCP configs → **parse** packages → **scan** via OSV/NVD/GHSA → **enrich** (EPSS + KEV) → **blast radius** → **compliance tag** (14 frameworks) → **output** (JSON / SARIF / CycloneDX / console).
+**5 products, 1 package:** `agent-bom` (BOM + scanning), `agent-shield` (runtime protection), `agent-cloud` (cloud posture), `agent-iac` (IaC security), `agent-claw` (fleet governance). All share the same core engine.
+
+Pipeline at a glance: **discover** MCP configs → **parse** packages → **scan** via OSV/NVD/GHSA → **enrich** (EPSS + KEV) → **blast radius** → **compliance tag** (14 frameworks) → **output** (16 formats).
 
 ---
 

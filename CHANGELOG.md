@@ -7,6 +7,54 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.73.0] – 2026-03-19
+
+### Architecture
+
+- **5-product CLI** — `agent-bom`, `agent-shield`, `agent-cloud`, `agent-iac`, `agent-claw` — one package, five entry points, zero duplication (#967)
+  - `agent-bom` — BOM generation + vulnerability scanning
+  - `agent-shield` — runtime protection (proxy, protect, guard, watch, audit)
+  - `agent-cloud` — cloud infrastructure (aws, azure, gcp, snowflake, databricks, huggingface, ollama, posture)
+  - `agent-iac` — IaC security (scan, policy, validate)
+  - `agent-claw` — fleet governance (fleet, serve, api, schedule, report, connectors)
+- **Shared entry point factory** (`_entry.py`) — consistent error handling + update check across all 5 products
+- **Parameterized help categories** — each product shows relevant command groups in `--help`
+- **Full backward compat** — `agent-bom runtime proxy`, `agent-bom cloud aws`, etc. still work
+
+### Added
+
+- **CycloneDX 1.6 ML BOM extensions** — native `modelCard`, `data` components, `machine-learning-model` type with `quantitativeAnalysis` for training metrics (#967)
+- **Agent-shield deep defense mode** (`--shield`) — correlated multi-detector threat scoring, `ThreatLevel` escalation (NORMAL→ELEVATED→HIGH→CRITICAL), automatic kill-switch on CRITICAL (#967)
+- **Graph-native AIBOM export** — `to_graphml()` for yEd/Gephi/NetworkX, `to_cypher()` for Neo4j with AIBOM node labels (AIAgent, MCPServer, Package, Vulnerability) (#967)
+- **CLI graph formats** — `agent-bom graph --format graphml|cypher` alongside existing json/dot/mermaid (#968)
+- **CLI shield flags** — `agent-shield protect --shield --correlation-window 30` (#968)
+- **API: graph export** — `GET /v1/scan/{job_id}/graph-export?format=graphml|cypher|dot|mermaid|json` (#970)
+- **API: shield control** — `POST /v1/shield/start`, `GET /v1/shield/status`, `POST /v1/shield/unblock` (#970)
+- **MCP graph tool** — `graph_export` MCP tool for graphml/cypher/dot/mermaid from scan results (#972)
+- **agent-cloud new commands** — `snowflake`, `databricks`, `huggingface`, `ollama`, `posture` (#967)
+- **agent-claw fleet** — `fleet sync|list|stats` commands + `connectors` command (#967)
+
+### Fixed
+
+- **Fleet min_trust Python 3.14** — explicit `float()` coercion + defensive `(trust_score or 0.0)` (#969)
+- **API test noise** — mock `_run_scan_sync` with pytest `monkeypatch` fixture scoped to test file only (#970)
+- **flatted 3.4.1→3.4.2** — GHSA-rf6f-7fwh-wjgh prototype pollution in `/ui` (#970)
+- **CVE-2026-33231 suppression** — nltk wordnet_app remote shutdown (not reachable — never imported) (#971)
+- **Stale test name** — `test_total_agent_types_is_18` → `is_31` (#967)
+
+---
+
+## [0.72.0] – 2026-03-19
+
+### Added
+
+- **30 MCP clients** — added Pieces, mcp-cli, Trae, Aide, Void, Replit Agent, Aider, Sourcegraph Cody, Tabnine, Copilot CLI, Junie, JetBrains AI
+- **AI BOM tools** — 32 MCP tools for scanning, compliance, runtime, cloud
+- **Version accuracy** — all surfaces updated with correct version and client counts
+- **Compliance noise reduction** — actionable findings only in default output
+
+---
+
 ## [0.71.4] – 2026-03-18
 
 ### Fixed

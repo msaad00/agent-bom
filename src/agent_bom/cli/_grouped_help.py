@@ -47,10 +47,13 @@ class GroupedGroup(click.Group):
 
     def format_commands(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
         # Collect all available commands
-        commands: dict[str, click.BaseCommand] = {}
+        commands: dict[str, click.Command] = {}
         for subcommand in self.list_commands(ctx):
             cmd = self.get_command(ctx, subcommand)
             if cmd is None or cmd.hidden:
+                continue
+            # get_command returns BaseCommand but we need Command for get_short_help_str
+            if not isinstance(cmd, click.Command):
                 continue
             commands[subcommand] = cmd
 

@@ -185,7 +185,14 @@ def proxy_configure_cmd(policy, log_dir, detect_credentials, block_undeclared, a
 )
 @click.option("--log-level", "log_level", type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False), default="INFO")
 @click.option("--log-json", "log_json", is_flag=True, help="Structured JSON logs")
-def protect_cmd(mode, port, host, detectors, alert_file, alert_webhook, log_level, log_json):
+@click.option("--shield", is_flag=True, help="Enable deep defense mode (correlated threat scoring, escalation, kill-switch)")
+@click.option(
+    "--correlation-window",
+    default=30.0,
+    show_default=True,
+    help="Alert correlation window in seconds (used with --shield)",
+)
+def protect_cmd(mode, port, host, detectors, alert_file, alert_webhook, log_level, log_json, shield, correlation_window):
     """Run the runtime protection engine as a standalone monitor.
 
     \b
@@ -252,7 +259,11 @@ def protect_cmd(mode, port, host, detectors, alert_file, alert_webhook, log_leve
         dispatcher.add_channel(_FileChannel(alert_file))
 
     # Build engine
-    engine = ProtectionEngine(dispatcher=dispatcher)
+    engine = ProtectionEngine(
+        dispatcher=dispatcher,
+        shield=shield,
+        correlation_window=correlation_window,
+    )
 
     # Configure detectors based on selection
     if detectors != "all":

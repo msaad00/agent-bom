@@ -27,7 +27,9 @@ from click.testing import CliRunner
 from agent_bom.output.graph_export import (
     DepGraph,
     load_graph_from_scan,
+    to_cypher,
     to_dot,
+    to_graphml,
     to_json,
     to_mermaid,
 )
@@ -385,3 +387,122 @@ def test_cli_graph_invalid_file_exits_nonzero():
         assert result.exit_code != 0
     finally:
         os.unlink(path)
+
+
+# ── to_graphml ─────────────────────────────────────────────────────────────
+
+
+def test_to_graphml_basic_structure():
+    pkg = _pkg("fastapi", "0.100.0", "pypi")
+    data = _make_scan_json([_agent("a", [_server("s", [pkg])])])
+    path = _write_scan(data)
+    try:
+        g = load_graph_from_scan(path)
+        gml = to_graphml(g)
+        assert '<?xml version="1.0"' in gml
+        assert "<graphml" in gml
+        assert 'id="aibom"' in gml
+        assert "<node" in gml
+        assert "<edge" in gml
+        assert 'key="kind"' in gml
+    finally:
+        os.unlink(path)
+
+
+def test_to_graphml_aibom_attributes():
+    pkg = _pkg("lodash", "4.17.20", "npm", vulns=[_vuln("CVE-2021-23337")])
+    srv = _server("cred-srv", [pkg], has_creds=True)
+    data = _make_scan_json([_agent("a", [srv])])
+    path = _write_scan(data)
+    try:
+        g = load_graph_from_scan(path)
+        gml = to_graphml(g)
+        assert "has_credentials" in gml
+        assert "is_vulnerable" in gml
+        assert "severity" in gml
+    finally:
+        os.unlink(path)
+
+
+def test_to_graphml_empty_graph():
+    g = DepGraph()
+    gml = to_graphml(g)
+    assert "<graphml" in gml
+    assert "<node" not in gml
+
+
+# ── to_cypher ──────────────────────────────────────────────────────────────
+
+
+def test_to_cypher_basic_structure():
+    pkg = _pkg("express", "4.18.0", "npm")
+    data = _make_scan_json([_agent("a", [_server("s", [pkg])])])
+    path = _write_scan(data)
+    try:
+        g = load_graph_from_scan(path)
+        cypher = to_cypher(g)
+        assert "CREATE CONSTRAINT" in cypher
+        assert "MERGE" in cypher
+        assert ":AIAgent" in cypher or ":Provider" in cypher
+        assert "USES_SERVER" in cypher or "HOSTS" in cypher
+    finally:
+        os.unlink(path)
+
+
+def test_to_cypher_aibom_labels():
+    pkg = _pkg("react", "18.0.0", "npm", vulns=[_vuln("CVE-2024-1234")])
+    data = _make_scan_json([_agent("myagent", [_server("mysrv", [pkg])])])
+    path = _write_scan(data)
+    try:
+        g = load_graph_from_scan(path)
+        cypher = to_cypher(g)
+        assert ":AIAgent" in cypher
+        assert ":MCPServer" in cypher
+        assert ":Package" in cypher
+        assert ":Vulnerability" in cypher
+        assert "DEPENDS_ON" in cypher
+        assert "AFFECTS" in cypher
+    finally:
+        os.unlink(path)
+
+
+def test_to_cypher_empty_graph():
+    g = DepGraph()
+    cypher = to_cypher(g)
+    assert "CREATE CONSTRAINT" in cypher
+    assert "Total: 0 nodes" in cypher
+
+
+# ── CLI graphml / cypher ──────────────────────────────────────────────────
+
+
+def test_cli_graph_graphml_to_stdout():
+    from agent_bom.cli import main
+
+    data = _make_scan_json([_agent("a", [_server("s", [_pkg("pkg", "1.0.0")])])])
+    path = _write_scan(data)
+    try:
+        runner = CliRunner()
+        result = runner.invoke(main, ["graph", path, "--format", "graphml"])
+        assert result.exit_code == 0
+        assert "<graphml" in result.output
+    finally:
+        os.unlink(path)
+
+
+def test_cli_graph_cypher_to_file():
+    from agent_bom.cli import main
+
+    data = _make_scan_json([_agent("a", [_server("s", [_pkg("pkg", "1.0.0")])])])
+    path = _write_scan(data)
+    with tempfile.NamedTemporaryFile(suffix=".cypher", delete=False) as out:
+        out_path = out.name
+    try:
+        runner = CliRunner()
+        result = runner.invoke(main, ["graph", path, "--format", "cypher", "--output", out_path])
+        assert result.exit_code == 0
+        content = Path(out_path).read_text()
+        assert "MERGE" in content
+    finally:
+        os.unlink(path)
+        os.unlink(out_path)

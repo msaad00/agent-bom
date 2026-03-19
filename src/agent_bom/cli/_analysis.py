@@ -99,7 +99,13 @@ def analytics_cmd(query_type, days, hours, agent, top_limit, clickhouse_url):
 @click.command("graph")
 @click.argument("scan_file", type=click.Path(exists=True))
 @click.option(
-    "--format", "-f", "fmt", type=click.Choice(["json", "dot", "mermaid"]), default="json", show_default=True, help="Output format."
+    "--format",
+    "-f",
+    "fmt",
+    type=click.Choice(["json", "dot", "mermaid", "graphml", "cypher"]),
+    default="json",
+    show_default=True,
+    help="Output format.",
 )
 @click.option("--output", "-o", "output_path", default=None, help="Write to file instead of stdout.")
 def graph_cmd(scan_file: str, fmt: str, output_path: Optional[str]) -> None:
@@ -120,7 +126,7 @@ def graph_cmd(scan_file: str, fmt: str, output_path: Optional[str]) -> None:
     """
     from rich.console import Console as _Console
 
-    from agent_bom.output.graph_export import load_graph_from_scan, to_dot, to_json, to_mermaid
+    from agent_bom.output.graph_export import load_graph_from_scan, to_cypher, to_dot, to_graphml, to_json, to_mermaid
 
     _con = _Console()
 
@@ -134,6 +140,10 @@ def graph_cmd(scan_file: str, fmt: str, output_path: Optional[str]) -> None:
         output = to_dot(graph)
     elif fmt == "mermaid":
         output = to_mermaid(graph)
+    elif fmt == "graphml":
+        output = to_graphml(graph)
+    elif fmt == "cypher":
+        output = to_cypher(graph)
     else:
         output = json.dumps(to_json(graph), indent=2)
 

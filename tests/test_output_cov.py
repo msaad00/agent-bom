@@ -566,14 +566,14 @@ def test_build_remediation_plan_no_downgrade():
     to 3.2.14 — not a second entry pointing backward to 2.2.26.
     """
     pkg = Package(name="django", version="3.2.0", ecosystem="pypi", vulnerabilities=[])
-    vuln_downgrade = Vulnerability(
-        id="CVE-2025-9999", severity=Severity.HIGH, summary="Django XSS", fixed_version="2.2.26"
+    vuln_downgrade = Vulnerability(id="CVE-2025-9999", severity=Severity.HIGH, summary="Django XSS", fixed_version="2.2.26")
+    vuln_valid = Vulnerability(id="CVE-2025-9999", severity=Severity.HIGH, summary="Django XSS", fixed_version="3.2.14")
+    br1 = BlastRadius(
+        vulnerability=vuln_downgrade, package=pkg, affected_agents=[], affected_servers=[], exposed_credentials=[], exposed_tools=[]
     )
-    vuln_valid = Vulnerability(
-        id="CVE-2025-9999", severity=Severity.HIGH, summary="Django XSS", fixed_version="3.2.14"
+    br2 = BlastRadius(
+        vulnerability=vuln_valid, package=pkg, affected_agents=[], affected_servers=[], exposed_credentials=[], exposed_tools=[]
     )
-    br1 = BlastRadius(vulnerability=vuln_downgrade, package=pkg, affected_agents=[], affected_servers=[], exposed_credentials=[], exposed_tools=[])
-    br2 = BlastRadius(vulnerability=vuln_valid, package=pkg, affected_agents=[], affected_servers=[], exposed_credentials=[], exposed_tools=[])
     plan = build_remediation_plan([br1, br2])
     # Must be exactly one entry (grouped by package+ecosystem+version)
     assert len(plan) == 1
@@ -751,6 +751,126 @@ def test_to_cyclonedx_no_fix():
     report = _make_report_cov2(agents=[agent])
     result = to_cyclonedx(report)
     assert "vulnerabilities" in result
+
+
+# ── CycloneDX ML BOM extensions ─────────────────────────────────────────────
+
+
+def test_to_cyclonedx_ml_model_provenance():
+    """Model provenance should produce machine-learning-model components with modelCard."""
+    report = _make_report()
+    report.model_provenance = [
+        {
+            "model_id": "meta-llama/Llama-3.1-8B",
+            "source": "huggingface",
+            "format": "safetensors",
+            "is_safe_format": True,
+            "has_digest": True,
+            "digest": "abc123def456",
+            "risk_flags": [],
+            "risk_level": "safe",
+            "metadata": {"pipeline_tag": "text-generation", "tags": ["dataset:wikitext"]},
+        }
+    ]
+    result = to_cyclonedx(report)
+    ml_comps = [c for c in result["components"] if c["type"] == "machine-learning-model"]
+    assert len(ml_comps) >= 1
+    assert any("modelCard" in c for c in ml_comps)
+    assert any("Llama" in c["name"] for c in ml_comps)
+
+
+def test_to_cyclonedx_ml_model_files():
+    """Model file scan results should produce ML components with security flags."""
+    report = _make_report()
+    report.model_files = [
+        {
+            "filename": "model.pkl",
+            "format": "Pickle",
+            "ecosystem": "scikit-learn",
+            "size_bytes": 5242880,
+            "size_human": "5.0 MB",
+            "security_flags": [{"type": "PICKLE_DESERIALIZATION", "severity": "HIGH", "description": "Pickle can execute arbitrary code"}],
+        }
+    ]
+    result = to_cyclonedx(report)
+    ml_comps = [c for c in result["components"] if c["type"] == "machine-learning-model"]
+    assert len(ml_comps) >= 1
+    pkl_comp = [c for c in ml_comps if "model.pkl" in c["name"]]
+    assert len(pkl_comp) == 1
+
+
+def test_to_cyclonedx_dataset_cards():
+    """Dataset cards should produce data components with CycloneDX data extension."""
+    report = _make_report()
+    report.dataset_cards = {
+        "datasets": [
+            {
+                "name": "wikitext-103",
+                "description": "Wikipedia text corpus",
+                "license": "CC-BY-SA-4.0",
+                "source_file": "dataset_info.json",
+                "features": ["text"],
+                "splits": {"train": 1801350},
+                "task_categories": ["language-modeling"],
+                "languages": ["en"],
+                "security_flags": [],
+            }
+        ]
+    }
+    result = to_cyclonedx(report)
+    data_comps = [c for c in result["components"] if c["type"] == "data"]
+    assert len(data_comps) == 1
+    assert "data" in data_comps[0]
+    assert data_comps[0]["data"][0]["type"] == "dataset"
+
+
+def test_to_cyclonedx_training_pipelines():
+    """Training runs should produce ML components with quantitativeAnalysis."""
+    report = _make_report()
+    report.training_pipelines = {
+        "runs": [
+            {
+                "name": "finetune-v2",
+                "framework": "mlflow",
+                "source_file": "MLmodel",
+                "run_id": "abc123",
+                "model_flavor": "transformers",
+                "metrics": {"eval_loss": 2.31, "accuracy": 0.87},
+                "parameters": {"lr": "2e-5"},
+                "security_flags": [],
+            }
+        ]
+    }
+    result = to_cyclonedx(report)
+    ml_comps = [c for c in result["components"] if c["type"] == "machine-learning-model"]
+    assert any("finetune" in c["name"] for c in ml_comps)
+    training_comp = [c for c in ml_comps if "finetune" in c["name"]][0]
+    assert "modelCard" in training_comp
+    assert "quantitativeAnalysis" in training_comp["modelCard"]
+
+
+def test_to_cyclonedx_ml_models_metadata_count():
+    """Metadata should include ml-models count."""
+    report = _make_report()
+    report.model_provenance = [
+        {
+            "model_id": "m1",
+            "source": "hf",
+            "format": "safetensors",
+            "is_safe_format": True,
+            "has_digest": False,
+            "digest": "",
+            "risk_flags": [],
+            "risk_level": "safe",
+            "metadata": {},
+        }
+    ]
+    report.model_files = [
+        {"filename": "f1.gguf", "format": "GGUF", "ecosystem": "llama.cpp", "size_bytes": 100, "size_human": "100 B", "security_flags": []}
+    ]
+    result = to_cyclonedx(report)
+    meta_props = {p["name"]: p["value"] for p in result["metadata"]["properties"]}
+    assert meta_props["agent-bom:ml-models"] == "2"
 
 
 # ── to_spdx extras (from cov2) ──────────────────────────────────────────────

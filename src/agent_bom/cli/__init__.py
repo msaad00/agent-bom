@@ -27,17 +27,18 @@ from agent_bom.cli._common import (
     sanitize_env_vars,
 )
 
+# ---------------------------------------------------------------------------
+# Click group
+# ---------------------------------------------------------------------------
+from agent_bom.cli._grouped_help import GroupedGroup  # noqa: E402 — needed before group def
+
 # Re-export discover_all so that patch("agent_bom.cli.discover_all") keeps
 # working in existing tests — although the canonical import path for new
 # code is ``agent_bom.discovery.discover_all``.
 from agent_bom.discovery import discover_all  # noqa: F401
 
-# ---------------------------------------------------------------------------
-# Click group
-# ---------------------------------------------------------------------------
 
-
-@click.group(context_settings={"help_option_names": ["-h", "--help"]})
+@click.group(cls=GroupedGroup, context_settings={"help_option_names": ["-h", "--help"]})
 @click.version_option(
     version=__version__,
     prog_name="agent-bom",
@@ -55,11 +56,8 @@ def main():
       agent-bom check flask@2.0.0           pre-install CVE gate
       agent-bom mcp                         discover + scan MCP agents
       agent-bom image nginx:latest          container image scan
-      agent-bom fs .                        filesystem / VM scan
-      agent-bom iac Dockerfile              IaC misconfigurations
       agent-bom cloud aws                   cloud posture + CIS
-      agent-bom run "npx/@mcp/server-fs /tmp" zero-config proxy launch
-      agent-bom proxy "npx server"          runtime enforcement
+      agent-bom runtime proxy "npx server"  runtime enforcement
 
     \b
     Docs:  https://github.com/msaad00/agent-bom
@@ -77,9 +75,8 @@ main.add_command(scan)
 
 from agent_bom.cli._inventory import completions_cmd, inventory, validate, where  # noqa: E402
 
-main.add_command(inventory)
+# inventory + where are under `mcp` group — no top-level duplicate
 main.add_command(validate)
-main.add_command(where)
 main.add_command(completions_cmd, "completions")
 
 from agent_bom.cli._check import check, guard_cmd, verify  # noqa: E402
@@ -90,20 +87,23 @@ main.add_command(guard_cmd, "guard")
 
 from agent_bom.cli._history import diff_cmd, history_cmd, rescan_command  # noqa: E402
 
-main.add_command(history_cmd, "history")
-main.add_command(diff_cmd, "diff")
-main.add_command(rescan_command, "rescan")
-
+# history, diff, rescan moved to `report` group (Batch 3)
 from agent_bom.cli._policy import apply_command, policy_template  # noqa: E402
 
-main.add_command(policy_template, "policy-template")
-main.add_command(apply_command, "apply")
+# ---------------------------------------------------------------------------
+# Policy command group — `agent-bom policy [template|apply]`
+# ---------------------------------------------------------------------------
+from agent_bom.cli._policy_group import policy_group  # noqa: E402
+
+policy_group.add_command(policy_template, "template")
+policy_group.add_command(apply_command, "apply")
+main.add_command(policy_group)
 
 from agent_bom.cli._server import api_cmd, mcp_server_cmd, serve_cmd  # noqa: E402
 
 main.add_command(serve_cmd, "serve")
 main.add_command(api_cmd, "api")
-main.add_command(mcp_server_cmd, "mcp-server")
+# mcp-server is under `mcp server` — no top-level duplicate
 
 from agent_bom.cli._registry import registry, schedule  # noqa: E402
 
@@ -120,11 +120,20 @@ from agent_bom.cli._runtime import (  # noqa: E402
     watch_cmd,
 )
 
+# ---------------------------------------------------------------------------
+# Runtime command group — `agent-bom runtime [proxy|protect|watch|audit|configure]`
+# ---------------------------------------------------------------------------
+from agent_bom.cli._runtime_group import runtime_group  # noqa: E402
+
+runtime_group.add_command(proxy_cmd, "proxy")
+runtime_group.add_command(proxy_configure_cmd, "configure")
+runtime_group.add_command(protect_cmd, "protect")
+runtime_group.add_command(watch_cmd, "watch")
+runtime_group.add_command(audit_replay_cmd, "audit")
+main.add_command(runtime_group)
+
+# Backward-compat: keep `agent-bom proxy` as top-level shortcut (most common)
 main.add_command(proxy_cmd, "proxy")
-main.add_command(proxy_configure_cmd, "proxy-configure")
-main.add_command(protect_cmd, "protect")
-main.add_command(watch_cmd, "watch")
-main.add_command(audit_replay_cmd, "audit-replay")
 
 from agent_bom.cli._analysis import (  # noqa: E402
     analytics_cmd,
@@ -133,10 +142,20 @@ from agent_bom.cli._analysis import (  # noqa: E402
     introspect_cmd,
 )
 
-main.add_command(analytics_cmd, "analytics")
 main.add_command(graph_cmd, "graph")
-main.add_command(dashboard_cmd, "dashboard")
-main.add_command(introspect_cmd, "introspect")
+# introspect is under `mcp introspect` — no top-level duplicate
+
+# ---------------------------------------------------------------------------
+# Report command group — `agent-bom report [history|diff|rescan|analytics|dashboard]`
+# ---------------------------------------------------------------------------
+from agent_bom.cli._report_group import report_group  # noqa: E402
+
+report_group.add_command(history_cmd, "history")
+report_group.add_command(diff_cmd, "diff")
+report_group.add_command(rescan_command, "rescan")
+report_group.add_command(analytics_cmd, "analytics")
+report_group.add_command(dashboard_cmd, "dashboard")
+main.add_command(report_group)
 
 from agent_bom.cli._db import db_cmd  # noqa: E402
 

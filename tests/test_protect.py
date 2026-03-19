@@ -18,7 +18,7 @@ from agent_bom.runtime.server import _dispatch, _route_http
 def test_protect_help():
     """protect --help shows all options and description."""
     runner = CliRunner()
-    result = runner.invoke(main, ["protect", "--help"])
+    result = runner.invoke(main, ["runtime", "protect", "--help"])
     assert result.exit_code == 0
     assert "--mode" in result.output
     assert "--port" in result.output

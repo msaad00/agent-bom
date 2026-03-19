@@ -45,10 +45,15 @@ agent-bom scan
 
 ## What it does
 
-1. **Discovers** your AI agents — auto-detects MCP configs across Claude Desktop, Cursor, Windsurf, VS Code Copilot, and 18 more clients
-2. **Scans** every dependency against OSV + NVD + GHSA + EPSS + CISA KEV
-3. **Maps blast radius** — shows which agents, credentials, and tools each CVE can reach
-4. **Enforces at runtime** — MCP proxy intercepts tool calls, detects rug pulls, blocks credential leaks
+Security scanner purpose-built for AI infrastructure and supply chain.
+
+1. **Discovers** AI agents and MCP servers — auto-detects configs across Claude Desktop, Cursor, Windsurf, VS Code Copilot, and 18 more clients
+2. **Generates an AI BOM** — inventory of every agent, server, package, credential, and tool in your AI stack
+3. **Scans for CVEs** — checks every dependency against OSV + NVD + GHSA + EPSS + CISA KEV
+4. **Maps blast radius** — shows which agents, credentials, and tools each CVE can reach
+5. **Enforces at runtime** — MCP proxy intercepts tool calls, detects rug pulls, blocks credential leaks
+
+Also scans container images, filesystems, IaC files, and cloud infrastructure (AWS/Azure/GCP).
 
 Read-only. Agentless. No secrets leave your machine.
 
@@ -57,12 +62,17 @@ Read-only. Agentless. No secrets leave your machine.
 ## Quick start
 
 ```bash
-agent-bom scan                          # auto-detect + scan everything
-agent-bom check flask@2.0.0            # pre-install CVE gate
+# AI infrastructure & MCP agents
+agent-bom scan                          # auto-detect agents + scan for CVEs
 agent-bom mcp                          # discover + scan MCP agents only
-agent-bom image nginx:latest           # container image scan
-agent-bom cloud aws                    # AWS posture + CIS benchmarks
+agent-bom check flask@2.0.0            # pre-install CVE gate
 agent-bom runtime proxy "npx server"   # runtime enforcement
+
+# Also scans traditional infrastructure
+agent-bom image nginx:latest           # container image scan
+agent-bom fs /mnt/vm-snapshot          # filesystem / VM scan
+agent-bom iac Dockerfile k8s/          # IaC misconfigurations
+agent-bom cloud aws                    # AWS posture + CIS benchmarks
 ```
 
 <details>

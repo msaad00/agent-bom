@@ -1,4 +1,10 @@
-"""CycloneDX 1.6 SBOM output format."""
+"""CycloneDX 1.6 SBOM output format with ML BOM extensions.
+
+Supports native CycloneDX 1.6 machine learning extensions:
+- ``modelCard`` — model provenance, training parameters, performance metrics
+- ``data`` — dataset provenance, governance, classification
+- Component type ``machine-learning-model`` for ML model artifacts
+"""
 
 from __future__ import annotations
 
@@ -19,14 +25,252 @@ def _sanitize_bom_ref(raw: str) -> str:
     return re.sub(r"[^a-zA-Z0-9._-]", "-", raw)
 
 
+# ── ML BOM extension builders ────────────────────────────────────────────────
+
+
+def _build_model_card(provenance: dict) -> dict:
+    """Build a CycloneDX 1.6 modelCard from a model provenance dict.
+
+    Maps HuggingFace/Ollama provenance metadata to the CycloneDX modelCard
+    schema: bom-ref, modelParameters, quantitativeAnalysis, considerations.
+    """
+    card: dict = {}
+
+    # modelParameters — architecture, format, inputs/outputs
+    params: dict = {}
+    if provenance.get("format"):
+        params["approach"] = {"type": provenance["format"]}
+    model_id = provenance.get("model_id", "")
+    if model_id:
+        params["modelArchitecture"] = model_id
+    if provenance.get("metadata"):
+        meta = provenance["metadata"]
+        if meta.get("pipeline_tag"):
+            params["task"] = meta["pipeline_tag"]
+        if meta.get("tags"):
+            params["datasets"] = [{"ref": t} for t in meta["tags"] if t.startswith("dataset:")][:10]
+    if params:
+        card["modelParameters"] = params
+
+    # considerations — safety, security, ethical
+    considerations: dict = {}
+    risk_flags = provenance.get("risk_flags", [])
+    if risk_flags:
+        considerations["technicalLimitations"] = [{"description": f"Risk flag: {flag}"} for flag in risk_flags]
+    safe_format = provenance.get("is_safe_format", True)
+    if not safe_format:
+        considerations.setdefault("technicalLimitations", []).append(
+            {"description": "Model uses unsafe serialization format (pickle/pt) — arbitrary code execution on load"}
+        )
+    if considerations:
+        card["considerations"] = considerations
+
+    return card
+
+
+def _build_model_component(provenance: dict, comp_id: int) -> tuple[dict, str]:
+    """Build a CycloneDX 1.6 component of type machine-learning-model.
+
+    Returns (component_dict, bom_ref).
+    """
+    model_id = provenance.get("model_id", f"model-{comp_id}")
+    ref = _sanitize_bom_ref(f"ml-model-{model_id}-{comp_id}")
+
+    component: dict = {
+        "type": "machine-learning-model",
+        "bom-ref": ref,
+        "name": model_id,
+        "description": f"ML model ({provenance.get('source', 'unknown')})",
+        "properties": [
+            {"name": "agent-bom:model-source", "value": provenance.get("source", "unknown")},
+            {"name": "agent-bom:serialization-format", "value": provenance.get("format", "unknown")},
+            {"name": "agent-bom:safe-format", "value": str(provenance.get("is_safe_format", False)).lower()},
+            {"name": "agent-bom:risk-level", "value": provenance.get("risk_level", "unknown")},
+        ],
+    }
+
+    # Digest for integrity verification
+    digest = provenance.get("digest", "")
+    if digest:
+        component["hashes"] = [{"alg": "SHA-256", "content": digest}]
+
+    # Model card (CycloneDX 1.6 native)
+    model_card = _build_model_card(provenance)
+    if model_card:
+        component["modelCard"] = model_card
+
+    # Security flags as properties
+    for flag in provenance.get("risk_flags", []):
+        component["properties"].append({"name": "agent-bom:risk-flag", "value": flag})
+
+    return component, ref
+
+
+def _build_model_file_component(model_file: dict, comp_id: int) -> tuple[dict, str]:
+    """Build a CycloneDX 1.6 component from a local model file scan result."""
+    filename = model_file.get("filename", f"model-file-{comp_id}")
+    ref = _sanitize_bom_ref(f"ml-file-{filename}-{comp_id}")
+
+    component: dict = {
+        "type": "machine-learning-model",
+        "bom-ref": ref,
+        "name": filename,
+        "version": model_file.get("size_human", ""),
+        "description": f"ML model file ({model_file.get('format', 'unknown')} — {model_file.get('ecosystem', '')})",
+        "properties": [
+            {"name": "agent-bom:format", "value": model_file.get("format", "unknown")},
+            {"name": "agent-bom:ecosystem", "value": model_file.get("ecosystem", "unknown")},
+            {"name": "agent-bom:size-bytes", "value": str(model_file.get("size_bytes", 0))},
+        ],
+    }
+
+    # Security flags (e.g., PICKLE_DESERIALIZATION)
+    for flag in model_file.get("security_flags", []):
+        component["properties"].append(
+            {"name": f"agent-bom:security-{flag.get('type', 'unknown').lower()}", "value": flag.get("severity", "UNKNOWN")}
+        )
+        # Also add to considerations in modelCard
+        component.setdefault("modelCard", {}).setdefault("considerations", {}).setdefault("technicalLimitations", []).append(
+            {"description": flag.get("description", "")}
+        )
+
+    return component, ref
+
+
+def _build_dataset_component(dataset: dict, comp_id: int) -> tuple[dict, str]:
+    """Build a CycloneDX 1.6 component with data classification for datasets.
+
+    Uses the CycloneDX 1.6 ``data`` extension for dataset governance:
+    type, name, classification, contents, governance.
+    """
+    ds_name = dataset.get("name", f"dataset-{comp_id}")
+    ref = _sanitize_bom_ref(f"dataset-{ds_name}-{comp_id}")
+
+    component: dict = {
+        "type": "data",
+        "bom-ref": ref,
+        "name": ds_name,
+        "description": dataset.get("description", "")[:300],
+        "properties": [
+            {"name": "agent-bom:type", "value": "dataset"},
+            {"name": "agent-bom:source-file", "value": dataset.get("source_file", "")},
+        ],
+    }
+
+    # License
+    lic = dataset.get("license", "")
+    if lic:
+        if any(op in lic for op in (" AND ", " OR ", " WITH ")):
+            component["licenses"] = [{"expression": lic}]
+        else:
+            component["licenses"] = [{"license": {"id": lic}}]
+
+    # CycloneDX 1.6 data extension — governance and classification
+    data_ext: dict = {"type": "dataset", "name": ds_name}
+
+    # Contents description
+    contents: dict = {}
+    if dataset.get("features"):
+        contents["properties"] = [{"name": "feature", "value": f} for f in dataset["features"][:20]]
+    if dataset.get("splits"):
+        contents["properties"] = contents.get("properties", []) + [
+            {"name": f"split:{k}", "value": str(v)} for k, v in dataset["splits"].items()
+        ]
+    if contents:
+        data_ext["contents"] = contents
+
+    # Governance
+    governance: dict = {}
+    if dataset.get("task_categories"):
+        governance["custodians"] = [{"organization": {"name": cat}} for cat in dataset["task_categories"][:5]]
+    if dataset.get("languages"):
+        data_ext["classification"] = ", ".join(dataset["languages"])
+    if governance:
+        data_ext["governance"] = governance
+
+    component["data"] = [data_ext]
+
+    # Security flags
+    for flag in dataset.get("security_flags", []):
+        component["properties"].append(
+            {"name": f"agent-bom:flag-{flag.get('type', 'unknown').lower()}", "value": flag.get("severity", "UNKNOWN")}
+        )
+
+    return component, ref
+
+
+def _build_training_component(run: dict, comp_id: int) -> tuple[dict, str]:
+    """Build a CycloneDX 1.6 component for a training pipeline run.
+
+    Uses modelCard.quantitativeAnalysis for metrics and
+    modelCard.modelParameters for hyperparameters.
+    """
+    run_name = run.get("name", f"training-run-{comp_id}")
+    ref = _sanitize_bom_ref(f"training-{run_name}-{comp_id}")
+
+    component: dict = {
+        "type": "machine-learning-model",
+        "bom-ref": ref,
+        "name": run_name,
+        "description": f"Training run ({run.get('framework', 'unknown')})",
+        "properties": [
+            {"name": "agent-bom:type", "value": "training-run"},
+            {"name": "agent-bom:framework", "value": run.get("framework", "unknown")},
+            {"name": "agent-bom:source-file", "value": run.get("source_file", "")},
+        ],
+    }
+
+    if run.get("run_id"):
+        component["properties"].append({"name": "agent-bom:run-id", "value": run["run_id"]})
+    if run.get("model_flavor"):
+        component["properties"].append({"name": "agent-bom:model-flavor", "value": run["model_flavor"]})
+    if run.get("git_sha"):
+        component["properties"].append({"name": "agent-bom:git-sha", "value": run["git_sha"]})
+
+    # Build modelCard with training metadata
+    model_card: dict = {}
+
+    # modelParameters — hyperparameters
+    params = run.get("parameters", {})
+    if params:
+        model_card["modelParameters"] = {
+            "approach": {"type": run.get("model_flavor", run.get("framework", "unknown"))},
+        }
+
+    # quantitativeAnalysis — metrics
+    metrics = run.get("metrics", {})
+    if metrics:
+        model_card["quantitativeAnalysis"] = {"performanceMetrics": [{"type": k, "value": str(v)} for k, v in metrics.items()]}
+
+    # considerations — security flags
+    for flag in run.get("security_flags", []):
+        model_card.setdefault("considerations", {}).setdefault("technicalLimitations", []).append(
+            {"description": flag.get("description", "")}
+        )
+
+    if model_card:
+        component["modelCard"] = model_card
+
+    return component, ref
+
+
+# ── Main export ──────────────────────────────────────────────────────────────
+
+
 def to_cyclonedx(report: AIBOMReport) -> dict:
-    """Build CycloneDX 1.6 dict from report."""
+    """Build CycloneDX 1.6 dict from report with ML BOM extensions.
+
+    Emits native CycloneDX 1.6 ``machine-learning-model`` components with
+    ``modelCard`` for model provenance, ``data`` components for datasets,
+    and training run metadata via ``quantitativeAnalysis``.
+    """
     components = []
     vulnerabilities_cdx = []
     dependencies = []
 
     comp_id = 0
     bom_ref_map = {}
+    ml_component_refs: list[str] = []  # Track ML components for top-level deps
 
     for agent in report.agents:
         agent_ref = _sanitize_bom_ref(f"agent-{agent.name}")
@@ -184,6 +428,36 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
             dependencies.append({"ref": server_ref, "dependsOn": server_deps})
         dependencies.append({"ref": agent_ref, "dependsOn": agent_deps})
 
+    # ── ML BOM extensions: model provenance ──────────────────────────────
+    for prov in report.model_provenance:
+        comp, ref = _build_model_component(prov, comp_id)
+        comp_id += 1
+        components.append(comp)
+        ml_component_refs.append(ref)
+
+    # ── ML BOM extensions: model files ───────────────────────────────────
+    for mf in report.model_files:
+        comp, ref = _build_model_file_component(mf, comp_id)
+        comp_id += 1
+        components.append(comp)
+        ml_component_refs.append(ref)
+
+    # ── ML BOM extensions: dataset cards ─────────────────────────────────
+    if report.dataset_cards and isinstance(report.dataset_cards, dict):
+        for ds in report.dataset_cards.get("datasets", []):
+            comp, ref = _build_dataset_component(ds, comp_id)
+            comp_id += 1
+            components.append(comp)
+            ml_component_refs.append(ref)
+
+    # ── ML BOM extensions: training pipelines ────────────────────────────
+    if report.training_pipelines and isinstance(report.training_pipelines, dict):
+        for run in report.training_pipelines.get("runs", []):
+            comp, ref = _build_training_component(run, comp_id)
+            comp_id += 1
+            components.append(comp)
+            ml_component_refs.append(ref)
+
     cdx = {
         "bomFormat": "CycloneDX",
         "specVersion": "1.6",
@@ -205,6 +479,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                 {"name": "agent-bom:total-agents", "value": str(report.total_agents)},
                 {"name": "agent-bom:total-mcp-servers", "value": str(report.total_servers)},
                 {"name": "agent-bom:total-vulnerabilities", "value": str(report.total_vulnerabilities)},
+                {"name": "agent-bom:ml-models", "value": str(len(report.model_provenance) + len(report.model_files))},
             ],
         },
         "components": components,

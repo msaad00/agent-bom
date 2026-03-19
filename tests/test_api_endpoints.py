@@ -4,11 +4,24 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
 from starlette.testclient import TestClient
 
 from agent_bom import __version__
 from agent_bom.api.server import _jobs, app, set_job_store
 from agent_bom.api.store import InMemoryJobStore
+
+
+@pytest.fixture(autouse=True)
+def _mock_scan_pipeline(monkeypatch):
+    """Prevent real MCP discovery during scan CRUD tests.
+
+    The scan endpoint calls loop.run_in_executor(_executor, _run_scan_sync, job)
+    which triggers discover_all() scanning the local machine. Replace with a
+    no-op so these tests only exercise HTTP routing, not the full pipeline.
+    """
+    monkeypatch.setattr("agent_bom.api.routes.scan._run_scan_sync", lambda job: None)
+
 
 # ---------------------------------------------------------------------------
 # Helper

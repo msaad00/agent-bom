@@ -5,6 +5,7 @@ Endpoints:
     GET  /v1/scan/{job_id}             poll scan status + results
     GET  /v1/scan/{job_id}/attack-flow attack flow graph (React Flow)
     GET  /v1/scan/{job_id}/context-graph context graph with lateral movement
+    GET  /v1/scan/{job_id}/graph-export graph export (json/dot/mermaid/graphml/cypher)
     GET  /v1/scan/{job_id}/licenses    license compliance report
     GET  /v1/scan/{job_id}/vex         VEX document
     GET  /v1/scan/{job_id}/skill-audit skill security audit
@@ -234,6 +235,76 @@ async def get_context_graph(job_id: str, agent: str | None = None) -> dict:
                 paths.extend(find_lateral_paths(graph, nid))
     risks = compute_interaction_risks(graph)
     return to_serializable(graph, paths, risks)
+
+
+@router.get("/v1/scan/{job_id}/graph-export", tags=["scan"])
+async def get_graph_export(job_id: str, format: str = "json") -> dict | str:
+    """Export the dependency graph in graph-native formats.
+
+    Query params:
+      ?format=json      JSON nodes/edges (default)
+      ?format=dot       Graphviz DOT
+      ?format=mermaid   Mermaid flowchart
+      ?format=graphml   GraphML with AIBOM attributes (yEd/Gephi/NetworkX)
+      ?format=cypher    Neo4j Cypher import script
+    """
+    from fastapi.responses import PlainTextResponse
+
+    job = _jobs_get(job_id) or _get_store().get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    if job.status != JobStatus.DONE or not job.result:
+        raise HTTPException(status_code=409, detail="Scan not completed yet")
+
+    from agent_bom.output.graph_export import (
+        DepGraph,
+        to_cypher,
+        to_dot,
+        to_graphml,
+        to_mermaid,
+    )
+    from agent_bom.output.graph_export import (
+        to_json as graph_to_json,
+    )
+
+    # Build DepGraph from scan result
+    graph = DepGraph()
+    result = job.result if isinstance(job.result, dict) else {}
+    for agent in result.get("agents", []):
+        agent_name = agent.get("name", "unknown")
+        source = agent.get("source") or "local"
+        src_id = f"provider:{source}"
+        graph.add_node(src_id, source, "provider")
+        a_id = f"agent:{agent_name}"
+        graph.add_node(a_id, agent_name, "agent")
+        graph.add_edge(src_id, a_id, "hosts")
+        for srv in agent.get("mcp_servers", []):
+            srv_name = srv.get("name", "unknown")
+            s_id = f"server:{agent_name}/{srv_name}"
+            graph.add_node(s_id, srv_name, "server_cred" if srv.get("has_credentials") else "server")
+            graph.add_edge(a_id, s_id, "uses")
+            for pkg in srv.get("packages", []):
+                p_name = pkg.get("name", "?")
+                p_ver = pkg.get("version", "")
+                p_eco = pkg.get("ecosystem", "")
+                vulns = pkg.get("vulnerabilities", [])
+                p_id = f"pkg:{p_eco}/{p_name}@{p_ver}"
+                graph.add_node(p_id, f"{p_name}@{p_ver}" if p_ver else p_name, "pkg_vuln" if vulns else "pkg")
+                graph.add_edge(s_id, p_id, "depends_on")
+                for v in vulns:
+                    v_id = f"cve:{v.get('id', '?')}"
+                    graph.add_node(v_id, v.get("id", "?"), "cve", v.get("severity", "").lower())
+                    graph.add_edge(p_id, v_id, "affects")
+
+    _formats = {
+        "dot": lambda g: PlainTextResponse(to_dot(g), media_type="text/vnd.graphviz"),
+        "mermaid": lambda g: PlainTextResponse(to_mermaid(g), media_type="text/plain"),
+        "graphml": lambda g: PlainTextResponse(to_graphml(g), media_type="application/xml"),
+        "cypher": lambda g: PlainTextResponse(to_cypher(g), media_type="text/plain"),
+    }
+    if format in _formats:
+        return _formats[format](graph)
+    return graph_to_json(graph)
 
 
 @router.get("/v1/scan/{job_id}/licenses", tags=["scan"])

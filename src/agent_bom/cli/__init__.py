@@ -8,7 +8,6 @@ backward-compatible imports used by tests.
 from __future__ import annotations
 
 import sys
-import threading
 
 import click
 
@@ -255,46 +254,17 @@ def upgrade_cmd(check_only: bool) -> None:
 # ---------------------------------------------------------------------------
 # Backward-compatible re-exports used by tests
 # ---------------------------------------------------------------------------
+import agent_bom.cli as _self_module  # noqa: E402
 from agent_bom.cli._check import _parse_package_spec  # noqa: E402, F401
 
 # _NoOpDetector is already imported above
-
-
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+from agent_bom.cli._entry import make_entry_point  # noqa: E402
 
-
-def cli_main() -> None:
-    """Entry point with clean top-level error handling and update check.
-
-    Catches unhandled Python exceptions and prints a user-friendly message
-    instead of a raw traceback.  Pass --verbose to see the full traceback.
-    Starts a background thread to check for newer versions on PyPI.
-    """
-    from rich.console import Console
-
-    _t = threading.Thread(target=_check_for_update_bg, daemon=True)
-    _t.start()
-
-    try:
-        main(standalone_mode=True)
-    except SystemExit as exc:
-        if exc.code == 0:
-            _print_update_notice(Console(stderr=True))
-        raise
-    except KeyboardInterrupt:
-        click.echo("\nInterrupted.", err=True)
-        sys.exit(130)
-    except Exception as exc:  # noqa: BLE001
-        verbose = "--verbose" in sys.argv or "-v" in sys.argv
-        err_console = Console(stderr=True)
-        err_console.print(f"\n[bold red]Error:[/bold red] {exc}")
-        if verbose:
-            err_console.print_exception(show_locals=False)
-        else:
-            err_console.print("[dim]Run with --verbose for full traceback.[/dim]")
-        sys.exit(1)
+# Use lambda with module lookup so unittest.mock.patch("agent_bom.cli.main") works
+cli_main = make_entry_point(lambda: _self_module.main, "agent-bom")
 
 
 __all__ = [

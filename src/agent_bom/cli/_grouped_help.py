@@ -43,7 +43,15 @@ COMMAND_CATEGORIES: OrderedDict[str, list[str]] = OrderedDict(
 
 
 class GroupedGroup(click.Group):
-    """A Click group that displays commands organized by category."""
+    """A Click group that displays commands organized by category.
+
+    Pass ``command_categories`` to override the default category mapping.
+    Each product (agent-bom, agent-shield, etc.) provides its own categories.
+    """
+
+    def __init__(self, *args, command_categories=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._command_categories = command_categories or COMMAND_CATEGORIES
 
     def format_commands(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
         # Collect all available commands
@@ -63,7 +71,7 @@ class GroupedGroup(click.Group):
         # Track which commands have been placed in a category
         placed: set[str] = set()
 
-        for category, cmd_names in COMMAND_CATEGORIES.items():
+        for category, cmd_names in self._command_categories.items():
             rows: list[tuple[str, str]] = []
             for name in cmd_names:
                 if name in commands:

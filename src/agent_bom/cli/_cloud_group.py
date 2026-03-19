@@ -76,7 +76,7 @@ def cloud_group(ctx: click.Context) -> None:
         )
 
 
-@cloud_group.command("aws")
+@click.command("aws")
 @click.option("--region", default=None, help="AWS region")
 @click.option("--profile", default=None, help="AWS credential profile")
 @click.option("--include-lambda", is_flag=True, help="Include Lambda functions")
@@ -118,7 +118,7 @@ def aws_cmd(
     )
 
 
-@cloud_group.command("azure")
+@click.command("azure")
 @click.option("--subscription", default=None, help="Azure subscription ID")
 @click.option("--cis", is_flag=True, default=True, help="Run CIS benchmark (default: on)")
 @click.option("--no-cis", is_flag=True, help="Skip CIS benchmark")
@@ -148,7 +148,7 @@ def azure_cmd(
     )
 
 
-@cloud_group.command("gcp")
+@click.command("gcp")
 @click.option("--project", default=None, help="GCP project ID")
 @click.option("--cis", is_flag=True, default=True, help="Run CIS benchmark (default: on)")
 @click.option("--no-cis", is_flag=True, help="Skip CIS benchmark")
@@ -176,3 +176,9 @@ def gcp_cmd(
         output=output_path,
         quiet=quiet,
     )
+
+
+# Register standalone commands on the cloud group
+cloud_group.add_command(aws_cmd, "aws")
+cloud_group.add_command(azure_cmd, "azure")
+cloud_group.add_command(gcp_cmd, "gcp")

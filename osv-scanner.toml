@@ -20,6 +20,10 @@ reason = "nltk 3.9.3 — XSS in WordNet Browser. No fix available upstream. Re-e
 id = "GHSA-rf74-v2fm-23pw"
 reason = "nltk 3.9.3 — unbounded recursion in JSONTaggedDecoder. No fix available upstream. Re-evaluate when nltk ships a new release."
 
+[[IgnoredVulns]]
+id = "CVE-2026-33231"
+reason = "nltk 3.9.3 — unauthenticated remote shutdown in wordnet_app. No fix upstream. NOT REACHABLE: agent-bom never imports nltk.app.wordnet_app."
+
 # ── Werkzeug — FIXED in 3.1.6 (our locked version) ──────────────────────────
 
 [[IgnoredVulns]]

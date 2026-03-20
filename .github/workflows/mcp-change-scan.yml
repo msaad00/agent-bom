@@ -71,7 +71,7 @@ jobs:
               echo "<summary><code>$f</code></summary>" >> scan-report.md
               echo "" >> scan-report.md
               echo '```' >> scan-report.md
-              uv run agent-bom scan --project "$(dirname "$f")" --format json 2>&1 | head -100 >> scan-report.md || true
+              uv run agent-bom agents --project "$(dirname "$f")" --format json 2>&1 | head -100 >> scan-report.md || true
               echo '```' >> scan-report.md
               echo "</details>" >> scan-report.md
               echo "" >> scan-report.md

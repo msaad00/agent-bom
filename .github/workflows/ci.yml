@@ -431,10 +431,10 @@ jobs:
         run: |
           # Scan the real venv SBOM — dogfoods the scanner against actual deps.
           # Any CVE here is a real vulnerability in agent-bom's supply chain.
-          uv run agent-bom scan --sbom /tmp/agent-bom-self-scan.cdx.json \
+          uv run agent-bom sbom /tmp/agent-bom-self-scan.cdx.json \
             -f json -o /tmp/agent-bom-self-scan-results.json || true
           # Also generate SARIF for potential future upload
-          uv run agent-bom scan --sbom /tmp/agent-bom-self-scan.cdx.json \
+          uv run agent-bom sbom /tmp/agent-bom-self-scan.cdx.json \
             -f sarif -o results.sarif || true
           if [ ! -f results.sarif ]; then
             echo '{"$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json","version":"2.1.0","runs":[{"tool":{"driver":{"name":"agent-bom"}},"results":[]}]}' > results.sarif

@@ -30,15 +30,15 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
  Fix: upgrade better-sqlite3 → 11.7.0
 ```
 
-**agent-bom maps the blast radius**: CVE → package → MCP server → AI agent → credentials → tools. One command, zero config.
+**agent-bom maps the blast radius**: CVE → package → MCP server → AI agent → credentials → tools.
 
 ```bash
 pip install agent-bom
-agent-bom scan
+agent-bom agents
 ```
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.72.0.gif" alt="agent-bom scan demo" width="900" />
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.72.0.gif" alt="agent-bom agents demo" width="900" />
 </p>
 
 ---
@@ -47,13 +47,24 @@ agent-bom scan
 
 Security scanner purpose-built for AI infrastructure and supply chain.
 
-1. **Discovers** AI agents and MCP servers — auto-detects configs across Claude Desktop, Cursor, Windsurf, VS Code Copilot, and 26 more clients (30 total)
-2. **Generates an AI BOM** — inventory of every agent, server, package, credential, and tool in your AI stack
-3. **Scans for CVEs** — checks every dependency against OSV + NVD + GHSA + EPSS + CISA KEV
-4. **Maps blast radius** — shows which agents, credentials, and tools each CVE can reach
-5. **Enforces at runtime** — MCP proxy intercepts tool calls, detects rug pulls, blocks credential leaks
+**AI Supply Chain Security:**
+1. **Discovers** AI agents + MCP servers — 30 client types, auto-detected from config files
+2. **Scans source code** — AST analysis extracts system prompts, guardrails, tool signatures from Python AI frameworks (LangChain, CrewAI, OpenAI Agents SDK, and 7 more)
+3. **Generates an AI BOM** — CycloneDX 1.6 with native ML extensions (modelCard, datasets, training metadata)
+4. **Scans for CVEs** — every dependency checked against OSV + NVD + GHSA + EPSS + CISA KEV
+5. **Maps blast radius** — CVE → package → MCP server → AI agent → credentials → tools
+6. **Detects secrets** — 31 credential patterns + 11 PII patterns across source, config, and .env files
+7. **Enforces at runtime** — MCP proxy with 112 detection patterns, PII redaction, deep defense mode
 
-Also scans container images, filesystems, IaC files, and cloud infrastructure (AWS/Azure/GCP).
+**Also scans:** container images, filesystems, IaC (89 rules), cloud posture (AWS/Azure/GCP CIS benchmarks).
+
+**Shield SDK** — drop-in Python middleware for any AI agent pipeline:
+```python
+from agent_bom.shield import Shield
+shield = Shield(deep=True)
+alerts = shield.check_tool_call("exec", {"command": "rm -rf /"})
+safe = shield.redact(response_text)  # [REDACTED:OpenAI API Key]
+```
 
 Read-only. Agentless. No secrets leave your machine.
 
@@ -62,25 +73,33 @@ Read-only. Agentless. No secrets leave your machine.
 ## Quick start
 
 ```bash
-pip install agent-bom                   # installs all 5 products
+pip install agent-bom
 ```
 
 ```bash
-# AI agent security
-agent-bom agents                        # discover AI agents + MCP + scan + blast radius
-agent-bom check flask@2.0.0            # pre-install CVE gate
-agent-bom proxy "npx @mcp/server-fs"   # MCP security proxy (110 patterns, 7 detectors)
+# AI agent discovery + vulnerability scanning + blast radius
+agent-bom agents
 
-# Infrastructure scanning
-agent-bom image nginx:latest           # container image
-agent-bom fs /path/to/project          # filesystem
-agent-bom iac Dockerfile k8s/ infra/   # IaC misconfigurations (89 rules)
-agent-bom cloud aws                    # AWS Bedrock/Lambda + CIS v3.0
+# Pre-install CVE gate
+agent-bom check flask@2.0.0
 
-# Analysis & reporting
-agent-bom graph report.json -f graphml # dependency graph (GraphML/Neo4j/DOT/Mermaid)
-agent-bom audit proxy-log.jsonl        # replay proxy audit logs
-agent-bom report analytics --days 30   # vulnerability trends
+# MCP security proxy (112 patterns, 7 detectors, PII redaction)
+agent-bom proxy "npx @mcp/server-filesystem /tmp"
+
+# Container image scan
+agent-bom image nginx:latest
+
+# IaC misconfigurations (89 rules: Dockerfile, K8s, Terraform, CloudFormation, Helm)
+agent-bom iac Dockerfile k8s/ infra/main.tf
+
+# Cloud posture + CIS benchmarks
+agent-bom cloud aws
+
+# Dependency graph export (Neo4j, GraphML, Graphviz, Mermaid)
+agent-bom graph report.json --format cypher --output import.cypher
+
+# Red team — test your defenses (100% detection, 0% false positives)
+python -c "from agent_bom.red_team import run_red_team; print(run_red_team()['detection_rate'])"
 ```
 
 <details>
@@ -97,6 +116,20 @@ Database:     db [update|status]
 
 </details>
 
+<details>
+<summary><b>CI/CD usage</b></summary>
+
+```yaml
+# GitHub Actions
+- run: agent-bom agents --format sarif --output results.sarif
+- run: agent-bom image myapp:latest --fail-on-severity critical
+- run: agent-bom iac infra/ --format sarif
+- run: agent-bom cloud aws --format json
+- run: agent-bom check flask@2.0.0
+```
+
+</details>
+
 ---
 
 ## Instruction file trust
@@ -104,7 +137,7 @@ Database:     db [update|status]
 AI agents run on instruction files — CLAUDE.md, .cursorrules, AGENTS.md. A malicious instruction file is a supply chain attack with full agent permissions.
 
 ```
-agent-bom scan --skill-only
+agent-bom agents --skill-only
 
 CLAUDE.md  →  SUSPICIOUS (high confidence)
   [CRITICAL] Credential/secret file access
@@ -118,7 +151,7 @@ CLAUDE.md  →  SUSPICIOUS (high confidence)
 
 ## MCP server
 
-33 scanning tools available inside any MCP-compatible AI assistant.
+33 security tools available inside any MCP-compatible AI assistant.
 
 ```bash
 pip install 'agent-bom[mcp-server]'
@@ -144,16 +177,17 @@ Also on [Glama](https://glama.ai/mcp/servers/@msaad00/agent-bom), [Smithery](int
 
 ```bash
 pip install agent-bom                  # CLI
-docker run --rm agentbom/agent-bom scan  # Docker (linux/amd64 + arm64)
+docker run --rm agentbom/agent-bom agents  # Docker (linux/amd64 + arm64)
 ```
 
 | Mode | Command | Best for |
 |------|---------|----------|
-| CLI | `agent-bom scan` | Local audit |
+| CLI | `agent-bom agents` | Local audit |
 | GitHub Action | `uses: msaad00/agent-bom@v0` | CI/CD + SARIF |
-| Docker | `docker run agentbom/agent-bom scan` | Isolated scans |
+| Docker | `docker run agentbom/agent-bom agents` | Isolated scans |
 | MCP Server | `agent-bom mcp server` | Inside any AI assistant |
-| Runtime proxy | `agent-bom runtime proxy` | Enforce MCP traffic |
+| Runtime proxy | `agent-bom proxy` | MCP traffic enforcement |
+| Shield SDK | `from agent_bom.shield import Shield` | In-process protection |
 | Dashboard | `agent-bom serve` | API + Next.js UI |
 
 <details>
@@ -219,12 +253,12 @@ docker run --rm agentbom/agent-bom scan  # Docker (linux/amd64 + arm64)
 <details>
 <summary><b>Output formats</b></summary>
 
-JSON, SARIF, CycloneDX 1.6, SPDX 3.0, HTML, JUnit XML, CSV, Markdown, Mermaid, SVG, Graph HTML, Prometheus, Badge — 15 formats total.
+JSON, SARIF, CycloneDX 1.6 (with ML BOM), SPDX 3.0, HTML, GraphML, Neo4j Cypher, JUnit XML, CSV, Markdown, Mermaid, SVG, Graph HTML, Prometheus, Badge, OCSF v1.1 — 17 formats.
 
 ```bash
-agent-bom scan -f sarif -o results.sarif     # GitHub Security tab
-agent-bom scan -f html -o report.html        # Interactive dashboard
-agent-bom scan -f cyclonedx -o sbom.json     # CycloneDX 1.6
+agent-bom agents -f sarif -o results.sarif     # GitHub Security tab
+agent-bom agents -f html -o report.html        # Interactive dashboard
+agent-bom agents -f cyclonedx -o sbom.json     # CycloneDX 1.6
 ```
 
 </details>
@@ -235,13 +269,33 @@ agent-bom scan -f cyclonedx -o sbom.json     # CycloneDX 1.6
 
 | When | What's sent | Where | Opt out |
 |---|---|---|---|
-| `agent-bom scan` | Package names + versions only | OSV API | `--offline` |
+| `agent-bom agents` | Package names + versions only | OSV API | `--offline` |
 | `--enrich` | CVE IDs only | NVD, EPSS, KEV APIs | Don't use `--enrich` |
 | Everything else | **Nothing** | Nowhere | N/A |
 
 No source code, no secrets, no telemetry ever leave your machine. Every release is [Sigstore-signed](docs/PERMISSIONS.md). See [SECURITY_ARCHITECTURE.md](docs/SECURITY_ARCHITECTURE.md) for the full trust model.
 
 ---
+
+## AI supply chain — what we scan
+
+```
+Model weights ─── HuggingFace, Ollama ──── provenance + hash verification
+     │
+AI Framework ─── LangChain, CrewAI, OpenAI ── AST analysis: prompts, guardrails, tools
+     │
+MCP Server ───── npx @mcp/server-fs ──────── config parsing + tool poisoning detection
+     │
+Packages ─────── express@4.17.1 ───────────── 11 ecosystems, CVE/EPSS/KEV scanning
+     │
+AI Agent ─────── Claude Desktop, Cursor ───── 30 MCP clients auto-detected
+     │
+Credentials ──── API keys, tokens ──────────── exposure mapping + PII redaction
+     │
+Tools ────────── read_file, exec_cmd ──────── capability classification + blast radius
+```
+
+**Also scans:** container images, filesystems, IaC (Dockerfile/K8s/Terraform/CloudFormation/Helm), cloud infrastructure (AWS/Azure/GCP CIS benchmarks), secrets in source code.
 
 ## Architecture
 

@@ -93,12 +93,12 @@ def test_run_help():
     assert "--rate-limit" in result.output
 
 
-def test_run_present_in_main_help():
-    """``agent-bom run`` must appear in the top-level help."""
+def test_run_still_works_as_hidden_command():
+    """``agent-bom run`` is hidden but still callable (backward compat)."""
     runner = CliRunner()
-    result = runner.invoke(main, ["--help"])
+    result = runner.invoke(main, ["run", "--help"])
     assert result.exit_code == 0
-    assert "run" in result.output
+    assert "proxy" in result.output.lower()
 
 
 def test_run_delegates_to_run_proxy():

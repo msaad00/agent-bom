@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "agent-bom"
 version = "0.73.0"
-description = "Security scanner for AI infrastructure and supply chain. Discover MCP configs (30 clients), generate AI BOMs with tool capabilities, scan for CVEs (OSV/NVD/EPSS/KEV) with version-accurate resolution, map blast radius to credentials and tools, runtime proxy with 7 detectors, 32 MCP tools, CIS benchmarks (AWS/Azure/GCP/Snowflake), MITRE ATT&CK mapping, 14-framework compliance, and 16 output formats."
+description = "Security scanner for AI infrastructure and supply chain. AI agent discovery (30 MCP clients), AST source code analysis, AI BOM generation (CycloneDX 1.6 ML extensions), CVE scanning (OSV/NVD/EPSS/KEV), blast radius mapping (CVE → package → MCP server → agent → credentials → tools), runtime proxy (112 detection patterns, PII redaction), Shield SDK, secret scanning, red team simulator, 33 MCP tools, CIS benchmarks, 14-framework compliance, 17 output formats."
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.11"

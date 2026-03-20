@@ -1543,6 +1543,50 @@ def scan(
         for w in all_tp_warnings:
             con.print(f"  [yellow]⚠[/yellow] {w}")
 
+    # ── Step 1m: AST source code analysis (auto-detect Python AI code) ──
+    if not skill_only and project and not dry_run:
+        from pathlib import Path as _APath
+
+        _aproj = _APath(project)
+        # Auto-detect: any .py file with AI framework imports
+        _has_py = list(_aproj.rglob("*.py"))[:1]
+        if _has_py:
+            try:
+                from agent_bom.ast_analyzer import analyze_project as _ast_analyze
+
+                _ast_result = _ast_analyze(project)
+                if _ast_result.prompts or _ast_result.guardrails or _ast_result.tools:
+                    report.ai_inventory_data = report.ai_inventory_data or {}
+                    report.ai_inventory_data["ast_analysis"] = _ast_result.to_dict()
+                    _n_prompts = len(_ast_result.prompts)
+                    _n_guards = len(_ast_result.guardrails)
+                    _n_tools = len(_ast_result.tools)
+                    _n_risky = sum(1 for p in _ast_result.prompts if p.risk_flags)
+                    if _n_prompts or _n_guards or _n_tools:
+                        con.print(
+                            f"  [cyan]>[/cyan] Code analysis: {_n_prompts} prompts, "
+                            f"{_n_guards} guardrails, {_n_tools} tools" + (f" [red]({_n_risky} risky prompts)[/red]" if _n_risky else "")
+                        )
+                    _scan_sources.append("ast_analysis")
+            except Exception:
+                pass  # AST analysis not available
+
+    # ── Step 1n: Secret scanning (auto-detect in project) ──────────
+    if not skill_only and project and not dry_run:
+        try:
+            from agent_bom.secret_scanner import scan_secrets as _scan_secrets
+
+            _secret_result = _scan_secrets(project)
+            if _secret_result.total > 0:
+                report.ai_inventory_data = report.ai_inventory_data or {}
+                report.ai_inventory_data["secrets"] = _secret_result.to_dict()
+                con.print(
+                    f"  [red]![/red] Secrets: {_secret_result.total} hardcoded secrets/PII found ({_secret_result.critical_count} critical)"
+                )
+                _scan_sources.append("secret_scan")
+        except Exception:
+            pass  # Secret scanning not available
+
     # Persist browser extension results to report
     if ctx._browser_ext_results is not None:
         report.browser_extensions = ctx._browser_ext_results

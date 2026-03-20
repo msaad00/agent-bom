@@ -73,16 +73,14 @@ from agent_bom.cli.agents import scan as _agents_cmd  # noqa: E402
 # 'agents' is the primary visible command.
 main.add_command(_agents_cmd, "agents")
 
-# 'scan' kept as hidden backward-compat CLI alias (50+ tests use it).
-# Can't use same object as agents (hiding one hides both), so we
-# just re-add with a different name in commands dict.
-main.commands["scan"] = click.Command(
-    name="scan",
-    callback=_agents_cmd.callback,
-    params=list(_agents_cmd.params),
-    help=_agents_cmd.help,
-    hidden=True,
-)
+# 'scan' kept as hidden backward-compat CLI alias (50+ tests + CI use it).
+# Clone the command object so hiding doesn't affect 'agents'.
+import copy as _copy  # noqa: E402
+
+_scan_hidden = _copy.copy(_agents_cmd)
+_scan_hidden.hidden = True
+_scan_hidden.name = "scan"
+main.commands["scan"] = _scan_hidden
 
 from agent_bom.cli._inventory import completions_cmd, inventory, validate, where  # noqa: E402
 

@@ -12,6 +12,35 @@ from rich.console import Console
 from agent_bom import __version__
 
 
+def _detect_ecosystem(name: str) -> Optional[str]:
+    """Detect ecosystem by checking if package exists on PyPI or npm.
+
+    Returns the ecosystem name, or None if ambiguous (exists on both
+    or network unavailable) — caller should scan both.
+    """
+    try:
+        from agent_bom.http_client import sync_get
+
+        on_pypi = False
+        on_npm = False
+
+        pypi_resp = sync_get(f"https://pypi.org/pypi/{name}/json", timeout=3)
+        if pypi_resp and pypi_resp.status_code == 200:
+            on_pypi = True
+
+        npm_resp = sync_get(f"https://registry.npmjs.org/{name}", timeout=3)
+        if npm_resp and npm_resp.status_code == 200:
+            on_npm = True
+
+        if on_pypi and not on_npm:
+            return "pypi"
+        if on_npm and not on_pypi:
+            return "npm"
+        return None  # ambiguous — scan both
+    except Exception:
+        return None
+
+
 def _parse_package_spec(
     package_spec: str,
     ecosystem: Optional[str] = None,
@@ -19,6 +48,7 @@ def _parse_package_spec(
     """Parse a package spec into (name, version, ecosystem).
 
     Handles npx/uvx prefixes, scoped npm packages, and name@version.
+    Auto-detects ecosystem when not specified.
     """
     spec = package_spec.strip()
     if spec.startswith("npx ") or spec.startswith("uvx "):
@@ -37,10 +67,13 @@ def _parse_package_spec(
         name, version = spec, "unknown"
 
     if not ecosystem:
-        if name.startswith("@") or "-" in name and "." not in name:
+        if name.startswith("@"):
             ecosystem = "npm"
-        else:
+        elif "." in name or "_" in name:
             ecosystem = "pypi"
+        else:
+            # Ambiguous — try to detect, default to pypi
+            ecosystem = _detect_ecosystem(name) or "pypi"
 
     return name, version, ecosystem
 
@@ -73,45 +106,67 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bo
 
     console = Console(no_color=no_color)
 
-    name, version, ecosystem = _parse_package_spec(package_spec, ecosystem)
+    name, version, detected_eco = _parse_package_spec(package_spec, ecosystem)
 
-    from agent_bom.models import Package
+    from agent_bom.models import Package, normalize_package_name
     from agent_bom.scanners import build_vulnerabilities, query_osv_batch
-
-    pkg = Package(name=name, version=version, ecosystem=ecosystem)
 
     if version == "unknown":
         console.print(f"[yellow]⚠ No version specified for {name} — skipping OSV lookup.[/yellow]")
         console.print("  Provide a version: agent-bom check name@version --ecosystem ecosystem")
         sys.exit(0)
 
-    # Resolve "latest" / empty version from npm/PyPI registry
+    # Scan both pypi+npm for ambiguous packages (no dots, no underscores, no @)
+    # This catches packages like lodash that exist on both registries
+    if not ecosystem and not name.startswith("@") and "." not in name and "_" not in name:
+        ecosystems: list[str] = ["pypi", "npm"]
+    else:
+        ecosystems = [detected_eco]
+    pkgs = [Package(name=name, version=version, ecosystem=eco) for eco in ecosystems]
+
+    # Resolve "latest" / empty version from registry
     if version in ("latest", ""):
         from agent_bom.http_client import create_client
         from agent_bom.resolver import resolve_package_version
 
         async def _resolve() -> bool:
             async with create_client(timeout=15.0) as client:
-                return await resolve_package_version(pkg, client)
+                for p in pkgs:
+                    if await resolve_package_version(p, client):
+                        return True
+                return False
 
         with console.status("[bold]Resolving version from registry...[/bold]", spinner="dots"):
             resolved = asyncio.run(_resolve())
         if resolved:
-            console.print(f"  [green]✓ Resolved @latest → {pkg.version}[/green]")
-            version = pkg.version
+            version = next((p.version for p in pkgs if p.version not in ("unknown", "latest", "")), version)
+            for p in pkgs:
+                p.version = version
+            console.print(f"  [green]✓ Resolved @latest → {version}[/green]")
         else:
-            console.print(f"[yellow]⚠ Could not resolve latest version for {name} ({ecosystem})[/yellow]")
+            eco_str = "/".join(ecosystems)
+            console.print(f"[yellow]⚠ Could not resolve latest version for {name} ({eco_str})[/yellow]")
             console.print("  Provide an explicit version: agent-bom check name@1.2.3 -e ecosystem")
             sys.exit(0)
 
-    console.print(f"\n[bold blue]🔍 Checking {name}@{version} ({ecosystem})[/bold blue]\n")
+    eco_display = "/".join(ecosystems)
+    console.print(f"\n[bold blue]🔍 Checking {name}@{version} ({eco_display})[/bold blue]\n")
 
     with console.status("[bold]Querying OSV...[/bold]", spinner="dots"):
-        results = asyncio.run(query_osv_batch([pkg]))
-    from agent_bom.models import normalize_package_name
+        results = asyncio.run(query_osv_batch(pkgs))
 
-    key = f"{ecosystem}:{normalize_package_name(name, ecosystem)}@{version}"
-    vuln_data = results.get(key, [])
+    # Merge results from all ecosystems
+    vuln_data: list[dict] = []
+    matched_eco = ecosystems[0]
+    for eco in ecosystems:
+        key = f"{eco}:{normalize_package_name(name, eco)}@{version}"
+        eco_vulns = results.get(key, [])
+        if eco_vulns:
+            vuln_data.extend(eco_vulns)
+            matched_eco = eco
+
+    ecosystem = matched_eco
+    pkg = Package(name=name, version=version, ecosystem=ecosystem)
 
     if not vuln_data:
         console.print(f"  [green]✓ No known vulnerabilities in {name}@{version}[/green]\n")

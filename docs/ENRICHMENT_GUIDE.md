@@ -14,22 +14,22 @@ agent-bom now enriches vulnerability data with **three critical sources**:
 
 ### Basic Scan (OSV only)
 ```bash
-agent-bom scan
+agent-bom agents
 ```
 
 ### **Enhanced Scan with Enrichment**
 ```bash
-agent-bom scan --enrich
+agent-bom agents --enrich
 ```
 
 ### With NVD API Key (Recommended)
 ```bash
 # Set API key as environment variable
 export NVD_API_KEY="your-api-key-here"
-agent-bom scan --enrich
+agent-bom agents --enrich
 
 # Or pass directly
-agent-bom scan --enrich --nvd-api-key="your-api-key-here"
+agent-bom agents --enrich --nvd-api-key="your-api-key-here"
 ```
 
 **Get NVD API Key**: https://nvd.nist.gov/developers/request-an-api-key
@@ -189,10 +189,10 @@ if no_api_key and num_requests > 5:
 ### 1. Always Use Enrichment for Production Scans
 ```bash
 # DO THIS
-agent-bom scan --enrich --format json --output production-bom.json
+agent-bom agents --enrich --format json --output production-bom.json
 
 # NOT THIS (missing critical context)
-agent-bom scan --format json --output production-bom.json
+agent-bom agents --format json --output production-bom.json
 ```
 
 ### 2. Get NVD API Key
@@ -217,7 +217,7 @@ Priority 5: severity = HIGH/MEDIUM     → Patch when convenient
 CISA adds new CVEs weekly. Re-scan regularly:
 ```bash
 # Daily production scan
-0 2 * * * agent-bom scan --enrich --output /var/log/agent-bom/daily-$(date +\%Y\%m\%d).json
+0 2 * * * agent-bom agents --enrich --output /var/log/agent-bom/daily-$(date +\%Y\%m\%d).json
 ```
 
 ---
@@ -253,10 +253,10 @@ Enhanced vulnerability object:
 
 ```bash
 # Test with transitive deps + enrichment
-agent-bom scan --transitive --enrich
+agent-bom agents --transitive --enrich
 
 # Export enriched data
-agent-bom scan --enrich --format json --output enriched-test.json
+agent-bom agents --enrich --format json --output enriched-test.json
 
 # Verify enrichment worked
 python3 -c "import json; d=json.load(open('enriched-test.json')); print('EPSS:', any('epss_score' in v for p in d['agents'][0]['mcp_servers'][0]['packages'] for v in p['vulnerabilities']))"
@@ -278,8 +278,8 @@ python3 -c "import json; d=json.load(open('enriched-test.json')); print('EPSS:',
 The `--scorecard` flag enriches packages with [OpenSSF Scorecard](https://scorecard.dev/) scores from `api.securityscorecards.dev`. Scorecard measures the security health of open source projects across 18 checks (Code-Review, Maintained, Vulnerabilities, etc.).
 
 ```bash
-agent-bom scan --scorecard                    # enrich packages with scorecard data
-agent-bom scan --enrich --scorecard -f json   # full enrichment + scorecard
+agent-bom agents --scorecard                    # enrich packages with scorecard data
+agent-bom agents --enrich --scorecard -f json   # full enrichment + scorecard
 ```
 
 **How it works:**

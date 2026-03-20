@@ -173,7 +173,7 @@ Users can restrict or bypass auto-discovery entirely:
 | `--skill-only` | Runs only skill scanning, skips all agent/package/CVE analysis |
 | `--no-scan` | Inventory-only mode — discovers configs but makes no network calls |
 
-**Recommended first run**: `agent-bom scan --dry-run` to preview the complete access plan before any actual scanning.
+**Recommended first run**: `agent-bom agents --dry-run` to preview the complete access plan before any actual scanning.
 
 ---
 
@@ -228,22 +228,22 @@ follows the principle of least privilege with read-only scopes.
 
 ```bash
 # Preferred: SSO (default — opens browser for Okta/Azure AD/Google)
-agent-bom scan --snowflake
+agent-bom agents --snowflake
 
 # Key-pair auth (recommended for CI/CD — no browser needed)
 SNOWFLAKE_PRIVATE_KEY_PATH=~/.ssh/snowflake_key.p8 \
-agent-bom scan --snowflake
+agent-bom agents --snowflake
 
 # Explicit SSO
-agent-bom scan --snowflake --snowflake-authenticator externalbrowser
+agent-bom agents --snowflake --snowflake-authenticator externalbrowser
 
 # OAuth access token
 SNOWFLAKE_AUTHENTICATOR=oauth SNOWFLAKE_TOKEN=<token> \
-agent-bom scan --snowflake
+agent-bom agents --snowflake
 
 # OAuth token
 SNOWFLAKE_TOKEN=<token> \
-agent-bom scan --snowflake --snowflake-authenticator oauth
+agent-bom agents --snowflake --snowflake-authenticator oauth
 ```
 
 ### CIA Triad compliance

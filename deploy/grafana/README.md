@@ -23,7 +23,7 @@ Pre-built Grafana dashboard for agent-bom Prometheus metrics.
 
 ## Metrics Sources
 
-- **Scan metrics** — Push via `agent-bom scan --push-gateway http://pushgateway:9091`
+- **Scan metrics** — Push via `agent-bom agents --push-gateway http://pushgateway:9091`
 - **Proxy metrics** — Scraped from `agent-bom proxy --metrics-port 8422` at `/metrics`
 
 ## Requirements

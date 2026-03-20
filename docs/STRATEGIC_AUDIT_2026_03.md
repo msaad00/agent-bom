@@ -288,7 +288,7 @@ Cortex Code has a sophisticated security model that agent-bom should integrate w
 3. **Cortex Code skill for agent-bom**
    - Create an agent-bom SKILL.md for Cortex Code's skills directory
    - Cortex Code supports the same SKILL.md format — our existing skills work
-   - Deploy as a Cortex Code skill that wraps `agent-bom scan`
+   - Deploy as a Cortex Code skill that wraps `agent-bom agents`
 
 4. **Scan Cortex Code's MCP servers**
    - Auto-discover `~/.snowflake/cortex/mcp.json`
@@ -316,7 +316,7 @@ Cortex Code has a sophisticated security model that agent-bom should integrate w
 
 8. **Pre-built Cortex Code hook**
    - Cortex Code supports hooks (like Claude Code)
-   - Create a pre-execution hook that runs agent-bom scan before installing new MCP servers
+   - Create a pre-execution hook that runs agent-bom agents before installing new MCP servers
    - Automatic supply chain check before any new tool is added
 
 9. **Snowflake Marketplace listing**
@@ -462,7 +462,7 @@ Potentially patentable novel methods:
 
 1. **File trademark NOW** — protect the name before the space gets crowded
 2. **Add Cortex Code discovery** — `~/.snowflake/cortex/mcp.json` to CONFIG_LOCATIONS (tiny PR, huge signal)
-3. **Create Cortex Code skill** — SKILL.md that wraps `agent-bom scan` for Coco users
+3. **Create Cortex Code skill** — SKILL.md that wraps `agent-bom agents` for Coco users
 4. **Engage Renxu** — he can champion internal adoption at Snowflake
 5. **Position clearly**: "agent-bom is the only security scanner that covers the full AI agent stack — from CVEs to MCP tools to runtime enforcement to compliance"
 

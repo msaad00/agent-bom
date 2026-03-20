@@ -87,7 +87,7 @@ sequenceDiagram
     participant BlastRadius
     participant Reporter
 
-    User->>CLI: agent-bom scan [options]
+    User->>CLI: agent-bom agents [options]
     CLI->>Discovery: Detect MCP configs, images, clouds
     Discovery-->>CLI: Agents, servers, packages, tools
 

@@ -56,7 +56,7 @@ agent-bom is designed to scale from local CLI usage to enterprise-wide AI infras
 pip install agent-bom
 
 # Scan local MCP configs
-agent-bom scan --enrich --output report.json
+agent-bom agents --enrich --output report.json
 ```
 
 **Pros**: Simple, no infrastructure needed
@@ -143,7 +143,7 @@ jobs:
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: |
-          agent-bom scan --enrich \
+          agent-bom agents --enrich \
             --format json \
             --output ai-bom.json
 
@@ -175,7 +175,7 @@ ai-bom-scan:
   stage: security
   script:
     - pip install agent-bom
-    - agent-bom scan --enrich --output ai-bom.json
+    - agent-bom agents --enrich --output ai-bom.json
   artifacts:
     reports:
       cyclonedx: ai-bom.json
@@ -196,7 +196,7 @@ pipeline {
         stage('AI-BOM Scan') {
             steps {
                 sh 'pip install agent-bom'
-                sh 'agent-bom scan --enrich --output ai-bom.json'
+                sh 'agent-bom agents --enrich --output ai-bom.json'
 
                 script {
                     def report = readJSON file: 'ai-bom.json'
@@ -290,7 +290,7 @@ from agent_bom.cli import main
 
 def lambda_handler(event, context):
     """
-    Trigger agent-bom scan from Lambda.
+    Trigger agent-bom agents from Lambda.
     Event payload:
     {
         "snowflake_account": "myaccount",
@@ -463,7 +463,7 @@ def scan_remote_vm(hostname, username, key_path):
 
 **Usage**:
 ```bash
-agent-bom scan --remote ssh://user@vm.example.com --key ~/.ssh/id_rsa
+agent-bom agents --remote ssh://user@vm.example.com --key ~/.ssh/id_rsa
 ```
 
 #### 2. Agent-Based Scanning (Similar to Wiz/Prisma Cloud)
@@ -500,19 +500,19 @@ agent-bom scan --remote ssh://user@vm.example.com --key ~/.ssh/id_rsa
 
 ```python
 # Scan Snowflake Cortex via API (uses SSO by default)
-agent-bom scan --snowflake-account myaccount \
+agent-bom agents --snowflake-account myaccount \
                --snowflake-user myuser
 
 # Or with key-pair auth (CI/CD)
 SNOWFLAKE_PRIVATE_KEY_PATH=~/.ssh/sf_key.p8 \
-agent-bom scan --snowflake-account myaccount --snowflake-user myuser
+agent-bom agents --snowflake-account myaccount --snowflake-user myuser
 
 # Scan AWS Bedrock via API
-agent-bom scan --aws-region us-east-1 \
+agent-bom agents --aws-region us-east-1 \
                --aws-profile production
 
 # Scan Azure OpenAI via API
-agent-bom scan --azure-subscription-id xxx \
+agent-bom agents --azure-subscription-id xxx \
                --azure-resource-group rg-ai
 ```
 
@@ -548,10 +548,10 @@ def scan_vm_fleet(vm_list):
 
 ```bash
 # Store fingerprint of last scan
-agent-bom scan --output /var/lib/agent-bom/baseline.json
+agent-bom agents --output /var/lib/agent-bom/baseline.json
 
 # Next scan: compare to baseline
-agent-bom scan --baseline /var/lib/agent-bom/baseline.json \
+agent-bom agents --baseline /var/lib/agent-bom/baseline.json \
                --output /var/lib/agent-bom/delta.json
 ```
 
@@ -627,10 +627,10 @@ if new_packages:
 export NVD_API_KEY=xxx
 export SNOWFLAKE_PRIVATE_KEY_PATH=~/.ssh/snowflake_key.p8
 
-agent-bom scan --enrich
+agent-bom agents --enrich
 
 # Or use secret managers
-agent-bom scan --secret-provider aws-secrets-manager \
+agent-bom agents --secret-provider aws-secrets-manager \
                --secret-id prod/agent-bom/nvd-key
 ```
 

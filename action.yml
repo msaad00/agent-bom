@@ -180,7 +180,7 @@ runs:
           fi
         fi
 
-    - name: Run agent-bom scan
+    - name: Run agent-bom agents
       id: scan
       shell: bash
       env:
@@ -217,7 +217,7 @@ runs:
         fi
 
         # Map scan-type to focused command (Trivy-style)
-        #   scan  → agent-bom scan (full auto-detect, default)
+        #   scan  → agent-bom agents (full auto-detect, default)
         #   image → agent-bom image <ref>
         #   fs    → agent-bom fs <path>
         #   sbom  → agent-bom sbom <path>

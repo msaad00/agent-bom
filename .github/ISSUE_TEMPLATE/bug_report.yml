@@ -33,7 +33,7 @@ body:
     attributes:
       label: What happened?
       description: A clear description of the bug.
-      placeholder: "When I run `agent-bom scan --enrich`, it..."
+      placeholder: "When I run `agent-bom agents --enrich`, it..."
     validations:
       required: true
 
@@ -51,7 +51,7 @@ body:
       label: Steps to reproduce
       description: Minimal steps to trigger the issue.
       placeholder: |
-        1. Run `agent-bom scan ...`
+        1. Run `agent-bom agents ...`
         2. See error
     validations:
       required: true

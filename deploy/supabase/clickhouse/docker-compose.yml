@@ -7,7 +7,7 @@
 #   # Grafana:    http://localhost:3001 (admin/admin)
 #
 # Then run scans with analytics enabled:
-#   agent-bom scan --clickhouse-url http://localhost:8123
+#   agent-bom agents --clickhouse-url http://localhost:8123
 #
 # Or query via MCP:
 #   analytics_query(query_type="top_cves")

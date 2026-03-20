@@ -60,36 +60,36 @@ A vulnerability in `nvidia-cudnn-cu12` or `hip-python` doesn't just affect one m
 
 ```bash
 # Scan official NVIDIA CUDA base image
-agent-bom scan --image nvcr.io/nvidia/cuda:12.4.1-devel-ubuntu22.04
+agent-bom agents --image nvcr.io/nvidia/cuda:12.4.1-devel-ubuntu22.04
 
 # Scan NVIDIA PyTorch NGC container
-agent-bom scan --image nvcr.io/nvidia/pytorch:24.01-py3
+agent-bom agents --image nvcr.io/nvidia/pytorch:24.01-py3
 
 # Scan NVIDIA Triton Inference Server
-agent-bom scan --image nvcr.io/nvidia/tritonserver:24.01-py3
+agent-bom agents --image nvcr.io/nvidia/tritonserver:24.01-py3
 ```
 
 ### AMD ROCm images
 
 ```bash
 # Scan AMD ROCm PyTorch image
-agent-bom scan --image rocm/pytorch:rocm6.0_ubuntu22.04_py3.10_pytorch_2.1.1
+agent-bom agents --image rocm/pytorch:rocm6.0_ubuntu22.04_py3.10_pytorch_2.1.1
 
 # Scan AMD ROCm base terminal
-agent-bom scan --image rocm/rocm-terminal:latest
+agent-bom agents --image rocm/rocm-terminal:latest
 
 # Scan ROCm TensorFlow image
-agent-bom scan --image rocm/tensorflow:rocm6.0-tf2.15
+agent-bom agents --image rocm/tensorflow:rocm6.0-tf2.15
 ```
 
 ### Inference server images
 
 ```bash
 # Scan vLLM GPU image
-agent-bom scan --image vllm/vllm-openai:latest
+agent-bom agents --image vllm/vllm-openai:latest
 
 # Scan HuggingFace TGI
-agent-bom scan --image ghcr.io/huggingface/text-generation-inference:latest
+agent-bom agents --image ghcr.io/huggingface/text-generation-inference:latest
 ```
 
 ## GPU fleet scanning patterns
@@ -98,25 +98,25 @@ agent-bom scan --image ghcr.io/huggingface/text-generation-inference:latest
 
 ```bash
 # Scan NVIDIA GPU Operator components
-agent-bom scan --image nvcr.io/nvidia/gpu-operator:v24.3.0
-agent-bom scan --image nvcr.io/nvidia/k8s-device-plugin:v0.15.0
-agent-bom scan --image nvcr.io/nvidia/dcgm-exporter:3.3.5-3.4.1-ubuntu22.04
+agent-bom agents --image nvcr.io/nvidia/gpu-operator:v24.3.0
+agent-bom agents --image nvcr.io/nvidia/k8s-device-plugin:v0.15.0
+agent-bom agents --image nvcr.io/nvidia/dcgm-exporter:3.3.5-3.4.1-ubuntu22.04
 
 # Scan all GPU pods in a namespace
-agent-bom scan --k8s --namespace gpu-workloads -f json -o gpu-fleet-scan.json
+agent-bom agents --k8s --namespace gpu-workloads -f json -o gpu-fleet-scan.json
 ```
 
 ### Multi-cloud GPU fleet
 
 ```bash
 # CoreWeave GPU instances
-agent-bom scan --image <your-gpu-workload-image> --enrich -f json
+agent-bom agents --image <your-gpu-workload-image> --enrich -f json
 
 # Lambda Labs GPU cloud
-agent-bom scan --image <lambda-workload-image> --enrich -f json
+agent-bom agents --image <lambda-workload-image> --enrich -f json
 
 # Nebius AI cloud
-agent-bom scan --nebius -f json -o nebius-ai-scan.json
+agent-bom agents --nebius -f json -o nebius-ai-scan.json
 ```
 
 ## CI/CD integration

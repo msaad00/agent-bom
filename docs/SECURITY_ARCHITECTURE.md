@@ -25,7 +25,7 @@ agent-bom sends **package names and versions only** to external APIs. No source 
 agent-bom db update --source osv --source ghsa --source epss --source kev
 
 # Scan with zero network calls
-agent-bom scan --offline
+agent-bom agents --offline
 ```
 
 In offline mode, **zero external API calls** are made. All scanning uses the pre-synced local database only.

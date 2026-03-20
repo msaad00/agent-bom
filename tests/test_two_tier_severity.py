@@ -51,7 +51,7 @@ def _run_scan_with_findings(
     blast_radii: list,
     extra_args: list[str] | None = None,
 ):
-    """Invoke `agent-bom scan` with mocked scan output returning the given blast radii.
+    """Invoke `agent-bom agents` with mocked scan output returning the given blast radii.
 
     Uses a minimal agent with one package so the scan step is reached.
     Mocks scan_agents_sync to return the provided blast radii.

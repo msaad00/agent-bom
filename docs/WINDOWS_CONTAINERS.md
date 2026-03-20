@@ -12,10 +12,10 @@ Hyper-V. All agent-bom images work out of the box.
 
 ```powershell
 # Scan from PowerShell
-docker run --rm agentbom/agent-bom scan
+docker run --rm agentbom/agent-bom agents
 
 # Mount Windows paths (Docker Desktop translates automatically)
-docker run --rm -v "${env:APPDATA}:/root/.config:ro" agentbom/agent-bom scan
+docker run --rm -v "${env:APPDATA}:/root/.config:ro" agentbom/agent-bom agents
 
 # MCP server mode
 docker run --rm -p 8423:8423 agentbom/agent-bom mcp server --transport streamable-http --host 0.0.0.0 --port 8423
@@ -38,7 +38,7 @@ PowerShell example with MCP config discovery:
 docker run --rm `
   -v "${env:APPDATA}/Claude:/root/.config/claude:ro" `
   -v "${env:USERPROFILE}/.cursor:/root/.cursor:ro" `
-  agentbom/agent-bom scan
+  agentbom/agent-bom agents
 ```
 
 ---
@@ -73,7 +73,7 @@ directly via pip:
 
 ```powershell
 pip install agent-bom
-agent-bom scan
+agent-bom agents
 ```
 
 The Python CLI works natively on Windows and auto-discovers MCP client configs
@@ -98,7 +98,7 @@ For WSL 2 environments with GPU passthrough:
 
 ```powershell
 # Docker Desktop with WSL 2 backend and NVIDIA GPU support
-docker run --rm --gpus all agentbom/agent-bom scan --gpu-scan
+docker run --rm --gpus all agentbom/agent-bom agents --gpu-scan
 ```
 
 ---

@@ -8,9 +8,9 @@ branding:
 
 inputs:
   scan-type:
-    description: 'Scan type: image (container image), fs (filesystem/repo dependencies), iac (infrastructure-as-code), sbom (ingest third-party SBOM), check (pre-install CVE gate), agents (AI agent discovery — local/enterprise use).'
+    description: 'Scan type: image (container image), fs (filesystem/repo dependencies), iac (infrastructure-as-code), sbom (ingest third-party SBOM), check (pre-install CVE gate), agents (AI agent discovery).'
     required: false
-    default: 'fs'
+    default: 'scan'
   scan-ref:
     description: 'Target for the scan — image reference, filesystem path, SBOM file path, or IaC paths (comma-separated). Required for image/fs/sbom/iac scan types.'
     required: false

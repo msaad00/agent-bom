@@ -10,7 +10,7 @@ Discovers AI agents and MCP servers, scans all dependencies against OSV/NVD/GHSA
 
 ```bash
 # Scan your AI agent environment
-docker run --rm agentbom/agent-bom:latest scan
+docker run --rm agentbom/agent-bom:latest agents
 
 # Pre-install CVE gate
 docker run --rm agentbom/agent-bom:latest check flask@2.0.0

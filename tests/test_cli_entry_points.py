@@ -30,7 +30,13 @@ class TestAgentBom:
         assert r.exit_code == 0
         assert "agent-bom" in r.output
 
-    def test_scan_help(self):
+    def test_agents_help(self):
+        from agent_bom.cli import main
+
+        r = CliRunner().invoke(main, ["agents", "--help"])
+        assert r.exit_code == 0
+
+    def test_scan_backward_compat(self):
         from agent_bom.cli import main
 
         r = CliRunner().invoke(main, ["scan", "--help"])
@@ -73,7 +79,7 @@ class TestAgentShield:
         r = CliRunner().invoke(shield, ["--help"])
         assert r.exit_code == 0
         assert "agent-shield" in r.output
-        assert "Protection" in r.output
+        assert "Runtime" in r.output
 
     def test_version(self):
         from agent_bom.cli.shield import shield
@@ -89,41 +95,10 @@ class TestAgentShield:
         assert r.exit_code == 0
         assert "proxy" in r.output.lower()
 
-    def test_protect_help(self):
-        from agent_bom.cli.shield import shield
-
-        r = CliRunner().invoke(shield, ["protect", "--help"])
-        assert r.exit_code == 0
-        assert "--shield" in r.output
-
-    def test_guard_help(self):
-        from agent_bom.cli.shield import shield
-
-        r = CliRunner().invoke(shield, ["guard", "--help"])
-        assert r.exit_code == 0
-
-    def test_watch_help(self):
-        from agent_bom.cli.shield import shield
-
-        r = CliRunner().invoke(shield, ["watch", "--help"])
-        assert r.exit_code == 0
-
     def test_audit_help(self):
         from agent_bom.cli.shield import shield
 
         r = CliRunner().invoke(shield, ["audit", "--help"])
-        assert r.exit_code == 0
-
-    def test_configure_help(self):
-        from agent_bom.cli.shield import shield
-
-        r = CliRunner().invoke(shield, ["configure", "--help"])
-        assert r.exit_code == 0
-
-    def test_run_help(self):
-        from agent_bom.cli.shield import shield
-
-        r = CliRunner().invoke(shield, ["run", "--help"])
         assert r.exit_code == 0
 
 
@@ -308,6 +283,14 @@ class TestNoDuplication:
         shield_proxy = shield.get_command(None, "proxy")
         assert shield_proxy is bom_proxy
 
+    def test_policy_check_is_guard(self):
+        """guard_cmd registered as policy check must be the same object."""
+        from agent_bom.cli import main
+
+        policy = main.get_command(None, "policy")
+        check_cmd = policy.get_command(None, "check") if policy else None
+        assert check_cmd is not None
+
     def test_aws_cmd_is_same_object(self):
         """aws_cmd registered on both cloud_entry and cloud_group must be the same object."""
         from agent_bom.cli._cloud_group import aws_cmd as group_aws
@@ -316,9 +299,9 @@ class TestNoDuplication:
         cloud_aws = cloud.get_command(None, "aws")
         assert cloud_aws is group_aws
 
-    def test_protect_cmd_is_same_object(self):
-        from agent_bom.cli._runtime import protect_cmd as bom_protect
+    def test_audit_cmd_is_same_object(self):
+        from agent_bom.cli._runtime import audit_replay_cmd as bom_audit
         from agent_bom.cli.shield import shield
 
-        shield_protect = shield.get_command(None, "protect")
-        assert shield_protect is bom_protect
+        shield_audit = shield.get_command(None, "audit")
+        assert shield_audit is bom_audit

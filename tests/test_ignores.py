@@ -216,9 +216,9 @@ def test_scan_ignore_file_flag_accepted(tmp_path):
     ignore_f.write_text("ignores: []\n")
 
     with (
-        patch("agent_bom.cli.scan.discover_all", return_value=[]),
-        patch("agent_bom.cli.scan.scan_agents_sync", return_value=([], [])),
-        patch("agent_bom.cli.scan.resolve_all_versions_sync", return_value=[]),
+        patch("agent_bom.cli.agents.discover_all", return_value=[]),
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=([], [])),
+        patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),
     ):
         result = CliRunner().invoke(main, ["scan", "--demo", "--ignore-file", str(ignore_f), "--no-scan"])
     assert result.exit_code == 0

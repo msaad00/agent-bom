@@ -678,8 +678,8 @@ def test_cloud_container_image_autoscan_populates_packages():
 
     from rich.console import Console
 
-    from agent_bom.cli.scan._cloud import run_cloud_discovery
-    from agent_bom.cli.scan._context import ScanContext
+    from agent_bom.cli.agents._cloud import run_cloud_discovery
+    from agent_bom.cli.agents._context import ScanContext
     from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
 
     server = MCPServer(
@@ -714,8 +714,8 @@ def test_cloud_container_image_autoscan_skips_already_populated():
 
     from rich.console import Console
 
-    from agent_bom.cli.scan._cloud import run_cloud_discovery
-    from agent_bom.cli.scan._context import ScanContext
+    from agent_bom.cli.agents._cloud import run_cloud_discovery
+    from agent_bom.cli.agents._context import ScanContext
     from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
 
     existing_pkg = Package(name="numpy", version="1.24.0", ecosystem="pypi")

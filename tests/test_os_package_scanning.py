@@ -165,7 +165,7 @@ class TestOSPackagesFlag:
 
     def test_flag_in_scan_params(self):
         """The scan command should accept os_packages parameter."""
-        from agent_bom.cli.scan import scan
+        from agent_bom.cli.agents import scan
 
         # Click commands expose params as a list of Parameter objects
         param_names = [p.name for p in scan.params]
@@ -173,7 +173,7 @@ class TestOSPackagesFlag:
 
     def test_flag_is_boolean(self):
         """The flag should be a boolean (is_flag=True)."""
-        from agent_bom.cli.scan import scan
+        from agent_bom.cli.agents import scan
 
         for p in scan.params:
             if p.name == "os_packages":

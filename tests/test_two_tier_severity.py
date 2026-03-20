@@ -70,10 +70,10 @@ def _run_scan_with_findings(
     args = ["scan"] + (extra_args or [])
 
     with (
-        patch("agent_bom.cli.scan.discover_all", return_value=[mock_agent]),
-        patch("agent_bom.cli.scan.scan_agents_sync", return_value=blast_radii),
-        patch("agent_bom.cli.scan.extract_packages", return_value=[pkg]),
-        patch("agent_bom.cli.scan.resolve_all_versions_sync", return_value=None),
+        patch("agent_bom.cli.agents.discover_all", return_value=[mock_agent]),
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=blast_radii),
+        patch("agent_bom.cli.agents.extract_packages", return_value=[pkg]),
+        patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=None),
         patch("agent_bom.vex.is_vex_suppressed", return_value=False),
     ):
         return runner.invoke(main, args, catch_exceptions=False)

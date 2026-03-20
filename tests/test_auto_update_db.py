@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from click.testing import CliRunner
 
-from agent_bom.cli.scan import scan
+from agent_bom.cli.agents import scan
 
 
 def _invoke(*args):
@@ -20,8 +20,8 @@ def test_auto_update_db_flag_triggers_sync_when_stale():
     with (
         patch("agent_bom.db.schema.db_freshness_days", return_value=10) as mock_fresh,
         patch("agent_bom.db.sync.sync_db") as mock_sync,
-        patch("agent_bom.cli.scan.discover_all", return_value=[]),
-        patch("agent_bom.cli.scan.scan_agents_sync", return_value=[]),
+        patch("agent_bom.cli.agents.discover_all", return_value=[]),
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=[]),
     ):
         result = _invoke("--auto-update-db", "--no-scan")
         mock_fresh.assert_called_once()
@@ -34,8 +34,8 @@ def test_auto_update_db_skips_when_fresh():
     with (
         patch("agent_bom.db.schema.db_freshness_days", return_value=3) as mock_fresh,
         patch("agent_bom.db.sync.sync_db") as mock_sync,
-        patch("agent_bom.cli.scan.discover_all", return_value=[]),
-        patch("agent_bom.cli.scan.scan_agents_sync", return_value=[]),
+        patch("agent_bom.cli.agents.discover_all", return_value=[]),
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=[]),
     ):
         result = _invoke("--auto-update-db", "--no-scan")
         mock_fresh.assert_called_once()
@@ -48,8 +48,8 @@ def test_auto_update_db_opt_out():
     with (
         patch("agent_bom.db.schema.db_freshness_days") as mock_fresh,
         patch("agent_bom.db.sync.sync_db") as mock_sync,
-        patch("agent_bom.cli.scan.discover_all", return_value=[]),
-        patch("agent_bom.cli.scan.scan_agents_sync", return_value=[]),
+        patch("agent_bom.cli.agents.discover_all", return_value=[]),
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=[]),
     ):
         result = _invoke("--no-auto-update-db", "--no-scan")
         mock_fresh.assert_not_called()
@@ -62,8 +62,8 @@ def test_auto_update_db_on_by_default():
     with (
         patch("agent_bom.db.schema.db_freshness_days", return_value=10) as mock_fresh,
         patch("agent_bom.db.sync.sync_db") as mock_sync,
-        patch("agent_bom.cli.scan.discover_all", return_value=[]),
-        patch("agent_bom.cli.scan.scan_agents_sync", return_value=[]),
+        patch("agent_bom.cli.agents.discover_all", return_value=[]),
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=[]),
     ):
         result = _invoke("--no-scan")
         mock_fresh.assert_called_once()
@@ -76,8 +76,8 @@ def test_auto_update_db_handles_sync_failure():
     with (
         patch("agent_bom.db.schema.db_freshness_days", return_value=None),
         patch("agent_bom.db.sync.sync_db", side_effect=RuntimeError("network error")),
-        patch("agent_bom.cli.scan.discover_all", return_value=[]),
-        patch("agent_bom.cli.scan.scan_agents_sync", return_value=[]),
+        patch("agent_bom.cli.agents.discover_all", return_value=[]),
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=[]),
     ):
         result = _invoke("--auto-update-db", "--no-scan")
         # Scan must not crash — exit code 0 (no findings)

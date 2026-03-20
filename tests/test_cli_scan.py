@@ -84,14 +84,14 @@ def _mock_scan_pipeline():
 
 def test_scan_dry_run_no_output():
     """scan with --dry-run should exit 0 without writing files."""
-    with patch("agent_bom.cli.scan.discover_all", return_value=[]):
+    with patch("agent_bom.cli.agents.discover_all", return_value=[]):
         result = _run(["scan", "--dry-run"])
     assert result.exit_code == 0
 
 
 def test_scan_no_scan_flag():
     """--no-scan should skip CVE scanning entirely."""
-    with patch("agent_bom.cli.scan.discover_all", return_value=[]):
+    with patch("agent_bom.cli.agents.discover_all", return_value=[]):
         result = _run(["scan", "--no-scan"])
     assert result.exit_code == 0
 
@@ -99,9 +99,9 @@ def test_scan_no_scan_flag():
 def test_scan_format_json_no_output_file(tmp_path):
     """--format json without --output writes JSON to stdout."""
     with (
-        patch("agent_bom.cli.scan.discover_all", return_value=[]),
-        patch("agent_bom.cli.scan.scan_agents_sync", return_value=([], [])),
-        patch("agent_bom.cli.scan.resolve_all_versions_sync", return_value=[]),
+        patch("agent_bom.cli.agents.discover_all", return_value=[]),
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=([], [])),
+        patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),
     ):
         result = _run(["scan", "--format", "json", "--no-scan"])
     assert result.exit_code == 0
@@ -109,13 +109,13 @@ def test_scan_format_json_no_output_file(tmp_path):
 
 def test_scan_format_console_no_output_file():
     """--format console (default) should not crash on empty results."""
-    with patch("agent_bom.cli.scan.discover_all", return_value=[]):
+    with patch("agent_bom.cli.agents.discover_all", return_value=[]):
         result = _run(["scan", "--format", "console", "--no-scan"])
     assert result.exit_code == 0
 
 
 def test_scan_quiet_flag():
-    with patch("agent_bom.cli.scan.discover_all", return_value=[]):
+    with patch("agent_bom.cli.agents.discover_all", return_value=[]):
         result = _run(["scan", "--quiet", "--no-scan"])
     assert result.exit_code == 0
 
@@ -124,9 +124,9 @@ def test_scan_output_to_file(tmp_path):
     """--output <path> should write the report to disk."""
     out = tmp_path / "report.json"
     with (
-        patch("agent_bom.cli.scan.discover_all", return_value=[]),
-        patch("agent_bom.cli.scan.scan_agents_sync", return_value=([], [])),
-        patch("agent_bom.cli.scan.resolve_all_versions_sync", return_value=[]),
+        patch("agent_bom.cli.agents.discover_all", return_value=[]),
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=([], [])),
+        patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),
     ):
         result = _run(["scan", "--format", "json", "--output", str(out), "--no-scan"])
     assert result.exit_code == 0
@@ -134,28 +134,28 @@ def test_scan_output_to_file(tmp_path):
 
 def test_scan_preset_ci_flag():
     """--preset ci should be accepted without error."""
-    with patch("agent_bom.cli.scan.discover_all", return_value=[]):
+    with patch("agent_bom.cli.agents.discover_all", return_value=[]):
         result = _run(["scan", "--preset", "ci", "--no-scan"])
     assert result.exit_code == 0
 
 
 def test_scan_fail_on_severity_critical():
     """--fail-on-severity critical with no vulns → exit 0."""
-    with patch("agent_bom.cli.scan.discover_all", return_value=[]):
+    with patch("agent_bom.cli.agents.discover_all", return_value=[]):
         result = _run(["scan", "--fail-on-severity", "critical", "--no-scan"])
     assert result.exit_code == 0
 
 
 def test_scan_warn_on_high():
     """--warn-on high with no vulns → exit 0."""
-    with patch("agent_bom.cli.scan.discover_all", return_value=[]):
+    with patch("agent_bom.cli.agents.discover_all", return_value=[]):
         result = _run(["scan", "--warn-on", "high", "--no-scan"])
     assert result.exit_code == 0
 
 
 def test_scan_delta_flag_no_baseline():
     """--delta without --baseline should fail with a clear error."""
-    with patch("agent_bom.cli.scan.discover_all", return_value=[]):
+    with patch("agent_bom.cli.agents.discover_all", return_value=[]):
         result = _run(["scan", "--delta", "--no-scan"])
     # Delta mode without baseline should exit non-zero or handle gracefully
     # The exact code depends on implementation; just ensure no unhandled exception
@@ -166,7 +166,7 @@ def test_scan_delta_with_baseline(tmp_path):
     """--delta --baseline <file> with a valid baseline file."""
     baseline = tmp_path / "baseline.json"
     baseline.write_text(json.dumps(_minimal_report_json()), encoding="utf-8")
-    with patch("agent_bom.cli.scan.discover_all", return_value=[]):
+    with patch("agent_bom.cli.agents.discover_all", return_value=[]):
         result = _run(["scan", "--delta", "--baseline", str(baseline), "--no-scan"])
     assert result.exit_code == 0
 
@@ -174,15 +174,15 @@ def test_scan_delta_with_baseline(tmp_path):
 def test_scan_enrich_flag():
     """--enrich flag is accepted (network calls mocked)."""
     with (
-        patch("agent_bom.cli.scan.discover_all", return_value=[]),
-        patch("agent_bom.cli.scan.scan_agents_sync", return_value=([], [])),
+        patch("agent_bom.cli.agents.discover_all", return_value=[]),
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=([], [])),
     ):
         result = _run(["scan", "--enrich", "--no-scan"])
     assert result.exit_code == 0
 
 
 def test_scan_no_tree_flag():
-    with patch("agent_bom.cli.scan.discover_all", return_value=[]):
+    with patch("agent_bom.cli.agents.discover_all", return_value=[]):
         result = _run(["scan", "--no-tree", "--no-scan"])
     assert result.exit_code == 0
 
@@ -191,9 +191,9 @@ def test_scan_format_sarif(tmp_path):
     """--format sarif should produce a SARIF file."""
     out = tmp_path / "results.sarif"
     with (
-        patch("agent_bom.cli.scan.discover_all", return_value=[]),
-        patch("agent_bom.cli.scan.scan_agents_sync", return_value=([], [])),
-        patch("agent_bom.cli.scan.resolve_all_versions_sync", return_value=[]),
+        patch("agent_bom.cli.agents.discover_all", return_value=[]),
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=([], [])),
+        patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),
     ):
         result = _run(["scan", "--format", "sarif", "--output", str(out), "--no-scan"])
     assert result.exit_code == 0
@@ -203,9 +203,9 @@ def test_scan_format_html(tmp_path):
     """--format html should produce an HTML file."""
     out = tmp_path / "report.html"
     with (
-        patch("agent_bom.cli.scan.discover_all", return_value=[]),
-        patch("agent_bom.cli.scan.scan_agents_sync", return_value=([], [])),
-        patch("agent_bom.cli.scan.resolve_all_versions_sync", return_value=[]),
+        patch("agent_bom.cli.agents.discover_all", return_value=[]),
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=([], [])),
+        patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),
     ):
         result = _run(["scan", "--format", "html", "--output", str(out), "--no-scan"])
     assert result.exit_code == 0
@@ -213,7 +213,7 @@ def test_scan_format_html(tmp_path):
 
 def test_scan_save_flag(tmp_path):
     """--save should persist the report to history."""
-    with patch("agent_bom.cli.scan.discover_all", return_value=[]):
+    with patch("agent_bom.cli.agents.discover_all", return_value=[]):
         result = _run(["scan", "--save", "--no-scan"])
     assert result.exit_code == 0
 
@@ -395,9 +395,9 @@ def test_db_status_no_sync_meta(tmp_path):
 def test_scan_format_plain_to_stdout():
     """--format plain writes no-color text to stdout."""
     with (
-        patch("agent_bom.cli.scan.discover_all", return_value=[]),
-        patch("agent_bom.cli.scan.scan_agents_sync", return_value=([], [])),
-        patch("agent_bom.cli.scan.resolve_all_versions_sync", return_value=[]),
+        patch("agent_bom.cli.agents.discover_all", return_value=[]),
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=([], [])),
+        patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),
     ):
         result = _run(["scan", "--format", "plain", "--no-scan"])
     assert result.exit_code == 0
@@ -406,9 +406,9 @@ def test_scan_format_plain_to_stdout():
 def test_scan_format_plain_alias_text():
     """--format text (alias for plain) also exits 0."""
     with (
-        patch("agent_bom.cli.scan.discover_all", return_value=[]),
-        patch("agent_bom.cli.scan.scan_agents_sync", return_value=([], [])),
-        patch("agent_bom.cli.scan.resolve_all_versions_sync", return_value=[]),
+        patch("agent_bom.cli.agents.discover_all", return_value=[]),
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=([], [])),
+        patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),
     ):
         result = _run(["scan", "--format", "text", "--no-scan"])
     assert result.exit_code == 0
@@ -418,8 +418,8 @@ def test_scan_format_badge_writes_json(tmp_path):
     """--format badge writes a Shields.io-compatible JSON file."""
     out = tmp_path / "badge.json"
     with (
-        patch("agent_bom.cli.scan.scan_agents_sync", return_value=([], [])),
-        patch("agent_bom.cli.scan.resolve_all_versions_sync", return_value=[]),
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=([], [])),
+        patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),
     ):
         result = _run(["scan", "--demo", "--format", "badge", "--output", str(out), "--no-scan"])
     assert result.exit_code == 0
@@ -432,8 +432,8 @@ def test_scan_format_svg_writes_file(tmp_path):
     """--format svg writes an SVG file."""
     out = tmp_path / "report.svg"
     with (
-        patch("agent_bom.cli.scan.scan_agents_sync", return_value=([], [])),
-        patch("agent_bom.cli.scan.resolve_all_versions_sync", return_value=[]),
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=([], [])),
+        patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),
     ):
         result = _run(["scan", "--demo", "--format", "svg", "--output", str(out), "--no-scan"])
     assert result.exit_code == 0
@@ -446,8 +446,8 @@ def test_scan_format_graph_writes_json(tmp_path):
     """--format graph writes Cytoscape JSON to a file."""
     out = tmp_path / "graph.json"
     with (
-        patch("agent_bom.cli.scan.scan_agents_sync", return_value=([], [])),
-        patch("agent_bom.cli.scan.resolve_all_versions_sync", return_value=[]),
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=([], [])),
+        patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),
     ):
         result = _run(["scan", "--demo", "--format", "graph", "--output", str(out), "--no-scan"])
     assert result.exit_code == 0
@@ -461,8 +461,8 @@ def test_scan_format_mermaid_writes_file(tmp_path):
     """--format mermaid writes a Mermaid diagram file."""
     out = tmp_path / "diagram.mmd"
     with (
-        patch("agent_bom.cli.scan.scan_agents_sync", return_value=([], [])),
-        patch("agent_bom.cli.scan.resolve_all_versions_sync", return_value=[]),
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=([], [])),
+        patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),
     ):
         result = _run(["scan", "--demo", "--format", "mermaid", "--output", str(out), "--no-scan"])
     assert result.exit_code == 0
@@ -473,8 +473,8 @@ def test_scan_format_graph_html_writes_file(tmp_path):
     """--format graph-html writes an interactive HTML file."""
     out = tmp_path / "graph.html"
     with (
-        patch("agent_bom.cli.scan.scan_agents_sync", return_value=([], [])),
-        patch("agent_bom.cli.scan.resolve_all_versions_sync", return_value=[]),
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=([], [])),
+        patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),
     ):
         result = _run(["scan", "--demo", "--format", "graph-html", "--output", str(out), "--no-scan"])
     assert result.exit_code == 0

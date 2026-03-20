@@ -127,9 +127,11 @@ class ArgumentAnalyzer:
     credential-like values, and Cortex AI model calls in argument strings.
     """
 
-    def check(self, tool_name: str, arguments: dict) -> list[Alert]:
+    def check(self, tool_name: str, arguments: dict | None) -> list[Alert]:
         """Analyze tool arguments for dangerous patterns and AI model usage."""
         alerts: list[Alert] = []
+        if not arguments:
+            return alerts
         for arg_name, arg_value in arguments.items():
             if not isinstance(arg_value, str):
                 arg_value = str(arg_value)

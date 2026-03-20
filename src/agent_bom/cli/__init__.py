@@ -73,14 +73,13 @@ from agent_bom.cli.agents import scan as _agents_cmd  # noqa: E402
 # 'agents' is the primary visible command.
 main.add_command(_agents_cmd, "agents")
 
-# 'scan' is the same command object, hidden from help for backward compat.
-# We register it directly (not a wrapper) so all 200+ params work identically.
-main.commands["scan"] = _agents_cmd
+# 'scan' removed from CLI — use 'agents'. Import compat via scan.py shim.
 
 from agent_bom.cli._inventory import completions_cmd, inventory, validate, where  # noqa: E402
 
 # inventory + where are under `mcp` group — no top-level duplicate
 main.add_command(validate)
+main.commands["validate"].hidden = True  # Use `mcp validate` or `iac validate`
 main.add_command(completions_cmd, "completions")
 
 from agent_bom.cli._check import check, guard_cmd, verify  # noqa: E402
@@ -116,6 +115,7 @@ from agent_bom.cli._registry import registry, schedule  # noqa: E402
 
 main.add_command(schedule)
 main.add_command(registry)
+main.commands["registry"].hidden = True  # Available under `mcp registry`
 
 
 from agent_bom.cli._runtime import (  # noqa: E402
@@ -142,6 +142,7 @@ runtime_group.commands["configure"].hidden = True
 runtime_group.commands["protect"].hidden = True
 runtime_group.commands["watch"].hidden = True
 main.add_command(runtime_group)
+main.commands["runtime"].hidden = True  # Use proxy/audit directly
 
 # Top-level shortcuts for primary runtime commands
 main.add_command(proxy_cmd, "proxy")

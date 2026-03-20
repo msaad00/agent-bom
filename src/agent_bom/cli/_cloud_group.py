@@ -63,7 +63,7 @@ def cloud_group(ctx: click.Context) -> None:
             con.print("  [cyan]agent-bom image[/cyan] · [cyan]agent-bom iac[/cyan] · [cyan]agent-bom fs[/cyan]")
             return
 
-        from agent_bom.cli.scan import scan
+        from agent_bom.cli.agents import scan
 
         ctx.invoke(
             scan,
@@ -100,7 +100,7 @@ def aws_cmd(
     quiet: bool,
 ) -> None:
     """Scan AWS for AI agents, infrastructure, and CIS compliance."""
-    from agent_bom.cli.scan import scan
+    from agent_bom.cli.agents import scan
 
     ctx = click.get_current_context()
     ctx.invoke(
@@ -134,7 +134,7 @@ def azure_cmd(
     quiet: bool,
 ) -> None:
     """Scan Azure for AI agents, infrastructure, and CIS compliance."""
-    from agent_bom.cli.scan import scan
+    from agent_bom.cli.agents import scan
 
     ctx = click.get_current_context()
     ctx.invoke(
@@ -164,7 +164,7 @@ def gcp_cmd(
     quiet: bool,
 ) -> None:
     """Scan GCP for AI agents, infrastructure, and CIS compliance."""
-    from agent_bom.cli.scan import scan
+    from agent_bom.cli.agents import scan
 
     ctx = click.get_current_context()
     ctx.invoke(

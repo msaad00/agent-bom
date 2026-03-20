@@ -82,7 +82,7 @@ cloud.add_command(gcp_cmd, "gcp")
 @click.option("--quiet", "-q", is_flag=True)
 def snowflake_cmd(output_format: str, output_path: Optional[str], cis: bool, no_cis: bool, quiet: bool) -> None:
     """Scan Snowflake for Cortex Agents, MCP servers, and CIS compliance."""
-    from agent_bom.cli.scan import scan
+    from agent_bom.cli.agents import scan
 
     ctx = click.get_current_context()
     ctx.invoke(
@@ -101,7 +101,7 @@ def snowflake_cmd(output_format: str, output_path: Optional[str], cis: bool, no_
 @click.option("--quiet", "-q", is_flag=True)
 def databricks_cmd(output_format: str, output_path: Optional[str], quiet: bool) -> None:
     """Scan Databricks for clusters, libraries, and security best practices."""
-    from agent_bom.cli.scan import scan
+    from agent_bom.cli.agents import scan
 
     ctx = click.get_current_context()
     ctx.invoke(
@@ -121,7 +121,7 @@ def databricks_cmd(output_format: str, output_path: Optional[str], quiet: bool) 
 @click.option("--quiet", "-q", is_flag=True)
 def huggingface_cmd(verify_hashes: bool, output_format: str, output_path: Optional[str], quiet: bool) -> None:
     """Scan HuggingFace for model provenance, hash verification, and licensing."""
-    from agent_bom.cli.scan import scan
+    from agent_bom.cli.agents import scan
 
     ctx = click.get_current_context()
     ctx.invoke(
@@ -140,7 +140,7 @@ def huggingface_cmd(verify_hashes: bool, output_format: str, output_path: Option
 @click.option("--quiet", "-q", is_flag=True)
 def ollama_cmd(output_format: str, output_path: Optional[str], quiet: bool) -> None:
     """Scan Ollama for local model registry and provenance."""
-    from agent_bom.cli.scan import scan
+    from agent_bom.cli.agents import scan
 
     ctx = click.get_current_context()
     ctx.invoke(
@@ -163,7 +163,7 @@ def posture_cmd(output_format: str, output_path: Optional[str], quiet: bool) -> 
     """
     import shutil
 
-    from agent_bom.cli.scan import scan
+    from agent_bom.cli.agents import scan
 
     ctx = click.get_current_context()
     ctx.invoke(

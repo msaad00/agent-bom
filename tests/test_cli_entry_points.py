@@ -107,7 +107,7 @@ class TestAgentShield:
 
 class TestAgentCloud:
     def test_help(self):
-        from agent_bom.cli.cloud_entry import cloud
+        from agent_bom.cli.cloud import cloud
 
         r = CliRunner().invoke(cloud, ["--help"])
         assert r.exit_code == 0
@@ -115,59 +115,59 @@ class TestAgentCloud:
         assert "Cloud Providers" in r.output
 
     def test_version(self):
-        from agent_bom.cli.cloud_entry import cloud
+        from agent_bom.cli.cloud import cloud
 
         r = CliRunner().invoke(cloud, ["--version"])
         assert r.exit_code == 0
         assert "agent-cloud" in r.output
 
     def test_aws_help(self):
-        from agent_bom.cli.cloud_entry import cloud
+        from agent_bom.cli.cloud import cloud
 
         r = CliRunner().invoke(cloud, ["aws", "--help"])
         assert r.exit_code == 0
         assert "--region" in r.output
 
     def test_azure_help(self):
-        from agent_bom.cli.cloud_entry import cloud
+        from agent_bom.cli.cloud import cloud
 
         r = CliRunner().invoke(cloud, ["azure", "--help"])
         assert r.exit_code == 0
         assert "--subscription" in r.output
 
     def test_gcp_help(self):
-        from agent_bom.cli.cloud_entry import cloud
+        from agent_bom.cli.cloud import cloud
 
         r = CliRunner().invoke(cloud, ["gcp", "--help"])
         assert r.exit_code == 0
         assert "--project" in r.output
 
     def test_snowflake_help(self):
-        from agent_bom.cli.cloud_entry import cloud
+        from agent_bom.cli.cloud import cloud
 
         r = CliRunner().invoke(cloud, ["snowflake", "--help"])
         assert r.exit_code == 0
 
     def test_databricks_help(self):
-        from agent_bom.cli.cloud_entry import cloud
+        from agent_bom.cli.cloud import cloud
 
         r = CliRunner().invoke(cloud, ["databricks", "--help"])
         assert r.exit_code == 0
 
     def test_huggingface_help(self):
-        from agent_bom.cli.cloud_entry import cloud
+        from agent_bom.cli.cloud import cloud
 
         r = CliRunner().invoke(cloud, ["huggingface", "--help"])
         assert r.exit_code == 0
 
     def test_ollama_help(self):
-        from agent_bom.cli.cloud_entry import cloud
+        from agent_bom.cli.cloud import cloud
 
         r = CliRunner().invoke(cloud, ["ollama", "--help"])
         assert r.exit_code == 0
 
     def test_posture_help(self):
-        from agent_bom.cli.cloud_entry import cloud
+        from agent_bom.cli.cloud import cloud
 
         r = CliRunner().invoke(cloud, ["posture", "--help"])
         assert r.exit_code == 0
@@ -178,7 +178,7 @@ class TestAgentCloud:
 
 class TestAgentIac:
     def test_help(self):
-        from agent_bom.cli.iac_entry import iac
+        from agent_bom.cli.iac import iac
 
         r = CliRunner().invoke(iac, ["--help"])
         assert r.exit_code == 0
@@ -186,27 +186,27 @@ class TestAgentIac:
         assert "Scanning" in r.output
 
     def test_version(self):
-        from agent_bom.cli.iac_entry import iac
+        from agent_bom.cli.iac import iac
 
         r = CliRunner().invoke(iac, ["--version"])
         assert r.exit_code == 0
         assert "agent-iac" in r.output
 
     def test_scan_help(self):
-        from agent_bom.cli.iac_entry import iac
+        from agent_bom.cli.iac import iac
 
         r = CliRunner().invoke(iac, ["scan", "--help"])
         assert r.exit_code == 0
 
     def test_policy_help(self):
-        from agent_bom.cli.iac_entry import iac
+        from agent_bom.cli.iac import iac
 
         r = CliRunner().invoke(iac, ["policy", "--help"])
         assert r.exit_code == 0
         assert "template" in r.output
 
     def test_validate_help(self):
-        from agent_bom.cli.iac_entry import iac
+        from agent_bom.cli.iac import iac
 
         r = CliRunner().invoke(iac, ["validate", "--help"])
         assert r.exit_code == 0
@@ -292,9 +292,9 @@ class TestNoDuplication:
         assert check_cmd is not None
 
     def test_aws_cmd_is_same_object(self):
-        """aws_cmd registered on both cloud_entry and cloud_group must be the same object."""
+        """aws_cmd registered on both cloud module and cloud_group must be the same object."""
         from agent_bom.cli._cloud_group import aws_cmd as group_aws
-        from agent_bom.cli.cloud_entry import cloud
+        from agent_bom.cli.cloud import cloud
 
         cloud_aws = cloud.get_command(None, "aws")
         assert cloud_aws is group_aws

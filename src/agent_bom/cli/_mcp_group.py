@@ -30,6 +30,6 @@ def mcp_group(ctx: click.Context) -> None:
     """
     if ctx.invoked_subcommand is None:
         # Default: run full MCP scan (same as `agent-bom scan` but MCP-focused)
-        from agent_bom.cli.scan import scan
+        from agent_bom.cli.agents import scan
 
         ctx.invoke(scan)

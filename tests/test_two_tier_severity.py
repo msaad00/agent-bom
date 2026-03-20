@@ -245,7 +245,7 @@ def test_preset_ci_sets_warn_on_high():
     import ast
     import pathlib
 
-    src = pathlib.Path("src/agent_bom/cli/scan/__init__.py").read_text()
+    src = pathlib.Path("src/agent_bom/cli/agents/__init__.py").read_text()
     tree = ast.parse(src)
 
     # Find the preset == "ci" block and verify warn_on_severity assignment

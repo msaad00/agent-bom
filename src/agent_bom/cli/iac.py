@@ -64,9 +64,9 @@ def iac():
 
 # ── Register commands (reuse existing, zero duplication) ─────────────────────
 
+from agent_bom.cli._focused_commands import iac_cmd  # noqa: E402
 from agent_bom.cli._inventory import validate  # noqa: E402
 from agent_bom.cli._policy_group import policy_group  # noqa: E402
-from agent_bom.cli._scan_commands import iac_cmd  # noqa: E402
 
 iac.add_command(iac_cmd, "scan")
 iac.add_command(policy_group, "policy")

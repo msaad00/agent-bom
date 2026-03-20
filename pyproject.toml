@@ -138,8 +138,8 @@ dev = [
 [project.scripts]
 agent-bom = "agent_bom.cli:cli_main"
 agent-shield = "agent_bom.cli.shield:shield_main"
-agent-cloud = "agent_bom.cli.cloud_entry:cloud_main"
-agent-iac = "agent_bom.cli.iac_entry:iac_main"
+agent-cloud = "agent_bom.cli.cloud:cloud_main"
+agent-iac = "agent_bom.cli.iac:iac_main"
 agent-claw = "agent_bom.cli.claw:claw_main"
 
 [project.urls]

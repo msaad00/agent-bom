@@ -312,6 +312,27 @@ def parse_osv_severity(vuln_data: dict) -> tuple[Severity, Optional[float]]:
     if cvss_score is not None:
         severity = cvss_to_severity(cvss_score)
 
+    # If still UNKNOWN, try to infer from ecosystem_specific or affected data
+    if severity == Severity.UNKNOWN:
+        eco_specific = vuln_data.get("ecosystem_specific", {})
+        if isinstance(eco_specific, dict) and "severity" in eco_specific:
+            sev_str = str(eco_specific["severity"]).upper()
+            severity_map = {
+                "CRITICAL": Severity.CRITICAL,
+                "HIGH": Severity.HIGH,
+                "MODERATE": Severity.MEDIUM,
+                "MEDIUM": Severity.MEDIUM,
+                "LOW": Severity.LOW,
+            }
+            severity = severity_map.get(sev_str, severity)
+
+    # Last resort: if GHSA advisory, treat as at least MEDIUM
+    # (GHSA advisories are reviewed and vetted — they wouldn't exist without merit)
+    if severity == Severity.UNKNOWN:
+        vuln_id = vuln_data.get("id", "")
+        if vuln_id.startswith("GHSA-"):
+            severity = Severity.MEDIUM
+
     return severity, cvss_score
 
 

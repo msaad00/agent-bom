@@ -395,7 +395,16 @@ def print_blast_radius(report: AIBOMReport) -> None:
     table.add_column("Threats", ratio=3)
     table.add_column("Fix", ratio=2)
 
-    for br in report.blast_radii[:25]:  # Top 25
+    # Filter to actionable findings only — UNKNOWN severity transitive
+    # deps with no creds/tools are noise. Users see all with --verbose.
+    actionable = [br for br in report.blast_radii if br.is_actionable]
+    if not actionable:
+        console.print("  [green]✓ No actionable findings (all transitive/low-severity noise).[/green]")
+        if len(report.blast_radii) > 0:
+            console.print(f"  [dim]{len(report.blast_radii)} low-priority findings hidden. Use --verbose to see all.[/dim]")
+        return
+
+    for br in actionable[:25]:  # Top 25 actionable
         sev_style = SEVERITY_TEXT.get(br.vulnerability.severity, "white")
         if br.vulnerability.fixed_version:
             fix = f"[green]✓ {br.vulnerability.fixed_version}[/green]"
@@ -1420,10 +1429,10 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10) -> None:
     if not report.blast_radii:
         return
 
-    # Filter: show critical/high by default, count the rest
-    priority = [br for br in report.blast_radii if br.vulnerability.severity in (Severity.CRITICAL, Severity.HIGH)]
+    # Filter: show actionable findings by default, count the rest
+    priority = [br for br in report.blast_radii if br.is_actionable]
     rest_count = len(report.blast_radii) - len(priority)
-    # If no critical/high, fall back to showing all
+    # If no actionable, fall back to showing all
     display_list = priority if priority else report.blast_radii
     shown = display_list[:limit]
 

@@ -589,18 +589,123 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
     return results
 
 
+def _is_version_affected(vuln_data: dict, package_name: str, package_version: str, ecosystem: str = "") -> bool:
+    """Check if a specific version falls within the OSV affected ranges.
+
+    Walks the ``affected[].ranges[].events[]`` structure and applies
+    semver/PEP 440 range logic:
+
+    - ``introduced``: version >= introduced means potentially affected
+    - ``fixed``: version >= fixed means NOT affected (patched)
+    - ``last_affected``: version > last_affected means NOT affected
+
+    Returns True if the version IS affected, False if it's been fixed
+    or is outside all affected ranges.  Returns True (conservative) if
+    version parsing fails or no range data is available.
+    """
+    from packaging.version import InvalidVersion, Version
+
+    norm_name = normalize_package_name(package_name, ecosystem)
+
+    try:
+        pkg_ver = Version(package_version)
+    except InvalidVersion:
+        # Can't parse — assume affected (conservative)
+        return True
+
+    found_package = False
+
+    for affected in vuln_data.get("affected", []):
+        pkg = affected.get("package", {})
+        osv_eco = pkg.get("ecosystem", ecosystem)
+        osv_name = normalize_package_name(pkg.get("name", ""), osv_eco)
+        if osv_name != norm_name:
+            continue
+
+        found_package = True
+
+        # Check explicit version list first
+        versions_list = affected.get("versions", [])
+        if versions_list:
+            if package_version in versions_list:
+                return True
+            # If explicit list exists and our version isn't in it, not affected
+            continue
+
+        # If no ranges AND no versions, assume affected (incomplete advisory data)
+        ranges = affected.get("ranges", [])
+        if not ranges:
+            return True
+
+        # Check ranges
+        for rng in ranges:
+            rng_type = rng.get("type", "")
+            # Accept SEMVER, ECOSYSTEM, or missing type (common in OSV data)
+            if rng_type and rng_type not in ("SEMVER", "ECOSYSTEM", "GIT"):
+                continue
+
+            events = rng.get("events", [])
+            # If range has fixed/last_affected but no introduced, assume introduced=0
+            has_introduced = any("introduced" in e for e in events)
+            is_affected = not has_introduced  # default: affected if no introduced
+            for event in events:
+                if "introduced" in event:
+                    intro = event["introduced"]
+                    if intro == "0":
+                        is_affected = True
+                    else:
+                        try:
+                            is_affected = pkg_ver >= Version(intro)
+                        except InvalidVersion:
+                            is_affected = True  # conservative
+                elif "fixed" in event:
+                    try:
+                        if pkg_ver >= Version(event["fixed"]):
+                            is_affected = False
+                    except InvalidVersion:
+                        pass
+                elif "last_affected" in event:
+                    try:
+                        if pkg_ver > Version(event["last_affected"]):
+                            is_affected = False
+                    except InvalidVersion:
+                        pass
+
+            if is_affected:
+                return True
+
+    # If we found the package in affected but no range matched AND no version
+    # list was present, assume affected (conservative — the advisory was issued
+    # for this package but has incomplete range data).
+    if found_package:
+        return False  # ranges were checked and version is outside all of them
+
+    # No affected data for this package — trust OSV's original query response
+    return True
+
+
 def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[Vulnerability]:
     """Convert OSV response data to Vulnerability objects.
 
-    Deduplicates by canonical CVE ID — if GHSA-xxxx and PYSEC-yyyy both
-    map to CVE-2021-xxxxx, only one Vulnerability is created. The first
-    advisory seen wins; later aliases are merged into its aliases list.
+    Filters out false positives by verifying the package version falls
+    within OSV affected ranges.  Deduplicates by canonical CVE ID.
     """
     vulns = []
     seen_ids: set[str] = set()
 
     for vuln_data in vuln_data_list:
         vuln_id = vuln_data.get("id", "unknown")
+
+        # Version-range filter: skip vulns that don't affect our version
+        if package.version and package.version not in ("unknown", "latest"):
+            if not _is_version_affected(vuln_data, package.name, package.version, package.ecosystem):
+                _logger.debug(
+                    "Filtered %s: version %s not in affected range for %s",
+                    vuln_id,
+                    package.version,
+                    package.name,
+                )
+                continue
 
         # Compute canonical ID early so dedup catches alias overlaps
         aliases = vuln_data.get("aliases", [])

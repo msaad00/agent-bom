@@ -65,52 +65,34 @@ Read-only. Agentless. No secrets leave your machine.
 pip install agent-bom                   # installs all 5 products
 ```
 
-### agent-bom — BOM generation + vulnerability scanning
 ```bash
-agent-bom scan                          # auto-detect agents + scan for CVEs
+# AI agent security
+agent-bom agents                        # discover AI agents + MCP + scan + blast radius
 agent-bom check flask@2.0.0            # pre-install CVE gate
-agent-bom image nginx:latest           # container image scan
-agent-bom graph report.json -f graphml # dependency graph (GraphML/Neo4j/DOT)
-agent-bom mcp inventory                # discover MCP agents + servers
-```
+agent-bom proxy "npx @mcp/server-fs"   # MCP security proxy (110 patterns, 7 detectors)
 
-### agent-shield — runtime protection
-```bash
-agent-shield proxy "npx @mcp/server-fs /tmp"   # MCP proxy with audit
-agent-shield protect --shield                    # deep defense (7 detectors)
-agent-shield run "npx @mcp/server-github"        # zero-config proxy launch
-```
+# Infrastructure scanning
+agent-bom image nginx:latest           # container image
+agent-bom fs /path/to/project          # filesystem
+agent-bom iac Dockerfile k8s/ infra/   # IaC misconfigurations (89 rules)
+agent-bom cloud aws                    # AWS Bedrock/Lambda + CIS v3.0
 
-### agent-cloud — cloud infrastructure scanning
-```bash
-agent-cloud aws                         # AWS Bedrock/Lambda + CIS v3.0
-agent-cloud azure                       # Azure AI Foundry + CIS v2.0
-agent-cloud gcp                         # GCP Vertex AI + CIS v3.0
-agent-cloud posture                     # unified cross-cloud summary
-```
-
-### agent-iac — IaC security
-```bash
-agent-iac scan Dockerfile k8s/ infra/main.tf    # 89 rules across 5 formats
-agent-iac policy template                        # generate starter policy
-```
-
-### agent-claw — fleet governance
-```bash
-agent-claw serve                        # API server + dashboard
-agent-claw fleet sync                   # discovery → fleet registry
-agent-claw report analytics --days 30   # vulnerability trends
+# Analysis & reporting
+agent-bom graph report.json -f graphml # dependency graph (GraphML/Neo4j/DOT/Mermaid)
+agent-bom audit proxy-log.jsonl        # replay proxy audit logs
+agent-bom report analytics --days 30   # vulnerability trends
 ```
 
 <details>
-<summary><b>All commands by product</b></summary>
+<summary><b>All commands</b></summary>
 
 ```
-agent-bom:     scan, check, verify, image, fs, sbom, graph, diff, mcp, db, upgrade
-agent-shield:  proxy, protect, run, guard, watch, audit, configure
-agent-cloud:   aws, azure, gcp, snowflake, databricks, huggingface, ollama, posture
-agent-iac:     scan, policy, validate
-agent-claw:    fleet, serve, api, schedule, report, connectors
+Scanning:     agents, image, fs, iac, sbom, cloud, check, verify
+Runtime:      proxy, audit
+MCP:          mcp [inventory|introspect|registry|server|where]
+Reporting:    graph, report [history|analytics]
+Governance:   policy [check|template], fleet [sync|list|stats], serve, api, schedule
+Database:     db [update|status]
 ```
 
 </details>

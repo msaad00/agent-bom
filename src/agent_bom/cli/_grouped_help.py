@@ -12,31 +12,31 @@ COMMAND_CATEGORIES: OrderedDict[str, list[str]] = OrderedDict(
     [
         (
             "Scanning",
-            ["scan", "image", "fs", "iac", "sbom", "check", "guard", "verify"],
+            ["agents", "image", "fs", "iac", "sbom", "cloud", "check", "verify"],
         ),
         (
-            "MCP & AI Agents",
-            ["mcp", "cloud", "run"],
+            "Runtime",
+            ["proxy", "audit"],
         ),
         (
-            "Runtime Enforcement",
-            ["runtime", "proxy"],
+            "MCP",
+            ["mcp"],
         ),
         (
-            "Reporting & Analysis",
-            ["report", "graph"],
+            "Reporting",
+            ["graph", "report"],
         ),
         (
-            "Policy & Compliance",
-            ["policy"],
+            "Governance",
+            ["policy", "fleet", "serve", "api", "schedule"],
         ),
         (
-            "Infrastructure",
-            ["serve", "api", "db", "schedule", "registry"],
+            "Database",
+            ["db"],
         ),
         (
             "Utilities",
-            ["upgrade", "validate", "completions"],
+            ["upgrade", "completions"],
         ),
     ]
 )

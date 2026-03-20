@@ -480,13 +480,13 @@ def test_cli_version():
 def test_cli_scan_empty_dir_exits_0():
     runner = CliRunner()
     with tempfile.TemporaryDirectory() as tmpdir:
-        result = runner.invoke(main, ["scan", "--project", tmpdir])
+        result = runner.invoke(main, ["agents", "--project", tmpdir])
         assert result.exit_code == 0
 
 
 def test_cli_help_shows_exit_codes():
     runner = CliRunner()
-    result = runner.invoke(main, ["scan", "--help"])
+    result = runner.invoke(main, ["agents", "--help"])
     assert "Exit codes" in result.output
     assert "0" in result.output
     assert "1" in result.output

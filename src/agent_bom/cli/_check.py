@@ -44,11 +44,11 @@ def _detect_ecosystem(name: str) -> Optional[str]:
 def _parse_package_spec(
     package_spec: str,
     ecosystem: Optional[str] = None,
-) -> tuple[str, str, Optional[str]]:
+) -> tuple[str, str, str]:
     """Parse a package spec into (name, version, ecosystem).
 
     Handles npx/uvx prefixes, scoped npm packages, and name@version.
-    Returns ecosystem=None when ambiguous — caller should scan both.
+    Auto-detects ecosystem when not specified.
     """
     spec = package_spec.strip()
     if spec.startswith("npx ") or spec.startswith("uvx "):
@@ -72,7 +72,8 @@ def _parse_package_spec(
         elif "." in name or "_" in name:
             ecosystem = "pypi"
         else:
-            ecosystem = _detect_ecosystem(name)
+            # Ambiguous — try to detect, default to pypi
+            ecosystem = _detect_ecosystem(name) or "pypi"
 
     return name, version, ecosystem
 
@@ -115,8 +116,12 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bo
         console.print("  Provide a version: agent-bom check name@version --ecosystem ecosystem")
         sys.exit(0)
 
-    # Determine ecosystems to scan
-    ecosystems: list[str] = [detected_eco] if detected_eco else ["pypi", "npm"]
+    # Scan both pypi+npm for ambiguous packages (no dots, no underscores, no @)
+    # This catches packages like lodash that exist on both registries
+    if not ecosystem and not name.startswith("@") and "." not in name and "_" not in name:
+        ecosystems: list[str] = ["pypi", "npm"]
+    else:
+        ecosystems = [detected_eco]
     pkgs = [Package(name=name, version=version, ecosystem=eco) for eco in ecosystems]
 
     # Resolve "latest" / empty version from registry
@@ -250,7 +255,6 @@ def verify(package_spec: Optional[str], ecosystem: Optional[str], as_json: bool,
     console = Console()
 
     # Determine target
-    eco: Optional[str]
     if package_spec is None:
         name, version, eco = "agent-bom", __version__, "pypi"
         if not quiet:
@@ -258,7 +262,6 @@ def verify(package_spec: Optional[str], ecosystem: Optional[str], as_json: bool,
         record_result = verify_installed_record("agent-bom")
     else:
         name, version, eco = _parse_package_spec(package_spec, ecosystem)
-        eco = eco or "pypi"
         record_result = None
         if not quiet:
             console.print(f"\n[bold blue]Verifying {name}@{version} ({eco})...[/bold blue]\n")

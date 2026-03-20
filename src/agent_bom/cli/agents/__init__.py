@@ -1409,6 +1409,17 @@ def scan(
             con.print(f"  [red]![/red] Toxic combinations: {len(_toxic)} detected ({_n_crit} critical, {_n_high} high)")
 
     # ── Step 1i: Model binary file scan ─────────────────────────────
+    # Auto-detect: if no --model-dirs given, check project dir for model files
+    if not skill_only and not model_dirs and project:
+        from pathlib import Path as _MPath
+
+        _project_path = _MPath(project)
+        _model_exts = {".safetensors", ".gguf", ".onnx", ".pt", ".pkl", ".h5", ".keras"}
+        _has_models = any(_project_path.rglob(f"*{ext}") for ext in _model_exts if list(_project_path.rglob(f"*{ext}"))[:1])
+        if _has_models:
+            model_dirs = (project,)
+            con.print("  [cyan]>[/cyan] Auto-detected model files in project — scanning...")
+
     if not skill_only and model_dirs:
         from agent_bom.model_files import check_sigstore_signature, scan_model_files, verify_model_hash
 
@@ -1454,6 +1465,16 @@ def scan(
         report.model_provenance = hf_provenance
 
     # ── Step 1k: Dataset card scan ──────────────────────────────────
+    # Auto-detect: check project for dataset_info.json or .dvc files
+    if not skill_only and not dataset_dirs and project:
+        from pathlib import Path as _DPath
+
+        _proj = _DPath(project)
+        _has_datasets = list(_proj.rglob("dataset_info.json"))[:1] or list(_proj.rglob("*.dvc"))[:1]
+        if _has_datasets:
+            dataset_dirs = (project,)
+            con.print("  [cyan]>[/cyan] Auto-detected dataset files — scanning...")
+
     if not skill_only and dataset_dirs:
         from agent_bom.parsers.dataset_cards import DatasetInfo, scan_dataset_directory
 
@@ -1480,6 +1501,18 @@ def scan(
             con.print(f"  [yellow]⚠[/yellow] {w}")
 
     # ── Step 1l: Training pipeline scan ──────────────────────────────
+    # Auto-detect: check project for MLmodel, wandb-metadata.json, pipeline YAML
+    if not skill_only and not training_dirs and project:
+        from pathlib import Path as _TPath
+
+        _tproj = _TPath(project)
+        _has_training = (
+            list(_tproj.rglob("MLmodel"))[:1] or list(_tproj.rglob("wandb-metadata.json"))[:1] or list(_tproj.rglob("meta.yaml"))[:1]
+        )
+        if _has_training:
+            training_dirs = (project,)
+            con.print("  [cyan]>[/cyan] Auto-detected training artifacts — scanning...")
+
     if not skill_only and training_dirs:
         from agent_bom.parsers.training_pipeline import scan_training_directory
 

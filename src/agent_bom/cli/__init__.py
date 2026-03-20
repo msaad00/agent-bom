@@ -188,12 +188,14 @@ main.add_command(mcp_group)
 # ---------------------------------------------------------------------------
 # Focused scan commands — `agent-bom image`, `agent-bom fs`, etc.
 # ---------------------------------------------------------------------------
-from agent_bom.cli._focused_commands import fs_cmd, iac_cmd, image_cmd, sbom_cmd  # noqa: E402
+from agent_bom.cli._focused_commands import code_cmd, fs_cmd, iac_cmd, image_cmd, sbom_cmd, secrets_cmd  # noqa: E402
 
 main.add_command(image_cmd)
 main.add_command(fs_cmd)
 main.add_command(iac_cmd)
 main.add_command(sbom_cmd)
+main.add_command(secrets_cmd)
+main.add_command(code_cmd)
 
 # ---------------------------------------------------------------------------
 # Cloud command group — `agent-bom cloud [aws|azure|gcp]`

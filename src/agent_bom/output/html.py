@@ -466,7 +466,6 @@ def _ai_inventory_section(report: "AIBOMReport") -> str:
     files_scanned = data.get("files_scanned", 0)
     shadow_count = data.get("shadow_ai_count", 0)
     deprecated_count = data.get("deprecated_models_count", 0)
-    keys_count = data.get("api_keys_count", 0)
     unique_sdks = data.get("unique_sdks", [])
     unique_models = data.get("unique_models", [])
 
@@ -478,7 +477,6 @@ def _ai_inventory_section(report: "AIBOMReport") -> str:
         f"<span>Models: <strong>{len(unique_models)}</strong></span>"
         + (f'<span>Shadow AI: <strong style="color:#eab308">{shadow_count}</strong></span>' if shadow_count else "")
         + (f'<span>Deprecated: <strong style="color:#f97316">{deprecated_count}</strong></span>' if deprecated_count else "")
-        + (f'<span>Hardcoded keys: <strong style="color:#ef4444">{keys_count}</strong></span>' if keys_count else "")
         + "</div>"
     )
 

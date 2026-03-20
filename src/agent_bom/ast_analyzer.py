@@ -225,6 +225,25 @@ _SKIP_DIRS = frozenset(
         ".mypy_cache",
         ".pytest_cache",
         ".ruff_cache",
+        "tests",
+        "test",
+        "testing",
+        "fixtures",
+        "fuzz",
+    }
+)
+
+# Files that contain pattern definitions or test data — skip to avoid FP
+_SKIP_FILE_PATTERNS = frozenset(
+    {
+        "patterns.py",
+        "conftest.py",
+        "test_",
+        "_test.py",
+        "fixture",
+        "mock",
+        "fake",
+        "sample",
     }
 )
 
@@ -494,6 +513,9 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
     py_files = []
     for f in sorted(project.rglob("*.py")):
         if any(part in _SKIP_DIRS for part in f.parts):
+            continue
+        # Skip test/fixture/pattern files to avoid false positives
+        if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
             continue
         py_files.append(f)
 

@@ -45,6 +45,19 @@ _SKIP_DIRS = frozenset(
         ".tox",
         ".eggs",
         ".mypy_cache",
+        "tests",
+        "test",
+        "testing",
+        "fixtures",
+        "fuzz",
+    }
+)
+
+# Files that contain pattern definitions or test data — skip to avoid FP
+_SKIP_FILES = frozenset(
+    {
+        "patterns.py",
+        "conftest.py",
     }
 )
 
@@ -178,6 +191,11 @@ def _group_by(findings: list[SecretFinding], attr: str) -> dict[str, int]:
 def _should_scan(path: Path) -> bool:
     """Check if a file should be scanned."""
     if any(part in _SKIP_DIRS for part in path.parts):
+        return False
+    # Skip pattern definition files and test fixtures
+    if path.name in _SKIP_FILES:
+        return False
+    if path.name.startswith("test_") or path.name.endswith("_test.py"):
         return False
     if path.name in _SCAN_FILENAMES:
         return True

@@ -8,7 +8,7 @@ branding:
 
 inputs:
   scan-type:
-    description: 'Scan type: image (container image), fs (filesystem/repo dependencies), iac (infrastructure-as-code), sbom (ingest third-party SBOM), check (pre-install CVE gate), agents (AI agent discovery).'
+    description: 'Scan type: image (container), fs (filesystem), iac (IaC), sbom (ingest SBOM), secrets (hardcoded secrets), code (AI source analysis), agents (AI agent discovery).'
     required: false
     default: 'scan'
   scan-ref:
@@ -260,11 +260,20 @@ runs:
               ARGS="$ARGS $(echo "$p" | xargs)"
             done
             ;;
+          secrets)
+            ARGS="secrets ${INPUT_SCAN_REF:-.}"
+            ;;
+          code)
+            ARGS="code ${INPUT_SCAN_REF:-.}"
+            ;;
+          agents)
+            ARGS="agents"
+            ;;
           scan|"")
             ARGS="scan"
             ;;
           *)
-            echo "::error::Unknown scan-type: $INPUT_SCAN_TYPE. Use: scan, image, fs, sbom, iac"
+            echo "::error::Unknown scan-type: $INPUT_SCAN_TYPE. Use: scan, image, fs, sbom, iac, secrets, code, agents"
             exit 1
             ;;
         esac

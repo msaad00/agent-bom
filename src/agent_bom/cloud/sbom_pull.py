@@ -312,13 +312,26 @@ def pull_cloud_sbom(
 def detect_provider(image_ref: str) -> str | None:
     """Auto-detect cloud provider from image reference.
 
+    Extracts the registry host (before first ``/``) and matches against
+    known cloud registry patterns. Only checks the host component to
+    prevent substring injection via repo names or tags.
+
     Returns "ecr", "gcr", "acr", or None.
     """
-    ref = image_ref.lower()
-    if ".dkr.ecr." in ref and ".amazonaws.com" in ref:
+    ref = image_ref.lower().strip()
+    if not ref:
+        return None
+
+    # Extract registry host: "registry.example.com/repo:tag" → "registry.example.com"
+    registry, _, _ = ref.partition("/")
+
+    # AWS ECR: 123456789012.dkr.ecr.us-east-1.amazonaws.com
+    if ".dkr.ecr." in registry and registry.endswith(".amazonaws.com"):
         return "ecr"
-    if "-docker.pkg.dev/" in ref or "gcr.io/" in ref:
+    # GCP: gcr.io or REGION-docker.pkg.dev (Artifact Registry)
+    if registry == "gcr.io" or registry.endswith("-docker.pkg.dev"):
         return "gcr"
-    if ".azurecr.io/" in ref:
+    # Azure ACR: name.azurecr.io
+    if registry.endswith(".azurecr.io"):
         return "acr"
     return None

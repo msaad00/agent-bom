@@ -77,9 +77,6 @@ main.add_command(_agents_cmd, "agents")
 # We register it directly (not a wrapper) so all 200+ params work identically.
 main.commands["scan"] = _agents_cmd
 
-# Re-export as 'scan' for backward-compat imports (from agent_bom.cli import scan)
-scan = _agents_cmd  # noqa: F811
-
 from agent_bom.cli._inventory import completions_cmd, inventory, validate, where  # noqa: E402
 
 # inventory + where are under `mcp` group — no top-level duplicate
@@ -289,6 +286,12 @@ from agent_bom.cli._entry import make_entry_point  # noqa: E402
 
 # Use lambda with module lookup so unittest.mock.patch("agent_bom.cli.main") works
 cli_main = make_entry_point(lambda: _self_module.main, "agent-bom")
+
+
+# Re-export 'scan' as the Click command for backward-compat imports.
+# MUST be at the end — after all subpackage imports that might shadow
+# the 'scan' name with the scan/ subpackage module.
+scan = _agents_cmd  # noqa: F811
 
 
 __all__ = [

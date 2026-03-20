@@ -1,5 +1,5 @@
 name: 'agent-bom Scan'
-description: 'Security scanner for AI infrastructure — 30 MCP clients, AI BOM with tool capabilities, CVEs with version-accurate resolution, blast radius mapping, compliance, IaC, runtime proxy.'
+description: 'AI infrastructure and supply chain security — blast radius mapping, AST analysis, AI BOM, 112-pattern proxy, 14-framework compliance.'
 author: 'agent-bom'
 
 branding:
@@ -8,7 +8,7 @@ branding:
 
 inputs:
   scan-type:
-    description: 'Scan type: scan (full auto-detect), image (container), fs (filesystem), iac (infrastructure-as-code), sbom (ingest SBOM). Like Trivy scan-type.'
+    description: 'Scan type: agents (AI agent discovery), image (container), fs (filesystem), iac (infrastructure-as-code), sbom (ingest SBOM), scan (backward compat for agents).'
     required: false
     default: 'scan'
   scan-ref:

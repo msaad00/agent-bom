@@ -429,7 +429,12 @@
     },
     {
       "name": "Multi-turn injection",
-      "pattern": "\\b(?:in\\s+(?:the\\s+)?next\\s+(?:turn|response|message)|after\\s+this)\\s+(?:you|please|always)\\b",
+      "pattern": "\\b(?:in\\s+(?:the\\s+)?next\\s+(?:turn|response|message)|after\\s+this|from\\s+now\\s+on)\\b.{0,60}\\b(?:you\\s+(?:must|should|will)|output|execute|send|forward|respond)\\b",
+      "flags": "i"
+    },
+    {
+      "name": "Future instruction planting",
+      "pattern": "\\b(?:next\\s+(?:time|response|turn|message)|when\\s+(?:asked|prompted|queried))\\b.{0,60}\\b(?:always|never|must|shall|respond|output|include|execute)\\b",
       "flags": "i"
     }
   ],

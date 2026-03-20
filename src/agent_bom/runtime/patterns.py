@@ -280,7 +280,16 @@ RESPONSE_INJECTION_PATTERNS: list[tuple[str, re.Pattern]] = [
     (
         "Multi-turn injection",
         re.compile(
-            r"\b(?:in\s+(?:the\s+)?next\s+(?:turn|response|message)|after\s+this)\s+(?:you|please|always)\b",
+            r"\b(?:in\s+(?:the\s+)?next\s+(?:turn|response|message)|after\s+this|from\s+now\s+on)\b"
+            r".{0,60}\b(?:you\s+(?:must|should|will)|output|execute|send|forward|respond)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Future instruction planting",
+        re.compile(
+            r"\b(?:next\s+(?:time|response|turn|message)|when\s+(?:asked|prompted|queried))\b"
+            r".{0,60}\b(?:always|never|must|shall|respond|output|include|execute)\b",
             re.IGNORECASE,
         ),
     ),

@@ -234,7 +234,7 @@ function ControlCard({ control, catalog }: { control: ComplianceControl; catalog
                     <Package className="w-3 h-3" /> Affected Packages
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    {control.affected_packages.map((pkg) => (
+                    {control.affected_packages?.map((pkg) => (
                       <span key={pkg} className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 font-mono">
                         {pkg}
                       </span>
@@ -248,7 +248,7 @@ function ControlCard({ control, catalog }: { control: ComplianceControl; catalog
                     <Server className="w-3 h-3" /> Affected Agents
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    {control.affected_agents.map((agent) => (
+                    {control.affected_agents?.map((agent) => (
                       <span key={agent} className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-300">
                         {agent}
                       </span>
@@ -484,7 +484,7 @@ export default function CompliancePage() {
           <span className="text-xs text-zinc-500 ml-2">2025 Edition</span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {data.owasp_llm_top10.map((c) => (
+          {data.owasp_llm_top10?.map((c) => (
             <ControlCard key={c.code} control={c} catalog={OWASP_LLM_TOP10} />
           ))}
         </div>
@@ -499,7 +499,7 @@ export default function CompliancePage() {
           <span className="text-xs text-zinc-500 ml-2">MCP Security Risks</span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {data.owasp_mcp_top10.map((c) => (
+          {data.owasp_mcp_top10?.map((c) => (
             <ControlCard key={c.code} control={c} catalog={OWASP_MCP_TOP10} />
           ))}
         </div>
@@ -525,7 +525,7 @@ export default function CompliancePage() {
           <span className="text-xs text-zinc-500 ml-2">Adversarial ML Techniques</span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {data.mitre_atlas.map((c) => (
+          {data.mitre_atlas?.map((c) => (
             <ControlCard key={c.code} control={c} catalog={MITRE_ATLAS} />
           ))}
         </div>
@@ -539,7 +539,7 @@ export default function CompliancePage() {
           <span className="text-xs text-zinc-500 ml-2">Govern / Map / Measure / Manage</span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {data.nist_ai_rmf.map((c) => (
+          {data.nist_ai_rmf?.map((c) => (
             <ControlCard key={c.code} control={c} catalog={NIST_AI_RMF} />
           ))}
         </div>
@@ -554,7 +554,7 @@ export default function CompliancePage() {
           <span className="text-xs text-zinc-500 ml-2">2026 Edition</span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {data.owasp_agentic_top10.map((c) => (
+          {data.owasp_agentic_top10?.map((c) => (
             <ControlCard key={c.code} control={c} catalog={OWASP_AGENTIC_TOP10} />
           ))}
         </div>
@@ -580,7 +580,7 @@ export default function CompliancePage() {
           <span className="text-xs text-zinc-500 ml-2">Regulation (EU) 2024/1689</span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {data.eu_ai_act.map((c) => (
+          {data.eu_ai_act?.map((c) => (
             <ControlCard key={c.code} control={c} catalog={EU_AI_ACT} />
           ))}
         </div>

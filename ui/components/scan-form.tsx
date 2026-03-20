@@ -322,7 +322,7 @@ function ListInput({
       </div>
       {items.length > 0 && (
         <div className="flex flex-wrap gap-2">
-          {items.map((item, i) => (
+          {items?.map((item, i) => (
             <span key={i} className="flex items-center gap-1.5 bg-zinc-800 border border-zinc-700 rounded-lg px-2.5 py-1 text-xs font-mono text-zinc-300">
               {item}
               <button type="button" onClick={() => onRemove(i)}>

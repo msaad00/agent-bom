@@ -188,7 +188,7 @@ function RegistryDetail({ serverId }: { serverId: string }) {
         <DetailSection title={`Tools (${tools.length})`} icon={Wrench}>
           {tools.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
-              {tools.map((tool) => (
+              {tools?.map((tool) => (
                 <span key={tool} className="px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-xs font-mono text-zinc-300">
                   {tool}
                 </span>
@@ -203,7 +203,7 @@ function RegistryDetail({ serverId }: { serverId: string }) {
         <DetailSection title={`Credentials (${creds.length})`} icon={KeyRound} accent={creds.length > 0 ? "text-amber-500" : undefined}>
           {creds.length > 0 ? (
             <div className="space-y-1.5">
-              {creds.map((cred) => (
+              {creds?.map((cred) => (
                 <div key={cred} className="flex items-center gap-2 px-2 py-1.5 bg-amber-950/30 border border-amber-900/50 rounded">
                   <KeyRound className="w-3 h-3 text-amber-500 shrink-0" />
                   <code className="text-xs font-mono text-amber-400">{cred}</code>
@@ -236,7 +236,7 @@ function RegistryDetail({ serverId }: { serverId: string }) {
         <DetailSection title={`Known CVEs (${cves.length})`} icon={Bug} accent={cves.length > 0 ? "text-red-400" : undefined}>
           {cves.length > 0 ? (
             <div className="space-y-1">
-              {cves.map((cve) => (
+              {cves?.map((cve) => (
                 <a
                   key={cve}
                   href={`https://osv.dev/vulnerability/${cve}`}
@@ -396,7 +396,7 @@ function RegistryList() {
             >
               All
             </button>
-            {categories.map((cat) => (
+            {categories?.map((cat) => (
               <button
                 key={cat}
                 onClick={() => setCategoryFilter(categoryFilter === cat ? "all" : cat)}
@@ -415,7 +415,7 @@ function RegistryList() {
 
       {/* Server Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {filtered.map((server) => (
+        {filtered?.map((server) => (
           <div
             key={server.id}
             className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 hover:border-zinc-600 transition-colors cursor-pointer group"

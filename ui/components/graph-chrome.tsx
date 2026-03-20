@@ -15,7 +15,7 @@ import type { LegendItem } from "@/lib/graph-utils";
 export function GraphLegend({ items }: { items: LegendItem[] }) {
   return (
     <div className="flex items-center gap-3 text-[10px] text-zinc-500">
-      {items.map((item) => (
+      {items?.map((item) => (
         <span key={item.label} className="flex items-center gap-1">
           <span
             className="w-2 h-2 rounded-full"

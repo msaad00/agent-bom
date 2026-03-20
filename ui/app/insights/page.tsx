@@ -124,7 +124,7 @@ export default function InsightsPage() {
           .map((j) => j.job_id);
 
         const fullJobs = await Promise.all(
-          doneIds.map((id) => api.getScan(id).catch(() => null))
+          doneIds?.map((id) => api.getScan(id).catch(() => null))
         );
         setJobs(fullJobs.filter(Boolean) as ScanJob[]);
       })

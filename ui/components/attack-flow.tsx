@@ -145,7 +145,7 @@ function FrameworkTags({ title, tags, catalog, color }: { title: string; tags: s
     <div>
       <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">{title}</div>
       <div className="space-y-1">
-        {tags.map((tag) => (
+        {tags?.map((tag) => (
           <div key={tag} className={`text-xs font-mono bg-${color}-950/40 border border-${color}-800/50 text-${color}-400 rounded px-2 py-1`}>
             {tag} <span className={`text-${color}-600 font-sans`}>{catalog[tag]}</span>
           </div>
@@ -200,23 +200,23 @@ function FilterBar({ filters, onChange, blastRadius }: { filters: AttackFlowFilt
       <Filter className="w-3.5 h-3.5 text-zinc-500" />
       <select value={filters.cve} onChange={(e) => onChange({ ...filters, cve: e.target.value })} className="bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-xs text-zinc-300 focus:outline-none focus:border-emerald-600">
         <option value="">All CVEs</option>
-        {cveIds.map((id) => <option key={id} value={id}>{id}</option>)}
+        {cveIds?.map((id) => <option key={id} value={id}>{id}</option>)}
       </select>
       <div className="flex gap-0.5">
-        {severities.map((sev) => (
+        {severities?.map((sev) => (
           <button key={sev} onClick={() => onChange({ ...filters, severity: activeSev === sev ? "" : sev })} className={`text-[10px] font-mono uppercase px-2 py-1 rounded border transition-colors ${activeSev === sev ? severityColor(sev) : "border-zinc-700 bg-zinc-900 text-zinc-500 hover:border-zinc-600"}`}>{sev}</button>
         ))}
       </div>
       {frameworkTags.length > 0 && (
         <select value={filters.framework} onChange={(e) => onChange({ ...filters, framework: e.target.value })} className="bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-xs text-zinc-300 focus:outline-none focus:border-emerald-600">
           <option value="">All Frameworks</option>
-          {frameworkTags.map((tag) => <option key={tag} value={tag}>{tag} {OWASP_LLM_TOP10[tag] ? `- ${OWASP_LLM_TOP10[tag]}` : OWASP_MCP_TOP10[tag] ? `- ${OWASP_MCP_TOP10[tag]}` : MITRE_ATLAS[tag] ? `- ${MITRE_ATLAS[tag]}` : ""}</option>)}
+          {frameworkTags?.map((tag) => <option key={tag} value={tag}>{tag} {OWASP_LLM_TOP10[tag] ? `- ${OWASP_LLM_TOP10[tag]}` : OWASP_MCP_TOP10[tag] ? `- ${OWASP_MCP_TOP10[tag]}` : MITRE_ATLAS[tag] ? `- ${MITRE_ATLAS[tag]}` : ""}</option>)}
         </select>
       )}
       {agentNames.length > 0 && (
         <select value={filters.agent} onChange={(e) => onChange({ ...filters, agent: e.target.value })} className="bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-xs text-zinc-300 focus:outline-none focus:border-emerald-600">
           <option value="">All Agents</option>
-          {agentNames.map((name) => <option key={name} value={name}>{name}</option>)}
+          {agentNames?.map((name) => <option key={name} value={name}>{name}</option>)}
         </select>
       )}
       {(filters.cve || filters.severity || filters.framework || filters.agent) && (
@@ -259,7 +259,7 @@ function AttackFlowContent({ id, job, flowData, filters, onFiltersChange }: { id
   const [selectedNode, setSelectedNode] = useState<AttackFlowNodeData | null>(null);
   const blastRadius = job.result?.blast_radius ?? [];
 
-  const nodes = flowData.nodes.map((n) => ({ ...n, type: "attackFlowNode" as const, data: n.data as unknown as Record<string, unknown> }));
+  const nodes = flowData.nodes?.map((n) => ({ ...n, type: "attackFlowNode" as const, data: n.data as unknown as Record<string, unknown> }));
   const edges = flowData.edges;
 
   return (

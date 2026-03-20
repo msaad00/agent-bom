@@ -252,7 +252,7 @@ export function ComplianceMatrix({ data }: { data: ComplianceResponse }) {
   });
 
   const frameworks = useMemo(
-    () => [...new Set(rows.map((r) => r.framework))],
+    () => [...new Set(rows?.map((r) => r.framework))],
     [rows]
   );
   const activeFramework =
@@ -291,7 +291,7 @@ export function ComplianceMatrix({ data }: { data: ComplianceResponse }) {
             className="bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-zinc-600"
           >
             <option value="">All frameworks</option>
-            {frameworks.map((f) => (
+            {frameworks?.map((f) => (
               <option key={f} value={f}>
                 {f}
               </option>
@@ -323,7 +323,7 @@ export function ComplianceMatrix({ data }: { data: ComplianceResponse }) {
 
         {/* Export */}
         <button
-          onClick={() => exportCsv(table.getFilteredRowModel().rows.map((r) => r.original))}
+          onClick={() => exportCsv(table.getFilteredRowModel().rows?.map((r) => r.original))}
           className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-xs text-zinc-300 hover:text-zinc-100 hover:border-zinc-600 transition-colors ml-auto"
         >
           <Download className="w-3.5 h-3.5" />
@@ -343,7 +343,7 @@ export function ComplianceMatrix({ data }: { data: ComplianceResponse }) {
             <thead className="bg-zinc-900 border-b border-zinc-800">
               {table.getHeaderGroups().map((hg) => (
                 <tr key={hg.id}>
-                  {hg.headers.map((header) => (
+                  {hg.headers?.map((header) => (
                     <th
                       key={header.id}
                       className="text-left px-3 py-2.5 text-[10px] font-medium text-zinc-500 uppercase tracking-wider whitespace-nowrap"
@@ -380,7 +380,7 @@ export function ComplianceMatrix({ data }: { data: ComplianceResponse }) {
               ))}
             </thead>
             <tbody className="divide-y divide-zinc-800/50 bg-zinc-950">
-              {table.getRowModel().rows.map((row) => (
+              {table.getRowModel().rows?.map((row) => (
                 <tr
                   key={row.id}
                   className="hover:bg-zinc-900/50 transition-colors"

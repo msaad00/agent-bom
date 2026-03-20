@@ -57,7 +57,7 @@ function MeshToolbar({
       <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
 
       {/* Node type toggles */}
-      {toggles.map((t) => (
+      {toggles?.map((t) => (
         <label key={t.key} className="flex items-center gap-1 cursor-pointer select-none">
           <input
             type="checkbox"
@@ -198,13 +198,13 @@ export default function MeshPage() {
 
   const displayNodes = useMemo(() => {
     if (searchMatches && searchMatches.size > 0) {
-      return layoutNodes.map((n) => ({
+      return layoutNodes?.map((n) => ({
         ...n,
         data: { ...n.data, dimmed: !searchMatches.has(n.id), highlighted: searchMatches.has(n.id) },
       }));
     }
     if (!connectedIds) return layoutNodes;
-    return layoutNodes.map((n) => ({
+    return layoutNodes?.map((n) => ({
       ...n,
       data: { ...n.data, dimmed: !connectedIds.has(n.id), highlighted: connectedIds.has(n.id) },
     }));
@@ -213,7 +213,7 @@ export default function MeshPage() {
   const displayEdges = useMemo(() => {
     const activeSet = searchMatches && searchMatches.size > 0 ? searchMatches : connectedIds;
     if (!activeSet) return layoutEdges;
-    return layoutEdges.map((e) => ({
+    return layoutEdges?.map((e) => ({
       ...e,
       style: {
         ...e.style,
@@ -306,7 +306,7 @@ export default function MeshPage() {
             onChange={(e) => setSelectedJob(e.target.value)}
             className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-1.5 text-sm text-zinc-300 focus:outline-none focus:border-emerald-600"
           >
-            {jobs.map((j) => (
+            {jobs?.map((j) => (
               <option key={j.job_id} value={j.job_id}>
                 Scan {j.job_id.slice(0, 8)} — {new Date(j.created_at).toLocaleDateString()}
               </option>

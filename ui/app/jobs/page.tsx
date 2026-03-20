@@ -118,7 +118,7 @@ export default function JobsPage() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie data={pieData} dataKey="value" innerRadius="55%" outerRadius="85%" paddingAngle={2} stroke="none">
-                    {pieData.map((entry, i) => <Cell key={i} fill={entry.fill} fillOpacity={0.85} />)}
+                    {pieData?.map((entry, i) => <Cell key={i} fill={entry.fill} fillOpacity={0.85} />)}
                   </Pie>
                   <Tooltip contentStyle={{ background: "#09090b", border: "1px solid #27272a", borderRadius: 8, fontSize: 12 }} itemStyle={{ color: "#e4e4e7" }} />
                 </PieChart>
@@ -126,7 +126,7 @@ export default function JobsPage() {
             </div>
             <div className="space-y-2">
               <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-3">Job Status</p>
-              {pieData.map((d) => (
+              {pieData?.map((d) => (
                 <div key={d.status} className="flex items-center gap-2 text-xs">
                   <span className="w-2 h-2 rounded-full" style={{ background: d.fill }} />
                   <span className="capitalize text-zinc-300 w-20">{d.status}</span>
@@ -151,7 +151,7 @@ export default function JobsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800 bg-zinc-950">
-              {jobs.map((job) => (
+              {jobs?.map((job) => (
                 <tr
                   key={job.job_id}
                   className="hover:bg-zinc-900 transition-colors cursor-pointer group"

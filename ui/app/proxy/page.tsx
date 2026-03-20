@@ -345,7 +345,7 @@ export default function ProxyDashboard() {
                         stroke="#09090b"
                         strokeWidth={2}
                       >
-                        {blockedPieData.map((_, i) => (
+                        {blockedPieData?.map((_, i) => (
                           <Cell
                             key={i}
                             fill={PIE_COLORS[i % PIE_COLORS.length]}
@@ -365,7 +365,7 @@ export default function ProxyDashboard() {
                     </PieChart>
                   </ResponsiveContainer>
                   <div className="flex flex-wrap gap-2 mt-2">
-                    {blockedPieData.map((d, i) => (
+                    {blockedPieData?.map((d, i) => (
                       <div
                         key={d.name}
                         className="flex items-center gap-1.5 text-[10px] text-zinc-400"
@@ -402,7 +402,7 @@ export default function ProxyDashboard() {
                 Active Detectors
               </h3>
               <div className="flex flex-wrap gap-2">
-                {status.detectors_active.map((d) => (
+                {status.detectors_active?.map((d) => (
                   <span
                     key={d}
                     className="text-[11px] px-2.5 py-1 rounded-full bg-emerald-950/50 text-emerald-300 border border-emerald-800/50 font-mono"
@@ -449,7 +449,7 @@ export default function ProxyDashboard() {
               </div>
             ) : (
               <div className="space-y-1 max-h-96 overflow-y-auto">
-                {filteredAlerts.map((alert, i) => (
+                {filteredAlerts?.map((alert, i) => (
                   <div
                     key={`${alert.ts}-${i}`}
                     className="flex items-center justify-between px-3 py-2 bg-zinc-800/50 border border-zinc-800 rounded-lg"

@@ -94,7 +94,7 @@ function VulnsPage() {
         const doneJobs = jobsResp.jobs.filter((j) => j.status === "done");
 
         const fullJobs: ScanJob[] = await Promise.all(
-          doneJobs.map((j) => api.getScan(j.job_id))
+          doneJobs?.map((j) => api.getScan(j.job_id))
         );
 
         const vulnMap = new Map<string, EnrichedVuln>();
@@ -258,7 +258,7 @@ function VulnsPage() {
             {/* Filters + search */}
             <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
               <div className="flex items-center gap-1 flex-wrap">
-                {FILTERS.map(({ key, label, color }) => (
+                {FILTERS?.map(({ key, label, color }) => (
                   <button
                     key={key}
                     onClick={() => setFilter(key)}
@@ -284,7 +284,7 @@ function VulnsPage() {
             {/* Group by */}
             <div className="flex items-center gap-2">
               <span className="text-xs text-zinc-500 uppercase tracking-wide font-medium">Group by</span>
-              {GROUP_OPTIONS.map(({ key, label, icon: Icon }) => (
+              {GROUP_OPTIONS?.map(({ key, label, icon: Icon }) => (
                 <button
                   key={key}
                   onClick={() => setGroupBy(key)}
@@ -304,7 +304,7 @@ function VulnsPage() {
           {/* Grouped view */}
           {grouped ? (
             <div className="space-y-6">
-              {grouped.map(([groupLabel, groupVulns]) => (
+              {grouped?.map(([groupLabel, groupVulns]) => (
                 <div key={groupLabel}>
                   <div className="flex items-center gap-2 mb-2">
                     <h3 className="text-sm font-semibold text-zinc-300">{groupLabel}</h3>
@@ -363,7 +363,7 @@ function VulnTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-zinc-800 bg-zinc-950">
-          {vulns.map((v) => (
+          {vulns?.map((v) => (
             <tr key={v.id} className="hover:bg-zinc-900 transition-colors">
               <td className="px-4 py-3">
                 <div className="flex items-center gap-2">

@@ -133,7 +133,7 @@ export function LineageDetailPanel({
               <div>
                 <Label>Connected Agents</Label>
                 <div className="flex flex-wrap gap-1 mt-1">
-                  {data.sharedAgents.map((a) => (
+                  {data.sharedAgents?.map((a) => (
                     <span key={a} className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">
                       {a}
                     </span>
@@ -211,7 +211,7 @@ export function LineageDetailPanel({
               <div>
                 <Label>OWASP</Label>
                 <div className="flex flex-wrap gap-1 mt-1">
-                  {data.owaspTags.map((t) => (
+                  {data.owaspTags?.map((t) => (
                     <span key={t} className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
                       {t}
                     </span>
@@ -223,7 +223,7 @@ export function LineageDetailPanel({
               <div>
                 <Label>MITRE ATLAS</Label>
                 <div className="flex flex-wrap gap-1 mt-1">
-                  {data.atlasTags.map((t) => (
+                  {data.atlasTags?.map((t) => (
                     <span key={t} className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
                       {t}
                     </span>

@@ -428,7 +428,7 @@ export default function GraphPage() {
 
   const displayNodes = useMemo(() => {
     if (!connectedIds) return layoutNodes;
-    return layoutNodes.map((n) => ({
+    return layoutNodes?.map((n) => ({
       ...n,
       data: {
         ...n.data,
@@ -440,7 +440,7 @@ export default function GraphPage() {
 
   const displayEdges = useMemo(() => {
     if (!connectedIds) return layoutEdges;
-    return layoutEdges.map((e) => ({
+    return layoutEdges?.map((e) => ({
       ...e,
       style: {
         ...e.style,
@@ -508,7 +508,7 @@ export default function GraphPage() {
             onChange={(e) => setSelectedJob(e.target.value)}
             className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-1.5 text-sm text-zinc-300 focus:outline-none focus:border-emerald-600"
           >
-            {jobs.map((j) => (
+            {jobs?.map((j) => (
               <option key={j.job_id} value={j.job_id}>
                 Scan {j.job_id.slice(0, 8)} — {new Date(j.created_at).toLocaleDateString()}
               </option>

@@ -150,7 +150,7 @@ export default function ActivityPage() {
       {timeline.warnings.length > 0 && (
         <div className="rounded-lg border border-yellow-800/50 bg-yellow-950/20 p-4">
           <p className="text-xs font-medium text-yellow-400 mb-2">Warnings</p>
-          {timeline.warnings.map((w, i) => (
+          {timeline.warnings?.map((w, i) => (
             <p key={i} className="text-xs text-yellow-300/70">{w}</p>
           ))}
         </div>

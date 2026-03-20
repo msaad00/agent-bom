@@ -274,7 +274,7 @@ export default function GatewayPage() {
             </div>
           )}
           <div className="space-y-2">
-            {policies.map((policy) => {
+            {policies?.map((policy) => {
               const isExpanded = expanded.has(policy.policy_id);
               return (
                 <div key={policy.policy_id} className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
@@ -311,7 +311,7 @@ export default function GatewayPage() {
                         <div>
                           <span className="text-xs text-zinc-500 block mb-1">Rules</span>
                           <div className="space-y-1">
-                            {policy.rules.map((rule) => (
+                            {policy.rules?.map((rule) => (
                               <div key={rule.id} className="text-xs bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-zinc-400">
                                 <span className="text-zinc-200 font-mono">{rule.id}</span>
                                 {rule.description && <span className="ml-2">{rule.description}</span>}
@@ -417,7 +417,7 @@ export default function GatewayPage() {
                 );
               })()}
             <div className="space-y-1">
-              {audit.map((entry) => (
+              {audit?.map((entry) => (
                 <div key={entry.entry_id} className="bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <span className={`text-[10px] px-1.5 py-0.5 rounded border ${

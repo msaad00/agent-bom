@@ -50,12 +50,12 @@ export function ScanMeshView({ id }: { id: string }) {
 
   const displayNodes = useMemo(() => {
     if (!connectedIds) return layoutNodes;
-    return layoutNodes.map((n) => ({ ...n, data: { ...n.data, dimmed: !connectedIds.has(n.id), highlighted: connectedIds.has(n.id) } }));
+    return layoutNodes?.map((n) => ({ ...n, data: { ...n.data, dimmed: !connectedIds.has(n.id), highlighted: connectedIds.has(n.id) } }));
   }, [layoutNodes, connectedIds]);
 
   const displayEdges = useMemo(() => {
     if (!connectedIds) return layoutEdges;
-    return layoutEdges.map((e) => ({ ...e, style: { ...e.style, opacity: connectedIds.has(e.source) && connectedIds.has(e.target) ? 1 : 0.12 } }));
+    return layoutEdges?.map((e) => ({ ...e, style: { ...e.style, opacity: connectedIds.has(e.source) && connectedIds.has(e.target) ? 1 : 0.12 } }));
   }, [layoutEdges, connectedIds]);
 
   const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => { setSelectedNode(node.data as LineageNodeData); setHoveredNodeId(null); }, []);

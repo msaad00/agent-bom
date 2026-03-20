@@ -45,7 +45,7 @@ const colorMap: Record<LayerColor, { border: string; bg: string; hoverBg: string
 export function TrustStack() {
   return (
     <div className="space-y-2">
-      {LAYERS.map((layer) => {
+      {LAYERS?.map((layer) => {
         const c = colorMap[layer.color];
         return (
           <Link

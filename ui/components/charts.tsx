@@ -65,7 +65,7 @@ function ChartTooltip({
       {label && (
         <div className="text-zinc-500 mb-1 font-mono text-[10px]">{label}</div>
       )}
-      {payload.map((entry) => (
+      {payload?.map((entry) => (
         <div
           key={entry.name}
           className="flex items-center gap-2"
@@ -227,7 +227,7 @@ export function SeverityDonut({ data }: { data: SeveritySlice[] }) {
   const filtered = data.filter((d) => d.value > 0);
   if (filtered.length === 0) return null;
   const total = filtered.reduce((s, d) => s + d.value, 0);
-  const colors = filtered.map(
+  const colors = filtered?.map(
     (d) => SEVERITY_COLORS[d.name as keyof typeof SEVERITY_COLORS] ?? "#71717a"
   );
 
@@ -249,7 +249,7 @@ export function SeverityDonut({ data }: { data: SeveritySlice[] }) {
               dataKey="value"
               stroke="none"
             >
-              {filtered.map((_, i) => (
+              {filtered?.map((_, i) => (
                 <Cell key={i} fill={colors[i]} fillOpacity={0.85} />
               ))}
             </Pie>
@@ -321,11 +321,11 @@ export function SupplyChainTreemap({
   agents: Agent[];
   onPackageClick?: (pkgName: string) => void;
 }) {
-  const treeData: TreemapItem[] = agents.map((agent) => ({
+  const treeData: TreemapItem[] = agents?.map((agent) => ({
     name: agent.name,
-    children: agent.mcp_servers.map((srv) => ({
+    children: agent.mcp_servers?.map((srv) => ({
       name: srv.name,
-      children: srv.packages.map((pkg) => {
+      children: srv.packages?.map((pkg) => {
         const vulns = pkg.vulnerabilities ?? [];
         const hasVuln = vulns.length > 0;
         const worst = vulns.reduce(
@@ -405,7 +405,7 @@ export function BlastRadiusRadial({ data }: { data: BlastRadius[] }) {
 
   const maxScore = top[0].blast_score;
 
-  const radialData: RadialPoint[] = top.map((br) => {
+  const radialData: RadialPoint[] = top?.map((br) => {
     const sev = br.severity?.toLowerCase() ?? "low";
     const fill =
       sev === "critical" ? "#ef4444"
@@ -506,7 +506,7 @@ export function PipelineFlow({ stats }: { stats: PipelineStats }) {
         End-to-end flow with live stats from the latest scan
       </p>
       <div className="flex items-stretch gap-0 overflow-x-auto pb-2">
-        {PIPELINE_STAGES.map((stage, i) => {
+        {PIPELINE_STAGES?.map((stage, i) => {
           const isLast = i === PIPELINE_STAGES.length - 1;
           const isAlert = stage.id === "output" && stats.kev > 0;
           return (
@@ -625,7 +625,7 @@ export function EpssVsCvssChart({ data }: { data: EpssVsCvssPoint[] }) {
   } as const;
 
   // Bubble size range: blast_score mapped to [40, 600] area
-  const blastValues = data.map((d) => d.blast);
+  const blastValues = data?.map((d) => d.blast);
   const minBlast = Math.min(...blastValues);
   const maxBlast = Math.max(...blastValues);
   const zRange: [number, number] =

@@ -186,7 +186,7 @@ export default function FleetPage() {
                   <YAxis tick={{ fontSize: 10, fill: "#71717a" }} tickLine={false} axisLine={false} allowDecimals={false} width={28} />
                   <Tooltip contentStyle={{ background: "#09090b", border: "1px solid #27272a", borderRadius: 8, fontSize: 12 }} itemStyle={{ color: "#e4e4e7" }} labelStyle={{ color: "#71717a", marginBottom: 4 }} />
                   <Bar dataKey="count" name="agents" radius={[4, 4, 0, 0]}>
-                    {chartData.map((entry, i) => <Cell key={i} fill={entry.fill} fillOpacity={0.8} />)}
+                    {chartData?.map((entry, i) => <Cell key={i} fill={entry.fill} fillOpacity={0.8} />)}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
@@ -247,7 +247,7 @@ export default function FleetPage() {
       {/* Agent list */}
       {!loading && filtered.length > 0 && (
         <div className="space-y-2">
-          {filtered.map((agent) => {
+          {filtered?.map((agent) => {
             const isExpanded = expanded.has(agent.agent_id);
             const transitions = TRANSITIONS[agent.lifecycle_state] ?? [];
             return (
@@ -328,7 +328,7 @@ export default function FleetPage() {
                     {transitions.length > 0 && (
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-zinc-500">Transition:</span>
-                        {transitions.map((t) => (
+                        {transitions?.map((t) => (
                           <button
                             key={t}
                             onClick={(e) => {

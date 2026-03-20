@@ -193,7 +193,7 @@ function AgentsList() {
 
       {/* Configured agents */}
       <div className="space-y-4">
-        {configured.map((agent, i) => (
+        {configured?.map((agent, i) => (
           <div key={i} className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
             <button
               type="button"
@@ -232,7 +232,7 @@ function AgentsList() {
 
             {!collapsed.has(i) && (
               <div className="space-y-2 mt-4">
-                {agent.mcp_servers.map((srv, j) => (
+                {agent.mcp_servers?.map((srv, j) => (
                   <div key={j} className="bg-zinc-800 border border-zinc-700 rounded-lg p-3">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
@@ -286,7 +286,7 @@ function AgentsList() {
             <AlertCircle className="w-3.5 h-3.5 text-yellow-500" />
             Installed but not configured
           </h2>
-          {installedOnly.map((agent, i) => (
+          {installedOnly?.map((agent, i) => (
             <div key={i} className="bg-zinc-900/50 border border-dashed border-zinc-800 rounded-xl p-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -454,7 +454,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
               <KeyRound className="w-4 h-4" /> Exposed Credentials ({credentials.length})
             </h3>
             <div className="flex flex-wrap gap-2">
-              {credentials.map((c) => (
+              {credentials?.map((c) => (
                 <span key={c} className="bg-yellow-950 border border-yellow-800 text-yellow-300 px-2 py-0.5 rounded text-xs font-mono">
                   {c}
                 </span>
@@ -469,7 +469,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
             <Server className="w-5 h-5 text-blue-400" /> MCP Servers
           </h2>
           <div className="space-y-2">
-            {agent.mcp_servers.map((srv) => {
+            {agent.mcp_servers?.map((srv) => {
               const isExpanded = expandedServers.has(srv.name);
               const srvPkgs = srv.packages || [];
               const srvTools = srv.tools || [];
@@ -505,7 +505,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
                         <div>
                           <h4 className="text-xs font-semibold text-purple-400 mb-1">Tools</h4>
                           <div className="flex flex-wrap gap-1.5">
-                            {srvTools.map((t) => (
+                            {srvTools?.map((t) => (
                               <span key={t.name} className="bg-purple-950 border border-purple-800 text-purple-300 px-2 py-0.5 rounded text-xs">
                                 {t.name}
                               </span>
@@ -518,7 +518,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
                         <div>
                           <h4 className="text-xs font-semibold text-zinc-400 mb-1">Packages</h4>
                           <div className="space-y-1">
-                            {srvPkgs.map((pkg) => (
+                            {srvPkgs?.map((pkg) => (
                               <div key={`${pkg.name}@${pkg.version}`} className="flex items-center justify-between text-xs">
                                 <span className="font-mono">
                                   {pkg.name}
@@ -545,7 +545,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
               <Bug className="w-5 h-5 text-red-400" /> Blast Radius ({blast_radius.length})
             </h2>
             <div className="space-y-2">
-              {blast_radius.map((br, i) => (
+              {blast_radius?.map((br, i) => (
                 <div key={`${br.vulnerability_id}-${i}`} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
@@ -669,7 +669,7 @@ function StatsBar({ stats }: { stats: Record<string, number> }) {
   ];
   return (
     <div className="flex items-center gap-4 text-xs">
-      {items.map((s) => (
+      {items?.map((s) => (
         <div key={s.label} className="flex items-center gap-1">
           <span className={`font-bold ${s.color}`}>{s.value}</span>
           <span className="text-zinc-500">{s.label}</span>

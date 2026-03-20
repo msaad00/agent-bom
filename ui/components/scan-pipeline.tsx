@@ -192,7 +192,7 @@ interface ScanPipelineProps {
 
 function ScanPipelineInner({ steps, className }: ScanPipelineProps) {
   const { nodes, edges } = useMemo(() => {
-    const rawNodes: Node[] = PIPELINE_STEPS.map((step) => ({
+    const rawNodes: Node[] = PIPELINE_STEPS?.map((step) => ({
       id: step.id,
       type: "pipelineStep",
       position: { x: 0, y: 0 },

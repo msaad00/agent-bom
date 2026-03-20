@@ -111,7 +111,7 @@ export function ScanResultView({ id }: { id: string }) {
             Raw log ({messages.length} messages)
           </summary>
           <div ref={logRef} className="max-h-48 overflow-y-auto px-4 pb-3 space-y-1">
-            {messages.map((m, i) => (
+            {messages?.map((m, i) => (
               <p key={i} className="text-xs font-mono text-zinc-400">{m}</p>
             ))}
           </div>
@@ -197,7 +197,7 @@ export function ScanResultView({ id }: { id: string }) {
           </button>
           {!collapsedSections.has("agents") && (
             <div className="space-y-3">
-              {result.agents.map((agent, i) => (
+              {result.agents?.map((agent, i) => (
                 <div key={i} className={`bg-zinc-900 border rounded-xl p-4 ${agent.status === "installed-not-configured" ? "border-dashed border-zinc-800" : "border-zinc-800"}`}>
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
@@ -212,7 +212,7 @@ export function ScanResultView({ id }: { id: string }) {
                     <span className="text-xs text-zinc-600">{agent.source}</span>
                   </div>
                   <div className="space-y-2">
-                    {agent.mcp_servers.map((srv, j) => (
+                    {agent.mcp_servers?.map((srv, j) => (
                       <div key={j} className="bg-zinc-800 rounded-lg p-3">
                         <div className="text-xs font-mono text-zinc-300 mb-1.5">{srv.name}</div>
                         <div className="flex flex-wrap gap-2">
@@ -252,7 +252,7 @@ export function ScanResultView({ id }: { id: string }) {
         <section>
           <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest mb-3">Warnings</h2>
           <div className="space-y-1">
-            {result.warnings.map((w, i) => (
+            {result.warnings?.map((w, i) => (
               <p key={i} className="text-xs text-yellow-400 font-mono bg-yellow-950/30 rounded px-3 py-2">{w}</p>
             ))}
           </div>
@@ -364,7 +364,7 @@ function RemediationPlan({ items }: { items: RemediationItem[] }) {
 
   return (
     <div className="space-y-3">
-      {fixable.map((item, i) => (
+      {fixable?.map((item, i) => (
         <div key={i} className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
           <div className="flex items-start justify-between gap-4 mb-3">
             <div className="flex items-center gap-3">
@@ -394,10 +394,10 @@ function RemediationPlan({ items }: { items: RemediationItem[] }) {
           {(item.owasp_tags.length > 0 || item.atlas_tags.length > 0) && (
             <div className="flex flex-wrap gap-1.5 mb-3">
               <span className="text-xs text-zinc-500 mr-1">mitigates:</span>
-              {item.owasp_tags.map((tag) => (
+              {item.owasp_tags?.map((tag) => (
                 <span key={tag} title={OWASP_LLM_TOP10[tag] ?? tag} className="text-xs font-mono bg-purple-950 border border-purple-800 text-purple-400 rounded px-1.5 py-0.5 cursor-help">{tag}</span>
               ))}
-              {item.atlas_tags.map((tag) => (
+              {item.atlas_tags?.map((tag) => (
                 <span key={tag} title={MITRE_ATLAS[tag] ?? tag} className="text-xs font-mono bg-cyan-950 border border-cyan-800 text-cyan-400 rounded px-1.5 py-0.5 cursor-help">{tag}</span>
               ))}
             </div>

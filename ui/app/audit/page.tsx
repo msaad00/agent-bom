@@ -154,7 +154,7 @@ export default function AuditLogPage() {
           >
             All
           </button>
-          {ACTION_TYPES.map((a) => (
+          {ACTION_TYPES?.map((a) => (
             <button
               key={a}
               onClick={() => { setActionFilter(a); setPage(0); }}
@@ -209,7 +209,7 @@ export default function AuditLogPage() {
             </div>
           ) : (
             <div className="space-y-1">
-              {entries.map((entry) => {
+              {entries?.map((entry) => {
                 const isExpanded = expanded.has(entry.entry_id);
                 return (
                   <div

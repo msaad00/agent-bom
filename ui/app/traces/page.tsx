@@ -160,7 +160,7 @@ export default function TracesPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-800 bg-zinc-950">
-                      {result.flagged.map((f, i) => (
+                      {result.flagged?.map((f, i) => (
                         <tr key={i} className="hover:bg-zinc-900 transition-colors">
                           <td className="px-4 py-2.5 font-mono text-xs text-zinc-300">{f.tool_name}</td>
                           <td className="px-4 py-2.5 text-xs text-zinc-400">{f.server}</td>

@@ -139,7 +139,7 @@ export default function GovernancePage() {
       {report.findings.length > 0 && (() => {
         const sevColors: Record<string, string> = { critical: "#ef4444", high: "#f97316", medium: "#eab308", low: "#3b82f6" };
         const cats = ["access", "privilege", "data_classification", "agent_usage"];
-        const chartData = cats.map((cat) => {
+        const chartData = cats?.map((cat) => {
           const fs = report.findings.filter((f) => f.category === cat);
           return {
             category: cat.replace("_", " "),
@@ -167,7 +167,7 @@ export default function GovernancePage() {
                   />
                   {(["critical", "high", "medium", "low"] as const).map((sev) => (
                     <Bar key={sev} dataKey={sev} stackId="a" fill={sevColors[sev]} fillOpacity={0.8} radius={sev === "critical" ? [4, 4, 0, 0] : [0, 0, 0, 0]}>
-                      {chartData.map((_, i) => <Cell key={i} />)}
+                      {chartData?.map((_, i) => <Cell key={i} />)}
                     </Bar>
                   ))}
                 </BarChart>
@@ -181,7 +181,7 @@ export default function GovernancePage() {
       {report.warnings.length > 0 && (
         <div className="rounded-lg border border-yellow-800/50 bg-yellow-950/20 p-4">
           <p className="text-xs font-medium text-yellow-400 mb-2">Warnings</p>
-          {report.warnings.map((w, i) => (
+          {report.warnings?.map((w, i) => (
             <p key={i} className="text-xs text-yellow-300/70">{w}</p>
           ))}
         </div>
@@ -226,7 +226,7 @@ export default function GovernancePage() {
         {filteredFindings.length === 0 ? (
           <p className="text-sm text-zinc-500">No findings match the current filters.</p>
         ) : (
-          filteredFindings.map((f, i) => <FindingCard key={i} finding={f} />)
+          filteredFindings?.map((f, i) => <FindingCard key={i} finding={f} />)
         )}
       </div>
 

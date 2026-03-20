@@ -47,7 +47,7 @@ export function ComplianceHeatmap({ data }: ComplianceHeatmapProps) {
 
   // Find max number of controls across all frameworks for column sizing
   const maxControls = Math.max(
-    ...FRAMEWORKS.map((fw) => (data[fw.field] as ComplianceControl[]).length)
+    ...FRAMEWORKS?.map((fw) => (data[fw.field] as ComplianceControl[]).length)
   );
 
   return (
@@ -73,7 +73,7 @@ export function ComplianceHeatmap({ data }: ComplianceHeatmapProps) {
       </div>
 
       <div className="space-y-1.5">
-        {FRAMEWORKS.map((fw) => {
+        {FRAMEWORKS?.map((fw) => {
           const controls = data[fw.field] as ComplianceControl[];
           return (
             <div key={fw.field} className="flex items-center gap-3">
@@ -84,7 +84,7 @@ export function ComplianceHeatmap({ data }: ComplianceHeatmapProps) {
 
               {/* Control cells */}
               <div className="flex gap-1">
-                {controls.map((ctrl) => (
+                {controls?.map((ctrl) => (
                   <div
                     key={ctrl.code}
                     className="w-7 h-7 rounded cursor-pointer transition-transform hover:scale-125 hover:z-10 relative"

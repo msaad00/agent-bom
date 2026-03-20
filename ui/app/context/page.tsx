@@ -59,7 +59,7 @@ function ContextStats({ data }: { data: ContextGraphData }) {
 
   return (
     <div className="flex items-center gap-4 px-4 py-2 border-b border-zinc-800 text-xs">
-      {items.map((it) => (
+      {items?.map((it) => (
         <div key={it.label} className="flex items-center gap-1.5">
           <span className="text-zinc-500">{it.label}</span>
           <span className={`font-semibold ${it.color}`}>{it.value}</span>
@@ -97,7 +97,7 @@ function LateralPanel({
           <p className="text-[10px] text-zinc-600">No lateral paths found</p>
         ) : (
           <div className="space-y-2">
-            {top10.map((p, i) => (
+            {top10?.map((p, i) => (
               <div
                 key={i}
                 className="bg-zinc-900 border border-zinc-800 rounded-lg p-2"
@@ -157,7 +157,7 @@ function LateralPanel({
         </button>
         {risksOpen && (
           <div className="space-y-2">
-            {risks.map((r, i) => (
+            {risks?.map((r, i) => (
               <div
                 key={i}
                 className="bg-zinc-900 border border-zinc-800 rounded-lg p-2"
@@ -276,7 +276,7 @@ export default function ContextPage() {
 
   const displayNodes = useMemo(() => {
     if (searchMatches && searchMatches.size > 0) {
-      return layoutNodes.map((n) => ({
+      return layoutNodes?.map((n) => ({
         ...n,
         data: {
           ...n.data,
@@ -286,7 +286,7 @@ export default function ContextPage() {
       }));
     }
     if (!connectedIds) return layoutNodes;
-    return layoutNodes.map((n) => ({
+    return layoutNodes?.map((n) => ({
       ...n,
       data: {
         ...n.data,
@@ -300,7 +300,7 @@ export default function ContextPage() {
     const activeSet =
       searchMatches && searchMatches.size > 0 ? searchMatches : connectedIds;
     if (!activeSet) return layoutEdges;
-    return layoutEdges.map((e) => ({
+    return layoutEdges?.map((e) => ({
       ...e,
       style: {
         ...e.style,
@@ -390,7 +390,7 @@ export default function ContextPage() {
             className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-1.5 text-sm text-zinc-300 focus:outline-none focus:border-orange-600"
           >
             <option value="">All agents</option>
-            {agentNames.map((name) => (
+            {agentNames?.map((name) => (
               <option key={name} value={name}>
                 {name}
               </option>
@@ -403,7 +403,7 @@ export default function ContextPage() {
             onChange={(e) => setSelectedJobId(e.target.value)}
             className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-1.5 text-sm text-zinc-300 focus:outline-none focus:border-emerald-600"
           >
-            {jobs.map((j) => (
+            {jobs?.map((j) => (
               <option key={j.job_id} value={j.job_id}>
                 Scan {j.job_id.slice(0, 8)} —{" "}
                 {new Date(j.created_at).toLocaleDateString()}

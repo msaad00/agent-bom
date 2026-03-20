@@ -48,7 +48,7 @@ export function FilterPanel({ filters, onChange, agentNames }: FilterPanelProps)
       <div>
         <h3 className="font-semibold text-zinc-300 mb-2 uppercase tracking-wider text-[10px]">Layers</h3>
         <div className="space-y-1.5">
-          {LAYER_LABELS.map(({ key, label, color }) => (
+          {LAYER_LABELS?.map(({ key, label, color }) => (
             <label key={key} className="flex items-center gap-2 cursor-pointer text-zinc-400 hover:text-zinc-200">
               <input
                 type="checkbox"
@@ -87,7 +87,7 @@ export function FilterPanel({ filters, onChange, agentNames }: FilterPanelProps)
             className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-zinc-300 focus:outline-none focus:border-emerald-600"
           >
             <option value="">All agents</option>
-            {agentNames.map((n) => (
+            {agentNames?.map((n) => (
               <option key={n} value={n}>{n}</option>
             ))}
           </select>

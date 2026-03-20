@@ -151,10 +151,10 @@ export function Nav() {
 
           {/* Desktop links with grouped separators */}
           <div className="hidden lg:flex items-center gap-0.5">
-            {NAV_GROUPS.map((group, gi) => (
+            {NAV_GROUPS?.map((group, gi) => (
               <div key={group.label} className="flex items-center">
                 {gi > 0 && <div className="w-px h-4 bg-zinc-800 mx-1.5" />}
-                {group.links.map(({ href, label, icon: Icon }) => {
+                {group.links?.map(({ href, label, icon: Icon }) => {
                   const active = href === "/" ? path === "/" : path.startsWith(href);
                   const isVulns = href === "/vulns";
                   const dimmed = isDimmed(href);
@@ -210,13 +210,13 @@ export function Nav() {
       {mobileOpen && (
         <div className="lg:hidden border-t border-zinc-800 bg-zinc-950/95 backdrop-blur-sm">
           <div className="max-w-7xl mx-auto px-4 py-3 space-y-4">
-            {NAV_GROUPS.map((group) => (
+            {NAV_GROUPS?.map((group) => (
               <div key={group.label}>
                 <div className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest mb-1.5 px-2">
                   {group.label}
                 </div>
                 <div className="grid grid-cols-2 gap-1">
-                  {group.links.map(({ href, label, icon: Icon }) => {
+                  {group.links?.map(({ href, label, icon: Icon }) => {
                     const active = href === "/" ? path === "/" : path.startsWith(href);
                     const dimmed = isDimmed(href);
                     return (

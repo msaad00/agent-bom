@@ -161,7 +161,7 @@ export function ActivityFeed({ maxItems = 20, className }: ActivityFeedProps) {
             No activity yet
           </div>
         ) : (
-          filtered.map((event) => {
+          filtered?.map((event) => {
             const Icon = TYPE_ICONS[event.type];
             const color = TYPE_COLORS[event.type];
             return (

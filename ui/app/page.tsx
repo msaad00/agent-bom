@@ -158,7 +158,7 @@ function aggregateTrend(jobs: ScanJob[]): TrendDataPoint[] {
   const done = jobs
     .filter((j) => j.status === "done" && j.result)
     .sort((a, b) => a.created_at.localeCompare(b.created_at));
-  return done.map((j) => {
+  return done?.map((j) => {
     const blast = (j.result as ScanResult)?.blast_radius ?? [];
     const sev = aggregateSeverity(blast);
     const d = new Date(j.created_at);
@@ -190,7 +190,7 @@ function aggregateEpss(allBlast: BlastRadius[]): EpssDataPoint[] {
       }
     }
   }
-  return buckets.map(({ range, count }) => ({ range, count }));
+  return buckets?.map(({ range, count }) => ({ range, count }));
 }
 
 function aggregateEpssVsCvss(allBlast: BlastRadius[]): EpssVsCvssPoint[] {
@@ -328,12 +328,13 @@ export default function Dashboard() {
           api.listJobs(),
           api.listAgents(),
         ]);
+        const jobsList = jobsRes?.jobs ?? [];
         const fullJobs = await Promise.all(
-          jobsRes.jobs.map((j) => api.getScan(j.job_id))
+          jobsList?.map((j) => api.getScan(j.job_id))
         );
         setJobs(fullJobs.sort((a, b) => b.created_at.localeCompare(a.created_at)));
-        setAgentCount(agentsRes.count);
-        setAgentList(agentsRes.agents);
+        setAgentCount(agentsRes?.count ?? 0);
+        setAgentList(agentsRes?.agents ?? []);
       } catch {
         setApiError(true);
       } finally {
@@ -377,7 +378,7 @@ export default function Dashboard() {
 
   // Unique CVE count
   const uniqueCVEs = useMemo(() => {
-    const ids = new Set(allBlast.map((b) => b.vulnerability_id));
+    const ids = new Set(allBlast?.map((b) => b.vulnerability_id));
     return ids.size;
   }, [allBlast]);
 
@@ -481,7 +482,7 @@ export default function Dashboard() {
             </Link>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {compoundIssues.map((issue) => (
+            {compoundIssues?.map((issue) => (
               <CompoundIssueCard key={issue.id} issue={issue} />
             ))}
           </div>
@@ -690,7 +691,7 @@ function SeverityChart({ severity }: { severity: SeverityCounts }) {
 
       {/* Stacked bar */}
       <div className="flex h-3 rounded-full overflow-hidden bg-zinc-800/50 mb-5">
-        {bars.map((b) =>
+        {bars?.map((b) =>
           b.count > 0 ? (
             <Link
               key={b.label}
@@ -705,7 +706,7 @@ function SeverityChart({ severity }: { severity: SeverityCounts }) {
 
       {/* Legend with hover rings */}
       <div className="grid grid-cols-4 gap-2">
-        {bars.map((b) => (
+        {bars?.map((b) => (
           <Link key={b.label} href={`/vulns?severity=${b.label.toLowerCase()}`} className={`text-center hover:bg-zinc-800/50 rounded-lg py-2 transition-all hover:ring-1 ${b.ring}`}>
             <div className={`text-xl font-bold font-mono ${b.text}`}>{b.count}</div>
             <div className="text-[10px] text-zinc-500 font-medium uppercase tracking-wide">{b.label}</div>
@@ -725,7 +726,7 @@ function SourceBreakdown({ sources }: { sources: ScanSource[] }) {
         <p className="text-zinc-600 text-sm">No completed scans yet.</p>
       ) : (
         <div className="space-y-3">
-          {sources.map((s) => (
+          {sources?.map((s) => (
             <div key={s.label} className="flex items-center gap-3 bg-zinc-800/30 rounded-lg px-3 py-2.5 border border-zinc-800/50">
               <s.icon className="w-4 h-4 text-zinc-400 flex-shrink-0" />
               <div className="flex-1 min-w-0">
@@ -822,7 +823,7 @@ function JobRow({ job }: { job: ScanJob }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="font-mono text-xs text-zinc-400">{job.job_id.slice(0, 8)}…</span>
-          {tags.map((t) => (
+          {tags?.map((t) => (
             <span key={t} className="text-xs bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-zinc-500">{t}</span>
           ))}
         </div>

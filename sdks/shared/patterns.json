@@ -232,6 +232,16 @@
       "name": "SQL EXECUTE IMMEDIATE",
       "pattern": "\\bEXECUTE\\s+IMMEDIATE\\b",
       "flags": "i"
+    },
+    {
+      "name": "SSRF attempt",
+      "pattern": "(?:http|ftp)s?://(?:169\\.254\\.|127\\.0\\.0\\.|0\\.0\\.0\\.0|localhost|metadata\\.google|100\\.100\\.100\\.200)",
+      "flags": "i"
+    },
+    {
+      "name": "Process spawn",
+      "pattern": "\\b(?:subprocess|os\\.system|os\\.popen|os\\.exec|child_process|eval|exec)\\s*\\(",
+      "flags": "i"
     }
   ],
   "cortex_model_patterns": [

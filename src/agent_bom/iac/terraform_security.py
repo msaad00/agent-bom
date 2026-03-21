@@ -272,12 +272,17 @@ def scan_terraform_security(file_path: str | Path) -> list[IaCFinding]:
         return []
 
     raw_content = path.read_text(encoding="utf-8", errors="replace")
-    # Strip HCL comments to prevent false positives from commented-out blocks.
-    # Single-line: # ... or // ...
-    # Multi-line: /* ... */
-    content = re.sub(r"/\*.*?\*/", "", raw_content, flags=re.DOTALL)
-    content = re.sub(r"(?m)^\s*#.*$", "", content)
-    content = re.sub(r"(?m)^\s*//.*$", "", content)
+    # Neutralise HCL comments to prevent false positives from commented-out
+    # blocks.  We blank the comment text (rather than deleting it) so that
+    # character offsets — and therefore _line_number() results — stay correct.
+    # Multi-line: /* ... */  →  replace with same number of newlines
+    def _blank_block_comment(m: re.Match[str]) -> str:
+        return "\n" * m.group(0).count("\n")
+
+    content = re.sub(r"/\*.*?\*/", _blank_block_comment, raw_content, flags=re.DOTALL)
+    # Single-line: # ... or // ...  →  blank the line content but keep the newline
+    content = re.sub(r"(?m)#.*$", "", content)
+    content = re.sub(r"(?m)//.*$", "", content)
     rel_path = str(path)
     findings: list[IaCFinding] = []
 

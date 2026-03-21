@@ -113,13 +113,16 @@ _loop_semaphores: dict[int, asyncio.Semaphore] = {}
 
 
 def _get_api_semaphore() -> asyncio.Semaphore:
-    """Get or create a semaphore bound to the current event loop.
+    """Get or create a semaphore bound to the current running event loop.
 
     Caches one semaphore per event loop id so rate-limiting is effective
     across multiple calls within the same scan, while avoiding the stale-loop
     problem that module-level semaphores have with ThreadPoolExecutor.
+
+    Uses ``get_running_loop()`` (not the deprecated ``get_event_loop()``)
+    so this works correctly on Python 3.10+.
     """
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     loop_id = id(loop)
     if loop_id not in _loop_semaphores:
         _loop_semaphores[loop_id] = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)

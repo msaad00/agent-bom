@@ -243,7 +243,7 @@ docker run --rm agentbom/agent-bom agents  # Docker (linux/amd64 + arm64)
 | Kubernetes | kubectl across namespaces |
 | Cloud providers | AWS, Azure, GCP, Databricks, Snowflake |
 | AI platforms | OpenAI, HuggingFace, W&B, MLflow, Ollama |
-| IaC files | Dockerfile, K8s, Terraform, CloudFormation (82 rules) |
+| IaC files | Dockerfile, K8s, Terraform, CloudFormation, Helm (89 rules) |
 | Model files | 13 formats (.gguf, .safetensors, .pkl, ...) |
 | Instruction files | CLAUDE.md, .cursorrules, AGENTS.md |
 | Existing SBOMs | CycloneDX / SPDX import |

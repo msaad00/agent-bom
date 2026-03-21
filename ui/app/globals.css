@@ -3,6 +3,8 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --sidebar-width: 240px;
+  --sidebar-collapsed-width: 60px;
 }
 
 @theme inline {
@@ -26,8 +28,8 @@ body {
 
 /* Smooth scrollbar for dark theme */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
@@ -38,6 +40,24 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #3f3f46;
+}
+
+/* Sidebar thin scrollbar */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 3px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 2px;
+}
+
+/* Mobile sidebar slide-in animation */
+@keyframes slide-in-left {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+.animate-slide-in {
+  animation: slide-in-left 0.2s ease-out;
 }
 
 /* React Flow edge animation refinement */
@@ -55,4 +75,33 @@ body {
 :fullscreen main {
   max-width: 100%;
   padding: 0;
+  margin: 0;
+}
+:fullscreen aside {
+  display: none;
+}
+
+/* Card hover effects */
+.card-hover {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.card-hover:hover {
+  border-color: #3f3f46;
+  box-shadow: 0 0 0 1px rgba(63, 63, 70, 0.3);
+}
+
+/* Stat card gradient backgrounds */
+.stat-critical { background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, transparent 60%); }
+.stat-high { background: linear-gradient(135deg, rgba(249, 115, 22, 0.08) 0%, transparent 60%); }
+.stat-medium { background: linear-gradient(135deg, rgba(234, 179, 8, 0.08) 0%, transparent 60%); }
+.stat-info { background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, transparent 60%); }
+
+/* Smooth page transitions */
+main > div {
+  animation: fade-in 0.15s ease-out;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
 }

@@ -969,34 +969,20 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
             f"</section>"
         )
 
-    vuln_nav = (
-        '<a href="#attackflow">Attack Flow</a>'
-        '<a href="#vulns">Vulnerabilities</a>'
-        '<a href="#blast">Blast Radius</a>'
-        '<a href="#remediation">Remediation</a>'
-        if blast_radii
-        else ""
-    )
-
     # Compliance section
     compliance_html = _compliance_section(blast_radii)
-    compliance_nav = '<a href="#compliance">Compliance</a>' if compliance_html else ""
 
     # AI inventory section
     ai_inv_section = _ai_inventory_section(report)
-    ai_inv_nav = '<a href="#aiinventory">AI Inventory</a>' if ai_inv_section else ""
 
     # Skill audit section
     skill_section = _skill_audit_section(report)
-    skill_nav = '<a href="#skillaudit">Skill Audit</a>' if skill_section else ""
 
     # Trust assessment section
     trust_section = _trust_assessment_section(report)
-    trust_nav = '<a href="#trust">Trust</a>' if trust_section else ""
 
     # Enforcement section
     enforce_section = _enforcement_section(report)
-    enforce_nav = '<a href="#enforcement">Enforcement</a>' if enforce_section else ""
 
     # Determine node counts for graph subtitle
     vuln_node_count = len({(br.package.name, br.package.ecosystem) for br in blast_radii})
@@ -1024,18 +1010,34 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     a:hover{{text-decoration:underline}}
     code{{font-family:"SF Mono","Cascadia Code",Consolas,monospace;font-size:.9em}}
 
-    /* NAV */
-    nav{{background:#0f172a;border-bottom:1px solid #1e293b;padding:0 32px;display:flex;align-items:center;gap:16px;height:56px;position:sticky;top:0;z-index:100;backdrop-filter:blur(12px);background:rgba(15,23,42,.92)}}
-    .brand{{font-weight:700;font-size:1rem;color:#f1f5f9;letter-spacing:-.01em;white-space:nowrap}}
-    .status-badge{{padding:4px 12px;border-radius:6px;font-size:.7rem;font-weight:700;letter-spacing:.05em;background:{status_color}15;color:{status_color};border:1px solid {status_color}30;white-space:nowrap}}
-    .scan-time{{color:#475569;font-size:.73rem;white-space:nowrap}}
-    .navlinks{{display:flex;gap:2px;margin-left:auto;flex-wrap:wrap}}
-    .navlinks a{{color:#64748b;font-size:.8rem;padding:6px 12px;border-radius:6px;white-space:nowrap;transition:all .15s}}
-    .navlinks a:hover{{background:#1e293b;color:#e2e8f0;text-decoration:none}}
+    /* SIDEBAR NAV */
+    .sidebar{{position:fixed;top:0;left:0;bottom:0;width:220px;background:#0a0f1a;border-right:1px solid #1e293b;z-index:100;display:flex;flex-direction:column;overflow-y:auto;transition:width .2s}}
+    .sidebar-brand{{display:flex;align-items:center;gap:10px;padding:18px 18px 14px;border-bottom:1px solid #1e293b18}}
+    .sidebar-brand .brand-icon{{width:32px;height:32px;border-radius:8px;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.2);display:flex;align-items:center;justify-content:center;font-size:1rem}}
+    .sidebar-brand .brand-text{{font-weight:700;font-size:.88rem;color:#f1f5f9;letter-spacing:-.01em}}
+    .sidebar-brand .brand-sub{{font-size:.6rem;color:#475569;font-family:monospace}}
+    .sidebar-status{{padding:8px 18px 12px;display:flex;align-items:center;gap:8px}}
+    .status-badge{{padding:3px 10px;border-radius:5px;font-size:.62rem;font-weight:700;letter-spacing:.05em;background:{status_color}12;color:{status_color};border:1px solid {status_color}25;white-space:nowrap}}
+    .scan-time{{color:#475569;font-size:.62rem;white-space:nowrap}}
+    .sidebar-group{{padding:4px 0}}
+    .sidebar-group-label{{font-size:.58rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#3f4f65;padding:10px 18px 4px;user-select:none}}
+    .sidebar-link{{display:flex;align-items:center;gap:8px;padding:7px 18px;font-size:.78rem;color:#64748b;text-decoration:none;border-left:2px solid transparent;transition:all .12s;cursor:pointer}}
+    .sidebar-link:hover{{background:#111827;color:#e2e8f0;text-decoration:none;border-left-color:#334155}}
+    .sidebar-link.active{{background:rgba(16,185,129,.08);color:#10b981;border-left-color:#10b981;font-weight:600}}
+    .sidebar-link .link-icon{{font-size:.85rem;width:20px;text-align:center;flex-shrink:0}}
+    .sidebar-link .link-badge{{margin-left:auto;font-size:.6rem;font-weight:700;padding:1px 6px;border-radius:10px;font-family:monospace}}
+    .sidebar-spacer{{flex:1}}
+    .sidebar-footer{{padding:14px 18px;border-top:1px solid #1e293b18;font-size:.65rem;color:#334155}}
+    .sidebar-footer a{{color:#475569}}
+    .print-btn{{background:transparent;border:1px solid #1e293b;color:#475569;font-size:.68rem;padding:5px 12px;border-radius:6px;cursor:pointer;transition:all .15s;width:100%;margin-top:8px;text-align:center}}
+    .print-btn:hover{{background:#111827;color:#94a3b8}}
+
+    /* MOBILE SIDEBAR TOGGLE */
+    .sidebar-toggle{{display:none;position:fixed;top:12px;left:12px;z-index:200;width:36px;height:36px;border-radius:8px;background:rgba(10,15,26,.95);border:1px solid #1e293b;color:#94a3b8;font-size:18px;cursor:pointer;backdrop-filter:blur(8px)}}
 
     /* LAYOUT */
-    .container{{max-width:1480px;margin:0 auto;padding:32px 32px 80px}}
-    section{{margin-bottom:48px}}
+    .container{{max-width:1400px;margin:0 auto;padding:28px 32px 80px;margin-left:220px}}
+    section{{margin-bottom:44px;scroll-margin-top:20px}}
     .sec-title{{font-size:.82rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#64748b;margin-bottom:18px;padding-bottom:10px;border-bottom:1px solid #1e293b}}
     .panel{{background:#1e293b;border-radius:12px;padding:24px;border:1px solid #ffffff08}}
 
@@ -1084,7 +1086,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     @keyframes riskPulse{{0%{{box-shadow:0 0 0 0 rgba(220,38,38,.5)}}70%{{box-shadow:0 0 0 12px rgba(220,38,38,0)}}100%{{box-shadow:0 0 0 0 rgba(220,38,38,0)}}}}
 
     /* NODE DETAIL SIDEBAR */
-    .node-sidebar{{position:fixed;top:56px;right:0;bottom:0;width:340px;background:rgba(15,23,42,.97);border-left:1px solid #334155;backdrop-filter:blur(12px);z-index:200;overflow-y:auto;transform:translateX(100%);transition:transform .25s ease;padding:0}}
+    .node-sidebar{{position:fixed;top:0;right:0;bottom:0;width:340px;background:rgba(15,23,42,.97);border-left:1px solid #334155;backdrop-filter:blur(12px);z-index:200;overflow-y:auto;transform:translateX(100%);transition:transform .25s ease;padding:0}}
     .node-sidebar.open{{transform:translateX(0);display:block}}
     .sidebar-header{{display:flex;justify-content:space-between;align-items:center;padding:16px 20px 8px;border-bottom:1px solid #1e293b}}
     .sidebar-type{{font-size:.65rem;letter-spacing:.08em;text-transform:uppercase;color:#64748b;font-weight:700;padding:3px 8px;border-radius:4px;border:1px solid #334155}}
@@ -1154,22 +1156,27 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     .hint-box{{background:#1e3a5f40;border:1px solid #3b82f640;border-radius:8px;padding:14px 18px;margin-bottom:18px;font-size:.82rem;color:#93c5fd}}
     .empty-state{{background:#052e1615;border:1px solid #16a34a30;border-radius:10px;padding:24px;color:#4ade80;text-align:center;font-size:.9rem}}
 
-    footer{{border-top:1px solid #1e293b;padding:24px 32px;text-align:center;font-size:.75rem;color:#334155}}
+    footer{{border-top:1px solid #1e293b;padding:24px 32px;text-align:center;font-size:.75rem;color:#334155;margin-left:220px}}
     .print-btn{{background:transparent;border:1px solid #334155;color:#64748b;font-size:.75rem;padding:4px 12px;border-radius:6px;cursor:pointer;margin-left:12px;transition:all .15s}}
     .print-btn:hover{{background:#1e293b;color:#94a3b8}}
 
     @media(max-width:900px){{
+      .sidebar{{display:none}}
+      .sidebar.mobile-open{{display:flex}}
+      .sidebar-toggle{{display:flex;align-items:center;justify-content:center}}
+      .container{{margin-left:0;padding:60px 16px 60px}}
+      footer{{margin-left:0}}
       .charts-row{{grid-template-columns:1fr}}
       .stat-grid{{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}}
-      nav{{padding:0 16px;gap:8px}}
-      .container{{padding:20px 16px 60px}}
+      .node-sidebar{{width:100%}}
     }}
 
     /* PRINT */
     @media print{{
       body{{background:#fff;color:#1e293b;font-size:12px}}
-      nav,.graph-controls,.graph-filter-bar,.vuln-filter-bar,.toggle-btn,.inv-search,.print-btn,.node-sidebar{{display:none!important}}
-      .container{{max-width:100%;padding:10px}}
+      .sidebar,.graph-controls,.graph-filter-bar,.vuln-filter-bar,.toggle-btn,.inv-search,.print-btn,.node-sidebar,.sidebar-toggle{{display:none!important}}
+      .container{{margin-left:0;max-width:100%;padding:10px}}
+      footer{{margin-left:0}}
       section{{page-break-inside:avoid;margin-bottom:20px}}
       .panel,.stat-card,.agent-card,.server-card,.chart-panel{{background:#f8fafc;border:1px solid #e2e8f0;box-shadow:none}}
       .stat-value,.sec-title{{color:#0f172a}}
@@ -1185,24 +1192,59 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
 </head>
 <body>
 
-<nav>
-  <span class="brand">&#x1f6e1;&#xfe0f; agent-bom</span>
-  <span class="status-badge">{status_label}</span>
-  <span class="scan-time">{_esc(generated)} &middot; v{_esc(report.tool_version)}</span>
-  <div class="navlinks">
-    <a href="#summary">Summary</a>
-    <a href="#charts">Charts</a>
-    <a href="#riskmap">Risk Map</a>
-    <a href="#inventory">Inventory</a>
-    {ai_inv_nav}
-    {skill_nav}
-    {trust_nav}
-    {enforce_nav}
-    {compliance_nav}
-    {vuln_nav}
-    <button class="print-btn" onclick="window.print()">&#x1f5b6;&#xfe0f; Print</button>
+<!-- Mobile sidebar toggle -->
+<button class="sidebar-toggle" id="sidebarToggle" onclick="document.getElementById('mainSidebar').classList.toggle('mobile-open');this.innerHTML=this.innerHTML==='&#9776;'?'&times;':'&#9776;'">&#9776;</button>
+
+<!-- Sidebar Navigation -->
+<div class="sidebar" id="mainSidebar">
+  <div class="sidebar-brand">
+    <div class="brand-icon">&#x1f6e1;&#xfe0f;</div>
+    <div>
+      <div class="brand-text">agent-bom</div>
+      <div class="brand-sub">AI Supply Chain Security</div>
+    </div>
   </div>
-</nav>
+  <div class="sidebar-status">
+    <span class="status-badge">{status_label}</span>
+    <span class="scan-time">v{_esc(report.tool_version)}</span>
+  </div>
+
+  <div class="sidebar-group">
+    <div class="sidebar-group-label">Overview</div>
+    <a href="#summary" class="sidebar-link active"><span class="link-icon">&#x1f4ca;</span> Summary</a>
+    <a href="#charts" class="sidebar-link"><span class="link-icon">&#x1f4c8;</span> Risk Charts</a>
+  </div>
+
+  <div class="sidebar-group">
+    <div class="sidebar-group-label">Analysis</div>
+    <a href="#riskmap" class="sidebar-link"><span class="link-icon">&#x1f5fa;&#xfe0f;</span> Supply Chain Graph</a>
+    <a href="#inventory" class="sidebar-link"><span class="link-icon">&#x1f4e6;</span> Agent Inventory</a>
+    {'<a href="#aiinventory" class="sidebar-link"><span class="link-icon">&#x1f916;</span> AI Inventory</a>' if ai_inv_section else ""}
+  </div>
+
+  <div class="sidebar-group">
+    <div class="sidebar-group-label">Security</div>
+    {'<a href="#attackflow" class="sidebar-link"><span class="link-icon">&#x26a1;</span> Attack Flow</a>' if blast_radii else ""}
+    {f'<a href="#vulns" class="sidebar-link"><span class="link-icon">&#x1f41b;</span> Vulnerabilities <span class="link-badge" style="background:#7f1d1d;color:#fca5a5">{len(blast_radii)}</span></a>' if blast_radii else ""}
+    {'<a href="#blast" class="sidebar-link"><span class="link-icon">&#x1f4a5;</span> Blast Radius</a>' if blast_radii else ""}
+    {'<a href="#remediation" class="sidebar-link"><span class="link-icon">&#x1f527;</span> Remediation</a>' if blast_radii else ""}
+  </div>
+
+  <div class="sidebar-group">
+    <div class="sidebar-group-label">Governance</div>
+    {'<a href="#compliance" class="sidebar-link"><span class="link-icon">&#x2705;</span> Compliance</a>' if compliance_html else ""}
+    {'<a href="#skillaudit" class="sidebar-link"><span class="link-icon">&#x1f50d;</span> Skill Audit</a>' if skill_section else ""}
+    {'<a href="#trust" class="sidebar-link"><span class="link-icon">&#x1f91d;</span> Trust</a>' if trust_section else ""}
+    {'<a href="#enforcement" class="sidebar-link"><span class="link-icon">&#x1f512;</span> Enforcement</a>' if enforce_section else ""}
+  </div>
+
+  <div class="sidebar-spacer"></div>
+
+  <div class="sidebar-footer">
+    <div class="scan-time">{_esc(generated)}</div>
+    <button class="print-btn" onclick="window.print()">&#x1f5b6;&#xfe0f; Print / Export PDF</button>
+  </div>
+</div>
 
 <div id="tip"></div>
 
@@ -2452,14 +2494,36 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     if (hidden && !btn.dataset.orig) btn.dataset.orig = btn.innerHTML;
   }};
 
-  // Smooth scroll
+  // Smooth scroll + close mobile sidebar
   document.querySelectorAll('a[href^="#"]').forEach(function(a) {{
     a.addEventListener('click', function(e) {{
       e.preventDefault();
       var el = document.querySelector(a.getAttribute('href'));
       if (el) el.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+      // Close mobile sidebar
+      var sb = document.getElementById('mainSidebar');
+      if (sb) sb.classList.remove('mobile-open');
     }});
   }});
+
+  // Sidebar active section tracking via IntersectionObserver
+  var sidebarLinks = document.querySelectorAll('.sidebar-link');
+  var sections = document.querySelectorAll('section[id]');
+  if (sections.length > 0 && 'IntersectionObserver' in window) {{
+    var observer = new IntersectionObserver(function(entries) {{
+      entries.forEach(function(entry) {{
+        if (entry.isIntersecting) {{
+          sidebarLinks.forEach(function(link) {{
+            link.classList.remove('active');
+            if (link.getAttribute('href') === '#' + entry.target.id) {{
+              link.classList.add('active');
+            }}
+          }});
+        }}
+      }});
+    }}, {{ rootMargin: '-20% 0px -60% 0px', threshold: 0 }});
+    sections.forEach(function(sec) {{ observer.observe(sec); }});
+  }}
 }})();
 </script>
 

@@ -221,9 +221,16 @@ async def fetch_epss_scores(cve_ids: list[str], client: httpx.AsyncClient) -> di
                     if cve:
                         raw_epss = item.get("epss")
                         raw_pct = item.get("percentile")
+                        parsed_score = float(raw_epss) if raw_epss is not None else None
+                        parsed_pct = float(raw_pct) if raw_pct is not None else None
+                        # Validate EPSS ranges — reject out-of-bounds values
+                        if parsed_score is not None and not (0.0 <= parsed_score <= 1.0):
+                            parsed_score = None
+                        if parsed_pct is not None and not (0.0 <= parsed_pct <= 100.0):
+                            parsed_pct = None
                         entry = {
-                            "score": float(raw_epss) if raw_epss is not None else None,
-                            "percentile": float(raw_pct) if raw_pct is not None else None,
+                            "score": parsed_score,
+                            "percentile": parsed_pct,
                             "date": item.get("date"),
                         }
                         scores[cve] = entry
@@ -268,9 +275,9 @@ async def fetch_cisa_kev_catalog(client: httpx.AsyncClient) -> dict:
             disk_data = json.loads(_KEV_CACHE_FILE.read_text())
             cached_at = disk_data.get("_cached_at", 0)
             if (time.time() - cached_at) < _KEV_CACHE_TTL_SECONDS:
-                _kev_cache = disk_data.get("data", {})
+                _kev_cache = disk_data.get("data") or {}
                 _kev_cache_time = datetime.fromtimestamp(cached_at, tz=timezone.utc)
-                return _kev_cache
+                return _kev_cache  # type: ignore[return-value]  # dict from disk cache
         except (OSError, json.JSONDecodeError, ValueError) as exc:
             _logger.warning("Failed to load KEV disk cache: %s", exc)
 

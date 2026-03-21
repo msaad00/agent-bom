@@ -1,10 +1,9 @@
 # agent-bom v0.74.0 demo — run with: vhs docs/demo.tape
 #
-# 3 hero commands that show what agent-bom does:
-# 1. agents --demo  → discovery + blast radius + remediation (the core value)
-# 2. check          → pre-install CVE gate (finds CRITICAL CVE)
-# 3. agents -f cyclonedx → AI BOM export with ML extensions
+# Story: Engineer discovers their AI agents have vulnerable dependencies,
+# checks a package before installing, then exports an AI BOM for compliance.
 #
+# Flow: Discover → Scan → Gate → Export
 # All output is real — --demo uses bundled inventory, no mocked data.
 
 Output docs/images/demo-v0.74.0.gif
@@ -15,29 +14,41 @@ Set Width 1800
 Set Height 1000
 Set Theme "Dracula"
 Set Padding 24
-Set TypingSpeed 35ms
+Set TypingSpeed 40ms
 Set PlaybackSpeed 1.0
 
-# Setup: correct binary, clean prompt, no personal paths
+# Setup: clean prompt, no personal paths
 Hide
-Type "export PS1='$ ' && export PATH=/opt/homebrew/Caskroom/miniconda/base/bin:$PATH && mkdir -p /tmp/abom-demo && cd /tmp/abom-demo && clear"
+Type "export PS1='$ ' && export PATH=/opt/homebrew/Caskroom/miniconda/base/bin:$PATH && mkdir -p /tmp/demo && cd /tmp/demo && clear"
 Enter
 Sleep 1s
 Show
 
-# ── Hero 1: Full scan — blast radius mapping (the core product) ──────────────
-Type "agent-bom agents --demo"
+# ── Step 1: Discover and scan AI agents — the core value proposition ─────────
+# Shows: agents found, CVEs, blast radius, remediation plan
+Type "# Step 1: Scan AI agents — discover CVEs and blast radius"
 Enter
-Sleep 22s
+Sleep 1s
+Type "agent-bom agents --demo --quiet"
+Enter
+Sleep 14s
 
-# ── Hero 2: Pre-install CVE gate — finds CRITICAL + fix version ──────────────
+# ── Step 2: Pre-install CVE gate — fast, actionable ─────────────────────────
+# Shows: CRITICAL CVE found with fix version
+Type "# Step 2: Pre-install CVE gate"
+Enter
+Sleep 1s
 Type "agent-bom check flask@2.0.0"
 Enter
-Sleep 8s
+Sleep 5s
 
-# ── Hero 3: AI BOM export — CycloneDX with MCP tool capabilities ────────────
-Type "agent-bom agents --demo -f cyclonedx -o sbom.json -q && echo '✓ AI BOM exported' && head -25 sbom.json"
+# ── Step 3: Export AI BOM for compliance ────────────────────────────────────
+# Shows: CycloneDX 1.6 with ML extensions
+Type "# Step 3: Export AI BOM (CycloneDX 1.6 with ML extensions)"
 Enter
-Sleep 6s
+Sleep 1s
+Type "agent-bom agents --demo -f cyclonedx -o ai-bom.json --quiet && head -20 ai-bom.json"
+Enter
+Sleep 10s
 
 Sleep 2s

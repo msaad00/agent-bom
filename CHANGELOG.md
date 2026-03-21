@@ -7,6 +7,27 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.74.0] – 2026-03-21
+
+### Dashboard & HTML Report
+
+- **Sidebar navigation** — collapsible left sidebar replaces top nav across Next.js dashboard (18 pages) and HTML report, with 5 grouped sections, command palette (Cmd+K), active link highlighting, mobile drawer (#993)
+- **React Flow edge fix** — topology graph nodes now connect properly with Handle components, eliminating all "null handle id" errors (#993)
+- **Topology enhancements** — nodes show server count, vuln count, credential indicators; animated edges for vulnerable connections; zoom controls; empty state (#993)
+- **HTML report sidebar** — fixed 220px sidebar with IntersectionObserver active section tracking, mobile responsive hamburger toggle, print-friendly layout (#993)
+
+### Security
+
+- **Dependency CVE fixes** — pillow ≥12.1.1 (CVE-2026-25990 PSD OOB write), protobuf ≥6.33.5 (CVE-2026-0994 ParseDict DoS), pyjwt ≥2.12.0 (CVE-2026-32597 crit header bypass), tornado ≥6.5.5 (CVE-2026-31958 multipart DoS, GHSA-78cv-mqj4-43f7 cookie injection)
+- **CI/CD hardening** — all GitHub Actions pinned to SHA digests, no `@master` refs, scoped permissions
+
+### Fixed
+
+- **Dashboard layout** — wider content area (1400px), CSS page transitions, thin scrollbar, card hover effects
+- **HTML report unused variables** — removed dead nav link variables (ruff F841)
+
+---
+
 ## [0.73.0] – 2026-03-19
 
 ### Architecture

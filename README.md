@@ -38,7 +38,7 @@ agent-bom agents
 ```
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.72.0.gif" alt="agent-bom agents demo" width="900" />
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.74.0.gif" alt="agent-bom agents demo" width="900" />
 </p>
 
 ---
@@ -106,12 +106,13 @@ python -c "from agent_bom.red_team import run_red_team; print(run_red_team()['de
 <summary><b>All commands</b></summary>
 
 ```
-Scanning:     agents, image, fs, iac, sbom, cloud, check, verify
+Scanning:     agents, image, fs, iac, sbom, secrets, code, cloud, check, verify
 Runtime:      proxy, audit
-MCP:          mcp [inventory|introspect|registry|server|where]
-Reporting:    graph, report [history|analytics]
-Governance:   policy [check|template], fleet [sync|list|stats], serve, api, schedule
+MCP:          mcp [inventory|introspect|registry|server|where|validate]
+Reporting:    graph, report [history|diff|rescan|analytics|dashboard]
+Governance:   policy [check|template|apply], fleet [sync|list|stats], serve, api, schedule
 Database:     db [update|status]
+Utility:      completions, upgrade
 ```
 
 </details>
@@ -253,7 +254,7 @@ docker run --rm agentbom/agent-bom agents  # Docker (linux/amd64 + arm64)
 <details>
 <summary><b>Output formats</b></summary>
 
-JSON, SARIF, CycloneDX 1.6 (with ML BOM), SPDX 3.0, HTML, GraphML, Neo4j Cypher, JUnit XML, CSV, Markdown, Mermaid, SVG, Graph HTML, Prometheus, Badge, OCSF v1.1 — 17 formats.
+JSON, SARIF, CycloneDX 1.6 (with ML BOM), SPDX 3.0, HTML, GraphML, Neo4j Cypher, JUnit XML, CSV, Markdown, Mermaid, SVG, Graph HTML, Prometheus, Badge, OCSF v1.1 — 18 formats.
 
 ```bash
 agent-bom agents -f sarif -o results.sarif     # GitHub Security tab

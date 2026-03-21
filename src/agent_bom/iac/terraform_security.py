@@ -271,7 +271,13 @@ def scan_terraform_security(file_path: str | Path) -> list[IaCFinding]:
     if not path.is_file() or path.suffix != ".tf":
         return []
 
-    content = path.read_text(encoding="utf-8", errors="replace")
+    raw_content = path.read_text(encoding="utf-8", errors="replace")
+    # Strip HCL comments to prevent false positives from commented-out blocks.
+    # Single-line: # ... or // ...
+    # Multi-line: /* ... */
+    content = re.sub(r"/\*.*?\*/", "", raw_content, flags=re.DOTALL)
+    content = re.sub(r"(?m)^\s*#.*$", "", content)
+    content = re.sub(r"(?m)^\s*//.*$", "", content)
     rel_path = str(path)
     findings: list[IaCFinding] = []
 

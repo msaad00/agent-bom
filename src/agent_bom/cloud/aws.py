@@ -458,13 +458,19 @@ def _discover_ecs_images(session: Any, region: str) -> tuple[list[str], list[str
     seen: set[str] = set()
 
     try:
-        cluster_arns = ecs.list_clusters().get("clusterArns", [])
+        cluster_arns: list[str] = []
+        paginator = ecs.get_paginator("list_clusters")
+        for page in paginator.paginate():
+            cluster_arns.extend(page.get("clusterArns", []))
     except Exception as exc:
         return [], [f"Could not list ECS clusters: {exc}"]
 
     for cluster_arn in cluster_arns:
         try:
-            task_arns = ecs.list_tasks(cluster=cluster_arn, desiredStatus="RUNNING").get("taskArns", [])
+            task_arns: list[str] = []
+            task_paginator = ecs.get_paginator("list_tasks")
+            for page in task_paginator.paginate(cluster=cluster_arn, desiredStatus="RUNNING"):
+                task_arns.extend(page.get("taskArns", []))
             if not task_arns:
                 continue
 
@@ -496,7 +502,10 @@ def _discover_sagemaker(session: Any, region: str) -> tuple[list[Agent], list[st
     warnings: list[str] = []
 
     try:
-        endpoints = sm.list_endpoints(StatusEquals="InService").get("Endpoints", [])
+        endpoints: list[dict] = []
+        paginator = sm.get_paginator("list_endpoints")
+        for page in paginator.paginate(StatusEquals="InService"):
+            endpoints.extend(page.get("Endpoints", []))
     except Exception as exc:
         return [], [f"Could not list SageMaker endpoints: {exc}"]
 
@@ -629,7 +638,10 @@ def _discover_eks_images(
         return agents, warnings
 
     try:
-        cluster_names = eks_client.list_clusters().get("clusters", [])
+        cluster_names: list[str] = []
+        paginator = eks_client.get_paginator("list_clusters")
+        for page in paginator.paginate():
+            cluster_names.extend(page.get("clusters", []))
     except Exception as exc:
         return [], [f"Could not list EKS clusters: {exc}"]
 

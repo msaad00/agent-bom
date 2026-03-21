@@ -1,7 +1,10 @@
-"""Bundled demo inventory for ``agent-bom scan --demo``.
+"""Bundled demo inventory for ``agent-bom agents --demo``.
 
 Contains realistic agents with known-vulnerable packages so users can see
 a real scan with CVE findings, blast radius, and remediation output.
+
+Includes packages with CRITICAL CVEs (CVSS 9.0+) to demonstrate blast radius
+mapping from vulnerability → package → MCP server → agent → credentials → tools.
 """
 
 from __future__ import annotations
@@ -9,62 +12,77 @@ from __future__ import annotations
 DEMO_INVENTORY: dict = {
     "agents": [
         {
-            "name": "demo-web-agent",
-            "agent_type": "custom",
+            "name": "cursor",
+            "agent_type": "cursor",
             "source": "agent-bom --demo",
             "mcp_servers": [
                 {
-                    "name": "web-search-server",
-                    "command": "npx @anthropic/web-search-mcp",
+                    "name": "filesystem-server",
+                    "command": "npx @modelcontextprotocol/server-filesystem /",
                     "transport": "stdio",
                     "packages": [
                         {"name": "express", "version": "4.17.1", "ecosystem": "npm"},
                         {"name": "node-fetch", "version": "2.6.1", "ecosystem": "npm"},
                         {"name": "jsonwebtoken", "version": "8.5.1", "ecosystem": "npm"},
                     ],
-                    "env": {"SEARCH_API_KEY": "***"},
                     "tools": [
-                        {"name": "web_search"},
-                        {"name": "fetch_page"},
+                        {"name": "read_file"},
+                        {"name": "write_file"},
+                        {"name": "list_directory"},
                     ],
                 },
                 {
-                    "name": "data-analysis-server",
-                    "command": "python -m data_analysis_mcp",
+                    "name": "database-server",
+                    "command": "python -m mcp_database",
                     "transport": "stdio",
                     "packages": [
                         {"name": "flask", "version": "2.2.0", "ecosystem": "pypi"},
                         {"name": "werkzeug", "version": "2.2.2", "ecosystem": "pypi"},
                         {"name": "requests", "version": "2.28.0", "ecosystem": "pypi"},
                         {"name": "cryptography", "version": "39.0.0", "ecosystem": "pypi"},
+                        {"name": "pillow", "version": "9.0.0", "ecosystem": "pypi"},
                     ],
-                    "env": {"DATABASE_URL": "***", "SECRET_KEY": "***"},
+                    "env": {"DATABASE_URL": "***", "ANTHROPIC_API_KEY": "***"},
                     "tools": [
                         {"name": "run_query"},
-                        {"name": "analyze_data"},
+                        {"name": "execute_sql"},
                         {"name": "export_csv"},
                     ],
                 },
             ],
         },
         {
-            "name": "demo-code-agent",
-            "agent_type": "custom",
+            "name": "claude-desktop",
+            "agent_type": "claude-desktop",
             "source": "agent-bom --demo",
             "mcp_servers": [
                 {
-                    "name": "code-executor-server",
-                    "command": "npx @demo/code-executor",
+                    "name": "github-server",
+                    "command": "npx @modelcontextprotocol/server-github",
                     "transport": "stdio",
                     "packages": [
-                        {"name": "semver", "version": "7.5.2", "ecosystem": "npm"},
                         {"name": "axios", "version": "1.4.0", "ecosystem": "npm"},
+                        {"name": "semver", "version": "7.5.2", "ecosystem": "npm"},
                     ],
                     "env": {"GITHUB_TOKEN": "***"},
                     "tools": [
-                        {"name": "execute_code"},
-                        {"name": "read_file"},
-                        {"name": "write_file"},
+                        {"name": "create_issue"},
+                        {"name": "search_repos"},
+                        {"name": "push_files"},
+                    ],
+                },
+                {
+                    "name": "slack-server",
+                    "command": "npx @modelcontextprotocol/server-slack",
+                    "transport": "stdio",
+                    "packages": [
+                        {"name": "jinja2", "version": "3.0.0", "ecosystem": "pypi"},
+                        {"name": "certifi", "version": "2022.12.7", "ecosystem": "pypi"},
+                    ],
+                    "env": {"SLACK_BOT_TOKEN": "***", "SLACK_SIGNING_SECRET": "***"},
+                    "tools": [
+                        {"name": "send_message"},
+                        {"name": "list_channels"},
                     ],
                 },
             ],

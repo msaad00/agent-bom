@@ -371,6 +371,9 @@ def scan(
             _json.dump(DEMO_INVENTORY, _df)
         inventory = _demo_path
         enrich = True
+        # Skip CWD auto-detection in demo mode — only scan bundled inventory
+        if not project:
+            project = _tempfile.mkdtemp(prefix="agent-bom-demo-dir-")
 
     # Mutual exclusivity: --no-skill and --skill-only cannot be used together
     if no_skill and skill_only:

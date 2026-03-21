@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   ShieldAlert,
   Scan,
@@ -19,60 +19,86 @@ import {
   Eye,
   Clock,
   Radio,
-  Menu,
-  X,
   BarChart3,
   FileText,
+  ChevronDown,
+  ChevronRight,
+  PanelLeftClose,
+  PanelLeft,
+  Search,
+  Bell,
+  Settings,
+  LayoutDashboard,
 } from "lucide-react";
 import { api } from "@/lib/api";
 
-const NAV_GROUPS = [
+// ─── Navigation Structure ──────────────────────────────────────────────────
+
+interface NavLink {
+  href: string;
+  label: string;
+  icon: React.ElementType;
+  badge?: "critical" | "high";
+}
+
+interface NavGroup {
+  label: string;
+  icon: React.ElementType;
+  links: NavLink[];
+}
+
+const NAV_GROUPS: NavGroup[] = [
   {
-    label: "Scan",
+    label: "Overview",
+    icon: LayoutDashboard,
     links: [
-      { href: "/",           label: "Dashboard",   icon: Activity },
-      { href: "/scan",       label: "New Scan",    icon: Scan },
-      { href: "/jobs",       label: "Jobs",        icon: ShieldAlert },
+      { href: "/", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/scan", label: "New Scan", icon: Scan },
+      { href: "/jobs", label: "Scan Jobs", icon: Clock },
     ],
   },
   {
     label: "Inventory",
+    icon: Server,
     links: [
-      { href: "/agents",     label: "Agents",      icon: Server },
-      { href: "/vulns",      label: "Vulns",       icon: Bug },
-      { href: "/fleet",      label: "Fleet",       icon: Users },
-      { href: "/registry",   label: "Registry",    icon: Library },
+      { href: "/agents", label: "Agents", icon: Server },
+      { href: "/vulns", label: "Vulnerabilities", icon: Bug, badge: "critical" },
+      { href: "/fleet", label: "Fleet", icon: Users },
+      { href: "/registry", label: "Registry", icon: Library },
     ],
   },
   {
     label: "Graphs",
+    icon: GitBranch,
     links: [
-      { href: "/graph",      label: "Lineage",     icon: GitBranch },
-      { href: "/mesh",       label: "Mesh",        icon: Network },
-      { href: "/context",    label: "Context",     icon: Waypoints },
-      { href: "/insights",   label: "Insights",    icon: BarChart3 },
+      { href: "/graph", label: "Lineage Graph", icon: GitBranch },
+      { href: "/mesh", label: "Agent Mesh", icon: Network },
+      { href: "/context", label: "Context Map", icon: Waypoints },
+      { href: "/insights", label: "Insights", icon: BarChart3 },
     ],
   },
   {
     label: "Runtime",
+    icon: Shield,
     links: [
-      { href: "/proxy",      label: "Proxy",       icon: Shield },
-      { href: "/audit",      label: "Audit Log",   icon: FileText },
-      { href: "/gateway",    label: "Gateway",     icon: Lock },
+      { href: "/proxy", label: "Proxy", icon: Shield },
+      { href: "/audit", label: "Audit Log", icon: FileText },
+      { href: "/gateway", label: "Gateway", icon: Lock },
     ],
   },
   {
-    label: "Govern",
+    label: "Governance",
+    icon: Eye,
     links: [
-      { href: "/compliance", label: "Compliance",  icon: Shield },
-      { href: "/governance", label: "Governance",  icon: Eye },
-      { href: "/traces",     label: "Traces",      icon: Radio },
-      { href: "/activity",   label: "Activity",    icon: Clock },
+      { href: "/compliance", label: "Compliance", icon: Shield },
+      { href: "/governance", label: "Governance", icon: Eye },
+      { href: "/traces", label: "Traces", icon: Radio },
+      { href: "/activity", label: "Activity", icon: Activity },
     ],
   },
 ];
 
-const allLinks = NAV_GROUPS.flatMap((g) => g.links);
+// ─── Risk counts for badges ─────────────────────────────────────────────────
 
 interface RiskCounts {
   critical: number;
@@ -85,41 +111,42 @@ interface RiskCounts {
   scan_count?: number;
 }
 
-/** Pages that only make sense when MCP servers / real agents are detected. */
 const MCP_ONLY_PAGES = new Set(["/agents", "/fleet", "/registry", "/mesh", "/context"]);
-const RUNTIME_PAGES = new Set(["/proxy", "/audit", "/gateway"]);
-const SNOWFLAKE_PAGES = new Set(["/governance", "/activity"]);
+
+// ─── Sidebar Component ──────────────────────────────────────────────────────
 
 export function Nav() {
   const path = usePathname();
+  const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(NAV_GROUPS.map((g) => g.label)));
   const [counts, setCounts] = useState<RiskCounts | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
-  // Close mobile menu on route change
+  // Close mobile on route change
   useEffect(() => {
     setMobileOpen(false);
   }, [path]);
 
-  // Fetch aggregate counts + context for badges (refresh every 60s)
+  // Sync main content padding with sidebar collapsed state
+  useEffect(() => {
+    const main = document.getElementById("main-content");
+    if (main) {
+      main.style.paddingLeft = collapsed ? "60px" : "";
+    }
+  }, [collapsed]);
+
+  // Fetch risk counts for badges
   useEffect(() => {
     let mounted = true;
     const load = () => {
       api
         .getPostureCounts()
         .then((c) => {
-          if (mounted)
-            setCounts({
-              critical: c.critical,
-              high: c.high,
-              kev: c.kev,
-              compound_issues: c.compound_issues,
-              has_mcp_context: c.has_mcp_context,
-              has_agent_context: c.has_agent_context,
-              scan_sources: c.scan_sources,
-              scan_count: c.scan_count,
-            });
+          if (mounted) setCounts(c as RiskCounts);
         })
-        .catch(() => {}); // silent — nav badges are non-critical
+        .catch(() => {});
     };
     load();
     const interval = setInterval(load, 60_000);
@@ -129,124 +156,344 @@ export function Nav() {
     };
   }, []);
 
-  /** Returns true if a nav link is contextually irrelevant given current scans. */
+  const toggleGroup = useCallback((label: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
+  }, []);
+
   const isDimmed = (href: string): boolean => {
-    if (!counts || (counts.scan_count ?? 0) === 0) return false; // no scans yet — show everything
+    if (!counts || (counts.scan_count ?? 0) === 0) return false;
     if (MCP_ONLY_PAGES.has(href) && !counts.has_mcp_context) return true;
-    if (RUNTIME_PAGES.has(href)) return false; // always accessible (runtime is independent)
-    if (SNOWFLAKE_PAGES.has(href)) return false; // env-gated at API level
     return false;
   };
 
-  return (
-    <nav className="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-sm sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-14">
-          {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 group">
-            <ShieldAlert className="w-5 h-5 text-emerald-400 group-hover:text-emerald-300 transition-colors" />
-            <span className="font-mono font-semibold text-sm text-zinc-100">agent-bom</span>
-            <span className="text-xs text-zinc-500 font-mono hidden sm:inline">AI BOM</span>
-          </Link>
+  // Keyboard shortcut: Cmd/Ctrl+K for search, Cmd/Ctrl+B for sidebar
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setSearchOpen((v) => !v);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "b") {
+        e.preventDefault();
+        setCollapsed((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
-          {/* Desktop links with grouped separators */}
-          <div className="hidden lg:flex items-center gap-0.5">
-            {NAV_GROUPS?.map((group, gi) => (
-              <div key={group.label} className="flex items-center">
-                {gi > 0 && <div className="w-px h-4 bg-zinc-800 mx-1.5" />}
-                {group.links?.map(({ href, label, icon: Icon }) => {
-                  const active = href === "/" ? path === "/" : path.startsWith(href);
-                  const isVulns = href === "/vulns";
-                  const dimmed = isDimmed(href);
-                  return (
-                    <Link
-                      key={href}
-                      href={href}
-                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                        active
-                          ? "bg-zinc-800 text-zinc-100"
-                          : dimmed
-                          ? "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-900"
-                          : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900"
-                      }`}
-                      title={dimmed ? "No MCP servers detected in current scans" : undefined}
-                    >
-                      <Icon className={`w-3.5 h-3.5 ${dimmed ? "opacity-40" : ""}`} />
-                      {label}
-                      {isVulns && counts && counts.critical > 0 && (
-                        <span className="flex items-center gap-1 ml-0.5">
-                          <span className="text-[9px] font-mono font-bold text-red-400 bg-red-950/60 rounded px-1 py-0 leading-4">
-                            {counts.critical}C
-                          </span>
-                          {counts.high > 0 && (
-                            <span className="text-[9px] font-mono font-bold text-orange-400 bg-orange-950/60 rounded px-1 py-0 leading-4">
-                              {counts.high}H
-                            </span>
-                          )}
-                        </span>
-                      )}
-                    </Link>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
+  // Filter nav links by search
+  const filteredGroups = searchQuery
+    ? NAV_GROUPS.map((g) => ({
+        ...g,
+        links: g.links.filter((l) => l.label.toLowerCase().includes(searchQuery.toLowerCase())),
+      })).filter((g) => g.links.length > 0)
+    : NAV_GROUPS;
 
-          {/* Right: API status + hamburger */}
-          <div className="flex items-center gap-3">
-            <ApiStatus />
-            <button
-              onClick={() => setMobileOpen(!mobileOpen)}
-              className="lg:hidden p-1.5 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
-              aria-label="Toggle navigation"
-            >
-              {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-            </button>
+  const sidebarContent = (
+    <>
+      {/* Logo */}
+      <div className={`flex items-center ${collapsed ? "justify-center" : "justify-between"} px-4 h-14 border-b border-zinc-800/60`}>
+        <Link href="/" className="flex items-center gap-2.5 group min-w-0">
+          <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0 group-hover:bg-emerald-500/20 transition-colors">
+            <ShieldAlert className="w-4 h-4 text-emerald-400" />
           </div>
-        </div>
+          {!collapsed && (
+            <div className="min-w-0">
+              <span className="font-semibold text-sm text-zinc-100 block truncate">agent-bom</span>
+              <span className="text-[10px] text-zinc-500 font-mono block">AI Supply Chain</span>
+            </div>
+          )}
+        </Link>
+        {!collapsed && (
+          <button
+            onClick={() => setCollapsed(true)}
+            className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60 transition-colors hidden lg:flex"
+            title="Collapse sidebar (⌘B)"
+          >
+            <PanelLeftClose className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
-      {/* Mobile menu */}
-      {mobileOpen && (
-        <div className="lg:hidden border-t border-zinc-800 bg-zinc-950/95 backdrop-blur-sm">
-          <div className="max-w-7xl mx-auto px-4 py-3 space-y-4">
-            {NAV_GROUPS?.map((group) => (
-              <div key={group.label}>
-                <div className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest mb-1.5 px-2">
-                  {group.label}
-                </div>
-                <div className="grid grid-cols-2 gap-1">
-                  {group.links?.map(({ href, label, icon: Icon }) => {
+      {/* Search */}
+      {!collapsed && (
+        <div className="px-3 py-3">
+          <button
+            onClick={() => setSearchOpen(true)}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800/40 border border-zinc-700/40 text-zinc-500 text-xs hover:border-zinc-600 hover:text-zinc-400 transition-colors"
+          >
+            <Search className="w-3.5 h-3.5" />
+            <span>Search pages...</span>
+            <kbd className="ml-auto text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-zinc-500">⌘K</kbd>
+          </button>
+        </div>
+      )}
+      {collapsed && (
+        <div className="px-2 py-3 flex justify-center">
+          <button
+            onClick={() => { setCollapsed(false); setSearchOpen(true); }}
+            className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60 transition-colors"
+            title="Search (⌘K)"
+          >
+            <Search className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Navigation Groups */}
+      <nav className="flex-1 overflow-y-auto px-2 py-1 space-y-0.5 scrollbar-thin">
+        {filteredGroups.map((group) => {
+          const isExpanded = expandedGroups.has(group.label);
+          const GroupIcon = group.icon;
+          const hasActiveChild = group.links.some(
+            (l) => (l.href === "/" ? path === "/" : path.startsWith(l.href))
+          );
+
+          return (
+            <div key={group.label}>
+              {/* Group Header */}
+              <button
+                onClick={() => collapsed ? setCollapsed(false) : toggleGroup(group.label)}
+                className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+                  hasActiveChild
+                    ? "text-zinc-200"
+                    : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/40"
+                }`}
+                title={collapsed ? group.label : undefined}
+              >
+                <GroupIcon className={`w-4 h-4 shrink-0 ${hasActiveChild ? "text-emerald-400" : ""}`} />
+                {!collapsed && (
+                  <>
+                    <span className="flex-1 text-left uppercase tracking-wider text-[10px] font-semibold">
+                      {group.label}
+                    </span>
+                    {isExpanded ? (
+                      <ChevronDown className="w-3 h-3 text-zinc-600" />
+                    ) : (
+                      <ChevronRight className="w-3 h-3 text-zinc-600" />
+                    )}
+                  </>
+                )}
+              </button>
+
+              {/* Group Links */}
+              {(isExpanded || collapsed) && !collapsed && (
+                <div className="ml-2 mt-0.5 space-y-0.5">
+                  {group.links.map(({ href, label, icon: Icon, badge }) => {
                     const active = href === "/" ? path === "/" : path.startsWith(href);
                     const dimmed = isDimmed(href);
+                    const isVulns = href === "/vulns";
+
                     return (
                       <Link
                         key={href}
                         href={href}
-                        className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                        className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all group relative ${
                           active
-                            ? "bg-zinc-800 text-zinc-100"
+                            ? "bg-emerald-500/10 text-emerald-400 border-l-2 border-emerald-400 ml-0 pl-2.5"
                             : dimmed
-                            ? "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-900"
-                            : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900"
+                            ? "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800/30"
+                            : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40"
                         }`}
+                        title={dimmed ? "No MCP servers detected" : undefined}
                       >
-                        <Icon className={`w-4 h-4 ${dimmed ? "opacity-40" : ""}`} />
-                        {label}
+                        <Icon className={`w-3.5 h-3.5 shrink-0 ${active ? "text-emerald-400" : dimmed ? "opacity-40" : "text-zinc-500 group-hover:text-zinc-400"}`} />
+                        <span className="truncate">{label}</span>
+
+                        {/* Vuln count badges */}
+                        {isVulns && counts && counts.critical > 0 && (
+                          <span className="ml-auto flex items-center gap-1">
+                            <span className="text-[9px] font-mono font-bold text-red-400 bg-red-950/60 border border-red-800/40 rounded-full px-1.5 py-0 leading-4">
+                              {counts.critical}
+                            </span>
+                            {counts.high > 0 && (
+                              <span className="text-[9px] font-mono font-bold text-orange-400 bg-orange-950/60 border border-orange-800/40 rounded-full px-1.5 py-0 leading-4">
+                                {counts.high}
+                              </span>
+                            )}
+                          </span>
+                        )}
                       </Link>
                     );
                   })}
                 </div>
-              </div>
-            ))}
+              )}
+
+              {/* Collapsed: just show icons as tooltips */}
+              {collapsed && (
+                <div className="space-y-0.5 mt-0.5">
+                  {group.links.map(({ href, label, icon: Icon }) => {
+                    const active = href === "/" ? path === "/" : path.startsWith(href);
+                    return (
+                      <Link
+                        key={href}
+                        href={href}
+                        className={`flex items-center justify-center p-2 rounded-lg transition-colors ${
+                          active
+                            ? "bg-emerald-500/10 text-emerald-400"
+                            : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/40"
+                        }`}
+                        title={label}
+                      >
+                        <Icon className="w-4 h-4" />
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </nav>
+
+      {/* Bottom section */}
+      <div className={`border-t border-zinc-800/60 ${collapsed ? "px-2 py-3" : "px-3 py-3"}`}>
+        <ApiStatus collapsed={collapsed} />
+        {collapsed && (
+          <button
+            onClick={() => setCollapsed(false)}
+            className="mt-2 w-full p-2 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/40 transition-colors flex items-center justify-center"
+            title="Expand sidebar (⌘B)"
+          >
+            <PanelLeft className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+    </>
+  );
+
+  return (
+    <>
+      {/* Desktop Sidebar */}
+      <aside
+        className={`hidden lg:flex flex-col fixed left-0 top-0 bottom-0 z-40 bg-zinc-950 border-r border-zinc-800/60 transition-[width] duration-200 ${
+          collapsed ? "w-[60px]" : "w-[240px]"
+        }`}
+      >
+        {sidebarContent}
+      </aside>
+
+      {/* Mobile Top Bar */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 h-14 bg-zinc-950/95 backdrop-blur-sm border-b border-zinc-800/60 flex items-center justify-between px-4">
+        <Link href="/" className="flex items-center gap-2 group">
+          <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+            <ShieldAlert className="w-3.5 h-3.5 text-emerald-400" />
           </div>
+          <span className="font-semibold text-sm text-zinc-100">agent-bom</span>
+        </Link>
+        <div className="flex items-center gap-2">
+          <ApiStatus collapsed={false} />
+          <button
+            onClick={() => setMobileOpen(!mobileOpen)}
+            className="p-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60 transition-colors"
+          >
+            {mobileOpen ? (
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            ) : (
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+            )}
+          </button>
         </div>
+      </div>
+
+      {/* Mobile Drawer Overlay */}
+      {mobileOpen && (
+        <>
+          <div className="lg:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
+          <aside className="lg:hidden fixed left-0 top-0 bottom-0 z-50 w-[260px] bg-zinc-950 border-r border-zinc-800/60 flex flex-col animate-slide-in">
+            {sidebarContent}
+          </aside>
+        </>
       )}
-    </nav>
+
+      {/* Command Palette / Search */}
+      {searchOpen && (
+        <CommandPalette
+          query={searchQuery}
+          setQuery={setSearchQuery}
+          onClose={() => { setSearchOpen(false); setSearchQuery(""); }}
+        />
+      )}
+    </>
   );
 }
 
-function ApiStatus() {
+// ─── Command Palette ────────────────────────────────────────────────────────
+
+const allLinks = NAV_GROUPS.flatMap((g) => g.links.map((l) => ({ ...l, group: g.label })));
+
+function CommandPalette({
+  query,
+  setQuery,
+  onClose,
+}: {
+  query: string;
+  setQuery: (q: string) => void;
+  onClose: () => void;
+}) {
+  const filtered = query
+    ? allLinks.filter(
+        (l) =>
+          l.label.toLowerCase().includes(query.toLowerCase()) ||
+          l.group.toLowerCase().includes(query.toLowerCase())
+      )
+    : allLinks;
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh]">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-lg bg-zinc-900 border border-zinc-700/60 rounded-xl shadow-2xl overflow-hidden">
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800">
+          <Search className="w-4 h-4 text-zinc-500 shrink-0" />
+          <input
+            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search pages, commands..."
+            className="flex-1 bg-transparent text-sm text-zinc-100 placeholder-zinc-500 outline-none"
+          />
+          <kbd className="text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-zinc-500">ESC</kbd>
+        </div>
+        <div className="max-h-[50vh] overflow-y-auto py-2">
+          {filtered.length === 0 ? (
+            <div className="px-4 py-8 text-center text-sm text-zinc-500">No results found</div>
+          ) : (
+            filtered.map(({ href, label, icon: Icon, group }) => (
+              <Link
+                key={href}
+                href={href}
+                onClick={onClose}
+                className="flex items-center gap-3 px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-800/60 hover:text-zinc-100 transition-colors"
+              >
+                <Icon className="w-4 h-4 text-zinc-500" />
+                <span className="flex-1">{label}</span>
+                <span className="text-[10px] text-zinc-600 uppercase tracking-wider">{group}</span>
+              </Link>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── API Status ─────────────────────────────────────────────────────────────
+
+function ApiStatus({ collapsed }: { collapsed: boolean }) {
   const [status, setStatus] = useState<"checking" | "online" | "offline">("checking");
   const [version, setVersion] = useState<string>("");
 
@@ -280,15 +527,19 @@ function ApiStatus() {
       ? "bg-red-500"
       : "bg-zinc-500 animate-pulse";
 
+  if (collapsed) {
+    return (
+      <div className="flex justify-center">
+        <span className={`w-2 h-2 rounded-full ${dotColor}`} title={status === "online" ? `API ${version}` : status} />
+      </div>
+    );
+  }
+
   return (
-    <div className="flex items-center gap-1.5 text-xs text-zinc-500">
-      <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
-      <span className="hidden sm:inline">
-        {status === "online"
-          ? `API ${version}`
-          : status === "offline"
-          ? "Offline"
-          : "API"}
+    <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-zinc-500">
+      <span className={`w-1.5 h-1.5 rounded-full ${dotColor} shrink-0`} />
+      <span className="truncate">
+        {status === "online" ? `API ${version}` : status === "offline" ? "API Offline" : "Connecting..."}
       </span>
     </div>
   );

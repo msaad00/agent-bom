@@ -17,7 +17,7 @@
 </p>
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
-<p align="center"><b>Your AI agent has a CVE. Which credentials leak?</b></p>
+<p align="center"><b>Your AI agent's dependencies have a CVE. Which credentials leak?</b></p>
 
 ```
 CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)

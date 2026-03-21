@@ -45,7 +45,7 @@ def shield():
     """agent-shield — Runtime protection for AI agents.
 
     \b
-    MCP security proxy with 110 detection patterns across 7 detectors:
+    MCP security proxy with 112 detection patterns across 7 detectors:
     · Tool drift (rug pull)    · Shell injection     · Credential leaks
     · Rate limiting            · Attack sequences    · Response cloaking
     · Vector DB injection      · PII redaction

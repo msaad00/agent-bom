@@ -1267,7 +1267,7 @@ def print_export_hint(report: AIBOMReport) -> None:
 
     # ── Export (compact) ──
     lines.append("[bold]Export[/bold]")
-    lines.append("  [green]-f[/green] json · cyclonedx · spdx · sarif · html · junit   [dim]15 formats[/dim]")
+    lines.append("  [green]-f[/green] json · cyclonedx · spdx · sarif · html · junit   [dim]18 formats[/dim]")
 
     console.print()
     console.print(Panel("\n".join(lines), border_style="blue", padding=(1, 2)))
@@ -1582,7 +1582,7 @@ def print_compact_export_hint(report: AIBOMReport) -> None:
         f"[bold]{report.total_packages} packages[/bold] · "
         f"[bold {vuln_color}]{report.total_vulnerabilities} vulns[/bold {vuln_color}]",
         "",
-        "  [green]-f[/green] json | cyclonedx | spdx | sarif | html | junit   [dim]15 formats[/dim]",
+        "  [green]-f[/green] json | cyclonedx | spdx | sarif | html | junit   [dim]18 formats[/dim]",
         "  [green]--verbose[/green]  [dim]full tree & details[/dim]    [green]agent-bom serve[/green]  [dim]dashboard[/dim]",
     ]
     console.print(Panel("\n".join(lines), border_style="blue", padding=(0, 1)))

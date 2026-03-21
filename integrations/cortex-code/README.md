@@ -47,7 +47,7 @@ cp integrations/cortex-code/SKILL.md .cortex/skills/agent-bom/SKILL.md
 
 ## What You Get
 
-### As MCP Server (32 tools)
+### As MCP Server (33 tools)
 
 All agent-bom MCP tools become available in Cortex Code:
 

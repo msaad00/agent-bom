@@ -276,7 +276,7 @@ Cortex Code has a sophisticated security model that agent-bom should integrate w
 
 1. **agent-bom as Cortex Code MCP server**
    - Cortex Code supports MCP via `mcp.json` — agent-bom can be added as an MCP server
-   - All 32 tools become available to Cortex Code users
+   - All 33 tools become available to Cortex Code users
    - Users can scan their Snowflake pipelines for CVEs, check MCP server trust, run compliance audits — all through natural language in Cortex Code
    - Config: add agent-bom to `~/.snowflake/cortex/mcp.json`
 
@@ -327,7 +327,7 @@ Cortex Code has a sophisticated security model that agent-bom should integrate w
 
 | Coco Security Gap | agent-bom Solution |
 |-------------------|--------------------|
-| "Verify MCP server integrity" — manual guidance only | Automated MCP server scanning (32 tools) |
+| "Verify MCP server integrity" — manual guidance only | Automated MCP server scanning (33 tools) |
 | No CVE scanning of MCP server dependencies | Full enrichment pipeline (OSV+GHSA+NVD+EPSS+KEV) |
 | No blast radius analysis | Blast radius with compliance mapping |
 | Permission caching risks (permissions.json) | Audit cached approvals, flag overly permissive |

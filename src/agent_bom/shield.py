@@ -38,7 +38,7 @@ class Shield:
     """In-process AI agent security middleware.
 
     Drop-in protection for any AI agent pipeline. Runs all 7 detectors
-    locally with 110 patterns. No proxy needed, no network, no config.
+    locally with 112 patterns. No proxy needed, no network, no config.
 
     Args:
         deep: Enable deep defense mode (correlated threat scoring,

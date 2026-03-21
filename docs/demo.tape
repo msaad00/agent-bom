@@ -1,4 +1,4 @@
-# agent-bom v0.72.0 demo — run with: vhs docs/demo.tape
+# agent-bom v0.74.0 demo — run with: vhs docs/demo.tape
 #
 # 3 hero commands that show what agent-bom does:
 # 1. scan --demo  → discovery + blast radius + remediation (the core value)
@@ -7,7 +7,7 @@
 #
 # All output is real — --demo uses bundled inventory, no mocked data.
 
-Output docs/images/demo-v0.72.0.gif
+Output docs/images/demo-v0.74.0.gif
 
 Set Shell "bash"
 Set FontSize 15

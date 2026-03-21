@@ -48,14 +48,14 @@ graph TB
         Parser["Package Parser\n11 ecosystems"]
         Scanner["CVE Scanner\nOSV + NVD + GHSA"]
         Blast["Blast Radius\nCVE → agent → credentials → tools"]
-        IaC["IaC Engine\n82 rules"]
+        IaC["IaC Engine\n89 rules"]
         CIS["CIS Benchmarks\nAWS / Azure / GCP"]
     end
 
     subgraph Output["Output"]
         Console["Console\nTable / verbose"]
         Formats["Formats\nJSON / SARIF / HTML / CycloneDX"]
-        API["REST API + MCP\n32 tools"]
+        API["REST API + MCP\n33 tools"]
         Proxy["Runtime Proxy\n7 detectors"]
     end
 
@@ -226,7 +226,7 @@ graph TB
 | Output | `src/agent_bom/output/__init__.py` | JSON, CycloneDX, SARIF, SPDX, console |
 | Policy | `src/agent_bom/policy.py` | Policy-as-code engine (17 conditions) |
 | Proxy | `src/agent_bom/proxy.py` | Runtime MCP proxy (7 behavioral detectors) |
-| MCP Server | `src/agent_bom/mcp_server.py` | FastMCP server (32 tools) |
+| MCP Server | `src/agent_bom/mcp_server.py` | FastMCP server (33 tools) |
 | Cloud | `src/agent_bom/cloud/` | AWS, Azure, GCP, Snowflake, Databricks, ClickHouse |
 | Asset Tracker | `src/agent_bom/asset_tracker.py` | Persistent vuln tracking — first_seen, resolved, MTTR |
 | Context Graph | `src/agent_bom/context_graph.py` | Lateral movement analysis |

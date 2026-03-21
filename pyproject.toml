@@ -44,7 +44,8 @@ dependencies = [
     "werkzeug>=3.1.6",  # GHSA-29vq-49wr-vm6x, GHSA-2g68-c3qc-8985, GHSA-87hc-h4r5-73f7, GHSA-f9vj-2wh5-fj8j, GHSA-hgf8-39gv-g3f2, GHSA-hrfv-mqp8-q5rw, GHSA-px8h-6qxv-m22q, GHSA-q34m-jh98-gwm2, GHSA-xg9f-g7g7-2323
     "flask>=3.1.3",  # GHSA-68rp-wp8r-4726, GHSA-m2qf-hxjv-5gpq (Vary: Cookie session exposure; transitive via mlflow)
     "requests>=2.32.4",  # GHSA-9hjg-9r4m-mvj7, GHSA-j8r2-6x86-q33q (session cookie leak)
-    "nltk>=3.9.3",  # CVE-2025-14009 (fixed in 3.9.3) — transitive via safety
+    # NOTE: nltk pin removed — safety (which pulled nltk) was replaced by pip-audit.
+    # nltk is not imported by agent-bom. Keeping it added 3 CVEs to Docker images.
     "pyjwt>=2.12.0",  # CVE-2026-32597 (crit header bypass) — transitive via auth
     "tornado>=6.5.5",  # CVE-2026-31958 (multipart DoS), GHSA-78cv-mqj4-43f7 (cookie injection) — transitive via streamlit
     # NOTE: pyopenssl (transitive via snowflake[cloud] extra) — GHSA-68rp-wp8r-4726, GHSA-5pwr-322w-8jr4,

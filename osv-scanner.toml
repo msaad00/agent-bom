@@ -10,19 +10,9 @@
 #
 # Re-audit this file on every dependency bump.
 
-# ── nltk — NO FIX available upstream (3.9.3 is latest) ──────────────────────
-
-[[IgnoredVulns]]
-id = "GHSA-gfwx-w7gr-fvh7"
-reason = "nltk 3.9.3 — XSS in WordNet Browser. No fix available upstream. Re-evaluate when nltk ships a new release."
-
-[[IgnoredVulns]]
-id = "GHSA-rf74-v2fm-23pw"
-reason = "nltk 3.9.3 — unbounded recursion in JSONTaggedDecoder. No fix available upstream. Re-evaluate when nltk ships a new release."
-
-[[IgnoredVulns]]
-id = "CVE-2026-33231"
-reason = "nltk 3.9.3 — unauthenticated remote shutdown in wordnet_app. No fix upstream. NOT REACHABLE: agent-bom never imports nltk.app.wordnet_app."
+# ── nltk — REMOVED from core deps (v0.74.0+) ────────────────────────────────
+# nltk was pinned as a transitive dep of `safety`, which was replaced by pip-audit.
+# agent-bom never imports nltk. Removed to eliminate 3+ unfixable CVEs from Docker images.
 
 # ── Werkzeug — FIXED in 3.1.6 (our locked version) ──────────────────────────
 

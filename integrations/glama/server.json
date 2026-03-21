@@ -1,7 +1,7 @@
 {
   "name": "agent-bom",
   "description": "AI infrastructure and supply chain security — blast radius mapping, AST source analysis, AI BOM, 112-pattern runtime proxy, Shield SDK, secret scanning, 14-framework compliance",
-  "version": "0.73.0",
+  "version": "0.74.0",
   "license": "Apache-2.0",
   "repository": "https://github.com/msaad00/agent-bom",
   "transport": "stdio",

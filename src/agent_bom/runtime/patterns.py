@@ -96,6 +96,12 @@ DANGEROUS_ARG_PATTERNS: list[tuple[str, re.Pattern]] = [
     ("SQL external stage access", re.compile(r"\bCREATE\s+(?:OR\s+REPLACE\s+)?STAGE\b", re.IGNORECASE)),
     ("SQL network rule", re.compile(r"\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:NETWORK\s+RULE|EXTERNAL\s+ACCESS)\b", re.IGNORECASE)),
     ("SQL EXECUTE IMMEDIATE", re.compile(r"\bEXECUTE\s+IMMEDIATE\b", re.IGNORECASE)),
+    # SSRF / sandbox escape patterns (Snowflake CoCo, Meta agent incidents)
+    (
+        "SSRF attempt",
+        re.compile(r"(?:http|ftp)s?://(?:169\.254\.|127\.0\.0\.|0\.0\.0\.0|localhost|metadata\.google|100\.100\.100\.200)", re.IGNORECASE),
+    ),
+    ("Process spawn", re.compile(r"\b(?:subprocess|os\.system|os\.popen|os\.exec|child_process|eval|exec)\s*\(", re.IGNORECASE)),
 ]
 
 

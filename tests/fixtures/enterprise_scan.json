@@ -1,0 +1,6306 @@
+{
+  "agents": [
+    {
+      "name": "cursor",
+      "agent_type": "mcp_host",
+      "config_path": "~/.config/cursor/config.json",
+      "source": "cursor-config",
+      "mcp_servers": [
+        {
+          "name": "filesystem",
+          "command": "npx",
+          "args": [
+            "@modelcontextprotocol/server-filesystem"
+          ],
+          "transport": "stdio",
+          "packages": [
+            {
+              "name": "transformers",
+              "version": "3.17.2",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "google-cloud-aiplatform",
+              "version": "2.19.9",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "tensorflow",
+              "version": "3.30.7",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-84140",
+                  "severity": "low",
+                  "summary": "Vulnerability in tensorflow",
+                  "cvss_score": 9.2,
+                  "epss_score": 0.1551,
+                  "is_kev": false,
+                  "fixed_version": "1.0.0",
+                  "severity_source": "nvd",
+                  "confidence": 0.75
+                }
+              ]
+            },
+            {
+              "name": "cryptography",
+              "version": "1.20.8",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "pydantic",
+              "version": "2.6.5",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "tensorflow",
+              "version": "3.6.6",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-28374",
+                  "severity": "critical",
+                  "summary": "Vulnerability in tensorflow",
+                  "cvss_score": 5.2,
+                  "epss_score": 0.3114,
+                  "is_kev": false,
+                  "fixed_version": "3.0.0",
+                  "severity_source": "osv_database",
+                  "confidence": 0.52
+                },
+                {
+                  "id": "CVE-2024-76379",
+                  "severity": "low",
+                  "summary": "Vulnerability in tensorflow",
+                  "cvss_score": 6.1,
+                  "epss_score": 0.8362,
+                  "is_kev": false,
+                  "fixed_version": "4.0.0",
+                  "severity_source": "ghsa",
+                  "confidence": 0.67
+                }
+              ]
+            },
+            {
+              "name": "requests",
+              "version": "1.11.5",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-99449",
+                  "severity": "high",
+                  "summary": "Vulnerability in requests",
+                  "cvss_score": 7.3,
+                  "epss_score": 0.5643,
+                  "is_kev": false,
+                  "fixed_version": "4.0.0",
+                  "severity_source": "ghsa",
+                  "confidence": 0.64
+                },
+                {
+                  "id": "CVE-2024-79460",
+                  "severity": "medium",
+                  "summary": "Vulnerability in requests",
+                  "cvss_score": 3.0,
+                  "epss_score": 0.9284,
+                  "is_kev": false,
+                  "fixed_version": "1.0.0",
+                  "severity_source": "osv_database",
+                  "confidence": 0.6
+                },
+                {
+                  "id": "CVE-2024-95367",
+                  "severity": "medium",
+                  "summary": "Vulnerability in requests",
+                  "cvss_score": 3.6,
+                  "epss_score": 0.3926,
+                  "is_kev": false,
+                  "fixed_version": null,
+                  "severity_source": "osv_database",
+                  "confidence": 0.81
+                }
+              ]
+            },
+            {
+              "name": "boto3",
+              "version": "0.0.2",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            }
+          ],
+          "has_credentials": false,
+          "env_keys": [],
+          "tools": [
+            {
+              "name": "filesystem_tool_0"
+            },
+            {
+              "name": "filesystem_tool_1"
+            },
+            {
+              "name": "filesystem_tool_2"
+            },
+            {
+              "name": "filesystem_tool_3"
+            },
+            {
+              "name": "filesystem_tool_4"
+            },
+            {
+              "name": "filesystem_tool_5"
+            }
+          ]
+        },
+        {
+          "name": "jira",
+          "command": "npx",
+          "args": [
+            "@modelcontextprotocol/server-jira"
+          ],
+          "transport": "stdio",
+          "packages": [
+            {
+              "name": "azure-identity",
+              "version": "0.16.7",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "langchain",
+              "version": "0.23.9",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "transformers",
+              "version": "3.22.8",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "boto3",
+              "version": "3.15.7",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "azure-identity",
+              "version": "2.11.8",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "dbt-core",
+              "version": "3.19.10",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-36322",
+                  "severity": "medium",
+                  "summary": "Vulnerability in dbt-core",
+                  "cvss_score": 7.4,
+                  "epss_score": 0.6188,
+                  "is_kev": false,
+                  "fixed_version": "1.0.0",
+                  "severity_source": "osv_database",
+                  "confidence": 0.74
+                },
+                {
+                  "id": "CVE-2024-70198",
+                  "severity": "low",
+                  "summary": "Vulnerability in dbt-core",
+                  "cvss_score": 7.1,
+                  "epss_score": 0.0331,
+                  "is_kev": false,
+                  "fixed_version": "4.0.0",
+                  "severity_source": "ghsa",
+                  "confidence": 0.95
+                }
+              ]
+            },
+            {
+              "name": "anthropic",
+              "version": "3.25.8",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "requests",
+              "version": "3.8.4",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "fastapi",
+              "version": "0.9.4",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            }
+          ],
+          "has_credentials": false,
+          "env_keys": [],
+          "tools": [
+            {
+              "name": "jira_tool_0"
+            },
+            {
+              "name": "jira_tool_1"
+            }
+          ]
+        },
+        {
+          "name": "brave-search",
+          "command": "npx",
+          "args": [
+            "@modelcontextprotocol/server-brave-search"
+          ],
+          "transport": "stdio",
+          "packages": [
+            {
+              "name": "google-cloud-aiplatform",
+              "version": "0.5.6",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "torch",
+              "version": "0.24.3",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "sentence-transformers",
+              "version": "2.14.5",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "pinecone-client",
+              "version": "0.12.1",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-20488",
+                  "severity": "medium",
+                  "summary": "Vulnerability in pinecone-client",
+                  "cvss_score": 5.4,
+                  "epss_score": 0.5659,
+                  "is_kev": true,
+                  "fixed_version": null,
+                  "severity_source": "ghsa",
+                  "confidence": 0.8
+                }
+              ]
+            },
+            {
+              "name": "azure-identity",
+              "version": "1.11.5",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            }
+          ],
+          "has_credentials": false,
+          "env_keys": [],
+          "tools": [
+            {
+              "name": "brave-search_tool_0"
+            },
+            {
+              "name": "brave-search_tool_1"
+            }
+          ]
+        },
+        {
+          "name": "jira",
+          "command": "uvx",
+          "args": [
+            "@modelcontextprotocol/server-jira"
+          ],
+          "transport": "stdio",
+          "packages": [
+            {
+              "name": "mcp",
+              "version": "2.12.2",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "numpy",
+              "version": "3.27.2",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-42961",
+                  "severity": "medium",
+                  "summary": "Vulnerability in numpy",
+                  "cvss_score": 6.8,
+                  "epss_score": 0.2467,
+                  "is_kev": false,
+                  "fixed_version": "1.0.0",
+                  "severity_source": "nvd",
+                  "confidence": 0.89
+                },
+                {
+                  "id": "CVE-2024-95326",
+                  "severity": "high",
+                  "summary": "Vulnerability in numpy",
+                  "cvss_score": 5.8,
+                  "epss_score": 0.8163,
+                  "is_kev": false,
+                  "fixed_version": "1.0.0",
+                  "severity_source": "nvd",
+                  "confidence": 0.74
+                },
+                {
+                  "id": "CVE-2024-76009",
+                  "severity": "high",
+                  "summary": "Vulnerability in numpy",
+                  "cvss_score": 6.2,
+                  "epss_score": 0.3272,
+                  "is_kev": false,
+                  "fixed_version": "3.0.0",
+                  "severity_source": "osv_database",
+                  "confidence": 0.75
+                }
+              ]
+            },
+            {
+              "name": "wandb",
+              "version": "1.12.5",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-52857",
+                  "severity": "medium",
+                  "summary": "Vulnerability in wandb",
+                  "cvss_score": 7.8,
+                  "epss_score": 0.4503,
+                  "is_kev": false,
+                  "fixed_version": null,
+                  "severity_source": "osv_database",
+                  "confidence": 0.94
+                },
+                {
+                  "id": "CVE-2024-34894",
+                  "severity": "medium",
+                  "summary": "Vulnerability in wandb",
+                  "cvss_score": 6.9,
+                  "epss_score": 0.743,
+                  "is_kev": false,
+                  "fixed_version": "4.0.0",
+                  "severity_source": "osv_database",
+                  "confidence": 0.97
+                },
+                {
+                  "id": "CVE-2024-91543",
+                  "severity": "medium",
+                  "summary": "Vulnerability in wandb",
+                  "cvss_score": 9.2,
+                  "epss_score": 0.8902,
+                  "is_kev": false,
+                  "fixed_version": null,
+                  "severity_source": "nvd",
+                  "confidence": 0.55
+                }
+              ]
+            },
+            {
+              "name": "pandas",
+              "version": "3.6.3",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "pandas",
+              "version": "2.25.4",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "google-cloud-aiplatform",
+              "version": "2.17.10",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "snowflake-connector-python",
+              "version": "0.2.0",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-93390",
+                  "severity": "medium",
+                  "summary": "Vulnerability in snowflake-connector-python",
+                  "cvss_score": 3.7,
+                  "epss_score": 0.7127,
+                  "is_kev": false,
+                  "fixed_version": "1.0.0",
+                  "severity_source": "osv_database",
+                  "confidence": 0.81
+                }
+              ]
+            },
+            {
+              "name": "chromadb",
+              "version": "2.20.8",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-85181",
+                  "severity": "low",
+                  "summary": "Vulnerability in chromadb",
+                  "cvss_score": 8.3,
+                  "epss_score": 0.4586,
+                  "is_kev": false,
+                  "fixed_version": null,
+                  "severity_source": "ghsa",
+                  "confidence": 0.67
+                },
+                {
+                  "id": "CVE-2024-87015",
+                  "severity": "medium",
+                  "summary": "Vulnerability in chromadb",
+                  "cvss_score": 8.6,
+                  "epss_score": 0.3688,
+                  "is_kev": false,
+                  "fixed_version": null,
+                  "severity_source": "ghsa",
+                  "confidence": 0.85
+                },
+                {
+                  "id": "CVE-2024-27302",
+                  "severity": "medium",
+                  "summary": "Vulnerability in chromadb",
+                  "cvss_score": 5.1,
+                  "epss_score": 0.4162,
+                  "is_kev": false,
+                  "fixed_version": "3.0.0",
+                  "severity_source": "osv_database",
+                  "confidence": 0.55
+                },
+                {
+                  "id": "CVE-2024-57672",
+                  "severity": "medium",
+                  "summary": "Vulnerability in chromadb",
+                  "cvss_score": 6.0,
+                  "epss_score": 0.0376,
+                  "is_kev": false,
+                  "fixed_version": "3.0.0",
+                  "severity_source": "osv_database",
+                  "confidence": 0.57
+                },
+                {
+                  "id": "CVE-2024-64883",
+                  "severity": "medium",
+                  "summary": "Vulnerability in chromadb",
+                  "cvss_score": 8.4,
+                  "epss_score": 0.1644,
+                  "is_kev": false,
+                  "fixed_version": "3.0.0",
+                  "severity_source": "ghsa",
+                  "confidence": 0.7
+                }
+              ]
+            }
+          ],
+          "has_credentials": true,
+          "env_keys": [
+            "JIRA_API_KEY",
+            "JIRA_TOKEN"
+          ],
+          "tools": [
+            {
+              "name": "jira_tool_0"
+            }
+          ]
+        },
+        {
+          "name": "jira",
+          "command": "uvx",
+          "args": [
+            "@modelcontextprotocol/server-jira"
+          ],
+          "transport": "stdio",
+          "packages": [
+            {
+              "name": "weaviate-client",
+              "version": "3.30.9",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-96950",
+                  "severity": "medium",
+                  "summary": "Vulnerability in weaviate-client",
+                  "cvss_score": 6.2,
+                  "epss_score": 0.3448,
+                  "is_kev": false,
+                  "fixed_version": "3.0.0",
+                  "severity_source": "ghsa",
+                  "confidence": 0.61
+                },
+                {
+                  "id": "CVE-2024-72575",
+                  "severity": "high",
+                  "summary": "Vulnerability in weaviate-client",
+                  "cvss_score": 4.7,
+                  "epss_score": 0.6646,
+                  "is_kev": false,
+                  "fixed_version": "4.0.0",
+                  "severity_source": "ghsa",
+                  "confidence": 0.69
+                }
+              ]
+            },
+            {
+              "name": "scikit-learn",
+              "version": "1.14.1",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "cryptography",
+              "version": "0.19.7",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "sentence-transformers",
+              "version": "0.24.3",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "anthropic",
+              "version": "3.30.8",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            }
+          ],
+          "has_credentials": false,
+          "env_keys": [],
+          "tools": [
+            {
+              "name": "jira_tool_0"
+            }
+          ]
+        },
+        {
+          "name": "filesystem",
+          "command": "uvx",
+          "args": [
+            "@modelcontextprotocol/server-filesystem"
+          ],
+          "transport": "stdio",
+          "packages": [
+            {
+              "name": "sentence-transformers",
+              "version": "0.13.8",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "requests",
+              "version": "0.3.10",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-36080",
+                  "severity": "low",
+                  "summary": "Vulnerability in requests",
+                  "cvss_score": 9.8,
+                  "epss_score": 0.014,
+                  "is_kev": true,
+                  "fixed_version": "3.0.0",
+                  "severity_source": "nvd",
+                  "confidence": 0.53
+                }
+              ]
+            },
+            {
+              "name": "httpx",
+              "version": "2.7.7",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-99449",
+                  "severity": "medium",
+                  "summary": "Vulnerability in httpx",
+                  "cvss_score": 8.0,
+                  "epss_score": 0.9341,
+                  "is_kev": false,
+                  "fixed_version": "1.0.0",
+                  "severity_source": "nvd",
+                  "confidence": 0.7
+                },
+                {
+                  "id": "CVE-2024-12599",
+                  "severity": "medium",
+                  "summary": "Vulnerability in httpx",
+                  "cvss_score": 5.7,
+                  "epss_score": 0.2472,
+                  "is_kev": false,
+                  "fixed_version": null,
+                  "severity_source": "nvd",
+                  "confidence": 0.71
+                },
+                {
+                  "id": "CVE-2024-30026",
+                  "severity": "medium",
+                  "summary": "Vulnerability in httpx",
+                  "cvss_score": 5.1,
+                  "epss_score": 0.7667,
+                  "is_kev": false,
+                  "fixed_version": "2.0.0",
+                  "severity_source": "ghsa",
+                  "confidence": 0.64
+                },
+                {
+                  "id": "CVE-2024-53208",
+                  "severity": "high",
+                  "summary": "Vulnerability in httpx",
+                  "cvss_score": 9.5,
+                  "epss_score": 0.8883,
+                  "is_kev": false,
+                  "fixed_version": null,
+                  "severity_source": "nvd",
+                  "confidence": 0.89
+                },
+                {
+                  "id": "CVE-2024-47962",
+                  "severity": "critical",
+                  "summary": "Vulnerability in httpx",
+                  "cvss_score": 4.2,
+                  "epss_score": 0.5818,
+                  "is_kev": false,
+                  "fixed_version": null,
+                  "severity_source": "osv_database",
+                  "confidence": 0.91
+                }
+              ]
+            }
+          ],
+          "has_credentials": false,
+          "env_keys": [],
+          "tools": [
+            {
+              "name": "filesystem_tool_0"
+            },
+            {
+              "name": "filesystem_tool_1"
+            },
+            {
+              "name": "filesystem_tool_2"
+            },
+            {
+              "name": "filesystem_tool_3"
+            },
+            {
+              "name": "filesystem_tool_4"
+            },
+            {
+              "name": "filesystem_tool_5"
+            },
+            {
+              "name": "filesystem_tool_6"
+            },
+            {
+              "name": "filesystem_tool_7"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "claude-desktop",
+      "agent_type": "mcp_host",
+      "config_path": "~/.config/claude-desktop/config.json",
+      "source": "claude-desktop-config",
+      "mcp_servers": [
+        {
+          "name": "sequential-thinking",
+          "command": "npx",
+          "args": [
+            "@modelcontextprotocol/server-sequential-thinking"
+          ],
+          "transport": "stdio",
+          "packages": [
+            {
+              "name": "huggingface-hub",
+              "version": "1.26.0",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "pinecone-client",
+              "version": "2.5.6",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "sentence-transformers",
+              "version": "2.24.3",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-64291",
+                  "severity": "medium",
+                  "summary": "Vulnerability in sentence-transformers",
+                  "cvss_score": 3.8,
+                  "epss_score": 0.4188,
+                  "is_kev": false,
+                  "fixed_version": "2.0.0",
+                  "severity_source": "nvd",
+                  "confidence": 0.92
+                },
+                {
+                  "id": "CVE-2024-47962",
+                  "severity": "medium",
+                  "summary": "Vulnerability in sentence-transformers",
+                  "cvss_score": 8.8,
+                  "epss_score": 0.1195,
+                  "is_kev": false,
+                  "fixed_version": "4.0.0",
+                  "severity_source": "nvd",
+                  "confidence": 0.67
+                },
+                {
+                  "id": "CVE-2024-53275",
+                  "severity": "medium",
+                  "summary": "Vulnerability in sentence-transformers",
+                  "cvss_score": 3.9,
+                  "epss_score": 0.8465,
+                  "is_kev": false,
+                  "fixed_version": "4.0.0",
+                  "severity_source": "nvd",
+                  "confidence": 0.85
+                }
+              ]
+            },
+            {
+              "name": "torch",
+              "version": "2.12.5",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-79460",
+                  "severity": "high",
+                  "summary": "Vulnerability in torch",
+                  "cvss_score": 9.4,
+                  "epss_score": 0.5327,
+                  "is_kev": false,
+                  "fixed_version": "2.0.0",
+                  "severity_source": "ghsa",
+                  "confidence": 0.53
+                },
+                {
+                  "id": "CVE-2024-70333",
+                  "severity": "low",
+                  "summary": "Vulnerability in torch",
+                  "cvss_score": 6.3,
+                  "epss_score": 0.1386,
+                  "is_kev": false,
+                  "fixed_version": "3.0.0",
+                  "severity_source": "nvd",
+                  "confidence": 0.87
+                },
+                {
+                  "id": "CVE-2024-53208",
+                  "severity": "medium",
+                  "summary": "Vulnerability in torch",
+                  "cvss_score": 6.4,
+                  "epss_score": 0.2789,
+                  "is_kev": false,
+                  "fixed_version": "4.0.0",
+                  "severity_source": "ghsa",
+                  "confidence": 0.7
+                }
+              ]
+            }
+          ],
+          "has_credentials": false,
+          "env_keys": [],
+          "tools": [
+            {
+              "name": "sequential-thinking_tool_0"
+            },
+            {
+              "name": "sequential-thinking_tool_1"
+            },
+            {
+              "name": "sequential-thinking_tool_2"
+            },
+            {
+              "name": "sequential-thinking_tool_3"
+            },
+            {
+              "name": "sequential-thinking_tool_4"
+            }
+          ]
+        },
+        {
+          "name": "jira",
+          "command": "uvx",
+          "args": [
+            "@modelcontextprotocol/server-jira"
+          ],
+          "transport": "stdio",
+          "packages": [
+            {
+              "name": "flask",
+              "version": "3.28.4",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "tensorflow",
+              "version": "0.19.4",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "requests",
+              "version": "2.3.4",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "scikit-learn",
+              "version": "2.0.1",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-24751",
+                  "severity": "low",
+                  "summary": "Vulnerability in scikit-learn",
+                  "cvss_score": 4.1,
+                  "epss_score": 0.6401,
+                  "is_kev": false,
+                  "fixed_version": "2.0.0",
+                  "severity_source": "nvd",
+                  "confidence": 0.71
+                },
+                {
+                  "id": "CVE-2024-53940",
+                  "severity": "critical",
+                  "summary": "Vulnerability in scikit-learn",
+                  "cvss_score": 4.9,
+                  "epss_score": 0.1967,
+                  "is_kev": false,
+                  "fixed_version": "3.0.0",
+                  "severity_source": "osv_database",
+                  "confidence": 0.68
+                }
+              ]
+            },
+            {
+              "name": "numpy",
+              "version": "2.4.7",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "pandas",
+              "version": "2.12.6",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-11114",
+                  "severity": "medium",
+                  "summary": "Vulnerability in pandas",
+                  "cvss_score": 9.0,
+                  "epss_score": 0.5352,
+                  "is_kev": false,
+                  "fixed_version": "3.0.0",
+                  "severity_source": "osv_database",
+                  "confidence": 0.85
+                }
+              ]
+            },
+            {
+              "name": "httpx",
+              "version": "3.13.3",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-42987",
+                  "severity": "high",
+                  "summary": "Vulnerability in httpx",
+                  "cvss_score": 9.8,
+                  "epss_score": 0.4151,
+                  "is_kev": false,
+                  "fixed_version": "4.0.0",
+                  "severity_source": "nvd",
+                  "confidence": 0.75
+                }
+              ]
+            },
+            {
+              "name": "weaviate-client",
+              "version": "3.4.10",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            }
+          ],
+          "has_credentials": true,
+          "env_keys": [
+            "JIRA_API_KEY",
+            "JIRA_TOKEN"
+          ],
+          "tools": [
+            {
+              "name": "jira_tool_0"
+            },
+            {
+              "name": "jira_tool_1"
+            },
+            {
+              "name": "jira_tool_2"
+            },
+            {
+              "name": "jira_tool_3"
+            },
+            {
+              "name": "jira_tool_4"
+            },
+            {
+              "name": "jira_tool_5"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "windsurf",
+      "agent_type": "mcp_host",
+      "config_path": "~/.config/windsurf/config.json",
+      "source": "windsurf-config",
+      "mcp_servers": [
+        {
+          "name": "linear",
+          "command": "npx",
+          "args": [
+            "@modelcontextprotocol/server-linear"
+          ],
+          "transport": "stdio",
+          "packages": [
+            {
+              "name": "pinecone-client",
+              "version": "3.8.6",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "numpy",
+              "version": "3.26.8",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-63557",
+                  "severity": "medium",
+                  "summary": "Vulnerability in numpy",
+                  "cvss_score": 8.2,
+                  "epss_score": 0.3538,
+                  "is_kev": false,
+                  "fixed_version": "1.0.0",
+                  "severity_source": "nvd",
+                  "confidence": 0.92
+                }
+              ]
+            },
+            {
+              "name": "pandas",
+              "version": "3.1.1",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "tensorflow",
+              "version": "0.25.8",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "uvicorn",
+              "version": "2.6.7",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "huggingface-hub",
+              "version": "1.18.3",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "pandas",
+              "version": "3.25.4",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "huggingface-hub",
+              "version": "2.21.7",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            }
+          ],
+          "has_credentials": true,
+          "env_keys": [
+            "LINEAR_API_KEY",
+            "LINEAR_TOKEN"
+          ],
+          "tools": [
+            {
+              "name": "linear_tool_0"
+            },
+            {
+              "name": "linear_tool_1"
+            },
+            {
+              "name": "linear_tool_2"
+            },
+            {
+              "name": "linear_tool_3"
+            },
+            {
+              "name": "linear_tool_4"
+            }
+          ]
+        },
+        {
+          "name": "puppeteer",
+          "command": "uvx",
+          "args": [
+            "@modelcontextprotocol/server-puppeteer"
+          ],
+          "transport": "stdio",
+          "packages": [
+            {
+              "name": "tensorflow",
+              "version": "2.2.5",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "numpy",
+              "version": "1.28.0",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-99181",
+                  "severity": "medium",
+                  "summary": "Vulnerability in numpy",
+                  "cvss_score": 8.7,
+                  "epss_score": 0.431,
+                  "is_kev": false,
+                  "fixed_version": "1.0.0",
+                  "severity_source": "osv_database",
+                  "confidence": 0.53
+                }
+              ]
+            },
+            {
+              "name": "scikit-learn",
+              "version": "2.16.9",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "mlflow",
+              "version": "0.5.9",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "langchain",
+              "version": "3.1.3",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "chromadb",
+              "version": "1.5.7",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "sentence-transformers",
+              "version": "1.22.9",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "pinecone-client",
+              "version": "3.22.2",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-42987",
+                  "severity": "low",
+                  "summary": "Vulnerability in pinecone-client",
+                  "cvss_score": 5.5,
+                  "epss_score": 0.9356,
+                  "is_kev": false,
+                  "fixed_version": "2.0.0",
+                  "severity_source": "nvd",
+                  "confidence": 0.62
+                },
+                {
+                  "id": "CVE-2024-59893",
+                  "severity": "critical",
+                  "summary": "Vulnerability in pinecone-client",
+                  "cvss_score": 7.5,
+                  "epss_score": 0.1899,
+                  "is_kev": false,
+                  "fixed_version": null,
+                  "severity_source": "osv_database",
+                  "confidence": 0.83
+                }
+              ]
+            },
+            {
+              "name": "google-cloud-aiplatform",
+              "version": "2.9.4",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "boto3",
+              "version": "0.21.10",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "openai",
+              "version": "2.21.5",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-28374",
+                  "severity": "medium",
+                  "summary": "Vulnerability in openai",
+                  "cvss_score": 4.0,
+                  "epss_score": 0.1235,
+                  "is_kev": false,
+                  "fixed_version": "1.0.0",
+                  "severity_source": "nvd",
+                  "confidence": 0.53
+                },
+                {
+                  "id": "CVE-2024-88610",
+                  "severity": "low",
+                  "summary": "Vulnerability in openai",
+                  "cvss_score": 4.3,
+                  "epss_score": 0.1864,
+                  "is_kev": false,
+                  "fixed_version": "4.0.0",
+                  "severity_source": "osv_database",
+                  "confidence": 0.64
+                }
+              ]
+            },
+            {
+              "name": "anthropic",
+              "version": "3.19.7",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            }
+          ],
+          "has_credentials": false,
+          "env_keys": [],
+          "tools": [
+            {
+              "name": "puppeteer_tool_0"
+            },
+            {
+              "name": "puppeteer_tool_1"
+            },
+            {
+              "name": "puppeteer_tool_2"
+            },
+            {
+              "name": "puppeteer_tool_3"
+            },
+            {
+              "name": "puppeteer_tool_4"
+            }
+          ]
+        },
+        {
+          "name": "memory",
+          "command": "npx",
+          "args": [
+            "@modelcontextprotocol/server-memory"
+          ],
+          "transport": "stdio",
+          "packages": [
+            {
+              "name": "pydantic",
+              "version": "2.23.3",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "mlflow",
+              "version": "0.6.5",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "fastapi",
+              "version": "2.13.5",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "langchain",
+              "version": "2.3.7",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "openai",
+              "version": "2.26.9",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "uvicorn",
+              "version": "3.3.1",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            }
+          ],
+          "has_credentials": true,
+          "env_keys": [
+            "MEMORY_API_KEY",
+            "MEMORY_TOKEN"
+          ],
+          "tools": [
+            {
+              "name": "memory_tool_0"
+            }
+          ]
+        },
+        {
+          "name": "sqlite",
+          "command": "npx",
+          "args": [
+            "@modelcontextprotocol/server-sqlite"
+          ],
+          "transport": "stdio",
+          "packages": [
+            {
+              "name": "mlflow",
+              "version": "0.23.1",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-87015",
+                  "severity": "low",
+                  "summary": "Vulnerability in mlflow",
+                  "cvss_score": 8.0,
+                  "epss_score": 0.4687,
+                  "is_kev": false,
+                  "fixed_version": "3.0.0",
+                  "severity_source": "nvd",
+                  "confidence": 0.91
+                },
+                {
+                  "id": "CVE-2024-22905",
+                  "severity": "high",
+                  "summary": "Vulnerability in mlflow",
+                  "cvss_score": 8.1,
+                  "epss_score": 0.2888,
+                  "is_kev": false,
+                  "fixed_version": "3.0.0",
+                  "severity_source": "ghsa",
+                  "confidence": 0.68
+                },
+                {
+                  "id": "CVE-2024-88447",
+                  "severity": "medium",
+                  "summary": "Vulnerability in mlflow",
+                  "cvss_score": 9.9,
+                  "epss_score": 0.0979,
+                  "is_kev": false,
+                  "fixed_version": "2.0.0",
+                  "severity_source": "nvd",
+                  "confidence": 0.94
+                }
+              ]
+            },
+            {
+              "name": "pinecone-client",
+              "version": "2.28.4",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-19256",
+                  "severity": "medium",
+                  "summary": "Vulnerability in pinecone-client",
+                  "cvss_score": 3.4,
+                  "epss_score": 0.6853,
+                  "is_kev": false,
+                  "fixed_version": "2.0.0",
+                  "severity_source": "ghsa",
+                  "confidence": 0.6
+                }
+              ]
+            },
+            {
+              "name": "numpy",
+              "version": "1.17.8",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "numpy",
+              "version": "3.25.6",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "dbt-core",
+              "version": "1.8.4",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "anthropic",
+              "version": "2.2.10",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "pinecone-client",
+              "version": "1.5.4",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            }
+          ],
+          "has_credentials": true,
+          "env_keys": [
+            "SQLITE_API_KEY",
+            "SQLITE_TOKEN"
+          ],
+          "tools": [
+            {
+              "name": "sqlite_tool_0"
+            },
+            {
+              "name": "sqlite_tool_1"
+            },
+            {
+              "name": "sqlite_tool_2"
+            },
+            {
+              "name": "sqlite_tool_3"
+            },
+            {
+              "name": "sqlite_tool_4"
+            },
+            {
+              "name": "sqlite_tool_5"
+            },
+            {
+              "name": "sqlite_tool_6"
+            },
+            {
+              "name": "sqlite_tool_7"
+            }
+          ]
+        },
+        {
+          "name": "linear",
+          "command": "uvx",
+          "args": [
+            "@modelcontextprotocol/server-linear"
+          ],
+          "transport": "stdio",
+          "packages": [
+            {
+              "name": "fastapi",
+              "version": "2.25.6",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "requests",
+              "version": "2.5.9",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "huggingface-hub",
+              "version": "2.15.3",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "snowflake-connector-python",
+              "version": "2.25.6",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-49756",
+                  "severity": "high",
+                  "summary": "Vulnerability in snowflake-connector-python",
+                  "cvss_score": 3.4,
+                  "epss_score": 0.7114,
+                  "is_kev": false,
+                  "fixed_version": "3.0.0",
+                  "severity_source": "osv_database",
+                  "confidence": 0.66
+                },
+                {
+                  "id": "CVE-2024-84140",
+                  "severity": "medium",
+                  "summary": "Vulnerability in snowflake-connector-python",
+                  "cvss_score": 9.3,
+                  "epss_score": 0.0412,
+                  "is_kev": false,
+                  "fixed_version": "2.0.0",
+                  "severity_source": "nvd",
+                  "confidence": 0.56
+                }
+              ]
+            },
+            {
+              "name": "openai",
+              "version": "3.29.3",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-18815",
+                  "severity": "low",
+                  "summary": "Vulnerability in openai",
+                  "cvss_score": 6.8,
+                  "epss_score": 0.9213,
+                  "is_kev": false,
+                  "fixed_version": "4.0.0",
+                  "severity_source": "osv_database",
+                  "confidence": 0.66
+                },
+                {
+                  "id": "CVE-2024-85121",
+                  "severity": "medium",
+                  "summary": "Vulnerability in openai",
+                  "cvss_score": 3.8,
+                  "epss_score": 0.8047,
+                  "is_kev": true,
+                  "fixed_version": "1.0.0",
+                  "severity_source": "ghsa",
+                  "confidence": 0.74
+                },
+                {
+                  "id": "CVE-2024-40106",
+                  "severity": "low",
+                  "summary": "Vulnerability in openai",
+                  "cvss_score": 3.1,
+                  "epss_score": 0.0259,
+                  "is_kev": false,
+                  "fixed_version": "2.0.0",
+                  "severity_source": "ghsa",
+                  "confidence": 0.94
+                }
+              ]
+            },
+            {
+              "name": "mcp",
+              "version": "0.4.3",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-30026",
+                  "severity": "high",
+                  "summary": "Vulnerability in mcp",
+                  "cvss_score": 9.0,
+                  "epss_score": 0.8643,
+                  "is_kev": false,
+                  "fixed_version": "3.0.0",
+                  "severity_source": "ghsa",
+                  "confidence": 0.94
+                }
+              ]
+            },
+            {
+              "name": "google-cloud-aiplatform",
+              "version": "2.7.2",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            }
+          ],
+          "has_credentials": false,
+          "env_keys": [],
+          "tools": [
+            {
+              "name": "linear_tool_0"
+            },
+            {
+              "name": "linear_tool_1"
+            },
+            {
+              "name": "linear_tool_2"
+            },
+            {
+              "name": "linear_tool_3"
+            },
+            {
+              "name": "linear_tool_4"
+            },
+            {
+              "name": "linear_tool_5"
+            }
+          ]
+        },
+        {
+          "name": "sentry",
+          "command": "uvx",
+          "args": [
+            "@modelcontextprotocol/server-sentry"
+          ],
+          "transport": "stdio",
+          "packages": [
+            {
+              "name": "pillow",
+              "version": "0.3.8",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "azure-identity",
+              "version": "2.28.10",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-54733",
+                  "severity": "high",
+                  "summary": "Vulnerability in azure-identity",
+                  "cvss_score": 8.3,
+                  "epss_score": 0.7096,
+                  "is_kev": false,
+                  "fixed_version": "1.0.0",
+                  "severity_source": "nvd",
+                  "confidence": 0.84
+                },
+                {
+                  "id": "CVE-2024-76906",
+                  "severity": "high",
+                  "summary": "Vulnerability in azure-identity",
+                  "cvss_score": 9.2,
+                  "epss_score": 0.3695,
+                  "is_kev": false,
+                  "fixed_version": "1.0.0",
+                  "severity_source": "ghsa",
+                  "confidence": 0.73
+                },
+                {
+                  "id": "CVE-2024-95367",
+                  "severity": "low",
+                  "summary": "Vulnerability in azure-identity",
+                  "cvss_score": 7.2,
+                  "epss_score": 0.4682,
+                  "is_kev": false,
+                  "fixed_version": "4.0.0",
+                  "severity_source": "osv_database",
+                  "confidence": 0.77
+                }
+              ]
+            },
+            {
+              "name": "requests",
+              "version": "2.13.3",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "scikit-learn",
+              "version": "3.10.3",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "pillow",
+              "version": "2.20.4",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "uvicorn",
+              "version": "1.0.8",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "boto3",
+              "version": "1.26.3",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-71533",
+                  "severity": "low",
+                  "summary": "Vulnerability in boto3",
+                  "cvss_score": 5.9,
+                  "epss_score": 0.36,
+                  "is_kev": false,
+                  "fixed_version": "3.0.0",
+                  "severity_source": "osv_database",
+                  "confidence": 0.5
+                }
+              ]
+            },
+            {
+              "name": "flask",
+              "version": "1.11.9",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-92665",
+                  "severity": "medium",
+                  "summary": "Vulnerability in flask",
+                  "cvss_score": 9.8,
+                  "epss_score": 0.865,
+                  "is_kev": false,
+                  "fixed_version": null,
+                  "severity_source": "nvd",
+                  "confidence": 0.76
+                }
+              ]
+            }
+          ],
+          "has_credentials": false,
+          "env_keys": [],
+          "tools": [
+            {
+              "name": "sentry_tool_0"
+            },
+            {
+              "name": "sentry_tool_1"
+            },
+            {
+              "name": "sentry_tool_2"
+            },
+            {
+              "name": "sentry_tool_3"
+            }
+          ]
+        },
+        {
+          "name": "memory",
+          "command": "uvx",
+          "args": [
+            "@modelcontextprotocol/server-memory"
+          ],
+          "transport": "stdio",
+          "packages": [
+            {
+              "name": "mlflow",
+              "version": "1.5.3",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "requests",
+              "version": "2.13.0",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "requests",
+              "version": "1.1.7",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-95242",
+                  "severity": "low",
+                  "summary": "Vulnerability in requests",
+                  "cvss_score": 6.3,
+                  "epss_score": 0.4031,
+                  "is_kev": false,
+                  "fixed_version": null,
+                  "severity_source": "ghsa",
+                  "confidence": 0.92
+                },
+                {
+                  "id": "CVE-2024-53676",
+                  "severity": "critical",
+                  "summary": "Vulnerability in requests",
+                  "cvss_score": 4.9,
+                  "epss_score": 0.2023,
+                  "is_kev": false,
+                  "fixed_version": null,
+                  "severity_source": "osv_database",
+                  "confidence": 0.56
+                },
+                {
+                  "id": "CVE-2024-97220",
+                  "severity": "high",
+                  "summary": "Vulnerability in requests",
+                  "cvss_score": 3.8,
+                  "epss_score": 0.776,
+                  "is_kev": true,
+                  "fixed_version": "2.0.0",
+                  "severity_source": "osv_database",
+                  "confidence": 0.67
+                }
+              ]
+            },
+            {
+              "name": "tensorflow",
+              "version": "0.12.5",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-22905",
+                  "severity": "high",
+                  "summary": "Vulnerability in tensorflow",
+                  "cvss_score": 5.2,
+                  "epss_score": 0.7826,
+                  "is_kev": false,
+                  "fixed_version": null,
+                  "severity_source": "ghsa",
+                  "confidence": 0.97
+                },
+                {
+                  "id": "CVE-2024-18400",
+                  "severity": "medium",
+                  "summary": "Vulnerability in tensorflow",
+                  "cvss_score": 6.3,
+                  "epss_score": 0.095,
+                  "is_kev": false,
+                  "fixed_version": "3.0.0",
+                  "severity_source": "osv_database",
+                  "confidence": 0.93
+                }
+              ]
+            },
+            {
+              "name": "wandb",
+              "version": "2.11.6",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "anthropic",
+              "version": "1.14.8",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-67686",
+                  "severity": "medium",
+                  "summary": "Vulnerability in anthropic",
+                  "cvss_score": 5.9,
+                  "epss_score": 0.0849,
+                  "is_kev": false,
+                  "fixed_version": null,
+                  "severity_source": "osv_database",
+                  "confidence": 0.65
+                },
+                {
+                  "id": "CVE-2024-51689",
+                  "severity": "low",
+                  "summary": "Vulnerability in anthropic",
+                  "cvss_score": 6.4,
+                  "epss_score": 0.4717,
+                  "is_kev": false,
+                  "fixed_version": "4.0.0",
+                  "severity_source": "nvd",
+                  "confidence": 0.99
+                }
+              ]
+            }
+          ],
+          "has_credentials": false,
+          "env_keys": [],
+          "tools": [
+            {
+              "name": "memory_tool_0"
+            },
+            {
+              "name": "memory_tool_1"
+            },
+            {
+              "name": "memory_tool_2"
+            },
+            {
+              "name": "memory_tool_3"
+            },
+            {
+              "name": "memory_tool_4"
+            },
+            {
+              "name": "memory_tool_5"
+            },
+            {
+              "name": "memory_tool_6"
+            },
+            {
+              "name": "memory_tool_7"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "cline",
+      "agent_type": "mcp_host",
+      "config_path": "~/.config/cline/config.json",
+      "source": "cline-config",
+      "mcp_servers": [
+        {
+          "name": "puppeteer",
+          "command": "npx",
+          "args": [
+            "@modelcontextprotocol/server-puppeteer"
+          ],
+          "transport": "stdio",
+          "packages": [
+            {
+              "name": "dbt-core",
+              "version": "0.22.4",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "pandas",
+              "version": "3.13.9",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "google-cloud-aiplatform",
+              "version": "1.9.10",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "sentence-transformers",
+              "version": "2.7.4",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-52857",
+                  "severity": "medium",
+                  "summary": "Vulnerability in sentence-transformers",
+                  "cvss_score": 8.3,
+                  "epss_score": 0.7802,
+                  "is_kev": false,
+                  "fixed_version": null,
+                  "severity_source": "ghsa",
+                  "confidence": 0.98
+                },
+                {
+                  "id": "CVE-2024-15398",
+                  "severity": "low",
+                  "summary": "Vulnerability in sentence-transformers",
+                  "cvss_score": 7.1,
+                  "epss_score": 0.2943,
+                  "is_kev": false,
+                  "fixed_version": "4.0.0",
+                  "severity_source": "osv_database",
+                  "confidence": 0.52
+                },
+                {
+                  "id": "CVE-2024-87015",
+                  "severity": "low",
+                  "summary": "Vulnerability in sentence-transformers",
+                  "cvss_score": 8.2,
+                  "epss_score": 0.4971,
+                  "is_kev": false,
+                  "fixed_version": null,
+                  "severity_source": "ghsa",
+                  "confidence": 0.52
+                },
+                {
+                  "id": "CVE-2024-28374",
+                  "severity": "medium",
+                  "summary": "Vulnerability in sentence-transformers",
+                  "cvss_score": 5.6,
+                  "epss_score": 0.6865,
+                  "is_kev": false,
+                  "fixed_version": "2.0.0",
+                  "severity_source": "osv_database",
+                  "confidence": 0.75
+                },
+                {
+                  "id": "CVE-2024-48984",
+                  "severity": "medium",
+                  "summary": "Vulnerability in sentence-transformers",
+                  "cvss_score": 6.9,
+                  "epss_score": 0.3369,
+                  "is_kev": false,
+                  "fixed_version": "1.0.0",
+                  "severity_source": "osv_database",
+                  "confidence": 0.6
+                }
+              ]
+            },
+            {
+              "name": "openai",
+              "version": "2.17.3",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "tensorflow",
+              "version": "1.0.4",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "openai",
+              "version": "3.15.5",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "scikit-learn",
+              "version": "2.7.9",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-96209",
+                  "severity": "medium",
+                  "summary": "Vulnerability in scikit-learn",
+                  "cvss_score": 5.8,
+                  "epss_score": 0.4526,
+                  "is_kev": false,
+                  "fixed_version": "1.0.0",
+                  "severity_source": "osv_database",
+                  "confidence": 0.61
+                },
+                {
+                  "id": "CVE-2024-57920",
+                  "severity": "low",
+                  "summary": "Vulnerability in scikit-learn",
+                  "cvss_score": 4.0,
+                  "epss_score": 0.2771,
+                  "is_kev": false,
+                  "fixed_version": "1.0.0",
+                  "severity_source": "nvd",
+                  "confidence": 0.78
+                }
+              ]
+            }
+          ],
+          "has_credentials": false,
+          "env_keys": [],
+          "tools": [
+            {
+              "name": "puppeteer_tool_0"
+            },
+            {
+              "name": "puppeteer_tool_1"
+            }
+          ]
+        },
+        {
+          "name": "github",
+          "command": "npx",
+          "args": [
+            "@modelcontextprotocol/server-github"
+          ],
+          "transport": "stdio",
+          "packages": [
+            {
+              "name": "pydantic",
+              "version": "2.23.3",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "huggingface-hub",
+              "version": "2.12.0",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "fastapi",
+              "version": "0.27.0",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-54869",
+                  "severity": "low",
+                  "summary": "Vulnerability in fastapi",
+                  "cvss_score": 6.5,
+                  "epss_score": 0.4041,
+                  "is_kev": true,
+                  "fixed_version": "3.0.0",
+                  "severity_source": "nvd",
+                  "confidence": 0.81
+                }
+              ]
+            },
+            {
+              "name": "sentence-transformers",
+              "version": "0.2.0",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "numpy",
+              "version": "1.7.0",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-26690",
+                  "severity": "low",
+                  "summary": "Vulnerability in numpy",
+                  "cvss_score": 6.5,
+                  "epss_score": 0.523,
+                  "is_kev": false,
+                  "fixed_version": null,
+                  "severity_source": "nvd",
+                  "confidence": 0.93
+                },
+                {
+                  "id": "CVE-2024-18940",
+                  "severity": "low",
+                  "summary": "Vulnerability in numpy",
+                  "cvss_score": 4.0,
+                  "epss_score": 0.4549,
+                  "is_kev": true,
+                  "fixed_version": null,
+                  "severity_source": "ghsa",
+                  "confidence": 0.72
+                }
+              ]
+            }
+          ],
+          "has_credentials": true,
+          "env_keys": [
+            "GITHUB_API_KEY",
+            "GITHUB_TOKEN"
+          ],
+          "tools": [
+            {
+              "name": "github_tool_0"
+            },
+            {
+              "name": "github_tool_1"
+            },
+            {
+              "name": "github_tool_2"
+            },
+            {
+              "name": "github_tool_3"
+            },
+            {
+              "name": "github_tool_4"
+            },
+            {
+              "name": "github_tool_5"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "zed",
+      "agent_type": "mcp_host",
+      "config_path": "~/.config/zed/config.json",
+      "source": "zed-config",
+      "mcp_servers": [
+        {
+          "name": "brave-search",
+          "command": "uvx",
+          "args": [
+            "@modelcontextprotocol/server-brave-search"
+          ],
+          "transport": "stdio",
+          "packages": [
+            {
+              "name": "snowflake-connector-python",
+              "version": "1.8.1",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-47656",
+                  "severity": "medium",
+                  "summary": "Vulnerability in snowflake-connector-python",
+                  "cvss_score": 8.3,
+                  "epss_score": 0.2919,
+                  "is_kev": true,
+                  "fixed_version": "3.0.0",
+                  "severity_source": "nvd",
+                  "confidence": 0.81
+                },
+                {
+                  "id": "CVE-2024-49060",
+                  "severity": "medium",
+                  "summary": "Vulnerability in snowflake-connector-python",
+                  "cvss_score": 8.7,
+                  "epss_score": 0.9413,
+                  "is_kev": false,
+                  "fixed_version": null,
+                  "severity_source": "nvd",
+                  "confidence": 0.59
+                }
+              ]
+            },
+            {
+              "name": "scikit-learn",
+              "version": "0.11.8",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "azure-identity",
+              "version": "3.18.0",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "snowflake-connector-python",
+              "version": "2.26.8",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-28374",
+                  "severity": "critical",
+                  "summary": "Vulnerability in snowflake-connector-python",
+                  "cvss_score": 10.0,
+                  "epss_score": 0.5131,
+                  "is_kev": false,
+                  "fixed_version": "2.0.0",
+                  "severity_source": "osv_database",
+                  "confidence": 0.53
+                },
+                {
+                  "id": "CVE-2024-94010",
+                  "severity": "medium",
+                  "summary": "Vulnerability in snowflake-connector-python",
+                  "cvss_score": 4.3,
+                  "epss_score": 0.5631,
+                  "is_kev": false,
+                  "fixed_version": "2.0.0",
+                  "severity_source": "nvd",
+                  "confidence": 0.51
+                },
+                {
+                  "id": "CVE-2024-32552",
+                  "severity": "medium",
+                  "summary": "Vulnerability in snowflake-connector-python",
+                  "cvss_score": 6.0,
+                  "epss_score": 0.6614,
+                  "is_kev": false,
+                  "fixed_version": "2.0.0",
+                  "severity_source": "ghsa",
+                  "confidence": 0.58
+                }
+              ]
+            },
+            {
+              "name": "transformers",
+              "version": "1.9.8",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "flask",
+              "version": "3.2.0",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "httpx",
+              "version": "3.6.4",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "boto3",
+              "version": "2.2.5",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-28374",
+                  "severity": "low",
+                  "summary": "Vulnerability in boto3",
+                  "cvss_score": 5.8,
+                  "epss_score": 0.5981,
+                  "is_kev": false,
+                  "fixed_version": "2.0.0",
+                  "severity_source": "ghsa",
+                  "confidence": 0.6
+                }
+              ]
+            }
+          ],
+          "has_credentials": false,
+          "env_keys": [],
+          "tools": [
+            {
+              "name": "brave-search_tool_0"
+            }
+          ]
+        },
+        {
+          "name": "github",
+          "command": "npx",
+          "args": [
+            "@modelcontextprotocol/server-github"
+          ],
+          "transport": "stdio",
+          "packages": [
+            {
+              "name": "mlflow",
+              "version": "2.26.5",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-62043",
+                  "severity": "medium",
+                  "summary": "Vulnerability in mlflow",
+                  "cvss_score": 5.6,
+                  "epss_score": 0.1048,
+                  "is_kev": false,
+                  "fixed_version": null,
+                  "severity_source": "osv_database",
+                  "confidence": 0.91
+                }
+              ]
+            },
+            {
+              "name": "numpy",
+              "version": "0.0.9",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "chromadb",
+              "version": "0.8.1",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "snowflake-connector-python",
+              "version": "1.16.2",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "boto3",
+              "version": "2.4.3",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            }
+          ],
+          "has_credentials": false,
+          "env_keys": [],
+          "tools": [
+            {
+              "name": "github_tool_0"
+            },
+            {
+              "name": "github_tool_1"
+            },
+            {
+              "name": "github_tool_2"
+            },
+            {
+              "name": "github_tool_3"
+            },
+            {
+              "name": "github_tool_4"
+            },
+            {
+              "name": "github_tool_5"
+            },
+            {
+              "name": "github_tool_6"
+            },
+            {
+              "name": "github_tool_7"
+            }
+          ]
+        },
+        {
+          "name": "sqlite",
+          "command": "npx",
+          "args": [
+            "@modelcontextprotocol/server-sqlite"
+          ],
+          "transport": "stdio",
+          "packages": [
+            {
+              "name": "boto3",
+              "version": "2.18.5",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-49060",
+                  "severity": "low",
+                  "summary": "Vulnerability in boto3",
+                  "cvss_score": 4.1,
+                  "epss_score": 0.4294,
+                  "is_kev": false,
+                  "fixed_version": null,
+                  "severity_source": "nvd",
+                  "confidence": 1.0
+                }
+              ]
+            },
+            {
+              "name": "huggingface-hub",
+              "version": "0.9.6",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-54733",
+                  "severity": "medium",
+                  "summary": "Vulnerability in huggingface-hub",
+                  "cvss_score": 9.1,
+                  "epss_score": 0.9471,
+                  "is_kev": false,
+                  "fixed_version": "2.0.0",
+                  "severity_source": "ghsa",
+                  "confidence": 0.65
+                },
+                {
+                  "id": "CVE-2024-93932",
+                  "severity": "low",
+                  "summary": "Vulnerability in huggingface-hub",
+                  "cvss_score": 4.5,
+                  "epss_score": 0.2937,
+                  "is_kev": false,
+                  "fixed_version": null,
+                  "severity_source": "nvd",
+                  "confidence": 0.87
+                }
+              ]
+            },
+            {
+              "name": "pydantic",
+              "version": "1.29.4",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "chromadb",
+              "version": "3.16.7",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "requests",
+              "version": "2.15.6",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            }
+          ],
+          "has_credentials": false,
+          "env_keys": [],
+          "tools": [
+            {
+              "name": "sqlite_tool_0"
+            },
+            {
+              "name": "sqlite_tool_1"
+            },
+            {
+              "name": "sqlite_tool_2"
+            },
+            {
+              "name": "sqlite_tool_3"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "continue-dev",
+      "agent_type": "mcp_host",
+      "config_path": "~/.config/continue-dev/config.json",
+      "source": "continue-dev-config",
+      "mcp_servers": [
+        {
+          "name": "brave-search",
+          "command": "uvx",
+          "args": [
+            "@modelcontextprotocol/server-brave-search"
+          ],
+          "transport": "stdio",
+          "packages": [
+            {
+              "name": "pinecone-client",
+              "version": "0.4.7",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "numpy",
+              "version": "1.21.3",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "anthropic",
+              "version": "2.20.10",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "mlflow",
+              "version": "3.14.10",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "pinecone-client",
+              "version": "0.14.10",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-13061",
+                  "severity": "medium",
+                  "summary": "Vulnerability in pinecone-client",
+                  "cvss_score": 3.8,
+                  "epss_score": 0.8498,
+                  "is_kev": false,
+                  "fixed_version": "1.0.0",
+                  "severity_source": "osv_database",
+                  "confidence": 0.92
+                },
+                {
+                  "id": "CVE-2024-49060",
+                  "severity": "low",
+                  "summary": "Vulnerability in pinecone-client",
+                  "cvss_score": 7.6,
+                  "epss_score": 0.8593,
+                  "is_kev": false,
+                  "fixed_version": "2.0.0",
+                  "severity_source": "ghsa",
+                  "confidence": 0.62
+                }
+              ]
+            },
+            {
+              "name": "tensorflow",
+              "version": "3.19.4",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "transformers",
+              "version": "2.30.10",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "snowflake-connector-python",
+              "version": "3.3.6",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "torch",
+              "version": "0.6.8",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            }
+          ],
+          "has_credentials": false,
+          "env_keys": [],
+          "tools": [
+            {
+              "name": "brave-search_tool_0"
+            },
+            {
+              "name": "brave-search_tool_1"
+            },
+            {
+              "name": "brave-search_tool_2"
+            },
+            {
+              "name": "brave-search_tool_3"
+            },
+            {
+              "name": "brave-search_tool_4"
+            },
+            {
+              "name": "brave-search_tool_5"
+            },
+            {
+              "name": "brave-search_tool_6"
+            },
+            {
+              "name": "brave-search_tool_7"
+            }
+          ]
+        },
+        {
+          "name": "sequential-thinking",
+          "command": "uvx",
+          "args": [
+            "@modelcontextprotocol/server-sequential-thinking"
+          ],
+          "transport": "stdio",
+          "packages": [
+            {
+              "name": "numpy",
+              "version": "0.7.2",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-76741",
+                  "severity": "low",
+                  "summary": "Vulnerability in numpy",
+                  "cvss_score": 6.9,
+                  "epss_score": 0.1595,
+                  "is_kev": false,
+                  "fixed_version": "2.0.0",
+                  "severity_source": "nvd",
+                  "confidence": 0.6
+                },
+                {
+                  "id": "CVE-2024-24803",
+                  "severity": "medium",
+                  "summary": "Vulnerability in numpy",
+                  "cvss_score": 3.7,
+                  "epss_score": 0.449,
+                  "is_kev": false,
+                  "fixed_version": "4.0.0",
+                  "severity_source": "osv_database",
+                  "confidence": 0.7
+                },
+                {
+                  "id": "CVE-2024-32552",
+                  "severity": "medium",
+                  "summary": "Vulnerability in numpy",
+                  "cvss_score": 3.8,
+                  "epss_score": 0.3802,
+                  "is_kev": false,
+                  "fixed_version": "1.0.0",
+                  "severity_source": "nvd",
+                  "confidence": 0.63
+                }
+              ]
+            },
+            {
+              "name": "numpy",
+              "version": "3.4.5",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "openai",
+              "version": "2.21.0",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "pinecone-client",
+              "version": "0.2.3",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-56464",
+                  "severity": "low",
+                  "summary": "Vulnerability in pinecone-client",
+                  "cvss_score": 3.1,
+                  "epss_score": 0.8391,
+                  "is_kev": false,
+                  "fixed_version": null,
+                  "severity_source": "ghsa",
+                  "confidence": 0.76
+                },
+                {
+                  "id": "CVE-2024-45436",
+                  "severity": "medium",
+                  "summary": "Vulnerability in pinecone-client",
+                  "cvss_score": 3.4,
+                  "epss_score": 0.4724,
+                  "is_kev": false,
+                  "fixed_version": null,
+                  "severity_source": "nvd",
+                  "confidence": 0.64
+                },
+                {
+                  "id": "CVE-2024-82959",
+                  "severity": "low",
+                  "summary": "Vulnerability in pinecone-client",
+                  "cvss_score": 9.7,
+                  "epss_score": 0.1058,
+                  "is_kev": false,
+                  "fixed_version": "1.0.0",
+                  "severity_source": "osv_database",
+                  "confidence": 0.6
+                },
+                {
+                  "id": "CVE-2024-11865",
+                  "severity": "medium",
+                  "summary": "Vulnerability in pinecone-client",
+                  "cvss_score": 3.8,
+                  "epss_score": 0.2471,
+                  "is_kev": false,
+                  "fixed_version": "2.0.0",
+                  "severity_source": "ghsa",
+                  "confidence": 0.89
+                },
+                {
+                  "id": "CVE-2024-86743",
+                  "severity": "low",
+                  "summary": "Vulnerability in pinecone-client",
+                  "cvss_score": 6.3,
+                  "epss_score": 0.1221,
+                  "is_kev": false,
+                  "fixed_version": "3.0.0",
+                  "severity_source": "ghsa",
+                  "confidence": 0.53
+                }
+              ]
+            },
+            {
+              "name": "cryptography",
+              "version": "3.12.6",
+              "ecosystem": "PyPI",
+              "vulnerabilities": [
+                {
+                  "id": "CVE-2024-10660",
+                  "severity": "low",
+                  "summary": "Vulnerability in cryptography",
+                  "cvss_score": 9.9,
+                  "epss_score": 0.6269,
+                  "is_kev": false,
+                  "fixed_version": "4.0.0",
+                  "severity_source": "ghsa",
+                  "confidence": 0.54
+                },
+                {
+                  "id": "CVE-2024-33988",
+                  "severity": "high",
+                  "summary": "Vulnerability in cryptography",
+                  "cvss_score": 4.1,
+                  "epss_score": 0.3107,
+                  "is_kev": false,
+                  "fixed_version": "3.0.0",
+                  "severity_source": "nvd",
+                  "confidence": 0.56
+                }
+              ]
+            },
+            {
+              "name": "requests",
+              "version": "1.13.7",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "requests",
+              "version": "1.25.3",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "pillow",
+              "version": "0.29.1",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "huggingface-hub",
+              "version": "0.2.8",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "mcp",
+              "version": "0.25.3",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            },
+            {
+              "name": "scikit-learn",
+              "version": "0.18.3",
+              "ecosystem": "PyPI",
+              "vulnerabilities": []
+            }
+          ],
+          "has_credentials": true,
+          "env_keys": [
+            "SEQUENTIAL-THINKING_API_KEY",
+            "SEQUENTIAL-THINKING_TOKEN"
+          ],
+          "tools": [
+            {
+              "name": "sequential-thinking_tool_0"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "vulnerabilities": [
+    {
+      "id": "CVE-2024-84140",
+      "severity": "low",
+      "summary": "Vulnerability in tensorflow",
+      "cvss_score": 9.2,
+      "epss_score": 0.1551,
+      "is_kev": false,
+      "fixed_version": "1.0.0",
+      "severity_source": "nvd",
+      "confidence": 0.75
+    },
+    {
+      "id": "CVE-2024-28374",
+      "severity": "critical",
+      "summary": "Vulnerability in tensorflow",
+      "cvss_score": 5.2,
+      "epss_score": 0.3114,
+      "is_kev": false,
+      "fixed_version": "3.0.0",
+      "severity_source": "osv_database",
+      "confidence": 0.52
+    },
+    {
+      "id": "CVE-2024-76379",
+      "severity": "low",
+      "summary": "Vulnerability in tensorflow",
+      "cvss_score": 6.1,
+      "epss_score": 0.8362,
+      "is_kev": false,
+      "fixed_version": "4.0.0",
+      "severity_source": "ghsa",
+      "confidence": 0.67
+    },
+    {
+      "id": "CVE-2024-99449",
+      "severity": "high",
+      "summary": "Vulnerability in requests",
+      "cvss_score": 7.3,
+      "epss_score": 0.5643,
+      "is_kev": false,
+      "fixed_version": "4.0.0",
+      "severity_source": "ghsa",
+      "confidence": 0.64
+    },
+    {
+      "id": "CVE-2024-79460",
+      "severity": "medium",
+      "summary": "Vulnerability in requests",
+      "cvss_score": 3.0,
+      "epss_score": 0.9284,
+      "is_kev": false,
+      "fixed_version": "1.0.0",
+      "severity_source": "osv_database",
+      "confidence": 0.6
+    },
+    {
+      "id": "CVE-2024-95367",
+      "severity": "medium",
+      "summary": "Vulnerability in requests",
+      "cvss_score": 3.6,
+      "epss_score": 0.3926,
+      "is_kev": false,
+      "fixed_version": null,
+      "severity_source": "osv_database",
+      "confidence": 0.81
+    },
+    {
+      "id": "CVE-2024-36322",
+      "severity": "medium",
+      "summary": "Vulnerability in dbt-core",
+      "cvss_score": 7.4,
+      "epss_score": 0.6188,
+      "is_kev": false,
+      "fixed_version": "1.0.0",
+      "severity_source": "osv_database",
+      "confidence": 0.74
+    },
+    {
+      "id": "CVE-2024-70198",
+      "severity": "low",
+      "summary": "Vulnerability in dbt-core",
+      "cvss_score": 7.1,
+      "epss_score": 0.0331,
+      "is_kev": false,
+      "fixed_version": "4.0.0",
+      "severity_source": "ghsa",
+      "confidence": 0.95
+    },
+    {
+      "id": "CVE-2024-20488",
+      "severity": "medium",
+      "summary": "Vulnerability in pinecone-client",
+      "cvss_score": 5.4,
+      "epss_score": 0.5659,
+      "is_kev": true,
+      "fixed_version": null,
+      "severity_source": "ghsa",
+      "confidence": 0.8
+    },
+    {
+      "id": "CVE-2024-42961",
+      "severity": "medium",
+      "summary": "Vulnerability in numpy",
+      "cvss_score": 6.8,
+      "epss_score": 0.2467,
+      "is_kev": false,
+      "fixed_version": "1.0.0",
+      "severity_source": "nvd",
+      "confidence": 0.89
+    },
+    {
+      "id": "CVE-2024-95326",
+      "severity": "high",
+      "summary": "Vulnerability in numpy",
+      "cvss_score": 5.8,
+      "epss_score": 0.8163,
+      "is_kev": false,
+      "fixed_version": "1.0.0",
+      "severity_source": "nvd",
+      "confidence": 0.74
+    },
+    {
+      "id": "CVE-2024-76009",
+      "severity": "high",
+      "summary": "Vulnerability in numpy",
+      "cvss_score": 6.2,
+      "epss_score": 0.3272,
+      "is_kev": false,
+      "fixed_version": "3.0.0",
+      "severity_source": "osv_database",
+      "confidence": 0.75
+    },
+    {
+      "id": "CVE-2024-52857",
+      "severity": "medium",
+      "summary": "Vulnerability in wandb",
+      "cvss_score": 7.8,
+      "epss_score": 0.4503,
+      "is_kev": false,
+      "fixed_version": null,
+      "severity_source": "osv_database",
+      "confidence": 0.94
+    },
+    {
+      "id": "CVE-2024-34894",
+      "severity": "medium",
+      "summary": "Vulnerability in wandb",
+      "cvss_score": 6.9,
+      "epss_score": 0.743,
+      "is_kev": false,
+      "fixed_version": "4.0.0",
+      "severity_source": "osv_database",
+      "confidence": 0.97
+    },
+    {
+      "id": "CVE-2024-91543",
+      "severity": "medium",
+      "summary": "Vulnerability in wandb",
+      "cvss_score": 9.2,
+      "epss_score": 0.8902,
+      "is_kev": false,
+      "fixed_version": null,
+      "severity_source": "nvd",
+      "confidence": 0.55
+    },
+    {
+      "id": "CVE-2024-93390",
+      "severity": "medium",
+      "summary": "Vulnerability in snowflake-connector-python",
+      "cvss_score": 3.7,
+      "epss_score": 0.7127,
+      "is_kev": false,
+      "fixed_version": "1.0.0",
+      "severity_source": "osv_database",
+      "confidence": 0.81
+    },
+    {
+      "id": "CVE-2024-85181",
+      "severity": "low",
+      "summary": "Vulnerability in chromadb",
+      "cvss_score": 8.3,
+      "epss_score": 0.4586,
+      "is_kev": false,
+      "fixed_version": null,
+      "severity_source": "ghsa",
+      "confidence": 0.67
+    },
+    {
+      "id": "CVE-2024-87015",
+      "severity": "medium",
+      "summary": "Vulnerability in chromadb",
+      "cvss_score": 8.6,
+      "epss_score": 0.3688,
+      "is_kev": false,
+      "fixed_version": null,
+      "severity_source": "ghsa",
+      "confidence": 0.85
+    },
+    {
+      "id": "CVE-2024-27302",
+      "severity": "medium",
+      "summary": "Vulnerability in chromadb",
+      "cvss_score": 5.1,
+      "epss_score": 0.4162,
+      "is_kev": false,
+      "fixed_version": "3.0.0",
+      "severity_source": "osv_database",
+      "confidence": 0.55
+    },
+    {
+      "id": "CVE-2024-57672",
+      "severity": "medium",
+      "summary": "Vulnerability in chromadb",
+      "cvss_score": 6.0,
+      "epss_score": 0.0376,
+      "is_kev": false,
+      "fixed_version": "3.0.0",
+      "severity_source": "osv_database",
+      "confidence": 0.57
+    },
+    {
+      "id": "CVE-2024-64883",
+      "severity": "medium",
+      "summary": "Vulnerability in chromadb",
+      "cvss_score": 8.4,
+      "epss_score": 0.1644,
+      "is_kev": false,
+      "fixed_version": "3.0.0",
+      "severity_source": "ghsa",
+      "confidence": 0.7
+    },
+    {
+      "id": "CVE-2024-96950",
+      "severity": "medium",
+      "summary": "Vulnerability in weaviate-client",
+      "cvss_score": 6.2,
+      "epss_score": 0.3448,
+      "is_kev": false,
+      "fixed_version": "3.0.0",
+      "severity_source": "ghsa",
+      "confidence": 0.61
+    },
+    {
+      "id": "CVE-2024-72575",
+      "severity": "high",
+      "summary": "Vulnerability in weaviate-client",
+      "cvss_score": 4.7,
+      "epss_score": 0.6646,
+      "is_kev": false,
+      "fixed_version": "4.0.0",
+      "severity_source": "ghsa",
+      "confidence": 0.69
+    },
+    {
+      "id": "CVE-2024-36080",
+      "severity": "low",
+      "summary": "Vulnerability in requests",
+      "cvss_score": 9.8,
+      "epss_score": 0.014,
+      "is_kev": true,
+      "fixed_version": "3.0.0",
+      "severity_source": "nvd",
+      "confidence": 0.53
+    },
+    {
+      "id": "CVE-2024-99449",
+      "severity": "medium",
+      "summary": "Vulnerability in httpx",
+      "cvss_score": 8.0,
+      "epss_score": 0.9341,
+      "is_kev": false,
+      "fixed_version": "1.0.0",
+      "severity_source": "nvd",
+      "confidence": 0.7
+    },
+    {
+      "id": "CVE-2024-12599",
+      "severity": "medium",
+      "summary": "Vulnerability in httpx",
+      "cvss_score": 5.7,
+      "epss_score": 0.2472,
+      "is_kev": false,
+      "fixed_version": null,
+      "severity_source": "nvd",
+      "confidence": 0.71
+    },
+    {
+      "id": "CVE-2024-30026",
+      "severity": "medium",
+      "summary": "Vulnerability in httpx",
+      "cvss_score": 5.1,
+      "epss_score": 0.7667,
+      "is_kev": false,
+      "fixed_version": "2.0.0",
+      "severity_source": "ghsa",
+      "confidence": 0.64
+    },
+    {
+      "id": "CVE-2024-53208",
+      "severity": "high",
+      "summary": "Vulnerability in httpx",
+      "cvss_score": 9.5,
+      "epss_score": 0.8883,
+      "is_kev": false,
+      "fixed_version": null,
+      "severity_source": "nvd",
+      "confidence": 0.89
+    },
+    {
+      "id": "CVE-2024-47962",
+      "severity": "critical",
+      "summary": "Vulnerability in httpx",
+      "cvss_score": 4.2,
+      "epss_score": 0.5818,
+      "is_kev": false,
+      "fixed_version": null,
+      "severity_source": "osv_database",
+      "confidence": 0.91
+    },
+    {
+      "id": "CVE-2024-64291",
+      "severity": "medium",
+      "summary": "Vulnerability in sentence-transformers",
+      "cvss_score": 3.8,
+      "epss_score": 0.4188,
+      "is_kev": false,
+      "fixed_version": "2.0.0",
+      "severity_source": "nvd",
+      "confidence": 0.92
+    },
+    {
+      "id": "CVE-2024-47962",
+      "severity": "medium",
+      "summary": "Vulnerability in sentence-transformers",
+      "cvss_score": 8.8,
+      "epss_score": 0.1195,
+      "is_kev": false,
+      "fixed_version": "4.0.0",
+      "severity_source": "nvd",
+      "confidence": 0.67
+    },
+    {
+      "id": "CVE-2024-53275",
+      "severity": "medium",
+      "summary": "Vulnerability in sentence-transformers",
+      "cvss_score": 3.9,
+      "epss_score": 0.8465,
+      "is_kev": false,
+      "fixed_version": "4.0.0",
+      "severity_source": "nvd",
+      "confidence": 0.85
+    },
+    {
+      "id": "CVE-2024-79460",
+      "severity": "high",
+      "summary": "Vulnerability in torch",
+      "cvss_score": 9.4,
+      "epss_score": 0.5327,
+      "is_kev": false,
+      "fixed_version": "2.0.0",
+      "severity_source": "ghsa",
+      "confidence": 0.53
+    },
+    {
+      "id": "CVE-2024-70333",
+      "severity": "low",
+      "summary": "Vulnerability in torch",
+      "cvss_score": 6.3,
+      "epss_score": 0.1386,
+      "is_kev": false,
+      "fixed_version": "3.0.0",
+      "severity_source": "nvd",
+      "confidence": 0.87
+    },
+    {
+      "id": "CVE-2024-53208",
+      "severity": "medium",
+      "summary": "Vulnerability in torch",
+      "cvss_score": 6.4,
+      "epss_score": 0.2789,
+      "is_kev": false,
+      "fixed_version": "4.0.0",
+      "severity_source": "ghsa",
+      "confidence": 0.7
+    },
+    {
+      "id": "CVE-2024-24751",
+      "severity": "low",
+      "summary": "Vulnerability in scikit-learn",
+      "cvss_score": 4.1,
+      "epss_score": 0.6401,
+      "is_kev": false,
+      "fixed_version": "2.0.0",
+      "severity_source": "nvd",
+      "confidence": 0.71
+    },
+    {
+      "id": "CVE-2024-53940",
+      "severity": "critical",
+      "summary": "Vulnerability in scikit-learn",
+      "cvss_score": 4.9,
+      "epss_score": 0.1967,
+      "is_kev": false,
+      "fixed_version": "3.0.0",
+      "severity_source": "osv_database",
+      "confidence": 0.68
+    },
+    {
+      "id": "CVE-2024-11114",
+      "severity": "medium",
+      "summary": "Vulnerability in pandas",
+      "cvss_score": 9.0,
+      "epss_score": 0.5352,
+      "is_kev": false,
+      "fixed_version": "3.0.0",
+      "severity_source": "osv_database",
+      "confidence": 0.85
+    },
+    {
+      "id": "CVE-2024-42987",
+      "severity": "high",
+      "summary": "Vulnerability in httpx",
+      "cvss_score": 9.8,
+      "epss_score": 0.4151,
+      "is_kev": false,
+      "fixed_version": "4.0.0",
+      "severity_source": "nvd",
+      "confidence": 0.75
+    },
+    {
+      "id": "CVE-2024-63557",
+      "severity": "medium",
+      "summary": "Vulnerability in numpy",
+      "cvss_score": 8.2,
+      "epss_score": 0.3538,
+      "is_kev": false,
+      "fixed_version": "1.0.0",
+      "severity_source": "nvd",
+      "confidence": 0.92
+    },
+    {
+      "id": "CVE-2024-99181",
+      "severity": "medium",
+      "summary": "Vulnerability in numpy",
+      "cvss_score": 8.7,
+      "epss_score": 0.431,
+      "is_kev": false,
+      "fixed_version": "1.0.0",
+      "severity_source": "osv_database",
+      "confidence": 0.53
+    },
+    {
+      "id": "CVE-2024-42987",
+      "severity": "low",
+      "summary": "Vulnerability in pinecone-client",
+      "cvss_score": 5.5,
+      "epss_score": 0.9356,
+      "is_kev": false,
+      "fixed_version": "2.0.0",
+      "severity_source": "nvd",
+      "confidence": 0.62
+    },
+    {
+      "id": "CVE-2024-59893",
+      "severity": "critical",
+      "summary": "Vulnerability in pinecone-client",
+      "cvss_score": 7.5,
+      "epss_score": 0.1899,
+      "is_kev": false,
+      "fixed_version": null,
+      "severity_source": "osv_database",
+      "confidence": 0.83
+    },
+    {
+      "id": "CVE-2024-28374",
+      "severity": "medium",
+      "summary": "Vulnerability in openai",
+      "cvss_score": 4.0,
+      "epss_score": 0.1235,
+      "is_kev": false,
+      "fixed_version": "1.0.0",
+      "severity_source": "nvd",
+      "confidence": 0.53
+    },
+    {
+      "id": "CVE-2024-88610",
+      "severity": "low",
+      "summary": "Vulnerability in openai",
+      "cvss_score": 4.3,
+      "epss_score": 0.1864,
+      "is_kev": false,
+      "fixed_version": "4.0.0",
+      "severity_source": "osv_database",
+      "confidence": 0.64
+    },
+    {
+      "id": "CVE-2024-87015",
+      "severity": "low",
+      "summary": "Vulnerability in mlflow",
+      "cvss_score": 8.0,
+      "epss_score": 0.4687,
+      "is_kev": false,
+      "fixed_version": "3.0.0",
+      "severity_source": "nvd",
+      "confidence": 0.91
+    },
+    {
+      "id": "CVE-2024-22905",
+      "severity": "high",
+      "summary": "Vulnerability in mlflow",
+      "cvss_score": 8.1,
+      "epss_score": 0.2888,
+      "is_kev": false,
+      "fixed_version": "3.0.0",
+      "severity_source": "ghsa",
+      "confidence": 0.68
+    },
+    {
+      "id": "CVE-2024-88447",
+      "severity": "medium",
+      "summary": "Vulnerability in mlflow",
+      "cvss_score": 9.9,
+      "epss_score": 0.0979,
+      "is_kev": false,
+      "fixed_version": "2.0.0",
+      "severity_source": "nvd",
+      "confidence": 0.94
+    },
+    {
+      "id": "CVE-2024-19256",
+      "severity": "medium",
+      "summary": "Vulnerability in pinecone-client",
+      "cvss_score": 3.4,
+      "epss_score": 0.6853,
+      "is_kev": false,
+      "fixed_version": "2.0.0",
+      "severity_source": "ghsa",
+      "confidence": 0.6
+    },
+    {
+      "id": "CVE-2024-49756",
+      "severity": "high",
+      "summary": "Vulnerability in snowflake-connector-python",
+      "cvss_score": 3.4,
+      "epss_score": 0.7114,
+      "is_kev": false,
+      "fixed_version": "3.0.0",
+      "severity_source": "osv_database",
+      "confidence": 0.66
+    },
+    {
+      "id": "CVE-2024-84140",
+      "severity": "medium",
+      "summary": "Vulnerability in snowflake-connector-python",
+      "cvss_score": 9.3,
+      "epss_score": 0.0412,
+      "is_kev": false,
+      "fixed_version": "2.0.0",
+      "severity_source": "nvd",
+      "confidence": 0.56
+    },
+    {
+      "id": "CVE-2024-18815",
+      "severity": "low",
+      "summary": "Vulnerability in openai",
+      "cvss_score": 6.8,
+      "epss_score": 0.9213,
+      "is_kev": false,
+      "fixed_version": "4.0.0",
+      "severity_source": "osv_database",
+      "confidence": 0.66
+    },
+    {
+      "id": "CVE-2024-85121",
+      "severity": "medium",
+      "summary": "Vulnerability in openai",
+      "cvss_score": 3.8,
+      "epss_score": 0.8047,
+      "is_kev": true,
+      "fixed_version": "1.0.0",
+      "severity_source": "ghsa",
+      "confidence": 0.74
+    },
+    {
+      "id": "CVE-2024-40106",
+      "severity": "low",
+      "summary": "Vulnerability in openai",
+      "cvss_score": 3.1,
+      "epss_score": 0.0259,
+      "is_kev": false,
+      "fixed_version": "2.0.0",
+      "severity_source": "ghsa",
+      "confidence": 0.94
+    },
+    {
+      "id": "CVE-2024-30026",
+      "severity": "high",
+      "summary": "Vulnerability in mcp",
+      "cvss_score": 9.0,
+      "epss_score": 0.8643,
+      "is_kev": false,
+      "fixed_version": "3.0.0",
+      "severity_source": "ghsa",
+      "confidence": 0.94
+    },
+    {
+      "id": "CVE-2024-54733",
+      "severity": "high",
+      "summary": "Vulnerability in azure-identity",
+      "cvss_score": 8.3,
+      "epss_score": 0.7096,
+      "is_kev": false,
+      "fixed_version": "1.0.0",
+      "severity_source": "nvd",
+      "confidence": 0.84
+    },
+    {
+      "id": "CVE-2024-76906",
+      "severity": "high",
+      "summary": "Vulnerability in azure-identity",
+      "cvss_score": 9.2,
+      "epss_score": 0.3695,
+      "is_kev": false,
+      "fixed_version": "1.0.0",
+      "severity_source": "ghsa",
+      "confidence": 0.73
+    },
+    {
+      "id": "CVE-2024-95367",
+      "severity": "low",
+      "summary": "Vulnerability in azure-identity",
+      "cvss_score": 7.2,
+      "epss_score": 0.4682,
+      "is_kev": false,
+      "fixed_version": "4.0.0",
+      "severity_source": "osv_database",
+      "confidence": 0.77
+    },
+    {
+      "id": "CVE-2024-71533",
+      "severity": "low",
+      "summary": "Vulnerability in boto3",
+      "cvss_score": 5.9,
+      "epss_score": 0.36,
+      "is_kev": false,
+      "fixed_version": "3.0.0",
+      "severity_source": "osv_database",
+      "confidence": 0.5
+    },
+    {
+      "id": "CVE-2024-92665",
+      "severity": "medium",
+      "summary": "Vulnerability in flask",
+      "cvss_score": 9.8,
+      "epss_score": 0.865,
+      "is_kev": false,
+      "fixed_version": null,
+      "severity_source": "nvd",
+      "confidence": 0.76
+    },
+    {
+      "id": "CVE-2024-95242",
+      "severity": "low",
+      "summary": "Vulnerability in requests",
+      "cvss_score": 6.3,
+      "epss_score": 0.4031,
+      "is_kev": false,
+      "fixed_version": null,
+      "severity_source": "ghsa",
+      "confidence": 0.92
+    },
+    {
+      "id": "CVE-2024-53676",
+      "severity": "critical",
+      "summary": "Vulnerability in requests",
+      "cvss_score": 4.9,
+      "epss_score": 0.2023,
+      "is_kev": false,
+      "fixed_version": null,
+      "severity_source": "osv_database",
+      "confidence": 0.56
+    },
+    {
+      "id": "CVE-2024-97220",
+      "severity": "high",
+      "summary": "Vulnerability in requests",
+      "cvss_score": 3.8,
+      "epss_score": 0.776,
+      "is_kev": true,
+      "fixed_version": "2.0.0",
+      "severity_source": "osv_database",
+      "confidence": 0.67
+    },
+    {
+      "id": "CVE-2024-22905",
+      "severity": "high",
+      "summary": "Vulnerability in tensorflow",
+      "cvss_score": 5.2,
+      "epss_score": 0.7826,
+      "is_kev": false,
+      "fixed_version": null,
+      "severity_source": "ghsa",
+      "confidence": 0.97
+    },
+    {
+      "id": "CVE-2024-18400",
+      "severity": "medium",
+      "summary": "Vulnerability in tensorflow",
+      "cvss_score": 6.3,
+      "epss_score": 0.095,
+      "is_kev": false,
+      "fixed_version": "3.0.0",
+      "severity_source": "osv_database",
+      "confidence": 0.93
+    },
+    {
+      "id": "CVE-2024-67686",
+      "severity": "medium",
+      "summary": "Vulnerability in anthropic",
+      "cvss_score": 5.9,
+      "epss_score": 0.0849,
+      "is_kev": false,
+      "fixed_version": null,
+      "severity_source": "osv_database",
+      "confidence": 0.65
+    },
+    {
+      "id": "CVE-2024-51689",
+      "severity": "low",
+      "summary": "Vulnerability in anthropic",
+      "cvss_score": 6.4,
+      "epss_score": 0.4717,
+      "is_kev": false,
+      "fixed_version": "4.0.0",
+      "severity_source": "nvd",
+      "confidence": 0.99
+    },
+    {
+      "id": "CVE-2024-52857",
+      "severity": "medium",
+      "summary": "Vulnerability in sentence-transformers",
+      "cvss_score": 8.3,
+      "epss_score": 0.7802,
+      "is_kev": false,
+      "fixed_version": null,
+      "severity_source": "ghsa",
+      "confidence": 0.98
+    },
+    {
+      "id": "CVE-2024-15398",
+      "severity": "low",
+      "summary": "Vulnerability in sentence-transformers",
+      "cvss_score": 7.1,
+      "epss_score": 0.2943,
+      "is_kev": false,
+      "fixed_version": "4.0.0",
+      "severity_source": "osv_database",
+      "confidence": 0.52
+    },
+    {
+      "id": "CVE-2024-87015",
+      "severity": "low",
+      "summary": "Vulnerability in sentence-transformers",
+      "cvss_score": 8.2,
+      "epss_score": 0.4971,
+      "is_kev": false,
+      "fixed_version": null,
+      "severity_source": "ghsa",
+      "confidence": 0.52
+    },
+    {
+      "id": "CVE-2024-28374",
+      "severity": "medium",
+      "summary": "Vulnerability in sentence-transformers",
+      "cvss_score": 5.6,
+      "epss_score": 0.6865,
+      "is_kev": false,
+      "fixed_version": "2.0.0",
+      "severity_source": "osv_database",
+      "confidence": 0.75
+    },
+    {
+      "id": "CVE-2024-48984",
+      "severity": "medium",
+      "summary": "Vulnerability in sentence-transformers",
+      "cvss_score": 6.9,
+      "epss_score": 0.3369,
+      "is_kev": false,
+      "fixed_version": "1.0.0",
+      "severity_source": "osv_database",
+      "confidence": 0.6
+    },
+    {
+      "id": "CVE-2024-96209",
+      "severity": "medium",
+      "summary": "Vulnerability in scikit-learn",
+      "cvss_score": 5.8,
+      "epss_score": 0.4526,
+      "is_kev": false,
+      "fixed_version": "1.0.0",
+      "severity_source": "osv_database",
+      "confidence": 0.61
+    },
+    {
+      "id": "CVE-2024-57920",
+      "severity": "low",
+      "summary": "Vulnerability in scikit-learn",
+      "cvss_score": 4.0,
+      "epss_score": 0.2771,
+      "is_kev": false,
+      "fixed_version": "1.0.0",
+      "severity_source": "nvd",
+      "confidence": 0.78
+    },
+    {
+      "id": "CVE-2024-54869",
+      "severity": "low",
+      "summary": "Vulnerability in fastapi",
+      "cvss_score": 6.5,
+      "epss_score": 0.4041,
+      "is_kev": true,
+      "fixed_version": "3.0.0",
+      "severity_source": "nvd",
+      "confidence": 0.81
+    },
+    {
+      "id": "CVE-2024-26690",
+      "severity": "low",
+      "summary": "Vulnerability in numpy",
+      "cvss_score": 6.5,
+      "epss_score": 0.523,
+      "is_kev": false,
+      "fixed_version": null,
+      "severity_source": "nvd",
+      "confidence": 0.93
+    },
+    {
+      "id": "CVE-2024-18940",
+      "severity": "low",
+      "summary": "Vulnerability in numpy",
+      "cvss_score": 4.0,
+      "epss_score": 0.4549,
+      "is_kev": true,
+      "fixed_version": null,
+      "severity_source": "ghsa",
+      "confidence": 0.72
+    },
+    {
+      "id": "CVE-2024-47656",
+      "severity": "medium",
+      "summary": "Vulnerability in snowflake-connector-python",
+      "cvss_score": 8.3,
+      "epss_score": 0.2919,
+      "is_kev": true,
+      "fixed_version": "3.0.0",
+      "severity_source": "nvd",
+      "confidence": 0.81
+    },
+    {
+      "id": "CVE-2024-49060",
+      "severity": "medium",
+      "summary": "Vulnerability in snowflake-connector-python",
+      "cvss_score": 8.7,
+      "epss_score": 0.9413,
+      "is_kev": false,
+      "fixed_version": null,
+      "severity_source": "nvd",
+      "confidence": 0.59
+    },
+    {
+      "id": "CVE-2024-28374",
+      "severity": "critical",
+      "summary": "Vulnerability in snowflake-connector-python",
+      "cvss_score": 10.0,
+      "epss_score": 0.5131,
+      "is_kev": false,
+      "fixed_version": "2.0.0",
+      "severity_source": "osv_database",
+      "confidence": 0.53
+    },
+    {
+      "id": "CVE-2024-94010",
+      "severity": "medium",
+      "summary": "Vulnerability in snowflake-connector-python",
+      "cvss_score": 4.3,
+      "epss_score": 0.5631,
+      "is_kev": false,
+      "fixed_version": "2.0.0",
+      "severity_source": "nvd",
+      "confidence": 0.51
+    },
+    {
+      "id": "CVE-2024-32552",
+      "severity": "medium",
+      "summary": "Vulnerability in snowflake-connector-python",
+      "cvss_score": 6.0,
+      "epss_score": 0.6614,
+      "is_kev": false,
+      "fixed_version": "2.0.0",
+      "severity_source": "ghsa",
+      "confidence": 0.58
+    },
+    {
+      "id": "CVE-2024-28374",
+      "severity": "low",
+      "summary": "Vulnerability in boto3",
+      "cvss_score": 5.8,
+      "epss_score": 0.5981,
+      "is_kev": false,
+      "fixed_version": "2.0.0",
+      "severity_source": "ghsa",
+      "confidence": 0.6
+    },
+    {
+      "id": "CVE-2024-62043",
+      "severity": "medium",
+      "summary": "Vulnerability in mlflow",
+      "cvss_score": 5.6,
+      "epss_score": 0.1048,
+      "is_kev": false,
+      "fixed_version": null,
+      "severity_source": "osv_database",
+      "confidence": 0.91
+    },
+    {
+      "id": "CVE-2024-49060",
+      "severity": "low",
+      "summary": "Vulnerability in boto3",
+      "cvss_score": 4.1,
+      "epss_score": 0.4294,
+      "is_kev": false,
+      "fixed_version": null,
+      "severity_source": "nvd",
+      "confidence": 1.0
+    },
+    {
+      "id": "CVE-2024-54733",
+      "severity": "medium",
+      "summary": "Vulnerability in huggingface-hub",
+      "cvss_score": 9.1,
+      "epss_score": 0.9471,
+      "is_kev": false,
+      "fixed_version": "2.0.0",
+      "severity_source": "ghsa",
+      "confidence": 0.65
+    },
+    {
+      "id": "CVE-2024-93932",
+      "severity": "low",
+      "summary": "Vulnerability in huggingface-hub",
+      "cvss_score": 4.5,
+      "epss_score": 0.2937,
+      "is_kev": false,
+      "fixed_version": null,
+      "severity_source": "nvd",
+      "confidence": 0.87
+    },
+    {
+      "id": "CVE-2024-13061",
+      "severity": "medium",
+      "summary": "Vulnerability in pinecone-client",
+      "cvss_score": 3.8,
+      "epss_score": 0.8498,
+      "is_kev": false,
+      "fixed_version": "1.0.0",
+      "severity_source": "osv_database",
+      "confidence": 0.92
+    },
+    {
+      "id": "CVE-2024-49060",
+      "severity": "low",
+      "summary": "Vulnerability in pinecone-client",
+      "cvss_score": 7.6,
+      "epss_score": 0.8593,
+      "is_kev": false,
+      "fixed_version": "2.0.0",
+      "severity_source": "ghsa",
+      "confidence": 0.62
+    },
+    {
+      "id": "CVE-2024-76741",
+      "severity": "low",
+      "summary": "Vulnerability in numpy",
+      "cvss_score": 6.9,
+      "epss_score": 0.1595,
+      "is_kev": false,
+      "fixed_version": "2.0.0",
+      "severity_source": "nvd",
+      "confidence": 0.6
+    },
+    {
+      "id": "CVE-2024-24803",
+      "severity": "medium",
+      "summary": "Vulnerability in numpy",
+      "cvss_score": 3.7,
+      "epss_score": 0.449,
+      "is_kev": false,
+      "fixed_version": "4.0.0",
+      "severity_source": "osv_database",
+      "confidence": 0.7
+    },
+    {
+      "id": "CVE-2024-32552",
+      "severity": "medium",
+      "summary": "Vulnerability in numpy",
+      "cvss_score": 3.8,
+      "epss_score": 0.3802,
+      "is_kev": false,
+      "fixed_version": "1.0.0",
+      "severity_source": "nvd",
+      "confidence": 0.63
+    },
+    {
+      "id": "CVE-2024-56464",
+      "severity": "low",
+      "summary": "Vulnerability in pinecone-client",
+      "cvss_score": 3.1,
+      "epss_score": 0.8391,
+      "is_kev": false,
+      "fixed_version": null,
+      "severity_source": "ghsa",
+      "confidence": 0.76
+    },
+    {
+      "id": "CVE-2024-45436",
+      "severity": "medium",
+      "summary": "Vulnerability in pinecone-client",
+      "cvss_score": 3.4,
+      "epss_score": 0.4724,
+      "is_kev": false,
+      "fixed_version": null,
+      "severity_source": "nvd",
+      "confidence": 0.64
+    },
+    {
+      "id": "CVE-2024-82959",
+      "severity": "low",
+      "summary": "Vulnerability in pinecone-client",
+      "cvss_score": 9.7,
+      "epss_score": 0.1058,
+      "is_kev": false,
+      "fixed_version": "1.0.0",
+      "severity_source": "osv_database",
+      "confidence": 0.6
+    },
+    {
+      "id": "CVE-2024-11865",
+      "severity": "medium",
+      "summary": "Vulnerability in pinecone-client",
+      "cvss_score": 3.8,
+      "epss_score": 0.2471,
+      "is_kev": false,
+      "fixed_version": "2.0.0",
+      "severity_source": "ghsa",
+      "confidence": 0.89
+    },
+    {
+      "id": "CVE-2024-86743",
+      "severity": "low",
+      "summary": "Vulnerability in pinecone-client",
+      "cvss_score": 6.3,
+      "epss_score": 0.1221,
+      "is_kev": false,
+      "fixed_version": "3.0.0",
+      "severity_source": "ghsa",
+      "confidence": 0.53
+    },
+    {
+      "id": "CVE-2024-10660",
+      "severity": "low",
+      "summary": "Vulnerability in cryptography",
+      "cvss_score": 9.9,
+      "epss_score": 0.6269,
+      "is_kev": false,
+      "fixed_version": "4.0.0",
+      "severity_source": "ghsa",
+      "confidence": 0.54
+    },
+    {
+      "id": "CVE-2024-33988",
+      "severity": "high",
+      "summary": "Vulnerability in cryptography",
+      "cvss_score": 4.1,
+      "epss_score": 0.3107,
+      "is_kev": false,
+      "fixed_version": "3.0.0",
+      "severity_source": "nvd",
+      "confidence": 0.56
+    }
+  ],
+  "blast_radius": [
+    {
+      "vulnerability_id": "CVE-2024-84140",
+      "package": "tensorflow@3.30.7",
+      "severity": "low",
+      "risk_score": 6.2,
+      "epss_score": 0.1551,
+      "is_kev": false,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "filesystem"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM07"
+      ],
+      "atlas_tags": [
+        "AML.T0047"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "1.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-28374",
+      "package": "tensorflow@3.6.6",
+      "severity": "critical",
+      "risk_score": 5.8,
+      "epss_score": 0.3114,
+      "is_kev": false,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "filesystem"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM07"
+      ],
+      "atlas_tags": [
+        "AML.T0053"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "3.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-76379",
+      "package": "tensorflow@3.6.6",
+      "severity": "low",
+      "risk_score": 4.4,
+      "epss_score": 0.8362,
+      "is_kev": false,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "filesystem"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM010"
+      ],
+      "atlas_tags": [
+        "AML.T0021"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "4.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-99449",
+      "package": "requests@1.11.5",
+      "severity": "high",
+      "risk_score": 3.7,
+      "epss_score": 0.5643,
+      "is_kev": false,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "filesystem"
+      ],
+      "exposed_credentials": [
+        "filesystem_KEY"
+      ],
+      "owasp_tags": [
+        "LLM02"
+      ],
+      "atlas_tags": [
+        "AML.T0014"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "4.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-79460",
+      "package": "requests@1.11.5",
+      "severity": "medium",
+      "risk_score": 4.4,
+      "epss_score": 0.9284,
+      "is_kev": false,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "filesystem"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM08"
+      ],
+      "atlas_tags": [
+        "AML.T0044"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "1.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-95367",
+      "package": "requests@1.11.5",
+      "severity": "medium",
+      "risk_score": 1.1,
+      "epss_score": 0.3926,
+      "is_kev": false,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "filesystem"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM02"
+      ],
+      "atlas_tags": [
+        "AML.T0013"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": null
+    },
+    {
+      "vulnerability_id": "CVE-2024-36322",
+      "package": "dbt-core@3.19.10",
+      "severity": "medium",
+      "risk_score": 8.3,
+      "epss_score": 0.6188,
+      "is_kev": false,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "jira"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM04"
+      ],
+      "atlas_tags": [
+        "AML.T0051"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "1.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-70198",
+      "package": "dbt-core@3.19.10",
+      "severity": "low",
+      "risk_score": 6.9,
+      "epss_score": 0.0331,
+      "is_kev": false,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "jira"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM08"
+      ],
+      "atlas_tags": [
+        "AML.T0033"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "4.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-20488",
+      "package": "pinecone-client@0.12.1",
+      "severity": "medium",
+      "risk_score": 9.1,
+      "epss_score": 0.5659,
+      "is_kev": true,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "brave-search"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM03"
+      ],
+      "atlas_tags": [
+        "AML.T0045"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": null
+    },
+    {
+      "vulnerability_id": "CVE-2024-42961",
+      "package": "numpy@3.27.2",
+      "severity": "medium",
+      "risk_score": 5.2,
+      "epss_score": 0.2467,
+      "is_kev": false,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "jira"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM04"
+      ],
+      "atlas_tags": [
+        "AML.T0036"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "1.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-95326",
+      "package": "numpy@3.27.2",
+      "severity": "high",
+      "risk_score": 4.5,
+      "epss_score": 0.8163,
+      "is_kev": false,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "jira"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM02"
+      ],
+      "atlas_tags": [
+        "AML.T0034"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "1.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-76009",
+      "package": "numpy@3.27.2",
+      "severity": "high",
+      "risk_score": 7.9,
+      "epss_score": 0.3272,
+      "is_kev": false,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "jira"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM010"
+      ],
+      "atlas_tags": [
+        "AML.T0012"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "3.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-52857",
+      "package": "wandb@1.12.5",
+      "severity": "medium",
+      "risk_score": 2.7,
+      "epss_score": 0.4503,
+      "is_kev": false,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "jira"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM09"
+      ],
+      "atlas_tags": [
+        "AML.T0043"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": null
+    },
+    {
+      "vulnerability_id": "CVE-2024-34894",
+      "package": "wandb@1.12.5",
+      "severity": "medium",
+      "risk_score": 9.0,
+      "epss_score": 0.743,
+      "is_kev": false,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "jira"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM09"
+      ],
+      "atlas_tags": [
+        "AML.T0014"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "4.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-91543",
+      "package": "wandb@1.12.5",
+      "severity": "medium",
+      "risk_score": 4.5,
+      "epss_score": 0.8902,
+      "is_kev": false,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "jira"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM02"
+      ],
+      "atlas_tags": [
+        "AML.T0025"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": null
+    },
+    {
+      "vulnerability_id": "CVE-2024-93390",
+      "package": "snowflake-connector-python@0.2.0",
+      "severity": "medium",
+      "risk_score": 2.4,
+      "epss_score": 0.7127,
+      "is_kev": false,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "jira"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM06"
+      ],
+      "atlas_tags": [
+        "AML.T0044"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "1.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-85181",
+      "package": "chromadb@2.20.8",
+      "severity": "low",
+      "risk_score": 3.4,
+      "epss_score": 0.4586,
+      "is_kev": false,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "jira"
+      ],
+      "exposed_credentials": [
+        "jira_KEY"
+      ],
+      "owasp_tags": [
+        "LLM09"
+      ],
+      "atlas_tags": [
+        "AML.T0030"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": null
+    },
+    {
+      "vulnerability_id": "CVE-2024-87015",
+      "package": "chromadb@2.20.8",
+      "severity": "medium",
+      "risk_score": 9.5,
+      "epss_score": 0.3688,
+      "is_kev": false,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "jira"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM02"
+      ],
+      "atlas_tags": [
+        "AML.T0048"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": null
+    },
+    {
+      "vulnerability_id": "CVE-2024-27302",
+      "package": "chromadb@2.20.8",
+      "severity": "medium",
+      "risk_score": 1.2,
+      "epss_score": 0.4162,
+      "is_kev": false,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "jira"
+      ],
+      "exposed_credentials": [
+        "jira_KEY"
+      ],
+      "owasp_tags": [
+        "LLM03"
+      ],
+      "atlas_tags": [
+        "AML.T0035"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "3.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-57672",
+      "package": "chromadb@2.20.8",
+      "severity": "medium",
+      "risk_score": 4.0,
+      "epss_score": 0.0376,
+      "is_kev": false,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "jira"
+      ],
+      "exposed_credentials": [
+        "jira_KEY"
+      ],
+      "owasp_tags": [
+        "LLM010"
+      ],
+      "atlas_tags": [
+        "AML.T0026"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "3.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-64883",
+      "package": "chromadb@2.20.8",
+      "severity": "medium",
+      "risk_score": 9.7,
+      "epss_score": 0.1644,
+      "is_kev": false,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "jira"
+      ],
+      "exposed_credentials": [
+        "jira_KEY"
+      ],
+      "owasp_tags": [
+        "LLM08"
+      ],
+      "atlas_tags": [
+        "AML.T0022"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "3.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-96950",
+      "package": "weaviate-client@3.30.9",
+      "severity": "medium",
+      "risk_score": 3.2,
+      "epss_score": 0.3448,
+      "is_kev": false,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "jira"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM07"
+      ],
+      "atlas_tags": [
+        "AML.T0042"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "3.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-72575",
+      "package": "weaviate-client@3.30.9",
+      "severity": "high",
+      "risk_score": 7.3,
+      "epss_score": 0.6646,
+      "is_kev": false,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "jira"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM09"
+      ],
+      "atlas_tags": [
+        "AML.T0052"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "4.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-36080",
+      "package": "requests@0.3.10",
+      "severity": "low",
+      "risk_score": 1.2,
+      "epss_score": 0.014,
+      "is_kev": true,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "filesystem"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM06"
+      ],
+      "atlas_tags": [
+        "AML.T0025"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "3.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-99449",
+      "package": "httpx@2.7.7",
+      "severity": "medium",
+      "risk_score": 3.7,
+      "epss_score": 0.9341,
+      "is_kev": false,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "filesystem"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM010"
+      ],
+      "atlas_tags": [
+        "AML.T0050"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "1.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-12599",
+      "package": "httpx@2.7.7",
+      "severity": "medium",
+      "risk_score": 7.3,
+      "epss_score": 0.2472,
+      "is_kev": false,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "filesystem"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM07"
+      ],
+      "atlas_tags": [
+        "AML.T0044"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": null
+    },
+    {
+      "vulnerability_id": "CVE-2024-30026",
+      "package": "httpx@2.7.7",
+      "severity": "medium",
+      "risk_score": 8.6,
+      "epss_score": 0.7667,
+      "is_kev": false,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "filesystem"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM05"
+      ],
+      "atlas_tags": [
+        "AML.T0050"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "2.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-53208",
+      "package": "httpx@2.7.7",
+      "severity": "high",
+      "risk_score": 6.4,
+      "epss_score": 0.8883,
+      "is_kev": false,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "filesystem"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM07"
+      ],
+      "atlas_tags": [
+        "AML.T0010"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": null
+    },
+    {
+      "vulnerability_id": "CVE-2024-47962",
+      "package": "httpx@2.7.7",
+      "severity": "critical",
+      "risk_score": 3.2,
+      "epss_score": 0.5818,
+      "is_kev": false,
+      "affected_agents": [
+        "cursor"
+      ],
+      "affected_servers": [
+        "filesystem"
+      ],
+      "exposed_credentials": [
+        "filesystem_KEY"
+      ],
+      "owasp_tags": [
+        "LLM08"
+      ],
+      "atlas_tags": [
+        "AML.T0052"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": null
+    },
+    {
+      "vulnerability_id": "CVE-2024-64291",
+      "package": "sentence-transformers@2.24.3",
+      "severity": "medium",
+      "risk_score": 4.5,
+      "epss_score": 0.4188,
+      "is_kev": false,
+      "affected_agents": [
+        "claude-desktop"
+      ],
+      "affected_servers": [
+        "sequential-thinking"
+      ],
+      "exposed_credentials": [
+        "sequential-thinking_KEY"
+      ],
+      "owasp_tags": [
+        "LLM09"
+      ],
+      "atlas_tags": [
+        "AML.T0029"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "2.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-47962",
+      "package": "sentence-transformers@2.24.3",
+      "severity": "medium",
+      "risk_score": 4.3,
+      "epss_score": 0.1195,
+      "is_kev": false,
+      "affected_agents": [
+        "claude-desktop"
+      ],
+      "affected_servers": [
+        "sequential-thinking"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM05"
+      ],
+      "atlas_tags": [
+        "AML.T0015"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "4.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-53275",
+      "package": "sentence-transformers@2.24.3",
+      "severity": "medium",
+      "risk_score": 4.9,
+      "epss_score": 0.8465,
+      "is_kev": false,
+      "affected_agents": [
+        "claude-desktop"
+      ],
+      "affected_servers": [
+        "sequential-thinking"
+      ],
+      "exposed_credentials": [
+        "sequential-thinking_KEY"
+      ],
+      "owasp_tags": [
+        "LLM03"
+      ],
+      "atlas_tags": [
+        "AML.T0035"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "4.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-79460",
+      "package": "torch@2.12.5",
+      "severity": "high",
+      "risk_score": 8.7,
+      "epss_score": 0.5327,
+      "is_kev": false,
+      "affected_agents": [
+        "claude-desktop"
+      ],
+      "affected_servers": [
+        "sequential-thinking"
+      ],
+      "exposed_credentials": [
+        "sequential-thinking_KEY"
+      ],
+      "owasp_tags": [
+        "LLM06"
+      ],
+      "atlas_tags": [
+        "AML.T0035"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "2.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-70333",
+      "package": "torch@2.12.5",
+      "severity": "low",
+      "risk_score": 8.7,
+      "epss_score": 0.1386,
+      "is_kev": false,
+      "affected_agents": [
+        "claude-desktop"
+      ],
+      "affected_servers": [
+        "sequential-thinking"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM03"
+      ],
+      "atlas_tags": [
+        "AML.T0013"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "3.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-53208",
+      "package": "torch@2.12.5",
+      "severity": "medium",
+      "risk_score": 7.6,
+      "epss_score": 0.2789,
+      "is_kev": false,
+      "affected_agents": [
+        "claude-desktop"
+      ],
+      "affected_servers": [
+        "sequential-thinking"
+      ],
+      "exposed_credentials": [
+        "sequential-thinking_KEY"
+      ],
+      "owasp_tags": [
+        "LLM04"
+      ],
+      "atlas_tags": [
+        "AML.T0023"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "4.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-24751",
+      "package": "scikit-learn@2.0.1",
+      "severity": "low",
+      "risk_score": 9.1,
+      "epss_score": 0.6401,
+      "is_kev": false,
+      "affected_agents": [
+        "claude-desktop"
+      ],
+      "affected_servers": [
+        "jira"
+      ],
+      "exposed_credentials": [
+        "jira_KEY"
+      ],
+      "owasp_tags": [
+        "LLM03"
+      ],
+      "atlas_tags": [
+        "AML.T0034"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "2.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-53940",
+      "package": "scikit-learn@2.0.1",
+      "severity": "critical",
+      "risk_score": 8.0,
+      "epss_score": 0.1967,
+      "is_kev": false,
+      "affected_agents": [
+        "claude-desktop"
+      ],
+      "affected_servers": [
+        "jira"
+      ],
+      "exposed_credentials": [
+        "jira_KEY"
+      ],
+      "owasp_tags": [
+        "LLM06"
+      ],
+      "atlas_tags": [
+        "AML.T0048"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "3.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-11114",
+      "package": "pandas@2.12.6",
+      "severity": "medium",
+      "risk_score": 2.4,
+      "epss_score": 0.5352,
+      "is_kev": false,
+      "affected_agents": [
+        "claude-desktop"
+      ],
+      "affected_servers": [
+        "jira"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM04"
+      ],
+      "atlas_tags": [
+        "AML.T0016"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "3.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-42987",
+      "package": "httpx@3.13.3",
+      "severity": "high",
+      "risk_score": 9.8,
+      "epss_score": 0.4151,
+      "is_kev": false,
+      "affected_agents": [
+        "claude-desktop"
+      ],
+      "affected_servers": [
+        "jira"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM09"
+      ],
+      "atlas_tags": [
+        "AML.T0024"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "4.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-63557",
+      "package": "numpy@3.26.8",
+      "severity": "medium",
+      "risk_score": 8.2,
+      "epss_score": 0.3538,
+      "is_kev": false,
+      "affected_agents": [
+        "windsurf"
+      ],
+      "affected_servers": [
+        "linear"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM07"
+      ],
+      "atlas_tags": [
+        "AML.T0043"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "1.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-99181",
+      "package": "numpy@1.28.0",
+      "severity": "medium",
+      "risk_score": 7.0,
+      "epss_score": 0.431,
+      "is_kev": false,
+      "affected_agents": [
+        "windsurf"
+      ],
+      "affected_servers": [
+        "puppeteer"
+      ],
+      "exposed_credentials": [
+        "puppeteer_KEY"
+      ],
+      "owasp_tags": [
+        "LLM03"
+      ],
+      "atlas_tags": [
+        "AML.T0015"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "1.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-42987",
+      "package": "pinecone-client@3.22.2",
+      "severity": "low",
+      "risk_score": 4.9,
+      "epss_score": 0.9356,
+      "is_kev": false,
+      "affected_agents": [
+        "windsurf"
+      ],
+      "affected_servers": [
+        "puppeteer"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM09"
+      ],
+      "atlas_tags": [
+        "AML.T0024"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "2.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-59893",
+      "package": "pinecone-client@3.22.2",
+      "severity": "critical",
+      "risk_score": 8.3,
+      "epss_score": 0.1899,
+      "is_kev": false,
+      "affected_agents": [
+        "windsurf"
+      ],
+      "affected_servers": [
+        "puppeteer"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM06"
+      ],
+      "atlas_tags": [
+        "AML.T0040"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": null
+    },
+    {
+      "vulnerability_id": "CVE-2024-28374",
+      "package": "openai@2.21.5",
+      "severity": "medium",
+      "risk_score": 9.8,
+      "epss_score": 0.1235,
+      "is_kev": false,
+      "affected_agents": [
+        "windsurf"
+      ],
+      "affected_servers": [
+        "puppeteer"
+      ],
+      "exposed_credentials": [
+        "puppeteer_KEY"
+      ],
+      "owasp_tags": [
+        "LLM08"
+      ],
+      "atlas_tags": [
+        "AML.T0049"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "1.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-88610",
+      "package": "openai@2.21.5",
+      "severity": "low",
+      "risk_score": 3.2,
+      "epss_score": 0.1864,
+      "is_kev": false,
+      "affected_agents": [
+        "windsurf"
+      ],
+      "affected_servers": [
+        "puppeteer"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM05"
+      ],
+      "atlas_tags": [
+        "AML.T0010"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "4.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-87015",
+      "package": "mlflow@0.23.1",
+      "severity": "low",
+      "risk_score": 3.5,
+      "epss_score": 0.4687,
+      "is_kev": false,
+      "affected_agents": [
+        "windsurf"
+      ],
+      "affected_servers": [
+        "sqlite"
+      ],
+      "exposed_credentials": [
+        "sqlite_KEY"
+      ],
+      "owasp_tags": [
+        "LLM02"
+      ],
+      "atlas_tags": [
+        "AML.T0012"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "3.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-22905",
+      "package": "mlflow@0.23.1",
+      "severity": "high",
+      "risk_score": 4.8,
+      "epss_score": 0.2888,
+      "is_kev": false,
+      "affected_agents": [
+        "windsurf"
+      ],
+      "affected_servers": [
+        "sqlite"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM05"
+      ],
+      "atlas_tags": [
+        "AML.T0019"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "3.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-88447",
+      "package": "mlflow@0.23.1",
+      "severity": "medium",
+      "risk_score": 3.9,
+      "epss_score": 0.0979,
+      "is_kev": false,
+      "affected_agents": [
+        "windsurf"
+      ],
+      "affected_servers": [
+        "sqlite"
+      ],
+      "exposed_credentials": [
+        "sqlite_KEY"
+      ],
+      "owasp_tags": [
+        "LLM07"
+      ],
+      "atlas_tags": [
+        "AML.T0032"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "2.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-19256",
+      "package": "pinecone-client@2.28.4",
+      "severity": "medium",
+      "risk_score": 6.3,
+      "epss_score": 0.6853,
+      "is_kev": false,
+      "affected_agents": [
+        "windsurf"
+      ],
+      "affected_servers": [
+        "sqlite"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM04"
+      ],
+      "atlas_tags": [
+        "AML.T0045"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "2.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-49756",
+      "package": "snowflake-connector-python@2.25.6",
+      "severity": "high",
+      "risk_score": 2.1,
+      "epss_score": 0.7114,
+      "is_kev": false,
+      "affected_agents": [
+        "windsurf"
+      ],
+      "affected_servers": [
+        "linear"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM010"
+      ],
+      "atlas_tags": [
+        "AML.T0023"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "3.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-84140",
+      "package": "snowflake-connector-python@2.25.6",
+      "severity": "medium",
+      "risk_score": 2.9,
+      "epss_score": 0.0412,
+      "is_kev": false,
+      "affected_agents": [
+        "windsurf"
+      ],
+      "affected_servers": [
+        "linear"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM07"
+      ],
+      "atlas_tags": [
+        "AML.T0038"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "2.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-18815",
+      "package": "openai@3.29.3",
+      "severity": "low",
+      "risk_score": 4.3,
+      "epss_score": 0.9213,
+      "is_kev": false,
+      "affected_agents": [
+        "windsurf"
+      ],
+      "affected_servers": [
+        "linear"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM07"
+      ],
+      "atlas_tags": [
+        "AML.T0041"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "4.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-85121",
+      "package": "openai@3.29.3",
+      "severity": "medium",
+      "risk_score": 9.9,
+      "epss_score": 0.8047,
+      "is_kev": true,
+      "affected_agents": [
+        "windsurf"
+      ],
+      "affected_servers": [
+        "linear"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM03"
+      ],
+      "atlas_tags": [
+        "AML.T0024"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "1.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-40106",
+      "package": "openai@3.29.3",
+      "severity": "low",
+      "risk_score": 2.3,
+      "epss_score": 0.0259,
+      "is_kev": false,
+      "affected_agents": [
+        "windsurf"
+      ],
+      "affected_servers": [
+        "linear"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM02"
+      ],
+      "atlas_tags": [
+        "AML.T0052"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "2.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-30026",
+      "package": "mcp@0.4.3",
+      "severity": "high",
+      "risk_score": 6.7,
+      "epss_score": 0.8643,
+      "is_kev": false,
+      "affected_agents": [
+        "windsurf"
+      ],
+      "affected_servers": [
+        "linear"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM01"
+      ],
+      "atlas_tags": [
+        "AML.T0048"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "3.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-54733",
+      "package": "azure-identity@2.28.10",
+      "severity": "high",
+      "risk_score": 3.5,
+      "epss_score": 0.7096,
+      "is_kev": false,
+      "affected_agents": [
+        "windsurf"
+      ],
+      "affected_servers": [
+        "sentry"
+      ],
+      "exposed_credentials": [
+        "sentry_KEY"
+      ],
+      "owasp_tags": [
+        "LLM02"
+      ],
+      "atlas_tags": [
+        "AML.T0012"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "1.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-76906",
+      "package": "azure-identity@2.28.10",
+      "severity": "high",
+      "risk_score": 4.0,
+      "epss_score": 0.3695,
+      "is_kev": false,
+      "affected_agents": [
+        "windsurf"
+      ],
+      "affected_servers": [
+        "sentry"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM03"
+      ],
+      "atlas_tags": [
+        "AML.T0034"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "1.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-95367",
+      "package": "azure-identity@2.28.10",
+      "severity": "low",
+      "risk_score": 9.1,
+      "epss_score": 0.4682,
+      "is_kev": false,
+      "affected_agents": [
+        "windsurf"
+      ],
+      "affected_servers": [
+        "sentry"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM03"
+      ],
+      "atlas_tags": [
+        "AML.T0025"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "4.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-71533",
+      "package": "boto3@1.26.3",
+      "severity": "low",
+      "risk_score": 7.9,
+      "epss_score": 0.36,
+      "is_kev": false,
+      "affected_agents": [
+        "windsurf"
+      ],
+      "affected_servers": [
+        "sentry"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM05"
+      ],
+      "atlas_tags": [
+        "AML.T0047"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "3.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-92665",
+      "package": "flask@1.11.9",
+      "severity": "medium",
+      "risk_score": 8.4,
+      "epss_score": 0.865,
+      "is_kev": false,
+      "affected_agents": [
+        "windsurf"
+      ],
+      "affected_servers": [
+        "sentry"
+      ],
+      "exposed_credentials": [
+        "sentry_KEY"
+      ],
+      "owasp_tags": [
+        "LLM06"
+      ],
+      "atlas_tags": [
+        "AML.T0036"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": null
+    },
+    {
+      "vulnerability_id": "CVE-2024-95242",
+      "package": "requests@1.1.7",
+      "severity": "low",
+      "risk_score": 7.8,
+      "epss_score": 0.4031,
+      "is_kev": false,
+      "affected_agents": [
+        "windsurf"
+      ],
+      "affected_servers": [
+        "memory"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM03"
+      ],
+      "atlas_tags": [
+        "AML.T0015"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": null
+    },
+    {
+      "vulnerability_id": "CVE-2024-53676",
+      "package": "requests@1.1.7",
+      "severity": "critical",
+      "risk_score": 4.2,
+      "epss_score": 0.2023,
+      "is_kev": false,
+      "affected_agents": [
+        "windsurf"
+      ],
+      "affected_servers": [
+        "memory"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM01"
+      ],
+      "atlas_tags": [
+        "AML.T0015"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": null
+    },
+    {
+      "vulnerability_id": "CVE-2024-97220",
+      "package": "requests@1.1.7",
+      "severity": "high",
+      "risk_score": 4.3,
+      "epss_score": 0.776,
+      "is_kev": true,
+      "affected_agents": [
+        "windsurf"
+      ],
+      "affected_servers": [
+        "memory"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM09"
+      ],
+      "atlas_tags": [
+        "AML.T0038"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "2.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-22905",
+      "package": "tensorflow@0.12.5",
+      "severity": "high",
+      "risk_score": 5.4,
+      "epss_score": 0.7826,
+      "is_kev": false,
+      "affected_agents": [
+        "windsurf"
+      ],
+      "affected_servers": [
+        "memory"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM03"
+      ],
+      "atlas_tags": [
+        "AML.T0010"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": null
+    },
+    {
+      "vulnerability_id": "CVE-2024-18400",
+      "package": "tensorflow@0.12.5",
+      "severity": "medium",
+      "risk_score": 4.4,
+      "epss_score": 0.095,
+      "is_kev": false,
+      "affected_agents": [
+        "windsurf"
+      ],
+      "affected_servers": [
+        "memory"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM09"
+      ],
+      "atlas_tags": [
+        "AML.T0039"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "3.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-67686",
+      "package": "anthropic@1.14.8",
+      "severity": "medium",
+      "risk_score": 5.5,
+      "epss_score": 0.0849,
+      "is_kev": false,
+      "affected_agents": [
+        "windsurf"
+      ],
+      "affected_servers": [
+        "memory"
+      ],
+      "exposed_credentials": [
+        "memory_KEY"
+      ],
+      "owasp_tags": [
+        "LLM02"
+      ],
+      "atlas_tags": [
+        "AML.T0016"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": null
+    },
+    {
+      "vulnerability_id": "CVE-2024-51689",
+      "package": "anthropic@1.14.8",
+      "severity": "low",
+      "risk_score": 5.7,
+      "epss_score": 0.4717,
+      "is_kev": false,
+      "affected_agents": [
+        "windsurf"
+      ],
+      "affected_servers": [
+        "memory"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM05"
+      ],
+      "atlas_tags": [
+        "AML.T0032"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "4.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-52857",
+      "package": "sentence-transformers@2.7.4",
+      "severity": "medium",
+      "risk_score": 2.8,
+      "epss_score": 0.7802,
+      "is_kev": false,
+      "affected_agents": [
+        "cline"
+      ],
+      "affected_servers": [
+        "puppeteer"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM05"
+      ],
+      "atlas_tags": [
+        "AML.T0027"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": null
+    },
+    {
+      "vulnerability_id": "CVE-2024-15398",
+      "package": "sentence-transformers@2.7.4",
+      "severity": "low",
+      "risk_score": 7.4,
+      "epss_score": 0.2943,
+      "is_kev": false,
+      "affected_agents": [
+        "cline"
+      ],
+      "affected_servers": [
+        "puppeteer"
+      ],
+      "exposed_credentials": [
+        "puppeteer_KEY"
+      ],
+      "owasp_tags": [
+        "LLM02"
+      ],
+      "atlas_tags": [
+        "AML.T0025"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "4.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-87015",
+      "package": "sentence-transformers@2.7.4",
+      "severity": "low",
+      "risk_score": 2.8,
+      "epss_score": 0.4971,
+      "is_kev": false,
+      "affected_agents": [
+        "cline"
+      ],
+      "affected_servers": [
+        "puppeteer"
+      ],
+      "exposed_credentials": [
+        "puppeteer_KEY"
+      ],
+      "owasp_tags": [
+        "LLM03"
+      ],
+      "atlas_tags": [
+        "AML.T0023"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": null
+    },
+    {
+      "vulnerability_id": "CVE-2024-28374",
+      "package": "sentence-transformers@2.7.4",
+      "severity": "medium",
+      "risk_score": 7.3,
+      "epss_score": 0.6865,
+      "is_kev": false,
+      "affected_agents": [
+        "cline"
+      ],
+      "affected_servers": [
+        "puppeteer"
+      ],
+      "exposed_credentials": [
+        "puppeteer_KEY"
+      ],
+      "owasp_tags": [
+        "LLM09"
+      ],
+      "atlas_tags": [
+        "AML.T0016"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "2.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-48984",
+      "package": "sentence-transformers@2.7.4",
+      "severity": "medium",
+      "risk_score": 4.4,
+      "epss_score": 0.3369,
+      "is_kev": false,
+      "affected_agents": [
+        "cline"
+      ],
+      "affected_servers": [
+        "puppeteer"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM04"
+      ],
+      "atlas_tags": [
+        "AML.T0025"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "1.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-96209",
+      "package": "scikit-learn@2.7.9",
+      "severity": "medium",
+      "risk_score": 9.0,
+      "epss_score": 0.4526,
+      "is_kev": false,
+      "affected_agents": [
+        "cline"
+      ],
+      "affected_servers": [
+        "puppeteer"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM07"
+      ],
+      "atlas_tags": [
+        "AML.T0022"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "1.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-57920",
+      "package": "scikit-learn@2.7.9",
+      "severity": "low",
+      "risk_score": 8.2,
+      "epss_score": 0.2771,
+      "is_kev": false,
+      "affected_agents": [
+        "cline"
+      ],
+      "affected_servers": [
+        "puppeteer"
+      ],
+      "exposed_credentials": [
+        "puppeteer_KEY"
+      ],
+      "owasp_tags": [
+        "LLM04"
+      ],
+      "atlas_tags": [
+        "AML.T0026"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "1.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-54869",
+      "package": "fastapi@0.27.0",
+      "severity": "low",
+      "risk_score": 3.4,
+      "epss_score": 0.4041,
+      "is_kev": true,
+      "affected_agents": [
+        "cline"
+      ],
+      "affected_servers": [
+        "github"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM04"
+      ],
+      "atlas_tags": [
+        "AML.T0049"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "3.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-26690",
+      "package": "numpy@1.7.0",
+      "severity": "low",
+      "risk_score": 9.9,
+      "epss_score": 0.523,
+      "is_kev": false,
+      "affected_agents": [
+        "cline"
+      ],
+      "affected_servers": [
+        "github"
+      ],
+      "exposed_credentials": [
+        "github_KEY"
+      ],
+      "owasp_tags": [
+        "LLM01"
+      ],
+      "atlas_tags": [
+        "AML.T0045"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": null
+    },
+    {
+      "vulnerability_id": "CVE-2024-18940",
+      "package": "numpy@1.7.0",
+      "severity": "low",
+      "risk_score": 9.3,
+      "epss_score": 0.4549,
+      "is_kev": true,
+      "affected_agents": [
+        "cline"
+      ],
+      "affected_servers": [
+        "github"
+      ],
+      "exposed_credentials": [
+        "github_KEY"
+      ],
+      "owasp_tags": [
+        "LLM06"
+      ],
+      "atlas_tags": [
+        "AML.T0018"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": null
+    },
+    {
+      "vulnerability_id": "CVE-2024-47656",
+      "package": "snowflake-connector-python@1.8.1",
+      "severity": "medium",
+      "risk_score": 6.4,
+      "epss_score": 0.2919,
+      "is_kev": true,
+      "affected_agents": [
+        "zed"
+      ],
+      "affected_servers": [
+        "brave-search"
+      ],
+      "exposed_credentials": [
+        "brave-search_KEY"
+      ],
+      "owasp_tags": [
+        "LLM08"
+      ],
+      "atlas_tags": [
+        "AML.T0036"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "3.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-49060",
+      "package": "snowflake-connector-python@1.8.1",
+      "severity": "medium",
+      "risk_score": 9.3,
+      "epss_score": 0.9413,
+      "is_kev": false,
+      "affected_agents": [
+        "zed"
+      ],
+      "affected_servers": [
+        "brave-search"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM08"
+      ],
+      "atlas_tags": [
+        "AML.T0030"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": null
+    },
+    {
+      "vulnerability_id": "CVE-2024-28374",
+      "package": "snowflake-connector-python@2.26.8",
+      "severity": "critical",
+      "risk_score": 9.8,
+      "epss_score": 0.5131,
+      "is_kev": false,
+      "affected_agents": [
+        "zed"
+      ],
+      "affected_servers": [
+        "brave-search"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM06"
+      ],
+      "atlas_tags": [
+        "AML.T0020"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "2.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-94010",
+      "package": "snowflake-connector-python@2.26.8",
+      "severity": "medium",
+      "risk_score": 7.6,
+      "epss_score": 0.5631,
+      "is_kev": false,
+      "affected_agents": [
+        "zed"
+      ],
+      "affected_servers": [
+        "brave-search"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM02"
+      ],
+      "atlas_tags": [
+        "AML.T0013"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "2.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-32552",
+      "package": "snowflake-connector-python@2.26.8",
+      "severity": "medium",
+      "risk_score": 6.2,
+      "epss_score": 0.6614,
+      "is_kev": false,
+      "affected_agents": [
+        "zed"
+      ],
+      "affected_servers": [
+        "brave-search"
+      ],
+      "exposed_credentials": [
+        "brave-search_KEY"
+      ],
+      "owasp_tags": [
+        "LLM09"
+      ],
+      "atlas_tags": [
+        "AML.T0013"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "2.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-28374",
+      "package": "boto3@2.2.5",
+      "severity": "low",
+      "risk_score": 2.8,
+      "epss_score": 0.5981,
+      "is_kev": false,
+      "affected_agents": [
+        "zed"
+      ],
+      "affected_servers": [
+        "brave-search"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM01"
+      ],
+      "atlas_tags": [
+        "AML.T0028"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "2.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-62043",
+      "package": "mlflow@2.26.5",
+      "severity": "medium",
+      "risk_score": 1.3,
+      "epss_score": 0.1048,
+      "is_kev": false,
+      "affected_agents": [
+        "zed"
+      ],
+      "affected_servers": [
+        "github"
+      ],
+      "exposed_credentials": [
+        "github_KEY"
+      ],
+      "owasp_tags": [
+        "LLM06"
+      ],
+      "atlas_tags": [
+        "AML.T0041"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": null
+    },
+    {
+      "vulnerability_id": "CVE-2024-49060",
+      "package": "boto3@2.18.5",
+      "severity": "low",
+      "risk_score": 5.3,
+      "epss_score": 0.4294,
+      "is_kev": false,
+      "affected_agents": [
+        "zed"
+      ],
+      "affected_servers": [
+        "sqlite"
+      ],
+      "exposed_credentials": [
+        "sqlite_KEY"
+      ],
+      "owasp_tags": [
+        "LLM09"
+      ],
+      "atlas_tags": [
+        "AML.T0031"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": null
+    },
+    {
+      "vulnerability_id": "CVE-2024-54733",
+      "package": "huggingface-hub@0.9.6",
+      "severity": "medium",
+      "risk_score": 5.6,
+      "epss_score": 0.9471,
+      "is_kev": false,
+      "affected_agents": [
+        "zed"
+      ],
+      "affected_servers": [
+        "sqlite"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM05"
+      ],
+      "atlas_tags": [
+        "AML.T0045"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "2.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-93932",
+      "package": "huggingface-hub@0.9.6",
+      "severity": "low",
+      "risk_score": 9.6,
+      "epss_score": 0.2937,
+      "is_kev": false,
+      "affected_agents": [
+        "zed"
+      ],
+      "affected_servers": [
+        "sqlite"
+      ],
+      "exposed_credentials": [
+        "sqlite_KEY"
+      ],
+      "owasp_tags": [
+        "LLM01"
+      ],
+      "atlas_tags": [
+        "AML.T0016"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": null
+    },
+    {
+      "vulnerability_id": "CVE-2024-13061",
+      "package": "pinecone-client@0.14.10",
+      "severity": "medium",
+      "risk_score": 8.4,
+      "epss_score": 0.8498,
+      "is_kev": false,
+      "affected_agents": [
+        "continue-dev"
+      ],
+      "affected_servers": [
+        "brave-search"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM02"
+      ],
+      "atlas_tags": [
+        "AML.T0036"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "1.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-49060",
+      "package": "pinecone-client@0.14.10",
+      "severity": "low",
+      "risk_score": 2.9,
+      "epss_score": 0.8593,
+      "is_kev": false,
+      "affected_agents": [
+        "continue-dev"
+      ],
+      "affected_servers": [
+        "brave-search"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM02"
+      ],
+      "atlas_tags": [
+        "AML.T0025"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "2.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-76741",
+      "package": "numpy@0.7.2",
+      "severity": "low",
+      "risk_score": 7.0,
+      "epss_score": 0.1595,
+      "is_kev": false,
+      "affected_agents": [
+        "continue-dev"
+      ],
+      "affected_servers": [
+        "sequential-thinking"
+      ],
+      "exposed_credentials": [
+        "sequential-thinking_KEY"
+      ],
+      "owasp_tags": [
+        "LLM09"
+      ],
+      "atlas_tags": [
+        "AML.T0029"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "2.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-24803",
+      "package": "numpy@0.7.2",
+      "severity": "medium",
+      "risk_score": 2.4,
+      "epss_score": 0.449,
+      "is_kev": false,
+      "affected_agents": [
+        "continue-dev"
+      ],
+      "affected_servers": [
+        "sequential-thinking"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM07"
+      ],
+      "atlas_tags": [
+        "AML.T0010"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "4.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-32552",
+      "package": "numpy@0.7.2",
+      "severity": "medium",
+      "risk_score": 8.0,
+      "epss_score": 0.3802,
+      "is_kev": false,
+      "affected_agents": [
+        "continue-dev"
+      ],
+      "affected_servers": [
+        "sequential-thinking"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM02"
+      ],
+      "atlas_tags": [
+        "AML.T0049"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "1.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-56464",
+      "package": "pinecone-client@0.2.3",
+      "severity": "low",
+      "risk_score": 1.9,
+      "epss_score": 0.8391,
+      "is_kev": false,
+      "affected_agents": [
+        "continue-dev"
+      ],
+      "affected_servers": [
+        "sequential-thinking"
+      ],
+      "exposed_credentials": [
+        "sequential-thinking_KEY"
+      ],
+      "owasp_tags": [
+        "LLM05"
+      ],
+      "atlas_tags": [
+        "AML.T0022"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": null
+    },
+    {
+      "vulnerability_id": "CVE-2024-45436",
+      "package": "pinecone-client@0.2.3",
+      "severity": "medium",
+      "risk_score": 8.6,
+      "epss_score": 0.4724,
+      "is_kev": false,
+      "affected_agents": [
+        "continue-dev"
+      ],
+      "affected_servers": [
+        "sequential-thinking"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM09"
+      ],
+      "atlas_tags": [
+        "AML.T0046"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": null
+    },
+    {
+      "vulnerability_id": "CVE-2024-82959",
+      "package": "pinecone-client@0.2.3",
+      "severity": "low",
+      "risk_score": 8.9,
+      "epss_score": 0.1058,
+      "is_kev": false,
+      "affected_agents": [
+        "continue-dev"
+      ],
+      "affected_servers": [
+        "sequential-thinking"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM010"
+      ],
+      "atlas_tags": [
+        "AML.T0030"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "1.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-11865",
+      "package": "pinecone-client@0.2.3",
+      "severity": "medium",
+      "risk_score": 4.6,
+      "epss_score": 0.2471,
+      "is_kev": false,
+      "affected_agents": [
+        "continue-dev"
+      ],
+      "affected_servers": [
+        "sequential-thinking"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM01"
+      ],
+      "atlas_tags": [
+        "AML.T0021"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "2.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-86743",
+      "package": "pinecone-client@0.2.3",
+      "severity": "low",
+      "risk_score": 2.3,
+      "epss_score": 0.1221,
+      "is_kev": false,
+      "affected_agents": [
+        "continue-dev"
+      ],
+      "affected_servers": [
+        "sequential-thinking"
+      ],
+      "exposed_credentials": [
+        "sequential-thinking_KEY"
+      ],
+      "owasp_tags": [
+        "LLM08"
+      ],
+      "atlas_tags": [
+        "AML.T0023"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "3.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-10660",
+      "package": "cryptography@3.12.6",
+      "severity": "low",
+      "risk_score": 9.3,
+      "epss_score": 0.6269,
+      "is_kev": false,
+      "affected_agents": [
+        "continue-dev"
+      ],
+      "affected_servers": [
+        "sequential-thinking"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM02"
+      ],
+      "atlas_tags": [
+        "AML.T0015"
+      ],
+      "nist_csf_tags": [],
+      "fixed_version": "4.0.0"
+    },
+    {
+      "vulnerability_id": "CVE-2024-33988",
+      "package": "cryptography@3.12.6",
+      "severity": "high",
+      "risk_score": 5.9,
+      "epss_score": 0.3107,
+      "is_kev": false,
+      "affected_agents": [
+        "continue-dev"
+      ],
+      "affected_servers": [
+        "sequential-thinking"
+      ],
+      "exposed_credentials": [],
+      "owasp_tags": [
+        "LLM04"
+      ],
+      "atlas_tags": [
+        "AML.T0028"
+      ],
+      "nist_csf_tags": [
+        "ID.RA-01"
+      ],
+      "fixed_version": "3.0.0"
+    }
+  ],
+  "posture_scorecard": {
+    "grade": "F",
+    "score": 0,
+    "summary": "99 vulns across 6 agents, 22 servers",
+    "dimensions": {
+      "vulnerability": {
+        "score": 0,
+        "weight": 0.3
+      },
+      "credential": {
+        "score": 73,
+        "weight": 0.2
+      },
+      "supply_chain": {
+        "score": 73,
+        "weight": 0.15
+      },
+      "compliance": {
+        "score": 65,
+        "weight": 0.15
+      },
+      "active_exploitation": {
+        "score": -40,
+        "weight": 0.1
+      },
+      "configuration": {
+        "score": 73,
+        "weight": 0.1
+      }
+    }
+  },
+  "scan_metadata": {
+    "scan_id": "f7a3b176-74f6-4670-ae57-9b1122b23c01",
+    "started_at": "2026-03-22T20:43:11.502486+00:00",
+    "duration_seconds": 18.7,
+    "total_packages": 155,
+    "total_vulns": 99
+  }
+}

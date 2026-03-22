@@ -14,8 +14,12 @@ from __future__ import annotations
 
 from collections import deque
 from pathlib import Path as _Path
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, WebSocket
+
+if TYPE_CHECKING:
+    from agent_bom.runtime.protection import ProtectionEngine
 
 router = APIRouter()
 
@@ -321,34 +325,50 @@ async def ws_proxy_alerts(websocket: WebSocket) -> None:
 
 # ── Shield / Deep Defense endpoints ──────────────────────────────────────────
 
-# Module-level protection engine — shared by shield endpoints.
-# Lazy-initialized on first POST /v1/shield/start.
-_shield_engine = None
+# Per-session protection engines keyed by session_id.
+# Zero trust: each session gets its own engine — one session's CRITICAL
+# threat cannot block another session's tool calls.
+_shield_engines: dict[str, ProtectionEngine] = {}
+_MAX_SHIELD_SESSIONS = 64  # bound memory; evict oldest idle session
+
+
+def _get_engine(session_id: str) -> ProtectionEngine | None:
+    return _shield_engines.get(session_id)
 
 
 @router.post("/v1/shield/start", tags=["shield"])
-async def shield_start(correlation_window: float = 30.0) -> dict:
-    """Start the deep defense protection engine.
+async def shield_start(session_id: str = "default", correlation_window: float = 30.0) -> dict:
+    """Start the deep defense protection engine for a session.
 
-    Activates correlated multi-detector threat scoring with automatic
-    threat-level escalation and kill-switch capability.
+    Each session_id gets an isolated engine — zero trust, no cross-session
+    threat contamination.
 
     Query params:
+        session_id: Session identifier (default "default").
         correlation_window: Alert correlation window in seconds (default 30).
     """
-    global _shield_engine
-
     from agent_bom.alerts.dispatcher import AlertDispatcher
     from agent_bom.runtime.protection import ProtectionEngine
 
-    if _shield_engine is not None and _shield_engine.active:
+    existing = _get_engine(session_id)
+    if existing is not None and existing.active:
         return {
             "status": "already_active",
-            **_shield_engine.status(),
+            "session_id": session_id,
+            **existing.status(),
         }
 
+    # Evict oldest idle session if at capacity
+    if len(_shield_engines) >= _MAX_SHIELD_SESSIONS:
+        idle = next(
+            (sid for sid, eng in _shield_engines.items() if not eng.active),
+            next(iter(_shield_engines)),  # fallback: evict oldest
+        )
+        old = _shield_engines.pop(idle)
+        if old.active:
+            old.stop()
+
     dispatcher = AlertDispatcher()
-    # Route shield alerts to the proxy alert ring buffer
     from agent_bom.api.routes.proxy import push_proxy_alert
 
     class _RingBufferChannel:
@@ -358,31 +378,31 @@ async def shield_start(correlation_window: float = 30.0) -> dict:
 
     dispatcher.add_channel(_RingBufferChannel())
 
-    _shield_engine = ProtectionEngine(
+    engine = ProtectionEngine(
         dispatcher=dispatcher,
         shield=True,
         correlation_window=correlation_window,
     )
-    _shield_engine.start()
-    return {"status": "started", **_shield_engine.status()}
+    engine.start()
+    _shield_engines[session_id] = engine
+    return {"status": "started", "session_id": session_id, **engine.status()}
 
 
 @router.get("/v1/shield/status", tags=["shield"])
-async def shield_status() -> dict:
-    """Get current shield threat assessment.
-
-    Returns threat level, composite score, active detectors,
-    correlation window stats, and kill-switch status.
-    """
-    if _shield_engine is None or not _shield_engine.active:
+async def shield_status(session_id: str = "default") -> dict:
+    """Get current shield threat assessment for a session."""
+    engine = _get_engine(session_id)
+    if engine is None or not engine.active:
         return {
             "active": False,
+            "session_id": session_id,
             "message": "Shield not started. POST /v1/shield/start to activate.",
         }
 
-    assessment = _shield_engine.assess_threat()
+    assessment = engine.assess_threat()
     return {
-        **_shield_engine.status(),
+        "session_id": session_id,
+        **engine.status(),
         "assessment": {
             "threat_level": assessment.threat_level.value,
             "composite_score": assessment.composite_score,
@@ -394,17 +414,14 @@ async def shield_status() -> dict:
 
 
 @router.post("/v1/shield/unblock", tags=["shield"])
-async def shield_unblock() -> dict:
-    """Deactivate kill-switch and reset threat level to ELEVATED.
+async def shield_unblock(session_id: str = "default") -> dict:
+    """Deactivate kill-switch for a session and reset to ELEVATED."""
+    engine = _get_engine(session_id)
+    if engine is None or not engine.active:
+        return {"status": "not_active", "session_id": session_id}
 
-    Use this after investigating a CRITICAL threat escalation to
-    resume normal tool call processing.
-    """
-    if _shield_engine is None or not _shield_engine.active:
-        return {"status": "not_active", "message": "Shield not started."}
+    if not engine.is_blocked:
+        return {"status": "not_blocked", "session_id": session_id}
 
-    if not _shield_engine.is_blocked:
-        return {"status": "not_blocked", "message": "Kill-switch is not active."}
-
-    _shield_engine.unblock()
-    return {"status": "unblocked", **_shield_engine.status()}
+    engine.unblock()
+    return {"status": "unblocked", "session_id": session_id, **engine.status()}

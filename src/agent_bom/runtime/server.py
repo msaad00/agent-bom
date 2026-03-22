@@ -18,8 +18,10 @@ Provides two input modes for feeding tool call data to the ProtectionEngine:
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
 import logging
+import os
 import sys
 from typing import TYPE_CHECKING
 
@@ -91,11 +93,16 @@ async def _dispatch(engine: ProtectionEngine, data: dict) -> list[dict]:
 
 
 async def run_http_mode(engine: ProtectionEngine, host: str, port: int) -> None:
-    """Start an asyncio HTTP server that accepts tool call JSON via POST."""
+    """Start an asyncio HTTP server that accepts tool call JSON via POST.
+
+    Zero trust: requires ``AGENT_BOM_PROTECTION_API_KEY`` env var when set.
+    Requests must include ``Authorization: Bearer <key>`` header.
+    """
     engine.start()
 
     # 10 MB — matches proxy.py MAX_MESSAGE_SIZE
     max_body_size = 10 * 1024 * 1024
+    _api_key = os.environ.get("AGENT_BOM_PROTECTION_API_KEY")
 
     async def handle_request(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         try:
@@ -112,6 +119,7 @@ async def run_http_mode(engine: ProtectionEngine, host: str, port: int) -> None:
 
             # Read headers
             content_length = 0
+            auth_header = ""
             while True:
                 header_line = await asyncio.wait_for(reader.readline(), timeout=10)
                 header_str = header_line.decode("utf-8", errors="replace").strip()
@@ -122,6 +130,19 @@ async def run_http_mode(engine: ProtectionEngine, host: str, port: int) -> None:
                         content_length = int(header_str.split(":", 1)[1].strip())
                     except ValueError:
                         content_length = 0
+                elif header_str.lower().startswith("authorization:"):
+                    auth_header = header_str.split(":", 1)[1].strip()
+
+            # Zero trust: enforce API key auth when configured
+            if _api_key:
+                token = auth_header.replace("Bearer ", "", 1) if auth_header.startswith("Bearer ") else ""
+                if not hmac.compare_digest(token, _api_key):
+                    resp = json.dumps({"error": "unauthorized"})
+                    header = f"HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nContent-Length: {len(resp)}\r\n\r\n"
+                    writer.write((header + resp).encode())
+                    await writer.drain()
+                    writer.close()
+                    return
 
             # Reject oversized payloads before reading body
             if content_length > max_body_size:

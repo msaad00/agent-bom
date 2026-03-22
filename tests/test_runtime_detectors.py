@@ -293,7 +293,8 @@ def test_rate_limit_at_threshold():
     for _ in range(5):
         alerts = r.record("tool1")
     assert len(alerts) == 1
-    assert alerts[0].severity == AlertSeverity.MEDIUM
+    assert alerts[0].severity == AlertSeverity.HIGH
+    assert alerts[0].details.get("blocked") is True
     assert "tool1" in alerts[0].message
 
 

@@ -115,26 +115,23 @@ _HIGH_RISK = high_risk_severities()
 def tag_blast_radius(br: BlastRadius) -> list[str]:
     """Return sorted MITRE ATLAS technique IDs applicable to this blast radius.
 
-    Rules:
-    - AML.T0010: Always — any package CVE in an AI agent is supply chain compromise.
-    - AML.T0010.001: Always (AI Software sub-technique).
-    - AML.T0055: Credential env vars exposed → unsecured credentials.
-    - AML.T0053: Reachable agent tools → AI Agent Tool Invocation.
-    - AML.T0051: Reachable tools can read prompts/context → prompt injection surface.
-    - AML.T0056: Reachable tools can read files/resources → extract system prompt.
-    - AML.T0057: Credential exposure + read tools → LLM data leakage risk.
-    - AML.T0043: Reachable tools have exec/shell capability → craft adversarial data.
-    - AML.T0020: AI/ML framework package with HIGH+ CVE → poison training data.
-    - AML.T0024: AI/ML framework + credentials → exfiltration via inference API.
+    Maps 30+ ATLAS techniques based on observable signals: tool capabilities,
+    credential exposure, AI package context, severity, and vulnerability type.
+    Techniques that require runtime introspection (model ontology discovery,
+    inference probing) are only tagged when relevant signals are present.
     """
-    tags: set[str] = {"AML.T0010", "AML.T0010.001"}  # always — AI supply chain
+    tags: set[str] = set()
 
-    # AML.T0055 — unsecured credentials
-    if br.exposed_credentials:
-        tags.add("AML.T0055")
+    # ── Initial Access ────────────────────────────────────────────────────
+    tags.add("AML.T0010")  # AI Supply Chain Compromise — always
+    tags.add("AML.T0010.001")  # AI Software sub-technique — always
 
+    is_ai_pkg = br.package.name.lower() in _AI_PACKAGES
+    is_high = br.vulnerability.severity in _HIGH_RISK
+    has_creds = bool(br.exposed_credentials)
     has_exec = False
     has_read = False
+    has_write = False
 
     for tool in br.exposed_tools:
         caps = classify_tool(tool.name, tool.description)
@@ -142,37 +139,106 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
             has_exec = True
         if ToolCapability.READ in caps:
             has_read = True
+        if ToolCapability.WRITE in caps:
+            has_write = True
 
-    # AML.T0053 — AI agent tool invocation (any reachable tools)
-    if br.exposed_tools:
-        tags.add("AML.T0053")
+    # Malicious package detection (from OSV MAL- IDs)
+    vuln_id = br.vulnerability.id
+    if vuln_id.startswith("MAL-") or "malicious" in br.vulnerability.summary.lower():
+        tags.add("AML.T0011")  # User Execution
+        tags.add("AML.T0011.001")  # Malicious Package
 
-    # AML.T0051 — LLM prompt injection (read tools reachable — can access context)
-    if has_read:
-        tags.add("AML.T0051")
+    # Valid accounts (credential exposure)
+    if has_creds:
+        tags.add("AML.T0012")  # Valid Accounts
+        tags.add("AML.T0055")  # Unsecured Credentials
 
-    # AML.T0056 — extract LLM system prompt (read tools)
-    if has_read:
-        tags.add("AML.T0056")
+    # Public-facing app exploit (HIGH+ CVE in web-exposed package)
+    if is_high:
+        tags.add("AML.T0049")  # Exploit Public-Facing Application
 
-    # AML.T0057 — LLM data leakage (credentials + read access)
-    if br.exposed_credentials and has_read:
-        tags.add("AML.T0057")
-
-    # AML.T0043 — craft adversarial data (exec tools)
+    # ── Execution ─────────────────────────────────────────────────────────
     if has_exec:
-        tags.add("AML.T0043")
+        tags.add("AML.T0050")  # Command and Scripting Interpreter
+        tags.add("AML.T0043")  # Craft Adversarial Data
+        tags.add("AML.T0043.004")  # Insert Backdoor Trigger (exec + AI pkg)
 
-    is_ai_pkg = br.package.name.lower() in _AI_PACKAGES
-    is_high = br.vulnerability.severity in _HIGH_RISK
+    if br.exposed_tools:
+        tags.add("AML.T0053")  # AI Agent Tool Invocation
 
-    # AML.T0020 — poison training data (AI framework + HIGH+ CVE)
+    # ── Persistence / Defense Evasion ─────────────────────────────────────
+    if is_ai_pkg and has_write:
+        tags.add("AML.T0018")  # Manipulate AI Model
+        tags.add("AML.T0018.000")  # Poison AI Model
+        tags.add("AML.T0018.002")  # Embed Malware (write + exec)
+
     if is_ai_pkg and is_high:
-        tags.add("AML.T0020")
+        tags.add("AML.T0074")  # Masquerading (compromised AI component)
 
-    # AML.T0024 — exfiltration via AI inference API (AI + creds)
-    if is_ai_pkg and br.exposed_credentials:
-        tags.add("AML.T0024")
+    # ── Discovery ─────────────────────────────────────────────────────────
+    if is_ai_pkg and has_read:
+        tags.add("AML.T0013")  # Discover AI Model Ontology
+        tags.add("AML.T0014")  # Discover AI Model Family
+        tags.add("AML.T0063")  # Discover AI Model Outputs
+        tags.add("AML.T0069")  # Discover LLM System Information
+
+    if is_ai_pkg and has_creds:
+        tags.add("AML.T0040")  # AI Model Inference API Access
+
+    # ── LLM / AI Agent Exploitation ───────────────────────────────────────
+    if has_read:
+        tags.add("AML.T0051")  # LLM Prompt Injection
+        tags.add("AML.T0051.001")  # Indirect Prompt Injection (via tools)
+        tags.add("AML.T0056")  # Extract LLM System Prompt
+        tags.add("AML.T0065")  # LLM Prompt Crafting
+
+    if has_read and has_write:
+        tags.add("AML.T0066")  # Retrieval Content Crafting
+        tags.add("AML.T0064")  # Gather RAG-Indexed Targets
+        tags.add("AML.T0070")  # RAG Poisoning
+        tags.add("AML.T0071")  # False RAG Entry Injection
+
+    if has_creds and has_read:
+        tags.add("AML.T0057")  # LLM Data Leakage
+        tags.add("AML.T0067")  # LLM Trusted Output Components Manipulation
+
+    if has_exec and has_read:
+        tags.add("AML.T0054")  # LLM Jailbreak (exec enables bypass)
+        tags.add("AML.T0068")  # LLM Prompt Obfuscation
+
+    # ── Collection ────────────────────────────────────────────────────────
+    if has_read:
+        tags.add("AML.T0035")  # AI Artifact Collection
+        tags.add("AML.T0036")  # Data from Information Repositories
+        tags.add("AML.T0037")  # Data from Local System
+
+    # ── ML Attack Staging ─────────────────────────────────────────────────
+    if is_ai_pkg and is_high:
+        tags.add("AML.T0020")  # Poison Training Data
+        tags.add("AML.T0019")  # Publish Poisoned Datasets (supply chain)
+
+    # ── Exfiltration ──────────────────────────────────────────────────────
+    if is_ai_pkg and has_creds:
+        tags.add("AML.T0024")  # Exfiltration via AI Inference API
+
+    if has_creds and has_exec:
+        tags.add("AML.T0025")  # Exfiltration via Cyber Means
+
+    # ── Impact ────────────────────────────────────────────────────────────
+    if is_high and br.exposed_tools:
+        tags.add("AML.T0029")  # Denial of AI Service
+        tags.add("AML.T0034")  # Cost Harvesting
+
+    if is_ai_pkg and is_high:
+        tags.add("AML.T0031")  # Erode AI Model Integrity
+
+    if has_exec and has_creds:
+        tags.add("AML.T0048")  # External Harms
+
+    # ── Social Engineering ────────────────────────────────────────────────
+    if has_read and has_exec:
+        tags.add("AML.T0052")  # Phishing (tool chain enables)
+        tags.add("AML.T0052.000")  # Spearphishing via Social Engineering LLM
 
     return sorted(tags)
 

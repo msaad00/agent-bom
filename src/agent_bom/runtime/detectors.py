@@ -279,10 +279,11 @@ class CredentialLeakDetector:
 
 
 class RateLimitTracker:
-    """Track tool call rates and alert on excessive usage.
+    """Track tool call rates and block on excessive usage.
 
-    Uses a sliding window to track calls per tool. Alerts when any tool
-    exceeds the configured threshold within the window.
+    Uses a sliding window to track calls per tool. When any tool exceeds
+    the threshold, returns a CRITICAL alert with ``blocked=True`` so the
+    caller can enforce the rate limit (zero trust — deny by default).
     """
 
     def __init__(self, threshold: int = 50, window_seconds: float = 60.0) -> None:
@@ -291,7 +292,11 @@ class RateLimitTracker:
         self._calls: dict[str, deque[float]] = {}
 
     def record(self, tool_name: str) -> list[Alert]:
-        """Record a tool call and check rate limits."""
+        """Record a tool call and check rate limits.
+
+        Returns a CRITICAL alert with ``details.blocked = True`` when the
+        rate limit is exceeded, signaling the caller to deny the call.
+        """
         now = time.monotonic()
         if tool_name not in self._calls:
             self._calls[tool_name] = deque()
@@ -305,16 +310,20 @@ class RateLimitTracker:
 
         alerts: list[Alert] = []
         if len(q) >= self._threshold:
+            # Escalate severity based on how far over the limit
+            over_ratio = len(q) / self._threshold
+            severity = AlertSeverity.CRITICAL if over_ratio >= 2.0 else AlertSeverity.HIGH
             alerts.append(
                 Alert(
                     detector="rate_limit",
-                    severity=AlertSeverity.MEDIUM,
-                    message=f"Excessive tool calls: {tool_name} called {len(q)} times in {self._window}s (threshold: {self._threshold})",
+                    severity=severity,
+                    message=f"Rate limit exceeded: {tool_name} called {len(q)} times in {self._window}s (threshold: {self._threshold})",
                     details={
                         "tool": tool_name,
                         "count": len(q),
                         "threshold": self._threshold,
                         "window_seconds": self._window,
+                        "blocked": True,
                     },
                 )
             )

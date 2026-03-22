@@ -11,6 +11,11 @@ import {
   EU_AI_ACT,
   MITRE_ATLAS,
   NIST_AI_RMF,
+  NIST_CSF,
+  ISO_27001,
+  SOC2_TSC,
+  CIS_CONTROLS,
+  CMMC_PRACTICES,
   formatDate,
 } from "@/lib/api";
 import {
@@ -415,6 +420,61 @@ export default function CompliancePage() {
               {s.eu_ai_act_warn > 0 && <span className="text-yellow-400">{s.eu_ai_act_warn} warn</span>}
             </div>
           </div>
+          <div className="bg-zinc-950 rounded-xl p-4 border border-zinc-800">
+            <div className="text-xs text-teal-500/80 mb-1">NIST CSF 2.0</div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold text-zinc-100">{s.nist_csf_pass}</span>
+              <span className="text-sm text-zinc-500">/ {data.nist_csf.length} pass</span>
+            </div>
+            <div className="flex gap-2 mt-2 text-xs">
+              {s.nist_csf_fail > 0 && <span className="text-red-400">{s.nist_csf_fail} fail</span>}
+              {s.nist_csf_warn > 0 && <span className="text-yellow-400">{s.nist_csf_warn} warn</span>}
+            </div>
+          </div>
+          <div className="bg-zinc-950 rounded-xl p-4 border border-zinc-800">
+            <div className="text-xs text-sky-500/80 mb-1">ISO 27001</div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold text-zinc-100">{s.iso_27001_pass}</span>
+              <span className="text-sm text-zinc-500">/ {data.iso_27001.length} pass</span>
+            </div>
+            <div className="flex gap-2 mt-2 text-xs">
+              {s.iso_27001_fail > 0 && <span className="text-red-400">{s.iso_27001_fail} fail</span>}
+              {s.iso_27001_warn > 0 && <span className="text-yellow-400">{s.iso_27001_warn} warn</span>}
+            </div>
+          </div>
+          <div className="bg-zinc-950 rounded-xl p-4 border border-zinc-800">
+            <div className="text-xs text-indigo-500/80 mb-1">SOC 2</div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold text-zinc-100">{s.soc2_pass}</span>
+              <span className="text-sm text-zinc-500">/ {data.soc2.length} pass</span>
+            </div>
+            <div className="flex gap-2 mt-2 text-xs">
+              {s.soc2_fail > 0 && <span className="text-red-400">{s.soc2_fail} fail</span>}
+              {s.soc2_warn > 0 && <span className="text-yellow-400">{s.soc2_warn} warn</span>}
+            </div>
+          </div>
+          <div className="bg-zinc-950 rounded-xl p-4 border border-zinc-800">
+            <div className="text-xs text-lime-500/80 mb-1">CIS Controls v8</div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold text-zinc-100">{s.cis_pass}</span>
+              <span className="text-sm text-zinc-500">/ {data.cis_controls.length} pass</span>
+            </div>
+            <div className="flex gap-2 mt-2 text-xs">
+              {s.cis_fail > 0 && <span className="text-red-400">{s.cis_fail} fail</span>}
+              {s.cis_warn > 0 && <span className="text-yellow-400">{s.cis_warn} warn</span>}
+            </div>
+          </div>
+          <div className="bg-zinc-950 rounded-xl p-4 border border-zinc-800">
+            <div className="text-xs text-rose-500/80 mb-1">CMMC 2.0</div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold text-zinc-100">{s.cmmc_pass}</span>
+              <span className="text-sm text-zinc-500">/ {data.cmmc.length} pass</span>
+            </div>
+            <div className="flex gap-2 mt-2 text-xs">
+              {s.cmmc_fail > 0 && <span className="text-red-400">{s.cmmc_fail} fail</span>}
+              {s.cmmc_warn > 0 && <span className="text-yellow-400">{s.cmmc_warn} warn</span>}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -474,6 +534,11 @@ export default function CompliancePage() {
         <FrameworkBar label="NIST AI RMF" pass={s.nist_pass} warn={s.nist_warn} fail={s.nist_fail} total={data.nist_ai_rmf.length} />
         {hasMcp && <FrameworkBar label="OWASP Agentic Top 10" pass={s.owasp_agentic_pass} warn={s.owasp_agentic_warn} fail={s.owasp_agentic_fail} total={10} />}
         <FrameworkBar label="EU AI Act" pass={s.eu_ai_act_pass} warn={s.eu_ai_act_warn} fail={s.eu_ai_act_fail} total={data.eu_ai_act.length} />
+        <FrameworkBar label="NIST CSF 2.0" pass={s.nist_csf_pass} warn={s.nist_csf_warn} fail={s.nist_csf_fail} total={data.nist_csf.length} />
+        <FrameworkBar label="ISO 27001" pass={s.iso_27001_pass} warn={s.iso_27001_warn} fail={s.iso_27001_fail} total={data.iso_27001.length} />
+        <FrameworkBar label="SOC 2" pass={s.soc2_pass} warn={s.soc2_warn} fail={s.soc2_fail} total={data.soc2.length} />
+        <FrameworkBar label="CIS Controls v8" pass={s.cis_pass} warn={s.cis_warn} fail={s.cis_fail} total={data.cis_controls.length} />
+        <FrameworkBar label="CMMC 2.0" pass={s.cmmc_pass} warn={s.cmmc_warn} fail={s.cmmc_fail} total={data.cmmc.length} />
       </div>
 
       {/* ── OWASP LLM Top 10 ──────────────────────────────────────────── */}
@@ -582,6 +647,76 @@ export default function CompliancePage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {data.eu_ai_act?.map((c) => (
             <ControlCard key={c.code} control={c} catalog={EU_AI_ACT} />
+          ))}
+        </div>
+      </section>
+
+      {/* ── NIST CSF 2.0 ─────────────────────────────────────────────── */}
+      <section>
+        <div className="flex items-center gap-2 mb-4">
+          <Shield className="w-5 h-5 text-teal-400" />
+          <h2 className="text-lg font-semibold text-zinc-200">NIST CSF 2.0</h2>
+          <span className="text-xs text-zinc-500 ml-2">Cybersecurity Framework</span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {data.nist_csf?.map((c) => (
+            <ControlCard key={c.code} control={c} catalog={NIST_CSF} />
+          ))}
+        </div>
+      </section>
+
+      {/* ── ISO 27001 ─────────────────────────────────────────────────── */}
+      <section>
+        <div className="flex items-center gap-2 mb-4">
+          <Shield className="w-5 h-5 text-sky-400" />
+          <h2 className="text-lg font-semibold text-zinc-200">ISO/IEC 27001:2022</h2>
+          <span className="text-xs text-zinc-500 ml-2">Annex A Controls</span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {data.iso_27001?.map((c) => (
+            <ControlCard key={c.code} control={c} catalog={ISO_27001} />
+          ))}
+        </div>
+      </section>
+
+      {/* ── SOC 2 ─────────────────────────────────────────────────────── */}
+      <section>
+        <div className="flex items-center gap-2 mb-4">
+          <Shield className="w-5 h-5 text-indigo-400" />
+          <h2 className="text-lg font-semibold text-zinc-200">SOC 2</h2>
+          <span className="text-xs text-zinc-500 ml-2">Trust Services Criteria</span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {data.soc2?.map((c) => (
+            <ControlCard key={c.code} control={c} catalog={SOC2_TSC} />
+          ))}
+        </div>
+      </section>
+
+      {/* ── CIS Controls v8 ──────────────────────────────────────────── */}
+      <section>
+        <div className="flex items-center gap-2 mb-4">
+          <Shield className="w-5 h-5 text-lime-400" />
+          <h2 className="text-lg font-semibold text-zinc-200">CIS Controls v8</h2>
+          <span className="text-xs text-zinc-500 ml-2">Critical Security Controls</span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {data.cis_controls?.map((c) => (
+            <ControlCard key={c.code} control={c} catalog={CIS_CONTROLS} />
+          ))}
+        </div>
+      </section>
+
+      {/* ── CMMC 2.0 ─────────────────────────────────────────────────── */}
+      <section>
+        <div className="flex items-center gap-2 mb-4">
+          <Shield className="w-5 h-5 text-rose-400" />
+          <h2 className="text-lg font-semibold text-zinc-200">CMMC 2.0</h2>
+          <span className="text-xs text-zinc-500 ml-2">Level 2 Practices</span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {data.cmmc?.map((c) => (
+            <ControlCard key={c.code} control={c} catalog={CMMC_PRACTICES} />
           ))}
         </div>
       </section>

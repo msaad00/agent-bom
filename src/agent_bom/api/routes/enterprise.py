@@ -1,4 +1,4 @@
-"""Enterprise API routes — auth, audit, exceptions, baselines, trends, SIEM.
+"""Enterprise API routes — auth, audit, exceptions, baselines, trends, SIEM, Jira, FP.
 
 Endpoints:
     POST   /v1/auth/keys                      create API key
@@ -16,6 +16,10 @@ Endpoints:
     GET    /v1/trends                         historical trend data
     GET    /v1/siem/connectors                list SIEM connector types
     POST   /v1/siem/test                      test SIEM connectivity
+    POST   /v1/findings/jira                  create Jira ticket from finding
+    POST   /v1/findings/false-positive        mark finding as false positive
+    GET    /v1/findings/false-positives        list false positive entries
+    DELETE /v1/findings/false-positive/{id}   un-mark false positive
 """
 
 from __future__ import annotations
@@ -25,7 +29,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
 
-from agent_bom.api.models import CreateKeyRequest, ExceptionRequest
+from agent_bom.api.models import CreateKeyRequest, ExceptionRequest, FalsePositiveRequest, JiraTicketRequest
 from agent_bom.api.stores import _get_exception_store, _get_store, _get_trend_store
 from agent_bom.security import sanitize_error
 
@@ -281,3 +285,115 @@ async def test_siem_connection(siem_type: str = "", url: str = "", token: str = 
             "healthy": False,
             "error": "Failed to test SIEM connection",
         }
+
+
+# ── Jira Integration ────────────────────────────────────────────────────────
+
+
+@router.post("/v1/findings/jira", tags=["enterprise"], status_code=201)
+async def create_jira_ticket_route(req: JiraTicketRequest) -> dict:
+    """Create a Jira ticket from a finding (admin/analyst only)."""
+    from agent_bom.api.audit_log import log_action
+    from agent_bom.integrations.jira import create_jira_ticket
+    from agent_bom.security import validate_url
+
+    # Validate Jira URL to prevent SSRF
+    try:
+        validate_url(req.jira_url)
+    except Exception as url_exc:
+        raise HTTPException(status_code=400, detail=f"Invalid Jira URL: {sanitize_error(url_exc)}")
+
+    try:
+        ticket_key = await create_jira_ticket(
+            jira_url=req.jira_url,
+            email=req.email,
+            api_token=req.api_token,
+            project_key=req.project_key,
+            finding=req.finding,
+        )
+    except Exception as exc:
+        _logger.exception("Jira ticket creation failed: %s", sanitize_error(exc))
+        raise HTTPException(status_code=502, detail="Failed to create Jira ticket")
+
+    if not ticket_key:
+        raise HTTPException(status_code=502, detail="Jira API returned no ticket key")
+
+    log_action(
+        "findings.jira_ticket_created",
+        resource=f"jira/{ticket_key}",
+        vuln_id=req.finding.get("vulnerability_id", ""),
+        package=req.finding.get("package", ""),
+    )
+
+    return {"ticket_key": ticket_key, "status": "created"}
+
+
+# ── False Positive Management ────────────────────────────────────────────────
+
+
+@router.post("/v1/findings/false-positive", tags=["enterprise"], status_code=201)
+async def mark_false_positive(request: Request, req: FalsePositiveRequest) -> dict:
+    """Mark a finding as false positive."""
+    from agent_bom.api.audit_log import log_action
+    from agent_bom.api.exception_store import ExceptionStatus, VulnException
+
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    exc = VulnException(
+        vuln_id=req.vulnerability_id,
+        package_name=req.package,
+        reason=f"[false_positive] {req.reason}",
+        requested_by=req.marked_by,
+        status=ExceptionStatus.ACTIVE,
+        tenant_id=tenant_id,
+    )
+    _get_exception_store().put(exc)
+    log_action(
+        "findings.false_positive_marked",
+        actor=req.marked_by,
+        resource=f"fp/{exc.exception_id}",
+        vuln_id=req.vulnerability_id,
+        package=req.package,
+    )
+    return {
+        "id": exc.exception_id,
+        "vulnerability_id": req.vulnerability_id,
+        "package": req.package,
+        "reason": req.reason,
+        "marked_by": req.marked_by,
+        "status": "false_positive",
+        "created_at": exc.created_at,
+    }
+
+
+@router.get("/v1/findings/false-positives", tags=["enterprise"])
+async def list_false_positives(request: Request) -> dict:
+    """List all false positive entries."""
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    all_exceptions = _get_exception_store().list_all(tenant_id=tenant_id)
+    fps = [e for e in all_exceptions if e.reason.startswith("[false_positive]")]
+    return {
+        "false_positives": [
+            {
+                "id": e.exception_id,
+                "vulnerability_id": e.vuln_id,
+                "package": e.package_name,
+                "reason": e.reason.removeprefix("[false_positive] "),
+                "marked_by": e.requested_by,
+                "status": "false_positive",
+                "created_at": e.created_at,
+            }
+            for e in fps
+        ],
+        "total": len(fps),
+    }
+
+
+@router.delete("/v1/findings/false-positive/{fp_id}", tags=["enterprise"], status_code=204)
+async def remove_false_positive(fp_id: str) -> None:
+    """Un-mark a false positive."""
+    from agent_bom.api.audit_log import log_action
+
+    ok = _get_exception_store().delete(fp_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail=f"False positive {fp_id} not found")
+    log_action("findings.false_positive_removed", resource=f"fp/{fp_id}")

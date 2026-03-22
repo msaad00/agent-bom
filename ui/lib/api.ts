@@ -371,6 +371,11 @@ export interface ComplianceResponse {
   nist_ai_rmf: ComplianceControl[];
   owasp_agentic_top10: ComplianceControl[];
   eu_ai_act: ComplianceControl[];
+  nist_csf: ComplianceControl[];
+  iso_27001: ComplianceControl[];
+  soc2: ComplianceControl[];
+  cis_controls: ComplianceControl[];
+  cmmc: ComplianceControl[];
   summary: {
     owasp_pass: number; owasp_warn: number; owasp_fail: number;
     owasp_mcp_pass: number; owasp_mcp_warn: number; owasp_mcp_fail: number;
@@ -378,6 +383,11 @@ export interface ComplianceResponse {
     nist_pass: number;  nist_warn: number;  nist_fail: number;
     owasp_agentic_pass: number; owasp_agentic_warn: number; owasp_agentic_fail: number;
     eu_ai_act_pass: number; eu_ai_act_warn: number; eu_ai_act_fail: number;
+    nist_csf_pass: number; nist_csf_warn: number; nist_csf_fail: number;
+    iso_27001_pass: number; iso_27001_warn: number; iso_27001_fail: number;
+    soc2_pass: number; soc2_warn: number; soc2_fail: number;
+    cis_pass: number; cis_warn: number; cis_fail: number;
+    cmmc_pass: number; cmmc_warn: number; cmmc_fail: number;
   };
 }
 
@@ -723,6 +733,40 @@ export const api = {
   createException: (body: { vulnerability_id: string; package_name: string; reason: string }) =>
     post<{ id: string; status: string }>("/v1/exceptions", body),
 
+  // ── Jira Integration ──
+  createJiraTicket: (body: {
+    jira_url: string;
+    email: string;
+    api_token: string;
+    project_key: string;
+    finding: Record<string, unknown>;
+  }) => post<{ ticket_key: string; status: string }>("/v1/findings/jira", body),
+
+  // ── False Positive Management ──
+  markFalsePositive: (body: {
+    vulnerability_id: string;
+    package: string;
+    reason?: string;
+    marked_by?: string;
+  }) => post<{ id: string; vulnerability_id: string; package: string; status: string }>(
+    "/v1/findings/false-positive",
+    body,
+  ),
+  listFalsePositives: () =>
+    get<{
+      false_positives: Array<{
+        id: string;
+        vulnerability_id: string;
+        package: string;
+        reason: string;
+        marked_by: string;
+        status: string;
+        created_at: string;
+      }>;
+      total: number;
+    }>("/v1/findings/false-positives"),
+  removeFalsePositive: (id: string) => del(`/v1/findings/false-positive/${id}`),
+
   // ── Audit Log ──
   listAuditEntries: (filters?: { action?: string; resource?: string; since?: string; limit?: number; offset?: number }) => {
     const params = new URLSearchParams();
@@ -825,6 +869,85 @@ export const NIST_AI_RMF: Record<string, string> = {
   "MANAGE-2.2": "Anomalous event detection and response",
   "MANAGE-2.4": "Risk treatments including remediation applied",
   "MANAGE-4.1": "Post-deployment monitoring plans implemented",
+};
+
+/** NIST CSF 2.0 — category ID → human-readable name */
+export const NIST_CSF: Record<string, string> = {
+  "GV.SC-05": "Cyber supply chain risk management requirements established",
+  "GV.SC-07": "Supplier risks identified, recorded, and mitigated",
+  "ID.AM-05": "Assets prioritized based on classification and criticality",
+  "ID.RA-01": "Vulnerabilities in assets are identified",
+  "ID.RA-02": "Cyber threat intelligence received from information sharing forums",
+  "ID.RA-05": "Threats, vulnerabilities, likelihoods, and impacts used to determine risk",
+  "PR.AA-01": "Identities and credentials managed for authorized users and services",
+  "PR.AA-03": "Users, services, and hardware are authenticated",
+  "PR.DS-01": "Data-at-rest is protected",
+  "PR.DS-02": "Data-in-transit is protected",
+  "DE.CM-01": "Networks and network services are monitored",
+  "DE.CM-09": "Computing hardware and software are monitored for vulnerabilities",
+  "RS.AN-03": "Analysis is performed to determine what has taken place",
+  "RS.MI-02": "Incidents are contained and mitigated",
+};
+
+/** ISO/IEC 27001:2022 Annex A — control ID → human-readable name */
+export const ISO_27001: Record<string, string> = {
+  "A.5.19": "Information security in supplier relationships",
+  "A.5.20": "Addressing information security within supplier agreements",
+  "A.5.21": "Managing information security in the ICT supply chain",
+  "A.5.23": "Information security for use of cloud services",
+  "A.5.28": "Collection of evidence",
+  "A.8.8": "Management of technical vulnerabilities",
+  "A.8.9": "Configuration management",
+  "A.8.24": "Use of cryptography",
+  "A.8.28": "Secure coding",
+};
+
+/** SOC 2 Trust Services Criteria — code → human-readable name */
+export const SOC2_TSC: Record<string, string> = {
+  "CC6.1": "Logical and physical access controls implemented",
+  "CC6.6": "Security boundaries and system access restricted",
+  "CC6.8": "Unauthorized or malicious software prevented or detected",
+  "CC7.1": "Detection and monitoring of anomalies and events",
+  "CC7.2": "Monitoring of system components for anomalies",
+  "CC7.4": "Incident response activities executed",
+  "CC8.1": "Change management processes authorized and implemented",
+  "CC9.1": "Risk mitigation activities identified and applied",
+  "CC9.2": "Vendor and business partner risk is managed",
+};
+
+/** CIS Controls v8 — safeguard ID → human-readable name */
+export const CIS_CONTROLS: Record<string, string> = {
+  "CIS-02.1": "Establish and maintain a software inventory",
+  "CIS-02.3": "Address unauthorized software",
+  "CIS-02.7": "Allowlist authorized libraries",
+  "CIS-07.1": "Establish and maintain a vulnerability management process",
+  "CIS-07.4": "Perform automated patch management",
+  "CIS-07.5": "Perform automated vulnerability scans of internal assets",
+  "CIS-07.6": "Perform automated vulnerability scans of public-facing assets",
+  "CIS-16.1": "Establish and maintain a secure application development process",
+  "CIS-16.11": "Use standard hardening configuration templates",
+  "CIS-16.12": "Implement code-level security checks",
+};
+
+/** CMMC 2.0 Level 2 — practice ID → human-readable name */
+export const CMMC_PRACTICES: Record<string, string> = {
+  "RA.L2-3.11.2": "Vulnerability scanning",
+  "RA.L2-3.11.3": "Remediate vulnerabilities",
+  "SI.L2-3.14.1": "Flaw remediation",
+  "SI.L2-3.14.2": "Malicious code protection",
+  "SI.L2-3.14.3": "Security alerts, advisories, and directives",
+  "SI.L2-3.14.6": "Monitor communications for attacks",
+  "SI.L2-3.14.7": "Identify unauthorized use",
+  "SC.L2-3.13.1": "Monitor communications at boundaries",
+  "SC.L2-3.13.2": "Employ architectural designs and techniques for security",
+  "SC.L2-3.13.5": "Implement subnetworks for publicly accessible components",
+  "CM.L2-3.4.1": "Establish and maintain baseline configurations",
+  "CM.L2-3.4.2": "Establish and enforce security configuration settings",
+  "CM.L2-3.4.3": "Track, review, and control changes",
+  "AC.L2-3.1.1": "Limit system access to authorized users",
+  "AC.L2-3.1.2": "Limit system access to authorized transactions and functions",
+  "AC.L2-3.1.7": "Prevent non-privileged users from executing privileged functions",
+  "IA.L2-3.5.3": "Use multi-factor authentication for local and network access",
 };
 
 // ─── Governance types ────────────────────────────────────────────────────────

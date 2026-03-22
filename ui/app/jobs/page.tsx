@@ -4,8 +4,16 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api, JobStatus, formatDate } from "@/lib/api";
-import { ShieldAlert, Clock, CheckCircle2, XCircle, Loader2, Trash2 } from "lucide-react";
+import { ShieldAlert, Clock, CheckCircle2, XCircle, Loader2, Trash2, Download, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts";
+
+function downloadJson(data: unknown, filename: string) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
 
 interface JobSummary {
   job_id: string;
@@ -29,7 +37,7 @@ function StatusIcon({ status }: { status: JobStatus }) {
   }
 }
 
-function statusLabel(s: JobStatus) {
+function statusLabel(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
@@ -43,12 +51,18 @@ function statusColor(s: JobStatus) {
   }
 }
 
+const STATUS_TABS = ["all", "pending", "running", "done", "failed", "cancelled"];
+
 export default function JobsPage() {
   const router = useRouter();
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 25;
 
   const load = () => {
     setLoading(true);
@@ -73,6 +87,12 @@ export default function JobsPage() {
     }
   }
 
+  const filteredJobs = jobs
+    .filter((j) => statusFilter === "all" || j.status === statusFilter)
+    .filter((j) => !search || j.job_id.toLowerCase().includes(search.toLowerCase()));
+  const totalPages = Math.max(1, Math.ceil(filteredJobs.length / PAGE_SIZE));
+  const pagedJobs = filteredJobs.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -80,13 +100,25 @@ export default function JobsPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Jobs</h1>
           <p className="text-zinc-400 text-sm mt-1">Scan job history</p>
         </div>
-        <Link
-          href="/scan"
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          <ShieldAlert className="w-3.5 h-3.5" />
-          New Scan
-        </Link>
+        <div className="flex items-center gap-2">
+          {jobs.length > 0 && (
+            <button
+              onClick={() => downloadJson(filteredJobs, `jobs-${new Date().toISOString().slice(0, 10)}.json`)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm font-medium rounded-lg transition-colors"
+              title="Export job list as JSON"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Export
+            </button>
+          )}
+          <Link
+            href="/scan"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            <ShieldAlert className="w-3.5 h-3.5" />
+            New Scan
+          </Link>
+        </div>
       </div>
 
       {loading && <p className="text-zinc-500 text-sm">Loading jobs…</p>}
@@ -139,59 +171,124 @@ export default function JobsPage() {
       })()}
 
       {jobs.length > 0 && (
-        <div className="border border-zinc-800 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-zinc-900 border-b border-zinc-800">
-              <tr>
-                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Job ID</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Status</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Started</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Completed</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-800 bg-zinc-950">
-              {jobs?.map((job) => (
-                <tr
-                  key={job.job_id}
-                  className="hover:bg-zinc-900 transition-colors cursor-pointer group"
-                  onClick={() => router.push(`/scan?id=${job.job_id}`)}
+        <>
+          {/* Status filter tabs + search */}
+          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+            <div className="flex items-center gap-1 flex-wrap">
+              {STATUS_TABS.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => { setStatusFilter(s); setPage(1); }}
+                  className={`px-3 py-1 text-xs font-medium rounded-md border transition-colors ${
+                    statusFilter === s
+                      ? "text-zinc-200 border-zinc-600 bg-zinc-800"
+                      : "text-zinc-500 border-zinc-800 hover:border-zinc-700 hover:text-zinc-300"
+                  }`}
                 >
-                  <td className="px-4 py-3">
-                    <span className="font-mono text-xs text-zinc-300">
-                      {job.job_id.slice(0, 8)}…
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className={`flex items-center gap-1.5 ${statusColor(job.status)}`}>
-                      <StatusIcon status={job.status} />
-                      <span className="text-xs font-medium">{statusLabel(job.status)}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-zinc-500">
-                    {formatDate(job.created_at)}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-zinc-500">
-                    {job.completed_at ? formatDate(job.completed_at) : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={(e) => handleDelete(job.job_id, e)}
-                      disabled={deleting === job.job_id}
-                      className="opacity-0 group-hover:opacity-100 p-1 text-zinc-600 hover:text-red-400 transition-all rounded"
-                      title="Delete job"
-                    >
-                      {deleting === job.job_id
-                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        : <Trash2 className="w-3.5 h-3.5" />
-                      }
-                    </button>
-                  </td>
-                </tr>
+                  {s === "all"
+                    ? `All (${jobs.length})`
+                    : `${statusLabel(s)} (${jobs.filter((j) => j.status === s).length})`}
+                </button>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </div>
+            <div className="relative w-full sm:w-56">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-600" />
+              <input
+                type="text"
+                placeholder="Search job ID…"
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg pl-8 pr-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+              />
+            </div>
+          </div>
+
+          <div className="border border-zinc-800 rounded-xl overflow-hidden overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-zinc-900 border-b border-zinc-800">
+                <tr>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Job ID</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Status</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Started</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Completed</th>
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-800 bg-zinc-950">
+                {pagedJobs?.map((job) => (
+                  <tr
+                    key={job.job_id}
+                    className="hover:bg-zinc-900 transition-colors cursor-pointer group"
+                    onClick={() => router.push(`/scan?id=${job.job_id}`)}
+                  >
+                    <td className="px-4 py-3">
+                      <span className="font-mono text-xs text-zinc-300">
+                        {job.job_id.slice(0, 8)}…
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className={`flex items-center gap-1.5 ${statusColor(job.status)}`}>
+                        <StatusIcon status={job.status} />
+                        <span className="text-xs font-medium">{statusLabel(job.status)}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-zinc-500">
+                      {formatDate(job.created_at)}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-zinc-500">
+                      {job.completed_at ? formatDate(job.completed_at) : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={(e) => handleDelete(job.job_id, e)}
+                        disabled={deleting === job.job_id}
+                        className="opacity-0 group-hover:opacity-100 p-1 text-zinc-600 hover:text-red-400 transition-all rounded"
+                        title="Delete job"
+                      >
+                        {deleting === job.job_id
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          : <Trash2 className="w-3.5 h-3.5" />
+                        }
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {pagedJobs.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-8 text-center text-zinc-600 text-sm">
+                      No jobs match your filters.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-zinc-600">
+              Page {page} of {totalPages} ({filteredJobs.length} total)
+            </p>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md border border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeft className="w-3 h-3" />
+                Prev
+              </button>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md border border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Next
+                <ChevronRight className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

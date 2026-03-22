@@ -15,12 +15,15 @@ baseline, notify SIEM).
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 import time
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
+from pathlib import Path
 
 from agent_bom.alerts.dispatcher import AlertDispatcher
 from agent_bom.otel_ingest import parse_otel_traces
@@ -153,12 +156,54 @@ class ProtectionEngine:
         self._blocked = False
         self._allowed_tools: set[str] | None = None  # None = all allowed
 
+    # ── Persistent kill-switch state ──────────────────────────────────────
+
+    @staticmethod
+    def _state_path() -> Path:
+        """Path to the persistent kill-switch state file."""
+        state_dir = Path(os.environ.get("AGENT_BOM_STATE_DIR", Path.home() / ".agent-bom"))
+        state_dir.mkdir(parents=True, exist_ok=True)
+        return state_dir / "killswitch.json"
+
+    def _persist_state(self) -> None:
+        """Write kill-switch state to disk so it survives process restarts."""
+        try:
+            state = {
+                "blocked": self._blocked,
+                "threat_level": self._threat_level.value,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            path = self._state_path()
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(state))
+            tmp.replace(path)  # atomic
+        except OSError:
+            logger.debug("Could not persist kill-switch state (non-fatal)")
+
+    def _restore_state(self) -> None:
+        """Restore kill-switch state from disk on startup."""
+        try:
+            path = self._state_path()
+            if not path.exists():
+                return
+            state = json.loads(path.read_text())
+            if state.get("blocked"):
+                self._blocked = True
+                self._threat_level = ThreatLevel(state.get("threat_level", ThreatLevel.CRITICAL.value))
+                logger.warning(
+                    "Restored kill-switch state from disk — session was blocked at %s",
+                    state.get("updated_at", "unknown"),
+                )
+        except (OSError, json.JSONDecodeError, ValueError):
+            logger.debug("Could not restore kill-switch state (non-fatal)")
+
     def start(self) -> None:
         """Activate protection engine."""
         self._active = True
         self._stats.started_at = datetime.now(timezone.utc).isoformat()
         self._stats.shield_active = self._shield
         if self._shield:
+            self._restore_state()
             logger.info("Protection engine started (deep defense mode)")
         else:
             logger.info("Protection engine started")
@@ -198,6 +243,7 @@ class ProtectionEngine:
         self._blocked = False
         self._threat_level = ThreatLevel.ELEVATED
         self._allowed_tools = None
+        self._persist_state()
         logger.info("Kill-switch deactivated, threat level reset to ELEVATED")
 
     def status(self) -> dict:
@@ -309,6 +355,7 @@ class ProtectionEngine:
             self._blocked = True
             self._stats.blocks += 1
             blocked = True
+            self._persist_state()
             logger.critical("KILL-SWITCH ACTIVATED — blocking tool calls (score=%.1f)", score)
 
         return ShieldAssessment(

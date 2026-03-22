@@ -271,7 +271,18 @@ def scan_terraform_security(file_path: str | Path) -> list[IaCFinding]:
     if not path.is_file() or path.suffix != ".tf":
         return []
 
-    content = path.read_text(encoding="utf-8", errors="replace")
+    raw_content = path.read_text(encoding="utf-8", errors="replace")
+    # Neutralise HCL comments to prevent false positives from commented-out
+    # blocks.  We blank the comment text (rather than deleting it) so that
+    # character offsets — and therefore _line_number() results — stay correct.
+    # Multi-line: /* ... */  →  replace with same number of newlines
+    def _blank_block_comment(m: re.Match[str]) -> str:
+        return "\n" * m.group(0).count("\n")
+
+    content = re.sub(r"/\*.*?\*/", _blank_block_comment, raw_content, flags=re.DOTALL)
+    # Single-line: # ... or // ...  →  blank the line content but keep the newline
+    content = re.sub(r"(?m)#.*$", "", content)
+    content = re.sub(r"(?m)//.*$", "", content)
     rel_path = str(path)
     findings: list[IaCFinding] = []
 

@@ -41,9 +41,22 @@ spec:
             limits:
               memory: "128Mi"
               cpu: "200m"
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
           livenessProbe:
             httpGet:
               path: /status
               port: protect
             initialDelaySeconds: 5
             periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /status
+              port: protect
+            initialDelaySeconds: 2
+            periodSeconds: 10

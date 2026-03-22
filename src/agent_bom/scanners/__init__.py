@@ -109,13 +109,24 @@ _NON_OSV_ECOSYSTEMS: frozenset[str] = frozenset(
 )
 
 
-def _get_api_semaphore() -> asyncio.Semaphore:
-    """Create a semaphore bound to the current event loop.
+_loop_semaphores: dict[int, asyncio.Semaphore] = {}
 
-    Module-level semaphores can bind to the wrong event loop when called from
-    different threads (e.g. concurrent scans via ThreadPoolExecutor + asyncio.run()).
+
+def _get_api_semaphore() -> asyncio.Semaphore:
+    """Get or create a semaphore bound to the current running event loop.
+
+    Caches one semaphore per event loop id so rate-limiting is effective
+    across multiple calls within the same scan, while avoiding the stale-loop
+    problem that module-level semaphores have with ThreadPoolExecutor.
+
+    Uses ``get_running_loop()`` (not the deprecated ``get_event_loop()``)
+    so this works correctly on Python 3.10+.
     """
-    return asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+    loop = asyncio.get_running_loop()
+    loop_id = id(loop)
+    if loop_id not in _loop_semaphores:
+        _loop_semaphores[loop_id] = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+    return _loop_semaphores[loop_id]
 
 
 # ── Scan cache (optional, lazy-initialised) ────────────────────────────────
@@ -194,9 +205,10 @@ def _parse_cvss4_vector(vector: str) -> Optional[float]:
         if any(v is None for v in required):
             return None
 
-        assert av is not None and ac is not None and at is not None
-        assert pr is not None and ui is not None
-        assert vc is not None and vi is not None and va is not None
+        # Type narrowing for mypy — the None case is already handled by the
+        # ``any(v is None ...)`` guard above; these are runtime-safe casts.
+        av, ac, at, pr, ui = float(av), float(ac), float(at), float(pr), float(ui)  # type: ignore[arg-type]
+        vc, vi, va = float(vc), float(vi), float(va)  # type: ignore[arg-type]
 
         # Subsequent-system impact (optional — defaults to None=0)
         sc = {"H": 0.56, "L": 0.22, "N": 0.0}.get(m.get("SC", "N"), 0.0)
@@ -248,8 +260,10 @@ def parse_cvss_vector(vector: str) -> Optional[float]:
         if any(v is None for v in (av, ac, pr, ui, c, i, a)):
             return None
 
-        assert av is not None and ac is not None and pr is not None and ui is not None
-        assert c is not None and i is not None and a is not None
+        # Type narrowing for mypy — the None case is already handled by the
+        # ``any(v is None ...)`` guard above; these are runtime-safe casts.
+        av, ac, pr, ui = float(av), float(ac), float(pr), float(ui)  # type: ignore[arg-type]
+        c, i, a = float(c), float(i), float(a)  # type: ignore[arg-type]
 
         isc_base = 1.0 - (1.0 - c) * (1.0 - i) * (1.0 - a)
         if scope == "C":
@@ -419,6 +433,10 @@ async def _enrich_results_if_needed(results: dict[str, list[dict]]) -> dict[str,
             results[key] = [{**v, **details_map.get(v.get("id", ""), {})} for v in vuln_list]
     except Exception as exc:
         _logger.warning("OSV detail enrichment skipped (vulnerability summaries may be incomplete): %s", exc)
+        console.print(
+            "  [yellow]⚠[/yellow] OSV detail enrichment skipped — vulnerability summaries may be incomplete."
+            " [dim]Use --verbose for details.[/dim]"
+        )
     return results
 
 
@@ -543,9 +561,16 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
                         osv_results = data.get("results", [])
                         # Validate response length matches batch to prevent index misattribution
                         if len(osv_results) != len(batch):
+                            _logger.warning(
+                                "OSV batch response length mismatch: sent %d queries, got %d results. "
+                                "Some packages may have missed vulnerability detection.",
+                                len(batch),
+                                len(osv_results),
+                            )
                             console.print(
                                 f"  [yellow]⚠[/yellow] OSV batch response length mismatch:"
-                                f" sent {len(batch)} queries, got {len(osv_results)} results"
+                                f" sent {len(batch)} queries, got {len(osv_results)} results."
+                                f" [dim]Some packages may have missed vulnerability detection.[/dim]"
                             )
                         for i, result in enumerate(osv_results):
                             if i >= len(batch):

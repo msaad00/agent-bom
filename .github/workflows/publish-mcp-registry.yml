@@ -41,23 +41,38 @@ jobs:
       - name: Get GitHub OIDC token
         id: oidc
         run: |
+          if [ -z "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ] || [ -z "$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then
+            echo "::error::OIDC token request not available. Ensure id-token: write permission is granted."
+            exit 1
+          fi
           OIDC_TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=mcp-registry" \
             | jq -r '.value')
+          if [ -z "$OIDC_TOKEN" ] || [ "$OIDC_TOKEN" = "null" ]; then
+            echo "::error::Failed to obtain OIDC token from GitHub"
+            exit 1
+          fi
           echo "::add-mask::$OIDC_TOKEN"
           echo "token=$OIDC_TOKEN" >> "$GITHUB_OUTPUT"
 
       - name: Exchange OIDC token for Registry JWT
         id: auth
         run: |
-          AUTH_RESPONSE=$(curl -s --connect-timeout 10 --max-time 30 \
+          HTTP_STATUS=$(curl -s --connect-timeout 10 --max-time 30 \
+            -o /tmp/auth-response.json -w "%{http_code}" \
             -X POST "https://registry.modelcontextprotocol.io/v0.1/auth/github-oidc" \
             -H "Content-Type: application/json" \
             -d "{\"oidc_token\": \"${{ steps.oidc.outputs.token }}\"}")
-          JWT=$(echo "$AUTH_RESPONSE" | jq -r '.registry_token // .token // empty')
+          echo "MCP Registry auth status: HTTP $HTTP_STATUS"
+          if [ "$HTTP_STATUS" -ge 400 ]; then
+            ERROR=$(jq -r '.error // .message // "unknown"' /tmp/auth-response.json 2>/dev/null || echo "non-JSON response")
+            echo "::error::MCP Registry OIDC auth failed (HTTP $HTTP_STATUS): $ERROR"
+            echo "::error::If this is a new repo, you may need to register at https://registry.modelcontextprotocol.io"
+            exit 1
+          fi
+          JWT=$(jq -r '.registry_token // .token // empty' /tmp/auth-response.json)
           if [ -z "$JWT" ]; then
-            # Do not log full AUTH_RESPONSE — it may contain OIDC token fragments
-            echo "::error::Failed to get Registry JWT (check OIDC configuration)"
+            echo "::error::MCP Registry returned success but no JWT token in response"
             exit 1
           fi
           echo "::add-mask::$JWT"

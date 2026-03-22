@@ -221,7 +221,9 @@ def test_aws_access_denied_returns_warning():
     )
     mock_bedrock.get_paginator.return_value = mock_paginator
     mock_ecs = MagicMock()
-    mock_ecs.list_clusters.return_value = {"clusterArns": []}
+    ecs_cluster_paginator = MagicMock()
+    ecs_cluster_paginator.paginate.return_value = [{"clusterArns": []}]
+    mock_ecs.get_paginator.return_value = ecs_cluster_paginator
     mock_session.client.side_effect = lambda svc, **kw: {"bedrock-agent": mock_bedrock, "ecs": mock_ecs}[svc]
 
     with patch("boto3.Session", return_value=mock_session):
@@ -245,8 +247,11 @@ def test_aws_ecs_images_collected():
     mock_bedrock.get_paginator.return_value = mock_paginator
 
     mock_ecs = MagicMock()
-    mock_ecs.list_clusters.return_value = {"clusterArns": ["arn:aws:ecs:us-east-1:123:cluster/prod"]}
-    mock_ecs.list_tasks.return_value = {"taskArns": ["arn:aws:ecs:us-east-1:123:task/prod/abc"]}
+    ecs_cluster_pag = MagicMock()
+    ecs_cluster_pag.paginate.return_value = [{"clusterArns": ["arn:aws:ecs:us-east-1:123:cluster/prod"]}]
+    ecs_task_pag = MagicMock()
+    ecs_task_pag.paginate.return_value = [{"taskArns": ["arn:aws:ecs:us-east-1:123:task/prod/abc"]}]
+    mock_ecs.get_paginator.side_effect = lambda op: {"list_clusters": ecs_cluster_pag, "list_tasks": ecs_task_pag}[op]
     mock_ecs.describe_tasks.return_value = {
         "tasks": [{"containers": [{"image": "123456.dkr.ecr.us-east-1.amazonaws.com/ml-model:latest"}]}]
     }
@@ -874,7 +879,9 @@ def test_aws_eks_reuses_k8s():
 
     mock_session = MagicMock()
     mock_eks = MagicMock()
-    mock_eks.list_clusters.return_value = {"clusters": ["my-eks-cluster"]}
+    eks_cluster_pag = MagicMock()
+    eks_cluster_pag.paginate.return_value = [{"clusters": ["my-eks-cluster"]}]
+    mock_eks.get_paginator.return_value = eks_cluster_pag
     mock_session.client.return_value = mock_eks
 
     # Patch at the source (agent_bom.k8s) since _discover_eks_images imports lazily

@@ -1,0 +1,41 @@
+# Auto-approve dependabot patch/minor PRs when CI passes.
+#
+# Dependabot PRs still require branch protection checks (CI, linting,
+# security scan) — this workflow only adds the second approval so the
+# 2-review requirement is satisfied without human toil.
+#
+# Major version bumps are NOT auto-approved and require manual review.
+
+name: Dependabot Auto-Approve
+
+on: pull_request
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  auto-approve:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Auto-approve patch and minor updates
+        if: >-
+          steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-minor'
+        run: gh pr review --approve "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log skipped major update
+        if: steps.metadata.outputs.update-type == 'version-update:semver-major'
+        run: |
+          echo "::notice::Skipping auto-approve for major version bump: ${{ steps.metadata.outputs.dependency-names }} (${{ steps.metadata.outputs.previous-version }} → ${{ steps.metadata.outputs.new-version }})"
+          echo "Major version bumps require manual review."

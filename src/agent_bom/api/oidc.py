@@ -75,8 +75,13 @@ _jwks_cache = _JwksCache()
 
 
 def _fetch_json(url: str) -> dict:
+    # Defense-in-depth: validate even operator-supplied URLs to block SSRF
+    # via misconfigured AGENT_BOM_OIDC_ISSUER pointing at internal services.
+    from agent_bom.security import validate_url
+
+    validate_url(url)
     try:
-        with urlopen(url, timeout=_OIDC_TIMEOUT) as resp:  # noqa: S310  # nosec B310 — URL is from AGENT_BOM_OIDC_ISSUER env var, operator-controlled
+        with urlopen(url, timeout=_OIDC_TIMEOUT) as resp:  # noqa: S310  # nosec B310 — validated above
             return json.loads(resp.read())
     except (URLError, OSError, json.JSONDecodeError) as exc:
         raise OIDCError(f"Failed to fetch {url}: {exc}") from exc
@@ -246,7 +251,7 @@ class OIDCConfig:
         Raises:
             OIDCError: On verification failure.
         """
-        if not self.enabled:
+        if not self.enabled or not self.issuer:
             raise OIDCError("OIDC is not configured (set AGENT_BOM_OIDC_ISSUER)")
         claims = verify_oidc_token(token, self.issuer, self.audience, self.jwks_uri)
         role = claims_to_role(claims, self.role_claim)

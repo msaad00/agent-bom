@@ -122,6 +122,9 @@ def _get_api_semaphore() -> asyncio.Semaphore:
 
     Evicts oldest entries when the cache exceeds ``_MAX_CACHED_LOOPS`` to
     prevent unbounded memory growth in long-running API servers.
+
+    Uses ``get_running_loop()`` (not the deprecated ``get_event_loop()``)
+    so this works correctly on Python 3.10+.
     """
     loop = asyncio.get_running_loop()
     loop_id = id(loop)

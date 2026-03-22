@@ -399,8 +399,11 @@ def validate_url(url: str) -> None:
         except ValueError:
             continue
 
-    # Log only scheme + hostname — never log full URL (may contain credentials)
-    logger.debug("URL validated: %s://%s/...", parsed.scheme, parsed.hostname)
+    # Log only scheme + hostname — never log full URL (may contain credentials).
+    # Sanitize values to prevent log injection (CodeQL log-injection).
+    _safe_scheme = (parsed.scheme or "")[:10].replace("\n", "").replace("\r", "")
+    _safe_host = (parsed.hostname or "")[:253].replace("\n", "").replace("\r", "")
+    logger.debug("URL validated: %s://%s/...", _safe_scheme, _safe_host)
 
 
 def validate_package_name(name: str, ecosystem: str) -> None:

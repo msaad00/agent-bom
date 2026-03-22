@@ -38,7 +38,7 @@ agent-bom agents
 ```
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.74.0.gif" alt="agent-bom agents demo" width="900" />
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.74.1.gif" alt="agent-bom agents demo" width="900" />
 </p>
 
 ---

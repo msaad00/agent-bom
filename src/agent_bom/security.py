@@ -399,7 +399,10 @@ def validate_url(url: str) -> None:
         except ValueError:
             continue
 
-    logger.debug("URL validated: %s", url.replace("\n", "").replace("\r", ""))
+    # Static log — no user-controlled values to prevent both cleartext
+    # credential logging and log injection (CodeQL py/clear-text-logging,
+    # py/log-injection).
+    logger.debug("URL validated successfully")
 
 
 def validate_package_name(name: str, ecosystem: str) -> None:

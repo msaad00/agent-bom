@@ -7,6 +7,48 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.74.1] – 2026-03-22
+
+### Security
+- **Runtime**: Fix threat level comparison — `ThreatLevel` enum uses ordinal comparison; previously `CRITICAL > HIGH` was `False` (lexicographic), so escalations were never detected
+- **Runtime**: Per-session shield engine isolation — zero trust, no cross-session threat contamination
+- **Runtime**: Rate limiter now blocks (HIGH/CRITICAL severity) instead of alert-only (MEDIUM)
+- **Runtime**: HTTP protection server auth via `AGENT_BOM_PROTECTION_API_KEY` with constant-time comparison
+- **Runtime**: Single zero-width space now detected (was requiring 3+ consecutive chars, bypass fixed)
+- **Runtime**: Unicode path traversal (`\u002e\u002e`) detection added
+- **Runtime**: 3 new credential patterns (HashiCorp Vault, AWS session tokens, PagerDuty) — 112 total
+- **Runtime**: Drift baseline persisted to disk, survives engine restarts in shield mode
+- **Supply chain**: Go module provenance verification via sum.golang.org checksum database
+- **Supply chain**: Provenance results persisted in Package model (integrity_verified, provenance_attested)
+
+### Fixed
+- **Compliance**: Wire NIST 800-53 Rev 5 tags in scanner pipeline (was defined but never called)
+- **Compliance**: Wire FedRAMP Moderate baseline tags in scanner pipeline
+- **Policy**: Add 9 missing framework tag fields to policy engine expressions (all 14 frameworks now accessible)
+- **Scanner**: Surface non-OSV ecosystem skips to users with per-ecosystem breakdown
+- **Scanner**: Track per-package CVE lookup errors and report at scan completion
+- **Scanner**: Add severity_source field for audit trail (cvss, osv_database, ghsa_heuristic)
+- **Scanner**: Bound semaphore cache to 8 entries (prevents memory leak in long-running API servers)
+- **Scanner**: Kill-switch state now persisted on stop() (was leaving stale blocked state on disk)
+- **Cloud**: ECS/EKS/SageMaker discovery uses boto3 paginators (was missing results beyond page 1)
+- **MITRE ATLAS**: Expanded from 8 to 30+ technique mappings across all tactic categories
+
+### Added
+- `make dev` — starts API server + Next.js dashboard in parallel
+- `make install-all` — installs all development extras (dev + ui + mcp-server)
+- `dev-all` extra in pyproject.toml for one-command setup
+- `AGENT_BOM_CLOUD_DISCOVERY_TIMEOUT` config (default 45s)
+- Portable `.claude/launch.json` for dev server configs
+- Mermaid blast radius diagram in README
+- Mermaid architecture diagram in README
+- Compliance frameworks table in README
+
+### Changed
+- README: ecosystem count 11 → 15, credential patterns 31 → 34, compliance frameworks 14 → 16
+- MITRE ATLAS coverage documented accurately (30+ observable techniques)
+
+---
+
 ## [0.74.0] – 2026-03-21
 
 ### Dashboard & HTML Report

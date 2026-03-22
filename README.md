@@ -43,57 +43,76 @@ agent-bom agents
 
 ---
 
-## Architecture
+## How it works
 
 ```mermaid
-graph LR
-    subgraph Discovery["Discovery (30 MCP clients)"]
-        A1[Claude Desktop] --> D[Config Parser]
-        A2[Cursor] --> D
-        A3[Windsurf] --> D
-        A4[VS Code] --> D
+flowchart TB
+    subgraph DISCOVER["🔍 DISCOVER"]
+        direction LR
+        D1["Claude Desktop\nCursor · Windsurf\nVS Code · Codex\n+ 25 more"]
+        D2["AWS · Azure · GCP\nSnowflake · Databricks"]
+        D3["Docker Images\nFilesystems\nIaC Files"]
     end
 
-    subgraph Scanning["Scanning"]
-        D --> P[Package Extractor]
-        P --> OSV[OSV + NVD + GHSA]
-        OSV --> E[EPSS + KEV Enrichment]
-        E --> BR[Blast Radius Engine]
+    subgraph SCAN["🛡️ SCAN"]
+        direction LR
+        S1["CVE Scanning\nOSV · NVD · GHSA"]
+        S2["EPSS · CISA KEV\nCVSS v3/v4"]
+        S3["Secret Detection\n34 credential patterns\n11 PII patterns"]
+        S4["IaC Security\n138 rules\nTerraform · Docker\nHelm · K8s"]
     end
 
-    subgraph Analysis["Analysis"]
-        BR --> C[Compliance Tagger<br/>14 frameworks]
-        BR --> T[Trust Scorer]
-        C --> O[Output]
-        T --> O
+    subgraph ANALYZE["📊 ANALYZE"]
+        direction LR
+        A1["Blast Radius\nCVE → pkg → server\n→ agent → credentials"]
+        A2["Compliance\n14 frameworks\nOWASP · MITRE ATLAS\nNIST · EU AI Act"]
+        A3["Trust Scoring\n6-category model\n0-100 per agent"]
     end
 
-    subgraph Output["Output (18 formats)"]
-        O --> CDX[CycloneDX AI BOM]
-        O --> SARIF[SARIF / GitHub]
-        O --> HTML[HTML Report]
-        O --> DASH[Dashboard]
+    subgraph OUTPUT["📤 OUTPUT"]
+        direction LR
+        O1["CycloneDX AI BOM\nSPDX · SARIF\n18 formats"]
+        O2["Next.js Dashboard\n20 interactive pages\nSecurity Graph"]
+        O3["CI/CD Gating\n--fail-on critical\nJira · Slack"]
     end
 
-    subgraph Runtime["Runtime Protection"]
-        PROXY[MCP Proxy] --> DET[109 Detection Patterns]
-        DET --> KILL[Kill Switch]
-        DET --> PII[PII Redaction]
+    subgraph PROTECT["🔒 RUNTIME PROTECTION"]
+        direction LR
+        P1["MCP Proxy\n109 detection patterns"]
+        P2["PII Redaction\nKill Switch\nSession Isolation"]
+        P3["Shield SDK\nDrop-in Python\nmiddleware"]
     end
 
-    subgraph Cloud["Cloud Posture"]
-        AWS[AWS] --> FLEET[Fleet API]
-        AZ[Azure] --> FLEET
-        GCP[GCP] --> FLEET
-        SF[Snowflake] --> FLEET
-    end
+    DISCOVER --> SCAN --> ANALYZE --> OUTPUT
+    DISCOVER -.-> PROTECT
 
-    style Discovery fill:#1a1a2e,stroke:#16213e,color:#e0e0e0
-    style Scanning fill:#1a1a2e,stroke:#16213e,color:#e0e0e0
-    style Analysis fill:#1a1a2e,stroke:#16213e,color:#e0e0e0
-    style Output fill:#1a1a2e,stroke:#16213e,color:#e0e0e0
-    style Runtime fill:#2d1b1b,stroke:#4a1c1c,color:#e0e0e0
-    style Cloud fill:#1b2d1b,stroke:#1c4a1c,color:#e0e0e0
+    style DISCOVER fill:#0d1117,stroke:#58a6ff,color:#c9d1d9
+    style SCAN fill:#0d1117,stroke:#f85149,color:#c9d1d9
+    style ANALYZE fill:#0d1117,stroke:#d29922,color:#c9d1d9
+    style OUTPUT fill:#0d1117,stroke:#3fb950,color:#c9d1d9
+    style PROTECT fill:#161b22,stroke:#f778ba,color:#c9d1d9
+```
+
+### Blast Radius — what makes agent-bom different
+
+```mermaid
+flowchart LR
+    CVE["🔴 CVE-2025-1234\nCRITICAL · CVSS 9.8\nCISA KEV · EPSS 94%"]
+    PKG["📦 better-sqlite3\n@9.0.0"]
+    SRV["🔧 sqlite-mcp\nMCP Server\nunverified"]
+    AGT["🤖 Cursor IDE\n4 servers · 12 tools"]
+    CRED["🔑 ANTHROPIC_KEY\nDB_URL\nAWS_SECRET"]
+    TOOL["⚙️ query_db\nread_file\nwrite_file"]
+
+    CVE --> PKG --> SRV --> AGT --> CRED
+    AGT --> TOOL
+
+    style CVE fill:#4a1c1c,stroke:#f85149,color:#f85149
+    style PKG fill:#2d1b00,stroke:#d29922,color:#d29922
+    style SRV fill:#0d1117,stroke:#58a6ff,color:#58a6ff
+    style AGT fill:#0d1117,stroke:#3fb950,color:#3fb950
+    style CRED fill:#4a1c1c,stroke:#f85149,color:#f85149
+    style TOOL fill:#161b22,stroke:#8b949e,color:#8b949e
 ```
 
 ---

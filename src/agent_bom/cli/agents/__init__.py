@@ -315,7 +315,7 @@ def scan(
 
         from agent_bom.ci_detect import is_ci as _is_ci
 
-        if _is_ci() and not _sys.stdout.isatty():
+        if _is_ci() and not _sys.stdout.isatty() and not dry_run:
             quiet = True
 
     # ── Self-scan mode: scan agent-bom's own installed dependencies ──

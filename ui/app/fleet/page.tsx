@@ -32,7 +32,17 @@ import {
   Bug,
   AlertTriangle,
   Settings,
+  Download,
+  Search,
 } from "lucide-react";
+
+function downloadJson(data: unknown, filename: string) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -81,6 +91,7 @@ export default function FleetPage() {
   const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [stateFilter, setStateFilter] = useState<string>("all");
+  const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [trustThreshold, setTrustThreshold] = useState(50);
   const [autoQuarantine, setAutoQuarantine] = useState(false);
@@ -115,6 +126,7 @@ export default function FleetPage() {
   };
 
   const handleStateChange = async (agentId: string, newState: FleetLifecycleState) => {
+    if (!confirm(`Change this agent state to ${newState}?`)) return;
     await api.updateFleetState(agentId, newState);
     load();
   };
@@ -128,9 +140,17 @@ export default function FleetPage() {
     });
   };
 
-  const filtered = stateFilter === "all"
-    ? agents
-    : agents.filter((a) => a.lifecycle_state === stateFilter);
+  const filtered = agents
+    .filter((a) => stateFilter === "all" || a.lifecycle_state === stateFilter)
+    .filter((a) => {
+      if (!search) return true;
+      const q = search.toLowerCase();
+      return (
+        a.name.toLowerCase().includes(q) ||
+        (a.owner ?? "").toLowerCase().includes(q) ||
+        (a.environment ?? "").toLowerCase().includes(q)
+      );
+    });
 
   return (
     <div className="space-y-6">
@@ -145,14 +165,26 @@ export default function FleetPage() {
             Persistent agent inventory with lifecycle management and trust scoring
           </p>
         </div>
-        <button
-          onClick={handleSync}
-          disabled={syncing}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors"
-        >
-          <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
-          {syncing ? "Syncing..." : "Sync Now"}
-        </button>
+        <div className="flex items-center gap-2">
+          {agents.length > 0 && (
+            <button
+              onClick={() => downloadJson(filtered, `fleet-${new Date().toISOString().slice(0, 10)}.json`)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm font-medium rounded-lg transition-colors"
+              title="Export fleet list as JSON"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Export
+            </button>
+          )}
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors"
+          >
+            <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
+            {syncing ? "Syncing..." : "Sync Now"}
+          </button>
+        </div>
       </div>
 
       {/* Trust Threshold Settings */}
@@ -183,7 +215,10 @@ export default function FleetPage() {
             <label className="flex items-center gap-2 cursor-pointer">
               <span className="text-xs text-zinc-500">Auto-quarantine</span>
               <button
-                onClick={() => setAutoQuarantine((v) => !v)}
+                onClick={() => {
+                  if (!autoQuarantine && !confirm('This will quarantine agents below the trust threshold. Continue?')) return;
+                  setAutoQuarantine((v) => !v);
+                }}
                 className={`relative w-8 h-4 rounded-full transition-colors ${
                   autoQuarantine ? "bg-emerald-600" : "bg-zinc-700"
                 }`}
@@ -247,7 +282,18 @@ export default function FleetPage() {
         );
       })()}
 
-      {/* Filter tabs */}
+      {/* Search + Filter tabs */}
+      <div className="relative w-full sm:w-72">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-600" />
+        <input
+          type="text"
+          placeholder="Search by name, owner, environment…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full bg-zinc-900 border border-zinc-700 rounded-lg pl-8 pr-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+        />
+      </div>
+
       <div className="flex gap-1.5 flex-wrap">
         {["all", "discovered", "pending_review", "approved", "quarantined", "decommissioned"].map((s) => (
           <button

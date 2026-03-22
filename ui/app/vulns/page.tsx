@@ -3,7 +3,15 @@
 import { Suspense, useCallback, useEffect, useState, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { api, Vulnerability, ScanJob, ScanResult, severityColor, severityDot, OWASP_LLM_TOP10, MITRE_ATLAS } from "@/lib/api";
-import { Bug, ExternalLink, ChevronDown, ChevronUp, Layers, Package, Server, ShieldOff } from "lucide-react";
+import { Bug, Download, ExternalLink, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Layers, Loader2, Package, Server, ShieldOff } from "lucide-react";
+
+function downloadJson(data: unknown, filename: string) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
 
 interface EnrichedVuln extends Vulnerability {
   packages: string[];
@@ -62,7 +70,12 @@ function SortButton({
 
 export default function VulnsPageWrapper() {
   return (
-    <Suspense fallback={<p className="text-zinc-500 text-sm">Loading vulnerabilities…</p>}>
+    <Suspense fallback={
+      <div className="flex items-center justify-center py-20 text-zinc-400">
+        <Loader2 className="h-6 w-6 animate-spin mr-2" />
+        Loading vulnerabilities...
+      </div>
+    }>
       <VulnsPage />
     </Suspense>
   );
@@ -87,6 +100,8 @@ function VulnsPage() {
   const [search, setSearch] = useState(paramCve ?? paramAgent ?? "");
   const [groupBy, setGroupBy] = useState<GroupKey>("none");
   const [suppressed, setSuppressed] = useState<Set<string>>(new Set());
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 50;
 
   const handleMarkFP = useCallback(async (vulnId: string, packageName: string) => {
     try {
@@ -197,6 +212,12 @@ function VulnsPage() {
     return list;
   }, [vulns, filter, search, sortKey, sortDir]);
 
+  // Reset page when filters change
+  useEffect(() => { setPage(1); }, [filter, search, sortKey, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(displayed.length / PAGE_SIZE));
+  const paged = displayed.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
   // Group displayed vulns
   const grouped = useMemo(() => {
     if (groupBy === "none") return null;
@@ -245,14 +266,31 @@ function VulnsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Vulnerabilities</h1>
-        <p className="text-zinc-400 text-sm mt-1">
-          {vulns.length} unique CVEs aggregated across all scans
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Vulnerabilities</h1>
+          <p className="text-zinc-400 text-sm mt-1">
+            {vulns.length} unique CVEs aggregated across all scans
+          </p>
+        </div>
+        {vulns.length > 0 && (
+          <button
+            onClick={() => downloadJson(displayed, `vulns-${new Date().toISOString().slice(0, 10)}.json`)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm font-medium rounded-lg transition-colors"
+            title="Export filtered vulnerabilities as JSON"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Export
+          </button>
+        )}
       </div>
 
-      {loading && <p className="text-zinc-500 text-sm">Loading vulnerabilities…</p>}
+      {loading && (
+        <div className="flex items-center justify-center py-20 text-zinc-400">
+          <Loader2 className="h-6 w-6 animate-spin mr-2" />
+          Loading vulnerabilities...
+        </div>
+      )}
       {error && <p className="text-red-400 text-sm">{error}</p>}
 
       {!loading && vulns.length === 0 && (
@@ -331,12 +369,41 @@ function VulnsPage() {
               ))}
             </div>
           ) : (
-            <VulnTable vulns={displayed} sortKey={sortKey} sortDir={sortDir} handleSort={handleSort} suppressed={suppressed} onMarkFP={handleMarkFP} />
+            <VulnTable vulns={paged} sortKey={sortKey} sortDir={sortDir} handleSort={handleSort} suppressed={suppressed} onMarkFP={handleMarkFP} />
           )}
 
-          <p className="text-xs text-zinc-600 text-right">
-            Showing {displayed.length} of {vulns.length} vulnerabilities
-          </p>
+          {/* Pagination controls (flat view only) */}
+          {!grouped && (
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-zinc-600">
+                Page {page} of {totalPages} ({displayed.length} total)
+              </p>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md border border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ChevronLeft className="w-3 h-3" />
+                  Prev
+                </button>
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md border border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  Next
+                  <ChevronRight className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {grouped && (
+            <p className="text-xs text-zinc-600 text-right">
+              Showing {displayed.length} of {vulns.length} vulnerabilities
+            </p>
+          )}
         </>
       )}
     </div>
@@ -359,7 +426,7 @@ function VulnTable({
   onMarkFP: (vulnId: string, packageName: string) => void;
 }) {
   return (
-    <div className="border border-zinc-800 rounded-xl overflow-hidden">
+    <div className="border border-zinc-800 rounded-xl overflow-hidden overflow-x-auto">
       <table className="w-full text-sm">
         <thead className="bg-zinc-900 border-b border-zinc-800">
           <tr>

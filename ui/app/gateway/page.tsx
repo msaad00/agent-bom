@@ -112,6 +112,7 @@ export default function GatewayPage() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!confirm('Delete this policy? This cannot be undone.')) return;
     await api.deleteGatewayPolicy(id);
     load();
   };

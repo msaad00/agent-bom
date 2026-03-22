@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ReactFlow, Background, MiniMap, Controls,
   type Node, type Edge, MarkerType,
@@ -111,7 +111,28 @@ export default function SecurityGraphPage() {
     return null;
   }, [jobs]);
 
-  // Build graph from scan result
+  // Build blast_radius lookup keyed by package name for Gap 3
+  const blastMap = useMemo(() => {
+    const map = new Map<string, BlastRadius>();
+    if (!latestResult?.blast_radius) return map;
+    for (const br of latestResult.blast_radius) {
+      if (br.package) {
+        // Use package name as key; first entry wins (highest severity typically first)
+        if (!map.has(br.package)) {
+          map.set(br.package, br);
+        } else {
+          // Merge: keep the entry with the higher risk_score
+          const existing = map.get(br.package)!;
+          if ((br.risk_score ?? 0) > (existing.risk_score ?? 0)) {
+            map.set(br.package, br);
+          }
+        }
+      }
+    }
+    return map;
+  }, [latestResult]);
+
+  // Build graph from scan result — branches on insightLayer (Gap 2) and uses blastMap (Gap 3)
   const { nodes, edges } = useMemo(() => {
     if (!latestResult) return { nodes: [], edges: [] };
 
@@ -119,6 +140,9 @@ export default function SecurityGraphPage() {
     const edges: Edge[] = [];
     const serverSet = new Set<string>();
     const packageSet = new Set<string>();
+
+    // Track which nodes have credentials for the credentials layer
+    const credentialNodeIds = new Set<string>();
 
     // Column headers
     const headers = [
@@ -144,11 +168,26 @@ export default function SecurityGraphPage() {
       })
     );
 
+    // Helper: risk layer border color for a vuln count
+    function riskBorder(vulnCount: number): string {
+      if (vulnCount > 5) return "#ef4444"; // red
+      if (vulnCount > 0) return "#f97316"; // orange
+      return "#10b981"; // green
+    }
+
     latestResult.agents.forEach((agent, ai) => {
       const agentId = `agent-${ai}`;
       const hasCredentials = agent.mcp_servers.some(
         (s) => (s.env ? Object.keys(s.env).filter((k) => /key|token|secret|password|credential|auth/i.test(k)).length : 0) > 0
       );
+      if (hasCredentials) credentialNodeIds.add(agentId);
+
+      // Compute agent-level vuln count for risk layer
+      const agentVulnCount = agent.mcp_servers.reduce(
+        (sum, s) => sum + (s.packages ?? []).reduce((ps: number, p) => ps + (p.vulnerabilities?.length ?? 0), 0),
+        0
+      );
+
       nodes.push({
         id: agentId,
         position: { x: COLUMN_X.agent, y: ai * ROW_SPACING + 20 },
@@ -160,16 +199,23 @@ export default function SecurityGraphPage() {
           vulnCount: 0,
           hasCredentials,
           hasCritical: false,
+          // Insight layer data
+          riskBorder: insightLayer === "risk" ? riskBorder(agentVulnCount) : undefined,
+          riskLabel: insightLayer === "risk" && agentVulnCount > 0 ? `${agentVulnCount} vuln${agentVulnCount !== 1 ? "s" : ""}` : undefined,
+          dimmed: insightLayer === "credentials" && !hasCredentials,
         },
       });
 
       agent.mcp_servers.forEach((server) => {
         const serverId = `server-${agent.name}-${server.name}`;
+        const credKeys = server.env
+          ? Object.keys(server.env).filter((k) => /key|token|secret|password|credential|auth/i.test(k))
+          : [];
+        const serverHasCreds = credKeys.length > 0;
+        if (serverHasCreds) credentialNodeIds.add(serverId);
+
         if (!serverSet.has(serverId)) {
           serverSet.add(serverId);
-          const credKeys = server.env
-            ? Object.keys(server.env).filter((k) => /key|token|secret|password|credential|auth/i.test(k))
-            : [];
           const serverVulns = (server.packages ?? []).reduce(
             (sum: number, p) => sum + (p.vulnerabilities?.length ?? 0),
             0
@@ -186,19 +232,30 @@ export default function SecurityGraphPage() {
               sublabel: server.transport ?? server.command ?? "stdio",
               icon: "🖥️",
               vulnCount: serverVulns,
-              hasCredentials: credKeys.length > 0,
+              hasCredentials: serverHasCreds,
               hasCritical: hasCrit,
+              riskBorder: insightLayer === "risk" ? riskBorder(serverVulns) : undefined,
+              riskLabel: insightLayer === "risk" && serverVulns > 0 ? `${serverVulns} vuln${serverVulns !== 1 ? "s" : ""}` : undefined,
+              dimmed: insightLayer === "credentials" && !serverHasCreds,
             },
           });
         }
+
+        // Edge: agent → server
+        const edgeIsCredPath = hasCredentials || serverHasCreds;
+        const dimEdge = insightLayer === "credentials" && !edgeIsCredPath;
         edges.push({
           id: `e-${agentId}-${serverId}`,
           source: agentId,
           target: serverId,
           type: "smoothstep",
-          style: { stroke: hasCredentials ? "#eab308" : "#10b981", strokeWidth: 2, opacity: 0.85 },
-          animated: hasCredentials,
-          markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981", width: 16, height: 12 },
+          style: {
+            stroke: dimEdge ? "#18181b" : (edgeIsCredPath && insightLayer === "credentials") ? "#eab308" : hasCredentials ? "#eab308" : "#10b981",
+            strokeWidth: dimEdge ? 1 : 2,
+            opacity: dimEdge ? 0.15 : 0.85,
+          },
+          animated: insightLayer === "credentials" ? edgeIsCredPath : hasCredentials,
+          markerEnd: { type: MarkerType.ArrowClosed, color: dimEdge ? "#18181b" : "#10b981", width: 16, height: 12 },
         });
 
         (server.packages ?? []).forEach((pkg) => {
@@ -207,34 +264,62 @@ export default function SecurityGraphPage() {
             packageSet.add(pkgId);
             const vulnCount = pkg.vulnerabilities?.length ?? 0;
             const hasCrit = pkg.vulnerabilities?.some((v) => v.severity === "critical");
+
+            // Gap 3: Look up blast_radius data for this package
+            const br = blastMap.get(pkg.name);
+            const riskScore = br?.risk_score;
+            const isKev = br?.is_kev ?? br?.cisa_kev ?? false;
+            const epssScore = br?.epss_score;
+
+            // Build sublabel based on layer
+            let sublabel = `${pkg.version} · ${pkg.ecosystem}`;
+            let riskLabel: string | undefined;
+            if (insightLayer === "risk") {
+              const parts: string[] = [];
+              if (riskScore != null) parts.push(`risk: ${riskScore.toFixed(1)}`);
+              if (isKev) parts.push("KEV");
+              if (epssScore != null) parts.push(`EPSS: ${(epssScore * 100).toFixed(1)}%`);
+              if (parts.length > 0) riskLabel = parts.join(" · ");
+            }
+
             nodes.push({
               id: pkgId,
               position: { x: COLUMN_X.package, y: (packageSet.size - 1) * (ROW_SPACING * 0.6) + 20 },
               type: "securityNode",
               data: {
                 label: pkg.name,
-                sublabel: `${pkg.version} · ${pkg.ecosystem}`,
+                sublabel,
                 icon: "📦",
                 vulnCount,
                 hasCredentials: false,
                 hasCritical: hasCrit,
+                riskBorder: insightLayer === "risk" ? riskBorder(vulnCount) : undefined,
+                riskLabel,
+                dimmed: insightLayer === "credentials" && !serverHasCreds,
               },
             });
           }
+
+          // Edge: server → package
+          const dimPkgEdge = insightLayer === "credentials" && !serverHasCreds;
           edges.push({
             id: `e-${serverId}-${pkgId}`,
             source: serverId,
             target: pkgId,
             type: "smoothstep",
-            style: { stroke: "#27272a", strokeWidth: 1.5, opacity: 0.8 },
-            markerEnd: { type: MarkerType.ArrowClosed, color: "#3f3f46", width: 14, height: 10 },
+            style: {
+              stroke: dimPkgEdge ? "#18181b" : "#27272a",
+              strokeWidth: dimPkgEdge ? 1 : 1.5,
+              opacity: dimPkgEdge ? 0.15 : 0.8,
+            },
+            markerEnd: { type: MarkerType.ArrowClosed, color: dimPkgEdge ? "#18181b" : "#3f3f46", width: 14, height: 10 },
           });
         });
       });
     });
 
     return { nodes, edges };
-  }, [latestResult, insightLayer]);
+  }, [latestResult, insightLayer, blastMap]);
 
   if (loading) {
     return (

@@ -399,7 +399,8 @@ def validate_url(url: str) -> None:
         except ValueError:
             continue
 
-    logger.debug("URL validated: %s", url.replace("\n", "").replace("\r", ""))
+    # Log only scheme + hostname — never log full URL (may contain credentials)
+    logger.debug("URL validated: %s://%s/...", parsed.scheme, parsed.hostname)
 
 
 def validate_package_name(name: str, ecosystem: str) -> None:

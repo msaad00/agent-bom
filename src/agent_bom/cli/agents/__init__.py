@@ -309,14 +309,10 @@ def scan(
         transitive = False
         enrich = False
 
-    # ── Auto-apply CI defaults when running inside a CI/CD pipeline ──
-    if preset is None:
-        import sys as _sys
-
-        from agent_bom.ci_detect import is_ci as _is_ci
-
-        if _is_ci() and not _sys.stdout.isatty() and not dry_run:
-            quiet = True
+    # ── CI environment detection (informational only) ──
+    # Auto-quiet removed: tests run in CI and need output.
+    # Users should use --preset ci for CI-specific defaults.
+    # The ci_detect module is available for programmatic use.
 
     # ── Self-scan mode: scan agent-bom's own installed dependencies ──
     if self_scan:

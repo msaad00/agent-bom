@@ -100,7 +100,7 @@ def test_cvss_valid_score_accepted():
         "database_specific": {"severity": "HIGH"},
     }
 
-    severity, score = parse_osv_severity(vuln_data)
+    severity, score, _sev_src = parse_osv_severity(vuln_data)
     # Should accept the score — exact value depends on CVSS parsing
     assert severity is not None
 
@@ -115,7 +115,7 @@ def test_cvss_out_of_range_rejected():
         "database_specific": {"severity": "CRITICAL"},
     }
 
-    severity, score = parse_osv_severity(vuln_data)
+    severity, score, _sev_src = parse_osv_severity(vuln_data)
     # Should reject the out-of-range score and fall back to label
     assert score is None or (score is not None and 0.0 <= score <= 10.0)
 
@@ -129,7 +129,7 @@ def test_cvss_negative_rejected():
         "database_specific": {"severity": "LOW"},
     }
 
-    severity, score = parse_osv_severity(vuln_data)
+    severity, score, _sev_src = parse_osv_severity(vuln_data)
     assert score is None or (score is not None and 0.0 <= score <= 10.0)
 
 

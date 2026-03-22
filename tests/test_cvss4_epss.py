@@ -76,7 +76,7 @@ class TestOSVSeverityV4:
                 }
             ]
         }
-        severity, score = parse_osv_severity(vuln)
+        severity, score, _sev_src = parse_osv_severity(vuln)
         assert score is not None
         assert score >= 9.0
         assert severity == Severity.CRITICAL
@@ -84,7 +84,7 @@ class TestOSVSeverityV4:
     def test_numeric_v4_score(self):
         """Numeric score in CVSS_V4 entry should be used directly."""
         vuln = {"severity": [{"type": "CVSS_V4", "score": "7.5"}]}
-        severity, score = parse_osv_severity(vuln)
+        severity, score, _sev_src = parse_osv_severity(vuln)
         assert score == 7.5
         assert severity == Severity.HIGH
 

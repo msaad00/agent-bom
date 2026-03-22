@@ -155,6 +155,21 @@
       "name": "Snowflake JWT",
       "pattern": "(?:snowflake_jwt|sf_token)\\s*[=:]\\s*['\\\"]?[A-Za-z0-9\\-_.]{20,}",
       "flags": "i"
+    },
+    {
+      "name": "HashiCorp Vault Token",
+      "pattern": "\\bhv[sb]\\.[A-Za-z0-9]{24,}",
+      "flags": ""
+    },
+    {
+      "name": "AWS Session Token",
+      "pattern": "(?:aws_session_token|AWS_SESSION_TOKEN)\\s*[=:]\\s*['\\\"]?[A-Za-z0-9/+=]{100,}",
+      "flags": ""
+    },
+    {
+      "name": "PagerDuty API Key",
+      "pattern": "\\b[A-Za-z0-9+/]{20}-us\\b",
+      "flags": ""
     }
   ],
   "dangerous_arg_patterns": [
@@ -165,7 +180,7 @@
     },
     {
       "name": "Path traversal",
-      "pattern": "\\.\\./|\\.\\.\\\\|%2e%2e",
+      "pattern": "\\.\\./|\\.\\.\\\\|%2e%2e|\\\\u002e\\\\u002e",
       "flags": ""
     },
     {
@@ -338,12 +353,12 @@
   "response_invisible_chars": [
     {
       "name": "Zero-width space cluster",
-      "pattern": "[\\u200b\\u200c\\u200d\\ufeff]{3,}",
+      "pattern": "[\\u200b\\u200c\\u200d\\ufeff]+",
       "flags": ""
     },
     {
       "name": "Zero-width joiner sequence",
-      "pattern": "(?:\\u200d.){4,}",
+      "pattern": "(?:\\u200d.){2,}",
       "flags": ""
     },
     {
@@ -358,7 +373,7 @@
     },
     {
       "name": "Tag characters",
-      "pattern": "[\\U000e0001-\\U000e007f]{3,}",
+      "pattern": "[\\U000e0001-\\U000e007f]+",
       "flags": ""
     }
   ],

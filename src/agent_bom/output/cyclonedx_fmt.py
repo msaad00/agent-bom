@@ -491,18 +491,19 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
 
     # Compositions — declare assembly completeness for SBOM consumers
     if components:
-        # "incomplete" unless we verified every transitive dependency
-        aggregate = "incomplete"
-        if all(
-            not any(p.get("value") == "true" for p in c.get("properties", []) if p.get("name") == "agent-bom:resolved-from-registry")
+        has_registry_resolved = any(
+            isinstance(c, dict)
+            and c.get("type") == "library"
+            and any(
+                isinstance(p, dict) and p.get("name") == "agent-bom:resolved-from-registry" and p.get("value") == "true"
+                for p in c.get("properties", [])
+            )
             for c in components
-            if c.get("type") == "library"
-        ):
-            aggregate = "complete"
+        )
         cdx["compositions"] = [
             {
-                "aggregate": aggregate,
-                "assemblies": [c["bom-ref"] for c in components if "bom-ref" in c],
+                "aggregate": "incomplete" if has_registry_resolved else "complete",
+                "assemblies": [c["bom-ref"] for c in components if isinstance(c, dict) and "bom-ref" in c],
             }
         ]
 

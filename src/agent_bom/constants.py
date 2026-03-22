@@ -111,6 +111,11 @@ AI_PACKAGES: frozenset[str] = frozenset(
         "vllm",
         "text-generation-inference",
         "ctransformers",
+        "gpt4all",
+        "ollama",
+        # Emerging agent frameworks
+        "smolagents",
+        "qwen-agent",
         # MLOps / experiment tracking
         "mlflow",
         "wandb",

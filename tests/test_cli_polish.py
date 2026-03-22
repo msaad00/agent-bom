@@ -117,7 +117,7 @@ def test_ci_detect_github_actions():
     """Detects GitHub Actions from GITHUB_ACTIONS env var."""
     from agent_bom.ci_detect import detect_ci_environment
 
-    with patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}, clear=False):
+    with patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}, clear=True):
         result = detect_ci_environment()
     assert result["is_ci"] is True
     assert result["provider"] == "github_actions"
@@ -127,7 +127,7 @@ def test_ci_detect_gitlab():
     """Detects GitLab CI from GITLAB_CI env var."""
     from agent_bom.ci_detect import detect_ci_environment
 
-    with patch.dict(os.environ, {"GITLAB_CI": "true"}, clear=False):
+    with patch.dict(os.environ, {"GITLAB_CI": "true"}, clear=True):
         result = detect_ci_environment()
     assert result["is_ci"] is True
     assert result["provider"] == "gitlab_ci"
@@ -137,7 +137,7 @@ def test_ci_detect_jenkins():
     """Detects Jenkins from JENKINS_URL env var."""
     from agent_bom.ci_detect import detect_ci_environment
 
-    with patch.dict(os.environ, {"JENKINS_URL": "http://jenkins.example.com"}, clear=False):
+    with patch.dict(os.environ, {"JENKINS_URL": "http://jenkins.example.com"}, clear=True):
         result = detect_ci_environment()
     assert result["is_ci"] is True
     assert result["provider"] == "jenkins"
@@ -147,7 +147,7 @@ def test_ci_detect_circleci():
     """Detects CircleCI from CIRCLECI env var."""
     from agent_bom.ci_detect import detect_ci_environment
 
-    with patch.dict(os.environ, {"CIRCLECI": "true"}, clear=False):
+    with patch.dict(os.environ, {"CIRCLECI": "true"}, clear=True):
         result = detect_ci_environment()
     assert result["is_ci"] is True
     assert result["provider"] == "circleci"
@@ -157,7 +157,7 @@ def test_ci_detect_azure_devops():
     """Detects Azure DevOps from TF_BUILD env var."""
     from agent_bom.ci_detect import detect_ci_environment
 
-    with patch.dict(os.environ, {"TF_BUILD": "True"}, clear=False):
+    with patch.dict(os.environ, {"TF_BUILD": "True"}, clear=True):
         result = detect_ci_environment()
     assert result["is_ci"] is True
     assert result["provider"] == "azure_devops"
@@ -219,7 +219,7 @@ def test_is_ci_helper_true():
     """is_ci() returns True when GITHUB_ACTIONS is set."""
     from agent_bom.ci_detect import is_ci
 
-    with patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}, clear=False):
+    with patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}, clear=True):
         assert is_ci() is True
 
 

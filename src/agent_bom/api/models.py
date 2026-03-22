@@ -256,3 +256,22 @@ class ExceptionRequest(BaseModel):
     requested_by: str = ""
     expires_at: str = ""
     tenant_id: str = "default"
+
+
+class JiraTicketRequest(BaseModel):
+    """Request body for POST /v1/findings/jira."""
+
+    jira_url: str
+    email: str
+    api_token: str
+    project_key: str
+    finding: dict
+
+
+class FalsePositiveRequest(BaseModel):
+    """Request body for POST /v1/findings/false-positive."""
+
+    vulnerability_id: str
+    package: str
+    reason: str = ""
+    marked_by: str = ""

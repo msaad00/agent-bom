@@ -6,7 +6,7 @@ import {
   type Node, type Edge, MarkerType,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { api, type ScanJob, type ScanResult, type Agent } from "@/lib/api";
+import { api, type ScanJob, type ScanResult, type Agent, type BlastRadius } from "@/lib/api";
 import { EmptyState } from "@/components/empty-state";
 import { FullscreenButton, GraphLegend } from "@/components/graph-chrome";
 import {
@@ -32,14 +32,21 @@ const SECURITY_LEGEND = [
 // ── Custom Node ──────────────────────────────────────────────────────────────
 
 function SecurityNode({ data }: { data: any }) {
-  const borderColor = data.vulnCount > 0
-    ? data.hasCritical ? "#ef4444" : "#f97316"
-    : data.hasCredentials ? "#eab308" : "#3f3f46";
+  const borderColor = data.dimmed
+    ? "#27272a"
+    : data.vulnCount > 0
+      ? data.hasCritical ? "#ef4444" : "#f97316"
+      : data.hasCredentials ? "#eab308" : "#3f3f46";
+
+  const riskBorderColor = data.riskBorder ?? borderColor;
 
   return (
     <div
       className="relative px-3 py-2 rounded-lg border-2 bg-zinc-900 min-w-[180px] max-w-[220px] shadow-lg backdrop-blur transition-opacity"
-      style={{ borderColor }}
+      style={{
+        borderColor: riskBorderColor !== borderColor ? riskBorderColor : borderColor,
+        opacity: data.dimmed ? 0.3 : 1,
+      }}
     >
       <div className="flex items-center gap-2">
         <span className="text-lg">{data.icon}</span>
@@ -57,6 +64,9 @@ function SecurityNode({ data }: { data: any }) {
         <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-yellow-500 text-black text-[8px] flex items-center justify-center">
           🔑
         </div>
+      )}
+      {data.riskLabel && (
+        <div className="mt-1 text-[9px] font-mono text-zinc-400 truncate">{data.riskLabel}</div>
       )}
     </div>
   );

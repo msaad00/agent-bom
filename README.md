@@ -57,7 +57,7 @@ Security scanner purpose-built for AI infrastructure and supply chain.
 7. **Enforces at runtime** — MCP proxy with 112 detection patterns, PII redaction, zero-trust session isolation
 8. **Verifies supply chain** — SLSA provenance (npm), PEP 740 attestations (PyPI), Go checksum DB
 
-**Also scans:** container images, filesystems, IaC (89 rules), cloud posture (AWS/Azure/GCP CIS benchmarks).
+**Also scans:** container images, filesystems, IaC (138 rules), cloud posture (AWS/Azure/GCP CIS benchmarks).
 
 **Shield SDK** — drop-in Python middleware for any AI agent pipeline:
 ```python
@@ -90,7 +90,7 @@ agent-bom proxy "npx @mcp/server-filesystem /tmp"
 # Container image scan
 agent-bom image nginx:latest
 
-# IaC misconfigurations (89 rules: Dockerfile, K8s, Terraform, CloudFormation, Helm)
+# IaC misconfigurations (138 rules: Dockerfile, K8s, Terraform, CloudFormation, Helm)
 agent-bom iac Dockerfile k8s/ infra/main.tf
 
 # Cloud posture + CIS benchmarks
@@ -244,7 +244,7 @@ docker run --rm agentbom/agent-bom agents  # Docker (linux/amd64 + arm64)
 | Kubernetes | kubectl across namespaces |
 | Cloud providers | AWS, Azure, GCP, Databricks, Snowflake |
 | AI platforms | OpenAI, HuggingFace, W&B, MLflow, Ollama |
-| IaC files | Dockerfile, K8s, Terraform, CloudFormation, Helm (89 rules) |
+| IaC files | Dockerfile, K8s, Terraform, CloudFormation, Helm (138 rules) |
 | Model files | 13 formats (.gguf, .safetensors, .pkl, ...) |
 | Instruction files | CLAUDE.md, .cursorrules, AGENTS.md |
 | Existing SBOMs | CycloneDX / SPDX import |

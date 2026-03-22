@@ -10,6 +10,7 @@ Extracted from api/server.py (Phase 4). Contains:
 
 from __future__ import annotations
 
+import logging
 import os
 import threading
 import uuid
@@ -21,6 +22,8 @@ from typing import Any
 from agent_bom.api.models import JobStatus, ScanJob, StepStatus
 from agent_bom.api.stores import _get_fleet_store, _get_store, _job_lock
 from agent_bom.security import sanitize_error
+
+_logger = logging.getLogger(__name__)
 
 # ─── Shared executor ─────────────────────────────────────────────────────────
 _executor = ThreadPoolExecutor(max_workers=min(8, (os.cpu_count() or 4) + 2))
@@ -405,14 +408,33 @@ def _run_scan_sync(job: ScanJob) -> None:
                 if server.security_blocked:
                     continue  # Don't extract packages from security-blocked servers
                 if not server.packages:
-                    server.packages = extract_packages(server)
+                    server.packages = extract_packages(
+                        server,
+                        resolve_transitive=True,  # Match CLI behavior — resolve full dep tree
+                        max_depth=3,
+                    )
                 total_pkgs += len(server.packages)
         pipeline.complete_step("extraction", f"Extracted {total_pkgs} packages", {"packages": total_pkgs})
 
         # ── Scanning phase ──
-        pipeline.start_step("scanning", "Querying OSV.dev for CVEs...")
-        blast_radii = scan_agents_sync(agents, enable_enrichment=req.enrich)
+        pipeline.start_step("scanning", f"Scanning {total_pkgs} packages via OSV.dev...")
+        try:
+            blast_radii = scan_agents_sync(agents, enable_enrichment=req.enrich)
+        except Exception as scan_exc:  # noqa: BLE001
+            # Log but don't crash — return what we have with warning
+            _logger.warning("Scan phase error (retrying without enrichment): %s", scan_exc)
+            pipeline.update_step("scanning", f"Scan error: {sanitize_error(scan_exc)} — retrying without enrichment")
+            try:
+                blast_radii = scan_agents_sync(agents, enable_enrichment=False)
+            except Exception as retry_exc:  # noqa: BLE001
+                _logger.error("Scan retry also failed: %s", retry_exc)
+                blast_radii = []
+                warnings_all.append(f"CVE scanning failed: {sanitize_error(retry_exc)}")
         total_vulns = sum(len(p.vulnerabilities) for a in agents for s in a.mcp_servers for p in s.packages)
+        if total_pkgs > 0 and total_vulns == 0 and not blast_radii:
+            warnings_all.append(
+                f"Scanned {total_pkgs} packages but found 0 vulnerabilities. This may indicate a network issue reaching OSV.dev."
+            )
         pipeline.complete_step("scanning", f"Found {total_vulns} vulnerabilities", {"vulnerabilities": total_vulns})
 
         # ── Severity filtering (post-scan) ──

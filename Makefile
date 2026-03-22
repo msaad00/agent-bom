@@ -1,4 +1,4 @@
-.PHONY: help install test lint docker-build docker-run scan clean build-ui analytics
+.PHONY: help install test lint docker-build docker-run scan clean build-ui analytics dev
 
 help:  ## Show this help message
 	@echo 'Usage: make [target]'
@@ -8,6 +8,22 @@ help:  ## Show this help message
 
 install:  ## Install agent-bom in development mode
 	pip install -e ".[dev]"
+
+install-all:  ## Install agent-bom with all development extras
+	pip install -e ".[dev-all]"
+
+dev:  ## Start API server + Next.js dashboard for development
+	@echo "Starting API server on :8422 and dashboard on :3000..."
+	@echo "  API docs  → http://localhost:8422/docs"
+	@echo "  Dashboard → http://localhost:3000"
+	@echo "  Press Ctrl+C to stop."
+	@$(MAKE) -j2 _dev-api _dev-ui
+
+_dev-api:
+	@python -m agent_bom.cli._entry serve --port 8422 --cors-allow-all --reload 2>&1
+
+_dev-ui:
+	@cd ui && npm run dev 2>&1
 
 test:  ## Run unit tests
 	pytest tests/ -v --cov=agent_bom

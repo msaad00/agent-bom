@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "api-server",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "agent_bom.cli._entry", "serve", "--port", "8422", "--cors-allow-all", "--reload"],
+      "port": 8422
+    },
+    {
+      "name": "next-dashboard",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "ui", "run", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "mcp-server-sse",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "agent_bom.cli._entry", "mcp", "server", "--sse"],
+      "port": 8000
+    }
+  ]
+}

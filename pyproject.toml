@@ -137,6 +137,11 @@ dev = [
     "bandit>=1.9",      # Static security analysis
     "pytest-cov>=4.1",  # Coverage reporting
 ]
+dev-all = [
+    "agent-bom[dev]",
+    "agent-bom[ui]",
+    "agent-bom[mcp-server]",
+]
 
 [project.scripts]
 agent-bom = "agent_bom.cli:cli_main"

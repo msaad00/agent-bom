@@ -109,6 +109,7 @@ _NON_OSV_ECOSYSTEMS: frozenset[str] = frozenset(
 )
 
 
+_MAX_CACHED_LOOPS = 8  # Bound stale entries in long-running servers
 _loop_semaphores: dict[int, asyncio.Semaphore] = {}
 
 
@@ -119,12 +120,16 @@ def _get_api_semaphore() -> asyncio.Semaphore:
     across multiple calls within the same scan, while avoiding the stale-loop
     problem that module-level semaphores have with ThreadPoolExecutor.
 
-    Uses ``get_running_loop()`` (not the deprecated ``get_event_loop()``)
-    so this works correctly on Python 3.10+.
+    Evicts oldest entries when the cache exceeds ``_MAX_CACHED_LOOPS`` to
+    prevent unbounded memory growth in long-running API servers.
     """
     loop = asyncio.get_running_loop()
     loop_id = id(loop)
     if loop_id not in _loop_semaphores:
+        if len(_loop_semaphores) >= _MAX_CACHED_LOOPS:
+            # Evict the oldest entry (first inserted key)
+            oldest = next(iter(_loop_semaphores))
+            del _loop_semaphores[oldest]
         _loop_semaphores[loop_id] = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
     return _loop_semaphores[loop_id]
 
@@ -454,7 +459,7 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
     packages_to_query: list[Package] = []
     skipped_versions = 0
 
-    skipped_ecosystems = 0
+    skipped_ecosystems: dict[str, int] = {}
 
     # Check cache first
     for pkg in packages:
@@ -477,7 +482,7 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
                     pkg.name,
                     pkg.ecosystem,
                 )
-            skipped_ecosystems += 1
+            skipped_ecosystems[eco_key] = skipped_ecosystems.get(eco_key, 0) + 1
             continue
         if not pkg.version or pkg.version in ("unknown", "latest"):
             _logger.warning(
@@ -499,14 +504,18 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
         packages_to_query.append(pkg)
 
     if not packages_to_query:
-        scanned = len(packages) - skipped_versions
-        if skipped_versions:
+        total_skipped_eco = sum(skipped_ecosystems.values())
+        scanned = len(packages) - skipped_versions - total_skipped_eco
+        if skipped_versions or skipped_ecosystems:
             _logger.info(
-                "Scan complete: %d packages scanned, %d skipped (unresolvable versions), %d skipped (unknown ecosystem)",
+                "Scan complete: %d packages scanned, %d skipped (unresolvable versions), %d skipped (non-OSV ecosystem)",
                 scanned,
                 skipped_versions,
-                skipped_ecosystems,
+                total_skipped_eco,
             )
+        if skipped_ecosystems:
+            parts = ", ".join(f"{eco}: {cnt}" for eco, cnt in sorted(skipped_ecosystems.items()))
+            console.print(f"  [dim]Skipped {total_skipped_eco} packages not in OSV database ({parts})[/dim]")
         return await _enrich_results_if_needed(results)
 
     queries = []
@@ -625,13 +634,18 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
         ]
         await asyncio.to_thread(cache.put_many, cache_writes)
 
-    scanned = len(packages) - skipped_versions
-    if skipped_versions:
+    total_skipped_eco = sum(skipped_ecosystems.values())
+    scanned = len(packages) - skipped_versions - total_skipped_eco
+    if skipped_versions or skipped_ecosystems:
         _logger.info(
-            "Scan complete: %d packages scanned, %d skipped (unresolvable versions)",
+            "Scan complete: %d packages scanned, %d skipped (unresolvable versions), %d skipped (non-OSV ecosystem)",
             scanned,
             skipped_versions,
+            total_skipped_eco,
         )
+    if skipped_ecosystems:
+        parts = ", ".join(f"{eco}: {cnt}" for eco, cnt in sorted(skipped_ecosystems.items()))
+        console.print(f"  [dim]Skipped {total_skipped_eco} packages not in OSV database ({parts})[/dim]")
     return results
 
 

@@ -374,6 +374,9 @@ def scan(
         # Skip CWD auto-detection in demo mode — only scan bundled inventory
         if not project:
             project = _tempfile.mkdtemp(prefix="agent-bom-demo-dir-")
+        # Override config_path in demo inventory to show clean paths (no /tmp leaks)
+        for agent_data in DEMO_INVENTORY.get("agents", []):
+            agent_data.setdefault("config_path", f"~/.config/{agent_data.get('agent_type', 'agent')}/config.json")
 
     # Mutual exclusivity: --no-skill and --skill-only cannot be used together
     if no_skill and skill_only:

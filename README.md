@@ -43,6 +43,61 @@ agent-bom agents
 
 ---
 
+## Architecture
+
+```mermaid
+graph LR
+    subgraph Discovery["Discovery (30 MCP clients)"]
+        A1[Claude Desktop] --> D[Config Parser]
+        A2[Cursor] --> D
+        A3[Windsurf] --> D
+        A4[VS Code] --> D
+    end
+
+    subgraph Scanning["Scanning"]
+        D --> P[Package Extractor]
+        P --> OSV[OSV + NVD + GHSA]
+        OSV --> E[EPSS + KEV Enrichment]
+        E --> BR[Blast Radius Engine]
+    end
+
+    subgraph Analysis["Analysis"]
+        BR --> C[Compliance Tagger<br/>14 frameworks]
+        BR --> T[Trust Scorer]
+        C --> O[Output]
+        T --> O
+    end
+
+    subgraph Output["Output (18 formats)"]
+        O --> CDX[CycloneDX AI BOM]
+        O --> SARIF[SARIF / GitHub]
+        O --> HTML[HTML Report]
+        O --> DASH[Dashboard]
+    end
+
+    subgraph Runtime["Runtime Protection"]
+        PROXY[MCP Proxy] --> DET[109 Detection Patterns]
+        DET --> KILL[Kill Switch]
+        DET --> PII[PII Redaction]
+    end
+
+    subgraph Cloud["Cloud Posture"]
+        AWS[AWS] --> FLEET[Fleet API]
+        AZ[Azure] --> FLEET
+        GCP[GCP] --> FLEET
+        SF[Snowflake] --> FLEET
+    end
+
+    style Discovery fill:#1a1a2e,stroke:#16213e,color:#e0e0e0
+    style Scanning fill:#1a1a2e,stroke:#16213e,color:#e0e0e0
+    style Analysis fill:#1a1a2e,stroke:#16213e,color:#e0e0e0
+    style Output fill:#1a1a2e,stroke:#16213e,color:#e0e0e0
+    style Runtime fill:#2d1b1b,stroke:#4a1c1c,color:#e0e0e0
+    style Cloud fill:#1b2d1b,stroke:#1c4a1c,color:#e0e0e0
+```
+
+---
+
 ## What it does
 
 Security scanner purpose-built for AI infrastructure and supply chain.

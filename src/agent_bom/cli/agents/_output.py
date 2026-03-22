@@ -64,6 +64,7 @@ def render_output(
     delta_mode: bool,
     verbose: bool = False,
     exclude_unfixable: bool = False,
+    fixable_only: bool = False,
     **kwargs: Any,
 ) -> None:
     """Step 5: render report to console/file. Also Steps 5b, 5c, 5d."""
@@ -131,7 +132,7 @@ def render_output(
             if not no_tree:
                 print_agent_tree(report)
             print_severity_chart(report)
-            print_blast_radius(report)
+            print_blast_radius(report, fixable_only=fixable_only)
             if not no_tree:
                 print_attack_flow_tree(report)
             print_threat_frameworks(report)
@@ -139,7 +140,7 @@ def render_output(
             # Compact output (default)
             print_compact_summary(report)
             print_compact_agents(report)
-            print_compact_blast_radius(report)
+            print_compact_blast_radius(report, fixable_only=fixable_only)
 
         # AI enrichment output (both modes)
         if report.executive_summary:

@@ -247,6 +247,7 @@ def scan(
     external_scan_path: Optional[str],
     os_packages: bool,
     exclude_unfixable: bool = False,
+    fixable_only: bool = False,
     iac_paths: tuple = (),
     ignore_file: Optional[str] = None,
 ):
@@ -307,6 +308,15 @@ def scan(
     elif preset == "quick":
         transitive = False
         enrich = False
+
+    # ── Auto-apply CI defaults when running inside a CI/CD pipeline ──
+    if preset is None:
+        import sys as _sys
+
+        from agent_bom.ci_detect import is_ci as _is_ci
+
+        if _is_ci() and not _sys.stdout.isatty():
+            quiet = True
 
     # ── Self-scan mode: scan agent-bom's own installed dependencies ──
     if self_scan:
@@ -1754,6 +1764,7 @@ def scan(
         delta_mode=delta_mode,
         verbose=verbose,
         exclude_unfixable=exclude_unfixable,
+        fixable_only=fixable_only,
     )
 
     # Step 6: Save report to history + asset tracking

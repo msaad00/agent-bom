@@ -13,6 +13,7 @@ import re
 from pathlib import Path
 from uuid import uuid4
 
+from agent_bom import __version__
 from agent_bom.models import AIBOMReport
 
 
@@ -480,6 +481,17 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                 {"name": "agent-bom:total-mcp-servers", "value": str(report.total_servers)},
                 {"name": "agent-bom:total-vulnerabilities", "value": str(report.total_vulnerabilities)},
                 {"name": "agent-bom:ml-models", "value": str(len(report.model_provenance) + len(report.model_files))},
+            ],
+            "formulation": [
+                {
+                    "components": [
+                        {
+                            "type": "application",
+                            "name": "agent-bom",
+                            "version": __version__,
+                        }
+                    ]
+                }
             ],
         },
         "components": components,

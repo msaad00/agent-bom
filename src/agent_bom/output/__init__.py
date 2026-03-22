@@ -376,7 +376,7 @@ def print_agent_tree(report: AIBOMReport) -> None:
         console.print()
 
 
-def print_blast_radius(report: AIBOMReport) -> None:
+def print_blast_radius(report: AIBOMReport, fixable_only: bool = False) -> None:
     """Print blast radius analysis for vulnerabilities."""
     if not report.blast_radii:
         return
@@ -398,6 +398,9 @@ def print_blast_radius(report: AIBOMReport) -> None:
     # Filter to actionable findings only — UNKNOWN severity transitive
     # deps with no creds/tools are noise. Users see all with --verbose.
     actionable = [br for br in report.blast_radii if br.is_actionable]
+    # --fixable-only: keep only entries that have a fix available
+    if fixable_only:
+        actionable = [br for br in actionable if br.vulnerability.fixed_version]
     if not actionable:
         console.print("  [green]✓ No actionable findings (all transitive/low-severity noise).[/green]")
         if len(report.blast_radii) > 0:
@@ -1421,7 +1424,7 @@ def print_compact_agents(report: AIBOMReport) -> None:
     console.print(table)
 
 
-def print_compact_blast_radius(report: AIBOMReport, limit: int = 10) -> None:
+def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_only: bool = False) -> None:
     """Show top N blast radius findings in a compact table.
 
     Default mode shows only critical/high findings. Use --verbose for all.
@@ -1432,8 +1435,14 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10) -> None:
     # Filter: show actionable findings by default, count the rest
     priority = [br for br in report.blast_radii if br.is_actionable]
     rest_count = len(report.blast_radii) - len(priority)
-    # If no actionable, fall back to showing all
-    display_list = priority if priority else report.blast_radii
+    # --fixable-only: keep only entries that have a fix available
+    if fixable_only:
+        priority = [br for br in priority if br.vulnerability.fixed_version]
+    # If no actionable, fall back to showing all (respecting fixable_only)
+    if not priority:
+        display_list = [br for br in report.blast_radii if br.vulnerability.fixed_version] if fixable_only else report.blast_radii
+    else:
+        display_list = priority
     shown = display_list[:limit]
 
     console.print()

@@ -208,6 +208,13 @@ def output_options(fn):
                 default=False,
                 help="Exclude findings with no available fix from SARIF output (reduces GitHub Security tab noise)",
             ),
+            click.option(
+                "--fixable-only",
+                "fixable_only",
+                is_flag=True,
+                default=False,
+                help="Show only vulnerabilities with available fixes.",
+            ),
         ]
     )(fn)
 

@@ -123,6 +123,10 @@ inputs:
     description: 'Enable GPU infrastructure scanning (NVIDIA NIM/CUDA containers, DCGM).'
     required: false
     default: 'false'
+  exclude-unfixable:
+    description: 'Exclude vulnerabilities without available fixes from SARIF output'
+    required: false
+    default: 'false'
 
 outputs:
   sarif-file:
@@ -208,6 +212,7 @@ runs:
         INPUT_BASELINE: ${{ inputs.baseline }}
         INPUT_SKILL_ONLY: ${{ inputs.skill-only }}
         INPUT_GPU_SCAN: ${{ inputs.gpu-scan }}
+        INPUT_EXCLUDE_UNFIXABLE: ${{ inputs.exclude-unfixable }}
       run: |
         # Determine output file path
         if [ -n "$INPUT_OUTPUT" ]; then
@@ -385,6 +390,11 @@ runs:
         # GPU infrastructure scanning
         if [ "$INPUT_GPU_SCAN" = "true" ]; then
           ARGS="$ARGS --gpu-scan"
+        fi
+
+        # Exclude unfixable findings from SARIF output
+        if [ "$INPUT_EXCLUDE_UNFIXABLE" = "true" ]; then
+          ARGS="$ARGS --exclude-unfixable"
         fi
 
         # Run scan, capture exit code

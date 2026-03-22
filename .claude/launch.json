@@ -4,7 +4,7 @@
     {
       "name": "api-server",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "agent_bom.cli._entry", "serve", "--port", "8422", "--cors-allow-all", "--reload"],
+      "runtimeArgs": ["-c", "from agent_bom.cli._server import serve_cmd; serve_cmd(standalone_mode=True)", "--port", "8422", "--cors-allow-all"],
       "port": 8422
     },
     {

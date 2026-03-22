@@ -30,6 +30,7 @@ import click
 @click.option("--enrich", is_flag=True, help="Add NVD CVSS + EPSS + KEV enrichment")
 @click.option("--offline", is_flag=True, help="Scan against local DB only")
 @click.option("--quiet", "-q", is_flag=True, help="Minimal output")
+@click.option("--fixable-only", "fixable_only", is_flag=True, default=False, help="Show only vulnerabilities with available fixes.")
 def image_cmd(
     image_ref: str,
     platform: Optional[str],
@@ -39,6 +40,7 @@ def image_cmd(
     enrich: bool,
     offline: bool,
     quiet: bool,
+    fixable_only: bool,
 ) -> None:
     """Scan a container image for vulnerabilities.
 
@@ -61,6 +63,7 @@ def image_cmd(
         enrich=enrich,
         offline=offline,
         quiet=quiet,
+        fixable_only=fixable_only,
     )
 
 
@@ -72,6 +75,7 @@ def image_cmd(
 @click.option("--enrich", is_flag=True, help="Add NVD CVSS + EPSS + KEV enrichment")
 @click.option("--offline", is_flag=True, help="Scan against local DB only")
 @click.option("--quiet", "-q", is_flag=True, help="Minimal output")
+@click.option("--fixable-only", "fixable_only", is_flag=True, default=False, help="Show only vulnerabilities with available fixes.")
 def fs_cmd(
     path: str,
     output_format: str,
@@ -80,6 +84,7 @@ def fs_cmd(
     enrich: bool,
     offline: bool,
     quiet: bool,
+    fixable_only: bool,
 ) -> None:
     """Scan a filesystem directory or mounted VM disk snapshot.
 
@@ -101,6 +106,7 @@ def fs_cmd(
         enrich=enrich,
         offline=offline,
         quiet=quiet,
+        fixable_only=fixable_only,
     )
 
 
@@ -109,11 +115,13 @@ def fs_cmd(
 @click.option("-f", "--format", "output_format", default="console", help="Output format")
 @click.option("-o", "--output", "output_path", help="Output file path")
 @click.option("--quiet", "-q", is_flag=True, help="Minimal output")
+@click.option("--fixable-only", "fixable_only", is_flag=True, default=False, help="Show only vulnerabilities with available fixes.")
 def iac_cmd(
     paths: tuple[str, ...],
     output_format: str,
     output_path: Optional[str],
     quiet: bool,
+    fixable_only: bool,
 ) -> None:
     """Scan infrastructure-as-code files for misconfigurations.
 
@@ -134,6 +142,7 @@ def iac_cmd(
         output_format=output_format,
         output=output_path,
         quiet=quiet,
+        fixable_only=fixable_only,
     )
 
 
@@ -146,6 +155,7 @@ def iac_cmd(
 @click.option("--enrich", is_flag=True, help="Add NVD CVSS + EPSS + KEV enrichment")
 @click.option("--offline", is_flag=True, help="Scan against local DB only")
 @click.option("--quiet", "-q", is_flag=True, help="Minimal output")
+@click.option("--fixable-only", "fixable_only", is_flag=True, default=False, help="Show only vulnerabilities with available fixes.")
 def sbom_cmd(
     path: str,
     sbom_name: Optional[str],
@@ -155,6 +165,7 @@ def sbom_cmd(
     enrich: bool,
     offline: bool,
     quiet: bool,
+    fixable_only: bool,
 ) -> None:
     """Ingest an existing SBOM (CycloneDX/SPDX) and scan for vulnerabilities.
 
@@ -176,6 +187,7 @@ def sbom_cmd(
         enrich=enrich,
         offline=offline,
         quiet=quiet,
+        fixable_only=fixable_only,
     )
 
 

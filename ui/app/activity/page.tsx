@@ -9,6 +9,8 @@ import {
   Wrench,
   Zap,
   Search,
+  Loader2,
+  Info,
 } from "lucide-react";
 import { api, formatDate } from "@/lib/api";
 import type { ActivityTimeline } from "@/lib/api";
@@ -45,19 +47,26 @@ export default function ActivityPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64 text-zinc-500">
-        <div className="animate-pulse">Loading activity timeline...</div>
+      <div className="flex items-center justify-center py-20 text-zinc-400">
+        <Loader2 className="h-6 w-6 animate-spin mr-2" />
+        Loading activity timeline...
       </div>
     );
   }
 
   if (error) {
     return (
-      <ErrorBanner
-        message={error}
-        hint="Activity requires SNOWFLAKE_ACCOUNT env var on the API server."
-        onRetry={load}
-      />
+      <div className="space-y-4">
+        <div className="bg-blue-950 border border-blue-800 rounded-lg p-3 mb-4 flex items-center gap-2 text-sm text-blue-300">
+          <Info className="h-4 w-4 shrink-0" />
+          This feature requires a Snowflake connection. Set <code className="bg-blue-900 px-1 rounded">SNOWFLAKE_ACCOUNT</code> to enable.
+        </div>
+        <ErrorBanner
+          message={error}
+          hint="Activity requires SNOWFLAKE_ACCOUNT env var on the API server."
+          onRetry={load}
+        />
+      </div>
     );
   }
 

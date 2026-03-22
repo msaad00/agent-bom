@@ -44,6 +44,7 @@ import {
   Loader2,
   Network,
   Package,
+  Search,
   Server,
   Shield,
   ShieldAlert,
@@ -98,6 +99,7 @@ function AgentsList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
+  const [search, setSearch] = useState("");
 
   function toggleCollapse(idx: number) {
     setCollapsed((prev) => {
@@ -118,6 +120,10 @@ function AgentsList() {
   const { configured, notConfigured: installedOnly, totalServers, totalPackages, totalCredentials, ecosystems } =
     useAgentStats(agents);
 
+  const filteredConfigured = configured.filter((a) =>
+    !search || a.name.toLowerCase().includes(search.toLowerCase())
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -136,7 +142,12 @@ function AgentsList() {
         </Link>
       </div>
 
-      {loading && <p className="text-zinc-500 text-sm">Discovering agents...</p>}
+      {loading && (
+        <div className="flex items-center justify-center py-20 text-zinc-400">
+          <Loader2 className="h-6 w-6 animate-spin mr-2" />
+          Discovering agents...
+        </div>
+      )}
       {error && <p className="text-red-400 text-sm">{error}</p>}
 
       {/* Summary stats bar */}

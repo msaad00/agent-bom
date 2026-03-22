@@ -10,6 +10,8 @@ import {
   Eye,
   ChevronDown,
   ChevronUp,
+  Loader2,
+  Info,
 } from "lucide-react";
 import {
   api,
@@ -52,19 +54,26 @@ export default function GovernancePage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64 text-zinc-500">
-        <div className="animate-pulse">Loading governance report...</div>
+      <div className="flex items-center justify-center py-20 text-zinc-400">
+        <Loader2 className="h-6 w-6 animate-spin mr-2" />
+        Loading governance report...
       </div>
     );
   }
 
   if (error) {
     return (
-      <ErrorBanner
-        message={error}
-        hint="Governance requires SNOWFLAKE_ACCOUNT env var on the API server."
-        onRetry={load}
-      />
+      <div className="space-y-4">
+        <div className="bg-blue-950 border border-blue-800 rounded-lg p-3 mb-4 flex items-center gap-2 text-sm text-blue-300">
+          <Info className="h-4 w-4 shrink-0" />
+          This feature requires a Snowflake connection. Set <code className="bg-blue-900 px-1 rounded">SNOWFLAKE_ACCOUNT</code> to enable.
+        </div>
+        <ErrorBanner
+          message={error}
+          hint="Governance requires SNOWFLAKE_ACCOUNT env var on the API server."
+          onRetry={load}
+        />
+      </div>
     );
   }
 

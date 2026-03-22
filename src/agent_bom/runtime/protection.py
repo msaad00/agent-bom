@@ -213,6 +213,7 @@ class ProtectionEngine:
         self._active = False
         self._blocked = False
         self._threat_level = ThreatLevel.NORMAL
+        self._persist_state()
         logger.info("Protection engine stopped")
 
     @property

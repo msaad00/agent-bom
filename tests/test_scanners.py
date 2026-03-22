@@ -49,7 +49,7 @@ def test_cvss_to_severity_none_score():
 def test_osv_severity_unknown_label_not_medium():
     """OSV vuln with unrecognized severity label must return UNKNOWN, not MEDIUM."""
     vuln = {"database_specific": {"severity": "BOGUS"}}
-    severity, _ = parse_osv_severity(vuln)
+    severity, _, _sev_src = parse_osv_severity(vuln)
     assert severity == Severity.UNKNOWN
 
 
@@ -178,51 +178,51 @@ def test_parse_cvss4_malformed():
 
 def test_parse_osv_severity_cvss_score():
     vuln = {"severity": [{"type": "CVSS_V3", "score": "9.8"}]}
-    sev, score = parse_osv_severity(vuln)
+    sev, score, _sev_src = parse_osv_severity(vuln)
     assert sev == Severity.CRITICAL
     assert score == 9.8
 
 
 def test_parse_osv_severity_cvss_vector():
     vuln = {"severity": [{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}]}
-    sev, score = parse_osv_severity(vuln)
+    sev, score, _sev_src = parse_osv_severity(vuln)
     assert sev == Severity.CRITICAL
 
 
 def test_parse_osv_severity_database_specific():
     vuln = {"database_specific": {"severity": "HIGH"}}
-    sev, score = parse_osv_severity(vuln)
+    sev, score, _sev_src = parse_osv_severity(vuln)
     assert sev == Severity.HIGH
 
 
 def test_parse_osv_severity_moderate():
     vuln = {"database_specific": {"severity": "MODERATE"}}
-    sev, score = parse_osv_severity(vuln)
+    sev, score, _sev_src = parse_osv_severity(vuln)
     assert sev == Severity.MEDIUM
 
 
 def test_parse_osv_severity_no_data():
-    sev, score = parse_osv_severity({})
+    sev, score, _sev_src = parse_osv_severity({})
     assert sev == Severity.UNKNOWN  # no data must not inflate to MEDIUM
     assert score is None
 
 
 def test_parse_osv_severity_cvss4():
     vuln = {"severity": [{"type": "CVSS_V4", "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N"}]}
-    sev, score = parse_osv_severity(vuln)
+    sev, score, _sev_src = parse_osv_severity(vuln)
     assert score is not None
 
 
 def test_parse_osv_severity_invalid_score():
     vuln = {"severity": [{"type": "CVSS_V3", "score": "not-a-number"}]}
-    sev, score = parse_osv_severity(vuln)
+    sev, score, _sev_src = parse_osv_severity(vuln)
     # Falls back to UNKNOWN since it can't parse — not MEDIUM
     assert sev == Severity.UNKNOWN
 
 
 def test_parse_osv_severity_out_of_range():
     vuln = {"severity": [{"type": "CVSS_V3", "score": "15.0"}]}
-    sev, score = parse_osv_severity(vuln)
+    sev, score, _sev_src = parse_osv_severity(vuln)
     assert score is None  # Out of 0-10 range
 
 

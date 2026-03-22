@@ -109,6 +109,7 @@ _NON_OSV_ECOSYSTEMS: frozenset[str] = frozenset(
 )
 
 
+_MAX_CACHED_LOOPS = 8  # Bound stale entries in long-running servers
 _loop_semaphores: dict[int, asyncio.Semaphore] = {}
 
 
@@ -119,12 +120,19 @@ def _get_api_semaphore() -> asyncio.Semaphore:
     across multiple calls within the same scan, while avoiding the stale-loop
     problem that module-level semaphores have with ThreadPoolExecutor.
 
+    Evicts oldest entries when the cache exceeds ``_MAX_CACHED_LOOPS`` to
+    prevent unbounded memory growth in long-running API servers.
+
     Uses ``get_running_loop()`` (not the deprecated ``get_event_loop()``)
     so this works correctly on Python 3.10+.
     """
     loop = asyncio.get_running_loop()
     loop_id = id(loop)
     if loop_id not in _loop_semaphores:
+        if len(_loop_semaphores) >= _MAX_CACHED_LOOPS:
+            # Evict the oldest entry (first inserted key)
+            oldest = next(iter(_loop_semaphores))
+            del _loop_semaphores[oldest]
         _loop_semaphores[loop_id] = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
     return _loop_semaphores[loop_id]
 
@@ -289,10 +297,21 @@ def parse_cvss_vector(vector: str) -> Optional[float]:
         return None
 
 
-def parse_osv_severity(vuln_data: dict) -> tuple[Severity, Optional[float]]:
-    """Extract severity and CVSS score from OSV vulnerability data."""
+def parse_osv_severity(vuln_data: dict) -> tuple[Severity, Optional[float], Optional[str]]:
+    """Extract severity, CVSS score, and severity source from OSV vulnerability data.
+
+    Returns ``(severity, cvss_score, severity_source)`` where *severity_source*
+    indicates where the severity was derived from:
+
+    - ``"cvss"`` — parsed from a CVSS v3/v4 vector or numeric score
+    - ``"osv_database"`` — from ``database_specific.severity``
+    - ``"osv_ecosystem"`` — from ``ecosystem_specific.severity``
+    - ``"ghsa_heuristic"`` — inferred MEDIUM for reviewed GHSA advisories
+    - ``None`` — severity is UNKNOWN, no source available
+    """
     cvss_score = None
     severity = Severity.UNKNOWN  # Default — never silently inflate to MEDIUM
+    severity_source: Optional[str] = None
 
     # Check severity array — may be numeric score or CVSS vector string
     for sev in vuln_data.get("severity", []):
@@ -320,11 +339,15 @@ def parse_osv_severity(vuln_data: dict) -> tuple[Severity, Optional[float]]:
             "MEDIUM": Severity.MEDIUM,
             "LOW": Severity.LOW,
         }
-        severity = severity_map.get(sev_str, Severity.UNKNOWN)
+        resolved = severity_map.get(sev_str, Severity.UNKNOWN)
+        if resolved != Severity.UNKNOWN:
+            severity = resolved
+            severity_source = "osv_database"
 
     # CVSS score overrides label-based severity
     if cvss_score is not None:
         severity = cvss_to_severity(cvss_score)
+        severity_source = "cvss"
 
     # If still UNKNOWN, try to infer from ecosystem_specific or affected data
     if severity == Severity.UNKNOWN:
@@ -338,7 +361,10 @@ def parse_osv_severity(vuln_data: dict) -> tuple[Severity, Optional[float]]:
                 "MEDIUM": Severity.MEDIUM,
                 "LOW": Severity.LOW,
             }
-            severity = severity_map.get(sev_str, severity)
+            resolved = severity_map.get(sev_str, severity)
+            if resolved != Severity.UNKNOWN:
+                severity = resolved
+                severity_source = "osv_ecosystem"
 
     # Last resort: if GHSA advisory, treat as at least MEDIUM
     # (GHSA advisories are reviewed and vetted — they wouldn't exist without merit)
@@ -346,8 +372,9 @@ def parse_osv_severity(vuln_data: dict) -> tuple[Severity, Optional[float]]:
         vuln_id = vuln_data.get("id", "")
         if vuln_id.startswith("GHSA-"):
             severity = Severity.MEDIUM
+            severity_source = "ghsa_heuristic"
 
-    return severity, cvss_score
+    return severity, cvss_score, severity_source
 
 
 def parse_fixed_version(vuln_data: dict, package_name: str, ecosystem: str = "") -> Optional[str]:
@@ -454,7 +481,7 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
     packages_to_query: list[Package] = []
     skipped_versions = 0
 
-    skipped_ecosystems = 0
+    skipped_ecosystems: dict[str, int] = {}
 
     # Check cache first
     for pkg in packages:
@@ -477,7 +504,7 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
                     pkg.name,
                     pkg.ecosystem,
                 )
-            skipped_ecosystems += 1
+            skipped_ecosystems[eco_key] = skipped_ecosystems.get(eco_key, 0) + 1
             continue
         if not pkg.version or pkg.version in ("unknown", "latest"):
             _logger.warning(
@@ -499,14 +526,18 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
         packages_to_query.append(pkg)
 
     if not packages_to_query:
-        scanned = len(packages) - skipped_versions
-        if skipped_versions:
+        total_skipped_eco = sum(skipped_ecosystems.values())
+        scanned = len(packages) - skipped_versions - total_skipped_eco
+        if skipped_versions or skipped_ecosystems:
             _logger.info(
-                "Scan complete: %d packages scanned, %d skipped (unresolvable versions), %d skipped (unknown ecosystem)",
+                "Scan complete: %d packages scanned, %d skipped (unresolvable versions), %d skipped (non-OSV ecosystem)",
                 scanned,
                 skipped_versions,
-                skipped_ecosystems,
+                total_skipped_eco,
             )
+        if skipped_ecosystems:
+            parts = ", ".join(f"{eco}: {cnt}" for eco, cnt in sorted(skipped_ecosystems.items()))
+            console.print(f"  [dim]Skipped {total_skipped_eco} packages not in OSV database ({parts})[/dim]")
         return await _enrich_results_if_needed(results)
 
     queries = []
@@ -539,6 +570,8 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
 
     # Track which queried packages got vulns (to cache "clean" results too)
     queried_keys_with_vulns: set[str] = set()
+    # Track packages whose CVE lookup failed (batch errors, parse errors, etc.)
+    _lookup_errors: list[tuple[str, str, str]] = []  # (pkg_name, ecosystem, error)
 
     # OSV batch API accepts up to 1000 queries; configurable via AGENT_BOM_SCANNER_BATCH_SIZE
     batch_size = min(_BATCH_SIZE, 1000)  # clamp to OSV API max
@@ -586,6 +619,10 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
                                     queried_keys_with_vulns.add(key)
                     except (ValueError, KeyError) as e:
                         console.print(f"  [red]✗[/red] OSV response parse error: {e}")
+                        for idx in range(batch_start, min(batch_start + len(batch), len(queries))):
+                            pkg_err = pkg_index.get(idx)
+                            if pkg_err:
+                                _lookup_errors.append((pkg_err.name, pkg_err.ecosystem, f"parse error: {e}"))
                 elif response and response.status_code == 429:
                     # request_with_retry exhausted all retries and still got 429 — apply
                     # a pipeline-level cooldown before the next batch, respecting any
@@ -602,8 +639,16 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
                     await asyncio.sleep(pipeline_wait)
                 elif response:
                     console.print(f"  [red]✗[/red] OSV API error: HTTP {response.status_code}")
+                    for idx in range(batch_start, min(batch_start + len(batch), len(queries))):
+                        pkg_err = pkg_index.get(idx)
+                        if pkg_err:
+                            _lookup_errors.append((pkg_err.name, pkg_err.ecosystem, f"HTTP {response.status_code}"))
                 else:
                     console.print("  [red]✗[/red] OSV API unreachable after retries")
+                    for idx in range(batch_start, min(batch_start + len(batch), len(queries))):
+                        pkg_err = pkg_index.get(idx)
+                        if pkg_err:
+                            _lookup_errors.append((pkg_err.name, pkg_err.ecosystem, "unreachable"))
 
             # Rate limit: delay between batches
             if batch_start + batch_size < len(queries):
@@ -625,13 +670,26 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
         ]
         await asyncio.to_thread(cache.put_many, cache_writes)
 
-    scanned = len(packages) - skipped_versions
-    if skipped_versions:
+    total_skipped_eco = sum(skipped_ecosystems.values())
+    scanned = len(packages) - skipped_versions - total_skipped_eco
+    if skipped_versions or skipped_ecosystems:
         _logger.info(
-            "Scan complete: %d packages scanned, %d skipped (unresolvable versions)",
+            "Scan complete: %d packages scanned, %d skipped (unresolvable versions), %d skipped (non-OSV ecosystem)",
             scanned,
             skipped_versions,
+            total_skipped_eco,
         )
+    if skipped_ecosystems:
+        parts = ", ".join(f"{eco}: {cnt}" for eco, cnt in sorted(skipped_ecosystems.items()))
+        console.print(f"  [dim]Skipped {total_skipped_eco} packages not in OSV database ({parts})[/dim]")
+    if _lookup_errors:
+        _logger.warning(
+            "%d packages had CVE lookup errors — vulnerability detection may be incomplete",
+            len(_lookup_errors),
+        )
+        console.print(f"  [yellow]⚠[/yellow] {len(_lookup_errors)} packages had lookup errors [dim](use --verbose for details)[/dim]")
+        for pkg_name, eco, err in _lookup_errors:
+            _logger.info("  Lookup error: %s/%s — %s", eco, pkg_name, err)
     return results
 
 
@@ -767,7 +825,7 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
         for alias in aliases:
             seen_ids.add(alias)
 
-        severity, cvss_score = parse_osv_severity(vuln_data)
+        severity, cvss_score, sev_source = parse_osv_severity(vuln_data)
         fixed = parse_fixed_version(vuln_data, package.name, package.ecosystem)
 
         references = [ref.get("url", "") for ref in vuln_data.get("references", []) if ref.get("url")]
@@ -792,6 +850,7 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
                 id=canonical_id,
                 summary=summary,
                 severity=severity,
+                severity_source=sev_source,
                 cvss_score=cvss_score,
                 fixed_version=fixed,
                 references=references,

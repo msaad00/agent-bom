@@ -105,26 +105,26 @@ class TestSeverityParsing:
 
     def test_critical_score(self):
         vuln = {"severity": [{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}]}
-        severity, score = parse_osv_severity(vuln)
+        severity, score, _sev_src = parse_osv_severity(vuln)
         assert score == 9.8
         assert severity == Severity.CRITICAL
 
     def test_medium_score(self):
         vuln = {"severity": [{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:H/PR:L/UI:R/S:U/C:L/I:L/A:N"}]}
-        severity, score = parse_osv_severity(vuln)
+        severity, score, _sev_src = parse_osv_severity(vuln)
         assert score is not None
         assert severity in (Severity.LOW, Severity.MEDIUM)
 
     def test_no_severity_returns_default(self):
         """No severity data → defaults to UNKNOWN (not MEDIUM — never silently inflate)."""
         vuln = {}
-        severity, score = parse_osv_severity(vuln)
+        severity, score, _sev_src = parse_osv_severity(vuln)
         assert severity == Severity.UNKNOWN
         assert score is None
 
     def test_numeric_score_fallback(self):
         vuln = {"severity": [{"type": "CVSS_V3", "score": "8.1"}]}
-        severity, score = parse_osv_severity(vuln)
+        severity, score, _sev_src = parse_osv_severity(vuln)
         assert score == 8.1
         assert severity == Severity.HIGH
 

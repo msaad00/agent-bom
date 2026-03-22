@@ -51,6 +51,34 @@ class ThreatLevel(str, Enum):
     HIGH = "high"  # 3+ detectors OR critical alert
     CRITICAL = "critical"  # correlated attack pattern confirmed
 
+    def __gt__(self, other: object) -> bool:  # type: ignore[override]
+        if not isinstance(other, ThreatLevel):
+            return NotImplemented
+        return _THREAT_ORDINAL[self] > _THREAT_ORDINAL[other]
+
+    def __ge__(self, other: object) -> bool:  # type: ignore[override]
+        if not isinstance(other, ThreatLevel):
+            return NotImplemented
+        return _THREAT_ORDINAL[self] >= _THREAT_ORDINAL[other]
+
+    def __lt__(self, other: object) -> bool:  # type: ignore[override]
+        if not isinstance(other, ThreatLevel):
+            return NotImplemented
+        return _THREAT_ORDINAL[self] < _THREAT_ORDINAL[other]
+
+    def __le__(self, other: object) -> bool:  # type: ignore[override]
+        if not isinstance(other, ThreatLevel):
+            return NotImplemented
+        return _THREAT_ORDINAL[self] <= _THREAT_ORDINAL[other]
+
+
+# Ordinal values for correct ThreatLevel comparison (not lexicographic)
+_THREAT_ORDINAL: dict["ThreatLevel", int] = {
+    ThreatLevel.NORMAL: 0,
+    ThreatLevel.ELEVATED: 1,
+    ThreatLevel.HIGH: 2,
+    ThreatLevel.CRITICAL: 3,
+}
 
 # Severity weights for composite scoring
 _SEVERITY_WEIGHTS: dict[str, float] = {
@@ -136,7 +164,7 @@ class ProtectionEngine:
         correlation_window: float = 30.0,
         block_on_critical: bool = True,
     ) -> None:
-        self.drift_detector = ToolDriftDetector()
+        self.drift_detector = ToolDriftDetector(restore=shield)
         self.arg_analyzer = ArgumentAnalyzer()
         self.cred_detector = CredentialLeakDetector()
         self.rate_tracker = RateLimitTracker()
@@ -342,7 +370,7 @@ class ProtectionEngine:
                 new_level = level
                 break
 
-        escalated = new_level.value > previous.value if new_level != previous else False
+        escalated = new_level > previous if new_level != previous else False
         self._threat_level = new_level
         self._stats.threat_level = new_level.value
 

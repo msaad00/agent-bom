@@ -11,12 +11,15 @@ Pluggable detectors that analyze MCP JSON-RPC traffic in real-time:
 
 from __future__ import annotations
 
+import json
+import os
 import re
 import time
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
+from pathlib import Path
 
 from agent_bom.runtime.patterns import (
     CREDENTIAL_PATTERNS,
@@ -72,14 +75,43 @@ class ToolDriftDetector:
 
     Compares the initial tools/list snapshot against subsequent ones.
     New tools that weren't in the initial set trigger HIGH alerts.
+    Persists baseline to disk so it survives engine restarts.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, restore: bool = False) -> None:
         self._baseline: set[str] | None = None
+        if restore:
+            self._restore_baseline()
+
+    @staticmethod
+    def _baseline_path() -> Path:
+        state_dir = Path(os.environ.get("AGENT_BOM_STATE_DIR", Path.home() / ".agent-bom"))
+        state_dir.mkdir(parents=True, exist_ok=True)
+        return state_dir / "drift_baseline.json"
+
+    def _persist_baseline(self) -> None:
+        try:
+            path = self._baseline_path()
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(sorted(self._baseline or [])))
+            tmp.replace(path)
+        except OSError:
+            pass
+
+    def _restore_baseline(self) -> None:
+        try:
+            path = self._baseline_path()
+            if path.exists():
+                tools = json.loads(path.read_text())
+                if isinstance(tools, list):
+                    self._baseline = set(tools)
+        except (OSError, json.JSONDecodeError):
+            pass
 
     def set_baseline(self, tools: list[str]) -> None:
         """Set the initial tool baseline from the first tools/list response."""
         self._baseline = set(tools)
+        self._persist_baseline()
 
     def check(self, current_tools: list[str]) -> list[Alert]:
         """Compare current tools against baseline. Returns alerts for new tools."""

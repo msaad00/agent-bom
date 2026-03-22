@@ -53,6 +53,9 @@ CREDENTIAL_PATTERNS: list[tuple[str, re.Pattern]] = [
     ("Shopify Access Token", re.compile(r"shpat_[A-Fa-f0-9]{32}")),
     ("Databricks Token", re.compile(r"dapi[a-f0-9]{32}")),
     ("Snowflake JWT", re.compile(r"(?:snowflake_jwt|sf_token)\s*[=:]\s*['\"]?[A-Za-z0-9\-_.]{20,}", re.IGNORECASE)),
+    ("HashiCorp Vault Token", re.compile(r"\bhv[sb]\.[A-Za-z0-9]{24,}")),
+    ("AWS Session Token", re.compile(r"(?:aws_session_token|AWS_SESSION_TOKEN)\s*[=:]\s*['\"]?[A-Za-z0-9/+=]{100,}")),
+    ("PagerDuty API Key", re.compile(r"\b[A-Za-z0-9+/]{20}-us\b")),
 ]
 
 # ─── PII patterns ────────────────────────────────────────────────────────────
@@ -78,7 +81,7 @@ PII_PATTERNS: list[tuple[str, re.Pattern]] = [
 # Patterns that indicate shell injection, path traversal, or credential exfiltration
 DANGEROUS_ARG_PATTERNS: list[tuple[str, re.Pattern]] = [
     ("Shell metacharacter", re.compile(r"[;&|`$]|\$\(|>\s*/|<\s*/")),
-    ("Path traversal", re.compile(r"\.\./|\.\.\\|%2e%2e")),
+    ("Path traversal", re.compile(r"\.\./|\.\.\\|%2e%2e|\\u002e\\u002e")),
     ("Command injection", re.compile(r"\b(?:curl|wget|nc|ncat|bash|sh|python|perl|ruby)\s", re.IGNORECASE)),
     (
         "Environment variable access",
@@ -173,11 +176,11 @@ RESPONSE_SVG_PATTERNS: list[tuple[str, re.Pattern]] = [
 
 # Zero-width and invisible Unicode characters used to hide instructions
 RESPONSE_INVISIBLE_CHARS: list[tuple[str, re.Pattern]] = [
-    ("Zero-width space cluster", re.compile(r"[\u200b\u200c\u200d\ufeff]{3,}")),
-    ("Zero-width joiner sequence", re.compile(r"(?:\u200d.){4,}")),
+    ("Zero-width space cluster", re.compile(r"[\u200b\u200c\u200d\ufeff]+")),
+    ("Zero-width joiner sequence", re.compile(r"(?:\u200d.){2,}")),
     ("Homoglyph substitution", re.compile(r"[\u0410-\u044f](?=[a-zA-Z])|(?<=[a-zA-Z])[\u0410-\u044f]")),  # Cyrillic mixed with Latin
     ("Right-to-left override", re.compile(r"[\u202e\u2066\u2067\u2068\u202a\u202b]")),
-    ("Tag characters", re.compile(r"[\U000e0001-\U000e007f]{3,}")),
+    ("Tag characters", re.compile(r"[\U000e0001-\U000e007f]+")),
 ]
 
 # Base64 encoded content in responses (potential exfiltration staging)

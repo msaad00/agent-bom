@@ -30,11 +30,13 @@ from agent_bom.config import (
 # agents that have credentials and tool access.
 from agent_bom.constants import AI_PACKAGES as _AI_FRAMEWORK_PACKAGES
 from agent_bom.eu_ai_act import tag_blast_radius as tag_eu_ai_act
+from agent_bom.fedramp import tag_blast_radius as tag_fedramp
 from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.iso_27001 import tag_blast_radius as tag_iso_27001
 from agent_bom.malicious import check_typosquat, flag_malicious_from_vulns
 from agent_bom.mitre_attack import tag_blast_radius as tag_attack_techniques
 from agent_bom.models import Agent, BlastRadius, MCPServer, Package, Severity, Vulnerability, normalize_package_name
+from agent_bom.nist_800_53 import tag_blast_radius as tag_nist_800_53
 from agent_bom.nist_ai_rmf import tag_blast_radius as tag_nist_ai_rmf
 from agent_bom.nist_csf import tag_blast_radius as tag_nist_csf
 from agent_bom.owasp import tag_blast_radius
@@ -1502,6 +1504,8 @@ async def scan_agents(agents: list[Agent], *, compliance_enabled: bool = False, 
                 br.soc2_tags = tag_soc2(br)
                 br.cis_tags = tag_cis_controls(br)
                 br.cmmc_tags = tag_cmmc(br)
+                br.nist_800_53_tags = tag_nist_800_53(br)
+                br.fedramp_tags = tag_fedramp(br)
             blast_radii.append(br)
 
     # Sort by risk score descending

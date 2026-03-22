@@ -146,7 +146,16 @@ def _extract_field(br, name: str):
         "owasp_mcp_tags": lambda b: getattr(b, "owasp_mcp_tags", []),
         "owasp_agentic_tags": lambda b: getattr(b, "owasp_agentic_tags", []),
         "nist_csf_tags": lambda b: getattr(b, "nist_csf_tags", []),
+        "nist_ai_rmf_tags": lambda b: getattr(b, "nist_ai_rmf_tags", []),
+        "nist_800_53_tags": lambda b: getattr(b, "nist_800_53_tags", []),
+        "atlas_tags": lambda b: getattr(b, "atlas_tags", []),
+        "attack_tags": lambda b: getattr(b, "attack_tags", []),
+        "iso_27001_tags": lambda b: getattr(b, "iso_27001_tags", []),
+        "soc2_tags": lambda b: getattr(b, "soc2_tags", []),
         "cis_tags": lambda b: getattr(b, "cis_tags", []),
+        "cmmc_tags": lambda b: getattr(b, "cmmc_tags", []),
+        "eu_ai_act_tags": lambda b: getattr(b, "eu_ai_act_tags", []),
+        "fedramp_tags": lambda b: getattr(b, "fedramp_tags", []),
     }
 
     # Severity name comparisons: resolve "HIGH", "CRITICAL" etc. to ordinal

@@ -16,7 +16,7 @@ from collections import deque
 from pathlib import Path as _Path
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, WebSocket
+from fastapi import APIRouter, HTTPException, Request, WebSocket
 
 if TYPE_CHECKING:
     from agent_bom.runtime.protection import ProtectionEngine
@@ -425,3 +425,45 @@ async def shield_unblock(session_id: str = "default") -> dict:
 
     engine.unblock()
     return {"status": "unblocked", "session_id": session_id, **engine.status()}
+
+
+@router.post("/v1/shield/break-glass", tags=["shield"])
+async def break_glass(request: Request, session_id: str = "default", reason: str = "") -> dict:
+    """Emergency kill-switch override — admin only, audit logged.
+
+    Immediately unblocks all sessions and logs the override for compliance.
+    Requires ``admin`` role (set via ``request.state.api_key_role``).
+    """
+    role = getattr(request.state, "api_key_role", "viewer")
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Break-glass requires admin role")
+
+    engine = _get_engine(session_id)
+    if engine is None or not engine.active:
+        return {"status": "not_active", "session_id": session_id}
+
+    was_blocked = engine.is_blocked
+    if was_blocked:
+        engine.unblock()
+
+    # Audit log the break-glass event
+    try:
+        from agent_bom.api.audit_log import log_action
+
+        log_action(
+            "break_glass",
+            actor=role,
+            resource=f"shield/{session_id}",
+            reason=reason,
+            was_blocked=was_blocked,
+        )
+    except Exception:  # noqa: BLE001
+        pass  # audit log failure must not block emergency override
+
+    return {
+        "status": "break_glass_activated",
+        "session_id": session_id,
+        "was_blocked": was_blocked,
+        "reason": reason,
+        **engine.status(),
+    }

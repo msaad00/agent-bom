@@ -462,6 +462,30 @@ _DANGEROUS_HOOK_PATTERNS = re.compile(
 )
 
 
+def audit_claude_desktop_settings(config_data: dict, config_path: str) -> list[dict]:
+    """Extract and flag risky Claude Desktop automation settings."""
+    findings = []
+    risky_settings = {
+        "scheduledTasksEnabled": ("Autonomous scheduled task execution", "high"),
+        "ccdScheduledTasksEnabled": ("Code Desktop scheduled tasks", "high"),
+        "keepAwakeEnabled": ("Keep-awake prevents idle timeout", "medium"),
+        "webSearchEnabled": ("Autonomous internet access", "high"),
+    }
+    for key, (desc, risk) in risky_settings.items():
+        val = config_data.get(key)
+        if val is True:
+            findings.append(
+                {
+                    "setting": key,
+                    "value": val,
+                    "description": desc,
+                    "risk_level": risk,
+                    "config_path": config_path,
+                }
+            )
+    return findings
+
+
 def audit_cortex_hooks(hooks: dict) -> list[dict]:
     """Audit Cortex Code hook configuration for security risks.
 

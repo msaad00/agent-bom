@@ -45,6 +45,7 @@ class ApiKey:
     created_at: str = ""
     expires_at: str | None = None
     scopes: list[str] = field(default_factory=list)
+    tenant_id: str = "default"
 
     def __post_init__(self) -> None:
         if not self.created_at:
@@ -68,6 +69,7 @@ class ApiKey:
             "created_at": self.created_at,
             "expires_at": self.expires_at,
             "scopes": self.scopes,
+            "tenant_id": self.tenant_id,
         }
 
 
@@ -89,6 +91,7 @@ def create_api_key(
     role: Role,
     expires_at: str | None = None,
     scopes: list[str] | None = None,
+    tenant_id: str = "default",
 ) -> tuple[str, ApiKey]:
     """Generate a new API key.
 
@@ -109,6 +112,7 @@ def create_api_key(
         role=role,
         expires_at=expires_at,
         scopes=scopes or [],
+        tenant_id=tenant_id,
     )
     return raw_key, api_key
 

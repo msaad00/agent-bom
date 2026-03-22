@@ -6,6 +6,7 @@ Follows the same pattern as ``store.py`` (Protocol + InMemory + SQLite).
 
 from __future__ import annotations
 
+import os
 import sqlite3
 import threading
 from datetime import datetime, timezone
@@ -158,6 +159,8 @@ class SQLiteFleetStore:
         self._db_path = db_path
         self._local = threading.local()
         self._init_db()
+        if os.path.exists(self._db_path):
+            os.chmod(self._db_path, 0o600)
 
     @property
     def _conn(self) -> sqlite3.Connection:

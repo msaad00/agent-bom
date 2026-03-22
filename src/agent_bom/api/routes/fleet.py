@@ -14,7 +14,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from agent_bom.api.models import FleetAgentUpdate, StateUpdate
 from agent_bom.api.stores import _get_fleet_store
@@ -24,19 +24,26 @@ router = APIRouter()
 
 @router.get("/v1/fleet", tags=["fleet"])
 async def list_fleet(
+    request: Request,
     state: str | None = None,
     environment: str | None = None,
     min_trust: float | None = None,
+    include_quarantined: bool = False,
     limit: int = 50,
     offset: int = 0,
 ):
     """List all agents in the fleet registry.
 
     Supports pagination via ``limit`` (default 50, max 200) and ``offset``.
+    Quarantined and decommissioned agents are excluded by default —
+    pass ``include_quarantined=true`` to include them.
     """
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
-    agents = _get_fleet_store().list_all()
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    agents = _get_fleet_store().list_by_tenant(tenant_id)
+    if not include_quarantined:
+        agents = [a for a in agents if a.lifecycle_state.value not in ("quarantined", "decommissioned")]
     if state:
         agents = [a for a in agents if a.lifecycle_state.value == state]
     if environment:

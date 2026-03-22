@@ -172,6 +172,7 @@ def test_list_fleet_pagination():
         a.trust_score = 0.5
         a.model_dump.return_value = {"agent_id": f"a-{i}"}
     mock_store.list_all.return_value = agents
+    mock_store.list_by_tenant.return_value = agents
 
     with patch("agent_bom.api.routes.fleet._get_fleet_store", return_value=mock_store):
         client = TestClient(app)

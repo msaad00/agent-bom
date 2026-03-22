@@ -489,6 +489,23 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
     if vulnerabilities_cdx:
         cdx["vulnerabilities"] = vulnerabilities_cdx
 
+    # Compositions — declare assembly completeness for SBOM consumers
+    if components:
+        # "incomplete" unless we verified every transitive dependency
+        aggregate = "incomplete"
+        if all(
+            not any(p.get("value") == "true" for p in c.get("properties", []) if p.get("name") == "agent-bom:resolved-from-registry")
+            for c in components
+            if c.get("type") == "library"
+        ):
+            aggregate = "complete"
+        cdx["compositions"] = [
+            {
+                "aggregate": aggregate,
+                "assemblies": [c["bom-ref"] for c in components if "bom-ref" in c],
+            }
+        ]
+
     return cdx
 
 

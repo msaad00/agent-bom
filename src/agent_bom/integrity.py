@@ -227,6 +227,43 @@ async def check_package_provenance(
         return await check_npm_provenance(package.name, package.version, client)
     elif package.ecosystem == "pypi":
         return await check_pypi_provenance(package.name, package.version, client)
+    elif package.ecosystem == "go":
+        return await check_go_provenance(package.name, package.version, client)
+
+    return None
+
+
+async def check_go_provenance(
+    module_path: str,
+    version: str,
+    client: httpx.AsyncClient,
+) -> Optional[dict]:
+    """Check Go module integrity via the Go checksum database (sum.golang.org).
+
+    The Go checksum database provides a tamper-proof log of module hashes.
+    If a module+version is present, it means the Go team has recorded its
+    hash — providing a form of supply chain attestation.
+
+    Returns:
+        Dict with provenance info or None if not available
+    """
+    # Go checksum DB lookup: /lookup/<module>@<version>
+    response = await request_with_retry(
+        client,
+        "GET",
+        f"https://sum.golang.org/lookup/{module_path}@{version}",
+    )
+
+    if response and response.status_code == 200:
+        body = response.text.strip()
+        # Response format: line 1 = id, line 2 = module@version hash, line 3 = go.sum hash
+        lines = body.split("\n")
+        if len(lines) >= 2:
+            return {
+                "has_provenance": True,
+                "source": "sum.golang.org",
+                "checksum_db_entry": lines[0].strip() if lines else "",
+            }
 
     return None
 

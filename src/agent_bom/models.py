@@ -189,6 +189,11 @@ class Package:
     scorecard_score: Optional[float] = None  # 0.0-10.0 overall score
     scorecard_checks: dict[str, int] = field(default_factory=dict)  # check_name -> score (-1 to 10)
 
+    # Provenance / supply chain attestation (populated by --verify-integrity)
+    integrity_verified: Optional[bool] = None  # SHA256/SRI verified against registry
+    provenance_attested: Optional[bool] = None  # SLSA/PEP740/sum.golang.org attestation found
+    provenance_source: Optional[str] = None  # "npm_slsa", "pypi_pep740", "go_sumdb"
+
     # Auto-discovery metadata (populated when not in bundled registry)
     auto_risk_level: Optional[str] = None
     auto_risk_justification: Optional[str] = None

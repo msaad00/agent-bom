@@ -1111,14 +1111,19 @@ def scan(
                     for key, pkg in unique_pkgs.items():
                         integrity = await verify_package_integrity(pkg, client)
                         if integrity and integrity.get("verified"):
+                            pkg.integrity_verified = True
                             con.print(f"  [green]✓[/green] {pkg.name}@{pkg.version} — integrity verified (SHA256/SRI)")
                         elif integrity:
+                            pkg.integrity_verified = False
                             con.print(f"  [yellow]⚠[/yellow] {pkg.name}@{pkg.version} — no integrity hash found")
 
                         provenance = await check_package_provenance(pkg, client)
                         if provenance and provenance.get("has_provenance"):
+                            pkg.provenance_attested = True
+                            pkg.provenance_source = provenance.get("source", f"{pkg.ecosystem}_attestation")
                             con.print(f"  [green]✓[/green] {pkg.name}@{pkg.version} — SLSA provenance attested")
                         elif provenance:
+                            pkg.provenance_attested = False
                             con.print(f"  [dim]  {pkg.name}@{pkg.version} — no SLSA provenance[/dim]")
 
             if unique_pkgs:

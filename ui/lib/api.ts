@@ -519,6 +519,13 @@ export interface EvaluateResult {
   policies_evaluated: number;
 }
 
+export interface PostureResponse {
+  grade: string;
+  score: number;
+  summary: string;
+  dimensions: Record<string, { score: number; label: string; details?: string }>;
+}
+
 // ─── Fetch helpers ────────────────────────────────────────────────────────────
 
 const FETCH_TIMEOUT_MS = 30_000;
@@ -635,6 +642,9 @@ export const api = {
     return () => es.close(); // cleanup fn
   },
 
+  /** Full posture grade + dimensions */
+  getPosture: () => get<PostureResponse>("/v1/posture"),
+
   /** Lightweight aggregate counts + scan context for nav badges */
   getPostureCounts: () =>
     get<{
@@ -709,6 +719,10 @@ export const api = {
     return get<ProxyAlertsResponse>(`/v1/proxy/alerts${qs ? `?${qs}` : ""}`);
   },
 
+  // ── Exceptions (FP suppression) ──
+  createException: (body: { vulnerability_id: string; package_name: string; reason: string }) =>
+    post<{ id: string; status: string }>("/v1/exceptions", body),
+
   // ── Audit Log ──
   listAuditEntries: (filters?: { action?: string; resource?: string; since?: string; limit?: number; offset?: number }) => {
     const params = new URLSearchParams();
@@ -721,6 +735,7 @@ export const api = {
     return get<AuditLogResponse>(`/v1/audit${qs ? `?${qs}` : ""}`);
   },
   getAuditIntegrity: (limit = 1000) => get<AuditIntegrityResponse>(`/v1/audit/integrity?limit=${limit}`),
+  getAuditLog: (limit?: number) => get<{ entries: AuditEntry[] }>(`/v1/audit?limit=${limit ?? 10}`),
 };
 
 // ─── Threat Framework Catalogs ────────────────────────────────────────────────

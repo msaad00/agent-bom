@@ -71,6 +71,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Graphs",
     icon: GitBranch,
     links: [
+      { href: "/security-graph", label: "Security Graph", icon: Network },
       { href: "/graph", label: "Lineage Graph", icon: GitBranch },
       { href: "/mesh", label: "Agent Mesh", icon: Network },
       { href: "/context", label: "Context Map", icon: Waypoints },

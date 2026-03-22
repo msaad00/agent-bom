@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   api,
   type FleetAgent,
@@ -31,6 +31,7 @@ import {
   KeyRound,
   Bug,
   AlertTriangle,
+  Settings,
 } from "lucide-react";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -81,6 +82,13 @@ export default function FleetPage() {
   const [syncing, setSyncing] = useState(false);
   const [stateFilter, setStateFilter] = useState<string>("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [trustThreshold, setTrustThreshold] = useState(50);
+  const [autoQuarantine, setAutoQuarantine] = useState(false);
+
+  const belowThresholdCount = useMemo(
+    () => agents.filter((a) => a.trust_score < trustThreshold).length,
+    [agents, trustThreshold]
+  );
 
   const load = () => {
     setLoading(true);
@@ -145,6 +153,50 @@ export default function FleetPage() {
           <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
           {syncing ? "Syncing..." : "Sync Now"}
         </button>
+      </div>
+
+      {/* Trust Threshold Settings */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Settings className="w-4 h-4 text-zinc-400" />
+          <h3 className="text-sm font-semibold text-zinc-300">Trust Threshold</h3>
+        </div>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex-1">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-zinc-500">Minimum trust score</span>
+              <span className="text-xs font-mono text-zinc-200">{trustThreshold}</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={trustThreshold}
+              onChange={(e) => setTrustThreshold(Number(e.target.value))}
+              className="w-full h-1.5 bg-zinc-800 rounded-full appearance-none cursor-pointer accent-emerald-500"
+            />
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="text-xs text-zinc-400">
+              <span className="font-mono text-yellow-400">{belowThresholdCount}</span> agents below threshold
+            </span>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <span className="text-xs text-zinc-500">Auto-quarantine</span>
+              <button
+                onClick={() => setAutoQuarantine((v) => !v)}
+                className={`relative w-8 h-4 rounded-full transition-colors ${
+                  autoQuarantine ? "bg-emerald-600" : "bg-zinc-700"
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform ${
+                    autoQuarantine ? "translate-x-4" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </label>
+          </div>
+        </div>
       </div>
 
       {/* Stats */}

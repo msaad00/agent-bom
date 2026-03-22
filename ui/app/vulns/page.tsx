@@ -1,9 +1,9 @@
 "use client";
 
-import { Suspense, useEffect, useState, useMemo } from "react";
+import { Suspense, useCallback, useEffect, useState, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { api, Vulnerability, ScanJob, ScanResult, severityColor, severityDot, OWASP_LLM_TOP10, MITRE_ATLAS } from "@/lib/api";
-import { Bug, ExternalLink, ChevronDown, ChevronUp, Layers, Package, Server } from "lucide-react";
+import { Bug, ExternalLink, ChevronDown, ChevronUp, Layers, Package, Server, ShieldOff } from "lucide-react";
 
 interface EnrichedVuln extends Vulnerability {
   packages: string[];
@@ -86,6 +86,20 @@ function VulnsPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [search, setSearch] = useState(paramCve ?? paramAgent ?? "");
   const [groupBy, setGroupBy] = useState<GroupKey>("none");
+  const [suppressed, setSuppressed] = useState<Set<string>>(new Set());
+
+  const handleMarkFP = useCallback(async (vulnId: string, packageName: string) => {
+    try {
+      await api.createException({
+        vulnerability_id: vulnId,
+        package_name: packageName,
+        reason: "false_positive",
+      });
+      setSuppressed((prev) => new Set(prev).add(vulnId));
+    } catch {
+      // silently fail — button stays visible for retry
+    }
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -312,12 +326,12 @@ function VulnsPage() {
                       {groupVulns.length}
                     </span>
                   </div>
-                  <VulnTable vulns={groupVulns} sortKey={sortKey} sortDir={sortDir} handleSort={handleSort} />
+                  <VulnTable vulns={groupVulns} sortKey={sortKey} sortDir={sortDir} handleSort={handleSort} suppressed={suppressed} onMarkFP={handleMarkFP} />
                 </div>
               ))}
             </div>
           ) : (
-            <VulnTable vulns={displayed} sortKey={sortKey} sortDir={sortDir} handleSort={handleSort} />
+            <VulnTable vulns={displayed} sortKey={sortKey} sortDir={sortDir} handleSort={handleSort} suppressed={suppressed} onMarkFP={handleMarkFP} />
           )}
 
           <p className="text-xs text-zinc-600 text-right">
@@ -334,11 +348,15 @@ function VulnTable({
   sortKey,
   sortDir,
   handleSort,
+  suppressed,
+  onMarkFP,
 }: {
   vulns: EnrichedVuln[];
   sortKey: SortKey;
   sortDir: "asc" | "desc";
   handleSort: (f: SortKey) => void;
+  suppressed: Set<string>;
+  onMarkFP: (vulnId: string, packageName: string) => void;
 }) {
   return (
     <div className="border border-zinc-800 rounded-xl overflow-hidden">
@@ -360,6 +378,7 @@ function VulnTable({
             <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Packages</th>
             <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Agents</th>
             <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Fix</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-zinc-800 bg-zinc-950">
@@ -414,6 +433,21 @@ function VulnTable({
               </td>
               <td className="px-4 py-3 text-xs font-mono text-emerald-500">
                 {v.fixed_version ?? "—"}
+              </td>
+              <td className="px-4 py-3">
+                {suppressed.has(v.id) ? (
+                  <span className="text-xs font-medium px-2 py-0.5 rounded border bg-zinc-800 border-zinc-700 text-zinc-400">
+                    Suppressed
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => onMarkFP(v.id, v.packages[0] ?? "")}
+                    className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-zinc-700 hover:bg-zinc-600 text-zinc-300 transition-colors"
+                  >
+                    <ShieldOff className="w-3 h-3" />
+                    Mark FP
+                  </button>
+                )}
               </td>
             </tr>
           ))}

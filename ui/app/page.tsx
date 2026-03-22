@@ -2,12 +2,14 @@
 
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
-import { api, ScanJob, ScanResult, BlastRadius, Agent, formatDate, OWASP_LLM_TOP10, MITRE_ATLAS } from "@/lib/api";
+import { api, ScanJob, ScanResult, BlastRadius, Agent, PostureResponse, formatDate, OWASP_LLM_TOP10, MITRE_ATLAS } from "@/lib/api";
 import { checkFileSize, validateScanReport } from "@/lib/validators";
 import { AgentTopology } from "@/components/agent-topology";
 import { TrustStack } from "@/components/trust-stack";
 import { SeverityBadge } from "@/components/severity-badge";
 import { ActivityFeed } from "@/components/activity-feed";
+import { PostureGrade } from "@/components/posture-grade";
+import { AttackPathCard } from "@/components/attack-path-card";
 import {
   ShieldAlert, Server, Package, Bug, Zap, ArrowRight, Clock,
   AlertTriangle, Container, Layers, FileText, ExternalLink,
@@ -320,6 +322,12 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState(false);
   const [importedReport, setImportedReport] = useState<ScanResult | null>(null);
+  const [posture, setPosture] = useState<PostureResponse | null>(null);
+
+  // Fetch posture grade
+  useEffect(() => {
+    api.getPosture().then(setPosture).catch(() => {});
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -424,6 +432,58 @@ export default function Dashboard() {
           <ArrowRight className="w-4 h-4" />
         </Link>
       </div>
+
+      {/* Posture Hero */}
+      {posture && (
+        <div className="grid grid-cols-1 lg:grid-cols-[auto_1fr] gap-6 bg-zinc-900 border border-zinc-800 rounded-xl p-6 shadow-lg shadow-zinc-950/50">
+          <PostureGrade grade={posture.grade} score={posture.score} dimensions={posture.dimensions} />
+          <div className="flex flex-col justify-center gap-2">
+            <h2 className="text-lg font-semibold text-zinc-100">Security Posture: <span style={{ color: posture.grade === "A" ? "#22c55e" : posture.grade === "B" ? "#3b82f6" : posture.grade === "C" ? "#eab308" : posture.grade === "D" ? "#f97316" : posture.grade === "F" ? "#ef4444" : "#71717a" }}>{posture.grade}</span></h2>
+            <p className="text-sm text-zinc-400">{posture.summary}</p>
+            {posture.dimensions && Object.keys(posture.dimensions).length > 0 && (
+              <div className="flex flex-wrap gap-3 mt-1">
+                {Object.entries(posture.dimensions).map(([key, dim]) => (
+                  <div key={key} className="flex items-center gap-1.5 text-xs">
+                    <span className={`w-2 h-2 rounded-full ${dim.score >= 80 ? "bg-emerald-500" : dim.score >= 60 ? "bg-yellow-500" : "bg-red-500"}`} />
+                    <span className="text-zinc-400">{dim.label}</span>
+                    <span className="font-mono text-zinc-300">{dim.score}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Top Attack Paths */}
+      {(!isLoading) && allBlast.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest mb-3">
+            Top Attack Paths
+          </h2>
+          <div className="space-y-2">
+            {[...allBlast]
+              .sort((a, b) => (b.risk_score ?? b.blast_score) - (a.risk_score ?? a.blast_score))
+              .slice(0, 5)
+              .map((b) => {
+                const nodes: { type: "cve" | "package" | "server" | "agent" | "credential"; label: string; severity?: string }[] = [
+                  { type: "cve", label: b.vulnerability_id, severity: b.severity?.toLowerCase() },
+                ];
+                if (b.package) nodes.push({ type: "package", label: b.package });
+                if (b.affected_servers && b.affected_servers.length > 0) nodes.push({ type: "server", label: b.affected_servers[0] });
+                if (b.affected_agents.length > 0) nodes.push({ type: "agent", label: b.affected_agents[0] });
+                if (b.exposed_credentials.length > 0) nodes.push({ type: "credential", label: b.exposed_credentials[0] });
+                return (
+                  <AttackPathCard
+                    key={b.vulnerability_id}
+                    nodes={nodes}
+                    riskScore={b.risk_score ?? b.blast_score / 10}
+                  />
+                );
+              })}
+          </div>
+        </section>
+      )}
 
       {/* Fleet stats */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">

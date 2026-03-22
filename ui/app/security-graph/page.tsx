@@ -1,0 +1,321 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ReactFlow, Background, MiniMap, Controls,
+  type Node, type Edge, MarkerType,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import { api, type ScanJob, type ScanResult, type Agent } from "@/lib/api";
+import { EmptyState } from "@/components/empty-state";
+import { FullscreenButton, GraphLegend } from "@/components/graph-chrome";
+import {
+  CONTROLS_CLASS, MINIMAP_CLASS, BACKGROUND_COLOR, BACKGROUND_GAP,
+} from "@/lib/graph-utils";
+import { Network, Loader2, AlertTriangle } from "lucide-react";
+
+// ── Column positions for the layered layout ──────────────────────────────────
+
+const COLUMN_X = { agent: 0, server: 400, package: 800, registry: 1200 };
+const ROW_SPACING = 100;
+
+// ── Legend ────────────────────────────────────────────────────────────────────
+
+const SECURITY_LEGEND = [
+  { label: "Agent",      color: "#10b981" },
+  { label: "MCP Server", color: "#3b82f6" },
+  { label: "Package",    color: "#71717a" },
+  { label: "Vulnerable", color: "#ef4444" },
+  { label: "Credential", color: "#eab308", dashed: true },
+];
+
+// ── Custom Node ──────────────────────────────────────────────────────────────
+
+function SecurityNode({ data }: { data: any }) {
+  const borderColor = data.vulnCount > 0
+    ? data.hasCritical ? "#ef4444" : "#f97316"
+    : data.hasCredentials ? "#eab308" : "#3f3f46";
+
+  return (
+    <div
+      className="relative px-3 py-2 rounded-lg border-2 bg-zinc-900 min-w-[180px] max-w-[220px] shadow-lg backdrop-blur transition-opacity"
+      style={{ borderColor }}
+    >
+      <div className="flex items-center gap-2">
+        <span className="text-lg">{data.icon}</span>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-zinc-200 truncate">{data.label}</div>
+          <div className="text-[10px] text-zinc-500 truncate">{data.sublabel}</div>
+        </div>
+      </div>
+      {data.vulnCount > 0 && (
+        <div className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+          {data.vulnCount}
+        </div>
+      )}
+      {data.hasCredentials && (
+        <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-yellow-500 text-black text-[8px] flex items-center justify-center">
+          🔑
+        </div>
+      )}
+    </div>
+  );
+}
+
+const nodeTypes = { securityNode: SecurityNode };
+
+// ── Page ─────────────────────────────────────────────────────────────────────
+
+export default function SecurityGraphPage() {
+  const [jobs, setJobs] = useState<ScanJob[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [insightLayer, setInsightLayer] = useState<"risk" | "credentials" | "none">("none");
+
+  useEffect(() => {
+    api
+      .listJobs()
+      .then(async (res) => {
+        const fullJobs: ScanJob[] = [];
+        for (const j of res.jobs) {
+          if (j.status === "done") {
+            try {
+              const full = await api.getScan(j.job_id);
+              if (full.result) fullJobs.push(full);
+            } catch {
+              /* skip */
+            }
+          }
+        }
+        setJobs(fullJobs);
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Get latest scan result
+  const latestResult = useMemo(() => {
+    for (const job of jobs) {
+      if (job.status === "done" && job.result) return job.result as ScanResult;
+    }
+    return null;
+  }, [jobs]);
+
+  // Build graph from scan result
+  const { nodes, edges } = useMemo(() => {
+    if (!latestResult) return { nodes: [], edges: [] };
+
+    const nodes: Node[] = [];
+    const edges: Edge[] = [];
+    const serverSet = new Set<string>();
+    const packageSet = new Set<string>();
+
+    // Column headers
+    const headers = [
+      { id: "h-agents",   x: COLUMN_X.agent + 60,   label: "Agents" },
+      { id: "h-servers",  x: COLUMN_X.server + 60,  label: "MCP Servers" },
+      { id: "h-packages", x: COLUMN_X.package + 60, label: "Packages" },
+    ];
+    headers.forEach((h) =>
+      nodes.push({
+        id: h.id,
+        position: { x: h.x, y: -50 },
+        type: "default",
+        data: { label: h.label },
+        style: {
+          background: "transparent",
+          border: "none",
+          color: "#a1a1aa",
+          fontWeight: 600,
+          fontSize: 14,
+        },
+        draggable: false,
+        selectable: false,
+      })
+    );
+
+    latestResult.agents.forEach((agent, ai) => {
+      const agentId = `agent-${ai}`;
+      const hasCredentials = agent.mcp_servers.some(
+        (s) => (s.env ? Object.keys(s.env).filter((k) => /key|token|secret|password|credential|auth/i.test(k)).length : 0) > 0
+      );
+      nodes.push({
+        id: agentId,
+        position: { x: COLUMN_X.agent, y: ai * ROW_SPACING + 20 },
+        type: "securityNode",
+        data: {
+          label: agent.name,
+          sublabel: agent.agent_type ?? "agent",
+          icon: "🤖",
+          vulnCount: 0,
+          hasCredentials,
+          hasCritical: false,
+        },
+      });
+
+      agent.mcp_servers.forEach((server) => {
+        const serverId = `server-${agent.name}-${server.name}`;
+        if (!serverSet.has(serverId)) {
+          serverSet.add(serverId);
+          const credKeys = server.env
+            ? Object.keys(server.env).filter((k) => /key|token|secret|password|credential|auth/i.test(k))
+            : [];
+          const serverVulns = (server.packages ?? []).reduce(
+            (sum: number, p) => sum + (p.vulnerabilities?.length ?? 0),
+            0
+          );
+          const hasCrit = (server.packages ?? []).some((p) =>
+            p.vulnerabilities?.some((v) => v.severity === "critical")
+          );
+          nodes.push({
+            id: serverId,
+            position: { x: COLUMN_X.server, y: (serverSet.size - 1) * ROW_SPACING + 20 },
+            type: "securityNode",
+            data: {
+              label: server.name,
+              sublabel: server.transport ?? server.command ?? "stdio",
+              icon: "🖥️",
+              vulnCount: serverVulns,
+              hasCredentials: credKeys.length > 0,
+              hasCritical: hasCrit,
+            },
+          });
+        }
+        edges.push({
+          id: `e-${agentId}-${serverId}`,
+          source: agentId,
+          target: serverId,
+          type: "smoothstep",
+          style: { stroke: hasCredentials ? "#eab308" : "#10b981", strokeWidth: 2, opacity: 0.85 },
+          animated: hasCredentials,
+          markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981", width: 16, height: 12 },
+        });
+
+        (server.packages ?? []).forEach((pkg) => {
+          const pkgId = `pkg-${pkg.name}-${pkg.version}`;
+          if (!packageSet.has(pkgId)) {
+            packageSet.add(pkgId);
+            const vulnCount = pkg.vulnerabilities?.length ?? 0;
+            const hasCrit = pkg.vulnerabilities?.some((v) => v.severity === "critical");
+            nodes.push({
+              id: pkgId,
+              position: { x: COLUMN_X.package, y: (packageSet.size - 1) * (ROW_SPACING * 0.6) + 20 },
+              type: "securityNode",
+              data: {
+                label: pkg.name,
+                sublabel: `${pkg.version} · ${pkg.ecosystem}`,
+                icon: "📦",
+                vulnCount,
+                hasCredentials: false,
+                hasCritical: hasCrit,
+              },
+            });
+          }
+          edges.push({
+            id: `e-${serverId}-${pkgId}`,
+            source: serverId,
+            target: pkgId,
+            type: "smoothstep",
+            style: { stroke: "#27272a", strokeWidth: 1.5, opacity: 0.8 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: "#3f3f46", width: 14, height: 10 },
+          });
+        });
+      });
+    });
+
+    return { nodes, edges };
+  }, [latestResult, insightLayer]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-[80vh] text-zinc-400">
+        <Loader2 className="w-5 h-5 animate-spin mr-2" />
+        Loading scan data...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[80vh] text-zinc-400 gap-3">
+        <AlertTriangle className="w-8 h-8 text-amber-500" />
+        <p className="text-sm">Could not connect to agent-bom API</p>
+        <p className="text-xs text-zinc-500">Make sure the API is running at localhost:8422</p>
+      </div>
+    );
+  }
+
+  if (!latestResult) {
+    return (
+      <EmptyState
+        icon={Network}
+        title="No scan data"
+        description="Run a scan to generate the security graph."
+        action={{ label: "New Scan", href: "/scan" }}
+      />
+    );
+  }
+
+  return (
+    <div className="h-[calc(100vh-3.5rem)] flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
+        <div>
+          <h1 className="text-lg font-semibold text-zinc-100">Agentic Security Graph</h1>
+          <p className="text-xs text-zinc-500">
+            Agent → MCP Server → Package — full AI attack surface
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {/* Insight layer toggles */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-zinc-500 mr-1">Layers:</span>
+            {(["none", "risk", "credentials"] as const).map((layer) => (
+              <button
+                key={layer}
+                onClick={() => setInsightLayer(layer)}
+                className={`px-2 py-1 rounded text-xs transition-colors ${
+                  insightLayer === layer
+                    ? "bg-zinc-700 text-zinc-200"
+                    : "bg-zinc-900 text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                {layer === "none" ? "Default" : layer === "risk" ? "Risk" : "Credentials"}
+              </button>
+            ))}
+          </div>
+          <FullscreenButton />
+          <GraphLegend items={SECURITY_LEGEND} />
+        </div>
+      </div>
+
+      {/* Graph */}
+      <div className="flex-1 relative">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          fitView
+          fitViewOptions={{ padding: 0.2 }}
+          minZoom={0.05}
+          maxZoom={2.5}
+          defaultEdgeOptions={{ type: "smoothstep" }}
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
+          <Controls className={CONTROLS_CLASS} />
+          <MiniMap
+            nodeColor={(n) => {
+              const d = n.data as any;
+              if (d?.hasCritical) return "#ef4444";
+              if (d?.vulnCount > 0) return "#f97316";
+              if (d?.hasCredentials) return "#eab308";
+              return "#3f3f46";
+            }}
+            className={MINIMAP_CLASS}
+          />
+        </ReactFlow>
+      </div>
+    </div>
+  );
+}

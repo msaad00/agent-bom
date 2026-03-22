@@ -99,6 +99,13 @@ async def request_with_retry(
     Returns:
         httpx.Response on success, None on exhausted retries.
     """
+    # Defense-in-depth: validate URL at the transport layer even though
+    # callers should have already called validate_url().  This ensures no
+    # code path can reach an external request without SSRF checks.
+    from agent_bom.security import validate_url as _validate_url  # noqa: E402
+
+    _validate_url(url)  # raises ValueError on SSRF attempts
+
     log_url = _safe_url(url)
     backoff = INITIAL_BACKOFF
 

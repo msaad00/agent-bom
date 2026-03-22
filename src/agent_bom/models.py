@@ -99,6 +99,7 @@ class Vulnerability:
     summary: str
     severity: Severity
     severity_source: Optional[str] = None  # "cvss", "osv_database", "osv_ecosystem", "ghsa_heuristic"
+    confidence: float | None = None  # Data quality confidence score (0.0-1.0)
     cvss_score: Optional[float] = None
     fixed_version: Optional[str] = None
     references: list[str] = field(default_factory=list)
@@ -153,6 +154,24 @@ class Vulnerability:
         if self.severity == Severity.MEDIUM:
             return "MEDIUM"
         return "LOW"
+
+
+def compute_confidence(vuln: Vulnerability) -> float:
+    """Compute 0.0-1.0 data quality confidence for a vulnerability."""
+    score = 0.0
+    if vuln.cvss_score is not None:
+        score += 0.25
+    if vuln.epss_score is not None:
+        score += 0.20
+    if vuln.severity_source and vuln.severity_source != "unknown":
+        score += 0.15
+    if getattr(vuln, "cwe_ids", None):
+        score += 0.15
+    if vuln.fixed_version:
+        score += 0.10
+    if vuln.cvss_score is not None and vuln.severity_source == "cvss":
+        score += 0.15  # NVD-analyzed quality
+    return min(score, 1.0)
 
 
 @dataclass
@@ -350,6 +369,7 @@ class Agent:
     status: AgentStatus = AgentStatus.CONFIGURED
     parent_agent: Optional[str] = None  # Parent agent name (for spawn tree / delegation)
     metadata: dict = field(default_factory=dict)  # Extra config data (permissions, hooks, etc.)
+    automation_settings: list = field(default_factory=list)  # Risky automation settings (scheduled tasks, etc.)
 
     @property
     def stable_id(self) -> str:

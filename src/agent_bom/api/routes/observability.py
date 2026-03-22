@@ -13,7 +13,7 @@ import uuid
 from fastapi import APIRouter, HTTPException
 
 from agent_bom.api.models import JobStatus, PushPayload, ScanJob, ScanRequest
-from agent_bom.api.stores import _get_store
+from agent_bom.api.stores import _get_fleet_store, _get_store
 from agent_bom.security import sanitize_error
 
 router = APIRouter()
@@ -96,3 +96,24 @@ async def receive_push(body: PushPayload) -> dict:
     job.progress.append(f"Received via push from source={body.source_id}")
     _get_store().put(job)
     return {"job_id": job.job_id, "source_id": body.source_id, "status": "stored"}
+
+
+@router.get("/metrics", tags=["observability"])
+async def prometheus_metrics():
+    """Prometheus scrape endpoint — returns latest scan metrics."""
+    from starlette.responses import Response
+
+    try:
+        store = _get_fleet_store()
+        agents = store.list_all()
+        lines = [
+            "# HELP agent_bom_fleet_total Total agents in fleet",
+            "# TYPE agent_bom_fleet_total gauge",
+            f"agent_bom_fleet_total {len(agents)}",
+            "# HELP agent_bom_fleet_quarantined Quarantined agents",
+            "# TYPE agent_bom_fleet_quarantined gauge",
+            f"agent_bom_fleet_quarantined {sum(1 for a in agents if getattr(a, 'lifecycle_state', '') == 'quarantined')}",
+        ]
+        return Response("\n".join(lines) + "\n", media_type="text/plain; version=0.0.4; charset=utf-8")
+    except Exception:  # noqa: BLE001
+        return Response("# No metrics available\n", media_type="text/plain; version=0.0.4; charset=utf-8")

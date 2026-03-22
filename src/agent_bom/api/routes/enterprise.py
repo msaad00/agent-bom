@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from agent_bom.api.models import CreateKeyRequest, ExceptionRequest
 from agent_bom.api.stores import _get_exception_store, _get_store, _get_trend_store
@@ -125,11 +125,12 @@ async def audit_integrity(limit: int = 1000) -> dict:
 
 
 @router.post("/v1/exceptions", tags=["enterprise"], status_code=201)
-async def create_exception(req: ExceptionRequest) -> dict:
+async def create_exception(request: Request, req: ExceptionRequest) -> dict:
     """Request a vulnerability exception / waiver."""
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.exception_store import VulnException
 
+    tenant_id = getattr(request.state, "tenant_id", "default")
     exc = VulnException(
         vuln_id=req.vuln_id,
         package_name=req.package_name,
@@ -137,7 +138,7 @@ async def create_exception(req: ExceptionRequest) -> dict:
         reason=req.reason,
         requested_by=req.requested_by,
         expires_at=req.expires_at,
-        tenant_id=req.tenant_id,
+        tenant_id=tenant_id,
     )
     _get_exception_store().put(exc)
     log_action(
@@ -147,8 +148,9 @@ async def create_exception(req: ExceptionRequest) -> dict:
 
 
 @router.get("/v1/exceptions", tags=["enterprise"])
-async def list_exceptions(status: str | None = None, tenant_id: str = "default") -> dict:
+async def list_exceptions(request: Request, status: str | None = None) -> dict:
     """List all vulnerability exceptions."""
+    tenant_id = getattr(request.state, "tenant_id", "default")
     exceptions = _get_exception_store().list_all(status=status, tenant_id=tenant_id)
     return {"exceptions": [e.to_dict() for e in exceptions], "total": len(exceptions)}
 

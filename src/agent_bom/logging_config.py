@@ -78,7 +78,7 @@ def setup_logging(
     log_file = log_file or os.environ.get("AGENT_BOM_LOG_FILE")
 
     root = logging.getLogger("agent_bom")
-    root.setLevel(getattr(logging, level.upper(), logging.WARNING))
+    root.setLevel(getattr(logging, (level or "WARNING").upper(), logging.WARNING))
 
     # Remove existing handlers to avoid duplicates on re-init
     root.handlers.clear()
@@ -99,6 +99,7 @@ def setup_logging(
     # File handler (optional)
     if log_file:
         file_handler = logging.FileHandler(log_file)
+        os.chmod(log_file, 0o600)
         file_handler.setFormatter(JSONFormatter())
         root.addHandler(file_handler)
 

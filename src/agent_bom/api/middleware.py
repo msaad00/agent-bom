@@ -7,6 +7,7 @@ import logging
 import os
 import secrets
 import time
+import uuid
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
@@ -27,7 +28,12 @@ class TrustHeadersMiddleware(BaseHTTPMiddleware):
     """Add trust + standard security headers to every response."""
 
     async def dispatch(self, request: StarletteRequest, call_next):
+        request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+        request.state.request_id = request_id
+        if not hasattr(request.state, "tenant_id"):
+            request.state.tenant_id = "default"
         response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
         response.headers["X-Agent-Bom-Read-Only"] = "true"
         response.headers["X-Agent-Bom-No-Credential-Storage"] = "true"
         response.headers["X-Agent-Bom-Version"] = __version__
@@ -49,7 +55,11 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
     # Set AGENT_BOM_DISABLE_DOCS=1 in production to block /docs and /redoc
     _DOCS_DISABLED = os.environ.get("AGENT_BOM_DISABLE_DOCS", "").strip() in ("1", "true", "yes")
-    _EXEMPT_PATHS = {"/", "/health", "/version", "/docs", "/redoc", "/openapi.json"} if not _DOCS_DISABLED else {"/", "/health", "/version"}
+    _EXEMPT_PATHS = (
+        {"/", "/health", "/version", "/metrics", "/docs", "/redoc", "/openapi.json"}
+        if not _DOCS_DISABLED
+        else {"/", "/health", "/version", "/metrics"}
+    )
 
     # Endpoints requiring ADMIN role (mutating / destructive operations)
     _ADMIN_PATHS: set[tuple[str, str]] = {
@@ -116,6 +126,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         if secrets.compare_digest(raw_key, self._api_key):
             request.state.api_key_name = "static-key"
             request.state.api_key_role = "admin"
+            request.state.tenant_id = "default"
             return await call_next(request)
 
         # OIDC mode: try JWT verification when AGENT_BOM_OIDC_ISSUER is set
@@ -137,6 +148,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 if _ROLE_HIERARCHY.get(Role(oidc_role), 0) >= _ROLE_HIERARCHY.get(Role(required), 0):
                     request.state.api_key_name = _claims.get("email") or _claims.get("sub", "oidc-user")
                     request.state.api_key_role = oidc_role
+                    request.state.tenant_id = _claims.get("tenant_id", "default")
                     return await call_next(request)
                 return JSONResponse(
                     status_code=403,
@@ -162,6 +174,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                     )
                 request.state.api_key_name = api_key.name
                 request.state.api_key_role = api_key.role.value
+                request.state.tenant_id = api_key.tenant_id
                 return await call_next(request)
 
         return JSONResponse(

@@ -39,7 +39,7 @@ agent-bom operates in four modes:
 | Local filesystem | Trusted | User's own config files; validated with `validate_path(restrict_to_home=True)` |
 | Public vuln APIs (OSV, NVD, EPSS, KEV) | Untrusted input | Responses are parsed defensively; no code execution from API data |
 | Cloud provider APIs (AWS, Azure, GCP, Snowflake) | Authenticated, semi-trusted | Read-only API calls; credentials from environment; responses parsed defensively |
-| Upstream MCP servers (via proxy) | Untrusted | All traffic inspected by 7 detectors; policy enforcement before relay |
+| Upstream MCP servers (via proxy) | Untrusted | All traffic inspected by 8 detectors; policy enforcement before relay |
 | AI clients (via MCP server) | Semi-trusted | Tool inputs validated; no shell execution from AI-provided arguments |
 | Docker daemon socket | Privileged | Only accessed with explicit `--image` flag; user must opt in |
 | Kubernetes API | Privileged | Only accessed with explicit `--k8s-mcp` flag; uses kubeconfig auth |

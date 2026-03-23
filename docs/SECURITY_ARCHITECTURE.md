@@ -57,7 +57,7 @@ The proxy sits between the MCP client and server on the **stdio transport layer*
 1. Reads JSON-RPC messages from the client
 2. Inspects message content (tool calls, tool responses)
 3. Applies policy rules (allow/deny/log)
-4. Runs 7 detectors (PII, secrets, SQL injection, SSRF, path traversal, command injection, XSS)
+4. Runs 8 detectors (PII, secrets, SQL injection, SSRF, path traversal, command injection, XSS)
 5. Forwards allowed messages to the server
 6. Logs all activity to JSONL audit file
 

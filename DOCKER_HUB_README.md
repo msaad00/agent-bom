@@ -38,7 +38,7 @@ docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest code /workspace
 
 - **30 MCP client types** — Claude Desktop, Cursor, Windsurf, VS Code Copilot, Cline, Continue, Zed, Cortex Code, Codex CLI, Gemini CLI, Sourcegraph Cody, Aider, Trae, Aide, and more
 - **Packages** — npm, pip, cargo, go modules, OS packages (dpkg/rpm/apk) via OSV, NVD, EPSS, CISA KEV
-- **Containers** — Docker images via Grype + Syft
+- **Containers** — Docker images (native scanning, no external tools required)
 - **Cloud AI** — AWS Bedrock, Azure OpenAI, GCP Vertex AI, Snowflake Cortex, Databricks, HuggingFace, Ollama, and more (12 total)
 - **MCP servers** — tool poisoning, description injection, credential exposure
 - **IaC** — Dockerfile, Kubernetes, Terraform, CloudFormation, Helm (138 rules)

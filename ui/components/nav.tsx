@@ -46,31 +46,36 @@ interface NavGroup {
   label: string;
   icon: React.ElementType;
   links: NavLink[];
+  /** Accent color from architecture diagram — matches the product layer */
+  accent: string;
 }
 
 const NAV_GROUPS: NavGroup[] = [
   {
-    label: "Overview",
+    label: "Discover",
     icon: LayoutDashboard,
+    accent: "#58a6ff", // blue — discovery layer
     links: [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/scan", label: "New Scan", icon: Scan },
-      { href: "/jobs", label: "Scan Jobs", icon: Clock },
-    ],
-  },
-  {
-    label: "Inventory",
-    icon: Server,
-    links: [
       { href: "/agents", label: "Agents", icon: Server },
-      { href: "/vulns", label: "Vulnerabilities", icon: Bug, badge: "critical" },
       { href: "/fleet", label: "Fleet", icon: Users },
       { href: "/registry", label: "Registry", icon: Library },
     ],
   },
   {
-    label: "Graphs",
+    label: "Scan",
+    icon: Scan,
+    accent: "#f85149", // red — scanning layer
+    links: [
+      { href: "/scan", label: "New Scan", icon: Scan },
+      { href: "/jobs", label: "Scan Jobs", icon: Clock },
+      { href: "/vulns", label: "Vulnerabilities", icon: Bug, badge: "critical" },
+    ],
+  },
+  {
+    label: "Analyze",
     icon: GitBranch,
+    accent: "#d29922", // amber — analysis layer
     links: [
       { href: "/security-graph", label: "Security Graph", icon: Network },
       { href: "/graph", label: "Lineage Graph", icon: GitBranch },
@@ -80,8 +85,9 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "Runtime",
+    label: "Protect",
     icon: Shield,
+    accent: "#f778ba", // pink — enforcement layer
     links: [
       { href: "/proxy", label: "Proxy", icon: Shield },
       { href: "/audit", label: "Audit Log", icon: FileText },
@@ -89,8 +95,9 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "Governance",
+    label: "Govern",
     icon: Eye,
+    accent: "#3fb950", // green — output/governance layer
     links: [
       { href: "/compliance", label: "Compliance", icon: Shield },
       { href: "/remediation", label: "Remediation", icon: Wrench },
@@ -270,7 +277,10 @@ export function Nav() {
                 }`}
                 title={collapsed ? group.label : undefined}
               >
-                <GroupIcon className={`w-4 h-4 shrink-0 ${hasActiveChild ? "text-emerald-400" : ""}`} />
+                <GroupIcon
+                  className="w-4 h-4 shrink-0"
+                  style={{ color: hasActiveChild ? group.accent : undefined }}
+                />
                 {!collapsed && (
                   <>
                     <span className="flex-1 text-left uppercase tracking-wider text-[10px] font-semibold">
@@ -299,14 +309,22 @@ export function Nav() {
                         href={href}
                         className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all group relative ${
                           active
-                            ? "bg-emerald-500/10 text-emerald-400 border-l-2 border-emerald-400 ml-0 pl-2.5"
+                            ? "border-l-2 ml-0 pl-2.5"
                             : dimmed
                             ? "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800/30"
                             : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40"
                         }`}
+                        style={active ? {
+                          color: group.accent,
+                          borderLeftColor: group.accent,
+                          backgroundColor: `${group.accent}10`,
+                        } : undefined}
                         title={dimmed ? "No MCP servers detected" : undefined}
                       >
-                        <Icon className={`w-3.5 h-3.5 shrink-0 ${active ? "text-emerald-400" : dimmed ? "opacity-40" : "text-zinc-500 group-hover:text-zinc-400"}`} />
+                        <Icon
+                          className={`w-3.5 h-3.5 shrink-0 ${!active && (dimmed ? "opacity-40" : "text-zinc-500 group-hover:text-zinc-400")}`}
+                          style={active ? { color: group.accent } : undefined}
+                        />
                         <span className="truncate">{label}</span>
 
                         {/* Vuln count badges */}

@@ -37,9 +37,7 @@ def doctor_cmd() -> None:
     try:
         from pathlib import Path
 
-        from agent_bom.config import SCAN_CACHE_DIR
-
-        db_path = Path(SCAN_CACHE_DIR) / "scan_cache.db"
+        db_path = Path.home() / ".agent-bom" / "scan_cache.db"
         if db_path.exists():
             size_kb = db_path.stat().st_size // 1024
             checks.append(("Local DB", f"exists ({size_kb} KB)", "ok"))

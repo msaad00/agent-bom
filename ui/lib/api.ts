@@ -431,6 +431,9 @@ export interface ComplianceResponse {
   soc2: ComplianceControl[];
   cis_controls: ComplianceControl[];
   cmmc: ComplianceControl[];
+  nist_800_53: ComplianceControl[];
+  fedramp: ComplianceControl[];
+  pci_dss: ComplianceControl[];
   summary: {
     owasp_pass: number; owasp_warn: number; owasp_fail: number;
     owasp_mcp_pass: number; owasp_mcp_warn: number; owasp_mcp_fail: number;
@@ -443,6 +446,9 @@ export interface ComplianceResponse {
     soc2_pass: number; soc2_warn: number; soc2_fail: number;
     cis_pass: number; cis_warn: number; cis_fail: number;
     cmmc_pass: number; cmmc_warn: number; cmmc_fail: number;
+    nist_800_53_pass: number; nist_800_53_warn: number; nist_800_53_fail: number;
+    fedramp_pass: number; fedramp_warn: number; fedramp_fail: number;
+    pci_dss_pass: number; pci_dss_warn: number; pci_dss_fail: number;
   };
 }
 

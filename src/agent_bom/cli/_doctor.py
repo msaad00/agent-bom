@@ -35,12 +35,16 @@ def doctor_cmd() -> None:
 
     # Local vulnerability DB
     try:
-        from agent_bom.scan_cache import ScanCache
+        from pathlib import Path
 
-        cache = ScanCache()
-        stats = cache.stats()
-        entries = stats.get("entries", 0)
-        checks.append(("Local DB", f"{entries} cached entries", "ok" if entries > 0 else "info"))
+        from agent_bom.config import SCAN_CACHE_DIR
+
+        db_path = Path(SCAN_CACHE_DIR) / "scan_cache.db"
+        if db_path.exists():
+            size_kb = db_path.stat().st_size // 1024
+            checks.append(("Local DB", f"exists ({size_kb} KB)", "ok"))
+        else:
+            checks.append(("Local DB", "not yet created (run a scan first)", "info"))
     except Exception:
         checks.append(("Local DB", "not available", "info"))
 

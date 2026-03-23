@@ -345,6 +345,45 @@ export interface RegistryResponse {
   count: number;
 }
 
+// ─── Compliance Narrative Types ──────────────────────────────────────────────
+
+export interface ControlNarrative {
+  control_id: string;
+  title: string;
+  status: "pass" | "warning" | "fail";
+  narrative: string;
+  affected_packages: string[];
+  affected_agents: string[];
+  remediation_steps: string[];
+}
+
+export interface FrameworkNarrative {
+  framework: string;
+  slug: string;
+  status: "passing" | "at_risk" | "failing";
+  score: number;
+  narrative: string;
+  recommendations: string[];
+  failing_controls: ControlNarrative[];
+}
+
+export interface RemediationImpact {
+  package: string;
+  current_version: string;
+  fix_version: string;
+  controls_fixed: string[];
+  frameworks_impacted: string[];
+  narrative: string;
+}
+
+export interface ComplianceNarrativeResponse {
+  executive_summary: string;
+  framework_narratives: FrameworkNarrative[];
+  remediation_impact: RemediationImpact[];
+  risk_narrative: string;
+  generated_at: string;
+}
+
 // ─── Compliance Types ─────────────────────────────────────────────────────────
 
 export interface ComplianceControl {
@@ -674,6 +713,13 @@ export const api = {
   /** Compliance posture across all completed scans */
   getCompliance: () => get<ComplianceResponse>("/v1/compliance"),
 
+  /** Auditor-ready compliance narrative for all 11 frameworks */
+  getComplianceNarrative: () => get<ComplianceNarrativeResponse>("/v1/compliance/narrative"),
+
+  /** Single-framework compliance narrative */
+  getComplianceNarrativeByFramework: (framework: string) =>
+    get<ComplianceNarrativeResponse>(`/v1/compliance/narrative/${encodeURIComponent(framework)}`),
+
   /** Fleet management */
   listFleet: (filters?: { state?: string; environment?: string; min_trust?: number }) => {
     const params = new URLSearchParams();
@@ -766,6 +812,13 @@ export const api = {
       total: number;
     }>("/v1/findings/false-positives"),
   removeFalsePositive: (id: string) => del(`/v1/findings/false-positive/${id}`),
+
+  // ── Remediation ──
+  /** Extract remediation plan from the latest completed scan */
+  getRemediation: async (jobId: string): Promise<RemediationItem[]> => {
+    const job = await get<ScanJob>(`/v1/scan/${jobId}`);
+    return job.result?.remediation_plan ?? [];
+  },
 
   // ── Audit Log ──
   listAuditEntries: (filters?: { action?: string; resource?: string; since?: string; limit?: number; offset?: number }) => {

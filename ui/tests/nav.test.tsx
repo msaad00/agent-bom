@@ -40,30 +40,30 @@ describe('Nav', () => {
     vi.clearAllMocks()
   })
 
-  it('renders the Overview nav group', () => {
+  it('renders the Discover nav group', () => {
     render(<Nav />)
-    expect(screen.getByText('Overview')).toBeInTheDocument()
+    expect(screen.getByText('Discover')).toBeInTheDocument()
   })
 
-  it('renders the Inventory nav group', () => {
+  it('renders the Scan nav group', () => {
     render(<Nav />)
-    expect(screen.getByText('Inventory')).toBeInTheDocument()
+    expect(screen.getByText('Scan')).toBeInTheDocument()
   })
 
-  it('renders the Graphs nav group', () => {
+  it('renders the Analyze nav group', () => {
     render(<Nav />)
-    expect(screen.getByText('Graphs')).toBeInTheDocument()
+    expect(screen.getByText('Analyze')).toBeInTheDocument()
   })
 
-  it('renders the Runtime nav group', () => {
+  it('renders the Protect nav group', () => {
     render(<Nav />)
-    expect(screen.getByText('Runtime')).toBeInTheDocument()
+    expect(screen.getByText('Protect')).toBeInTheDocument()
   })
 
   it('renders the Governance nav group', () => {
     render(<Nav />)
-    // 'Governance' appears both as a group label and as a page link, so use getAllByText
-    expect(screen.getAllByText('Governance').length).toBeGreaterThan(0)
+    // 'Govern' appears both as a group label and as a page link, so use getAllByText
+    expect(screen.getAllByText('Govern').length).toBeGreaterThan(0)
   })
 
   it('contains link to Dashboard (/)', () => {
@@ -140,7 +140,7 @@ describe('Nav', () => {
   it('renders all 5 nav group labels', () => {
     render(<Nav />)
     // Use getAllByText to handle cases where a label also appears as a page link (e.g. Governance)
-    const groups = ['Overview', 'Inventory', 'Graphs', 'Runtime', 'Governance']
+    const groups = ['Discover', 'Scan', 'Analyze', 'Protect', 'Govern']
     for (const group of groups) {
       expect(screen.getAllByText(group).length).toBeGreaterThan(0)
     }

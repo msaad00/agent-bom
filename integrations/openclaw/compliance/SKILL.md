@@ -23,7 +23,7 @@ metadata:
   install:
     pipx: agent-bom
     pip: agent-bom
-    docker: ghcr.io/msaad00/agent-bom:0.75.2
+    docker: ghcr.io/msaad00/agent-bom:0.75.3
   openclaw:
     requires:
       bins: []

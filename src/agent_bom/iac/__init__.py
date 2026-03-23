@@ -139,6 +139,13 @@ def scan_iac_directory(root: str | Path) -> list[IaCFinding]:
         elif _is_cloudformation(path):
             findings.extend(scan_cloudformation(path))
 
+    # Enrich with MITRE ATT&CK technique IDs
+    from agent_bom.iac.attack_mapping import get_attack_techniques
+
+    for finding in findings:
+        if not finding.attack_techniques:
+            finding.attack_techniques = get_attack_techniques(finding.rule_id)
+
     # Sort: critical first, then by file path
     findings.sort(key=lambda f: (severity_order.get(f.severity, 9), f.file_path, f.line_number))
     return findings

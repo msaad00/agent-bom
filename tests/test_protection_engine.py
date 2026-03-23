@@ -54,8 +54,8 @@ def test_engine_status():
     engine = ProtectionEngine()
     status = engine.status()
     assert status["active"] is False
-    assert status["detectors_active"] == 7
-    assert len(status["detectors"]) == 7
+    assert status["detectors_active"] == 8
+    assert len(status["detectors"]) == 8
     assert "ArgumentAnalyzer" in status["detectors"]
     assert "ResponseInspector" in status["detectors"]
     assert "VectorDBInjectionDetector" in status["detectors"]

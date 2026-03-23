@@ -29,6 +29,7 @@ import {
   Bell,
   Settings,
   LayoutDashboard,
+  Wrench,
 } from "lucide-react";
 import { api } from "@/lib/api";
 
@@ -92,6 +93,7 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Eye,
     links: [
       { href: "/compliance", label: "Compliance", icon: Shield },
+      { href: "/remediation", label: "Remediation", icon: Wrench },
       { href: "/governance", label: "Governance", icon: Eye },
       { href: "/traces", label: "Traces", icon: Radio },
       { href: "/activity", label: "Activity", icon: Activity },

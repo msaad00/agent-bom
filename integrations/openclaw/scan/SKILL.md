@@ -1,26 +1,27 @@
 ---
 name: agent-bom-scan
 description: >-
-  Security scanner for AI infrastructure — discovers MCP clients and servers,
-  checks packages for CVEs (OSV, NVD, EPSS, KEV), maps blast radius, and generates
-  remediation plans. Use when the user mentions vulnerability scanning, dependency
-  security, CVE lookup, blast radius analysis, or AI supply chain risk.
-version: 0.74.1
+  Security scanner for AI infrastructure — checks packages for CVEs (OSV, NVD,
+  EPSS, KEV), scans container images, verifies provenance, scans filesystems,
+  and generates SBOMs. Use when: "check package", "scan image", "verify",
+  "is this safe", "scan dependencies", "CVE lookup", "blast radius".
+version: 0.75.0
 license: Apache-2.0
 compatibility: >-
-  Requires Python 3.11+. Install via pipx or pip. Optional: Grype/Syft for
-  container image scanning. No API keys required for basic operation.
+  Requires Python 3.11+. Install via pipx or pip. Native container image
+  scanning — no external scanner required. No API keys required for basic
+  operation.
 metadata:
   author: msaad00
   homepage: https://github.com/msaad00/agent-bom
   source: https://github.com/msaad00/agent-bom
   pypi: https://pypi.org/project/agent-bom/
   scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
-  tests: 6040
+  tests: 6533
   install:
     pipx: agent-bom
     pip: agent-bom
-    docker: ghcr.io/msaad00/agent-bom:0.74.1
+    docker: ghcr.io/msaad00/agent-bom:0.75.0
   openclaw:
     requires:
       bins: []
@@ -29,8 +30,8 @@ metadata:
     credential_policy: "Zero credentials required. Optional env vars below increase rate limits. They are never auto-discovered, inferred, or transmitted."
     optional_env: []
     optional_bins:
-      - syft
-      - grype
+      - semgrep
+      - kubectl
     emoji: "\U0001F6E1"
     homepage: https://github.com/msaad00/agent-bom
     source: https://github.com/msaad00/agent-bom
@@ -39,10 +40,8 @@ metadata:
       - darwin
       - linux
       - windows
-    file_reads_note: "Reads MCP client config files to discover AI tool server configurations across 30 clients. Only server names, commands, args, and URLs are extracted — env var values are NEVER stored or transmitted, they are replaced with ***REDACTED*** by sanitize_env_vars() before any processing. Verify: https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py#L159"
     credential_handling: "Env var values are NEVER extracted from config files. sanitize_env_vars() replaces all env values with ***REDACTED*** BEFORE any config data is processed or stored. Only structural data (server names, commands, URLs) passes through. Source: https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py#L159"
-    data_flow: "All scanning is local-first. Only public package names and CVE IDs are sent to vulnerability databases (OSV, NVD, EPSS, GitHub Advisories). Verify no-exfiltration behavior by reviewing the installed code before providing production credentials."
-    install_verification: "VERIFY BEFORE running with any config files: (1) pip install agent-bom; (2) Review sanitize_env_vars() at security.py#L159 — confirms env value redaction; (3) Review discovery/__init__.py — confirms only structural config data extracted; (4) agent-bom verify agent-bom — Sigstore provenance check; (5) Only then run agent-bom scan"
+    data_flow: "All scanning is local-first. Only public package names and CVE IDs are sent to vulnerability databases (OSV, NVD, EPSS, GitHub Advisories). No credentials, config file contents, or scan results leave the machine."
     file_reads:
       # Claude Desktop
       - "~/Library/Application Support/Claude/claude_desktop_config.json"
@@ -94,6 +93,8 @@ metadata:
       - ".mcp.json"
       - ".vscode/mcp.json"
       - ".cursor/mcp.json"
+      # User-provided files
+      - "user-provided SBOM files (CycloneDX/SPDX JSON)"
     file_writes: []
     network_endpoints:
       - url: "https://api.osv.dev/v1"
@@ -117,16 +118,20 @@ metadata:
 
 # agent-bom-scan — AI Supply Chain Vulnerability Scanner
 
-Discovers MCP clients and servers across 22 AI tools, checks packages for CVEs,
-maps blast radius, and generates remediation plans.
+Checks packages for CVEs, scans container images natively, verifies package
+provenance via Sigstore, scans filesystems, and generates SBOMs.
 
 ## Install
 
 ```bash
 pipx install agent-bom
-agent-bom scan              # auto-discover + scan
-agent-bom check langchain   # check a specific package
-agent-bom where             # show all discovery paths
+agent-bom agents             # discover agents and scan dependencies
+agent-bom check langchain==0.1.0  # check a specific package with version
+agent-bom image nginx:1.25   # scan container image (native)
+agent-bom fs .               # scan filesystem packages
+agent-bom sbom .             # generate SBOM
+agent-bom verify agent-bom   # verify Sigstore provenance
+agent-bom where              # show all discovery paths
 ```
 
 ### As an MCP Server
@@ -142,12 +147,22 @@ agent-bom where             # show all discovery paths
 }
 ```
 
+## When to Use
+
+- "check package" / "is this package safe"
+- "scan image" / "scan container"
+- "verify" / "check provenance"
+- "is this safe" / "CVE lookup"
+- "scan dependencies"
+- "blast radius"
+- "generate SBOM"
+
 ## Tools (8)
 
 | Tool | Description |
 |------|-------------|
-| `scan` | Full discovery + vulnerability scan pipeline |
 | `check` | Check a package for CVEs (OSV, NVD, EPSS, KEV) |
+| `scan` | Full discovery + vulnerability scan pipeline |
 | `blast_radius` | Map CVE impact chain across agents, servers, credentials |
 | `remediate` | Prioritized remediation plan for vulnerabilities |
 | `verify` | Package integrity + SLSA provenance check |
@@ -155,23 +170,31 @@ agent-bom where             # show all discovery paths
 | `where` | Show MCP client config discovery paths |
 | `inventory` | List discovered agents, servers, packages |
 
-## Example Workflows
+## Examples
 
 ```
 # Check a package before installing
-check(package="@modelcontextprotocol/server-filesystem", ecosystem="npm")
+check(package="langchain", version="0.1.0", ecosystem="pypi")
 
 # Map blast radius of a CVE
 blast_radius(cve_id="CVE-2024-21538")
 
 # Full scan
 scan()
+
+# Verify package provenance
+verify(package="agent-bom")
 ```
 
-## Privacy & Data Handling
+## Guardrails
 
-This skill installs agent-bom from PyPI. **Verify the redaction behavior
-before running with any config files:**
+- Show CVEs even when NVD analysis is pending or severity is `unknown` — a CVE ID is still a real finding.
+- Treat `UNKNOWN` severity as unresolved, not benign — it means data is not yet available.
+- Do not modify any files, install packages, or change system configuration.
+- Only public package names and CVE IDs leave the machine for vulnerability database lookups.
+- Ask before scanning paths outside the user's home directory.
+
+## Privacy & Data Handling
 
 ```bash
 # Step 1: Install
@@ -182,24 +205,16 @@ pip install agent-bom
 # BEFORE any config data is processed or stored:
 # https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py#L159
 
-# Step 3: Review config parsing — only structural data extracted:
-# https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/discovery/__init__.py
-
-# Step 4: Verify package provenance (Sigstore)
+# Step 3: Verify package provenance (Sigstore)
 agent-bom verify agent-bom
 
-# Step 5: Only then run scans
-agent-bom scan
+# Step 4: Only then run scans
+agent-bom agents
 ```
-
-**What is extracted**: Server names, commands, args, and URLs from MCP client
-config files across 22 AI tools. **What is NOT extracted**: Env var values are
-replaced with `***REDACTED***` by `sanitize_env_vars()` before any processing.
-Only public package names and CVE IDs are sent to vulnerability databases.
 
 ## Verification
 
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
-- **Sigstore signed**: `agent-bom verify agent-bom@0.74.1
-- **6,040+ tests** with CodeQL + OpenSSF Scorecard
+- **Sigstore signed**: `agent-bom verify agent-bom@0.75.0`
+- **6,533+ tests** with CodeQL + OpenSSF Scorecard
 - **No telemetry**: Zero tracking, zero analytics

@@ -616,3 +616,116 @@ class VectorDBInjectionDetector:
                 alerts.append(alert)
 
         return alerts
+
+
+# ─── Cross-Agent Correlator ──────────────────────────────────────────────────
+
+
+class CrossAgentCorrelator:
+    """Detect suspicious patterns across multiple agent sessions.
+
+    Maintains per-agent tool call history and detects lateral movement
+    when multiple agents converge on the same sensitive tools within a
+    short time window — a strong signal of coordinated compromise or
+    credential-sharing between agents.
+    """
+
+    def __init__(self) -> None:
+        self._agent_calls: dict[str, list[dict]] = {}  # agent_id -> recent calls
+        self._baselines: dict[str, dict] = {}  # agent_id -> tool frequency baseline
+        self._max_history = 1000
+
+    def record_call(self, agent_id: str, tool_name: str, timestamp: float) -> None:
+        """Record a tool call for cross-agent analysis."""
+        if agent_id not in self._agent_calls:
+            self._agent_calls[agent_id] = []
+        self._agent_calls[agent_id].append(
+            {
+                "tool": tool_name,
+                "timestamp": timestamp,
+            }
+        )
+        # Trim history to bounded size to prevent unbounded memory growth
+        if len(self._agent_calls[agent_id]) > self._max_history:
+            self._agent_calls[agent_id] = self._agent_calls[agent_id][-self._max_history :]
+
+    def detect_lateral_movement(self) -> list[dict]:
+        """Detect when multiple agents access the same sensitive tools in sequence.
+
+        Flags tools used by 3 or more distinct agents within a 5-minute window.
+        This pattern indicates lateral movement, credential sharing, or a
+        coordinated attack across agent sessions.
+
+        Returns:
+            List of alert dicts with type ``cross_agent_tool_convergence``.
+        """
+        alerts: list[dict] = []
+        recent_window = time.time() - 300  # 5-minute window
+
+        # Collect which agents used each tool in the window
+        tool_agents: dict[str, list[str]] = {}
+        for agent_id, calls in self._agent_calls.items():
+            for call in calls:
+                if call["timestamp"] > recent_window:
+                    tool = call["tool"]
+                    if tool not in tool_agents:
+                        tool_agents[tool] = []
+                    if agent_id not in tool_agents[tool]:
+                        tool_agents[tool].append(agent_id)
+
+        # Flag tools used by 3+ different agents in the window
+        for tool, agents in tool_agents.items():
+            if len(agents) >= 3:
+                alerts.append(
+                    {
+                        "type": "cross_agent_tool_convergence",
+                        "tool": tool,
+                        "agents": agents,
+                        "severity": "high",
+                        "message": (
+                            f"Tool '{tool}' used by {len(agents)} agents in 5-minute window — "
+                            "possible lateral movement or coordinated access"
+                        ),
+                    }
+                )
+
+        return alerts
+
+    def compute_baseline(self, agent_id: str) -> dict:
+        """Compute tool frequency baseline for anomaly detection.
+
+        Returns a dict mapping tool name to its relative frequency (0.0–1.0)
+        in the agent's historical call log.
+        """
+        calls = self._agent_calls.get(agent_id, [])
+        freq: dict[str, int] = {}
+        for call in calls:
+            freq[call["tool"]] = freq.get(call["tool"], 0) + 1
+        total = sum(freq.values()) or 1
+        return {tool: count / total for tool, count in freq.items()}
+
+    def update_baseline(self, agent_id: str) -> None:
+        """Compute and store the tool frequency baseline for an agent.
+
+        Should be called periodically (e.g. after every N calls) to keep
+        the baseline current without paying compute cost on every call.
+        """
+        self._baselines[agent_id] = self.compute_baseline(agent_id)
+
+    def detect_anomaly(self, agent_id: str, tool_name: str) -> bool:
+        """Check if a tool call is anomalous based on historical baseline.
+
+        Returns True when the tool has never been seen in the stored baseline,
+        which indicates either a new capability being exercised or an agent
+        behaving outside its normal operational envelope.
+
+        The baseline must be stored via ``update_baseline()`` before this
+        method will return meaningful results.  Returns False (not anomalous)
+        when no baseline exists for the agent.
+        """
+        baseline = self._baselines.get(agent_id)
+        if not baseline:
+            return False
+        expected_freq = baseline.get(tool_name, 0.0)
+        # Tool never seen in baseline = anomalous
+        return expected_freq == 0.0

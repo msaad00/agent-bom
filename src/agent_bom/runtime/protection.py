@@ -30,6 +30,7 @@ from agent_bom.otel_ingest import parse_otel_traces
 from agent_bom.runtime.detectors import (
     ArgumentAnalyzer,
     CredentialLeakDetector,
+    CrossAgentCorrelator,
     RateLimitTracker,
     ResponseInspector,
     SequenceAnalyzer,
@@ -128,7 +129,7 @@ class ProtectionStats:
     traces_processed: int = 0
     tool_calls_analyzed: int = 0
     alerts_generated: int = 0
-    detectors_active: int = 7
+    detectors_active: int = 8
     # Deep defense stats
     shield_active: bool = False
     threat_level: str = ThreatLevel.NORMAL.value
@@ -171,6 +172,7 @@ class ProtectionEngine:
         self.seq_analyzer = SequenceAnalyzer()
         self.response_inspector = ResponseInspector()
         self.vector_db_detector = VectorDBInjectionDetector()
+        self._correlator = CrossAgentCorrelator()
         self.dispatcher = dispatcher or AlertDispatcher()
         self._active = False
         self._stats = ProtectionStats()
@@ -291,6 +293,7 @@ class ProtectionEngine:
                 "SequenceAnalyzer",
                 "ResponseInspector",
                 "VectorDBInjectionDetector",
+                "CrossAgentCorrelator",
             ],
             "detectors_active": self._stats.detectors_active,
         }
@@ -338,8 +341,22 @@ class ProtectionEngine:
 
         Scores all alerts within the correlation window, identifies which
         detectors fired, and escalates threat level when thresholds are crossed.
+        Also factors in cross-agent lateral movement alerts from CrossAgentCorrelator.
         """
         self._prune_correlation_buffer()
+
+        # Cross-agent lateral movement — feed HIGH alerts into correlation buffer
+        lateral_alerts = self._correlator.detect_lateral_movement()
+        for la in lateral_alerts:
+            logger.warning("Cross-agent lateral movement: %s", la.get("message", ""))
+            self._correlation_buffer.append(
+                _CorrelationEntry(
+                    timestamp=time.monotonic(),
+                    detector="cross_agent_correlator",
+                    severity=la.get("severity", "high"),
+                    tool_name=la.get("tool", ""),
+                )
+            )
 
         entries = list(self._correlation_buffer)
         if not entries:
@@ -439,7 +456,7 @@ class ProtectionEngine:
 
         return all_alerts
 
-    async def process_tool_call(self, tool_name: str, arguments: dict) -> list[dict]:
+    async def process_tool_call(self, tool_name: str, arguments: dict, agent_id: str = "") -> list[dict]:
         """Analyze a single tool call through all detectors.
 
         In deep defense mode, also checks kill-switch status and correlates
@@ -448,11 +465,16 @@ class ProtectionEngine:
         Args:
             tool_name: MCP tool being invoked.
             arguments: Tool call arguments.
+            agent_id: Optional caller identity for cross-agent correlation.
 
         Returns:
             List of alert dicts for any findings.
         """
         self._stats.tool_calls_analyzed += 1
+
+        # Cross-agent correlation: record every call for lateral movement detection
+        if agent_id:
+            self._correlator.record_call(agent_id, tool_name, time.time())
 
         # Deep defense: check kill-switch before processing
         if self._shield:

@@ -382,7 +382,7 @@ def make_error_response(request_id: int | str | None, code: int, message: str) -
 
 
 def log_tool_call(
-    log_file: IO[str],
+    log_file: "IO[str] | RotatingAuditLog",
     tool_name: str,
     arguments: dict,
     policy_result: str = "allowed",
@@ -639,6 +639,277 @@ async def _send_webhook(url: str, payload: dict) -> None:
             await client.post(url, json=payload)
     except Exception:  # noqa: BLE001
         logger.debug("Failed to send webhook to %s", url)
+
+
+async def _proxy_sse_server(
+    url: str,
+    policy_path: Optional[str] = None,
+    log_path: Optional[str] = None,
+    block_undeclared: bool = False,
+    alert_webhook: Optional[str] = None,
+) -> int:
+    """Proxy an SSE/HTTP MCP server through the protection engine.
+
+    Connects to a remote MCP server that exposes an SSE or HTTP transport
+    instead of spawning a subprocess.  Tool calls received on stdin are
+    forwarded through the protection engine then POSTed to the server URL.
+    Responses are written back to stdout.
+
+    Args:
+        url: Base URL of the remote SSE/HTTP MCP server.
+        policy_path: Optional path to a runtime policy JSON file.
+        log_path: Optional path to audit JSONL log.
+        block_undeclared: Block tools not in initial tools/list.
+        alert_webhook: Optional webhook URL for alert notifications.
+
+    Returns:
+        0 on clean shutdown, 1 on connection or policy load error.
+    """
+    import httpx
+
+    from agent_bom.runtime.detectors import (
+        ArgumentAnalyzer,
+        SequenceAnalyzer,
+    )
+
+    # Load policy
+    policy: dict = {}
+    if policy_path:
+        try:
+            from agent_bom.security import SecurityError, validate_json_file
+
+            policy = validate_json_file(Path(policy_path))
+        except (json.JSONDecodeError, OSError, SecurityError) as exc:
+            logger.error("Failed to load policy from %s: %s", policy_path, exc)
+            return 1
+
+    # Open audit log
+    log_file = None
+    if log_path:
+        log_file = RotatingAuditLog(log_path)
+
+    arg_analyzer = ArgumentAnalyzer()
+    seq_analyzer = SequenceAnalyzer()
+    replay_detector = ReplayDetector()
+    scan_config = load_scan_config(policy) if policy else ScanConfig()
+    runtime_alerts: list[dict] = []
+
+    def _handle_alerts_sse(alerts, log_f=None):
+        for alert in alerts:
+            alert_dict = alert.to_dict()
+            runtime_alerts.append(alert_dict)
+            logger.warning("Runtime alert: %s", alert.message)
+            if log_f:
+                log_f.write(json.dumps(alert_dict) + "\n")
+                log_f.flush()
+            if alert_webhook:
+                asyncio.ensure_future(_send_webhook(alert_webhook, alert_dict))
+
+    declared_tools: set[str] = set()
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            # Fetch tool list from the remote server
+            try:
+                tools_resp = await client.post(
+                    url.rstrip("/") + "/tools/list",
+                    json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
+                )
+                tools_resp.raise_for_status()
+                tools_data = tools_resp.json()
+                if isinstance(tools_data, dict) and "result" in tools_data:
+                    result = tools_data["result"]
+                    if isinstance(result, dict) and "tools" in result:
+                        declared_tools = {t["name"] for t in result["tools"] if isinstance(t, dict) and "name" in t}
+                        logger.info("SSE proxy: discovered %d declared tools", len(declared_tools))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("SSE proxy: could not fetch tools/list from %s: %s", url, exc)
+
+            # Read JSON-RPC from stdin and forward through protection engine
+            reader = asyncio.StreamReader()
+            protocol = asyncio.StreamReaderProtocol(reader)
+            await asyncio.get_running_loop().connect_read_pipe(lambda: protocol, sys.stdin.buffer)
+
+            call_counter = 0
+            while True:
+                try:
+                    line = await asyncio.wait_for(reader.readline(), timeout=120.0)
+                except asyncio.TimeoutError:
+                    logger.debug("SSE proxy: client readline timed out")
+                    break
+                if not line:
+                    break
+
+                if len(line) > _MAX_MESSAGE_BYTES:
+                    logger.warning("SSE proxy: oversized message from client (%d bytes) — dropped", len(line))
+                    continue
+
+                line_str = line.decode("utf-8", errors="replace")
+                msg = parse_jsonrpc(line_str)
+
+                if not msg or not is_tools_call(msg):
+                    # Non-tool-call messages (initialize, notifications, etc.) — pass through
+                    try:
+                        fwd = await client.post(
+                            url.rstrip("/") + "/message",
+                            json=msg or json.loads(line_str),
+                            timeout=30,
+                        )
+                        sys.stdout.buffer.write((json.dumps(fwd.json()) + "\n").encode())
+                        sys.stdout.buffer.flush()
+                    except Exception as exc:  # noqa: BLE001
+                        logger.debug("SSE proxy: pass-through failed: %s", exc)
+                    continue
+
+                tool_name = extract_tool_name(msg) or "unknown"
+                arguments = extract_tool_arguments(msg)
+                msg_id = msg.get("id")
+                p_hash = compute_payload_hash(msg)
+                agent_id, identity_block_reason = check_identity(msg, policy)
+
+                if identity_block_reason:
+                    if log_file:
+                        log_tool_call(
+                            log_file,
+                            tool_name,
+                            arguments,
+                            "blocked",
+                            identity_block_reason,
+                            payload_sha256=p_hash,
+                            message_id=msg_id,
+                            agent_id=agent_id,
+                        )
+                    error_resp = make_error_response(msg_id, -32600, identity_block_reason)
+                    sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
+                    sys.stdout.buffer.flush()
+                    continue
+
+                if replay_detector.check(msg):
+                    reason = "Replayed payload detected"
+                    if log_file:
+                        log_tool_call(
+                            log_file, tool_name, arguments, "blocked", reason, payload_sha256=p_hash, message_id=msg_id, agent_id=agent_id
+                        )
+                    error_resp = make_error_response(msg_id, -32600, reason)
+                    sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
+                    sys.stdout.buffer.flush()
+                    continue
+
+                if block_undeclared and declared_tools and tool_name not in declared_tools:
+                    reason = f"Tool '{tool_name}' not in declared tools/list"
+                    if log_file:
+                        log_tool_call(
+                            log_file, tool_name, arguments, "blocked", reason, payload_sha256=p_hash, message_id=msg_id, agent_id=agent_id
+                        )
+                    error_resp = make_error_response(msg_id, -32600, reason)
+                    sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
+                    sys.stdout.buffer.flush()
+                    continue
+
+                if policy:
+                    allowed, reason = check_policy(policy, tool_name, arguments)
+                    if not allowed:
+                        if log_file:
+                            log_tool_call(
+                                log_file,
+                                tool_name,
+                                arguments,
+                                "blocked",
+                                reason,
+                                payload_sha256=p_hash,
+                                message_id=msg_id,
+                                agent_id=agent_id,
+                            )
+                        error_resp = make_error_response(msg_id, -32600, reason)
+                        sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
+                        sys.stdout.buffer.flush()
+                        continue
+
+                # Argument analysis
+                arg_alerts = arg_analyzer.check(tool_name, arguments)
+                _handle_alerts_sse(arg_alerts, log_file)
+
+                # Sequence analysis
+                seq_alerts = seq_analyzer.record(tool_name)
+                _handle_alerts_sse(seq_alerts, log_file)
+
+                # Inline content scanning
+                if scan_config.enabled:
+                    from agent_bom.runtime.detectors import Alert, AlertSeverity
+
+                    s_results = scan_tool_call(tool_name, arguments, scan_config)
+                    for sr in s_results:
+                        alert = Alert(
+                            detector=f"scanner:{sr.scanner}",
+                            severity=AlertSeverity.CRITICAL
+                            if sr.severity == "critical"
+                            else (AlertSeverity.HIGH if sr.severity == "high" else AlertSeverity.MEDIUM),
+                            message=f"Inline scan: {sr.scanner}/{sr.rule_id} in tool '{tool_name}'",
+                            details={"rule_id": sr.rule_id, "excerpt": sr.excerpt, "confidence": sr.confidence},
+                        )
+                        _handle_alerts_sse([alert], log_file)
+                    if scan_config.mode == "enforce" and any(sr.blocked for sr in s_results):
+                        first = next(sr for sr in s_results if sr.blocked)
+                        reason = f"Blocked by inline scanner: {first.scanner}/{first.rule_id}"
+                        if log_file:
+                            log_tool_call(
+                                log_file,
+                                tool_name,
+                                arguments,
+                                "blocked",
+                                reason,
+                                payload_sha256=p_hash,
+                                message_id=msg_id,
+                                agent_id=agent_id,
+                            )
+                        error_resp = make_error_response(msg_id, -32600, reason)
+                        sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
+                        sys.stdout.buffer.flush()
+                        continue
+
+                if log_file:
+                    log_tool_call(log_file, tool_name, arguments, "allowed", payload_sha256=p_hash, message_id=msg_id, agent_id=agent_id)  # type: ignore[arg-type]
+
+                # Forward tool call to remote SSE/HTTP server
+                call_counter += 1
+                try:
+                    resp = await client.post(
+                        url.rstrip("/") + "/tools/call",
+                        json=msg,
+                        timeout=30,
+                    )
+                    resp.raise_for_status()
+                    response_data = resp.json()
+                except httpx.HTTPStatusError as exc:
+                    logger.warning("SSE proxy: server returned %d for %s: %s", exc.response.status_code, tool_name, exc)
+                    error_resp = make_error_response(msg_id, -32603, f"Upstream server error: {exc.response.status_code}")
+                    sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
+                    sys.stdout.buffer.flush()
+                    continue
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("SSE proxy: connection error for %s: %s", tool_name, exc)
+                    error_resp = make_error_response(msg_id, -32603, f"Upstream connection error: {exc}")
+                    sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
+                    sys.stdout.buffer.flush()
+                    continue
+
+                # Process response through protection engine
+                resp_text = json.dumps(response_data.get("result", response_data))
+                from agent_bom.runtime.detectors import CredentialLeakDetector, ResponseInspector
+
+                cred_alerts = CredentialLeakDetector().check(tool_name, resp_text)
+                _handle_alerts_sse(cred_alerts, log_file)
+                ri_alerts = ResponseInspector().check(tool_name, resp_text)
+                _handle_alerts_sse(ri_alerts, log_file)
+
+                sys.stdout.buffer.write((json.dumps(response_data) + "\n").encode())
+                sys.stdout.buffer.flush()
+
+    finally:
+        if log_file:
+            log_file.close()
+
+    return 0
 
 
 async def run_proxy(

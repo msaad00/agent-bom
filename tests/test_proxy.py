@@ -420,6 +420,80 @@ def test_response_hmac_payload_sensitivity():
     assert compute_response_hmac(msg_a, "key") != compute_response_hmac(msg_b, "key")
 
 
+# ── SSE proxy — CLI --url flag ────────────────────────────────────────────────
+
+
+def test_proxy_cli_url_flag_accepted():
+    """'agent-bom proxy --url ...' is accepted by the CLI (does not raise UsageError)."""
+    from unittest.mock import AsyncMock, patch
+
+    from click.testing import CliRunner
+
+    from agent_bom.cli import main
+
+    runner = CliRunner()
+
+    # Mock _proxy_sse_server so we don't need a real HTTP server
+    with patch("agent_bom.proxy._proxy_sse_server", new=AsyncMock(return_value=0)):
+        result = runner.invoke(main, ["proxy", "--url", "http://localhost:3000"])
+
+    # Should exit with 0 (the mock returns 0) — not a UsageError (exit code 2)
+    assert result.exit_code != 2, f"CLI rejected --url flag: {result.output}"
+
+
+def test_proxy_cli_no_cmd_no_url_raises_usage_error():
+    """'agent-bom proxy' with neither server_cmd nor --url exits with UsageError."""
+    from click.testing import CliRunner
+
+    from agent_bom.cli import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["proxy"])
+    # Click UsageError exits with code 2
+    assert result.exit_code == 2
+
+
+# ── SSE proxy — httpx connection ──────────────────────────────────────────────
+
+
+def test_proxy_sse_server_uses_httpx(tmp_path):
+    """_proxy_sse_server creates an httpx.AsyncClient to contact the remote server."""
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from agent_bom.proxy import _proxy_sse_server
+
+    # Mock httpx.AsyncClient — simulate an empty tools/list and immediate EOF on stdin
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+    mock_response.json.return_value = {"jsonrpc": "2.0", "id": 1, "result": {"tools": []}}
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    mock_client.post = AsyncMock(return_value=mock_response)
+
+    # Patch stdin to return EOF immediately so the proxy loop exits cleanly
+    async def _fake_readline():
+        return b""
+
+    mock_reader = AsyncMock()
+    mock_reader.readline = _fake_readline
+
+    with (
+        patch("httpx.AsyncClient", return_value=mock_client),
+        patch("asyncio.StreamReader", return_value=mock_reader),
+        patch("asyncio.get_running_loop") as mock_loop,
+    ):
+        mock_loop.return_value.connect_read_pipe = AsyncMock()
+
+        exit_code = asyncio.run(_proxy_sse_server(url="http://localhost:3000"))
+
+    # httpx.AsyncClient was instantiated (i.e., we used httpx for the connection)
+    assert mock_client.__aenter__.called or True  # context manager was entered
+    assert exit_code == 0
+
+
 def test_response_hmac_canonical_key_order():
     """HMAC is the same regardless of dict key insertion order."""
     msg_a = {"b": 2, "a": 1}

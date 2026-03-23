@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agent_bom.models import Package
+from agent_bom.models import Package, Severity, Vulnerability
 
 
 def _ecosystem_from_purl(purl: str) -> str:
@@ -70,13 +70,16 @@ def parse_cyclonedx(data: dict) -> list[Package]:
     packages: list[Package] = []
     components = data.get("components", [])
 
-    # Build set of direct dependency refs from dependencies array
+    # Build adjacency map and direct refs from dependencies array
+    dep_map: dict[str, list[str]] = {}
     _direct_refs: set[str] = set()
     root_ref = (data.get("metadata", {}).get("component", {}) or {}).get("bom-ref", "")
     for dep_entry in data.get("dependencies", []):
-        if dep_entry.get("ref") == root_ref:
-            _direct_refs.update(dep_entry.get("dependsOn", []))
-            break
+        ref = dep_entry.get("ref", "")
+        depends_on = dep_entry.get("dependsOn", [])
+        dep_map[ref] = depends_on
+        if ref == root_ref:
+            _direct_refs.update(depends_on)
 
     for comp in components:
         if not isinstance(comp, dict):
@@ -179,6 +182,87 @@ def parse_cyclonedx(data: dict) -> list[Package]:
                 copyright_text=copyright_val,
             )
         )
+
+    # Multi-hop dependency graph walking: set dependency_depth for each package
+    if dep_map and root_ref:
+        # Build a bom-ref → Package index for efficient lookup
+        _bom_ref_index: dict[str, Package] = {}
+        for pkg in packages:
+            bom_ref = pkg.purl or pkg.name
+            # Prefer to match by exact bom-ref stored during component parsing
+            for comp in components:
+                if isinstance(comp, dict) and comp.get("name") == pkg.name and comp.get("version") == pkg.version:
+                    br = comp.get("bom-ref", "")
+                    if br:
+                        _bom_ref_index[br] = pkg
+                    break
+
+        def _walk_deps(ref: str, depth: int, visited: set) -> None:
+            """Visit *ref* at the given depth, then recurse into its children at depth+1."""
+            if ref in visited:
+                return
+            visited.add(ref)
+            # Set depth on the current node
+            pkg = _bom_ref_index.get(ref)
+            if pkg is not None:
+                if depth > pkg.dependency_depth:
+                    pkg.dependency_depth = depth
+                pkg.is_direct = pkg.dependency_depth == 0
+            # Recurse into children at the next depth level
+            for child_ref in dep_map.get(ref, []):
+                _walk_deps(child_ref, depth + 1, visited)
+
+        # Walk from root's direct children at depth=0 (direct deps)
+        _visited: set[str] = {root_ref}
+        for direct_ref in dep_map.get(root_ref, []):
+            _walk_deps(direct_ref, 0, _visited)
+
+    # Ingest CycloneDX vulnerabilities[] array if present
+    _bom_ref_to_pkg: dict[str, Package] = {}
+    for comp in components:
+        if isinstance(comp, dict):
+            br = comp.get("bom-ref", "")
+            if br:
+                for pkg in packages:
+                    if pkg.name == comp.get("name") and pkg.version == comp.get("version"):
+                        _bom_ref_to_pkg[br] = pkg
+                        break
+
+    for vuln_data in data.get("vulnerabilities", []):
+        if not isinstance(vuln_data, dict):
+            continue
+        vuln_id = vuln_data.get("id", "")
+        if not vuln_id:
+            continue
+        summary = vuln_data.get("description") or vuln_data.get("detail") or ""
+
+        # Determine severity from ratings
+        severity = Severity.UNKNOWN
+        cvss_score: float | None = None
+        for rating in vuln_data.get("ratings", []):
+            if not isinstance(rating, dict):
+                continue
+            sev_str = (rating.get("severity") or "").lower()
+            if sev_str in ("critical", "high", "medium", "low", "none"):
+                severity = Severity(sev_str)
+            score = rating.get("score")
+            if score is not None:
+                try:
+                    cvss_score = float(score)
+                except (TypeError, ValueError):
+                    pass
+            break  # use first rating
+
+        vuln = Vulnerability(id=vuln_id, summary=summary, severity=severity, cvss_score=cvss_score)
+
+        # Map vulnerability to affected packages via affects[] array
+        for affect in vuln_data.get("affects", []):
+            if not isinstance(affect, dict):
+                continue
+            affected_ref = affect.get("ref", "")
+            affected_pkg = _bom_ref_to_pkg.get(affected_ref)
+            if affected_pkg is not None and vuln not in affected_pkg.vulnerabilities:
+                affected_pkg.vulnerabilities.append(vuln)
 
     return packages
 

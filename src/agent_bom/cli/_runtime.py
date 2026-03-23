@@ -26,7 +26,13 @@ from rich.console import Console
     envvar="AGENT_BOM_RESPONSE_SIGN_KEY",
     help="Secret key for HMAC-SHA256 response signing written to audit log (tamper detection)",
 )
-@click.argument("server_cmd", nargs=-1, required=True)
+@click.option(
+    "--url",
+    default=None,
+    envvar="AGENT_BOM_PROXY_URL",
+    help="SSE/HTTP MCP server URL (use instead of server_cmd for HTTP/SSE transport)",
+)
+@click.argument("server_cmd", nargs=-1, required=False)
 def proxy_cmd(
     policy,
     log_path,
@@ -38,6 +44,7 @@ def proxy_cmd(
     metrics_port,
     metrics_token,
     response_sign_key,
+    url,
     server_cmd,
 ):
     """Run an MCP server through agent-bom's security proxy.
@@ -52,12 +59,18 @@ def proxy_cmd(
     - HMAC-SHA256 response signing in audit log (--response-sign-key)
 
     \b
-    Usage:
+    Usage (stdio — subprocess):
       agent-bom proxy -- npx @modelcontextprotocol/server-filesystem /tmp
       agent-bom proxy --log audit.jsonl -- npx @mcp/server-github
       agent-bom proxy --policy policy.json --block-undeclared -- npx @mcp/server-postgres
       agent-bom proxy --detect-credentials --log-only -- npx @mcp/server-github
       agent-bom proxy --log audit.jsonl --response-sign-key $MY_SECRET -- npx @mcp/server-github
+
+    \b
+    Usage (SSE/HTTP — remote server):
+      agent-bom proxy --url http://localhost:3000
+      agent-bom proxy --url https://mcp.example.com --log audit.jsonl --block-undeclared
+      agent-bom proxy --url http://localhost:3000 --policy policy.json
 
     \b
     Configure in your MCP client (e.g. Claude Desktop):
@@ -74,13 +87,33 @@ def proxy_cmd(
     import asyncio
 
     from agent_bom.project_config import get_policy_path, load_project_config
-    from agent_bom.proxy import run_proxy
 
     # Auto-load .agent-bom.yaml policy if --policy not explicitly given
     if not policy:
         _cfg = load_project_config()
         if _cfg and (cfg_policy := get_policy_path(_cfg)):
             policy = str(cfg_policy)
+
+    # SSE/HTTP mode: --url provided
+    if url:
+        from agent_bom.proxy import _proxy_sse_server
+
+        exit_code = asyncio.run(
+            _proxy_sse_server(
+                url=url,
+                policy_path=policy,
+                log_path=log_path,
+                block_undeclared=block_undeclared,
+                alert_webhook=alert_webhook,
+            )
+        )
+        sys.exit(exit_code)
+
+    # Stdio mode: server_cmd required
+    if not server_cmd:
+        raise click.UsageError("Provide a server command (e.g. -- npx @mcp/server-filesystem /tmp) or --url for SSE/HTTP mode.")
+
+    from agent_bom.proxy import run_proxy
 
     exit_code = asyncio.run(
         run_proxy(

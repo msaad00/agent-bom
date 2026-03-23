@@ -7,11 +7,11 @@ description: >-
   v1.0, MAESTRO layer tagging, and vector database security checks. Use when the
   user mentions vulnerability scanning, MCP server trust, compliance, SBOM
   generation, CIS benchmarks, blast radius, or AI supply chain risk.
-version: 0.74.0
+version: 0.75.0
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. No credentials required for
-  basic scanning. Native container image scanning (no Grype/Syft required).
+  basic scanning. Native container image scanning — no external scanner required.
   CIS benchmark checks optionally use cloud SDK credentials
   (AWS/Azure/GCP/Snowflake).
 metadata:
@@ -24,7 +24,7 @@ metadata:
   install:
     pipx: agent-bom
     pip: agent-bom
-    docker: ghcr.io/msaad00/agent-bom:0.74.0
+    docker: ghcr.io/msaad00/agent-bom:0.75.0
   openclaw:
     requires:
       bins: []
@@ -84,7 +84,7 @@ metadata:
       (2) Review sanitize_env_vars() at security.py#L159 — confirms env value
       redaction; (3) Review discovery/__init__.py — confirms only structural
       config data extracted; (4) agent-bom verify agent-bom — Sigstore
-      provenance check; (5) Only then run agent-bom scan
+      provenance check; (5) Only then run agent-bom agents
     credential_handling: >-
       Env var values are NEVER extracted from config files. sanitize_env_vars()
       replaces all env values with ***REDACTED*** BEFORE any config data is
@@ -209,10 +209,10 @@ framework layers.
 
 ```bash
 pipx install agent-bom
-agent-bom scan              # auto-discover + scan
-agent-bom check langchain   # check a specific package
+agent-bom agents            # auto-discover + scan
+agent-bom check langchain==0.1.0  # check a specific package with version
 agent-bom fs .              # scan filesystem packages
-agent-bom image nginx:1.25  # scan container image (native, no Syft)
+agent-bom image nginx:1.25  # scan container image (native)
 agent-bom cloud aws         # AWS CIS benchmark
 agent-bom iac infra/        # scan Terraform/CloudFormation
 agent-bom where             # show all discovery paths
@@ -230,6 +230,19 @@ agent-bom where             # show all discovery paths
   }
 }
 ```
+
+## Sub-Skills (8)
+
+| Sub-Skill | Purpose | Triggers |
+|-----------|---------|---------|
+| [discover](discover/SKILL.md) | Find agents, MCP servers, configurations | "find agents", "what's configured", "mcp inventory" |
+| [scan](scan/SKILL.md) | CVE scanning, image scanning, SBOM, provenance | "check package", "scan image", "verify", "blast radius" |
+| [scan-infra](scan-infra/SKILL.md) | IaC, cloud config, secrets scanning | "check terraform", "scan kubernetes", "find secrets" |
+| [enforce](enforce/SKILL.md) | Runtime policy enforcement, MCP proxy | "block risky calls", "apply policy", "proxy" |
+| [compliance](compliance/SKILL.md) | 14-framework compliance, SBOM generation | "compliance report", "NIST", "SOC 2", "OWASP" |
+| [monitor](monitor/SKILL.md) | Fleet monitoring, trust scores, lifecycle | "fleet", "watch agents", "trust scores" |
+| [analyze](analyze/SKILL.md) | Blast radius, attack paths, context graph | "blast radius", "threat intel", "attack path" |
+| [troubleshoot](troubleshoot/SKILL.md) | Diagnostics, doctor, config validation | "doctor", "debug", "why failing", "validate config" |
 
 ## Tools (32)
 
@@ -282,7 +295,7 @@ agent-bom where             # show all discovery paths
 | `prompt_scan` | Scan prompt templates for injection and data leakage risks |
 | `model_file_scan` | Scan model files for unsafe serialization (pickle, etc.) |
 | `license_compliance_scan` | Full SPDX license catalog scan with copyleft and network-copyleft detection |
-| `ingest_external_scan` | Import Trivy/Grype/Syft scan results and merge into agent-bom findings |
+| `ingest_external_scan` | Import external scan results (CycloneDX/SPDX/JSON) and merge into agent-bom findings |
 
 ### Resources
 | Resource | Description |
@@ -298,8 +311,8 @@ check(package="@modelcontextprotocol/server-filesystem", ecosystem="npm")
 # Map blast radius of a CVE
 blast_radius(cve_id="CVE-2024-21538")
 
-# Full scan
-scan()
+# Full agent discovery + scan
+agents()
 
 # Run CIS benchmark
 cis_benchmark(provider="aws")
@@ -327,7 +340,7 @@ skill_trust(skill_content="<paste SKILL.md content>")
 **Never do:**
 - Do not modify any files, install packages, or change system configuration. This skill is read-only.
 - Do not transmit env var values, credentials, or file contents to any external service. Only package names and CVE IDs leave the machine.
-- Do not invoke `scan()` autonomously on sensitive environments without user confirmation. The `autonomous_invocation` policy is `restricted`.
+- Do not invoke `agents()` autonomously on sensitive environments without user confirmation. The `autonomous_invocation` policy is `restricted`.
 
 **Stop and ask the user when:**
 - The user requests a cloud CIS benchmark and no cloud credentials are configured.
@@ -372,7 +385,7 @@ pip install agent-bom
 agent-bom verify agent-bom
 
 # Step 5: Only then run scans
-agent-bom scan
+agent-bom agents
 ```
 
 **What is extracted**: Server names, commands, args, and URLs from MCP client
@@ -385,6 +398,6 @@ provider's own APIs.
 ## Verification
 
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
-- **Sigstore signed**: `agent-bom verify agent-bom@0.74.0`
+- **Sigstore signed**: `agent-bom verify agent-bom@0.75.0`
 - **6,533+ tests** with CodeQL + OpenSSF Scorecard
 - **No telemetry**: Zero tracking, zero analytics

@@ -45,6 +45,7 @@ class TrustHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["X-API-Version"] = "v1"
         return response
 
 
@@ -222,8 +223,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         key = f"{client_ip}:{'scan' if is_scan else 'read'}"
         self._hits[key] = [t for t in self._hits[key] if now - t < self._window]
 
-        if len(self._hits[key]) >= limit:
-            retry_after = max(int(self._window - (now - self._hits[key][0])), 1)
+        timestamps = self._hits[key]
+        window_start = timestamps[0] if timestamps else now
+
+        if len(timestamps) >= limit:
+            retry_after = max(int(self._window - (now - timestamps[0])), 1)
             return JSONResponse(
                 status_code=429,
                 content={"detail": "Rate limit exceeded"},
@@ -231,7 +235,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             )
 
         self._hits[key].append(now)
-        return await call_next(request)
+        response = await call_next(request)
+        response.headers["X-RateLimit-Limit"] = str(limit)
+        response.headers["X-RateLimit-Remaining"] = str(max(0, limit - len(self._hits[key])))
+        response.headers["X-RateLimit-Reset"] = str(int(window_start + 60))
+        return response
 
 
 class MaxBodySizeMiddleware(BaseHTTPMiddleware):

@@ -418,22 +418,10 @@ def scan(
         deps_dev = False
         snyk_flag = False
         if not quiet:
-            from agent_bom.db.schema import db_freshness_days as _offline_freshness
-
-            days = _offline_freshness()
-            if days is None:
-                con.print(
-                    "[bold yellow]⚠ Offline mode[/bold yellow] — no local vulnerability DB found. "
-                    "Scan cache may still have cached results. "
-                    "Run [bold]agent-bom db update[/bold] to build a full local DB."
-                )
-            elif days > 7:
-                con.print(f"[bold yellow]⚠ Offline mode[/bold yellow] — local DB is {days} days old. Run 'agent-bom db update' to refresh.")
-            else:
-                con.print("[dim]Offline mode — scanning against local DB only[/dim]")
+            con.print("[dim]Offline mode — scanning against local DB only[/dim]")
 
     # ── Auto-offline: use local DB if synced recently (saves ~10s network) ──
-    if not offline:
+    if not offline and not no_scan:
         try:
             import os
             import time
@@ -450,7 +438,7 @@ def scan(
         except Exception:
             pass  # DB not available, will use network
 
-    # ── Auto-refresh stale DB if requested ───────────────────────────────────
+    # ── Auto-refresh stale DB if explicitly requested ────────────────────────
     if auto_update_db:
         from agent_bom.db.schema import db_freshness_days
         from agent_bom.db.sync import sync_db

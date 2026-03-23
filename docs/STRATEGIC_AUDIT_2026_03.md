@@ -78,7 +78,7 @@
 | **OpenSSF Scorecard** | Project health → risk boost | On-demand |
 | **MITRE ATT&CK** | CWE→CAPEC→ATT&CK via STIX | 30 days |
 
-### 2.3 MCP Server (23 Tools)
+### 2.3 MCP Server (33 Tools)
 
 | # | Tool | Purpose |
 |---|------|---------|
@@ -168,7 +168,7 @@ Claude Desktop, Claude Code, Cursor, Windsurf, Cline, Continue, Zed, VS Code Cop
 
 ### 2.10 UI/Dashboard
 
-- **Next.js**: 15 pages including SupplyChainTreemap, BlastRadiusRadial, PipelineFlow, EpssVsCvssChart, VulnTrendChart, Insights page
+- **Next.js**: 20 pages including SupplyChainTreemap, BlastRadiusRadial, PipelineFlow, EpssVsCvssChart, VulnTrendChart, Insights page
 - **Streamlit**: Legacy dashboard, Snowflake Native App compatible
 - **Validators**: Runtime JSON validation for file imports (size limit, schema, pollution guard)
 
@@ -206,7 +206,7 @@ Claude Desktop, Claude Code, Cursor, Windsurf, Cline, Continue, Zed, VS Code Cop
 1. **Full-spectrum AI infra scanning**: CVE + MCP tool security + skill trust + blast radius + compliance — in one tool
 2. **Blast radius analysis**: No competitor does dependency blast radius with compliance framework mapping
 3. **Runtime proxy with enforcement**: Not just scanning — real-time interception, rate limiting, credential leak blocking, rug pull detection
-4. **32 MCP tools**: Deepest MCP server integration — usable by any AI assistant
+4. **33 MCP tools**: Deepest MCP server integration — usable by any AI assistant
 5. **12 cloud provider coverage**: AWS/Azure/GCP + AI-specific (CoreWeave, Databricks, Snowflake, HuggingFace, W&B, MLflow, OpenAI, Ollama, Nebius)
 6. **14 compliance frameworks**: Every finding mapped to OWASP LLM/MCP/Agentic, ATLAS, NIST, EU AI Act, ISO 27001, SOC 2, CIS
 7. **Enrichment depth**: OSV + GHSA + NVD + EPSS + CISA KEV + NVIDIA + OpenSSF Scorecard + MITRE ATT&CK
@@ -231,7 +231,7 @@ Claude Desktop, Claude Code, Cursor, Windsurf, Cline, Continue, Zed, VS Code Cop
 | Compliance mapping | ✅ (10) | ❌ | ❌ | ❌ | ❌ | ✅ (partial) |
 | Cloud scanning | ✅ (12) | ❌ | ❌ | ❌ | ❌ | ✅ (IaC) |
 | SBOM/VEX | ✅ | ❌ | ❌ | ❌ | ✅ (SBOM) | ✅ (SBOM) |
-| MCP server (AI tool) | ✅ (23) | ❌ | ❌ | ❌ | ❌ | ❌ |
+| MCP server (AI tool) | ✅ (33) | ❌ | ❌ | ❌ | ❌ | ❌ |
 | GPU/AI compute | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | SIEM integration | ✅ | Via Snyk | ❌ | ❌ | ❌ | ❌ |
 | Browser extensions | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |

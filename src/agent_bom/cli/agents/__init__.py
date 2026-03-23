@@ -584,8 +584,8 @@ def scan(
         )
         return
 
-    # Pre-scan: local DB freshness check
-    if not no_scan:
+    # Pre-scan: local DB freshness check (skip in offline mode — uses scan cache instead)
+    if not no_scan and not offline:
         try:
             from agent_bom.db.schema import db_freshness_days
 
@@ -1059,10 +1059,10 @@ def scan(
             con.print(f"\n  Enforcement: {status} ({enforce_result.critical_count} critical, {enforce_result.high_count} high)")
             ctx.enforcement_data = _enforcement_data
 
-        # Step 3: Resolve unknown versions (skip in offline mode)
+        # Step 3: Resolve unknown versions (skip in offline mode AND --no-scan)
         all_packages = [p for a in agents for s in a.mcp_servers for p in s.packages]
         unresolved = [p for p in all_packages if p.version in ("latest", "unknown", "")]
-        if unresolved and not offline:
+        if unresolved and not offline and not no_scan:
             if not quiet:
                 con.print(f"\n[bold blue]Resolving {len(unresolved)} package version(s)...[/bold blue]\n")
             with con.status("[bold]Querying package registries...[/bold]", spinner="dots") if not quiet else _nullcontext():

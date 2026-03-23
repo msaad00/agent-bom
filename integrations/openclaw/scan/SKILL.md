@@ -215,6 +215,6 @@ agent-bom agents
 ## Verification
 
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
-- **Sigstore signed**: `agent-bom verify agent-bom@0.75.0`
+- **Sigstore signed**: `agent-bom verify agent-bom@0.75.0
 - **6,533+ tests** with CodeQL + OpenSSF Scorecard
 - **No telemetry**: Zero tracking, zero analytics

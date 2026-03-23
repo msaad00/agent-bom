@@ -7,6 +7,67 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.75.0] – 2026-03-23
+
+### Added
+- **Dashboard UX** — posture grade (A-F) hero, top 5 attack path cards, security graph page with interactive React Flow, insight layer toggle (risk/credentials/default), 11-framework compliance heatmap
+- **Remediation page** — priority table sorted by blast radius impact, Jira ticket creation per finding, compliance impact summary, severity/framework filters, JSON export
+- **Compliance narratives** — `GET /v1/compliance/narrative` generates auditor-ready text per framework with control-level detail and remediation-compliance bridge
+- **`--posture` flag** — 5-line workstation posture summary for solo developers
+- **`--fixable-only` flag** — show only vulnerabilities with available fixes
+- **`agent-bom doctor`** — preflight diagnostic (Python, DB, network, Docker, MCP configs, API keys)
+- **Cross-agent behavioral detection** — `CrossAgentCorrelator` detects lateral movement (3+ agents same tool in 5min), anomaly baseline per agent
+- **SSE proxy transport** — `agent-bom proxy --url` for remote SSE/HTTP MCP servers
+- **SBOM multi-hop graph** — dependency depth tracking (A→B→C) + CycloneDX `vulnerabilities[]` ingest
+- **API rate-limit headers** — `X-RateLimit-Limit/Remaining/Reset` on all responses, `X-API-Version: v1`
+- **Jira API endpoint** — `POST /v1/findings/jira` with ephemeral credentials, SSRF-validated
+- **False positive feedback** — `POST/GET/DELETE /v1/findings/false-positive` with tenant-scoped persistence
+- **Break-glass endpoint** — `POST /v1/shield/break-glass` with admin RBAC + audit logging
+- **Prometheus `/metrics`** — fleet_total and fleet_quarantined gauges
+- **75 UI component tests** (Vitest + @testing-library/react)
+- **8 intent-based OpenClaw skills** — discover, scan, scan-infra, enforce, comply, monitor, analyze, troubleshoot
+- **CONTRIBUTING.md** — contributor onboarding guide
+- **Enterprise Deployment guide** — MDM push, fleet API, zero-credential architecture
+
+### Changed
+- **Homepage reworked** — posture grade + blast radius chains at top, stats compressed to one row
+- **Compliance page** — now shows all 14 frameworks (was 6)
+- **Security graph** — uses pre-computed blast_radius scores (risk_score, is_kev, epss_score)
+- **All dashboard pages** — consistent Loader2 spinners, overflow-x-auto tables, confirmation dialogs on destructive actions, Snowflake-only banners in error state
+- **Vulns page** — pagination (50/page), search, FP feedback button, confidence scores
+- **Jobs page** — status filter tabs, search, pagination (25/page), JSON export
+- **Fleet page** — search, JSON export, confirmation on state transitions
+- **Agents page** — search by name
+- **CLI output** — severity text labels alongside colors (accessibility)
+- **CycloneDX** — `formulation` field identifies agent-bom as generator
+- **GitHub Action** — `exclude-unfixable` input for CI gating
+- **Architecture diagram** — compact horizontal layout (LR)
+- **Count alignment** — all docs now single-source-of-truth (14 frameworks, 138 IaC rules, 112 patterns, 20 pages, 33 tools, 19 formats)
+
+### Fixed
+- **Full-stack alignment** — `severity_source`, `confidence`, `nist_800_53_tags`, `fedramp_tags`, `automation_settings`, `vector_db_scan`, `gpu_infra` now serialized in JSON output (were silently dropped)
+- **Compliance router** — `/v1/compliance/narrative` no longer shadowed by `/{framework}` wildcard
+- **UI field names** — `risk_score ?? blast_score`, `summary ?? description`, `is_kev ?? cisa_kev` with backward compat
+- **Offline mode strict** — no silent network fallback when `--offline` set
+- **AST prompt detector** — `description`, `help`, `title` fields no longer misclassified as system prompts
+- **CodeQL SSRF** — defense-in-depth `validate_url()` at transport layer
+- **HSTS header** — `Strict-Transport-Security` added to all API responses
+- **OIDC SSRF** — `validate_url()` on discovery URL
+- **ECS/EKS test mocks** — updated to paginator pattern
+- **Protection engine** — `stop()` persists cleared kill-switch state, semaphore cache bounded to 8 entries
+- **Chain-hashed audit log** — each entry includes previous entry's HMAC for tamper-evidence
+- **Multi-tenancy isolation** — tenant_id enforced at middleware level
+- **Quarantine enforcement** — quarantined agents excluded from fleet list by default
+- **Log file permissions** — 0o600 on audit DB, fleet DB, log files
+- **Node.js 20 deprecation** — `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` on dependency-review
+- **Local fonts** — Inter + JetBrains Mono bundled (no Google Fonts network dependency)
+
+### Security
+- 10/10 OWASP web categories PROTECTED (verified by code audit)
+- SLSA L3 provenance on releases, Sigstore signing on PyPI
+- 91 SHA-pinned GitHub Actions, 0 npm/Python vulnerabilities
+- scrypt KDF for API keys, HMAC constant-time comparison, parameterized SQL everywhere
+
 ## [0.74.1] – 2026-03-22
 
 ### Security

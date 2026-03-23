@@ -168,7 +168,7 @@ Claude Desktop, Claude Code, Cursor, Windsurf, Cline, Continue, Zed, VS Code Cop
 
 ### 2.10 UI/Dashboard
 
-- **Next.js**: 15 pages including SupplyChainTreemap, BlastRadiusRadial, PipelineFlow, EpssVsCvssChart, VulnTrendChart, Insights page
+- **Next.js**: 20 pages including SupplyChainTreemap, BlastRadiusRadial, PipelineFlow, EpssVsCvssChart, VulnTrendChart, Insights, Remediation, Security Graph pages
 - **Streamlit**: Legacy dashboard, Snowflake Native App compatible
 - **Validators**: Runtime JSON validation for file imports (size limit, schema, pollution guard)
 
@@ -206,7 +206,7 @@ Claude Desktop, Claude Code, Cursor, Windsurf, Cline, Continue, Zed, VS Code Cop
 1. **Full-spectrum AI infra scanning**: CVE + MCP tool security + skill trust + blast radius + compliance — in one tool
 2. **Blast radius analysis**: No competitor does dependency blast radius with compliance framework mapping
 3. **Runtime proxy with enforcement**: Not just scanning — real-time interception, rate limiting, credential leak blocking, rug pull detection
-4. **32 MCP tools**: Deepest MCP server integration — usable by any AI assistant
+4. **33 MCP tools**: Deepest MCP server integration — usable by any AI assistant
 5. **12 cloud provider coverage**: AWS/Azure/GCP + AI-specific (CoreWeave, Databricks, Snowflake, HuggingFace, W&B, MLflow, OpenAI, Ollama, Nebius)
 6. **14 compliance frameworks**: Every finding mapped to OWASP LLM/MCP/Agentic, ATLAS, NIST, EU AI Act, ISO 27001, SOC 2, CIS
 7. **Enrichment depth**: OSV + GHSA + NVD + EPSS + CISA KEV + NVIDIA + OpenSSF Scorecard + MITRE ATT&CK

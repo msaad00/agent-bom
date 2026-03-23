@@ -215,6 +215,13 @@ def output_options(fn):
                 default=False,
                 help="Show only vulnerabilities with available fixes.",
             ),
+            click.option(
+                "--posture",
+                "posture",
+                is_flag=True,
+                default=False,
+                help="Show a concise 5-line workstation posture summary.",
+            ),
         ]
     )(fn)
 

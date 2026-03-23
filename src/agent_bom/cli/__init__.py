@@ -227,6 +227,13 @@ from agent_bom.cli.run import run_cmd  # noqa: E402
 main.add_command(run_cmd, "run")
 main.commands["run"].hidden = True  # Use `proxy` instead
 
+# ---------------------------------------------------------------------------
+# Doctor / preflight command
+# ---------------------------------------------------------------------------
+from agent_bom.cli._doctor import doctor_cmd  # noqa: E402
+
+main.add_command(doctor_cmd, "doctor")
+
 
 # ---------------------------------------------------------------------------
 # Upgrade command

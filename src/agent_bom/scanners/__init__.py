@@ -1180,8 +1180,9 @@ async def scan_packages(packages: list[Package], *, resolve_transitive: bool = F
 
     # ── Registry fallback for still-unresolved versions ──────────────────
     # Only hit npm/PyPI registries for packages we couldn't resolve locally.
+    # In offline mode, skip all registry calls entirely.
     still_unresolved = [p for p in packages if p.version in ("latest", "unknown", "") and p.ecosystem.lower() in ("npm", "pypi", "conda")]
-    if still_unresolved:
+    if still_unresolved and not offline_mode:
         try:
             from agent_bom.resolver import resolve_all_versions
 
@@ -1195,6 +1196,8 @@ async def scan_packages(packages: list[Package], *, resolve_transitive: bool = F
         except Exception as exc:
             _logger.warning("Version resolution failed for %d package(s): %s", len(still_unresolved), exc)
             console.print(f"  [yellow]⚠[/yellow] Version resolution skipped: {exc}")
+    elif still_unresolved and offline_mode:
+        _logger.info("Offline mode: skipping registry version resolution for %d package(s)", len(still_unresolved))
 
     # ── Transitive dependency resolution (npm / PyPI / Go) ───────────────────
     if resolve_transitive and not offline_mode:
@@ -1255,6 +1258,12 @@ async def scan_packages(packages: list[Package], *, resolve_transitive: bool = F
     if offline_mode or (prefer_local_db and not osv_targets):
         if osv_targets and offline_mode:
             _logger.info("Offline mode: skipping OSV API for %d package(s) not in local DB", len(osv_targets))
+            skipped_count = len(osv_targets)
+            covered_count = len(scannable) - skipped_count
+            console.print(
+                f"  [dim]Offline mode: using local cache only. "
+                f"{covered_count} packages checked, {skipped_count} skipped (no cached data).[/dim]"
+            )
         results = {}
     elif prefer_local_db and osv_targets:
         # DB is fresh — only query OSV for packages genuinely missing from DB

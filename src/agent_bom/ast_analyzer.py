@@ -128,49 +128,70 @@ class ASTAnalysisResult:
 
 # ── Prompt extraction patterns ───────────────────────────────────────────────
 
-# Variable/parameter names that typically hold system prompts
-_PROMPT_VAR_NAMES = frozenset(
+# Field names that are NOT system prompts — excluded from prompt detection
+# to prevent false positives on common documentation/UI fields.
+_NON_PROMPT_KEYS = frozenset(
     {
-        "system_prompt",
-        "system_message",
-        "instructions",
-        "system_instructions",
-        "system_content",
-        "prefix",
-        "suffix",
-        "preamble",
-        "context",
-        "system",
-        "prompt_template",
-        "template",
-        "system_template",
-        "initial_message",
-        "persona",
-        "role_description",
         "description",
+        "help",
+        "help_text",
+        "__doc__",
+        "title",
+        "label",
+        "placeholder",
+        "tooltip",
+        "error_message",
+        "docstring",
     }
 )
 
+# Variable/parameter names that typically hold system prompts
+_PROMPT_VAR_NAMES = (
+    frozenset(
+        {
+            "system_prompt",
+            "system_message",
+            "instructions",
+            "system_instructions",
+            "system_content",
+            "prefix",
+            "suffix",
+            "preamble",
+            "context",
+            "system",
+            "prompt_template",
+            "template",
+            "system_template",
+            "initial_message",
+            "persona",
+            "role_description",
+        }
+    )
+    - _NON_PROMPT_KEYS
+)
+
 # Keyword argument names in agent/LLM constructors that hold prompts
-_PROMPT_KWARG_NAMES = frozenset(
-    {
-        "system_prompt",
-        "instructions",
-        "system_message",
-        "system",
-        "prefix",
-        "preamble",
-        "prompt",
-        "template",
-        "system_template",
-        "instruction",
-        "backstory",
-        "goal",
-        "role",
-        "description",
-        "system_instruction",
-        "safety_settings",
-    }
+_PROMPT_KWARG_NAMES = (
+    frozenset(
+        {
+            "system_prompt",
+            "instructions",
+            "system_message",
+            "system",
+            "prefix",
+            "preamble",
+            "prompt",
+            "template",
+            "system_template",
+            "instruction",
+            "backstory",
+            "goal",
+            "role",
+            "system_instruction",
+            "safety_settings",
+        }
+    )
+    - _NON_PROMPT_KEYS
 )
 
 # ── Guardrail patterns ───────────────────────────────────────────────────────

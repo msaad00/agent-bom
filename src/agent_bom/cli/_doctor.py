@@ -33,14 +33,29 @@ def doctor_cmd() -> None:
     # agent-bom version
     checks.append(("agent-bom", __version__, "ok"))
 
-    # Local vulnerability DB
+    # Local vulnerability DB — check the same path ScanCache() uses
     try:
+        import os as _os
         from pathlib import Path
 
-        db_path = Path.home() / ".agent-bom" / "scan_cache.db"
+        _db_env = _os.environ.get("AGENT_BOM_SCAN_CACHE")
+        db_path = Path(_db_env) if _db_env else Path.home() / ".agent-bom" / "scan_cache.db"
         if db_path.exists():
             size_kb = db_path.stat().st_size // 1024
-            checks.append(("Local DB", f"exists ({size_kb} KB)", "ok"))
+            # Count cached entries to distinguish "empty" from "populated"
+            try:
+                import sqlite3 as _sqlite3
+
+                _conn = _sqlite3.connect(str(db_path), check_same_thread=False)
+                _row = _conn.execute("SELECT COUNT(*) FROM osv_cache").fetchone()
+                _conn.close()
+                entry_count = _row[0] if _row else 0
+                if entry_count == 0:
+                    checks.append(("Local DB", f"exists but empty ({size_kb} KB) — run a scan to populate", "info"))
+                else:
+                    checks.append(("Local DB", f"exists ({size_kb} KB, {entry_count} cached entries)", "ok"))
+            except Exception:
+                checks.append(("Local DB", f"exists ({size_kb} KB)", "ok"))
         else:
             checks.append(("Local DB", "not yet created (run a scan first)", "info"))
     except Exception:

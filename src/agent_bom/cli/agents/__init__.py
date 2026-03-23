@@ -610,6 +610,72 @@ def scan(
         except Exception:
             pass  # Never block a scan due to freshness check failure
 
+    # ── IaC-only fast path: skip MCP discovery, package extraction, CVE scan ──
+    # When iac_paths are provided together with no_scan=True (set by `agent-bom iac`),
+    # we only need to run the IaC scanner — no agent discovery or network calls needed.
+    if iac_paths and no_scan:
+        from agent_bom.cli.agents._context import ScanContext as _ScanContext
+        from agent_bom.cli.agents._discovery import run_local_discovery as _run_iac_discovery
+
+        _iac_ctx = _ScanContext(con=con)
+        _run_iac_discovery(
+            _iac_ctx,
+            project=None,
+            config_dir=None,
+            inventory=None,
+            skill_only=False,
+            dynamic_discovery=False,
+            dynamic_max_depth=0,
+            include_processes=False,
+            include_containers=False,
+            introspect=False,
+            introspect_timeout=10.0,
+            enforce=False,
+            health_check=False,
+            hc_timeout=10.0,
+            k8s_mcp=False,
+            k8s_namespace="default",
+            k8s_all_namespaces=False,
+            k8s_mcp_context=None,
+            no_skill=True,
+            skill_paths=(),
+            skill_only_mode=False,
+            ai_enrich=False,
+            ai_model="",
+            sbom_file=None,
+            sbom_name=None,
+            external_scan_path=None,
+            k8s=False,
+            namespace="default",
+            all_namespaces=False,
+            k8s_context=None,
+            registry_user=None,
+            registry_pass=None,
+            image_platform=None,
+            images=(),
+            image_tars=(),
+            filesystem_paths=(),
+            code_paths=(),
+            sast_config="",
+            ai_inventory_paths=(),
+            tf_dirs=(),
+            gha_path=None,
+            agent_projects=(),
+            scan_prompts=False,
+            browser_extensions=False,
+            jupyter_dirs=(),
+            verbose=verbose,
+            quiet=quiet,
+            smithery_token=None,
+            smithery_flag=False,
+            mcp_registry_flag=False,
+            os_packages=False,
+            iac_paths=iac_paths,
+            _any_cloud=False,
+            _discover_all=discover_all,
+        )
+        return
+
     # Create shared context object
     ctx = ScanContext(con=con)
 

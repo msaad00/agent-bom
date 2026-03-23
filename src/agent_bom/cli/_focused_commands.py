@@ -114,12 +114,14 @@ def fs_cmd(
 @click.argument("paths", nargs=-1, required=True)
 @click.option("-f", "--format", "output_format", default="console", help="Output format")
 @click.option("-o", "--output", "output_path", help="Output file path")
+@click.option("--fail-on-severity", type=click.Choice(["critical", "high", "medium", "low"]))
 @click.option("--quiet", "-q", is_flag=True, help="Minimal output")
 @click.option("--fixable-only", "fixable_only", is_flag=True, default=False, help="Show only vulnerabilities with available fixes.")
 def iac_cmd(
     paths: tuple[str, ...],
     output_format: str,
     output_path: Optional[str],
+    fail_on_severity: Optional[str],
     quiet: bool,
     fixable_only: bool,
 ) -> None:
@@ -139,8 +141,10 @@ def iac_cmd(
     ctx.invoke(
         scan,
         iac_paths=paths,
+        no_scan=True,  # IaC command: skip CVE scanning, package extraction, MCP agent discovery
         output_format=output_format,
         output=output_path,
+        fail_on_severity=fail_on_severity,
         quiet=quiet,
         fixable_only=fixable_only,
     )

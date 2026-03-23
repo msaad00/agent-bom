@@ -47,7 +47,7 @@ function buildPipelineStats(result: ScanResult): PipelineStats {
       vulnerabilities++;
       if (br.severity === "critical") critical++;
       if (br.severity === "high") high++;
-      if (br.is_kev || br.cisa_kev) kev++;
+      if (br.is_kev ?? br.cisa_kev) kev++;
     }
   }
 
@@ -73,9 +73,9 @@ function buildEpssVsCvss(blasts: BlastRadius[]): EpssVsCvssPoint[] {
       cve: br.vulnerability_id,
       cvss: br.cvss_score ?? 0,
       epss: br.epss_score ?? 0,
-      blast: br.blast_score,
+      blast: br.risk_score ?? br.blast_score,
       severity: br.severity ?? "low",
-      kev: !!(br.is_kev || br.cisa_kev),
+      kev: !!(br.is_kev ?? br.cisa_kev),
       package: br.package,
     });
   }

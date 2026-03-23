@@ -573,8 +573,8 @@ function AgentDetail({ agentName }: { agentName: string }) {
                     {br.exposed_credentials.length > 0 && (
                       <span className="text-yellow-400">{br.exposed_credentials.length} credentials exposed</span>
                     )}
-                    {br.reachable_tools.length > 0 && (
-                      <span className="text-purple-400">{br.reachable_tools.length} tools reachable</span>
+                    {(br.exposed_tools ?? br.reachable_tools).length > 0 && (
+                      <span className="text-purple-400">{(br.exposed_tools ?? br.reachable_tools).length} tools reachable</span>
                     )}
                   </div>
                   {/* Framework tags */}

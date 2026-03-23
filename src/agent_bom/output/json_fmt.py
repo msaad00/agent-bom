@@ -253,6 +253,7 @@ def to_json(report: AIBOMReport) -> dict:
                 "config_path": agent.config_path,
                 "source": agent.source,
                 "status": agent.status.value,
+                "automation_settings": agent.automation_settings,
                 "mcp_servers": [
                     {
                         "name": server.name,
@@ -295,6 +296,8 @@ def to_json(report: AIBOMReport) -> dict:
                                         "id": v.id,
                                         "summary": v.summary,
                                         "severity": v.severity.value,
+                                        "severity_source": v.severity_source,
+                                        "confidence": v.confidence,
                                         "cvss_score": v.cvss_score,
                                         "epss_score": v.epss_score,
                                         "epss_percentile": v.epss_percentile,
@@ -373,6 +376,8 @@ def to_json(report: AIBOMReport) -> dict:
                 "soc2_tags": br.soc2_tags,
                 "cis_tags": br.cis_tags,
                 "cmmc_tags": br.cmmc_tags,
+                "nist_800_53_tags": br.nist_800_53_tags,
+                "fedramp_tags": br.fedramp_tags,
                 "hop_depth": getattr(br, "hop_depth", 1),
                 "delegation_chain": getattr(br, "delegation_chain", []),
                 "transitive_agents": getattr(br, "transitive_agents", []),
@@ -470,6 +475,11 @@ def to_json(report: AIBOMReport) -> dict:
         result["introspection"] = report.introspection_data
     if report.health_check_data:
         result["health_check"] = report.health_check_data
+
+    if report.vector_db_scan_data:
+        result["vector_db_scan"] = report.vector_db_scan_data
+    if report.gpu_infra_data:
+        result["gpu_infra"] = report.gpu_infra_data
 
     # Posture scorecard
     from agent_bom.posture import (

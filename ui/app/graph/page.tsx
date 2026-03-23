@@ -276,7 +276,7 @@ function buildLineageGraph(
               seen.add(vulnId);
               // Find blast radius info
               const br = result.blast_radius?.find((b) => b.vulnerability_id === vuln.id);
-              const isCriticalNode = vuln.severity === "critical" || vuln.cisa_kev === true || br?.is_kev === true;
+              const isCriticalNode = vuln.severity === "critical" || (vuln.is_kev ?? vuln.cisa_kev) === true || br?.is_kev === true;
               nodes.push({
                 id: vulnId,
                 type: "vulnNode",
@@ -287,7 +287,7 @@ function buildLineageGraph(
                   severity: vuln.severity,
                   cvssScore: vuln.cvss_score ?? br?.cvss_score,
                   epssScore: vuln.epss_score ?? br?.epss_score,
-                  isKev: vuln.cisa_kev ?? br?.is_kev,
+                  isKev: (vuln.is_kev ?? vuln.cisa_kev) ?? br?.is_kev,
                   fixedVersion: vuln.fixed_version ?? br?.fixed_version,
                   owaspTags: br?.owasp_tags,
                   atlasTags: br?.atlas_tags,

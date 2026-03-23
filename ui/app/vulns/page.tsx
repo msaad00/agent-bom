@@ -191,7 +191,7 @@ function VulnsPage() {
       list = list.filter(
         (v) =>
           v.id.toLowerCase().includes(q) ||
-          v.description?.toLowerCase().includes(q) ||
+          (v.summary ?? v.description)?.toLowerCase().includes(q) ||
           v.packages.some((p) => p.toLowerCase().includes(q)) ||
           v.agents.some((a) => a.toLowerCase().includes(q))
       );
@@ -463,11 +463,11 @@ function VulnTable({
                     {v.id}
                     <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                   </a>
-                  {v.cisa_kev && <CisaKevBadge />}
+                  {(v.is_kev ?? v.cisa_kev) && <CisaKevBadge />}
                 </div>
-                {v.description && (
+                {(v.summary ?? v.description) && (
                   <p className="text-xs text-zinc-600 mt-0.5 ml-3.5 line-clamp-1 max-w-xs">
-                    {v.description}
+                    {v.summary ?? v.description}
                   </p>
                 )}
               </td>

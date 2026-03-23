@@ -399,6 +399,8 @@ _SKIP_DIRS = frozenset(
         ".pytest_cache",
         "target",  # Rust/Maven
         ".cargo",
+        ".claude",  # Claude Code worktrees
+        ".codex",  # Codex worktrees
     }
 )
 

@@ -1,10 +1,25 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { Nav } from "@/components/nav";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
-const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" });
+// Local fonts — no network fetch at build time (works in air-gapped environments)
+const inter = localFont({
+  src: [
+    { path: "../public/fonts/inter-var.woff2", style: "normal" },
+  ],
+  variable: "--font-sans",
+  display: "swap",
+  fallback: ["system-ui", "-apple-system", "Segoe UI", "sans-serif"],
+});
+const mono = localFont({
+  src: [
+    { path: "../public/fonts/jetbrains-mono-var.woff2", style: "normal" },
+  ],
+  variable: "--font-mono",
+  display: "swap",
+  fallback: ["ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
+});
 
 export const metadata: Metadata = {
   title: "agent-bom",

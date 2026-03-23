@@ -117,6 +117,7 @@ export interface Agent {
   source?: string;
   status?: AgentStatus;
   mcp_servers: MCPServer[];
+  automation_settings?: string[];
 }
 
 export interface MCPServer {
@@ -127,6 +128,9 @@ export interface MCPServer {
   tools?: Tool[];
   env?: Record<string, string>;
   vulnerabilities?: Vulnerability[];
+  has_credentials?: boolean;
+  credential_env_vars?: string[];
+  security_blocked?: boolean;
 }
 
 export interface Package {
@@ -140,12 +144,21 @@ export interface Package {
 export interface Vulnerability {
   id: string;
   severity: "critical" | "high" | "medium" | "low" | "none";
+  /** API v2 field — same as description */
+  summary?: string;
   description?: string;
   cvss_score?: number;
   epss_score?: number;
+  /** API v2 field — same as cisa_kev */
+  is_kev?: boolean;
   cisa_kev?: boolean;
   fixed_version?: string;
+  /** API v2 field — same as published */
+  nvd_published?: string;
   published?: string;
+  /** Phase 2 fields */
+  severity_source?: string;
+  confidence?: number;
 }
 
 export interface BlastRadius {
@@ -156,13 +169,16 @@ export interface BlastRadius {
   affected_agents: string[];
   affected_servers?: string[];
   exposed_credentials: string[];
+  /** API v2 field — same as reachable_tools */
+  exposed_tools?: string[];
   reachable_tools: string[];
+  /** API v2 field — same as blast_score (0-100) */
+  risk_score?: number;
   blast_score: number;
   cvss_score?: number;
   epss_score?: number;
   is_kev?: boolean;
   cisa_kev?: boolean;
-  risk_score?: number;
   fixed_version?: string;
   owasp_tags?: string[];
   atlas_tags?: string[];
@@ -773,6 +789,11 @@ export const api = {
     if (filters?.limit) params.set("limit", String(filters.limit));
     const qs = params.toString();
     return get<ProxyAlertsResponse>(`/v1/proxy/alerts${qs ? `?${qs}` : ""}`);
+  },
+
+  // ── Shield / Break-Glass ──
+  breakGlass: async (sessionId: string, reason: string) => {
+    return post<{ status: string; session_id: string }>('/v1/shield/break-glass', { session_id: sessionId, reason });
   },
 
   // ── Exceptions (FP suppression) ──

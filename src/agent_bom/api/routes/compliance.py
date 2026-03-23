@@ -218,49 +218,6 @@ async def get_compliance() -> dict:
     }
 
 
-@router.get("/v1/compliance/{framework}", tags=["compliance"])
-async def get_compliance_by_framework(framework: str) -> dict:
-    """Get compliance posture for a single framework.
-
-    Supported frameworks: owasp-llm, owasp-mcp, atlas, nist, owasp-agentic, eu-ai-act,
-    nist-csf, iso-27001, soc2, cis, cmmc
-    """
-    full = await get_compliance()
-
-    framework_map = {
-        "owasp-llm": "owasp_llm_top10",
-        "owasp-mcp": "owasp_mcp_top10",
-        "atlas": "mitre_atlas",
-        "nist": "nist_ai_rmf",
-        "owasp-agentic": "owasp_agentic_top10",
-        "eu-ai-act": "eu_ai_act",
-        "nist-csf": "nist_csf",
-        "iso-27001": "iso_27001",
-        "soc2": "soc2",
-        "cis": "cis_controls",
-        "cmmc": "cmmc",
-    }
-
-    key = framework_map.get(framework.lower())
-    if not key:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unknown framework '{framework}'. Supported: {', '.join(framework_map.keys())}",
-        )
-
-    controls = full.get(key, [])
-    pass_count = sum(1 for c in controls if c["status"] == "pass")
-    warn_count = sum(1 for c in controls if c["status"] == "warning")
-    fail_count = sum(1 for c in controls if c["status"] == "fail")
-
-    return {
-        "framework": framework,
-        "controls": controls,
-        "summary": {"pass": pass_count, "warning": warn_count, "fail": fail_count},
-        "score": round((pass_count / len(controls)) * 100, 1) if controls else 100.0,
-    }
-
-
 # ─── Compliance Narrative ─────────────────────────────────────────────────
 
 
@@ -465,6 +422,49 @@ async def get_compliance_narrative_by_framework(framework: str) -> dict:
 
     narrative: ComplianceNarrative = generate_compliance_narrative(report, framework=framework.lower())
     return _narrative_to_dict(narrative)
+
+
+@router.get("/v1/compliance/{framework}", tags=["compliance"])
+async def get_compliance_by_framework(framework: str) -> dict:
+    """Get compliance posture for a single framework.
+
+    Supported frameworks: owasp-llm, owasp-mcp, atlas, nist, owasp-agentic, eu-ai-act,
+    nist-csf, iso-27001, soc2, cis, cmmc
+    """
+    full = await get_compliance()
+
+    framework_map = {
+        "owasp-llm": "owasp_llm_top10",
+        "owasp-mcp": "owasp_mcp_top10",
+        "atlas": "mitre_atlas",
+        "nist": "nist_ai_rmf",
+        "owasp-agentic": "owasp_agentic_top10",
+        "eu-ai-act": "eu_ai_act",
+        "nist-csf": "nist_csf",
+        "iso-27001": "iso_27001",
+        "soc2": "soc2",
+        "cis": "cis_controls",
+        "cmmc": "cmmc",
+    }
+
+    key = framework_map.get(framework.lower())
+    if not key:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown framework '{framework}'. Supported: {', '.join(framework_map.keys())}",
+        )
+
+    controls = full.get(key, [])
+    pass_count = sum(1 for c in controls if c["status"] == "pass")
+    warn_count = sum(1 for c in controls if c["status"] == "warning")
+    fail_count = sum(1 for c in controls if c["status"] == "fail")
+
+    return {
+        "framework": framework,
+        "controls": controls,
+        "summary": {"pass": pass_count, "warning": warn_count, "fail": fail_count},
+        "score": round((pass_count / len(controls)) * 100, 1) if controls else 100.0,
+    }
 
 
 # ─── Posture Scorecard ─────────────────────────────────────────────────────

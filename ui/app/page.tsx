@@ -202,9 +202,9 @@ function aggregateEpssVsCvss(allBlast: BlastRadius[]): EpssVsCvssPoint[] {
       cve: b.vulnerability_id,
       cvss: b.cvss_score!,
       epss: b.epss_score!,
-      blast: b.blast_score,
+      blast: b.risk_score ?? b.blast_score,
       severity: b.severity?.toLowerCase() ?? "low",
-      kev: !!(b.cisa_kev ?? b.is_kev),
+      kev: !!(b.is_kev ?? b.cisa_kev),
       package: b.package,
     }));
 }
@@ -230,7 +230,7 @@ function aggregateCompoundIssues(allBlast: BlastRadius[]): CompoundIssue[] {
 
   // 1. CISA KEV + reachable tool exposure
   const kevReachable = allBlast.filter(
-    (b) => (b.cisa_kev ?? b.is_kev) && b.reachable_tools.length > 0
+    (b) => (b.is_kev ?? b.cisa_kev) && (b.exposed_tools ?? b.reachable_tools).length > 0
   );
   if (kevReachable.length > 0) {
     issues.push({
@@ -240,14 +240,14 @@ function aggregateCompoundIssues(allBlast: BlastRadius[]): CompoundIssue[] {
         "Known-exploited vulnerabilities (CISA KEV) in packages reachable by MCP tools — immediate patching required.",
       count: kevReachable.length,
       severity: "critical",
-      findings: kevReachable.sort((a, b) => b.blast_score - a.blast_score),
+      findings: kevReachable.sort((a, b) => (b.risk_score ?? b.blast_score) - (a.risk_score ?? a.blast_score)),
       filter: "kev=true",
     });
   }
 
   // 2. CISA KEV + credential exposure
   const kevCredential = allBlast.filter(
-    (b) => (b.cisa_kev ?? b.is_kev) && b.exposed_credentials.length > 0
+    (b) => (b.is_kev ?? b.cisa_kev) && b.exposed_credentials.length > 0
   );
   if (kevCredential.length > 0) {
     issues.push({
@@ -257,7 +257,7 @@ function aggregateCompoundIssues(allBlast: BlastRadius[]): CompoundIssue[] {
         "Known-exploited CVEs co-located with exposed credentials — data exfiltration risk.",
       count: kevCredential.length,
       severity: "critical",
-      findings: kevCredential.sort((a, b) => b.blast_score - a.blast_score),
+      findings: kevCredential.sort((a, b) => (b.risk_score ?? b.blast_score) - (a.risk_score ?? a.blast_score)),
       filter: "kev=true",
     });
   }
@@ -267,8 +267,7 @@ function aggregateCompoundIssues(allBlast: BlastRadius[]): CompoundIssue[] {
     (b) =>
       (b.epss_score ?? 0) >= 0.3 &&
       (b.cvss_score ?? 0) >= 7 &&
-      !b.cisa_kev &&
-      !b.is_kev
+      !(b.is_kev ?? b.cisa_kev)
   );
   if (epssHighCvss.length > 0) {
     issues.push({
@@ -278,7 +277,7 @@ function aggregateCompoundIssues(allBlast: BlastRadius[]): CompoundIssue[] {
         "CVEs with EPSS ≥ 30% and CVSS ≥ 7.0 — statistically likely to be exploited in the wild within 30 days.",
       count: epssHighCvss.length,
       severity: "high",
-      findings: epssHighCvss.sort((a, b) => b.blast_score - a.blast_score),
+      findings: epssHighCvss.sort((a, b) => (b.risk_score ?? b.blast_score) - (a.risk_score ?? a.blast_score)),
       filter: "severity=high",
     });
   }
@@ -287,7 +286,7 @@ function aggregateCompoundIssues(allBlast: BlastRadius[]): CompoundIssue[] {
   const credExec = allBlast.filter(
     (b) =>
       b.exposed_credentials.length > 0 &&
-      b.reachable_tools.some((t) =>
+      (b.exposed_tools ?? b.reachable_tools).some((t) =>
         ["bash", "exec", "shell", "run", "execute", "subprocess"].some((kw) =>
           t.toLowerCase().includes(kw)
         )
@@ -301,7 +300,7 @@ function aggregateCompoundIssues(allBlast: BlastRadius[]): CompoundIssue[] {
         "Exposed credentials reachable from tools with code execution capability — privilege escalation vector.",
       count: credExec.length,
       severity: "critical",
-      findings: credExec.sort((a, b) => b.blast_score - a.blast_score),
+      findings: credExec.sort((a, b) => (b.risk_score ?? b.blast_score) - (a.risk_score ?? a.blast_score)),
       filter: "severity=critical",
     });
   }
@@ -637,7 +636,7 @@ export default function Dashboard() {
           </div>
           <div className="space-y-2">
             {[...allBlast]
-              .sort((a, b) => b.blast_score - a.blast_score)
+              .sort((a, b) => (b.risk_score ?? b.blast_score) - (a.risk_score ?? a.blast_score))
               .slice(0, 5)
               .map((b) => (
                 <Link key={b.vulnerability_id} href={`/vulns?cve=${b.vulnerability_id}`}>
@@ -828,8 +827,8 @@ function BlastCard({ blast }: { blast: BlastRadius }) {
           {blast.exposed_credentials.length > 0 && (
             <span className="text-orange-400">{blast.exposed_credentials.length} credential{blast.exposed_credentials.length !== 1 ? "s" : ""}</span>
           )}
-          <span>{blast.reachable_tools.length} tool{blast.reachable_tools.length !== 1 ? "s" : ""}</span>
-          {blast.cisa_kev && <span className="text-red-400 font-semibold">CISA KEV</span>}
+          <span>{(blast.exposed_tools ?? blast.reachable_tools).length} tool{(blast.exposed_tools ?? blast.reachable_tools).length !== 1 ? "s" : ""}</span>
+          {(blast.is_kev ?? blast.cisa_kev) && <span className="text-red-400 font-semibold">CISA KEV</span>}
           {blast.cvss_score != null && <span>CVSS {blast.cvss_score.toFixed(1)}</span>}
           {blast.epss_score != null && <span>EPSS {(blast.epss_score * 100).toFixed(0)}%</span>}
         </div>
@@ -844,9 +843,9 @@ function BlastCard({ blast }: { blast: BlastRadius }) {
           </div>
         )}
       </div>
-      {blast.blast_score > 0 && (
+      {(blast.risk_score ?? blast.blast_score) > 0 && (
         <div className="text-right">
-          <div className="text-lg font-bold font-mono text-red-400">{blast.blast_score.toFixed(0)}</div>
+          <div className="text-lg font-bold font-mono text-red-400">{(blast.risk_score ?? blast.blast_score).toFixed(0)}</div>
           <div className="text-xs text-zinc-600">score</div>
         </div>
       )}
@@ -969,7 +968,7 @@ function CompoundIssueCard({ issue }: { issue: CompoundIssue }) {
               className={`text-[10px] font-mono rounded px-1.5 py-0.5 ${badgeColor}`}
             >
               {f.vulnerability_id}
-              {(f.cisa_kev ?? f.is_kev) && " ⚡"}
+              {(f.is_kev ?? f.cisa_kev) && " ⚡"}
             </span>
           ))}
           {issue.findings.length > 4 && (

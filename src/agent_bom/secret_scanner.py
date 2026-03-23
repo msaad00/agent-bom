@@ -50,6 +50,8 @@ _SKIP_DIRS = frozenset(
         "testing",
         "fixtures",
         "fuzz",
+        ".claude",  # Claude Code worktrees
+        ".codex",  # Codex worktrees
     }
 )
 

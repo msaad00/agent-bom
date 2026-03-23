@@ -60,6 +60,8 @@ _SKIP_DIRS: frozenset[str] = frozenset(
         ".next",  # Next.js
         ".nuxt",  # Nuxt.js
         "coverage",
+        ".claude",  # Claude Code worktrees
+        ".codex",  # Codex worktrees
     }
 )
 

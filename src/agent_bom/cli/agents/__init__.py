@@ -438,8 +438,8 @@ def scan(
         except Exception:
             pass  # DB not available, will use network
 
-    # ── Auto-refresh stale DB if enabled ──────────────────────────────────────
-    if auto_update_db:
+    # ── Auto-refresh stale DB if enabled (skip entirely when --no-scan) ───────
+    if auto_update_db and not no_scan:
         from agent_bom.db.schema import db_freshness_days
         from agent_bom.db.sync import sync_db
 

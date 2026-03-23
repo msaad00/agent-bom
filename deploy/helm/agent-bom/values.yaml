@@ -1,11 +1,11 @@
 image:
   repository: agentbom/agent-bom
-  tag: "0.75.2"
+  tag: "0.75.3"
   pullPolicy: IfNotPresent
 
 runtimeImage:
   repository: agentbom/agent-bom-runtime
-  tag: "0.75.2"
+  tag: "0.75.3"
   pullPolicy: IfNotPresent
 
 scanner:

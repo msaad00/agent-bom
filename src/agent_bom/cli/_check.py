@@ -51,6 +51,9 @@ def _parse_package_spec(
     Auto-detects ecosystem when not specified.
     """
     spec = package_spec.strip()
+    # Accept both pip (pkg==1.0) and universal (pkg@1.0) syntax
+    if "==" in spec and "@" not in spec:
+        spec = spec.replace("==", "@", 1)
     if spec.startswith("npx ") or spec.startswith("uvx "):
         parts = spec.split()
         pkg_args = [p for p in parts[1:] if not p.startswith("-")]

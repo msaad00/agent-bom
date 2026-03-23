@@ -30,7 +30,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install agent-bom
-        run: uv tool install agent-bom==0.75.0  # pinned — bump on each release
+        run: uv tool install agent-bom==0.75.1  # pinned — bump on each release
 
       - name: Scan changed MCP configs
         id: scan

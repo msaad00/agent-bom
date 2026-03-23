@@ -16,7 +16,7 @@ from collections import deque
 from pathlib import Path as _Path
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, HTTPException, Request, WebSocket
+from fastapi import APIRouter, HTTPException, Query, Request, WebSocket
 
 if TYPE_CHECKING:
     from agent_bom.runtime.protection import ProtectionEngine
@@ -152,7 +152,7 @@ async def proxy_status() -> dict:
 async def proxy_alerts(
     severity: str | None = None,
     detector: str | None = None,
-    limit: int = 100,
+    limit: int = Query(default=100, ge=1, le=1000, description="Max alerts to return (1-1000)"),
 ) -> dict:
     """Get recent runtime proxy alerts.
 
@@ -206,7 +206,9 @@ def _ws_check_auth(websocket: WebSocket) -> bool:
     if not api_key:
         return True  # no auth configured — open
     token = websocket.query_params.get("token", "")
-    return bool(token and token == api_key)
+    import hmac as _hmac
+
+    return bool(token and _hmac.compare_digest(token, api_key))
 
 
 @router.websocket("/ws/proxy/metrics")

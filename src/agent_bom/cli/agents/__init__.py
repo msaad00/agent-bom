@@ -610,6 +610,9 @@ def scan(
         except Exception:
             pass  # Never block a scan due to freshness check failure
 
+    # NOTE: IaC isolation is handled by `no_scan=True` which skips CVE scanning
+    # and network calls later in the pipeline. No fast-path early return needed.
+
     # Create shared context object
     ctx = ScanContext(con=con)
 

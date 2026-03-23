@@ -38,7 +38,7 @@ agent-bom agents
 ```
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.75.0.gif" alt="agent-bom demo — doctor, posture, scan, image" width="900" />
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.75.3.gif" alt="agent-bom demo — doctor, posture, scan, check" width="900" />
 </p>
 
 ---
@@ -86,11 +86,11 @@ flowchart TB
     DISCOVER --> SCAN --> ANALYZE --> OUTPUT
     DISCOVER -.-> PROTECT
 
-    style DISCOVER fill:#0d1117,stroke:#58a6ff,color:#c9d1d9
-    style SCAN fill:#0d1117,stroke:#f85149,color:#c9d1d9
-    style ANALYZE fill:#0d1117,stroke:#d29922,color:#c9d1d9
-    style OUTPUT fill:#0d1117,stroke:#3fb950,color:#c9d1d9
-    style PROTECT fill:#161b22,stroke:#f778ba,color:#c9d1d9
+    style DISCOVER stroke:#58a6ff,stroke-width:2px
+    style SCAN stroke:#f85149,stroke-width:2px
+    style ANALYZE stroke:#d29922,stroke-width:2px
+    style OUTPUT stroke:#3fb950,stroke-width:2px
+    style PROTECT stroke:#f778ba,stroke-width:2px,stroke-dasharray: 5 5
 ```
 
 ### Blast Radius — what makes agent-bom different
@@ -107,12 +107,12 @@ flowchart LR
     CVE --> PKG --> SRV --> AGT --> CRED
     AGT --> TOOL
 
-    style CVE fill:#4a1c1c,stroke:#f85149,color:#f85149
-    style PKG fill:#2d1b00,stroke:#d29922,color:#d29922
-    style SRV fill:#0d1117,stroke:#58a6ff,color:#58a6ff
-    style AGT fill:#0d1117,stroke:#3fb950,color:#3fb950
-    style CRED fill:#4a1c1c,stroke:#f85149,color:#f85149
-    style TOOL fill:#161b22,stroke:#8b949e,color:#8b949e
+    style CVE stroke:#f85149,stroke-width:2px
+    style PKG stroke:#d29922,stroke-width:2px
+    style SRV stroke:#58a6ff,stroke-width:2px
+    style AGT stroke:#3fb950,stroke-width:2px
+    style CRED stroke:#f85149,stroke-width:2px
+    style TOOL stroke:#8b949e,stroke-width:2px
 ```
 
 ---
@@ -395,9 +395,9 @@ graph LR
     AGT -->|exposes| CRED
     AGT -->|grants access to| TOOL
 
-    style CVE fill:#dc2626,color:#fff
-    style CRED fill:#f59e0b,color:#000
-    style TOOL fill:#f59e0b,color:#000
+    style CVE stroke:#dc2626,stroke-width:2px
+    style CRED stroke:#f59e0b,stroke-width:2px
+    style TOOL stroke:#f59e0b,stroke-width:2px
 ```
 
 Traditional scanners stop at `CVE → Package`. agent-bom maps the full chain to show which credentials and tools are actually at risk.

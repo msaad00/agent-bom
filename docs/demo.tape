@@ -1,22 +1,22 @@
-# agent-bom v0.75.0 demo — run with: vhs docs/demo.tape
+# agent-bom v0.75.3 demo — run with: vhs docs/demo.tape
 #
-# Shows the full product surface with real output.
-# No personal paths, configs, or credentials in output.
+# HIGH RES, READABLE. Large font, focused output.
+# No personal paths, configs, or credentials.
 
-Output docs/images/demo-v0.75.0.gif
+Output docs/images/demo-v0.75.3.gif
 
 Set Shell "bash"
-Set FontSize 14
-Set Width 2200
-Set Height 1100
+Set FontSize 22
+Set Width 1200
+Set Height 800
 Set Theme "Dracula"
-Set Padding 20
-Set TypingSpeed 30ms
+Set Padding 30
+Set TypingSpeed 25ms
 Set PlaybackSpeed 1.5
 
 # Setup
 Hide
-Type "export PS1='agent-bom $ ' && export PATH=/opt/homebrew/Caskroom/miniconda/base/bin:$PATH && export COLUMNS=200 && clear"
+Type "export PS1='$ ' && export PATH=/opt/homebrew/Caskroom/miniconda/base/bin:$PATH && clear"
 Enter
 Sleep 500ms
 Show
@@ -26,32 +26,19 @@ Type "agent-bom --version"
 Enter
 Sleep 2s
 
-# 2. Doctor — preflight check (NEW in v0.75.0)
+# 2. Doctor — preflight check
 Type "agent-bom doctor"
 Enter
-Sleep 3s
+Sleep 4s
 
-# 3. Posture summary — 5-line workstation risk (NEW in v0.75.0)
+# 3. Posture summary — quick workstation risk
 Type "agent-bom agents --demo --posture"
 Enter
-Sleep 15s
-Sleep 1s
+Sleep 20s
 
-# 4. Full agent scan with blast radius
-Type "agent-bom agents --demo"
+# 4. Pre-install CVE gate
+Type "agent-bom check requests==2.28.0"
 Enter
-Sleep 35s
-Sleep 2s
-
-# 5. Container image scan (native, no external tools)
-Type "agent-bom image python:3.12-slim"
-Enter
-Sleep 15s
-Sleep 1s
-
-# 6. Pre-install CVE gate
-Type "agent-bom check lodash@4.17.20"
-Enter
-Sleep 8s
+Sleep 10s
 
 Sleep 3s

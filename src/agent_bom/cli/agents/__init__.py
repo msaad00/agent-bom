@@ -438,15 +438,15 @@ def scan(
         except Exception:
             pass  # DB not available, will use network
 
-    # ── Auto-refresh stale DB if requested (skip when --no-scan) ─────────────
-    if auto_update_db and not no_scan:
+    # ── Auto-refresh stale DB if enabled ──────────────────────────────────────
+    if auto_update_db:
         from agent_bom.db.schema import db_freshness_days
         from agent_bom.db.sync import sync_db
 
         freshness = db_freshness_days()
         source_list = [s.strip() for s in db_sources.split(",")] if db_sources else None
         if freshness is None or freshness > 7 or source_list:
-            if not quiet:
+            if not quiet and not no_scan:
                 src_msg = f" (sources: {', '.join(source_list)})" if source_list else ""
                 con.print(f"[dim]Refreshing local vuln DB{src_msg} …[/dim]")
             try:

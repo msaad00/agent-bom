@@ -41,14 +41,14 @@ docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest code /workspace
 - **Containers** — Docker images via Grype + Syft
 - **Cloud AI** — AWS Bedrock, Azure OpenAI, GCP Vertex AI, Snowflake Cortex, Databricks, HuggingFace, Ollama, and more (12 total)
 - **MCP servers** — tool poisoning, description injection, credential exposure
-- **IaC** — Dockerfile, Kubernetes, Terraform, CloudFormation, Helm (89 rules)
+- **IaC** — Dockerfile, Kubernetes, Terraform, CloudFormation, Helm (138 rules)
 - **Source code** — AST analysis of Python AI frameworks (LangChain, CrewAI, OpenAI Agents SDK, and 7 more)
-- **Secrets** — 31 credential patterns + 11 PII patterns across source, config, and .env files
+- **Secrets** — 116 secret patterns + 11 PII patterns across source, config, and .env files
 
 ## Key features
 
 - **Blast radius mapping** — traces CVE impact: package → server → agent → credentials → tools
-- **Runtime MCP proxy** — 7 behavioral detectors: rug pull, tool drift, injection, credential leak, exfil, response cloaking, vector DB injection
+- **Runtime MCP proxy** — 8 behavioral detectors: rug pull, tool drift, injection, credential leak, exfil, response cloaking, vector DB injection, cross-agent correlation
 - **14 compliance frameworks** — OWASP LLM Top 10, OWASP Agentic Top 10, MITRE ATLAS, MITRE ATT&CK, NIST AI RMF, EU AI Act, NIST CSF, ISO 27001, SOC 2, CMMC, FedRAMP, CIS Benchmarks, AISVS, and more
 - **Policy-as-code** — 17 conditions with AND/OR/NOT expression engine
 - **33 MCP server tools** — available to any MCP-compatible AI assistant
@@ -60,7 +60,7 @@ docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest code /workspace
 | Tag | Description |
 |-----|-------------|
 | `latest` | Most recent stable release |
-| `v0.75.0` | Current stable version (pinned) |
+| `v0.75.3` | Current stable version (pinned) |
 
 ## Links
 

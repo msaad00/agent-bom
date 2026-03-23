@@ -41,6 +41,27 @@ agent-bom agents
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.75.3.gif" alt="agent-bom demo — doctor, posture, scan, check" width="900" />
 </p>
 
+### Why this is different
+
+- **Discovers AI agents and MCP servers** across real developer environments (30 MCP client types)
+- **Maps vulnerabilities into reachable credentials and tools** — not just "package X has CVE Y"
+- **Adds runtime protection** with an MCP security proxy (8 behavioral detectors, 112 patterns)
+
+<details>
+<summary><b>How agent-bom compares</b></summary>
+
+| Tool | Best at | Limits |
+|------|---------|--------|
+| **Trivy** | General vulnerability, misconfiguration, secret, and SBOM scanning | Stops at the artifact; no AI-agent blast radius |
+| **Grype** | Vulnerability matching from packages and SBOMs | No MCP, agent, runtime, or trust modeling |
+| **Syft** | SBOM generation and software inventory | Not a runtime or blast-radius security tool |
+| **Snyk AI-BOM** | Enterprise AI BOM workflows | Narrower local AI-agent/MCP discovery and runtime coverage |
+| **agent-bom** | AI agent, MCP, blast-radius, runtime protection, and governance | Less mature as a generic scanner than Trivy |
+
+Use Trivy when you need a great general-purpose scanner. Use Syft and Grype when you want dedicated SBOM and vulnerability point tools. **Use agent-bom when you need to know which AI agents, MCP servers, credentials, and tools are actually exposed.**
+
+</details>
+
 ---
 
 ## How it works

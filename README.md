@@ -425,35 +425,21 @@ Tools ────────── read_file, exec_cmd ───────�
 ## Architecture
 
 ```mermaid
-graph TB
-    subgraph Discovery["Discovery (30 MCP clients)"]
-        CONF["Config Files<br/>Claude, Cursor, VS Code, ..."]
-        CLOUD["Cloud APIs<br/>AWS, Azure, GCP, Databricks"]
-        CONTAINER["Containers<br/>Docker, K8s, ECS, EKS"]
-        MODEL["Models<br/>HuggingFace, Ollama"]
+graph LR
+    subgraph D["🔍 Discover"]
+        D1["MCP Configs · Cloud · Containers · Models"]
     end
-
-    subgraph Analysis["Analysis Pipeline"]
-        PARSE["Package Extraction<br/>15 ecosystems"]
-        CVE["CVE Scanning<br/>OSV · NVD · EPSS · KEV"]
-        BLAST["Blast Radius<br/>CVE → pkg → server → agent"]
-        COMPLY["Compliance Tagging<br/>16 frameworks"]
+    subgraph A["🛡 Analyze"]
+        A1["15 ecosystems"] --> A2["CVE · EPSS · KEV"] --> A3["Blast Radius"] --> A4["14 frameworks"]
     end
-
-    subgraph Output["Output (18 formats)"]
-        CLI_OUT["CLI Console"]
-        SARIF["SARIF · CycloneDX · SPDX"]
-        DASH["Next.js Dashboard"]
-        API_OUT["REST API (101 endpoints)"]
+    subgraph O["📊 Output"]
+        O1["CLI · Dashboard · SARIF · CycloneDX · API"]
     end
-
-    subgraph Runtime["Runtime Protection"]
-        PROXY["MCP Proxy<br/>112 patterns · 7 detectors"]
-        SHIELD["Shield SDK<br/>zero trust · per-session"]
+    subgraph R["⚡ Runtime"]
+        R1["MCP Proxy · 112 patterns · Shield SDK"]
     end
-
-    Discovery --> Analysis --> Output
-    Discovery --> Runtime
+    D --> A --> O
+    D --> R
 ```
 
 <details>

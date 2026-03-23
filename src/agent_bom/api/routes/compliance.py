@@ -111,10 +111,13 @@ async def get_compliance() -> dict:
     from agent_bom.cis_controls import CIS_CONTROLS
     from agent_bom.cmmc import CMMC_PRACTICES
     from agent_bom.eu_ai_act import EU_AI_ACT
+    from agent_bom.fedramp import FEDRAMP_MODERATE
     from agent_bom.iso_27001 import ISO_27001
+    from agent_bom.nist_800_53 import NIST_800_53
     from agent_bom.nist_csf import NIST_CSF
     from agent_bom.owasp_agentic import OWASP_AGENTIC_TOP10
     from agent_bom.owasp_mcp import OWASP_MCP_TOP10
+    from agent_bom.pci_dss import PCI_DSS_REQUIREMENTS
     from agent_bom.soc2 import SOC2_TSC
 
     owasp = _build_controls(OWASP_LLM_TOP10, "owasp_tags", "code")
@@ -128,6 +131,9 @@ async def get_compliance() -> dict:
     soc2 = _build_controls(SOC2_TSC, "soc2_tags", "code")
     cis = _build_controls(CIS_CONTROLS, "cis_tags", "code")
     cmmc = _build_controls(CMMC_PRACTICES, "cmmc_tags", "code")
+    nist_800_53 = _build_controls(NIST_800_53, "nist_800_53_tags", "code")
+    fedramp = _build_controls({c: c for c in FEDRAMP_MODERATE}, "fedramp_tags", "code")
+    pci_dss = _build_controls(PCI_DSS_REQUIREMENTS, "pci_dss_tags", "code")
 
     def _count_statuses(controls: list[dict]) -> tuple[int, int, int]:
         p = sum(1 for c in controls if c["status"] == "pass")
@@ -135,7 +141,22 @@ async def get_compliance() -> dict:
         f = sum(1 for c in controls if c["status"] == "fail")
         return p, w, f
 
-    all_frameworks = [owasp, owasp_mcp, atlas, nist, owasp_agentic, eu_ai_act, nist_csf, iso27001, soc2, cis, cmmc]
+    all_frameworks = [
+        owasp,
+        owasp_mcp,
+        atlas,
+        nist,
+        owasp_agentic,
+        eu_ai_act,
+        nist_csf,
+        iso27001,
+        soc2,
+        cis,
+        cmmc,
+        nist_800_53,
+        fedramp,
+        pci_dss,
+    ]
     total_controls = sum(len(fw) for fw in all_frameworks)
     total_pass = sum(_count_statuses(fw)[0] for fw in all_frameworks)
     any_fail = any(_count_statuses(fw)[2] > 0 for fw in all_frameworks)
@@ -160,6 +181,9 @@ async def get_compliance() -> dict:
     sp, sw, sf = _count_statuses(soc2)
     cp, cw, cf = _count_statuses(cis)
     cmp, cmw, cmf = _count_statuses(cmmc)
+    n8p, n8w, n8f = _count_statuses(nist_800_53)
+    frp, frw, frf = _count_statuses(fedramp)
+    pp, pw, pf = _count_statuses(pci_dss)
 
     return {
         "overall_score": overall_score,
@@ -180,6 +204,9 @@ async def get_compliance() -> dict:
         "soc2": soc2,
         "cis_controls": cis,
         "cmmc": cmmc,
+        "nist_800_53": nist_800_53,
+        "fedramp": fedramp,
+        "pci_dss": pci_dss,
         "summary": {
             "owasp_pass": op,
             "owasp_warn": ow,
@@ -214,6 +241,15 @@ async def get_compliance() -> dict:
             "cmmc_pass": cmp,
             "cmmc_warn": cmw,
             "cmmc_fail": cmf,
+            "nist_800_53_pass": n8p,
+            "nist_800_53_warn": n8w,
+            "nist_800_53_fail": n8f,
+            "fedramp_pass": frp,
+            "fedramp_warn": frw,
+            "fedramp_fail": frf,
+            "pci_dss_pass": pp,
+            "pci_dss_warn": pw,
+            "pci_dss_fail": pf,
         },
     }
 
@@ -445,6 +481,9 @@ async def get_compliance_by_framework(framework: str) -> dict:
         "soc2": "soc2",
         "cis": "cis_controls",
         "cmmc": "cmmc",
+        "nist-800-53": "nist_800_53",
+        "fedramp": "fedramp",
+        "pci-dss": "pci_dss",
     }
 
     key = framework_map.get(framework.lower())

@@ -17,3 +17,5 @@ class IaCFinding:
     line_number: int  # Line where the issue was found
     category: str  # "dockerfile", "kubernetes", "terraform"
     compliance: list[str] = field(default_factory=list)  # e.g. ["CIS-5.1", "NIST-CM-6"]
+    attack_techniques: list[str] = field(default_factory=list)  # MITRE ATT&CK IDs, e.g. ["T1552.001"]
+    remediation: str = ""  # Fix guidance

@@ -484,7 +484,7 @@ export default function Dashboard() {
         </section>
       )}
 
-      {/* Fleet stats */}
+      {/* Key stats bar */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <StatCard icon={Layers} label="Total scans" value={isLoading ? "—" : String(doneJobs.length)} color="zinc" href="/jobs" />
         <StatCard icon={Server} label="Agents" value={isLoading ? "—" : String(effectiveAgentCount)} color="emerald" href="/agents" />
@@ -492,16 +492,6 @@ export default function Dashboard() {
         <StatCard icon={Bug} label="Unique CVEs" value={isLoading ? "—" : String(uniqueCVEs)} color="orange" href="/vulns" />
         <StatCard icon={Zap} label="Critical" value={isLoading ? "—" : String(severity.critical)} color="red" href="/vulns?severity=critical" />
       </div>
-
-      {/* AI Agent Trust Stack */}
-      {(!isLoading) && (
-        <section>
-          <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest mb-3">
-            AI Agent Trust Stack
-          </h2>
-          <TrustStack />
-        </section>
-      )}
 
       {/* Severity distribution + Sources — side by side */}
       {(!isLoading) && allBlast.length > 0 && (
@@ -560,6 +550,16 @@ export default function Dashboard() {
             </Link>
           </div>
           <AgentTopology agents={agentList} />
+        </section>
+      )}
+
+      {/* AI Agent Trust Stack */}
+      {(!isLoading) && (
+        <section>
+          <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest mb-3">
+            AI Agent Trust Stack
+          </h2>
+          <TrustStack />
         </section>
       )}
 

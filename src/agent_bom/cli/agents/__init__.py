@@ -250,6 +250,7 @@ def scan(
     fixable_only: bool = False,
     iac_paths: tuple = (),
     ignore_file: Optional[str] = None,
+    posture: bool = False,
 ):
     """Discover agents, extract dependencies, scan for vulnerabilities.
 
@@ -1762,6 +1763,62 @@ def scan(
         exclude_unfixable=exclude_unfixable,
         fixable_only=fixable_only,
     )
+
+    # ── Posture summary mode (--posture) ──────────────────────────────────────
+    if posture:
+        _total_vulns = len(blast_radii)
+        _crit = sum(1 for br in blast_radii if br.vulnerability.severity.value == "critical")
+        _high = sum(1 for br in blast_radii if br.vulnerability.severity.value == "high")
+        _agent_names = [a.name for a in agents]
+        _agent_list_str = ", ".join(_agent_names[:3]) + (f" +{len(_agent_names) - 3}" if len(_agent_names) > 3 else "")
+        _n_agents = len(agents)
+        _n_servers = sum(len(a.mcp_servers) for a in agents)
+        _n_cred_servers = sum(
+            1
+            for a in agents
+            for s in a.mcp_servers
+            if any(
+                v
+                for k, v in (getattr(s, "env", None) or {}).items()
+                if any(kw in k.upper() for kw in ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL"))
+            )
+        )
+        _floating = sum(1 for a in agents for s in a.mcp_servers if any("@latest" in str(arg) for arg in (getattr(s, "args", None) or [])))
+        _unverified = sum(1 for a in agents for s in a.mcp_servers if not getattr(s, "verified", False))
+        # Top finding
+        _top_br = sorted(blast_radii, key=lambda br: br.risk_score if br.risk_score else br.blast_score, reverse=True)
+        _top_str = ""
+        if _top_br:
+            _tb = _top_br[0]
+            _top_str = f"{_tb.package} ({_tb.vulnerability_id})" if _tb.package else _tb.vulnerability_id
+            _fix = getattr(_tb.vulnerability, "fixed_version", None)
+            _action = (
+                f"Upgrade {_tb.package} to {_fix} to clear {_total_vulns} vuln(s)"
+                if _fix and _tb.package
+                else "Review findings with agent-bom agents"
+            )
+        else:
+            _action = "No vulnerabilities found — supply chain looks clean"
+
+        from rich.console import Console as _RichConsole
+
+        _pc = _RichConsole()
+        _pc.print()
+        _pc.print("[bold]agent-bom posture[/bold]")
+        _pc.print()
+        _pc.print(f"  [bold]Agents:[/bold]   {_n_agents} configured ({_agent_list_str})")
+        _pc.print(f"  [bold]Servers:[/bold]  {_n_servers} MCP servers ({_n_cred_servers} with credentials)")
+        if _total_vulns:
+            _pc.print(
+                f"  [bold]Risk:[/bold]     {_total_vulns} vuln(s) ({_crit} critical, {_high} high)"
+                + (f" — top: {_top_str}" if _top_str else "")
+            )
+        else:
+            _pc.print("  [bold]Risk:[/bold]     No vulnerabilities found")
+        _pc.print(f"  [bold]Trust:[/bold]    {_floating} server(s) floating on @latest, {_unverified} unverified")
+        _pc.print(f"  [bold]Action:[/bold]   {_action}")
+        _pc.print()
+        return
 
     # Step 6: Save report to history + asset tracking
     current_report_json = to_json(report)

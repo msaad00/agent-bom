@@ -71,14 +71,14 @@ flowchart TB
 
     subgraph OUTPUT["📤 OUTPUT"]
         direction LR
-        O1["CycloneDX AI BOM\nSPDX · SARIF\n18 formats"]
+        O1["CycloneDX AI BOM\nSPDX · SARIF\n19 formats"]
         O2["Next.js Dashboard\n20 interactive pages\nSecurity Graph"]
         O3["CI/CD Gating\n--fail-on critical\nJira · Slack"]
     end
 
     subgraph PROTECT["🔒 RUNTIME PROTECTION"]
         direction LR
-        P1["MCP Proxy\n109 detection patterns"]
+        P1["MCP Proxy\n112 detection patterns"]
         P2["PII Redaction\nKill Switch\nSession Isolation"]
         P3["Shield SDK\nDrop-in Python\nmiddleware"]
     end
@@ -122,7 +122,7 @@ flowchart LR
 Security scanner purpose-built for AI infrastructure and supply chain.
 
 **AI Supply Chain Security:**
-1. **Discovers** AI agents + MCP servers — 30 client types, auto-detected from config files
+1. **Discovers** AI agents + MCP servers — 25 client types, auto-detected from config files
 2. **Scans source code** — AST analysis extracts system prompts, guardrails, tool signatures from Python AI frameworks (LangChain, CrewAI, OpenAI Agents SDK, and 7 more)
 3. **Generates an AI BOM** — CycloneDX 1.6 with native ML extensions (modelCard, datasets, training metadata)
 4. **Scans for CVEs** — 15 ecosystems checked against OSV + NVD + GHSA + EPSS + CISA KEV
@@ -313,7 +313,7 @@ docker run --rm agentbom/agent-bom agents  # Docker (linux/amd64 + arm64)
 
 | Source | How |
 |--------|-----|
-| MCP configs | Auto-discover (30 clients + Docker Compose) |
+| MCP configs | Auto-discover (25 clients + Docker Compose) |
 | Docker images | Grype / Syft / Docker CLI fallback |
 | Kubernetes | kubectl across namespaces |
 | Cloud providers | AWS, Azure, GCP, Databricks, Snowflake |
@@ -329,7 +329,7 @@ docker run --rm agentbom/agent-bom agents  # Docker (linux/amd64 + arm64)
 <details>
 <summary><b>Output formats</b></summary>
 
-JSON, SARIF, CycloneDX 1.6 (with ML BOM), SPDX 3.0, HTML, GraphML, Neo4j Cypher, JUnit XML, CSV, Markdown, Mermaid, SVG, Graph HTML, Prometheus, Badge, OCSF v1.1 — 18 formats.
+JSON, SARIF, CycloneDX 1.6 (with ML BOM), SPDX 3.0, HTML, GraphML, Neo4j Cypher, JUnit XML, CSV, Markdown, Mermaid, SVG, Graph HTML, Prometheus, Badge, OCSF v1.1 — 19 formats.
 
 ```bash
 agent-bom agents -f sarif -o results.sarif     # GitHub Security tab
@@ -341,9 +341,9 @@ agent-bom agents -f cyclonedx -o sbom.json     # CycloneDX 1.6
 
 ---
 
-## Compliance (16 frameworks)
+## Compliance (14 frameworks)
 
-Every finding is tagged with applicable controls across 16 security and compliance frameworks:
+Every finding is tagged with applicable controls across 14 security and compliance frameworks:
 
 | Framework | Coverage |
 |-----------|----------|
@@ -413,7 +413,7 @@ MCP Server ───── npx @mcp/server-fs ──────── config pa
      │
 Packages ─────── express@4.17.1 ───────────── 15 ecosystems, CVE/EPSS/KEV scanning
      │
-AI Agent ─────── Claude Desktop, Cursor ───── 30 MCP clients auto-detected
+AI Agent ─────── Claude Desktop, Cursor ───── 25 MCP clients auto-detected
      │
 Credentials ──── API keys, tokens ──────────── exposure mapping + PII redaction
      │
@@ -426,7 +426,7 @@ Tools ────────── read_file, exec_cmd ───────�
 
 ```mermaid
 graph TB
-    subgraph Discovery["Discovery (30 MCP clients)"]
+    subgraph Discovery["Discovery (25 MCP clients)"]
         CONF["Config Files<br/>Claude, Cursor, VS Code, ..."]
         CLOUD["Cloud APIs<br/>AWS, Azure, GCP, Databricks"]
         CONTAINER["Containers<br/>Docker, K8s, ECS, EKS"]
@@ -437,10 +437,10 @@ graph TB
         PARSE["Package Extraction<br/>15 ecosystems"]
         CVE["CVE Scanning<br/>OSV · NVD · EPSS · KEV"]
         BLAST["Blast Radius<br/>CVE → pkg → server → agent"]
-        COMPLY["Compliance Tagging<br/>16 frameworks"]
+        COMPLY["Compliance Tagging<br/>14 frameworks"]
     end
 
-    subgraph Output["Output (18 formats)"]
+    subgraph Output["Output (19 formats)"]
         CLI_OUT["CLI Console"]
         SARIF["SARIF · CycloneDX · SPDX"]
         DASH["Next.js Dashboard"]

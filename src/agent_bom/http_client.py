@@ -24,6 +24,34 @@ logger = logging.getLogger(__name__)
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
 
+# ── Offline mode ─────────────────────────────────────────────────────────────
+# When True, ALL outbound HTTP requests are blocked at the transport layer.
+# Set this flag before any network call via set_offline(True).
+
+_OFFLINE: bool = False
+
+
+class OfflineModeError(RuntimeError):
+    """Raised when a network request is attempted in offline mode."""
+
+
+def set_offline(value: bool) -> None:
+    """Enable or disable global offline mode.
+
+    When enabled, every call to create_client / create_sync_client /
+    request_with_retry / sync_request_with_retry raises OfflineModeError
+    before any socket is opened.
+    """
+    global _OFFLINE  # noqa: PLW0603
+    _OFFLINE = value
+
+
+def check_offline() -> None:
+    """Raise OfflineModeError if offline mode is active."""
+    if _OFFLINE:
+        raise OfflineModeError("Network request blocked: --offline mode is active")
+
+
 def _sanitize_for_log(value: object) -> str:
     """Sanitize a value for safe inclusion in log messages.
 
@@ -68,6 +96,7 @@ def create_client(timeout: float | None = None, max_redirects: int = 5) -> httpx
         timeout: Per-request timeout in seconds.
         max_redirects: Maximum number of HTTP redirects to follow (default 5).
     """
+    check_offline()
     from agent_bom.config import HTTP_DEFAULT_TIMEOUT
 
     if timeout is None:
@@ -99,6 +128,7 @@ async def request_with_retry(
     Returns:
         httpx.Response on success, None on exhausted retries.
     """
+    check_offline()
     # Defense-in-depth: validate and re-derive the URL at the transport layer.
     # validate_url() raises SecurityError on SSRF attempts (private IPs,
     # localhost, metadata endpoints, non-HTTPS, DNS rebinding).
@@ -195,6 +225,7 @@ async def request_with_retry(
 
 def create_sync_client(timeout: float | None = None, max_redirects: int = 5) -> httpx.Client:
     """Create an httpx.Client (sync) with connection-level retries."""
+    check_offline()
     from agent_bom.config import HTTP_DEFAULT_TIMEOUT
 
     if timeout is None:
@@ -221,6 +252,7 @@ def sync_request_with_retry(
     Drop-in replacement for urllib.request.urlopen patterns.
     Handles 429, 5xx, timeouts, and connection errors.
     """
+    check_offline()
     log_url = _safe_url(url)
     backoff = INITIAL_BACKOFF
 

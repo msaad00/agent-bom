@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agent-bom"
-version = "0.75.1"
+version = "0.75.2"
 description = "Security scanner for AI infrastructure and supply chain. AI agent discovery (25 MCP clients), AST source code analysis, AI BOM generation (CycloneDX 1.6 ML extensions), CVE scanning (OSV/NVD/EPSS/KEV), blast radius mapping (CVE → package → MCP server → agent → credentials → tools), runtime proxy (112 detection patterns, PII redaction), Shield SDK, secret scanning, red team simulator, 33 MCP tools, CIS benchmarks, 14-framework compliance, 19 output formats, 20-page Next.js dashboard."
 readme = "README.md"
 license = {text = "Apache-2.0"}

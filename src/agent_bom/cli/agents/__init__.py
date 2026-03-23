@@ -408,9 +408,9 @@ def scan(
 
     # ── Offline mode: disable all network calls ──────────────────────────────
     if offline:
-        import agent_bom.scanners as _scanners_mod
+        from agent_bom.scanners import set_offline_mode
 
-        _scanners_mod.offline_mode = True
+        set_offline_mode(True)  # Block ALL network calls (scanner + transport layer)
         auto_update_db = False
         enrich = False
         scorecard_flag = False
@@ -610,8 +610,94 @@ def scan(
         except Exception:
             pass  # Never block a scan due to freshness check failure
 
-    # NOTE: IaC isolation is handled by `no_scan=True` which skips CVE scanning
-    # and network calls later in the pipeline. No fast-path early return needed.
+    # ── IaC-only fast path ───────────────────────────────────────────────────
+    # When invoked via `agent-bom iac <paths>` (iac_paths set + no_scan=True),
+    # skip ALL discovery, package extraction, and network calls entirely.
+    # This prevents MCP config discovery, lockfile scanning, and registry
+    # lookups from running when the user only asked for IaC misconfiguration checks.
+    if iac_paths and no_scan:
+        from agent_bom.iac import scan_iac_directory
+
+        _iac_ctx = ScanContext(con=con)
+        all_iac_findings: list = []
+        con.print(f"\n[bold blue]Scanning {len(iac_paths)} path(s) for IaC misconfigurations...[/bold blue]\n")
+        for _iac_path in iac_paths:
+            _iac_f = scan_iac_directory(_iac_path)
+            all_iac_findings.extend(_iac_f)
+            if _iac_f:
+                from collections import Counter as _Counter
+
+                _sev_counts = _Counter(f.severity for f in _iac_f)
+                _sev_parts = [
+                    f"[red]{_sev_counts.get('critical', 0)} critical[/red]",
+                    f"[yellow]{_sev_counts.get('high', 0)} high[/yellow]",
+                ]
+                con.print(f"  [red]⚠[/red]  {_iac_path}: {len(_iac_f)} finding(s) ({', '.join(_sev_parts)})")
+            else:
+                con.print(f"  [green]✓[/green] {_iac_path}: no misconfigurations")
+
+        _iac_report = AIBOMReport(agents=[], blast_radii=[])
+        _iac_report.iac_findings_data = {
+            "total": len(all_iac_findings),
+            "findings": [
+                {
+                    "rule_id": f.rule_id,
+                    "severity": f.severity,
+                    "title": f.title,
+                    "message": f.message,
+                    "file_path": f.file_path,
+                    "line_number": f.line_number,
+                    "category": f.category,
+                    "compliance": f.compliance,
+                }
+                for f in all_iac_findings
+            ],
+        }
+        _iac_ctx.report = _iac_report
+        _iac_ctx.iac_findings_data = _iac_report.iac_findings_data
+
+        # Output
+        if output_format == "json" or output:
+            import json as _json
+
+            _out_data = _json.dumps(_iac_report.iac_findings_data, indent=2)
+            if output and output != "-":
+                from pathlib import Path as _Path
+
+                _Path(output).write_text(_out_data)
+                con.print(f"\n[green]IaC report written[/green] → {output}")
+            else:
+                import click as _click
+
+                _click.echo(_out_data)
+        elif output_format != "console":
+            # For SARIF, CycloneDX, etc — use the standard render pipeline
+            render_output(
+                _iac_ctx,
+                output=output,
+                output_format=output_format,
+                no_tree=no_tree,
+                quiet=quiet,
+                no_color=no_color,
+                open_report=open_report,
+                compliance_export=compliance_export,
+                mermaid_mode=mermaid_mode,
+                push_gateway=push_gateway,
+                otel_endpoint=otel_endpoint,
+                baseline=baseline,
+                delta_mode=delta_mode,
+                verbose=verbose,
+                exclude_unfixable=exclude_unfixable,
+                fixable_only=fixable_only,
+            )
+
+        # Exit code based on findings severity
+        if fail_on_severity and all_iac_findings:
+            _sev_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+            _threshold = _sev_order.get(fail_on_severity, 99)
+            if any(_sev_order.get(f.severity, 99) <= _threshold for f in all_iac_findings):
+                sys.exit(1)
+        return
 
     # Create shared context object
     ctx = ScanContext(con=con)
@@ -970,16 +1056,19 @@ def scan(
             con.print(f"\n  Enforcement: {status} ({enforce_result.critical_count} critical, {enforce_result.high_count} high)")
             ctx.enforcement_data = _enforcement_data
 
-        # Step 3: Resolve unknown versions
+        # Step 3: Resolve unknown versions (skip in offline mode)
         all_packages = [p for a in agents for s in a.mcp_servers for p in s.packages]
         unresolved = [p for p in all_packages if p.version in ("latest", "unknown", "")]
-        if unresolved:
+        if unresolved and not offline:
             if not quiet:
                 con.print(f"\n[bold blue]Resolving {len(unresolved)} package version(s)...[/bold blue]\n")
             with con.status("[bold]Querying package registries...[/bold]", spinner="dots") if not quiet else _nullcontext():
                 resolved = resolve_all_versions_sync(all_packages, quiet=quiet)
             if not quiet:
                 con.print(f"\n  [bold]Resolved {resolved}/{len(unresolved)} version(s).[/bold]")
+        elif unresolved and offline:
+            if not quiet:
+                con.print(f"\n  [yellow]⚠[/yellow] Offline mode: skipped version resolution for {len(unresolved)} package(s)")
 
         # Step 3b: Auto-discover metadata for unknown packages
         unknown_pkgs = [
@@ -990,7 +1079,7 @@ def scan(
             and p.version not in ("unknown", "latest", "")
             and p.ecosystem in ("npm", "pypi", "PyPI")
         ]
-        if unknown_pkgs and not no_scan:
+        if unknown_pkgs and not no_scan and not offline:
             import asyncio as _asyncio_ad
 
             from agent_bom.autodiscover import enrich_unknown_packages

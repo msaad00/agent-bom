@@ -24,7 +24,7 @@ RUN pip install --no-cache-dir --prefix=/install ".[mcp-server]"
 ## ── Runtime stage ────────────────────────────────────────────────────────────
 FROM python:3.12.13-slim@sha256:7026274c107626d7e940e0e5d6730481a4600ae95d5ca7eb532dd4180313fea9
 
-ARG VERSION=0.75.1
+ARG VERSION=0.75.2
 
 LABEL org.opencontainers.image.title="agent-bom MCP Server"
 LABEL org.opencontainers.image.description="Security scanner for AI infrastructure — MCP server with streamable HTTP transport"

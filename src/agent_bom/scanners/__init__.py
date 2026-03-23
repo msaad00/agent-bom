@@ -31,7 +31,7 @@ from agent_bom.config import (
 from agent_bom.constants import AI_PACKAGES as _AI_FRAMEWORK_PACKAGES
 from agent_bom.eu_ai_act import tag_blast_radius as tag_eu_ai_act
 from agent_bom.fedramp import tag_blast_radius as tag_fedramp
-from agent_bom.http_client import create_client, request_with_retry
+from agent_bom.http_client import OfflineModeError, create_client, request_with_retry
 from agent_bom.iso_27001 import tag_blast_radius as tag_iso_27001
 from agent_bom.malicious import check_typosquat, flag_malicious_from_vulns
 from agent_bom.mitre_attack import tag_blast_radius as tag_attack_techniques
@@ -50,7 +50,18 @@ _logger = logging.getLogger(__name__)
 
 # Module-level offline flag — when True, skip all OSV API calls and scan
 # only against the local SQLite DB.  Set by CLI --offline before scanning.
+# Also synced from http_client._OFFLINE for transport-layer enforcement.
 offline_mode: bool = False
+
+
+def set_offline_mode(value: bool) -> None:
+    """Set offline mode in both scanner and http_client transport layer."""
+    global offline_mode  # noqa: PLW0603
+    offline_mode = value
+    from agent_bom.http_client import set_offline
+
+    set_offline(value)
+
 
 # When True, prefer local DB results and only fall back to OSV API for
 # packages not found in the DB. Set automatically when DB is <24h old.
@@ -578,7 +589,14 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
     # OSV batch API accepts up to 1000 queries; configurable via AGENT_BOM_SCANNER_BATCH_SIZE
     batch_size = min(_BATCH_SIZE, 1000)  # clamp to OSV API max
     semaphore = _get_api_semaphore()
-    async with create_client(timeout=30.0) as client:
+    try:
+        _client_ctx = create_client(timeout=30.0)
+    except OfflineModeError:
+        _logger.info("Offline mode: skipping OSV batch query for %d packages", len(queries))
+        console.print("  [yellow]⚠[/yellow] Offline mode — CVE scanning skipped. Use local DB or remove --offline.")
+        return results
+
+    async with _client_ctx as client:
         for batch_start in range(0, len(queries), batch_size):
             batch = queries[batch_start : batch_start + batch_size]
 

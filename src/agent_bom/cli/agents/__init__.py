@@ -423,7 +423,9 @@ def scan(
             days = _offline_freshness()
             if days is None:
                 con.print(
-                    "[bold yellow]⚠ Offline mode[/bold yellow] — no local DB found. Run 'agent-bom db update' first for vulnerability data."
+                    "[bold yellow]⚠ Offline mode[/bold yellow] — no local vulnerability DB found. "
+                    "Scan cache may still have cached results. "
+                    "Run [bold]agent-bom db update[/bold] to build a full local DB."
                 )
             elif days > 7:
                 con.print(f"[bold yellow]⚠ Offline mode[/bold yellow] — local DB is {days} days old. Run 'agent-bom db update' to refresh.")
@@ -1879,15 +1881,17 @@ def scan(
         _floating = sum(1 for a in agents for s in a.mcp_servers if any("@latest" in str(arg) for arg in (getattr(s, "args", None) or [])))
         _unverified = sum(1 for a in agents for s in a.mcp_servers if not getattr(s, "verified", False))
         # Top finding
-        _top_br = sorted(blast_radii, key=lambda br: br.risk_score if br.risk_score else br.blast_score, reverse=True)
+        _top_br = sorted(blast_radii, key=lambda br: br.risk_score or 0.0, reverse=True)
         _top_str = ""
         if _top_br:
             _tb = _top_br[0]
-            _top_str = f"{_tb.package} ({_tb.vulnerability_id})" if _tb.package else _tb.vulnerability_id
+            _pkg_name = _tb.package.name if _tb.package else "unknown"
+            _vuln_id = _tb.vulnerability.id if _tb.vulnerability else "unknown"
+            _top_str = f"{_pkg_name}@{_tb.package.version} ({_vuln_id})" if _tb.package else _vuln_id
             _fix = getattr(_tb.vulnerability, "fixed_version", None)
             _action = (
-                f"Upgrade {_tb.package} to {_fix} to clear {_total_vulns} vuln(s)"
-                if _fix and _tb.package
+                f"Upgrade {_pkg_name} to {_fix} to clear {_total_vulns} vuln(s)"
+                if _fix and _pkg_name != "unknown"
                 else "Review findings with agent-bom agents"
             )
         else:

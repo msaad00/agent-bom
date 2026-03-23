@@ -142,6 +142,7 @@ def iac_cmd(
         scan,
         iac_paths=paths,
         no_scan=True,  # IaC command: skip CVE scanning, package extraction, MCP agent discovery
+        _iac_only=True,  # Internal: triggers IaC fast path (skip all discovery)
         output_format=output_format,
         output=output_path,
         fail_on_severity=fail_on_severity,

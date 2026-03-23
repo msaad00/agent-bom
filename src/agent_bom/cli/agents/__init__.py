@@ -251,6 +251,7 @@ def scan(
     iac_paths: tuple = (),
     ignore_file: Optional[str] = None,
     posture: bool = False,
+    _iac_only: bool = False,
 ):
     """Discover agents, extract dependencies, scan for vulnerabilities.
 
@@ -615,7 +616,7 @@ def scan(
     # skip ALL discovery, package extraction, and network calls entirely.
     # This prevents MCP config discovery, lockfile scanning, and registry
     # lookups from running when the user only asked for IaC misconfiguration checks.
-    if iac_paths and no_scan:
+    if _iac_only and iac_paths:
         from agent_bom.iac import scan_iac_directory
 
         _iac_ctx = ScanContext(con=con)

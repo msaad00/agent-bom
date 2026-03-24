@@ -333,6 +333,15 @@ class TestCycloneDXMLBOM:
         props = {p["name"]: p["value"] for p in cdx["metadata"]["properties"]}
         assert int(props.get("agent-bom:ml-models", "0")) >= 2
 
+    def test_bom_refs_use_stable_ids(self):
+        report = _make_full_report()
+        cdx = to_cyclonedx(report)
+        refs = {comp["bom-ref"] for comp in cdx["components"]}
+        assert any(report.agents[0].stable_id in ref for ref in refs)
+        assert any(report.agents[0].mcp_servers[0].stable_id in ref for ref in refs)
+        pkg = report.agents[0].mcp_servers[0].packages[0]
+        assert any(pkg.stable_id in ref for ref in refs)
+
 
 # ── Context Graph → GraphML → Neo4j Cypher ──────────────────────────────────
 

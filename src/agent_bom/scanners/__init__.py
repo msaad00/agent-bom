@@ -925,6 +925,8 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
                 cvss_score=cvss_score,
                 fixed_version=fixed,
                 references=references,
+                published_at=vuln_data.get("published"),
+                modified_at=vuln_data.get("modified"),
                 aliases=all_aliases,
                 cwe_ids=cwe_ids,
             )
@@ -1005,6 +1007,8 @@ def _local_vuln_to_vulnerability(lv: "Any") -> Vulnerability:
         epss_percentile=lv.epss_percentile,
         is_kev=lv.is_kev,
         kev_date_added=lv.kev_date_added,
+        published_at=getattr(lv, "published_at", None),
+        modified_at=getattr(lv, "modified_at", None),
         cwe_ids=getattr(lv, "cwe_ids", []),
         aliases=all_aliases,
         references=[],

@@ -56,6 +56,7 @@ def image_cmd(
     ctx.invoke(
         scan,
         images=(image_ref,),
+        _image_only=True,
         image_platform=platform,
         output_format=output_format,
         output=output_path,

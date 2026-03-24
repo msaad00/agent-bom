@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -28,6 +29,10 @@ logger = logging.getLogger(__name__)
 
 # Default timeout for connecting to an MCP server (seconds)
 DEFAULT_TIMEOUT = 10.0
+_PATH_HINT_RE = re.compile(r"(path|file|dir|cwd|workspace)", re.IGNORECASE)
+_URL_HINT_RE = re.compile(r"(url|uri|endpoint|host|domain|webhook)", re.IGNORECASE)
+_SHELL_HINT_RE = re.compile(r"(cmd|command|shell|exec|script)", re.IGNORECASE)
+_PROMPT_HINT_RE = re.compile(r"(prompt|instruction|system|markdown|html|svg)", re.IGNORECASE)
 
 
 class IntrospectionError(Exception):
@@ -41,9 +46,16 @@ class ServerIntrospection:
     server_name: str
     success: bool
     protocol_version: Optional[str] = None
+    auth_mode: Optional[str] = None
+    configured_fingerprint: Optional[str] = None
+    runtime_fingerprint: Optional[str] = None
+    configured_tool_count: int = 0
+    configured_resource_count: int = 0
     runtime_tools: list[MCPTool] = field(default_factory=list)
     runtime_resources: list[MCPResource] = field(default_factory=list)
     error: Optional[str] = None
+    tool_schema_findings: list[str] = field(default_factory=list)
+    resource_findings: list[str] = field(default_factory=list)
 
     # Drift analysis
     tools_added: list[str] = field(default_factory=list)
@@ -104,6 +116,74 @@ def _check_mcp_sdk() -> None:
         raise IntrospectionError("mcp SDK is required for runtime introspection. Install with: pip install mcp")
 
 
+def _runtime_server_fingerprint(server: MCPServer, tools: list[MCPTool], resources: list[MCPResource]) -> str:
+    """Build a deterministic fingerprint from observed runtime capabilities."""
+    runtime_server = MCPServer(
+        name=server.name,
+        command=server.command,
+        args=list(server.args),
+        env=dict(server.env),
+        transport=server.transport,
+        url=server.url,
+        tools=tools,
+        resources=resources,
+        registry_id=server.registry_id,
+    )
+    return runtime_server.fingerprint
+
+
+def _lint_tool_schema(tool: MCPTool) -> list[str]:
+    """Return heuristic risk findings for a tool schema."""
+    findings: list[str] = []
+    schema = tool.input_schema or {}
+    properties = schema.get("properties", {}) if isinstance(schema, dict) else {}
+
+    if not tool.description or len(tool.description.strip()) < 12:
+        findings.append(f"{tool.name}: weak-or-missing-description")
+
+    if not properties and schema:
+        findings.append(f"{tool.name}: unstructured-input-schema")
+
+    for prop_name, prop_schema in properties.items():
+        prop_schema = prop_schema or {}
+        if not isinstance(prop_schema, dict):
+            continue
+        prop_type = prop_schema.get("type")
+        desc = (prop_schema.get("description") or "").strip()
+
+        if prop_type == "string" and not prop_schema.get("enum") and not prop_schema.get("maxLength"):
+            findings.append(f"{tool.name}.{prop_name}: unbounded-freeform-string")
+        if _PATH_HINT_RE.search(prop_name):
+            findings.append(f"{tool.name}.{prop_name}: filesystem-capability")
+        if _URL_HINT_RE.search(prop_name):
+            findings.append(f"{tool.name}.{prop_name}: network-egress-capability")
+        if _SHELL_HINT_RE.search(prop_name):
+            findings.append(f"{tool.name}.{prop_name}: shell-execution-capability")
+        if desc and _PROMPT_HINT_RE.search(desc):
+            findings.append(f"{tool.name}.{prop_name}: prompt-bearing-input")
+
+    return sorted(set(findings))
+
+
+def _lint_resource(resource: MCPResource) -> list[str]:
+    """Return heuristic risk findings for a resource descriptor."""
+    findings: list[str] = []
+    desc = resource.description or ""
+    mime = (resource.mime_type or "").lower()
+    uri = resource.uri.lower()
+
+    if _PROMPT_HINT_RE.search(resource.name) or _PROMPT_HINT_RE.search(desc):
+        findings.append(f"{resource.uri}: prompt-bearing-resource")
+    if any(t in mime for t in ("text/html", "image/svg", "text/markdown")):
+        findings.append(f"{resource.uri}: rich-content-resource")
+    if any(t in uri for t in ("template", "prompt", "instruction")):
+        findings.append(f"{resource.uri}: hidden-instruction-surface")
+    if "mutable" in desc.lower() or "write" in desc.lower():
+        findings.append(f"{resource.uri}: mutable-resource")
+
+    return sorted(set(findings))
+
+
 async def introspect_server(
     server: MCPServer,
     timeout: float = DEFAULT_TIMEOUT,
@@ -117,7 +197,14 @@ async def introspect_server(
     """
     _check_mcp_sdk()
 
-    result = ServerIntrospection(server_name=server.name, success=False)
+    result = ServerIntrospection(
+        server_name=server.name,
+        success=False,
+        auth_mode=server.auth_mode,
+        configured_fingerprint=server.fingerprint,
+        configured_tool_count=len(server.tools),
+        configured_resource_count=len(server.resources),
+    )
 
     if server.transport == TransportType.STDIO:
         if not server.command:
@@ -210,13 +297,13 @@ async def _query_capabilities(
     try:
         tools_result = await session.list_tools()
         for tool in tools_result.tools:
-            result.runtime_tools.append(
-                MCPTool(
-                    name=tool.name,
-                    description=getattr(tool, "description", "") or "",
-                    input_schema=getattr(tool, "inputSchema", None),
-                )
+            runtime_tool = MCPTool(
+                name=tool.name,
+                description=getattr(tool, "description", "") or "",
+                input_schema=getattr(tool, "inputSchema", None),
             )
+            runtime_tool.schema_findings = _lint_tool_schema(runtime_tool)
+            result.runtime_tools.append(runtime_tool)
         tools_ok = True
     except Exception as exc:
         logger.warning("tools/list failed for %s: %s — drift detection skipped", server.name, exc)
@@ -226,14 +313,14 @@ async def _query_capabilities(
     try:
         resources_result = await session.list_resources()
         for resource in resources_result.resources:
-            result.runtime_resources.append(
-                MCPResource(
-                    uri=str(getattr(resource, "uri", "")),
-                    name=getattr(resource, "name", "") or "",
-                    description=getattr(resource, "description", "") or "",
-                    mime_type=getattr(resource, "mimeType", None),
-                )
+            runtime_resource = MCPResource(
+                uri=str(getattr(resource, "uri", "")),
+                name=getattr(resource, "name", "") or "",
+                description=getattr(resource, "description", "") or "",
+                mime_type=getattr(resource, "mimeType", None),
             )
+            runtime_resource.content_findings = _lint_resource(runtime_resource)
+            result.runtime_resources.append(runtime_resource)
         resources_ok = True
     except Exception as exc:
         logger.warning("resources/list failed for %s: %s", server.name, exc)
@@ -256,6 +343,10 @@ async def _query_capabilities(
 
         result.resources_added = sorted(runtime_resource_uris - config_resource_uris)
         result.resources_removed = sorted(config_resource_uris - runtime_resource_uris)
+
+    result.tool_schema_findings = sorted({finding for tool in result.runtime_tools for finding in tool.schema_findings})
+    result.resource_findings = sorted({finding for resource in result.runtime_resources for finding in resource.content_findings})
+    result.runtime_fingerprint = _runtime_server_fingerprint(server, result.runtime_tools, result.runtime_resources)
 
     return result
 
@@ -422,6 +513,7 @@ def enrich_servers(
         if not result:
             continue
 
+        server.mcp_version = result.protocol_version or server.mcp_version
         existing_tools = {t.name for t in server.tools}
         existing_resources = {r.uri for r in server.resources}
         added_any = False
@@ -431,17 +523,26 @@ def enrich_servers(
                 server.tools.append(tool)
                 existing_tools.add(tool.name)
                 added_any = True
+            else:
+                existing_tool = next((t for t in server.tools if t.name == tool.name), None)
+                if existing_tool and tool.schema_findings:
+                    merged = sorted(set(existing_tool.schema_findings) | set(tool.schema_findings))
+                    if merged != existing_tool.schema_findings:
+                        existing_tool.schema_findings = merged
+                        added_any = True
 
         for resource in result.runtime_resources:
             if resource.uri not in existing_resources:
                 server.resources.append(resource)
                 existing_resources.add(resource.uri)
                 added_any = True
-
-        # Update MCP version if we got one
-        if result.protocol_version and not server.mcp_version:
-            server.mcp_version = result.protocol_version
-            added_any = True
+            else:
+                existing_resource = next((r for r in server.resources if r.uri == resource.uri), None)
+                if existing_resource and resource.content_findings:
+                    merged = sorted(set(existing_resource.content_findings) | set(resource.content_findings))
+                    if merged != existing_resource.content_findings:
+                        existing_resource.content_findings = merged
+                        added_any = True
 
         if added_any:
             enriched += 1

@@ -1,20 +1,19 @@
-"""Docker image scanning — extract packages from container images.
+"""Native Docker image scanning — extract packages from container images.
 
-Three strategies, tried in order:
+Primary strategy:
 
-1. **Grype** (richest): if ``grype`` is on PATH, run:
-       grype <image> -o json
-   Returns packages + CVEs in a single call — no OSV query needed.
+1. **Docker save + native OCI parser**:
+   - ``docker inspect`` to confirm the image exists / pull if needed
+   - ``docker save`` to a temporary tarball
+   - parse layers natively via :mod:`agent_bom.oci_parser`
 
-2. **Syft** (packages-only): if ``syft`` is on PATH, run:
-       syft <image> -o cyclonedx-json
-   and parse the output with the existing CycloneDX parser.
+Fallback strategy:
 
-3. **Docker CLI fallback**: if neither Grype nor Syft is available but ``docker`` is:
-   - ``docker inspect`` to confirm the image exists / get metadata
-   - Snapshot the container filesystem via ``docker create`` + ``docker export``
-     then scan common package manager manifest files (pip, npm, etc.)
-   - This is a best-effort approach; Grype/Syft will always produce richer results.
+2. **Docker export + filesystem parser**:
+   - ``docker create`` + ``docker export`` to a temporary tarball
+   - scan package manager files directly from the container filesystem
+
+The scanner is native-first and must fail loudly if package extraction fails.
 
 Usage from cli.py::
 
@@ -45,7 +44,7 @@ class ImageScanError(Exception):
     """Raised when an image cannot be scanned."""
 
 
-# ─── Grype strategy (preferred) ───────────────────────────────────────────────
+# ─── Legacy external-scanner helpers (kept for auth/env compatibility) ──────
 
 _GRYPE_TYPE_MAP: dict[str, str] = {
     "java-archive": "maven",
@@ -514,9 +513,32 @@ def _packages_from_tar(tar_path: Path) -> list[Package]:
 
 
 def _scan_with_docker(image_ref: str, platform: Optional[str] = None) -> list[Package]:
-    """Export container filesystem and scan package manager files."""
+    """Scan a Docker image natively and fail if no packages can be extracted."""
+    from agent_bom.oci_parser import OCIParseError, scan_oci
+
     # Confirm image exists / pull it
     _docker_inspect(image_ref, platform=platform)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        oci_tar_path = Path(tmpdir) / "image.tar"
+        save = subprocess.run(
+            ["docker", "save", "-o", str(oci_tar_path), image_ref],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if save.returncode != 0:
+            stderr = (save.stderr or "").strip()
+            raise ImageScanError(f"docker save failed: {stderr[:200]}")
+
+        try:
+            packages, _strategy = scan_oci(oci_tar_path)
+        except OCIParseError as exc:
+            _logger.debug("Native OCI parse failed for %s: %s", image_ref, exc)
+        else:
+            if packages:
+                return packages
+            _logger.debug("Native OCI parse returned 0 packages for %s; falling back to docker export", image_ref)
 
     container_id: Optional[str] = None
     try:
@@ -542,7 +564,13 @@ def _scan_with_docker(image_ref: str, platform: Optional[str] = None) -> list[Pa
             if export.returncode != 0:
                 raise ImageScanError("docker export failed")
 
-            return _packages_from_tar(tar_path)
+            packages = _packages_from_tar(tar_path)
+            if packages:
+                return packages
+
+        raise ImageScanError(
+            f"Native image scan extracted 0 packages from {image_ref}. This is likely an extraction or parser failure, not a clean scan."
+        )
 
     finally:
         if container_id:
@@ -619,10 +647,9 @@ def scan_image(
 ) -> tuple[list[Package], str]:
     """Scan a Docker image and return (packages, strategy_used).
 
-    Strategy order (native first, external tools as fallback):
-    1. Docker CLI export → native OCI parser (no Grype/Syft needed)
-    2. Grype fallback (if installed — provides packages + CVEs in one call)
-    3. Syft fallback (if installed — packages only)
+    Strategy order:
+    1. Docker save → native OCI parser
+    2. Docker export → native filesystem parser
 
     Args:
         image_ref: Docker image reference, e.g. ``myapp:latest``,
@@ -632,38 +659,22 @@ def scan_image(
         platform: Target platform for multi-arch images (e.g. ``linux/amd64``).
 
     Returns:
-        A tuple ``(packages, strategy)`` where strategy is one of
-        ``"native"``, ``"grype"``, ``"syft"``.
+        A tuple ``(packages, strategy)`` where strategy is ``"native"``.
 
     Raises:
-        ImageScanError: If no scanner is available or the image cannot
-                        be found/pulled.
+        ImageScanError: If Docker is unavailable, the image cannot be found/pulled,
+                        or native package extraction fails.
     """
     validate_image_ref(image_ref)
 
-    # Strategy 1: Native — Docker export + OCI parser (preferred, no external scanner)
-    if _docker_available():
-        try:
-            packages = _scan_with_docker(image_ref, platform)
-            if packages:
-                return packages, "native"
-        except Exception as exc:
-            _logger.debug("Native image scan failed, trying fallbacks: %s", exc)
+    if not _docker_available():
+        raise ImageScanError(
+            "Docker is not available. Install Docker to enable native image scanning, "
+            "or use 'docker save <image> -o image.tar' and pass the tarball with --image-tar."
+        )
 
-    # Strategy 2: Grype fallback (packages + CVEs in one call)
-    if _grype_available():
-        packages = _scan_with_grype(image_ref, registry_user, registry_pass, platform)
-        return packages, "grype"
-
-    # Strategy 3: Syft fallback (packages only, CVEs added by OSV later)
-    if _syft_available():
-        packages = _scan_with_syft(image_ref, registry_user, registry_pass, platform)
-        return packages, "syft"
-
-    raise ImageScanError(
-        "Docker is not available. Install Docker to enable native image scanning, "
-        "or use 'docker save <image> -o image.tar' and pass the tarball with --image-tar."
-    )
+    packages = _scan_with_docker(image_ref, platform)
+    return packages, "native"
 
 
 def scan_image_tar(tar_path: str) -> tuple[list[Package], str]:

@@ -357,6 +357,33 @@ def test_json_configured_default():
     assert data["agents"][0]["status"] == "configured"
 
 
+def test_json_includes_stable_ids_and_resources():
+    from agent_bom.models import AIBOMReport, MCPResource, MCPServer, MCPTool, Package
+    from agent_bom.output import to_json
+
+    server = MCPServer(
+        name="filesystem",
+        command="npx",
+        mcp_version="2024-11-05",
+        tools=[MCPTool(name="read_file", description="Read a file", schema_findings=["read_file.path: filesystem-capability"])],
+        resources=[MCPResource(uri="file:///workspace", name="workspace", content_findings=["file:///workspace: mutable-resource"])],
+        packages=[Package(name="requests", version="2.31.0", ecosystem="pypi")],
+    )
+    agent = Agent(
+        name="claude-desktop",
+        agent_type=AgentType.CLAUDE_DESKTOP,
+        config_path="/test/config.json",
+        mcp_servers=[server],
+    )
+    data = to_json(AIBOMReport(agents=[agent]))
+
+    assert data["agents"][0]["stable_id"] == agent.stable_id
+    assert data["agents"][0]["mcp_servers"][0]["stable_id"] == server.stable_id
+    assert data["agents"][0]["mcp_servers"][0]["tools"][0]["stable_id"] == server.tools[0].stable_id
+    assert data["agents"][0]["mcp_servers"][0]["resources"][0]["stable_id"] == server.resources[0].stable_id
+    assert data["agents"][0]["mcp_servers"][0]["packages"][0]["stable_id"] == server.packages[0].stable_id
+
+
 # ── CycloneDX output includes status ────────────────────────────────────────
 
 

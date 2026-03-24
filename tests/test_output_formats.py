@@ -250,6 +250,19 @@ class TestCSV:
         assert "CVE-2024-0001" in csv_str
         assert "CVE-2024-0002" in csv_str
 
+    def test_published_dates_present(self):
+        report, brs = _report_with_vulns()
+        brs[0].vulnerability.published_at = "2026-03-21T12:00:00Z"
+        brs[0].vulnerability.modified_at = "2026-03-23T09:00:00Z"
+        csv_str = to_csv(report, brs)
+        content = csv_str.lstrip("\ufeff")
+        reader = csv.DictReader(io.StringIO(content))
+        rows = list(reader)
+        assert "published_at" in reader.fieldnames
+        assert "modified_at" in reader.fieldnames
+        assert rows[0]["published_at"] == "2026-03-21T12:00:00Z"
+        assert rows[0]["modified_at"] == "2026-03-23T09:00:00Z"
+
 
 # ── Markdown ─────────────────────────────────────────────────────────────────
 

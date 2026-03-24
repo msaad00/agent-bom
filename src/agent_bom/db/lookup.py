@@ -31,6 +31,8 @@ class LocalVuln:
     epss_percentile: Optional[float] = None
     is_kev: bool = False
     kev_date_added: Optional[str] = None
+    published_at: Optional[str] = None
+    modified_at: Optional[str] = None
     source: str = "osv"
     ecosystem: str = ""
     package_name: str = ""
@@ -60,6 +62,7 @@ def lookup_package(
         """
         SELECT
             v.id, v.summary, v.severity, v.cvss_score, v.fixed_version, v.cwe_ids, COALESCE(v.aliases, '') AS aliases, v.source,
+            v.published, v.modified,
             a.ecosystem, a.package_name, a.introduced, a.fixed, a.last_affected,
             e.probability AS epss_prob, e.percentile AS epss_pct,
             k.date_added AS kev_date
@@ -94,6 +97,8 @@ def lookup_package(
                 epss_percentile=row["epss_pct"],
                 is_kev=row["kev_date"] is not None,
                 kev_date_added=row["kev_date"],
+                published_at=row["published"],
+                modified_at=row["modified"],
                 source=row["source"],
                 ecosystem=row["ecosystem"],
                 package_name=row["package_name"],
@@ -251,6 +256,7 @@ def lookup_packages_batch(
         query = f"""
             SELECT
                 v.id, v.summary, v.severity, v.cvss_score, v.fixed_version, v.cwe_ids, COALESCE(v.aliases, '') AS aliases, v.source,
+                v.published, v.modified,
                 a.ecosystem, a.package_name, a.introduced, a.fixed, a.last_affected,
                 e.probability AS epss_prob, e.percentile AS epss_pct,
                 k.date_added AS kev_date
@@ -297,6 +303,8 @@ def lookup_packages_batch(
                     epss_percentile=row["epss_pct"],
                     is_kev=row["kev_date"] is not None,
                     kev_date_added=row["kev_date"],
+                    published_at=row["published"],
+                    modified_at=row["modified"],
                     source=row["source"],
                     ecosystem=row["ecosystem"],
                     package_name=row["package_name"],

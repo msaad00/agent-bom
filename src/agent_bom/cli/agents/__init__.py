@@ -252,6 +252,7 @@ def scan(
     ignore_file: Optional[str] = None,
     posture: bool = False,
     _iac_only: bool = False,
+    _image_only: bool = False,
 ):
     """Discover agents, extract dependencies, scan for vulnerabilities.
 
@@ -764,6 +765,7 @@ def scan(
         mcp_registry_flag=mcp_registry_flag,
         os_packages=os_packages,
         iac_paths=iac_paths,
+        _image_only=_image_only,
         _any_cloud=any_cloud,
         _discover_all=discover_all,  # pass patchable reference — tests patch agent_bom.cli.agents.discover_all
     )
@@ -1384,12 +1386,19 @@ def scan(
                 {
                     "server_name": r.server_name,
                     "success": r.success,
+                    "auth_mode": r.auth_mode,
+                    "configured_fingerprint": r.configured_fingerprint,
+                    "runtime_fingerprint": r.runtime_fingerprint,
+                    "configured_tool_count": r.configured_tool_count,
+                    "configured_resource_count": r.configured_resource_count,
                     "tool_count": r.tool_count,
                     "resource_count": r.resource_count,
                     "tools_added": r.tools_added,
                     "tools_removed": r.tools_removed,
                     "resources_added": r.resources_added,
                     "resources_removed": r.resources_removed,
+                    "tool_schema_findings": r.tool_schema_findings,
+                    "resource_findings": r.resource_findings,
                     "has_drift": r.has_drift,
                     "error": r.error,
                 }

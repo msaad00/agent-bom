@@ -373,6 +373,20 @@ jobs:
           exit-code: '1'
           trivyignores: .trivyignore
 
+      - name: agent-bom native image tar scan gate
+        run: |
+          docker save agent-bom:test -o /tmp/agent-bom-test.tar
+          docker run --rm -v /tmp:/workspace agent-bom:test \
+            agents --image-tar /workspace/agent-bom-test.tar --no-scan -f json -o /workspace/native-image-scan.json
+          python3 - <<'PY'
+          import json
+          data = json.load(open("/tmp/native-image-scan.json"))
+          total_packages = int(data.get("summary", {}).get("total_packages", 0))
+          if total_packages <= 0:
+              raise SystemExit("agent-bom native image tar scan extracted 0 packages from built image")
+          print(f"native image tar scan extracted {total_packages} packages")
+          PY
+
       - name: agent-bom image OS scan (dogfood — catches glibc/sqlite/dpkg CVEs)
         run: |
           # Scan OS packages inside the built Docker image using agent-bom itself.

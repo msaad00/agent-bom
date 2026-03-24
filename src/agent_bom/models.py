@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -110,6 +111,8 @@ class Vulnerability:
     is_kev: bool = False  # CISA Known Exploited Vulnerability
     kev_date_added: Optional[str] = None  # Date added to KEV catalog
     kev_due_date: Optional[str] = None  # Remediation due date
+    published_at: Optional[str] = None  # Canonical advisory publish date
+    modified_at: Optional[str] = None  # Canonical advisory modified date
     nvd_published: Optional[str] = None  # NVD publish date
     nvd_modified: Optional[str] = None  # NVD last modified date
     nvd_status: Optional[str] = (
@@ -269,6 +272,21 @@ class MCPTool:
     name: str
     description: str
     input_schema: Optional[dict] = None
+    schema_findings: list[str] = field(default_factory=list)
+
+    @property
+    def stable_id(self) -> str:
+        """Deterministic ID for this MCP tool."""
+        import uuid as _uuid
+
+        _ns = _uuid.UUID("7f3e4b2a-9c1d-5f8e-a0b4-12c3d4e5f6a7")
+        schema = json.dumps(self.input_schema or {}, sort_keys=True, separators=(",", ":"))
+        fingerprint = f"mcp_tool:{self.name.lower().strip()}:{schema}"
+        return str(_uuid.uuid5(_ns, fingerprint))
+
+    @property
+    def fingerprint(self) -> str:
+        return self.stable_id
 
 
 @dataclass
@@ -279,6 +297,20 @@ class MCPResource:
     name: str
     description: str = ""
     mime_type: Optional[str] = None
+    content_findings: list[str] = field(default_factory=list)
+
+    @property
+    def stable_id(self) -> str:
+        """Deterministic ID for this MCP resource."""
+        import uuid as _uuid
+
+        _ns = _uuid.UUID("7f3e4b2a-9c1d-5f8e-a0b4-12c3d4e5f6a7")
+        fingerprint = f"mcp_resource:{self.uri.lower().strip()}:{(self.mime_type or '').lower().strip()}"
+        return str(_uuid.uuid5(_ns, fingerprint))
+
+    @property
+    def fingerprint(self) -> str:
+        return self.stable_id
 
 
 @dataclass
@@ -346,6 +378,45 @@ class MCPServer:
         identifier = self.registry_id or f"{self.name}:{self.command}"
         fingerprint = f"mcp_server:{identifier.lower().strip()}"
         return str(_uuid.uuid5(_ns, fingerprint))
+
+    @property
+    def auth_mode(self) -> str:
+        """Best-effort auth posture classification for the server."""
+        credential_names = self.credential_names
+        if credential_names:
+            return "env-credentials"
+        if self.url and "@" in self.url:
+            return "url-embedded-credentials"
+        if self.url:
+            return "network-no-auth-observed"
+        return "local-stdio"
+
+    @property
+    def fingerprint(self) -> str:
+        """Deterministic runtime/config fingerprint for the server."""
+        import uuid as _uuid
+
+        _ns = _uuid.UUID("7f3e4b2a-9c1d-5f8e-a0b4-12c3d4e5f6a7")
+        tool_ids = sorted(t.stable_id for t in self.tools)
+        resource_ids = sorted(r.stable_id for r in self.resources)
+        env_keys = sorted(self.credential_names)
+        raw = json.dumps(
+            {
+                "registry_id": self.registry_id,
+                "name": self.name,
+                "command": self.command,
+                "args": self.args,
+                "url": self.url,
+                "transport": self.transport.value,
+                "auth_mode": self.auth_mode,
+                "credential_refs": env_keys,
+                "tool_ids": tool_ids,
+                "resource_ids": resource_ids,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return str(_uuid.uuid5(_ns, f"mcp_server_fingerprint:{raw}"))
 
     @property
     def vulnerable_packages(self) -> list[Package]:

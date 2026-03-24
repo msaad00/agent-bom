@@ -26,12 +26,7 @@ jobs:
           # Dependency review needs a snapshot for the PR head SHA. Enable
           # default-off detectors for ecosystems GitHub does not infer
           # reliably here, especially uv.lock and Dockerfile-based images.
-          detectorArgs: >-
-            UvLock=EnableIfDefaultOff,
-            NpmLockfile3=EnableIfDefaultOff,
-            Dockerfile=EnableIfDefaultOff,
-            Pip=EnableIfDefaultOff,
-            SimplePip=EnableIfDefaultOff
+          detectorArgs: UvLock=EnableIfDefaultOff,NpmLockfile3=EnableIfDefaultOff,Dockerfile=EnableIfDefaultOff,Pip=EnableIfDefaultOff,SimplePip=EnableIfDefaultOff
 
       - name: Review dependency changes
         uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4

@@ -2,7 +2,7 @@ apiVersion: v2
 name: agent-bom
 description: Security scanner for AI infrastructure and supply chain — scan containers, MCP servers, and AI agents for CVEs, credential exposure, and compliance violations
 version: 0.1.0
-appVersion: "0.75.4"
+appVersion: "0.75.5"
 type: application
 keywords:
   - security

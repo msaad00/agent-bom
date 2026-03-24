@@ -48,12 +48,12 @@ docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest code /workspace
 ## Key features
 
 - **Blast radius mapping** — traces CVE impact: package → server → agent → credentials → tools
-- **Runtime MCP proxy** — 8 behavioral detectors: rug pull, tool drift, injection, credential leak, exfil, response cloaking, vector DB injection, cross-agent correlation
+- **Runtime MCP proxy** — 7 behavioral detectors: rug pull, tool drift, injection, credential leak, exfil, response cloaking, vector DB injection, cross-agent correlation
 - **14 compliance frameworks** — OWASP LLM Top 10, OWASP Agentic Top 10, MITRE ATLAS, MITRE ATT&CK, NIST AI RMF, EU AI Act, NIST CSF, ISO 27001, SOC 2, CMMC, FedRAMP, CIS Benchmarks, AISVS, and more
 - **Policy-as-code** — 17 conditions with AND/OR/NOT expression engine
 - **33 MCP server tools** — available to any MCP-compatible AI assistant
 - **18 output formats** — JSON, SARIF, CycloneDX 1.6, SPDX, HTML, GraphML, Neo4j Cypher, JUnit, CSV, Markdown, Mermaid, Prometheus, OCSF, and more
-- **18-page Next.js dashboard** — sidebar navigation, interactive topology graphs, compliance heatmaps, fleet management
+- **20-page Next.js dashboard** — sidebar navigation, interactive topology graphs, compliance heatmaps, fleet management
 
 ## Tags
 

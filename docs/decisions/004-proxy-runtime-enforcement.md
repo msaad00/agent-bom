@@ -24,7 +24,7 @@ and server, intercepting all JSON-RPC messages. The proxy:
 3. **Enforces** policies (block/allow/audit per tool, per argument pattern)
 4. **Logs** all traffic to JSONL audit files for forensic replay
 
-**Detector pipeline (8 detectors):**
+**Detector pipeline (7 detectors):**
 
 | Detector | Threat |
 |----------|--------|

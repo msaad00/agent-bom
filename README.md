@@ -45,7 +45,7 @@ agent-bom agents
 
 - **Discovers AI agents and MCP servers** across real developer environments (30 MCP client types)
 - **Maps vulnerabilities into reachable credentials and tools** — not just "package X has CVE Y"
-- **Adds runtime protection** with an MCP security proxy (8 behavioral detectors, 112 patterns)
+- **Adds runtime protection** with an MCP security proxy (7 behavioral detectors, 112 patterns)
 
 <details>
 <summary><b>How agent-bom compares</b></summary>
@@ -179,7 +179,7 @@ agent-bom agents
 # Pre-install CVE gate
 agent-bom check flask@2.0.0
 
-# MCP security proxy (112 patterns, 8 detectors, PII redaction)
+# MCP security proxy (112 patterns, 7 detectors, PII redaction)
 agent-bom proxy "npx @mcp/server-filesystem /tmp"
 
 # Container image scan

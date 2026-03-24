@@ -14,10 +14,24 @@ jobs:
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     permissions:
-      contents: read
+      contents: write
+      id-token: write
       pull-requests: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Submit dependency snapshot
+        uses: advanced-security/component-detection-dependency-submission-action@9c110eb34dee187cd9eca76a652b9f6a0ed22927 # v0.1.1
+        with:
+          # Dependency review needs a snapshot for the PR head SHA. Enable
+          # default-off detectors for ecosystems GitHub does not infer
+          # reliably here, especially uv.lock and Dockerfile-based images.
+          detectorArgs: >-
+            UvLock=EnableIfDefaultOff,
+            NpmLockfile3=EnableIfDefaultOff,
+            Dockerfile=EnableIfDefaultOff,
+            Pip=EnableIfDefaultOff,
+            SimplePip=EnableIfDefaultOff
 
       - name: Review dependency changes
         uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4

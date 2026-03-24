@@ -487,9 +487,9 @@ export default function Dashboard() {
       {/* Key stats bar */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <StatCard icon={Layers} label="Total scans" value={isLoading ? "—" : String(doneJobs.length)} color="zinc" href="/jobs" />
-        <StatCard icon={Server} label="Agents" value={isLoading ? "—" : String(effectiveAgentCount)} color="emerald" href="/agents" />
-        <StatCard icon={Package} label="Packages" value={isLoading ? "—" : String(totalPackages)} color="blue" href="/vulns" />
-        <StatCard icon={Bug} label="Unique CVEs" value={isLoading ? "—" : String(uniqueCVEs)} color="orange" href="/vulns" />
+        <StatCard icon={Server} label="Agents" value={isLoading ? "—" : String(effectiveAgentCount)} color="blue" href="/agents" />
+        <StatCard icon={Package} label="Packages" value={isLoading ? "—" : String(totalPackages)} color="orange" href="/vulns" />
+        <StatCard icon={Bug} label="Unique CVEs" value={isLoading ? "—" : String(uniqueCVEs)} color="red" href="/vulns" />
         <StatCard icon={Zap} label="Critical" value={isLoading ? "—" : String(severity.critical)} color="red" href="/vulns?severity=critical" />
       </div>
 
@@ -701,16 +701,20 @@ function StatCard({
   href?: string;
   trend?: { direction: "up" | "down" | "flat"; label: string };
 }) {
+  // Architecture diagram colors as top borders
   const colors = {
-    emerald: { text: "text-emerald-400", glow: "shadow-emerald-500/5", accent: "bg-emerald-500" },
-    blue: { text: "text-blue-400", glow: "shadow-blue-500/5", accent: "bg-blue-500" },
-    orange: { text: "text-orange-400", glow: "shadow-orange-500/5", accent: "bg-orange-500" },
-    red: { text: "text-red-400", glow: "shadow-red-500/5", accent: "bg-red-500" },
-    zinc: { text: "text-zinc-400", glow: "shadow-zinc-500/5", accent: "bg-zinc-500" },
+    emerald: { text: "text-emerald-400", glow: "shadow-emerald-500/5", accent: "bg-emerald-500", topBorder: "#3fb950" },
+    blue:    { text: "text-blue-400",    glow: "shadow-blue-500/5",    accent: "bg-blue-500",    topBorder: "#58a6ff" },
+    orange:  { text: "text-orange-400",  glow: "shadow-orange-500/5",  accent: "bg-orange-500",  topBorder: "#d29922" },
+    red:     { text: "text-red-400",     glow: "shadow-red-500/5",     accent: "bg-red-500",     topBorder: "#f85149" },
+    zinc:    { text: "text-zinc-400",    glow: "shadow-zinc-500/5",    accent: "bg-zinc-500",    topBorder: "#52525b" },
   };
   const c = colors[color];
   const inner = (
-    <div className={`bg-zinc-900 border border-zinc-800 rounded-xl p-4 ${href ? "hover:border-zinc-600 transition-all cursor-pointer" : ""} shadow-lg ${c.glow}`}>
+    <div
+      className={`bg-zinc-900 border border-zinc-800 rounded-xl p-4 ${href ? "hover:border-zinc-600 transition-all cursor-pointer" : ""} shadow-lg ${c.glow}`}
+      style={{ borderTop: `2px solid ${c.topBorder}` }}
+    >
       <div className="flex items-center justify-between mb-2">
         <Icon className={`w-4 h-4 ${c.text}`} />
         {trend && (

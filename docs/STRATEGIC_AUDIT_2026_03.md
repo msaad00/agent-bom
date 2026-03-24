@@ -121,7 +121,7 @@
 | Component | Capabilities |
 |-----------|-------------|
 | **proxy.py** | stdio MCP proxy, policy enforcement, credential leak detection, replay detection, per-tool rate limiting (sliding window), Prometheus metrics, JSONL audit, HMAC signing, JWKS signature verification (RS256/RS384/RS512/ES256/ES384/ES512), OIDC discovery, client readline timeout (120s), relay task exception logging |
-| **protect** | 8 detectors: ToolDrift (rug pull), ArgumentAnalyzer (injection), CredentialLeak, RateLimit, SequenceAnalyzer (exfil patterns), ResponseInspector (cloaking/SVG/invisible chars), VectorDBInjectionDetector |
+| **protect** | 7 detectors: ToolDrift (rug pull), ArgumentAnalyzer (injection), CredentialLeak, RateLimit, SequenceAnalyzer (exfil patterns), ResponseInspector (cloaking/SVG/invisible chars), VectorDBInjectionDetector |
 | **watch** | Filesystem watchers on MCP configs, diff-on-change, webhook alerts (Slack/Teams/PagerDuty) |
 | **introspect** | Live MCP server connection, tools/list + resources/list, drift detection |
 | **enforcement** | Tool poisoning detection, unicode normalization, description drift, inputSchema injection scanning |
@@ -332,7 +332,7 @@ Cortex Code has a sophisticated security model that agent-bom should integrate w
 | No blast radius analysis | Blast radius with compliance mapping |
 | Permission caching risks (permissions.json) | Audit cached approvals, flag overly permissive |
 | AGENTS.md/SKILL.md trust unknown | 17 behavioral risk patterns + typosquat detection |
-| No runtime MCP traffic inspection | Proxy with 8 detectors, JSONL audit |
+| No runtime MCP traffic inspection | Proxy with 7 detectors, JSONL audit |
 | SQL injection via MCP tool descriptions | InputSchema injection scanning |
 | No supply chain visibility | SBOM generation, dependency graph, context graph |
 

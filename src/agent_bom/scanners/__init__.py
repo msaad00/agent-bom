@@ -419,10 +419,34 @@ def parse_fixed_version(vuln_data: dict, package_name: str, ecosystem: str = "")
                             if prerelease_candidate is None:
                                 prerelease_candidate = fixed
                         except Exception as exc:  # noqa: BLE001
-                            # Can't parse (e.g. non-PEP440 npm version) — return as-is
-                            _logger.debug("Version parse failed for %r (returning as-is): %s", fixed, exc)
-                            return fixed
+                            # Can't parse — check if it looks like a usable version
+                            # Skip git commit SHAs (40 hex chars) and other non-version strings
+                            _logger.debug("Version parse failed for %r: %s", fixed, exc)
+                            if _is_valid_fix_version(fixed):
+                                return fixed
+                            # Not a usable version — skip silently
     return prerelease_candidate
+
+
+def _is_valid_fix_version(version: str) -> bool:
+    """Check if a string looks like a usable package version (not a git SHA or random hash).
+
+    Returns False for:
+    - Git commit SHAs (40 hex chars)
+    - Short SHAs (7-12 hex chars with no dots/dashes)
+    - Empty strings
+    - Strings with no digits at all
+    """
+    if not version or not any(c.isdigit() for c in version):
+        return False
+    # Git SHA: 40 hex chars
+    stripped = version.lstrip("v")
+    if len(stripped) == 40 and all(c in "0123456789abcdef" for c in stripped):
+        return False
+    # Short SHA: 7-12 hex chars with no version separators
+    if 7 <= len(stripped) <= 12 and all(c in "0123456789abcdef" for c in stripped):
+        return False
+    return True
 
 
 async def _enrich_vuln_details(client: httpx.AsyncClient, vuln_ids: list[str]) -> dict[str, dict]:

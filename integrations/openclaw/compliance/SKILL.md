@@ -6,7 +6,7 @@ description: >-
   EU AI Act, and AISVS v1.0. Generate SBOMs and compliance reports. Use when:
   "compliance report", "NIST", "SOC 2", "ISO 27001", "OWASP", "EU AI Act",
   "AISVS", "generate SBOM", "policy check".
-version: 0.75.4
+version: 0.75.5
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. OWASP/NIST/EU AI Act/MITRE

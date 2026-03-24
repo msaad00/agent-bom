@@ -243,6 +243,7 @@ def run_local_discovery(
         from agent_bom.models import Agent, AgentType, MCPServer, TransportType
 
         con.print(f"\n[bold blue]Scanning {len(images)} container image(s)...[/bold blue]\n")
+        image_successes = 0
         for image_ref in images:
             try:
                 img_packages, strategy = scan_image(
@@ -266,8 +267,12 @@ def run_local_discovery(
                     mcp_servers=[server],
                 )
                 ctx.agents.append(image_agent)
+                image_successes += 1
             except ImageScanError as e:
                 con.print(f"  [yellow]⚠[/yellow] {image_ref}: {e}")
+        if kwargs.get("_image_only") and image_successes == 0:
+            con.print("\n  [red]Image scan failed: native package extraction produced no usable inventory[/red]")
+            sys.exit(1)
 
     # Step 1d2: OCI tarball scan (--image-tar)
     if not skill_only and image_tars:

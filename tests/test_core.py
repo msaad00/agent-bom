@@ -459,6 +459,18 @@ def test_json_output_structure(sample_report):
     assert data["ai_bom_version"] == sample_report.tool_version
 
 
+def test_json_output_includes_canonical_publish_dates(sample_report):
+    vuln = sample_report.agents[0].mcp_servers[0].packages[0].vulnerabilities[0]
+    vuln.published_at = "2026-03-21T12:00:00Z"
+    vuln.modified_at = "2026-03-23T09:00:00Z"
+    data = to_json(sample_report)
+    agent_vuln = data["agents"][0]["mcp_servers"][0]["packages"][0]["vulnerabilities"][0]
+    assert agent_vuln["published_at"] == "2026-03-21T12:00:00Z"
+    assert agent_vuln["modified_at"] == "2026-03-23T09:00:00Z"
+    assert data["blast_radius"][0]["published_at"] == "2026-03-21T12:00:00Z"
+    assert data["blast_radius"][0]["modified_at"] == "2026-03-23T09:00:00Z"
+
+
 def test_cyclonedx_output_structure(sample_report):
     data = to_cyclonedx(sample_report)
     assert data["bomFormat"] == "CycloneDX"
@@ -974,7 +986,7 @@ def test_image_to_purl_with_registry():
 
 
 def test_image_scan_no_tools(monkeypatch):
-    """scan_image raises ImageScanError when neither syft nor docker is available."""
+    """scan_image raises ImageScanError when docker is unavailable."""
     import shutil
 
     from agent_bom.image import ImageScanError, scan_image
@@ -984,61 +996,61 @@ def test_image_scan_no_tools(monkeypatch):
         scan_image("nginx:latest")
 
 
-def test_scan_with_syft_preferred(monkeypatch):
-    """scan_image uses syft when grype is absent but syft is present."""
+def test_scan_image_uses_native_strategy(monkeypatch):
+    """scan_image returns native results from the Docker-backed scanner."""
     import shutil
-    import subprocess
 
     from agent_bom.image import scan_image
+    from agent_bom.models import Package
 
-    # Grype not available → falls through to syft
-    monkeypatch.setattr(shutil, "which", lambda cmd: None if cmd == "grype" else "/usr/bin/" + cmd)
-
-    # Return a minimal CycloneDX JSON from syft
-    fake_cdx = json.dumps(
-        {
-            "bomFormat": "CycloneDX",
-            "specVersion": "1.5",
-            "components": [{"name": "requests", "version": "2.31.0", "purl": "pkg:pypi/requests@2.31.0", "type": "library"}],
-        }
+    monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/bin/docker" if cmd == "docker" else None)
+    monkeypatch.setattr(
+        "agent_bom.image._scan_with_docker",
+        lambda image_ref, platform=None: [Package(name="requests", version="2.31.0", ecosystem="pypi")],
     )
-
-    def fake_run(cmd, **kwargs):
-        class R:
-            returncode = 0
-            stdout = fake_cdx
-            stderr = ""
-
-        return R()
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
     packages, strategy = scan_image("myapp:latest")
-    assert strategy == "syft"
+    assert strategy == "native"
     assert len(packages) == 1
     assert packages[0].name == "requests"
     assert packages[0].ecosystem == "pypi"
 
 
-def test_scan_with_syft_error(monkeypatch):
-    """scan_image raises ImageScanError when syft exits non-zero."""
+def test_scan_image_fails_when_native_extraction_fails(monkeypatch):
+    """scan_image does not silently downgrade empty native extraction into a clean scan."""
     import shutil
-    import subprocess
 
     from agent_bom.image import ImageScanError, scan_image
 
-    monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/bin/syft" if cmd == "syft" else None)
-
-    def fake_run(cmd, **kwargs):
-        class R:
-            returncode = 1
-            stdout = ""
-            stderr = "image not found"
-
-        return R()
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    with pytest.raises(ImageScanError, match="syft exited"):
+    monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/bin/docker" if cmd == "docker" else None)
+    monkeypatch.setattr(
+        "agent_bom.image._scan_with_docker",
+        lambda image_ref, platform=None: (_ for _ in ()).throw(
+            ImageScanError("Native image scan extracted 0 packages from nonexistent:latest")
+        ),
+    )
+    with pytest.raises(ImageScanError, match="0 packages"):
         scan_image("nonexistent:latest")
+
+
+def test_local_vuln_conversion_preserves_publish_dates():
+    from agent_bom.db.lookup import LocalVuln
+    from agent_bom.scanners import _local_vuln_to_vulnerability
+
+    lv = LocalVuln(
+        id="GHSA-test-1234",
+        summary="Example vuln",
+        severity="high",
+        cvss_score=7.5,
+        fixed_version="2.0.0",
+        published_at="2026-03-21T12:00:00Z",
+        modified_at="2026-03-23T09:00:00Z",
+        aliases=["CVE-2026-1234"],
+    )
+
+    vuln = _local_vuln_to_vulnerability(lv)
+    assert vuln.id == "CVE-2026-1234"
+    assert vuln.published_at == "2026-03-21T12:00:00Z"
+    assert vuln.modified_at == "2026-03-23T09:00:00Z"
 
 
 def test_cli_scan_has_image_flag():

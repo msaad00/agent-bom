@@ -59,6 +59,8 @@ def test_engine_status():
     assert "ArgumentAnalyzer" in status["detectors"]
     assert "ResponseInspector" in status["detectors"]
     assert "VectorDBInjectionDetector" in status["detectors"]
+    assert "session_graph" in status
+    assert status["session_graph"]["node_count"] == 0
 
 
 # ─── Tool Call Processing ─────────────────────────────────────────────────────
@@ -110,6 +112,17 @@ def test_process_tool_call_stats_tracked():
     assert engine.status()["tool_calls_analyzed"] == 3
 
 
+def test_process_tool_call_records_session_graph():
+    engine = ProtectionEngine()
+    engine.start()
+    _run(engine.process_tool_call("read_file", {"path": "/tmp/demo.txt"}, agent_id="agent-1"))
+    graph = engine.status()["session_graph"]
+    assert graph["node_count"] >= 3
+    assert any(node["kind"] == "agent" for node in graph["nodes"])
+    assert any(node["kind"] == "tool_call" for node in graph["nodes"])
+    assert any(edge["relation"] == "invokes" for edge in graph["edges"])
+
+
 # ─── Tool Response Processing ────────────────────────────────────────────────
 
 
@@ -132,6 +145,9 @@ def test_process_tool_response_credential_leak():
     )
     # CredentialLeakDetector should flag this
     assert len(alerts) >= 1
+    graph = engine.status()["session_graph"]
+    assert any(node["kind"] == "tool_response" for node in graph["nodes"])
+    assert any(node["kind"] == "alert" for node in graph["nodes"])
 
 
 # ─── Tool Drift ──────────────────────────────────────────────────────────────

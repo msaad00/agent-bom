@@ -7,7 +7,7 @@ from pathlib import Path
 try:
     __version__ = version("agent-bom")
 except PackageNotFoundError:
-    __version__ = "0.75.4"
+    __version__ = "0.75.5"
 
 # Cross-check against pyproject.toml for dev installs where the editable
 # install metadata may be stale (i.e. version bumped but not re-installed).

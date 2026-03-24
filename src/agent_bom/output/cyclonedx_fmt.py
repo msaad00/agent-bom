@@ -274,7 +274,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
     ml_component_refs: list[str] = []  # Track ML components for top-level deps
 
     for agent in report.agents:
-        agent_ref = _sanitize_bom_ref(f"agent-{agent.name}")
+        agent_ref = _sanitize_bom_ref(f"agent-{agent.stable_id}")
         agent_deps = []
 
         components.append(
@@ -293,8 +293,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
         )
 
         for server in agent.mcp_servers:
-            server_ref = _sanitize_bom_ref(f"mcp-server-{server.name}-{comp_id}")
-            comp_id += 1
+            server_ref = _sanitize_bom_ref(f"mcp-server-{server.stable_id}")
             server_deps = []
 
             server_props = [
@@ -333,8 +332,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
             agent_deps.append(server_ref)
 
             for pkg in server.packages:
-                pkg_ref = _sanitize_bom_ref(f"pkg-{pkg.ecosystem}-{pkg.name}-{pkg.version}-{comp_id}")
-                comp_id += 1
+                pkg_ref = _sanitize_bom_ref(f"pkg-{pkg.stable_id}")
 
                 pkg_properties = [
                     {"name": "agent-bom:ecosystem", "value": pkg.ecosystem},

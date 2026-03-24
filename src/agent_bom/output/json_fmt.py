@@ -249,6 +249,7 @@ def to_json(report: AIBOMReport) -> dict:
         "agents": [
             {
                 "name": agent.name,
+                "stable_id": agent.stable_id,
                 "type": agent.agent_type.value,
                 "config_path": agent.config_path,
                 "source": agent.source,
@@ -257,19 +258,44 @@ def to_json(report: AIBOMReport) -> dict:
                 "mcp_servers": [
                     {
                         "name": server.name,
+                        "stable_id": server.stable_id,
+                        "fingerprint": server.fingerprint,
                         "command": server.command,
                         "args": server.args,
                         "transport": server.transport.value,
                         "url": server.url,
+                        "auth_mode": server.auth_mode,
                         "mcp_version": server.mcp_version,
                         "has_credentials": server.has_credentials,
                         "credential_env_vars": server.credential_names,
                         "security_blocked": server.security_blocked,
                         "security_warnings": server.security_warnings,
-                        "tools": [{"name": t.name, "description": t.description} for t in server.tools],
+                        "tools": [
+                            {
+                                "name": t.name,
+                                "stable_id": t.stable_id,
+                                "fingerprint": t.fingerprint,
+                                "description": t.description,
+                                "schema_findings": t.schema_findings,
+                            }
+                            for t in server.tools
+                        ],
+                        "resources": [
+                            {
+                                "uri": r.uri,
+                                "stable_id": r.stable_id,
+                                "fingerprint": r.fingerprint,
+                                "name": r.name,
+                                "description": r.description,
+                                "mime_type": r.mime_type,
+                                "content_findings": r.content_findings,
+                            }
+                            for r in server.resources
+                        ],
                         "packages": [
                             {
                                 "name": pkg.name,
+                                "stable_id": pkg.stable_id,
                                 "version": pkg.version,
                                 "ecosystem": pkg.ecosystem,
                                 "purl": pkg.purl,
@@ -304,6 +330,8 @@ def to_json(report: AIBOMReport) -> dict:
                                         "is_kev": v.is_kev,
                                         "kev_date_added": v.kev_date_added,
                                         "kev_due_date": v.kev_due_date,
+                                        "published_at": v.published_at,
+                                        "modified_at": v.modified_at,
                                         "aliases": v.aliases,
                                         "exploitability": v.exploitability,
                                         "cwe_ids": v.cwe_ids,
@@ -351,6 +379,8 @@ def to_json(report: AIBOMReport) -> dict:
                 "cvss_score": br.vulnerability.cvss_score,
                 "epss_score": br.vulnerability.epss_score,
                 "is_kev": br.vulnerability.is_kev,
+                "published_at": br.vulnerability.published_at,
+                "modified_at": br.vulnerability.modified_at,
                 "nvd_status": br.vulnerability.nvd_status,
                 "compliance_tags": br.vulnerability.compliance_tags,
                 "package": f"{br.package.name}@{br.package.version}",

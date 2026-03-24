@@ -266,7 +266,7 @@ def to_mermaid_lifecycle(report: AIBOMReport, blast_radii: list[BlastRadius]) ->
             vuln_id = vuln.id
 
             # Determine discovery date
-            discover_date = getattr(vuln, "nvd_published", None)
+            discover_date = getattr(vuln, "published_at", None) or getattr(vuln, "nvd_published", None)
             if discover_date:
                 discover_str = str(discover_date)[:10]
                 lines.append(f"    {vuln_id} :crit, t{task_id}, {discover_str}, 1d")

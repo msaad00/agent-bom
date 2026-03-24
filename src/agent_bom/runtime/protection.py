@@ -20,7 +20,7 @@ import logging
 import os
 import time
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
@@ -138,6 +138,91 @@ class ProtectionStats:
     correlation_window_alerts: int = 0
 
 
+@dataclass
+class RuntimeSessionNode:
+    """Node in a runtime session graph."""
+
+    id: str
+    kind: str
+    label: str
+    first_seen: str
+    metadata: dict[str, object] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "id": self.id,
+            "kind": self.kind,
+            "label": self.label,
+            "first_seen": self.first_seen,
+            "metadata": self.metadata,
+        }
+
+
+@dataclass
+class RuntimeSessionEdge:
+    """Directed edge in a runtime session graph."""
+
+    source: str
+    target: str
+    relation: str
+    timestamp: str
+    metadata: dict[str, object] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "source": self.source,
+            "target": self.target,
+            "relation": self.relation,
+            "timestamp": self.timestamp,
+            "metadata": self.metadata,
+        }
+
+
+@dataclass
+class RuntimeSessionGraph:
+    """Structured record of runtime entities and interactions."""
+
+    nodes: dict[str, RuntimeSessionNode] = field(default_factory=dict)
+    edges: list[RuntimeSessionEdge] = field(default_factory=list)
+
+    def ensure_node(self, node_id: str, kind: str, label: str, metadata: dict[str, object] | None = None) -> None:
+        if node_id not in self.nodes:
+            self.nodes[node_id] = RuntimeSessionNode(
+                id=node_id,
+                kind=kind,
+                label=label,
+                first_seen=datetime.now(timezone.utc).isoformat(),
+                metadata=metadata or {},
+            )
+        elif metadata:
+            self.nodes[node_id].metadata.update(metadata)
+
+    def add_edge(
+        self,
+        source: str,
+        target: str,
+        relation: str,
+        metadata: dict[str, object] | None = None,
+    ) -> None:
+        self.edges.append(
+            RuntimeSessionEdge(
+                source=source,
+                target=target,
+                relation=relation,
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                metadata=metadata or {},
+            )
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "node_count": len(self.nodes),
+            "edge_count": len(self.edges),
+            "nodes": [node.to_dict() for node in self.nodes.values()],
+            "edges": [edge.to_dict() for edge in self.edges],
+        }
+
+
 class ProtectionEngine:
     """Orchestrates runtime detectors with OTel ingestion and alert dispatch.
 
@@ -185,6 +270,7 @@ class ProtectionEngine:
         self._correlation_buffer: deque[_CorrelationEntry] = deque()
         self._blocked = False
         self._allowed_tools: set[str] | None = None  # None = all allowed
+        self._session_graph = RuntimeSessionGraph()
 
     # ── Persistent kill-switch state ──────────────────────────────────────
 
@@ -296,6 +382,7 @@ class ProtectionEngine:
                 "CrossAgentCorrelator",
             ],
             "detectors_active": self._stats.detectors_active,
+            "session_graph": self._session_graph.to_dict(),
         }
         if self._shield:
             base["shield"] = {
@@ -308,6 +395,50 @@ class ProtectionEngine:
                 "alerts_in_window": self._count_window_alerts(),
             }
         return base
+
+    def _record_tool_call_graph(self, tool_name: str, arguments: dict, agent_id: str = "") -> None:
+        agent_key = f"agent:{agent_id or 'unknown'}"
+        tool_key = f"tool:{tool_name}"
+        call_key = f"call:{self._stats.tool_calls_analyzed}:{tool_name}"
+        self._session_graph.ensure_node(agent_key, "agent", agent_id or "unknown-agent")
+        self._session_graph.ensure_node(tool_key, "tool", tool_name)
+        self._session_graph.ensure_node(
+            call_key,
+            "tool_call",
+            tool_name,
+            metadata={"arguments": arguments, "agent_id": agent_id or ""},
+        )
+        self._session_graph.add_edge(agent_key, call_key, "invokes")
+        self._session_graph.add_edge(call_key, tool_key, "targets")
+
+    def _record_tool_response_graph(self, tool_name: str, response_text: str) -> None:
+        tool_key = f"tool:{tool_name}"
+        response_key = f"response:{self._stats.tool_calls_analyzed}:{tool_name}:{len(self._session_graph.edges)}"
+        self._session_graph.ensure_node(tool_key, "tool", tool_name)
+        self._session_graph.ensure_node(
+            response_key,
+            "tool_response",
+            tool_name,
+            metadata={"preview": response_text[:200], "length": len(response_text)},
+        )
+        self._session_graph.add_edge(tool_key, response_key, "returns")
+
+    def _record_alert_graph(self, alerts: list[dict], tool_name: str) -> None:
+        tool_key = f"tool:{tool_name}"
+        self._session_graph.ensure_node(tool_key, "tool", tool_name)
+        for idx, alert in enumerate(alerts):
+            alert_id = f"alert:{alert.get('detector', 'unknown')}:{len(self._session_graph.edges)}:{idx}"
+            self._session_graph.ensure_node(
+                alert_id,
+                "alert",
+                alert.get("detector", "unknown"),
+                metadata={
+                    "severity": alert.get("severity"),
+                    "message": alert.get("message"),
+                    "details": alert.get("details", {}),
+                },
+            )
+            self._session_graph.add_edge(tool_key, alert_id, "triggered")
 
     # ── Deep defense internals ───────────────────────────────────────────
 
@@ -471,6 +602,7 @@ class ProtectionEngine:
             List of alert dicts for any findings.
         """
         self._stats.tool_calls_analyzed += 1
+        self._record_tool_call_graph(tool_name, arguments, agent_id)
 
         # Cross-agent correlation: record every call for lateral movement detection
         if agent_id:
@@ -480,6 +612,7 @@ class ProtectionEngine:
         if self._shield:
             block_alerts = self._check_blocked(tool_name)
             if block_alerts:
+                self._record_alert_graph(block_alerts, tool_name)
                 for alert_dict in block_alerts:
                     await self.dispatcher.dispatch(alert_dict)
                 self._stats.alerts_generated += len(block_alerts)
@@ -504,6 +637,8 @@ class ProtectionEngine:
             await self.dispatcher.dispatch(alert_dict)
 
         self._stats.alerts_generated += len(all_alerts)
+        if all_alerts:
+            self._record_alert_graph(all_alerts, tool_name)
 
         # Deep defense: correlate and assess
         if self._shield and all_alerts:
@@ -546,6 +681,7 @@ class ProtectionEngine:
         Returns:
             List of alert dicts for any findings detected.
         """
+        self._record_tool_response_graph(tool_name, response_text)
         all_alerts: list[dict] = []
 
         # Credential leak detection
@@ -564,6 +700,8 @@ class ProtectionEngine:
             await self.dispatcher.dispatch(alert_dict)
 
         self._stats.alerts_generated += len(all_alerts)
+        if all_alerts:
+            self._record_alert_graph(all_alerts, tool_name)
 
         # Deep defense: correlate response-path alerts
         if self._shield and all_alerts:
@@ -588,6 +726,8 @@ class ProtectionEngine:
             await self.dispatcher.dispatch(alert_dict)
 
         self._stats.alerts_generated += len(all_alerts)
+        if all_alerts:
+            self._record_alert_graph(all_alerts, "tools/list")
 
         # Deep defense: tool drift is a strong signal — weight it heavily
         if self._shield and all_alerts:

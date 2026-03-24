@@ -134,6 +134,62 @@ def test_enrich_servers_adds_new_tools():
     assert server.mcp_version == "2024-11-05"
 
 
+def test_tool_schema_and_resource_lint_findings():
+    from agent_bom.mcp_introspect import _lint_resource, _lint_tool_schema
+
+    tool = MCPTool(
+        name="run_shell",
+        description="Run shell command",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "command": {"type": "string"},
+                "path": {"type": "string", "description": "Workspace path"},
+                "url": {"type": "string", "description": "Webhook URL"},
+            },
+        },
+    )
+    tool_findings = _lint_tool_schema(tool)
+    assert any("shell-execution-capability" in finding for finding in tool_findings)
+    assert any("filesystem-capability" in finding for finding in tool_findings)
+    assert any("network-egress-capability" in finding for finding in tool_findings)
+
+    resource = MCPResource(
+        uri="resource://prompt-template",
+        name="system prompt",
+        description="Mutable markdown instructions",
+        mime_type="text/markdown",
+    )
+    resource_findings = _lint_resource(resource)
+    assert any("prompt-bearing-resource" in finding for finding in resource_findings)
+    assert any("rich-content-resource" in finding for finding in resource_findings)
+
+
+def test_server_introspection_captures_fingerprint_and_auth_mode():
+    from agent_bom.mcp_introspect import ServerIntrospection
+
+    server = MCPServer(
+        name="filesystem",
+        command="npx",
+        args=["@modelcontextprotocol/server-filesystem"],
+        transport=TransportType.STDIO,
+        env={"API_KEY": "${API_KEY}"},
+        tools=[MCPTool(name="read_file", description="Read file", input_schema={"type": "object"})],
+    )
+    result = ServerIntrospection(
+        server_name=server.name,
+        success=True,
+        auth_mode=server.auth_mode,
+        configured_fingerprint=server.fingerprint,
+        runtime_fingerprint=server.fingerprint,
+        configured_tool_count=len(server.tools),
+        configured_resource_count=len(server.resources),
+    )
+    assert result.auth_mode == "env-credentials"
+    assert result.configured_fingerprint == server.fingerprint
+    assert result.configured_tool_count == 1
+
+
 def test_enrich_servers_no_duplicate_tools():
     from agent_bom.mcp_introspect import IntrospectionReport, ServerIntrospection, enrich_servers
 

@@ -271,6 +271,11 @@ def test_docker_rm_failure_logged(caplog):
 
     from agent_bom.image import _scan_with_docker
 
+    save_result = MagicMock()
+    save_result.returncode = 0
+    save_result.stdout = ""
+    save_result.stderr = ""
+
     create_result = MagicMock()
     create_result.returncode = 0
     create_result.stdout = "container-abc\n"
@@ -282,8 +287,12 @@ def test_docker_rm_failure_logged(caplog):
     rm_result.returncode = 1
     rm_result.stderr = "Error: No such container"
 
-    with patch("agent_bom.image.subprocess.run") as mock_run, patch("agent_bom.image._docker_inspect"):
-        mock_run.side_effect = [create_result, export_result, rm_result]
+    with (
+        patch("agent_bom.image.subprocess.run") as mock_run,
+        patch("agent_bom.image._docker_inspect"),
+        patch("agent_bom.oci_parser.scan_oci", return_value=([], "oci-tarball")),
+    ):
+        mock_run.side_effect = [save_result, create_result, export_result, rm_result]
         try:
             _scan_with_docker("test:latest")
         except Exception:

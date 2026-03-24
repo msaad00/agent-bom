@@ -20,7 +20,7 @@ import os
 import re
 import sys
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -420,6 +420,34 @@ def log_tool_call(
 
     log_file.write(json.dumps(record) + "\n")
     log_file.flush()
+
+
+def summarize_runtime_alerts(alerts: list[dict]) -> dict[str, object]:
+    """Aggregate runtime alerts for audit-log summaries and status surfaces."""
+    severity_counts: Counter[str] = Counter()
+    detector_counts: Counter[str] = Counter()
+    blocked_alerts = 0
+
+    for alert in alerts:
+        severity = str(alert.get("severity", "unknown")).lower()
+        detector = str(alert.get("detector", "unknown"))
+        severity_counts[severity] += 1
+        detector_counts[detector] += 1
+        details = alert.get("details", {})
+        if isinstance(details, dict) and details.get("action") == "blocked":
+            blocked_alerts += 1
+
+    latest_ts = ""
+    if alerts:
+        latest_ts = max(str(alert.get("ts", "")) for alert in alerts)
+
+    return {
+        "runtime_alerts": len(alerts),
+        "runtime_alerts_by_severity": dict(sorted(severity_counts.items())),
+        "runtime_alerts_by_detector": dict(sorted(detector_counts.items())),
+        "blocked_runtime_alerts": blocked_alerts,
+        "latest_runtime_alert_at": latest_ts,
+    }
 
 
 def _truncate_args(args: dict, max_value_len: int = 200) -> dict:
@@ -1416,7 +1444,7 @@ async def run_proxy(
         # Write metrics summary + runtime alerts to audit log before closing
         if log_file:
             summary = metrics.summary()
-            summary["runtime_alerts"] = len(runtime_alerts)
+            summary.update(summarize_runtime_alerts(runtime_alerts))
             summary_line = json.dumps(summary) + "\n"
             log_file.write(summary_line)
             log_file.close()

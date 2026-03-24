@@ -95,6 +95,10 @@ PROXY_SUMMARY = {
     "replay_rejections": 0,
     "relay_errors": 0,
     "runtime_alerts": 1,
+    "runtime_alerts_by_severity": {"critical": 1},
+    "runtime_alerts_by_detector": {"ToolDrift": 1},
+    "blocked_runtime_alerts": 0,
+    "latest_runtime_alert_at": "2026-03-09T10:00:02.000000+00:00",
 }
 
 
@@ -157,6 +161,8 @@ def test_parse_proxy_summary():
     assert s.total_blocked == 3
     assert s.uptime_seconds == 300.5
     assert s.latency["p95_ms"] == 150.0
+    assert s.runtime_alerts_by_severity["critical"] == 1
+    assert s.latest_runtime_alert_at == "2026-03-09T10:00:02.000000+00:00"
 
 
 def test_parse_full_log():

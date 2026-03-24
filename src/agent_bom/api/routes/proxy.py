@@ -12,7 +12,7 @@ Endpoints:
 
 from __future__ import annotations
 
-from collections import deque
+from collections import Counter, deque
 from pathlib import Path as _Path
 from typing import TYPE_CHECKING
 
@@ -98,6 +98,49 @@ def _read_alerts_from_log(path: _Path) -> list[dict]:
     return alerts
 
 
+def _load_proxy_alerts() -> list[dict]:
+    """Return in-memory alerts, or fall back to the configured audit log."""
+    log_path = _get_configured_log_path()
+    if log_path and not _proxy_alerts:
+        return _read_alerts_from_log(log_path)
+    return list(_proxy_alerts)
+
+
+def _summarize_proxy_alerts(alerts: list[dict]) -> dict:
+    """Build a compact summary for proxy status and alert APIs."""
+    severity_counts: Counter[str] = Counter()
+    detector_counts: Counter[str] = Counter()
+    blocked_alerts = 0
+    recent_alerts: list[dict] = []
+
+    for alert in sorted(alerts, key=lambda item: str(item.get("ts", "")), reverse=True):
+        severity = str(alert.get("severity", "unknown")).lower()
+        detector = str(alert.get("detector", "unknown"))
+        severity_counts[severity] += 1
+        detector_counts[detector] += 1
+        details = alert.get("details", {})
+        if isinstance(details, dict) and details.get("action") == "blocked":
+            blocked_alerts += 1
+        if len(recent_alerts) < 5:
+            recent_alerts.append(
+                {
+                    "ts": alert.get("ts", ""),
+                    "detector": detector,
+                    "severity": severity,
+                    "message": alert.get("message", ""),
+                }
+            )
+
+    return {
+        "total_alerts": len(alerts),
+        "blocked_alerts": blocked_alerts,
+        "alerts_by_severity": dict(sorted(severity_counts.items())),
+        "alerts_by_detector": dict(sorted(detector_counts.items())),
+        "latest_alert_at": recent_alerts[0]["ts"] if recent_alerts else "",
+        "recent_alerts": recent_alerts,
+    }
+
+
 def _read_metrics_from_log(path: _Path) -> dict | None:
     """Read the last proxy_summary record from a JSONL audit log."""
     import json as _json
@@ -133,14 +176,21 @@ async def proxy_status() -> dict:
     buffer (populated by ``push_proxy_metrics``) or from the audit log
     configured via the ``AGENT_BOM_LOG`` environment variable.
     """
+    metrics: dict | None = None
     if _proxy_metrics is not None:
-        return _proxy_metrics
+        metrics = dict(_proxy_metrics)
+    else:
+        log_path = _get_configured_log_path()
+        if log_path:
+            metrics = _read_metrics_from_log(log_path)
+            if metrics is not None:
+                metrics = dict(metrics)
 
-    log_path = _get_configured_log_path()
-    if log_path:
-        metrics = _read_metrics_from_log(log_path)
-        if metrics is not None:
-            return metrics
+    if metrics is not None:
+        alert_summary = _summarize_proxy_alerts(_load_proxy_alerts())
+        metrics["alert_summary"] = {key: value for key, value in alert_summary.items() if key != "recent_alerts"}
+        metrics["recent_alerts"] = alert_summary["recent_alerts"]
+        return metrics
 
     return {
         "status": "no_proxy_session",
@@ -164,11 +214,7 @@ async def proxy_alerts(
         detector: Filter by detector name.
         limit: Maximum number of alerts to return (default 100).
     """
-    log_path = _get_configured_log_path()
-    if log_path and not _proxy_alerts:
-        alerts = _read_alerts_from_log(log_path)
-    else:
-        alerts = list(_proxy_alerts)
+    alerts = _load_proxy_alerts()
 
     # Apply filters
     if severity:
@@ -182,6 +228,7 @@ async def proxy_alerts(
     return {
         "alerts": alerts,
         "count": len(alerts),
+        "summary": _summarize_proxy_alerts(alerts),
         "filters": {
             "severity": severity,
             "detector": detector,

@@ -54,6 +54,8 @@ def test_proxy_status_with_metrics():
     data = resp.json()
     assert data["total_tool_calls"] == 42
     assert data["total_blocked"] == 3
+    assert data["alert_summary"]["total_alerts"] == 0
+    assert data["recent_alerts"] == []
 
     # Cleanup
     proxy_mod._proxy_metrics = None
@@ -68,6 +70,12 @@ def test_proxy_status_from_log():
     with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
         f.write(json.dumps({"type": "tools/call", "tool": "read"}) + "\n")
         f.write(json.dumps({"type": "proxy_summary", "total_tool_calls": 10, "total_blocked": 1}) + "\n")
+        f.write(
+            json.dumps(
+                {"type": "runtime_alert", "detector": "cred", "severity": "critical", "message": "leak", "ts": "2026-03-24T10:00:00+00:00"}
+            )
+            + "\n"
+        )
         log_path = f.name
 
     old = os.environ.get("AGENT_BOM_LOG")
@@ -78,6 +86,8 @@ def test_proxy_status_from_log():
         assert resp.status_code == 200
         data = resp.json()
         assert data["total_tool_calls"] == 10
+        assert data["alert_summary"]["total_alerts"] == 1
+        assert data["alert_summary"]["alerts_by_severity"]["critical"] == 1
     finally:
         if old is not None:
             os.environ["AGENT_BOM_LOG"] = old
@@ -160,6 +170,8 @@ def test_proxy_alerts_with_data():
     assert resp.status_code == 200
     data = resp.json()
     assert data["count"] == 2
+    assert data["summary"]["total_alerts"] == 2
+    assert data["summary"]["alerts_by_severity"]["critical"] == 1
 
     # Cleanup
     proxy_mod._proxy_alerts.clear()

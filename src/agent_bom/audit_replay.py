@@ -79,6 +79,10 @@ class SummaryEntry:
     replay_rejections: int
     relay_errors: int
     runtime_alerts: int
+    runtime_alerts_by_severity: dict = field(default_factory=dict)
+    runtime_alerts_by_detector: dict = field(default_factory=dict)
+    blocked_runtime_alerts: int = 0
+    latest_runtime_alert_at: str = ""
 
 
 @dataclass
@@ -152,6 +156,10 @@ def parse_audit_log(path: Path) -> AuditLog:
                 replay_rejections=entry.get("replay_rejections", 0),
                 relay_errors=entry.get("relay_errors", 0),
                 runtime_alerts=entry.get("runtime_alerts", 0),
+                runtime_alerts_by_severity=entry.get("runtime_alerts_by_severity", {}),
+                runtime_alerts_by_detector=entry.get("runtime_alerts_by_detector", {}),
+                blocked_runtime_alerts=entry.get("blocked_runtime_alerts", 0),
+                latest_runtime_alert_at=entry.get("latest_runtime_alert_at", ""),
             )
 
         elif "severity" in entry and "detector" in entry:
@@ -268,6 +276,13 @@ def display_rich(
             summary_lines.append("[bold]Top tools:[/bold] " + "  ".join(f"{t}×{c}" for t, c in top))
         if s.blocked_by_reason:
             summary_lines.append("[bold red]Blocked by:[/bold red] " + "  ".join(f"{r}×{c}" for r, c in s.blocked_by_reason.items()))
+        if s.runtime_alerts_by_severity:
+            summary_lines.append(
+                "[bold yellow]Alert severities:[/bold yellow] "
+                + "  ".join(f"{severity}×{count}" for severity, count in s.runtime_alerts_by_severity.items())
+            )
+        if s.latest_runtime_alert_at:
+            summary_lines.append(f"[bold]Latest alert:[/bold] {s.latest_runtime_alert_at[:19].replace('T', ' ')}")
 
         console.print(
             Panel(
@@ -387,6 +402,10 @@ def display_json(log: AuditLog) -> int:
             "latency": s.latency,
             "calls_by_tool": s.calls_by_tool,
             "blocked_by_reason": s.blocked_by_reason,
+            "runtime_alerts_by_severity": s.runtime_alerts_by_severity,
+            "runtime_alerts_by_detector": s.runtime_alerts_by_detector,
+            "blocked_runtime_alerts": s.blocked_runtime_alerts,
+            "latest_runtime_alert_at": s.latest_runtime_alert_at,
         }
         if s
         else None,

@@ -61,6 +61,8 @@ def test_engine_status():
     assert "VectorDBInjectionDetector" in status["detectors"]
     assert "session_graph" in status
     assert status["session_graph"]["node_count"] == 0
+    assert "incident_summary" in status
+    assert status["incident_summary"]["total_incidents"] == 0
 
 
 # ─── Tool Call Processing ─────────────────────────────────────────────────────
@@ -152,6 +154,10 @@ def test_process_tool_response_credential_leak():
     assert any(node["kind"] == "alert" for node in graph["nodes"])
     assert any(event["kind"] == "tool_response" for event in graph["timeline"])
     assert any(event["kind"] == "alert" for event in graph["timeline"])
+    incident_summary = engine.status()["incident_summary"]
+    assert incident_summary["total_incidents"] >= 1
+    assert incident_summary["alerts_by_severity"]["critical"] >= 1
+    assert incident_summary["latest_incident_at"] != ""
 
 
 # ─── Tool Drift ──────────────────────────────────────────────────────────────

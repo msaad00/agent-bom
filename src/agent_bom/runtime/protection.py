@@ -19,7 +19,7 @@ import json
 import logging
 import os
 import time
-from collections import deque
+from collections import Counter, deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -409,6 +409,7 @@ class ProtectionEngine:
             ],
             "detectors_active": self._stats.detectors_active,
             "session_graph": self._session_graph.to_dict(),
+            "incident_summary": self._build_incident_summary(),
         }
         if self._shield:
             base["shield"] = {
@@ -421,6 +422,45 @@ class ProtectionEngine:
                 "alerts_in_window": self._count_window_alerts(),
             }
         return base
+
+    def _build_incident_summary(self) -> dict[str, object]:
+        """Aggregate runtime incidents into a compact API/UI-friendly summary."""
+        alert_nodes = [node for node in self._session_graph.nodes.values() if node.kind == "alert"]
+        severity_counts: Counter[str] = Counter()
+        detector_counts: Counter[str] = Counter()
+        recent_incidents: list[dict[str, object]] = []
+        blocked_incidents = 0
+
+        for node in sorted(alert_nodes, key=lambda item: item.first_seen, reverse=True):
+            metadata = node.metadata or {}
+            details = metadata.get("details", {})
+            if not isinstance(details, dict):
+                details = {}
+            severity = str(metadata.get("severity") or "unknown").lower()
+            detector = str(node.label or "unknown")
+            severity_counts[severity] += 1
+            detector_counts[detector] += 1
+            if details.get("action") == "blocked" or detector == "shield_killswitch":
+                blocked_incidents += 1
+            if len(recent_incidents) < 5:
+                recent_incidents.append(
+                    {
+                        "ts": node.first_seen,
+                        "detector": detector,
+                        "severity": severity,
+                        "message": metadata.get("message", ""),
+                        "action": details.get("action", ""),
+                    }
+                )
+
+        return {
+            "total_incidents": len(alert_nodes),
+            "blocked_incidents": blocked_incidents,
+            "alerts_by_severity": dict(sorted(severity_counts.items())),
+            "alerts_by_detector": dict(sorted(detector_counts.items())),
+            "latest_incident_at": recent_incidents[0]["ts"] if recent_incidents else "",
+            "recent_incidents": recent_incidents,
+        }
 
     def _record_tool_call_graph(self, tool_name: str, arguments: dict, agent_id: str = "") -> None:
         agent_key = f"agent:{agent_id or 'unknown'}"

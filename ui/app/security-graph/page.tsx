@@ -22,20 +22,21 @@ const ROW_SPACING = 100;
 // ── Legend ────────────────────────────────────────────────────────────────────
 
 const SECURITY_LEGEND = [
-  { label: "Agent",      color: "#10b981" },
-  { label: "MCP Server", color: "#3b82f6" },
-  { label: "Package",    color: "#71717a" },
-  { label: "Vulnerable", color: "#ef4444" },
+  { label: "Agent",      color: "#58a6ff" },   // blue  — discover layer
+  { label: "MCP Server", color: "#60a5fa" },   // blue-400
+  { label: "Package",    color: "#d29922" },   // amber — analyze layer
+  { label: "Vulnerable", color: "#f85149" },   // red   — scan layer
   { label: "Credential", color: "#eab308", dashed: true },
 ];
 
 // ── Custom Node ──────────────────────────────────────────────────────────────
 
 function SecurityNode({ data }: { data: any }) {
+  // Architecture color semantics: scan=red, analyze=amber, discover=blue, neutral=zinc
   const borderColor = data.dimmed
     ? "#27272a"
     : data.vulnCount > 0
-      ? data.hasCritical ? "#ef4444" : "#f97316"
+      ? data.hasCritical ? "#f85149" : "#f97316"  // scan-red / orange
       : data.hasCredentials ? "#eab308" : "#3f3f46";
 
   const riskBorderColor = data.riskBorder ?? borderColor;
@@ -168,11 +169,11 @@ export default function SecurityGraphPage() {
       })
     );
 
-    // Helper: risk layer border color for a vuln count
+    // Helper: risk layer border color for a vuln count — architecture color semantics
     function riskBorder(vulnCount: number): string {
-      if (vulnCount > 5) return "#ef4444"; // red
+      if (vulnCount > 5) return "#f85149"; // scan-red
       if (vulnCount > 0) return "#f97316"; // orange
-      return "#10b981"; // green
+      return "#3fb950"; // output-green (safe)
     }
 
     latestResult.agents.forEach((agent, ai) => {
@@ -250,12 +251,12 @@ export default function SecurityGraphPage() {
           target: serverId,
           type: "smoothstep",
           style: {
-            stroke: dimEdge ? "#18181b" : (edgeIsCredPath && insightLayer === "credentials") ? "#eab308" : hasCredentials ? "#eab308" : "#10b981",
+            stroke: dimEdge ? "#18181b" : (edgeIsCredPath && insightLayer === "credentials") ? "#eab308" : hasCredentials ? "#eab308" : "#58a6ff",
             strokeWidth: dimEdge ? 1 : 2,
             opacity: dimEdge ? 0.15 : 0.85,
           },
           animated: insightLayer === "credentials" ? edgeIsCredPath : hasCredentials,
-          markerEnd: { type: MarkerType.ArrowClosed, color: dimEdge ? "#18181b" : "#10b981", width: 16, height: 12 },
+          markerEnd: { type: MarkerType.ArrowClosed, color: dimEdge ? "#18181b" : "#58a6ff", width: 16, height: 12 },
         });
 
         (server.packages ?? []).forEach((pkg) => {
@@ -402,10 +403,10 @@ export default function SecurityGraphPage() {
           <MiniMap
             nodeColor={(n) => {
               const d = n.data as any;
-              if (d?.hasCritical) return "#ef4444";
-              if (d?.vulnCount > 0) return "#f97316";
-              if (d?.hasCredentials) return "#eab308";
-              return "#3f3f46";
+              if (d?.hasCritical) return "#f85149"; // scan-red
+              if (d?.vulnCount > 0) return "#f97316"; // orange
+              if (d?.hasCredentials) return "#eab308"; // amber credential
+              return "#3f3f46"; // zinc neutral
             }}
             className={MINIMAP_CLASS}
           />

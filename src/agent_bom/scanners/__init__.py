@@ -390,28 +390,20 @@ def parse_osv_severity(vuln_data: dict) -> tuple[Severity, Optional[float], Opti
     return severity, cvss_score, severity_source
 
 
-def parse_fixed_version(
-    vuln_data: dict,
-    package_name: str,
-    ecosystem: str = "",
-    current_version: str = "",
-) -> Optional[str]:
+def parse_fixed_version(vuln_data: dict, package_name: str, ecosystem: str = "", current_version: str = "") -> Optional[str]:
     """Extract fixed version from OSV affected data.
 
     Prefers stable releases over pre-release versions.  Uses PEP 503
     normalization when comparing PyPI package names so that mixed-separator
     forms (e.g. ``Requests_OAuthlib`` vs ``requests-oauthlib``) always match.
 
-    Guards against cross-package fix-version bleed:
-    - Skips affected entries with an empty package name.
-    - Skips fix versions that are lower than ``current_version`` (a fix cannot
-      be a downgrade; this usually means the version belongs to a different
-      package in the same advisory).
+    Guards against cross-package fix bleed: skips affected entries with no
+    package name and skips fix versions lower than ``current_version``.
     """
     norm_input = normalize_package_name(package_name, ecosystem)
     prerelease_candidate: Optional[str] = None
 
-    # Parse current_version once for comparison
+    # Parse current version for downgrade detection
     current_pv = None
     if current_version and current_version not in ("unknown", "latest", ""):
         try:
@@ -423,20 +415,13 @@ def parse_fixed_version(
 
     for affected in vuln_data.get("affected", []):
         pkg = affected.get("package", {})
-
-        # Guard 1: skip affected entries with no package name — they cannot be
-        # matched to any specific package and risk leaking a version from another
-        # entry (e.g. CVE-2023-4863 has both libwebp and pillow affected blocks).
-        osv_name = pkg.get("name", "")
-        if not osv_name:
-            _logger.debug(
-                "parse_fixed_version: skipping affected entry with empty package name for %s",
-                vuln_data.get("id", "unknown"),
-            )
+        pkg_name = pkg.get("name", "")
+        # Skip entries with no package name — can't match, causes false fix bleed
+        if not pkg_name:
+            _logger.debug("Skipping affected entry with empty package name in %s", vuln_data.get("id", "?"))
             continue
-
         osv_eco = pkg.get("ecosystem", ecosystem)
-        osv_norm = normalize_package_name(osv_name, osv_eco)
+        osv_norm = normalize_package_name(pkg_name, osv_eco)
         if osv_norm == norm_input:
             for rng in affected.get("ranges", []):
                 for event in rng.get("events", []):
@@ -446,20 +431,15 @@ def parse_fixed_version(
                             from packaging.version import Version
 
                             pv = Version(fixed)
-
-                            # Guard 2: skip fix versions that are lower than the
-                            # installed version — a valid fix is always a higher
-                            # version. A lower value almost certainly belongs to a
-                            # sibling package in a multi-package advisory.
+                            # Skip fix versions lower than current (belongs to sibling package)
                             if current_pv is not None and pv < current_pv:
                                 _logger.debug(
-                                    "parse_fixed_version: skipping fix %r for %s — lower than current version %r",
+                                    "Skipping fix %s < current %s for %s",
                                     fixed,
-                                    package_name,
                                     current_version,
+                                    package_name,
                                 )
                                 continue
-
                             if not pv.is_prerelease:
                                 return fixed
                             # Remember pre-release as fallback

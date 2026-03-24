@@ -481,7 +481,7 @@ ScanRequest → _run_scan_sync() [ThreadPoolExecutor]
 
 ### Discovery (discovery/__init__.py)
 
-- **20 named MCP clients** in `CONFIG_LOCATIONS` (+ `CUSTOM` = 21 `AgentType` enum values). README "21" counts all enum values. ARCHITECTURE.md "21" also accurate. No gap.
+- **30 named MCP client config paths across all platforms` enum values). README "21" counts all enum values. ARCHITECTURE.md "21" also accurate. No gap.
 - `sanitize_env_vars()` called on all env blocks. `validate_path()` used before reading config files. PASS.
 - Docker MCP Toolkit handled separately (Docker socket path, not `CONFIG_LOCATIONS`). Correct.
 
@@ -514,7 +514,7 @@ ScanRequest → _run_scan_sync() [ThreadPoolExecutor]
 
 | Claim | Verified |
 |-------|---------|
-| "30 MCP clients" (README) | ✓ 20 named AgentType values + CUSTOM = 21 |
+| "30 MCP clients" (README) | ✓ 30 named MCP client config locations |
 | "33 MCP tools" | ✓ meta-test enforces this |
 | "14 compliance frameworks" | ✓ 10 tagging modules |
 | "52 CWE compliance mappings" | ✓ CWE_COMPLIANCE_MAP count |

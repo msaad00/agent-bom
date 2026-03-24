@@ -973,7 +973,7 @@ def _local_vuln_to_vulnerability(lv: "Any") -> Vulnerability:
         summary=lv.summary or "No description available",
         severity=severity,
         cvss_score=lv.cvss_score,
-        fixed_version=lv.fixed_version,
+        fixed_version=lv.fixed_version if _is_valid_fix_version(lv.fixed_version or "") else None,
         epss_score=lv.epss_probability,
         epss_percentile=lv.epss_percentile,
         is_kev=lv.is_kev,

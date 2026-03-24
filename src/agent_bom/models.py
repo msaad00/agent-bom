@@ -124,6 +124,20 @@ class Vulnerability:
         default_factory=dict
     )  # CVE-level framework tags, e.g. {"nist_csf": ["ID.RA-01"], "cis": ["CIS-02.3"]}
 
+    def __post_init__(self) -> None:
+        """Sanitize fixed_version — filter git SHAs and non-version strings."""
+        if self.fixed_version:
+            v = self.fixed_version.lstrip("v")
+            # Git SHA (40 hex chars)
+            if len(v) == 40 and all(c in "0123456789abcdef" for c in v):
+                self.fixed_version = None
+            # Short SHA (7-12 hex only, no dots/dashes)
+            elif 7 <= len(v) <= 12 and all(c in "0123456789abcdef" for c in v):
+                self.fixed_version = None
+            # No digits at all
+            elif not any(c.isdigit() for c in v):
+                self.fixed_version = None
+
     @property
     def is_actively_exploited(self) -> bool:
         """Check if vulnerability is being actively exploited.

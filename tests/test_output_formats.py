@@ -19,7 +19,7 @@ from agent_bom.models import (
     TransportType,
     Vulnerability,
 )
-from agent_bom.output import to_csv, to_junit, to_markdown
+from agent_bom.output import to_csv, to_json, to_junit, to_markdown
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -262,6 +262,27 @@ class TestCSV:
         assert "modified_at" in reader.fieldnames
         assert rows[0]["published_at"] == "2026-03-21T12:00:00Z"
         assert rows[0]["modified_at"] == "2026-03-23T09:00:00Z"
+
+
+def test_json_runtime_session_graph_passthrough():
+    report = _make_report()
+    report.runtime_session_graph = {
+        "node_count": 1,
+        "edge_count": 0,
+        "nodes": [{"id": "tool:read_file", "kind": "tool"}],
+        "edges": [],
+    }
+    data = to_json(report)
+    assert "runtime_session_graph" in data
+    assert data["runtime_session_graph"]["node_count"] == 1
+
+
+def test_json_includes_ai_bom_entities():
+    report = _make_report(agents=[_make_agent(servers=[_make_server(packages=[_make_pkg()])])])
+    data = to_json(report)
+    assert "ai_bom_entities" in data
+    assert data["ai_bom_entities"]["schema_version"] == "1.0"
+    assert data["ai_bom_entities"]["summary"]["agents"] == 1
 
 
 # ── Markdown ─────────────────────────────────────────────────────────────────

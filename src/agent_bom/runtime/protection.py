@@ -215,11 +215,37 @@ class RuntimeSessionGraph:
         )
 
     def to_dict(self) -> dict[str, object]:
+        timeline: list[dict[str, object]] = []
+        for node in self.nodes.values():
+            if node.kind in {"tool_call", "tool_response", "alert"}:
+                timeline.append(
+                    {
+                        "timestamp": node.first_seen,
+                        "kind": node.kind,
+                        "id": node.id,
+                        "label": node.label,
+                        "metadata": node.metadata,
+                    }
+                )
+        for edge in self.edges:
+            timeline.append(
+                {
+                    "timestamp": edge.timestamp,
+                    "kind": "interaction",
+                    "source": edge.source,
+                    "target": edge.target,
+                    "relation": edge.relation,
+                    "metadata": edge.metadata,
+                }
+            )
+        timeline.sort(key=lambda item: str(item.get("timestamp", "")))
         return {
             "node_count": len(self.nodes),
             "edge_count": len(self.edges),
             "nodes": [node.to_dict() for node in self.nodes.values()],
             "edges": [edge.to_dict() for edge in self.edges],
+            "timeline_event_count": len(timeline),
+            "timeline": timeline,
         }
 
 

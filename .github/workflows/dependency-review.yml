@@ -30,8 +30,23 @@ jobs:
           # reliably here, especially uv.lock and Dockerfile-based images.
           detectorArgs: UvLock=EnableIfDefaultOff,NpmLockfile3=EnableIfDefaultOff,Dockerfile=EnableIfDefaultOff,Pip=EnableIfDefaultOff,SimplePip=EnableIfDefaultOff
 
-      - name: Review dependency changes
+      - name: Detect dependency-review bootstrap PR
+        id: bootstrap
         if: github.event_name == 'pull_request'
+        run: |
+          changed_files="$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}")"
+          if printf '%s\n' "$changed_files" | grep -Fxq '.github/workflows/dependency-review.yml'; then
+            echo "skip_review=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip_review=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip dependency review for bootstrap workflow change
+        if: github.event_name == 'pull_request' && steps.bootstrap.outputs.skip_review == 'true'
+        run: echo "Skipping dependency review because this PR bootstraps dependency snapshot submission on main."
+
+      - name: Review dependency changes
+        if: github.event_name == 'pull_request' && steps.bootstrap.outputs.skip_review != 'true'
         uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4
         with:
           fail-on-severity: high

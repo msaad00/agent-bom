@@ -1,10 +1,10 @@
 """Compliance and posture API routes.
 
 Endpoints:
-    GET  /v1/compliance                      10-framework compliance posture
-    GET  /v1/compliance/{framework}          single framework
+    GET  /v1/compliance                      14-framework compliance posture
     GET  /v1/compliance/narrative            full compliance narrative (all frameworks)
     GET  /v1/compliance/narrative/{framework} single-framework narrative
+    GET  /v1/compliance/{framework}          single framework (must be after /narrative)
     GET  /v1/posture                         enterprise posture scorecard
     GET  /v1/posture/counts                  severity counts for nav badges
     GET  /v1/posture/credentials             credential risk ranking

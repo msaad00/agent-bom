@@ -390,20 +390,38 @@ def parse_osv_severity(vuln_data: dict) -> tuple[Severity, Optional[float], Opti
     return severity, cvss_score, severity_source
 
 
-def parse_fixed_version(vuln_data: dict, package_name: str, ecosystem: str = "") -> Optional[str]:
+def parse_fixed_version(vuln_data: dict, package_name: str, ecosystem: str = "", current_version: str = "") -> Optional[str]:
     """Extract fixed version from OSV affected data.
 
     Prefers stable releases over pre-release versions.  Uses PEP 503
     normalization when comparing PyPI package names so that mixed-separator
     forms (e.g. ``Requests_OAuthlib`` vs ``requests-oauthlib``) always match.
+
+    Guards against cross-package fix bleed: skips affected entries with no
+    package name and skips fix versions lower than ``current_version``.
     """
     norm_input = normalize_package_name(package_name, ecosystem)
     prerelease_candidate: Optional[str] = None
 
+    # Parse current version for downgrade detection
+    current_pv = None
+    if current_version and current_version not in ("unknown", "latest", ""):
+        try:
+            from packaging.version import Version
+
+            current_pv = Version(current_version)
+        except Exception:  # noqa: BLE001
+            pass
+
     for affected in vuln_data.get("affected", []):
         pkg = affected.get("package", {})
+        pkg_name = pkg.get("name", "")
+        # Skip entries with no package name — can't match, causes false fix bleed
+        if not pkg_name:
+            _logger.debug("Skipping affected entry with empty package name in %s", vuln_data.get("id", "?"))
+            continue
         osv_eco = pkg.get("ecosystem", ecosystem)
-        osv_norm = normalize_package_name(pkg.get("name", ""), osv_eco)
+        osv_norm = normalize_package_name(pkg_name, osv_eco)
         if osv_norm == norm_input:
             for rng in affected.get("ranges", []):
                 for event in rng.get("events", []):
@@ -413,6 +431,15 @@ def parse_fixed_version(vuln_data: dict, package_name: str, ecosystem: str = "")
                             from packaging.version import Version
 
                             pv = Version(fixed)
+                            # Skip fix versions lower than current (belongs to sibling package)
+                            if current_pv is not None and pv < current_pv:
+                                _logger.debug(
+                                    "Skipping fix %s < current %s for %s",
+                                    fixed,
+                                    current_version,
+                                    package_name,
+                                )
+                                continue
                             if not pv.is_prerelease:
                                 return fixed
                             # Remember pre-release as fallback
@@ -870,7 +897,7 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
             seen_ids.add(alias)
 
         severity, cvss_score, sev_source = parse_osv_severity(vuln_data)
-        fixed = parse_fixed_version(vuln_data, package.name, package.ecosystem)
+        fixed = parse_fixed_version(vuln_data, package.name, package.ecosystem, current_version=package.version or "")
 
         references = [ref.get("url", "") for ref in vuln_data.get("references", []) if ref.get("url")]
 

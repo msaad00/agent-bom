@@ -270,16 +270,17 @@ export function Nav() {
               {/* Group Header */}
               <button
                 onClick={() => collapsed ? setCollapsed(false) : toggleGroup(group.label)}
-                className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+                className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors border-l-2 ${
                   hasActiveChild
                     ? "text-zinc-200"
                     : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/40"
                 }`}
+                style={{ borderLeftColor: group.accent }}
                 title={collapsed ? group.label : undefined}
               >
                 <GroupIcon
                   className="w-4 h-4 shrink-0"
-                  style={{ color: hasActiveChild ? group.accent : undefined }}
+                  style={{ color: hasActiveChild ? group.accent : group.accent + "99" }}
                 />
                 {!collapsed && (
                   <>

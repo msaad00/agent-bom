@@ -1,6 +1,8 @@
 name: Dependency Review
 
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main, develop]
 
@@ -29,6 +31,7 @@ jobs:
           detectorArgs: UvLock=EnableIfDefaultOff,NpmLockfile3=EnableIfDefaultOff,Dockerfile=EnableIfDefaultOff,Pip=EnableIfDefaultOff,SimplePip=EnableIfDefaultOff
 
       - name: Review dependency changes
+        if: github.event_name == 'pull_request'
         uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4
         with:
           fail-on-severity: high

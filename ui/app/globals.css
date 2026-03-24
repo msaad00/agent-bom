@@ -5,6 +5,13 @@
   --foreground: #171717;
   --sidebar-width: 240px;
   --sidebar-collapsed-width: 60px;
+
+  /* Architecture diagram color semantics */
+  --color-discover: #58a6ff;
+  --color-scan: #f85149;
+  --color-analyze: #d29922;
+  --color-output: #3fb950;
+  --color-protect: #f778ba;
 }
 
 @theme inline {

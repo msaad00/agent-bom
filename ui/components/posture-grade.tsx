@@ -7,9 +7,13 @@ interface PostureGradeProps {
 }
 
 export function PostureGrade({ grade, score, dimensions }: PostureGradeProps) {
-  // Color based on grade
+  // Color based on grade — matches architecture diagram semantics
   const gradeColor = {
-    A: "#22c55e", B: "#3b82f6", C: "#eab308", D: "#f97316", F: "#ef4444",
+    A: "#3fb950", // green  — output/governance layer
+    B: "#58a6ff", // blue   — discover layer
+    C: "#d29922", // amber  — analyze layer
+    D: "#f97316", // orange — degraded
+    F: "#f85149", // red    — scan/critical layer
   }[grade] ?? "#71717a";
 
   // SVG radial progress ring (120px)

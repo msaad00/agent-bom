@@ -280,7 +280,7 @@ docker run --rm agentbom/agent-bom agents  # Docker (linux/amd64 + arm64)
 | Mode | Command | Best for |
 |------|---------|----------|
 | CLI | `agent-bom agents` | Local audit |
-| GitHub Action | `uses: msaad00/agent-bom@v0.75.3 | CI/CD + SARIF |
+| GitHub Action | `uses: msaad00/agent-bom@v0.75.4 | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom agents` | Isolated scans |
 | MCP Server | `agent-bom mcp server` | Inside any AI assistant |
 | Runtime proxy | `agent-bom proxy` | MCP traffic enforcement |
@@ -291,7 +291,7 @@ docker run --rm agentbom/agent-bom agents  # Docker (linux/amd64 + arm64)
 <summary><b>GitHub Action</b></summary>
 
 ```yaml
-- uses: msaad00/agent-bom@v0.75.3
+- uses: msaad00/agent-bom@v0.75.4
   with:
     severity-threshold: high
     upload-sarif: true

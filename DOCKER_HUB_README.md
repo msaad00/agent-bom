@@ -1,71 +1,92 @@
 # agent-bom
 
-Security scanner for AI infrastructure — from agent to runtime.
+**Find which AI agents, MCP servers, credentials, and tools are exposed by a vulnerability.**
 
-5 products in 1 package: **agent-bom** (BOM + scanning), **agent-shield** (runtime protection), **agent-cloud** (cloud posture), **agent-iac** (IaC security), **agent-claw** (fleet governance).
+agent-bom helps developers, security teams, and enterprises discover AI agent environments,
+map CVEs into real blast radius, and protect MCP traffic at runtime.
 
-Discovers AI agents and MCP servers, scans all dependencies against OSV/NVD/GHSA, maps blast radius (which credentials and tools each CVE reaches), enforces policy in real time, and generates compliance evidence for 14 frameworks.
+## Who It Is For
 
-## Quick start
+- **Developers:** scan your workstation, repos, MCP servers, and AI tools
+- **Security teams:** map package risk into agents, credentials, and reachable tools
+- **Enterprises:** add runtime protection, policy, and compliance evidence
+
+## Quick Start
+
+**Discover and scan your AI agent environment**
 
 ```bash
-# Scan your AI agent environment
 docker run --rm agentbom/agent-bom:latest agents
-
-# Pre-install CVE gate
-docker run --rm agentbom/agent-bom:latest check flask@2.0.0
-
-# Scan a project directory
-docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest agents -p /workspace
-
-# Export CycloneDX ML BOM (with modelCard, dataset, training metadata)
-docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest agents -p /workspace -f cyclonedx -o /workspace/sbom.json
-
-# Export dependency graph for Neo4j
-docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest graph /workspace/report.json -f cypher -o /workspace/import.cypher
-
-# IaC misconfiguration scan
-docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest iac /workspace
-
-# Secret detection
-docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest secrets /workspace
-
-# Source code analysis
-docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest code /workspace
 ```
 
-## What it scans
+**Workstation posture summary**
 
-- **30 MCP client types** — Claude Desktop, Cursor, Windsurf, VS Code Copilot, Cline, Continue, Zed, Cortex Code, Codex CLI, Gemini CLI, Sourcegraph Cody, Aider, Trae, Aide, and more
-- **Packages** — npm, pip, cargo, go modules, OS packages (dpkg/rpm/apk) via OSV, NVD, EPSS, CISA KEV
-- **Containers** — Docker images (native scanning, no external tools required)
-- **Cloud AI** — AWS Bedrock, Azure OpenAI, GCP Vertex AI, Snowflake Cortex, Databricks, HuggingFace, Ollama, and more (12 total)
-- **MCP servers** — tool poisoning, description injection, credential exposure
-- **IaC** — Dockerfile, Kubernetes, Terraform, CloudFormation, Helm (138 rules)
-- **Source code** — AST analysis of Python AI frameworks (LangChain, CrewAI, OpenAI Agents SDK, and 7 more)
-- **Secrets** — 116 secret patterns + 11 PII patterns across source, config, and .env files
+```bash
+docker run --rm agentbom/agent-bom:latest agents --posture
+```
 
-## Key features
+**Pre-install CVE check**
 
-- **Blast radius mapping** — traces CVE impact: package → server → agent → credentials → tools
-- **Runtime MCP proxy** — 7 behavioral detectors: rug pull, tool drift, injection, credential leak, exfil, response cloaking, vector DB injection, cross-agent correlation
-- **14 compliance frameworks** — OWASP LLM Top 10, OWASP Agentic Top 10, MITRE ATLAS, MITRE ATT&CK, NIST AI RMF, EU AI Act, NIST CSF, ISO 27001, SOC 2, CMMC, FedRAMP, CIS Benchmarks, AISVS, and more
-- **Policy-as-code** — 17 conditions with AND/OR/NOT expression engine
-- **33 MCP server tools** — available to any MCP-compatible AI assistant
-- **18 output formats** — JSON, SARIF, CycloneDX 1.6, SPDX, HTML, GraphML, Neo4j Cypher, JUnit, CSV, Markdown, Mermaid, Prometheus, OCSF, and more
-- **20-page Next.js dashboard** — sidebar navigation, interactive topology graphs, compliance heatmaps, fleet management
+```bash
+docker run --rm agentbom/agent-bom:latest check flask@2.0.0
+```
+
+**Scan a project directory**
+
+```bash
+docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest agents -p /workspace
+```
+
+**Export AI BOM (CycloneDX 1.6 / SPDX 3.0)**
+
+```bash
+docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest agents -p /workspace -f cyclonedx -o /workspace/ai-bom.json
+```
+
+**IaC misconfiguration scan**
+
+```bash
+docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest iac /workspace
+```
+
+**Preflight health check**
+
+```bash
+docker run --rm agentbom/agent-bom:latest doctor
+```
+
+## What It Covers
+
+- **30 MCP client types** — Claude Desktop, Cursor, Windsurf, VS Code Copilot, Cline, Continue, Zed, Cortex Code, and more
+- Packages, containers, IaC, secrets, AI source code, and cloud AI environments
+- Blast radius from package to server to agent to credentials and tools
+- Runtime MCP proxy with 8 behavioral detectors
+- 14 compliance frameworks
+- 33 MCP server tools
+- 20-page Next.js dashboard
+
+## Why It Is Different
+
+Traditional scanners stop at the artifact.
+
+agent-bom answers:
+
+- Which AI agents are affected?
+- Which MCP servers load the vulnerable package?
+- Which credentials are exposed?
+- Which tools are reachable?
+- What should be fixed first?
 
 ## Tags
 
 | Tag | Description |
 |-----|-------------|
 | `latest` | Most recent stable release |
-| `v0.75.3` | Current stable version (pinned) |
+| `v0.75.4` | Current stable version (pinned) |
 
 ## Links
 
 - [GitHub](https://github.com/msaad00/agent-bom)
-- [Documentation](https://github.com/msaad00/agent-bom/blob/main/README.md)
 - [PyPI](https://pypi.org/project/agent-bom/)
-- [MCP Server (GHCR)](https://github.com/msaad00/agent-bom/pkgs/container/agent-bom)
-- [GitHub Action](https://github.com/marketplace/actions/agent-bom-security-scan)
+- [GitHub Action](https://github.com/marketplace/actions/agent-bom)
+- [Discussions](https://github.com/msaad00/agent-bom/discussions)

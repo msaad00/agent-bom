@@ -179,7 +179,7 @@ agent-bom agents
 # Pre-install CVE gate
 agent-bom check flask@2.0.0
 
-# MCP security proxy (112 patterns, 7 detectors, PII redaction)
+# MCP security proxy (112 patterns, 8 detectors, PII redaction)
 agent-bom proxy "npx @mcp/server-filesystem /tmp"
 
 # Container image scan
@@ -434,7 +434,7 @@ MCP Server ───── npx @mcp/server-fs ──────── config pa
      │
 Packages ─────── express@4.17.1 ───────────── 15 ecosystems, CVE/EPSS/KEV scanning
      │
-AI Agent ─────── Claude Desktop, Cursor ───── 25 MCP clients auto-detected
+AI Agent ─────── Claude Desktop, Cursor ───── 30 MCP clients auto-detected
      │
 Credentials ──── API keys, tokens ──────────── exposure mapping + PII redaction
      │

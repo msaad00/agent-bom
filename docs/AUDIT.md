@@ -329,7 +329,7 @@ log_tool_call() — JSONL audit log, 0o600 permissions, payload SHA-256, policy 
 _send_webhook() — SSRF-protected (validate_url()), fire-and-forget async POST
 ```
 
-**runtime/detectors.py** — 7 detectors:
+**runtime/detectors.py** — 8 detectors:
 
 | Detector | What it checks |
 |----------|----------------|
@@ -348,7 +348,7 @@ _send_webhook() — SSRF-protected (validate_url()), fire-and-forget async POST
 | F5 | `runtime/__init__.py` | `VectorDBInjectionDetector` was not exported from the public runtime API — added to `__all__` |
 | F6 | `proxy.py` | `VectorDBInjectionDetector` was never instantiated in `run_proxy()` — added `vector_detector` alongside `response_inspector`; now fires for every tool response with CRITICAL severity upgrade for confirmed vector tool names |
 
-**Test coverage**: 88 tests in `test_runtime_detectors.py` + `test_proxy.py` + `test_proxy_metrics.py`, plus `test_protect.py`, `test_protection_engine.py`. All 7 detectors are tested individually.
+**Test coverage**: 88 tests in `test_runtime_detectors.py` + `test_proxy.py` + `test_proxy_metrics.py`, plus `test_protect.py`, `test_protection_engine.py`. All 8 detectors are tested individually.
 
 ---
 
@@ -508,14 +508,14 @@ ScanRequest → _run_scan_sync() [ThreadPoolExecutor]
 | F9 | `ARCHITECTURE.md` | Detector list now includes `VectorDBInjectionDetector` |
 | F10 | `ARCHITECTURE.md` | `CLI with 15+ commands` → `22+ commands and groups` |
 | F11 | `ARCHITECTURE.md` | `enforcement.py — 10 checks` → `8 checks` |
-| F12 | SVGs (7 files) | `6 detectors` → `7 detectors`: engine-internals, modes-flow, offerings-map, scanner-architecture (dark + light variants) |
+| F12 | SVGs (7 files) | `6 detectors` → `8 detectors`: engine-internals, modes-flow, offerings-map, scanner-architecture (dark + light variants) |
 
 ### Verified accurate (no changes needed)
 
 | Claim | Verified |
 |-------|---------|
 | "30 MCP clients" (README) | ✓ 20 named AgentType values + CUSTOM = 21 |
-| "32 MCP tools" | ✓ meta-test enforces this |
+| "33 MCP tools" | ✓ meta-test enforces this |
 | "14 compliance frameworks" | ✓ 10 tagging modules |
 | "52 CWE compliance mappings" | ✓ CWE_COMPLIANCE_MAP count |
 | "12 cloud providers" | ✓ cloud/__init__.py _PROVIDERS |

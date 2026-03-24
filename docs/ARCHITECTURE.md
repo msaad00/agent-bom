@@ -22,7 +22,7 @@ graph TB
 
     subgraph Shield["agent-shield — Runtime Protection"]
         Proxy["proxy\nMCP proxy + audit"]
-        Protect["protect --shield\n7 detectors + deep defense"]
+        Protect["protect --shield\n8 detectors + deep defense"]
         Run_Cmd["run\nZero-config proxy"]
     end
 
@@ -44,7 +44,7 @@ graph TB
     end
 
     subgraph Core["Core Engine"]
-        Discovery["Discovery\n25 MCP clients"]
+        Discovery["Discovery\n30 MCP clients"]
         Parser["Package Parser\n15 ecosystems"]
         Scanner["CVE Scanner\nOSV + NVD + GHSA"]
         Blast["Blast Radius\nCVE → agent → credentials → tools"]
@@ -56,7 +56,7 @@ graph TB
         Console["Console\nTable / verbose"]
         Formats["Formats\nJSON / SARIF / HTML / CycloneDX"]
         API["REST API + MCP\n33 tools"]
-        Proxy["Runtime Proxy\n7 detectors"]
+        Proxy["Runtime Proxy\n8 detectors"]
     end
 
     Scan & MCP_Cmd --> Discovery

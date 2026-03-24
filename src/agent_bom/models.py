@@ -288,6 +288,21 @@ class MCPTool:
     def fingerprint(self) -> str:
         return self.stable_id
 
+    @property
+    def risk_score(self) -> int:
+        """Heuristic risk score for the tool based on schema findings."""
+        score = 0
+        for finding in self.schema_findings:
+            if "shell-execution-capability" in finding:
+                score += 4
+            elif "network-egress-capability" in finding:
+                score += 3
+            elif "filesystem-capability" in finding:
+                score += 2
+            else:
+                score += 1
+        return min(score, 10)
+
 
 @dataclass
 class MCPResource:
@@ -311,6 +326,19 @@ class MCPResource:
     @property
     def fingerprint(self) -> str:
         return self.stable_id
+
+    @property
+    def risk_score(self) -> int:
+        """Heuristic risk score for the resource based on content findings."""
+        score = 0
+        for finding in self.content_findings:
+            if "hidden-instruction-surface" in finding or "prompt-bearing-resource" in finding:
+                score += 3
+            elif "mutable-resource" in finding:
+                score += 2
+            else:
+                score += 1
+        return min(score, 10)
 
 
 @dataclass
@@ -673,6 +701,7 @@ class AIBOMReport:
     ai_inventory_data: Optional[dict] = None  # AI component source scan results (SDK imports, models, keys)
     introspection_data: Optional[dict] = None  # Runtime MCP introspection results (tools, resources, drift)
     health_check_data: Optional[dict] = None  # MCP server reachability/health results
+    runtime_session_graph: Optional[dict] = None  # Structured runtime session graph/timeline evidence
 
     # Unified Finding stream (issue #566 — Phase 1).
     # Populated alongside blast_radii for backward compatibility.

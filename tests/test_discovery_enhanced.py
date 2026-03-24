@@ -382,6 +382,57 @@ def test_json_includes_stable_ids_and_resources():
     assert data["agents"][0]["mcp_servers"][0]["tools"][0]["stable_id"] == server.tools[0].stable_id
     assert data["agents"][0]["mcp_servers"][0]["resources"][0]["stable_id"] == server.resources[0].stable_id
     assert data["agents"][0]["mcp_servers"][0]["packages"][0]["stable_id"] == server.packages[0].stable_id
+    assert data["agents"][0]["mcp_servers"][0]["tools"][0]["risk_score"] >= 1
+    assert data["agents"][0]["mcp_servers"][0]["resources"][0]["risk_score"] >= 1
+    snapshot = data["inventory_snapshot"]
+    assert snapshot["summary"]["agents"] == 1
+    assert snapshot["summary"]["servers"] == 1
+    assert snapshot["summary"]["tools"] == 1
+    assert snapshot["summary"]["resources"] == 1
+    assert snapshot["summary"]["packages"] == 1
+
+
+def test_json_includes_mcp_runtime_diff():
+    from agent_bom.models import AIBOMReport, MCPServer
+    from agent_bom.output import to_json
+
+    server = MCPServer(name="filesystem", command="npx")
+    agent = Agent(name="claude-desktop", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/claude.json", mcp_servers=[server])
+    report = AIBOMReport(
+        agents=[agent],
+        introspection_data={
+            "results": [
+                {
+                    "server_name": "filesystem",
+                    "auth_mode": "local-stdio",
+                    "configured_fingerprint": "cfg-1",
+                    "runtime_fingerprint": "rt-2",
+                    "configured_tool_count": 1,
+                    "configured_resource_count": 0,
+                    "tool_count": 2,
+                    "resource_count": 1,
+                    "tools_added": ["write_file"],
+                    "tools_removed": [],
+                    "resources_added": ["file:///workspace"],
+                    "resources_removed": [],
+                    "tool_schema_findings": ["write_file.path: filesystem-capability"],
+                    "resource_findings": ["file:///workspace: mutable-resource"],
+                    "has_drift": True,
+                }
+            ]
+        },
+        runtime_correlation={
+            "correlated_findings": [
+                {"server_name": "filesystem", "tool_name": "read_file"},
+            ]
+        },
+    )
+    data = to_json(report)
+    assert data["mcp_runtime_diff"]["summary"]["servers_changed"] == 1
+    diff = data["mcp_runtime_diff"]["servers"][0]
+    assert diff["configured_vs_observed_changed"] is True
+    assert diff["runtime_used_tools"] == ["read_file"]
+    assert diff["max_tool_risk_score"] == 0
 
 
 # ── CycloneDX output includes status ────────────────────────────────────────

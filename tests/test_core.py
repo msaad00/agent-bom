@@ -571,6 +571,43 @@ def test_diff_resolved_finding():
     assert len(diff["resolved"]) == 1
 
 
+def test_diff_reports_inventory_changes():
+    from agent_bom.history import diff_reports
+
+    baseline = {
+        "generated_at": "2025-01-01T00:00:00",
+        "inventory_snapshot": {
+            "agents": [{"id": "agent-1", "name": "claude"}],
+            "servers": [{"id": "srv-1", "name": "filesystem", "fingerprint": "fp-1"}],
+            "tools": [{"id": "tool-1", "name": "read_file"}],
+            "resources": [],
+            "packages": [{"id": "pkg-1", "name": "requests", "version": "2.31.0"}],
+        },
+        "agents": [],
+        "blast_radius": [],
+    }
+    current = {
+        "generated_at": "2025-01-02T00:00:00",
+        "inventory_snapshot": {
+            "agents": [{"id": "agent-1", "name": "claude"}],
+            "servers": [
+                {"id": "srv-1", "name": "filesystem", "fingerprint": "fp-2"},
+                {"id": "srv-2", "name": "sqlite", "fingerprint": "fp-3"},
+            ],
+            "tools": [{"id": "tool-1", "name": "read_file"}, {"id": "tool-2", "name": "write_file"}],
+            "resources": [{"id": "res-1", "uri": "file:///workspace"}],
+            "packages": [{"id": "pkg-1", "name": "requests", "version": "2.31.0"}],
+        },
+        "agents": [],
+        "blast_radius": [],
+    }
+    diff = diff_reports(baseline, current)
+    assert diff["inventory_diff"]["summary"]["new_servers"] == 1
+    assert diff["inventory_diff"]["summary"]["changed_servers"] == 1
+    assert diff["inventory_diff"]["summary"]["new_tools"] == 1
+    assert diff["inventory_diff"]["summary"]["new_resources"] == 1
+
+
 def test_cli_check_help():
     runner = CliRunner()
     result = runner.invoke(main, ["check", "--help"])

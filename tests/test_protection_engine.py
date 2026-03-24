@@ -121,6 +121,8 @@ def test_process_tool_call_records_session_graph():
     assert any(node["kind"] == "agent" for node in graph["nodes"])
     assert any(node["kind"] == "tool_call" for node in graph["nodes"])
     assert any(edge["relation"] == "invokes" for edge in graph["edges"])
+    assert graph["timeline_event_count"] >= 3
+    assert any(event["kind"] == "tool_call" for event in graph["timeline"])
 
 
 # ─── Tool Response Processing ────────────────────────────────────────────────
@@ -148,6 +150,8 @@ def test_process_tool_response_credential_leak():
     graph = engine.status()["session_graph"]
     assert any(node["kind"] == "tool_response" for node in graph["nodes"])
     assert any(node["kind"] == "alert" for node in graph["nodes"])
+    assert any(event["kind"] == "tool_response" for event in graph["timeline"])
+    assert any(event["kind"] == "alert" for event in graph["timeline"])
 
 
 # ─── Tool Drift ──────────────────────────────────────────────────────────────

@@ -1619,6 +1619,18 @@ def print_diff(diff: dict) -> None:
         parts.append(f"[yellow]{summary['new_packages']} new package(s)[/yellow]")
     if summary["removed_packages"]:
         parts.append(f"[dim]{summary['removed_packages']} removed package(s)[/dim]")
+    inventory_diff = diff.get("inventory_diff", {})
+    inv_summary = inventory_diff.get("summary", {}) if isinstance(inventory_diff, dict) else {}
+    if inv_summary.get("new_servers"):
+        parts.append(f"[cyan]{inv_summary['new_servers']} new server(s)[/cyan]")
+    if inv_summary.get("removed_servers"):
+        parts.append(f"[dim]{inv_summary['removed_servers']} removed server(s)[/dim]")
+    if inv_summary.get("changed_servers"):
+        parts.append(f"[magenta]{inv_summary['changed_servers']} changed server fingerprint(s)[/magenta]")
+    if inv_summary.get("new_tools"):
+        parts.append(f"[cyan]{inv_summary['new_tools']} new tool(s)[/cyan]")
+    if inv_summary.get("new_resources"):
+        parts.append(f"[cyan]{inv_summary['new_resources']} new resource(s)[/cyan]")
 
     if parts:
         console.print("  " + "  •  ".join(parts) + "\n")
@@ -1664,6 +1676,24 @@ def print_diff(diff: dict) -> None:
         console.print(f"  [dim]Packages removed ({len(diff['removed_packages'])}):[/dim]")
         for pkg in diff["removed_packages"][:10]:
             console.print(f"    [-] [dim]{pkg}[/dim]")
+        console.print()
+
+    if isinstance(inventory_diff, dict) and inventory_diff.get("changed_servers"):
+        console.print(f"  [magenta]Server fingerprint changes ({len(inventory_diff['changed_servers'])}):[/magenta]")
+        for server in inventory_diff["changed_servers"][:10]:
+            console.print(f"    [~] [dim]{server.get('name') or server.get('id')}[/dim]")
+        console.print()
+
+    if isinstance(inventory_diff, dict) and inventory_diff.get("new_tools"):
+        console.print(f"  [cyan]New tools ({len(inventory_diff['new_tools'])}):[/cyan]")
+        for tool in inventory_diff["new_tools"][:10]:
+            console.print(f"    [+] [dim]{tool.get('name') or tool.get('id')}[/dim]")
+        console.print()
+
+    if isinstance(inventory_diff, dict) and inventory_diff.get("new_resources"):
+        console.print(f"  [cyan]New resources ({len(inventory_diff['new_resources'])}):[/cyan]")
+        for resource in inventory_diff["new_resources"][:10]:
+            console.print(f"    [+] [dim]{resource.get('uri') or resource.get('id')}[/dim]")
         console.print()
 
 

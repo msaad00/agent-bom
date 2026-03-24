@@ -228,8 +228,183 @@ def _build_framework_summary(blast_radii: list[BlastRadius]) -> dict:
     }
 
 
+def _build_inventory_snapshot(report: AIBOMReport) -> dict:
+    """Build a deterministic inventory snapshot for diffing and BOM operations."""
+    agents: list[dict] = []
+    servers: dict[str, dict] = {}
+    tools: dict[str, dict] = {}
+    resources: dict[str, dict] = {}
+    packages: dict[str, dict] = {}
+    relationships: list[dict] = []
+
+    for agent in report.agents:
+        server_ids: list[str] = []
+        agents.append(
+            {
+                "id": agent.stable_id,
+                "name": agent.name,
+                "type": agent.agent_type.value,
+                "status": agent.status.value,
+                "config_path": agent.config_path,
+                "server_ids": server_ids,
+            }
+        )
+
+        for server in agent.mcp_servers:
+            server_ids.append(server.stable_id)
+            if server.stable_id not in servers:
+                servers[server.stable_id] = {
+                    "id": server.stable_id,
+                    "name": server.name,
+                    "fingerprint": server.fingerprint,
+                    "auth_mode": server.auth_mode,
+                    "transport": server.transport.value,
+                    "command": server.command,
+                    "url": server.url,
+                    "tool_ids": [],
+                    "resource_ids": [],
+                    "package_ids": [],
+                }
+            relationships.append({"from": agent.stable_id, "to": server.stable_id, "type": "uses"})
+
+            for tool in server.tools:
+                if tool.stable_id not in tools:
+                    tools[tool.stable_id] = {
+                        "id": tool.stable_id,
+                        "name": tool.name,
+                        "fingerprint": tool.fingerprint,
+                        "description": tool.description,
+                        "schema_findings": tool.schema_findings,
+                        "risk_score": tool.risk_score,
+                    }
+                if tool.stable_id not in servers[server.stable_id]["tool_ids"]:
+                    servers[server.stable_id]["tool_ids"].append(tool.stable_id)
+                relationships.append({"from": server.stable_id, "to": tool.stable_id, "type": "exposes_tool"})
+
+            for resource in server.resources:
+                if resource.stable_id not in resources:
+                    resources[resource.stable_id] = {
+                        "id": resource.stable_id,
+                        "uri": resource.uri,
+                        "name": resource.name,
+                        "fingerprint": resource.fingerprint,
+                        "mime_type": resource.mime_type,
+                        "content_findings": resource.content_findings,
+                        "risk_score": resource.risk_score,
+                    }
+                if resource.stable_id not in servers[server.stable_id]["resource_ids"]:
+                    servers[server.stable_id]["resource_ids"].append(resource.stable_id)
+                relationships.append({"from": server.stable_id, "to": resource.stable_id, "type": "exposes_resource"})
+
+            for pkg in server.packages:
+                if pkg.stable_id not in packages:
+                    packages[pkg.stable_id] = {
+                        "id": pkg.stable_id,
+                        "name": pkg.name,
+                        "version": pkg.version,
+                        "ecosystem": pkg.ecosystem,
+                        "purl": pkg.purl,
+                        "vulnerability_count": len(pkg.vulnerabilities),
+                    }
+                if pkg.stable_id not in servers[server.stable_id]["package_ids"]:
+                    servers[server.stable_id]["package_ids"].append(pkg.stable_id)
+                relationships.append({"from": server.stable_id, "to": pkg.stable_id, "type": "depends_on"})
+
+    return {
+        "summary": {
+            "agents": len(agents),
+            "servers": len(servers),
+            "tools": len(tools),
+            "resources": len(resources),
+            "packages": len(packages),
+            "relationships": len(relationships),
+        },
+        "agents": agents,
+        "servers": sorted(servers.values(), key=lambda x: x["id"]),
+        "tools": sorted(tools.values(), key=lambda x: x["id"]),
+        "resources": sorted(resources.values(), key=lambda x: x["id"]),
+        "packages": sorted(packages.values(), key=lambda x: x["id"]),
+        "relationships": relationships,
+    }
+
+
+def _build_mcp_runtime_diff(report: AIBOMReport) -> dict | None:
+    """Compare configured servers against observed/runtime evidence."""
+    introspection_results = {
+        item.get("server_name"): item for item in (report.introspection_data or {}).get("results", []) if item.get("server_name")
+    }
+    runtime_used: dict[str, set[str]] = {}
+    for finding in (report.runtime_correlation or {}).get("correlated_findings", []):
+        server_name = finding.get("server_name")
+        tool_name = finding.get("tool_name")
+        if server_name and tool_name:
+            runtime_used.setdefault(server_name, set()).add(tool_name)
+
+    if not introspection_results and not runtime_used:
+        return None
+
+    server_diffs: list[dict] = []
+    for agent in report.agents:
+        for server in agent.mcp_servers:
+            intro = introspection_results.get(server.name, {})
+            observed_tools = {tool.name for tool in server.tools}
+            used_tools = sorted(runtime_used.get(server.name, set()))
+            server_diffs.append(
+                {
+                    "agent_name": agent.name,
+                    "agent_stable_id": agent.stable_id,
+                    "server_name": server.name,
+                    "server_stable_id": server.stable_id,
+                    "transport": server.transport.value,
+                    "auth_mode": intro.get("auth_mode", server.auth_mode),
+                    "configured_fingerprint": intro.get("configured_fingerprint", server.fingerprint),
+                    "runtime_fingerprint": intro.get("runtime_fingerprint"),
+                    "configured_tool_count": intro.get("configured_tool_count", len(server.tools)),
+                    "observed_tool_count": intro.get("tool_count", len(server.tools)),
+                    "configured_resource_count": intro.get("configured_resource_count", len(server.resources)),
+                    "observed_resource_count": intro.get("resource_count", len(server.resources)),
+                    "tools_added": intro.get("tools_added", []),
+                    "tools_removed": intro.get("tools_removed", []),
+                    "resources_added": intro.get("resources_added", []),
+                    "resources_removed": intro.get("resources_removed", []),
+                    "tool_schema_findings": intro.get(
+                        "tool_schema_findings",
+                        sorted({finding for tool in server.tools for finding in tool.schema_findings}),
+                    ),
+                    "resource_findings": intro.get(
+                        "resource_findings",
+                        sorted({finding for resource in server.resources for finding in resource.content_findings}),
+                    ),
+                    "max_tool_risk_score": max((tool.risk_score for tool in server.tools), default=0),
+                    "max_resource_risk_score": max((resource.risk_score for resource in server.resources), default=0),
+                    "runtime_used_tools": used_tools,
+                    "observed_not_used_tools": sorted(observed_tools - set(used_tools)),
+                    "configured_vs_observed_changed": bool(
+                        intro.get("has_drift")
+                        or intro.get("configured_fingerprint")
+                        and intro.get("runtime_fingerprint")
+                        and intro.get("configured_fingerprint") != intro.get("runtime_fingerprint")
+                    ),
+                    "observed_vs_runtime_gap": bool(observed_tools - set(used_tools)),
+                    "has_runtime_usage": bool(used_tools),
+                }
+            )
+
+    return {
+        "summary": {
+            "servers_with_introspection": sum(1 for diff in server_diffs if diff["runtime_fingerprint"]),
+            "servers_changed": sum(1 for diff in server_diffs if diff["configured_vs_observed_changed"]),
+            "servers_with_runtime_usage": sum(1 for diff in server_diffs if diff["has_runtime_usage"]),
+            "runtime_used_tools": sum(len(diff["runtime_used_tools"]) for diff in server_diffs),
+        },
+        "servers": server_diffs,
+    }
+
+
 def to_json(report: AIBOMReport) -> dict:
     """Convert report to JSON-serializable dict."""
+    inventory_snapshot = _build_inventory_snapshot(report)
+    mcp_runtime_diff = _build_mcp_runtime_diff(report)
     result = {
         "document_type": "AI-BOM",
         "spec_version": "1.0",
@@ -239,6 +414,10 @@ def to_json(report: AIBOMReport) -> dict:
         "scan_sources": report.scan_sources,
         "has_mcp_context": report.has_mcp_context,
         "has_agent_context": report.has_agent_context,
+        "ai_bom_entities": {
+            "schema_version": "1.0",
+            **inventory_snapshot,
+        },
         "summary": {
             "total_agents": report.total_agents,
             "total_mcp_servers": report.total_servers,
@@ -246,6 +425,7 @@ def to_json(report: AIBOMReport) -> dict:
             "total_vulnerabilities": report.total_vulnerabilities,
             "critical_findings": len(report.critical_vulns),
         },
+        "inventory_snapshot": inventory_snapshot,
         "agents": [
             {
                 "name": agent.name,
@@ -277,6 +457,7 @@ def to_json(report: AIBOMReport) -> dict:
                                 "fingerprint": t.fingerprint,
                                 "description": t.description,
                                 "schema_findings": t.schema_findings,
+                                "risk_score": t.risk_score,
                             }
                             for t in server.tools
                         ],
@@ -289,6 +470,7 @@ def to_json(report: AIBOMReport) -> dict:
                                 "description": r.description,
                                 "mime_type": r.mime_type,
                                 "content_findings": r.content_findings,
+                                "risk_score": r.risk_score,
                             }
                             for r in server.resources
                         ],
@@ -492,6 +674,10 @@ def to_json(report: AIBOMReport) -> dict:
 
     if report.runtime_correlation:
         result["runtime_correlation"] = report.runtime_correlation
+    if report.runtime_session_graph:
+        result["runtime_session_graph"] = report.runtime_session_graph
+    if mcp_runtime_diff:
+        result["mcp_runtime_diff"] = mcp_runtime_diff
 
     # Training pipeline lineage + dataset cards
     if report.training_pipelines:

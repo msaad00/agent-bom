@@ -29,6 +29,11 @@ class GatewayRule(BaseModel):
     tool_name: str | None = None
     tool_name_pattern: str | None = None
     arg_pattern: dict[str, str] = {}
+    deny_tool_classes: list[str] = []
+    read_only: bool = False
+    block_secret_paths: bool = False
+    block_unknown_egress: bool = False
+    allowed_hosts: list[str] = []
     rate_limit: int | None = None
     require_registry_verified: bool = False
 

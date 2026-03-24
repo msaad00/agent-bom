@@ -132,6 +132,36 @@ def test_check_policy_blocks_arg_pattern():
     assert "/etc/.*" in reason
 
 
+def test_check_policy_read_only_blocks_write_tool():
+    policy = {"rules": [{"id": "read-only", "action": "block", "read_only": True}]}
+    allowed, reason = check_policy(policy, "write_file", {"path": "/tmp/out.txt"})
+    assert allowed is False
+    assert "read-only" in reason.lower()
+
+
+def test_check_policy_blocks_secret_path():
+    policy = {"rules": [{"id": "no-secrets", "action": "block", "block_secret_paths": True}]}
+    allowed, reason = check_policy(policy, "read_file", {"path": "~/.ssh/id_rsa"})
+    assert allowed is False
+    assert "secret path" in reason.lower()
+
+
+def test_check_policy_blocks_unknown_egress_host():
+    policy = {
+        "rules": [
+            {
+                "id": "allow-egress",
+                "action": "block",
+                "block_unknown_egress": True,
+                "allowed_hosts": ["api.openai.com"],
+            }
+        ]
+    }
+    allowed, reason = check_policy(policy, "web_fetch", {"url": "https://evil.example/path"})
+    assert allowed is False
+    assert "allowlisted" in reason.lower()
+
+
 # ── ProxyMetrics ────────────────────────────────────────────────────────────
 
 

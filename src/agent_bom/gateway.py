@@ -33,6 +33,16 @@ def gateway_policy_to_proxy_format(policy: "GatewayPolicy") -> dict:
             d["tool_name_pattern"] = rule.tool_name_pattern
         if rule.arg_pattern:
             d["arg_pattern"] = rule.arg_pattern
+        if rule.deny_tool_classes:
+            d["deny_tool_classes"] = rule.deny_tool_classes
+        if rule.read_only:
+            d["read_only"] = True
+        if rule.block_secret_paths:
+            d["block_secret_paths"] = True
+        if rule.block_unknown_egress:
+            d["block_unknown_egress"] = True
+        if rule.allowed_hosts:
+            d["allowed_hosts"] = rule.allowed_hosts
         rules.append(d)
     return {"rules": rules}
 

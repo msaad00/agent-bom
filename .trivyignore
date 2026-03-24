@@ -8,3 +8,12 @@
 # Blocked by: snowflake-connector-python requires pyopenssl<26.0.0
 # Revisit: when snowflake-connector-python releases support for pyopenssl>=26.0.0
 CVE-2026-27459
+
+# Debian ncurses base-image issue inherited from python:3.12.13-slim.
+# Docker Scout surfaced CVE-2025-69720 against debian/ncurses 6.5+20250216-2;
+# Debian's security tracker currently exposes the ncurses issue on this base
+# lineage as CVE-2025-6141, with no patched trixie/bookworm package available
+# as of 2026-03-24. Revisit on every base digest refresh and remove as soon as
+# Debian publishes a fixed ncurses package in the supported suite.
+CVE-2025-69720
+CVE-2025-6141

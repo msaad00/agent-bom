@@ -40,6 +40,7 @@ jobs:
           format: table
           severity: HIGH,CRITICAL
           exit-code: "1"
+          trivyignores: .trivyignore
         continue-on-error: true
 
       - name: Trivy scan — SARIF
@@ -50,6 +51,7 @@ jobs:
           output: trivy-${{ matrix.sarif_category }}.sarif
           severity: HIGH,CRITICAL
           exit-code: "0"
+          trivyignores: .trivyignore
 
       - name: Upload SARIF to GitHub Security tab
         if: always()

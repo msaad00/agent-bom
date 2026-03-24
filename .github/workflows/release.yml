@@ -44,7 +44,7 @@ jobs:
 
   pypi-publish:
     name: Publish to PyPI
-    needs: [build, self-scan-gate]
+    needs: [build, self-scan-gate, container-gate]
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -63,7 +63,7 @@ jobs:
 
   docker-publish:
     name: Publish to Docker Hub
-    needs: [build, self-scan-gate]
+    needs: [build, self-scan-gate, container-gate]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -155,6 +155,30 @@ jobs:
               "https://hub.docker.com/v2/repositories/${REPO}/tags/${tag}" \
               -H "Authorization: Bearer $TOKEN" || true
           done
+
+  container-gate:
+    name: Container release gate
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Build release candidate image
+        run: docker build -t agent-bom:release-test .
+
+      - name: Smoke test release image
+        run: docker run --rm agent-bom:release-test --version
+
+      - name: Trivy image scan gate
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          image-ref: agent-bom:release-test
+          format: table
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          trivyignores: .trivyignore
 
   self-scan-gate:
     name: Self-scan release gate

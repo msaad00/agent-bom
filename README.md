@@ -38,7 +38,7 @@ agent-bom agents
 ```
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.75.3.gif" alt="agent-bom demo — doctor, posture, scan, check" width="900" />
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.75.4.gif" alt="agent-bom demo — doctor, posture, scan, check" width="900" />
 </p>
 
 ### Why this is different
@@ -143,7 +143,7 @@ flowchart LR
 Security scanner purpose-built for AI infrastructure and supply chain.
 
 **AI Supply Chain Security:**
-1. **Discovers** AI agents + MCP servers — 25 client types, auto-detected from config files
+1. **Discovers** AI agents + MCP servers — 30 client types, auto-detected from config files
 2. **Scans source code** — AST analysis extracts system prompts, guardrails, tool signatures from Python AI frameworks (LangChain, CrewAI, OpenAI Agents SDK, and 7 more)
 3. **Generates an AI BOM** — CycloneDX 1.6 with native ML extensions (modelCard, datasets, training metadata)
 4. **Scans for CVEs** — 15 ecosystems checked against OSV + NVD + GHSA + EPSS + CISA KEV
@@ -334,7 +334,7 @@ docker run --rm agentbom/agent-bom agents  # Docker (linux/amd64 + arm64)
 
 | Source | How |
 |--------|-----|
-| MCP configs | Auto-discover (25 clients + Docker Compose) |
+| MCP configs | Auto-discover (30 clients + Docker Compose) |
 | Docker images | Grype / Syft / Docker CLI fallback |
 | Kubernetes | kubectl across namespaces |
 | Cloud providers | AWS, Azure, GCP, Databricks, Snowflake |

@@ -4,7 +4,7 @@ description: >-
   Diagnose issues, check prerequisites, and validate configurations. Use when:
   "doctor", "debug", "why failing", "validate config", "check prerequisites",
   "something is broken", "db status", "fix my setup".
-version: 0.75.3
+version: 0.75.4
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. No credentials required.
@@ -19,7 +19,7 @@ metadata:
   install:
     pipx: agent-bom
     pip: agent-bom
-    docker: ghcr.io/msaad00/agent-bom:0.75.3
+    docker: ghcr.io/msaad00/agent-bom:0.75.4
   openclaw:
     requires:
       bins: []
@@ -103,7 +103,7 @@ db_status()
 agent-bom doctor
 
   Python        3.12.2   OK
-  agent-bom     0.75.3   OK
+  agent-bom     0.75.4   OK
   pip           24.0     OK
   semgrep       not found  (optional — SAST scanning unavailable)
   kubectl       not found  (optional — K8s context unavailable)

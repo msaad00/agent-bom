@@ -25,8 +25,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import IO, Optional
+from urllib.parse import urlparse
 
 from agent_bom.agent_identity import ANONYMOUS, check_identity
+from agent_bom.permissions import classify_tool
 from agent_bom.proxy_scanner import ScanConfig, load_scan_config, scan_tool_call, scan_tool_response
 from agent_bom.security import validate_arguments, validate_command
 
@@ -41,6 +43,46 @@ _REGEX_TIMEOUT_SECONDS = 0.1
 
 # Pre-compiled pattern cache to avoid recompiling on every policy check.
 _compiled_patterns: dict[str, re.Pattern] = {}
+_PATH_ARG_KEYS = {
+    "path",
+    "file",
+    "filepath",
+    "filename",
+    "source",
+    "target",
+    "destination",
+    "cwd",
+    "dir",
+    "directory",
+    "output",
+    "input",
+}
+_URL_ARG_KEYS = {
+    "url",
+    "uri",
+    "endpoint",
+    "href",
+    "link",
+    "host",
+    "domain",
+    "base_url",
+    "target_url",
+}
+_SECRET_PATH_PATTERNS = (
+    ".env",
+    ".npmrc",
+    ".pypirc",
+    ".aws/",
+    ".ssh/",
+    ".gnupg/",
+    ".kube/config",
+    "id_rsa",
+    "id_ed25519",
+    "credentials",
+    "authorized_keys",
+    "known_hosts",
+)
+_NETWORK_KEYWORDS = ("http", "fetch", "web", "request", "url", "curl", "download", "upload", "post")
 
 
 def _safe_compile(pattern: str) -> re.Pattern:
@@ -67,6 +109,71 @@ def _safe_regex_search(pattern: str, text: str) -> bool:
         return False
     compiled = _safe_compile(pattern)
     return compiled.search(text) is not None
+
+
+def _iter_argument_strings(value: object, key_hint: str = "") -> list[tuple[str, str]]:
+    """Flatten nested tool arguments into ``(key_hint, value)`` string pairs."""
+    pairs: list[tuple[str, str]] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            pairs.extend(_iter_argument_strings(child, str(key)))
+    elif isinstance(value, list):
+        for child in value:
+            pairs.extend(_iter_argument_strings(child, key_hint))
+    elif isinstance(value, str):
+        pairs.append((key_hint.lower(), value))
+    return pairs
+
+
+def _extract_argument_paths(arguments: dict) -> list[str]:
+    """Collect path-like argument values from nested tool arguments."""
+    paths: list[str] = []
+    for key, value in _iter_argument_strings(arguments):
+        lowered = value.lower()
+        if key in _PATH_ARG_KEYS or "/" in value or "\\" in value or lowered.startswith("~"):
+            paths.append(value)
+    return paths
+
+
+def _extract_argument_hosts(arguments: dict) -> list[str]:
+    """Collect outbound hosts from URL-like argument values."""
+    hosts: list[str] = []
+    for key, value in _iter_argument_strings(arguments):
+        candidate = value.strip()
+        lowered = candidate.lower()
+        if key not in _URL_ARG_KEYS and not lowered.startswith(("http://", "https://")):
+            continue
+        parsed = urlparse(candidate if "://" in candidate else f"https://{candidate}")
+        if parsed.hostname:
+            hosts.append(parsed.hostname.lower())
+    return hosts
+
+
+def _matches_secret_path(path: str) -> bool:
+    lowered = path.lower()
+    return any(pattern in lowered for pattern in _SECRET_PATH_PATTERNS)
+
+
+def _classify_tool_classes(tool_name: str, arguments: dict) -> set[str]:
+    """Infer coarse policy classes for a tool call."""
+    classes = {classify_tool(tool_name)}
+    combined = f"{tool_name} " + " ".join(str(v) for _, v in _iter_argument_strings(arguments))
+    lowered = combined.lower()
+    if any(keyword in lowered for keyword in _NETWORK_KEYWORDS) or _extract_argument_hosts(arguments):
+        classes.add("network")
+    if any(term in lowered for term in ("sql", "query", "database", "db", "postgres", "mysql")):
+        classes.add("database")
+    if any(term in lowered for term in ("file", "path", "directory", "filesystem")) or _extract_argument_paths(arguments):
+        classes.add("filesystem")
+    return classes
+
+
+def _host_allowed(host: str, allowed_hosts: list[str]) -> bool:
+    normalized = [entry.lower() for entry in allowed_hosts if entry]
+    for allowed in normalized:
+        if host == allowed or host.endswith(f".{allowed}"):
+            return True
+    return False
 
 
 # ─── Rotating audit log ─────────────────────────────────────────────────────
@@ -567,6 +674,9 @@ def check_policy(
         (allowed, reason) tuple. If blocked, reason explains why.
     """
     rules = policy.get("rules", [])
+    tool_classes = _classify_tool_classes(tool_name, arguments)
+    argument_paths = _extract_argument_paths(arguments)
+    argument_hosts = _extract_argument_hosts(arguments)
 
     # Allowlist mode: if a rule has mode=allowlist, only listed tools pass.
     # Checked first — allowlist takes precedence over blocklist rules.
@@ -595,6 +705,27 @@ def check_policy(
         blocked = rule.get("block_tools", [])
         if blocked and tool_name in blocked:
             return False, f"Tool '{tool_name}' is blocked by rule '{rule.get('id', '?')}'"
+
+        denied_classes = {str(item).lower() for item in rule.get("deny_tool_classes", [])}
+        if denied_classes:
+            matched_classes = sorted(tool_classes & denied_classes)
+            if matched_classes:
+                joined = ", ".join(matched_classes)
+                return False, f"Tool '{tool_name}' matched denied tool class(es) {joined} in rule '{rule.get('id', '?')}'"
+
+        if rule.get("read_only") and tool_classes & {"write", "execute", "destructive"}:
+            return False, f"Tool '{tool_name}' violates read-only mode in rule '{rule.get('id', '?')}'"
+
+        if rule.get("block_secret_paths"):
+            matched_path = next((path for path in argument_paths if _matches_secret_path(path)), None)
+            if matched_path:
+                return False, f"Argument path '{matched_path}' matches a protected secret path in rule '{rule.get('id', '?')}'"
+
+        if rule.get("block_unknown_egress"):
+            allowed_hosts = [str(host) for host in rule.get("allowed_hosts", [])]
+            unmatched_host = next((host for host in argument_hosts if not _host_allowed(host, allowed_hosts)), None)
+            if unmatched_host:
+                return False, f"Outbound host '{unmatched_host}' is not allowlisted in rule '{rule.get('id', '?')}'"
 
         # tool_name match (exact)
         rule_tool = rule.get("tool_name")

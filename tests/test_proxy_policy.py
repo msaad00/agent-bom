@@ -204,6 +204,43 @@ def test_check_policy_oversized_arg_pattern():
     assert allowed is True
 
 
+def test_check_policy_read_only_allows_read_tool():
+    policy = {"rules": [{"id": "r1", "action": "block", "read_only": True}]}
+    allowed, reason = check_policy(policy, "read_file", {"path": "/tmp/demo.txt"})
+    assert allowed is True
+    assert reason == ""
+
+
+def test_check_policy_read_only_blocks_execute_tool():
+    policy = {"rules": [{"id": "r1", "action": "block", "read_only": True}]}
+    allowed, reason = check_policy(policy, "exec_shell", {"cmd": "ls"})
+    assert allowed is False
+    assert "read-only" in reason.lower()
+
+
+def test_check_policy_blocks_secret_env_path():
+    policy = {"rules": [{"id": "r1", "action": "block", "block_secret_paths": True}]}
+    allowed, reason = check_policy(policy, "read_file", {"path": "/workspace/.env"})
+    assert allowed is False
+    assert "secret path" in reason.lower()
+
+
+def test_check_policy_blocks_non_allowlisted_host():
+    policy = {
+        "rules": [
+            {
+                "id": "r1",
+                "action": "block",
+                "block_unknown_egress": True,
+                "allowed_hosts": ["api.openai.com"],
+            }
+        ]
+    }
+    allowed, reason = check_policy(policy, "web_fetch", {"endpoint": "https://evil.example/api"})
+    assert allowed is False
+    assert "allowlisted" in reason.lower()
+
+
 # ---------------------------------------------------------------------------
 # set_gateway_evaluator
 # ---------------------------------------------------------------------------

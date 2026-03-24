@@ -49,6 +49,28 @@ def test_convert_arg_pattern():
     assert fmt["rules"][0]["arg_pattern"] == {"cmd": "rm.*"}
 
 
+def test_convert_runtime_enforcement_fields():
+    p = _policy(
+        rules=[
+            GatewayRule(
+                id="r1",
+                action="block",
+                deny_tool_classes=["network"],
+                read_only=True,
+                block_secret_paths=True,
+                block_unknown_egress=True,
+                allowed_hosts=["api.openai.com"],
+            )
+        ]
+    )
+    fmt = gateway_policy_to_proxy_format(p)
+    assert fmt["rules"][0]["deny_tool_classes"] == ["network"]
+    assert fmt["rules"][0]["read_only"] is True
+    assert fmt["rules"][0]["block_secret_paths"] is True
+    assert fmt["rules"][0]["block_unknown_egress"] is True
+    assert fmt["rules"][0]["allowed_hosts"] == ["api.openai.com"]
+
+
 # ── Evaluation ────────────────────────────────────────────────────────────────
 
 
@@ -131,3 +153,26 @@ def test_arg_pattern_match():
     # Non-matching arg
     allowed2, _, _ = evaluate_gateway_policies([p], "read_file", {"path": "/tmp/safe"})
     assert allowed2 is True
+
+
+def test_gateway_read_only_blocks_write_tool():
+    p = _policy(rules=[GatewayRule(id="r1", action="block", read_only=True)])
+    allowed, reason, _ = evaluate_gateway_policies([p], "write_file", {"path": "/tmp/x"})
+    assert allowed is False
+    assert "read-only" in reason.lower()
+
+
+def test_gateway_unknown_egress_blocks_unapproved_host():
+    p = _policy(
+        rules=[
+            GatewayRule(
+                id="r1",
+                action="block",
+                block_unknown_egress=True,
+                allowed_hosts=["api.openai.com"],
+            )
+        ]
+    )
+    allowed, reason, _ = evaluate_gateway_policies([p], "web_fetch", {"url": "https://evil.example/"})
+    assert allowed is False
+    assert "allowlisted" in reason.lower()

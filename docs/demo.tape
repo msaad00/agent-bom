@@ -16,33 +16,28 @@ Set PlaybackSpeed 1.5
 
 # Setup
 Hide
-Type "export PS1='$ ' && export PATH=/opt/homebrew/Caskroom/miniconda/base/bin:$PATH && alias agent-bom='uv run agent-bom' && clear"
+Type "export PS1='$ ' && mkdir -p /tmp/agent-bom-demo && cp /Users/mohamedsaad/.agent-bom/db/vulns.db /tmp/agent-bom-demo/vulns.db && alias abdemo='docker run --rm -e AGENT_BOM_DB_PATH=/tmp/vulns.db -v /tmp/agent-bom-demo/vulns.db:/tmp/vulns.db:ro agent-bom:release-alpine-test' && clear"
 Enter
 Sleep 500ms
 Show
 
 # 1. Version
-Type "agent-bom --version"
+Type "abdemo --version"
 Enter
 Sleep 2s
 
-# 2. Doctor — preflight check
-Type "agent-bom doctor"
-Enter
-Sleep 5s
-
-# 3. Quick agent and MCP scan
-Type "agent-bom agents --demo"
+# 2. Quick agent and MCP scan
+Type "abdemo agents --demo --offline"
 Enter
 Sleep 14s
 
-# 4. Posture summary — quick workstation risk
-Type "agent-bom agents --demo --posture"
+# 3. Posture summary — quick workstation risk
+Type "abdemo agents --demo --posture --offline"
 Enter
 Sleep 12s
 
-# 5. Pre-install CVE gate
-Type "agent-bom check requests==2.28.0"
+# 4. Pre-install CVE gate
+Type "abdemo check requests==2.28.0 --ecosystem pypi"
 Enter
 Sleep 9s
 

@@ -33,7 +33,7 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 **agent-bom maps the blast radius**: CVE → package → MCP server → AI agent → credentials → tools.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.75.5.gif" alt="agent-bom demo — doctor, posture, scan, check" width="900" />
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.75.5.gif" alt="agent-bom demo — version, scan, posture, check" width="900" />
 </p>
 
 ## Quick start

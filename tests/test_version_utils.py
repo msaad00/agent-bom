@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from agent_bom.version_utils import (
+    compare_version_order,
     compare_versions,
     normalize_version,
     strip_pip_extras,
     validate_version,
+    version_in_range,
 )
 
 # ---------------------------------------------------------------------------
@@ -185,3 +187,30 @@ def test_compare_versions_maven():
 
 def test_compare_versions_with_v_prefix():
     assert compare_versions("v1.0.0", "v2.0.0", "npm") is True
+
+
+def test_compare_version_order_deb_numeric_segments():
+    assert compare_version_order("6.5+20250216-2", "6.5+20250216-10", "deb") == -1
+
+
+def test_compare_version_order_apk_revision_segments():
+    assert compare_version_order("1.2.4-r2", "1.2.4-r10", "apk") == -1
+
+
+def test_compare_version_order_rpm_release_segments():
+    assert compare_version_order("3.0.7-24.el9", "3.0.7-25.el9", "rpm") == -1
+
+
+def test_version_in_range_deb():
+    assert version_in_range("6.5+20250216-2", "0", "6.5+20250216-3", None, "deb") is True
+    assert version_in_range("6.5+20250216-3", "0", "6.5+20250216-3", None, "deb") is False
+
+
+def test_version_in_range_apk():
+    assert version_in_range("1.2.4-r2", "0", "1.2.4-r10", None, "apk") is True
+    assert version_in_range("1.2.4-r10", "0", "1.2.4-r10", None, "apk") is False
+
+
+def test_version_in_range_rpm():
+    assert version_in_range("3.0.7-24.el9", "0", "3.0.7-25.el9", None, "rpm") is True
+    assert version_in_range("3.0.7-25.el9", "0", "3.0.7-25.el9", None, "rpm") is False

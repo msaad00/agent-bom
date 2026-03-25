@@ -31,7 +31,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from agent_bom.models import Package
+from agent_bom.models import Package, parse_debian_source_name
 from agent_bom.sbom import parse_cyclonedx
 from agent_bom.security import validate_path
 
@@ -40,6 +40,26 @@ logger = logging.getLogger(__name__)
 
 class FilesystemScanError(Exception):
     """Raised when a filesystem path cannot be scanned."""
+
+
+def read_os_release_metadata(root: Path) -> tuple[str | None, str | None]:
+    """Read distro ``ID`` and ``VERSION_ID`` from ``etc/os-release``."""
+    os_release = root / "etc" / "os-release"
+    if not os_release.exists():
+        return None, None
+
+    distro_name: str | None = None
+    distro_version: str | None = None
+    try:
+        for line in os_release.read_text(errors="replace").splitlines():
+            if line.startswith("ID="):
+                distro_name = line.split("=", 1)[1].strip().strip('"').strip("'").lower() or None
+            elif line.startswith("VERSION_ID="):
+                distro_version = line.split("=", 1)[1].strip().strip('"').strip("'") or None
+    except OSError:
+        return None, None
+
+    return distro_name, distro_version
 
 
 def detect_linux_distro(root: Path) -> str:
@@ -55,20 +75,8 @@ def detect_linux_distro(root: Path) -> str:
     Returns:
         Lowercase distro identifier string.
     """
-    os_release = root / "etc" / "os-release"
-    if not os_release.exists():
-        return "linux"
-
-    try:
-        for line in os_release.read_text(errors="replace").splitlines():
-            if line.startswith("ID="):
-                # ID may be quoted: ID="rocky" or ID=alpine
-                value = line.split("=", 1)[1].strip().strip('"').strip("'")
-                return value.lower() if value else "linux"
-    except OSError:
-        pass
-
-    return "linux"
+    distro_name, _distro_version = read_os_release_metadata(root)
+    return distro_name or "linux"
 
 
 # ── Syft-based scanning ───────────────────────────────────────────────────────
@@ -197,6 +205,7 @@ def parse_dpkg_status(status_file: Path) -> list[Package]:
                 if "install ok installed" in status:
                     name = current["Package"]
                     version = current["Version"]
+                    source_package = parse_debian_source_name(current.get("Source", ""))
                     # Strip epoch prefix (e.g. "1:2.3.4" → "2.3.4")
                     version = re.sub(r"^\d+:", "", version)
                     packages.append(
@@ -205,6 +214,7 @@ def parse_dpkg_status(status_file: Path) -> list[Package]:
                             version=version,
                             ecosystem="deb",
                             purl=f"pkg:deb/debian/{name}@{version}",
+                            source_package=source_package,
                             is_direct=True,
                         )
                     )
@@ -493,6 +503,7 @@ def scan_disk_path_native(root: Path) -> list[Package]:
         Deduplicated list of :class:`~agent_bom.models.Package` objects.
     """
     packages: list[Package] = []
+    distro_name, distro_version = read_os_release_metadata(root)
 
     # APT / Debian
     dpkg_status = root / "var" / "lib" / "dpkg" / "status"
@@ -561,6 +572,9 @@ def scan_disk_path_native(root: Path) -> list[Package]:
     seen: set[tuple[str, str, str]] = set()
     unique: list[Package] = []
     for pkg in packages:
+        if pkg.ecosystem in {"deb", "apk", "rpm"}:
+            pkg.distro_name = pkg.distro_name or distro_name
+            pkg.distro_version = pkg.distro_version or distro_version
         key = (pkg.name, pkg.version, pkg.ecosystem)
         if key not in seen:
             seen.add(key)

@@ -6,10 +6,67 @@ import logging
 import re
 import subprocess
 from pathlib import Path
+from typing import Optional
 
-from agent_bom.models import Package
+from agent_bom.filesystem import read_os_release_metadata
+from agent_bom.models import Package, parse_debian_source_name
 
 _logger = logging.getLogger(__name__)
+
+
+def enrich_os_package_context(pkg: Package, root: Path = Path("/")) -> bool:
+    """Best-effort enrichment of distro/source context for a single OS package.
+
+    Returns True when the resulting package has enough context to make a
+    high-confidence advisory match for its ecosystem.
+    """
+    distro_name, distro_version = read_os_release_metadata(root)
+    pkg.distro_name = pkg.distro_name or distro_name
+    pkg.distro_version = pkg.distro_version or distro_version
+
+    if pkg.ecosystem == "deb":
+        pkg.source_package = pkg.source_package or _resolve_debian_source_package(pkg.name)
+        return bool(pkg.distro_version and pkg.source_package)
+    if pkg.ecosystem == "apk":
+        return bool(pkg.distro_version)
+    if pkg.ecosystem == "rpm":
+        return bool(pkg.distro_name or pkg.distro_version)
+    return True
+
+
+def _resolve_debian_source_package(package_name: str) -> Optional[str]:
+    """Resolve Debian source package for a binary package name when possible."""
+    try:
+        result = subprocess.run(
+            ["dpkg-query", "-W", "-f=${source:Package}\\n", package_name],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            source_package = parse_debian_source_name(result.stdout.strip())
+            if source_package:
+                return source_package
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    try:
+        result = subprocess.run(
+            ["apt-cache", "show", package_name],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                if line.startswith("Source:"):
+                    source_package = parse_debian_source_name(line.split(":", 1)[1].strip())
+                    if source_package:
+                        return source_package
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    return None
 
 
 def parse_dpkg_packages(root: Path = Path("/")) -> list[Package]:
@@ -32,7 +89,7 @@ def parse_dpkg_packages(root: Path = Path("/")) -> list[Package]:
     # Method 1: dpkg-query (live system, installed-only, clean output)
     try:
         result = subprocess.run(
-            ["dpkg-query", "-W", "-f=${Package}\t${Version}\t${Architecture}\n"],
+            ["dpkg-query", "-W", "-f=${Package}\t${Version}\t${source:Package}\n"],
             capture_output=True,
             text=True,
             timeout=10,
@@ -41,12 +98,14 @@ def parse_dpkg_packages(root: Path = Path("/")) -> list[Package]:
             for line in result.stdout.splitlines():
                 parts = line.strip().split("\t")
                 if len(parts) >= 2 and parts[0] and parts[1]:
+                    source_package = parse_debian_source_name(parts[2]) if len(parts) >= 3 else None
                     packages.append(
                         Package(
                             name=parts[0],
                             version=parts[1],
                             ecosystem="deb",
                             purl=f"pkg:deb/debian/{parts[0]}@{parts[1]}",
+                            source_package=source_package,
                         )
                     )
             if packages:
@@ -89,11 +148,14 @@ def _parse_dpkg_status_file(path: Path, packages: list[Package]) -> None:
         return
 
     pkg_name = pkg_version = ""
+    source_package: str | None = None
     for line in content.splitlines():
         if line.startswith("Package:"):
             pkg_name = line.split(":", 1)[1].strip()
         elif line.startswith("Version:"):
             pkg_version = line.split(":", 1)[1].strip()
+        elif line.startswith("Source:"):
+            source_package = parse_debian_source_name(line.split(":", 1)[1].strip())
         elif line == "" and pkg_name and pkg_version:
             packages.append(
                 Package(
@@ -101,9 +163,11 @@ def _parse_dpkg_status_file(path: Path, packages: list[Package]) -> None:
                     version=pkg_version,
                     ecosystem="deb",
                     purl=f"pkg:deb/debian/{pkg_name}@{pkg_version}",
+                    source_package=source_package,
                 )
             )
             pkg_name = pkg_version = ""
+            source_package = None
 
     # Handle last stanza without a trailing blank line
     if pkg_name and pkg_version:
@@ -113,6 +177,7 @@ def _parse_dpkg_status_file(path: Path, packages: list[Package]) -> None:
                 version=pkg_version,
                 ecosystem="deb",
                 purl=f"pkg:deb/debian/{pkg_name}@{pkg_version}",
+                source_package=source_package,
             )
         )
 
@@ -282,20 +347,29 @@ def scan_os_packages(root: Path = Path("/")) -> list[Package]:
         Deduplicated list of :class:`~agent_bom.models.Package` objects with
         ``ecosystem`` set to ``"deb"``, ``"rpm"``, or ``"apk"``.
     """
+    distro_name, distro_version = read_os_release_metadata(root)
+
+    def _apply_distro(packages: list[Package]) -> list[Package]:
+        for pkg in packages:
+            if pkg.ecosystem in {"deb", "apk", "rpm"}:
+                pkg.distro_name = pkg.distro_name or distro_name
+                pkg.distro_version = pkg.distro_version or distro_version
+        return packages
+
     os_type = detect_os_type(root)
     if os_type == "deb":
-        return parse_dpkg_packages(root)
+        return _apply_distro(parse_dpkg_packages(root))
     if os_type == "rpm":
-        return parse_rpm_packages(root)
+        return _apply_distro(parse_rpm_packages(root))
     if os_type == "apk":
-        return parse_apk_packages(root)
+        return _apply_distro(parse_apk_packages(root))
 
     # Unknown OS — try all parsers and return the first successful result
     for fn in (parse_dpkg_packages, parse_rpm_packages, parse_apk_packages):
         try:
             pkgs = fn(root)
             if pkgs:
-                return pkgs
+                return _apply_distro(pkgs)
         except Exception:  # noqa: BLE001
             continue
 

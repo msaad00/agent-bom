@@ -21,11 +21,13 @@ Package: libc6
 Version: 2.35-0ubuntu3
 Status: install ok installed
 Architecture: amd64
+Source: glibc
 
 Package: libssl3
 Version: 3.0.2-0ubuntu1.12
 Status: install ok installed
 Architecture: amd64
+Source: openssl
 
 """
 
@@ -95,6 +97,15 @@ def test_parse_dpkg_status_file_purl_format(tmp_path: Path) -> None:
     packages: list = []
     _parse_dpkg_status_file(f, packages)
     assert packages[0].purl == "pkg:deb/debian/libc6@2.35-0ubuntu3"
+
+
+def test_parse_dpkg_status_file_source_package(tmp_path: Path) -> None:
+    f = tmp_path / "status"
+    f.write_text(DPKG_STATUS)
+    packages: list = []
+    _parse_dpkg_status_file(f, packages)
+    assert packages[0].source_package == "glibc"
+    assert packages[1].source_package == "openssl"
 
 
 # ─── detect_os_type ────────────────────────────────────────────────────────────

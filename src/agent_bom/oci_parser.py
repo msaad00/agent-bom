@@ -44,7 +44,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from agent_bom.models import Package
+from agent_bom.models import Package, parse_debian_source_name
 
 _logger = logging.getLogger(__name__)
 
@@ -189,6 +189,33 @@ def _add_package(
         )
 
 
+def _read_os_release_from_layer(layer_tf: tarfile.TarFile, deleted_paths: set[str]) -> tuple[str | None, str | None]:
+    """Read distro metadata from ``etc/os-release`` inside a layer."""
+    for os_release_path in ("etc/os-release", "./etc/os-release"):
+        if os_release_path in deleted_paths:
+            continue
+        try:
+            member = layer_tf.getmember(os_release_path)
+        except KeyError:
+            continue
+        try:
+            f = layer_tf.extractfile(member)
+            if f is None:
+                continue
+            distro_name: str | None = None
+            distro_version: str | None = None
+            for raw_line in f:
+                line = raw_line.decode("utf-8", errors="ignore").strip()
+                if line.startswith("ID="):
+                    distro_name = line.split("=", 1)[1].strip().strip('"').strip("'").lower() or None
+                elif line.startswith("VERSION_ID="):
+                    distro_version = line.split("=", 1)[1].strip().strip('"').strip("'") or None
+            return distro_name, distro_version
+        except Exception:
+            _logger.debug("Failed to parse os-release: %s", os_release_path)
+    return None, None
+
+
 def _extract_packages_from_layer(
     layer_tf: tarfile.TarFile,
     seen: set[tuple[str, str]],
@@ -287,17 +314,47 @@ def _extract_packages_from_layer(
             if f:
                 content = f.read().decode("utf-8", errors="ignore")
                 pkg_name = pkg_version = ""
+                source_package: str | None = None
                 for line in content.splitlines():
                     if line.startswith("Package:"):
                         pkg_name = line.split(":", 1)[1].strip()
                     elif line.startswith("Version:"):
                         pkg_version = line.split(":", 1)[1].strip()
+                    elif line.startswith("Source:"):
+                        source_package = parse_debian_source_name(line.split(":", 1)[1].strip())
                     elif line == "" and pkg_name and pkg_version:
-                        _add_package(seen, packages, pkg_name, pkg_version, "deb", f"pkg:deb/debian/{pkg_name}@{pkg_version}")
+                        key = (pkg_name.lower(), "deb")
+                        if key not in seen:
+                            seen.add(key)
+                            packages.append(
+                                Package(
+                                    name=pkg_name,
+                                    version=pkg_version,
+                                    ecosystem="deb",
+                                    purl=f"pkg:deb/debian/{pkg_name}@{pkg_version}",
+                                    is_direct=False,
+                                    resolved_from_registry=False,
+                                    source_package=source_package,
+                                )
+                            )
                         pkg_name = pkg_version = ""
+                        source_package = None
                 # Flush last entry
                 if pkg_name and pkg_version:
-                    _add_package(seen, packages, pkg_name, pkg_version, "deb", f"pkg:deb/debian/{pkg_name}@{pkg_version}")
+                    key = (pkg_name.lower(), "deb")
+                    if key not in seen:
+                        seen.add(key)
+                        packages.append(
+                            Package(
+                                name=pkg_name,
+                                version=pkg_version,
+                                ecosystem="deb",
+                                purl=f"pkg:deb/debian/{pkg_name}@{pkg_version}",
+                                is_direct=False,
+                                resolved_from_registry=False,
+                                source_package=source_package,
+                            )
+                        )
         except Exception:
             _logger.debug("Failed to parse dpkg status")
         break
@@ -625,6 +682,8 @@ def _parse_layers_from_tarball(
     seen: set[tuple[str, str]] = set()
     packages: list[Package] = []
     warnings: list[str] = []
+    detected_distro_name: str | None = None
+    detected_distro_version: str | None = None
 
     # First pass: collect all whiteouts per layer (in order)
     # Then second pass: extract packages respecting accumulated deletions.
@@ -662,11 +721,22 @@ def _parse_layers_from_tarball(
             continue
         try:
             with tarfile.open(fileobj=io.BytesIO(layer_bytes), mode="r:*") as layer_tf:
+                layer_distro_name, layer_distro_version = _read_os_release_from_layer(layer_tf, all_deleted)
+                if layer_distro_name:
+                    detected_distro_name = layer_distro_name
+                if layer_distro_version:
+                    detected_distro_version = layer_distro_version
                 whiteouts = _extract_packages_from_layer(layer_tf, seen, packages, all_deleted)
                 all_deleted.update(whiteouts)
         except tarfile.TarError as e:
             warnings.append(f"Failed to read layer {layer_path}: {e}")
             continue
+
+    if detected_distro_name or detected_distro_version:
+        for pkg in packages:
+            if pkg.ecosystem in {"deb", "apk", "rpm"}:
+                pkg.distro_name = pkg.distro_name or detected_distro_name
+                pkg.distro_version = pkg.distro_version or detected_distro_version
 
     return packages, warnings
 

@@ -182,7 +182,8 @@ async def check_impl(
     """Implementation of the check tool."""
     try:
         from agent_bom.models import Package as Pkg
-        from agent_bom.scanners import build_vulnerabilities, query_osv_batch
+        from agent_bom.parsers.os_parsers import enrich_os_package_context
+        from agent_bom.scanners import scan_packages
 
         # Parse name@version
         spec = package.strip()
@@ -199,6 +200,18 @@ async def check_impl(
         except ValueError as exc:
             raise ToolError(sanitize_error(exc)) from exc
         pkg = Pkg(name=name, version=version, ecosystem=eco)
+        os_context_complete = True
+        if eco in {"deb", "apk", "rpm"}:
+            os_context_complete = enrich_os_package_context(pkg)
+
+        if eco in {"deb", "apk", "rpm"} and version in ("latest", ""):
+            return json.dumps(
+                {
+                    "package": name,
+                    "ecosystem": eco,
+                    "error": f"Explicit version required for {eco} packages",
+                }
+            )
 
         # Resolve "latest" via registry
         if version in ("latest", ""):
@@ -218,11 +231,24 @@ async def check_impl(
                     }
                 )
 
-        results = await query_osv_batch([pkg])
-        key = f"{eco}:{name}@{version}"
-        vuln_data = results.get(key, [])
+        await scan_packages([pkg])
 
-        if not vuln_data:
+        if not pkg.vulnerabilities and eco in {"deb", "apk", "rpm"} and not os_context_complete:
+            return json.dumps(
+                {
+                    "package": name,
+                    "version": version,
+                    "ecosystem": eco,
+                    "vulnerabilities": 0,
+                    "status": "incomplete",
+                    "message": "OS package context was insufficient for a trustworthy clean verdict",
+                    "source_package": pkg.source_package,
+                    "distro_name": pkg.distro_name,
+                    "distro_version": pkg.distro_version,
+                }
+            )
+
+        if not pkg.vulnerabilities:
             return json.dumps(
                 {
                     "package": name,
@@ -234,7 +260,7 @@ async def check_impl(
                 }
             )
 
-        vulns = build_vulnerabilities(vuln_data, pkg)
+        vulns = pkg.vulnerabilities
         return _truncate_response(
             json.dumps(
                 {

@@ -3,8 +3,9 @@
 The primary query pattern is:
     vulns = lookup_package(conn, ecosystem="PyPI", name="requests", version="2.0.0")
 
-Version range matching uses a simple string comparison (semver-like).
-For precise semver ordering the caller should use packaging.version.Version.
+Version range matching uses the shared ecosystem-aware comparator from
+``agent_bom.version_utils`` so Debian, Alpine, and RPM advisories use the
+same semantics as CLI, image, and OSV scans.
 """
 
 from __future__ import annotations
@@ -78,7 +79,7 @@ def lookup_package(
 
     results: list[LocalVuln] = []
     for row in rows:
-        if version and not _version_affected(version, row["introduced"], row["fixed"], row["last_affected"]):
+        if version and not _version_affected(version, row["introduced"], row["fixed"], row["last_affected"], row["ecosystem"]):
             continue
         # Parse comma-separated CWE IDs from DB column
         raw_cwes = row["cwe_ids"] or ""
@@ -115,103 +116,12 @@ def _version_affected(
     introduced: Optional[str],
     fixed: Optional[str],
     last_affected: Optional[str],
+    ecosystem: str = "",
 ) -> bool:
-    """Semantic version-in-range check.
+    """Ecosystem-aware version-in-range check."""
+    from agent_bom.version_utils import version_in_range
 
-    Returns True when ``version`` is in [introduced, fixed) or [introduced, last_affected].
-    Empty/None introduced means "since beginning of time" (all earlier versions).
-    Empty/None fixed means "no fix yet" (all later versions affected).
-
-    When range boundaries are unparseable (e.g. git commit hashes from OSV GIT
-    ranges), the advisory is skipped (return False) to avoid false positives.
-    Lexicographic comparison is only used when the installed version itself is
-    non-standard (e.g. a nightly tag).
-    """
-    # Normalise: empty string = None
-    intro = introduced or None
-    fix = fixed or None
-    last = last_affected or None
-
-    import re
-
-    from packaging.version import InvalidVersion, Version
-
-    _go_pseudo_re = re.compile(r"^v\d+\.\d+\.\d+-(\d{14})-[0-9a-f]{12}$")
-
-    def _is_commit_sha(v: str) -> bool:
-        """Detect git commit SHAs that leaked from OSV data as version boundaries."""
-        return bool(re.fullmatch(r"[0-9a-f]{40}", v))
-
-    def _go_pseudo_timestamp(v: str) -> str | None:
-        """Extract YYYYMMDDHHMMSS timestamp from Go pseudo-version for comparison."""
-        m = _go_pseudo_re.match(v)
-        return m.group(1) if m else None
-
-    def _try_parse(v: str) -> Version | None:
-        """Parse a version string, returning None for commit SHAs or unparseable values."""
-        if _is_commit_sha(v):
-            return None  # Not a version boundary — skip silently
-        try:
-            return Version(v)
-        except InvalidVersion:
-            return None
-
-    # Go pseudo-version comparison (v0.0.0-YYYYMMDDHHMMSS-abcdef123456)
-    # These encode timestamps — compare by timestamp, not semver.
-    ver_ts = _go_pseudo_timestamp(version)
-    if ver_ts:
-        for boundary, is_lower in [(intro, True), (fix, False), (last, False)]:
-            if not boundary:
-                continue
-            bnd_ts = _go_pseudo_timestamp(boundary)
-            if bnd_ts:
-                if is_lower and ver_ts < bnd_ts:
-                    return False  # installed predates introduced
-                if not is_lower and boundary == fix and ver_ts >= bnd_ts:
-                    return False  # installed at or after fix
-                if not is_lower and boundary == last and ver_ts > bnd_ts:
-                    return False  # installed after last_affected
-        return True  # within affected range or boundaries are non-pseudo
-
-    # Try to parse the installed version first
-    try:
-        ver = Version(version)
-    except InvalidVersion:
-        # Installed version is non-standard — fall back to lexicographic
-        _logger.debug("Non-standard installed version %r, falling back to lexicographic", version)
-        if intro and version < intro:
-            return False
-        if fix and not _is_commit_sha(fix) and version >= fix:
-            return False
-        if last and not _is_commit_sha(last) and version > last:
-            return False
-        return True
-
-    # Installed version is valid semver — compare each boundary individually.
-    # Skip boundaries that are commit SHAs or unparseable (prevents false positives).
-    if intro:
-        intro_ver = _try_parse(intro)
-        if intro_ver is not None and ver < intro_ver:
-            return False
-
-    if fix:
-        fix_ver = _try_parse(fix)
-        if fix_ver is not None:
-            if ver >= fix_ver:
-                return False
-        elif not _is_commit_sha(fix):
-            # Non-SHA, non-parseable (e.g., "canary") — log but don't assume affected
-            _logger.debug("Skipping unparseable fixed version %r for %r", fix, version)
-
-    if last:
-        last_ver = _try_parse(last)
-        if last_ver is not None:
-            if ver > last_ver:
-                return False
-        elif not _is_commit_sha(last):
-            _logger.debug("Skipping unparseable last_affected %r for %r", last, version)
-
-    return True
+    return version_in_range(version, introduced, fixed, last_affected, ecosystem)
 
 
 def lookup_packages_batch(
@@ -285,7 +195,7 @@ def lookup_packages_batch(
 
         vulns: list[LocalVuln] = []
         for row in rows:
-            if version and not _version_affected(version, row["introduced"], row["fixed"], row["last_affected"]):
+            if version and not _version_affected(version, row["introduced"], row["fixed"], row["last_affected"], row["ecosystem"]):
                 continue
             raw_cwes = row["cwe_ids"] or ""
             cwe_list = [c for c in raw_cwes.split(",") if c] if raw_cwes else []

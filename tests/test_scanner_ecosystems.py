@@ -180,6 +180,79 @@ async def test_scan_packages_maven_go_query_construction():
 
 
 @pytest.mark.asyncio
+async def test_query_osv_batch_uses_debian_distro_context():
+    """Debian OS packages should query distro-specific OSV ecosystems when known."""
+    from agent_bom.scanners import query_osv_batch
+
+    pkg = Package(
+        name="ncurses-bin",
+        version="6.5+20250216-2",
+        ecosystem="deb",
+        source_package="ncurses",
+        distro_name="debian",
+        distro_version="13",
+    )
+    captured_queries: list[dict] = []
+
+    async def mock_request_with_retry(client, method, url, json=None, **kwargs):
+        if json and "queries" in json:
+            captured_queries.extend(json["queries"])
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {"results": [{"vulns": []} for _ in captured_queries]}
+        return resp
+
+    with (
+        patch("agent_bom.scanners._get_scan_cache", return_value=None),
+        patch("agent_bom.scanners.request_with_retry", side_effect=mock_request_with_retry),
+        patch("agent_bom.scanners.create_client") as mock_create_client,
+    ):
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_create_client.return_value = mock_client
+
+        await query_osv_batch([pkg])
+
+    ecosystems = {q["package"]["ecosystem"] for q in captured_queries}
+    names = {q["package"]["name"] for q in captured_queries}
+    assert ecosystems == {"Debian:13"}
+    assert names == {"ncurses-bin", "ncurses"}
+
+
+@pytest.mark.asyncio
+async def test_query_osv_batch_debian_fallbacks_when_distro_unknown():
+    """Direct deb checks without distro metadata should query supported Debian suites."""
+    from agent_bom.scanners import query_osv_batch
+
+    pkg = Package(name="ncurses-bin", version="6.5+20250216-2", ecosystem="deb", source_package="ncurses")
+    captured_queries: list[dict] = []
+
+    async def mock_request_with_retry(client, method, url, json=None, **kwargs):
+        if json and "queries" in json:
+            captured_queries.extend(json["queries"])
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {"results": [{"vulns": []} for _ in captured_queries]}
+        return resp
+
+    with (
+        patch("agent_bom.scanners._get_scan_cache", return_value=None),
+        patch("agent_bom.scanners.request_with_retry", side_effect=mock_request_with_retry),
+        patch("agent_bom.scanners.create_client") as mock_create_client,
+    ):
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_create_client.return_value = mock_client
+
+        await query_osv_batch([pkg])
+
+    ecosystems = {q["package"]["ecosystem"] for q in captured_queries}
+    assert ecosystems == {"Debian:11", "Debian:12", "Debian:13", "Debian:14"}
+
+
+@pytest.mark.asyncio
 async def test_scan_packages_maven_vuln_attached():
     """Vulnerabilities from OSV are attached to Maven packages after scan."""
     from agent_bom.scanners import scan_packages

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import pytest
 
+from agent_bom.db.schema import init_db
 from agent_bom.filesystem import detect_linux_distro
 from agent_bom.models import Package
-from agent_bom.scanners import ECOSYSTEM_MAP
+from agent_bom.scanners import ECOSYSTEM_MAP, _scan_packages_local_db
 
 # ── ECOSYSTEM_MAP coverage ───────────────────────────────────────────────────
 
@@ -182,3 +183,59 @@ class TestOSPackagesFlag:
                 break
         else:
             pytest.fail("os_packages parameter not found")
+
+
+class TestCheckEcosystemSurfaces:
+    """CLI and MCP package checks must accept OS package ecosystems too."""
+
+    def test_cli_check_accepts_os_package_ecosystems(self):
+        from agent_bom.cli._check import check
+
+        for param in check.params:
+            if param.name == "ecosystem":
+                choices = set(param.type.choices)
+                assert {"deb", "apk", "rpm", "composer", "swift", "pub", "hex", "conda"} <= choices
+                break
+        else:
+            pytest.fail("check ecosystem option not found")
+
+    def test_mcp_check_accepts_os_package_ecosystems(self):
+        from agent_bom.mcp_server import _validate_ecosystem
+
+        assert _validate_ecosystem("deb") == "deb"
+        assert _validate_ecosystem("apk") == "apk"
+        assert _validate_ecosystem("rpm") == "rpm"
+        assert _validate_ecosystem("composer") == "composer"
+        assert _validate_ecosystem("swift") == "swift"
+
+
+def test_local_db_scan_uses_debian_source_package_alias(tmp_path, monkeypatch):
+    db_path = tmp_path / "vulns.db"
+    conn = init_db(db_path)
+    conn.execute(
+        "INSERT INTO vulns(id, summary, severity, source) VALUES (?, ?, ?, ?)",
+        ("CVE-2025-NCURSES", "ncurses source package issue", "critical", "osv"),
+    )
+    conn.execute(
+        "INSERT INTO affected(vuln_id, ecosystem, package_name, introduced, fixed, last_affected) VALUES (?, ?, ?, ?, ?, ?)",
+        ("CVE-2025-NCURSES", "debian:13", "ncurses", "0", "6.5+20250216-3", None),
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr("agent_bom.db.schema.DB_PATH", db_path)
+    monkeypatch.setattr("agent_bom.db.schema.db_freshness_days", lambda path=None: 0)
+
+    pkg = Package(
+        name="ncurses-bin",
+        version="6.5+20250216-2",
+        ecosystem="deb",
+        source_package="ncurses",
+        distro_name="debian",
+        distro_version="13",
+    )
+    total, covered = _scan_packages_local_db([pkg])
+
+    assert total == 1
+    assert pkg.vulnerabilities[0].id == "CVE-2025-NCURSES"
+    assert f"deb:ncurses-bin@{pkg.version}" in covered

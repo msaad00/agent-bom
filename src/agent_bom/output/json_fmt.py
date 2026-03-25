@@ -304,6 +304,9 @@ def _build_inventory_snapshot(report: AIBOMReport) -> dict:
                         "version": pkg.version,
                         "ecosystem": pkg.ecosystem,
                         "purl": pkg.purl,
+                        "source_package": pkg.source_package,
+                        "distro_name": pkg.distro_name,
+                        "distro_version": pkg.distro_version,
                         "vulnerability_count": len(pkg.vulnerabilities),
                     }
                 if pkg.stable_id not in servers[server.stable_id]["package_ids"]:
@@ -481,6 +484,9 @@ def to_json(report: AIBOMReport) -> dict:
                                 "version": pkg.version,
                                 "ecosystem": pkg.ecosystem,
                                 "purl": pkg.purl,
+                                "source_package": pkg.source_package,
+                                "distro_name": pkg.distro_name,
+                                "distro_version": pkg.distro_version,
                                 "is_direct": pkg.is_direct,
                                 "parent_package": pkg.parent_package,
                                 "dependency_depth": pkg.dependency_depth,

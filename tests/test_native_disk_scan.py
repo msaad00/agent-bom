@@ -26,6 +26,7 @@ Package: libssl3
 Status: install ok installed
 Architecture: amd64
 Version: 3.0.11-1~deb12u2
+Source: openssl
 Description: Secure Sockets Layer toolkit - shared libraries
 
 Package: python3-requests
@@ -83,6 +84,13 @@ class TestParseDpkgStatus:
         pkgs = parse_dpkg_status(f)
         by_name = {p.name: p for p in pkgs}
         assert by_name["libssl3"].purl == "pkg:deb/debian/libssl3@3.0.11-1~deb12u2"
+
+    def test_extracts_debian_source_package(self, tmp_path):
+        f = tmp_path / "status"
+        f.write_text(DPKG_STATUS)
+        pkgs = parse_dpkg_status(f)
+        by_name = {p.name: p for p in pkgs}
+        assert by_name["libssl3"].source_package == "openssl"
 
     def test_missing_file_returns_empty(self, tmp_path):
         assert parse_dpkg_status(tmp_path / "nonexistent") == []
@@ -200,6 +208,17 @@ class TestScanDiskPathNative:
     def test_empty_directory_returns_empty(self, tmp_path):
         pkgs = scan_disk_path_native(tmp_path)
         assert pkgs == []
+
+    def test_applies_os_release_metadata_to_os_packages(self, tmp_path):
+        (tmp_path / "etc").mkdir(parents=True)
+        (tmp_path / "etc" / "os-release").write_text('ID=debian\nVERSION_ID="13"\n')
+        status_dir = tmp_path / "var" / "lib" / "dpkg"
+        status_dir.mkdir(parents=True)
+        (status_dir / "status").write_text("Package: openssl\nStatus: install ok installed\nVersion: 3.1.0\n\n")
+        pkgs = scan_disk_path_native(tmp_path)
+        openssl = next(p for p in pkgs if p.name == "openssl")
+        assert openssl.distro_name == "debian"
+        assert openssl.distro_version == "13"
 
 
 # ── parse_pip_environment ─────────────────────────────────────────────────────

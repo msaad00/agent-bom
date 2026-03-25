@@ -10,6 +10,7 @@ import click
 from rich.console import Console
 
 from agent_bom import __version__
+from agent_bom.ecosystems import SUPPORTED_PACKAGE_ECOSYSTEMS
 
 
 def _detect_ecosystem(name: str) -> Optional[str]:
@@ -86,7 +87,7 @@ def _parse_package_spec(
 @click.option(
     "--ecosystem",
     "-e",
-    type=click.Choice(["npm", "pypi", "go", "cargo", "maven", "nuget"]),
+    type=click.Choice(SUPPORTED_PACKAGE_ECOSYSTEMS),
     help="Package ecosystem (inferred from name/command if omitted)",
 )
 @click.option("--quiet", "-q", is_flag=True, help="Only print vuln count, no details")
@@ -98,21 +99,22 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bo
     Examples:
       agent-bom check express@4.18.2 --ecosystem npm
       agent-bom check requests@2.28.0 --ecosystem pypi
+      agent-bom check ncurses-bin@6.5+20250216-2 --ecosystem deb
       agent-bom check "npx @modelcontextprotocol/server-filesystem"
 
     \b
     Exit codes:
       0  Clean — no known vulnerabilities
       1  Unsafe — vulnerabilities found
+      2  Incomplete — OS package context insufficient for a trustworthy verdict
     """
-    import asyncio
-
     console = Console(no_color=no_color)
 
     name, version, detected_eco = _parse_package_spec(package_spec, ecosystem)
 
-    from agent_bom.models import Package, normalize_package_name
-    from agent_bom.scanners import build_vulnerabilities, query_osv_batch
+    from agent_bom.models import Package
+    from agent_bom.parsers.os_parsers import enrich_os_package_context
+    from agent_bom.scanners import scan_packages
 
     if version == "unknown":
         console.print(f"[yellow]⚠ No version specified for {name} — skipping OSV lookup.[/yellow]")
@@ -120,12 +122,18 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bo
         sys.exit(0)
 
     # Scan both pypi+npm for ambiguous packages (no dots, no underscores, no @)
-    # This catches packages like lodash that exist on both registries
+    # This catches packages like lodash that exist on both registries.
+    # OS package ecosystems must be explicit to avoid silently inventing a
+    # registry-backed meaning for distro package names.
     if not ecosystem and not name.startswith("@") and "." not in name and "_" not in name:
         ecosystems: list[str] = ["pypi", "npm"]
     else:
         ecosystems = [detected_eco]
     pkgs = [Package(name=name, version=version, ecosystem=eco) for eco in ecosystems]
+    os_context_complete = True
+    for pkg in pkgs:
+        if pkg.ecosystem in {"deb", "apk", "rpm"}:
+            os_context_complete = enrich_os_package_context(pkg) and os_context_complete
 
     # Resolve "latest" / empty version from registry
     if version in ("latest", ""):
@@ -140,6 +148,8 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bo
                 return False
 
         with console.status("[bold]Resolving version from registry...[/bold]", spinner="dots"):
+            import asyncio
+
             resolved = asyncio.run(_resolve())
         if resolved:
             version = next((p.version for p in pkgs if p.version not in ("unknown", "latest", "")), version)
@@ -155,27 +165,25 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bo
     eco_display = "/".join(ecosystems)
     console.print(f"\n[bold blue]🔍 Checking {name}@{version} ({eco_display})[/bold blue]\n")
 
-    with console.status("[bold]Querying OSV...[/bold]", spinner="dots"):
-        results = asyncio.run(query_osv_batch(pkgs))
+    with console.status("[bold]Scanning package risk...[/bold]", spinner="dots"):
+        import asyncio
 
-    # Merge results from all ecosystems
-    vuln_data: list[dict] = []
-    matched_eco = ecosystems[0]
-    for eco in ecosystems:
-        key = f"{eco}:{normalize_package_name(name, eco)}@{version}"
-        eco_vulns = results.get(key, [])
-        if eco_vulns:
-            vuln_data.extend(eco_vulns)
-            matched_eco = eco
+        asyncio.run(scan_packages(pkgs))
 
-    ecosystem = matched_eco
-    pkg = Package(name=name, version=version, ecosystem=ecosystem)
+    matched_pkg = next((p for p in pkgs if p.vulnerabilities), pkgs[0])
+    vulns = matched_pkg.vulnerabilities
 
-    if not vuln_data:
+    if not vulns and matched_pkg.ecosystem in {"deb", "apk", "rpm"} and not os_context_complete:
+        console.print(f"  [yellow]⚠ Incomplete OS package context for {name}@{version}[/yellow]")
+        console.print(
+            "  Best-effort matching found no vulnerabilities, but source/distro metadata was "
+            "insufficient for a trustworthy clean verdict.\n"
+        )
+        sys.exit(2)
+
+    if not vulns:
         console.print(f"  [green]✓ No known vulnerabilities in {name}@{version}[/green]\n")
         sys.exit(0)
-
-    vulns = build_vulnerabilities(vuln_data, pkg)
 
     if not quiet:
         from rich.table import Table

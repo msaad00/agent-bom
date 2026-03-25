@@ -37,6 +37,16 @@ def normalize_package_name(name: str, ecosystem: str = "") -> str:
     return name.lower()
 
 
+def parse_debian_source_name(source_field: str) -> Optional[str]:
+    """Extract the Debian source package name from a ``Source:`` field."""
+    if not source_field:
+        return None
+    source_name = source_field.split("(", 1)[0].strip()
+    if source_name.startswith("${") and source_name.endswith("}"):
+        return None
+    return source_name or None
+
+
 class Severity(str, Enum):
     CRITICAL = "critical"
     HIGH = "high"
@@ -199,6 +209,9 @@ class Package:
     version: str
     ecosystem: str  # npm, pypi, cargo, go, etc.
     purl: Optional[str] = None  # Package URL
+    source_package: Optional[str] = None  # Debian/OS source package name for advisory matching
+    distro_name: Optional[str] = None  # OS distribution family for OS packages (e.g. debian, ubuntu, alpine)
+    distro_version: Optional[str] = None  # OS distribution version for OS packages (e.g. 13, 24.04, 3.21)
     vulnerabilities: list[Vulnerability] = field(default_factory=list)
     is_direct: bool = True  # vs transitive dependency
     parent_package: Optional[str] = None  # Name of parent package (for transitive deps)
@@ -249,6 +262,16 @@ class Package:
         purl = self.purl or f"pkg:{self.ecosystem}/{self.name}@{self.version}"
         fingerprint = f"package:{purl.lower().strip()}"
         return str(_uuid.uuid5(_ns, fingerprint))
+
+    @property
+    def lookup_names(self) -> list[str]:
+        """Candidate package names for vulnerability matching."""
+        names = [self.name]
+        if self.source_package:
+            source_name = self.source_package.strip()
+            if source_name and normalize_package_name(source_name, self.ecosystem) != normalize_package_name(self.name, self.ecosystem):
+                names.append(source_name)
+        return names
 
     @property
     def has_vulnerabilities(self) -> bool:

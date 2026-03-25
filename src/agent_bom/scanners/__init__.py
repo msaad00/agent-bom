@@ -93,7 +93,9 @@ ECOSYSTEM_MAP = {
     "hex": "Hex",
     # conda packages are pip-installable and tracked under PyPI in OSV
     "conda": "PyPI",
-    # OS package ecosystems (native dpkg/rpm/apk parsers in filesystem.py)
+    # OS package ecosystems are distro-versioned in OSV, so query_osv_batch
+    # resolves them dynamically from package distro metadata rather than using
+    # these flat placeholders directly.
     "deb": "Debian",
     "apk": "Alpine",
     # RPM covers RHEL, CentOS, Fedora, Rocky, Alma — OSV "Linux" is the
@@ -120,6 +122,41 @@ _NON_OSV_ECOSYSTEMS: frozenset[str] = frozenset(
         "unknown",  # Packages with unresolvable ecosystem (e.g. --sbom ingest)
     }
 )
+
+_DEBIAN_OSV_FALLBACKS = ("Debian:11", "Debian:12", "Debian:13", "Debian:14")
+_ALPINE_OSV_FALLBACKS = ("Alpine:v3.18", "Alpine:v3.19", "Alpine:v3.20", "Alpine:v3.21", "Alpine:v3.22")
+
+
+def _osv_ecosystems_for_package(pkg: Package) -> list[str]:
+    """Return one or more OSV ecosystem identifiers for a package."""
+    eco_key = pkg.ecosystem.lower()
+
+    if eco_key == "deb":
+        distro_name = (pkg.distro_name or "").lower()
+        distro_version = (pkg.distro_version or "").strip()
+        if distro_name == "debian" and distro_version:
+            return [f"Debian:{distro_version.split('.', 1)[0]}"]
+        if distro_name == "ubuntu" and distro_version:
+            normalized = distro_version
+            if normalized.count(".") == 1:
+                return [f"Ubuntu:{normalized}:LTS", f"Ubuntu:{normalized}"]
+            return [f"Ubuntu:{normalized}"]
+        return list(_DEBIAN_OSV_FALLBACKS)
+
+    if eco_key == "apk":
+        distro_version = (pkg.distro_version or "").strip()
+        if distro_version:
+            normalized = distro_version if distro_version.startswith("v") else f"v{distro_version}"
+            return [f"Alpine:{normalized}"]
+        return list(_ALPINE_OSV_FALLBACKS)
+
+    osv_ecosystem = ECOSYSTEM_MAP.get(eco_key)
+    return [osv_ecosystem] if osv_ecosystem else []
+
+
+def _db_ecosystems_for_package(pkg: Package) -> list[str]:
+    """Return normalized DB ecosystem keys for a package."""
+    return [eco.lower() for eco in _osv_ecosystems_for_package(pkg)]
 
 
 _MAX_CACHED_LOOPS = 8  # Bound stale entries in long-running servers
@@ -390,7 +427,23 @@ def parse_osv_severity(vuln_data: dict) -> tuple[Severity, Optional[float], Opti
     return severity, cvss_score, severity_source
 
 
-def parse_fixed_version(vuln_data: dict, package_name: str, ecosystem: str = "", current_version: str = "") -> Optional[str]:
+def _candidate_package_names(package_name: str, ecosystem: str = "", source_package: str | None = None) -> set[str]:
+    """Normalized candidate package names for matching advisories."""
+    names = {normalize_package_name(package_name, ecosystem)}
+    if source_package:
+        source_norm = normalize_package_name(source_package, ecosystem)
+        if source_norm:
+            names.add(source_norm)
+    return names
+
+
+def parse_fixed_version(
+    vuln_data: dict,
+    package_name: str,
+    ecosystem: str = "",
+    current_version: str = "",
+    source_package: str | None = None,
+) -> Optional[str]:
     """Extract fixed version from OSV affected data.
 
     Prefers stable releases over pre-release versions.  Uses PEP 503
@@ -400,18 +453,10 @@ def parse_fixed_version(vuln_data: dict, package_name: str, ecosystem: str = "",
     Guards against cross-package fix bleed: skips affected entries with no
     package name and skips fix versions lower than ``current_version``.
     """
-    norm_input = normalize_package_name(package_name, ecosystem)
+    from agent_bom.version_utils import compare_version_order
+
+    norm_inputs = _candidate_package_names(package_name, ecosystem, source_package)
     prerelease_candidate: Optional[str] = None
-
-    # Parse current version for downgrade detection
-    current_pv = None
-    if current_version and current_version not in ("unknown", "latest", ""):
-        try:
-            from packaging.version import Version
-
-            current_pv = Version(current_version)
-        except Exception:  # noqa: BLE001
-            pass
 
     for affected in vuln_data.get("affected", []):
         pkg = affected.get("package", {})
@@ -422,33 +467,36 @@ def parse_fixed_version(vuln_data: dict, package_name: str, ecosystem: str = "",
             continue
         osv_eco = pkg.get("ecosystem", ecosystem)
         osv_norm = normalize_package_name(pkg_name, osv_eco)
-        if osv_norm == norm_input:
+        if osv_norm in norm_inputs:
             for rng in affected.get("ranges", []):
                 for event in rng.get("events", []):
                     if "fixed" in event:
                         fixed = event["fixed"]
                         try:
+                            if current_version and current_version not in ("unknown", "latest", ""):
+                                current_cmp = compare_version_order(current_version, fixed, ecosystem)
+                                if current_cmp is not None and current_cmp > 0:
+                                    _logger.debug(
+                                        "Skipping fix %s < current %s for %s",
+                                        fixed,
+                                        current_version,
+                                        package_name,
+                                    )
+                                    continue
                             from packaging.version import Version
 
                             pv = Version(fixed)
-                            # Skip fix versions lower than current (belongs to sibling package)
-                            if current_pv is not None and pv < current_pv:
-                                _logger.debug(
-                                    "Skipping fix %s < current %s for %s",
-                                    fixed,
-                                    current_version,
-                                    package_name,
-                                )
-                                continue
                             if not pv.is_prerelease:
                                 return fixed
                             # Remember pre-release as fallback
                             if prerelease_candidate is None:
                                 prerelease_candidate = fixed
                         except Exception as exc:  # noqa: BLE001
-                            # Can't parse — check if it looks like a usable version
-                            # Skip git commit SHAs (40 hex chars) and other non-version strings
                             _logger.debug("Version parse failed for %r: %s", fixed, exc)
+                            if current_version and current_version not in ("unknown", "latest", ""):
+                                current_cmp = compare_version_order(current_version, fixed, ecosystem)
+                                if current_cmp is not None and current_cmp > 0:
+                                    continue
                             if _is_valid_fix_version(fixed):
                                 return fixed
                             # Not a usable version — skip silently
@@ -474,6 +522,18 @@ def _is_valid_fix_version(version: str) -> bool:
     if 7 <= len(stripped) <= 12 and all(c in "0123456789abcdef" for c in stripped):
         return False
     return True
+
+
+def _package_lookup_names(pkg: Package) -> list[str]:
+    """Lookup names for a package, preserving the primary package name first."""
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for name in pkg.lookup_names:
+        norm = normalize_package_name(name, pkg.ecosystem)
+        if norm and norm not in seen:
+            ordered.append(norm)
+            seen.add(norm)
+    return ordered
 
 
 async def _enrich_vuln_details(client: httpx.AsyncClient, vuln_ids: list[str]) -> dict[str, dict]:
@@ -549,11 +609,9 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
 
     # Check cache first
     for pkg in packages:
-        # Normalize ecosystem case — ECOSYSTEM_MAP keys are all lowercase.
-        # Accepts "PyPI", "NPM", "PYPI", etc. from external callers.
         eco_key = pkg.ecosystem.lower()
-        osv_ecosystem = ECOSYSTEM_MAP.get(eco_key)
-        if not osv_ecosystem:
+        osv_ecosystems = _osv_ecosystems_for_package(pkg)
+        if not osv_ecosystems:
             if eco_key in _NON_OSV_ECOSYSTEMS:
                 _logger.debug(
                     "Skipping package %s/%s: ecosystem %r is not OSV-queryable (handled by other pipeline)",
@@ -580,8 +638,9 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
             skipped_versions += 1
             continue
         norm_name = normalize_package_name(pkg.name, eco_key)
+        cache_key_eco = eco_key if len(osv_ecosystems) == 1 else f"{eco_key}|{'|'.join(osv_ecosystems)}"
         if cache:
-            cached = cache.get(eco_key, norm_name, pkg.version)
+            cached = cache.get(cache_key_eco, norm_name, pkg.version)
             if cached is not None:
                 if cached:  # non-empty vuln list
                     key = f"{eco_key}:{norm_name}@{pkg.version}"
@@ -605,29 +664,30 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
         return await _enrich_results_if_needed(results)
 
     queries = []
-    pkg_index = {}  # Map query index to package
+    pkg_index = {}  # Map query index to (package, queried_name)
 
     for pkg in packages_to_query:
         eco_key = pkg.ecosystem.lower()
-        osv_ecosystem = ECOSYSTEM_MAP.get(eco_key)
-        if not osv_ecosystem or pkg.version in ("unknown", "latest"):
+        osv_ecosystems = _osv_ecosystems_for_package(pkg)
+        if not osv_ecosystems or pkg.version in ("unknown", "latest"):
             continue  # already logged in cache-check loop above
 
         # Normalize name for consistent OSV matching (PEP 503 for PyPI)
-        norm_name = normalize_package_name(pkg.name, eco_key)
         # Go module versions are stored without 'v' prefix internally but OSV
         # Go ecosystem expects the canonical semver 'v' prefix.
         osv_version = f"v{pkg.version}" if eco_key == "go" and not pkg.version.startswith("v") else pkg.version
-        queries.append(
-            {
-                "version": osv_version,
-                "package": {
-                    "name": norm_name,
-                    "ecosystem": osv_ecosystem,
-                },
-            }
-        )
-        pkg_index[len(queries) - 1] = pkg
+        for osv_ecosystem in osv_ecosystems:
+            for norm_name in _package_lookup_names(pkg):
+                queries.append(
+                    {
+                        "version": osv_version,
+                        "package": {
+                            "name": norm_name,
+                            "ecosystem": osv_ecosystem,
+                        },
+                    }
+                )
+                pkg_index[len(queries) - 1] = (pkg, norm_name)
 
     if not queries:
         return await _enrich_results_if_needed(results)
@@ -684,16 +744,22 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
                                 actual_idx = batch_start + i
                                 pkg_match = pkg_index.get(actual_idx)
                                 if pkg_match:
-                                    norm = normalize_package_name(pkg_match.name, pkg_match.ecosystem)
-                                    key = f"{pkg_match.ecosystem.lower()}:{norm}@{pkg_match.version}"
-                                    results[key] = vulns
+                                    pkg_obj, _queried_name = pkg_match
+                                    norm = normalize_package_name(pkg_obj.name, pkg_obj.ecosystem)
+                                    key = f"{pkg_obj.ecosystem.lower()}:{norm}@{pkg_obj.version}"
+                                    existing = results.setdefault(key, [])
+                                    seen_ids = {item.get("id") for item in existing}
+                                    for vuln in vulns:
+                                        if vuln.get("id") not in seen_ids:
+                                            existing.append(vuln)
+                                            seen_ids.add(vuln.get("id"))
                                     queried_keys_with_vulns.add(key)
                     except (ValueError, KeyError) as e:
                         console.print(f"  [red]✗[/red] OSV response parse error: {e}")
                         for idx in range(batch_start, min(batch_start + len(batch), len(queries))):
                             pkg_err = pkg_index.get(idx)
                             if pkg_err:
-                                _lookup_errors.append((pkg_err.name, pkg_err.ecosystem, f"parse error: {e}"))
+                                _lookup_errors.append((pkg_err[0].name, pkg_err[0].ecosystem, f"parse error: {e}"))
                 elif response and response.status_code == 429:
                     # request_with_retry exhausted all retries and still got 429 — apply
                     # a pipeline-level cooldown before the next batch, respecting any
@@ -713,13 +779,13 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
                     for idx in range(batch_start, min(batch_start + len(batch), len(queries))):
                         pkg_err = pkg_index.get(idx)
                         if pkg_err:
-                            _lookup_errors.append((pkg_err.name, pkg_err.ecosystem, f"HTTP {response.status_code}"))
+                            _lookup_errors.append((pkg_err[0].name, pkg_err[0].ecosystem, f"HTTP {response.status_code}"))
                 else:
                     console.print("  [red]✗[/red] OSV API unreachable after retries")
                     for idx in range(batch_start, min(batch_start + len(batch), len(queries))):
                         pkg_err = pkg_index.get(idx)
                         if pkg_err:
-                            _lookup_errors.append((pkg_err.name, pkg_err.ecosystem, "unreachable"))
+                            _lookup_errors.append((pkg_err[0].name, pkg_err[0].ecosystem, "unreachable"))
 
             # Rate limit: delay between batches
             if batch_start + batch_size < len(queries):
@@ -732,7 +798,9 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
     if cache:
         cache_writes = [
             (
-                pkg.ecosystem.lower(),
+                pkg.ecosystem.lower()
+                if len(_osv_ecosystems_for_package(pkg)) == 1
+                else f"{pkg.ecosystem.lower()}|{'|'.join(_osv_ecosystems_for_package(pkg))}",
                 normalize_package_name(pkg.name, pkg.ecosystem),
                 pkg.version,
                 results.get(f"{pkg.ecosystem.lower()}:{normalize_package_name(pkg.name, pkg.ecosystem)}@{pkg.version}", []),
@@ -764,7 +832,13 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
     return results
 
 
-def _is_version_affected(vuln_data: dict, package_name: str, package_version: str, ecosystem: str = "") -> bool:
+def _is_version_affected(
+    vuln_data: dict,
+    package_name: str,
+    package_version: str,
+    ecosystem: str = "",
+    source_package: str | None = None,
+) -> bool:
     """Check if a specific version falls within the OSV affected ranges.
 
     Walks the ``affected[].ranges[].events[]`` structure and applies
@@ -778,15 +852,9 @@ def _is_version_affected(vuln_data: dict, package_name: str, package_version: st
     or is outside all affected ranges.  Returns True (conservative) if
     version parsing fails or no range data is available.
     """
-    from packaging.version import InvalidVersion, Version
+    from agent_bom.version_utils import compare_version_order
 
-    norm_name = normalize_package_name(package_name, ecosystem)
-
-    try:
-        pkg_ver = Version(package_version)
-    except InvalidVersion:
-        # Can't parse — assume affected (conservative)
-        return True
+    norm_names = _candidate_package_names(package_name, ecosystem, source_package)
 
     found_package = False
 
@@ -794,7 +862,7 @@ def _is_version_affected(vuln_data: dict, package_name: str, package_version: st
         pkg = affected.get("package", {})
         osv_eco = pkg.get("ecosystem", ecosystem)
         osv_name = normalize_package_name(pkg.get("name", ""), osv_eco)
-        if osv_name != norm_name:
+        if osv_name not in norm_names:
             continue
 
         found_package = True
@@ -829,22 +897,16 @@ def _is_version_affected(vuln_data: dict, package_name: str, package_version: st
                     if intro == "0":
                         is_affected = True
                     else:
-                        try:
-                            is_affected = pkg_ver >= Version(intro)
-                        except InvalidVersion:
-                            is_affected = True  # conservative
+                        intro_cmp = compare_version_order(package_version, intro, ecosystem)
+                        is_affected = True if intro_cmp is None else intro_cmp >= 0
                 elif "fixed" in event:
-                    try:
-                        if pkg_ver >= Version(event["fixed"]):
-                            is_affected = False
-                    except InvalidVersion:
-                        pass
+                    fixed_cmp = compare_version_order(package_version, event["fixed"], ecosystem)
+                    if fixed_cmp is not None and fixed_cmp >= 0:
+                        is_affected = False
                 elif "last_affected" in event:
-                    try:
-                        if pkg_ver > Version(event["last_affected"]):
-                            is_affected = False
-                    except InvalidVersion:
-                        pass
+                    last_cmp = compare_version_order(package_version, event["last_affected"], ecosystem)
+                    if last_cmp is not None and last_cmp > 0:
+                        is_affected = False
 
             if is_affected:
                 return True
@@ -873,7 +935,13 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
 
         # Version-range filter: skip vulns that don't affect our version
         if package.version and package.version not in ("unknown", "latest"):
-            if not _is_version_affected(vuln_data, package.name, package.version, package.ecosystem):
+            if not _is_version_affected(
+                vuln_data,
+                package.name,
+                package.version,
+                package.ecosystem,
+                source_package=package.source_package,
+            ):
                 _logger.debug(
                     "Filtered %s: version %s not in affected range for %s",
                     vuln_id,
@@ -897,7 +965,13 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
             seen_ids.add(alias)
 
         severity, cvss_score, sev_source = parse_osv_severity(vuln_data)
-        fixed = parse_fixed_version(vuln_data, package.name, package.ecosystem, current_version=package.version or "")
+        fixed = parse_fixed_version(
+            vuln_data,
+            package.name,
+            package.ecosystem,
+            current_version=package.version or "",
+            source_package=package.source_package,
+        )
 
         references = [ref.get("url", "") for ref in vuln_data.get("references", []) if ref.get("url")]
 
@@ -1050,37 +1124,30 @@ def _scan_packages_local_db(packages: list[Package]) -> tuple[int, set[str]]:
     covered: set[str] = set()
     total = 0
 
-    # Map agent-bom ecosystem names to DB ecosystem names (OSV-style)
-    _eco_map = {
-        "pypi": "PyPI",
-        "npm": "npm",
-        "go": "Go",
-        "cargo": "crates.io",
-        "maven": "Maven",
-        "nuget": "NuGet",
-        "rubygems": "RubyGems",
-        "conda": "PyPI",
-    }
-
     try:
         from agent_bom.db.lookup import package_in_db
 
         if len(packages) > _BATCH_DB_THRESHOLD:
-            total = _scan_packages_local_db_batch(conn, packages, _eco_map, covered)
+            total = _scan_packages_local_db_batch(conn, packages, covered)
         else:
             for pkg in packages:
                 eco_key = pkg.ecosystem.lower()
-                db_eco = _eco_map.get(eco_key, pkg.ecosystem)
-                norm_name = normalize_package_name(pkg.name, pkg.ecosystem)
+                db_ecos = _db_ecosystems_for_package(pkg) or [pkg.ecosystem.lower()]
+                candidate_names = _package_lookup_names(pkg)
+                norm_name = candidate_names[0]
                 db_key = f"{eco_key}:{norm_name}@{pkg.version}"
-
-                local_vulns = lookup_package(conn, db_eco, norm_name, pkg.version)
+                local_vulns = []
+                db_hit = False
+                for db_eco in db_ecos:
+                    for candidate_name in candidate_names:
+                        local_vulns.extend(lookup_package(conn, db_eco, candidate_name, pkg.version))
+                        db_hit = db_hit or package_in_db(conn, db_eco, candidate_name)
 
                 # Only mark as "covered by DB" when the package name actually exists in the
                 # affected table — not just because the ecosystem is mapped. This prevents
                 # false negatives where a package has no DB entry but is silently skipped
                 # (no OSV fallback) because the ecosystem is present.
-                if package_in_db(conn, db_eco, norm_name):
+                if db_hit:
                     covered.add(db_key)
 
                 if local_vulns:
@@ -1112,7 +1179,6 @@ def _scan_packages_local_db(packages: list[Package]) -> tuple[int, set[str]]:
 def _scan_packages_local_db_batch(
     conn: Any,
     packages: list[Package],
-    eco_map: dict[str, str],
     covered: set[str],
 ) -> int:
     """Batch variant of the local DB scan — fewer SQL round-trips.
@@ -1123,24 +1189,30 @@ def _scan_packages_local_db_batch(
     from agent_bom.db.lookup import lookup_packages_batch, package_in_db
 
     # Build batch keys: (db_ecosystem, normalized_name, version)
-    pkg_index: list[tuple[Package, str, str, str]] = []  # (pkg, db_eco, norm_name, db_key)
+    pkg_index: list[tuple[Package, list[str], str, str, list[str]]] = []  # (pkg, db_ecos, primary_norm_name, db_key, candidate_names)
     batch_keys: list[tuple[str, str, str]] = []
 
     for pkg in packages:
         eco_key = pkg.ecosystem.lower()
-        db_eco = eco_map.get(eco_key, pkg.ecosystem)
-        norm_name = normalize_package_name(pkg.name, pkg.ecosystem)
+        db_ecos = _db_ecosystems_for_package(pkg) or [pkg.ecosystem.lower()]
+        candidate_names = _package_lookup_names(pkg)
+        norm_name = candidate_names[0]
         db_key = f"{eco_key}:{norm_name}@{pkg.version}"
-        pkg_index.append((pkg, db_eco, norm_name, db_key))
-        batch_keys.append((db_eco, norm_name, pkg.version))
+        pkg_index.append((pkg, db_ecos, norm_name, db_key, candidate_names))
+        for db_eco in db_ecos:
+            for candidate_name in candidate_names:
+                batch_keys.append((db_eco, candidate_name, pkg.version))
 
     batch_results = lookup_packages_batch(conn, batch_keys)
 
     total = 0
-    for (pkg, db_eco, norm_name, db_key), batch_key in zip(pkg_index, batch_keys):
-        local_vulns = batch_results.get(batch_key, [])
+    for pkg, db_ecos, norm_name, db_key, candidate_names in pkg_index:
+        local_vulns = []
+        for db_eco in db_ecos:
+            for candidate_name in candidate_names:
+                local_vulns.extend(batch_results.get((db_eco, candidate_name, pkg.version), []))
 
-        if package_in_db(conn, db_eco, norm_name):
+        if any(package_in_db(conn, db_eco, candidate_name) for db_eco in db_ecos for candidate_name in candidate_names):
             covered.add(db_key)
 
         if local_vulns:

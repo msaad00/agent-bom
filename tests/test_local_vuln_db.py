@@ -139,6 +139,21 @@ def test_version_affected_last_affected():
     assert _version_affected("2.1.0", "2.0.0", None, "2.0.9") is False
 
 
+def test_version_affected_debian_range():
+    assert _version_affected("6.5+20250216-2", "0", "6.5+20250216-3", None, "debian") is True
+    assert _version_affected("6.5+20250216-3", "0", "6.5+20250216-3", None, "debian") is False
+
+
+def test_version_affected_apk_range():
+    assert _version_affected("1.2.4-r2", "0", "1.2.4-r10", None, "apk") is True
+    assert _version_affected("1.2.4-r10", "0", "1.2.4-r10", None, "apk") is False
+
+
+def test_version_affected_rpm_range():
+    assert _version_affected("3.0.7-24.el9", "0", "3.0.7-25.el9", None, "linux") is True
+    assert _version_affected("3.0.7-25.el9", "0", "3.0.7-25.el9", None, "linux") is False
+
+
 # ---------------------------------------------------------------------------
 # lookup_package
 # ---------------------------------------------------------------------------
@@ -171,6 +186,34 @@ def test_lookup_package_ecosystem_case_insensitive(tmp_db):
     _insert_affected(tmp_db, ecosystem="pypi")
     results = lookup_package(tmp_db, "PyPI", "requests", "2.0.5")
     assert len(results) == 1
+
+
+def test_lookup_package_debian_version_match(tmp_db):
+    _insert_vuln(tmp_db, vuln_id="CVE-2025-NCURSES")
+    _insert_affected(
+        tmp_db,
+        vuln_id="CVE-2025-NCURSES",
+        ecosystem="debian",
+        pkg="ncurses-bin",
+        introduced="0",
+        fixed="6.5+20250216-3",
+    )
+    results = lookup_package(tmp_db, "Debian", "ncurses-bin", "6.5+20250216-2")
+    assert len(results) == 1
+
+
+def test_lookup_package_debian_fixed_version_not_affected(tmp_db):
+    _insert_vuln(tmp_db, vuln_id="CVE-2025-NCURSES")
+    _insert_affected(
+        tmp_db,
+        vuln_id="CVE-2025-NCURSES",
+        ecosystem="debian",
+        pkg="ncurses-bin",
+        introduced="0",
+        fixed="6.5+20250216-3",
+    )
+    results = lookup_package(tmp_db, "Debian", "ncurses-bin", "6.5+20250216-3")
+    assert results == []
 
 
 def test_lookup_package_name_normalized(tmp_db):

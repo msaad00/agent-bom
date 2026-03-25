@@ -167,15 +167,15 @@ def test_check_vulnerable_package(mock_osv):
     assert result["details"][0]["id"] == "CVE-2025-9999"
 
 
-@patch("agent_bom.scanners.query_osv_batch")
-def test_check_scoped_npm_package(mock_osv):
+@patch("agent_bom.scanners.scan_packages")
+def test_check_scoped_npm_package(mock_scan):
     """Check parses scoped npm package correctly."""
     from agent_bom.mcp_server import create_mcp_server
 
-    async def _fake_osv(pkgs):
-        return {}
+    async def _fake_scan(pkgs):
+        return None
 
-    mock_osv.side_effect = _fake_osv
+    mock_scan.side_effect = _fake_scan
     server = create_mcp_server()
     result = _call_tool(
         server,
@@ -855,7 +855,7 @@ def test_validate_ecosystem_valid():
     """All supported ecosystems should pass validation."""
     from agent_bom.mcp_server import _validate_ecosystem
 
-    for eco in ("npm", "pypi", "go", "cargo", "maven", "nuget", "rubygems"):
+    for eco in ("npm", "pypi", "go", "cargo", "maven", "nuget", "rubygems", "composer", "swift", "deb", "apk", "rpm"):
         assert _validate_ecosystem(eco) == eco
     # Case insensitive + whitespace trimmed
     assert _validate_ecosystem("NPM") == "npm"
@@ -866,7 +866,7 @@ def test_validate_ecosystem_invalid():
     """Invalid ecosystems should raise ValueError."""
     from agent_bom.mcp_server import _validate_ecosystem
 
-    for bad in ("pip", "", "python", "composer", "  "):
+    for bad in ("pip", "", "python", "gem", "  "):
         with pytest.raises(ValueError, match="Invalid ecosystem"):
             _validate_ecosystem(bad)
 

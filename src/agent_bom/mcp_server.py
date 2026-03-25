@@ -58,6 +58,7 @@ from pydantic import Field
 
 from agent_bom.config import MCP_MAX_FILE_SIZE as _MAX_FILE_SIZE
 from agent_bom.config import MCP_MAX_RESPONSE_CHARS as _MAX_RESPONSE_CHARS
+from agent_bom.ecosystems import SUPPORTED_PACKAGE_ECOSYSTEM_SET
 from agent_bom.security import sanitize_error
 
 logger = logging.getLogger(__name__)
@@ -66,7 +67,7 @@ logger = logging.getLogger(__name__)
 # Input validation helpers
 # ---------------------------------------------------------------------------
 
-_VALID_ECOSYSTEMS = frozenset({"npm", "pypi", "go", "cargo", "maven", "nuget", "rubygems"})
+_VALID_ECOSYSTEMS = SUPPORTED_PACKAGE_ECOSYSTEM_SET
 
 _CVE_RE = re.compile(r"^CVE-\d{4}-\d{4,}$", re.IGNORECASE)
 _GHSA_RE = re.compile(r"^GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}$", re.IGNORECASE)

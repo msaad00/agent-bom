@@ -19,7 +19,7 @@
 
 <p align="center"><b>Your AI agent's dependencies have a CVE. Which credentials leak?</b></p>
 
-```
+```text
 CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
   |── better-sqlite3@9.0.0  (npm)
        |── sqlite-mcp  (MCP Server · unverified · root)
@@ -32,20 +32,59 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 
 **agent-bom maps the blast radius**: CVE → package → MCP server → AI agent → credentials → tools.
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.75.5.gif" alt="agent-bom demo — doctor, posture, scan, check" width="900" />
+</p>
+
+## Quick start
+
 ```bash
 pip install agent-bom
+
+# AI agent and MCP scan
 agent-bom agents
+
+# Workstation posture summary
+agent-bom agents --posture
+
+# Pre-install CVE and supply chain gate
+agent-bom check flask@2.0.0
 ```
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-v0.75.4.gif" alt="agent-bom demo — doctor, posture, scan, check" width="900" />
-</p>
+<details>
+<summary><b>More common commands</b></summary>
+
+```bash
+# Container image scan
+agent-bom image nginx:latest
+
+# IaC and Kubernetes scan
+agent-bom iac Dockerfile k8s/ infra/main.tf
+
+# Cloud AI and infrastructure inventory
+agent-bom cloud aws
+
+# AI BOM / SBOM export
+agent-bom agents -p . -f cyclonedx -o ai-bom.json
+```
+
+</details>
+
+## What it scans
+
+- **30 MCP client types** — Claude Desktop, Cursor, Windsurf, VS Code, Codex CLI, Gemini CLI, Continue, Cline, Zed, and more
+- **Packages and supply chain** — 15 ecosystems, OSV + NVD + GHSA + EPSS + CISA KEV
+- **Container images and filesystems** — native image scanning, running containers, Docker contexts
+- **IaC and Kubernetes** — Dockerfile, Terraform, CloudFormation, Helm, and Kubernetes manifests
+- **AI code and frameworks** — prompts, guardrails, tool signatures, instruction files
+- **Cloud AI and AI infrastructure** — AWS, Azure, GCP, Databricks, Snowflake, Hugging Face, Ollama, MLflow, vector DBs
+- **Secrets and PII** — source, config, environment, and credential exposure paths
 
 ### Why this is different
 
-- **Discovers AI agents and MCP servers** across real developer environments (30 MCP client types)
-- **Maps vulnerabilities into reachable credentials and tools** — not just "package X has CVE Y"
-- **Adds runtime protection** with an MCP security proxy (7 behavioral detectors, 112 patterns)
+- **Discovers AI agents and MCP servers** across real developer environments
+- **Maps vulnerabilities into reachable credentials and tools** instead of stopping at the artifact
+- **Adds runtime protection** with an MCP security proxy, enforcement policies, and evidence
 
 <details>
 <summary><b>How agent-bom compares</b></summary>
@@ -166,30 +205,11 @@ Read-only. Agentless. No secrets leave your machine.
 
 ---
 
-## Quick start
+## Extended quick start
 
 ```bash
-pip install agent-bom
-```
-
-```bash
-# AI agent discovery + vulnerability scanning + blast radius
-agent-bom agents
-
-# Pre-install CVE gate
-agent-bom check flask@2.0.0
-
 # MCP security proxy (112 patterns, 7 detectors, PII redaction)
 agent-bom proxy "npx @mcp/server-filesystem /tmp"
-
-# Container image scan
-agent-bom image nginx:latest
-
-# IaC misconfigurations (138 rules: Dockerfile, K8s, Terraform, CloudFormation, Helm)
-agent-bom iac Dockerfile k8s/ infra/main.tf
-
-# Cloud posture + CIS benchmarks
-agent-bom cloud aws
 
 # Dependency graph export (Neo4j, GraphML, Graphviz, Mermaid)
 agent-bom graph report.json --format cypher --output import.cypher
@@ -335,7 +355,7 @@ docker run --rm agentbom/agent-bom agents  # Docker (linux/amd64 + arm64)
 | Source | How |
 |--------|-----|
 | MCP configs | Auto-discover (30 clients + Docker Compose) |
-| Docker images | Grype / Syft / Docker CLI fallback |
+| Docker images | Native OCI/package extraction + Docker image tar parsing |
 | Kubernetes | kubectl across namespaces |
 | Cloud providers | AWS, Azure, GCP, Databricks, Snowflake |
 | AI platforms | OpenAI, HuggingFace, W&B, MLflow, Ollama |

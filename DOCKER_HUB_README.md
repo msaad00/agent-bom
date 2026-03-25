@@ -1,9 +1,9 @@
 # agent-bom
 
-**Find which AI agents, MCP servers, credentials, and tools are exposed by a vulnerability.**
+**Find which AI agents, MCP servers, credentials, tools, images, and cloud AI components are exposed by a vulnerability.**
 
-agent-bom helps developers, security teams, and enterprises discover AI agent environments,
-map CVEs into real blast radius, and protect MCP traffic at runtime.
+agent-bom helps developers, security teams, and enterprises discover AI agent and MCP environments,
+map CVEs into real blast radius, scan packages, container images, Kubernetes, IaC, and cloud AI infrastructure, and protect MCP traffic at runtime.
 
 ## Who It Is For
 
@@ -49,6 +49,12 @@ docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest agents -p /work
 docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest iac /workspace
 ```
 
+**Cloud AI and infra inventory**
+
+```bash
+docker run --rm agentbom/agent-bom:latest cloud aws
+```
+
 **Preflight health check**
 
 ```bash
@@ -58,9 +64,9 @@ docker run --rm agentbom/agent-bom:latest doctor
 ## What It Covers
 
 - **30 MCP client types** — Claude Desktop, Cursor, Windsurf, VS Code Copilot, Cline, Continue, Zed, Cortex Code, and more
-- Packages, containers, IaC, secrets, AI source code, and cloud AI environments
+- Packages, container images, IaC, secrets, AI source code, and cloud AI environments
 - Blast radius from package to server to agent to credentials and tools
-- Runtime MCP proxy with 8 behavioral detectors
+- Runtime MCP proxy with 7 behavioral detectors
 - 14 compliance frameworks
 - 33 MCP server tools
 - 20-page Next.js dashboard
@@ -82,7 +88,7 @@ agent-bom answers:
 | Tag | Description |
 |-----|-------------|
 | `latest` | Most recent stable release |
-| `v0.75.4` | Current stable version (pinned) |
+| `v0.75.5` | Current stable version (pinned) |
 
 ## Links
 

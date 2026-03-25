@@ -198,7 +198,7 @@ graph TB
 
     CI["CI/CD\nGitHub Actions · Policy Gate · SARIF Upload"]
     RT["Runtime\nMCP Proxy · Docker Sidecar · OpenTelemetry"]
-    HOSTS["MCP Hosts\n25 client types"]
+    HOSTS["MCP Hosts\n30 client types"]
     CLOUD["Cloud Providers\nAWS · Azure · GCP · Snowflake"]
     ENT["Enterprise\nSIEM · Slack · Jira · Webhooks · Prometheus"]
 
@@ -218,7 +218,7 @@ graph TB
 | Module | Path | Responsibility |
 |--------|------|----------------|
 | CLI | `src/agent_bom/cli/` | Click entry point, command dispatch |
-| Discovery | `src/agent_bom/discovery/__init__.py` | MCP client config discovery (25 clients) |
+| Discovery | `src/agent_bom/discovery/__init__.py` | MCP client config discovery (30 clients) |
 | Parsers | `src/agent_bom/parsers/__init__.py` | Package extraction + MCP registry lookup |
 | Scanners | `src/agent_bom/scanners/__init__.py` | OSV batch scan + CVSS + compliance tagging |
 | Enrichment | `src/agent_bom/enrichment.py` | NVD + EPSS + CISA KEV enrichment |

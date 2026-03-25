@@ -1,7 +1,7 @@
-# CVEs that cannot be fixed because the fix requires a transitive dependency upgrade
-# that conflicts with another required package's pinned range.
-#
-# Each entry documents: CVE, affected package, why it cannot be fixed, and when to revisit.
+# Scanner exception input.
+# Human-reviewed exception metadata lives in security/image-exceptions.yaml.
+# Keep this file aligned with the structured registry until the workflows read the
+# YAML registry directly.
 
 # CVE-2026-27459: pyOpenSSL DTLS cookie callback buffer overflow (HIGH)
 # Affects: pyopenssl@25.x. Fixed in: pyopenssl>=26.0.0

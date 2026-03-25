@@ -509,6 +509,7 @@ def to_json(report: AIBOMReport) -> dict:
                                 "deps_dev_resolved": pkg.deps_dev_resolved,
                                 "scorecard_score": pkg.scorecard_score,
                                 "scorecard_checks": pkg.scorecard_checks or None,
+                                "vulnerability_count": len(pkg.vulnerabilities),
                                 "vulnerabilities": [
                                     {
                                         "id": v.id,

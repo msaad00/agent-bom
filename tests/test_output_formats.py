@@ -264,6 +264,23 @@ class TestCSV:
         assert rows[0]["modified_at"] == "2026-03-23T09:00:00Z"
 
 
+class TestJSON:
+    def test_nested_package_vulnerability_count_present(self):
+        pkg = _make_pkg("ncurses-bin", "6.5+20250216-2", "deb")
+        pkg.vulnerabilities = [
+            _make_vuln("DEBIAN-CVE-2025-6141", Severity.CRITICAL, 9.8),
+            _make_vuln("DEBIAN-CVE-2025-69720", Severity.CRITICAL, 9.8),
+        ]
+        server = _make_server("image-server", packages=[pkg])
+        report = _make_report(agents=[_make_agent(name="image:test", servers=[server])])
+
+        result = to_json(report)
+        nested_pkg = result["agents"][0]["mcp_servers"][0]["packages"][0]
+
+        assert nested_pkg["vulnerability_count"] == 2
+        assert len(nested_pkg["vulnerabilities"]) == 2
+
+
 def test_json_runtime_session_graph_passthrough():
     report = _make_report()
     report.runtime_session_graph = {

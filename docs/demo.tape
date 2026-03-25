@@ -26,19 +26,14 @@ Type "abdemo --version"
 Enter
 Sleep 2s
 
-# 2. Quick agent and MCP scan
-Type "abdemo agents --demo --offline"
-Enter
-Sleep 14s
-
-# 3. Posture summary — quick workstation risk
+# 2. Posture summary — quick workstation risk
 Type "abdemo agents --demo --posture --offline"
 Enter
-Sleep 12s
-
-# 4. Pre-install CVE gate
-Type "abdemo check requests==2.28.0 --ecosystem pypi"
-Enter
 Sleep 9s
+
+# 3. Pre-install CVE gate
+Type "abdemo check flask==2.2.0 --ecosystem pypi"
+Enter
+Sleep 6s
 
 Sleep 3s

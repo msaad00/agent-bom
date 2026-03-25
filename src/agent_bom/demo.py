@@ -72,8 +72,8 @@ DEMO_INVENTORY: dict = {
                     ],
                 },
                 {
-                    "name": "slack-server",
-                    "command": "npx @modelcontextprotocol/server-slack",
+                    "name": "team-chat-server",
+                    "command": "python -m slack_mcp",
                     "transport": "stdio",
                     "packages": [
                         {"name": "jinja2", "version": "3.0.0", "ecosystem": "pypi"},

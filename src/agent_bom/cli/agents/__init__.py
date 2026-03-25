@@ -1837,24 +1837,26 @@ def scan(
 
     # Step 5: Output
     _step_t0 = _time.monotonic()
-    render_output(
-        ctx,
-        output=output,
-        output_format=output_format,
-        no_tree=no_tree,
-        quiet=quiet,
-        no_color=no_color,
-        open_report=open_report,
-        compliance_export=compliance_export,
-        mermaid_mode=mermaid_mode,
-        push_gateway=push_gateway,
-        otel_endpoint=otel_endpoint,
-        baseline=baseline,
-        delta_mode=delta_mode,
-        verbose=verbose,
-        exclude_unfixable=exclude_unfixable,
-        fixable_only=fixable_only,
-    )
+    _posture_console_only = posture and output_format == "console" and not output
+    if not _posture_console_only:
+        render_output(
+            ctx,
+            output=output,
+            output_format=output_format,
+            no_tree=no_tree,
+            quiet=quiet,
+            no_color=no_color,
+            open_report=open_report,
+            compliance_export=compliance_export,
+            mermaid_mode=mermaid_mode,
+            push_gateway=push_gateway,
+            otel_endpoint=otel_endpoint,
+            baseline=baseline,
+            delta_mode=delta_mode,
+            verbose=verbose,
+            exclude_unfixable=exclude_unfixable,
+            fixable_only=fixable_only,
+        )
 
     # ── Posture summary mode (--posture) ──────────────────────────────────────
     if posture:
@@ -1877,6 +1879,9 @@ def scan(
         )
         _floating = sum(1 for a in agents for s in a.mcp_servers if any("@latest" in str(arg) for arg in (getattr(s, "args", None) or [])))
         _unverified = sum(1 for a in agents for s in a.mcp_servers if not getattr(s, "verified", False))
+        _cred_names = sorted({cred for br in blast_radii for cred in (br.exposed_credentials or [])})
+        _tool_names = sorted({tool.name for br in blast_radii for tool in (br.exposed_tools or []) if getattr(tool, "name", None)})
+        _fixable = sum(1 for br in blast_radii if getattr(br.vulnerability, "fixed_version", None))
         # Top finding
         _top_br = sorted(blast_radii, key=lambda br: br.risk_score or 0.0, reverse=True)
         _top_str = ""
@@ -1895,23 +1900,36 @@ def scan(
             _action = "No vulnerabilities found — supply chain looks clean"
 
         from rich.console import Console as _RichConsole
+        from rich.panel import Panel as _Panel
 
         _pc = _RichConsole()
-        _pc.print()
-        _pc.print("[bold]agent-bom posture[/bold]")
-        _pc.print()
-        _pc.print(f"  [bold]Agents:[/bold]   {_n_agents} configured ({_agent_list_str})")
-        _pc.print(f"  [bold]Servers:[/bold]  {_n_servers} MCP servers ({_n_cred_servers} with credentials)")
+        _lines = [
+            f"[bold]Agents:[/bold]   {_n_agents} configured ({_agent_list_str})",
+            f"[bold]Servers:[/bold]  {_n_servers} MCP servers ({_n_cred_servers} with credentials)",
+        ]
         if _total_vulns:
-            _pc.print(
-                f"  [bold]Risk:[/bold]     {_total_vulns} vuln(s) ({_crit} critical, {_high} high)"
-                + (f" — top: {_top_str}" if _top_str else "")
+            _lines.append(f"[bold]Risk:[/bold]     {_total_vulns} vuln(s) ({_crit} critical, {_high} high)")
+            _lines.append(
+                "  [bold]Blast:[/bold]    "
+                f"{len({a.name for br in blast_radii for a in (br.affected_agents or [])})} agents · "
+                f"{len(_cred_names)} creds · {len(_tool_names)} tools reachable"
             )
+            _lines.append(f"[bold]Fixes:[/bold]    {_fixable} finding(s) have an upgrade path")
+            if _top_str:
+                _lines.append(f"[bold]Top:[/bold]      {_top_str}")
         else:
-            _pc.print("  [bold]Risk:[/bold]     No vulnerabilities found")
-        _pc.print(f"  [bold]Trust:[/bold]    {_floating} server(s) floating on @latest, {_unverified} unverified")
-        _pc.print(f"  [bold]Action:[/bold]   {_action}")
+            _lines.append("[bold]Risk:[/bold]     No vulnerabilities found")
+        _lines.append(f"[bold]Trust:[/bold]    {_floating} server(s) floating on @latest, {_unverified} unverified")
+        _lines.append(f"[bold]Action:[/bold]   {_action}")
         _pc.print()
+        _pc.print(
+            _Panel.fit(
+                "\n".join(_lines),
+                title="[bold]agent-bom posture[/bold]",
+                border_style="cyan",
+                padding=(1, 2),
+            )
+        )
         return
 
     # Step 6: Save report to history + asset tracking

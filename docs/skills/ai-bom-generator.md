@@ -13,7 +13,7 @@ pip install agent-bom
 # For cloud providers (install only what you need):
 pip install 'agent-bom[aws]'       # AWS Bedrock, Lambda, EKS, SageMaker
 pip install 'agent-bom[snowflake]'  # Cortex Agents, MCP Servers, Snowpark
-pip install 'agent-bom[cloud]'      # All providers
+pip install 'agent-bom[cloud]'      # Core cloud providers (install MLflow separately if needed)
 ```
 
 ## Steps

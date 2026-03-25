@@ -11,7 +11,7 @@ Assess your AI infrastructure against the [OWASP Top 10 for LLM Applications](ht
 ```bash
 pip install agent-bom
 # Install cloud extras for your environment:
-pip install 'agent-bom[cloud]'  # All providers
+pip install 'agent-bom[cloud]'  # Core providers; install mlflow separately if needed
 ```
 
 ## Threat Framework Reference

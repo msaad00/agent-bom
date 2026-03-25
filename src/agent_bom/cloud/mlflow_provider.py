@@ -2,7 +2,7 @@
 
 Requires ``mlflow``.  Install with::
 
-    pip install 'agent-bom[mlflow]'
+    pip install agent-bom mlflow
 
 Authentication uses MLFLOW_TRACKING_URI env var or --mlflow-tracking-uri flag.
 """
@@ -36,7 +36,7 @@ def discover(
     try:
         import mlflow  # noqa: F401
     except ImportError:
-        raise CloudDiscoveryError("mlflow is required for MLflow discovery. Install with: pip install 'agent-bom[mlflow]'")
+        raise CloudDiscoveryError("mlflow is required for MLflow discovery. Install with: pip install agent-bom mlflow")
 
     agents: list[Agent] = []
     warnings: list[str] = []

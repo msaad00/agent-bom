@@ -77,7 +77,7 @@ agent-bom agents -p . -f cyclonedx -o ai-bom.json
 - **Container images and filesystems** — native image scanning, running containers, Docker contexts
 - **IaC and Kubernetes** — Dockerfile, Terraform, CloudFormation, Helm, and Kubernetes manifests
 - **AI code and frameworks** — prompts, guardrails, tool signatures, instruction files
-- **Cloud AI and AI infrastructure** — AWS, Azure, GCP, Databricks, Snowflake, Hugging Face, Ollama, MLflow, vector DBs
+- **Cloud AI and AI infrastructure** — AWS, Azure, GCP, Databricks, Snowflake, Hugging Face, Ollama, W&B, OpenAI, vector DBs
 - **Secrets and PII** — source, config, environment, and credential exposure paths
 
 ### Why this is different
@@ -326,7 +326,7 @@ docker run --rm agentbom/agent-bom agents  # Docker (linux/amd64 + arm64)
 
 | Extra | Command |
 |-------|---------|
-| Cloud (all) | `pip install 'agent-bom[cloud]'` |
+| Cloud (core providers) | `pip install 'agent-bom[cloud]'` |
 | MCP server | `pip install 'agent-bom[mcp-server]'` |
 | REST API | `pip install 'agent-bom[api]'` |
 | Dashboard | `pip install 'agent-bom[ui]'` |
@@ -358,7 +358,7 @@ docker run --rm agentbom/agent-bom agents  # Docker (linux/amd64 + arm64)
 | Docker images | Native OCI/package extraction + Docker image tar parsing |
 | Kubernetes | kubectl across namespaces |
 | Cloud providers | AWS, Azure, GCP, Databricks, Snowflake |
-| AI platforms | OpenAI, HuggingFace, W&B, MLflow, Ollama |
+| AI platforms | OpenAI, HuggingFace, W&B, Ollama |
 | IaC files | Dockerfile, K8s, Terraform, CloudFormation, Helm (138 rules) |
 | Model files | 13 formats (.gguf, .safetensors, .pkl, ...) |
 | Instruction files | CLAUDE.md, .cursorrules, AGENTS.md |

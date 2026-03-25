@@ -10,7 +10,7 @@ Produce compliance-ready artifacts for auditors, regulators, and security teams:
 
 ```bash
 pip install agent-bom
-# For cloud providers: pip install 'agent-bom[cloud]'
+# For cloud providers: pip install 'agent-bom[cloud]'  # core providers; install mlflow separately if needed
 ```
 
 ## Steps

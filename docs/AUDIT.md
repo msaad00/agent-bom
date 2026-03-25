@@ -155,7 +155,7 @@ AI_PACKAGES constant covers 40+ GPU/ML packages including torch, tensorflow, vll
 | `snyk` | `[]` (empty) | `httpx` (already in core) | ✓ |
 | `ai-enrich` | `litellm>=1.30` | `ai_enrich.py` | ✓ |
 | `graph` | `networkx>=3.0` | `output/graph.py`, `context_graph.py` | ✓ |
-| `cloud` | meta-extra | bundles aws+azure+gcp+databricks+snowflake+nebius+huggingface+wandb+mlflow+openai | ✓ |
+| `cloud` | meta-extra | bundles aws+azure+gcp+databricks+snowflake+nebius+huggingface+wandb+openai | ✓ |
 
 No phantom extras. No extras declared but unused.
 

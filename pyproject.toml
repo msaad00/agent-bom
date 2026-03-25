@@ -92,7 +92,8 @@ snowflake = ["snowflake-connector-python>=3.6"]
 nebius = ["requests>=2.32.4"]  # GHSA-9hjg-9r4m-mvj7 (session cookie leak)
 huggingface = ["huggingface-hub>=0.20"]
 wandb = ["wandb>=0.16"]
-mlflow = ["mlflow>=2.10"]
+# Temporarily unbundled from agent-bom extras until upstream MLflow CVEs are fixed.
+# MLflow discovery still works if users install `mlflow` separately.
 openai = ["openai>=1.12"]
 ai-enrich = ["litellm>=1.30"]
 graph = ["networkx>=3.0"]
@@ -118,7 +119,6 @@ cloud = [
     "agent-bom[nebius]",
     "agent-bom[huggingface]",
     "agent-bom[wandb]",
-    "agent-bom[mlflow]",
     "agent-bom[openai]",
 ]
 docs = [

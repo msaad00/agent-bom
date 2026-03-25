@@ -1,0 +1,45 @@
+exceptions:
+  - id: debian-ncurses-trixie-no-fix
+    vulnerability_ids:
+      - CVE-2025-69720
+      - CVE-2025-6141
+    package: debian/ncurses
+    version: 6.5+20250216-2
+    images:
+      - agentbom/agent-bom:latest
+      - agentbom/agent-bom:v0.75.5
+    architectures:
+      - linux/amd64
+      - linux/arm64
+    severity: critical
+    owner: msaad00
+    status: temporary_exception
+    reason: >-
+      Inherited from the current python:3.12.13-slim Debian lineage. Docker Scout
+      surfaces the issue publicly; Debian's supported base lineage did not yet
+      expose a patched package for this suite when this exception was added.
+    opened_at: 2026-03-24
+    review_after: 2026-03-31
+    expires_at: 2026-04-14
+    remove_when: >-
+      Remove immediately after a refreshed approved base digest clears the ncurses
+      issue or the public runtime image moves to a cleaner promoted base.
+  - id: pyopenssl-snowflake-pin
+    vulnerability_ids:
+      - CVE-2026-27459
+    package: pyopenssl
+    version: 25.x
+    images: []
+    architectures: []
+    severity: high
+    owner: msaad00
+    status: temporary_exception
+    reason: >-
+      Upgrading pyOpenSSL is currently blocked by snowflake-connector-python's
+      pinned compatibility range.
+    opened_at: 2026-03-24
+    review_after: 2026-03-31
+    expires_at: 2026-04-14
+    remove_when: >-
+      Remove when snowflake-connector-python supports pyopenssl>=26.0.0 and the
+      lockfile can be refreshed cleanly.

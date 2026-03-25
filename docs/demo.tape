@@ -1,9 +1,9 @@
-# agent-bom v0.75.3 demo — run with: vhs docs/demo.tape
+# agent-bom v0.75.5 demo — run with: vhs docs/demo.tape
 #
 # HIGH RES, READABLE. Large font, focused output.
 # No personal paths, configs, or credentials.
 
-Output docs/images/demo-v0.75.3.gif
+Output docs/images/demo-v0.75.5.gif
 
 Set Shell "bash"
 Set FontSize 22
@@ -16,7 +16,7 @@ Set PlaybackSpeed 1.5
 
 # Setup
 Hide
-Type "export PS1='$ ' && export PATH=/opt/homebrew/Caskroom/miniconda/base/bin:$PATH && clear"
+Type "export PS1='$ ' && export PATH=/opt/homebrew/Caskroom/miniconda/base/bin:$PATH && alias agent-bom='uv run agent-bom' && clear"
 Enter
 Sleep 500ms
 Show
@@ -29,16 +29,21 @@ Sleep 2s
 # 2. Doctor — preflight check
 Type "agent-bom doctor"
 Enter
-Sleep 4s
+Sleep 5s
 
-# 3. Posture summary — quick workstation risk
+# 3. Quick agent and MCP scan
+Type "agent-bom agents --demo"
+Enter
+Sleep 14s
+
+# 4. Posture summary — quick workstation risk
 Type "agent-bom agents --demo --posture"
 Enter
-Sleep 20s
+Sleep 12s
 
-# 4. Pre-install CVE gate
+# 5. Pre-install CVE gate
 Type "agent-bom check requests==2.28.0"
 Enter
-Sleep 10s
+Sleep 9s
 
 Sleep 3s

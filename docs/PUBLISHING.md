@@ -111,6 +111,12 @@ This triggers:
 4. **publish-mcp-registry.yml** → Official MCP Registry (via workflow_run)
 5. **deploy-mcp-sse.yml** → Railway deployment (via workflow_run)
 
+Release operators should also review:
+
+- [`docs/IMAGE_SECURITY.md`](IMAGE_SECURITY.md)
+- [`docs/GOLDEN_IMAGE_PROGRAM.md`](GOLDEN_IMAGE_PROGRAM.md)
+- [`security/image-exceptions.yaml`](../security/image-exceptions.yaml)
+
 ---
 
 ## Platform Status

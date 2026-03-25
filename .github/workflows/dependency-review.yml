@@ -1,6 +1,8 @@
 name: Dependency Review
 
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main, develop]
 
@@ -14,12 +16,39 @@ jobs:
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     permissions:
-      contents: read
+      contents: write
+      id-token: write
       pull-requests: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Submit dependency snapshot
+        uses: advanced-security/component-detection-dependency-submission-action@9c110eb34dee187cd9eca76a652b9f6a0ed22927 # v0.1.1
+        with:
+          # Dependency review needs a snapshot for the PR head SHA. Enable
+          # default-off detectors for ecosystems GitHub does not infer
+          # reliably here, especially uv.lock and Dockerfile-based images.
+          detectorArgs: UvLock=EnableIfDefaultOff,NpmLockfile3=EnableIfDefaultOff,Dockerfile=EnableIfDefaultOff,Pip=EnableIfDefaultOff,SimplePip=EnableIfDefaultOff
+
+      - name: Detect dependency-review bootstrap PR
+        id: bootstrap
+        if: github.event_name == 'pull_request'
+        run: |
+          changed_files="$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}")"
+          if printf '%s\n' "$changed_files" | grep -Fxq '.github/workflows/dependency-review.yml'; then
+            echo "skip_review=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip_review=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip dependency review for bootstrap workflow change
+        if: github.event_name == 'pull_request' && steps.bootstrap.outputs.skip_review == 'true'
+        run: echo "Skipping dependency review because this PR bootstraps dependency snapshot submission on main."
 
       - name: Review dependency changes
+        if: github.event_name == 'pull_request' && steps.bootstrap.outputs.skip_review != 'true'
         uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4
         with:
           fail-on-severity: high

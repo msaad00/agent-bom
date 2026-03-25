@@ -1,9 +1,12 @@
 name: Dependency Submission
 
+# Keep dependency submission off pull_request runs.
+# Dependency Review already handles statically-declared ecosystems on PRs,
+# and submitting head snapshots in parallel introduces a GitHub-side race
+# where review sees head/base snapshot mismatches (base=0, head=1).
+# We only submit authoritative snapshots on main and on manual runs.
 on:
   push:
-    branches: [main]
-  pull_request:
     branches: [main]
   workflow_dispatch:
 

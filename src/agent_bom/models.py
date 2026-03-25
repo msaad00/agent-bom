@@ -87,6 +87,19 @@ class TransportType(str, Enum):
     UNKNOWN = "unknown"
 
 
+class ServerSurface(str, Enum):
+    MCP = "mcp-server"
+    CONTAINER_IMAGE = "container-image"
+    OCI_TARBALL = "oci-tarball"
+    FILESYSTEM = "filesystem"
+    SBOM = "sbom"
+    EXTERNAL_SCAN = "external-scan"
+    OS_PACKAGES = "os-packages"
+    SAST = "sast"
+    AI_INVENTORY = "ai-inventory"
+    OTHER = "other"
+
+
 class AgentStatus(str, Enum):
     CONFIGURED = "configured"
     INSTALLED_NOT_CONFIGURED = "installed-not-configured"
@@ -392,6 +405,7 @@ class MCPServer:
     permission_profile: Optional[PermissionProfile] = None
     security_blocked: bool = False  # True if server was rejected for security reasons
     security_warnings: list[str] = field(default_factory=list)  # Security issues found during discovery
+    surface: ServerSurface = ServerSurface.MCP
 
     @property
     def stable_id(self) -> str:
@@ -467,6 +481,16 @@ class MCPServer:
         from agent_bom.constants import SENSITIVE_PATTERNS
 
         return [k for k in self.env if any(pat in k.lower() for pat in SENSITIVE_PATTERNS)]
+
+    @property
+    def is_mcp_surface(self) -> bool:
+        """True only for real MCP servers, not synthetic scan wrappers."""
+        return self.surface == ServerSurface.MCP
+
+    @property
+    def allows_registry_resolution(self) -> bool:
+        """Whether MCP registry/marketplace fallback is valid for this surface."""
+        return self.surface == ServerSurface.MCP
 
 
 @dataclass
@@ -717,9 +741,9 @@ class AIBOMReport:
     def has_mcp_context(self) -> bool:
         """True if scan discovered real MCP servers (not synthetic SBOM/image wrappers).
 
-        A synthetic wrapper has ``command=""`` — real MCP servers always have a command.
+        Uses explicit server surface classification rather than command heuristics.
         """
-        return any(s.command for a in self.agents for s in a.mcp_servers)
+        return any(s.is_mcp_surface for a in self.agents for s in a.mcp_servers)
 
     @property
     def has_agent_context(self) -> bool:

@@ -156,7 +156,7 @@ def run_local_discovery(
 
     # Step 1b: Load SBOM packages if provided
     if not skill_only and sbom_file:
-        from agent_bom.models import Agent, AgentType, MCPServer, TransportType
+        from agent_bom.models import Agent, AgentType, MCPServer, ServerSurface, TransportType
         from agent_bom.sbom import load_sbom
 
         try:
@@ -169,6 +169,7 @@ def run_local_discovery(
                 args=[sbom_file],
                 transport=TransportType.STDIO,
                 packages=sbom_packages,
+                surface=ServerSurface.SBOM,
             )
             sbom_agent = Agent(
                 name=f"sbom:{_resource_name}",
@@ -186,7 +187,7 @@ def run_local_discovery(
     if not skill_only and external_scan_path:
         import json as _json
 
-        from agent_bom.models import Agent, AgentType, MCPServer, TransportType
+        from agent_bom.models import Agent, AgentType, MCPServer, ServerSurface, TransportType
         from agent_bom.parsers.external_scanners import detect_and_parse
 
         try:
@@ -201,6 +202,7 @@ def run_local_discovery(
                 args=[external_scan_path],
                 transport=TransportType.STDIO,
                 packages=_ext_packages,
+                surface=ServerSurface.EXTERNAL_SCAN,
             )
             _ext_agent = Agent(
                 name=f"external-scan:{_ext_resource_name}",
@@ -240,7 +242,7 @@ def run_local_discovery(
     # Step 1d: Scan Docker images (--image)
     if not skill_only and images:
         from agent_bom.image import ImageScanError, scan_image
-        from agent_bom.models import Agent, AgentType, MCPServer, TransportType
+        from agent_bom.models import Agent, AgentType, MCPServer, ServerSurface, TransportType
 
         con.print(f"\n[bold blue]Scanning {len(images)} container image(s)...[/bold blue]\n")
         image_successes = 0
@@ -259,11 +261,13 @@ def run_local_discovery(
                     args=["run", image_ref],
                     transport=TransportType.STDIO,
                     packages=img_packages,
+                    surface=ServerSurface.CONTAINER_IMAGE,
                 )
                 image_agent = Agent(
                     name=f"image:{image_ref}",
                     agent_type=AgentType.CUSTOM,
                     config_path=f"docker://{image_ref}",
+                    source="image",
                     mcp_servers=[server],
                 )
                 ctx.agents.append(image_agent)
@@ -277,7 +281,7 @@ def run_local_discovery(
     # Step 1d2: OCI tarball scan (--image-tar)
     if not skill_only and image_tars:
         from agent_bom.image import ImageScanError, scan_image_tar
-        from agent_bom.models import Agent, AgentType, MCPServer, TransportType
+        from agent_bom.models import Agent, AgentType, MCPServer, ServerSurface, TransportType
 
         con.print(f"\n[bold blue]Scanning {len(image_tars)} OCI image tarball(s)...[/bold blue]\n")
         for tar_path in image_tars:
@@ -291,11 +295,13 @@ def run_local_discovery(
                     args=[],
                     transport=TransportType.STDIO,
                     packages=tar_packages,
+                    surface=ServerSurface.OCI_TARBALL,
                 )
                 tar_agent = Agent(
                     name=f"image-tar:{tar_label}",
                     agent_type=AgentType.CUSTOM,
                     config_path=f"oci-tar://{tar_path}",
+                    source="image-tar",
                     mcp_servers=[server],
                 )
                 ctx.agents.append(tar_agent)
@@ -348,14 +354,14 @@ def run_local_discovery(
     # Step 1d3: Filesystem / disk snapshot scan (--filesystem)
     if not skill_only and filesystem_paths:
         from agent_bom.filesystem import FilesystemScanError, scan_filesystem
-        from agent_bom.models import Agent, AgentType, MCPServer
+        from agent_bom.models import Agent, AgentType, MCPServer, ServerSurface
 
         con.print(f"\n[bold blue]Scanning {len(filesystem_paths)} filesystem path(s)...[/bold blue]\n")
         for fs_path in filesystem_paths:
             try:
                 fs_packages, fs_strategy = scan_filesystem(fs_path)
                 con.print(f"  [green]\u2713[/green] {fs_path}: {len(fs_packages)} package(s) [dim](via {fs_strategy})[/dim]")
-                server = MCPServer(name=f"fs:{fs_path}")
+                server = MCPServer(name=f"fs:{fs_path}", surface=ServerSurface.FILESYSTEM)
                 server.packages = fs_packages
                 fs_agent = Agent(
                     name=f"filesystem:{Path(fs_path).name}",
@@ -380,7 +386,7 @@ def run_local_discovery(
 
     # Step 1d3a: Host OS package scan (--os-packages)
     if not skill_only and os_packages:
-        from agent_bom.models import Agent, AgentType, MCPServer
+        from agent_bom.models import Agent, AgentType, MCPServer, ServerSurface
         from agent_bom.parsers.os_parsers import scan_os_packages
 
         con.print("\n[bold blue]Scanning host OS for installed system packages...[/bold blue]\n")
@@ -388,7 +394,7 @@ def run_local_discovery(
         os_level_pkgs = scan_os_packages(Path("/"))
         if os_level_pkgs:
             con.print(f"  [green]\u2713[/green] Found {len(os_level_pkgs)} OS package(s)")
-            server = MCPServer(name="os-packages")
+            server = MCPServer(name="os-packages", surface=ServerSurface.OS_PACKAGES)
             server.packages = os_level_pkgs
             os_agent = Agent(
                 name="os-packages",
@@ -403,7 +409,7 @@ def run_local_discovery(
 
     # Step 1d3: SAST code scan (--code)
     if not skill_only and code_paths:
-        from agent_bom.models import Agent, AgentType, MCPServer
+        from agent_bom.models import Agent, AgentType, MCPServer, ServerSurface
         from agent_bom.sast import SASTScanError, scan_code
 
         con.print(f"\n[bold blue]Running SAST scan on {len(code_paths)} path(s) via Semgrep...[/bold blue]\n")
@@ -415,7 +421,7 @@ def run_local_discovery(
                     f"in {sast_result.files_scanned} file(s) [dim]({sast_result.scan_time_seconds}s)[/dim]"
                 )
                 if sast_packages:
-                    server = MCPServer(name=f"sast:{Path(code_path).name}")
+                    server = MCPServer(name=f"sast:{Path(code_path).name}", surface=ServerSurface.SAST)
                     server.packages = sast_packages
                     sast_agent = Agent(
                         name=f"code:{Path(code_path).name}",
@@ -433,7 +439,7 @@ def run_local_discovery(
     ai_inventory_paths = kwargs.get("ai_inventory_paths", ())
     if not skill_only and ai_inventory_paths:
         from agent_bom.ai_components import scan_source
-        from agent_bom.models import Agent, AgentType, MCPServer, Package
+        from agent_bom.models import Agent, AgentType, MCPServer, Package, ServerSurface
 
         # Collect manifest packages for shadow AI detection
         manifest_pkgs: set[str] = set()
@@ -525,7 +531,7 @@ def run_local_discovery(
                     ai_packages.append(Package(name=comp.package_name, version="latest", ecosystem=comp.ecosystem))
 
         if ai_packages:
-            server = MCPServer(name="ai-inventory")
+            server = MCPServer(name="ai-inventory", surface=ServerSurface.AI_INVENTORY)
             server.packages = ai_packages
             ai_agent = Agent(
                 name="ai-inventory",

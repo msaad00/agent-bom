@@ -256,6 +256,7 @@ def _build_inventory_snapshot(report: AIBOMReport) -> dict:
                 servers[server.stable_id] = {
                     "id": server.stable_id,
                     "name": server.name,
+                    "surface": server.surface.value,
                     "fingerprint": server.fingerprint,
                     "auth_mode": server.auth_mode,
                     "transport": server.transport.value,
@@ -346,6 +347,8 @@ def _build_mcp_runtime_diff(report: AIBOMReport) -> dict | None:
     server_diffs: list[dict] = []
     for agent in report.agents:
         for server in agent.mcp_servers:
+            if not server.is_mcp_surface:
+                continue
             intro = introspection_results.get(server.name, {})
             observed_tools = {tool.name for tool in server.tools}
             used_tools = sorted(runtime_used.get(server.name, set()))
@@ -439,6 +442,7 @@ def to_json(report: AIBOMReport) -> dict:
                     {
                         "name": server.name,
                         "stable_id": server.stable_id,
+                        "surface": server.surface.value,
                         "fingerprint": server.fingerprint,
                         "command": server.command,
                         "args": server.args,

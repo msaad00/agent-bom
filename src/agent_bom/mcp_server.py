@@ -202,6 +202,7 @@ async def _run_scan_pipeline(
     if image:
         try:
             from agent_bom.image import scan_image as _scan_image
+            from agent_bom.models import ServerSurface
 
             img_packages, _strategy = _scan_image(image)
             if img_packages:
@@ -212,6 +213,7 @@ async def _run_scan_pipeline(
                     env={},
                     transport=TransportType.UNKNOWN,
                     packages=img_packages,
+                    surface=ServerSurface.CONTAINER_IMAGE,
                 )
                 agents.append(
                     Agent(
@@ -236,6 +238,7 @@ async def _run_scan_pipeline(
                 msg = f"SBOM file too large ({sbom_file.stat().st_size} bytes, max {_MAX_FILE_SIZE})"
                 warnings.append(msg)
             else:
+                from agent_bom.models import ServerSurface
                 from agent_bom.sbom import load_sbom
 
                 sbom_packages, _warnings, _sbom_name = load_sbom(sbom_path)
@@ -247,6 +250,7 @@ async def _run_scan_pipeline(
                         env={},
                         transport=TransportType.UNKNOWN,
                         packages=sbom_packages,
+                        surface=ServerSurface.SBOM,
                     )
                     agents.append(
                         Agent(
@@ -438,7 +442,15 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                 )
             ),
         ],
-        ecosystem: Annotated[str, Field(description="Package ecosystem: 'npm', 'pypi', 'go', 'cargo', 'maven', or 'nuget'.")] = "npm",
+        ecosystem: Annotated[
+            str,
+            Field(
+                description=(
+                    "Package ecosystem: 'npm', 'pypi', 'go', 'cargo', 'maven', 'nuget', "
+                    "'rubygems', 'composer', 'swift', 'pub', 'hex', 'conda', 'deb', 'apk', or 'rpm'."
+                )
+            ),
+        ] = "npm",
     ) -> str:
         """Check a specific package for known CVEs before installing.
 
@@ -450,7 +462,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                      "@modelcontextprotocol/server-filesystem@2025.1.14",
                      or just "requests" (resolves @latest).
             ecosystem: Package ecosystem — "npm", "pypi", "go", "cargo",
-                       "maven", or "nuget". Defaults to "npm".
+                       "maven", "nuget", "rubygems", "composer", "swift",
+                       "pub", "hex", "conda", "deb", "apk", or "rpm".
+                       Defaults to "npm".
 
         Returns:
             JSON with package, version, ecosystem, vulnerability count,

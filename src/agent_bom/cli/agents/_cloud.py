@@ -129,10 +129,12 @@ def run_cloud_discovery(
 
     if _cloud_image_targets:
         from agent_bom.image import ImageScanError, scan_image
+        from agent_bom.models import ServerSurface
 
         # Deduplicate: if multiple agents share the same image, scan once and share packages
         _seen: dict[str, list] = {}
         for img_ref, srv in _cloud_image_targets:
+            srv.surface = ServerSurface.CONTAINER_IMAGE
             _seen.setdefault(img_ref, []).append(srv)
 
         con.print(f"\n[bold blue]Scanning {len(_seen)} cloud container image(s)...[/bold blue]\n")

@@ -265,10 +265,30 @@ def _run_scan_sync(job: ScanJob) -> None:
         for image_ref in req.images:
             pipeline.update_step("discovery", f"Scanning image: {image_ref}")
             from agent_bom.image import scan_image
+            from agent_bom.models import Agent, AgentType, MCPServer, ServerSurface, TransportType
 
-            img_agents, img_warnings = scan_image(image_ref)
-            agents.extend(img_agents)  # type: ignore[arg-type]
-            warnings_all.extend(img_warnings)
+            try:
+                img_packages, _strategy = scan_image(image_ref)
+                agents.append(
+                    Agent(
+                        name=f"image:{image_ref}",
+                        agent_type=AgentType.CUSTOM,
+                        config_path=f"docker://{image_ref}",
+                        source="image",
+                        mcp_servers=[
+                            MCPServer(
+                                name=image_ref,
+                                command="docker",
+                                args=["run", image_ref],
+                                transport=TransportType.STDIO,
+                                packages=img_packages,
+                                surface=ServerSurface.CONTAINER_IMAGE,
+                            )
+                        ],
+                    )
+                )
+            except Exception as img_exc:  # noqa: BLE001
+                warnings_all.append(f"Image scan error for {image_ref}: {sanitize_error(img_exc)}")
 
         if req.k8s:
             pipeline.update_step("discovery", "Scanning Kubernetes pods...")
@@ -277,10 +297,30 @@ def _run_scan_sync(job: ScanJob) -> None:
             k8s_records = discover_images(namespace=req.k8s_namespace or "default")
             for img, _pod, _ctr in k8s_records:
                 from agent_bom.image import scan_image
+                from agent_bom.models import Agent, AgentType, MCPServer, ServerSurface, TransportType
 
-                k8s_agents, k8s_warns = scan_image(img)
-                agents.extend(k8s_agents)  # type: ignore[arg-type]
-                warnings_all.extend(k8s_warns)
+                try:
+                    img_packages, _strategy = scan_image(img)
+                    agents.append(
+                        Agent(
+                            name=f"image:{img}",
+                            agent_type=AgentType.CUSTOM,
+                            config_path=f"docker://{img}",
+                            source="kubernetes-image",
+                            mcp_servers=[
+                                MCPServer(
+                                    name=img,
+                                    command="docker",
+                                    args=["run", img],
+                                    transport=TransportType.STDIO,
+                                    packages=img_packages,
+                                    surface=ServerSurface.CONTAINER_IMAGE,
+                                )
+                            ],
+                        )
+                    )
+                except Exception as img_exc:  # noqa: BLE001
+                    warnings_all.append(f"Kubernetes image scan error for {img}: {sanitize_error(img_exc)}")
 
         for tf_dir in req.tf_dirs:
             pipeline.update_step("discovery", f"Scanning Terraform: {tf_dir}")
@@ -320,9 +360,9 @@ def _run_scan_sync(job: ScanJob) -> None:
 
             sbom_packages, _fmt, _sbom_name = load_sbom(req.sbom)
             if sbom_packages:
-                from agent_bom.models import Agent, AgentType, MCPServer
+                from agent_bom.models import Agent, AgentType, MCPServer, ServerSurface
 
-                sbom_server = MCPServer(name=f"sbom:{req.sbom}")
+                sbom_server = MCPServer(name=f"sbom:{req.sbom}", surface=ServerSurface.SBOM)
                 sbom_server.packages = sbom_packages
                 sbom_agent = Agent(
                     name=f"sbom:{req.sbom}",
@@ -347,13 +387,13 @@ def _run_scan_sync(job: ScanJob) -> None:
             pipeline.update_step("discovery", f"Scanning filesystem: {fs_path}")
             try:
                 from agent_bom.filesystem import scan_filesystem
-                from agent_bom.models import Agent, AgentType, MCPServer
+                from agent_bom.models import Agent, AgentType, MCPServer, ServerSurface
 
                 fs_pkgs, fs_strat = scan_filesystem(fs_path)
                 if fs_pkgs:
                     from pathlib import Path as _Path
 
-                    fs_server = MCPServer(name=f"fs:{fs_path}")
+                    fs_server = MCPServer(name=f"fs:{fs_path}", surface=ServerSurface.FILESYSTEM)
                     fs_server.packages = fs_pkgs
                     fs_agent = Agent(
                         name=f"filesystem:{_Path(fs_path).name}",

@@ -21,6 +21,8 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
 
       - name: Submit dependency snapshot
         uses: advanced-security/component-detection-dependency-submission-action@9c110eb34dee187cd9eca76a652b9f6a0ed22927 # v0.1.1

@@ -7,7 +7,8 @@ name = "agent-bom"
 version = "0.75.5"
 description = "Security scanner for AI infrastructure and supply chain. AI agent discovery (30 MCP clients), AST source code analysis, AI BOM generation (CycloneDX 1.6 ML extensions), CVE scanning (OSV/NVD/EPSS/KEV), blast radius mapping (CVE → package → MCP server → agent → credentials → tools), runtime proxy (112 detection patterns, PII redaction), Shield SDK, secret scanning, red team simulator, 33 MCP tools, CIS benchmarks, 14-framework compliance, 19 output formats, 20-page Next.js dashboard."
 readme = "README.md"
-license = {text = "Apache-2.0"}
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 authors = [
     {name = "Wagdy Saad", email = "andwgdysaad@gmail.com"}
@@ -18,7 +19,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "Intended Audience :: Information Technology",
     "Intended Audience :: System Administrators",
-    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.11",

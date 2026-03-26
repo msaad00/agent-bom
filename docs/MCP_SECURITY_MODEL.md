@@ -166,7 +166,7 @@ agent-bom proxy "uvx mcp-server-filesystem /" --policy policy.yml
 agent-bom proxy --url http://localhost:3000 --policy policy.yml
 ```
 
-**7 behavioral detectors running on every message:**
+**8 behavioral detectors running on every message:**
 
 | Detector | What it catches | Framework reference |
 |----------|----------------|---------------------|
@@ -177,6 +177,7 @@ agent-bom proxy --url http://localhost:3000 --policy policy.yml
 | `SequenceAnalyzer` | Read → send → delete exfiltration sequences | MITRE ATLAS AML.T0025 |
 | `ResponseInspector` | Cloaking (invisible unicode), SVG injection, metadata poisoning | OWASP LLM05 |
 | `VectorDBInjectionDetector` | Prompt injection from retrieved vector DB chunks | OWASP LLM RAG-03 |
+| `CrossAgentCorrelator` | Cross-agent tool convergence and lateral movement patterns | OWASP Agentic AI ASI07, runtime lateral movement detection |
 
 Policy conditions (17 declarative + expression engine):
 
@@ -224,7 +225,7 @@ blast_radius        — blast radius for a specific CVE
 ### CI/CD (GitHub Action)
 
 ```yaml
-- uses: msaad00/agent-bom@v0.74.0
+- uses: msaad00/agent-bom@v0.75.7
   with:
     format: sarif
     upload-sarif: 'true'

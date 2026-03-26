@@ -1,7 +1,7 @@
 /**
  * @agent-bom/runtime — Runtime security detectors for MCP traffic.
  *
- * 7 detectors that analyze MCP JSON-RPC traffic in real-time:
+ * 8 detectors that analyze MCP JSON-RPC traffic in real-time:
  * - ToolDriftDetector — rug pull detection (new tools after baseline)
  * - ArgumentAnalyzer — shell injection, path traversal, credential values
  * - CredentialLeakDetector — API keys/tokens in tool responses

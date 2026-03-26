@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "agent-bom"
 version = "0.75.7"
 description = "Security scanner for AI infrastructure and supply chain. AI agent discovery (30 MCP clients), AST source code analysis, AI BOM generation (CycloneDX 1.6 ML extensions), CVE scanning (OSV/NVD/EPSS/KEV), blast radius mapping (CVE → package → MCP server → agent → credentials → tools), runtime proxy (112 detection patterns, PII redaction), Shield SDK, secret scanning, red team simulator, 33 MCP tools, CIS benchmarks, 14-framework compliance, 19 output formats, 20-page Next.js dashboard."
-readme = "README.md"
+readme = "PYPI_README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
@@ -104,7 +104,7 @@ mcp-server = [
     "mcp>=1.26",
     "smithery>=0.4",
 ]
-dashboard = ["streamlit>=1.55.0", "plotly>=5.18", "pillow>=12.1.1"]  # Track the resolved dashboard floor to avoid vulnerable lower-bound installs; pillow>=12.1.1 fixes CVE-2023-50447, CVE-2024-28219, CVE-2026-25990 (PSD OOB write)
+dashboard = ["streamlit>=1.55.0", "plotly>=5.18.0", "pandas>=2.0.0"]
 snyk = []  # Uses existing httpx dependency, no additional packages needed
 oidc = [
     "PyJWT>=2.8",

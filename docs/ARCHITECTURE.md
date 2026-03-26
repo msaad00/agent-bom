@@ -22,7 +22,7 @@ graph TB
 
     subgraph Shield["agent-shield — Runtime Protection"]
         Proxy["proxy\nMCP proxy + audit"]
-        Protect["protect --shield\n7 detectors + deep defense"]
+        Protect["protect --shield\n8 detectors + deep defense"]
         Run_Cmd["run\nZero-config proxy"]
     end
 
@@ -56,7 +56,7 @@ graph TB
         Console["Console\nTable / verbose"]
         Formats["Formats\nJSON / SARIF / HTML / CycloneDX"]
         API["REST API + MCP\n33 tools"]
-        Proxy["Runtime Proxy\n7 detectors"]
+        Proxy["Runtime Proxy\n8 detectors"]
     end
 
     Scan & MCP_Cmd --> Discovery
@@ -225,7 +225,7 @@ graph TB
 | Models | `src/agent_bom/models.py` | Core data models (Package, Vulnerability, Agent, BlastRadius) |
 | Output | `src/agent_bom/output/__init__.py` | JSON, CycloneDX, SARIF, SPDX, console |
 | Policy | `src/agent_bom/policy.py` | Policy-as-code engine (17 conditions) |
-| Proxy | `src/agent_bom/proxy.py` | Runtime MCP proxy (7 behavioral detectors) |
+| Proxy | `src/agent_bom/proxy.py` | Runtime MCP proxy (8 behavioral detectors) |
 | MCP Server | `src/agent_bom/mcp_server.py` | FastMCP server (33 tools) |
 | Cloud | `src/agent_bom/cloud/` | AWS, Azure, GCP, Snowflake, Databricks, ClickHouse |
 | Asset Tracker | `src/agent_bom/asset_tracker.py` | Persistent vuln tracking — first_seen, resolved, MTTR |

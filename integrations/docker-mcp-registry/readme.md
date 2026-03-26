@@ -28,7 +28,7 @@ docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom scan -p /workspace -f 
 ## Key features
 
 - **Blast radius mapping** — package → server → agent → credentials → tools
-- **Runtime MCP proxy** — 7 behavioral detectors (rug pull, injection, credential leak, exfil, cloaking, rate limiting, vector DB injection)
+- **Runtime MCP proxy** — 8 behavioral detectors (rug pull, injection, credential leak, exfil, cloaking, rate limiting, vector DB injection, cross-agent correlation)
 - **14 compliance frameworks** — OWASP LLM Top 10, OWASP Agentic Top 10, MITRE ATLAS, MITRE ATT&CK, NIST AI RMF, EU AI Act, NIST CSF, ISO 27001, SOC 2, CMMC, FedRAMP, CIS Benchmarks, AISVS
 - **32 MCP tools** — available to any MCP-compatible AI assistant
 

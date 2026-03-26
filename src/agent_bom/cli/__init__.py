@@ -85,8 +85,10 @@ main.commands["scan"] = _scan_hidden
 from agent_bom.cli._inventory import completions_cmd, inventory, validate, where  # noqa: E402
 
 # inventory + where are under `mcp` group — no top-level duplicate
-main.add_command(validate)
-main.commands["validate"].hidden = True  # Use `mcp validate` or `iac validate`
+_validate_hidden = _copy.copy(validate)
+_validate_hidden.hidden = True  # Use `mcp validate` or `iac validate`
+_validate_hidden.name = "validate"
+main.commands["validate"] = _validate_hidden
 main.add_command(completions_cmd, "completions")
 
 from agent_bom.cli._check import check, guard_cmd, verify  # noqa: E402
@@ -191,6 +193,7 @@ mcp_group.add_command(introspect_cmd, "introspect")
 mcp_group.add_command(registry, "registry")
 mcp_group.add_command(mcp_server_cmd, "server")
 mcp_group.add_command(where, "where")
+mcp_group.add_command(validate, "validate")
 main.add_command(mcp_group)
 
 # ---------------------------------------------------------------------------

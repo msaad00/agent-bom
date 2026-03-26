@@ -37,7 +37,7 @@ from agent_bom.runtime.protection import (
 class Shield:
     """In-process AI agent security middleware.
 
-    Drop-in protection for any AI agent pipeline. Runs all 7 detectors
+    Drop-in protection for any AI agent pipeline. Runs all 8 detectors
     locally with 112 patterns. No proxy needed, no network, no config.
 
     Args:

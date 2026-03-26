@@ -9,6 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 README = ROOT / "README.md"
+PYPI_README = ROOT / "PYPI_README.md"
 DEMO_TAPE = ROOT / "docs" / "demo.tape"
 DEMO_LATEST = ROOT / "docs" / "images" / "demo-latest.gif"
 
@@ -29,32 +30,49 @@ def _fail(message: str) -> None:
 def main() -> int:
     version = _load_version()
     readme = README.read_text()
+    pypi_readme = PYPI_README.read_text()
     demo_tape = DEMO_TAPE.read_text()
 
-    required_readme_markers = [
+    required_github_markers = [
+        "img.shields.io/github/actions/workflow/status",
         "img.shields.io/pypi/v/agent-bom",
         "img.shields.io/docker/pulls/agentbom/agent-bom",
+        "img.shields.io/ossf-scorecard",
         "docs/images/demo-latest.gif",
     ]
-    for marker in required_readme_markers:
+    for marker in required_github_markers:
         if marker not in readme:
             _fail(f"README is missing required storefront marker: {marker}")
 
-    forbidden_readme_markers = [
-        "github/actions/workflow/status",
-        "api.securityscorecards.dev",
-        "img.shields.io/badge/OpenSSF",
+    required_pypi_markers = [
+        "docs/images/demo-latest.gif",
+        "docs/images/scan-pipeline-light.svg",
+        "docs/images/blast-radius-light.svg",
+    ]
+    for marker in required_pypi_markers:
+        if marker not in pypi_readme:
+            _fail(f"PYPI_README.md is missing required storefront marker: {marker}")
+
+    forbidden_pypi_markers = [
+        "img.shields.io/github/actions/workflow/status",
         "img.shields.io/ossf-scorecard",
+        "api.securityscorecards.dev",
+        "```mermaid",
+        "flowchart ",
         "demo-v0.",
     ]
-    for marker in forbidden_readme_markers:
-        if marker in readme:
-            _fail(f"README contains forbidden stale/noisy storefront marker: {marker}")
+    for marker in forbidden_pypi_markers:
+        if marker in pypi_readme:
+            _fail(f"PYPI_README.md contains forbidden storefront marker: {marker}")
 
     if "demo-latest.gif" not in readme:
         _fail("README must reference docs/images/demo-latest.gif")
+    if "demo-latest.gif" not in pypi_readme:
+        _fail("PYPI_README.md must reference docs/images/demo-latest.gif")
     if re.search(r"demo-v\d+\.\d+\.\d+\.gif", readme):
         _fail("README must not reference versioned demo GIF filenames")
+    if re.search(r"demo-v\d+\.\d+\.\d+\.gif", pypi_readme):
+        _fail("PYPI_README.md must not reference versioned demo GIF filenames")
     if "Output docs/images/demo-latest.gif" not in demo_tape:
         _fail("docs/demo.tape must render to docs/images/demo-latest.gif")
     if not DEMO_LATEST.exists():
@@ -64,7 +82,7 @@ def main() -> int:
         r"/Users/[^/\s]+",
         r"[A-Za-z]:\\Users\\[^\\\s]+",
     ]
-    scan_roots = [ROOT / "README.md", ROOT / "docs"]
+    scan_roots = [ROOT / "README.md", ROOT / "PYPI_README.md", ROOT / "docs"]
     for path in scan_roots:
         files = [path] if path.is_file() else [p for p in path.rglob("*") if p.is_file()]
         for file in files:
@@ -78,7 +96,7 @@ def main() -> int:
     if f"agent-bom v{version}" not in demo_tape:
         _fail(f"docs/demo.tape header must include v{version}")
 
-    print("README/docs release consistency checks passed")
+    print("README/PyPI/docs release consistency checks passed")
     return 0
 
 

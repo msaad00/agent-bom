@@ -26,6 +26,7 @@ LABEL org.opencontainers.image.licenses="Apache-2.0"
 COPY --from=builder /install /usr/local
 COPY --from=builder /app/LICENSE /app/LICENSE
 
+RUN apk upgrade --no-cache zlib
 RUN pip install --no-cache-dir --upgrade pip
 
 # Create non-root user for least-privilege execution

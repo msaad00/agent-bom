@@ -49,6 +49,7 @@ jobs:
         continue-on-error: true
 
       - name: Trivy scan — SARIF
+        id: trivy_sarif
         continue-on-error: true
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
@@ -59,15 +60,27 @@ jobs:
           exit-code: "0"
           trivyignores: .trivyignore
 
+      - name: Detect SARIF output
+        id: sarif
+        if: always()
+        run: |
+          SARIF_FILE="trivy-${{ matrix.sarif_category }}.sarif"
+          if [ -f "$SARIF_FILE" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "path=$SARIF_FILE" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Upload SARIF to GitHub Security tab
-        if: always() && hashFiles(format('trivy-{0}.sarif', matrix.sarif_category)) != ''
+        if: always() && steps.sarif.outputs.exists == 'true'
         uses: github/codeql-action/upload-sarif@89a39a4e59826350b863aa6b6252a07ad50cf83e # v4
         with:
-          sarif_file: trivy-${{ matrix.sarif_category }}.sarif
+          sarif_file: ${{ steps.sarif.outputs.path }}
           category: ${{ matrix.sarif_category }}
 
       - name: Warn when SARIF was not generated
-        if: always() && hashFiles(format('trivy-{0}.sarif', matrix.sarif_category)) == ''
+        if: always() && steps.sarif.outputs.exists != 'true'
         run: |
           echo "::warning::Trivy SARIF was not generated for ${{ matrix.platform }}. Check the preceding Trivy step for workflow/config errors."
 

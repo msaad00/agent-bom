@@ -191,6 +191,7 @@ mcp_group.add_command(introspect_cmd, "introspect")
 mcp_group.add_command(registry, "registry")
 mcp_group.add_command(mcp_server_cmd, "server")
 mcp_group.add_command(where, "where")
+mcp_group.add_command(validate, "validate")
 main.add_command(mcp_group)
 
 # ---------------------------------------------------------------------------

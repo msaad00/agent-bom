@@ -111,7 +111,7 @@ AmazonEC2ReadOnlyAccess
 docker run --rm \
   -v ~/.config:/root/.config:ro \
   -v $(pwd):/workspace:ro \
-  agentbom/agent-bom:v0.74.1 agents --format json
+  agentbom/agent-bom:v0.75.7 agents --format json
 ```
 
 Multi-arch: `linux/amd64` + `linux/arm64`. Non-root container. SHA-pinned base image.

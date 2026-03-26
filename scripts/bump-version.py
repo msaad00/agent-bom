@@ -23,11 +23,13 @@ VERSION_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     ("pyproject.toml", re.compile(r'^(version\s*=\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
     ("src/agent_bom/__init__.py", re.compile(r'(__version__\s*=\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
     # Dockerfiles
+    ("Dockerfile", re.compile(r"^(ARG VERSION=)\S+", re.M), r"\g<1>{v}"),
     ("deploy/docker/Dockerfile.runtime", re.compile(r"^(ARG VERSION=)\S+", re.M), r"\g<1>{v}"),
     ("deploy/docker/Dockerfile.sse", re.compile(r"^(ARG VERSION=)\S+", re.M), r"\g<1>{v}"),
     ("deploy/docker/Dockerfile.mcp", re.compile(r"^(ARG VERSION=)\S+", re.M), r"\g<1>{v}"),
     # MCP Registry server.json (version field + pypi identifier version)
     ("integrations/mcp-registry/server.json", re.compile(r'("version":\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
+    ("integrations/glama/server.json", re.compile(r'("version":\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
     # Snowpark Dockerfile
     ("deploy/docker/Dockerfile.snowpark", re.compile(r"^(ARG VERSION=)\S+", re.M), r"\g<1>{v}"),
     # Helm chart
@@ -50,6 +52,11 @@ DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     ("docs/PUBLISHING.md", re.compile(r'(--version\s+")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
     ("docs/PUBLISHING.md", re.compile(r"(git tag v)\S+", re.M), r"\g<1>{v}"),
     ("docs/PUBLISHING.md", re.compile(r"(git push origin v)\S+", re.M), r"\g<1>{v}"),
+    ("DOCKER_HUB_README.md", re.compile(r"(\| `v)\d+\.\d+\.\d+(` \| Current stable version \(pinned\) \|)"), r"\g<1>{v}\g<2>"),
+    ("docs/ENTERPRISE_DEPLOYMENT.md", re.compile(r"(agentbom/agent-bom:v)\d+\.\d+\.\d+"), r"\g<1>{v}"),
+    ("docs/WINDOWS_CONTAINERS.md", re.compile(r"(msaad00/agent-bom@v)\d+\.\d+\.\d+"), r"\g<1>{v}"),
+    ("docs/MCP_SECURITY_MODEL.md", re.compile(r"(msaad00/agent-bom@v)\d+\.\d+\.\d+"), r"\g<1>{v}"),
+    ("ui/tests/nav.test.tsx", re.compile(r"(version: ')\d+\.\d+\.\d+(')"), r"\g<1>{v}\g<2>"),
     # tests/test_core.py — version assertions
     ("tests/test_core.py", re.compile(r'(assert\s+__version__\s*==\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
     # Only match version assertions that currently contain a semver pattern (avoids clobbering SARIF "2.1.0")

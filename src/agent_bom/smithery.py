@@ -1,6 +1,6 @@
 """Smithery.ai registry integration — live lookup, risk enrichment, registry sync.
 
-Extends agent-bom's bundled 112-server MCP registry with Smithery's 2,800+ servers.
+Extends agent-bom's bundled 427+ server MCP registry with Smithery's 2,800+ servers.
 Used as a fallback when a discovered MCP server is not in the local registry.
 
 API docs: https://smithery.ai/docs/concepts/registry_search_servers

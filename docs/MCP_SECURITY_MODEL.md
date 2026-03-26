@@ -166,7 +166,7 @@ agent-bom proxy "uvx mcp-server-filesystem /" --policy policy.yml
 agent-bom proxy --url http://localhost:3000 --policy policy.yml
 ```
 
-**7 behavioral detectors running on every message:**
+**8 behavioral detectors running on every message:**
 
 | Detector | What it catches | Framework reference |
 |----------|----------------|---------------------|
@@ -224,7 +224,7 @@ blast_radius        — blast radius for a specific CVE
 ### CI/CD (GitHub Action)
 
 ```yaml
-- uses: msaad00/agent-bom@v0.74.0
+- uses: msaad00/agent-bom@v0.75.7
   with:
     format: sarif
     upload-sarif: 'true'

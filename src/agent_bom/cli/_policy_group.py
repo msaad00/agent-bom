@@ -1,8 +1,9 @@
-"""Policy command group — templates and remediation.
+"""Policy command group — templates, checks, and remediation.
 
 Usage::
 
     agent-bom policy template            # generate starter policy file
+    agent-bom policy check <scan.json>   # evaluate findings against policy
     agent-bom policy apply <scan.json>   # apply remediation fixes
 """
 
@@ -14,10 +15,11 @@ import click
 @click.group("policy", invoke_without_command=True)
 @click.pass_context
 def policy_group(ctx: click.Context) -> None:
-    """Policy management — templates and remediation.
+    """Policy management — templates, checks, and remediation.
 
     \b
     Subcommands:
+      check       Evaluate findings against security policy rules
       template    Generate a starter policy file with common rules
       apply       Apply remediation fixes from scan result JSON
     """

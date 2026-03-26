@@ -80,6 +80,17 @@ jobs:
 
       - name: Publish to MCP Registry
         run: |
+          print_publish_error() {
+            if jq -e . >/dev/null 2>&1 </tmp/publish-response.json; then
+              echo "::group::MCP Registry publish error details"
+              jq -c '{error, message, detail, details, code, status}' /tmp/publish-response.json
+              echo "::endgroup::"
+            else
+              echo "::warning::MCP Registry returned a non-JSON error body"
+              head -c 1024 /tmp/publish-response.json || true
+            fi
+          }
+
           # Retry up to 3 times with exponential backoff
           for ATTEMPT in 1 2 3; do
             HTTP_STATUS=$(curl -s --connect-timeout 10 --max-time 30 \
@@ -103,8 +114,7 @@ jobs:
               sleep "$DELAY"
             else
               echo "::error::MCP Registry publish failed (HTTP $HTTP_STATUS)"
-              # Log only error message, not full response (may contain tokens/sensitive data)
-              jq -r '.error // .message // "unknown error"' /tmp/publish-response.json 2>/dev/null || echo "(non-JSON response)"
+              print_publish_error
               exit 1
             fi
           done

@@ -241,7 +241,7 @@ requires-dist = [
     { name = "smithery", marker = "extra == 'mcp-server'", specifier = ">=0.4" },
     { name = "snowflake-connector-python", marker = "extra == 'snowflake'", specifier = ">=3.6" },
     { name = "sse-starlette", marker = "extra == 'api'", specifier = ">=2.1" },
-    { name = "streamlit", marker = "extra == 'dashboard'", specifier = ">=1.37.0" },
+    { name = "streamlit", marker = "extra == 'dashboard'", specifier = ">=1.55.0" },
     { name = "toml", specifier = ">=0.10" },
     { name = "tornado", specifier = ">=6.5.5" },
     { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0" },

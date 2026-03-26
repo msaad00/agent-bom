@@ -3,7 +3,7 @@
 # HIGH RES, READABLE. Large font, focused output.
 # No personal paths, configs, or credentials.
 
-Output docs/images/demo-v0.75.5.gif
+Output docs/images/demo-latest.gif
 
 Set Shell "bash"
 Set FontSize 22

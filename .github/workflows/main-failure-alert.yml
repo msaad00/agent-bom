@@ -1,0 +1,70 @@
+name: Main Failure Alert
+
+on:
+  workflow_run:
+    workflows:
+      - "CI/CD Pipeline"
+      - "Release"
+      - "Publish to Registries"
+      - "Publish to MCP Registry"
+      - "Publish MCP Container"
+      - "Deploy MCP SSE"
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  alert:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      actions: read
+      contents: read
+    steps:
+      - name: Open or update regression issue
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v8.0.0
+        with:
+          script: |
+            const workflow = context.payload.workflow_run.name;
+            const htmlUrl = context.payload.workflow_run.html_url;
+            const sha = context.payload.workflow_run.head_sha.slice(0, 7);
+            const title = `ci-regression: ${workflow} failing on main`;
+            const labels = ["ci-regression", "release-blocker"];
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const body = [
+              `Workflow **${workflow}** failed on \`main\`.`,
+              "",
+              `- SHA: \`${sha}\``,
+              `- Run: ${htmlUrl}`,
+              `- Actor: @${context.payload.workflow_run.actor.login}`,
+              "",
+              "This issue was opened automatically so main failures do not sit unnoticed.",
+            ].join("\n");
+
+            const existing = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: "open",
+              labels: "ci-regression",
+              per_page: 100,
+            });
+            const match = existing.find((issue) => issue.title === title);
+            if (match) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: match.number,
+                body,
+              });
+              return;
+            }
+            await github.rest.issues.create({
+              owner,
+              repo,
+              title,
+              body,
+              labels,
+              assignees: [owner],
+            });

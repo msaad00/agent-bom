@@ -3,6 +3,9 @@ name: CI/CD Pipeline
 permissions:
   contents: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   push:
     branches: [main]
@@ -189,13 +192,12 @@ jobs:
           fi
           echo "✓ PR correctly targets main"
 
-  # 3c. Version Alignment Check
+  # 3c. Release Surface Consistency Check
   version-check:
     name: Version Alignment
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -205,100 +207,24 @@ jobs:
 
       - name: Verify version consistency
         run: |
-          # Extract version from pyproject.toml
-          PYPROJECT_VER=$(python -c "
-          import re
-          text = open('pyproject.toml').read()
-          m = re.search(r'version\s*=\s*\"([^\"]+)\"', text)
-          print(m.group(1))
-          ")
+          PYPROJECT_VER=$(python -c "import re, pathlib; text = pathlib.Path('pyproject.toml').read_text(); print(re.search(r'^version\\s*=\\s*\"([^\"]+)\"', text, re.M).group(1))")
+          python scripts/bump-version.py "$PYPROJECT_VER" --check
 
-          # Extract fallback version from __init__.py
-          INIT_VER=$(python -c "
-          import re
-          text = open('src/agent_bom/__init__.py').read()
-          m = re.search(r'\"(\d+\.\d+\.\d+)\"', text)
-          print(m.group(1))
-          ")
+      - name: Verify README/docs consistency
+        run: python scripts/check_release_consistency.py
 
-          # Extract Dockerfile.mcp ARG VERSION
-          DOCKER_VER=$(python -c "
-          import re
-          text = open('deploy/docker/Dockerfile.mcp').read()
-          m = re.search(r'ARG VERSION=(\S+)', text)
-          print(m.group(1))
-          ")
+      - name: Install dependencies for CLI smoke checks
+        run: uv sync --extra dev --extra api --extra mcp-server
 
-          # Extract Dockerfile.sse ARG VERSION
-          SSE_VER=$(python -c "
-          import re
-          text = open('deploy/docker/Dockerfile.sse').read()
-          m = re.search(r'ARG VERSION=(\S+)', text)
-          print(m.group(1))
-          ")
-
-          # Extract Dockerfile.runtime ARG VERSION
-          RUNTIME_VER=$(python -c "
-          import re
-          text = open('deploy/docker/Dockerfile.runtime').read()
-          m = re.search(r'ARG VERSION=(\S+)', text)
-          print(m.group(1))
-          ")
-
-          # Extract Dockerfile.snowpark ARG VERSION
-          SNOWPARK_VER=$(python -c "
-          import re
-          text = open('deploy/docker/Dockerfile.snowpark').read()
-          m = re.search(r'ARG VERSION=(\S+)', text)
-          print(m.group(1))
-          ")
-
-          # Extract Helm Chart appVersion
-          HELM_VER=$(python -c "
-          import re
-          text = open('deploy/helm/agent-bom/Chart.yaml').read()
-          m = re.search(r'appVersion:\s*\"([^\"]+)\"', text)
-          print(m.group(1))
-          ")
-
-          # Extract MCP Registry server.json version
-          REGISTRY_VER=$(python -c "
-          import json
-          data = json.load(open('integrations/mcp-registry/server.json'))
-          print(data['version'])
-          ")
-
-          echo "pyproject.toml:       $PYPROJECT_VER"
-          echo "__init__.py:          $INIT_VER"
-          echo "Dockerfile.mcp:       $DOCKER_VER"
-          echo "Dockerfile.sse:       $SSE_VER"
-          echo "Dockerfile.runtime:   $RUNTIME_VER"
-          echo "Dockerfile.snowpark:  $SNOWPARK_VER"
-          echo "server.json (MCP):    $REGISTRY_VER"
-          echo "Chart.yaml:           $HELM_VER"
-
-          MISMATCH=0
-          for LABEL_VER in \
-            "__init__.py:$INIT_VER" \
-            "Dockerfile.mcp:$DOCKER_VER" \
-            "Dockerfile.sse:$SSE_VER" \
-            "Dockerfile.runtime:$RUNTIME_VER" \
-            "Dockerfile.snowpark:$SNOWPARK_VER" \
-            "server.json (MCP Registry):$REGISTRY_VER" \
-            "Chart.yaml appVersion:$HELM_VER"; do
-            LABEL="${LABEL_VER%%:*}"
-            VER="${LABEL_VER#*:}"
-            if [ "$PYPROJECT_VER" != "$VER" ]; then
-              echo "::error::Version mismatch: pyproject.toml ($PYPROJECT_VER) != $LABEL ($VER)"
-              MISMATCH=1
-            fi
-          done
-
-          if [ "$MISMATCH" -eq 1 ]; then
-            echo "::error::Version numbers must be aligned across all files. Run: python scripts/bump-version.py $PYPROJECT_VER"
-            exit 1
-          fi
-          echo "All version numbers aligned at $PYPROJECT_VER"
+      - name: Validate canonical README commands parse
+        run: |
+          uv run agent-bom --version >/dev/null
+          uv run agent-bom agents --help >/dev/null
+          uv run agent-bom check --help >/dev/null
+          uv run agent-bom image --help >/dev/null
+          uv run agent-bom iac --help >/dev/null
+          uv run agent-bom cloud --help >/dev/null
+          uv run agent-bom doctor --help >/dev/null
 
       - name: Verify SDK patterns.json is up-to-date
         run: python sdks/shared/generate-patterns.py --check
@@ -376,6 +302,7 @@ jobs:
       - name: agent-bom native image tar scan gate
         run: |
           docker save agent-bom:test -o /tmp/agent-bom-test.tar
+          chmod 0644 /tmp/agent-bom-test.tar
           docker run --rm -v /tmp:/workspace agent-bom:test \
             agents --image-tar /workspace/agent-bom-test.tar --no-scan -f json -o /workspace/native-image-scan.json
           python3 - <<'PY'

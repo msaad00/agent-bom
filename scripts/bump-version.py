@@ -33,13 +33,12 @@ VERSION_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     # Helm chart
     ("deploy/helm/agent-bom/Chart.yaml", re.compile(r'^(appVersion:\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
     ("deploy/helm/agent-bom/values.yaml", re.compile(r'^(\s*tag:\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
-    # OpenClaw SKILL.md files (version + docker tag + sigstore verify)
-    ("integrations/openclaw/scan/SKILL.md", re.compile(r"^(version:\s*)\S+", re.M), r"\g<1>{v}"),
-    ("integrations/openclaw/scan/SKILL.md", re.compile(r"(ghcr\.io/msaad00/agent-bom:)\S+"), r"\g<1>{v}"),
-    ("integrations/openclaw/scan/SKILL.md", re.compile(r"(agent-bom verify agent-bom@)\S+"), r"\g<1>{v}"),
-    ("integrations/openclaw/compliance/SKILL.md", re.compile(r"^(version:\s*)\S+", re.M), r"\g<1>{v}"),
-    ("integrations/openclaw/registry/SKILL.md", re.compile(r"^(version:\s*)\S+", re.M), r"\g<1>{v}"),
-    ("integrations/openclaw/runtime/SKILL.md", re.compile(r"^(version:\s*)\S+", re.M), r"\g<1>{v}"),
+]
+
+OPENCLAW_SKILL_PATTERNS: list[tuple[str, re.Pattern, str]] = [
+    ("integrations/openclaw/**/SKILL.md", re.compile(r"^(version:\s*)\S+", re.M), r"\g<1>{v}"),
+    ("integrations/openclaw/**/SKILL.md", re.compile(r"(ghcr\.io/msaad00/agent-bom:)\S+"), r"\g<1>{v}"),
+    ("integrations/openclaw/**/SKILL.md", re.compile(r"(agent-bom verify agent-bom@)[^`\s]+(`)"), r"\g<1>{v}\g<2>"),
 ]
 
 # Patterns that reference the version in docs/tests (updated separately)
@@ -61,16 +60,21 @@ DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     (".github/workflows/mcp-change-scan.yml", re.compile(r"(agent-bom==)\d+\.\d+\.\d+"), r"\g<1>{v}"),
     # README.md — Sigstore verify line
     ("README.md", re.compile(r"(agent-bom verify agent-bom@)\S+"), r"\g<1>{v}"),
+    # docs/demo.tape — version header
+    ("docs/demo.tape", re.compile(r"^(# agent-bom v)\d+\.\d+\.\d+(\s+demo.*)$", re.M), r"\g<1>{v}\g<2>"),
 ]
 
 
-def bump(new_version: str, *, dry_run: bool = False) -> int:
+def bump(new_version: str, *, dry_run: bool = False, check: bool = False) -> int:
     """Replace version strings across all tracked files."""
     if not re.match(r"^\d+\.\d+\.\d+$", new_version):
         print(f"ERROR: Invalid semver: {new_version}", file=sys.stderr)
         return 1
 
     all_locations = VERSION_LOCATIONS + DOC_TEST_LOCATIONS
+    for glob_pattern, pattern, template in OPENCLAW_SKILL_PATTERNS:
+        for path in sorted(ROOT.glob(glob_pattern)):
+            all_locations.append((str(path.relative_to(ROOT)), pattern, template))
     changed = 0
 
     for rel_path, pattern, template in all_locations:
@@ -89,13 +93,22 @@ def bump(new_version: str, *, dry_run: bool = False) -> int:
             print(f"  OK (already {new_version}): {rel_path}")
         else:
             changed += count
-            if dry_run:
+            if dry_run or check:
                 print(f"  DRY-RUN ({count} hit): {rel_path}")
             else:
                 path.write_text(new_text)
                 print(f"  UPDATED ({count} hit): {rel_path}")
 
     print(f"\n{'Would update' if dry_run else 'Updated'} {changed} occurrence(s)")
+
+    if check:
+        if changed > 0:
+            print(
+                f"\nERROR: release-managed files drift from {new_version}. Run: python scripts/bump-version.py {new_version}",
+                file=sys.stderr,
+            )
+            return 1
+        return 0
 
     if not dry_run and changed > 0:
         print("\nNext steps:")
@@ -110,8 +123,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Bump agent-bom version everywhere")
     parser.add_argument("version", help="New version (e.g. 0.29.0)")
     parser.add_argument("--dry-run", action="store_true", help="Show what would change without writing")
+    parser.add_argument("--check", action="store_true", help="Fail if managed files are not already aligned")
     args = parser.parse_args()
-    sys.exit(bump(args.version, dry_run=args.dry_run))
+    sys.exit(bump(args.version, dry_run=args.dry_run, check=args.check))
 
 
 if __name__ == "__main__":

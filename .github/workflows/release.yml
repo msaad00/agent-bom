@@ -8,8 +8,39 @@ on:
 permissions: {}  # all permissions denied by default; jobs declare only what they need
 
 jobs:
+  version-guard:
+    name: Verify tag/version alignment
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Extract version from tag
+        id: meta
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify pyproject version matches tag
+        run: |
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          tag = "${{ steps.meta.outputs.version }}"
+          text = Path("pyproject.toml").read_text()
+          m = re.search(r'^version\s*=\s*"([^"]+)"', text, re.M)
+          if not m:
+              raise SystemExit("pyproject.toml version not found")
+          pkg = m.group(1)
+          if pkg != tag:
+              raise SystemExit(f"Tag version {tag} does not match pyproject version {pkg}")
+          print(f"Version aligned: {pkg}")
+          PY
+
   build:
     name: Build distribution
+    needs: version-guard
     runs-on: ubuntu-latest
     permissions:
       contents: read

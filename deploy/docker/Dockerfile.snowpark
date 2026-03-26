@@ -11,7 +11,7 @@ RUN pip install --no-cache-dir --prefix=/install ".[api,snowflake]"
 ## ── Runtime stage ────────────────────────────────────────────────────────────
 FROM python:3.11.12-slim@sha256:dbf1de478a55d6763afaa39c2f3d7b54b25230614980276de5cacdde79529d0c
 
-ARG VERSION=0.75.5
+ARG VERSION=0.75.7
 
 LABEL maintainer="W S <34316639+msaad00@users.noreply.github.com>"
 LABEL description="agent-bom API for Snowpark Container Services"

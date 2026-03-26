@@ -578,10 +578,14 @@ def test_diff_reports_inventory_changes():
         "generated_at": "2025-01-01T00:00:00",
         "inventory_snapshot": {
             "agents": [{"id": "agent-1", "name": "claude"}],
-            "servers": [{"id": "srv-1", "name": "filesystem", "fingerprint": "fp-1"}],
-            "tools": [{"id": "tool-1", "name": "read_file"}],
-            "resources": [],
+            "servers": [{"id": "srv-1", "name": "filesystem", "fingerprint": "fp-1", "auth_mode": "none"}],
+            "tools": [{"id": "tool-1", "name": "read_file", "fingerprint": "tool-fp-1", "risk_score": 1}],
+            "resources": [{"id": "res-1", "uri": "file:///workspace", "fingerprint": "res-fp-1", "risk_score": 1}],
             "packages": [{"id": "pkg-1", "name": "requests", "version": "2.31.0"}],
+            "relationships": [
+                {"from": "agent-1", "to": "srv-1", "type": "uses"},
+                {"from": "srv-1", "to": "tool-1", "type": "exposes_tool"},
+            ],
         },
         "agents": [],
         "blast_radius": [],
@@ -594,9 +598,20 @@ def test_diff_reports_inventory_changes():
                 {"id": "srv-1", "name": "filesystem", "fingerprint": "fp-2"},
                 {"id": "srv-2", "name": "sqlite", "fingerprint": "fp-3"},
             ],
-            "tools": [{"id": "tool-1", "name": "read_file"}, {"id": "tool-2", "name": "write_file"}],
-            "resources": [{"id": "res-1", "uri": "file:///workspace"}],
+            "tools": [
+                {"id": "tool-1", "name": "read_file", "fingerprint": "tool-fp-2", "risk_score": 3},
+                {"id": "tool-2", "name": "write_file", "fingerprint": "tool-fp-3", "risk_score": 4},
+            ],
+            "resources": [
+                {"id": "res-1", "uri": "file:///workspace", "fingerprint": "res-fp-2", "risk_score": 2},
+            ],
             "packages": [{"id": "pkg-1", "name": "requests", "version": "2.31.0"}],
+            "relationships": [
+                {"from": "agent-1", "to": "srv-1", "type": "uses"},
+                {"from": "srv-1", "to": "tool-1", "type": "exposes_tool"},
+                {"from": "srv-1", "to": "res-1", "type": "exposes_resource"},
+                {"from": "agent-1", "to": "srv-2", "type": "uses"},
+            ],
         },
         "agents": [],
         "blast_radius": [],
@@ -605,7 +620,50 @@ def test_diff_reports_inventory_changes():
     assert diff["inventory_diff"]["summary"]["new_servers"] == 1
     assert diff["inventory_diff"]["summary"]["changed_servers"] == 1
     assert diff["inventory_diff"]["summary"]["new_tools"] == 1
-    assert diff["inventory_diff"]["summary"]["new_resources"] == 1
+    assert diff["inventory_diff"]["summary"]["changed_tools"] == 1
+    assert diff["inventory_diff"]["summary"]["changed_resources"] == 1
+    assert diff["inventory_diff"]["summary"]["new_relationships"] == 2
+
+
+def test_diff_reports_inventory_uses_ai_bom_relationships():
+    from agent_bom.history import diff_reports
+
+    baseline = {
+        "generated_at": "2025-01-01T00:00:00",
+        "inventory_snapshot": {
+            "agents": [{"id": "agent-1", "name": "claude"}],
+            "servers": [{"id": "srv-1", "name": "filesystem", "fingerprint": "fp-1"}],
+            "tools": [{"id": "tool-1", "name": "read_file", "fingerprint": "tool-fp-1", "risk_score": 1}],
+            "resources": [],
+            "packages": [],
+        },
+        "ai_bom_entities": {
+            "relationships": [{"from": "srv-1", "to": "tool-1", "type": "exposes_tool"}],
+        },
+        "agents": [],
+        "blast_radius": [],
+    }
+    current = {
+        "generated_at": "2025-01-02T00:00:00",
+        "inventory_snapshot": {
+            "agents": [{"id": "agent-1", "name": "claude"}],
+            "servers": [{"id": "srv-1", "name": "filesystem", "fingerprint": "fp-1"}],
+            "tools": [{"id": "tool-1", "name": "read_file", "fingerprint": "tool-fp-1", "risk_score": 1}],
+            "resources": [],
+            "packages": [],
+        },
+        "ai_bom_entities": {
+            "relationships": [
+                {"from": "srv-1", "to": "tool-1", "type": "exposes_tool"},
+                {"from": "agent-1", "to": "srv-1", "type": "uses"},
+            ],
+        },
+        "agents": [],
+        "blast_radius": [],
+    }
+
+    diff = diff_reports(baseline, current)
+    assert diff["inventory_diff"]["summary"]["new_relationships"] == 1
 
 
 def test_cli_check_help():

@@ -127,6 +127,12 @@ def _extract_packages(report: dict) -> set[str]:
 def _get_inventory_snapshot(report: dict) -> dict:
     """Return inventory snapshot from a report, deriving a minimal one if absent."""
     snapshot = report.get("inventory_snapshot")
+    ai_bom_entities = report.get("ai_bom_entities") or {}
+    if snapshot and ai_bom_entities:
+        merged = dict(snapshot)
+        if "relationships" not in merged and ai_bom_entities.get("relationships"):
+            merged["relationships"] = ai_bom_entities["relationships"]
+        return merged
     if snapshot:
         return snapshot
 
@@ -135,6 +141,7 @@ def _get_inventory_snapshot(report: dict) -> dict:
     tools: list[dict] = []
     resources: list[dict] = []
     packages: list[dict] = []
+    relationships: list[dict] = []
 
     seen_servers: set[str] = set()
     seen_tools: set[str] = set()
@@ -152,24 +159,48 @@ def _get_inventory_snapshot(report: dict) -> dict:
                         "id": server_id,
                         "name": server.get("name", ""),
                         "fingerprint": server.get("fingerprint", ""),
+                        "auth_mode": server.get("auth_mode", ""),
+                        "transport": server.get("transport", ""),
                     }
                 )
                 seen_servers.add(server_id)
+            if agent_id and server_id:
+                relationships.append({"from": agent_id, "to": server_id, "type": "uses"})
             for tool in server.get("tools", []):
                 tool_id = tool.get("stable_id") or tool.get("name", "")
                 if tool_id and tool_id not in seen_tools:
-                    tools.append({"id": tool_id, "name": tool.get("name", "")})
+                    tools.append(
+                        {
+                            "id": tool_id,
+                            "name": tool.get("name", ""),
+                            "fingerprint": tool.get("fingerprint", ""),
+                            "risk_score": tool.get("risk_score", 0),
+                        }
+                    )
                     seen_tools.add(tool_id)
+                if server_id and tool_id:
+                    relationships.append({"from": server_id, "to": tool_id, "type": "exposes_tool"})
             for resource in server.get("resources", []):
                 resource_id = resource.get("stable_id") or resource.get("uri", "")
                 if resource_id and resource_id not in seen_resources:
-                    resources.append({"id": resource_id, "uri": resource.get("uri", "")})
+                    resources.append(
+                        {
+                            "id": resource_id,
+                            "uri": resource.get("uri", ""),
+                            "fingerprint": resource.get("fingerprint", ""),
+                            "risk_score": resource.get("risk_score", 0),
+                        }
+                    )
                     seen_resources.add(resource_id)
+                if server_id and resource_id:
+                    relationships.append({"from": server_id, "to": resource_id, "type": "exposes_resource"})
             for pkg in server.get("packages", []):
                 pkg_id = pkg.get("stable_id") or f"{pkg.get('ecosystem', 'unknown')}:{pkg.get('name', '')}@{pkg.get('version', '')}"
                 if pkg_id and pkg_id not in seen_packages:
                     packages.append({"id": pkg_id, "name": pkg.get("name", ""), "version": pkg.get("version", "")})
                     seen_packages.add(pkg_id)
+                if server_id and pkg_id:
+                    relationships.append({"from": server_id, "to": pkg_id, "type": "depends_on"})
 
     return {
         "agents": agents,
@@ -177,6 +208,7 @@ def _get_inventory_snapshot(report: dict) -> dict:
         "tools": tools,
         "resources": resources,
         "packages": packages,
+        "relationships": relationships,
     }
 
 
@@ -185,7 +217,13 @@ def _diff_inventory(baseline: dict, current: dict) -> dict:
     base_snapshot = _get_inventory_snapshot(baseline)
     curr_snapshot = _get_inventory_snapshot(current)
 
-    result: dict[str, object] = {"changed_servers": []}
+    result: dict[str, object] = {
+        "changed_servers": [],
+        "changed_tools": [],
+        "changed_resources": [],
+        "new_relationships": [],
+        "removed_relationships": [],
+    }
     summary: dict[str, int] = {}
 
     for entity_type in ("agents", "servers", "tools", "resources", "packages"):
@@ -215,5 +253,65 @@ def _diff_inventory(baseline: dict, current: dict) -> dict:
             )
     result["changed_servers"] = changed_servers
     summary["changed_servers"] = len(changed_servers)
+
+    base_tools = {item.get("id", ""): item for item in base_snapshot.get("tools", []) if item.get("id")}
+    curr_tools = {item.get("id", ""): item for item in curr_snapshot.get("tools", []) if item.get("id")}
+    changed_tools = []
+    for tool_id in sorted(set(base_tools) & set(curr_tools)):
+        base_tool = base_tools[tool_id]
+        curr_tool = curr_tools[tool_id]
+        if base_tool.get("fingerprint") != curr_tool.get("fingerprint") or base_tool.get("risk_score") != curr_tool.get("risk_score"):
+            changed_tools.append(
+                {
+                    "id": tool_id,
+                    "name": curr_tool.get("name", ""),
+                    "previous_fingerprint": base_tool.get("fingerprint", ""),
+                    "current_fingerprint": curr_tool.get("fingerprint", ""),
+                    "previous_risk_score": base_tool.get("risk_score", 0),
+                    "current_risk_score": curr_tool.get("risk_score", 0),
+                }
+            )
+    result["changed_tools"] = changed_tools
+    summary["changed_tools"] = len(changed_tools)
+
+    base_resources = {item.get("id", ""): item for item in base_snapshot.get("resources", []) if item.get("id")}
+    curr_resources = {item.get("id", ""): item for item in curr_snapshot.get("resources", []) if item.get("id")}
+    changed_resources = []
+    for resource_id in sorted(set(base_resources) & set(curr_resources)):
+        base_resource = base_resources[resource_id]
+        curr_resource = curr_resources[resource_id]
+        if base_resource.get("fingerprint") != curr_resource.get("fingerprint") or base_resource.get("risk_score") != curr_resource.get(
+            "risk_score"
+        ):
+            changed_resources.append(
+                {
+                    "id": resource_id,
+                    "uri": curr_resource.get("uri", ""),
+                    "previous_fingerprint": base_resource.get("fingerprint", ""),
+                    "current_fingerprint": curr_resource.get("fingerprint", ""),
+                    "previous_risk_score": base_resource.get("risk_score", 0),
+                    "current_risk_score": curr_resource.get("risk_score", 0),
+                }
+            )
+    result["changed_resources"] = changed_resources
+    summary["changed_resources"] = len(changed_resources)
+
+    base_relationships = {
+        (item.get("from", ""), item.get("to", ""), item.get("type", ""))
+        for item in base_snapshot.get("relationships", [])
+        if item.get("from") and item.get("to") and item.get("type")
+    }
+    curr_relationships = {
+        (item.get("from", ""), item.get("to", ""), item.get("type", ""))
+        for item in curr_snapshot.get("relationships", [])
+        if item.get("from") and item.get("to") and item.get("type")
+    }
+    new_relationships = [{"from": rel[0], "to": rel[1], "type": rel[2]} for rel in sorted(curr_relationships - base_relationships)]
+    removed_relationships = [{"from": rel[0], "to": rel[1], "type": rel[2]} for rel in sorted(base_relationships - curr_relationships)]
+    result["new_relationships"] = new_relationships
+    result["removed_relationships"] = removed_relationships
+    summary["new_relationships"] = len(new_relationships)
+    summary["removed_relationships"] = len(removed_relationships)
+
     result["summary"] = summary
     return result

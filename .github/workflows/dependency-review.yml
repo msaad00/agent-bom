@@ -48,7 +48,6 @@ jobs:
         uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4
         with:
           fail-on-severity: high
-          comment-summary-in-pr: always
           retry-on-snapshot-warnings: true
           allow-licenses: >-
             Apache-2.0, MIT, MIT-0, MIT-CMU, BSD-2-Clause, BSD-3-Clause,

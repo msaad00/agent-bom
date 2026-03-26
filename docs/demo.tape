@@ -16,7 +16,7 @@ Set PlaybackSpeed 1.5
 
 # Setup
 Hide
-Type "export PS1='$ ' && mkdir -p /tmp/agent-bom-demo && cp /Users/mohamedsaad/.agent-bom/db/vulns.db /tmp/agent-bom-demo/vulns.db && alias abdemo='docker run --rm -e AGENT_BOM_DB_PATH=/tmp/vulns.db -v /tmp/agent-bom-demo/vulns.db:/tmp/vulns.db:ro agent-bom:release-alpine-test' && clear"
+Type "export PS1='$ ' && mkdir -p /tmp/agent-bom-demo && cp \"$HOME/.agent-bom/db/vulns.db\" /tmp/agent-bom-demo/vulns.db && alias abdemo='docker run --rm -e AGENT_BOM_DB_PATH=/tmp/vulns.db -v /tmp/agent-bom-demo/vulns.db:/tmp/vulns.db:ro agent-bom:release-alpine-test' && clear"
 Enter
 Sleep 500ms
 Show

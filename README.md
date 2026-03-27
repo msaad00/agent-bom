@@ -124,13 +124,13 @@ flowchart TB
     subgraph ANALYZE["📊 ANALYZE"]
         direction LR
         A1["Blast Radius\nCVE → pkg → server\n→ agent → credentials"]
-        A2["Compliance\n14 frameworks\nOWASP · MITRE ATLAS\nNIST · EU AI Act"]
+        A2["Compliance\n11 frameworks\nOWASP · MITRE ATLAS\nNIST · EU AI Act"]
         A3["Trust Scoring\n6-category model\n0-100 per agent"]
     end
 
     subgraph OUTPUT["📤 OUTPUT"]
         direction LR
-        O1["CycloneDX AI BOM\nSPDX · SARIF\n19 formats"]
+        O1["CycloneDX AI BOM\nSPDX · SARIF\n17 formats"]
         O2["Next.js Dashboard\n20 interactive pages\nSecurity Graph"]
         O3["CI/CD Gating\n--fail-on critical\nJira · Slack"]
     end
@@ -369,7 +369,7 @@ docker run --rm agentbom/agent-bom agents  # Docker (linux/amd64 + arm64)
 <details>
 <summary><b>Output formats</b></summary>
 
-JSON, SARIF, CycloneDX 1.6 (with ML BOM), SPDX 3.0, HTML, GraphML, Neo4j Cypher, JUnit XML, CSV, Markdown, Mermaid, SVG, Graph HTML, Prometheus, Badge, OCSF v1.1 — 19 formats.
+JSON, SARIF, CycloneDX 1.6 (with ML BOM), SPDX 3.0, HTML, Graph JSON, Graph HTML, GraphML, Neo4j Cypher, JUnit XML, CSV, Markdown, Mermaid, SVG, Prometheus, Badge, plain text — 17 formats.
 
 ```bash
 agent-bom agents -f sarif -o results.sarif     # GitHub Security tab
@@ -381,9 +381,9 @@ agent-bom agents -f cyclonedx -o sbom.json     # CycloneDX 1.6
 
 ---
 
-## Compliance (14 frameworks)
+## Compliance (11 frameworks)
 
-Every finding is tagged with applicable controls across 14 security and compliance frameworks:
+Every finding is tagged with applicable controls across 11 security and compliance frameworks:
 
 | Framework | Coverage |
 |-----------|----------|
@@ -391,11 +391,8 @@ Every finding is tagged with applicable controls across 14 security and complian
 | OWASP MCP Top 10 | 10/10 categories |
 | OWASP Agentic Top 10 | 10/10 categories |
 | MITRE ATLAS | 30+ techniques mapped |
-| MITRE ATT&CK | Enterprise technique mapping |
 | NIST AI RMF | All subcategories |
 | NIST CSF 2.0 | All functions |
-| NIST 800-53 Rev 5 | 24 controls |
-| FedRAMP Moderate | Baseline controls |
 | CIS Controls v8 | 12 controls |
 | ISO 27001:2022 | 9 controls |
 | SOC 2 TSC | All 5 criteria |
@@ -470,7 +467,7 @@ graph LR
         D1["MCP Configs · Cloud · Containers · Models"]
     end
     subgraph A["🛡 Analyze"]
-        A1["15 ecosystems"] --> A2["CVE · EPSS · KEV"] --> A3["Blast Radius"] --> A4["14 frameworks"]
+        A1["15 ecosystems"] --> A2["CVE · EPSS · KEV"] --> A3["Blast Radius"] --> A4["11 frameworks"]
     end
     subgraph O["📊 Output"]
         O1["CLI · Dashboard · SARIF · CycloneDX · API"]

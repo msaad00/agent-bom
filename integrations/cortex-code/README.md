@@ -86,7 +86,7 @@ agent-bom fills these security gaps in Cortex Code:
 | "Only install from trusted sources" | Trust assessment with 17 behavioral risk patterns |
 | Manual permission review | Blast radius analysis showing credential exposure |
 | No CVE scanning | Full enrichment: OSV + NVD + EPSS + CISA KEV |
-| No compliance mapping | 14 frameworks: OWASP, NIST, EU AI Act, ISO 27001 |
+| No compliance mapping | 11 frameworks: OWASP, NIST, EU AI Act, ISO 27001, SOC 2, CIS |
 | No runtime enforcement | Proxy with 7 real-time detectors |
 
 ## Auto-Discovery

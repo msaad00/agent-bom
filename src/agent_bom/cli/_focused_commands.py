@@ -208,7 +208,7 @@ def sbom_cmd(
 def secrets_cmd(path: str, output_format: str, output_path: Optional[str], quiet: bool) -> None:
     """Scan a directory for hardcoded secrets and PII.
 
-    Uses 31 credential patterns + 11 PII patterns + 4 file-specific
+    Uses 34 credential patterns + 11 PII patterns + 4 file-specific
     patterns. Scans source code, config files, .env files, Dockerfiles,
     Terraform, and more.
 

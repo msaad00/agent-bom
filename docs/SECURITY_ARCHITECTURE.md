@@ -122,11 +122,11 @@ If engaging a third-party auditor, the recommended scope:
 
 ### Compliance Framework Mapping
 
-agent-bom **maps findings TO compliance controls** across 14 frameworks:
+agent-bom **maps findings TO compliance controls** across 11 frameworks:
 
-OWASP Top 10, OWASP LLM Top 10, OWASP MCP Top 10, OWASP Agentic Security,
-EU AI Act, NIST AI RMF, NIST CSF, ISO 27001, SOC 2, CIS Benchmarks,
-MITRE ATT&CK, MITRE ATLAS, PCI DSS
+OWASP LLM Top 10, OWASP MCP Top 10, OWASP Agentic Top 10,
+EU AI Act, NIST AI RMF, NIST CSF, ISO 27001, SOC 2, CIS Controls,
+MITRE ATLAS, CMMC 2.0
 
 This means every finding includes which compliance controls it violates — enabling teams to prioritize by regulatory impact.
 

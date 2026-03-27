@@ -17,6 +17,23 @@ _logger = logging.getLogger(__name__)
 
 NPM_REGISTRY = "https://registry.npmjs.org"
 PYPI_API = "https://pypi.org/pypi"
+_INVALID_VERSIONS = {"latest", "unknown", "", "{{VERSION}}"}
+_RESOLVE_CONCURRENCY = 8
+
+
+def _apply_registry_version_fallback(pkg: Package) -> bool:
+    """Use bundled registry metadata when live resolution is unavailable.
+
+    This preserves scan continuity under registry pressure instead of leaving
+    versionless packages to silently degrade or be skipped downstream.
+    """
+    fallback_version = getattr(pkg, "registry_version", None)
+    if not fallback_version or fallback_version in _INVALID_VERSIONS:
+        return False
+    pkg.version = fallback_version
+    pkg.purl = f"pkg:{pkg.ecosystem}/{pkg.name}@{fallback_version}"
+    pkg.version_source = "registry_fallback"
+    return True
 
 
 async def resolve_npm_metadata(
@@ -140,7 +157,7 @@ async def resolve_pypi_supply_chain(
 
 
 async def resolve_package_version(pkg: Package, client: httpx.AsyncClient) -> bool:
-    if pkg.version not in ("latest", "unknown", ""):
+    if pkg.version not in _INVALID_VERSIONS - {"{{VERSION}}"}:
         return False
     version, lic = None, None
     if pkg.ecosystem == "npm":
@@ -169,7 +186,7 @@ async def resolve_package_version(pkg: Package, client: httpx.AsyncClient) -> bo
         if lic and not pkg.license:
             pkg.license = lic
         return True
-    return False
+    return _apply_registry_version_fallback(pkg)
 
 
 async def enrich_licenses(packages: list[Package], client: httpx.AsyncClient) -> int:
@@ -268,13 +285,22 @@ async def resolve_all_versions(
     resolved_count = 0
     try:
         async with create_client(timeout=10.0) as client:
-            tasks = [resolve_package_version(pkg, client) for pkg in unresolved]
-            # Global timeout prevents the entire batch from hanging
-            results = await asyncio.wait_for(
-                asyncio.gather(*tasks, return_exceptions=True),
-                timeout=global_timeout,
-            )
-            for i, result in enumerate(results):
+            semaphore = asyncio.Semaphore(_RESOLVE_CONCURRENCY)
+
+            async def _resolve_with_limit(pkg: Package) -> bool:
+                async with semaphore:
+                    return await resolve_package_version(pkg, client)
+
+            tasks = {asyncio.create_task(_resolve_with_limit(pkg)): i for i, pkg in enumerate(unresolved)}
+            done, pending = await asyncio.wait(tasks.keys(), timeout=global_timeout)
+
+            for task in done:
+                i = tasks[task]
+                result: bool | Exception
+                try:
+                    result = task.result()
+                except Exception as exc:  # noqa: BLE001
+                    result = exc
                 if result is True:
                     resolved_count += 1
                     if not quiet:
@@ -282,14 +308,48 @@ async def resolve_all_versions(
                         if unresolved[i].license:
                             short_lic = (unresolved[i].license or "").split("\n", 1)[0][:60]
                             lic_tag = f" ({short_lic})"
-                        console.print(f"  [green]✓[/green] Resolved {unresolved[i].name} → {unresolved[i].version}{lic_tag}")
+                        icon = "[green]✓[/green]"
+                        note = ""
+                        if unresolved[i].version_source == "registry_fallback":
+                            icon = "[yellow]↺[/yellow]"
+                            note = " [dim](bundled registry fallback)[/dim]"
+                        console.print(f"  {icon} Resolved {unresolved[i].name} → {unresolved[i].version}{lic_tag}{note}")
                 elif isinstance(result, Exception):
                     if not quiet:
                         console.print(f"  [yellow]⚠[/yellow] Failed to resolve {unresolved[i].name}: {result}")
+                elif not quiet:
+                    console.print(f"  [yellow]⚠[/yellow] Could not resolve {unresolved[i].name} from live registries")
+
+            for task in pending:
+                i = tasks[task]
+                pkg = unresolved[i]
+                task.cancel()
+                _apply_registry_version_fallback(pkg)
+                if pkg.version_source == "registry_fallback":
+                    resolved_count += 1
+                    if not quiet:
+                        console.print(
+                            f"  [yellow]↺[/yellow] Resolved {pkg.name} → {pkg.version} [dim](bundled registry fallback after timeout)[/dim]"
+                        )
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
+
             # Enrich licenses for packages that already had versions
             lic_count = await enrich_licenses(packages, client)
             if lic_count and not quiet:
                 console.print(f"  [green]✓[/green] Enriched {lic_count} package license(s)")
+
+            unresolved_after = [p for p in unresolved if p.version in ("latest", "unknown", "")]
+            if unresolved_after and not quiet:
+                fallback_count = sum(1 for p in unresolved if p.version_source == "registry_fallback")
+                console.print(
+                    "  [yellow]⚠[/yellow] Some package versions remain unresolved "
+                    f"({len(unresolved_after)} package(s)); scan continues with explicit partial coverage"
+                )
+                if fallback_count:
+                    console.print(
+                        f"  [yellow]↺[/yellow] Preserved scan continuity for {fallback_count} package(s) using bundled registry versions"
+                    )
     except asyncio.TimeoutError:
         _logger.warning(
             "Version resolution timed out after %.0fs (%d/%d resolved)",

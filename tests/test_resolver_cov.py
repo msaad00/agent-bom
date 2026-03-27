@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -10,6 +11,7 @@ from agent_bom.models import Package
 from agent_bom.resolver import (
     enrich_licenses,
     enrich_supply_chain_metadata,
+    resolve_all_versions,
     resolve_npm_metadata,
     resolve_npm_supply_chain,
     resolve_package_version,
@@ -200,6 +202,56 @@ class TestResolvePackageVersion:
             client = AsyncMock()
             result = await resolve_package_version(pkg, client)
             assert result is False
+
+    @pytest.mark.asyncio
+    async def test_uses_registry_fallback_when_live_lookup_fails(self):
+        pkg = Package(
+            name="example-mcp",
+            version="unknown",
+            ecosystem="npm",
+            registry_version="1.2.3",
+        )
+        with patch("agent_bom.resolver.resolve_npm_metadata", return_value=(None, None)):
+            client = AsyncMock()
+            result = await resolve_package_version(pkg, client)
+            assert result is True
+            assert pkg.version == "1.2.3"
+            assert pkg.version_source == "registry_fallback"
+            assert pkg.purl == "pkg:npm/example-mcp@1.2.3"
+
+
+class TestResolveAllVersions:
+    @pytest.mark.asyncio
+    async def test_timeout_preserves_completed_and_fallback_versions(self):
+        packages = [
+            Package(name="fast", version="unknown", ecosystem="npm", registry_version="1.0.0"),
+            Package(name="slow", version="unknown", ecosystem="npm", registry_version="2.0.0"),
+        ]
+
+        async def fake_resolve(pkg, client):
+            if pkg.name == "fast":
+                pkg.version = "1.0.1"
+                pkg.version_source = "registry_fallback"
+                pkg.purl = "pkg:npm/fast@1.0.1"
+                return True
+            await asyncio.sleep(0.2)
+            return False
+
+        client_cm = AsyncMock()
+        client_cm.__aenter__.return_value = AsyncMock()
+        client_cm.__aexit__.return_value = None
+
+        with (
+            patch("agent_bom.resolver.create_client", return_value=client_cm),
+            patch("agent_bom.resolver.resolve_package_version", side_effect=fake_resolve),
+            patch("agent_bom.resolver.enrich_licenses", return_value=0),
+        ):
+            resolved = await resolve_all_versions(packages, quiet=True, global_timeout=0.05)
+
+        assert resolved == 2
+        assert packages[0].version == "1.0.1"
+        assert packages[1].version == "2.0.0"
+        assert packages[1].version_source == "registry_fallback"
 
 
 class TestEnrichLicenses:

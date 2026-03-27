@@ -135,9 +135,10 @@ def lookup_mcp_registry(server: MCPServer) -> list[Package]:
                         version = detected_version
                         version_source = "detected"
                     else:
-                        # Set to "latest" so resolver queries npm/PyPI
-                        # for the actual current version
-                        version = "latest"
+                        # Use the bundled registry version when we have it so
+                        # MCP package coverage does not depend on a live npm
+                        # lookup succeeding under rate limits.
+                        version = registry_version if registry_version not in ("", "latest", "unknown", "{{VERSION}}") else "latest"
                         version_source = "registry_fallback"
 
                     # Log warnings for unverified or high-risk servers

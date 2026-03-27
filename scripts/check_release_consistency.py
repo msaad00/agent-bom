@@ -92,6 +92,15 @@ def main() -> int:
         _fail("docs/demo.tape must render to docs/images/demo-latest.gif")
     if not DEMO_LATEST.exists():
         _fail("docs/images/demo-latest.gif is missing")
+    stale_path_markers = [
+        "npx @mcp/server-filesystem /tmp",
+        "npx -y @modelcontextprotocol/server-filesystem /tmp",
+    ]
+    for marker in stale_path_markers:
+        if marker in readme:
+            _fail(f"README contains stale toy runtime path: {marker}")
+        if marker in pypi_readme:
+            _fail(f"PYPI_README.md contains stale toy runtime path: {marker}")
 
     if len(description) > 120:
         _fail("pyproject.toml description must stay concise for PyPI storefront rendering")

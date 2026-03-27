@@ -1551,7 +1551,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             {
                 "name": "agent-bom",
                 "version": __version__,
-                "description": "Security scanner for AI infrastructure and supply chain",
+                "description": "Open security platform for agentic infrastructure",
                 "homepage": "https://github.com/msaad00/agent-bom",
                 "source": "https://github.com/msaad00/agent-bom",
                 "license": "Apache-2.0",
@@ -1600,7 +1600,7 @@ _SERVER_CARD_TOOLS = [
     {
         "name": "compliance",
         "description": (
-            "Map scan findings to 14 compliance frameworks:"
+            "Map scan findings to framework-aware controls:"
             " OWASP LLM/MCP/Agentic, MITRE ATLAS, NIST AI RMF/CSF/800-53, FedRAMP, EU AI Act, ISO 27001, SOC 2, CIS Controls"
         ),
         "annotations": {"readOnlyHint": True},
@@ -1743,8 +1743,8 @@ def build_server_card() -> dict:
         "name": "agent-bom",
         "version": __version__,
         "description": (
-            "Security scanner for AI infrastructure and supply chain — CVE scanning, blast radius analysis, "
-            "policy enforcement, and SBOM generation for MCP servers and AI agents."
+            "Open security platform for agentic infrastructure — CVE scanning, blast radius analysis, "
+            "runtime governance, and SBOM generation for MCP servers and AI agents."
         ),
         "repository": "https://github.com/msaad00/agent-bom",
         "transport": ["stdio", "sse", "streamable-http"],

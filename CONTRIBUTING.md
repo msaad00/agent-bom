@@ -150,7 +150,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for system diagrams and the ful
 
 **5 products, 1 package:** `agent-bom` (BOM + scanning), `agent-shield` (runtime protection), `agent-cloud` (cloud posture), `agent-iac` (IaC security), `agent-claw` (fleet governance). All share the same core engine.
 
-Pipeline at a glance: **discover** MCP configs → **parse** packages → **scan** via OSV/NVD/GHSA → **enrich** (EPSS + KEV) → **blast radius** → **compliance tag** (14 frameworks) → **output** (16 formats).
+Pipeline at a glance: **discover** MCP configs → **parse** packages → **scan** via OSV/NVD/GHSA → **enrich** (EPSS + KEV) → **blast radius** → **compliance tag** → **output**.
 
 ---
 
@@ -162,7 +162,7 @@ Only document and claim features that are actually implemented and tested. Do no
 
 ## Version bump
 
-Use `scripts/bump-version.py`. It updates all 19 files in one go. See `docs/PUBLISHING.md` for the full release checklist.
+Use `scripts/bump-version.py`. It updates the release-managed version surfaces in one go. See `docs/PUBLISHING.md` for the full release checklist.
 
 ---
 

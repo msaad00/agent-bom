@@ -1,6 +1,6 @@
 # agent-bom
 
-**Security scanner for AI infrastructure and supply chain.**
+**Open security platform for agentic infrastructure.**
 
 Find CVEs, map blast radius, detect credential exposure across MCP agents, containers, Kubernetes, cloud, and GPU workloads.
 
@@ -50,6 +50,6 @@ agent-bom check langchain   # check a specific package
 | CLI | `pip install agent-bom` |
 | MCP server | `agent-bom mcp server` |
 | Docker | `docker run ghcr.io/msaad00/agent-bom scan` |
-| GitHub Action | `uses: msaad00/agent-bom@v0` |
+| GitHub Action | `uses: msaad00/agent-bom@v0.75.8` |
 | Kubernetes | Helm chart + CronJob + DaemonSet |
 | Remote SSE | Self-host or use hosted endpoint |

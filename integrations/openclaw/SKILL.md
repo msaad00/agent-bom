@@ -1,7 +1,7 @@
 ---
 name: agent-bom
 description: >-
-  Security scanner for AI infrastructure and supply chain — discovers MCP clients
+  Open security platform for agentic infrastructure — discovers MCP clients
   and servers, scans for CVEs, maps blast radius, generates SBOMs, runs CIS
   benchmarks (AWS, Azure, GCP, Snowflake), OWASP/NIST/MITRE compliance, AISVS
   v1.0, MAESTRO layer tagging, and vector database security checks. Use when the

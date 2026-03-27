@@ -1,5 +1,5 @@
 name: 'agent-bom Scan'
-description: 'AI infrastructure and supply chain security — blast radius mapping, AST analysis, AI BOM, 112-pattern proxy, 14-framework compliance, 138 IaC rules.'
+description: 'Open security platform for agentic infrastructure — blast radius, runtime governance, AI BOM, and supply-chain evidence.'
 author: 'agent-bom'
 
 branding:
@@ -8,11 +8,11 @@ branding:
 
 inputs:
   scan-type:
-    description: 'Scan type: image (container), fs (filesystem), iac (IaC), sbom (ingest SBOM), secrets (hardcoded secrets), code (AI source analysis), agents (AI agent discovery).'
+    description: 'Scan mode. Default `scan` runs the full agent/MCP discovery pipeline. Focused modes: image, fs, iac, sbom, secrets, code, and agents.'
     required: false
     default: 'scan'
   scan-ref:
-    description: 'Target for the scan — image reference, filesystem path, SBOM file path, or IaC paths (comma-separated). Required for image/fs/sbom/iac scan types.'
+    description: 'Target reference for focused modes — image reference, filesystem path, SBOM file path, or IaC paths (comma-separated). Not required for the default `scan` mode.'
     required: false
     default: ''
   severity-threshold:
@@ -64,7 +64,7 @@ inputs:
     required: false
     default: '3.11'
   agent-bom-version:
-    description: 'agent-bom package version to install (e.g. 0.13.0). Empty = latest.'
+    description: 'agent-bom package version to install (for example 0.75.8). Empty = latest from PyPI.'
     required: false
     default: ''
   install-from-source:

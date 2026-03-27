@@ -208,7 +208,7 @@ Read-only. Agentless. No secrets leave your machine.
 
 ```bash
 # MCP security proxy (112 patterns, 8 detectors, PII redaction)
-agent-bom proxy "npx @mcp/server-filesystem /tmp"
+agent-bom proxy "npx @mcp/server-filesystem /workspace"
 
 # Dependency graph export (Neo4j, GraphML, Graphviz, Mermaid)
 agent-bom graph report.json --format cypher --output import.cypher
@@ -299,7 +299,7 @@ docker run --rm agentbom/agent-bom agents  # Docker (linux/amd64 + arm64)
 | Mode | Command | Best for |
 |------|---------|----------|
 | CLI | `agent-bom agents` | Local audit |
-| GitHub Action | `uses: msaad00/agent-bom@v0.75.8 | CI/CD + SARIF |
+| GitHub Action | `uses: msaad00/agent-bom@v0.75.8` | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom agents` | Isolated scans |
 | MCP Server | `agent-bom mcp server` | Inside any AI assistant |
 | Runtime proxy | `agent-bom proxy` | MCP traffic enforcement |
@@ -312,6 +312,7 @@ docker run --rm agentbom/agent-bom agents  # Docker (linux/amd64 + arm64)
 ```yaml
 - uses: msaad00/agent-bom@v0.75.8
   with:
+    scan-type: scan
     severity-threshold: high
     upload-sarif: true
     enrich: true

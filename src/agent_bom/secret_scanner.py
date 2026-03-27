@@ -1,7 +1,7 @@
 """General-purpose secret scanner — beyond MCP config credential detection.
 
 Scans source files, config files, and environment files for hardcoded
-secrets using the same 31 credential patterns + 11 PII patterns from
+secrets using the same 34 credential patterns + 11 PII patterns from
 the runtime detector library.
 
 This extends agent-bom's secret detection from MCP configs (where it

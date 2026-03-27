@@ -91,7 +91,7 @@
   <text x="376" y="500" class="norm">GPU containers: </text><text x="490" y="500" class="yel">3</text>
   <text x="520" y="500" class="norm">DCGM exposed: </text><text x="626" y="500" class="red">1</text>
   <text x="36" y="516" class="norm">Compliance: </text><text x="110" y="516" class="pur">OWASP LLM · OWASP MCP · OWASP Agentic · OWASP AISVS · MITRE ATLAS · NIST AI RMF</text>
-  <text x="36" y="532" class="norm">           </text><text x="110" y="532" class="pur">EU AI Act · NIST CSF · ISO 27001 · SOC 2 · CIS Controls  (14 frameworks)</text>
+  <text x="36" y="532" class="norm">           </text><text x="110" y="532" class="pur">EU AI Act · NIST CSF · ISO 27001 · SOC 2 · CIS Controls  (11 frameworks)</text>
   <text x="36" y="548" class="norm">Cloud: </text><text x="82" y="548" class="cyn">AWS (EC2 · EKS · Bedrock)  |  12 providers supported</text>
   <text x="36" y="564" class="yel">Exit 2 — 2 new HIGH finding(s)  [--warn-on HIGH]</text>
 </svg>

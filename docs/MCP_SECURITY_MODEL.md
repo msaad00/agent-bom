@@ -152,7 +152,7 @@ agent-bom agents --enforce    # + static tool poisoning analysis
 agent-bom agents --gpu-scan   # + GPU containers, CUDA versions, DCGM exposure
 ```
 
-Outputs: blast radius tree, compliance mapping (14 frameworks), posture score, SARIF/CycloneDX/SPDX/HTML.
+Outputs: blast radius tree, compliance mapping (11 frameworks), posture score, SARIF/CycloneDX/SPDX/HTML.
 
 ### 4.2 Proxy mode
 
@@ -225,7 +225,7 @@ blast_radius        — blast radius for a specific CVE
 ### CI/CD (GitHub Action)
 
 ```yaml
-- uses: msaad00/agent-bom@v0.75.7
+- uses: msaad00/agent-bom@v0.75.8
   with:
     format: sarif
     upload-sarif: 'true'

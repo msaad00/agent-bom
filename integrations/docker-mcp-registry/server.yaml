@@ -20,8 +20,8 @@ about:
     Security scanner for AI infrastructure. Discovers MCP servers and AI agents,
     scans all dependencies for CVEs (OSV/NVD/GHSA/EPSS/CISA KEV), maps blast radius
     showing which credentials and tools each vulnerability reaches, enforces policy,
-    and generates SBOMs + compliance evidence for 14 frameworks including OWASP LLM
-    Top 10, MITRE ATLAS, NIST AI RMF, and EU AI Act.
+    and generates SBOMs + compliance evidence for 11 frameworks including OWASP
+    LLM Top 10, MITRE ATLAS, NIST AI RMF, and EU AI Act.
   icon: https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/logo-dark.svg
 
 source:

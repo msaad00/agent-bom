@@ -1,7 +1,7 @@
 """Compliance and posture API routes.
 
 Endpoints:
-    GET  /v1/compliance                      14-framework compliance posture
+    GET  /v1/compliance                      11-framework compliance posture
     GET  /v1/compliance/narrative            full compliance narrative (all frameworks)
     GET  /v1/compliance/narrative/{framework} single-framework narrative
     GET  /v1/compliance/{framework}          single framework (must be after /narrative)

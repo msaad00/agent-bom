@@ -12,6 +12,9 @@ README = ROOT / "README.md"
 PYPI_README = ROOT / "PYPI_README.md"
 DEMO_TAPE = ROOT / "docs" / "demo.tape"
 DEMO_LATEST = ROOT / "docs" / "images" / "demo-latest.gif"
+GLAMA_SERVER = ROOT / "integrations" / "glama" / "server.json"
+DOCKER_README = ROOT / "DOCKER_HUB_README.md"
+TOP_DOCKERFILE = ROOT / "Dockerfile"
 
 
 def _load_version() -> str:
@@ -95,6 +98,14 @@ def main() -> int:
 
     if f"agent-bom v{version}" not in demo_tape:
         _fail(f"docs/demo.tape header must include v{version}")
+
+    glama_text = GLAMA_SERVER.read_text()
+    if f'"version": "{version}"' not in glama_text:
+        _fail(f"integrations/glama/server.json must be aligned to {version}")
+    if f"`v{version}` | Current stable version (pinned)" not in DOCKER_README.read_text():
+        _fail(f"DOCKER_HUB_README.md must mark v{version} as the current stable version")
+    if f"ARG VERSION={version}" not in TOP_DOCKERFILE.read_text():
+        _fail(f"Dockerfile ARG VERSION must be {version}")
 
     print("README/PyPI/docs release consistency checks passed")
     return 0

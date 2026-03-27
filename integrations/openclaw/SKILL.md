@@ -239,7 +239,7 @@ agent-bom where             # show all discovery paths
 | [scan](scan/SKILL.md) | CVE scanning, image scanning, SBOM, provenance | "check package", "scan image", "verify", "blast radius" |
 | [scan-infra](scan-infra/SKILL.md) | IaC, cloud config, secrets scanning | "check terraform", "scan kubernetes", "find secrets" |
 | [enforce](enforce/SKILL.md) | Runtime policy enforcement, MCP proxy | "block risky calls", "apply policy", "proxy" |
-| [compliance](compliance/SKILL.md) | 14-framework compliance, SBOM generation | "compliance report", "NIST", "SOC 2", "OWASP" |
+| [compliance](compliance/SKILL.md) | 11-framework compliance, SBOM generation | "compliance report", "NIST", "SOC 2", "OWASP" |
 | [monitor](monitor/SKILL.md) | Fleet monitoring, trust scores, lifecycle | "fleet", "watch agents", "trust scores" |
 | [analyze](analyze/SKILL.md) | Blast radius, attack paths, context graph | "blast radius", "threat intel", "attack path" |
 | [troubleshoot](troubleshoot/SKILL.md) | Diagnostics, doctor, config validation | "doctor", "debug", "why failing", "validate config" |

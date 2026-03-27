@@ -103,7 +103,7 @@ db_status()
 agent-bom doctor
 
   Python        3.12.2   OK
-  agent-bom     0.75.7   OK
+  agent-bom     0.75.8   OK
   pip           24.0     OK
   semgrep       not found  (optional — SAST scanning unavailable)
   kubectl       not found  (optional — K8s context unavailable)

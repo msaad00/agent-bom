@@ -15,13 +15,22 @@ DEMO_LATEST = ROOT / "docs" / "images" / "demo-latest.gif"
 GLAMA_SERVER = ROOT / "integrations" / "glama" / "server.json"
 DOCKER_README = ROOT / "DOCKER_HUB_README.md"
 TOP_DOCKERFILE = ROOT / "Dockerfile"
+PYPROJECT = ROOT / "pyproject.toml"
 
 
 def _load_version() -> str:
-    text = (ROOT / "pyproject.toml").read_text()
+    text = PYPROJECT.read_text()
     match = re.search(r'^version\s*=\s*"([^"]+)"', text, re.M)
     if not match:
         raise SystemExit("pyproject.toml version not found")
+    return match.group(1)
+
+
+def _load_description() -> str:
+    text = PYPROJECT.read_text()
+    match = re.search(r'^description\s*=\s*"([^"]+)"', text, re.M)
+    if not match:
+        raise SystemExit("pyproject.toml description not found")
     return match.group(1)
 
 
@@ -32,6 +41,7 @@ def _fail(message: str) -> None:
 
 def main() -> int:
     version = _load_version()
+    description = _load_description()
     readme = README.read_text()
     pypi_readme = PYPI_README.read_text()
     demo_tape = DEMO_TAPE.read_text()
@@ -48,6 +58,7 @@ def main() -> int:
             _fail(f"README is missing required storefront marker: {marker}")
 
     required_pypi_markers = [
+        "mcp-name: io.github.msaad00/agent-bom",
         "docs/images/demo-latest.gif",
         "docs/images/scan-pipeline-light.svg",
         "docs/images/blast-radius-light.svg",
@@ -63,6 +74,7 @@ def main() -> int:
         "```mermaid",
         "flowchart ",
         "demo-v0.",
+        "@mcp/server-filesystem /tmp",
     ]
     for marker in forbidden_pypi_markers:
         if marker in pypi_readme:
@@ -80,6 +92,18 @@ def main() -> int:
         _fail("docs/demo.tape must render to docs/images/demo-latest.gif")
     if not DEMO_LATEST.exists():
         _fail("docs/images/demo-latest.gif is missing")
+
+    if len(description) > 120:
+        _fail("pyproject.toml description must stay concise for PyPI storefront rendering")
+    stale_description_markers = [
+        "Security scanner for AI infrastructure and supply chain.",
+        "19 output formats",
+        "20-page Next.js dashboard",
+        "14-framework compliance",
+    ]
+    for marker in stale_description_markers:
+        if marker in description:
+            _fail(f"pyproject.toml description contains stale storefront phrase: {marker}")
 
     leaked_patterns = [
         r"/Users/[^/\s]+",

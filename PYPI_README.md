@@ -1,6 +1,7 @@
 # agent-bom
 
 <!-- mcp-name: io.github.msaad00/agent-bom -->
+MCP registry name: `io.github.msaad00/agent-bom`
 
 **AI security scanner for agents, MCP, containers, cloud, and runtime.**
 

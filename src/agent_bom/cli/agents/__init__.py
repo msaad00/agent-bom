@@ -1072,10 +1072,11 @@ def scan(
             with con.status("[bold]Querying package registries...[/bold]", spinner="dots") if not quiet else _nullcontext():
                 resolved = resolve_all_versions_sync(all_packages, quiet=quiet)
             if not quiet:
+                resolved_count = int(resolved or 0)
                 fallback_count = sum(1 for p in unresolved if p.version_source == "registry_fallback")
                 unresolved_after = sum(1 for p in unresolved if p.version in ("latest", "unknown", ""))
-                live_count = max(resolved - fallback_count, 0)
-                con.print(f"\n  [bold]Resolved {resolved}/{len(unresolved)} version(s).[/bold]")
+                live_count = max(resolved_count - fallback_count, 0)
+                con.print(f"\n  [bold]Resolved {resolved_count}/{len(unresolved)} version(s).[/bold]")
                 if live_count:
                     con.print(f"  [green]✓[/green] {live_count} resolved from live registries")
                 if fallback_count:

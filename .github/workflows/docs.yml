@@ -11,8 +11,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -30,11 +28,14 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install MkDocs
-        run: uv pip install --system mkdocs-material==9.7.4  # mkdocs-material ships no CLI; install into system env
-
       - name: Build site
-        run: mkdocs build --strict
+        run: >-
+          uv tool run
+          --from mkdocs==1.6.1
+          --with mkdocs-material==9.7.5
+          --with mkdocstrings==1.0.3
+          --with mkdocstrings-python==2.0.3
+          mkdocs build --strict
 
       - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
         with:

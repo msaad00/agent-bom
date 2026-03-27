@@ -47,6 +47,14 @@ Automated via `publish-mcp-registry.yml` using GitHub OIDC — no secrets needed
 # Validates and publishes automatically on each release
 ```
 
+For PyPI-backed MCP Registry publishing, keep the ownership marker in the
+file referenced by `project.readme` in `pyproject.toml`, not only in
+`README.md`:
+
+```md
+<!-- mcp-name: io.github.msaad00/agent-bom -->
+```
+
 ### Verification
 
 Search for "agent-bom" at: https://registry.modelcontextprotocol.io

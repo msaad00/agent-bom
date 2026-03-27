@@ -333,7 +333,7 @@ def run_local_discovery(
             con.print(f"\n[bold blue]Auto-detected lockfiles in {cwd}[/bold blue]")
 
     if not iac_paths and not skill_only and not images and not image_tars and not sbom_file and not inventory:
-        cwd = Path.cwd()
+        cwd = Path(project) if project else Path.cwd()
         _auto_iac: list[str] = []
         for name in ["Dockerfile", "docker-compose.yml", "docker-compose.yaml"]:
             if (cwd / name).exists():

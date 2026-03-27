@@ -272,6 +272,30 @@ def test_project_scan_via_cli_with_discovered_project_agents(tmp_path):
     assert "1 package(s)" in result.output
 
 
+def test_project_scan_via_cli_scopes_auto_iac_to_project(tmp_path):
+    """--project DIR should not auto-detect IaC from the caller's current directory."""
+    from click.testing import CliRunner
+
+    from agent_bom.cli import main
+
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    (project_dir / "requirements.txt").write_text("requests==2.31.0\n")
+
+    ambient_dir = tmp_path / "ambient"
+    ambient_dir.mkdir()
+    (ambient_dir / "Dockerfile").write_text("FROM python:3.13-alpine\n")
+
+    runner = CliRunner()
+    with (
+        patch("agent_bom.cli.agents.discover_all", return_value=[]),
+        patch("agent_bom.cli.agents._discovery.Path.cwd", return_value=ambient_dir),
+    ):
+        result = runner.invoke(main, ["scan", "--project", str(project_dir), "--no-scan"])
+    assert result.exit_code == 0
+    assert "Auto-detected 1 IaC file" not in result.output
+
+
 def test_discover_all_project_dir_scopes_to_project_only(tmp_path):
     """discover_all(project_dir=...) should not pull in ambient host discovery."""
     from agent_bom.discovery import discover_all

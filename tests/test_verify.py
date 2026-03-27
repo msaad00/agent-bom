@@ -317,6 +317,7 @@ def test_verify_arbitrary_package_version_required():
     result = runner.invoke(main, ["verify", "express"], catch_exceptions=False)
     assert result.exit_code == 2
     assert "version required" in result.output.lower()
+    assert "requests@2.33.0" in result.output
 
 
 def test_verify_record_not_available_still_passes():

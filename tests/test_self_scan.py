@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import importlib.metadata
 import json
+from unittest.mock import patch
 
 from click.testing import CliRunner
 
 from agent_bom.cli import main
+from agent_bom.cli.agents import _build_self_scan_inventory
 
 
 class TestSelfScanInventory:
@@ -52,6 +54,35 @@ class TestSelfScanInventory:
                 pass
         assert resolved >= 5, f"Expected >=5 resolved deps, got {resolved}"
 
+    def test_self_scan_inventory_deduplicates_and_hides_local_paths(self):
+        """Self-scan inventory should not duplicate packages or leak temp paths."""
+
+        class _FakeDist:
+            requires = [
+                "agent-bom>=0.75.9",
+                "Agent-Bom>=0.75.9",
+                "requests>=2.33.0",
+                "requests>=2.33.0",
+            ]
+
+        def _fake_version(name: str) -> str:
+            versions = {"agent-bom": "0.75.9", "Agent-Bom": "0.75.9", "requests": "2.33.0"}
+            return versions[name]
+
+        with (
+            patch("importlib.metadata.distribution", return_value=_FakeDist()),
+            patch("importlib.metadata.version", side_effect=_fake_version),
+        ):
+            inventory = _build_self_scan_inventory()
+
+        agent = inventory["agents"][0]
+        packages = agent["mcp_servers"][0]["packages"]
+        assert agent["config_path"] == "self-scan://agent-bom"
+        assert packages == [
+            {"name": "agent-bom", "version": "0.75.9", "ecosystem": "pypi"},
+            {"name": "requests", "version": "2.33.0", "ecosystem": "pypi"},
+        ]
+
 
 class TestSelfScanCLI:
     """Integration tests for --self-scan via CLI runner."""
@@ -68,7 +99,7 @@ class TestSelfScanCLI:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["scan", "--self-scan", "--output", str(out_file), "--format", "json", "--quiet"],
+            ["scan", "--self-scan", "--no-scan", "--output", str(out_file), "--format", "json", "--quiet"],
         )
         assert result.exit_code == 0, f"Exit {result.exit_code}: {result.output}"
         data = json.loads(out_file.read_text())
@@ -79,3 +110,20 @@ class TestSelfScanCLI:
         runner = CliRunner()
         result = runner.invoke(main, ["scan", "--self-scan", "--dry-run"])
         assert result.exit_code == 0, f"Exit {result.exit_code}: {result.output}"
+
+    def test_self_scan_graph_export_is_not_empty(self, tmp_path):
+        """self-scan JSON should remain compatible with graph export."""
+        report = tmp_path / "self-scan.json"
+        runner = CliRunner()
+
+        scan_result = runner.invoke(
+            main,
+            ["scan", "--self-scan", "--no-scan", "--output", str(report), "--format", "json", "--quiet"],
+        )
+        assert scan_result.exit_code == 0, f"Exit {scan_result.exit_code}: {scan_result.output}"
+
+        graph_result = runner.invoke(main, ["graph", str(report), "--format", "json"])
+        assert graph_result.exit_code == 0, f"Exit {graph_result.exit_code}: {graph_result.output}"
+        data = json.loads(graph_result.output)
+        assert data["stats"]["node_count"] > 0
+        assert data["stats"]["edge_count"] > 0

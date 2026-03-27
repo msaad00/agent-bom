@@ -819,7 +819,7 @@ def compliance_options(fn):
                 "compliance_export",
                 type=click.Choice(["cmmc", "fedramp", "nist-ai-rmf"]),
                 default=None,
-                help="Export compliance evidence bundle (ZIP) for CMMC, FedRAMP, or NIST AI RMF audits",
+                help="Export compliance evidence bundle (ZIP). Accepted values: cmmc, fedramp, nist-ai-rmf.",
             ),
         ]
     )(fn)

@@ -947,6 +947,8 @@ def test_mcp_registry_lookup_by_arg(tmp_path):
     assert packages[0].name == "@modelcontextprotocol/server-filesystem"
     assert packages[0].ecosystem == "npm"
     assert packages[0].resolved_from_registry is True
+    assert packages[0].version == packages[0].registry_version
+    assert packages[0].version_source == "registry_fallback"
 
 
 def test_mcp_registry_lookup_unknown_server():

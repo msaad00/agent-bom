@@ -1223,10 +1223,12 @@ def discover_all(
     k8s_all_namespaces: bool = False,
     k8s_context: Optional[str] = None,
 ) -> list[Agent]:
-    """Run full discovery: global configs + project configs + CLI agents.
+    """Run discovery for the local machine or a specific project.
 
     Args:
-        project_dir: Optional project directory to scan.
+        project_dir: Optional project directory to scan. When provided,
+            discovery is scoped to that project instead of ambient
+            machine-wide MCP configuration.
         dynamic: Enable dynamic content-based discovery layer.
         dynamic_max_depth: Maximum depth for dynamic filesystem scanning.
         include_processes: Also scan running host processes for MCP servers (psutil).
@@ -1238,11 +1240,10 @@ def discover_all(
     """
     console.print("\n[bold blue]🔍 Discovering MCP configurations...[/bold blue]\n")
 
-    agents = discover_global_configs()
-
     if project_dir:
-        agents.extend(discover_project_configs(project_dir))
+        agents = discover_project_configs(project_dir)
     else:
+        agents = discover_global_configs()
         agents.extend(discover_project_configs())
 
     # Docker Compose MCP server discovery
@@ -1253,31 +1254,33 @@ def discover_all(
         )
         agents.append(compose_agent)
 
-    # ToolHive CLI-based discovery
-    thv_agent = discover_toolhive()
-    if thv_agent:
-        if thv_agent.mcp_servers:
-            console.print(f"  [green]✓[/green] Found toolhive with {len(thv_agent.mcp_servers)} MCP server(s) (via thv list)")
-        else:
-            console.print("  [dim]  toolhive: installed but not configured[/dim]")
-        agents.append(thv_agent)
+    if not project_dir:
+        # Tooling and desktop integrations are ambient host discovery surfaces,
+        # so skip them when the caller explicitly scopes discovery to a project.
+        thv_agent = discover_toolhive()
+        if thv_agent:
+            if thv_agent.mcp_servers:
+                console.print(f"  [green]✓[/green] Found toolhive with {len(thv_agent.mcp_servers)} MCP server(s) (via thv list)")
+            else:
+                console.print("  [dim]  toolhive: installed but not configured[/dim]")
+            agents.append(thv_agent)
 
-    # Docker Desktop MCP Toolkit discovery
-    docker_agent = discover_docker_mcp()
-    if docker_agent:
-        if docker_agent.mcp_servers:
-            total_tools = sum(len(s.tools) for s in docker_agent.mcp_servers)
-            console.print(
-                f"  [green]✓[/green] Found docker-mcp with "
-                f"{len(docker_agent.mcp_servers)} enabled server(s), "
-                f"{total_tools} tool(s) (via Docker Desktop MCP Toolkit)"
-            )
-        else:
-            console.print("  [dim]  docker-mcp: installed but not configured[/dim]")
-        agents.append(docker_agent)
+        # Docker Desktop MCP Toolkit discovery
+        docker_agent = discover_docker_mcp()
+        if docker_agent:
+            if docker_agent.mcp_servers:
+                total_tools = sum(len(s.tools) for s in docker_agent.mcp_servers)
+                console.print(
+                    f"  [green]✓[/green] Found docker-mcp with "
+                    f"{len(docker_agent.mcp_servers)} enabled server(s), "
+                    f"{total_tools} tool(s) (via Docker Desktop MCP Toolkit)"
+                )
+            else:
+                console.print("  [dim]  docker-mcp: installed but not configured[/dim]")
+            agents.append(docker_agent)
 
     # Running process discovery (opt-in, requires psutil)
-    if include_processes:
+    if include_processes and not project_dir:
         proc_agent = discover_running_processes()
         if proc_agent:
             console.print(f"  [green]✓[/green] Found {len(proc_agent.mcp_servers)} MCP server process(es) via psutil")
@@ -1286,7 +1289,7 @@ def discover_all(
             console.print("  [dim]  process scan: no MCP server processes found[/dim]")
 
     # Docker container discovery (opt-in)
-    if include_containers:
+    if include_containers and not project_dir:
         container_agent = discover_container_labels()
         if container_agent:
             console.print(f"  [green]✓[/green] Found {len(container_agent.mcp_servers)} MCP container(s) via docker inspect")
@@ -1307,12 +1310,15 @@ def discover_all(
         else:
             console.print("  [dim]  k8s-mcp scan: no MCP pods/CRDs found (or kubectl not available)[/dim]")
 
-    # Detect installed-but-not-configured agents
-    discovered_types = {a.agent_type for a in agents}
-    installed_agents = detect_installed_agents(discovered_types)
-    for ia in installed_agents:
-        console.print(f"  [dim]  {ia.name}: installed but not configured[/dim]")
-    agents.extend(installed_agents)
+    installed_agents: list[Agent] = []
+    if not project_dir:
+        # Installed-but-not-configured agents are ambient host signals, so
+        # keep them out of explicitly project-scoped scans.
+        discovered_types = {a.agent_type for a in agents}
+        installed_agents = detect_installed_agents(discovered_types)
+        for ia in installed_agents:
+            console.print(f"  [dim]  {ia.name}: installed but not configured[/dim]")
+        agents.extend(installed_agents)
 
     # Dynamic content-based discovery layer (opt-in)
     if dynamic:

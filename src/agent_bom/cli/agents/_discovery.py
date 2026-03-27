@@ -569,12 +569,13 @@ def run_local_discovery(
             ],
         }
 
-    # Step 1d4: Project package scan fallback
-    if not skill_only and project and not ctx.agents and not images and not code_paths and not sbom_file:
+    # Step 1d4: Project package scan
+    if not skill_only and project and not images and not code_paths and not sbom_file:
         from agent_bom.models import Agent, AgentType, MCPServer, TransportType
         from agent_bom.parsers import scan_project_directory
 
         proj_root = Path(project)
+        proj_root_resolved = proj_root.resolve()
         con.print(f"\n[bold blue]Scanning project directory for package manifests: {proj_root.name}[/bold blue]\n")
         dir_map = scan_project_directory(proj_root)
         if dir_map:
@@ -583,12 +584,13 @@ def run_local_discovery(
 
             proj_servers: list[MCPServer] = []
             for manifest_dir, pkgs in dir_map.items():
-                rel = manifest_dir.relative_to(proj_root) if manifest_dir != proj_root else Path(".")
+                manifest_dir_resolved = manifest_dir.resolve()
+                rel = manifest_dir_resolved.relative_to(proj_root_resolved) if manifest_dir_resolved != proj_root_resolved else Path(".")
                 server_name = str(rel) if str(rel) != "." else proj_root.name
                 proj_server = MCPServer(
                     name=server_name,
                     command="project",
-                    args=[str(manifest_dir)],
+                    args=[str(manifest_dir_resolved)],
                     transport=TransportType.STDIO,
                     packages=pkgs,
                 )

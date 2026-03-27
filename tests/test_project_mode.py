@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from unittest.mock import patch
 
 import pytest
 
@@ -241,6 +242,64 @@ def test_project_scan_via_cli_no_agents(tmp_path):
     assert "No MCP configurations" not in result.output
     # Should find the package manifest and show it
     assert "project" in result.output.lower() or "package" in result.output.lower()
+
+
+def test_project_scan_via_cli_with_discovered_project_agents(tmp_path):
+    """--project DIR should still scan local manifests even when project MCP configs exist."""
+    from click.testing import CliRunner
+
+    from agent_bom.cli import main
+    from agent_bom.models import Agent, AgentType, MCPServer, Package
+
+    runner = CliRunner()
+    project_agent = Agent(
+        name="project-configured",
+        agent_type=AgentType.CUSTOM,
+        config_path=str(tmp_path / "mcp.json"),
+        source="project",
+        mcp_servers=[MCPServer(name="configured", command="npx", args=["server"], packages=[])],
+    )
+    project_pkgs = {
+        tmp_path: [Package(name="requests", version="2.31.0", ecosystem="pypi")],
+    }
+    with (
+        patch("agent_bom.cli.agents.discover_all", return_value=[project_agent]),
+        patch("agent_bom.parsers.scan_project_directory", return_value=project_pkgs),
+    ):
+        result = runner.invoke(main, ["scan", "--project", str(tmp_path), "--no-scan"])
+    assert result.exit_code == 0
+    assert "Scanning project directory for package manifests" in result.output
+    assert "1 package(s)" in result.output
+
+
+def test_discover_all_project_dir_scopes_to_project_only(tmp_path):
+    """discover_all(project_dir=...) should not pull in ambient host discovery."""
+    from agent_bom.discovery import discover_all
+    from agent_bom.models import Agent, AgentType, MCPServer
+
+    project_agent = Agent(
+        name="project-only",
+        agent_type=AgentType.CUSTOM,
+        config_path=str(tmp_path / "mcp.json"),
+        source="project",
+        mcp_servers=[MCPServer(name="proj", command="npx", args=["proj"], packages=[])],
+    )
+    global_agent = Agent(
+        name="global-agent",
+        agent_type=AgentType.CLAUDE_DESKTOP,
+        config_path="/Users/example/.config/global.json",
+        source="global",
+        mcp_servers=[MCPServer(name="global", command="npx", args=["global"], packages=[])],
+    )
+    with (
+        patch("agent_bom.discovery.discover_global_configs", return_value=[global_agent]),
+        patch("agent_bom.discovery.discover_project_configs", return_value=[project_agent]),
+        patch("agent_bom.discovery.discover_compose_mcp_servers", return_value=None),
+        patch("agent_bom.discovery.discover_toolhive", return_value=global_agent),
+        patch("agent_bom.discovery.discover_docker_mcp", return_value=global_agent),
+    ):
+        agents = discover_all(project_dir=str(tmp_path))
+    assert [a.name for a in agents] == ["project-only"]
 
 
 def test_sbom_name_overrides_metadata(tmp_path):

@@ -46,11 +46,12 @@ OPENCLAW_SKILL_PATTERNS: list[tuple[str, re.Pattern, str]] = [
 # Patterns that reference the version in docs/tests (updated separately)
 DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     # README.md + docs — GitHub Action version references
-    ("README.md", re.compile(r"(msaad00/agent-bom@v)[^\s\"]+"), r"\g<1>{v}"),
-    ("docs/AI_INFRASTRUCTURE_SCANNING.md", re.compile(r"(msaad00/agent-bom@v)[^\s\"]+"), r"\g<1>{v}"),
-    ("docs/ENTERPRISE_DEPLOYMENT.md", re.compile(r"(msaad00/agent-bom@v)[^\s\"]+"), r"\g<1>{v}"),
-    ("docs/WINDOWS_CONTAINERS.md", re.compile(r"(msaad00/agent-bom@v)[^\s\"]+"), r"\g<1>{v}"),
-    ("docs/MCP_SECURITY_MODEL.md", re.compile(r"(msaad00/agent-bom@v)[^\s\"]+"), r"\g<1>{v}"),
+    ("README.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
+    ("docs/AI_INFRASTRUCTURE_SCANNING.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
+    ("docs/ENTERPRISE_DEPLOYMENT.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
+    ("docs/WINDOWS_CONTAINERS.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
+    ("docs/MCP_SECURITY_MODEL.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
+    ("docs/ENTERPRISE_DEPLOYMENT.md", re.compile(r"(agentbom/agent-bom:)(?:v)?\d+\.\d+\.\d+"), r"\g<1>{v}"),
     ("DOCKER_HUB_README.md", re.compile(r"(\| `v)\d+\.\d+\.\d+(` \| Current stable version \(pinned\) \|)"), r"\g<1>{v}\g<2>"),
     # PUBLISHING.md — version examples
     ("docs/PUBLISHING.md", re.compile(r'(--version\s+")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),

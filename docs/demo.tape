@@ -1,4 +1,4 @@
-# agent-bom v0.75.8 demo — run with: vhs docs/demo.tape
+# agent-bom v0.75.9 demo — run with: vhs docs/demo.tape
 #
 # HIGH RES, READABLE. Large font, focused output.
 # No personal paths, configs, or credentials.

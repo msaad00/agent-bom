@@ -19,7 +19,7 @@ agent-bom is built on four security principles:
 
 ```yaml
 # GitHub Actions
-- uses: msaad00/agent-bom@v0.75.8
+- uses: msaad00/agent-bom@v0.75.9
   with:
     scan-type: agents        # auto-detect MCP configs + deps
     severity-threshold: high # fail PR on HIGH+ CVEs
@@ -111,7 +111,7 @@ AmazonEC2ReadOnlyAccess
 docker run --rm \
   -v ~/.config:/root/.config:ro \
   -v $(pwd):/workspace:ro \
-  agentbom/agent-bom:0.75.8 agents --format json
+  agentbom/agent-bom:0.75.9 agents --format json
 ```
 
 Multi-arch: `linux/amd64` + `linux/arm64`. Non-root container. SHA-pinned base image.

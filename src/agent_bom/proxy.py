@@ -28,6 +28,7 @@ from typing import IO, Optional
 from urllib.parse import urlparse
 
 from agent_bom.agent_identity import ANONYMOUS, check_identity
+from agent_bom.async_stdin import create_async_stdin_reader, read_async_stdin_line
 from agent_bom.permissions import classify_tool
 from agent_bom.proxy_scanner import ScanConfig, load_scan_config, scan_tool_call, scan_tool_response
 from agent_bom.security import validate_arguments, validate_command
@@ -885,14 +886,12 @@ async def _proxy_sse_server(
                 logger.warning("SSE proxy: could not fetch tools/list from %s: %s", url, exc)
 
             # Read JSON-RPC from stdin and forward through protection engine
-            reader = asyncio.StreamReader()
-            protocol = asyncio.StreamReaderProtocol(reader)
-            await asyncio.get_running_loop().connect_read_pipe(lambda: protocol, sys.stdin.buffer)
+            reader = await create_async_stdin_reader()
 
             call_counter = 0
             while True:
                 try:
-                    line = await asyncio.wait_for(reader.readline(), timeout=120.0)
+                    line = await asyncio.wait_for(read_async_stdin_line(reader), timeout=120.0)
                 except asyncio.TimeoutError:
                     logger.debug("SSE proxy: client readline timed out")
                     break
@@ -1182,13 +1181,11 @@ async def run_proxy(
 
     async def relay_client_to_server():
         """Read from our stdin, forward to server stdin."""
-        reader = asyncio.StreamReader()
-        protocol = asyncio.StreamReaderProtocol(reader)
-        await asyncio.get_running_loop().connect_read_pipe(lambda: protocol, sys.stdin.buffer)
+        reader = await create_async_stdin_reader()
 
         while True:
             try:
-                line = await asyncio.wait_for(reader.readline(), timeout=120.0)
+                line = await asyncio.wait_for(read_async_stdin_line(reader), timeout=120.0)
             except asyncio.TimeoutError:
                 logger.debug("Client readline timed out — closing relay")
                 break

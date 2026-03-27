@@ -487,3 +487,11 @@ def test_format_choices_include_plain():
     result = _run(["scan", "--help"])
     assert result.exit_code == 0
     assert "plain" in result.output
+
+
+def test_compliance_export_help_lists_supported_values():
+    """--compliance-export help should document the accepted slugs clearly."""
+    result = _run(["scan", "--help"])
+    assert result.exit_code == 0
+    assert "--compliance-export" in result.output
+    assert "cmmc, fedramp, nist-ai-rmf" in result.output

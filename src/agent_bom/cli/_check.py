@@ -292,7 +292,10 @@ def verify(package_spec: Optional[str], ecosystem: Optional[str], as_json: bool,
             console.print(f"\n[bold blue]Verifying {name}@{version} ({eco})...[/bold blue]\n")
 
     if version in ("unknown", ""):
-        console.print("[red]Error: version required. Use name@version format.[/red]")
+        console.print(
+            "[red]Error: version required. Use name@version format, "
+            "for example requests@2.33.0 or @modelcontextprotocol/server-filesystem@2025.1.14.[/red]"
+        )
         sys.exit(2)
 
     checks: dict[str, dict] = {}

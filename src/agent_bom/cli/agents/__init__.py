@@ -8,6 +8,7 @@ this namespace.
 
 from __future__ import annotations
 
+import importlib.metadata
 import json
 import sys
 from contextlib import nullcontext as _nullcontext
@@ -65,6 +66,52 @@ from agent_bom.output import (
 from agent_bom.parsers import extract_packages
 from agent_bom.resolver import resolve_all_versions_sync
 from agent_bom.scanners import scan_agents_sync
+
+
+def _build_self_scan_inventory() -> dict[str, list[dict[str, object]]]:
+    """Build a deterministic self-scan inventory for the installed package."""
+    import importlib.metadata as _meta
+
+    pkgs: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+
+    dist = _meta.distribution("agent-bom")
+    for req_str in dist.requires or []:
+        name = req_str.split(";")[0].split("[")[0].strip()
+        for op in (">=", "<=", "==", "!=", "~=", ">", "<"):
+            if op in name:
+                name = name[: name.index(op)].strip()
+                break
+        if not name:
+            continue
+        try:
+            version = _meta.version(name)
+        except _meta.PackageNotFoundError:
+            continue
+        key = (name.lower(), version, "pypi")
+        if key in seen:
+            continue
+        seen.add(key)
+        pkgs.append({"name": name, "version": version, "ecosystem": "pypi"})
+
+    return {
+        "agents": [
+            {
+                "name": "agent-bom",
+                "agent_type": "custom",
+                "source": "agent-bom --self-scan",
+                "config_path": "self-scan://agent-bom",
+                "mcp_servers": [
+                    {
+                        "name": "agent-bom-mcp-server",
+                        "command": "agent-bom mcp-server",
+                        "transport": "stdio",
+                        "packages": pkgs,
+                    }
+                ],
+            }
+        ]
+    }
 
 
 @click.command()
@@ -319,48 +366,15 @@ def scan(
 
     # ── Self-scan mode: scan agent-bom's own installed dependencies ──
     if self_scan:
-        import importlib.metadata as _meta
         import json as _json
         import os as _os
         import tempfile as _tempfile
 
-        _pkgs = []
         try:
-            _dist = _meta.distribution("agent-bom")
-            for _req_str in _dist.requires or []:
-                _name = _req_str.split(";")[0].split("[")[0].strip()
-                for _op in (">=", "<=", "==", "!=", "~=", ">", "<"):
-                    if _op in _name:
-                        _name = _name[: _name.index(_op)].strip()
-                        break
-                if not _name:
-                    continue
-                try:
-                    _ver = _meta.version(_name)
-                except _meta.PackageNotFoundError:
-                    continue
-                _pkgs.append({"name": _name, "version": _ver, "ecosystem": "pypi"})
-        except _meta.PackageNotFoundError:
+            _self_inventory = _build_self_scan_inventory()
+        except importlib.metadata.PackageNotFoundError:
             click.echo("Error: agent-bom package not found. Install it first.", err=True)
             sys.exit(2)
-
-        _self_inventory = {
-            "agents": [
-                {
-                    "name": "agent-bom",
-                    "agent_type": "custom",
-                    "source": "agent-bom --self-scan",
-                    "mcp_servers": [
-                        {
-                            "name": "agent-bom-mcp-server",
-                            "command": "agent-bom mcp-server",
-                            "transport": "stdio",
-                            "packages": _pkgs,
-                        }
-                    ],
-                }
-            ]
-        }
         _sf_fd, _sf_path = _tempfile.mkstemp(suffix=".json", prefix="agent-bom-self-scan-")
         with _os.fdopen(_sf_fd, "w") as _sf:
             _json.dump(_self_inventory, _sf)
@@ -1058,10 +1072,28 @@ def scan(
             with con.status("[bold]Querying package registries...[/bold]", spinner="dots") if not quiet else _nullcontext():
                 resolved = resolve_all_versions_sync(all_packages, quiet=quiet)
             if not quiet:
-                con.print(f"\n  [bold]Resolved {resolved}/{len(unresolved)} version(s).[/bold]")
+                resolved_count = int(resolved or 0)
+                fallback_count = sum(1 for p in unresolved if p.version_source == "registry_fallback")
+                unresolved_after = sum(1 for p in unresolved if p.version in ("latest", "unknown", ""))
+                live_count = max(resolved_count - fallback_count, 0)
+                con.print(f"\n  [bold]Resolved {resolved_count}/{len(unresolved)} version(s).[/bold]")
+                if live_count:
+                    con.print(f"  [green]✓[/green] {live_count} resolved from live registries")
+                if fallback_count:
+                    con.print(f"  [yellow]↺[/yellow] {fallback_count} preserved via bundled registry fallback")
+                if unresolved_after:
+                    con.print(
+                        "  [yellow]⚠[/yellow] "
+                        f"{unresolved_after} package(s) remain unresolved — "
+                        "downstream scan coverage is partial for those packages"
+                    )
         elif unresolved and offline:
             if not quiet:
-                con.print(f"\n  [yellow]⚠[/yellow] Offline mode: skipped version resolution for {len(unresolved)} package(s)")
+                con.print(
+                    "\n  [yellow]⚠[/yellow] Offline mode: skipped version resolution "
+                    f"for {len(unresolved)} package(s) — coverage stays partial for "
+                    "packages without pinned versions"
+                )
 
         # Step 3b: Auto-discover metadata for unknown packages
         unknown_pkgs = [

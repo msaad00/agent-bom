@@ -1,5 +1,7 @@
 # agent-bom
 
+<!-- mcp-name: io.github.msaad00/agent-bom -->
+
 **AI security scanner for agents, MCP, containers, cloud, and runtime.**
 
 agent-bom discovers AI agents and MCP servers, maps CVEs into real blast radius from package to server to agent to credentials and tools, scans packages, container images, filesystems, IaC, secrets, and cloud AI infrastructure, and protects MCP traffic at runtime.
@@ -54,7 +56,7 @@ agent-bom cloud aws
 agent-bom agents -p . -f cyclonedx -o ai-bom.json
 
 # Runtime proxy
-agent-bom proxy "npx @mcp/server-filesystem /tmp"
+agent-bom proxy "npx @mcp/server-filesystem /workspace"
 ```
 
 For the full GitHub README, Mermaid diagrams, release history, and live project status, see:

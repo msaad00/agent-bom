@@ -92,7 +92,12 @@ def _parse_package_spec(
 )
 @click.option("--quiet", "-q", is_flag=True, help="Only print vuln count, no details")
 @click.option("--no-color", is_flag=True, help="Disable colored output")
-def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bool):
+@click.option(
+    "--exit-zero",
+    is_flag=True,
+    help="Exit 0 even when vulnerabilities are found (useful for exploratory or parallel checks)",
+)
+def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bool, exit_zero: bool):
     """Check a package for known vulnerabilities before installing.
 
     \b
@@ -107,6 +112,11 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bo
       0  Clean — no known vulnerabilities
       1  Unsafe — vulnerabilities found
       2  Incomplete — OS package context insufficient for a trustworthy verdict
+
+    \b
+    Notes:
+      Use --exit-zero for exploratory or parallel workflows where findings
+      should be reported without failing the command.
     """
     console = Console(no_color=no_color)
 
@@ -219,6 +229,10 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bo
             )
         console.print(table)
         console.print()
+
+    if exit_zero:
+        console.print(f"  [yellow]⚠ {len(vulns)} vulnerability/ies found — reported without failing due to --exit-zero.[/yellow]\n")
+        sys.exit(0)
 
     console.print(f"  [red]✗ {len(vulns)} vulnerability/ies found — do not install without review.[/red]\n")
     sys.exit(1)

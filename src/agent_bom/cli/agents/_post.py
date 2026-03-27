@@ -152,14 +152,29 @@ def run_integrations(
                 from agent_bom.integrations.slack import build_summary_message, send_slack_alert, send_slack_payload
 
                 async def _send_slack():
+                    delivered = 0
+                    failed = 0
                     for f in findings[:10]:
-                        await send_slack_alert(slack_webhook, f)
+                        if await send_slack_alert(slack_webhook, f):
+                            delivered += 1
+                        else:
+                            failed += 1
                     if len(findings) > 1:
                         summary = build_summary_message(findings)
-                        await send_slack_payload(slack_webhook, summary)
+                        if await send_slack_payload(slack_webhook, summary):
+                            delivered += 1
+                        else:
+                            failed += 1
+                    return delivered, failed
 
-                _asyncio_int.run(_send_slack())
-                con.print(f"  [green]✓[/green] Slack: sent {min(len(findings), 10)} alert(s)")
+                delivered, failed = _asyncio_int.run(_send_slack())
+                attempted = min(len(findings), 10) + (1 if len(findings) > 1 else 0)
+                if delivered == attempted:
+                    con.print(f"  [green]✓[/green] Slack: delivered {delivered} message(s)")
+                elif delivered:
+                    con.print(f"  [yellow]⚠[/yellow] Slack: delivered {delivered}/{attempted} message(s); {failed} failed")
+                else:
+                    con.print(f"  [yellow]⚠[/yellow] Slack: delivered 0/{attempted} message(s); check webhook reachability and URL policy")
             except Exception as exc:
                 con.print(f"  [yellow]⚠[/yellow] Slack alert failed: {exc}")
 

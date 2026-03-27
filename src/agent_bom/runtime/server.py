@@ -25,6 +25,8 @@ import os
 import sys
 from typing import TYPE_CHECKING
 
+from agent_bom.async_stdin import create_async_stdin_reader, read_async_stdin_line
+
 if TYPE_CHECKING:
     from agent_bom.runtime.protection import ProtectionEngine
 
@@ -39,14 +41,11 @@ async def run_stdin_mode(engine: ProtectionEngine) -> None:
     engine.start()
     logger.info("Protection engine running in stdin mode (Ctrl+C to stop)")
 
-    loop = asyncio.get_running_loop()
-    reader = asyncio.StreamReader()
-    protocol = asyncio.StreamReaderProtocol(reader)
-    await loop.connect_read_pipe(lambda: protocol, sys.stdin)
+    reader = await create_async_stdin_reader()
 
     try:
         while True:
-            line = await reader.readline()
+            line = await read_async_stdin_line(reader)
             if not line:
                 break
             text = line.decode("utf-8", errors="replace").strip()

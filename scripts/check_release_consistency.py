@@ -95,12 +95,26 @@ def main() -> int:
     stale_path_markers = [
         "npx @mcp/server-filesystem /tmp",
         "npx -y @modelcontextprotocol/server-filesystem /tmp",
+        "npx @modelcontextprotocol/server-filesystem /tmp",
+        "@modelcontextprotocol/server-fs /tmp",
     ]
-    for marker in stale_path_markers:
-        if marker in readme:
-            _fail(f"README contains stale toy runtime path: {marker}")
-        if marker in pypi_readme:
-            _fail(f"PYPI_README.md contains stale toy runtime path: {marker}")
+    release_path_roots = [
+        ROOT / "README.md",
+        ROOT / "PYPI_README.md",
+        ROOT / "docs",
+        ROOT / "site-docs",
+        ROOT / "integrations",
+        ROOT / "ui" / "app" / "proxy" / "page.tsx",
+    ]
+    for root in release_path_roots:
+        files = [root] if root.is_file() else [p for p in root.rglob("*") if p.is_file()]
+        for file in files:
+            if file.suffix.lower() in {".gif", ".png", ".jpg", ".jpeg", ".svg", ".ico"}:
+                continue
+            text = file.read_text(errors="ignore")
+            for marker in stale_path_markers:
+                if marker in text:
+                    _fail(f"{file.relative_to(ROOT)} contains stale toy runtime path: {marker}")
 
     if len(description) > 120:
         _fail("pyproject.toml description must stay concise for PyPI storefront rendering")

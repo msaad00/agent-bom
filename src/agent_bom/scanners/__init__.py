@@ -1114,9 +1114,13 @@ def _scan_packages_local_db(packages: list[Package]) -> tuple[int, set[str]]:
 
     try:
         from agent_bom.db import lookup_package
-        from agent_bom.db.schema import init_db
+        from agent_bom.db.schema import init_db, open_existing_db_readonly
 
-        conn = init_db(DB_PATH)
+        try:
+            conn = init_db(DB_PATH)
+        except Exception as exc:
+            _logger.debug("Writable local DB open failed, retrying read-only: %s", exc)
+            conn = open_existing_db_readonly(DB_PATH)
     except Exception as exc:
         _logger.warning("Local DB unavailable: %s", exc)
         return 0, set()

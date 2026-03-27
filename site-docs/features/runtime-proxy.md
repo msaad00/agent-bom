@@ -30,14 +30,14 @@ MCP Server (filesystem, postgres, etc.)
 ```bash
 # Basic audit logging
 agent-bom proxy --log audit.jsonl \
-  -- npx @modelcontextprotocol/server-filesystem /tmp
+  -- npx @modelcontextprotocol/server-filesystem /workspace
 
 # With policy enforcement
 agent-bom proxy \
   --policy policy.json \
   --log audit.jsonl \
   --block-undeclared \
-  -- npx @modelcontextprotocol/server-filesystem /tmp
+  -- npx @modelcontextprotocol/server-filesystem /workspace
 ```
 
 ## Claude Desktop integration
@@ -53,7 +53,7 @@ agent-bom proxy \
         "--policy", "policy.json",
         "--block-undeclared",
         "--",
-        "npx", "@modelcontextprotocol/server-filesystem", "/tmp"
+        "npx", "@modelcontextprotocol/server-filesystem", "/workspace"
       ]
     }
   }

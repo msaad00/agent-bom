@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -451,6 +452,11 @@ def test_validated_db_path_rejects_traversal(tmp_path):
         _validated_db_path(str(tmp_path / ".." / ".." / "etc" / "passwd"))
 
 
+def test_validated_db_path_accepts_tmp_alias():
+    p = _validated_db_path("/tmp/agent-bom-vulns.db")
+    assert p == Path("/tmp/agent-bom-vulns.db")
+
+
 # ---------------------------------------------------------------------------
 # Security hardening — file permissions (0600)
 # ---------------------------------------------------------------------------
@@ -728,3 +734,28 @@ def test_db_freshness_days_old_db(tmp_path):
     age = db_freshness_days(db_file)
     assert age is not None
     assert age >= 14
+
+
+def test_db_freshness_days_uses_readonly_open_when_writable_open_is_not_available(tmp_path, monkeypatch):
+    from agent_bom.db.schema import db_freshness_days
+
+    db_file = tmp_path / "readonly.db"
+    conn = init_db(db_file)
+    conn.execute(
+        "INSERT OR REPLACE INTO sync_meta(source, last_synced, record_count) VALUES (?, datetime('now'), ?)",
+        ("osv", 100),
+    )
+    conn.commit()
+    conn.close()
+
+    real_connect = sqlite3.connect
+
+    def fake_connect(target, *args, **kwargs):
+        if target == str(db_file):
+            raise sqlite3.OperationalError("readonly mount")
+        return real_connect(target, *args, **kwargs)
+
+    monkeypatch.setattr(sqlite3, "connect", fake_connect)
+    age = db_freshness_days(db_file)
+    assert age is not None
+    assert age >= 0

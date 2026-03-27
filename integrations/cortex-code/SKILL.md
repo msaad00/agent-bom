@@ -88,7 +88,7 @@ agent-bom mcp server
 ### Proxy MCP traffic with policy enforcement
 
 ```bash
-agent-bom proxy "npx @modelcontextprotocol/server-filesystem /tmp" --policy policy.yml
+agent-bom proxy "npx @modelcontextprotocol/server-filesystem /workspace" --policy policy.yml
 ```
 
 ## Common Patterns

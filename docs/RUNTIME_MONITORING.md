@@ -42,7 +42,7 @@ docker run --rm \
   agent-bom-runtime \
   --log /var/log/agent-bom/audit.jsonl \
   --block-undeclared \
-  -- npx -y @modelcontextprotocol/server-filesystem /tmp
+  -- npx -y @modelcontextprotocol/server-filesystem /workspace
 ```
 
 ### Docker Compose
@@ -142,7 +142,7 @@ The proxy supports two operational modes:
 All tool calls are allowed through. Every invocation is recorded in the JSONL audit log with full metadata (tool name, truncated arguments, timestamp). Use this mode to build a baseline of normal behavior before enabling enforcement.
 
 ```bash
-agent-bom proxy --log audit.jsonl -- npx @mcp/server-filesystem /tmp
+agent-bom proxy --log audit.jsonl -- npx @mcp/server-filesystem /workspace
 ```
 
 ### Enforce mode
@@ -154,7 +154,7 @@ agent-bom proxy \
   --log audit.jsonl \
   --policy policy.json \
   --block-undeclared \
-  -- npx @mcp/server-filesystem /tmp
+  -- npx @mcp/server-filesystem /workspace
 ```
 
 Blocked calls receive a JSON-RPC error response (`code: -32600`) and are recorded in the audit log with `"policy": "blocked"` and the reason.
@@ -183,7 +183,7 @@ Use the `agent-bom watch` command alongside the proxy to route alerts to Slack, 
 
 ```bash
 # In one terminal: run the proxy
-agent-bom proxy --log audit.jsonl -- npx @mcp/server-filesystem /tmp
+agent-bom proxy --log audit.jsonl -- npx @mcp/server-filesystem /workspace
 
 # In another terminal: watch the audit log and send alerts
 agent-bom watch --webhook https://hooks.slack.com/services/T.../B.../xxx --log alerts.jsonl
@@ -223,7 +223,7 @@ Analyzes the order of tool calls to detect suspicious multi-step patterns. For e
 
 ```bash
 agent-bom proxy --log /var/log/agent-bom/audit.jsonl \
-  -- npx @modelcontextprotocol/server-filesystem /tmp
+  -- npx @modelcontextprotocol/server-filesystem /workspace
 ```
 
 ### Enforce with policy file
@@ -233,7 +233,7 @@ agent-bom proxy \
   --policy policy.json \
   --log /var/log/agent-bom/audit.jsonl \
   --block-undeclared \
-  -- npx @modelcontextprotocol/server-filesystem /tmp
+  -- npx @modelcontextprotocol/server-filesystem /workspace
 ```
 
 ### Policy file example
@@ -279,7 +279,7 @@ Point Claude Desktop at the proxy instead of the raw MCP server:
         "--policy", "/etc/agent-bom/policy.json",
         "--block-undeclared",
         "--",
-        "npx", "@modelcontextprotocol/server-filesystem", "/tmp"
+        "npx", "@modelcontextprotocol/server-filesystem", "/workspace"
       ]
     }
   }
@@ -297,7 +297,7 @@ Use the runtime container directly from Claude Desktop:
       "command": "docker",
       "args": [
         "run", "--rm", "-i",
-        "-v", "/tmp:/workspace",
+        "-v", "./workspace:/workspace",
         "-v", "./audit-logs:/var/log/agent-bom",
         "agent-bom-runtime:latest",
         "--log", "/var/log/agent-bom/audit.jsonl",
@@ -392,7 +392,7 @@ kubectl apply -f deploy/k8s/sidecar-example.yaml
 The proxy exposes Prometheus-compatible metrics on port 8422 (configurable via `--metrics-port`):
 
 ```bash
-agent-bom proxy --metrics-port 8422 --log audit.jsonl -- npx @mcp/server-filesystem /tmp
+agent-bom proxy --metrics-port 8422 --log audit.jsonl -- npx @mcp/server-filesystem /workspace
 ```
 
 ### Metrics endpoint

@@ -103,9 +103,33 @@ def test_scan_packages_local_db_db_unavailable():
     with (
         patch("agent_bom.db.schema.db_freshness_days", return_value=1),
         patch("agent_bom.db.schema.init_db", side_effect=RuntimeError("locked")),
+        patch("agent_bom.db.schema.open_existing_db_readonly", side_effect=RuntimeError("readonly locked")),
     ):
         count, covered = _scan_packages_local_db([_make_pkg()])
     assert count == 0
+
+
+def test_scan_packages_local_db_falls_back_to_readonly_open():
+    """Read-only fallback still scans when writable init_db fails."""
+    from agent_bom.scanners import _scan_packages_local_db
+
+    pkg = _make_pkg()
+    lv = _make_local_vuln("CVE-2024-4444", "high", 7.9)
+    conn = MagicMock()
+
+    with (
+        patch("agent_bom.db.schema.db_freshness_days", return_value=1),
+        patch("agent_bom.db.schema.init_db", side_effect=RuntimeError("readonly mount")),
+        patch("agent_bom.db.schema.open_existing_db_readonly", return_value=conn),
+        patch("agent_bom.db.lookup.package_in_db", return_value=True),
+        patch("agent_bom.db.lookup_package", return_value=[lv]),
+    ):
+        count, covered = _scan_packages_local_db([pkg])
+
+    assert count == 1
+    assert len(pkg.vulnerabilities) == 1
+    assert covered == {"pypi:requests@2.28.0"}
+    conn.close.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

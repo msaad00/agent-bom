@@ -1,11 +1,10 @@
 # agent-bom
 
 <!-- mcp-name: io.github.msaad00/agent-bom -->
-MCP registry name: `io.github.msaad00/agent-bom`
 
-**AI security scanner for agents, MCP, containers, cloud, and runtime.**
+**Open security platform for agentic infrastructure.**
 
-agent-bom discovers AI agents and MCP servers, maps CVEs into real blast radius from package to server to agent to credentials and tools, scans packages, container images, filesystems, IaC, secrets, and cloud AI infrastructure, and protects MCP traffic at runtime.
+agent-bom scans packages, container images, filesystems, IaC, secrets, cloud AI infrastructure, agents, and MCP servers, then maps blast radius from package to server to agent to credentials and tools and protects MCP traffic at runtime.
 
 ![agent-bom demo](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif)
 

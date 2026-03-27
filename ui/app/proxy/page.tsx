@@ -216,7 +216,7 @@ export default function ProxyDashboard() {
           <p className="text-zinc-600 text-xs mt-1 max-w-md mx-auto">
             Start a proxy with{" "}
             <code className="text-zinc-400 bg-zinc-800 px-1.5 py-0.5 rounded text-[11px]">
-              agent-bom proxy -- npx @modelcontextprotocol/server-fs /tmp
+              agent-bom proxy -- npx @modelcontextprotocol/server-fs /workspace
             </code>{" "}
             or set <code className="text-zinc-400 bg-zinc-800 px-1.5 py-0.5 rounded text-[11px]">AGENT_BOM_LOG</code> to
             read from an audit log.

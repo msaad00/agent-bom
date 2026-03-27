@@ -94,9 +94,9 @@ agent-bom agents -p . -f cyclonedx -o ai-bom.json
 | **Grype** | Vulnerability matching from packages and SBOMs | No MCP, agent, runtime, or trust modeling |
 | **Syft** | SBOM generation and software inventory | Not a runtime or blast-radius security tool |
 | **Snyk AI-BOM** | Enterprise AI BOM workflows | Narrower local AI-agent/MCP discovery and runtime coverage |
-| **agent-bom** | AI agent, MCP, blast-radius, runtime protection, and governance | Less mature as a generic scanner than Trivy |
+| **agent-bom** | Broad security scanning plus AI agent, MCP, blast-radius, runtime protection, and governance | Newer category focus: agentic infrastructure, MCP trust, and runtime evidence |
 
-Use Trivy when you need a great general-purpose scanner. Use Syft and Grype when you want dedicated SBOM and vulnerability point tools. **Use agent-bom when you need to know which AI agents, MCP servers, credentials, and tools are actually exposed.**
+General software supply chain scanners remain useful. **agent-bom extends that model to agentic infrastructure with MCP discovery, runtime evidence, trust, and blast radius** while still covering packages, images, filesystems, IaC, cloud AI infrastructure, and secrets.
 
 </details>
 

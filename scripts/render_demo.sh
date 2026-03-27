@@ -2,32 +2,28 @@
 
 set -euo pipefail
 
-IMAGE_TAG="${AGENT_BOM_DEMO_IMAGE:-agent-bom:release-alpine-test}"
+DEMO_ENGINE="${AGENT_BOM_DEMO_ENGINE:-python}"
+IMAGE_TAG="${AGENT_BOM_DEMO_IMAGE:-agent-bom:demo-current}"
 DB_SOURCE="${AGENT_BOM_DB_SOURCE:-$HOME/.agent-bom/db/vulns.db}"
-DB_COPY="${AGENT_BOM_DEMO_DB:-/tmp/agent-bom-demo/vulns.db}"
 
-mkdir -p "$(dirname "$DB_COPY")"
-cp "$DB_SOURCE" "$DB_COPY"
-
-docker_abom() {
-  docker run --rm \
-    -e AGENT_BOM_DB_PATH=/tmp/vulns.db \
-    -e AGENT_BOM_LOG_LEVEL=error \
-    -v "$DB_COPY:/tmp/vulns.db:ro" \
-    "$IMAGE_TAG" \
-    "$@"
-}
+export AGENT_BOM_DEMO_ENGINE="$DEMO_ENGINE"
+export AGENT_BOM_DEMO_IMAGE="$IMAGE_TAG"
+export AGENT_BOM_DEMO_DB_SOURCE="$DB_SOURCE"
+export AGENT_BOM_DEMO_REPO_ROOT="$PWD"
+. "$(dirname "$0")/demo-env.sh"
 
 run_step() {
   local visible="$1"
   shift
 
   printf '$ %s\n' "$visible"
-  "$@" 2>&1
+  if ! "$@" 2>&1; then
+    true
+  fi
   printf '\n'
   sleep 1
 }
 
-run_step "agent-bom --version" docker_abom --version
-run_step "agent-bom agents --demo --posture --offline" docker_abom agents --demo --posture --offline
-run_step "agent-bom check flask==2.2.0 --ecosystem pypi" docker_abom check flask==2.2.0 --ecosystem pypi
+run_step "agent-bom --version" agent-bom --version
+run_step "agent-bom agents --demo --posture --offline" agent-bom agents --demo --posture --offline
+run_step "agent-bom check pillow@9.0.0 --ecosystem pypi" agent-bom check pillow@9.0.0 --ecosystem pypi

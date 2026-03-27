@@ -187,6 +187,18 @@ def test_scan_no_tree_flag():
     assert result.exit_code == 0
 
 
+def test_demo_scan_hides_synthetic_project_temp_path():
+    with (
+        patch("agent_bom.cli.agents.discover_all", return_value=[]),
+        patch("agent_bom.parsers.scan_project_directory", return_value={}),
+    ):
+        result = _run(["scan", "--demo", "--no-scan"])
+    assert result.exit_code == 0
+    assert "agent-bom-demo-dir-" not in result.output
+    assert "Scanning project directory for package manifests" not in result.output
+    assert "Scanning 1 path(s) for IaC misconfigurations" not in result.output
+
+
 def test_scan_format_sarif(tmp_path):
     """--format sarif should produce a SARIF file."""
     out = tmp_path / "results.sarif"

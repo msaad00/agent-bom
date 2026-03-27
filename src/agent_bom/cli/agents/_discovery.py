@@ -576,7 +576,9 @@ def run_local_discovery(
 
         proj_root = Path(project)
         proj_root_resolved = proj_root.resolve()
-        con.print(f"\n[bold blue]Scanning project directory for package manifests: {proj_root.name}[/bold blue]\n")
+        is_synthetic_demo_project = proj_root.name.startswith("agent-bom-demo-dir-")
+        if not is_synthetic_demo_project:
+            con.print(f"\n[bold blue]Scanning project directory for package manifests: {proj_root.name}[/bold blue]\n")
         dir_map = scan_project_directory(proj_root)
         if dir_map:
             total_proj_pkgs = sum(len(v) for v in dir_map.values())
@@ -604,7 +606,7 @@ def run_local_discovery(
                 mcp_servers=proj_servers,
             )
             ctx.agents.append(proj_agent)
-        else:
+        elif not is_synthetic_demo_project:
             con.print(f"  [dim]  No package manifests found in {proj_root}[/dim]")
 
     # Step 1e: Terraform scan (--tf-dir)
@@ -993,12 +995,17 @@ def run_local_discovery(
     if not skill_only and iac_paths:
         from agent_bom.iac import scan_iac_directory
 
-        con.print(f"\n[bold blue]Scanning {len(iac_paths)} path(s) for IaC misconfigurations...[/bold blue]\n")
         all_iac_findings: list = []
+        printed_iac_heading = False
         for iac_path in iac_paths:
+            iac_path_obj = Path(iac_path)
+            is_synthetic_demo_iac = iac_path_obj.name.startswith("agent-bom-demo-dir-")
             iac_findings = scan_iac_directory(iac_path)
             all_iac_findings.extend(iac_findings)
             if iac_findings:
+                if not printed_iac_heading:
+                    con.print(f"\n[bold blue]Scanning {len(iac_paths)} path(s) for IaC misconfigurations...[/bold blue]\n")
+                    printed_iac_heading = True
                 by_sev: dict[str, int] = {}
                 for iac_f in iac_findings:
                     by_sev[iac_f.severity] = by_sev.get(iac_f.severity, 0) + 1
@@ -1009,7 +1016,10 @@ def run_local_discovery(
                         style = sev_colors.get(sev, "white")
                         sev_parts.append(f"[{style}]{by_sev[sev]} {sev}[/{style}]")
                 con.print(f"  [green]\u2713[/green] {iac_path}: {len(iac_findings)} finding(s) ({', '.join(sev_parts)})")
-            else:
+            elif not is_synthetic_demo_iac:
+                if not printed_iac_heading:
+                    con.print(f"\n[bold blue]Scanning {len(iac_paths)} path(s) for IaC misconfigurations...[/bold blue]\n")
+                    printed_iac_heading = True
                 con.print(f"  [dim]  {iac_path}: no misconfigurations found[/dim]")
 
         if all_iac_findings:

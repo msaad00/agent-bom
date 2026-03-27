@@ -35,8 +35,13 @@ def _validated_db_path(raw: str) -> Path:
 
     p = Path(raw).expanduser()
     home = Path.home().resolve()
-    # Use the real system temp dir (macOS: /private/tmp or /private/var/folders/…)
-    tmp = Path(tempfile.gettempdir()).resolve()
+    # Accept both the real temp root and the common /tmp alias on macOS/Linux.
+    temp_roots = {Path(tempfile.gettempdir()).resolve()}
+    for candidate in (Path("/tmp"), Path("/private/tmp")):  # nosec B108
+        try:
+            temp_roots.add(candidate.resolve())
+        except OSError:
+            continue
 
     # Allow home subtree or system temp subtree (test fixtures land in temp)
     try:
@@ -44,7 +49,7 @@ def _validated_db_path(raw: str) -> Path:
     except (OSError, RuntimeError) as exc:
         raise ValueError(f"AGENT_BOM_DB_PATH is not a valid path: {raw!r}") from exc
 
-    if not (resolved.is_relative_to(home) or resolved.is_relative_to(tmp)):
+    if not (resolved.is_relative_to(home) or any(resolved.is_relative_to(root) for root in temp_roots)):
         raise ValueError(f"AGENT_BOM_DB_PATH must be inside the home directory or /tmp, got: {raw!r}")
 
     try:
@@ -192,6 +197,18 @@ def init_db(path: Path | None = None) -> sqlite3.Connection:
     return conn
 
 
+def open_existing_db_readonly(path: Path | None = None) -> sqlite3.Connection:
+    """Open an existing vulnerability DB in read-only mode.
+
+    This is used for scan/read paths when the DB exists but the containing
+    directory is not writable (for example, sandboxed or read-only mounts).
+    """
+    db_path = path or DB_PATH
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
 def _migrate(conn: sqlite3.Connection, from_version: int) -> None:
     """Apply sequential migrations from *from_version* up to _SCHEMA_VERSION."""
     current = from_version
@@ -232,7 +249,7 @@ def db_freshness_days(path: Path | None = None) -> int | None:
     if not db_path.exists():
         return None
     try:
-        conn = sqlite3.connect(str(db_path))
+        conn = open_existing_db_readonly(db_path)
         try:
             rows = conn.execute("SELECT last_synced FROM sync_meta").fetchall()
         finally:

@@ -58,7 +58,7 @@ def main() -> int:
             _fail(f"README is missing required storefront marker: {marker}")
 
     required_pypi_markers = [
-        "<!-- mcp-name: io.github.msaad00/agent-bom -->",
+        "mcp-name: io.github.msaad00/agent-bom",
         "docs/images/demo-latest.gif",
         "docs/images/scan-pipeline-light.svg",
         "docs/images/blast-radius-light.svg",

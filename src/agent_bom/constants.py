@@ -577,3 +577,30 @@ CWE_COMPLIANCE_MAP: dict[str, dict[str, list[str]]] = {
         "nist_800_53": ["AC-3", "SC-8"],
     },
 }
+
+
+# ── Compliance Framework Registry ──────────────────────────────────────────
+#
+# Single source of truth for framework count.  Every tagger called in
+# scanners/__init__.py must have an entry here.  Code that displays
+# "N frameworks" should reference COMPLIANCE_FRAMEWORK_COUNT instead of
+# hardcoding a number.
+
+COMPLIANCE_FRAMEWORKS: tuple[tuple[str, str], ...] = (
+    ("owasp_llm", "OWASP LLM Top 10"),
+    ("atlas", "MITRE ATLAS"),
+    ("attack", "MITRE ATT&CK Enterprise"),
+    ("nist_ai_rmf", "NIST AI RMF 1.0"),
+    ("owasp_mcp", "OWASP MCP Top 10"),
+    ("owasp_agentic", "OWASP Agentic Top 10"),
+    ("eu_ai_act", "EU AI Act"),
+    ("nist_csf", "NIST CSF 2.0"),
+    ("iso_27001", "ISO 27001:2022"),
+    ("soc2", "SOC 2 TSC"),
+    ("cis", "CIS Controls v8"),
+    ("cmmc", "CMMC 2.0"),
+    ("nist_800_53", "NIST 800-53 Rev 5"),
+    ("fedramp", "FedRAMP Moderate"),
+)
+
+COMPLIANCE_FRAMEWORK_COUNT: int = len(COMPLIANCE_FRAMEWORKS)

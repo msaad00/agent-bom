@@ -647,7 +647,7 @@ def generate_compliance_narrative(
     Args:
         report: The AIBOMReport to analyse.
         framework: Optional framework slug to generate a single-framework
-            narrative.  When None (default), all 14 frameworks are included.
+            narrative.  When None (default), all frameworks are included.
             Supported slugs: owasp-llm, owasp-mcp, atlas, nist, owasp-agentic,
             eu-ai-act, nist-csf, iso-27001, soc2, cis, cmmc.
 

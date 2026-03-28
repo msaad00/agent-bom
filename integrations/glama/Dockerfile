@@ -25,7 +25,7 @@ COPY --from=builder /app/LICENSE /app/LICENSE
 
 # Apply latest OS security patches (fixes base-image CVEs visible in Docker Scout)
 RUN apt-get update && apt-get upgrade -y --no-install-recommends && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir --upgrade "pip==25.1.0"
+    && pip install --no-cache-dir --upgrade "pip==26.0.1" --hash=sha256:bdb1b08f4274833d62c1aa29e20907365a2ceb950410df15fc9521bad440122b
 
 # Create non-root user for least-privilege execution
 RUN addgroup --system abom && adduser --system --ingroup abom abom

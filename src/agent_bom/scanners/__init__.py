@@ -1638,14 +1638,46 @@ async def scan_agents(agents: list[Agent], *, compliance_enabled: bool = False, 
             ai_risk_context = None
 
         for vuln in pkg.vulnerabilities:
+            # CWE-aware filtering: only expose credentials/tools the vuln
+            # type can realistically reach. A DoS (CWE-400) doesn't steal
+            # DATABASE_URL. An RCE (CWE-94) does.
+            from agent_bom.cwe_impact import (
+                build_attack_vector_summary,
+                classify_cwe_impact,
+                filter_credentials_by_impact,
+                filter_tools_by_impact,
+            )
+
+            impact_cat = classify_cwe_impact(vuln.cwe_ids)
+            filtered_creds = filter_credentials_by_impact(
+                impact_cat,
+                exposed_creds_deduped,
+            )
+            filtered_tools = filter_tools_by_impact(
+                impact_cat,
+                exposed_tools,
+            )
+            attack_summary = build_attack_vector_summary(
+                cwe_ids=vuln.cwe_ids,
+                category=impact_cat,
+                filtered_creds=filtered_creds,
+                filtered_tools=filtered_tools,
+                severity=vuln.severity.value if vuln.severity else None,
+                is_kev=vuln.is_kev,
+            )
+
             br = BlastRadius(
                 vulnerability=vuln,
                 package=pkg,
                 affected_servers=affected_servers,
                 affected_agents=affected_agents,
-                exposed_credentials=exposed_creds_deduped,
-                exposed_tools=exposed_tools,
+                exposed_credentials=filtered_creds,
+                exposed_tools=filtered_tools,
                 ai_risk_context=ai_risk_context,
+                impact_category=impact_cat,
+                all_server_credentials=list(exposed_creds_deduped),
+                all_server_tools=list(exposed_tools),
+                attack_vector_summary=attack_summary,
             )
             br.calculate_risk_score()
             # Compliance tagging — opt-in via --compliance flag

@@ -186,6 +186,12 @@ export interface BlastRadius {
   owasp_mcp_tags?: string[];
   owasp_agentic_tags?: string[];
   eu_ai_act_tags?: string[];
+  /** CWE-derived impact category: code-execution, credential-access, etc. */
+  impact_category?: string;
+  /** Full credential set before CWE filtering (for reference) */
+  all_server_credentials?: string[];
+  /** Human-readable attack vector description */
+  attack_vector_summary?: string;
 }
 
 // ─── Attack Flow Types ───────────────────────────────────────────────────────

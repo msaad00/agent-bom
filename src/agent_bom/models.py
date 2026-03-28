@@ -589,6 +589,12 @@ class BlastRadius:
     fedramp_tags: list[str] = field(default_factory=list)  # FedRAMP Moderate baseline, e.g. ["RA-5"]
     ai_summary: Optional[str] = None  # LLM-generated contextual risk narrative
 
+    # CWE-aware impact context
+    impact_category: str = "code-execution"  # CWE-derived: code-execution, file-access, availability, etc.
+    all_server_credentials: list[str] = field(default_factory=list)  # Full credential set before CWE filtering
+    all_server_tools: list[MCPTool] = field(default_factory=list)  # Full tool set before CWE filtering
+    attack_vector_summary: Optional[str] = None  # Human-readable attack path description
+
     # Multi-hop delegation fields
     hop_depth: int = 1  # How many hops from the vulnerable package (1 = direct)
     delegation_chain: list[str] = field(default_factory=list)  # e.g. ["server1→agent1→server2→agent2"]

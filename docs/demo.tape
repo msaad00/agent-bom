@@ -1,41 +1,22 @@
-# agent-bom v0.75.9 demo — run with: vhs docs/demo.tape
-#
-# HIGH RES, READABLE. Large font, focused output.
-# No personal paths, configs, or credentials.
+# agent-bom v0.75.9 hero demo
+# Focused, clean, and capture-safe:
+# - no personal paths
+# - no temp/setup leakage
+# - no Rich redraw spam
+# - no synthetic error output
 
 Output docs/images/demo-latest.gif
 
 Set Shell "bash"
-Set FontSize 22
-Set Width 1200
-Set Height 800
+Set FontSize 20
+Set Width 1400
+Set Height 920
 Set Theme "Dracula"
 Set Padding 30
-Set TypingSpeed 25ms
-Set PlaybackSpeed 1.5
+Set TypingSpeed 35ms
+Set PlaybackSpeed 1.0
 
-# Setup
-Hide
-Type ". scripts/demo-env.sh"
+# Hero flow
+Type "bash scripts/render_demo.sh"
 Enter
-Type "clear"
-Enter
-Sleep 500ms
-Show
-
-# 1. Version
-Type "agent-bom --version"
-Enter
-Sleep 2s
-
-# 2. Posture summary — quick workstation risk
-Type "agent-bom agents --demo --posture --offline"
-Enter
-Sleep 9s
-
-# 3. Pre-install CVE gate
-Type "agent-bom check pillow@9.0.0 --ecosystem pypi"
-Enter
-Sleep 6s
-
-Sleep 3s
+Sleep 8s

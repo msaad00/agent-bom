@@ -17,7 +17,7 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
  Fix: upgrade better-sqlite3 → 11.7.0
 ```
 
-Traditional scanners tell you a package has a CVE. agent-bom tells you which AI agents are compromised, which credentials leak, which tools an attacker reaches, and what the business impact is.
+Traditional scanners often stop at CVE -> package. agent-bom shows which MCP servers, AI agents, credentials, and tools are actually exposed.
 
 ## Quick start
 

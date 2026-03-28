@@ -94,9 +94,9 @@ agent-bom agents -p . -f cyclonedx -o ai-bom.json
 | **Grype** | Vulnerability matching from packages and SBOMs | No MCP, agent, runtime, or trust modeling |
 | **Syft** | SBOM generation and software inventory | Not a runtime or blast-radius security tool |
 | **Snyk AI-BOM** | Enterprise AI BOM workflows | Narrower local AI-agent/MCP discovery and runtime coverage |
-| **agent-bom** | Broad security scanning plus AI agent, MCP, blast-radius, runtime protection, and governance | Newer category focus: agentic infrastructure, MCP trust, and runtime evidence |
+| **agent-bom** | Broad security scanning plus AI agent, MCP, blast-radius, runtime protection, and governance | Built for agentic infrastructure, MCP trust, and runtime evidence |
 
-General software supply chain scanners remain useful. **agent-bom extends that model to agentic infrastructure with MCP discovery, runtime evidence, trust, and blast radius** while still covering packages, images, filesystems, IaC, cloud AI infrastructure, and secrets.
+Traditional scanners often stop at CVE -> package. **agent-bom extends that model to agentic infrastructure with MCP discovery, runtime evidence, trust, and blast radius** while still covering packages, images, filesystems, IaC, cloud AI infrastructure, and secrets.
 
 </details>
 

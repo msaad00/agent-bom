@@ -408,7 +408,7 @@ def test_multi_framework_tags_affect_multiple_frameworks():
 
 
 def test_all_framework_slugs_covered():
-    """Ensure ALL_FRAMEWORK_SLUGS matches the expected set of 11 frameworks."""
+    """Ensure ALL_FRAMEWORK_SLUGS matches the expected set of 14 frameworks."""
     expected = {
         "owasp-llm",
         "owasp-mcp",

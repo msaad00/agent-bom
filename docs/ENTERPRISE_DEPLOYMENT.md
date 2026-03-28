@@ -69,7 +69,7 @@ agent-bom serve --port 8422 --persist jobs.db
 - `GET /v1/fleet/list` — view all discovered agents across the org
 - `GET /v1/fleet/stats` — fleet-wide trust scores and posture
 - `POST /v1/fleet/sync` — ingest endpoint scan results
-- `GET /v1/compliance` — 11-framework compliance posture
+- `GET /v1/compliance` — 14-framework compliance posture
 
 **Authentication:** API key auth (`AGENT_BOM_API_KEY`), rate limiting, CORS controls.
 **Storage:** SQLite (single node), PostgreSQL (team), Snowflake/ClickHouse (enterprise).

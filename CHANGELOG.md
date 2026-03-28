@@ -10,7 +10,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ## [0.75.0] – 2026-03-23
 
 ### Added
-- **Dashboard UX** — posture grade (A-F) hero, top 5 attack path cards, security graph page with interactive React Flow, insight layer toggle (risk/credentials/default), 11-framework compliance heatmap
+- **Dashboard UX** — posture grade (A-F) hero, top 5 attack path cards, security graph page with interactive React Flow, insight layer toggle (risk/credentials/default), 14-framework compliance heatmap
 - **Remediation page** — priority table sorted by blast radius impact, Jira ticket creation per finding, compliance impact summary, severity/framework filters, JSON export
 - **Compliance narratives** — `GET /v1/compliance/narrative` generates auditor-ready text per framework with control-level detail and remediation-compliance bridge
 - **`--posture` flag** — 5-line workstation posture summary for solo developers
@@ -202,7 +202,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - **action.yml**: shortened description to 91 chars (was 141, GitHub Marketplace truncates at 125) (#933)
 
 ### Added
-- **CMMC 2.0 in REST API**: wired 17 CMMC practices into `/v1/compliance` endpoint — 11 frameworks now accessible via API (#933)
+- **CMMC 2.0 in REST API**: wired 17 CMMC practices into `/v1/compliance` endpoint — 14 frameworks now accessible via API (#933)
 - **Sync HTTP client**: `create_sync_client()`, `sync_request_with_retry()`, `fetch_bytes()`, `fetch_json()` in `http_client.py` (#932)
 
 ## [Unreleased]

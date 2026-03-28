@@ -741,7 +741,7 @@ export const api = {
   /** Compliance posture across all completed scans */
   getCompliance: () => get<ComplianceResponse>("/v1/compliance"),
 
-  /** Auditor-ready compliance narrative for all 11 frameworks */
+  /** Auditor-ready compliance narrative for all 14 frameworks */
   getComplianceNarrative: () => get<ComplianceNarrativeResponse>("/v1/compliance/narrative"),
 
   /** Single-framework compliance narrative */

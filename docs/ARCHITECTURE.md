@@ -147,7 +147,7 @@ graph LR
 
 ## 4. Compliance Tagging
 
-Every finding is tagged against 11 frameworks, grouped into four families.
+Every finding is tagged against 14 frameworks, grouped into four families.
 
 ```mermaid
 graph LR

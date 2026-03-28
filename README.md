@@ -11,8 +11,6 @@
   <a href="https://hub.docker.com/r/agentbom/agent-bom"><img src="https://img.shields.io/docker/pulls/agentbom/agent-bom?style=flat&label=Docker%20pulls" alt="Docker"></a>
   <a href="https://github.com/msaad00/agent-bom/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue?style=flat" alt="License"></a>
   <a href="https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom"><img src="https://img.shields.io/ossf-scorecard/github.com/msaad00/agent-bom?style=flat&label=OpenSSF%20scorecard" alt="OpenSSF Scorecard"></a>
-  <a href="https://github.com/msaad00/agent-bom/stargazers"><img src="https://img.shields.io/github/stars/msaad00/agent-bom?style=flat&logo=github&label=Stars" alt="Stars"></a>
-  <a href="https://github.com/msaad00/agent-bom/discussions"><img src="https://img.shields.io/github/discussions/msaad00/agent-bom?style=flat&logo=github&label=Discussions" alt="Discussions"></a>
 </p>
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
@@ -105,45 +103,11 @@ Traditional scanners often stop at CVE -> package. **agent-bom extends that mode
 ## How it works
 
 ```mermaid
-flowchart TB
-    subgraph DISCOVER["🔍 DISCOVER"]
-        direction LR
-        D1["Claude Desktop\nCursor · Windsurf\nVS Code · Codex\n+ 25 more"]
-        D2["AWS · Azure · GCP\nSnowflake · Databricks"]
-        D3["Docker Images\nFilesystems\nIaC Files"]
-    end
-
-    subgraph SCAN["🛡️ SCAN"]
-        direction LR
-        S1["CVE Scanning\nOSV · NVD · GHSA"]
-        S2["EPSS · CISA KEV\nCVSS v3/v4"]
-        S3["Secret Detection\n34 credential patterns\n11 PII patterns"]
-        S4["IaC Security\n138 rules\nTerraform · Docker\nHelm · K8s"]
-    end
-
-    subgraph ANALYZE["📊 ANALYZE"]
-        direction LR
-        A1["Blast Radius\nCVE → pkg → server\n→ agent → credentials"]
-        A2["Compliance\n11 frameworks\nOWASP · MITRE ATLAS\nNIST · EU AI Act"]
-        A3["Trust Scoring\n6-category model\n0-100 per agent"]
-    end
-
-    subgraph OUTPUT["📤 OUTPUT"]
-        direction LR
-        O1["CycloneDX AI BOM\nSPDX · SARIF\n17 formats"]
-        O2["Next.js Dashboard\n20 interactive pages\nSecurity Graph"]
-        O3["CI/CD Gating\n--fail-on critical\nJira · Slack"]
-    end
-
-    subgraph PROTECT["🔒 RUNTIME PROTECTION"]
-        direction LR
-        P1["MCP Proxy\n112 detection patterns"]
-        P2["PII Redaction\nKill Switch\nSession Isolation"]
-        P3["Shield SDK\nDrop-in Python\nmiddleware"]
-    end
-
-    DISCOVER --> SCAN --> ANALYZE --> OUTPUT
-    DISCOVER -.-> PROTECT
+flowchart LR
+    DISCOVER["🔍 Discover\n30 MCP clients\nCloud · Images · IaC"] --> SCAN["🛡️ Scan\nCVE · EPSS · KEV\nSecrets · IaC rules"]
+    SCAN --> ANALYZE["📊 Analyze\nBlast Radius\n14 frameworks\nTrust scoring"]
+    ANALYZE --> OUTPUT["📤 Output\nSBOM · SARIF\nDashboard · CI gate"]
+    DISCOVER -.-> PROTECT["🔒 Runtime\nMCP Proxy\nShield SDK"]
 
     style DISCOVER stroke:#58a6ff,stroke-width:2px
     style SCAN stroke:#f85149,stroke-width:2px
@@ -382,9 +346,9 @@ agent-bom agents -f cyclonedx -o sbom.json     # CycloneDX 1.6
 
 ---
 
-## Compliance (11 frameworks)
+## Compliance (14 frameworks)
 
-Every finding is tagged with applicable controls across 11 security and compliance frameworks:
+Every finding is tagged with applicable controls across 14 security and compliance frameworks:
 
 | Framework | Coverage |
 |-----------|----------|
@@ -416,30 +380,6 @@ No source code, no secrets, no telemetry ever leave your machine. Every release 
 
 ---
 
-## Blast radius — how it maps
-
-```mermaid
-graph LR
-    CVE["CVE-2025-1234<br/>CRITICAL · CVSS 9.8"]
-    PKG["better-sqlite3@9.0.0<br/>npm"]
-    SRV["sqlite-mcp<br/>MCP Server · unverified"]
-    AGT["Cursor IDE<br/>4 servers · 12 tools"]
-    CRED["ANTHROPIC_KEY<br/>DB_URL · AWS_SECRET"]
-    TOOL["query_db · read_file<br/>write_file · run_shell"]
-
-    CVE -->|affects| PKG
-    PKG -->|dependency of| SRV
-    SRV -->|connected to| AGT
-    AGT -->|exposes| CRED
-    AGT -->|grants access to| TOOL
-
-    style CVE stroke:#dc2626,stroke-width:2px
-    style CRED stroke:#f59e0b,stroke-width:2px
-    style TOOL stroke:#f59e0b,stroke-width:2px
-```
-
-Traditional scanners stop at `CVE → Package`. agent-bom maps the full chain to show which credentials and tools are actually at risk.
-
 ## AI supply chain — what we scan
 
 ```
@@ -468,7 +408,7 @@ graph LR
         D1["MCP Configs · Cloud · Containers · Models"]
     end
     subgraph A["🛡 Analyze"]
-        A1["15 ecosystems"] --> A2["CVE · EPSS · KEV"] --> A3["Blast Radius"] --> A4["11 frameworks"]
+        A1["15 ecosystems"] --> A2["CVE · EPSS · KEV"] --> A3["Blast Radius"] --> A4["14 frameworks"]
     end
     subgraph O["📊 Output"]
         O1["CLI · Dashboard · SARIF · CycloneDX · API"]

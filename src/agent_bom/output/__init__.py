@@ -18,14 +18,14 @@ console = Console()
 
 SEVERITY_BADGES: dict[Severity, str] = {
     Severity.CRITICAL: "white on red",
-    Severity.HIGH: "white on #c0392b",
+    Severity.HIGH: "white on #e67e22",
     Severity.MEDIUM: "black on yellow",
     Severity.LOW: "white on #555555",
 }
 
 SEVERITY_TEXT: dict[Severity, str] = {
     Severity.CRITICAL: "red bold",
-    Severity.HIGH: "red",
+    Severity.HIGH: "#e67e22 bold",
     Severity.MEDIUM: "yellow",
     Severity.LOW: "dim",
 }
@@ -538,7 +538,7 @@ def print_attack_flow_tree(report: AIBOMReport) -> None:
 
     severity_styles = {
         Severity.CRITICAL: "red bold",
-        Severity.HIGH: "red",
+        Severity.HIGH: "#e67e22 bold",
         Severity.MEDIUM: "yellow",
         Severity.LOW: "dim",
     }
@@ -1033,7 +1033,7 @@ def print_remediation_plan(report: AIBOMReport) -> None:
 
     sev_style = {
         Severity.CRITICAL: "red bold",
-        Severity.HIGH: "red",
+        Severity.HIGH: "#e67e22 bold",
         Severity.MEDIUM: "yellow",
         Severity.LOW: "dim",
         Severity.NONE: "white",
@@ -1425,9 +1425,11 @@ def print_compact_agents(report: AIBOMReport) -> None:
 
 
 def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_only: bool = False) -> None:
-    """Show top N blast radius findings in a compact table.
+    """Show top N findings in a compact table.
 
-    Default mode shows only critical/high findings. Use --verbose for all.
+    Context-aware: shows blast radius chain (agent → server → credential) only
+    when MCP agent context is available. Falls back to a clean vuln table for
+    scan types without agent context (image, check, iac, CI/CD).
     """
     if not report.blast_radii:
         return
@@ -1435,91 +1437,83 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
     # Filter: show actionable findings by default, count the rest
     priority = [br for br in report.blast_radii if br.is_actionable]
     rest_count = len(report.blast_radii) - len(priority)
-    # --fixable-only: keep only entries that have a fix available
     if fixable_only:
         priority = [br for br in priority if br.vulnerability.fixed_version]
-    # If no actionable, fall back to showing all (respecting fixable_only)
     if not priority:
         display_list = [br for br in report.blast_radii if br.vulnerability.fixed_version] if fixable_only else report.blast_radii
     else:
         display_list = priority
     shown = display_list[:limit]
 
+    # Detect if we have blast radius context (agents/servers/credentials)
+    has_blast_context = any(br.affected_agents and (br.affected_servers or br.exposed_credentials) for br in shown)
+
     console.print()
     total = len(display_list)
     title = f"Top Findings ({min(limit, total)} of {total})" if total > limit else f"Findings ({len(shown)})"
     console.print(Rule(f"[bold]{title}[/bold]", style="dim"))
 
+    # Context-aware table layout
     table = Table(expand=True, padding=(0, 1))
-    table.add_column("Vuln", no_wrap=True, ratio=2)
     table.add_column("Sev", no_wrap=True)
-    table.add_column("EPSS", justify="center", no_wrap=True)
+    table.add_column("Vulnerability", no_wrap=True, ratio=2)
     table.add_column("Package", ratio=2)
-    table.add_column("Agent", ratio=1)
-    table.add_column("Blast", justify="center")
-    table.add_column("Frameworks", ratio=2)
+    if has_blast_context:
+        table.add_column("Blast Radius", ratio=3, no_wrap=True)
+    table.add_column("EPSS", justify="center", no_wrap=True)
     table.add_column("Fix", ratio=1)
 
     for br in shown:
-        fix = f"[green]{br.vulnerability.fixed_version}[/green]" if br.vulnerability.fixed_version else "[red dim]—[/red dim]"
-        n_agents = len(br.affected_agents)
-        n_creds = len(br.exposed_credentials)
-        n_transitive = len(getattr(br, "transitive_agents", []))
-        blast = f"{n_agents}A"
-        if n_transitive:
-            hop = getattr(br, "hop_depth", 1)
-            blast += f"+[cyan]{n_transitive}T({hop}h)[/cyan]"
-        if n_creds:
-            blast += f"/[yellow]{n_creds}C[/yellow]"
-        kev = " [red]KEV[/red]" if br.vulnerability.is_kev else ""
+        fix = f"[green]{br.vulnerability.fixed_version}[/green]" if br.vulnerability.fixed_version else "[dim]no fix[/dim]"
+        kev = " [red bold]KEV[/red bold]" if br.vulnerability.is_kev else ""
 
-        # EPSS score
         epss_display = "[dim]—[/dim]"
         if br.vulnerability.epss_score is not None:
             epss_pct = int(br.vulnerability.epss_score * 100)
             epss_style = "red bold" if epss_pct >= 70 else "yellow" if epss_pct >= 30 else "dim"
             epss_display = f"[{epss_style}]{epss_pct}%[/{epss_style}]"
 
-        # Agent names (first agent + count)
-        agent_names = [a.name for a in br.affected_agents]
-        agent_display = agent_names[0] if agent_names else "—"
-        if len(agent_names) > 1:
-            agent_display += f" +{len(agent_names) - 1}"
+        pkg_display = f"{br.package.name}@{br.package.version}" + ("" if br.package.is_direct else " [dim]T[/dim]")
 
-        # Framework tags (compact — max 3 frameworks, 1 tag each)
-        _fw_sources = [
-            ("owasp_tags", "purple", "OWASP"),
-            ("owasp_mcp_tags", "yellow", "MCP"),
-            ("atlas_tags", "cyan", "ATLAS"),
-            ("nist_csf_tags", "bright_green", "NIST"),
-            ("cis_tags", "bright_magenta", "CIS"),
-            ("iso_27001_tags", "bright_cyan", "ISO"),
-            ("soc2_tags", "bright_yellow", "SOC2"),
-        ]
-        tags = []
-        for attr, color, _label in _fw_sources:
-            fw_tags = getattr(br, attr, None)
-            if fw_tags:
-                tags.append(f"[{color}]{list(fw_tags)[0]}[/{color}]")
-            if len(tags) >= 3:
-                break
-        total_fw = sum(1 for attr, _, _ in _fw_sources if getattr(br, attr, None))
-        if total_fw > 3:
-            tags.append(f"[dim]+{total_fw - 3}[/dim]")
-        fw_display = " ".join(tags) if tags else "[dim]—[/dim]"
-
-        table.add_row(
-            f"{br.vulnerability.id}{kev}",
-            _sev_badge(br.vulnerability.severity),
-            epss_display,
-            f"{br.package.name}@{br.package.version}" + ("" if br.package.is_direct else " [dim]T[/dim]"),
-            agent_display,
-            blast,
-            fw_display,
-            fix,
-        )
+        if has_blast_context:
+            # Build single-line blast chain: agent → server → credential
+            agent_names = [a.name for a in br.affected_agents]
+            cred_names = list(br.exposed_credentials)
+            server_names = [s.name for s in br.affected_servers] if br.affected_servers else []
+            chain_parts: list[str] = []
+            if agent_names:
+                name = agent_names[0][:16]
+                chain_parts.append(f"[bold]{name}[/bold]")
+                if len(agent_names) > 1:
+                    chain_parts[-1] += f"+{len(agent_names) - 1}"
+            if server_names:
+                name = server_names[0][:16]
+                chain_parts.append(f"{name}")
+            if cred_names:
+                name = cred_names[0][:20]
+                chain_parts.append(f"[yellow]{name}[/yellow]")
+                if len(cred_names) > 1:
+                    chain_parts[-1] += f"+{len(cred_names) - 1}"
+            blast_display = " → ".join(chain_parts) if chain_parts else "[dim]—[/dim]"
+            table.add_row(
+                _sev_badge(br.vulnerability.severity),
+                f"{br.vulnerability.id}{kev}",
+                pkg_display,
+                blast_display,
+                epss_display,
+                fix,
+            )
+        else:
+            table.add_row(
+                _sev_badge(br.vulnerability.severity),
+                f"{br.vulnerability.id}{kev}",
+                pkg_display,
+                epss_display,
+                fix,
+            )
 
     console.print(table)
+
     overflow = total - len(shown)
     if overflow > 0 or rest_count > 0:
         parts = []
@@ -1528,6 +1522,37 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
         if rest_count > 0:
             parts.append(f"{rest_count} medium/low hidden")
         console.print(f"  [dim]+ {' · '.join(parts)} — use --verbose for full list[/dim]")
+
+    # Critical details section — show description and blast chain for CRIT/HIGH only
+    critical_findings = [br for br in shown if br.vulnerability.severity in (Severity.CRITICAL, Severity.HIGH)]
+    if critical_findings:
+        console.print()
+        console.print(Rule("[bold]Critical Details[/bold]", style="dim"))
+        sev_style_map = {Severity.CRITICAL: "red bold", Severity.HIGH: "#e67e22 bold"}
+        for br in critical_findings[:5]:
+            style = sev_style_map.get(br.vulnerability.severity, "white")
+            summary = br.vulnerability.summary or ""
+            if len(summary) > 80:
+                summary = summary[:77] + "..."
+            sev_label = br.vulnerability.severity.value.upper()
+            pkg_ref = f"{br.package.name}@{br.package.version}"
+            console.print(f"\n  [{style}]{br.vulnerability.id}[/{style}] · {pkg_ref} · [{style}]{sev_label}[/{style}]")
+            if summary:
+                console.print(f"  {summary}")
+            if br.vulnerability.fixed_version:
+                console.print(f"  Fix: [green]upgrade to ≥ {br.vulnerability.fixed_version}[/green]")
+            if has_blast_context and (br.affected_agents or br.exposed_credentials):
+                agent_str = ", ".join(a.name for a in br.affected_agents[:3])
+                cred_str = ", ".join(br.exposed_credentials[:3])
+                blast_parts = []
+                if agent_str:
+                    blast_parts.append(agent_str)
+                if br.affected_servers:
+                    blast_parts.append(", ".join(s.name for s in br.affected_servers[:2]))
+                if cred_str:
+                    blast_parts.append(f"[yellow]{cred_str}[/yellow]")
+                if blast_parts:
+                    console.print(f"  Blast: {' → '.join(blast_parts)}")
 
     # Status bar
     console.print()
@@ -1562,7 +1587,7 @@ def print_compact_remediation(report: AIBOMReport, limit: int = 5) -> None:
 
     sev_style = {
         Severity.CRITICAL: "red bold",
-        Severity.HIGH: "red",
+        Severity.HIGH: "#e67e22 bold",
         Severity.MEDIUM: "yellow",
         Severity.LOW: "dim",
         Severity.NONE: "white",
@@ -1648,7 +1673,7 @@ def print_diff(diff: dict) -> None:
 
     severity_styles = {
         "CRITICAL": "red bold",
-        "HIGH": "red",
+        "HIGH": "#e67e22 bold",
         "MEDIUM": "yellow",
         "LOW": "dim",
     }
@@ -1785,7 +1810,7 @@ def print_severity_chart(report: AIBOMReport) -> None:
     bar_width = 30
     styles = {
         "CRITICAL": "red bold",
-        "HIGH": "red",
+        "HIGH": "#e67e22 bold",
         "MEDIUM": "yellow",
         "LOW": "dim",
     }

@@ -199,33 +199,35 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bo
         from rich.table import Table
 
         table = Table(title=f"{name}@{version} — {len(vulns)} vulnerability/ies found")
-        table.add_column("ID", width=20)
-        table.add_column("Severity", width=10)
-        table.add_column("CVSS", width=6, justify="right")
-        table.add_column("Fix", width=15)
-        table.add_column("Summary", max_width=50)
+        table.add_column("Sev", width=10, no_wrap=True)
+        table.add_column("ID", width=20, no_wrap=True)
+        table.add_column("CVSS", width=5, justify="right")
+        table.add_column("Fix", width=10)
+        table.add_column("Summary", max_width=42)
 
         severity_styles = {
             "critical": "red bold",
-            "high": "red",
+            "high": "#e67e22 bold",
             "medium": "yellow",
             "low": "dim",
         }
         for v in vulns:
             sev = v.severity.value.lower()
             style = severity_styles.get(sev, "white")
-            fix_display = f"[green]✓ {v.fixed_version}[/green]" if v.fixed_version else "[red dim]No fix[/red dim]"
-            # Show summary; fall back to aliases list if empty
+            fix_display = f"[green]{v.fixed_version}[/green]" if v.fixed_version else "[dim]no fix[/dim]"
+            # Concise summary — truncate to keep table compact
             summary_text = v.summary or ""
             if not summary_text or summary_text == "No description available":
                 aliases_str = ", ".join(v.aliases[:3]) if v.aliases else ""
-                summary_text = f"[dim]See {aliases_str}[/dim]" if aliases_str else "[dim]No description[/dim]"
+                summary_text = f"[dim]See {aliases_str}[/dim]" if aliases_str else "[dim]—[/dim]"
+            elif len(summary_text) > 55:
+                summary_text = summary_text[:52] + "..."
             table.add_row(
+                f"[{style}]{v.severity.value.upper()}[/{style}]",
                 v.id,
-                f"[{style} reverse] {v.severity.value.upper()} [/{style} reverse]",
                 f"{v.cvss_score:.1f}" if v.cvss_score else "—",
                 fix_display,
-                summary_text[:100],
+                summary_text,
             )
         console.print(table)
         console.print()

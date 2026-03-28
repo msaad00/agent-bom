@@ -44,7 +44,7 @@ agent-bom scan --compliance all
 agent-bom scan --image python:3.12-slim
 ```
 
-Requires Grype and Syft installed locally.
+Uses agent-bom's native container scanning path for image analysis.
 
 ## Output formats
 

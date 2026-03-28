@@ -1,14 +1,14 @@
 ---
 name: agent-bom
 description: >-
-  Security scanner for AI infrastructure — scan MCP servers and packages for CVEs,
-  map blast radius from packages to credentials and tools, detect credential exposure,
-  and enforce runtime policy. Works with Cortex Code's MCP servers, skills, and agents.
+  Open security platform for agentic infrastructure — broad scanning plus MCP
+  servers, CVEs, blast radius, credential exposure analysis, and runtime policy.
+  Works with Cortex Code's MCP servers, skills, and agents.
 tools:
   - bash
 ---
 
-# agent-bom — Security Scanner for AI Infrastructure
+# agent-bom — Security Platform for Agentic Infrastructure
 
 Scan your MCP servers, packages, and AI agent configurations for CVEs,
 credential exposure, and supply chain risks. Maps blast radius from
@@ -26,9 +26,9 @@ vulnerable packages to the credentials and tools they can reach.
 ## What This Skill Provides
 
 - **CVE scanning** with enrichment from OSV, NVD, EPSS, CISA KEV
-- **MCP server discovery** across 21 AI tools (including Cortex Code)
+- **MCP server discovery** across real AI developer tools, including Cortex Code
 - **Blast radius mapping** — which agents, credentials, and tools are exposed
-- **14 compliance frameworks** per finding (OWASP LLM/MCP/Agentic, MITRE ATLAS, NIST, EU AI Act)
+- **Compliance mapping** across OWASP, NIST, MITRE, EU AI Act, and related frameworks
 - **Runtime proxy** for MCP traffic interception and policy enforcement
 - **SKILL.md trust assessment** with 17 behavioral risk patterns
 

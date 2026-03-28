@@ -90,11 +90,11 @@ agent-bom agents -p . -f cyclonedx -o ai-bom.json
 
 | Tool | Best at | Limits |
 |------|---------|--------|
-| **Trivy** | General vulnerability, misconfiguration, secret, and SBOM scanning | Stops at the artifact; no AI-agent blast radius |
-| **Grype** | Vulnerability matching from packages and SBOMs | No MCP, agent, runtime, or trust modeling |
-| **Syft** | SBOM generation and software inventory | Not a runtime or blast-radius security tool |
-| **Snyk AI-BOM** | Enterprise AI BOM workflows | Narrower local AI-agent/MCP discovery and runtime coverage |
-| **agent-bom** | Broad security scanning plus AI agent, MCP, blast-radius, runtime protection, and governance | Built for agentic infrastructure, MCP trust, and runtime evidence |
+| **Trivy** | Broad vulnerability, misconfiguration, secret, and SBOM scanning | General artifact focus; does not model agent runtime, MCP trust, or AI blast radius |
+| **Grype** | Vulnerability matching from packages and SBOMs | Package-centric findings without MCP, agent, or runtime context |
+| **Syft** | SBOM generation and software inventory | Inventory-first; not built for runtime or blast-radius analysis |
+| **Snyk AI-BOM** | Enterprise AI BOM workflows | Narrower local agent/MCP discovery and runtime coverage |
+| **agent-bom** | Broad security scanning plus agent, MCP, blast-radius, runtime protection, and governance | Built for agentic infrastructure, trust, and runtime evidence |
 
 Traditional scanners often stop at CVE -> package. **agent-bom extends that model to agentic infrastructure with MCP discovery, runtime evidence, trust, and blast radius** while still covering packages, images, filesystems, IaC, cloud AI infrastructure, and secrets.
 

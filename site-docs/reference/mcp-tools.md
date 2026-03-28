@@ -1,6 +1,6 @@
 # MCP Tools Reference
 
-agent-bom exposes 32 tools via its MCP server.
+agent-bom exposes MCP tools for scanning, blast radius, trust, compliance, runtime, and remediation.
 
 ## Tools
 

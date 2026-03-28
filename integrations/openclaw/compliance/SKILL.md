@@ -1,9 +1,9 @@
 ---
 name: agent-bom-compliance
 description: >-
-  AI compliance and policy engine — evaluate scan results against 14 security
-  frameworks including OWASP LLM Top 10, NIST AI RMF, SOC 2, ISO 27001, CMMC,
-  EU AI Act, and AISVS v1.0. Generate SBOMs and compliance reports. Use when:
+  AI compliance and policy engine — evaluate scan results against OWASP, NIST,
+  SOC 2, ISO 27001, CMMC, EU AI Act, AISVS v1.0, and related frameworks.
+  Generate SBOMs and compliance reports. Use when:
   "compliance report", "NIST", "SOC 2", "ISO 27001", "OWASP", "EU AI Act",
   "AISVS", "generate SBOM", "policy check".
 version: 0.75.9

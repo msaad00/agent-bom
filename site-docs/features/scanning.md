@@ -55,4 +55,4 @@ Config files are parsed for server definitions. Environment variable **values** 
 agent-bom scan --image python:3.12-slim
 ```
 
-Uses Grype/Syft under the hood for OS and language package scanning within container images.
+Uses agent-bom's native image scanning pipeline to enumerate OS and language packages within container images.

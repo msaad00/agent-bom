@@ -1,12 +1,12 @@
 ---
 name: agent-bom
 description: >-
-  Open security platform for agentic infrastructure — discovers MCP clients
-  and servers, scans for CVEs, maps blast radius, generates SBOMs, runs CIS
-  benchmarks (AWS, Azure, GCP, Snowflake), OWASP/NIST/MITRE compliance, AISVS
-  v1.0, MAESTRO layer tagging, and vector database security checks. Use when the
-  user mentions vulnerability scanning, MCP server trust, compliance, SBOM
-  generation, CIS benchmarks, blast radius, or AI supply chain risk.
+  Open security platform for agentic infrastructure — broad scanning plus MCP
+  discovery, CVEs, blast radius, SBOMs, CIS benchmarks (AWS, Azure, GCP,
+  Snowflake), OWASP/NIST/MITRE compliance, AISVS v1.0, MAESTRO layer tagging,
+  and vector database security checks. Use when the user mentions vulnerability
+  scanning, MCP server trust, compliance, SBOM generation, CIS benchmarks,
+  blast radius, or AI supply chain risk.
 version: 0.75.9
 license: Apache-2.0
 compatibility: >-

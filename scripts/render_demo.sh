@@ -11,6 +11,11 @@ export AGENT_BOM_DEMO_IMAGE="$IMAGE_TAG"
 export AGENT_BOM_DEMO_DB_SOURCE="$DB_SOURCE"
 export AGENT_BOM_DEMO_REPO_ROOT="$PWD"
 . "$(dirname "$0")/demo-env.sh"
+export TERM=dumb
+
+# Clear the launch command from the terminal so the asset starts with
+# agent-bom output, not the demo harness invocation itself.
+printf '\033[H\033[2J'
 
 run_step() {
   local visible="$1"
@@ -24,6 +29,6 @@ run_step() {
   sleep 1
 }
 
-run_step "agent-bom --version" agent-bom --version
 run_step "agent-bom agents --demo --posture --offline" agent-bom agents --demo --posture --offline
 run_step "agent-bom check pillow@9.0.0 --ecosystem pypi" agent-bom check pillow@9.0.0 --ecosystem pypi
+run_step "agent-bom check express@4.17.1 --ecosystem npm" agent-bom check express@4.17.1 --ecosystem npm

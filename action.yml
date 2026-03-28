@@ -64,7 +64,7 @@ inputs:
     required: false
     default: '3.11'
   agent-bom-version:
-    description: 'agent-bom package version to install (for example 0.75.8). Empty = latest from PyPI.'
+    description: 'agent-bom package version to install (for example 0.75.x). Empty = latest from PyPI.'
     required: false
     default: ''
   install-from-source:

@@ -48,7 +48,7 @@ agent-bom scan --help
 ## Requirements
 
 - Python 3.11+
-- Optional: Docker (for container image scanning via Grype/Syft)
+- Optional: Docker (for container image scanning)
 - Optional: kubectl (for Kubernetes scanning)
 - Optional: semgrep (for SAST code scanning)
 - No external API keys required for basic operation

@@ -1,8 +1,8 @@
 # agent-bom
 
-Security scanner for AI infrastructure — from agent to runtime.
+Open security platform for agentic infrastructure — from scanner to runtime.
 
-Discovers AI agents and MCP servers, scans all dependencies against OSV/NVD/GHSA, maps blast radius showing which credentials and tools each CVE reaches, enforces policy in real time, and generates compliance evidence for 11 frameworks.
+Discovers AI agents and MCP servers, scans packages, images, filesystems, IaC, and cloud AI infrastructure, maps blast radius showing which credentials and tools each CVE reaches, enforces policy in real time, and generates compliance evidence.
 
 ## Quick start
 
@@ -21,7 +21,7 @@ docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom scan -p /workspace -f 
 
 - **30 MCP client types** — Claude Desktop, Cursor, Windsurf, VS Code Copilot, and more
 - **Packages** — npm, pip, cargo, go modules, OS packages via OSV, NVD, EPSS, CISA KEV
-- **Containers** — Docker images via Grype + Syft
+- **Containers** — Docker images with native OCI package discovery
 - **IaC** — Dockerfile, Kubernetes, Terraform, CloudFormation, Helm (89 rules)
 - **Cloud AI** — 12 providers including AWS Bedrock, Azure OpenAI, GCP Vertex AI
 
@@ -29,8 +29,8 @@ docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom scan -p /workspace -f 
 
 - **Blast radius mapping** — package → server → agent → credentials → tools
 - **Runtime MCP proxy** — 8 behavioral detectors (rug pull, injection, credential leak, exfil, cloaking, rate limiting, vector DB injection, cross-agent correlation)
-- **11 compliance frameworks** — OWASP LLM Top 10, OWASP MCP Top 10, OWASP Agentic Top 10, MITRE ATLAS, NIST AI RMF, EU AI Act, NIST CSF, ISO 27001, SOC 2, CIS Controls, CMMC
-- **32 MCP tools** — available to any MCP-compatible AI assistant
+- **Framework-aware evidence** — OWASP, MITRE, NIST, EU AI Act, ISO 27001, SOC 2, CIS, CMMC, and more
+- **MCP tools** — available to any MCP-compatible AI assistant
 
 ## Source
 

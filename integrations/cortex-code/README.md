@@ -28,7 +28,7 @@ Or if installed via pip/pipx:
 }
 ```
 
-This gives Cortex Code access to 23 security scanning tools via natural language.
+This gives Cortex Code access to agent-bom's MCP security and analysis tools via natural language.
 
 ## Install as a Cortex Code Skill
 
@@ -47,7 +47,7 @@ cp integrations/cortex-code/SKILL.md .cortex/skills/agent-bom/SKILL.md
 
 ## What You Get
 
-### As MCP Server (33 tools)
+### As MCP Server
 
 All agent-bom MCP tools become available in Cortex Code:
 
@@ -59,14 +59,14 @@ All agent-bom MCP tools become available in Cortex Code:
 | `policy_check` | Evaluate security policy against findings |
 | `registry_lookup` | Query 427+ MCP server security metadata |
 | `generate_sbom` | Generate CycloneDX or SPDX SBOM |
-| `compliance` | Map findings to 14 compliance frameworks |
+| `compliance` | Map findings to OWASP, NIST, MITRE, EU AI Act, and related frameworks |
 | `remediate` | Prioritized remediation plan |
 | `skill_trust` | Trust assessment for SKILL.md files |
 | `code_scan` | SAST scanning with CWE mapping |
 | `context_graph` | Lateral movement analysis |
 | `cis_benchmark` | CIS benchmark for AWS/Azure/GCP/Snowflake |
 | `gpu_infra_scan` | GPU/AI compute infrastructure scanning |
-| ... and 10 more | See `agent-bom mcp server --help` |
+| ... and more | See `agent-bom mcp server --help` |
 
 ### As Skill
 
@@ -86,8 +86,8 @@ agent-bom fills these security gaps in Cortex Code:
 | "Only install from trusted sources" | Trust assessment with 17 behavioral risk patterns |
 | Manual permission review | Blast radius analysis showing credential exposure |
 | No CVE scanning | Full enrichment: OSV + NVD + EPSS + CISA KEV |
-| No compliance mapping | 11 frameworks: OWASP, NIST, EU AI Act, ISO 27001, SOC 2, CIS |
-| No runtime enforcement | Proxy with 7 real-time detectors |
+| No compliance mapping | Framework-aware evidence across OWASP, NIST, EU AI Act, ISO 27001, SOC 2, CIS, and more |
+| No runtime enforcement | Runtime proxy with behavioral detectors and policy enforcement |
 
 ## Auto-Discovery
 

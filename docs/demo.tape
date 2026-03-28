@@ -1,4 +1,4 @@
-# agent-bom v0.75.9 hero demo
+# agent-bom v0.75.10 hero demo
 # Focused, clean, and capture-safe:
 # - no personal paths
 # - no temp/setup leakage

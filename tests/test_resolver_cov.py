@@ -7,10 +7,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import agent_bom.resolver as resolver
 from agent_bom.models import Package
 from agent_bom.resolver import (
     _NPM_LATEST_CACHE,
     _PYPI_INFO_CACHE,
+    _get_npm_latest_doc,
     enrich_licenses,
     enrich_supply_chain_metadata,
     resolve_all_versions,
@@ -26,9 +28,14 @@ from agent_bom.resolver import (
 def clear_registry_metadata_caches():
     _NPM_LATEST_CACHE.clear()
     _PYPI_INFO_CACHE.clear()
+
+    resolver._NPM_RATE_LIMIT_UNTIL = 0.0
+    resolver._NPM_RATE_LIMIT_HITS = 0
     yield
     _NPM_LATEST_CACHE.clear()
     _PYPI_INFO_CACHE.clear()
+    resolver._NPM_RATE_LIMIT_UNTIL = 0.0
+    resolver._NPM_RATE_LIMIT_HITS = 0
 
 
 class TestResolveNpmMetadata:
@@ -62,6 +69,24 @@ class TestResolveNpmMetadata:
             version, lic = await resolve_npm_metadata("nonexistent", client)
             assert version is None
             assert lic is None
+
+    @pytest.mark.asyncio
+    async def test_rate_limit_opens_cooldown_and_skips_followup_lookups(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 429
+        mock_response.headers = {"Retry-After": "7"}
+
+        with (
+            patch("agent_bom.resolver.request_with_retry", return_value=mock_response) as mock_request,
+            patch("agent_bom.resolver.time.monotonic", return_value=100.0),
+        ):
+            client = AsyncMock()
+            assert await _get_npm_latest_doc("first", client) is None
+            assert await _get_npm_latest_doc("second", client) is None
+
+        assert mock_request.call_count == 1
+        assert resolver._NPM_RATE_LIMIT_HITS == 1
+        assert resolver._NPM_RATE_LIMIT_UNTIL == 107.0
 
     @pytest.mark.asyncio
     async def test_caches_latest_doc_across_version_and_supply_chain(self):
@@ -310,6 +335,36 @@ class TestResolveAllVersions:
         assert packages[0].version == "1.0.1"
         assert packages[1].version == "2.0.0"
         assert packages[1].version_source == "registry_fallback"
+
+    @pytest.mark.asyncio
+    async def test_rate_limited_npm_uses_fallback_without_repeated_live_calls(self):
+        packages = [
+            Package(name="first", version="unknown", ecosystem="npm", registry_version="1.0.0"),
+            Package(name="second", version="unknown", ecosystem="npm", registry_version="2.0.0"),
+        ]
+
+        mock_response = MagicMock()
+        mock_response.status_code = 429
+        mock_response.headers = {"Retry-After": "5"}
+
+        client_cm = AsyncMock()
+        client_cm.__aenter__.return_value = AsyncMock()
+        client_cm.__aexit__.return_value = None
+
+        with (
+            patch("agent_bom.resolver.create_client", return_value=client_cm),
+            patch("agent_bom.resolver.request_with_retry", return_value=mock_response) as mock_request,
+            patch("agent_bom.resolver.time.monotonic", return_value=100.0),
+            patch("agent_bom.resolver.enrich_licenses", return_value=0),
+        ):
+            resolved = await resolve_all_versions(packages, quiet=True, global_timeout=0.5)
+
+        assert resolved == 2
+        assert packages[0].version == "1.0.0"
+        assert packages[1].version == "2.0.0"
+        assert packages[0].version_source == "registry_fallback"
+        assert packages[1].version_source == "registry_fallback"
+        assert mock_request.call_count == 1
 
 
 class TestEnrichLicenses:

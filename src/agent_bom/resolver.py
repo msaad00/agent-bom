@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections import defaultdict
 from typing import Optional
 
@@ -20,8 +21,12 @@ NPM_REGISTRY = "https://registry.npmjs.org"
 PYPI_API = "https://pypi.org/pypi"
 _INVALID_VERSIONS = {"latest", "unknown", "", "{{VERSION}}"}
 _RESOLVE_CONCURRENCY = 8
+_NPM_RESOLVE_CONCURRENCY = 3
 _NPM_LATEST_CACHE: dict[str, dict | None] = {}
 _PYPI_INFO_CACHE: dict[str, dict | None] = {}
+_NPM_RATE_LIMIT_UNTIL = 0.0
+_NPM_RATE_LIMIT_HITS = 0
+_NPM_RATE_LIMIT_MAX_COOLDOWN = 20.0
 
 
 def _apply_registry_version_fallback(pkg: Package) -> bool:
@@ -57,11 +62,38 @@ def _copy_resolution_fields(source: Package, target: Package) -> bool:
     return True
 
 
+def _npm_rate_limit_active() -> bool:
+    return time.monotonic() < _NPM_RATE_LIMIT_UNTIL
+
+
+def _record_npm_rate_limit(response: httpx.Response | None) -> None:
+    """Open a short cooldown window after npm rate limiting.
+
+    Once npm starts returning 429s, preserve scan continuity by reusing
+    cached/bundled data instead of repeatedly waiting through retries for
+    every remaining unresolved package in the same run.
+    """
+    global _NPM_RATE_LIMIT_UNTIL, _NPM_RATE_LIMIT_HITS  # noqa: PLW0603
+
+    wait = 5.0
+    if response is not None:
+        retry_after = response.headers.get("Retry-After")
+        if retry_after:
+            try:
+                wait = min(float(retry_after), _NPM_RATE_LIMIT_MAX_COOLDOWN)
+            except ValueError:
+                wait = 5.0
+    _NPM_RATE_LIMIT_HITS += 1
+    _NPM_RATE_LIMIT_UNTIL = max(_NPM_RATE_LIMIT_UNTIL, time.monotonic() + wait)
+
+
 async def _get_npm_latest_doc(package_name: str, client: httpx.AsyncClient) -> dict | None:
     """Return cached npm `/latest` JSON for a package."""
     cache_key = package_name.lower()
     if cache_key in _NPM_LATEST_CACHE:
         return _NPM_LATEST_CACHE[cache_key]
+    if _npm_rate_limit_active():
+        return None
 
     encoded_name = package_name.replace("/", "%2F")
     response = await request_with_retry(
@@ -70,6 +102,9 @@ async def _get_npm_latest_doc(package_name: str, client: httpx.AsyncClient) -> d
         f"{NPM_REGISTRY}/{encoded_name}/latest",
     )
     data: dict | None = None
+    if response and response.status_code == 429:
+        _record_npm_rate_limit(response)
+        return None
     if response and response.status_code == 200:
         try:
             parsed = response.json()
@@ -331,6 +366,7 @@ async def resolve_all_versions(
     unresolved = [p for p in packages if p.version in ("latest", "unknown", "")]
     if not unresolved:
         return 0
+    npm_rate_limit_hits_before = _NPM_RATE_LIMIT_HITS
     resolved_count = 0
     groups: dict[tuple[str, str], list[Package]] = defaultdict(list)
     for pkg in unresolved:
@@ -338,9 +374,11 @@ async def resolve_all_versions(
     representatives = [members[0] for members in groups.values()]
     try:
         async with create_client(timeout=10.0) as client:
-            semaphore = asyncio.Semaphore(_RESOLVE_CONCURRENCY)
+            npm_semaphore = asyncio.Semaphore(_NPM_RESOLVE_CONCURRENCY)
+            default_semaphore = asyncio.Semaphore(_RESOLVE_CONCURRENCY)
 
             async def _resolve_with_limit(pkg: Package) -> bool:
+                semaphore = npm_semaphore if pkg.ecosystem.lower() == "npm" else default_semaphore
                 async with semaphore:
                     return await resolve_package_version(pkg, client)
 
@@ -424,6 +462,12 @@ async def resolve_all_versions(
                     console.print(
                         f"  [yellow]↺[/yellow] Preserved scan continuity for {fallback_count} package(s) using bundled registry versions"
                     )
+            npm_rate_limit_hits = _NPM_RATE_LIMIT_HITS - npm_rate_limit_hits_before
+            if npm_rate_limit_hits and not quiet:
+                console.print(
+                    f"  [yellow]⚠[/yellow] npm registry rate-limited during version resolution "
+                    f"({npm_rate_limit_hits} event(s)); throttling live npm lookups and preferring cached/bundled continuity"
+                )
     except asyncio.TimeoutError:
         _logger.warning(
             "Version resolution timed out after %.0fs (%d/%d resolved)",

@@ -67,6 +67,97 @@ class Alert:
         }
 
 
+# ─── Detector Telemetry ───────────────────────────────────────────────────
+#
+# Tracks fire counts, suppression counts, and false positive feedback
+# per detector. Exposed via Prometheus metrics when proxy runs with
+# --metrics-port.
+
+
+@dataclass
+class DetectorMetrics:
+    """Per-detector telemetry counters."""
+
+    fires: int = 0
+    suppressed: int = 0
+    false_positives: int = 0
+
+    def record_fire(self) -> None:
+        self.fires += 1
+
+    def record_suppression(self) -> None:
+        self.suppressed += 1
+
+    def record_false_positive(self) -> None:
+        self.false_positives += 1
+
+    @property
+    def false_positive_rate(self) -> float:
+        """False positive rate (0.0-1.0). Returns 0.0 if no fires."""
+        if self.fires == 0:
+            return 0.0
+        return self.false_positives / self.fires
+
+    def to_dict(self) -> dict:
+        return {
+            "fires": self.fires,
+            "suppressed": self.suppressed,
+            "false_positives": self.false_positives,
+            "false_positive_rate": round(self.false_positive_rate, 4),
+        }
+
+
+# Global metrics registry — one entry per detector name
+_DETECTOR_METRICS: dict[str, DetectorMetrics] = {}
+
+
+def get_detector_metrics(detector_name: str) -> DetectorMetrics:
+    """Get or create metrics for a detector."""
+    if detector_name not in _DETECTOR_METRICS:
+        _DETECTOR_METRICS[detector_name] = DetectorMetrics()
+    return _DETECTOR_METRICS[detector_name]
+
+
+def all_detector_metrics() -> dict[str, dict]:
+    """Return all detector metrics as a dict for API/Prometheus export."""
+    return {name: m.to_dict() for name, m in _DETECTOR_METRICS.items()}
+
+
+def reset_detector_metrics() -> None:
+    """Reset all metrics (for testing)."""
+    _DETECTOR_METRICS.clear()
+
+
+# ─── Detector Sensitivity Config ──────────────────────────────────────────
+#
+# Per-detector sensitivity levels loaded from .agent-bom.yaml:
+#   detectors:
+#     ArgumentAnalyzer: high       # high, medium, low, off
+#     RateLimitTracker: medium
+#     ResponseInspector: low
+
+_SENSITIVITY_LEVELS = ("off", "low", "medium", "high")
+_DEFAULT_SENSITIVITY = "high"
+_DETECTOR_SENSITIVITY: dict[str, str] = {}
+
+
+def configure_detector_sensitivity(config: dict[str, str]) -> None:
+    """Set per-detector sensitivity from project config."""
+    for name, level in config.items():
+        if level.lower() in _SENSITIVITY_LEVELS:
+            _DETECTOR_SENSITIVITY[name] = level.lower()
+
+
+def get_detector_sensitivity(detector_name: str) -> str:
+    """Get sensitivity level for a detector (default: high)."""
+    return _DETECTOR_SENSITIVITY.get(detector_name, _DEFAULT_SENSITIVITY)
+
+
+def is_detector_enabled(detector_name: str) -> bool:
+    """Check if a detector is enabled (sensitivity != off)."""
+    return get_detector_sensitivity(detector_name) != "off"
+
+
 # ─── Tool Drift Detector ────────────────────────────────────────────────────
 
 

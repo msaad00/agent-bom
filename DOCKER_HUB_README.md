@@ -67,7 +67,7 @@ docker run --rm agentbom/agent-bom:latest doctor
 - Packages, container images, IaC, secrets, AI source code, and cloud AI environments
 - Blast radius from package to server to agent to credentials and tools
 - Runtime MCP proxy with 8 behavioral detectors
-- 11 compliance frameworks
+- 14 compliance frameworks
 - 33 MCP server tools
 - 20-page Next.js dashboard
 

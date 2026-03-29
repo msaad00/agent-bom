@@ -198,6 +198,26 @@ def test_introspect_with_command():
         assert result.exit_code == 0
 
 
+def test_introspect_with_command_tolerates_missing_capability_risk_fields():
+    runner = CliRunner()
+    mock_result = MagicMock()
+    mock_result.server_name = "echo"
+    mock_result.success = True
+    mock_result.runtime_tools = []
+    mock_result.runtime_resources = []
+    mock_result.error = None
+    mock_result.protocol_version = "1.0"
+    mock_result.capability_risk_score = MagicMock()
+    mock_result.capability_risk_level = MagicMock()
+    mock_result.dangerous_combinations = MagicMock()
+    mock_result.tool_risk_profiles = MagicMock()
+
+    with patch("agent_bom.mcp_introspect.introspect_servers_sync", return_value=[mock_result]):
+        result = runner.invoke(introspect_cmd, ["--command", "echo hello"])
+        assert result.exit_code == 0
+        assert "Capability Risk:" in result.output
+
+
 def test_introspect_json_output():
     runner = CliRunner()
     mock_result = MagicMock()

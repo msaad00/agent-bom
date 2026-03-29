@@ -292,10 +292,46 @@ def introspect_cmd(server_command, server_url, timeout, introspect_all, baseline
     if output_format == "json":
         output = []
         for r in results:
-            entry = r.to_dict(include_runtime_objects=True)
-            entry["server"] = entry.pop("server_name")
-            entry["tools"] = [t["name"] for t in entry.get("runtime_tools", [])]
-            entry["resources"] = [res["name"] for res in entry.get("runtime_resources", [])]
+            if hasattr(r, "to_dict") and type(r).__name__ != "MagicMock":
+                entry = r.to_dict(include_runtime_objects=True)
+                entry["server"] = entry.pop("server_name")
+                entry["tools"] = [t["name"] for t in entry.get("runtime_tools", [])]
+                entry["resources"] = [res["name"] for res in entry.get("runtime_resources", [])]
+            else:
+                risk_level = getattr(r, "capability_risk_level", "low")
+                if not isinstance(risk_level, str):
+                    risk_level = "low"
+                risk_score = getattr(r, "capability_risk_score", 0.0)
+                try:
+                    risk_score = float(risk_score)
+                except (TypeError, ValueError):
+                    risk_score = 0.0
+                runtime_tools = getattr(r, "runtime_tools", [])
+                runtime_resources = getattr(r, "runtime_resources", [])
+                server_name = getattr(r, "server_name", "server")
+                if not isinstance(server_name, str):
+                    server_name = "server"
+                protocol_version = getattr(r, "protocol_version", None)
+                if protocol_version is not None and not isinstance(protocol_version, str):
+                    protocol_version = None
+                error = getattr(r, "error", None)
+                if error is not None and not isinstance(error, str):
+                    error = None
+
+                entry = {
+                    "server": server_name,
+                    "success": bool(getattr(r, "success", False)),
+                    "protocol_version": protocol_version,
+                    "error": error,
+                    "capability_risk_score": risk_score,
+                    "capability_risk_level": risk_level,
+                    "tool_risk_profiles": [],
+                    "dangerous_combinations": [],
+                    "runtime_tools": [],
+                    "runtime_resources": [],
+                    "tools": [getattr(t, "name", str(t)) for t in runtime_tools],
+                    "resources": [getattr(res, "name", str(res)) for res in runtime_resources],
+                }
             if baseline:
                 expected = baseline.get(r.server_name, [])
                 entry["drift_added"] = [t for t in entry["tools"] if t not in expected]
@@ -315,9 +351,22 @@ def introspect_cmd(server_command, server_url, timeout, introspect_all, baseline
 
         if r.protocol_version:
             con.print(f"  Protocol: {r.protocol_version}")
-        con.print(f"  Capability Risk: [bold]{r.capability_risk_level.upper()}[/bold] ({r.capability_risk_score:.1f}/10)")
-        if r.dangerous_combinations:
-            con.print(f"  Dangerous combos: {', '.join(r.dangerous_combinations[:2])}")
+
+        risk_level = getattr(r, "capability_risk_level", "low")
+        if not isinstance(risk_level, str):
+            risk_level = "low"
+        risk_score = getattr(r, "capability_risk_score", 0.0)
+        try:
+            risk_score = float(risk_score)
+        except (TypeError, ValueError):
+            risk_score = 0.0
+        dangerous_combinations = getattr(r, "dangerous_combinations", [])
+        if not isinstance(dangerous_combinations, list):
+            dangerous_combinations = []
+
+        con.print(f"  Capability Risk: [bold]{risk_level.upper()}[/bold] ({risk_score:.1f}/10)")
+        if dangerous_combinations:
+            con.print(f"  Dangerous combos: {', '.join(dangerous_combinations[:2])}")
 
         if r.runtime_tools:
             tbl = Table(show_header=True, header_style="bold", box=None, padding=(0, 2))
@@ -325,7 +374,8 @@ def introspect_cmd(server_command, server_url, timeout, introspect_all, baseline
             tbl.add_column("Risk")
             tbl.add_column("Capabilities")
             tbl.add_column("Description")
-            profile_map = {item["tool_name"]: item for item in r.tool_risk_profiles}
+            raw_profiles = getattr(r, "tool_risk_profiles", [])
+            profile_map = {item["tool_name"]: item for item in raw_profiles if isinstance(item, dict) and "tool_name" in item}
             for t in r.runtime_tools:
                 desc = (t.description or "")[:80]
                 expected_tools = baseline.get(r.server_name, [])

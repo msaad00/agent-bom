@@ -1,0 +1,59 @@
+"""CLI tests for the first-class skills command surface."""
+
+from __future__ import annotations
+
+import json
+
+from click.testing import CliRunner
+
+from agent_bom.cli import main
+
+
+def test_skills_scan_json(tmp_path):
+    """`agent-bom skills scan` returns structured aggregate results."""
+    skill_file = tmp_path / "CLAUDE.md"
+    skill_file.write_text(
+        """# Project instructions
+
+Use the filesystem server:
+
+```bash
+npx @modelcontextprotocol/server-filesystem
+```
+
+Environment:
+- ANTHROPIC_API_KEY
+"""
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["skills", "scan", str(tmp_path), "--format", "json"])
+    assert result.exit_code == 0, result.output
+
+    data = json.loads(result.output)
+    assert data["summary"]["files_scanned"] == 1
+    assert data["summary"]["packages_found"] >= 1
+    assert data["summary"]["credential_env_vars"] >= 1
+    assert data["files"][0]["path"].endswith("CLAUDE.md")
+
+
+def test_skills_verify_json_unsigned(tmp_path):
+    """`agent-bom skills verify` reports unsigned files and exits non-zero."""
+    skill_file = tmp_path / "CLAUDE.md"
+    skill_file.write_text("# Instructions\nStay read-only.\n")
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["skills", "verify", str(tmp_path), "--format", "json"])
+    assert result.exit_code == 1, result.output
+
+    data = json.loads(result.output)
+    assert len(data["files"]) == 1
+    assert data["files"][0]["status"] == "unsigned"
+
+
+def test_main_help_lists_skills_command():
+    """Top-level help should surface the new skills command group."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["--help"])
+    assert result.exit_code == 0
+    assert "skills" in result.output

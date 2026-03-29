@@ -138,7 +138,7 @@ An agent operating autonomously can be steered into a multi-step exfiltration se
 │  2. PROXY         Sits between client and server, intercepts     │
 │     (agent-bom proxy) every JSON-RPC message, enforces policy    │
 │                                                                  │
-│  3. MCP SERVER    Exposes 32 scan/governance tools to any agent  │
+│  3. MCP SERVER    Exposes 35 scan/governance tools to any agent  │
 │     (agent-bom mcp server)  — scan, check, registry, compliance  │
 └─────────────────────────────────────────────────────────────────┘
 ```

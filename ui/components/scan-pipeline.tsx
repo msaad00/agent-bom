@@ -123,54 +123,56 @@ function PipelineNode({ data }: { data: PipelineNodeData }) {
 
   return (
     <div
-      className={`rounded-xl border-2 ${style.border} ${style.bg} p-3 min-w-[170px] max-w-[200px] shadow-lg`}
+      className={`rounded-2xl border-2 ${style.border} ${style.bg} min-w-[176px] max-w-[208px] overflow-hidden shadow-lg shadow-black/20`}
     >
       <Handle type="target" position={Position.Left} className="!bg-zinc-600" />
 
-      {/* Header */}
-      <div className="flex items-center gap-2 mb-1.5">
-        <StepIcon className="w-4 h-4 text-zinc-400 shrink-0" />
-        <span className="text-sm font-semibold text-zinc-100">
-          {data.label}
-        </span>
-        <StatusIcon className={`w-3.5 h-3.5 ml-auto ${style.iconColor}`} />
+      <div className="border-b border-white/5 bg-white/[0.03] px-3 py-2">
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-zinc-950/60 ring-1 ring-white/5">
+            <StepIcon className="h-4 w-4 text-zinc-300 shrink-0" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{data.stepId}</div>
+            <span className="block truncate text-sm font-semibold text-zinc-100">{data.label}</span>
+          </div>
+          <StatusIcon className={`ml-auto h-3.5 w-3.5 ${style.iconColor}`} />
+        </div>
       </div>
 
-      {/* Message */}
-      <p className="text-[10px] text-zinc-500 leading-tight truncate">
-        {data.status !== "pending"
-          ? data.message
-          : STEP_DESCRIPTIONS[data.stepId] ?? data.description}
-      </p>
+      <div className="px-3 py-2.5">
+        <p className="text-[10px] leading-tight text-zinc-500">
+          {data.status !== "pending"
+            ? data.message
+            : STEP_DESCRIPTIONS[data.stepId] ?? data.description}
+        </p>
 
-      {/* Stats chips */}
-      {data.stats && Object.keys(data.stats).length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-2">
-          {Object.entries(data.stats).map(([k, v]) => (
-            <span
-              key={k}
-              className="text-[9px] font-mono bg-zinc-800 border border-zinc-700 rounded px-1 py-0.5 text-zinc-400"
-            >
-              {v} {k}
-            </span>
-          ))}
-        </div>
-      )}
+        {data.stats && Object.keys(data.stats).length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {Object.entries(data.stats).map(([k, v]) => (
+              <span
+                key={k}
+                className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-1.5 py-0.5 font-mono text-[9px] text-zinc-400"
+              >
+                {v} {k}
+              </span>
+            ))}
+          </div>
+        )}
 
-      {/* Progress bar */}
-      {data.progressPct != null && data.status === "running" && (
-        <div className="mt-2 h-1 bg-zinc-800 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-emerald-500 transition-all duration-300"
-            style={{ width: `${data.progressPct}%` }}
-          />
-        </div>
-      )}
+        {data.progressPct != null && data.status === "running" && (
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-800">
+            <div
+              className="h-full bg-emerald-500 transition-all duration-300"
+              style={{ width: `${data.progressPct}%` }}
+            />
+          </div>
+        )}
 
-      {/* Duration */}
-      {duration && (
-        <p className="text-[9px] text-zinc-600 mt-1 font-mono">{duration}s</p>
-      )}
+        {duration && (
+          <p className="mt-1 font-mono text-[9px] text-zinc-600">{duration}s</p>
+        )}
+      </div>
 
       <Handle
         type="source"

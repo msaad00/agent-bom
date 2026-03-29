@@ -461,6 +461,19 @@ export default function GraphPage() {
   const onNodeMouseLeave = useCallback(() => {
     setHoveredNodeId(null);
   }, []);
+  const activeSummary = useMemo(() => {
+    if (!activeResult) return null;
+    const vulnerabilities = activeResult.blast_radius ?? [];
+    const critical = vulnerabilities.filter((item) => item.severity === "critical").length;
+    const credentialed = vulnerabilities.filter((item) => item.exposed_credentials.length > 0).length;
+    return {
+      agents: activeResult.agents.length,
+      servers: activeResult.agents.reduce((sum, agent) => sum + agent.mcp_servers.length, 0),
+      vulnerabilities: vulnerabilities.length,
+      critical,
+      credentialed,
+    };
+  }, [activeResult]);
 
   if (loading) {
     return (
@@ -495,27 +508,46 @@ export default function GraphPage() {
     <div className="h-[calc(100vh-3.5rem)] flex flex-col">
       <PulseStyles />
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
-        <div>
-          <h1 className="text-lg font-semibold text-zinc-100">Lineage Graph</h1>
-          <p className="text-xs text-zinc-500">
+      <div className="border-b border-zinc-800 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.12),transparent_28%),linear-gradient(180deg,rgba(24,24,27,0.96),rgba(9,9,11,0.96))] px-4 py-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.24em] text-sky-400">Graph view</p>
+            <h1 className="mt-1 text-lg font-semibold text-zinc-100">Lineage Graph</h1>
+            <p className="text-xs text-zinc-500">
             Agent → Server → Package → CVE · Credentials · Tools
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <select
-            value={selectedJob}
-            onChange={(e) => setSelectedJob(e.target.value)}
-            className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-1.5 text-sm text-zinc-300 focus:outline-none focus:border-emerald-600"
-          >
-            {jobs?.map((j) => (
-              <option key={j.job_id} value={j.job_id}>
-                Scan {j.job_id.slice(0, 8)} — {new Date(j.created_at).toLocaleDateString()}
-              </option>
-            ))}
-          </select>
-          <FullscreenButton />
-          <GraphLegend items={STANDARD_LEGEND} />
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+            {activeSummary && (
+              <>
+                <div className="rounded-xl border border-zinc-800 bg-zinc-900/80 px-3 py-1.5 text-xs text-zinc-300">
+                  <span className="font-mono text-zinc-100">{activeSummary.agents}</span> agents
+                </div>
+                <div className="rounded-xl border border-zinc-800 bg-zinc-900/80 px-3 py-1.5 text-xs text-zinc-300">
+                  <span className="font-mono text-zinc-100">{activeSummary.servers}</span> servers
+                </div>
+                <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-200">
+                  <span className="font-mono text-red-100">{activeSummary.critical}</span> critical
+                </div>
+                <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-200">
+                  <span className="font-mono text-amber-100">{activeSummary.credentialed}</span> credentialed
+                </div>
+              </>
+            )}
+            <select
+              value={selectedJob}
+              onChange={(e) => setSelectedJob(e.target.value)}
+              className="rounded-xl border border-zinc-700 bg-zinc-900/90 px-3 py-2 text-sm text-zinc-300 focus:border-emerald-600 focus:outline-none"
+            >
+              {jobs?.map((j) => (
+                <option key={j.job_id} value={j.job_id}>
+                  Scan {j.job_id.slice(0, 8)} — {new Date(j.created_at).toLocaleDateString()}
+                </option>
+              ))}
+            </select>
+            <FullscreenButton />
+            <GraphLegend items={STANDARD_LEGEND} />
+          </div>
         </div>
       </div>
 

@@ -6,7 +6,17 @@ import json
 from pathlib import Path
 
 from agent_bom.compliance_utils import effective_blast_radius_tags
-from agent_bom.models import AIBOMReport, BlastRadius
+from agent_bom.models import AIBOMReport, BlastRadius, Severity
+
+
+def _severity_state(severity: Severity) -> str:
+    """Stable severity-state label for structured consumers."""
+    return "pending" if severity == Severity.UNKNOWN else "scored"
+
+
+def _severity_label(severity: Severity) -> str:
+    """Human-friendly label that distinguishes advisory-only findings."""
+    return "advisory" if severity == Severity.UNKNOWN else severity.value
 
 
 def _risk_narrative(item: dict) -> str:
@@ -517,6 +527,8 @@ def to_json(report: AIBOMReport) -> dict:
                                         "id": v.id,
                                         "summary": v.summary,
                                         "severity": v.severity.value,
+                                        "severity_label": _severity_label(v.severity),
+                                        "severity_state": _severity_state(v.severity),
                                         "severity_source": v.severity_source,
                                         "confidence": v.confidence,
                                         "cvss_score": v.cvss_score,
@@ -573,6 +585,8 @@ def to_json(report: AIBOMReport) -> dict:
                 "actionable": br.is_actionable,
                 "vulnerability_id": br.vulnerability.id,
                 "severity": br.vulnerability.severity.value,
+                "severity_label": _severity_label(br.vulnerability.severity),
+                "severity_state": _severity_state(br.vulnerability.severity),
                 "cvss_score": br.vulnerability.cvss_score,
                 "epss_score": br.vulnerability.epss_score,
                 "is_kev": br.vulnerability.is_kev,

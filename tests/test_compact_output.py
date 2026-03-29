@@ -126,6 +126,19 @@ def test_compact_summary_credentials():
     assert "GITHUB_TOKEN" in output
 
 
+def test_compact_summary_unknown_severity_is_labeled_advisory():
+    """UNKNOWN severity should read as advisory, not vague unscored noise."""
+    vuln = Vulnerability(id="GHSA-test", summary="Advisory without CVSS", severity=Severity.UNKNOWN)
+    pkg = Package(name="mystery", version="1.0.0", ecosystem="npm", vulnerabilities=[vuln])
+    server = _make_server(packages=[pkg])
+    agent = _make_agent(servers=[server])
+    br = _blast(vuln, pkg, [agent], [server])
+    report = AIBOMReport(agents=[agent], blast_radii=[br])
+    output = _capture(print_compact_summary, report)
+    assert "advisory" in output.lower()
+    assert "unscored" not in output.lower()
+
+
 # ── print_compact_agents ─────────────────────────────────────────────────────
 
 

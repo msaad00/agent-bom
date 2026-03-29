@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections import defaultdict
 from typing import Optional
 
 import httpx
@@ -19,6 +20,8 @@ NPM_REGISTRY = "https://registry.npmjs.org"
 PYPI_API = "https://pypi.org/pypi"
 _INVALID_VERSIONS = {"latest", "unknown", "", "{{VERSION}}"}
 _RESOLVE_CONCURRENCY = 8
+_NPM_LATEST_CACHE: dict[str, dict | None] = {}
+_PYPI_INFO_CACHE: dict[str, dict | None] = {}
 
 
 def _apply_registry_version_fallback(pkg: Package) -> bool:
@@ -36,28 +39,85 @@ def _apply_registry_version_fallback(pkg: Package) -> bool:
     return True
 
 
-async def resolve_npm_metadata(
-    package_name: str,
-    client: httpx.AsyncClient,
-) -> tuple[Optional[str], Optional[str]]:
-    """Return (version, license) from npm registry."""
+def _resolution_key(pkg: Package) -> tuple[str, str]:
+    """Stable key for deduping identical registry lookups within one run."""
+    return (pkg.ecosystem.lower(), pkg.name.lower())
+
+
+def _copy_resolution_fields(source: Package, target: Package) -> bool:
+    """Copy resolved version metadata from *source* to *target*."""
+    if source.version in _INVALID_VERSIONS:
+        return False
+    target.version = source.version
+    target.purl = source.purl
+    if source.license and not target.license:
+        target.license = source.license
+    if source.version_source == "registry_fallback":
+        target.version_source = "registry_fallback"
+    return True
+
+
+async def _get_npm_latest_doc(package_name: str, client: httpx.AsyncClient) -> dict | None:
+    """Return cached npm `/latest` JSON for a package."""
+    cache_key = package_name.lower()
+    if cache_key in _NPM_LATEST_CACHE:
+        return _NPM_LATEST_CACHE[cache_key]
+
     encoded_name = package_name.replace("/", "%2F")
     response = await request_with_retry(
         client,
         "GET",
         f"{NPM_REGISTRY}/{encoded_name}/latest",
     )
+    data: dict | None = None
     if response and response.status_code == 200:
         try:
-            data = response.json()
-            version = data.get("version")
-            lic = data.get("license")
-            # license can be a string or {"type": "MIT"} object
-            if isinstance(lic, dict):
-                lic = lic.get("type")
-            return version, lic if isinstance(lic, str) else None
-        except (ValueError, KeyError) as exc:
+            parsed = response.json()
+            if isinstance(parsed, dict):
+                data = parsed
+        except ValueError as exc:
             _logger.debug("Failed to parse npm metadata for %s: %s", package_name, exc)
+    _NPM_LATEST_CACHE[cache_key] = data
+    return data
+
+
+async def _get_pypi_info_doc(package_name: str, client: httpx.AsyncClient) -> dict | None:
+    """Return cached PyPI `info` JSON for a package."""
+    cache_key = package_name.lower()
+    if cache_key in _PYPI_INFO_CACHE:
+        return _PYPI_INFO_CACHE[cache_key]
+
+    response = await request_with_retry(
+        client,
+        "GET",
+        f"{PYPI_API}/{package_name}/json",
+    )
+    info: dict | None = None
+    if response and response.status_code == 200:
+        try:
+            parsed = response.json()
+            maybe_info = parsed.get("info", {}) if isinstance(parsed, dict) else {}
+            if isinstance(maybe_info, dict):
+                info = maybe_info
+        except ValueError as exc:
+            _logger.debug("Failed to parse PyPI metadata for %s: %s", package_name, exc)
+    _PYPI_INFO_CACHE[cache_key] = info
+    return info
+
+
+async def resolve_npm_metadata(
+    package_name: str,
+    client: httpx.AsyncClient,
+) -> tuple[Optional[str], Optional[str]]:
+    """Return (version, license) from npm registry."""
+    data = await _get_npm_latest_doc(package_name, client)
+    if data:
+        version = data.get("version")
+        lic = data.get("license")
+        # license can be a string or {"type": "MIT"} object
+        if isinstance(lic, dict):
+            lic = lic.get("type")
+        return version, lic if isinstance(lic, str) else None
     return None, None
 
 
@@ -66,12 +126,10 @@ async def resolve_npm_supply_chain(
     client: httpx.AsyncClient,
 ) -> None:
     """Enrich a Package with npm registry supply chain metadata."""
-    encoded_name = pkg.name.replace("/", "%2F")
-    response = await request_with_retry(client, "GET", f"{NPM_REGISTRY}/{encoded_name}/latest")
-    if not response or response.status_code != 200:
+    data = await _get_npm_latest_doc(pkg.name, client)
+    if not data:
         return
     try:
-        data = response.json()
         if not pkg.description:
             pkg.description = (data.get("description") or "")[:300] or None
         if not pkg.homepage:
@@ -97,33 +155,25 @@ async def resolve_pypi_metadata(
     client: httpx.AsyncClient,
 ) -> tuple[Optional[str], Optional[str]]:
     """Return (version, license) from PyPI."""
-    response = await request_with_retry(
-        client,
-        "GET",
-        f"{PYPI_API}/{package_name}/json",
-    )
-    if response and response.status_code == 200:
-        try:
-            info = response.json().get("info", {})
-            version = info.get("version")
-            lic = info.get("license")
-            # PyPI license can be empty string, "UNKNOWN", or full license text.
-            # Prefer the SPDX classifier; fall back to first line of license field.
-            if lic and lic.upper() not in ("UNKNOWN", ""):
-                # If license field is multi-line (full text), extract SPDX from classifiers
-                if "\n" in lic or len(lic) > 120:
-                    classifiers = info.get("classifiers") or []
-                    for c in classifiers:
-                        if c.startswith("License :: OSI Approved :: "):
-                            lic = c.split(" :: ")[-1]
-                            break
-                    else:
-                        # No classifier — take first line, capped
-                        lic = lic.split("\n", 1)[0][:80]
-                return version, lic
-            return version, None
-        except (ValueError, KeyError) as exc:
-            _logger.debug("Failed to parse PyPI metadata for %s: %s", package_name, exc)
+    info = await _get_pypi_info_doc(package_name, client)
+    if info:
+        version = info.get("version")
+        lic = info.get("license")
+        # PyPI license can be empty string, "UNKNOWN", or full license text.
+        # Prefer the SPDX classifier; fall back to first line of license field.
+        if lic and lic.upper() not in ("UNKNOWN", ""):
+            # If license field is multi-line (full text), extract SPDX from classifiers
+            if "\n" in lic or len(lic) > 120:
+                classifiers = info.get("classifiers") or []
+                for c in classifiers:
+                    if c.startswith("License :: OSI Approved :: "):
+                        lic = c.split(" :: ")[-1]
+                        break
+                else:
+                    # No classifier — take first line, capped
+                    lic = lic.split("\n", 1)[0][:80]
+            return version, lic
+        return version, None
     return None, None
 
 
@@ -132,11 +182,10 @@ async def resolve_pypi_supply_chain(
     client: httpx.AsyncClient,
 ) -> None:
     """Enrich a Package with PyPI supply chain metadata."""
-    response = await request_with_retry(client, "GET", f"{PYPI_API}/{pkg.name}/json")
-    if not response or response.status_code != 200:
+    info = await _get_pypi_info_doc(pkg.name, client)
+    if not info:
         return
     try:
-        info = response.json().get("info", {})
         if not pkg.description:
             pkg.description = (info.get("summary") or "")[:300] or None
         if not pkg.homepage:
@@ -283,6 +332,10 @@ async def resolve_all_versions(
     if not unresolved:
         return 0
     resolved_count = 0
+    groups: dict[tuple[str, str], list[Package]] = defaultdict(list)
+    for pkg in unresolved:
+        groups[_resolution_key(pkg)].append(pkg)
+    representatives = [members[0] for members in groups.values()]
     try:
         async with create_client(timeout=10.0) as client:
             semaphore = asyncio.Semaphore(_RESOLVE_CONCURRENCY)
@@ -291,45 +344,66 @@ async def resolve_all_versions(
                 async with semaphore:
                     return await resolve_package_version(pkg, client)
 
-            tasks = {asyncio.create_task(_resolve_with_limit(pkg)): i for i, pkg in enumerate(unresolved)}
+            tasks = {asyncio.create_task(_resolve_with_limit(pkg)): pkg for pkg in representatives}
             done, pending = await asyncio.wait(tasks.keys(), timeout=global_timeout)
 
             for task in done:
-                i = tasks[task]
+                pkg = tasks[task]
+                peers = groups[_resolution_key(pkg)]
                 result: bool | Exception
                 try:
                     result = task.result()
                 except Exception as exc:  # noqa: BLE001
                     result = exc
                 if result is True:
-                    resolved_count += 1
+                    peer_resolved = 0
+                    for peer in peers:
+                        if peer is pkg:
+                            peer_resolved += 1
+                            continue
+                        if _copy_resolution_fields(pkg, peer):
+                            peer_resolved += 1
+                    resolved_count += peer_resolved
                     if not quiet:
                         lic_tag = ""
-                        if unresolved[i].license:
-                            short_lic = (unresolved[i].license or "").split("\n", 1)[0][:60]
+                        if pkg.license:
+                            short_lic = (pkg.license or "").split("\n", 1)[0][:60]
                             lic_tag = f" ({short_lic})"
                         icon = "[green]✓[/green]"
                         note = ""
-                        if unresolved[i].version_source == "registry_fallback":
+                        if pkg.version_source == "registry_fallback":
                             icon = "[yellow]↺[/yellow]"
                             note = " [dim](bundled registry fallback)[/dim]"
-                        console.print(f"  {icon} Resolved {unresolved[i].name} → {unresolved[i].version}{lic_tag}{note}")
+                        peer_note = f" [dim](applied to {len(peers)} package entries)[/dim]" if len(peers) > 1 else ""
+                        console.print(f"  {icon} Resolved {pkg.name} → {pkg.version}{lic_tag}{note}{peer_note}")
                 elif isinstance(result, Exception):
                     if not quiet:
-                        console.print(f"  [yellow]⚠[/yellow] Failed to resolve {unresolved[i].name}: {result}")
+                        console.print(f"  [yellow]⚠[/yellow] Failed to resolve {pkg.name}: {result}")
                 elif not quiet:
-                    console.print(f"  [yellow]⚠[/yellow] Could not resolve {unresolved[i].name} from live registries")
+                    console.print(f"  [yellow]⚠[/yellow] Could not resolve {pkg.name} from live registries")
 
             for task in pending:
-                i = tasks[task]
-                pkg = unresolved[i]
+                pkg = tasks[task]
+                peers = groups[_resolution_key(pkg)]
                 task.cancel()
-                _apply_registry_version_fallback(pkg)
-                if pkg.version_source == "registry_fallback":
-                    resolved_count += 1
+                group_fallbacks = 0
+                if _apply_registry_version_fallback(pkg):
+                    group_fallbacks += 1
+                for peer in peers:
+                    if peer is pkg:
+                        continue
+                    if not _copy_resolution_fields(pkg, peer):
+                        if _apply_registry_version_fallback(peer):
+                            group_fallbacks += 1
+                    else:
+                        group_fallbacks += 1
+                if group_fallbacks:
+                    resolved_count += group_fallbacks
                     if not quiet:
                         console.print(
-                            f"  [yellow]↺[/yellow] Resolved {pkg.name} → {pkg.version} [dim](bundled registry fallback after timeout)[/dim]"
+                            f"  [yellow]↺[/yellow] Resolved {pkg.name} → {pkg.version} "
+                            f"[dim](bundled registry fallback after timeout"
+                            f"{'; applied to ' + str(len(peers)) + ' package entries' if len(peers) > 1 else ''})[/dim]"
                         )
             if pending:
                 await asyncio.gather(*pending, return_exceptions=True)

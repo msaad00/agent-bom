@@ -3840,6 +3840,31 @@ def test_json_output_includes_license():
     assert pkgs[0]["license"] == "MIT"
 
 
+def test_json_output_labels_unknown_severity_as_advisory_state():
+    """Structured JSON should distinguish advisory-only findings from scored severities."""
+    vuln = Vulnerability(id="GHSA-123", summary="Pending severity", severity=Severity.UNKNOWN)
+    pkg = Package(name="mystery", version="1.0.0", ecosystem="npm", vulnerabilities=[vuln])
+    server = MCPServer(name="s", command="npx", args=["-y", "mystery"], packages=[pkg])
+    agent = Agent(name="a", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/c.json", mcp_servers=[server])
+    br = BlastRadius(
+        vulnerability=vuln,
+        package=pkg,
+        affected_agents=[agent],
+        affected_servers=[server],
+        exposed_credentials=[],
+        exposed_tools=[],
+    )
+    report = AIBOMReport(agents=[agent], blast_radii=[br])
+    data = to_json(report)
+    vuln_json = data["agents"][0]["mcp_servers"][0]["packages"][0]["vulnerabilities"][0]
+    blast_json = data["blast_radius"][0]
+    assert vuln_json["severity"] == "unknown"
+    assert vuln_json["severity_label"] == "advisory"
+    assert vuln_json["severity_state"] == "pending"
+    assert blast_json["severity_label"] == "advisory"
+    assert blast_json["severity_state"] == "pending"
+
+
 def test_api_posture_counts_empty():
     """GET /v1/posture/counts returns zero counts with no scans."""
     pytest.importorskip("fastapi", reason="fastapi not installed")

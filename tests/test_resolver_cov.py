@@ -9,6 +9,8 @@ import pytest
 
 from agent_bom.models import Package
 from agent_bom.resolver import (
+    _NPM_LATEST_CACHE,
+    _PYPI_INFO_CACHE,
     enrich_licenses,
     enrich_supply_chain_metadata,
     resolve_all_versions,
@@ -18,6 +20,15 @@ from agent_bom.resolver import (
     resolve_pypi_metadata,
     resolve_pypi_supply_chain,
 )
+
+
+@pytest.fixture(autouse=True)
+def clear_registry_metadata_caches():
+    _NPM_LATEST_CACHE.clear()
+    _PYPI_INFO_CACHE.clear()
+    yield
+    _NPM_LATEST_CACHE.clear()
+    _PYPI_INFO_CACHE.clear()
 
 
 class TestResolveNpmMetadata:
@@ -51,6 +62,25 @@ class TestResolveNpmMetadata:
             version, lic = await resolve_npm_metadata("nonexistent", client)
             assert version is None
             assert lic is None
+
+    @pytest.mark.asyncio
+    async def test_caches_latest_doc_across_version_and_supply_chain(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "version": "1.2.3",
+            "license": "MIT",
+            "description": "Cached package",
+        }
+        pkg = Package(name="cached", version="1.2.3", ecosystem="npm")
+        with patch("agent_bom.resolver.request_with_retry", return_value=mock_response) as mock_request:
+            client = AsyncMock()
+            version, lic = await resolve_npm_metadata("cached", client)
+            await resolve_npm_supply_chain(pkg, client)
+        assert version == "1.2.3"
+        assert lic == "MIT"
+        assert pkg.description == "Cached package"
+        assert mock_request.call_count == 1
 
 
 class TestResolvePypiMetadata:
@@ -221,6 +251,34 @@ class TestResolvePackageVersion:
 
 
 class TestResolveAllVersions:
+    @pytest.mark.asyncio
+    async def test_duplicate_package_resolution_is_deduped_and_propagated(self):
+        packages = [
+            Package(name="dup", version="unknown", ecosystem="npm"),
+            Package(name="dup", version="unknown", ecosystem="npm"),
+        ]
+
+        async def fake_resolve(pkg, client):
+            pkg.version = "9.9.9"
+            pkg.purl = "pkg:npm/dup@9.9.9"
+            return True
+
+        client_cm = AsyncMock()
+        client_cm.__aenter__.return_value = AsyncMock()
+        client_cm.__aexit__.return_value = None
+
+        with (
+            patch("agent_bom.resolver.create_client", return_value=client_cm),
+            patch("agent_bom.resolver.resolve_package_version", side_effect=fake_resolve) as mock_resolve,
+            patch("agent_bom.resolver.enrich_licenses", return_value=0),
+        ):
+            resolved = await resolve_all_versions(packages, quiet=True, global_timeout=0.5)
+
+        assert resolved == 2
+        assert packages[0].version == "9.9.9"
+        assert packages[1].version == "9.9.9"
+        assert mock_resolve.call_count == 1
+
     @pytest.mark.asyncio
     async def test_timeout_preserves_completed_and_fallback_versions(self):
         packages = [

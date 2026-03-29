@@ -21,6 +21,7 @@ SEVERITY_BADGES: dict[Severity, str] = {
     Severity.HIGH: "white on #e67e22",
     Severity.MEDIUM: "black on yellow",
     Severity.LOW: "white on #555555",
+    Severity.UNKNOWN: "black on white",
 }
 
 SEVERITY_TEXT: dict[Severity, str] = {
@@ -39,6 +40,7 @@ def _sev_badge(severity: Severity) -> str:
         Severity.HIGH: " HIGH ",
         Severity.MEDIUM: " MED  ",
         Severity.LOW: " LOW  ",
+        Severity.UNKNOWN: " ADV  ",
     }
     label = labels.get(severity, f" {severity.value.upper()} ")
     return f"[{style}]{label}[/{style}]"
@@ -1313,11 +1315,12 @@ def print_compact_summary(report: AIBOMReport) -> None:
         for sev_name, sev_enum in sev_map:
             if sev_counts.get(sev_name):
                 badge_parts.append(f"{_sev_badge(sev_enum)} {sev_counts[sev_name]}")
-        # Show UNKNOWN/NONE count — these need --enrich to classify
+        # UNKNOWN findings are still real advisories; they just lack finalized
+        # severity scoring data and should not read like parser breakage.
         unknown_count = sev_counts.get("UNKNOWN", 0) + sev_counts.get("NONE", 0)
         if unknown_count:
-            badge_parts.append(f"[dim]{unknown_count} unscored[/dim]")
-        posture = "  ".join(badge_parts) if badge_parts else "[dim]unscored[/dim]"
+            badge_parts.append(f"[dim]{unknown_count} advisory[/dim]")
+        posture = "  ".join(badge_parts) if badge_parts else "[dim]advisory findings pending severity[/dim]"
         border_style = "red" if sev_counts.get("CRITICAL", 0) > 0 else "yellow"
 
     # Credential count

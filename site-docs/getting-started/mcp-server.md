@@ -1,6 +1,6 @@
 # MCP Server Setup
 
-agent-bom runs as an MCP server, exposing 32 security tools to any MCP client.
+agent-bom runs as an MCP server, exposing 35 security tools to any MCP client.
 
 ## Local (stdio)
 
@@ -74,6 +74,8 @@ Connect with:
 | `registry_lookup` | Look up MCP server security metadata |
 | `compliance` | Run compliance framework checks |
 | `remediate` | Prioritized remediation plan |
+| `skill_scan` | Scan instruction files for trust, findings, and provenance |
+| `skill_verify` | Verify Sigstore provenance for instruction files |
 | `verify` | Package integrity + SLSA provenance |
 | `skill_trust` | Assess skill file trust level |
 | `generate_sbom` | Generate SBOM (CycloneDX / SPDX) |

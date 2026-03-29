@@ -211,15 +211,17 @@ def test_health_endpoint_fields():
 # ---------------------------------------------------------------------------
 
 
-def test_mcp_server_help_shows_14_tools():
-    """MCP server help should mention 14 tools."""
+def test_mcp_server_help_shows_skill_tools():
+    """MCP server help should mention the expanded skill tool surface."""
     from click.testing import CliRunner
 
     from agent_bom.cli import main
 
     runner = CliRunner()
     result = runner.invoke(main, ["mcp", "server", "--help"])
-    assert "32 security tools" in result.output
+    assert "35 security tools" in result.output
+    assert "skill_scan" in result.output
+    assert "skill_verify" in result.output
     assert "compliance" in result.output
     assert "remediate" in result.output
 

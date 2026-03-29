@@ -245,7 +245,7 @@ agent-bom where             # show all discovery paths
 | [analyze](analyze/SKILL.md) | Blast radius, attack paths, context graph | "blast radius", "threat intel", "attack path" |
 | [troubleshoot](troubleshoot/SKILL.md) | Diagnostics, doctor, config validation | "doctor", "debug", "why failing", "validate config" |
 
-## Tools (32)
+## Tools (33)
 
 ### Vulnerability Scanning
 | Tool | Description |
@@ -274,6 +274,8 @@ agent-bom where             # show all discovery paths
 | `registry_lookup` | Look up MCP server in 427+ server security metadata registry |
 | `marketplace_check` | Pre-install trust check with registry cross-reference |
 | `fleet_scan` | Batch registry lookup + risk scoring for MCP server inventories |
+| `skill_scan` | Scan instruction files for package refs, trust, and findings |
+| `skill_verify` | Verify Sigstore provenance for instruction files |
 | `skill_trust` | Assess skill file trust level (5-category analysis) |
 | `code_scan` | SAST scanning via Semgrep with CWE-based compliance mapping |
 
@@ -327,8 +329,9 @@ vector_db_scan()
 # Discover GPU containers, K8s GPU nodes, and unauthenticated DCGM endpoints
 gpu_infra_scan()
 
-# Assess trust of a skill file
-skill_trust(skill_content="<paste SKILL.md content>")
+# Scan instruction files and then inspect trust
+skill_scan(path=".")
+skill_trust(skill_path="./SKILL.md")
 ```
 
 ## Guardrails

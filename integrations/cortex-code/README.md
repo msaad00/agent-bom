@@ -61,6 +61,8 @@ All agent-bom MCP tools become available in Cortex Code:
 | `generate_sbom` | Generate CycloneDX or SPDX SBOM |
 | `compliance` | Map findings to OWASP, NIST, MITRE, EU AI Act, and related frameworks |
 | `remediate` | Prioritized remediation plan |
+| `skill_scan` | Scan CLAUDE.md, AGENTS.md, and other instruction files |
+| `skill_verify` | Verify Sigstore provenance for instruction files |
 | `skill_trust` | Trust assessment for SKILL.md files |
 | `code_scan` | SAST scanning with CWE mapping |
 | `context_graph` | Lateral movement analysis |

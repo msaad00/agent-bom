@@ -24,6 +24,7 @@ Traditional scanners often stop at CVE -> package. agent-bom shows which MCP ser
 ```bash
 pip install agent-bom
 agent-bom agents                         # auto-discover local AI agents + MCP servers
+agent-bom skills scan .                 # scan skills / instruction files
 agent-bom check flask@2.0.0 --ecosystem pypi   # check a specific package
 ```
 
@@ -49,7 +50,7 @@ agent-bom check flask@2.0.0 --ecosystem pypi   # check a specific package
 |---|---|
 | CLI | `pip install agent-bom` |
 | MCP server | `agent-bom mcp server` |
-| Docker | `docker run ghcr.io/msaad00/agent-bom scan` |
+| Docker | `docker run ghcr.io/msaad00/agent-bom agents` |
 | GitHub Action | `uses: msaad00/agent-bom@v0.75.11` |
 | Kubernetes | Helm chart + CronJob + DaemonSet |
 | Remote SSE | Self-host or use hosted endpoint |

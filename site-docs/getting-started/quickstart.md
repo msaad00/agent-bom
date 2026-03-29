@@ -1,57 +1,94 @@
 # Quick Start
 
-## Scan your environment
+## Install
 
 ```bash
-agent-bom scan
+pip install agent-bom
 ```
 
-This auto-discovers MCP clients on your machine (Claude Desktop, Cursor, VS Code, Windsurf, etc.), extracts configured servers and packages, and scans for CVEs.
-
-## Check a specific package
+## Scan your local AI environment
 
 ```bash
-agent-bom check langchain
+agent-bom agents
+```
+
+This auto-discovers local MCP clients and AI agent configs, extracts configured
+servers and packages, and scans for CVEs.
+
+## Scan a project plus local agent context
+
+```bash
+agent-bom agents -p .
+```
+
+Use this when you want one scan to cover both:
+- project manifests and lockfiles in the current repo
+- local MCP / agent context on your machine
+
+## Scan instruction and skill files
+
+```bash
+agent-bom skills scan .
+agent-bom skills verify .
+```
+
+This covers `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, and supported `skills/*`
+instruction surfaces.
+
+## Check a specific package before installing
+
+```bash
+agent-bom check langchain --ecosystem pypi
 agent-bom check express --ecosystem npm
 agent-bom check tensorflow --ecosystem pypi
 ```
 
-## See what was discovered
+## Export machine-readable output
 
 ```bash
-agent-bom where    # show all discovery paths
-agent-bom scan -f json -o report.json   # full JSON report
+agent-bom agents -f json -o report.json
+agent-bom agents -f sarif -o findings.sarif
+agent-bom agents -f cyclonedx -o bom.json
 ```
 
-## Generate an SBOM
+## Run compliance mapping
 
 ```bash
-agent-bom scan --sbom cyclonedx -o sbom.json
-agent-bom scan --sbom spdx -o sbom.spdx.json
-```
-
-## Run compliance checks
-
-```bash
-agent-bom scan --compliance owasp-llm
-agent-bom scan --compliance eu-ai-act
-agent-bom scan --compliance all
+agent-bom agents --compliance owasp-llm
+agent-bom agents --compliance eu-ai-act
+agent-bom agents --compliance all
 ```
 
 ## Scan a container image
 
 ```bash
-agent-bom scan --image python:3.12-slim
+agent-bom image python:3.12-slim
 ```
 
-Uses agent-bom's native container scanning path for image analysis.
+## Scan infrastructure as code
+
+```bash
+agent-bom iac Dockerfile k8s/ infra/main.tf
+```
+
+`iac` accepts one or more paths in a single run, so the example above scans:
+- a Dockerfile
+- a Kubernetes directory
+- a Terraform file
+
+## Inspect discovery paths
+
+```bash
+agent-bom mcp where
+agent-bom mcp inventory
+```
 
 ## Output formats
 
 ```bash
-agent-bom scan -f table    # terminal table (default)
-agent-bom scan -f json     # JSON report
-agent-bom scan -f html     # HTML dashboard
-agent-bom scan -f sarif    # SARIF for GitHub Code Scanning
-agent-bom scan -f csv      # CSV export
+agent-bom agents -f table    # terminal table (default)
+agent-bom agents -f json     # JSON report
+agent-bom agents -f html     # HTML dashboard
+agent-bom agents -f sarif    # SARIF for GitHub Code Scanning
+agent-bom agents -f csv      # CSV export
 ```

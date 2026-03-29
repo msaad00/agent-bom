@@ -241,12 +241,11 @@ def test_compact_remediation_empty():
 
 
 def test_compact_export_hint():
-    """Shows export formats and serve hint."""
+    """Shows key metrics summary."""
     agent = _make_agent(servers=[_make_server()])
     report = AIBOMReport(agents=[agent])
     output = _capture(print_compact_export_hint, report)
-    assert "json" in output
-    assert "cyclonedx" in output
-    assert "sarif" in output
-    assert "serve" in output
-    assert "--verbose" in output
+    assert "agents" in output
+    assert "servers" in output
+    assert "packages" in output
+    assert "vulns" in output

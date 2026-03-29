@@ -1,0 +1,3 @@
+# Hash-pinned pip for Docker runtime stages.
+# Regenerate: pip download pip==26.0.1 -d /tmp && pip hash /tmp/pip-*.whl
+pip==26.0.1 --hash=sha256:bdb1b08f4274833d62c1aa29e20907365a2ceb950410df15fc9521bad440122b

@@ -1608,18 +1608,14 @@ def print_compact_remediation(report: AIBOMReport, limit: int = 5) -> None:
 
 
 def print_compact_export_hint(report: AIBOMReport) -> None:
-    """Minimal 3-line export hint."""
+    """Single-line summary with key metrics."""
     vuln_color = "red" if report.total_vulnerabilities > 0 else "green"
-    lines = [
+    console.print(
         f"\n  [bold]{report.total_agents} agents[/bold] · "
         f"[bold]{report.total_servers} servers[/bold] · "
         f"[bold]{report.total_packages} packages[/bold] · "
-        f"[bold {vuln_color}]{report.total_vulnerabilities} vulns[/bold {vuln_color}]",
-        "",
-        "  [green]-f[/green] json | cyclonedx | spdx | sarif | html | junit   [dim]18 formats[/dim]",
-        "  [green]--verbose[/green]  [dim]full tree & details[/dim]    [green]agent-bom serve[/green]  [dim]dashboard[/dim]",
-    ]
-    console.print(Panel("\n".join(lines), border_style="blue", padding=(0, 1)))
+        f"[bold {vuln_color}]{report.total_vulnerabilities} vulns[/bold {vuln_color}]"
+    )
 
 
 # ─── Diff Output ─────────────────────────────────────────────────────────────

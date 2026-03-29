@@ -131,3 +131,96 @@ def check_typosquat(name: str, ecosystem: str, threshold: float = 0.85) -> str |
     if best_ratio >= threshold:
         return best_match
     return None
+
+
+# ── Dependency confusion detection ─────────────────────────────────────────
+#
+# Dependency confusion attacks exploit the gap between private/internal
+# package registries and public ones. An attacker publishes a package on
+# PyPI/npm with the same name as an internal package, at a higher version,
+# and the package manager prefers the public one.
+#
+# Detection heuristics (no network — static analysis only):
+# 1. Package name matches common internal naming patterns
+# 2. Package not found in OSV/NVD (no vulnerability data = likely private)
+# 3. Package has no registry metadata (version resolution failed)
+
+# Patterns that suggest internal/private package names
+_INTERNAL_NAME_PATTERNS: frozenset[str] = frozenset(
+    {
+        "internal-",
+        "private-",
+        "corp-",
+        "company-",
+        "-internal",
+        "-private",
+        "-corp",
+        "-infra",
+        "-platform",
+        "-shared",
+        "-common",
+        "-utils",
+        "-core",
+        "-sdk",
+        "-lib",
+        "-service",
+        "-api",
+    }
+)
+
+# Scoped npm packages from known orgs are NOT confusion risks
+_SAFE_NPM_SCOPES: frozenset[str] = frozenset(
+    {
+        "@modelcontextprotocol/",
+        "@anthropic-ai/",
+        "@google-cloud/",
+        "@azure/",
+        "@aws-sdk/",
+        "@types/",
+        "@babel/",
+        "@eslint/",
+        "@testing-library/",
+        "@playwright/",
+        "@vercel/",
+        "@next/",
+    }
+)
+
+
+def check_dependency_confusion(package: "Package") -> str | None:
+    """Check if a package name looks like it could be a dependency confusion target.
+
+    Returns a warning string if the name matches internal naming patterns
+    and has no vulnerability data (suggesting it may be a private package
+    that an attacker could shadow on a public registry).
+
+    Returns None if no confusion risk detected.
+    """
+    name = package.name.lower()
+    eco = package.ecosystem.lower()
+
+    # Scoped npm packages from known orgs are safe
+    if eco == "npm" and any(name.startswith(scope) for scope in _SAFE_NPM_SCOPES):
+        return None
+
+    # Check for internal naming patterns
+    has_internal_pattern = any(pat in name for pat in _INTERNAL_NAME_PATTERNS)
+    if not has_internal_pattern:
+        return None
+
+    # If the package has vulnerability data, it's a known public package
+    if package.vulnerabilities:
+        return None
+
+    # If version was resolved from a registry, it's a known public package
+    if package.version not in ("unknown", "latest", ""):
+        # Has a resolved version — likely exists on public registry
+        # Only flag if it also has internal naming AND no scorecard data
+        if getattr(package, "scorecard_score", None) is not None:
+            return None
+
+    return (
+        f"Dependency confusion risk: '{package.name}' matches internal naming patterns "
+        f"and has no public vulnerability or scorecard data. Verify this package is "
+        f"from your intended registry."
+    )

@@ -172,12 +172,38 @@ def generate_vex(report: "AIBOMReport", auto_triage: bool = False) -> VexDocumen
         if br.package:
             products.append(br.package.purl or f"pkg:{br.package.ecosystem}/{br.package.name}@{br.package.version}")
 
+        # CWE-aware triage: use impact category and reachability
+        impact_cat = getattr(br, "impact_category", "code-execution")
+        reachability = br.reachability
+        attack_summary = getattr(br, "attack_vector_summary", None)
+
+        impact_parts = [f"Severity: {vuln.severity.value}"]
+        if vuln.cvss_score:
+            impact_parts.append(f"CVSS: {vuln.cvss_score}")
+        impact_parts.append(f"Impact: {impact_cat}")
+        impact_parts.append(f"Reachability: {reachability}")
+        if attack_summary:
+            impact_parts.append(attack_summary)
+        impact_text = ". ".join(impact_parts)
+
         if auto_triage and vuln.is_kev:
             statements.append(
                 VexStatement(
                     vulnerability_id=vuln.id,
                     status=VexStatus.AFFECTED,
                     action_statement=f"CISA KEV: exploit known in the wild. Patch to {vuln.fixed_version or 'latest'}.",
+                    impact_statement=impact_text,
+                    products=products,
+                )
+            )
+        elif auto_triage and impact_cat in ("availability", "client-side") and reachability == "unlikely":
+            # DoS/XSS in transitive dep with no credential exposure → not affected
+            statements.append(
+                VexStatement(
+                    vulnerability_id=vuln.id,
+                    status=VexStatus.NOT_AFFECTED,
+                    justification=VexJustification.VULNERABLE_CODE_NOT_IN_EXECUTE_PATH,
+                    impact_statement=impact_text,
                     products=products,
                 )
             )
@@ -186,7 +212,7 @@ def generate_vex(report: "AIBOMReport", auto_triage: bool = False) -> VexDocumen
                 VexStatement(
                     vulnerability_id=vuln.id,
                     status=VexStatus.UNDER_INVESTIGATION,
-                    impact_statement=f"Severity: {vuln.severity.value}, CVSS: {vuln.cvss_score or 'N/A'}",
+                    impact_statement=impact_text,
                     products=products,
                 )
             )

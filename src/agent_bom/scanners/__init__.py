@@ -33,7 +33,7 @@ from agent_bom.eu_ai_act import tag_blast_radius as tag_eu_ai_act
 from agent_bom.fedramp import tag_blast_radius as tag_fedramp
 from agent_bom.http_client import OfflineModeError, create_client, request_with_retry
 from agent_bom.iso_27001 import tag_blast_radius as tag_iso_27001
-from agent_bom.malicious import check_typosquat, flag_malicious_from_vulns
+from agent_bom.malicious import check_dependency_confusion, check_typosquat, flag_malicious_from_vulns
 from agent_bom.mitre_attack import tag_blast_radius as tag_attack_techniques
 from agent_bom.models import Agent, BlastRadius, MCPServer, Package, Severity, Vulnerability, normalize_package_name
 from agent_bom.nist_800_53 import tag_blast_radius as tag_nist_800_53
@@ -1491,6 +1491,11 @@ async def scan_packages(packages: list[Package], *, resolve_transitive: bool = F
             if target:
                 pkg.is_malicious = True
                 pkg.malicious_reason = f"Possible typosquat of '{target}'"
+            # Dependency confusion check
+            confusion_warning = check_dependency_confusion(pkg)
+            if confusion_warning and not pkg.is_malicious:
+                pkg.is_malicious = True
+                pkg.malicious_reason = confusion_warning
 
     # Apply .agent-bom-ignore suppression rules
     try:

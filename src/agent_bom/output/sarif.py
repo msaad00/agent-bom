@@ -166,6 +166,9 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
                 "epss_score": vuln.epss_score,
                 "is_kev": vuln.is_kev,
                 "exposed_credentials": br.exposed_credentials,
+                "impact_category": getattr(br, "impact_category", "code-execution"),
+                "attack_vector_summary": getattr(br, "attack_vector_summary", None),
+                "reachability": br.reachability,
             }
         results.append(result)
 

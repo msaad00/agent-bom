@@ -11,7 +11,9 @@ export AGENT_BOM_DEMO_IMAGE="$IMAGE_TAG"
 export AGENT_BOM_DEMO_DB_SOURCE="$DB_SOURCE"
 export AGENT_BOM_DEMO_REPO_ROOT="$PWD"
 . "$(dirname "$0")/demo-env.sh"
-export TERM=dumb
+
+# Let Rich render colors and tables (do NOT set TERM=dumb)
+export TERM=xterm-256color
 
 # Clear screen for clean recording
 printf '\033[H\033[2J'
@@ -28,13 +30,12 @@ run_step() {
   sleep 1
 }
 
-# ── Demo flow: scan → check → verify ──
-# Shows three core workflows in sequence
+# ── Demo: scan agents → check package → verify integrity ──
 
-# 1. Full agent scan — blast radius, credentials, remediation
-run_step "agent-bom agents --demo --offline" agent-bom agents --demo --offline
+# 1. Full agent scan with enrichment — blast radius, EPSS, credentials
+run_step "agent-bom agents --demo --enrich" agent-bom agents --demo --enrich
 
-# 2. Pre-install check — catch vulns before they land
+# 2. Pre-install CVE gate — catch vulns before they land
 run_step "agent-bom check pillow@9.0.0" agent-bom check pillow@9.0.0 --ecosystem pypi
 
 # 3. Package integrity verification

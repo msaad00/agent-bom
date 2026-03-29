@@ -1,22 +1,18 @@
-# agent-bom v0.75.10 hero demo
-# Focused, clean, and capture-safe:
-# - no personal paths
-# - no temp/setup leakage
-# - no Rich redraw spam
-# - no synthetic error output
+# agent-bom hero demo
+# Shows: scan with blast radius → pre-install check → integrity verify
 
 Output docs/images/demo-latest.gif
 
 Set Shell "bash"
-Set FontSize 20
+Set FontSize 18
 Set Width 1400
-Set Height 920
+Set Height 900
 Set Theme "Dracula"
-Set Padding 30
-Set TypingSpeed 35ms
-Set PlaybackSpeed 1.0
+Set Padding 20
+Set TypingSpeed 30ms
+Set PlaybackSpeed 1.2
 
-# Hero flow
+# Hero flow — render_demo.sh handles TERM=xterm-256color for Rich colors
 Type "bash scripts/render_demo.sh"
 Enter
-Sleep 8s
+Sleep 15s

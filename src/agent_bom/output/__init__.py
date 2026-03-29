@@ -1302,7 +1302,7 @@ def print_compact_summary(report: AIBOMReport) -> None:
     if report.total_vulnerabilities == 0:
         posture = "[bold white on green] CLEAN [/bold white on green]"
         border_style = "green"
-    elif sev_counts.get("CRITICAL", 0) > 0:
+    else:
         badge_parts = []
         sev_map = [
             ("CRITICAL", Severity.CRITICAL),
@@ -1313,20 +1313,12 @@ def print_compact_summary(report: AIBOMReport) -> None:
         for sev_name, sev_enum in sev_map:
             if sev_counts.get(sev_name):
                 badge_parts.append(f"{_sev_badge(sev_enum)} {sev_counts[sev_name]}")
-        posture = "  ".join(badge_parts)
-        border_style = "red"
-    else:
-        badge_parts = []
-        sev_map = [
-            ("HIGH", Severity.HIGH),
-            ("MEDIUM", Severity.MEDIUM),
-            ("LOW", Severity.LOW),
-        ]
-        for sev_name, sev_enum in sev_map:
-            if sev_counts.get(sev_name):
-                badge_parts.append(f"{_sev_badge(sev_enum)} {sev_counts[sev_name]}")
-        posture = "  ".join(badge_parts)
-        border_style = "yellow"
+        # Show UNKNOWN/NONE count — these need --enrich to classify
+        unknown_count = sev_counts.get("UNKNOWN", 0) + sev_counts.get("NONE", 0)
+        if unknown_count:
+            badge_parts.append(f"[dim]{unknown_count} unscored[/dim]")
+        posture = "  ".join(badge_parts) if badge_parts else "[dim]unscored[/dim]"
+        border_style = "red" if sev_counts.get("CRITICAL", 0) > 0 else "yellow"
 
     # Credential count
     cred_names: list[str] = []

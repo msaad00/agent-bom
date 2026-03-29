@@ -78,7 +78,7 @@
 | **OpenSSF Scorecard** | Project health → risk boost | On-demand |
 | **MITRE ATT&CK** | CWE→CAPEC→ATT&CK via STIX | 30 days |
 
-### 2.3 MCP Server (33 Tools)
+### 2.3 MCP Server (35 Tools)
 
 | # | Tool | Purpose |
 |---|------|---------|
@@ -94,17 +94,19 @@
 | 10 | `where` | Locate packages in dependency tree |
 | 11 | `inventory` | Full dependency inventory |
 | 12 | `diff` | Compare scan results |
-| 13 | `skill_trust` | SKILL.md trust assessment |
-| 14 | `marketplace_check` | Check marketplace listings |
-| 15 | `code_scan` | SAST code scanning |
-| 16 | `context_graph` | BFS lateral movement graph |
-| 17 | `analytics_query` | Analytics/metrics query |
-| 18 | `cis_benchmark` | CIS benchmark scanning |
-| 19 | `fleet_scan` | Fleet/batch scanning |
-| 20 | `runtime_correlate` | Cross-reference proxy audit with CVEs |
-| 21 | `vector_db_scan` | Pinecone/vector DB scanning |
-| 22 | `aisvs_benchmark` | AI security verification standard |
-| 23 | `gpu_infra_scan` | GPU/AI compute infrastructure |
+| 13 | `skill_scan` | Instruction/skill surface scan |
+| 14 | `skill_verify` | Sigstore provenance verification for instruction files |
+| 15 | `skill_trust` | SKILL.md trust assessment |
+| 16 | `marketplace_check` | Check marketplace listings |
+| 17 | `code_scan` | SAST code scanning |
+| 18 | `context_graph` | BFS lateral movement graph |
+| 19 | `analytics_query` | Analytics/metrics query |
+| 20 | `cis_benchmark` | CIS benchmark scanning |
+| 21 | `fleet_scan` | Fleet/batch scanning |
+| 22 | `runtime_correlate` | Cross-reference proxy audit with CVEs |
+| 23 | `vector_db_scan` | Pinecone/vector DB scanning |
+| 24 | `aisvs_benchmark` | AI security verification standard |
+| 25 | `gpu_infra_scan` | GPU/AI compute infrastructure |
 
 ### 2.4 CLI UX
 
@@ -206,7 +208,7 @@ Claude Desktop, Claude Code, Cursor, Windsurf, Cline, Continue, Zed, VS Code Cop
 1. **Full-spectrum AI infra scanning**: CVE + MCP tool security + skill trust + blast radius + compliance — in one tool
 2. **Blast radius analysis**: No competitor does dependency blast radius with compliance framework mapping
 3. **Runtime proxy with enforcement**: Not just scanning — real-time interception, rate limiting, credential leak blocking, rug pull detection
-4. **33 MCP tools**: Deepest MCP server integration — usable by any AI assistant
+4. **35 MCP tools**: Deepest MCP server integration — usable by any AI assistant
 5. **12 cloud provider coverage**: AWS/Azure/GCP + AI-specific (CoreWeave, Databricks, Snowflake, HuggingFace, W&B, MLflow, OpenAI, Ollama, Nebius)
 6. **14 compliance frameworks**: Every finding mapped to OWASP LLM/MCP/Agentic, ATLAS, NIST, EU AI Act, ISO 27001, SOC 2, CIS
 7. **Enrichment depth**: OSV + GHSA + NVD + EPSS + CISA KEV + NVIDIA + OpenSSF Scorecard + MITRE ATT&CK

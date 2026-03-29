@@ -432,7 +432,11 @@ def discovery_options(fn):
             click.option(
                 "--no-skill", is_flag=True, help="Skip all skill/instruction file scanning (auto-discovery + explicit --skill paths)"
             ),
-            click.option("--skill-only", is_flag=True, help="Scan ONLY skill/instruction files; skip agent/package/CVE scanning"),
+            click.option(
+                "--skill-only",
+                is_flag=True,
+                help="Scan ONLY skill/instruction files; skip agent/package/CVE scanning (focused workflow: `agent-bom skills scan`)",
+            ),
             click.option(
                 "--scan-prompts", is_flag=True, help="Scan prompt template files (.prompt, system_prompt.*, prompts/) for security risks"
             ),
@@ -527,7 +531,7 @@ def runtime_options(fn):
             click.option(
                 "--verify-instructions",
                 is_flag=True,
-                help="Verify instruction file provenance (CLAUDE.md, .cursorrules, SKILL.md) via Sigstore bundles",
+                help="Verify instruction file provenance via Sigstore bundles (dedicated workflow: `agent-bom skills verify`)",
             ),
             click.option(
                 "--context-graph", "context_graph_flag", is_flag=True, help="Compute agent context graph with lateral movement analysis"

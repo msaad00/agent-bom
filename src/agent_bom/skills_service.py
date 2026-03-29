@@ -1,0 +1,181 @@
+"""Shared skill scanning and provenance services for CLI and MCP surfaces."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Iterable
+
+from agent_bom.integrity import verify_instruction_file
+from agent_bom.parsers.skill_audit import SkillAuditResult, audit_skill_result
+from agent_bom.parsers.skills import SkillScanResult, discover_skill_files, parse_skill_file
+from agent_bom.parsers.trust_assessment import TrustAssessmentResult, assess_trust
+
+
+@dataclass
+class SkillFileReport:
+    """End-to-end scan, audit, trust, and provenance report for one file."""
+
+    path: Path
+    scan: SkillScanResult
+    audit: SkillAuditResult
+    trust: TrustAssessmentResult
+    provenance: dict[str, object]
+
+    def to_dict(self) -> dict:
+        """Serialize the file report to JSON-compatible data."""
+        return {
+            "path": str(self.path),
+            "packages": [
+                {
+                    "name": pkg.name,
+                    "version": pkg.version,
+                    "ecosystem": pkg.ecosystem,
+                }
+                for pkg in self.scan.packages
+            ],
+            "servers": [
+                {
+                    "name": server.name,
+                    "command": server.command,
+                    "args": list(server.args),
+                    "transport": server.transport.value,
+                }
+                for server in self.scan.servers
+            ],
+            "credential_env_vars": list(self.scan.credential_env_vars),
+            "audit": {
+                "passed": self.audit.passed,
+                "packages_checked": self.audit.packages_checked,
+                "servers_checked": self.audit.servers_checked,
+                "credentials_checked": self.audit.credentials_checked,
+                "findings": [
+                    {
+                        "severity": finding.severity,
+                        "category": finding.category,
+                        "title": finding.title,
+                        "detail": finding.detail,
+                        "source_file": finding.source_file,
+                        "package": finding.package,
+                        "server": finding.server,
+                        "recommendation": finding.recommendation,
+                        "context": finding.context,
+                    }
+                    for finding in self.audit.findings
+                ],
+            },
+            "trust": self.trust.to_dict(),
+            "provenance": self.provenance,
+        }
+
+
+@dataclass
+class SkillsScanReport:
+    """Aggregated report across one or more skill/instruction files."""
+
+    files: list[SkillFileReport] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        """Serialize the aggregated scan report."""
+        package_keys = {(pkg["name"].lower(), pkg["ecosystem"]) for report in self.files for pkg in report.to_dict()["packages"]}
+        server_names = {server["name"] for report in self.files for server in report.to_dict()["servers"]}
+        credential_names = {cred for report in self.files for cred in report.scan.credential_env_vars}
+
+        suspicious = sum(1 for report in self.files if report.trust.verdict.value == "suspicious")
+        malicious = sum(1 for report in self.files if report.trust.verdict.value == "malicious")
+        verified = sum(1 for report in self.files if report.provenance.get("status") == "verified")
+
+        return {
+            "summary": {
+                "files_scanned": len(self.files),
+                "packages_found": len(package_keys),
+                "servers_found": len(server_names),
+                "credential_env_vars": len(credential_names),
+                "findings": sum(len(report.audit.findings) for report in self.files),
+                "verified_files": verified,
+                "suspicious_files": suspicious,
+                "malicious_files": malicious,
+            },
+            "files": [report.to_dict() for report in self.files],
+        }
+
+
+def resolve_skill_targets(paths: Iterable[str | Path] | None = None, *, cwd: Path | None = None) -> list[Path]:
+    """Resolve files/directories to concrete skill/instruction files."""
+    base_dir = cwd or Path.cwd()
+    requested = list(paths or [base_dir])
+    resolved: list[Path] = []
+    seen: set[Path] = set()
+
+    for raw_path in requested:
+        path = raw_path if isinstance(raw_path, Path) else Path(raw_path)
+        candidate = path if path.is_absolute() else (base_dir / path)
+        candidate = candidate.resolve()
+
+        discovered: list[Path]
+        if candidate.is_dir():
+            discovered = discover_skill_files(candidate)
+        elif candidate.is_file():
+            discovered = [candidate]
+        else:
+            continue
+
+        for file_path in discovered:
+            normalized = file_path.resolve()
+            if normalized not in seen:
+                seen.add(normalized)
+                resolved.append(normalized)
+
+    return sorted(resolved)
+
+
+def _provenance_to_dict(path: Path) -> dict[str, object]:
+    """Convert instruction-file verification to stable JSON output."""
+    verification = verify_instruction_file(path)
+    if verification.verified:
+        status = "verified"
+    elif verification.has_sigstore_bundle:
+        status = "bundle_found_but_invalid"
+    elif verification.reason == "file_not_found":
+        status = "missing"
+    else:
+        status = "unsigned"
+
+    return {
+        "status": status,
+        "reason": verification.reason,
+        "sha256": verification.sha256,
+        "signer": verification.signer_identity,
+        "rekor_log_index": verification.rekor_log_index,
+        "has_sigstore_bundle": verification.has_sigstore_bundle,
+    }
+
+
+def scan_skill_targets(paths: Iterable[str | Path] | None = None, *, cwd: Path | None = None) -> SkillsScanReport:
+    """Scan one or more skill targets and return aggregate results."""
+    reports: list[SkillFileReport] = []
+    for path in resolve_skill_targets(paths, cwd=cwd):
+        scan = parse_skill_file(path)
+        audit = audit_skill_result(scan)
+        trust = assess_trust(scan, audit)
+        reports.append(
+            SkillFileReport(
+                path=path,
+                scan=scan,
+                audit=audit,
+                trust=trust,
+                provenance=_provenance_to_dict(path),
+            )
+        )
+    return SkillsScanReport(files=reports)
+
+
+def verify_skill_targets(paths: Iterable[str | Path] | None = None, *, cwd: Path | None = None) -> list[dict[str, object]]:
+    """Verify provenance for one or more skill targets."""
+    return [
+        {
+            "path": str(path),
+            **_provenance_to_dict(path),
+        }
+        for path in resolve_skill_targets(paths, cwd=cwd)
+    ]

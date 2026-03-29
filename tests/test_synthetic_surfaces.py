@@ -49,6 +49,31 @@ def test_image_surface_does_not_claim_mcp_context():
     assert report.has_mcp_context is False
 
 
+def test_other_surface_does_not_claim_mcp_context():
+    project_server = MCPServer(
+        name="project:repo",
+        command="project",
+        args=["/workspace"],
+        transport=TransportType.STDIO,
+        surface=ServerSurface.OTHER,
+        packages=[Package(name="requests", version="2.33.0", ecosystem="pypi")],
+    )
+    report = AIBOMReport(
+        agents=[
+            Agent(
+                name="project:repo",
+                agent_type=AgentType.CUSTOM,
+                config_path="/workspace",
+                source="project",
+                mcp_servers=[project_server],
+            )
+        ],
+        generated_at=datetime(2026, 3, 25, 12, 0, 0),
+    )
+
+    assert report.has_mcp_context is False
+
+
 def test_json_inventory_snapshot_preserves_server_surface():
     image_server = MCPServer(
         name="agentbom/agent-bom:latest",

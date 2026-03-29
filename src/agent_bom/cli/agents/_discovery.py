@@ -571,7 +571,7 @@ def run_local_discovery(
 
     # Step 1d4: Project package scan
     if not skill_only and project and not images and not code_paths and not sbom_file:
-        from agent_bom.models import Agent, AgentType, MCPServer, TransportType
+        from agent_bom.models import Agent, AgentType, MCPServer, ServerSurface, TransportType
         from agent_bom.parsers import scan_project_directory
 
         proj_root = Path(project)
@@ -594,6 +594,7 @@ def run_local_discovery(
                     command="project",
                     args=[str(manifest_dir_resolved)],
                     transport=TransportType.STDIO,
+                    surface=ServerSurface.OTHER,
                     packages=pkgs,
                 )
                 proj_servers.append(proj_server)

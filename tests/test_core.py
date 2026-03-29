@@ -3038,6 +3038,59 @@ def test_json_framework_empty_when_no_findings():
     assert all(e["triggered"] is False for e in summary["mitre_atlas"])
 
 
+def test_json_blast_radius_includes_explicit_package_fields(sample_report):
+    """Blast radius JSON should expose package fields directly for downstream consumers."""
+    data = to_json(sample_report)
+    item = data["blast_radius"][0]
+    assert item["package_name"] == sample_report.blast_radii[0].package.name
+    assert item["package_version"] == sample_report.blast_radii[0].package.version
+    assert item["package_stable_id"] == sample_report.blast_radii[0].package.stable_id
+
+
+def test_json_framework_summary_uses_vuln_level_tags_when_blast_tags_empty():
+    """Structured outputs should stay truthful even if only vuln-level tags are populated."""
+    from agent_bom.models import Package, Severity, Vulnerability
+    from agent_bom.vuln_compliance import tag_vulnerability
+
+    pkg = Package(name="langchain", version="0.1.0", ecosystem="pypi")
+    vuln = Vulnerability(id="CVE-2026-0001", summary="demo", severity=Severity.HIGH)
+    vuln.compliance_tags = tag_vulnerability(vuln, pkg)
+    br = BlastRadius(
+        vulnerability=vuln,
+        package=pkg,
+        affected_servers=[],
+        affected_agents=[],
+        exposed_credentials=[],
+        exposed_tools=[],
+    )
+    report = AIBOMReport(agents=[], blast_radii=[br])
+    data = to_json(report)
+    summary = data["threat_framework_summary"]
+    assert summary["total_owasp_triggered"] > 0
+    assert summary["total_atlas_triggered"] > 0
+
+
+def test_scan_agents_populates_intrinsic_framework_tags_without_compliance_flag(monkeypatch):
+    """Default scan output should still carry intrinsic framework tags."""
+    from agent_bom.models import Agent, AgentType, MCPServer, Package, Severity, Vulnerability
+    from agent_bom.scanners import scan_agents_sync
+
+    async def _seeded_scan(packages, resolve_transitive=False):
+        return sum(len(pkg.vulnerabilities) for pkg in packages)
+
+    monkeypatch.setattr("agent_bom.scanners.scan_packages", _seeded_scan)
+
+    vuln = Vulnerability(id="CVE-2026-0002", summary="demo", severity=Severity.HIGH)
+    pkg = Package(name="langchain", version="0.1.0", ecosystem="pypi", vulnerabilities=[vuln])
+    server = MCPServer(name="srv", command="python", packages=[pkg])
+    agent = Agent(name="agt", agent_type=AgentType.CUSTOM, config_path="/tmp", mcp_servers=[server])
+
+    blast_radii = scan_agents_sync([agent], compliance_enabled=False)
+    assert blast_radii
+    assert blast_radii[0].owasp_tags
+    assert blast_radii[0].nist_csf_tags
+
+
 def test_print_threat_frameworks_no_crash(sample_report):
     """print_threat_frameworks() runs without crashing on a real report."""
     from agent_bom.atlas import tag_blast_radius as tag_atlas

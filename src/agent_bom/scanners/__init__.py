@@ -15,6 +15,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from agent_bom.atlas import tag_blast_radius as tag_atlas_techniques
 from agent_bom.cis_controls import tag_blast_radius as tag_cis_controls
 from agent_bom.cmmc import tag_blast_radius as tag_cmmc
+from agent_bom.compliance_utils import apply_effective_blast_radius_tags
 from agent_bom.config import (
     SCANNER_BATCH_DELAY as BATCH_DELAY_SECONDS,
 )
@@ -67,7 +68,9 @@ def set_offline_mode(value: bool) -> None:
 # packages not found in the DB. Set automatically when DB is <24h old.
 prefer_local_db: bool = False
 
-# When False, skip compliance framework tagging on findings (faster for individual scans)
+# CVE-level framework tags are always computed so structured outputs stay
+# truthful by default. The CLI --compliance flag still controls whether
+# context-heavy compliance views are rendered explicitly.
 compliance_mode: bool = False
 
 OSV_API_URL = "https://api.osv.dev/v1"
@@ -1171,8 +1174,7 @@ def _scan_packages_local_db(packages: list[Package]) -> tuple[int, set[str]]:
                     pkg.vulnerabilities.extend(new_vulns)
                     total += len(new_vulns)
                     for v in new_vulns:
-                        if compliance_mode:
-                            v.compliance_tags = _tag_vuln(v, pkg)
+                        v.compliance_tags = _tag_vuln(v, pkg)
                     flag_malicious_from_vulns(pkg)
     finally:
         conn.close()
@@ -1236,8 +1238,7 @@ def _scan_packages_local_db_batch(
             pkg.vulnerabilities.extend(new_vulns)
             total += len(new_vulns)
             for v in new_vulns:
-                if compliance_mode:
-                    v.compliance_tags = _tag_vuln(v, pkg)
+                v.compliance_tags = _tag_vuln(v, pkg)
             flag_malicious_from_vulns(pkg)
 
     return total
@@ -1437,8 +1438,7 @@ async def scan_packages(packages: list[Package], *, resolve_transitive: bool = F
             total_vulns += len(merged)
             # Tag each CVE with compliance framework codes (pre-enrichment)
             for v in merged:
-                if compliance_mode:
-                    v.compliance_tags = _tag_vuln(v, pkg)
+                v.compliance_tags = _tag_vuln(v, pkg)
             # Flag packages with MAL- prefixed vulnerability IDs as malicious
             flag_malicious_from_vulns(pkg)
 
@@ -1448,8 +1448,7 @@ async def scan_packages(packages: list[Package], *, resolve_transitive: bool = F
             continue  # already processed above
         for v in pkg.vulnerabilities:
             if not v.compliance_tags:
-                if compliance_mode:
-                    v.compliance_tags = _tag_vuln(v, pkg)
+                v.compliance_tags = _tag_vuln(v, pkg)
 
     # Supplemental: check NVIDIA advisories for all AI framework packages.
     # nvidia_advisory.py maps NVIDIA CSAF products to bundling frameworks (torch,
@@ -1643,6 +1642,9 @@ async def scan_agents(agents: list[Agent], *, compliance_enabled: bool = False, 
             ai_risk_context = None
 
         for vuln in pkg.vulnerabilities:
+            if not vuln.compliance_tags:
+                vuln.compliance_tags = _tag_vuln(vuln, pkg)
+
             # CWE-aware filtering: only expose credentials/tools the vuln
             # type can realistically reach. A DoS (CWE-400) doesn't steal
             # DATABASE_URL. An RCE (CWE-94) does.
@@ -1685,7 +1687,8 @@ async def scan_agents(agents: list[Agent], *, compliance_enabled: bool = False, 
                 attack_vector_summary=attack_summary,
             )
             br.calculate_risk_score()
-            # Compliance tagging — opt-in via --compliance flag
+            # Context-aware tagging remains opt-in for explicit compliance
+            # views, but effective framework tags are always materialized.
             if compliance_enabled:
                 br.owasp_tags = tag_blast_radius(br)
                 br.atlas_tags = tag_atlas_techniques(br)
@@ -1701,6 +1704,7 @@ async def scan_agents(agents: list[Agent], *, compliance_enabled: bool = False, 
                 br.cmmc_tags = tag_cmmc(br)
                 br.nist_800_53_tags = tag_nist_800_53(br)
                 br.fedramp_tags = tag_fedramp(br)
+            apply_effective_blast_radius_tags(br)
             blast_radii.append(br)
 
     # Sort by risk score descending
@@ -1726,10 +1730,11 @@ async def scan_agents_with_enrichment(
     agents: list[Agent],
     nvd_api_key: Optional[str] = None,
     enable_enrichment: bool = True,
+    compliance_enabled: bool = False,
 ) -> list[BlastRadius]:
     """Scan agents and enrich vulnerabilities with NVD/EPSS/KEV data."""
     # First, do normal OSV scan
-    blast_radii = await scan_agents(agents)
+    blast_radii = await scan_agents(agents, compliance_enabled=compliance_enabled)
 
     # Then enrich with external data
     if enable_enrichment and blast_radii:
@@ -1756,8 +1761,7 @@ async def scan_agents_with_enrichment(
                 for server in agent.mcp_servers:
                     for pkg in server.packages:
                         for v in pkg.vulnerabilities:
-                            if compliance_mode:
-                                v.compliance_tags = _tag_vuln(v, pkg)
+                            v.compliance_tags = _tag_vuln(v, pkg)
 
         # Scorecard enrichment — adds supply-chain quality signal
         try:
@@ -1781,6 +1785,7 @@ async def scan_agents_with_enrichment(
         # Recalculate blast radius with all enriched data
         for br in blast_radii:
             br.calculate_risk_score()
+            apply_effective_blast_radius_tags(br)
 
         # Re-sort by updated risk scores
         blast_radii.sort(key=lambda br: br.risk_score, reverse=True)
@@ -1912,7 +1917,14 @@ def scan_agents_sync(
 ) -> list[BlastRadius]:
     """Synchronous wrapper for scan_agents."""
     if enable_enrichment:
-        blast_radii = asyncio.run(scan_agents_with_enrichment(agents, nvd_api_key, enable_enrichment))
+        blast_radii = asyncio.run(
+            scan_agents_with_enrichment(
+                agents,
+                nvd_api_key,
+                enable_enrichment,
+                compliance_enabled=compliance_enabled,
+            )
+        )
     else:
         blast_radii = asyncio.run(scan_agents(agents, compliance_enabled=compliance_enabled, resolve_transitive=resolve_transitive))
     if blast_radius_depth > 1:

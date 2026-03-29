@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from agent_bom.compliance_utils import effective_blast_radius_tags
 from agent_bom.models import AIBOMReport, BlastRadius
 
 
@@ -103,25 +104,26 @@ def _build_framework_summary(blast_radii: list[BlastRadius]) -> dict:
     soc2_counts: Counter[str] = Counter()
     cis_counts: Counter[str] = Counter()
     for br in blast_radii:
-        for tag in br.owasp_tags:
+        tags = effective_blast_radius_tags(br)
+        for tag in tags["owasp_tags"]:
             owasp_counts[tag] += 1
-        for tag in br.atlas_tags:
+        for tag in tags["atlas_tags"]:
             atlas_counts[tag] += 1
-        for tag in br.nist_ai_rmf_tags:
+        for tag in tags["nist_ai_rmf_tags"]:
             nist_counts[tag] += 1
-        for tag in br.owasp_mcp_tags:
+        for tag in tags["owasp_mcp_tags"]:
             owasp_mcp_counts[tag] += 1
-        for tag in br.owasp_agentic_tags:
+        for tag in tags["owasp_agentic_tags"]:
             owasp_agentic_counts[tag] += 1
-        for tag in br.eu_ai_act_tags:
+        for tag in tags["eu_ai_act_tags"]:
             eu_ai_act_counts[tag] += 1
-        for tag in br.nist_csf_tags:
+        for tag in tags["nist_csf_tags"]:
             nist_csf_counts[tag] += 1
-        for tag in br.iso_27001_tags:
+        for tag in tags["iso_27001_tags"]:
             iso_27001_counts[tag] += 1
-        for tag in br.soc2_tags:
+        for tag in tags["soc2_tags"]:
             soc2_counts[tag] += 1
-        for tag in br.cis_tags:
+        for tag in tags["cis_tags"]:
             cis_counts[tag] += 1
 
     return {
@@ -564,6 +566,8 @@ def to_json(report: AIBOMReport) -> dict:
         ],
         "blast_radius": [
             {
+                **({"package_name": br.package.name, "package_version": br.package.version, "package_stable_id": br.package.stable_id}),
+                **effective_blast_radius_tags(br),
                 "risk_score": br.risk_score,
                 "reachability": br.reachability,
                 "actionable": br.is_actionable,
@@ -593,20 +597,6 @@ def to_json(report: AIBOMReport) -> dict:
                 "cvss_severity": getattr(br.vulnerability, "cvss_severity", None),
                 "ai_risk_context": br.ai_risk_context,
                 "ai_summary": br.ai_summary,
-                "owasp_tags": br.owasp_tags,
-                "atlas_tags": br.atlas_tags,
-                "attack_tags": getattr(br, "attack_tags", []),
-                "nist_ai_rmf_tags": br.nist_ai_rmf_tags,
-                "owasp_mcp_tags": br.owasp_mcp_tags,
-                "owasp_agentic_tags": br.owasp_agentic_tags,
-                "eu_ai_act_tags": br.eu_ai_act_tags,
-                "nist_csf_tags": br.nist_csf_tags,
-                "iso_27001_tags": br.iso_27001_tags,
-                "soc2_tags": br.soc2_tags,
-                "cis_tags": br.cis_tags,
-                "cmmc_tags": br.cmmc_tags,
-                "nist_800_53_tags": br.nist_800_53_tags,
-                "fedramp_tags": br.fedramp_tags,
                 "hop_depth": getattr(br, "hop_depth", 1),
                 "delegation_chain": getattr(br, "delegation_chain", []),
                 "transitive_agents": getattr(br, "transitive_agents", []),

@@ -1,4 +1,4 @@
-"""Runtime tools — runtime_correlate, verify, where, inventory, skill_trust implementations."""
+"""Runtime tools — runtime correlation, verification, inventory, and skill scanning."""
 
 from __future__ import annotations
 
@@ -258,9 +258,7 @@ def skill_trust_impl(
 ) -> str:
     """Implementation of the skill_trust tool."""
     try:
-        from agent_bom.parsers.skill_audit import audit_skill_result
-        from agent_bom.parsers.skills import parse_skill_file
-        from agent_bom.parsers.trust_assessment import assess_trust
+        from agent_bom.skills_service import scan_skill_targets
 
         try:
             p = _safe_path(skill_path)
@@ -272,39 +270,65 @@ def skill_trust_impl(
         if p.stat().st_size > _MAX_FILE_SIZE:
             return json.dumps({"error": f"File too large ({p.stat().st_size} bytes, max {_MAX_FILE_SIZE})"})
 
-        scan = parse_skill_file(p)
-        audit = audit_skill_result(scan)
-        trust = assess_trust(scan, audit)
-
-        result = trust.to_dict()
-
-        # Instruction file provenance check (Sigstore)
-        try:
-            from agent_bom.integrity import verify_instruction_file
-
-            provenance = verify_instruction_file(p)
-            if provenance.verified:
-                result["provenance"] = {
-                    "status": "verified",
-                    "signer": provenance.signer_identity,
-                    "rekor_index": provenance.rekor_log_index,
-                    "sha256": provenance.sha256,
-                }
-            elif provenance.has_sigstore_bundle:
-                result["provenance"] = {
-                    "status": "bundle_found_but_invalid",
-                    "reason": provenance.reason,
-                    "sha256": provenance.sha256,
-                }
-            else:
-                result["provenance"] = {
-                    "status": "unsigned",
-                    "sha256": provenance.sha256,
-                }
-        except Exception:
-            result["provenance"] = {"status": "check_failed"}
+        file_report = scan_skill_targets([p]).files[0]
+        result = file_report.trust.to_dict()
+        result["provenance"] = file_report.provenance
+        result["audit"] = {
+            "passed": file_report.audit.passed,
+            "findings": len(file_report.audit.findings),
+        }
 
         return _truncate_response(json.dumps(result, indent=2))
+    except Exception as exc:
+        logger.exception("MCP tool error")
+        return json.dumps({"error": sanitize_error(exc)})
+
+
+def skill_scan_impl(
+    *,
+    path: str,
+    _safe_path,
+    _truncate_response,
+) -> str:
+    """Implementation of the skill_scan tool."""
+    try:
+        from agent_bom.skills_service import scan_skill_targets
+
+        try:
+            target = _safe_path(path)
+        except ValueError as exc:
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
+
+        report = scan_skill_targets([target]).to_dict()
+        if report["summary"]["files_scanned"] == 0:
+            return json.dumps({"status": "no_skill_files_found", "path": str(target)})
+        return _truncate_response(json.dumps(report, indent=2))
+    except Exception as exc:
+        logger.exception("MCP tool error")
+        return json.dumps({"error": sanitize_error(exc)})
+
+
+def skill_verify_impl(
+    *,
+    path: str,
+    _safe_path,
+    _truncate_response,
+) -> str:
+    """Implementation of the skill_verify tool."""
+    try:
+        from agent_bom.skills_service import verify_skill_targets
+
+        try:
+            target = _safe_path(path)
+        except ValueError as exc:
+            logger.exception("MCP tool error")
+            return json.dumps({"error": sanitize_error(exc)})
+
+        results = verify_skill_targets([target])
+        if not results:
+            return json.dumps({"status": "no_skill_files_found", "path": str(target)})
+        return _truncate_response(json.dumps({"files": results}, indent=2))
     except Exception as exc:
         logger.exception("MCP tool error")
         return json.dumps({"error": sanitize_error(exc)})

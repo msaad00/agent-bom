@@ -601,11 +601,13 @@ def test_trust_assessment_absent_when_no_skill():
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def test_mcp_skill_trust_tool_exists():
-    """skill_trust tool is registered on the MCP server."""
+def test_mcp_skill_tools_exist():
+    """Skill scan, verify, and trust tools are registered on the MCP server."""
     from agent_bom.mcp_server import _SERVER_CARD_TOOLS
 
     tool_names = [t["name"] for t in _SERVER_CARD_TOOLS]
+    assert "skill_scan" in tool_names
+    assert "skill_verify" in tool_names
     assert "skill_trust" in tool_names
 
 

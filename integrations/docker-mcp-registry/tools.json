@@ -64,6 +64,20 @@
     ]
   },
   {
+    "name": "skill_scan",
+    "description": "Scan instruction files such as CLAUDE.md, AGENTS.md, .cursorrules, and skills/*.md for package refs, MCP servers, trust verdicts, and findings.",
+    "arguments": [
+      {"name": "path", "type": "string", "desc": "Path to a skill/instruction file or directory to scan"}
+    ]
+  },
+  {
+    "name": "skill_verify",
+    "description": "Verify Sigstore provenance for instruction and skill files.",
+    "arguments": [
+      {"name": "path", "type": "string", "desc": "Path to a skill/instruction file or directory to verify"}
+    ]
+  },
+  {
     "name": "skill_trust",
     "description": "Assess the trust level of a SKILL (AI agent skill/extension) — checks provenance, permissions, and risk.",
     "arguments": [

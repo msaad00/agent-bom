@@ -2054,38 +2054,15 @@ def scan(
             _breakdown = " · ".join(_timing_parts)
             con.print(f"  [dim]{_breakdown}[/dim]")
 
-        # Next-steps suggestions based on findings
-        _next_steps: list[str] = []
+        # Concise next-step hint (1-2 lines max)
         if blast_radii:
-            _crit_count = sum(1 for br in blast_radii if br.vulnerability.severity.value == "critical")
-            _high_count = sum(1 for br in blast_radii if br.vulnerability.severity.value == "high")
-            _kev_count = sum(1 for br in blast_radii if getattr(br.vulnerability, "kev", False))
             _fixable = sum(1 for br in blast_radii if br.vulnerability.fixed_version)
-
-            if _crit_count or _high_count:
-                _next_steps.append(
-                    f"[red bold]→[/red bold] {_crit_count} critical + {_high_count} high — "
-                    "run [bold]agent-bom scan --fail-on critical[/bold] in CI to gate deployments"
-                )
             if _fixable:
-                _next_steps.append(
-                    f"[green]→[/green] {_fixable} fixable — run [bold]agent-bom scan --remediate plan.md[/bold] for upgrade steps"
+                con.print(
+                    f"\n  [green]→[/green] {_fixable} fixable — [bold]-f html[/bold] for full report · [bold]--verbose[/bold] for details"
                 )
-            if not enrich:
-                _next_steps.append("[cyan]→[/cyan] run with [bold]--enrich[/bold] for EPSS exploit probability + KEV + CVSS v4 data")
-            _next_steps.append(
-                "[blue]→[/blue] export: [bold]-f html[/bold] (interactive report) · "
-                "[bold]-f sarif[/bold] (GitHub Security) · [bold]-f cyclonedx[/bold] (SBOM)"
-            )
         elif not no_scan and total_packages > 0:
-            _next_steps.append("[green]→[/green] no vulnerabilities found — your supply chain looks clean")
-            _next_steps.append("[cyan]→[/cyan] run [bold]agent-bom scan --enrich --transitive[/bold] for deeper analysis")
-
-        if _next_steps:
-            con.print()
-            con.print("  [bold]Next steps:[/bold]")
-            for _ns in _next_steps:
-                con.print(f"    {_ns}")
+            con.print("\n  [green]→[/green] no vulnerabilities found — supply chain looks clean")
 
     # Step 8: Enterprise integrations + SIEM + policy (post-scan)
     run_integrations(

@@ -83,15 +83,15 @@ def run_local_discovery(
             label = "stdin"
         elif "agent-bom-demo-" in inventory:
             label = "bundled demo inventory"
+        elif "agent-bom-self-scan" in inventory:
+            label = "self-scan"
         else:
             label = inventory
-        con.print(f"\n[bold blue]Loading inventory from {label}...[/bold blue]\n")
-
         from agent_bom.inventory import load_inventory
 
         inventory_data = load_inventory(inventory)
         ctx.agents = _build_agents_from_inventory(inventory_data, inventory)
-        con.print(f"  [green]✓[/green] Loaded {len(ctx.agents)} agent(s) from inventory")
+        con.print(f"\n  [green]✓[/green] {len(ctx.agents)} agent(s) from {label}")
     elif config_dir:
         con.print(f"\n[bold blue]Scanning config directory: {config_dir}...[/bold blue]\n")
         with con.status("[bold]Discovering agents and MCP servers...[/bold]", spinner="dots"):

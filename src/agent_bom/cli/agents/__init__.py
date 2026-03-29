@@ -908,7 +908,7 @@ def scan(
                 server.packages = merged
 
                 total_packages += len(server.packages)
-                if server.packages:
+                if verbose and server.packages:
                     direct_count = sum(1 for p in server.packages if p.is_direct)
                     transitive_count = len(server.packages) - direct_count
                     transitive_str = f" ({transitive_count} transitive)" if transitive_count > 0 else ""
@@ -917,10 +917,15 @@ def scan(
                         f"  [green]✓[/green] {server.name}: {len(server.packages)} package(s) "
                         f"({server.packages[0].ecosystem}){transitive_str}{pre_str}"
                     )
-                else:
-                    con.print(f"  [dim]  {server.name}: no local packages found[/dim]")
 
-        con.print(f"\n  [bold]{total_packages} total packages.[/bold]")
+        # Compact summary (non-verbose shows one line, verbose shows per-server)
+        eco_counts: dict[str, int] = {}
+        for a in ctx.agents:
+            for s in a.mcp_servers:
+                for p in s.packages:
+                    eco_counts[p.ecosystem] = eco_counts.get(p.ecosystem, 0) + 1
+        eco_str = ", ".join(f"{c} {e}" for e, c in sorted(eco_counts.items(), key=lambda x: -x[1]))
+        con.print(f"\n  [bold]{total_packages}[/bold] packages ({eco_str})" if eco_str else f"\n  [bold]{total_packages}[/bold] packages")
 
         # Step 2a: deps.dev transitive resolution + license enrichment (--deps-dev)
         if deps_dev:

@@ -198,12 +198,14 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bo
     if not quiet:
         from rich.table import Table
 
+        from agent_bom.cwe_impact import classify_cwe_impact
+
         table = Table(title=f"{name}@{version} — {len(vulns)} vulnerability/ies found")
         table.add_column("Sev", width=10, no_wrap=True)
         table.add_column("ID", width=20, no_wrap=True)
-        table.add_column("CVSS", width=5, justify="right")
+        table.add_column("Impact", width=14, no_wrap=True)
         table.add_column("Fix", width=10)
-        table.add_column("Summary", max_width=42)
+        table.add_column("Summary", max_width=38)
 
         severity_styles = {
             "critical": "red bold",
@@ -211,21 +213,37 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bo
             "medium": "yellow",
             "low": "dim",
         }
+        _impact_styles = {
+            "code-execution": "red",
+            "credential-access": "red",
+            "file-access": "#e67e22",
+            "injection": "#e67e22",
+            "ssrf": "#e67e22",
+            "data-leak": "yellow",
+            "availability": "dim",
+            "client-side": "dim",
+        }
         for v in vulns:
             sev = v.severity.value.lower()
             style = severity_styles.get(sev, "white")
             fix_display = f"[green]{v.fixed_version}[/green]" if v.fixed_version else "[dim]no fix[/dim]"
+            # CWE impact category
+            impact = classify_cwe_impact(v.cwe_ids)
+            impact_style = _impact_styles.get(impact, "dim")
+            impact_label = impact.replace("-", " ").replace("code execution", "RCE")
+            # KEV badge
+            kev = " [red bold]KEV[/red bold]" if v.is_kev else ""
             # Concise summary — truncate to keep table compact
             summary_text = v.summary or ""
             if not summary_text or summary_text == "No description available":
                 aliases_str = ", ".join(v.aliases[:3]) if v.aliases else ""
                 summary_text = f"[dim]See {aliases_str}[/dim]" if aliases_str else "[dim]—[/dim]"
-            elif len(summary_text) > 55:
-                summary_text = summary_text[:52] + "..."
+            elif len(summary_text) > 50:
+                summary_text = summary_text[:47] + "..."
             table.add_row(
-                f"[{style}]{v.severity.value.upper()}[/{style}]",
+                f"[{style}]{v.severity.value.upper()}[/{style}]{kev}",
                 v.id,
-                f"{v.cvss_score:.1f}" if v.cvss_score else "—",
+                f"[{impact_style}]{impact_label}[/{impact_style}]",
                 fix_display,
                 summary_text,
             )

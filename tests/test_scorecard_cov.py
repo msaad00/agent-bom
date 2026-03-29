@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from agent_bom.scorecard import (
+    enrich_packages_with_scorecard_stats,
     enrich_packages_with_scorecard,
     extract_github_repo,
     extract_github_repo_from_purl,
@@ -146,3 +147,36 @@ class TestEnrichPackagesWithScorecard:
         with patch("agent_bom.scorecard.fetch_scorecard", return_value=None):
             count = await enrich_packages_with_scorecard([pkg])
             assert count == 0
+
+    @pytest.mark.asyncio
+    async def test_stats_uses_repository_url_and_sets_enriched_state(self):
+        from agent_bom.models import Package
+
+        pkg = Package(name="express", version="4.18.2", ecosystem="npm", repository_url="https://github.com/expressjs/express")
+        with patch("agent_bom.scorecard.fetch_scorecard", return_value={"score": 7.5, "checks": {"Maintained": 10}}):
+            stats = await enrich_packages_with_scorecard_stats([pkg])
+            assert stats.eligible_packages == 1
+            assert stats.enriched_packages == 1
+            assert pkg.scorecard_lookup_state == "enriched"
+            assert pkg.scorecard_repo == "expressjs/express"
+
+    @pytest.mark.asyncio
+    async def test_stats_marks_unresolved_when_repo_missing(self):
+        from agent_bom.models import Package
+
+        pkg = Package(name="pkg", version="1.0.0", ecosystem="pypi")
+        stats = await enrich_packages_with_scorecard_stats([pkg])
+        assert stats.eligible_packages == 0
+        assert stats.unresolved_packages == 1
+        assert pkg.scorecard_lookup_state == "unresolved"
+
+    @pytest.mark.asyncio
+    async def test_stats_marks_failed_when_lookup_fails(self):
+        from agent_bom.models import Package
+
+        pkg = Package(name="express", version="4.18.2", ecosystem="npm", homepage="https://github.com/expressjs/express")
+        with patch("agent_bom.scorecard.fetch_scorecard", return_value=None):
+            stats = await enrich_packages_with_scorecard_stats([pkg])
+            assert stats.eligible_packages == 1
+            assert stats.failed_packages == 1
+            assert pkg.scorecard_lookup_state == "failed"

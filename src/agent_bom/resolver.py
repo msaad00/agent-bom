@@ -342,6 +342,32 @@ async def enrich_supply_chain_metadata(
                 await resolve_npm_supply_chain(pkg, client)
             elif pkg.ecosystem == "pypi":
                 await resolve_pypi_supply_chain(pkg, client)
+
+            # Fallback: deps.dev often still provides homepage/source links when
+            # registry metadata is unavailable or rate-limited.
+            if not (pkg.description or pkg.homepage or pkg.repository_url):
+                try:
+                    from agent_bom.deps_dev import get_package_info
+
+                    info = await get_package_info(pkg.ecosystem, pkg.name, pkg.version, client)
+                    if info:
+                        links = info.get("links", [])
+                        for link in links:
+                            label = (link.get("label") or "").lower()
+                            url = link.get("url") or ""
+                            if not url:
+                                continue
+                            if "homepage" in label and not pkg.homepage:
+                                pkg.homepage = url
+                            elif ("source" in label or "repo" in label) and not pkg.repository_url:
+                                pkg.repository_url = url
+                        if not pkg.description:
+                            desc = info.get("description")
+                            if desc:
+                                pkg.description = desc[:300]
+                except Exception:  # noqa: BLE001
+                    pass
+
             if pkg.description or pkg.homepage or pkg.repository_url:
                 count += 1
         except Exception as exc:  # noqa: BLE001

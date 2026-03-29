@@ -722,6 +722,34 @@ class TestJSONOutputIntegration:
         sc = result["posture_scorecard"]
         assert sc["score"] < 100
 
+    def test_to_json_includes_scorecard_summary(self):
+        """to_json should include explicit Scorecard enrichment coverage."""
+        from agent_bom.output import to_json
+
+        pkg = _make_package()
+        pkg.repository_url = "https://github.com/example/repo"
+        server = _make_server(packages=[pkg])
+        agent = _make_agent(servers=[server])
+        agent.mcp_servers[0].packages[0].scorecard_lookup_state = "failed"
+        report = _make_report(agents=[agent])
+        result = to_json(report)
+        summary = result["scorecard_summary"]
+        assert summary["eligible_packages"] == 1
+        assert summary["failed_packages"] == 1
+
+    def test_posture_supply_chain_detail_explains_scorecard_coverage_state(self):
+        """Posture details should explain when Scorecard coverage is pending, not hide behind a neutral default."""
+        from agent_bom.posture import compute_posture_scorecard
+
+        pkg = _make_package()
+        pkg.homepage = "https://github.com/example/repo"
+        server = _make_server(packages=[pkg])
+        agent = _make_agent(servers=[server])
+        agent.mcp_servers[0].packages[0].scorecard_lookup_state = "failed"
+        report = _make_report(agents=[agent])
+        sc = compute_posture_scorecard(report)
+        assert "coverage pending" in sc.dimensions["supply_chain_quality"].details.lower()
+
     def test_to_json_incident_with_agents(self):
         """to_json incidents should list agents with vulns."""
         from agent_bom.output import to_json

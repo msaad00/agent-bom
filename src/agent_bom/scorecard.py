@@ -10,6 +10,7 @@ API: https://api.securityscorecards.dev
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
 import re
 from typing import TYPE_CHECKING, Optional
@@ -28,6 +29,30 @@ _scorecard_cache: dict[str, Optional[dict]] = {}
 
 # Pattern to extract GitHub owner/repo from various URL formats
 _GITHUB_REPO_PATTERN = re.compile(r"(?:https?://)?github\.com/([^/]+/[^/#?]+?)(?:\.git)?(?:[/#?]|$)")
+
+
+@dataclass
+class ScorecardEnrichmentStats:
+    """Summary of Scorecard enrichment coverage for a package set."""
+
+    total_packages: int = 0
+    unique_packages: int = 0
+    eligible_packages: int = 0
+    attempted_packages: int = 0
+    enriched_packages: int = 0
+    unresolved_packages: int = 0
+    failed_packages: int = 0
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            "total_packages": self.total_packages,
+            "unique_packages": self.unique_packages,
+            "eligible_packages": self.eligible_packages,
+            "attempted_packages": self.attempted_packages,
+            "enriched_packages": self.enriched_packages,
+            "unresolved_packages": self.unresolved_packages,
+            "failed_packages": self.failed_packages,
+        }
 
 
 def extract_github_repo(url: str) -> Optional[str]:
@@ -57,13 +82,12 @@ def extract_github_repo_from_purl(purl: str) -> Optional[str]:
 
 def _repo_url_from_package(pkg: Package) -> Optional[str]:
     """Try to determine GitHub repo URL from package metadata."""
-    # Check source_repo field first (populated by registry lookup)
-    if pkg.source_repo:
-        repo = extract_github_repo(pkg.source_repo)
-        if repo:
-            return repo
+    for candidate in (pkg.source_repo, pkg.repository_url, pkg.homepage):
+        if candidate:
+            repo = extract_github_repo(candidate)
+            if repo:
+                return repo
 
-    # Check PURL for hints (some PURLs include qualifiers with repo info)
     if pkg.purl:
         repo = extract_github_repo_from_purl(pkg.purl)
         if repo:
@@ -115,6 +139,82 @@ async def fetch_scorecard(repo: str) -> Optional[dict]:
         return None
 
 
+def summarize_scorecard_coverage(packages: list[Package]) -> ScorecardEnrichmentStats:
+    """Summarize Scorecard coverage using current package metadata/state."""
+    stats = ScorecardEnrichmentStats(total_packages=len(packages))
+    seen_keys: set[str] = set()
+
+    for pkg in packages:
+        key = f"{pkg.ecosystem.lower()}:{pkg.name.lower()}@{pkg.version}"
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        stats.unique_packages += 1
+
+        repo = pkg.scorecard_repo or _repo_url_from_package(pkg)
+        if repo:
+            stats.eligible_packages += 1
+            stats.attempted_packages += 1
+
+        if pkg.scorecard_lookup_state == "enriched":
+            stats.enriched_packages += 1
+        elif pkg.scorecard_lookup_state == "failed":
+            stats.failed_packages += 1
+        elif pkg.scorecard_lookup_state == "unresolved" or not repo:
+            stats.unresolved_packages += 1
+        elif pkg.scorecard_score is not None:
+            stats.enriched_packages += 1
+        elif repo:
+            stats.failed_packages += 1
+        else:
+            stats.unresolved_packages += 1
+
+    return stats
+
+
+async def enrich_packages_with_scorecard_stats(packages: list[Package]) -> ScorecardEnrichmentStats:
+    """Enrich packages with OpenSSF Scorecard and return coverage stats."""
+    stats = ScorecardEnrichmentStats(total_packages=len(packages))
+    grouped: dict[str, list[Package]] = {}
+
+    for pkg in packages:
+        key = f"{pkg.ecosystem.lower()}:{pkg.name.lower()}@{pkg.version}"
+        grouped.setdefault(key, []).append(pkg)
+
+    stats.unique_packages = len(grouped)
+
+    for group in grouped.values():
+        leader = group[0]
+        repo = _repo_url_from_package(leader)
+        if not repo:
+            stats.unresolved_packages += 1
+            for pkg in group:
+                pkg.scorecard_repo = None
+                pkg.scorecard_lookup_state = "unresolved"
+                pkg.scorecard_lookup_reason = "no_resolvable_github_repo"
+            continue
+
+        stats.eligible_packages += 1
+        stats.attempted_packages += 1
+        data = await fetch_scorecard(repo)
+        if data:
+            stats.enriched_packages += 1
+            for pkg in group:
+                pkg.scorecard_repo = repo
+                pkg.scorecard_score = data["score"]
+                pkg.scorecard_checks = data.get("checks", {})
+                pkg.scorecard_lookup_state = "enriched"
+                pkg.scorecard_lookup_reason = None
+        else:
+            stats.failed_packages += 1
+            for pkg in group:
+                pkg.scorecard_repo = repo
+                pkg.scorecard_lookup_state = "failed"
+                pkg.scorecard_lookup_reason = "scorecard_lookup_failed"
+
+    return stats
+
+
 async def enrich_packages_with_scorecard(packages: list[Package]) -> int:
     """Enrich packages with OpenSSF Scorecard data.
 
@@ -123,16 +223,5 @@ async def enrich_packages_with_scorecard(packages: list[Package]) -> int:
 
     Returns the number of packages enriched.
     """
-    enriched = 0
-    for pkg in packages:
-        repo = _repo_url_from_package(pkg)
-        if not repo:
-            continue
-
-        data = await fetch_scorecard(repo)
-        if data:
-            pkg.scorecard_score = data["score"]
-            pkg.scorecard_checks = data.get("checks", {})
-            enriched += 1
-
-    return enriched
+    stats = await enrich_packages_with_scorecard_stats(packages)
+    return stats.enriched_packages

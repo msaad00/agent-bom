@@ -80,10 +80,14 @@ async def scan_impl(
         # OpenSSF Scorecard enrichment
         if scorecard:
             try:
+                from agent_bom.http_client import create_client
+                from agent_bom.resolver import enrich_supply_chain_metadata
                 from agent_bom.scorecard import enrich_packages_with_scorecard
 
                 all_pkgs = [p for a in agents for s in a.mcp_servers for p in s.packages]
                 if all_pkgs:
+                    async with create_client(timeout=15.0) as client:
+                        await enrich_supply_chain_metadata(all_pkgs, client)
                     await enrich_packages_with_scorecard(all_pkgs)
             except Exception as exc:
                 logger.debug("Scorecard enrichment failed: %s", exc)

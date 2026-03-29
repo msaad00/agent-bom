@@ -76,6 +76,16 @@ def test_repo_from_purl_with_github():
     assert _repo_url_from_package(pkg) == "expressjs/express"
 
 
+def test_repo_from_repository_url():
+    pkg = Package(name="express", version="4.18.2", ecosystem="npm", repository_url="https://github.com/expressjs/express.git")
+    assert _repo_url_from_package(pkg) == "expressjs/express"
+
+
+def test_repo_from_homepage():
+    pkg = Package(name="express", version="4.18.2", ecosystem="npm", homepage="https://github.com/expressjs/express#readme")
+    assert _repo_url_from_package(pkg) == "expressjs/express"
+
+
 def test_repo_from_package_no_repo():
     pkg = Package(name="express", version="4.18.2", ecosystem="npm")
     assert _repo_url_from_package(pkg) is None

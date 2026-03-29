@@ -385,6 +385,13 @@ def _build_mcp_runtime_diff(report: AIBOMReport) -> dict | None:
                     "tools_removed": intro.get("tools_removed", []),
                     "resources_added": intro.get("resources_added", []),
                     "resources_removed": intro.get("resources_removed", []),
+                    "capability_risk_score": intro.get("capability_risk_score", 0.0),
+                    "capability_risk_level": intro.get("capability_risk_level", "low"),
+                    "capability_counts": intro.get("capability_counts", {}),
+                    "capability_tools": intro.get("capability_tools", {}),
+                    "dangerous_combinations": intro.get("dangerous_combinations", []),
+                    "risk_justification": intro.get("risk_justification", ""),
+                    "tool_risk_profiles": intro.get("tool_risk_profiles", []),
                     "tool_schema_findings": intro.get(
                         "tool_schema_findings",
                         sorted({finding for tool in server.tools for finding in tool.schema_findings}),
@@ -393,7 +400,11 @@ def _build_mcp_runtime_diff(report: AIBOMReport) -> dict | None:
                         "resource_findings",
                         sorted({finding for resource in server.resources for finding in resource.content_findings}),
                     ),
-                    "max_tool_risk_score": max((tool.risk_score for tool in server.tools), default=0),
+                    "max_tool_risk_score": max(
+                        [item.get("risk_score", 0) for item in intro.get("tool_risk_profiles", [])]
+                        or [tool.risk_score for tool in server.tools]
+                        or [0]
+                    ),
                     "max_resource_risk_score": max((resource.risk_score for resource in server.resources), default=0),
                     "runtime_used_tools": used_tools,
                     "observed_not_used_tools": sorted(observed_tools - set(used_tools)),

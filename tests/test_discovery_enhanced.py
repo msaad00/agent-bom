@@ -415,6 +415,13 @@ def test_json_includes_mcp_runtime_diff():
                     "tools_removed": [],
                     "resources_added": ["file:///workspace"],
                     "resources_removed": [],
+                    "capability_risk_score": 7.1,
+                    "capability_risk_level": "high",
+                    "capability_counts": {"write": 1},
+                    "capability_tools": {"write": ["write_file"]},
+                    "dangerous_combinations": ["Can write arbitrary files and execute commands — full system compromise possible"],
+                    "risk_justification": "Server has WRITE capabilities across 1 tool.",
+                    "tool_risk_profiles": [{"tool_name": "write_file", "risk_score": 7.5, "risk_level": "high"}],
                     "tool_schema_findings": ["write_file.path: filesystem-capability"],
                     "resource_findings": ["file:///workspace: mutable-resource"],
                     "has_drift": True,
@@ -432,7 +439,8 @@ def test_json_includes_mcp_runtime_diff():
     diff = data["mcp_runtime_diff"]["servers"][0]
     assert diff["configured_vs_observed_changed"] is True
     assert diff["runtime_used_tools"] == ["read_file"]
-    assert diff["max_tool_risk_score"] == 0
+    assert diff["max_tool_risk_score"] == 7.5
+    assert diff["capability_risk_level"] == "high"
 
 
 # ── CycloneDX output includes status ────────────────────────────────────────

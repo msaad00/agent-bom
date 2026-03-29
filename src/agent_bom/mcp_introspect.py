@@ -56,6 +56,13 @@ class ServerIntrospection:
     error: Optional[str] = None
     tool_schema_findings: list[str] = field(default_factory=list)
     resource_findings: list[str] = field(default_factory=list)
+    capability_risk_score: float = 0.0
+    capability_risk_level: str = "low"
+    capability_counts: dict[str, int] = field(default_factory=dict)
+    capability_tools: dict[str, list[str]] = field(default_factory=dict)
+    dangerous_combinations: list[str] = field(default_factory=list)
+    risk_justification: str = ""
+    tool_risk_profiles: list[dict] = field(default_factory=list)
 
     # Drift analysis
     tools_added: list[str] = field(default_factory=list)
@@ -74,6 +81,57 @@ class ServerIntrospection:
     @property
     def resource_count(self) -> int:
         return len(self.runtime_resources)
+
+    def to_dict(self, *, include_runtime_objects: bool = False) -> dict:
+        payload = {
+            "server_name": self.server_name,
+            "success": self.success,
+            "protocol_version": self.protocol_version,
+            "auth_mode": self.auth_mode,
+            "configured_fingerprint": self.configured_fingerprint,
+            "runtime_fingerprint": self.runtime_fingerprint,
+            "configured_tool_count": self.configured_tool_count,
+            "configured_resource_count": self.configured_resource_count,
+            "tool_count": self.tool_count,
+            "resource_count": self.resource_count,
+            "tools_added": self.tools_added,
+            "tools_removed": self.tools_removed,
+            "resources_added": self.resources_added,
+            "resources_removed": self.resources_removed,
+            "tool_schema_findings": self.tool_schema_findings,
+            "resource_findings": self.resource_findings,
+            "has_drift": self.has_drift,
+            "capability_risk_score": self.capability_risk_score,
+            "capability_risk_level": self.capability_risk_level,
+            "capability_counts": self.capability_counts,
+            "capability_tools": self.capability_tools,
+            "dangerous_combinations": self.dangerous_combinations,
+            "risk_justification": self.risk_justification,
+            "tool_risk_profiles": self.tool_risk_profiles,
+            "error": self.error,
+        }
+        if include_runtime_objects:
+            payload["runtime_tools"] = [
+                {
+                    "name": t.name,
+                    "description": t.description,
+                    "schema_findings": t.schema_findings,
+                    "risk_score": t.risk_score,
+                }
+                for t in self.runtime_tools
+            ]
+            payload["runtime_resources"] = [
+                {
+                    "uri": r.uri,
+                    "name": r.name,
+                    "description": r.description,
+                    "mime_type": r.mime_type,
+                    "content_findings": r.content_findings,
+                    "risk_score": r.risk_score,
+                }
+                for r in self.runtime_resources
+            ]
+        return payload
 
 
 @dataclass
@@ -182,6 +240,23 @@ def _lint_resource(resource: MCPResource) -> list[str]:
         findings.append(f"{resource.uri}: mutable-resource")
 
     return sorted(set(findings))
+
+
+def _apply_runtime_risk(server: MCPServer, result: ServerIntrospection) -> None:
+    """Compute capability-aware tool/server risk from live introspection data."""
+    from agent_bom.risk_analyzer import score_server_risk, score_tool_risk
+
+    tool_profiles = [score_tool_risk(tool).to_dict() for tool in result.runtime_tools]
+    tool_profiles.sort(key=lambda item: (item["risk_score"], item["tool_name"]), reverse=True)
+    result.tool_risk_profiles = tool_profiles
+
+    server_profile = score_server_risk(result.runtime_tools, credentials=server.credential_names)
+    result.capability_risk_score = round(server_profile.risk_score, 2)
+    result.capability_risk_level = server_profile.risk_level
+    result.capability_counts = server_profile.capabilities
+    result.capability_tools = server_profile.capability_tools
+    result.dangerous_combinations = server_profile.dangerous_combinations
+    result.risk_justification = server_profile.justification
 
 
 async def introspect_server(
@@ -347,6 +422,7 @@ async def _query_capabilities(
     result.tool_schema_findings = sorted({finding for tool in result.runtime_tools for finding in tool.schema_findings})
     result.resource_findings = sorted({finding for resource in result.runtime_resources for finding in resource.content_findings})
     result.runtime_fingerprint = _runtime_server_fingerprint(server, result.runtime_tools, result.runtime_resources)
+    _apply_runtime_risk(server, result)
 
     return result
 

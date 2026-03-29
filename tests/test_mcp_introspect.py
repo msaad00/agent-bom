@@ -45,7 +45,7 @@ def test_server_introspection_with_drift():
 
 
 def test_server_introspection_with_tools():
-    from agent_bom.mcp_introspect import ServerIntrospection
+    from agent_bom.mcp_introspect import ServerIntrospection, _apply_runtime_risk
 
     result = ServerIntrospection(
         server_name="test",
@@ -58,8 +58,18 @@ def test_server_introspection_with_tools():
             MCPResource(uri="file:///tmp", name="tmp", description="Temp dir"),
         ],
     )
+    server = MCPServer(
+        name="test",
+        command="npx",
+        transport=TransportType.STDIO,
+        env={"API_KEY": "secret"},
+    )
+    _apply_runtime_risk(server, result)
     assert result.tool_count == 2
     assert result.resource_count == 1
+    assert result.capability_risk_score > 0
+    assert result.tool_risk_profiles
+    assert "read" in result.capability_counts
 
 
 # ─── IntrospectionReport model ──────────────────────────────────────────────
@@ -188,6 +198,26 @@ def test_server_introspection_captures_fingerprint_and_auth_mode():
     assert result.auth_mode == "env-credentials"
     assert result.configured_fingerprint == server.fingerprint
     assert result.configured_tool_count == 1
+
+
+def test_server_introspection_to_dict_includes_capability_risk():
+    from agent_bom.mcp_introspect import ServerIntrospection
+
+    result = ServerIntrospection(
+        server_name="filesystem",
+        success=True,
+        capability_risk_score=7.5,
+        capability_risk_level="high",
+        capability_counts={"execute": 1},
+        capability_tools={"execute": ["run_command"]},
+        dangerous_combinations=["Can execute arbitrary code/commands"],
+        risk_justification="Server has EXECUTE capabilities.",
+        tool_risk_profiles=[{"tool_name": "run_command", "risk_score": 8.0, "risk_level": "high"}],
+    )
+    payload = result.to_dict()
+    assert payload["capability_risk_score"] == 7.5
+    assert payload["capability_risk_level"] == "high"
+    assert payload["tool_risk_profiles"][0]["tool_name"] == "run_command"
 
 
 def test_enrich_servers_no_duplicate_tools():

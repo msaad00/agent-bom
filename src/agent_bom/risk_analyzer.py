@@ -269,6 +269,75 @@ class ServerRiskProfile:
     credential_count: int = 0
 
 
+@dataclass
+class ToolRiskProfile:
+    """Risk profile for a single live-introspected MCP tool."""
+
+    tool_name: str
+    capabilities: list[str] = field(default_factory=list)
+    schema_findings: list[str] = field(default_factory=list)
+    schema_risk_score: int = 0
+    risk_score: float = 0.0
+    risk_level: str = "low"
+    justification: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "tool_name": self.tool_name,
+            "capabilities": self.capabilities,
+            "schema_findings": self.schema_findings,
+            "schema_risk_score": self.schema_risk_score,
+            "risk_score": self.risk_score,
+            "risk_level": self.risk_level,
+            "justification": self.justification,
+        }
+
+
+def score_tool_risk(tool: MCPTool) -> ToolRiskProfile:
+    """Compute a capability-aware risk profile for a single tool.
+
+    Blends semantic capability classification with schema-derived risk
+    findings from live introspection.
+    """
+    from agent_bom.config import (
+        SERVER_RISK_CRITICAL_THRESHOLD,
+        SERVER_RISK_HIGH_THRESHOLD,
+        SERVER_RISK_MEDIUM_THRESHOLD,
+    )
+
+    capabilities = classify_tool(tool.name, tool.description)
+    capability_weight = sum(CAPABILITY_WEIGHTS.get(cap, 1.0) for cap in capabilities)
+    schema_risk_score = tool.risk_score
+    risk_score = min(capability_weight + (schema_risk_score * 0.5), 10.0)
+
+    if risk_score >= SERVER_RISK_CRITICAL_THRESHOLD:
+        risk_level = "critical"
+    elif risk_score >= SERVER_RISK_HIGH_THRESHOLD:
+        risk_level = "high"
+    elif risk_score >= SERVER_RISK_MEDIUM_THRESHOLD:
+        risk_level = "medium"
+    else:
+        risk_level = "low"
+
+    parts: list[str] = []
+    if capabilities:
+        parts.append("Capabilities: " + ", ".join(cap.value.upper() for cap in capabilities) + ".")
+    if tool.schema_findings:
+        parts.append("Schema signals: " + ", ".join(tool.schema_findings[:3]) + ".")
+    if not parts:
+        parts.append("Minimal observed capability surface.")
+
+    return ToolRiskProfile(
+        tool_name=tool.name,
+        capabilities=[cap.value for cap in capabilities],
+        schema_findings=list(tool.schema_findings),
+        schema_risk_score=schema_risk_score,
+        risk_score=round(risk_score, 2),
+        risk_level=risk_level,
+        justification=" ".join(parts),
+    )
+
+
 def score_server_risk(
     tools: list[MCPTool],
     credentials: list[str] | None = None,

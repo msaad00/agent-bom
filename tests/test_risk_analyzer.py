@@ -5,6 +5,7 @@ from agent_bom.risk_analyzer import (
     ToolCapability,
     classify_tool,
     score_server_risk,
+    score_tool_risk,
 )
 
 # ── classify_tool tests ────────────────────────────────────────────────────
@@ -92,3 +93,17 @@ def test_justification_generated():
     profile = score_server_risk(tools)
     assert isinstance(profile.justification, str)
     assert len(profile.justification) > 0
+
+
+def test_score_tool_risk_from_live_capabilities():
+    """Live tool capability scoring should classify and score runtime tools."""
+    tool = MCPTool(
+        name="run_command",
+        description="Execute shell commands and fetch remote assets",
+        input_schema={"type": "object"},
+        schema_findings=["run_command.command: shell-execution-capability"],
+    )
+    profile = score_tool_risk(tool)
+    assert "execute" in profile.capabilities
+    assert profile.risk_level in ("high", "critical")
+    assert profile.risk_score > 0

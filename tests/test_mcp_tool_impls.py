@@ -840,6 +840,36 @@ def test_inventory_impl_exception():
     assert "error" in data
 
 
+def test_tool_risk_assessment_impl_success():
+    from agent_bom.mcp_introspect import IntrospectionReport, ServerIntrospection
+    from agent_bom.mcp_tools.runtime import tool_risk_assessment_impl
+
+    server = MagicMock()
+    server.name = "filesystem"
+    server.command = "npx"
+    server.transport.value = "stdio"
+    agent = MagicMock()
+    agent.mcp_servers = [server]
+
+    intro = ServerIntrospection(
+        server_name="filesystem",
+        success=True,
+        capability_risk_score=7.2,
+        capability_risk_level="high",
+        tool_risk_profiles=[{"tool_name": "write_file", "risk_score": 8.0, "risk_level": "high"}],
+    )
+    report = IntrospectionReport(results=[intro])
+
+    with (
+        patch("agent_bom.discovery.discover_all", return_value=[agent]),
+        patch("agent_bom.mcp_introspect.introspect_servers_sync", return_value=report),
+    ):
+        result = tool_risk_assessment_impl(config_path=None, timeout=5.0, _truncate_response=_trunc)
+    data = json.loads(result)
+    assert data["summary"]["total_servers"] == 1
+    assert data["servers"][0]["capability_risk_level"] == "high"
+
+
 # ---------------------------------------------------------------------------
 # cli/__init__.py — cli_main error path
 # ---------------------------------------------------------------------------

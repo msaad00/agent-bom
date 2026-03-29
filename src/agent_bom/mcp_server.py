@@ -4,7 +4,7 @@ Start with:
     agent-bom mcp server              # stdio (for Claude Desktop, Cursor, etc.)
     agent-bom mcp server --sse        # SSE transport (for remote clients)
 
-Tools (35):
+Tools (36):
     scan                — Full discovery → scan → output pipeline
     check               — Check a specific package for CVEs before installing
     blast_radius        — Look up blast radius for a specific CVE
@@ -19,6 +19,7 @@ Tools (35):
     verify              — Package integrity + SLSA provenance verification
     where               — Show all MCP discovery paths + existence status
     inventory           — List agents/servers without CVE scanning
+    tool_risk_assessment — Score live MCP tool capabilities and server risk
     diff                — Compare scan against baseline for new/resolved vulns
     marketplace_check   — Pre-install trust check with registry cross-reference
     code_scan           — SAST scanning via Semgrep with CWE-based compliance mapping
@@ -307,7 +308,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         host=host,
         port=port,
         instructions=(
-            f"agent-bom v{__version__} — AI infrastructure security scanner with 33 tools. "
+            f"agent-bom v{__version__} — AI infrastructure security scanner with MCP security tools. "
             "Scans packages and images for CVEs (OSV, NVD, EPSS, CISA KEV), maps blast radius "
             "from vulnerabilities to credentials and tools, generates SBOMs (CycloneDX, SPDX), "
             "enforces security policies, and maps to 14 compliance frameworks "
@@ -343,6 +344,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         skill_scan_impl,
         skill_trust_impl,
         skill_verify_impl,
+        tool_risk_assessment_impl,
         verify_impl,
         where_impl,
     )
@@ -783,6 +785,26 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         """
         return inventory_impl(
             config_path=config_path,
+            _truncate_response=_truncate_response,
+        )
+
+    @mcp.tool(annotations=_READ_ONLY, title="Tool Capability Risk")
+    def tool_risk_assessment(
+        config_path: Annotated[str | None, Field(description="Path to MCP client config directory. Auto-discovers all if omitted.")] = None,
+        timeout: Annotated[float, Field(description="Per-server introspection timeout in seconds.")] = 10.0,
+    ) -> str:
+        """Score live-introspected MCP tool capabilities and server risk.
+
+        Uses runtime `tools/list` data to classify tool capabilities
+        (READ/WRITE/EXECUTE/NETWORK/etc.) and compute a per-server risk profile.
+
+        Returns:
+            JSON with per-server tool profiles, capability counts, dangerous
+            combinations, and risk justification.
+        """
+        return tool_risk_assessment_impl(
+            config_path=config_path,
+            timeout=timeout,
             _truncate_response=_truncate_response,
         )
 
@@ -1660,6 +1682,11 @@ _SERVER_CARD_TOOLS = [
     {
         "name": "where",
         "description": "List all 30 MCP client config discovery paths with existence status — useful for debugging discovery issues",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "tool_risk_assessment",
+        "description": "Use live tools/list introspection to score MCP tool capabilities and server risk",
         "annotations": {"readOnlyHint": True},
     },
     {

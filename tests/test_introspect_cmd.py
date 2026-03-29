@@ -16,6 +16,9 @@ def _make_introspection(name="test-server", tools=None, success=True, error=None
 
     r = ServerIntrospection(server_name=name, success=success, error=error)
     r.runtime_tools = [MCPTool(name=t, description=f"desc {t}") for t in (tools or [])]
+    r.capability_risk_score = 7.0
+    r.capability_risk_level = "high"
+    r.tool_risk_profiles = [{"tool_name": t, "risk_score": 7.0, "risk_level": "high", "capabilities": ["execute"]} for t in (tools or [])]
     return r
 
 
@@ -47,6 +50,16 @@ def test_introspect_json_format():
     data = json.loads(result.output)
     assert data[0]["server"] == "api-server"
     assert "search" in data[0]["tools"]
+    assert data[0]["capability_risk_level"] == "high"
+
+
+def test_introspect_console_shows_capability_risk():
+    intro = _make_introspection("fs", tools=["read_file", "write_file"])
+    with patch("agent_bom.mcp_introspect.introspect_servers_sync", return_value=[intro]):
+        runner = CliRunner()
+        result = runner.invoke(main, ["mcp", "introspect", "--command", "npx @mcp/server-filesystem /"])
+    assert result.exit_code == 0
+    assert "Capability Risk" in result.output
 
 
 def test_introspect_server_error():

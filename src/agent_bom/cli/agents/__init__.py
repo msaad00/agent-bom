@@ -1428,28 +1428,7 @@ def scan(
             "total_tools": _intro_report.total_tools,
             "total_resources": _intro_report.total_resources,
             "drift_count": _intro_report.drift_count,
-            "results": [
-                {
-                    "server_name": r.server_name,
-                    "success": r.success,
-                    "auth_mode": r.auth_mode,
-                    "configured_fingerprint": r.configured_fingerprint,
-                    "runtime_fingerprint": r.runtime_fingerprint,
-                    "configured_tool_count": r.configured_tool_count,
-                    "configured_resource_count": r.configured_resource_count,
-                    "tool_count": r.tool_count,
-                    "resource_count": r.resource_count,
-                    "tools_added": r.tools_added,
-                    "tools_removed": r.tools_removed,
-                    "resources_added": r.resources_added,
-                    "resources_removed": r.resources_removed,
-                    "tool_schema_findings": r.tool_schema_findings,
-                    "resource_findings": r.resource_findings,
-                    "has_drift": r.has_drift,
-                    "error": r.error,
-                }
-                for r in _intro_report.results
-            ],
+            "results": [r.to_dict() for r in _intro_report.results],
         }
     if _hc_results is not None:
         report.health_check_data = {

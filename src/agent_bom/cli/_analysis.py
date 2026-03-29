@@ -292,13 +292,10 @@ def introspect_cmd(server_command, server_url, timeout, introspect_all, baseline
     if output_format == "json":
         output = []
         for r in results:
-            entry = {
-                "server": r.server_name,
-                "success": r.success,
-                "tools": [t.name for t in r.runtime_tools],
-                "resources": [res.name for res in r.runtime_resources],
-                "error": r.error,
-            }
+            entry = r.to_dict(include_runtime_objects=True)
+            entry["server"] = entry.pop("server_name")
+            entry["tools"] = [t["name"] for t in entry.get("runtime_tools", [])]
+            entry["resources"] = [res["name"] for res in entry.get("runtime_resources", [])]
             if baseline:
                 expected = baseline.get(r.server_name, [])
                 entry["drift_added"] = [t for t in entry["tools"] if t not in expected]
@@ -318,11 +315,17 @@ def introspect_cmd(server_command, server_url, timeout, introspect_all, baseline
 
         if r.protocol_version:
             con.print(f"  Protocol: {r.protocol_version}")
+        con.print(f"  Capability Risk: [bold]{r.capability_risk_level.upper()}[/bold] ({r.capability_risk_score:.1f}/10)")
+        if r.dangerous_combinations:
+            con.print(f"  Dangerous combos: {', '.join(r.dangerous_combinations[:2])}")
 
         if r.runtime_tools:
             tbl = Table(show_header=True, header_style="bold", box=None, padding=(0, 2))
             tbl.add_column("Tool")
+            tbl.add_column("Risk")
+            tbl.add_column("Capabilities")
             tbl.add_column("Description")
+            profile_map = {item["tool_name"]: item for item in r.tool_risk_profiles}
             for t in r.runtime_tools:
                 desc = (t.description or "")[:80]
                 expected_tools = baseline.get(r.server_name, [])
@@ -330,7 +333,10 @@ def introspect_cmd(server_command, server_url, timeout, introspect_all, baseline
                 if expected_tools and t.name not in expected_tools:
                     marker = " [yellow](NEW)[/yellow]"
                     any_drift = True
-                tbl.add_row(f"  {t.name}{marker}", desc)
+                tool_profile = profile_map.get(t.name, {})
+                caps = ", ".join(tool_profile.get("capabilities", [])) or "—"
+                risk = tool_profile.get("risk_level", "low").upper()
+                tbl.add_row(f"  {t.name}{marker}", risk, caps, desc)
             con.print(tbl)
         else:
             con.print("  [dim]No tools[/dim]")

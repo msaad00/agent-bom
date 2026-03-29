@@ -329,14 +329,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           mkdir -p provenance
           for f in dist/*.whl dist/*.tar.gz; do
             [ -f "$f" ] || continue
             name=$(basename "$f")
+            digest=$(sha256sum "$f" | awk '{print $1}')
             gh attestation download "$f" \
               --repo "${{ github.repository }}" \
-              --format json \
-              -o "provenance/${name}.intoto.jsonl" 2>/dev/null || true
+              --format json
+            src="sha256:${digest}.jsonl"
+            [ -f "$src" ] || src="sha256-${digest}.jsonl"
+            if [ ! -f "$src" ]; then
+              echo "Expected provenance bundle for $name was not downloaded" >&2
+              exit 1
+            fi
+            mv "$src" "provenance/${name}.intoto.jsonl"
           done
 
       - name: Upload provenance artifacts
@@ -344,7 +352,7 @@ jobs:
         with:
           name: slsa-provenance
           path: provenance/
-          if-no-files-found: warn
+          if-no-files-found: error
 
   github-release:
     name: Create GitHub Release
@@ -373,7 +381,6 @@ jobs:
         with:
           name: slsa-provenance
           path: dist/
-        continue-on-error: true
 
       - name: Create or update GitHub Release
         env:

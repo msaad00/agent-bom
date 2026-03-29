@@ -104,6 +104,11 @@ class TestSelfScanCLI:
         assert result.exit_code == 0, f"Exit {result.exit_code}: {result.output}"
         data = json.loads(out_file.read_text())
         assert "agents" in data or "inventory" in data or "vulnerabilities" in data
+        agents = data.get("agents", [])
+        assert agents, "expected self-scan to produce at least one agent"
+        packages = agents[0]["mcp_servers"][0]["packages"]
+        assert len(packages) >= 5, f"expected self-scan to retain multiple dependencies, got {len(packages)}"
+        assert all(pkg.get("ecosystem") != "mcp-registry" for pkg in packages), "self-scan should not collapse to MCP registry fallback"
 
     def test_self_scan_shows_packages(self):
         """--self-scan discovers agent-bom dependencies."""

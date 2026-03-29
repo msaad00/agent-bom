@@ -1,6 +1,6 @@
 # agent-bom
 
-**Open security platform for agentic infrastructure.**
+**Open security platform for agentic infrastructure. Broad scanning, blast radius, runtime, and trust.**
 
 Find CVEs, map blast radius, detect credential exposure across MCP agents, containers, Kubernetes, cloud, and GPU workloads.
 
@@ -17,14 +17,14 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
  Fix: upgrade better-sqlite3 → 11.7.0
 ```
 
-Traditional scanners often stop at CVE -> package. agent-bom shows which MCP servers, AI agents, credentials, and tools are actually exposed.
+Traditional scanners often stop at CVE -> package. agent-bom shows which MCP servers, AI agents, credentials, and tools are actually at risk.
 
 ## Quick start
 
 ```bash
 pip install agent-bom
-agent-bom scan       # auto-discover 30 MCP clients + scan
-agent-bom check langchain   # check a specific package
+agent-bom agents                         # auto-discover local AI agents + MCP servers
+agent-bom check flask@2.0.0 --ecosystem pypi   # check a specific package
 ```
 
 [Get started](getting-started/install.md){ .md-button .md-button--primary }

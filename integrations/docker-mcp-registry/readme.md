@@ -1,8 +1,10 @@
 # agent-bom
 
-Open security platform for agentic infrastructure — from scanner to runtime.
+Open security platform for agentic infrastructure. Broad scanning, blast radius, runtime, and trust.
 
 Discovers AI agents and MCP servers, scans packages, images, filesystems, IaC, and cloud AI infrastructure, maps blast radius showing which credentials and tools each CVE reaches, enforces policy in real time, and generates compliance evidence.
+
+Traditional scanners often stop at CVE -> package. agent-bom shows which MCP servers, AI agents, credentials, and tools are actually at risk.
 
 ## Quick start
 

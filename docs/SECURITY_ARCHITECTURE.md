@@ -4,7 +4,7 @@ This document answers the security questions enterprise teams ask before adoptin
 
 ## Data Flow — What Leaves Your Machine?
 
-agent-bom sends **package names and versions only** to external APIs. No source code, no configuration files, no credentials ever leave your machine.
+agent-bom sends only the minimum data needed for the feature in use: package names and versions for CVE lookups and version resolution, CVE IDs for enrichment, and finding summaries only for explicitly enabled push integrations. No source code, configuration contents, or credential values leave your machine.
 
 ### External API Calls
 
@@ -16,6 +16,7 @@ agent-bom sends **package names and versions only** to external APIs. No source 
 | **EPSS** (FIRST) | Bulk download (no query) | Exploit probability scores | `db update --source epss` |
 | **KEV** (CISA) | Bulk download (no query) | Known-exploited CVE list | `db update --source kev` |
 | **deps.dev** (Google) | Package name + version | Transitive dependencies | `--deps-dev` flag |
+| **npm / PyPI / Go proxy** | Package name (+ version/latest lookup) | Package metadata / latest version | Floating version resolution |
 | **PyPI** | Package name | Latest version number | Update check (1x/24h) |
 
 ### Offline Mode

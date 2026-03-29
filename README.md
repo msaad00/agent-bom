@@ -14,6 +14,8 @@
 </p>
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
+<p align="center"><b>Open security platform for agentic infrastructure. Broad scanning, blast radius, runtime, and trust.</b></p>
+
 <p align="center"><b>Your AI agent's dependencies have a CVE. Which credentials leak?</b></p>
 
 ```text
@@ -29,7 +31,7 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 
 **agent-bom maps the blast radius**: CVE → package → MCP server → AI agent → credentials → tools.
 
-Traditional scanners stop at `CVE → Package`. agent-bom shows which credentials and tools are actually at risk — with CWE-aware impact classification so a DoS vuln doesn't falsely claim credential exposure.
+Traditional scanners often stop at `CVE → package`. agent-bom shows which credentials and tools are actually at risk — with CWE-aware impact classification so a DoS vuln doesn't falsely claim credential exposure.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="agent-bom demo" width="900" />
@@ -40,10 +42,11 @@ Traditional scanners stop at `CVE → Package`. agent-bom shows which credential
 ```bash
 pip install agent-bom
 
-agent-bom agents                        # Discover + scan AI agents and MCP servers
-agent-bom check flask@2.0.0             # Pre-install CVE gate
-agent-bom image nginx:latest            # Container image scan
-agent-bom iac Dockerfile k8s/ main.tf   # IaC misconfigurations
+agent-bom agents                              # Discover + scan local AI agents and MCP servers
+agent-bom agents -p .                         # Scan project manifests plus agent/MCP context
+agent-bom check flask@2.0.0 --ecosystem pypi  # Pre-install CVE gate
+agent-bom image nginx:latest                  # Container image scan
+agent-bom iac Dockerfile k8s/ infra/main.tf   # IaC misconfigurations
 ```
 
 <details>
@@ -66,10 +69,10 @@ agent-bom serve                         # API + Next.js dashboard
 
 ```mermaid
 flowchart LR
-    DISCOVER["🔍 Discover\n30 MCP clients\nCloud · Images · IaC"] --> SCAN["🛡️ Scan\nCVE · EPSS · KEV\nSecrets · IaC rules"]
-    SCAN --> ANALYZE["📊 Analyze\nBlast Radius\n14 frameworks\nCWE impact"]
-    ANALYZE --> OUTPUT["📤 Output\nSBOM · SARIF\nDashboard · CI gate"]
-    DISCOVER -.-> PROTECT["🔒 Runtime\nMCP Proxy\nShield SDK"]
+    DISCOVER["🔍 Discover\n30 MCP clients\nProjects · Images · Cloud"] --> SCAN["🛡️ Scan\n15 ecosystems\nCVE · Secrets · IaC"]
+    SCAN --> ANALYZE["📊 Analyze\nBlast radius\n14 frameworks · CWE impact"]
+    ANALYZE --> OUTPUT["📤 Output\nCI/CD gates · SARIF · SBOM\nAPI · Dashboard · MCP tools"]
+    DISCOVER -.-> PROTECT["🔒 Protect\nRuntime proxy\nShield SDK · policy"]
 
     style DISCOVER stroke:#58a6ff,stroke-width:2px
     style SCAN stroke:#f85149,stroke-width:2px
@@ -142,22 +145,22 @@ safe = shield.redact(response_text)  # [REDACTED:OpenAI API Key]
 
 ## Compliance (14 frameworks)
 
-Every finding is tagged with applicable controls:
+Every finding is tagged with mapped framework controls:
 
 | Framework | Coverage |
 |-----------|----------|
-| OWASP LLM Top 10 | 7/10 categories |
-| OWASP MCP Top 10 | 10/10 categories |
-| OWASP Agentic Top 10 | 10/10 categories |
-| MITRE ATLAS | 30+ techniques |
-| MITRE ATT&CK Enterprise | Technique mapping |
-| NIST AI RMF 1.0 | All subcategories |
-| NIST CSF 2.0 | All functions |
-| NIST 800-53 Rev 5 | 24 controls |
-| FedRAMP Moderate | Baseline controls |
+| OWASP LLM Top 10 | 10 mapped categories |
+| OWASP MCP Top 10 | 10 mapped categories |
+| OWASP Agentic Top 10 | 10 mapped categories |
+| MITRE ATLAS | 65 mapped techniques |
+| MITRE ATT&CK Enterprise | Official MITRE catalog via fetched ATT&CK data |
+| NIST AI RMF 1.0 | 14 mapped subcategories |
+| NIST CSF 2.0 | 14 mapped categories |
+| NIST 800-53 Rev 5 | 29 mapped controls |
+| FedRAMP Moderate | 25 mapped controls |
 | ISO 27001:2022 | 9 controls |
-| SOC 2 TSC | All 5 criteria |
-| CIS Controls v8 | 12 controls |
+| SOC 2 TSC | 9 mapped criteria |
+| CIS Controls v8 | 10 mapped controls |
 | EU AI Act | 6 articles |
 | CMMC 2.0 Level 2 | 17 practices |
 
@@ -239,11 +242,14 @@ Also on [Glama](https://glama.ai/mcp/servers/@msaad00/agent-bom), [Smithery](int
 
 | When | What's sent | Where | Opt out |
 |---|---|---|---|
-| `agent-bom agents` | Package names + versions | OSV API | `--offline` |
-| `--enrich` | CVE IDs | NVD, EPSS, KEV | Don't use `--enrich` |
-| Everything else | **Nothing** | Nowhere | N/A |
+| Default CVE lookups (`agents`, `scan`, `check`, `image`) | Package names + versions | OSV API | `--offline` |
+| Floating version resolution | Package names, requested version/latest lookup | npm, PyPI, Go proxy | `--offline` |
+| `--enrich` | CVE IDs | NVD, EPSS; KEV catalog download from CISA | Don't use `--enrich` |
+| `--deps-dev` | Package names + versions | deps.dev | Don't use `--deps-dev` |
+| `verify` | Package name + version | PyPI or npm integrity endpoints | Don't run `verify` |
+| Optional push/integrations | Finding summaries or evidence bundles | Slack, Jira, Vanta, Drata | Don't pass those flags |
 
-No source code, no secrets, no telemetry. [Sigstore-signed](docs/PERMISSIONS.md) releases. See [SECURITY_ARCHITECTURE.md](docs/SECURITY_ARCHITECTURE.md) for the full trust model.
+No source code, config contents, or credential values are sent. No telemetry or analytics. [Sigstore-signed](docs/PERMISSIONS.md) releases. See [SECURITY_ARCHITECTURE.md](docs/SECURITY_ARCHITECTURE.md) and [PERMISSIONS.md](docs/PERMISSIONS.md) for the full trust model.
 
 ---
 

@@ -898,6 +898,15 @@ def scan(
                         con.print(f"    [yellow]⚠ {server.name}: blocked — {', '.join(server.security_warnings)}[/yellow]")
                     continue
                 pre_populated = list(server.packages)
+                if self_scan and pre_populated:
+                    server.packages = pre_populated
+                    total_packages += len(server.packages)
+                    if verbose and server.packages:
+                        con.print(
+                            f"  [green]✓[/green] {server.name}: {len(server.packages)} package(s) "
+                            f"({server.packages[0].ecosystem}) [dim](self-scan inventory)[/dim]"
+                        )
+                    continue
                 _smithery_tok = smithery_token if smithery_flag else None
                 discovered = extract_packages(
                     server, resolve_transitive=transitive, max_depth=max_depth, smithery_token=_smithery_tok, mcp_registry=mcp_registry_flag

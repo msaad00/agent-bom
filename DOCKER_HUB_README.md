@@ -1,6 +1,8 @@
 # agent-bom
 
-**Find which AI agents, MCP servers, credentials, tools, images, and cloud AI components are exposed by a vulnerability.**
+**Open security platform for agentic infrastructure. Broad scanning, blast radius, runtime, and trust.**
+
+Your AI agent's dependencies have a CVE. Which credentials leak?
 
 agent-bom helps developers, security teams, and enterprises discover AI agent and MCP environments,
 map CVEs into real blast radius, scan packages, container images, Kubernetes, IaC, and cloud AI infrastructure, and protect MCP traffic at runtime.
@@ -73,7 +75,7 @@ docker run --rm agentbom/agent-bom:latest doctor
 
 ## Why It Is Different
 
-Traditional scanners stop at the artifact.
+Traditional scanners often stop at `CVE -> package`.
 
 agent-bom answers:
 

@@ -1,10 +1,11 @@
 ---
 name: agent-bom-scan
 description: >-
-  Open security platform for agentic infrastructure — checks packages for CVEs
-  (OSV, NVD, EPSS, KEV), scans container images, verifies provenance, scans
-  filesystems, and generates SBOMs. Use when: "check package", "scan image",
-  "verify", "is this safe", "scan dependencies", "CVE lookup", "blast radius".
+  Open security platform for agentic infrastructure — broad scanning,
+  blast radius, runtime, and trust for package CVEs (OSV, NVD, EPSS,
+  KEV), container images, provenance, filesystems, and SBOMs. Use
+  when: "check package", "scan image", "verify", "is this safe",
+  "scan dependencies", "CVE lookup", "blast radius".
 version: 0.75.11
 license: Apache-2.0
 compatibility: >-

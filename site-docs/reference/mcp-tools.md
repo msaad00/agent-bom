@@ -34,6 +34,18 @@ compliance(frameworks=["owasp-llm", "eu-ai-act"])
 ### remediate
 Generate a prioritized remediation plan for discovered vulnerabilities.
 
+### skill_scan
+Scan instruction files such as `CLAUDE.md`, `.cursorrules`, `AGENTS.md`, and `skills/*.md` for package references, MCP server configs, credential env vars, trust verdicts, and audit findings.
+```
+skill_scan(path=".")
+```
+
+### skill_verify
+Verify Sigstore provenance for instruction and skill files.
+```
+skill_verify(path=".")
+```
+
 ### verify
 Package integrity check with Sigstore signature and SLSA provenance verification.
 ```
@@ -56,7 +68,7 @@ Runs 17 behavioral risk patterns (credential file access, confirmation bypass, m
 Returns a verdict (`benign` / `suspicious` / `malicious`), confidence level, per-category results, and all findings with severity and recommendations.
 
 ```
-skill_trust(skill_content="<paste full file content>")
+skill_trust(skill_path="./SKILL.md")
 # → {
 #     "verdict": "suspicious",
 #     "confidence": "high",

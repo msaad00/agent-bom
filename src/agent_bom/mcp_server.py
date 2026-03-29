@@ -4,7 +4,7 @@ Start with:
     agent-bom mcp server              # stdio (for Claude Desktop, Cursor, etc.)
     agent-bom mcp server --sse        # SSE transport (for remote clients)
 
-Tools (33):
+Tools (35):
     scan                — Full discovery → scan → output pipeline
     check               — Check a specific package for CVEs before installing
     blast_radius        — Look up blast radius for a specific CVE
@@ -13,6 +13,8 @@ Tools (33):
     generate_sbom       — Generate CycloneDX or SPDX SBOM
     compliance          — OWASP/ATLAS/NIST AI RMF compliance posture
     remediate           — Generate actionable remediation plan
+    skill_scan          — Scan instruction files for packages, servers, trust, and findings
+    skill_verify        — Verify instruction file Sigstore provenance
     skill_trust         — ClawHub-style trust assessment for SKILL.md files
     verify              — Package integrity + SLSA provenance verification
     where               — Show all MCP discovery paths + existence status
@@ -338,7 +340,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
     from agent_bom.mcp_tools.runtime import (
         inventory_impl,
         runtime_correlate_impl,
+        skill_scan_impl,
         skill_trust_impl,
+        skill_verify_impl,
         verify_impl,
         where_impl,
     )
@@ -664,7 +668,38 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             _truncate_response=_truncate_response,
         )
 
-    # ── Tool 9: skill_trust ──────────────────────────────────────────
+    # ── Tool 9: skill_scan ───────────────────────────────────────────
+
+    @mcp.tool(annotations=_READ_ONLY, title="Skill Scan")
+    def skill_scan(
+        path: Annotated[str, Field(description="Path to a skill/instruction file or directory to scan.")] = ".",
+    ) -> str:
+        """Scan skill and instruction files for trust, findings, and provenance.
+
+        Discovers supported files such as `CLAUDE.md`, `AGENTS.md`,
+        `.cursorrules`, and `skills/*.md`, then parses referenced packages,
+        MCP servers, credential env vars, audit findings, and trust verdicts.
+        """
+        return skill_scan_impl(
+            path=path,
+            _safe_path=_safe_path,
+            _truncate_response=_truncate_response,
+        )
+
+    # ── Tool 10: skill_verify ────────────────────────────────────────
+
+    @mcp.tool(annotations=_READ_ONLY, title="Skill Provenance Verify")
+    def skill_verify(
+        path: Annotated[str, Field(description="Path to a skill/instruction file or directory to verify.")] = ".",
+    ) -> str:
+        """Verify Sigstore provenance for skill and instruction files."""
+        return skill_verify_impl(
+            path=path,
+            _safe_path=_safe_path,
+            _truncate_response=_truncate_response,
+        )
+
+    # ── Tool 11: skill_trust ──────────────────────────────────────────
 
     @mcp.tool(annotations=_READ_ONLY, title="Skill Trust Assessment")
     def skill_trust(
@@ -692,7 +727,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             _truncate_response=_truncate_response,
         )
 
-    # ── Tool 10: verify ─────────────────────────────────────────────
+    # ── Tool 12: verify ─────────────────────────────────────────────
 
     @mcp.tool(annotations=_READ_ONLY, title="Package Integrity Verify")
     async def verify(
@@ -716,7 +751,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             _truncate_response=_truncate_response,
         )
 
-    # ── Tool 11: where ────────────────────────────────────────────
+    # ── Tool 13: where ────────────────────────────────────────────
 
     @mcp.tool(annotations=_READ_ONLY, title="Discovery Paths")
     def where() -> str:
@@ -731,7 +766,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         """
         return where_impl(_truncate_response=_truncate_response)
 
-    # ── Tool 12: inventory ────────────────────────────────────────
+    # ── Tool 14: inventory ────────────────────────────────────────
 
     @mcp.tool(annotations=_READ_ONLY, title="Agent Inventory")
     def inventory(
@@ -1606,6 +1641,16 @@ _SERVER_CARD_TOOLS = [
         "annotations": {"readOnlyHint": True},
     },
     {"name": "remediate", "description": "Generate actionable remediation plan", "annotations": {"readOnlyHint": True}},
+    {
+        "name": "skill_scan",
+        "description": "Scan instruction files for packages, MCP servers, trust verdicts, and findings",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "skill_verify",
+        "description": "Verify Sigstore provenance for instruction and skill files",
+        "annotations": {"readOnlyHint": True},
+    },
     {"name": "skill_trust", "description": "ClawHub-style trust assessment for SKILL.md files", "annotations": {"readOnlyHint": True}},
     {
         "name": "verify",

@@ -14,7 +14,7 @@ import {
   type Edge,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Server, ShieldAlert, Package, Lock, Wrench } from "lucide-react";
+import { Lock, Network, Package, Server, ShieldAlert, Wrench } from "lucide-react";
 import type { Agent } from "@/lib/api";
 
 // ─── Custom Node Components with proper Handles ─────────────────────────────
@@ -235,6 +235,19 @@ function TopologyFlow({ agents, onAgentClick, direction = "LR" }: { agents: Agen
 
 export function AgentTopology({ agents, direction = "LR" }: { agents: Agent[]; direction?: "LR" | "TB" }) {
   const router = useRouter();
+  const summary = useMemo(() => {
+    const servers = agents.flatMap((agent) => agent.mcp_servers ?? []);
+    const vulnerableServers = servers.filter((srv) =>
+      (srv.packages ?? []).some((pkg) => (pkg.vulnerabilities?.length ?? 0) > 0)
+    ).length;
+    const credentialedServers = servers.filter((srv) => Object.keys(srv.env ?? {}).length > 0).length;
+    return {
+      agents: agents.length,
+      servers: servers.length,
+      vulnerableServers,
+      credentialedServers,
+    };
+  }, [agents]);
 
   const handleAgentClick = useCallback(
     (name: string) => {
@@ -256,13 +269,32 @@ export function AgentTopology({ agents, direction = "LR" }: { agents: Agent[]; d
   }
 
   return (
-    <div className="bg-zinc-900/50 border border-zinc-800/60 rounded-xl overflow-hidden" style={{ height: 400 }}>
-      <ReactFlowProvider>
-        <TopologyFlow agents={agents} onAgentClick={handleAgentClick} direction={direction} />
-      </ReactFlowProvider>
+    <div className="overflow-hidden rounded-2xl border border-zinc-800/70 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.12),transparent_28%),radial-gradient(circle_at_top_right,rgba(59,130,246,0.14),transparent_30%),rgba(9,9,11,0.92)]">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800/80 px-4 py-3">
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Topology</p>
+          <h3 className="mt-1 text-sm font-semibold text-zinc-100">Agent to server trust mesh</h3>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/80 px-3 py-1.5 text-xs text-zinc-300">
+            <span className="font-mono text-zinc-100">{summary.agents}</span> agents
+          </div>
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/80 px-3 py-1.5 text-xs text-zinc-300">
+            <span className="font-mono text-zinc-100">{summary.servers}</span> servers
+          </div>
+          <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-200">
+            <span className="font-mono text-red-100">{summary.vulnerableServers}</span> vulnerable
+          </div>
+          <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-200">
+            <span className="font-mono text-amber-100">{summary.credentialedServers}</span> credentialed
+          </div>
+        </div>
+      </div>
+      <div className="px-2 pb-2 pt-1" style={{ height: 400 }}>
+        <ReactFlowProvider>
+          <TopologyFlow agents={agents} onAgentClick={handleAgentClick} direction={direction} />
+        </ReactFlowProvider>
+      </div>
     </div>
   );
 }
-
-// Need to import Network for the empty state
-import { Network } from "lucide-react";

@@ -12,7 +12,7 @@ import { PostureGrade } from "@/components/posture-grade";
 import { AttackPathCard } from "@/components/attack-path-card";
 import {
   ShieldAlert, Server, Package, Bug, Zap, ArrowRight, Clock,
-  AlertTriangle, Container, Layers, FileText, ExternalLink,
+  AlertTriangle, Container, Layers, FileText, ExternalLink, GitBranch,
 } from "lucide-react";
 import { VulnTrendChart, EpssDistributionChart, EpssVsCvssChart, TrendDataPoint, EpssDataPoint, EpssVsCvssPoint } from "@/components/charts";
 
@@ -382,12 +382,23 @@ export default function Dashboard() {
   const epssData = useMemo(() => aggregateEpss(allBlast), [allBlast]);
   const scatterData = useMemo(() => aggregateEpssVsCvss(allBlast), [allBlast]);
   const compoundIssues = useMemo(() => aggregateCompoundIssues(allBlast), [allBlast]);
+  const kevCount = useMemo(() => allBlast.filter((b) => (b.is_kev ?? b.cisa_kev) === true).length, [allBlast]);
+  const credentialExposureCount = useMemo(() => allBlast.filter((b) => b.exposed_credentials.length > 0).length, [allBlast]);
+  const reachableToolCount = useMemo(
+    () => new Set(allBlast.flatMap((b) => b.exposed_tools ?? b.reachable_tools ?? [])).size,
+    [allBlast]
+  );
 
   // Unique CVE count
   const uniqueCVEs = useMemo(() => {
     const ids = new Set(allBlast?.map((b) => b.vulnerability_id));
     return ids.size;
   }, [allBlast]);
+  const topRisk = useMemo(
+    () =>
+      [...allBlast].sort((a, b) => (b.risk_score ?? b.blast_score) - (a.risk_score ?? a.blast_score))[0] ?? null,
+    [allBlast]
+  );
 
   // Total packages scanned across all jobs
   const totalPackages = useMemo(() => {
@@ -415,44 +426,88 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Security Posture</h1>
-          <p className="text-zinc-400 text-sm mt-1">
-            Aggregated across {doneJobs.length} scan{doneJobs.length !== 1 ? "s" : ""} — {effectiveAgentCount} agent{effectiveAgentCount !== 1 ? "s" : ""} · {totalPackages} packages · {uniqueCVEs} unique CVEs
-          </p>
-        </div>
-        <Link
-          href="/scan"
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-colors"
-        >
-          New Scan
-          <ArrowRight className="w-4 h-4" />
-        </Link>
-      </div>
-
-      {/* Posture Hero */}
-      {posture && (
-        <div className="grid grid-cols-1 lg:grid-cols-[auto_1fr] gap-6 bg-zinc-900 border border-zinc-800 rounded-xl p-6 shadow-lg shadow-zinc-950/50">
-          <PostureGrade grade={posture.grade} score={posture.score} dimensions={posture.dimensions} />
-          <div className="flex flex-col justify-center gap-2">
-            <h2 className="text-lg font-semibold text-zinc-100">Security Posture: <span style={{ color: posture.grade === "A" ? "#22c55e" : posture.grade === "B" ? "#3b82f6" : posture.grade === "C" ? "#eab308" : posture.grade === "D" ? "#f97316" : posture.grade === "F" ? "#ef4444" : "#71717a" }}>{posture.grade}</span></h2>
-            <p className="text-sm text-zinc-400">{posture.summary}</p>
-            {posture.dimensions && Object.keys(posture.dimensions).length > 0 && (
-              <div className="flex flex-wrap gap-3 mt-1">
-                {Object.entries(posture.dimensions).map(([key, dim]) => (
-                  <div key={key} className="flex items-center gap-1.5 text-xs">
-                    <span className={`w-2 h-2 rounded-full ${dim.score >= 80 ? "bg-emerald-500" : dim.score >= 60 ? "bg-yellow-500" : "bg-red-500"}`} />
-                    <span className="text-zinc-400">{dim.label}</span>
-                    <span className="font-mono text-zinc-300">{dim.score}</span>
-                  </div>
-                ))}
+      <section className="relative overflow-hidden rounded-[28px] border border-zinc-800/80 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.16),transparent_24%),radial-gradient(circle_at_top_right,rgba(239,68,68,0.12),transparent_24%),linear-gradient(180deg,rgba(24,24,27,0.98),rgba(9,9,11,0.96))] p-6 shadow-2xl shadow-black/20">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-[11px] uppercase tracking-[0.28em] text-emerald-400">Security command center</p>
+            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-50 sm:text-4xl">
+              See the blast radius, not just the CVE list.
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-300">
+              Aggregated across {doneJobs.length} scan{doneJobs.length !== 1 ? "s" : ""}: {effectiveAgentCount} agent{effectiveAgentCount !== 1 ? "s" : ""}, {totalPackages} packages, and {uniqueCVEs} unique vulnerabilities with credential and tool exposure mapped into one operational view.
+            </p>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-red-200/70">Actively exploited</div>
+                <div className="mt-1 font-mono text-lg font-semibold text-red-100">{kevCount}</div>
               </div>
-            )}
+              <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-3 py-2">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-amber-200/70">Credential exposed</div>
+                <div className="mt-1 font-mono text-lg font-semibold text-amber-100">{credentialExposureCount}</div>
+              </div>
+              <div className="rounded-2xl border border-sky-500/20 bg-sky-500/10 px-3 py-2">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-200/70">Reachable tools</div>
+                <div className="mt-1 font-mono text-lg font-semibold text-sky-100">{reachableToolCount}</div>
+              </div>
+              {topRisk && (
+                <div className="rounded-2xl border border-zinc-700 bg-zinc-900/80 px-3 py-2">
+                  <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Highest path risk</div>
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className="font-mono text-lg font-semibold text-zinc-100">{(topRisk.risk_score ?? topRisk.blast_score).toFixed(1)}</span>
+                    <span className="truncate text-xs text-zinc-400">{topRisk.vulnerability_id}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 xl:justify-end">
+            <Link
+              href="/scan"
+              className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500"
+            >
+              New Scan
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link
+              href="/graph"
+              className="flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900/80 px-4 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-800"
+            >
+              Explore Graph
+              <GitBranch className="h-4 w-4" />
+            </Link>
           </div>
         </div>
-      )}
+
+        {posture && (
+          <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[auto_1fr]">
+            <PostureGrade grade={posture.grade} score={posture.score} dimensions={posture.dimensions} />
+            <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/60 p-5">
+              <div className="flex flex-wrap items-center gap-3">
+                <h2 className="text-lg font-semibold text-zinc-100">
+                  Security posture <span style={{ color: posture.grade === "A" ? "#22c55e" : posture.grade === "B" ? "#3b82f6" : posture.grade === "C" ? "#eab308" : posture.grade === "D" ? "#f97316" : posture.grade === "F" ? "#ef4444" : "#71717a" }}>{posture.grade}</span>
+                </h2>
+                <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-[11px] uppercase tracking-[0.16em] text-zinc-400">
+                  score {posture.score.toFixed(1)}
+                </span>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-zinc-300">{posture.summary}</p>
+              {posture.dimensions && Object.keys(posture.dimensions).length > 0 && (
+                <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                  {Object.entries(posture.dimensions).map(([key, dim]) => (
+                    <div key={key} className="rounded-xl border border-zinc-800 bg-zinc-900/80 px-3 py-2.5">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-xs text-zinc-400">{dim.label}</span>
+                        <span className={`h-2 w-2 rounded-full ${dim.score >= 80 ? "bg-emerald-500" : dim.score >= 60 ? "bg-yellow-500" : "bg-red-500"}`} />
+                      </div>
+                      <div className="mt-2 font-mono text-lg text-zinc-100">{dim.score}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </section>
 
       {/* Top Attack Paths */}
       {(!isLoading) && allBlast.length > 0 && (

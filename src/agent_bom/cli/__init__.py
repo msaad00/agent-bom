@@ -51,13 +51,16 @@ def main():
 
     \b
     Quick start:
-      agent-bom agents                      AI agent discovery + scan
-      agent-bom skills scan                skill / instruction trust scan
-      agent-bom image nginx:latest          container image scan
-      agent-bom iac Dockerfile k8s/         IaC misconfigurations
-      agent-bom cloud aws                   cloud posture + CIS
-      agent-bom proxy "npx server"          MCP security proxy
-      agent-bom check flask@2.0.0           pre-install CVE gate
+      agent-bom agents                               discover + scan local agents and MCP servers
+      agent-bom agents -p .                          scan project manifests plus agent/MCP context
+      agent-bom skills scan .                        scan skills and instruction files
+      agent-bom check flask@2.0.0 --ecosystem pypi  pre-install CVE gate
+      agent-bom image nginx:latest                   container image scan
+      agent-bom iac Dockerfile k8s/ infra/main.tf    IaC scan across one or more paths
+      agent-bom proxy "npx @mcp/server-fs /workspace"  MCP security proxy
+
+    \b
+    Tip: `agent-bom -h` groups commands by scanning, runtime, MCP, reporting, and governance.
 
     \b
     Docs:  https://github.com/msaad00/agent-bom

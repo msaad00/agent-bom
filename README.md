@@ -44,9 +44,10 @@ pip install agent-bom
 
 agent-bom agents                              # Discover + scan local AI agents and MCP servers
 agent-bom agents -p .                         # Scan project manifests plus agent/MCP context
+agent-bom skills scan .                       # Scan CLAUDE.md, AGENTS.md, .cursorrules, skills/*
 agent-bom check flask@2.0.0 --ecosystem pypi  # Pre-install CVE gate
 agent-bom image nginx:latest                  # Container image scan
-agent-bom iac Dockerfile k8s/ infra/main.tf   # IaC misconfigurations
+agent-bom iac Dockerfile k8s/ infra/main.tf   # IaC scan across one or more paths
 ```
 
 <details>
@@ -55,6 +56,7 @@ agent-bom iac Dockerfile k8s/ infra/main.tf   # IaC misconfigurations
 ```bash
 agent-bom cloud aws                     # Cloud AI posture + CIS benchmarks
 agent-bom agents -f cyclonedx -o bom.json  # AI BOM / SBOM export
+agent-bom graph report.json                # Blast radius graph / graph HTML inputs
 agent-bom proxy "npx @mcp/server-fs /ws"   # MCP security proxy
 agent-bom secrets src/                  # Hardcoded secrets + PII
 agent-bom verify requests@2.33.0        # Package integrity verification
@@ -175,10 +177,10 @@ docker run --rm agentbom/agent-bom agents    # Docker
 
 | Mode | Command | Best for |
 |------|---------|----------|
-| CLI | `agent-bom agents` | Local audit |
+| CLI | `agent-bom agents` | Local audit + project scan |
 | GitHub Action | `uses: msaad00/agent-bom@v0.75.11` | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom` | Isolated scans |
-| MCP Server | `agent-bom mcp server` | Inside AI assistants |
+| MCP Server | `agent-bom mcp server` | Claude, Cursor, Codex, Windsurf, Cortex |
 | Runtime proxy | `agent-bom proxy` | MCP traffic enforcement |
 | Shield SDK | `from agent_bom.shield import Shield` | In-process protection |
 | Dashboard | `agent-bom serve` | API + Next.js UI (20 pages) |

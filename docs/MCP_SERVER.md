@@ -1,6 +1,6 @@
 # MCP Server — Connect agent-bom to AI Assistants
 
-agent-bom exposes 33 security tools as an MCP server. Any MCP-compatible client
+agent-bom exposes 36 security tools as an MCP server. Any MCP-compatible client
 can connect and get vulnerability scanning, blast radius analysis, compliance
 checks, and supply chain verification through natural conversation.
 
@@ -44,7 +44,8 @@ Add to your MCP settings (`.cursor/mcp.json` or equivalent):
 agent-bom mcp server --sse --host 0.0.0.0 --port 8000
 ```
 
-Connect any SSE-capable MCP client to `http://your-server:8000/sse`.
+Connect any SSE-capable MCP client to `https://your-server/sse`.
+For remote deployments, put SSE behind TLS and authentication at your proxy or ingress.
 
 ### Docker
 
@@ -54,7 +55,7 @@ docker run -it --rm \
   agentbom/agent-bom:latest mcp server
 ```
 
-## Tool Categories (33 tools)
+## Tool Categories (36 tools)
 
 | Category | Tools | What They Do |
 |----------|-------|-------------|
@@ -66,8 +67,9 @@ docker run -it --rm \
 | **Policy** | `evaluate_policy` | Apply custom or built-in security policies |
 | **Inventory** | `inventory` | List agents/servers without CVE scanning |
 | **Trust** | `trust_assessment` | Multi-category trust scoring for packages |
+| **Skills** | `skill_scan`, `skill_verify`, `skill_trust` | Instruction-file trust, provenance, and tool-poisoning detection |
 | **IaC** | `scan_terraform`, `scan_dockerfile`, `scan_helm` | Infrastructure-as-code security scanning |
-| **Runtime** | `shield_status` | Runtime protection engine status |
+| **Runtime** | `shield_status`, `tool_risk_assessment` | Runtime protection engine status and live MCP capability risk |
 
 ## Example Conversations
 

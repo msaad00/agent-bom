@@ -12,8 +12,9 @@ export AGENT_BOM_DEMO_DB_SOURCE="$DB_SOURCE"
 export AGENT_BOM_DEMO_REPO_ROOT="$PWD"
 . "$(dirname "$0")/demo-env.sh"
 
-# Let Rich render colors and tables (do NOT set TERM=dumb)
+# Rich colors but no live spinners/progress (clean for GIF recording)
 export TERM=xterm-256color
+export AGENT_BOM_LOG_LEVEL=error
 
 # Clear screen for clean recording
 printf '\033[H\033[2J'
@@ -22,7 +23,7 @@ run_step() {
   local visible="$1"
   shift
 
-  printf '$ %s\n' "$visible"
+  printf '\033[1;36m$ %s\033[0m\n' "$visible"
   if ! "$@" 2>&1; then
     true
   fi
@@ -30,12 +31,12 @@ run_step() {
   sleep 1
 }
 
-# ── Demo: scan agents → check package → verify integrity ──
+# ── Demo: scan → check → verify ──
 
-# 1. Full agent scan with enrichment — blast radius, EPSS, credentials
-run_step "agent-bom agents --demo --enrich" agent-bom agents --demo --enrich
+# 1. Full agent scan — blast radius, severity, remediation
+run_step "agent-bom agents --demo --offline" agent-bom agents --demo --offline
 
-# 2. Pre-install CVE gate — catch vulns before they land
+# 2. Pre-install CVE gate
 run_step "agent-bom check pillow@9.0.0" agent-bom check pillow@9.0.0 --ecosystem pypi
 
 # 3. Package integrity verification

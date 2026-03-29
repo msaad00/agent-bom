@@ -217,6 +217,26 @@ class TestPostureScorecard:
         sc_nofix = compute_posture_scorecard(unfixable_report)
         assert sc_fix.dimensions["vulnerability_posture"].score >= sc_nofix.dimensions["vulnerability_posture"].score
 
+    def test_filesystem_only_scans_do_not_fail_configuration_quality(self):
+        """Filesystem-only scans should treat MCP config quality as not applicable."""
+        from agent_bom.models import Agent, AgentType, MCPServer, Package, ServerSurface, Severity, Vulnerability
+        from agent_bom.posture import compute_posture_scorecard
+        from agent_bom.vuln_compliance import tag_vulnerability
+
+        pkg = Package(name="langchain", version="0.1.0", ecosystem="pypi")
+        vuln = Vulnerability(id="CVE-2026-1000", summary="demo", severity=Severity.HIGH)
+        vuln.compliance_tags = tag_vulnerability(vuln, pkg)
+        br = _make_blast_radius(pkg=pkg, vuln=vuln)
+
+        fs_server = MCPServer(name="filesystem:repo", command="", packages=[pkg], surface=ServerSurface.FILESYSTEM)
+        fs_agent = Agent(name="filesystem:repo", agent_type=AgentType.CUSTOM, config_path=".", mcp_servers=[fs_server])
+        report = _make_report(agents=[fs_agent], blast_radii=[br])
+
+        sc = compute_posture_scorecard(report)
+        assert sc.dimensions["configuration_quality"].score == 100.0
+        assert "N/A" in sc.dimensions["configuration_quality"].details
+        assert sc.dimensions["compliance_coverage"].score > 0
+
 
 # ── Credential Risk Ranking ──────────────────────────────────────────────────
 

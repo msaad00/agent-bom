@@ -118,11 +118,23 @@ class ClickHouseAnalyticsStore:
     def record_scan(self, scan_id: str, agent_name: str, vulns: list[dict]) -> None:
         if not vulns:
             return
+
+        def _split_package(v: dict) -> tuple[str, str]:
+            pkg_name = v.get("package_name", "")
+            pkg_version = v.get("package_version", "") or v.get("version", "")
+            if pkg_name:
+                return pkg_name, pkg_version
+            pkg = v.get("package", "")
+            if isinstance(pkg, str) and "@" in pkg:
+                name, version = pkg.rsplit("@", 1)
+                return name, version
+            return str(pkg or ""), pkg_version
+
         rows = [
             {
                 "scan_id": scan_id,
-                "package_name": v.get("package", ""),
-                "package_version": v.get("version", ""),
+                "package_name": _split_package(v)[0],
+                "package_version": _split_package(v)[1],
                 "ecosystem": v.get("ecosystem", ""),
                 "cve_id": v.get("cve_id", v.get("id", "")),
                 "cvss_score": float(v.get("cvss_score", 0.0)),

@@ -214,3 +214,37 @@ class TestNullAnalyticsStore:
             store.record_scan("id", "agent", [])
             store.record_event({})
         assert store.query_vuln_trends() == []
+
+
+class TestClickHouseAnalyticsStore:
+    def test_record_scan_splits_package_name_and_version(self):
+        from agent_bom.api.clickhouse_store import ClickHouseAnalyticsStore
+
+        inserted = {}
+
+        class _Client:
+            def ensure_tables(self):
+                return None
+
+            def insert_json(self, table, rows):
+                inserted["table"] = table
+                inserted["rows"] = rows
+
+        with patch("agent_bom.cloud.clickhouse.ClickHouseClient", return_value=_Client()):
+            store = ClickHouseAnalyticsStore(url="http://localhost:8123")
+            store.record_scan(
+                "scan-1",
+                "agent-1",
+                [
+                    {
+                        "package": "requests@2.33.0",
+                        "ecosystem": "pypi",
+                        "vulnerability_id": "CVE-2026-0001",
+                        "severity": "high",
+                    }
+                ],
+            )
+
+        assert inserted["table"] == "vulnerability_scans"
+        assert inserted["rows"][0]["package_name"] == "requests"
+        assert inserted["rows"][0]["package_version"] == "2.33.0"

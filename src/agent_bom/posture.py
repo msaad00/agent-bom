@@ -19,6 +19,8 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from agent_bom.compliance_utils import effective_blast_radius_tags
+
 if TYPE_CHECKING:
     from agent_bom.models import AIBOMReport
 
@@ -178,18 +180,19 @@ def compute_posture_scorecard(report: "AIBOMReport") -> PostureScorecard:
     total_tags = 0
     tagged_findings = 0
     for br in report.blast_radii:
+        tags = effective_blast_radius_tags(br)
         total_tags += 1
         has_tag = bool(
-            br.owasp_tags
-            or br.atlas_tags
-            or br.nist_ai_rmf_tags
-            or br.owasp_mcp_tags
-            or br.owasp_agentic_tags
-            or br.eu_ai_act_tags
-            or br.nist_csf_tags
-            or br.iso_27001_tags
-            or br.soc2_tags
-            or br.cis_tags
+            tags["owasp_tags"]
+            or tags["atlas_tags"]
+            or tags["nist_ai_rmf_tags"]
+            or tags["owasp_mcp_tags"]
+            or tags["owasp_agentic_tags"]
+            or tags["eu_ai_act_tags"]
+            or tags["nist_csf_tags"]
+            or tags["iso_27001_tags"]
+            or tags["soc2_tags"]
+            or tags["cis_tags"]
         )
         if has_tag:
             tagged_findings += 1
@@ -255,6 +258,9 @@ def compute_posture_scorecard(report: "AIBOMReport") -> PostureScorecard:
     if total_servers == 0:
         config_score = 50.0
         config_detail = "No servers to evaluate"
+    elif not report.has_mcp_context:
+        config_score = 100.0
+        config_detail = "N/A for scans without MCP server configuration context"
     else:
         verified_pct = verified_servers / total_servers
         tools_pct = servers_with_tools / total_servers

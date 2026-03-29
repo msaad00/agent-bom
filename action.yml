@@ -1,5 +1,5 @@
 name: 'agent-bom Scan'
-description: 'Open security platform for agentic infrastructure — blast radius, runtime governance, AI BOM, and supply-chain evidence.'
+description: 'Run agent-bom in CI/CD to scan AI agents, MCP servers, images, and IaC. Emit SARIF and map blast radius from packages to credentials and tools.'
 author: 'agent-bom'
 
 branding:

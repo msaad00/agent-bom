@@ -237,6 +237,32 @@ class TestPostureScorecard:
         assert "N/A" in sc.dimensions["configuration_quality"].details
         assert sc.dimensions["compliance_coverage"].score > 0
 
+    def test_weak_grade_summary_explains_real_credential_exposure(self):
+        """Weak grades should explain when credential/config risk is the real cause."""
+        from agent_bom.posture import compute_posture_scorecard
+
+        server = _make_server(
+            registry_verified=False,
+            tools=[],
+            env={"API_KEY": "secret", "DB_PASSWORD": "pass", "SLACK_TOKEN": "token"},
+        )
+        agent = _make_agent(servers=[server])
+        brs = [
+            _make_blast_radius(
+                vuln=_make_vuln(vuln_id=f"CVE-2026-{i:04d}", severity="CRITICAL"),
+                agents=[agent],
+                servers=[server],
+                creds=["API_KEY"],
+            )
+            for i in range(3)
+        ]
+        report = _make_report(agents=[agent], blast_radii=brs)
+
+        sc = compute_posture_scorecard(report)
+        assert sc.grade in ("D", "F")
+        assert "credential exposure" in sc.summary
+        assert "MCP configuration" in sc.summary
+
 
 # ── Credential Risk Ranking ──────────────────────────────────────────────────
 

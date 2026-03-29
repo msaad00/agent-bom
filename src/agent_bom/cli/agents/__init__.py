@@ -1203,6 +1203,18 @@ def scan(
                 con.print(f"  [red]⚠[/red] Scan complete — [bold]{len(blast_radii)}[/bold] finding(s)")
             else:
                 con.print("  [green]✓[/green] No known vulnerabilities found")
+            if enrich and not quiet:
+                unique_scorecard = {
+                    (p.ecosystem, p.name, p.version)
+                    for a in agents
+                    for s in a.mcp_servers
+                    for p in s.packages
+                    if p.scorecard_score is not None
+                }
+                if unique_scorecard:
+                    con.print(f"  [green]✓[/green] OpenSSF Scorecard: enriched {len(unique_scorecard)} package(s)")
+                else:
+                    con.print("  [dim]  OpenSSF Scorecard: no packages with resolvable GitHub repos[/dim]")
 
         # Step 4a: Snyk vulnerability enrichment (optional)
         if snyk_flag and not no_scan and total_packages > 0:
@@ -1224,7 +1236,9 @@ def scan(
                 con.print("\n[yellow]  --snyk requires SNYK_TOKEN (set env var or use --snyk-token)[/yellow]")
 
         # Step 4b: OpenSSF Scorecard enrichment (optional)
-        if scorecard_flag and not no_scan:
+        if scorecard_flag and enrich and not quiet:
+            con.print("\n[dim]  OpenSSF Scorecard enrichment is already included in --enrich[/dim]")
+        elif scorecard_flag and not no_scan:
             all_pkgs_for_sc = [p for a in agents for s in a.mcp_servers for p in s.packages]
             if all_pkgs_for_sc:
                 import asyncio as _asyncio_sc

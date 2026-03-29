@@ -285,7 +285,25 @@ def compute_posture_scorecard(report: "AIBOMReport") -> PostureScorecard:
     elif grade == "C":
         summary = f"Moderate security posture ({grade}, {total_score}%) — improvements recommended"
     else:
-        summary = f"Weak security posture ({grade}, {total_score}%) — immediate attention required"
+        drivers: list[str] = []
+        if total_cred_servers > 0:
+            drivers.append(
+                f"real credential exposure across {total_cred_servers} "
+                f"server{'s' if total_cred_servers != 1 else ''}"
+            )
+        if report.has_mcp_context and total_servers > 0 and verified_servers < total_servers:
+            drivers.append(
+                "unverified or underspecified MCP configuration on "
+                f"{total_servers - verified_servers}/{total_servers} "
+                f"server{'s' if total_servers != 1 else ''}"
+            )
+        if drivers:
+            summary = (
+                f"Weak security posture ({grade}, {total_score}%) — this grade is driven by "
+                + " and ".join(drivers)
+            )
+        else:
+            summary = f"Weak security posture ({grade}, {total_score}%) — immediate attention required"
 
     return PostureScorecard(
         grade=grade,

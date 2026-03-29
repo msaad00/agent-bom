@@ -3154,6 +3154,9 @@ def test_remediation_json_in_output(sample_report):
     assert isinstance(item["agents_pct"], int)
     assert isinstance(item["risk_narrative"], str)
     assert len(item["risk_narrative"]) > 10
+    assert item["priority"] == "P2"
+    assert item["action"].startswith("Upgrade test-pkg to 1.2.3")
+    assert "rotate exposed credentials" in item["action"]
 
 
 def test_remediation_json_percentages(sample_report):

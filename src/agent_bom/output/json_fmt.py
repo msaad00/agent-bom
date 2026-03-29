@@ -64,6 +64,8 @@ def _build_remediation_json(report: AIBOMReport) -> list[dict]:
                 "severity": item["max_severity"].value,
                 "is_kev": item["has_kev"],
                 "impact_score": item["impact"],
+                "priority": item["priority"],
+                "action": item["action"],
                 "vulnerabilities": item["vulns"],
                 "affected_agents": item["agents"],
                 "agents_pct": round(n_agents / total_agents * 100),

@@ -935,6 +935,8 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
             "soc2": set(),
             "cis": set(),
             "max_severity": Severity.NONE,
+            "critical_count": 0,
+            "high_count": 0,
             "has_kev": False,
             "ai_risk": False,
             "references": set(),
@@ -979,6 +981,10 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
             g["references"].add(ref)
         if severity_order.get(br.vulnerability.severity, 0) > severity_order.get(g["max_severity"], 0):
             g["max_severity"] = br.vulnerability.severity
+        if br.vulnerability.severity == Severity.CRITICAL:
+            g["critical_count"] += 1
+        elif br.vulnerability.severity == Severity.HIGH:
+            g["high_count"] += 1
         if br.vulnerability.is_kev:
             g["has_kev"] = True
         if br.ai_risk_context:
@@ -1004,6 +1010,26 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
         g["impact"] = (
             len(g["agents"]) * 10 + len(g["creds"]) * 3 + len(g["vulns"]) + (5 if g["has_kev"] else 0) + (3 if g["ai_risk"] else 0)
         )
+        if g["has_kev"] or g["critical_count"] >= 3:
+            g["priority"] = "P1"
+        elif g["critical_count"] > 0 or (g["high_count"] > 0 and g["creds"]):
+            g["priority"] = "P2"
+        elif g["high_count"] > 0:
+            g["priority"] = "P3"
+        else:
+            g["priority"] = "P4"
+
+        if g["fix"]:
+            action = f"Upgrade {g['package']} to {g['fix']}"
+        else:
+            action = f"Monitor {g['package']} upstream and isolate exposed surface"
+        if g["creds"]:
+            action += "; rotate exposed credentials"
+        if g["tools"]:
+            action += "; review reachable tool permissions"
+        if g["has_kev"]:
+            action += "; expedite patching due to active exploitation"
+        g["action"] = action
         plan.append(g)
 
     plan.sort(key=lambda x: x["impact"], reverse=True)

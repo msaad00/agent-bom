@@ -275,7 +275,11 @@ def enrichment_options(fn):
     """NVD, EPSS, KEV, Scorecard, deps.dev, license, Snyk."""
     return _apply(
         [
-            click.option("--enrich", is_flag=True, help="Enrich vulnerabilities with NVD, EPSS, and CISA KEV data"),
+            click.option(
+                "--enrich",
+                is_flag=True,
+                help="Enrich findings with NVD, EPSS, CISA KEV, and OpenSSF Scorecard data for resolvable repos",
+            ),
             click.option("--compliance", is_flag=True, help="Tag findings with compliance frameworks (OWASP, NIST, CIS, ISO, SOC2, CMMC)"),
             click.option(
                 "--auto-update-db/--no-auto-update-db",
@@ -294,7 +298,12 @@ def enrichment_options(fn):
                 help="Comma-separated DB sources to sync before scanning (e.g. nvd,ghsa,osv,epss,kev).",
             ),
             click.option("--nvd-api-key", envvar="NVD_API_KEY", help="NVD API key for higher rate limits"),
-            click.option("--scorecard", "scorecard_flag", is_flag=True, help="Enrich packages with OpenSSF Scorecard scores"),
+            click.option(
+                "--scorecard",
+                "scorecard_flag",
+                is_flag=True,
+                help="Force OpenSSF Scorecard enrichment even without --enrich",
+            ),
             click.option(
                 "--deps-dev",
                 "deps_dev",

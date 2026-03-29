@@ -35,6 +35,7 @@ class TestAgentBom:
 
         r = CliRunner().invoke(main, ["agents", "--help"])
         assert r.exit_code == 0
+        assert "OpenSSF Scorecard" in r.output
 
     def test_scan_backward_compat(self):
         from agent_bom.cli import main

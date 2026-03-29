@@ -88,7 +88,7 @@ agent-bom answers:
 | Tag | Description |
 |-----|-------------|
 | `latest` | Most recent stable release |
-| `v0.75.10` | Current stable version (pinned) |
+| `v0.75.11` | Current stable version (pinned) |
 
 ## Links
 

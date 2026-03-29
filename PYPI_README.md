@@ -41,6 +41,14 @@ agent-bom iac Dockerfile k8s/         # IaC misconfigurations
 
 Read-only. Agentless. No secrets leave your machine.
 
+## How it works
+
+![How agent-bom works](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scan-pipeline-light.svg)
+
+## Blast radius
+
+![Blast radius](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-light.svg)
+
 ## Links
 
 - [GitHub](https://github.com/msaad00/agent-bom)

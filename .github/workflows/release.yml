@@ -62,7 +62,7 @@ jobs:
           cp -r out ../src/agent_bom/ui_dist
 
       - name: Build package
-        run: uv run --with build==1.4.0 python -m build
+        run: rm -rf dist/ && uv run --with build==1.4.0 python -m build
 
       - name: Verify package
         run: uvx twine==6.2.0 check dist/*

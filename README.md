@@ -105,15 +105,17 @@ Blast radius is **CWE-aware**: an RCE (CWE-94) shows full credential exposure, a
 
 | Source | Details |
 |--------|---------|
-| **MCP agents** | 30 client types auto-detected (Claude Desktop, Cursor, Windsurf, VS Code, Codex CLI, Gemini CLI, and more) |
+| **AI agents + MCP servers** | 30 client types auto-detected (Claude Desktop, Cursor, Windsurf, VS Code, Codex CLI, Gemini CLI, and more) |
+| **AI supply chain** | Blast radius mapping, dependency confusion detection, CWE-aware impact classification |
 | **Packages** | 15 ecosystems — Python, Node.js, Go, Rust, Java, .NET, Ruby, PHP, Swift, Conda, Alpine, Debian, RPM |
-| **Vulnerabilities** | OSV + NVD + GHSA + EPSS + CISA KEV, CWE impact classification |
-| **Container images** | Native OCI parser — no Syft/Grype needed |
-| **IaC** | Dockerfile, Terraform, CloudFormation, Helm, Kubernetes (138 rules) |
-| **Cloud AI** | AWS, Azure, GCP, Databricks, Snowflake, HuggingFace, W&B, Ollama, OpenAI |
-| **AI code** | AST analysis: prompts, guardrails, tool signatures from 10+ Python AI frameworks |
-| **Secrets** | 34 credential patterns + 11 PII patterns across source, config, and .env files |
-| **Model files** | 13 formats (.gguf, .safetensors, .pkl, ...) — provenance + hash verification |
+| **Vulnerabilities** | OSV + NVD + GHSA + EPSS + CISA KEV, VEX generation, reachability analysis |
+| **Container images + K8s** | Native OCI parser, Docker images, running containers, Kubernetes pod scanning |
+| **IaC** | Dockerfile, Terraform, CloudFormation, Helm, Kubernetes manifests (138 rules) |
+| **Cloud AI + GPU infra** | AWS Bedrock/SageMaker, Azure AI, GCP Vertex, Databricks, Snowflake, GPU/DCGM probes |
+| **AI platforms** | HuggingFace, W&B, Ollama, OpenAI, vector databases (Pinecone, Weaviate, ChromaDB) |
+| **AI code + models** | AST analysis (10+ frameworks), 13 model formats, provenance + hash verification |
+| **Secrets + PII** | 34 credential patterns + 11 PII patterns across source, config, and .env files |
+| **SBOM** | CycloneDX 1.6 with ML BOM extensions, SPDX 3.0, ingests existing SBOMs |
 | **Instruction files** | CLAUDE.md, .cursorrules, AGENTS.md — trust analysis + tool poisoning detection |
 
 **Read-only. Agentless. No secrets leave your machine.**

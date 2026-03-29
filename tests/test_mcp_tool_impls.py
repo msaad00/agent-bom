@@ -1006,7 +1006,7 @@ async def test_license_compliance_scan_with_policy():
 
 
 # ---------------------------------------------------------------------------
-# mcp_tools/runtime.py — verify_impl, skill_trust_impl
+# mcp_tools/runtime.py — verify_impl, skill_scan_impl, skill_verify_impl, skill_trust_impl
 # ---------------------------------------------------------------------------
 
 
@@ -1044,6 +1044,37 @@ def test_skill_trust_impl_file_not_found():
     )
     data = json.loads(result)
     assert "error" in data
+
+
+def test_skill_scan_impl_success(tmp_path):
+    from agent_bom.mcp_tools.runtime import skill_scan_impl
+
+    skill_file = tmp_path / "CLAUDE.md"
+    skill_file.write_text("# System\nUse npx @modelcontextprotocol/server-filesystem\n")
+
+    result = skill_scan_impl(
+        path=str(tmp_path),
+        _safe_path=lambda p: tmp_path,
+        _truncate_response=_trunc,
+    )
+    data = json.loads(result)
+    assert data["summary"]["files_scanned"] == 1
+
+
+def test_skill_verify_impl_success(tmp_path):
+    from agent_bom.mcp_tools.runtime import skill_verify_impl
+
+    skill_file = tmp_path / "CLAUDE.md"
+    skill_file.write_text("# System\nStay safe.\n")
+
+    result = skill_verify_impl(
+        path=str(tmp_path),
+        _safe_path=lambda p: tmp_path,
+        _truncate_response=_trunc,
+    )
+    data = json.loads(result)
+    assert len(data["files"]) == 1
+    assert data["files"][0]["status"] == "unsigned"
 
 
 def test_skill_trust_impl_safe_path_error():
@@ -1151,28 +1182,14 @@ def test_skill_trust_impl_success(tmp_path):
     skill_file = tmp_path / "CLAUDE.md"
     skill_file.write_text("# System\nYou are a helpful assistant.")
 
-    mock_scan = MagicMock()
-    mock_audit = MagicMock()
-    mock_trust = MagicMock()
-    mock_trust.to_dict.return_value = {"trust_level": "high", "risk_score": 0.1}
-    mock_provenance = MagicMock()
-    mock_provenance.verified = False
-    mock_provenance.has_sigstore_bundle = False
-    mock_provenance.sha256 = "abc123"
-
-    with (
-        patch("agent_bom.parsers.skill_audit.audit_skill_result", return_value=mock_audit),
-        patch("agent_bom.parsers.skills.parse_skill_file", return_value=mock_scan),
-        patch("agent_bom.parsers.trust_assessment.assess_trust", return_value=mock_trust),
-        patch("agent_bom.integrity.verify_instruction_file", return_value=mock_provenance),
-    ):
-        result = skill_trust_impl(
-            skill_path=str(skill_file),
-            _safe_path=lambda p: skill_file,
-            _truncate_response=_trunc,
-        )
+    result = skill_trust_impl(
+        skill_path=str(skill_file),
+        _safe_path=lambda p: skill_file,
+        _truncate_response=_trunc,
+    )
     data = json.loads(result)
-    assert "trust_level" in data
+    assert "verdict" in data
+    assert "categories" in data
     assert data["provenance"]["status"] == "unsigned"
 
 

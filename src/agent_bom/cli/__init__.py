@@ -52,6 +52,7 @@ def main():
     \b
     Quick start:
       agent-bom agents                      AI agent discovery + scan
+      agent-bom skills scan                skill / instruction trust scan
       agent-bom image nginx:latest          container image scan
       agent-bom iac Dockerfile k8s/         IaC misconfigurations
       agent-bom cloud aws                   cloud posture + CIS
@@ -207,6 +208,13 @@ main.add_command(iac_cmd)
 main.add_command(sbom_cmd)
 main.add_command(secrets_cmd)
 main.add_command(code_cmd)
+
+# ---------------------------------------------------------------------------
+# Skills command group — `agent-bom skills [scan|verify]`
+# ---------------------------------------------------------------------------
+from agent_bom.cli._skills_group import skills_group  # noqa: E402
+
+main.add_command(skills_group)
 
 # ---------------------------------------------------------------------------
 # Cloud command group — `agent-bom cloud [aws|azure|gcp]`

@@ -18,6 +18,7 @@ from typing import Optional
 
 from agent_bom.models import AIBOMReport, BlastRadius
 from agent_bom.output import build_remediation_plan
+from agent_bom.remediation_commands import build_fix_command, has_shell_metachar
 
 logger = logging.getLogger(__name__)
 
@@ -66,25 +67,6 @@ class RemediationPlan:
 
 # ─── Package fix generation ──────────────────────────────────────────────────
 
-_SHELL_METACHAR_RE = re.compile(r"[;&|`$\n\r<>\"'\\]")
-
-
-def _has_shell_metachar(value: str) -> bool:
-    """Check if a string contains shell metacharacters that could enable injection."""
-    return bool(_SHELL_METACHAR_RE.search(value))
-
-
-_ECOSYSTEM_COMMANDS: dict[str, str] = {
-    "npm": "npm install {package}@{version}",
-    "pypi": "pip install '{package}>={version}'",
-    "PyPI": "pip install '{package}>={version}'",
-    "cargo": "cargo update -p {package}",
-    "go": "go get {package}@v{version}",
-    "maven": "# Update {package} to {version} in pom.xml",
-    "nuget": "dotnet add package {package} --version {version}",
-    "rubygems": "gem install {package} -v '{version}'",
-}
-
 
 def generate_package_fixes(plan_items: list[dict]) -> tuple[list[PackageFix], list[dict]]:
     """Generate upgrade commands for vulnerable packages.
@@ -112,7 +94,7 @@ def generate_package_fixes(plan_items: list[dict]) -> tuple[list[PackageFix], li
         # command injection via malicious OSV/NVD response data.
         pkg_name = item["package"]
         fix_ver = item["fix"]
-        if _has_shell_metachar(pkg_name) or _has_shell_metachar(fix_ver):
+        if has_shell_metachar(pkg_name) or has_shell_metachar(fix_ver):
             logger.warning("Skipping remediation for %s — unsafe characters in name/version", pkg_name)
             unfixable.append(
                 {
@@ -125,8 +107,7 @@ def generate_package_fixes(plan_items: list[dict]) -> tuple[list[PackageFix], li
                 }
             )
             continue
-        template = _ECOSYSTEM_COMMANDS.get(item["ecosystem"], "# Upgrade {package} to {version}")
-        command = template.format(package=pkg_name, version=fix_ver)
+        command = build_fix_command(item["ecosystem"], pkg_name, fix_ver) or f"# Upgrade {pkg_name} to {fix_ver}"
 
         fixable.append(
             PackageFix(
@@ -682,11 +663,10 @@ def apply_fixes_from_json(
             continue
         eco = item.get("ecosystem", "")
         pkg_name = item["package"]
-        if _has_shell_metachar(pkg_name) or _has_shell_metachar(fixed):
+        if has_shell_metachar(pkg_name) or has_shell_metachar(fixed):
             logger.warning("Skipping auto-apply for %s — unsafe characters", pkg_name)
             continue
-        template = _ECOSYSTEM_COMMANDS.get(eco, "# Upgrade {package} to {version}")
-        command = template.format(package=pkg_name, version=fixed)
+        command = build_fix_command(eco, pkg_name, fixed) or f"# Upgrade {pkg_name} to {fixed}"
         fixable.append(
             PackageFix(
                 package=item["package"],

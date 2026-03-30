@@ -15,6 +15,12 @@ from agent_bom.http_client import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _patch_url_validation(monkeypatch):
+    """Keep retry tests focused on HTTP behavior, not ambient DNS resolution."""
+    monkeypatch.setattr("agent_bom.security.validate_url", lambda _url: None)
+
+
 class TestSanitizeForLog:
     def test_strips_newlines(self):
         assert _sanitize_for_log("line1\nline2") == "line1\\nline2"

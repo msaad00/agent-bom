@@ -319,7 +319,6 @@ def test_discover_all_project_dir_scopes_to_project_only(tmp_path):
         patch("agent_bom.discovery.discover_global_configs", return_value=[global_agent]),
         patch("agent_bom.discovery.discover_project_configs", return_value=[project_agent]),
         patch("agent_bom.discovery.discover_compose_mcp_servers", return_value=None),
-        patch("agent_bom.discovery.discover_toolhive", return_value=global_agent),
         patch("agent_bom.discovery.discover_docker_mcp", return_value=global_agent),
     ):
         agents = discover_all(project_dir=str(tmp_path))

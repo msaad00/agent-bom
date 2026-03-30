@@ -73,7 +73,6 @@ class AgentType(str, Enum):
     OPENCLAW = "openclaw"  # OpenClaw AI agent
     ROO_CODE = "roo-code"  # Roo Code (VS Code extension)
     AMAZON_Q = "amazon-q"  # Amazon Q Developer (VS Code)
-    TOOLHIVE = "toolhive"  # ToolHive MCP server manager
     DOCKER_MCP = "docker-mcp"  # Docker Desktop MCP Toolkit
     JETBRAINS_AI = "jetbrains-ai"  # JetBrains AI Assistant (IntelliJ, PyCharm, etc.)
     JUNIE = "junie"  # JetBrains Junie coding agent

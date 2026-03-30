@@ -1,11 +1,8 @@
-"""Tests for v0.15.0 discovery enhancements: agent status, ToolHive, Claude Code projects."""
+"""Tests for discovery enhancements: agent status and Claude Code projects."""
 
 from __future__ import annotations
 
-import json
-import subprocess
-
-from agent_bom.models import Agent, AgentStatus, AgentType, TransportType
+from agent_bom.models import Agent, AgentStatus, AgentType
 
 # ── AgentStatus model tests ──────────────────────────────────────────────────
 
@@ -29,10 +26,6 @@ def test_agent_installed_not_configured():
     )
     assert agent.status == AgentStatus.INSTALLED_NOT_CONFIGURED
     assert len(agent.mcp_servers) == 0
-
-
-def test_toolhive_agent_type():
-    assert AgentType.TOOLHIVE.value == "toolhive"
 
 
 # ── Claude Code project parsing ──────────────────────────────────────────────
@@ -120,155 +113,6 @@ def test_parse_claude_json_projects_no_key():
     assert servers == []
 
 
-# ── ToolHive server parsing ──────────────────────────────────────────────────
-
-
-def test_parse_toolhive_servers_list():
-    from agent_bom.discovery import _parse_toolhive_servers
-
-    data = [
-        {"name": "fetch", "image": "ghcr.io/stacklok/mcp-fetch:latest"},
-        {"name": "github", "image": "ghcr.io/stacklok/mcp-github:latest", "url": "http://localhost:9090/sse"},
-    ]
-    servers = _parse_toolhive_servers(data)
-    assert len(servers) == 2
-    assert servers[0].name == "fetch"
-    assert servers[0].transport == TransportType.STDIO
-    assert servers[1].name == "github"
-    assert servers[1].transport == TransportType.SSE
-
-
-def test_parse_toolhive_servers_dict():
-    from agent_bom.discovery import _parse_toolhive_servers
-
-    data = {"servers": [{"name": "test", "image": "test:latest"}]}
-    servers = _parse_toolhive_servers(data)
-    assert len(servers) == 1
-    assert servers[0].name == "test"
-
-
-def test_parse_toolhive_servers_empty():
-    from agent_bom.discovery import _parse_toolhive_servers
-
-    assert _parse_toolhive_servers([]) == []
-    assert _parse_toolhive_servers({"servers": []}) == []
-
-
-def test_parse_toolhive_servers_streamable_http():
-    from agent_bom.discovery import _parse_toolhive_servers
-
-    data = [{"name": "api", "image": "test:latest", "url": "http://localhost:8080/mcp"}]
-    servers = _parse_toolhive_servers(data)
-    assert len(servers) == 1
-    assert servers[0].transport == TransportType.STREAMABLE_HTTP
-
-
-# ── ToolHive discovery ───────────────────────────────────────────────────────
-
-
-def test_toolhive_no_thv(monkeypatch):
-    """discover_toolhive returns None when thv is not on PATH."""
-    import shutil
-
-    from agent_bom.discovery import discover_toolhive
-
-    monkeypatch.setattr(shutil, "which", lambda _: None)
-    assert discover_toolhive() is None
-
-
-def test_toolhive_thv_no_servers(monkeypatch):
-    """discover_toolhive returns installed-not-configured when thv list returns empty."""
-    import shutil
-
-    from agent_bom.discovery import discover_toolhive
-
-    monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/local/bin/" + cmd)
-
-    def fake_run(cmd, **kwargs):
-        class R:
-            returncode = 0
-            stdout = "[]"
-            stderr = ""
-
-        return R()
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    agent = discover_toolhive()
-    assert agent is not None
-    assert agent.agent_type == AgentType.TOOLHIVE
-    assert agent.status == AgentStatus.INSTALLED_NOT_CONFIGURED
-
-
-def test_toolhive_thv_with_servers(monkeypatch):
-    """discover_toolhive returns configured agent when thv list returns servers."""
-    import shutil
-
-    from agent_bom.discovery import discover_toolhive
-
-    monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/local/bin/" + cmd)
-
-    fake_data = [
-        {"name": "fetch-server", "image": "ghcr.io/stacklok/mcp-fetch:latest", "url": "http://localhost:8080/sse"},
-        {"name": "github-server", "image": "ghcr.io/stacklok/mcp-github:latest"},
-    ]
-
-    def fake_run(cmd, **kwargs):
-        class R:
-            returncode = 0
-            stdout = json.dumps(fake_data)
-            stderr = ""
-
-        return R()
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    agent = discover_toolhive()
-    assert agent is not None
-    assert agent.status == AgentStatus.CONFIGURED
-    assert len(agent.mcp_servers) == 2
-    names = {s.name for s in agent.mcp_servers}
-    assert "fetch-server" in names
-    assert "github-server" in names
-
-
-def test_toolhive_thv_error(monkeypatch):
-    """discover_toolhive returns installed-not-configured when thv list fails."""
-    import shutil
-
-    from agent_bom.discovery import discover_toolhive
-
-    monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/local/bin/" + cmd)
-
-    def fake_run(cmd, **kwargs):
-        class R:
-            returncode = 1
-            stdout = ""
-            stderr = "daemon not running"
-
-        return R()
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    agent = discover_toolhive()
-    assert agent is not None
-    assert agent.status == AgentStatus.INSTALLED_NOT_CONFIGURED
-
-
-def test_toolhive_thv_timeout(monkeypatch):
-    """discover_toolhive handles subprocess timeout gracefully."""
-    import shutil
-
-    from agent_bom.discovery import discover_toolhive
-
-    monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/local/bin/" + cmd)
-
-    def fake_run(cmd, **kwargs):
-        raise subprocess.TimeoutExpired(cmd=cmd, timeout=15)
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    agent = discover_toolhive()
-    assert agent is not None
-    assert agent.status == AgentStatus.INSTALLED_NOT_CONFIGURED
-
-
 # ── Binary detection ─────────────────────────────────────────────────────────
 
 
@@ -311,18 +155,6 @@ def test_detect_no_binaries(monkeypatch):
     monkeypatch.setattr(disc, "_INSTALL_SIGNALS", {})
     installed = detect_installed_agents(discovered_types=set())
     assert installed == []
-
-
-def test_detect_skips_toolhive(monkeypatch):
-    """detect_installed_agents skips ToolHive (handled separately)."""
-    import shutil
-
-    from agent_bom.discovery import detect_installed_agents
-
-    monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/local/bin/thv" if cmd == "thv" else None)
-    installed = detect_installed_agents(discovered_types=set())
-    agent_types = {a.agent_type for a in installed}
-    assert AgentType.TOOLHIVE not in agent_types
 
 
 # ── JSON output includes status ──────────────────────────────────────────────
@@ -464,18 +296,6 @@ def test_cyclonedx_includes_status():
     assert status_props[0]["value"] == "installed-not-configured"
 
 
-# ── ToolHive in CONFIG_LOCATIONS ─────────────────────────────────────────────
-
-
-def test_toolhive_in_config_locations():
-    from agent_bom.discovery import CONFIG_LOCATIONS
-
-    assert AgentType.TOOLHIVE in CONFIG_LOCATIONS
-    # ToolHive uses CLI-based discovery, so paths are empty
-    for platform_paths in CONFIG_LOCATIONS[AgentType.TOOLHIVE].values():
-        assert platform_paths == []
-
-
 # ── AGENT_BINARIES constant ─────────────────────────────────────────────────
 
 
@@ -483,7 +303,6 @@ def test_agent_binaries_has_expected_entries():
     from agent_bom.discovery import AGENT_BINARIES
 
     assert AGENT_BINARIES[AgentType.OPENCLAW] == "openclaw"
-    assert AGENT_BINARIES[AgentType.TOOLHIVE] == "thv"
     assert AGENT_BINARIES[AgentType.CLAUDE_CODE] == "claude"
 
 
@@ -498,8 +317,7 @@ def test_where_shows_binary_info():
     runner = CliRunner()
     result = runner.invoke(main, ["mcp", "where"])
     assert result.exit_code == 0
-    # Should mention binary detection
-    assert "binary:" in result.output or "toolhive" in result.output.lower()
+    assert "binary:" in result.output
 
 
 def test_get_all_discovery_paths_returns_all_clients():

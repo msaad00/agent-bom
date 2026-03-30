@@ -194,7 +194,6 @@ Claude Desktop, Claude Code, Cursor, Windsurf, Cline, Continue, Zed, VS Code Cop
 | ClawHub/OpenClaw | 4 split skills |
 | MCP Registry | Live (OIDC auth) |
 | Railway SSE | Live |
-| ToolHive | PR open |
 | awesome-mcp-servers | Listed |
 | Helm chart | Available |
 | Snowflake Native App | Streamlit path |

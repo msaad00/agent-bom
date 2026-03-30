@@ -650,7 +650,7 @@ def check_over_permission(server: MCPServer, agent_type: str | None = None) -> l
         "amazon-q",
     }
     chat_agents = {"claude-desktop", "custom"}
-    automation_agents = {"goose", "openclaw", "toolhive", "docker-mcp"}
+    automation_agents = {"goose", "openclaw", "docker-mcp"}
 
     if agent_type in code_agents:
         expected = {ToolCapability.READ, ToolCapability.WRITE, ToolCapability.EXECUTE}

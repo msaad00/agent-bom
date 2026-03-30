@@ -173,34 +173,6 @@ def parse_claude_json_projects(config_data: dict, config_path: str) -> list[MCPS
     return servers
 
 
-def _parse_toolhive_servers(data) -> list[MCPServer]:
-    """Parse ToolHive ``thv list --output json`` into MCPServer objects."""
-    servers: list[MCPServer] = []
-    items = data if isinstance(data, list) else data.get("servers", [])
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        name = item.get("name", "")
-        if not name:
-            continue
-
-        url = item.get("url") or item.get("endpoint")
-        transport = TransportType.STDIO
-        if url:
-            transport = TransportType.SSE if "sse" in url.lower() else TransportType.STREAMABLE_HTTP
-
-        server = MCPServer(
-            name=name,
-            command=item.get("image", "thv"),
-            args=[],
-            transport=transport,
-            url=url,
-            config_path="thv",
-        )
-        servers.append(server)
-    return servers
-
-
 # ---------------------------------------------------------------------------
 # TOML / YAML config parsers
 # ---------------------------------------------------------------------------

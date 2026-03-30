@@ -5,7 +5,7 @@
 | **CLI** | Local scanning, CI/CD | `pip install agent-bom` |
 | **MCP Server** | AI agent integration | `agent-bom mcp server` |
 | **Docker** | Isolated scanning | `docker run ghcr.io/msaad00/agent-bom scan` |
-| **GitHub Action** | PR checks | `uses: msaad00/agent-bom@v0.75.11` |
+| **GitHub Action** | PR checks | `uses: msaad00/agent-bom@v0.75.12` |
 | **Kubernetes** | Fleet monitoring | Helm chart |
 | **REST API** | Platform integration | `agent-bom serve` |
 | **Runtime Proxy** | Real-time enforcement | `agent-bom runtime proxy` |

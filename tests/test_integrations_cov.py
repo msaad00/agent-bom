@@ -7,6 +7,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _patch_test_url_validation(monkeypatch):
+    """Keep mocked integration tests independent from ambient DNS resolution."""
+    monkeypatch.setattr("agent_bom.integrations.jira.validate_url", lambda _url: None)
+
+
 class TestDrataIntegration:
     @pytest.mark.asyncio
     async def test_upload_evidence_success(self):

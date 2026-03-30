@@ -74,6 +74,17 @@ agent-bom answers the higher-value questions:
 - Which credentials are exposed?
 - Which tools are reachable?
 - What should be fixed first?
+- Which local AI infrastructure should be scanned next?
+
+It covers:
+
+- **30 MCP client types** — Claude Desktop, Cursor, Windsurf, VS Code Copilot, Cline, Continue, Zed, Cortex Code, and more
+- Packages, container images, IaC, secrets, AI source code, and cloud AI environments
+- Blast radius from package to server to agent to credentials and tools
+- Runtime MCP proxy with 8 behavioral detectors
+- 14 compliance frameworks
+- 36 MCP server tools
+- API + dashboard for fleet-wide visibility
 
 ## Coverage At A Glance
 

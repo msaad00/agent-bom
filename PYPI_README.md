@@ -38,13 +38,12 @@ agent-bom iac Dockerfile k8s/ infra/main.tf   # IaC misconfigurations
 
 ## What it scans
 
-- **30 MCP client types** — Claude Desktop, Cursor, Windsurf, VS Code, Codex CLI, and more
+- **Agents + MCP** — 30 client types, MCP servers, tools, transports, trust posture
+- **Skills + instructions** — `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.windsurfrules`, `skills/*`
 - **15 package ecosystems** — OSV + NVD + GHSA + EPSS + CISA KEV
-- **Container images** — native OCI parser, no external tools needed
-- **IaC** — Dockerfile, Terraform, CloudFormation, Helm, K8s (138 rules)
+- **Container images + IaC** — native OCI parser, Dockerfile, Terraform, CloudFormation, Helm, Kubernetes
 - **Cloud AI** — AWS, Azure, GCP, Databricks, Snowflake, HuggingFace, Ollama
-- **Secrets** — 34 credential patterns + 11 PII patterns
-- **Runtime** — MCP proxy with 112 detection patterns, PII redaction, Shield SDK
+- **Secrets + runtime** — 34 credential patterns, 11 PII patterns, MCP proxy, Shield SDK
 - **14 compliance frameworks** — OWASP, MITRE, NIST, EU AI Act, ISO 27001, SOC 2, CIS, CMMC, FedRAMP
 
 ## Key features
@@ -53,6 +52,7 @@ agent-bom iac Dockerfile k8s/ infra/main.tf   # IaC misconfigurations
 - **CWE-aware impact** — RCE shows credential exposure, DoS does not
 - **19 output formats** — SARIF, CycloneDX 1.6, SPDX 3.0, HTML, Prometheus, and more
 - **MCP server** — 36 security tools for Claude, Cursor, Windsurf
+- **Skill bundle identity** — stable bundle hashes for skill and instruction file review
 - **Dependency confusion detection** — flags internal naming patterns
 - **VEX generation** — auto-triage with CWE-aware reachability
 

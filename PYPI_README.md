@@ -30,6 +30,7 @@ pip install agent-bom
 
 agent-bom agents                              # Discover + scan local AI agents and MCP servers
 agent-bom agents -p .                         # Scan project manifests plus agent/MCP context
+agent-bom mesh --project .                    # Show the live agent / MCP topology
 agent-bom check flask@2.0.0 --ecosystem pypi  # Pre-install CVE gate
 agent-bom image nginx:latest                  # Container image scan
 agent-bom iac Dockerfile k8s/ infra/main.tf   # IaC misconfigurations

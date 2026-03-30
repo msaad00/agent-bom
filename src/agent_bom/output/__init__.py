@@ -1317,13 +1317,63 @@ def _pct(part: int, total: int) -> str:
 # ─── Compact Output (default mode) ───────────────────────────────────────────
 
 
+def _posture_grade_badge(grade: str) -> str:
+    """Render a compact color badge for posture grade output."""
+    grade = (grade or "?").upper()
+    if grade == "A":
+        style = "white on green"
+    elif grade == "B":
+        style = "black on bright_green"
+    elif grade == "C":
+        style = "black on yellow"
+    elif grade == "D":
+        style = "white on dark_orange3"
+    else:
+        style = "white on red"
+    return f"[bold {style}] {grade} [/bold {style}]"
+
+
+def _compact_detail(text: str, limit: int = 88) -> str:
+    """Trim long explanatory detail so the default output stays one-screen friendly."""
+    clean = " ".join(text.split())
+    if len(clean) <= limit:
+        return clean
+    return clean[: limit - 1].rstrip() + "…"
+
+
 def print_compact_summary(report: AIBOMReport) -> None:
     """Compact summary — posture + key metrics in ~8 lines."""
     from collections import Counter
 
+    from agent_bom.posture import compute_posture_scorecard
+
     sev_counts: Counter[str] = Counter()
     for br in report.blast_radii:
         sev_counts[br.vulnerability.severity.value.upper()] += 1
+
+    scorecard = compute_posture_scorecard(report)
+    preferred_driver_order = [
+        "credential_hygiene",
+        "vulnerability_posture",
+        "active_exploitation",
+        "configuration_quality",
+        "supply_chain_quality",
+        "compliance_coverage",
+    ]
+    weak_dimensions = [
+        scorecard.dimensions[name]
+        for name in preferred_driver_order
+        if name in scorecard.dimensions and scorecard.dimensions[name].score < 90
+    ][:2]
+    if len(weak_dimensions) < 2:
+        seen_names = {dim.name for dim in weak_dimensions}
+        for dim in sorted(scorecard.dimensions.values(), key=lambda d: d.score):
+            if dim.score >= 80 or dim.name in seen_names:
+                continue
+            weak_dimensions.append(dim)
+            seen_names.add(dim.name)
+            if len(weak_dimensions) >= 2:
+                break
 
     if report.total_vulnerabilities == 0:
         posture = "[bold white on green] CLEAN [/bold white on green]"
@@ -1364,6 +1414,8 @@ def print_compact_summary(report: AIBOMReport) -> None:
     pkg_detail = f" ({n_direct}D/{n_transitive}T)" if n_transitive else ""
 
     lines = [
+        f"  [bold]POSTURE GRADE:[/bold]  {_posture_grade_badge(scorecard.grade)} "
+        f"[bold]{scorecard.score:.1f}/100[/bold]  [dim]{scorecard.summary}[/dim]",
         f"  [bold]SECURITY POSTURE:[/bold]  {posture}",
         "",
         f"  Agents  [bold]{report.total_agents}[/bold]    "
@@ -1371,6 +1423,9 @@ def print_compact_summary(report: AIBOMReport) -> None:
         f"Packages  [bold]{report.total_packages}[/bold][dim]{pkg_detail}[/dim]    "
         f"Vulns  [bold]{report.total_vulnerabilities}[/bold]",
     ]
+    if weak_dimensions:
+        driver_parts = [f"[yellow]{dim.name}[/yellow]: {_compact_detail(dim.details, limit=54)}" for dim in weak_dimensions]
+        lines.append(f"  [bold]Top Drivers:[/bold]  {' [dim]·[/dim] '.join(driver_parts)}")
     if cred_names:
         names = ", ".join(cred_names[:3])
         more = f" +{len(cred_names) - 3}" if len(cred_names) > 3 else ""
@@ -1601,7 +1656,7 @@ def print_compact_remediation(report: AIBOMReport, limit: int = 5) -> None:
 
     console.print()
     total = len(fixable)
-    title = f"Remediation (top {min(limit, total)} of {total})" if total > limit else f"Remediation ({total})"
+    title = f"Fix First (top {min(limit, total)} of {total})" if total > limit else f"Fix First ({total})"
     console.print(f"  [bold]{title}[/bold]")
 
     sev_style = {
@@ -1615,11 +1670,18 @@ def print_compact_remediation(report: AIBOMReport, limit: int = 5) -> None:
     for i, item in enumerate(fixable[:limit], 1):
         style = sev_style.get(item["max_severity"], "white")
         kev = " [red]KEV[/red]" if item["has_kev"] else ""
+        reach_parts = [f"{len(item['vulns'])} vuln(s)", f"{len(item['agents'])} agent(s)"]
+        if item["creds"]:
+            reach_parts.append(f"{len(item['creds'])} credential(s)")
+        if item["tools"]:
+            reach_parts.append(f"{len(item['tools'])} tool(s)")
+        reach = ", ".join(reach_parts)
         console.print(
             f"  [{style}]{i}.[/{style}] [bold]{item['package']}[/bold] "
             f"[dim]{item['current']}[/dim] → [green]{item['fix']}[/green]{kev}  "
-            f"[dim]clears {len(item['vulns'])} vuln(s), {len(item['agents'])} agent(s)[/dim]"
+            f"[dim]{item['priority']} · clears {reach}[/dim]"
         )
+        console.print(f"     [dim]{_compact_detail(item['action'], limit=110)}[/dim]")
 
     if total > limit:
         console.print(f"  [dim]... {total - limit} more (use --verbose for full plan)[/dim]")

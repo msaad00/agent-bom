@@ -17,6 +17,8 @@ agent-bom is built on four security principles:
 
 ### 1. CI/CD Pipeline — scan on every PR
 
+Start with the same adoption pattern teams expect from Trivy or Grype: a single CI step that fails on policy, uploads SARIF, and produces artifacts security teams can review.
+
 ```yaml
 # GitHub Actions
 - uses: msaad00/agent-bom@v0.75.12
@@ -31,6 +33,35 @@ agent-bom is built on four security principles:
 **What it scans:** repo dependencies, MCP configs, IaC files, instruction files.
 **What leaves the machine:** package names + versions only (to OSV API).
 **Credentials:** never accessed — scans manifest files, not environments.
+
+**Common CI/CD patterns**
+
+```yaml
+# Container image gate
+- uses: msaad00/agent-bom@v0.75.12
+  with:
+    scan-type: image
+    scan-ref: ghcr.io/acme/agent-runtime:sha-abcdef
+    severity-threshold: critical
+
+# IaC gate
+- uses: msaad00/agent-bom@v0.75.12
+  with:
+    scan-type: iac
+    iac: Dockerfile,k8s/,infra/main.tf
+    severity-threshold: high
+
+# Air-gapped or fully cached CI
+- uses: msaad00/agent-bom@v0.75.12
+  with:
+    auto-update-db: false
+    enrich: false
+```
+
+**Recommended rollout**
+1. Start with `severity-threshold: critical` and `upload-sarif: true`.
+2. Turn on `enrich: true` and `fail-on-kev: true` after the baseline is clean.
+3. Add `policy` or `warn-on-severity` once teams are comfortable with the signal.
 
 ### 2. Endpoint Fleet — MDM-pushed scan
 
@@ -116,6 +147,11 @@ docker run --rm \
 
 Multi-arch: `linux/amd64` + `linux/arm64`. Non-root container. SHA-pinned base image.
 
+**Best uses**
+- Isolated scans in CI where you do not want to install Python or Node.
+- Air-gapped environments with a pre-synced local vulnerability DB.
+- Reproducible image scans across developer laptops and build runners.
+
 ## Output Integration
 
 | Target | Command | Format |
@@ -147,3 +183,12 @@ agent-bom protects its own supply chain:
 - **Releases:** SLSA L3 provenance attestation + Sigstore signing
 - **No eval/exec:** zero `eval()`, `exec()`, or `shell=True` in production code
 - **Self-scan:** agent-bom scans itself on every merge (post-merge-self-scan.yml)
+
+## Adoption path by team
+
+| Team | First rollout step | Next step |
+|------|--------------------|-----------|
+| Developers | `agent-bom agents -p .` | `agent-bom skills scan .` + local `agent-bom check` |
+| AppSec / security engineering | GitHub Action with SARIF | Fleet API + policy-as-code gates |
+| Platform / DevOps | Docker image gate + IaC scan | Air-gapped DB sync + runtime proxy |
+| Enterprise security | Central `agent-bom serve` | Postgres/Snowflake/ClickHouse + webhook integrations |

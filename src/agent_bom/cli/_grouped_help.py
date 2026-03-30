@@ -24,7 +24,7 @@ COMMAND_CATEGORIES: OrderedDict[str, list[str]] = OrderedDict(
         ),
         (
             "Reporting",
-            ["graph", "report"],
+            ["graph", "mesh", "report"],
         ),
         (
             "Governance",

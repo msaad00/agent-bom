@@ -78,7 +78,7 @@ agent-bom serve                         # API + Next.js dashboard
 | **Air-gapped / isolated** | Pre-sync the local DB, copy the cache, and run with `--offline` or `auto-update-db: false`. |
 
 <details>
-<summary><b>Claude Desktop / Claude Code / MCP integration</b></summary>
+<summary><b>Claude, Cortex, and MCP integration</b></summary>
 
 Use `agent-bom` itself as an MCP tool surface:
 
@@ -86,7 +86,38 @@ Use `agent-bom` itself as an MCP tool surface:
 agent-bom mcp server
 ```
 
-That lets Claude Desktop, Claude Code, Cursor, Windsurf, and other MCP-capable clients call the scanner directly through the MCP server mode.
+That lets Claude Desktop, Claude Code, Cortex CoCo, Cursor, Windsurf, and other MCP-capable clients call the scanner directly through the MCP server mode.
+
+**Claude Code**
+
+```bash
+claude mcp add agent-bom -- uvx agent-bom mcp server
+```
+
+**Cortex CoCo**
+
+Add to `~/.snowflake/cortex/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "agent-bom": {
+      "command": "uvx",
+      "args": ["agent-bom", "mcp", "server"]
+    }
+  }
+}
+```
+
+**Runtime monitoring / proxy mode**
+
+Wrap a third-party MCP server with the proxy when you want runtime inspection instead of just scanning:
+
+```bash
+agent-bom proxy "npx @modelcontextprotocol/server-filesystem /workspace"
+```
+
+The proxy inspects MCP JSON-RPC traffic with drift, credential, injection, sequence, and capability-aware detectors before forwarding to the real server.
 
 </details>
 

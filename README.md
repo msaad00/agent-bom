@@ -68,6 +68,10 @@ agent-bom serve                         # API + Next.js dashboard
 
 ---
 
+## Hosted deployment
+
+A hosted deployment is available on [Fronteir AI](https://fronteir.ai/mcp/msaad00-agent-bom).
+
 ## Use it by environment
 
 | Environment | Recommendation |

@@ -950,17 +950,15 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
         g["package"] = br.package.name
         g["ecosystem"] = br.package.ecosystem
         g["current"] = br.package.version
-        # Only accept fixed_version that is a forward upgrade; pick the minimum valid fix
+        # Only accept fixed_version values that are real forward upgrades for
+        # the package ecosystem; this avoids downgrade/canary suggestions from
+        # multi-branch or pre-release advisories.
         fv = br.vulnerability.fixed_version
         if fv:
-            try:
-                from packaging.version import Version as _PkgV
+            from agent_bom.version_utils import compare_versions
 
-                if _PkgV(fv) > _PkgV(br.package.version):
-                    if g["fix"] is None or _PkgV(fv) < _PkgV(g["fix"]):
-                        g["fix"] = fv
-            except Exception:
-                if g["fix"] is None:
+            if compare_versions(br.package.version, fv, br.package.ecosystem):
+                if g["fix"] is None or compare_versions(fv, g["fix"], br.package.ecosystem):
                     g["fix"] = fv
         g["vulns"].append(br.vulnerability.id)
         for a in br.affected_agents:

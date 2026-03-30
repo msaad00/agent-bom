@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
@@ -26,6 +27,8 @@ SCORECARD_API_URL = "https://api.securityscorecards.dev/projects"
 
 # Cache: repo_url -> scorecard data (or None for miss)
 _scorecard_cache: dict[str, Optional[dict]] = {}
+_scorecard_reason_cache: dict[str, Optional[str]] = {}
+_scorecard_cooldown_until: float = 0.0
 
 # Pattern to extract GitHub owner/repo from various URL formats
 _GITHUB_REPO_PATTERN = re.compile(r"(?:https?://)?github\.com/([^/]+/[^/#?]+?)(?:\.git)?(?:[/#?]|$)")
@@ -109,11 +112,20 @@ async def fetch_scorecard(repo: str) -> Optional[dict]:
         Scorecard data dict with 'score' and 'checks', or None.
     """
     # Validate repo format to prevent SSRF via path manipulation
+    global _scorecard_cooldown_until
+
     if not _SAFE_REPO_PATTERN.match(repo):
+        _scorecard_reason_cache[repo] = "invalid_repo"
         return None
 
     if repo in _scorecard_cache:
         return _scorecard_cache[repo]
+
+    if time.monotonic() < _scorecard_cooldown_until:
+        reason = "scorecard_service_unavailable"
+        _scorecard_cache[repo] = None
+        _scorecard_reason_cache[repo] = reason
+        return None
 
     async with create_client(timeout=15.0) as client:
         url = f"{SCORECARD_API_URL}/github.com/{repo}"
@@ -129,13 +141,37 @@ async def fetch_scorecard(repo: str) -> Optional[dict]:
                     "checks": {check["name"]: check.get("score", -1) for check in data.get("checks", [])},
                 }
                 _scorecard_cache[repo] = result
+                _scorecard_reason_cache[repo] = None
                 return result
             except (ValueError, KeyError) as exc:
                 safe_repo = repo.replace("\n", "").replace("\r", "")
                 safe_exc = str(exc).replace("\n", "\\n").replace("\r", "\\r")
                 logger.debug("Scorecard parse error for %s: %s", safe_repo, safe_exc)
+                reason = "scorecard_parse_error"
+                _scorecard_cache[repo] = None
+                _scorecard_reason_cache[repo] = reason
+                return None
+
+        if response is None:
+            reason = "scorecard_service_unavailable"
+        elif response.status_code == 404:
+            reason = "scorecard_not_found"
+        elif response.status_code == 429:
+            retry_after = response.headers.get("Retry-After")
+            try:
+                cooldown = min(float(retry_after), 300.0) if retry_after else 120.0
+            except ValueError:
+                cooldown = 120.0
+            _scorecard_cooldown_until = max(_scorecard_cooldown_until, time.monotonic() + cooldown)
+            reason = "scorecard_rate_limited"
+        elif response.status_code >= 500:
+            _scorecard_cooldown_until = max(_scorecard_cooldown_until, time.monotonic() + 60.0)
+            reason = "scorecard_service_unavailable"
+        else:
+            reason = "scorecard_lookup_failed"
 
         _scorecard_cache[repo] = None
+        _scorecard_reason_cache[repo] = reason
         return None
 
 
@@ -210,7 +246,7 @@ async def enrich_packages_with_scorecard_stats(packages: list[Package]) -> Score
             for pkg in group:
                 pkg.scorecard_repo = repo
                 pkg.scorecard_lookup_state = "failed"
-                pkg.scorecard_lookup_reason = "scorecard_lookup_failed"
+                pkg.scorecard_lookup_reason = _scorecard_reason_cache.get(repo) or "scorecard_lookup_failed"
 
     return stats
 

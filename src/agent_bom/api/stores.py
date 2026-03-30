@@ -64,7 +64,10 @@ def _jobs_put(job_id: str, job: ScanJob) -> None:
         _jobs[job_id] = job
         if len(_jobs) > _MAX_IN_MEMORY_JOBS:
             completed = [(jid, j) for jid, j in _jobs.items() if j.status in (JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED)]
-            completed.sort(key=lambda x: x[1].completed_at or "")
+            # Evict the oldest completed jobs first. Jobs missing a completion
+            # timestamp are treated as newest/unknown so they are not discarded
+            # ahead of jobs with a concrete older completed_at value.
+            completed.sort(key=lambda x: (x[1].completed_at is None, x[1].completed_at or ""))
             for jid, _ in completed[: len(_jobs) - _MAX_IN_MEMORY_JOBS]:
                 _jobs.pop(jid, None)
 
@@ -153,7 +156,8 @@ _schedule_store: ScheduleStore | None = None
 
 def _get_schedule_store() -> ScheduleStore:
     """Get the active schedule store. Must be initialized during lifespan."""
-    assert _schedule_store is not None, "Schedule store not initialized"
+    if _schedule_store is None:
+        raise RuntimeError("Schedule store not initialized")
     return _schedule_store
 
 

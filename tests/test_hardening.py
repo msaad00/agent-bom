@@ -76,6 +76,45 @@ def test_jobs_bounded_eviction():
                     del _jobs[k]
 
 
+def test_jobs_bounded_eviction_keeps_none_completed_at_until_real_oldest_removed():
+    """Jobs missing completed_at should not evict ahead of genuinely older completed jobs."""
+    from agent_bom.api import stores as _stores
+    from agent_bom.api.server import JobStatus, ScanJob, ScanRequest, _jobs, _jobs_lock, _jobs_put
+
+    original_max = _stores._MAX_IN_MEMORY_JOBS
+    try:
+        _stores._MAX_IN_MEMORY_JOBS = 2
+        with _jobs_lock:
+            _jobs.clear()
+
+        old = ScanJob(job_id="evict-old", created_at="2025-01-01T00:00:00Z", request=ScanRequest())
+        old.status = JobStatus.DONE
+        old.completed_at = "2025-01-01T00:01:00Z"
+
+        missing = ScanJob(job_id="evict-missing", created_at="2025-01-01T00:00:00Z", request=ScanRequest())
+        missing.status = JobStatus.DONE
+        missing.completed_at = None
+
+        newest = ScanJob(job_id="evict-new", created_at="2025-01-01T00:00:00Z", request=ScanRequest())
+        newest.status = JobStatus.DONE
+        newest.completed_at = "2025-01-01T00:02:00Z"
+
+        _jobs_put("evict-old", old)
+        _jobs_put("evict-missing", missing)
+        _jobs_put("evict-new", newest)
+
+        with _jobs_lock:
+            assert "evict-old" not in _jobs
+            assert "evict-missing" in _jobs
+            assert "evict-new" in _jobs
+    finally:
+        _stores._MAX_IN_MEMORY_JOBS = original_max
+        with _jobs_lock:
+            for k in list(_jobs.keys()):
+                if k.startswith("evict-"):
+                    del _jobs[k]
+
+
 def test_jobs_concurrent_access():
     """Concurrent _jobs_put/_jobs_get don't raise."""
     from agent_bom.api.server import ScanJob, ScanRequest, _jobs_get, _jobs_pop, _jobs_put
@@ -109,6 +148,21 @@ def test_store_lock_exists():
     from agent_bom.api.stores import _store_lock
 
     assert isinstance(_store_lock, type(threading.Lock()))
+
+
+def test_get_schedule_store_raises_runtime_error_when_uninitialized():
+    from agent_bom.api import stores as _stores
+
+    old = _stores._schedule_store
+    try:
+        _stores._schedule_store = None
+        try:
+            _stores._get_schedule_store()
+            assert False, "expected RuntimeError"
+        except RuntimeError as exc:
+            assert "not initialized" in str(exc)
+    finally:
+        _stores._schedule_store = old
 
 
 # ── Pagination ──────────────────────────────────────────────────────────────

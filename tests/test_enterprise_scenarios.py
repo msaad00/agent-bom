@@ -750,6 +750,22 @@ class TestJSONOutputIntegration:
         sc = compute_posture_scorecard(report)
         assert "coverage pending" in sc.dimensions["supply_chain_quality"].details.lower()
 
+    def test_posture_supply_chain_does_not_penalize_transient_scorecard_outage(self):
+        """Temporary upstream Scorecard failures should not drag posture down as if package quality were bad."""
+        from agent_bom.posture import compute_posture_scorecard
+
+        pkg = _make_package()
+        pkg.homepage = "https://github.com/example/repo"
+        pkg.scorecard_lookup_state = "failed"
+        pkg.scorecard_lookup_reason = "scorecard_service_unavailable"
+        server = _make_server(packages=[pkg])
+        agent = _make_agent(servers=[server])
+        report = _make_report(agents=[agent])
+        sc = compute_posture_scorecard(report)
+        dim = sc.dimensions["supply_chain_quality"]
+        assert dim.score == 100.0
+        assert "temporarily unavailable upstream" in dim.details.lower()
+
     def test_to_json_incident_with_agents(self):
         """to_json incidents should list agents with vulns."""
         from agent_bom.output import to_json

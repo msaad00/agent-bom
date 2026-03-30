@@ -180,3 +180,28 @@ class TestEnrichPackagesWithScorecard:
             assert stats.eligible_packages == 1
             assert stats.failed_packages == 1
             assert pkg.scorecard_lookup_state == "failed"
+
+    @pytest.mark.asyncio
+    async def test_rate_limit_sets_reason_and_cooldown(self):
+        from agent_bom.models import Package
+
+        pkg1 = Package(name="express", version="4.18.2", ecosystem="npm", homepage="https://github.com/expressjs/express")
+        pkg2 = Package(name="next", version="16.2.1", ecosystem="npm", homepage="https://github.com/vercel/next.js")
+        mock_response = MagicMock()
+        mock_response.status_code = 429
+        mock_response.headers = {"Retry-After": "7"}
+
+        with (
+            patch("agent_bom.scorecard.create_client"),
+            patch("agent_bom.scorecard.request_with_retry", return_value=mock_response) as mock_request,
+            patch("agent_bom.scorecard._scorecard_cache", {}),
+            patch("agent_bom.scorecard._scorecard_reason_cache", {}),
+            patch("agent_bom.scorecard._scorecard_cooldown_until", 0.0),
+            patch("agent_bom.scorecard.time.monotonic", return_value=100.0),
+        ):
+            stats = await enrich_packages_with_scorecard_stats([pkg1, pkg2])
+
+        assert stats.failed_packages == 2
+        assert mock_request.call_count == 1
+        assert pkg1.scorecard_lookup_reason == "scorecard_rate_limited"
+        assert pkg2.scorecard_lookup_reason == "scorecard_service_unavailable"

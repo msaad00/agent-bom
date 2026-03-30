@@ -138,7 +138,7 @@ An agent operating autonomously can be steered into a multi-step exfiltration se
 │  2. PROXY         Sits between client and server, intercepts     │
 │     (agent-bom proxy) every JSON-RPC message, enforces policy    │
 │                                                                  │
-│  3. MCP SERVER    Exposes 35 scan/governance tools to any agent  │
+│  3. MCP SERVER    Exposes 36 scan/governance tools to any agent  │
 │     (agent-bom mcp server)  — scan, check, registry, compliance  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -166,7 +166,7 @@ agent-bom proxy "uvx mcp-server-filesystem /" --policy policy.yml
 agent-bom proxy --url http://localhost:3000 --policy policy.yml
 ```
 
-**8 behavioral detectors running on every message:**
+**7 inline proxy detectors on every message:**
 
 | Detector | What it catches | Framework reference |
 |----------|----------------|---------------------|
@@ -177,7 +177,6 @@ agent-bom proxy --url http://localhost:3000 --policy policy.yml
 | `SequenceAnalyzer` | Read → send → delete exfiltration sequences | MITRE ATLAS AML.T0025 |
 | `ResponseInspector` | Cloaking (invisible unicode), SVG injection, metadata poisoning | OWASP LLM05 |
 | `VectorDBInjectionDetector` | Prompt injection from retrieved vector DB chunks | OWASP LLM RAG-03 |
-| `CrossAgentCorrelator` | Cross-agent tool convergence and lateral movement patterns | OWASP Agentic AI ASI07, runtime lateral movement detection |
 
 Policy conditions (17 declarative + expression engine):
 
@@ -191,6 +190,8 @@ rate_limit:
 max_response_size_kb: 512
 ```
 
+For cross-agent correlation, use the broader runtime protection engine (`agent-bom runtime protect --shield`), which adds `CrossAgentCorrelator` on top of the inline proxy detector set.
+
 ### 4.3 MCP server mode
 
 ```bash
@@ -200,10 +201,10 @@ agent-bom mcp server
 Exposes 36 tools to any MCP-compatible AI assistant. Your agent can run scans, check packages, query the registry, and generate compliance reports without leaving the chat:
 
 ```
-scan_agents         — full scan, returns JSON report
-check_package       — CVE check for a single package
-registry_search     — search 427+ MCP servers by name/tag
-compliance_report   — generate framework-mapped compliance report
+scan                — full discovery + scan, returns JSON report
+check               — CVE check for a single package
+registry_lookup     — search 427+ MCP servers by name/tag
+compliance          — generate framework-mapped compliance report
 blast_radius        — blast radius for a specific CVE
 ...
 ```
@@ -214,7 +215,7 @@ blast_radius        — blast radius for a specific CVE
 
 - **Does not run MCP servers.** Read-only. Never starts or restarts a server.
 - **Does not store credentials.** Only env var *names* (not values) appear in reports.
-- **Does not modify MCP configs** unless you explicitly run `agent-bom runtime configure --apply`.
+- **Does not modify MCP configs** unless you explicitly run `agent-bom proxy-configure --apply`.
 - **Does not send telemetry.** Only package name + version leaves your machine for CVE lookups (OSV, NVD, EPSS). See [PERMISSIONS.md](../PERMISSIONS.md).
 - **Does not replace IAM or network controls.** It is a detection and enforcement layer, not a perimeter.
 
@@ -252,12 +253,12 @@ echo "ignores:\n  - id: CVE-2024-1234\n    reason: 'Not reachable'\n    expires:
 
 ```bash
 # Wrap every MCP server in your Claude Desktop config
-agent-bom runtime configure --apply
+agent-bom proxy-configure --apply
 
 # Or wrap a single server manually
 agent-bom proxy "uvx mcp-server-filesystem /" \
   --policy policy.yml \
-  --audit-log /var/log/mcp-audit.jsonl
+  --log /var/log/mcp-audit.jsonl
 ```
 
 ---
@@ -266,5 +267,7 @@ agent-bom proxy "uvx mcp-server-filesystem /" \
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — component diagram, data flow, module boundaries
 - [RUNTIME_MONITORING.md](RUNTIME_MONITORING.md) — proxy internals, detector configuration
+- [CLAUDE_INTEGRATION.md](CLAUDE_INTEGRATION.md) — Claude Desktop / Claude Code setup and proxy flow
+- [CORTEX_CODE.md](CORTEX_CODE.md) — Cortex CoCo / Cortex Code setup, discovery, permissions, and hooks
 - [AI_INFRASTRUCTURE_SCANNING.md](AI_INFRASTRUCTURE_SCANNING.md) — GPU, CUDA, ML framework scanning
 - [PERMISSIONS.md](PERMISSIONS.md) — full trust contract, what data leaves your machine

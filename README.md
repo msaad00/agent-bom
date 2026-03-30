@@ -16,6 +16,8 @@
 
 <p align="center"><b>Open security platform for agentic infrastructure. Broad scanning, blast radius, runtime, and trust.</b></p>
 
+<p align="center">Security and visibility for agentic infrastructure should be open, transparent, and accessible — not reserved for teams with enterprise budgets.</p>
+
 <p align="center"><b>Your AI agent's dependencies have a CVE. Which credentials leak?</b></p>
 
 ```text
@@ -117,7 +119,14 @@ Wrap a third-party MCP server with the proxy when you want runtime inspection in
 agent-bom proxy "npx @modelcontextprotocol/server-filesystem /workspace"
 ```
 
-The proxy inspects MCP JSON-RPC traffic with drift, credential, injection, sequence, and capability-aware detectors before forwarding to the real server.
+The proxy inspects MCP JSON-RPC traffic with drift, credential, argument, response, vector, rate, and sequence detectors before forwarding to the real server.
+
+Guides:
+
+- [Claude Desktop / Claude Code](docs/CLAUDE_INTEGRATION.md)
+- [Cortex CoCo / Cortex Code](docs/CORTEX_CODE.md)
+- [MCP server mode](docs/MCP_SERVER.md)
+- [Runtime proxy and monitoring](docs/RUNTIME_MONITORING.md)
 
 </details>
 
@@ -197,7 +206,7 @@ Blast radius is **CWE-aware**: an RCE (CWE-94) shows full credential exposure, a
 <details>
 <summary><b>Runtime, policy, and trust</b></summary>
 
-- MCP proxy enforcement with 8 behavioral detectors and 112 detection patterns
+- Runtime protection engine with 8 detectors; MCP proxy with 7 inline detectors and 112 detection patterns
 - Capability-aware risk, drift detection, credential redaction, and kill-switch controls
 - 14 compliance frameworks mapped onto findings, including OWASP, MITRE, NIST, ISO, SOC 2, CIS, CMMC, and the EU AI Act
 
@@ -209,7 +218,7 @@ Blast radius is **CWE-aware**: an RCE (CWE-94) shows full credential exposure, a
 
 ## Runtime protection
 
-MCP security proxy with 112 detection patterns, 8 detectors, PII redaction, and kill switch:
+MCP security proxy with 112 detection patterns, 7 inline detectors, PII redaction, and kill switch:
 
 ```bash
 agent-bom proxy "npx @mcp/server-filesystem /workspace"

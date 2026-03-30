@@ -24,7 +24,7 @@ and server, intercepting all JSON-RPC messages. The proxy:
 3. **Enforces** policies (block/allow/audit per tool, per argument pattern)
 4. **Logs** all traffic to JSONL audit files for forensic replay
 
-**Detector pipeline (8 detectors):**
+**Detector pipeline (7 inline proxy detectors):**
 
 | Detector | Threat |
 |----------|--------|
@@ -35,6 +35,8 @@ and server, intercepting all JSON-RPC messages. The proxy:
 | SequenceAnalyzer | Multi-step exfiltration patterns (read→encode→send) |
 | ResponseInspector | Cloaking attacks, SVG injection, invisible Unicode |
 | VectorDBInjection | Injection in vector DB query/retrieval payloads |
+
+For broader runtime correlation, the protection engine adds `CrossAgentCorrelator` on top of the inline proxy detector set via `agent-bom runtime protect --shield`.
 
 **Deployment model:** Users configure their MCP client to run
 `agent-bom proxy <original-command>` instead of the direct server command.

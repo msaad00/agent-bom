@@ -334,17 +334,21 @@ jobs:
           for f in dist/*.whl dist/*.tar.gz; do
             [ -f "$f" ] || continue
             name=$(basename "$f")
-            digest=$(sha256sum "$f" | awk '{print $1}')
-            gh attestation download "$f" \
-              --repo "${{ github.repository }}" \
-              --format json
-            src="sha256:${digest}.jsonl"
-            [ -f "$src" ] || src="sha256-${digest}.jsonl"
-            if [ ! -f "$src" ]; then
+            artifact_path="$(pwd)/$f"
+            download_dir=$(mktemp -d)
+            (
+              cd "$download_dir"
+              gh attestation download "$artifact_path" \
+                --repo "${{ github.repository }}"
+            )
+            src=$(find "$download_dir" -maxdepth 1 -type f -name '*.jsonl' | head -n 1 || true)
+            if [ -z "$src" ] || [ ! -f "$src" ]; then
               echo "Expected provenance bundle for $name was not downloaded" >&2
+              ls -la "$download_dir" >&2 || true
               exit 1
             fi
             mv "$src" "provenance/${name}.intoto.jsonl"
+            rm -rf "$download_dir"
           done
 
       - name: Upload provenance artifacts

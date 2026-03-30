@@ -1,5 +1,6 @@
 """Tests for compact CLI output functions."""
 
+import re
 from io import StringIO
 
 from rich.console import Console
@@ -38,6 +39,11 @@ def _capture(fn, *args, **kwargs) -> str:
     finally:
         out_mod.console = orig
     return buf.getvalue()
+
+
+def _plain(text: str) -> str:
+    """Remove ANSI styling so assertions stay stable across CI terminals."""
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
 
 
 def _make_server(name="test-server", packages=None, env=None, tools=None):
@@ -267,11 +273,12 @@ def test_compact_remediation_shows_priority_and_action():
     br = _blast(vuln, pkg, [agent], [server], creds=["GITHUB_TOKEN"])
     report = AIBOMReport(agents=[agent], blast_radii=[br])
     output = _capture(print_compact_remediation, report)
-    assert "Fix First" in output
-    assert "P1" in output
-    assert "rotate exposed credentials" in output
-    assert "pip install 'openssl>=2.0.0'" in output
-    assert "agent-bom check openssl@2.0.0 --ecosystem pypi" in output
+    plain = _plain(output)
+    assert "Fix First" in plain
+    assert "P1" in plain
+    assert "rotate exposed credentials" in plain
+    assert "pip install 'openssl>=2.0.0'" in plain
+    assert "agent-bom check openssl@2.0.0 --ecosystem pypi" in plain
 
 
 def test_compact_remediation_empty():

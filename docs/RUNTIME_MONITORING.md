@@ -7,12 +7,12 @@ agent-bom includes a runtime security proxy (`agent-bom proxy`) that sits betwee
 The proxy interposes on the stdio channel between an MCP client (Claude Desktop, Cursor, VS Code, etc.) and an MCP server. Every JSON-RPC message passes through the proxy, which:
 
 1. **Logs** every `tools/call` invocation to a JSONL audit trail
-2. **Detects** anomalous or dangerous tool usage via five built-in detectors
+2. **Detects** anomalous or dangerous tool usage via seven inline detectors
 3. **Enforces** policy rules — optionally blocking tool calls that violate policy
 4. **Tracks** declared vs. actual tool usage (drift detection)
 5. **Measures** latency, call counts, and blocked-call metrics
 
-### Five Detectors
+### Seven Inline Detectors
 
 | Detector | What it catches | Default mode |
 |---|---|---|
@@ -21,6 +21,8 @@ The proxy interposes on the stdio channel between an MCP client (Claude Desktop,
 | **Credential leak** | Arguments containing patterns that look like API keys, tokens, passwords, or connection strings being passed to tools. | Log |
 | **Rate limiting** | Abnormal call frequency for a single tool within a time window — detects runaway loops or abuse. | Log |
 | **Sequence analysis** | Suspicious sequences of tool calls (e.g., `list_files` followed by `read_file` on every file, or `exec` after `write_file`). | Log |
+| **Response inspection** | Cloaking, invisible Unicode, SVG/script payloads, and poisoned response content. | Log |
+| **Vector DB injection** | Retrieved prompt chunks or vector-backed content attempting to coerce downstream tools or agents. | Log |
 
 ---
 
@@ -145,6 +147,16 @@ All tool calls are allowed through. Every invocation is recorded in the JSONL au
 agent-bom proxy --log audit.jsonl -- npx @mcp/server-filesystem /workspace
 ```
 
+For Claude Desktop, Claude Code, and Cortex JSON configs, you can auto-wrap eligible stdio servers:
+
+```bash
+agent-bom proxy-configure --log-dir ~/.agent-bom/logs --detect-credentials
+```
+
+Add `--apply` to persist the wrapped config entries.
+
+If you need cross-agent correlation and the broader 8-detector runtime engine, use `agent-bom runtime protect --shield` alongside or upstream of the proxy pipeline.
+
 ### Enforce mode
 
 Add `--block-undeclared` and/or `--policy policy.json` to actively block tool calls:
@@ -215,7 +227,13 @@ Tracks call frequency per tool within a sliding time window. Detects runaway loo
 
 Analyzes the order of tool calls to detect suspicious multi-step patterns. For example: `list_directory` followed by `read_file` on every discovered file (bulk exfiltration), or `write_file` followed by `exec` (code injection + execution).
 
----
+### Response Inspection
+
+Scans tool responses for cloaking tricks, invisible Unicode, SVG/script payloads, and other content that tries to smuggle instructions back into the agent.
+
+### Vector DB Injection
+
+Detects prompt-coercion or poisoning patterns from retrieval-backed tools and escalates them when the response clearly comes from vector or RAG-like sources.
 
 ## Configuration Examples
 

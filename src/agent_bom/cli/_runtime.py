@@ -161,8 +161,8 @@ def proxy_configure_cmd(policy, log_dir, detect_credentials, block_undeclared, a
 
     \b
     Example:
-      agent-bom runtime configure --log-dir ~/.agent-bom/logs --detect-credentials
-      agent-bom runtime configure --policy policy.json --block-undeclared --apply
+      agent-bom proxy-configure --log-dir ~/.agent-bom/logs --detect-credentials
+      agent-bom proxy-configure --policy policy.json --block-undeclared --apply
     """
     from agent_bom.discovery import discover_all
     from agent_bom.proxy_configure import apply_proxy_configs, auto_configure_proxies
@@ -229,12 +229,15 @@ def protect_cmd(mode, port, host, detectors, alert_file, alert_webhook, log_leve
     """Run the runtime protection engine as a standalone monitor.
 
     \b
-    Analyzes tool calls through 5 security detectors:
+    Analyzes tool calls and responses through 8 security detectors:
     - Tool drift detection (rug pull / capability changes)
     - Argument analysis (shell injection, path traversal)
     - Credential leak detection (API keys, tokens in responses)
     - Rate limiting (abnormal call frequency)
     - Sequence analysis (suspicious multi-step patterns)
+    - Response inspection (cloaking, SVG, invisible characters)
+    - Vector DB injection detection (RAG/cache poisoning)
+    - Cross-agent correlation (lateral movement patterns)
 
     \b
     stdin mode (default) — pipe line-delimited JSON:

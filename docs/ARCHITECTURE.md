@@ -56,7 +56,7 @@ graph TB
         Console["Console\nTable / verbose"]
         Formats["Formats\nJSON / SARIF / HTML / CycloneDX"]
         API["REST API + MCP\n36 tools"]
-        Proxy["Runtime Proxy\n8 detectors"]
+        Proxy["Runtime Proxy\n7 inline detectors"]
     end
 
     Scan & MCP_Cmd --> Discovery

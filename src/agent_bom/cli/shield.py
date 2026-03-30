@@ -1,8 +1,8 @@
 """agent-shield — Runtime protection for AI agents.
 
-Monitors MCP traffic in real-time with 8 behavioral detectors,
-enforces security policies, and provides deep defense mode with
-correlated threat scoring and automatic kill-switch.
+Monitors MCP traffic in real-time with 7 inline proxy detectors,
+enforces security policies, and provides audit replay for
+runtime investigations.
 
 Entry point: ``agent-shield`` (registered in pyproject.toml).
 """
@@ -45,10 +45,10 @@ def shield():
     """agent-shield — Runtime protection for AI agents.
 
     \b
-    MCP security proxy with 112 detection patterns across 8 detectors:
+    MCP security proxy with 112 detection patterns across 7 inline detectors:
     · Tool drift (rug pull)    · Shell injection     · Credential leaks
     · Rate limiting            · Attack sequences    · Response cloaking
-    · Vector DB injection      · PII redaction
+    · Vector DB injection
 
     \b
     Quick start:

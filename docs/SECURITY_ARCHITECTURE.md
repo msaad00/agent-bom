@@ -58,9 +58,11 @@ The proxy sits between the MCP client and server on the **stdio transport layer*
 1. Reads JSON-RPC messages from the client
 2. Inspects message content (tool calls, tool responses)
 3. Applies policy rules (allow/deny/log)
-4. Runs 8 detectors (tool drift, prompt injection, credential/PII leak, rate-limit abuse, exfiltration sequences, response cloaking, vector DB injection, cross-agent correlation)
+4. Runs 7 inline proxy detectors (tool drift, prompt injection, credential/PII leak, rate-limit abuse, exfiltration sequences, response cloaking, vector DB injection)
 5. Forwards allowed messages to the server
 6. Logs all activity to JSONL audit file
+
+For cross-agent correlation and the broader 8-detector protection engine, run `agent-bom runtime protect --shield` alongside the proxy workflow.
 
 ### Security Controls
 

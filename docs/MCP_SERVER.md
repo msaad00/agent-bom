@@ -4,9 +4,15 @@ agent-bom exposes 36 security tools as an MCP server. Any MCP-compatible client
 can connect and get vulnerability scanning, blast radius analysis, compliance
 checks, and supply chain verification through natural conversation.
 
+See also:
+
+- [Claude Desktop / Claude Code guide](CLAUDE_INTEGRATION.md)
+- [Cortex CoCo / Cortex Code guide](CORTEX_CODE.md)
+- [Runtime Monitoring](RUNTIME_MONITORING.md)
+
 ## Quick Start
 
-### Claude Desktop / Claude Code
+### Claude Desktop
 
 Add to your `claude_desktop_config.json` (macOS: `~/Library/Application Support/Claude/`):
 
@@ -23,11 +29,15 @@ Add to your `claude_desktop_config.json` (macOS: `~/Library/Application Support/
 
 Restart Claude Desktop. You can now ask: *"Scan my AI agents for vulnerabilities"*
 
-For Claude Code, the equivalent one-liner is:
+### Claude Code
+
+If you already use the Claude CLI, add agent-bom directly:
 
 ```bash
 claude mcp add agent-bom -- uvx agent-bom mcp server
 ```
+
+Claude Code project-level MCP servers are also discovered from `~/.claude.json`.
 
 ### Cortex CoCo
 
@@ -45,6 +55,12 @@ Add to `~/.snowflake/cortex/mcp.json`:
 ```
 
 CoCo can then call the same 36 `agent-bom` tools over MCP.
+
+agent-bom also discovers Cortex auxiliary security files alongside `mcp.json`:
+
+- `settings.json`
+- `permissions.json`
+- `hooks.json`
 
 ### Cursor / Windsurf / VS Code
 
@@ -88,21 +104,29 @@ agent-bom proxy "npx @modelcontextprotocol/server-filesystem /workspace"
 
 This keeps the real server behind `agent-bom` and enables runtime detectors for tool drift, credential leakage, injection patterns, sequence risk, and related policy decisions.
 
+For JSON-configured clients like Claude Desktop or Cortex CoCo, use:
+
+```bash
+agent-bom proxy-configure --log-dir ~/.agent-bom/logs --detect-credentials
+```
+
+Add `--apply` to write the wrapped config back to compatible JSON MCP config files.
+
 ## Tool Categories (36 tools)
 
 | Category | Tools | What They Do |
 |----------|-------|-------------|
-| **Scan** | `scan_agents`, `scan_image`, `scan_filesystem`, `scan_sbom` | Discover agents, scan containers, filesystems, and existing SBOMs for CVEs |
-| **Check** | `check_package`, `verify_package` | Pre-install CVE gate + supply chain provenance verification |
+| **Scan** | `scan`, `code_scan`, `vector_db_scan`, `gpu_infra_scan`, `ai_inventory_scan` | Discover agents, scan packages, code, vector stores, GPU infra, and AI usage |
+| **Check** | `check`, `verify`, `marketplace_check`, `license_compliance_scan` | Pre-install CVE gate, integrity verification, marketplace trust, and license policy |
 | **Blast Radius** | `blast_radius` | Map CVE → package → MCP server → agent → credentials → tools |
-| **Registry** | `registry_lookup`, `batch_registry_scan` | Query 427+ MCP server security metadata |
-| **Compliance** | `compliance_check`, `cis_benchmark` | Run OWASP, NIST, MITRE ATLAS, CIS checks |
-| **Policy** | `evaluate_policy` | Apply custom or built-in security policies |
+| **Registry** | `registry_lookup`, `inventory`, `where`, `fleet_scan` | Query the MCP registry, inspect discovery paths, and summarize fleet inventories |
+| **Compliance** | `compliance`, `cis_benchmark`, `aisvs_benchmark` | Run OWASP, NIST, MITRE ATLAS, CIS, and AISVS-aligned posture checks |
+| **Policy** | `policy_check`, `remediate` | Evaluate policies and generate guided remediation plans |
 | **Inventory** | `inventory` | List agents/servers without CVE scanning |
-| **Trust** | `trust_assessment` | Multi-category trust scoring for packages |
+| **Trust** | `marketplace_check`, `runtime_correlate`, `tool_risk_assessment` | Score package trust, correlate runtime usage, and assess live tool capability risk |
 | **Skills** | `skill_scan`, `skill_verify`, `skill_trust` | Instruction-file trust, provenance, and tool-poisoning detection |
-| **IaC** | `scan_terraform`, `scan_dockerfile`, `scan_helm` | Infrastructure-as-code security scanning |
-| **Runtime** | `shield_status`, `tool_risk_assessment` | Runtime protection engine status and live MCP capability risk |
+| **Graph / Runtime** | `context_graph`, `graph_export`, `runtime_correlate`, `tool_risk_assessment` | Visualize lateral movement, export graph data, and connect runtime logs to findings |
+| **AI supply chain** | `dataset_card_scan`, `training_pipeline_scan`, `browser_extension_scan`, `model_provenance_scan`, `prompt_scan`, `model_file_scan`, `ingest_external_scan` | Scan AI artifacts, prompts, model files, browser extensions, and external scanner results |
 
 ## Example Conversations
 
@@ -128,9 +152,10 @@ This keeps the real server behind `agent-bom` and enables runtime detectors for 
 
 ## Resources
 
-The server exposes one MCP resource:
+The server exposes two MCP resources:
 
 - `registry://servers` — Browse the full 427+ server security metadata registry
+- `policy://template` — Default security policy template
 
 ## Prompts
 

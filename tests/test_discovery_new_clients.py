@@ -615,9 +615,9 @@ def test_discovery_paths_include_new_clients():
     assert "cortex-code" in client_names
 
 
-def test_total_agent_types_is_31():
-    """AgentType enum should now have 30 client types + CUSTOM."""
-    assert len(AgentType) == 31  # 30 clients + CUSTOM
+def test_total_agent_types_is_30():
+    """AgentType enum should now have 29 client types + CUSTOM."""
+    assert len(AgentType) == 30  # 29 clients + CUSTOM
 
 
 # ── 11. Binary detection ──────────────────────────────────────────────────

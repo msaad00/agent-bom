@@ -19,7 +19,6 @@ from rich.console import Console
 from agent_bom.discovery.config_parsers import (  # noqa: F401
     _DANGEROUS_HOOK_PATTERNS,
     _parse_docker_mcp_catalog,
-    _parse_toolhive_servers,
     audit_cortex_hooks,
     audit_cortex_permissions,
     parse_claude_json_projects,
@@ -145,12 +144,6 @@ CONFIG_LOCATIONS: dict[AgentType, dict[str, list[str]]] = {
         "Linux": ["~/.config/Code/User/globalStorage/amazonwebservices.amazon-q-vscode/mcp.json"],
         "Windows": ["~/AppData/Roaming/Code/User/globalStorage/amazonwebservices.amazon-q-vscode/mcp.json"],
     },
-    AgentType.TOOLHIVE: {
-        # ToolHive MCP server manager — discovery via `thv list`, not config files
-        "Darwin": [],
-        "Linux": [],
-        "Windows": [],
-    },
     AgentType.DOCKER_MCP: {
         # Docker Desktop MCP Toolkit — discovery via registry.yaml + catalog
         "Darwin": [],
@@ -255,7 +248,6 @@ CONFIG_LOCATIONS: dict[AgentType, dict[str, list[str]]] = {
 AGENT_BINARIES: dict[AgentType, str] = {
     AgentType.CLAUDE_CODE: "claude",
     AgentType.OPENCLAW: "openclaw",
-    AgentType.TOOLHIVE: "thv",
     AgentType.ZED: "zed",
     AgentType.CURSOR: "cursor",
     AgentType.WINDSURF: "windsurf",
@@ -324,67 +316,6 @@ _CUSTOM_PARSERS: dict[AgentType, str] = {
 }
 
 
-def discover_toolhive() -> Optional[Agent]:
-    """Discover MCP servers managed by ToolHive via ``thv list``.
-
-    Returns an Agent with CONFIGURED status if servers are found,
-    INSTALLED_NOT_CONFIGURED if thv is on PATH but no servers,
-    or None if thv is not installed.
-    """
-    if not shutil.which("thv"):
-        return None
-
-    try:
-        result = subprocess.run(
-            ["thv", "list", "--output", "json"],
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return Agent(
-            name="toolhive",
-            agent_type=AgentType.TOOLHIVE,
-            config_path="thv (binary on PATH)",
-            status=AgentStatus.INSTALLED_NOT_CONFIGURED,
-        )
-
-    if result.returncode != 0:
-        return Agent(
-            name="toolhive",
-            agent_type=AgentType.TOOLHIVE,
-            config_path="thv (binary on PATH)",
-            status=AgentStatus.INSTALLED_NOT_CONFIGURED,
-        )
-
-    try:
-        data = json.loads(result.stdout)
-    except (json.JSONDecodeError, ValueError):
-        return Agent(
-            name="toolhive",
-            agent_type=AgentType.TOOLHIVE,
-            config_path="thv (binary on PATH)",
-            status=AgentStatus.INSTALLED_NOT_CONFIGURED,
-        )
-
-    servers = _parse_toolhive_servers(data)
-    if not servers:
-        return Agent(
-            name="toolhive",
-            agent_type=AgentType.TOOLHIVE,
-            config_path="thv (binary on PATH)",
-            status=AgentStatus.INSTALLED_NOT_CONFIGURED,
-        )
-
-    return Agent(
-        name="toolhive",
-        agent_type=AgentType.TOOLHIVE,
-        config_path="thv",
-        mcp_servers=servers,
-        status=AgentStatus.CONFIGURED,
-    )
-
-
 def _find_binary(binary_name: str) -> str | None:
     """Find a binary on PATH or in common install locations."""
     found = shutil.which(binary_name)
@@ -413,8 +344,6 @@ def detect_installed_agents(discovered_types: set[AgentType]) -> list[Agent]:
     for agent_type, binary_name in AGENT_BINARIES.items():
         if agent_type in discovered_types:
             continue
-        if agent_type == AgentType.TOOLHIVE:
-            continue  # Handled by discover_toolhive()
         found = _find_binary(binary_name)
         if not found:
             # Check install signal files (e.g. log files that prove installation)
@@ -1257,14 +1186,6 @@ def discover_all(
     if not project_dir:
         # Tooling and desktop integrations are ambient host discovery surfaces,
         # so skip them when the caller explicitly scopes discovery to a project.
-        thv_agent = discover_toolhive()
-        if thv_agent:
-            if thv_agent.mcp_servers:
-                console.print(f"  [green]✓[/green] Found toolhive with {len(thv_agent.mcp_servers)} MCP server(s) (via thv list)")
-            else:
-                console.print("  [dim]  toolhive: installed but not configured[/dim]")
-            agents.append(thv_agent)
-
         # Docker Desktop MCP Toolkit discovery
         docker_agent = discover_docker_mcp()
         if docker_agent:

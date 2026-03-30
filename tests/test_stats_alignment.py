@@ -210,15 +210,6 @@ class TestMarkdownStats:
 class TestIntegrationStats:
     """Verify integration metadata reflects actual counts."""
 
-    def test_toolhive_server_json_tool_count(self):
-        """Verify toolhive description mentions correct tool count."""
-        path = ROOT / "integrations" / "toolhive" / "server.json"
-        if not path.exists():
-            pytest.skip("toolhive server.json not found")
-        text = path.read_text()
-        for stale in ["22 tools", "23 tools", "30 tools", "31 tools", "22 MCP", "23 MCP", "30 MCP", "31 MCP"]:
-            assert stale not in text, f"toolhive server.json contains stale '{stale}'"
-
     def test_mcp_registry_version_matches(self):
         from agent_bom import __version__
 

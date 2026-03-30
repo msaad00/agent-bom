@@ -140,7 +140,7 @@ Triggered for shell/exec tools. These are the highest-risk tools:
 - `execute_command`, `run_shell`, `bash`
 - `query_database`, `execute_sql`
 
-**Remediation**: Remove shell tools if not needed. If needed, sandbox them (e.g., via ToolHive containers).
+**Remediation**: Remove shell tools if not needed. If needed, sandbox them in isolated containers.
 
 ### 4. Cloud-Specific Threat Assessment
 

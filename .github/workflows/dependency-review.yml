@@ -67,6 +67,7 @@ jobs:
             pkg:npm/recharts,
             pkg:npm/victory-vendor,
             pkg:pypi/aiohappyeyeballs,
+            pkg:pypi/azure-core,
             pkg:pypi/azure-identity,
             pkg:pypi/fonttools,
             pkg:pypi/gitdb,

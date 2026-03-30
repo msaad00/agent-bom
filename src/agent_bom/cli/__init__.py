@@ -53,6 +53,7 @@ def main():
     Quick start:
       agent-bom agents                               discover + scan local agents and MCP servers
       agent-bom agents -p .                          scan project manifests plus agent/MCP context
+      agent-bom mesh --project .                     show the live agent/MCP topology
       agent-bom skills scan .                        scan skills and instruction files
       agent-bom check flask@2.0.0 --ecosystem pypi  pre-install CVE gate
       agent-bom image nginx:latest                   container image scan
@@ -166,9 +167,11 @@ from agent_bom.cli._analysis import (  # noqa: E402
     dashboard_cmd,
     graph_cmd,
     introspect_cmd,
+    mesh_cmd,
 )
 
 main.add_command(graph_cmd, "graph")
+main.add_command(mesh_cmd, "mesh")
 # introspect is under `mcp introspect` — no top-level duplicate
 
 # ---------------------------------------------------------------------------

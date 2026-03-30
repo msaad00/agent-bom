@@ -333,7 +333,6 @@ _DISCOVER_ALL_PATCHES = {
     "agent_bom.discovery.discover_global_configs": [],
     "agent_bom.discovery.discover_project_configs": [],
     "agent_bom.discovery.discover_compose_mcp_servers": None,
-    "agent_bom.discovery.discover_toolhive": None,
     "agent_bom.discovery.discover_docker_mcp": None,
     "agent_bom.discovery.detect_installed_agents": [],
 }

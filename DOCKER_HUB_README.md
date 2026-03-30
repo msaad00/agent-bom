@@ -63,34 +63,52 @@ docker run --rm agentbom/agent-bom:latest cloud aws
 docker run --rm agentbom/agent-bom:latest doctor
 ```
 
-## What It Covers
-
-- **30 MCP client types** — Claude Desktop, Cursor, Windsurf, VS Code Copilot, Cline, Continue, Zed, Cortex Code, and more
-- Packages, container images, IaC, secrets, AI source code, and cloud AI environments
-- Blast radius from package to server to agent to credentials and tools
-- Runtime MCP proxy with 8 behavioral detectors
-- 14 compliance frameworks
-- 33 MCP server tools
-- 20-page Next.js dashboard
-
-## Why It Is Different
+## Why Teams Use It
 
 Traditional scanners often stop at `CVE -> package`.
 
-agent-bom answers:
+agent-bom answers the higher-value questions:
 
 - Which AI agents are affected?
 - Which MCP servers load the vulnerable package?
 - Which credentials are exposed?
 - Which tools are reachable?
 - What should be fixed first?
+- Which local AI infrastructure should be scanned next?
+
+It covers:
+
+- **30 MCP client types** — Claude Desktop, Cursor, Windsurf, VS Code Copilot, Cline, Continue, Zed, Cortex Code, and more
+- Packages, container images, IaC, secrets, AI source code, and cloud AI environments
+- Blast radius from package to server to agent to credentials and tools
+- Runtime MCP proxy with 8 behavioral detectors
+- 14 compliance frameworks
+- 36 MCP server tools
+- API + dashboard for fleet-wide visibility
+
+## Coverage At A Glance
+
+- **Agents + MCP** — 30 client types, MCP servers, tools, transports, trust posture
+- **Skills + instructions** — `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `skills/*`
+- **Supply chain** — 15 ecosystems, blast radius, dependency confusion, SBOM formats
+- **Containers + IaC + cloud** — OCI images, Docker, Kubernetes, Terraform, Helm, cloud AI posture
+- **Runtime + trust** — MCP proxy, 8 detectors, capability risk, compliance mapping
+
+## Deployment Guidance
+
+| Environment | Recommendation |
+|-------------|----------------|
+| Developer laptop | `pip install agent-bom` is fine; read-only and no listener by default |
+| CI/CD | `docker run --rm agentbom/agent-bom` for isolated scans and easy gating |
+| Enterprise fleet | run `agent-bom serve` in a dedicated container or namespace with RBAC |
+| Air-gapped | pre-sync the DB and run with `--offline` |
 
 ## Tags
 
 | Tag | Description |
 |-----|-------------|
 | `latest` | Most recent stable release |
-| `v0.75.11` | Current stable version (pinned) |
+| `v0.75.12` | Current stable version (pinned) |
 
 ## Links
 

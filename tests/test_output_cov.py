@@ -581,6 +581,32 @@ def test_build_remediation_plan_no_downgrade():
     assert plan[0]["fix"] == "3.2.14"
 
 
+def test_build_remediation_plan_skips_prerelease_downgrade_for_npm():
+    """npm canary/pre-release branches should not be emitted as a downgrade fix."""
+    pkg = Package(name="next", version="16.2.1", ecosystem="npm", vulnerabilities=[])
+    vuln_canary = Vulnerability(
+        id="CVE-2026-1111",
+        severity=Severity.HIGH,
+        summary="Next issue",
+        fixed_version="13.4.20-canary.13",
+    )
+    vuln_valid = Vulnerability(
+        id="CVE-2026-1111",
+        severity=Severity.HIGH,
+        summary="Next issue",
+        fixed_version="16.2.2",
+    )
+    br1 = BlastRadius(
+        vulnerability=vuln_canary, package=pkg, affected_agents=[], affected_servers=[], exposed_credentials=[], exposed_tools=[]
+    )
+    br2 = BlastRadius(
+        vulnerability=vuln_valid, package=pkg, affected_agents=[], affected_servers=[], exposed_credentials=[], exposed_tools=[]
+    )
+    plan = build_remediation_plan([br1, br2])
+    assert len(plan) == 1
+    assert plan[0]["fix"] == "16.2.2"
+
+
 # ── to_json (from cov2) ─────────────────────────────────────────────────────
 
 

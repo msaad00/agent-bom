@@ -66,6 +66,8 @@ def _build_remediation_json(report: AIBOMReport) -> list[dict]:
                 "impact_score": item["impact"],
                 "priority": item["priority"],
                 "action": item["action"],
+                "command": item.get("command"),
+                "verify_command": item.get("verify_command"),
                 "vulnerabilities": item["vulns"],
                 "affected_agents": item["agents"],
                 "agents_pct": round(n_agents / total_agents * 100),
@@ -436,6 +438,9 @@ def to_json(report: AIBOMReport) -> dict:
     """Convert report to JSON-serializable dict."""
     inventory_snapshot = _build_inventory_snapshot(report)
     mcp_runtime_diff = _build_mcp_runtime_diff(report)
+    from agent_bom.scorecard import summarize_scorecard_coverage
+
+    all_packages = [pkg for agent in report.agents for server in agent.mcp_servers for pkg in server.packages]
     result = {
         "document_type": "AI-BOM",
         "spec_version": "1.0",
@@ -534,6 +539,9 @@ def to_json(report: AIBOMReport) -> dict:
                                 "deps_dev_resolved": pkg.deps_dev_resolved,
                                 "scorecard_score": pkg.scorecard_score,
                                 "scorecard_checks": pkg.scorecard_checks or None,
+                                "scorecard_repo": pkg.scorecard_repo,
+                                "scorecard_lookup_state": pkg.scorecard_lookup_state,
+                                "scorecard_lookup_reason": pkg.scorecard_lookup_reason,
                                 "vulnerability_count": len(pkg.vulnerabilities),
                                 "vulnerabilities": [
                                     {
@@ -612,6 +620,8 @@ def to_json(report: AIBOMReport) -> dict:
                 "is_malicious": br.package.is_malicious,
                 "malicious_reason": br.package.malicious_reason,
                 "scorecard_score": br.package.scorecard_score,
+                "scorecard_repo": br.package.scorecard_repo,
+                "scorecard_lookup_state": br.package.scorecard_lookup_state,
                 "affected_agents": [a.name for a in br.affected_agents],
                 "affected_servers": [s.name for s in br.affected_servers],
                 "exposed_credentials": br.exposed_credentials,
@@ -633,6 +643,7 @@ def to_json(report: AIBOMReport) -> dict:
             for br in report.blast_radii
         ],
         "threat_framework_summary": _build_framework_summary(report.blast_radii),
+        "scorecard_summary": summarize_scorecard_coverage(all_packages).to_dict(),
         "remediation_plan": _build_remediation_json(report),
     }
 

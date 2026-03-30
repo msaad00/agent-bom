@@ -1,6 +1,6 @@
 """Runtime protection engine — unified detector orchestration.
 
-Connects all seven runtime detectors, OTel trace ingestion, and the alert
+Connects all eight runtime detectors, OTel trace ingestion, and the alert
 dispatcher into a single protection pipeline. Activated via the API
 (``POST /v1/protect/start``) or CLI (``agent-bom protect``).
 

@@ -1807,7 +1807,7 @@ def build_server_card() -> dict:
     """Build MCP server card metadata for auto-discovery.
 
     Returns a dict suitable for serving at ``/.well-known/mcp/server-card.json``.
-    Used by Smithery, ToolHive, and other MCP clients to discover capabilities.
+    Used by Smithery and other MCP clients to discover capabilities.
     """
     from agent_bom import __version__
 

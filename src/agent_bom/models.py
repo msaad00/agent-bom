@@ -73,7 +73,6 @@ class AgentType(str, Enum):
     OPENCLAW = "openclaw"  # OpenClaw AI agent
     ROO_CODE = "roo-code"  # Roo Code (VS Code extension)
     AMAZON_Q = "amazon-q"  # Amazon Q Developer (VS Code)
-    TOOLHIVE = "toolhive"  # ToolHive MCP server manager
     DOCKER_MCP = "docker-mcp"  # Docker Desktop MCP Toolkit
     JETBRAINS_AI = "jetbrains-ai"  # JetBrains AI Assistant (IntelliJ, PyCharm, etc.)
     JUNIE = "junie"  # JetBrains Junie coding agent
@@ -250,6 +249,9 @@ class Package:
     # OpenSSF Scorecard enrichment (populated by --scorecard flag)
     scorecard_score: Optional[float] = None  # 0.0-10.0 overall score
     scorecard_checks: dict[str, int] = field(default_factory=dict)  # check_name -> score (-1 to 10)
+    scorecard_repo: Optional[str] = None  # Resolved GitHub owner/repo when available
+    scorecard_lookup_state: Optional[str] = None  # enriched | unresolved | failed
+    scorecard_lookup_reason: Optional[str] = None  # why enrichment did not succeed
 
     # Provenance / supply chain attestation (populated by --verify-integrity)
     integrity_verified: Optional[bool] = None  # SHA256/SRI verified against registry

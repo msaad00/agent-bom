@@ -23,6 +23,29 @@ Add to your `claude_desktop_config.json` (macOS: `~/Library/Application Support/
 
 Restart Claude Desktop. You can now ask: *"Scan my AI agents for vulnerabilities"*
 
+For Claude Code, the equivalent one-liner is:
+
+```bash
+claude mcp add agent-bom -- uvx agent-bom mcp server
+```
+
+### Cortex CoCo
+
+Add to `~/.snowflake/cortex/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "agent-bom": {
+      "command": "uvx",
+      "args": ["agent-bom", "mcp", "server"]
+    }
+  }
+}
+```
+
+CoCo can then call the same 36 `agent-bom` tools over MCP.
+
 ### Cursor / Windsurf / VS Code
 
 Add to your MCP settings (`.cursor/mcp.json` or equivalent):
@@ -54,6 +77,16 @@ docker run -it --rm \
   -v ~/.config:/root/.config:ro \
   agentbom/agent-bom:latest mcp server
 ```
+
+## Runtime proxy
+
+Use the proxy when you want to inspect or enforce on MCP traffic between a client and a third-party server:
+
+```bash
+agent-bom proxy "npx @modelcontextprotocol/server-filesystem /workspace"
+```
+
+This keeps the real server behind `agent-bom` and enables runtime detectors for tool drift, credential leakage, injection patterns, sequence risk, and related policy decisions.
 
 ## Tool Categories (36 tools)
 

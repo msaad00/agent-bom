@@ -12,6 +12,7 @@ from agent_bom.cli._analysis import (
     dashboard_cmd,
     graph_cmd,
     introspect_cmd,
+    mesh_cmd,
 )
 
 # ---------------------------------------------------------------------------
@@ -149,6 +150,85 @@ def test_graph_cmd_load_error(tmp_path):
     with patch("agent_bom.output.graph_export.load_graph_from_scan", side_effect=ValueError("bad scan")):
         result = runner.invoke(graph_cmd, [str(scan_file)])
         assert result.exit_code == 1
+
+
+# ---------------------------------------------------------------------------
+# mesh_cmd
+# ---------------------------------------------------------------------------
+
+
+def test_mesh_cmd_from_scan_file_json(tmp_path):
+    runner = CliRunner()
+    scan_file = tmp_path / "scan.json"
+    scan_file.write_text(
+        json.dumps(
+            {
+                "agents": [
+                    {
+                        "name": "claude",
+                        "mcp_servers": [
+                            {
+                                "name": "filesystem",
+                                "packages": [{"name": "pkg", "version": "1.0.0", "vulnerabilities": []}],
+                                "tools": [{"name": "read_file"}],
+                                "env": {"OPENAI_API_KEY": "x"},
+                            }
+                        ],
+                    }
+                ],
+                "blast_radius": [],
+            }
+        )
+    )
+
+    result = runner.invoke(mesh_cmd, [str(scan_file), "--format", "json"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data["stats"]["total_agents"] == 1
+    assert data["stats"]["total_tools"] == 1
+
+
+def test_mesh_cmd_live_summary():
+    runner = CliRunner()
+    server = MagicMock()
+    server.name = "filesystem"
+    server.packages = []
+    server.tools = [{"name": "read_file"}, {"name": "write_file"}]
+    server.env = {"GITHUB_TOKEN": "x"}
+    agent = MagicMock()
+    agent.mcp_servers = [server]
+
+    with (
+        patch("agent_bom.discovery.discover_all", return_value=[agent]),
+        patch("agent_bom.parsers.extract_packages", return_value=[{"name": "pkg", "version": "1.0.0", "vulnerabilities": []}]),
+        patch(
+            "dataclasses.asdict",
+            return_value={
+                "name": "claude",
+                "mcp_servers": [
+                    {
+                        "name": "filesystem",
+                        "packages": [{"name": "pkg", "version": "1.0.0", "vulnerabilities": []}],
+                        "tools": [{"name": "read_file"}, {"name": "write_file"}],
+                        "env": {"GITHUB_TOKEN": "x"},
+                    }
+                ],
+            },
+        ),
+    ):
+        result = runner.invoke(mesh_cmd, [])
+        assert result.exit_code == 0
+        assert "Mesh" in result.output
+        assert "claude" in result.output
+        assert "filesystem" in result.output
+
+
+def test_mesh_cmd_summary_rejects_output_path(tmp_path):
+    runner = CliRunner()
+    scan_file = tmp_path / "scan.json"
+    scan_file.write_text(json.dumps({"agents": [{"name": "a", "mcp_servers": []}], "blast_radius": []}))
+    result = runner.invoke(mesh_cmd, [str(scan_file), "--output", str(tmp_path / "mesh.txt")])
+    assert result.exit_code == 2
 
 
 # ---------------------------------------------------------------------------

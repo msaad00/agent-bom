@@ -44,6 +44,7 @@ pip install agent-bom
 
 agent-bom agents                              # Discover + scan local AI agents and MCP servers
 agent-bom agents -p .                         # Scan project manifests plus agent/MCP context
+agent-bom mesh --project .                    # Show the live agent / MCP topology
 agent-bom skills scan .                       # Scan CLAUDE.md, AGENTS.md, .cursorrules, skills/*
 agent-bom check flask@2.0.0 --ecosystem pypi  # Pre-install CVE gate
 agent-bom image nginx:latest                  # Container image scan
@@ -62,6 +63,61 @@ agent-bom secrets src/                  # Hardcoded secrets + PII
 agent-bom verify requests@2.33.0        # Package integrity verification
 agent-bom serve                         # API + Next.js dashboard
 ```
+
+</details>
+
+---
+
+## Use it by environment
+
+| Environment | Recommendation |
+|-------------|----------------|
+| **Developer laptop** | `pip install agent-bom` is fine. It is read-only, does not install a daemon, and does not open a network listener by default. |
+| **CI/CD** | Use the GitHub Action or `docker run --rm agentbom/agent-bom`. It is isolated by default and easy to gate on exit code or SARIF. |
+| **Enterprise fleet** | Deploy `agent-bom serve` in its own container or namespace with OIDC/RBAC and a real backend. Use the CLI or Action on endpoints and repos; use the API for fleet visibility. |
+| **Air-gapped / isolated** | Pre-sync the local DB, copy the cache, and run with `--offline` or `auto-update-db: false`. |
+
+<details>
+<summary><b>Claude, Cortex, and MCP integration</b></summary>
+
+Use `agent-bom` itself as an MCP tool surface:
+
+```bash
+agent-bom mcp server
+```
+
+That lets Claude Desktop, Claude Code, Cortex CoCo, Cursor, Windsurf, and other MCP-capable clients call the scanner directly through the MCP server mode.
+
+**Claude Code**
+
+```bash
+claude mcp add agent-bom -- uvx agent-bom mcp server
+```
+
+**Cortex CoCo**
+
+Add to `~/.snowflake/cortex/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "agent-bom": {
+      "command": "uvx",
+      "args": ["agent-bom", "mcp", "server"]
+    }
+  }
+}
+```
+
+**Runtime monitoring / proxy mode**
+
+Wrap a third-party MCP server with the proxy when you want runtime inspection instead of just scanning:
+
+```bash
+agent-bom proxy "npx @modelcontextprotocol/server-filesystem /workspace"
+```
+
+The proxy inspects MCP JSON-RPC traffic with drift, credential, injection, sequence, and capability-aware detectors before forwarding to the real server.
 
 </details>
 
@@ -106,22 +162,46 @@ Blast radius is **CWE-aware**: an RCE (CWE-94) shows full credential exposure, a
 
 ---
 
-## What it scans
+## Coverage at a glance
 
-| Source | Details |
-|--------|---------|
-| **AI agents + MCP servers** | 30 client types auto-detected (Claude Desktop, Cursor, Windsurf, VS Code, Codex CLI, Gemini CLI, and more) |
-| **AI supply chain** | Blast radius mapping, dependency confusion detection, CWE-aware impact classification |
-| **Packages** | 15 ecosystems — Python, Node.js, Go, Rust, Java, .NET, Ruby, PHP, Swift, Conda, Alpine, Debian, RPM |
-| **Vulnerabilities** | OSV + NVD + GHSA + EPSS + CISA KEV, VEX generation, reachability analysis |
-| **Container images + K8s** | Native OCI parser, Docker images, running containers, Kubernetes pod scanning |
-| **IaC** | Dockerfile, Terraform, CloudFormation, Helm, Kubernetes manifests (138 rules) |
-| **Cloud AI + GPU infra** | AWS Bedrock/SageMaker, Azure AI, GCP Vertex, Databricks, Snowflake, GPU/DCGM probes |
-| **AI platforms** | HuggingFace, W&B, Ollama, OpenAI, vector databases (Pinecone, Weaviate, ChromaDB) |
-| **AI code + models** | AST analysis (10+ frameworks), 13 model formats, provenance + hash verification |
-| **Secrets + PII** | 34 credential patterns + 11 PII patterns across source, config, and .env files |
-| **SBOM** | CycloneDX 1.6 with ML BOM extensions, SPDX 3.0, ingests existing SBOMs |
-| **Instruction files** | CLAUDE.md, .cursorrules, AGENTS.md — trust analysis + tool poisoning detection |
+<details open>
+<summary><b>Agents, MCP, and skills</b></summary>
+
+- 30 MCP client types auto-detected: Claude Desktop, Claude Code, Cursor, Windsurf, VS Code, Codex CLI, Gemini CLI, and more
+- MCP servers, tools, transports, trust posture, and capability risk scoring
+- Instruction files and skills: `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.windsurfrules`, `skills/*`
+- Deterministic skill bundle identity, trust analysis, and tool-poisoning detection
+
+</details>
+
+<details>
+<summary><b>Supply chain, packages, and SBOM</b></summary>
+
+- 15 ecosystems across language, OS, and agent package surfaces
+- OSV, NVD, GHSA, EPSS, and CISA KEV enrichment
+- Blast radius mapping: CVE → package → MCP server → agent → credentials → tools
+- CycloneDX 1.6 with ML BOM extensions, SPDX 3.0, VEX, SARIF, HTML, graph, JSON, and more
+
+</details>
+
+<details>
+<summary><b>Containers, IaC, cloud, and secrets</b></summary>
+
+- Native OCI parser for images and running containers
+- IaC coverage for Dockerfile, Terraform, CloudFormation, Helm, and Kubernetes manifests
+- Cloud AI and infra discovery across AWS, Azure, GCP, Databricks, Snowflake, GPU/DCGM probes, and vector data stores
+- Secrets and PII scanning across source, config, lockfiles, and environment-adjacent files
+
+</details>
+
+<details>
+<summary><b>Runtime, policy, and trust</b></summary>
+
+- MCP proxy enforcement with 8 behavioral detectors and 112 detection patterns
+- Capability-aware risk, drift detection, credential redaction, and kill-switch controls
+- 14 compliance frameworks mapped onto findings, including OWASP, MITRE, NIST, ISO, SOC 2, CIS, CMMC, and the EU AI Act
+
+</details>
 
 **Read-only. Agentless. No secrets leave your machine.**
 
@@ -178,18 +258,63 @@ docker run --rm agentbom/agent-bom agents    # Docker
 | Mode | Command | Best for |
 |------|---------|----------|
 | CLI | `agent-bom agents` | Local audit + project scan |
-| GitHub Action | `uses: msaad00/agent-bom@v0.75.11` | CI/CD + SARIF |
+| GitHub Action | `uses: msaad00/agent-bom@v0.75.12` | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom` | Isolated scans |
-| MCP Server | `agent-bom mcp server` | Claude, Cursor, Codex, Windsurf, Cortex |
+| MCP Server | `agent-bom mcp server` | Claude Desktop, Claude Code, Cursor, Codex, Windsurf, Cortex |
 | Runtime proxy | `agent-bom proxy` | MCP traffic enforcement |
 | Shield SDK | `from agent_bom.shield import Shield` | In-process protection |
-| Dashboard | `agent-bom serve` | API + Next.js UI (20 pages) |
+| API + dashboard | `agent-bom serve` | Fleet visibility, audit exports, and central review |
+
+### CI/CD in 60 seconds
+
+Use the GitHub Action when you want Trivy-style adoption: one step, one gate, SARIF in the Security tab, and a clean exit code for CI.
+
+**Repo + MCP + instruction files**
+
+```yaml
+- uses: msaad00/agent-bom@v0.75.12
+  with:
+    scan-type: scan
+    severity-threshold: high
+    upload-sarif: true
+    enrich: true
+    fail-on-kev: true
+```
+
+**Container image gate**
+
+```yaml
+- uses: msaad00/agent-bom@v0.75.12
+  with:
+    scan-type: image
+    scan-ref: ghcr.io/acme/agent-runtime:sha-abcdef
+    severity-threshold: critical
+```
+
+**IaC gate**
+
+```yaml
+- uses: msaad00/agent-bom@v0.75.12
+  with:
+    scan-type: iac
+    iac: Dockerfile,k8s/,infra/main.tf
+    severity-threshold: high
+```
+
+**Air-gapped / pre-synced CI**
+
+```yaml
+- uses: msaad00/agent-bom@v0.75.12
+  with:
+    auto-update-db: false
+    enrich: false
+```
 
 <details>
 <summary><b>GitHub Action</b></summary>
 
 ```yaml
-- uses: msaad00/agent-bom@v0.75.11
+- uses: msaad00/agent-bom@v0.75.12
   with:
     scan-type: scan
     severity-threshold: high
@@ -199,6 +324,15 @@ docker run --rm agentbom/agent-bom agents    # Docker
 ```
 
 </details>
+
+### Enterprise rollout
+
+- `Developer endpoints`: run `agent-bom agents` locally or via MDM for workstation inventory and posture.
+- `CI/CD`: use the GitHub Action for PR gates, SARIF upload, image gates, and IaC checks.
+- `Central security team`: deploy `agent-bom serve` for fleet ingestion, posture, and audit exports.
+- `Air-gapped / isolated`: run the Docker image with `--offline` and `auto-update-db: false` using a pre-synced local DB.
+
+See [docs/ENTERPRISE_DEPLOYMENT.md](docs/ENTERPRISE_DEPLOYMENT.md) for rollout patterns, auth models, and storage backends.
 
 <details>
 <summary><b>Install extras</b></summary>
@@ -223,7 +357,7 @@ JSON, SARIF, CycloneDX 1.6 (with ML BOM), SPDX 3.0, HTML, Graph JSON, Graph HTML
 
 ## MCP server
 
-33 security tools available inside any MCP-compatible AI assistant:
+36 security tools available inside any MCP-compatible AI assistant:
 
 ```json
 {

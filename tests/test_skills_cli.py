@@ -32,9 +32,28 @@ Environment:
 
     data = json.loads(result.output)
     assert data["summary"]["files_scanned"] == 1
+    assert data["summary"]["bundles"] == 1
     assert data["summary"]["packages_found"] >= 1
     assert data["summary"]["credential_env_vars"] >= 1
     assert data["files"][0]["path"].endswith("CLAUDE.md")
+    assert data["files"][0]["bundle"]["file_count"] == 1
+    assert data["files"][0]["bundle"]["sha256"]
+
+
+def test_skills_scan_explicit_directory_globs_markdown(tmp_path):
+    """Explicit directory targets should scan markdown files inside that directory."""
+    docs_skills = tmp_path / "docs" / "skills"
+    docs_skills.mkdir(parents=True)
+    skill_file = docs_skills / "mcp-server-review.md"
+    skill_file.write_text("# Review\n\n```bash\nnpx @modelcontextprotocol/server-filesystem\n```\n")
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["skills", "scan", str(docs_skills), "--format", "json"])
+    assert result.exit_code == 0, result.output
+
+    data = json.loads(result.output)
+    assert data["summary"]["files_scanned"] == 1
+    assert data["files"][0]["path"].endswith("mcp-server-review.md")
 
 
 def test_skills_verify_json_unsigned(tmp_path):

@@ -207,9 +207,9 @@ def test_discovery_paths_include_jetbrains():
     assert "junie" in clients
 
 
-def test_client_count_is_22():
-    """Verify we now have 30 MCP client types (CUSTOM is not in CONFIG_LOCATIONS)."""
+def test_client_count_is_29():
+    """Verify we now have 29 config-backed MCP client types after ToolHive removal."""
     from agent_bom.discovery import CONFIG_LOCATIONS
 
-    # CUSTOM is not in CONFIG_LOCATIONS, so count should be 30
-    assert len(CONFIG_LOCATIONS) == 30
+    # CUSTOM is not in CONFIG_LOCATIONS, and ToolHive was removed.
+    assert len(CONFIG_LOCATIONS) == 29

@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from agent_bom.compliance_utils import effective_blast_radius_tags
+from agent_bom.scorecard import summarize_scorecard_coverage
 
 if TYPE_CHECKING:
     from agent_bom.models import AIBOMReport
@@ -155,19 +156,51 @@ def compute_posture_scorecard(report: "AIBOMReport") -> PostureScorecard:
 
     # ── 3. Supply Chain Quality (15%) ──
     scorecard_scores: list[float] = []
+    all_packages = []
     for agent in report.agents:
         for server in agent.mcp_servers:
             for pkg in server.packages:
+                all_packages.append(pkg)
                 if pkg.scorecard_score is not None:
                     scorecard_scores.append(pkg.scorecard_score)
 
+    scorecard_stats = summarize_scorecard_coverage(all_packages)
+    transient_scorecard_failures = {
+        pkg.scorecard_lookup_reason
+        for pkg in all_packages
+        if pkg.scorecard_lookup_state == "failed"
+        and pkg.scorecard_lookup_reason in {"scorecard_rate_limited", "scorecard_service_unavailable"}
+    }
     if scorecard_scores:
         avg_scorecard = sum(scorecard_scores) / len(scorecard_scores)
         sc_score = min(100.0, avg_scorecard * 10)  # 0-10 → 0-100
-        sc_detail = f"Avg OpenSSF Scorecard: {avg_scorecard:.1f}/10 ({len(scorecard_scores)} packages)"
+        sc_detail = (
+            f"Avg OpenSSF Scorecard: {avg_scorecard:.1f}/10 "
+            f"({scorecard_stats.enriched_packages}/{scorecard_stats.eligible_packages} eligible packages enriched)"
+        )
+    elif scorecard_stats.eligible_packages == 0:
+        sc_score = 50.0
+        sc_detail = "No GitHub-backed packages eligible for OpenSSF Scorecard"
+    elif scorecard_stats.failed_packages > 0 and transient_scorecard_failures:
+        sc_score = 100.0
+        sc_detail = (
+            "OpenSSF Scorecard temporarily unavailable upstream; "
+            f"not penalizing posture ({scorecard_stats.enriched_packages}/{scorecard_stats.eligible_packages} eligible packages enriched, "
+            f"{scorecard_stats.failed_packages} transient lookup failures)"
+        )
+    elif scorecard_stats.failed_packages > 0:
+        sc_score = 50.0
+        sc_detail = (
+            "OpenSSF Scorecard coverage pending: "
+            f"{scorecard_stats.enriched_packages}/{scorecard_stats.eligible_packages} eligible packages enriched, "
+            f"{scorecard_stats.failed_packages} lookup failures"
+        )
     else:
-        sc_score = 50.0  # Neutral when no scorecard data
-        sc_detail = "No OpenSSF Scorecard data available"
+        sc_score = 50.0
+        sc_detail = (
+            "OpenSSF Scorecard coverage unresolved: "
+            f"{scorecard_stats.unresolved_packages} package(s) lacked resolvable GitHub source metadata"
+        )
 
     dimensions["supply_chain_quality"] = DimensionScore(
         name="Supply Chain Quality",
@@ -287,10 +320,7 @@ def compute_posture_scorecard(report: "AIBOMReport") -> PostureScorecard:
     else:
         drivers: list[str] = []
         if total_cred_servers > 0:
-            drivers.append(
-                f"real credential exposure across {total_cred_servers} "
-                f"server{'s' if total_cred_servers != 1 else ''}"
-            )
+            drivers.append(f"real credential exposure across {total_cred_servers} server{'s' if total_cred_servers != 1 else ''}")
         if report.has_mcp_context and total_servers > 0 and verified_servers < total_servers:
             drivers.append(
                 "unverified or underspecified MCP configuration on "
@@ -298,10 +328,7 @@ def compute_posture_scorecard(report: "AIBOMReport") -> PostureScorecard:
                 f"server{'s' if total_servers != 1 else ''}"
             )
         if drivers:
-            summary = (
-                f"Weak security posture ({grade}, {total_score}%) — this grade is driven by "
-                + " and ".join(drivers)
-            )
+            summary = f"Weak security posture ({grade}, {total_score}%) — this grade is driven by " + " and ".join(drivers)
         else:
             summary = f"Weak security posture ({grade}, {total_score}%) — immediate attention required"
 

@@ -51,7 +51,6 @@ ALLOWED_COMMANDS = {
     # Common MCP server launchers
     "mcp",
     "mcp-server",
-    "thv",
 }
 
 # Dangerous environment variables that should never be set

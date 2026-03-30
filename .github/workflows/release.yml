@@ -135,7 +135,7 @@ jobs:
             org.opencontainers.image.version=${{ steps.meta.outputs.version }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.title=agent-bom
-            org.opencontainers.image.description=AI security scanner for agents, MCP, containers, cloud, and runtime
+            org.opencontainers.image.description=Open security scanner for agentic infrastructure: agents, MCP, containers, cloud, and runtime.
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
             org.opencontainers.image.revision=${{ github.sha }}
 
@@ -158,7 +158,7 @@ jobs:
             "https://hub.docker.com/v2/repositories/agentbom/agent-bom/" \
             -H "Authorization: Bearer ${TOKEN}" \
             -H "Content-Type: application/json" \
-            -d "{\"full_description\": ${DESCRIPTION}, \"description\": \"AI security scanner for agents, MCP, containers, cloud, and runtime\"}"
+            -d "{\"full_description\": ${DESCRIPTION}, \"description\": \"Open security scanner for agentic infrastructure: agents, MCP, containers, cloud, and runtime.\"}"
 
       - name: Clean up old Docker Hub tags (keep last 10)
         env:
@@ -334,17 +334,21 @@ jobs:
           for f in dist/*.whl dist/*.tar.gz; do
             [ -f "$f" ] || continue
             name=$(basename "$f")
-            digest=$(sha256sum "$f" | awk '{print $1}')
-            gh attestation download "$f" \
-              --repo "${{ github.repository }}" \
-              --format json
-            src="sha256:${digest}.jsonl"
-            [ -f "$src" ] || src="sha256-${digest}.jsonl"
-            if [ ! -f "$src" ]; then
+            artifact_path="$(pwd)/$f"
+            download_dir=$(mktemp -d)
+            (
+              cd "$download_dir"
+              gh attestation download "$artifact_path" \
+                --repo "${{ github.repository }}"
+            )
+            src=$(find "$download_dir" -maxdepth 1 -type f -name '*.jsonl' | head -n 1 || true)
+            if [ -z "$src" ] || [ ! -f "$src" ]; then
               echo "Expected provenance bundle for $name was not downloaded" >&2
+              ls -la "$download_dir" >&2 || true
               exit 1
             fi
             mv "$src" "provenance/${name}.intoto.jsonl"
+            rm -rf "$download_dir"
           done
 
       - name: Upload provenance artifacts

@@ -1,5 +1,6 @@
 """Tests for compact CLI output functions."""
 
+import re
 from io import StringIO
 
 from rich.console import Console
@@ -38,6 +39,11 @@ def _capture(fn, *args, **kwargs) -> str:
     finally:
         out_mod.console = orig
     return buf.getvalue()
+
+
+def _plain(text: str) -> str:
+    """Remove ANSI styling so assertions stay stable across CI terminals."""
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
 
 
 def _make_server(name="test-server", packages=None, env=None, tools=None):
@@ -100,6 +106,7 @@ def test_compact_summary_clean():
     report = AIBOMReport(agents=[agent])
     output = _capture(print_compact_summary, report)
     assert "CLEAN" in output
+    assert "POSTURE GRADE" in output
     assert "Agents" in output
     assert "1" in output
 
@@ -113,6 +120,7 @@ def test_compact_summary_with_vulns():
     br = _blast(vuln, pkg, [agent], [server])
     report = AIBOMReport(agents=[agent], blast_radii=[br])
     output = _capture(print_compact_summary, report)
+    assert "POSTURE GRADE" in output
     assert "CRIT" in output  # Badge shows " CRIT " not "CRITICAL"
     assert "Vulns" in output
 
@@ -137,6 +145,19 @@ def test_compact_summary_unknown_severity_is_labeled_advisory():
     output = _capture(print_compact_summary, report)
     assert "advisory" in output.lower()
     assert "unscored" not in output.lower()
+
+
+def test_compact_summary_shows_top_drivers_for_weak_posture():
+    """Weak posture should surface the key drivers inline."""
+    vuln = _vuln(severity=Severity.HIGH, fixed="9.9.9")
+    pkg = Package(name="pkg", version="1.0.0", ecosystem="npm", vulnerabilities=[vuln])
+    server = _make_server(packages=[pkg], env={"AWS_SECRET_ACCESS_KEY": "x"})
+    agent = _make_agent(servers=[server])
+    br = _blast(vuln, pkg, [agent], [server], creds=["AWS_SECRET_ACCESS_KEY"])
+    report = AIBOMReport(agents=[agent], blast_radii=[br])
+    output = _capture(print_compact_summary, report)
+    assert "Top Drivers" in output
+    assert "Credential Hygiene" in output
 
 
 # ── print_compact_agents ─────────────────────────────────────────────────────
@@ -241,6 +262,23 @@ def test_compact_remediation_limit():
     output = _capture(print_compact_remediation, report, limit=2)
     assert "more" in output
     assert "--verbose" in output
+
+
+def test_compact_remediation_shows_priority_and_action():
+    """Default remediation output should explain why an item is first."""
+    server = _make_server(env={"GITHUB_TOKEN": "x"}, tools=[{"name": "read_file"}])
+    agent = _make_agent(servers=[server])
+    vuln = _vuln(vid="CVE-2024-0001", severity=Severity.CRITICAL, fixed="2.0.0", kev=True)
+    pkg = Package(name="openssl", version="1.0.0", ecosystem="pypi", vulnerabilities=[vuln])
+    br = _blast(vuln, pkg, [agent], [server], creds=["GITHUB_TOKEN"])
+    report = AIBOMReport(agents=[agent], blast_radii=[br])
+    output = _capture(print_compact_remediation, report)
+    plain = _plain(output)
+    assert "Fix First" in plain
+    assert "P1" in plain
+    assert "rotate exposed credentials" in plain
+    assert "pip install 'openssl>=2.0.0'" in plain
+    assert "agent-bom check openssl@2.0.0 --ecosystem pypi" in plain
 
 
 def test_compact_remediation_empty():

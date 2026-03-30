@@ -197,7 +197,7 @@ max_response_size_kb: 512
 agent-bom mcp server
 ```
 
-Exposes 33 tools to any MCP-compatible AI assistant. Your agent can run scans, check packages, query the registry, and generate compliance reports without leaving the chat:
+Exposes 36 tools to any MCP-compatible AI assistant. Your agent can run scans, check packages, query the registry, and generate compliance reports without leaving the chat:
 
 ```
 scan_agents         — full scan, returns JSON report
@@ -225,7 +225,7 @@ blast_radius        — blast radius for a specific CVE
 ### CI/CD (GitHub Action)
 
 ```yaml
-- uses: msaad00/agent-bom@v0.75.11
+- uses: msaad00/agent-bom@v0.75.12
   with:
     format: sarif
     upload-sarif: 'true'

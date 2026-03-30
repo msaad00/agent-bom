@@ -7,6 +7,33 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.75.12] – 2026-03-29
+
+### Added
+- **First-class skills scanning** — `agent-bom skills scan` and `agent-bom skills verify` are now top-level CLI surfaces for instruction-file trust, provenance, and findings
+- **Live MCP tool capability scoring** — added capability-based tool/server risk assessment from `tools/list` introspection, surfaced through MCP and scan outputs
+- **Release demo refresh** — updated hero demo and release surfaces for `v0.75.12`
+
+### Changed
+- **MCP tool surface** — docs and public surfaces now reflect the current 36-tool MCP server accurately
+- **Quickstart alignment** — CLI/docs/demo flows now point to the grouped first-class commands (`agents`, `skills`, `image`, `iac`)
+- **Advisory labeling** — unscored vulnerabilities are presented as advisories/pending severity instead of ambiguous unknowns
+- **Resolver continuity** — npm version resolution now prefers cached/bundled continuity under rate limiting instead of repeated blocking retries
+- **Supply-chain enrichment** — `--enrich` resolves package source metadata before OpenSSF Scorecard lookup and reports explicit enrichment coverage state
+
+### Fixed
+- **Blast radius serialization** — package name/version/stable ID now propagate correctly in filesystem and JSON outputs
+- **Filesystem posture credibility** — fs/project scans no longer get penalized for missing MCP-only config context; posture and framework mapping now reflect the actual scan mode
+- **Framework tagging** — intrinsic vulnerability findings now carry framework tags in both agents and fs modes
+- **Remediation output** — remediation JSON now includes populated priority and action fields
+- **UI dependency hygiene** — aligned UI eslint peer range with Next.js-supported versions to remove install drift
+- **Scorecard source resolution** — npm/PyPI direct dependencies now fall back to source metadata resolution paths so repo URLs, homepages, and Scorecard repos populate end to end
+
+### Security
+- No new release-blocking regressions introduced across the `0.75.12` stabilization lane; focused regression suites, UI tests, build checks, and release consistency checks remained green
+
+---
+
 ## [0.75.0] – 2026-03-23
 
 ### Added
@@ -42,7 +69,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - **CycloneDX** — `formulation` field identifies agent-bom as generator
 - **GitHub Action** — `exclude-unfixable` input for CI gating
 - **Architecture diagram** — compact horizontal layout (LR)
-- **Count alignment** — all docs now single-source-of-truth (14 frameworks, 138 IaC rules, 112 patterns, 20 pages, 33 tools, 19 formats)
+- **Count alignment** — release surfaces were brought back to a single source of truth for that release's framework, rule, pattern, page, tool, and format totals
 
 ### Fixed
 - **Full-stack alignment** — `severity_source`, `confidence`, `nist_800_53_tags`, `fedramp_tags`, `automation_settings`, `vector_db_scan`, `gpu_infra` now serialized in JSON output (were silently dropped)
@@ -173,7 +200,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Added
 
 - **30 MCP clients** — added Pieces, mcp-cli, Trae, Aide, Void, Replit Agent, Aider, Sourcegraph Cody, Tabnine, Copilot CLI, Junie, JetBrains AI
-- **AI BOM tools** — 32 MCP tools for scanning, compliance, runtime, cloud
+- **AI BOM tools** — 32 MCP tools for scanning, compliance, runtime, cloud in the `0.72.0` release
 - **Version accuracy** — all surfaces updated with correct version and client counts
 - **Compliance noise reduction** — actionable findings only in default output
 

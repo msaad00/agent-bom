@@ -406,6 +406,29 @@ class TestEnrichSupplyChainMetadata:
             assert count == 1
 
     @pytest.mark.asyncio
+    async def test_falls_back_to_deps_dev_when_registry_metadata_missing(self):
+        pkg = Package(name="express", version="4.18.2", ecosystem="npm")
+        mock_response = MagicMock()
+        mock_response.status_code = 429
+        mock_response.headers = {}
+        deps_info = {
+            "description": "Fast web framework",
+            "links": [
+                {"label": "Homepage", "url": "https://expressjs.com"},
+                {"label": "Repository", "url": "https://github.com/expressjs/express"},
+            ],
+        }
+        with (
+            patch("agent_bom.resolver.request_with_retry", return_value=mock_response),
+            patch("agent_bom.deps_dev.get_package_info", return_value=deps_info),
+        ):
+            client = AsyncMock()
+            count = await enrich_supply_chain_metadata([pkg], client)
+            assert count == 1
+            assert pkg.homepage == "https://expressjs.com"
+            assert pkg.repository_url == "https://github.com/expressjs/express"
+
+    @pytest.mark.asyncio
     async def test_skips_packages_with_description(self):
         pkg = Package(name="express", version="4.18.2", ecosystem="npm")
         pkg.description = "Already described"

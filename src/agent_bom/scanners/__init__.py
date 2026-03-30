@@ -1739,12 +1739,15 @@ async def scan_agents_with_enrichment(
     # Then enrich with external data
     if enable_enrichment and blast_radii:
         from agent_bom.enrichment import enrich_vulnerabilities
+        from agent_bom.resolver import enrich_supply_chain_metadata
 
         # Collect all vulnerabilities
         all_vulns = []
+        all_pkgs: list[Package] = []
         for agent in agents:
             for server in agent.mcp_servers:
                 for pkg in server.packages:
+                    all_pkgs.append(pkg)
                     all_vulns.extend(pkg.vulnerabilities)
 
         if all_vulns:
@@ -1763,22 +1766,19 @@ async def scan_agents_with_enrichment(
                         for v in pkg.vulnerabilities:
                             v.compliance_tags = _tag_vuln(v, pkg)
 
+        # Supply-chain metadata enrichment — feeds Scorecard repo resolution
+        try:
+            async with create_client(timeout=10.0) as client:
+                await enrich_supply_chain_metadata(all_pkgs, client)
+        except Exception as exc:  # noqa: BLE001
+            _logger.warning("Supply chain metadata enrichment failed (scorecard coverage may be incomplete): %s", exc)
+
         # Scorecard enrichment — adds supply-chain quality signal
         try:
             from agent_bom.scorecard import enrich_packages_with_scorecard
 
-            # Deduplicate packages across all agents
-            seen_keys: set[str] = set()
-            unique_pkgs: list[Package] = []
-            for agent in agents:
-                for server in agent.mcp_servers:
-                    for pkg in server.packages:
-                        pk = f"{pkg.ecosystem.lower()}:{normalize_package_name(pkg.name, pkg.ecosystem)}@{pkg.version}"
-                        if pk not in seen_keys:
-                            seen_keys.add(pk)
-                            unique_pkgs.append(pkg)
-            if unique_pkgs:
-                await enrich_packages_with_scorecard(unique_pkgs)
+            if all_pkgs:
+                await enrich_packages_with_scorecard(all_pkgs)
         except Exception as exc:  # noqa: BLE001
             _logger.warning("Scorecard auto-enrichment failed (risk scores may be understated): %s", exc)
 

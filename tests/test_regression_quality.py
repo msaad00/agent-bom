@@ -130,7 +130,7 @@ class TestCountConsistency:
         detectors = Path("src/agent_bom/runtime/detectors.py").read_text()
         actual = len(
             re.findall(
-                r"^class \w+(?:Detector|Analyzer|Inspector|Correlator)\b",
+                r"^class \w+(?:Detector|Analyzer|Inspector|Correlator|Tracker)\b",
                 detectors,
                 re.MULTILINE,
             )

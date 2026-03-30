@@ -10,6 +10,7 @@ from agent_bom.integrity import verify_instruction_file
 from agent_bom.parsers.skill_audit import SkillAuditResult, audit_skill_result
 from agent_bom.parsers.skills import SkillScanResult, discover_skill_files, parse_skill_file
 from agent_bom.parsers.trust_assessment import TrustAssessmentResult, assess_trust
+from agent_bom.skill_bundles import SkillBundle, build_skill_bundle
 
 
 @dataclass
@@ -21,11 +22,13 @@ class SkillFileReport:
     audit: SkillAuditResult
     trust: TrustAssessmentResult
     provenance: dict[str, object]
+    bundle: SkillBundle
 
     def to_dict(self) -> dict:
         """Serialize the file report to JSON-compatible data."""
         return {
             "path": str(self.path),
+            "bundle": self.bundle.to_dict(),
             "packages": [
                 {
                     "name": pkg.name,
@@ -77,9 +80,12 @@ class SkillsScanReport:
 
     def to_dict(self) -> dict:
         """Serialize the aggregated scan report."""
-        package_keys = {(pkg["name"].lower(), pkg["ecosystem"]) for report in self.files for pkg in report.to_dict()["packages"]}
-        server_names = {server["name"] for report in self.files for server in report.to_dict()["servers"]}
+        serialized_files = [report.to_dict() for report in self.files]
+        package_keys = {(pkg["name"].lower(), pkg["ecosystem"]) for report in serialized_files for pkg in report["packages"]}
+        server_names = {server["name"] for report in serialized_files for server in report["servers"]}
         credential_names = {cred for report in self.files for cred in report.scan.credential_env_vars}
+        bundle_ids = {report.bundle.stable_id for report in self.files}
+        bundled_paths = {entry["path"] for report in serialized_files for entry in report["bundle"]["files"]}
 
         suspicious = sum(1 for report in self.files if report.trust.verdict.value == "suspicious")
         malicious = sum(1 for report in self.files if report.trust.verdict.value == "malicious")
@@ -88,6 +94,8 @@ class SkillsScanReport:
         return {
             "summary": {
                 "files_scanned": len(self.files),
+                "bundles": len(bundle_ids),
+                "bundled_files": len(bundled_paths),
                 "packages_found": len(package_keys),
                 "servers_found": len(server_names),
                 "credential_env_vars": len(credential_names),
@@ -96,14 +104,30 @@ class SkillsScanReport:
                 "suspicious_files": suspicious,
                 "malicious_files": malicious,
             },
-            "files": [report.to_dict() for report in self.files],
+            "files": serialized_files,
         }
+
+
+def _discover_explicit_skill_files(directory: Path) -> list[Path]:
+    """Discover skill-like files inside a directory explicitly requested by the user."""
+    found: list[Path] = []
+    seen: set[Path] = set()
+    for path in sorted(directory.rglob("*")):
+        if not path.is_file():
+            continue
+        if path.name in {".cursorrules", ".windsurfrules"} or path.suffix.lower() == ".md":
+            resolved = path.resolve()
+            if resolved not in seen:
+                seen.add(resolved)
+                found.append(resolved)
+    return found
 
 
 def resolve_skill_targets(paths: Iterable[str | Path] | None = None, *, cwd: Path | None = None) -> list[Path]:
     """Resolve files/directories to concrete skill/instruction files."""
     base_dir = cwd or Path.cwd()
-    requested = list(paths or [base_dir])
+    requested = list(paths) if paths is not None else [base_dir]
+    explicit_paths = bool(requested)
     resolved: list[Path] = []
     seen: set[Path] = set()
 
@@ -114,7 +138,7 @@ def resolve_skill_targets(paths: Iterable[str | Path] | None = None, *, cwd: Pat
 
         discovered: list[Path]
         if candidate.is_dir():
-            discovered = discover_skill_files(candidate)
+            discovered = _discover_explicit_skill_files(candidate) if explicit_paths else discover_skill_files(candidate)
         elif candidate.is_file():
             discovered = [candidate]
         else:
@@ -165,6 +189,7 @@ def scan_skill_targets(paths: Iterable[str | Path] | None = None, *, cwd: Path |
                 audit=audit,
                 trust=trust,
                 provenance=_provenance_to_dict(path),
+                bundle=build_skill_bundle(path),
             )
         )
     return SkillsScanReport(files=reports)

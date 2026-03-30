@@ -1,7 +1,7 @@
 {
   "name": "agent-bom",
   "description": "Open security platform for agentic infrastructure. Broad scanning, blast radius, runtime, and trust.",
-  "version": "0.75.11",
+  "version": "0.75.12",
   "license": "Apache-2.0",
   "repository": "https://github.com/msaad00/agent-bom",
   "transport": "stdio",

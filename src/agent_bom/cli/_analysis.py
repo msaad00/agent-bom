@@ -1,14 +1,74 @@
-"""Analysis commands — analytics, graph, dashboard, introspect."""
+"""Analysis commands — analytics, graph, dashboard, introspect, mesh."""
 
 from __future__ import annotations
 
 import json
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Optional
 
 import click
 from rich.console import Console
+
+
+def _load_mesh_source(scan_file: Optional[str], project_dir: Optional[str]) -> tuple[list[dict], list[dict] | None]:
+    """Load agent topology from either a saved report or live discovery."""
+    if scan_file:
+        data = json.loads(Path(scan_file).read_text())
+        agents_data = data.get("agents", [])
+        blast_radius = data.get("blast_radius")
+        if not isinstance(agents_data, list):
+            raise ValueError("scan file did not contain a valid 'agents' list")
+        if blast_radius is not None and not isinstance(blast_radius, list):
+            blast_radius = None
+        return agents_data, blast_radius
+
+    from dataclasses import asdict
+
+    from agent_bom.discovery import discover_all
+    from agent_bom.parsers import extract_packages
+
+    agents = discover_all(project_dir=project_dir)
+    for agent in agents:
+        for server in agent.mcp_servers:
+            if not server.packages:
+                server.packages = extract_packages(server)
+
+    return [asdict(agent) for agent in agents], None
+
+
+def _render_mesh_summary(con: Console, agents_data: list[dict], mesh: dict) -> None:
+    """Print a compact human-readable topology summary."""
+    stats = mesh.get("stats", {})
+    shared_counts: Counter[str] = Counter()
+    for agent in agents_data:
+        for server in agent.get("mcp_servers", []):
+            shared_counts[server.get("name", "unknown")] += 1
+
+    con.print()
+    con.print(
+        f"[bold]Mesh[/bold]  "
+        f"[dim]{stats.get('total_agents', 0)} agents · {stats.get('total_servers', 0)} servers · "
+        f"{stats.get('total_tools', 0)} tools · {stats.get('total_vulnerabilities', 0)} vulns[/dim]"
+    )
+
+    for agent in agents_data:
+        servers = agent.get("mcp_servers", [])
+        con.print(f"  [bold]{agent.get('name', 'unknown')}[/bold] [dim]({len(servers)} server(s))[/dim]")
+        for server in servers:
+            packages = server.get("packages", [])
+            tools = server.get("tools", [])
+            env = server.get("env", {}) or {}
+            creds = [k for k in env if any(p in k.lower() for p in ("key", "token", "secret", "password", "credential", "auth"))]
+            vuln_count = sum(len(pkg.get("vulnerabilities", [])) for pkg in packages)
+            shared = " [dim](shared)[/dim]" if shared_counts[server.get("name", "unknown")] > 1 else ""
+            con.print(
+                "    "
+                f"• [cyan]{server.get('name', 'unknown')}[/cyan]{shared} "
+                f"[dim]{len(packages)} pkg · {len(tools)} tool · {len(creds)} cred · {vuln_count} vuln[/dim]"
+            )
+    con.print()
 
 
 @click.command("analytics")
@@ -152,6 +212,66 @@ def graph_cmd(scan_file: str, fmt: str, output_path: Optional[str]) -> None:
         _con.print(f"[green]Graph exported[/green] ({graph.node_count()} nodes, {graph.edge_count()} edges) → {output_path}")
     else:
         click.echo(output)
+
+
+@click.command("mesh")
+@click.argument("scan_file", required=False, type=click.Path(exists=True))
+@click.option(
+    "--project",
+    "project_dir",
+    type=click.Path(exists=True, file_okay=False),
+    default=None,
+    help="Discover agents relative to a project directory.",
+)
+@click.option(
+    "--format",
+    "-f",
+    "fmt",
+    type=click.Choice(["summary", "json"]),
+    default="summary",
+    show_default=True,
+    help="Output format.",
+)
+@click.option("--output", "-o", "output_path", default=None, help="Write to file instead of stdout.")
+def mesh_cmd(scan_file: Optional[str], project_dir: Optional[str], fmt: str, output_path: Optional[str]) -> None:
+    """Show lightweight agent/MCP topology without the dashboard.
+
+    \b
+    Examples:
+      agent-bom mesh
+      agent-bom mesh --project .
+      agent-bom mesh report.json --format json --output mesh.json
+    """
+    from agent_bom.output.agent_mesh import build_agent_mesh
+
+    con = Console()
+
+    try:
+        agents_data, blast_radius = _load_mesh_source(scan_file, project_dir)
+    except (ValueError, OSError, json.JSONDecodeError) as exc:
+        con.print(f"[red]Error loading mesh source:[/red] {exc}")
+        raise SystemExit(1) from exc
+
+    if not agents_data:
+        con.print("[yellow]No agents discovered.[/yellow]")
+        return
+
+    mesh = build_agent_mesh(agents_data, blast_radius)
+
+    if fmt == "json":
+        output = json.dumps(mesh, indent=2)
+        if output_path:
+            Path(output_path).write_text(output)
+            con.print(f"[green]Mesh exported[/green] → {output_path}")
+        else:
+            click.echo(output)
+        return
+
+    if output_path:
+        con.print("[red]--output is only supported with --format json for mesh.[/red]")
+        raise SystemExit(2)
+
+    _render_mesh_summary(con, agents_data, mesh)
 
 
 @click.command("dashboard")

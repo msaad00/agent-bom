@@ -14,7 +14,7 @@ RUN pip install --no-cache-dir --prefix=/install ".[api]"
 ## ── Runtime stage ────────────────────────────────────────────────────────────
 FROM python:3.14.3-alpine3.23@sha256:faee120f7885a06fcc9677922331391fa690d911c020abb9e8025ff3d908e510
 
-ARG VERSION=0.75.11
+ARG VERSION=0.75.12
 
 LABEL maintainer="W S <34316639+msaad00@users.noreply.github.com>"
 LABEL description="Security scanner for AI infrastructure — CVEs, blast radius, credential exposure, runtime enforcement"

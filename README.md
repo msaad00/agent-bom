@@ -185,6 +185,51 @@ docker run --rm agentbom/agent-bom agents    # Docker
 | Shield SDK | `from agent_bom.shield import Shield` | In-process protection |
 | Dashboard | `agent-bom serve` | API + Next.js UI (20 pages) |
 
+### CI/CD in 60 seconds
+
+Use the GitHub Action when you want Trivy-style adoption: one step, one gate, SARIF in the Security tab, and a clean exit code for CI.
+
+**Repo + MCP + instruction files**
+
+```yaml
+- uses: msaad00/agent-bom@v0.75.12
+  with:
+    scan-type: scan
+    severity-threshold: high
+    upload-sarif: true
+    enrich: true
+    fail-on-kev: true
+```
+
+**Container image gate**
+
+```yaml
+- uses: msaad00/agent-bom@v0.75.12
+  with:
+    scan-type: image
+    scan-ref: ghcr.io/acme/agent-runtime:sha-abcdef
+    severity-threshold: critical
+```
+
+**IaC gate**
+
+```yaml
+- uses: msaad00/agent-bom@v0.75.12
+  with:
+    scan-type: iac
+    iac: Dockerfile,k8s/,infra/main.tf
+    severity-threshold: high
+```
+
+**Air-gapped / pre-synced CI**
+
+```yaml
+- uses: msaad00/agent-bom@v0.75.12
+  with:
+    auto-update-db: false
+    enrich: false
+```
+
 <details>
 <summary><b>GitHub Action</b></summary>
 
@@ -199,6 +244,15 @@ docker run --rm agentbom/agent-bom agents    # Docker
 ```
 
 </details>
+
+### Enterprise rollout
+
+- `Developer endpoints`: run `agent-bom agents` locally or via MDM for workstation inventory and posture.
+- `CI/CD`: use the GitHub Action for PR gates, SARIF upload, image gates, and IaC checks.
+- `Central security team`: deploy `agent-bom serve` for fleet ingestion, posture, and audit exports.
+- `Air-gapped / isolated`: run the Docker image with `--offline` and `auto-update-db: false` using a pre-synced local DB.
+
+See [docs/ENTERPRISE_DEPLOYMENT.md](docs/ENTERPRISE_DEPLOYMENT.md) for rollout patterns, auth models, and storage backends.
 
 <details>
 <summary><b>Install extras</b></summary>

@@ -1243,15 +1243,31 @@ def scan(
             if all_pkgs_for_sc:
                 import asyncio as _asyncio_sc
 
-                from agent_bom.scorecard import enrich_packages_with_scorecard
+                from agent_bom.http_client import create_client as _scorecard_client
+                from agent_bom.resolver import enrich_supply_chain_metadata as _scorecard_meta
+                from agent_bom.scorecard import enrich_packages_with_scorecard_stats
 
                 con.print("\n[bold blue]Enriching with OpenSSF Scorecard data...[/bold blue]\n")
                 try:
-                    sc_count = _asyncio_sc.run(enrich_packages_with_scorecard(all_pkgs_for_sc))
-                    if sc_count:
-                        con.print(f"  [green]✓[/green] Scorecard: enriched {sc_count} package(s)")
-                    else:
+                    async def _do_scorecard():
+                        async with _scorecard_client(timeout=15.0) as client:
+                            await _scorecard_meta(all_pkgs_for_sc, client)
+                        return await enrich_packages_with_scorecard_stats(all_pkgs_for_sc)
+
+                    sc_stats = _asyncio_sc.run(_do_scorecard())
+                    if sc_stats.enriched_packages:
+                        con.print(
+                            "  [green]✓[/green] "
+                            f"Scorecard: enriched {sc_stats.enriched_packages}/{sc_stats.eligible_packages} eligible package(s)"
+                        )
+                    elif sc_stats.eligible_packages == 0:
                         con.print("  [dim]  Scorecard: no packages with resolvable GitHub repos[/dim]")
+                    else:
+                        con.print(
+                            "  [yellow]⚠[/yellow] "
+                            f"Scorecard: 0/{sc_stats.eligible_packages} eligible package(s) enriched "
+                            f"({sc_stats.failed_packages} lookup failures)"
+                        )
                 except Exception as exc:
                     con.print(f"  [yellow]⚠[/yellow] Scorecard enrichment failed: {exc}")
 

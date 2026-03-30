@@ -51,7 +51,7 @@ agent-bom iac Dockerfile k8s/ infra/main.tf   # IaC misconfigurations
 - **Blast radius mapping** — CVE → package → MCP server → agent → credentials → tools
 - **CWE-aware impact** — RCE shows credential exposure, DoS does not
 - **19 output formats** — SARIF, CycloneDX 1.6, SPDX 3.0, HTML, Prometheus, and more
-- **MCP server** — 33 security tools for Claude, Cursor, Windsurf
+- **MCP server** — 36 security tools for Claude, Cursor, Windsurf
 - **Dependency confusion detection** — flags internal naming patterns
 - **VEX generation** — auto-triage with CWE-aware reachability
 

@@ -70,7 +70,7 @@ docker run --rm agentbom/agent-bom:latest doctor
 - Blast radius from package to server to agent to credentials and tools
 - Runtime MCP proxy with 8 behavioral detectors
 - 14 compliance frameworks
-- 33 MCP server tools
+- 36 MCP server tools
 - 20-page Next.js dashboard
 
 ## Why It Is Different
@@ -90,7 +90,7 @@ agent-bom answers:
 | Tag | Description |
 |-----|-------------|
 | `latest` | Most recent stable release |
-| `v0.75.11` | Current stable version (pinned) |
+| `v0.75.12` | Current stable version (pinned) |
 
 ## Links
 

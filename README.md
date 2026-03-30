@@ -178,7 +178,7 @@ docker run --rm agentbom/agent-bom agents    # Docker
 | Mode | Command | Best for |
 |------|---------|----------|
 | CLI | `agent-bom agents` | Local audit + project scan |
-| GitHub Action | `uses: msaad00/agent-bom@v0.75.11` | CI/CD + SARIF |
+| GitHub Action | `uses: msaad00/agent-bom@v0.75.12` | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom` | Isolated scans |
 | MCP Server | `agent-bom mcp server` | Claude, Cursor, Codex, Windsurf, Cortex |
 | Runtime proxy | `agent-bom proxy` | MCP traffic enforcement |
@@ -189,7 +189,7 @@ docker run --rm agentbom/agent-bom agents    # Docker
 <summary><b>GitHub Action</b></summary>
 
 ```yaml
-- uses: msaad00/agent-bom@v0.75.11
+- uses: msaad00/agent-bom@v0.75.12
   with:
     scan-type: scan
     severity-threshold: high
@@ -223,7 +223,7 @@ JSON, SARIF, CycloneDX 1.6 (with ML BOM), SPDX 3.0, HTML, Graph JSON, Graph HTML
 
 ## MCP server
 
-33 security tools available inside any MCP-compatible AI assistant:
+36 security tools available inside any MCP-compatible AI assistant:
 
 ```json
 {

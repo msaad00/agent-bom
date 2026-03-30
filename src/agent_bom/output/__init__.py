@@ -914,12 +914,16 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
     """
     from collections import defaultdict
 
+    from agent_bom.remediation_commands import build_fix_command, build_verify_command
+
     groups: dict[tuple, dict] = defaultdict(
         lambda: {
             "package": "",
             "ecosystem": "",
             "current": "",
             "fix": None,
+            "command": None,
+            "verify_command": None,
             "vulns": [],
             "agents": set(),
             "creds": set(),
@@ -1019,8 +1023,12 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
 
         if g["fix"]:
             action = f"Upgrade {g['package']} to {g['fix']}"
+            g["command"] = build_fix_command(g["ecosystem"], g["package"], g["fix"])
+            g["verify_command"] = build_verify_command(g["ecosystem"], g["package"], g["fix"])
         else:
             action = f"Monitor {g['package']} upstream and isolate exposed surface"
+            g["command"] = None
+            g["verify_command"] = None
         if g["creds"]:
             action += "; rotate exposed credentials"
         if g["tools"]:
@@ -1682,6 +1690,10 @@ def print_compact_remediation(report: AIBOMReport, limit: int = 5) -> None:
             f"[dim]{item['priority']} · clears {reach}[/dim]"
         )
         console.print(f"     [dim]{_compact_detail(item['action'], limit=110)}[/dim]")
+        if item.get("command"):
+            console.print(f"     [cyan]{item['command']}[/cyan]")
+        if item.get("verify_command"):
+            console.print(f"     [dim]verify:[/dim] [cyan]{item['verify_command']}[/cyan]")
 
     if total > limit:
         console.print(f"  [dim]... {total - limit} more (use --verbose for full plan)[/dim]")

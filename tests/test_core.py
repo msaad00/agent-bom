@@ -3157,6 +3157,22 @@ def test_remediation_json_in_output(sample_report):
     assert item["priority"] == "P2"
     assert item["action"].startswith("Upgrade test-pkg to 1.2.3")
     assert "rotate exposed credentials" in item["action"]
+    assert item["command"]
+    assert "test-pkg" in item["command"]
+    assert "1.2.3" in item["command"]
+    assert item["verify_command"] == f"agent-bom check test-pkg@1.2.3 --ecosystem {item['ecosystem']}"
+
+
+def test_remediation_plan_commands(sample_report):
+    """Remediation plan exposes executable fix and verify commands."""
+    from agent_bom.output import build_remediation_plan
+
+    plan = build_remediation_plan(sample_report.blast_radii)
+    item = plan[0]
+    assert item["command"]
+    assert "test-pkg" in item["command"]
+    assert "1.2.3" in item["command"]
+    assert item["verify_command"] == f"agent-bom check test-pkg@1.2.3 --ecosystem {item['ecosystem']}"
 
 
 def test_remediation_json_percentages(sample_report):

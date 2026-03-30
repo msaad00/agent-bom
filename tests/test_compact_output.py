@@ -270,6 +270,8 @@ def test_compact_remediation_shows_priority_and_action():
     assert "Fix First" in output
     assert "P1" in output
     assert "rotate exposed credentials" in output
+    assert "pip install 'openssl>=2.0.0'" in output
+    assert "agent-bom check openssl@2.0.0 --ecosystem pypi" in output
 
 
 def test_compact_remediation_empty():

@@ -200,7 +200,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Added
 
 - **30 MCP clients** — added Pieces, mcp-cli, Trae, Aide, Void, Replit Agent, Aider, Sourcegraph Cody, Tabnine, Copilot CLI, Junie, JetBrains AI
-- **AI BOM tools** — 32 MCP tools for scanning, compliance, runtime, cloud
+- **AI BOM tools** — 32 MCP tools for scanning, compliance, runtime, cloud in the `0.72.0` release
 - **Version accuracy** — all surfaces updated with correct version and client counts
 - **Compliance noise reduction** — actionable findings only in default output
 

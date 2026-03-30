@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from agent_bom.scorecard import (
-    enrich_packages_with_scorecard_stats,
     enrich_packages_with_scorecard,
+    enrich_packages_with_scorecard_stats,
     extract_github_repo,
     extract_github_repo_from_purl,
     fetch_scorecard,

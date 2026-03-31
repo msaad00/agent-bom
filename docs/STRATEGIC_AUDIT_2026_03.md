@@ -1,5 +1,7 @@
 # agent-bom Strategic Audit — March 2026
 
+> Historical snapshot: this document captures a point-in-time March 2026 audit and may contain counts or claims that no longer match current `main`. For current positioning and verified repo-derived metrics, use [PRODUCT_BRIEF.md](PRODUCT_BRIEF.md) and [PRODUCT_METRICS.md](PRODUCT_METRICS.md).
+
 ## Table of Contents
 
 1. [Competitive Landscape](#1-competitive-landscape)

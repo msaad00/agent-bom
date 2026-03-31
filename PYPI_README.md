@@ -21,6 +21,11 @@ agent-bom maps the blast radius: CVE → package → MCP server → AI agent →
 
 Traditional scanners often stop at `CVE → package`. agent-bom shows which credentials and tools are actually at risk — with CWE-aware impact classification so a DoS vuln doesn't falsely claim credential exposure.
 
+Canonical references:
+
+- Product brief: https://github.com/msaad00/agent-bom/blob/main/docs/PRODUCT_BRIEF.md
+- Verified metrics: https://github.com/msaad00/agent-bom/blob/main/docs/PRODUCT_METRICS.md
+
 ![agent-bom demo](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif)
 
 ## Quick start
@@ -38,20 +43,20 @@ agent-bom iac Dockerfile k8s/ infra/main.tf   # IaC misconfigurations
 
 ## What it scans
 
-- **Agents + MCP** — 30 client types, MCP servers, tools, transports, trust posture
+- **Agents + MCP** — MCP clients, servers, tools, transports, trust posture
 - **Skills + instructions** — `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.windsurfrules`, `skills/*`
-- **15 package ecosystems** — OSV + NVD + GHSA + EPSS + CISA KEV
-- **Container images + IaC** — native OCI parser, Dockerfile, Terraform, CloudFormation, Helm, Kubernetes
-- **Cloud AI** — AWS, Azure, GCP, Databricks, Snowflake, HuggingFace, Ollama
-- **Secrets + runtime** — 34 credential patterns, 11 PII patterns, MCP proxy, Shield SDK
-- **14 compliance frameworks** — OWASP, MITRE, NIST, EU AI Act, ISO 27001, SOC 2, CIS, CMMC, FedRAMP
+- **Package risk** — software supply chain scanning with enrichment and blast radius
+- **Container images + IaC** — native OCI parsing plus Dockerfile, Terraform, CloudFormation, Helm, and Kubernetes coverage
+- **Cloud AI** — cloud and AI infrastructure posture across major supported providers
+- **Secrets + runtime** — MCP proxy, Shield SDK, secrets, and redaction surfaces
+- **Compliance + evidence** — mapped governance and evidence-generation views
 
 ## Key features
 
 - **Blast radius mapping** — CVE → package → MCP server → agent → credentials → tools
 - **CWE-aware impact** — RCE shows credential exposure, DoS does not
-- **19 output formats** — SARIF, CycloneDX 1.6, SPDX 3.0, HTML, Prometheus, and more
-- **MCP server** — 36 security tools for Claude, Cursor, Windsurf
+- **Portable outputs** — SARIF, CycloneDX, SPDX, HTML, graph, JSON, and more
+- **MCP server mode** — expose `agent-bom` capabilities directly to MCP clients like Claude, Cursor, Windsurf, and Cortex CoCo / Cortex Code
 - **Skill bundle identity** — stable bundle hashes for skill and instruction file review
 - **Dependency confusion detection** — flags internal naming patterns
 - **VEX generation** — auto-triage with CWE-aware reachability
@@ -71,3 +76,5 @@ Read-only. Agentless. No secrets leave your machine.
 - [GitHub](https://github.com/msaad00/agent-bom)
 - [Docker Hub](https://hub.docker.com/r/agentbom/agent-bom)
 - [Documentation](https://github.com/msaad00/agent-bom#readme)
+- [Product brief](https://github.com/msaad00/agent-bom/blob/main/docs/PRODUCT_BRIEF.md)
+- [Verified metrics](https://github.com/msaad00/agent-bom/blob/main/docs/PRODUCT_METRICS.md)

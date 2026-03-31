@@ -35,6 +35,8 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 
 Traditional scanners often stop at `CVE → package`. agent-bom shows which credentials and tools are actually at risk — with CWE-aware impact classification so a DoS vuln doesn't falsely claim credential exposure.
 
+For the canonical positioning brief and verified repo-derived counts, see [docs/PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md) and [docs/PRODUCT_METRICS.md](docs/PRODUCT_METRICS.md).
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="agent-bom demo" width="900" />
 </p>
@@ -136,8 +138,8 @@ Guides:
 
 ```mermaid
 flowchart LR
-    DISCOVER["🔍 Discover\n30 MCP clients\nProjects · Images · Cloud"] --> SCAN["🛡️ Scan\n15 ecosystems\nCVE · Secrets · IaC"]
-    SCAN --> ANALYZE["📊 Analyze\nBlast radius\n14 frameworks · CWE impact"]
+    DISCOVER["🔍 Discover\nMCP clients\nProjects · Images · Cloud"] --> SCAN["🛡️ Scan\nPackages · CVEs\nSecrets · IaC"]
+    SCAN --> ANALYZE["📊 Analyze\nBlast radius\nCompliance · CWE impact"]
     ANALYZE --> OUTPUT["📤 Output\nCI/CD gates · SARIF · SBOM\nAPI · Dashboard · MCP tools"]
     DISCOVER -.-> PROTECT["🔒 Protect\nRuntime proxy\nShield SDK · policy"]
 
@@ -176,7 +178,7 @@ Blast radius is **CWE-aware**: an RCE (CWE-94) shows full credential exposure, a
 <details open>
 <summary><b>Agents, MCP, and skills</b></summary>
 
-- 30 MCP client types auto-detected: Claude Desktop, Claude Code, Cursor, Windsurf, VS Code, Codex CLI, Gemini CLI, and more
+- Auto-detected MCP client configs across mainstream local agent surfaces, including Claude Desktop, Claude Code, Cursor, Windsurf, VS Code, Codex CLI, and Gemini CLI
 - MCP servers, tools, transports, trust posture, and capability risk scoring
 - Instruction files and skills: `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.windsurfrules`, `skills/*`
 - Deterministic skill bundle identity, trust analysis, and tool-poisoning detection
@@ -186,7 +188,7 @@ Blast radius is **CWE-aware**: an RCE (CWE-94) shows full credential exposure, a
 <details>
 <summary><b>Supply chain, packages, and SBOM</b></summary>
 
-- 15 ecosystems across language, OS, and agent package surfaces
+- Multiple language, OS, and agent package ecosystems
 - OSV, NVD, GHSA, EPSS, and CISA KEV enrichment
 - Blast radius mapping: CVE → package → MCP server → agent → credentials → tools
 - CycloneDX 1.6 with ML BOM extensions, SPDX 3.0, VEX, SARIF, HTML, graph, JSON, and more
@@ -206,9 +208,9 @@ Blast radius is **CWE-aware**: an RCE (CWE-94) shows full credential exposure, a
 <details>
 <summary><b>Runtime, policy, and trust</b></summary>
 
-- Runtime protection engine with 8 detectors; MCP proxy with 7 inline detectors and 112 detection patterns
+- Runtime protection engine plus a lighter MCP proxy path for inline JSON-RPC inspection
 - Capability-aware risk, drift detection, credential redaction, and kill-switch controls
-- 14 compliance frameworks mapped onto findings, including OWASP, MITRE, NIST, ISO, SOC 2, CIS, CMMC, and the EU AI Act
+- Compliance mapping across OWASP, MITRE, NIST, ISO, SOC 2, CIS, CMMC, FedRAMP, PCI DSS, and the EU AI Act
 
 </details>
 
@@ -218,7 +220,7 @@ Blast radius is **CWE-aware**: an RCE (CWE-94) shows full credential exposure, a
 
 ## Runtime protection
 
-MCP security proxy with 112 detection patterns, 7 inline detectors, PII redaction, and kill switch:
+MCP security proxy with inline detector chaining, PII redaction, and kill-switch controls:
 
 ```bash
 agent-bom proxy "npx @mcp/server-filesystem /workspace"

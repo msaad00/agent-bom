@@ -1,0 +1,72 @@
+{
+  "generated_on": "2026-03-30",
+  "version": "0.75.12",
+  "metrics": [
+    {
+      "name": "MCP tools",
+      "value": 36,
+      "source": "src/agent_bom/mcp_server.py",
+      "notes": "Counted from @mcp.tool decorators."
+    },
+    {
+      "name": "MCP resources",
+      "value": 2,
+      "source": "src/agent_bom/mcp_server.py",
+      "notes": "Counted from @mcp.resource decorators."
+    },
+    {
+      "name": "GitHub workflow files",
+      "value": 23,
+      "source": ".github/workflows",
+      "notes": "Counts .yml and .yaml workflow definitions."
+    },
+    {
+      "name": "Test files",
+      "value": 294,
+      "source": "tests/",
+      "notes": "Counts files matching test_*.py."
+    },
+    {
+      "name": "API route modules",
+      "value": 13,
+      "source": "src/agent_bom/api/routes",
+      "notes": "Counts Python files in the routes package, including __init__.py."
+    },
+    {
+      "name": "UI app pages",
+      "value": 20,
+      "source": "ui/app",
+      "notes": "Counts page.tsx and page.jsx files recursively."
+    },
+    {
+      "name": "Python modules",
+      "value": 292,
+      "source": "src/agent_bom",
+      "notes": "Counts all Python files recursively."
+    },
+    {
+      "name": "Supported package ecosystems",
+      "value": 15,
+      "source": "src/agent_bom/ecosystems.py",
+      "notes": "Counted from SUPPORTED_PACKAGE_ECOSYSTEMS."
+    },
+    {
+      "name": "Compliance frameworks",
+      "value": 14,
+      "source": "src/agent_bom/api/routes/compliance.py",
+      "notes": "Counted from the public compliance aggregation surface."
+    },
+    {
+      "name": "Proxy inline detectors",
+      "value": 7,
+      "source": "src/agent_bom/proxy.py",
+      "notes": "Inline detector chain used by the MCP proxy path."
+    },
+    {
+      "name": "Runtime protection engine detectors",
+      "value": 8,
+      "source": "src/agent_bom/runtime/protection.py",
+      "notes": "Broader protection engine used outside the lighter proxy-only path."
+    }
+  ]
+}

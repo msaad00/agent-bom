@@ -258,7 +258,7 @@ def run_guarded_install(
         return 1
 
     full_cmd = [real_cmd] + args
-    logger.info("Executing: %s", " ".join(full_cmd))
+    logger.info("Executing guarded %s install for %d package(s)", tool, result.packages_checked)
     return subprocess.call(full_cmd)
 
 

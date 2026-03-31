@@ -1,5 +1,7 @@
 # agent-bom Codebase Audit
 
+> Historical snapshot: this audit reflects the repo state at the time it was written and may contain counts or claims that no longer match current `main`. For the current product narrative and verified metrics, use [PRODUCT_BRIEF.md](PRODUCT_BRIEF.md) and [PRODUCT_METRICS.md](PRODUCT_METRICS.md).
+
 **Date**: 2026-03-07
 **Version audited**: v0.60.0 (post-PR #321, #322, #324)
 **Auditor**: Claude Code (automated + manual review)

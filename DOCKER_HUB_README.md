@@ -7,6 +7,11 @@ Your AI agent's dependencies have a CVE. Which credentials leak?
 agent-bom helps developers, security teams, and enterprises discover AI agent and MCP environments,
 map CVEs into real blast radius, scan packages, container images, Kubernetes, IaC, and cloud AI infrastructure, and protect MCP traffic at runtime.
 
+Canonical references:
+
+- Product brief: https://github.com/msaad00/agent-bom/blob/main/docs/PRODUCT_BRIEF.md
+- Verified metrics: https://github.com/msaad00/agent-bom/blob/main/docs/PRODUCT_METRICS.md
+
 ## Who It Is For
 
 - **Developers:** scan your workstation, repos, MCP servers, and AI tools
@@ -78,21 +83,19 @@ agent-bom answers the higher-value questions:
 
 It covers:
 
-- **30 MCP client types** — Claude Desktop, Cursor, Windsurf, VS Code Copilot, Cline, Continue, Zed, Cortex Code, and more
+- MCP client discovery across Claude Desktop, Claude Code, Cursor, Windsurf, VS Code Copilot, Cline, Continue, Zed, Cortex CoCo / Cortex Code, and more
 - Packages, container images, IaC, secrets, AI source code, and cloud AI environments
 - Blast radius from package to server to agent to credentials and tools
-- Runtime MCP proxy with 8 behavioral detectors
-- 14 compliance frameworks
-- 36 MCP server tools
+- Runtime MCP proxy plus the broader runtime protection engine
 - API + dashboard for fleet-wide visibility
 
 ## Coverage At A Glance
 
-- **Agents + MCP** — 30 client types, MCP servers, tools, transports, trust posture
+- **Agents + MCP** — clients, servers, tools, transports, trust posture
 - **Skills + instructions** — `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `skills/*`
-- **Supply chain** — 15 ecosystems, blast radius, dependency confusion, SBOM formats
+- **Supply chain** — package ecosystems, blast radius, dependency confusion, SBOM formats
 - **Containers + IaC + cloud** — OCI images, Docker, Kubernetes, Terraform, Helm, cloud AI posture
-- **Runtime + trust** — MCP proxy, 8 detectors, capability risk, compliance mapping
+- **Runtime + trust** — MCP proxy, runtime protection engine, capability risk, compliance mapping
 
 ## Deployment Guidance
 

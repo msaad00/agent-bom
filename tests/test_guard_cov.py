@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import patch
 
 import pytest
@@ -139,3 +140,22 @@ class TestRunGuardedInstall:
         ):
             exit_code = run_guarded_install("pip", ["install", "risky"], allow_risky=True)
             assert exit_code == 1
+
+    def test_allowed_install_logs_sanitized_command(self, caplog):
+        from agent_bom.guard import GuardResult
+
+        mock_result = GuardResult(packages_checked=1, packages_clean=1, install_allowed=True, clean=["goodpkg"])
+        secret_url = "https://user:token@example.com/simple"
+
+        with (
+            patch("agent_bom.guard.guard_install_sync", return_value=mock_result),
+            patch("agent_bom.guard._find_real_tool", return_value="/usr/bin/pip"),
+            patch("agent_bom.guard.subprocess.call", return_value=0),
+            caplog.at_level(logging.INFO, logger="agent_bom.guard"),
+        ):
+            exit_code = run_guarded_install("pip", ["install", "goodpkg", "--extra-index-url", secret_url])
+
+        assert exit_code == 0
+        assert secret_url not in caplog.text
+        assert "Executing:" not in caplog.text
+        assert "Executing guarded pip install for 1 package(s)" in caplog.text

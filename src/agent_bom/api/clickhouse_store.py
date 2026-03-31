@@ -183,40 +183,44 @@ class ClickHouseAnalyticsStore:
         where = f"scan_timestamp >= now() - INTERVAL {int(days)} DAY"
         if agent:
             where += f" AND agent_name = '{_escape(agent)}'"
-        return self._client.query_json(
-            f"SELECT toDate(scan_timestamp) AS day, severity, count() AS cnt "
+        query = (
+            f"SELECT toDate(scan_timestamp) AS day, severity, count() AS cnt "  # nosec B608
             f"FROM vulnerability_scans WHERE {where} "
             f"GROUP BY day, severity ORDER BY day"
         )
+        return self._client.query_json(query)
 
     def query_top_cves(self, limit: int = 20) -> list[dict]:
         # limit is int-only via int() cast — safe from injection
-        return self._client.query_json(
-            f"SELECT cve_id, count() AS cnt, max(cvss_score) AS max_cvss "
+        query = (
+            f"SELECT cve_id, count() AS cnt, max(cvss_score) AS max_cvss "  # nosec B608
             f"FROM vulnerability_scans WHERE cve_id != '' "
             f"GROUP BY cve_id ORDER BY cnt DESC LIMIT {int(limit)}"
         )
+        return self._client.query_json(query)
 
     def query_posture_history(self, agent: str | None = None, days: int = 90) -> list[dict]:
         # days is int-only, agent is escaped via _escape() — safe from injection
         where = f"measured_at >= now() - INTERVAL {int(days)} DAY"
         if agent:
             where += f" AND agent_name = '{_escape(agent)}'"
-        return self._client.query_json(
-            f"SELECT toDate(measured_at) AS day, agent_name, posture_grade, "
+        query = (
+            f"SELECT toDate(measured_at) AS day, agent_name, posture_grade, "  # nosec B608
             f"risk_score, compliance_score "
             f"FROM posture_scores WHERE {where} "
             f"ORDER BY day"
         )
+        return self._client.query_json(query)
 
     def query_event_summary(self, hours: int = 24) -> list[dict]:
         # hours is int-only via int() cast — safe from injection
-        return self._client.query_json(
-            f"SELECT event_type, severity, count() AS cnt "
+        query = (
+            f"SELECT event_type, severity, count() AS cnt "  # nosec B608
             f"FROM runtime_events "
             f"WHERE event_timestamp >= now() - INTERVAL {int(hours)} HOUR "
             f"GROUP BY event_type, severity ORDER BY cnt DESC"
         )
+        return self._client.query_json(query)
 
     def record_scan_metadata(self, metadata: dict) -> None:
         row = {

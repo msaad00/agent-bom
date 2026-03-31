@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 from click.testing import CliRunner
 
 from agent_bom.cli import main
+from agent_bom.scanners import IncompleteScanError
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -132,6 +133,13 @@ def test_scan_output_to_file(tmp_path):
     assert result.exit_code == 0
 
 
+def test_scan_unknown_output_extension_fails(tmp_path):
+    out = tmp_path / "report.ocsf"
+    result = _run(["scan", "--demo", "--output", str(out), "--no-scan"])
+    assert result.exit_code == 2
+    assert "Cannot infer output format" in result.output
+
+
 def test_scan_preset_ci_flag():
     """--preset ci should be accepted without error."""
     with patch("agent_bom.cli.agents.discover_all", return_value=[]):
@@ -228,6 +236,20 @@ def test_scan_save_flag(tmp_path):
     with patch("agent_bom.cli.agents.discover_all", return_value=[]):
         result = _run(["scan", "--save", "--no-scan"])
     assert result.exit_code == 0
+
+
+def test_scan_incomplete_offline_scan_exits_two(monkeypatch):
+    monkeypatch.setattr("agent_bom.cli.agents.discover_all", lambda *args, **kwargs: [])
+
+    def _scan_agents_sync(*args, **kwargs):
+        raise IncompleteScanError("Offline mode requires a populated local vulnerability DB.")
+
+    monkeypatch.setattr("agent_bom.cli.agents.scan_agents_sync", _scan_agents_sync)
+
+    result = _run(["scan", "--demo"])
+
+    assert result.exit_code == 2
+    assert "populated local vulnerability DB" in result.output
 
 
 # ---------------------------------------------------------------------------

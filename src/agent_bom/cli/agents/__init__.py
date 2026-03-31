@@ -65,7 +65,7 @@ from agent_bom.output import (
 )
 from agent_bom.parsers import extract_packages
 from agent_bom.resolver import resolve_all_versions_sync
-from agent_bom.scanners import scan_agents_sync
+from agent_bom.scanners import IncompleteScanError, consume_scan_warnings, scan_agents_sync
 
 
 def _build_self_scan_inventory() -> dict[str, list[dict[str, object]]]:
@@ -1180,6 +1180,22 @@ def scan(
                         phase="local DB + OSV + GHSA",
                     )
                     progress.update(scan_task, completed=1, phase="querying vulnerability databases...")
+                    try:
+                        blast_radii = scan_agents_sync(
+                            agents,
+                            enable_enrichment=enrich,
+                            nvd_api_key=nvd_api_key,
+                            blast_radius_depth=blast_radius_depth,
+                            compliance_enabled=compliance,
+                            resolve_transitive=transitive,
+                        )
+                    except IncompleteScanError as exc:
+                        con.print(f"  [yellow]⚠[/yellow] {exc}")
+                        sys.exit(2)
+                    progress.update(scan_task, completed=3, phase="building blast radius analysis")
+                    progress.update(scan_task, completed=4, phase="done")
+            else:
+                try:
                     blast_radii = scan_agents_sync(
                         agents,
                         enable_enrichment=enrich,
@@ -1188,17 +1204,12 @@ def scan(
                         compliance_enabled=compliance,
                         resolve_transitive=transitive,
                     )
-                    progress.update(scan_task, completed=3, phase="building blast radius analysis")
-                    progress.update(scan_task, completed=4, phase="done")
-            else:
-                blast_radii = scan_agents_sync(
-                    agents,
-                    enable_enrichment=enrich,
-                    nvd_api_key=nvd_api_key,
-                    blast_radius_depth=blast_radius_depth,
-                    compliance_enabled=compliance,
-                    resolve_transitive=transitive,
-                )
+                except IncompleteScanError as exc:
+                    con.print(f"  [yellow]⚠[/yellow] {exc}")
+                    sys.exit(2)
+            scan_warnings = consume_scan_warnings()
+            if scan_warnings:
+                con.print(f"  [yellow]⚠[/yellow] Scan completed with {len(scan_warnings)} warning(s); results may be incomplete.")
             if blast_radii:
                 con.print(f"  [red]⚠[/red] Scan complete — [bold]{len(blast_radii)}[/bold] finding(s)")
             else:
@@ -1249,6 +1260,7 @@ def scan(
 
                 con.print("\n[bold blue]Enriching with OpenSSF Scorecard data...[/bold blue]\n")
                 try:
+
                     async def _do_scorecard():
                         async with _scorecard_client(timeout=15.0) as client:
                             await _scorecard_meta(all_pkgs_for_sc, client)

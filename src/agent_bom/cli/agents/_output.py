@@ -7,6 +7,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import click
+
 from agent_bom.cli.agents._context import ScanContext
 from agent_bom.models import AIBOMReport
 from agent_bom.output import (
@@ -116,8 +118,6 @@ def render_output(
         elif output_format == "markdown":
             sys.stdout.write(to_markdown(report, blast_radii))
         elif output_format == "graph-html":
-            import click
-
             click.echo("Error: --format graph-html requires --output/-o (cannot write HTML to stdout)", err=True)
             sys.exit(2)
         else:
@@ -307,7 +307,11 @@ def render_output(
         elif output.endswith(".md"):
             export_markdown(report, output, blast_radii)
         else:
-            export_json(report, output)
+            click.echo(
+                f"Cannot infer output format from '{output}'. Use --format explicitly or choose a supported extension.",
+                err=True,
+            )
+            raise SystemExit(2)
         con.print(f"\n  [green]✓[/green] Report: {output}")
 
     # Step 5b: Push to Prometheus Pushgateway (if requested)

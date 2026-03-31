@@ -53,6 +53,29 @@ _logger = logging.getLogger(__name__)
 # only against the local SQLite DB.  Set by CLI --offline before scanning.
 # Also synced from http_client._OFFLINE for transport-layer enforcement.
 offline_mode: bool = False
+_scan_warnings: list[str] = []
+
+
+class IncompleteScanError(RuntimeError):
+    """Raised when a scan cannot produce a trustworthy verdict."""
+
+
+def reset_scan_warnings() -> None:
+    """Clear accumulated scan warnings for the next scan."""
+    _scan_warnings.clear()
+
+
+def record_scan_warning(message: str) -> None:
+    """Record a unique scan warning for later CLI summary output."""
+    if message not in _scan_warnings:
+        _scan_warnings.append(message)
+
+
+def consume_scan_warnings() -> list[str]:
+    """Return and clear accumulated scan warnings."""
+    warnings = list(_scan_warnings)
+    _scan_warnings.clear()
+    return warnings
 
 
 def set_offline_mode(value: bool) -> None:
@@ -205,6 +228,7 @@ def _get_scan_cache():  # noqa: ANN202
             _scan_cache_instance = ScanCache()
         except Exception as exc:  # noqa: BLE001
             _logger.warning("ScanCache initialization failed (caching disabled): %s", exc)
+            record_scan_warning("scan cache unavailable")
             _scan_cache_instance = False  # mark as attempted, don't retry
     return _scan_cache_instance if _scan_cache_instance is not False else None
 
@@ -591,6 +615,7 @@ async def _enrich_results_if_needed(results: dict[str, list[dict]]) -> dict[str,
             "  [yellow]⚠[/yellow] OSV detail enrichment skipped — vulnerability summaries may be incomplete."
             " [dim]Use --verbose for details.[/dim]"
         )
+        record_scan_warning("OSV detail enrichment skipped")
     return results
 
 
@@ -708,6 +733,7 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
     except OfflineModeError:
         _logger.info("Offline mode: skipping OSV batch query for %d packages", len(queries))
         console.print("  [yellow]⚠[/yellow] Offline mode — CVE scanning skipped. Use local DB or remove --offline.")
+        record_scan_warning("offline mode skipped remote CVE lookups")
         return results
 
     async with _client_ctx as client:
@@ -830,6 +856,7 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
             len(_lookup_errors),
         )
         console.print(f"  [yellow]⚠[/yellow] {len(_lookup_errors)} packages had lookup errors [dim](use --verbose for details)[/dim]")
+        record_scan_warning(f"{len(_lookup_errors)} package lookup error(s)")
         for pkg_name, eco, err in _lookup_errors:
             _logger.info("  Lookup error: %s/%s — %s", eco, pkg_name, err)
     return results
@@ -1110,9 +1137,11 @@ def _scan_packages_local_db(packages: list[Package]) -> tuple[int, set[str]]:
 
         freshness = db_freshness_days()
         if freshness is None:
+            record_scan_warning("local vulnerability DB not found; falling back to remote lookups")
             return 0, set()  # No DB yet — fall through to OSV entirely
     except Exception as exc:
         _logger.debug("Local DB freshness check failed (falling through to OSV): %s", exc)
+        record_scan_warning("local vulnerability DB freshness check failed")
         return 0, set()
 
     try:
@@ -1126,6 +1155,7 @@ def _scan_packages_local_db(packages: list[Package]) -> tuple[int, set[str]]:
             conn = open_existing_db_readonly(DB_PATH)
     except Exception as exc:
         _logger.warning("Local DB unavailable: %s", exc)
+        record_scan_warning("local vulnerability DB unavailable")
         return 0, set()
 
     covered: set[str] = set()
@@ -1263,6 +1293,8 @@ async def scan_packages(packages: list[Package], *, resolve_transitive: bool = F
                 pkg.name = _strip_extras(pkg.name)
             pkg.name = normalize_package_name(pkg.name, pkg.ecosystem)
 
+    reset_scan_warnings()
+
     # ── Local version resolution (installed packages) ──────────────────────
     # Try resolving versions from locally installed packages FIRST.
     # This is more accurate than registry fallback because it reflects
@@ -1346,6 +1378,7 @@ async def scan_packages(packages: list[Package], *, resolve_transitive: bool = F
         except Exception as exc:
             _logger.warning("Version resolution failed for %d package(s): %s", len(still_unresolved), exc)
             console.print(f"  [yellow]⚠[/yellow] Version resolution skipped: {exc}")
+            record_scan_warning("version resolution failed for one or more packages")
     elif still_unresolved and offline_mode:
         _logger.info("Offline mode: skipping registry version resolution for %d package(s)", len(still_unresolved))
 
@@ -1372,6 +1405,7 @@ async def scan_packages(packages: list[Package], *, resolve_transitive: bool = F
                         console.print(f"  [cyan]→[/cyan] Transitive resolution: {len(new_pkgs)} additional package(s) queued")
             except Exception as exc:  # noqa: BLE001
                 _logger.warning("Transitive resolution failed, scanning direct dependencies only: %s", exc)
+                record_scan_warning("transitive dependency resolution failed")
 
     # SAST packages already carry vulns from Semgrep — skip OSV query for them
     scannable = [p for p in packages if p.version not in ("unknown", "latest", "") and p.ecosystem.lower() != "sast"]
@@ -1387,6 +1421,7 @@ async def scan_packages(packages: list[Package], *, resolve_transitive: bool = F
             len(still_unresolved),
             names + suffix,
         )
+        record_scan_warning(f"{len(still_unresolved)} package(s) skipped due to unresolved versions")
 
     if not scannable:
         return 0
@@ -1406,13 +1441,18 @@ async def scan_packages(packages: list[Package], *, resolve_transitive: bool = F
     osv_targets = [p for p in scannable if _db_key(p) not in db_covered]
 
     if offline_mode or (prefer_local_db and not osv_targets):
+        if offline_mode and not db_covered:
+            raise IncompleteScanError(
+                "Offline mode requires a populated local vulnerability DB. Run `agent-bom db update` before using `--offline`."
+            )
         if osv_targets and offline_mode:
             _logger.info("Offline mode: skipping OSV API for %d package(s) not in local DB", len(osv_targets))
-            skipped_count = len(osv_targets)
-            covered_count = len(scannable) - skipped_count
-            console.print(
-                f"  [dim]Offline mode: using local cache only. "
-                f"{covered_count} packages checked, {skipped_count} skipped (no cached data).[/dim]"
+            skipped_names = ", ".join(f"{pkg.name}@{pkg.version}" for pkg in osv_targets[:5])
+            suffix = f" (+{len(osv_targets) - 5} more)" if len(osv_targets) > 5 else ""
+            raise IncompleteScanError(
+                "Offline mode cannot produce a trustworthy verdict because "
+                f"{len(osv_targets)} package(s) are missing from the local vulnerability DB: "
+                f"{skipped_names}{suffix}. Run `agent-bom db update` before using `--offline`."
             )
         results = {}
     elif prefer_local_db and osv_targets:
@@ -1469,6 +1509,7 @@ async def scan_packages(packages: list[Package], *, resolve_transitive: bool = F
         except Exception as exc:
             _logger.warning("NVIDIA advisory check failed for %d package(s): %s", len(nvidia_packages), exc)
             console.print(f"  [yellow]⚠[/yellow] NVIDIA advisory check skipped: {exc}")
+            record_scan_warning("NVIDIA advisory enrichment skipped")
 
     # Supplemental: check GitHub Security Advisories for all packages
     if scannable and not offline_mode:
@@ -1482,6 +1523,7 @@ async def scan_packages(packages: list[Package], *, resolve_transitive: bool = F
         except Exception as exc:
             _logger.warning("GHSA advisory check failed for %d package(s): %s", len(scannable), exc)
             console.print(f"  [yellow]⚠[/yellow] GHSA advisory check skipped: {exc}")
+            record_scan_warning("GHSA advisory enrichment skipped")
 
     # Typosquat detection for all scanned packages
     for pkg in scannable:
@@ -1508,6 +1550,7 @@ async def scan_packages(packages: list[Package], *, resolve_transitive: bool = F
                 console.print(f"  [yellow]⚠[/yellow] Suppressed {suppressed} finding(s) via .agent-bom-ignore")
     except Exception as exc:
         _logger.warning("Ignore file processing skipped: %s", exc)
+        record_scan_warning("ignore-file processing failed")
 
     return total_vulns
 
@@ -1772,6 +1815,7 @@ async def scan_agents_with_enrichment(
                 await enrich_supply_chain_metadata(all_pkgs, client)
         except Exception as exc:  # noqa: BLE001
             _logger.warning("Supply chain metadata enrichment failed (scorecard coverage may be incomplete): %s", exc)
+            record_scan_warning("supply-chain metadata enrichment failed")
 
         # Scorecard enrichment — adds supply-chain quality signal
         try:
@@ -1781,6 +1825,7 @@ async def scan_agents_with_enrichment(
                 await enrich_packages_with_scorecard(all_pkgs)
         except Exception as exc:  # noqa: BLE001
             _logger.warning("Scorecard auto-enrichment failed (risk scores may be understated): %s", exc)
+            record_scan_warning("OpenSSF Scorecard enrichment failed")
 
         # Recalculate blast radius with all enriched data
         for br in blast_radii:

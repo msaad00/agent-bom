@@ -248,3 +248,14 @@ class TestClickHouseAnalyticsStore:
         assert inserted["table"] == "vulnerability_scans"
         assert inserted["rows"][0]["package_name"] == "requests"
         assert inserted["rows"][0]["package_version"] == "2.33.0"
+
+
+def test_clickhouse_escape_strips_control_chars_and_quotes():
+    from agent_bom.api.clickhouse_store import _escape
+
+    escaped = _escape("bad\x00name'\n\t\u2028\\test")
+
+    assert "\x00" not in escaped
+    assert "\u2028" not in escaped
+    assert "\\'" in escaped
+    assert "\\\\" in escaped

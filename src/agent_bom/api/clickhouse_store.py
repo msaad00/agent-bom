@@ -18,10 +18,12 @@ Security note — SQL injection mitigation:
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from typing import Any, Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
+_CLICKHOUSE_SAFE_STRING_RE = re.compile(r"[\x20-\x7E]+")
 
 
 # ------------------------------------------------------------------
@@ -182,17 +184,17 @@ class ClickHouseAnalyticsStore:
         if agent:
             where += f" AND agent_name = '{_escape(agent)}'"
         return self._client.query_json(
-            f"SELECT toDate(scan_timestamp) AS day, severity, count() AS cnt "  # nosec B608
-            f"FROM vulnerability_scans WHERE {where} "  # nosec B608
+            f"SELECT toDate(scan_timestamp) AS day, severity, count() AS cnt "
+            f"FROM vulnerability_scans WHERE {where} "
             f"GROUP BY day, severity ORDER BY day"
         )
 
     def query_top_cves(self, limit: int = 20) -> list[dict]:
         # limit is int-only via int() cast — safe from injection
         return self._client.query_json(
-            f"SELECT cve_id, count() AS cnt, max(cvss_score) AS max_cvss "  # nosec B608
-            f"FROM vulnerability_scans WHERE cve_id != '' "  # nosec B608
-            f"GROUP BY cve_id ORDER BY cnt DESC LIMIT {int(limit)}"  # nosec B608
+            f"SELECT cve_id, count() AS cnt, max(cvss_score) AS max_cvss "
+            f"FROM vulnerability_scans WHERE cve_id != '' "
+            f"GROUP BY cve_id ORDER BY cnt DESC LIMIT {int(limit)}"
         )
 
     def query_posture_history(self, agent: str | None = None, days: int = 90) -> list[dict]:
@@ -201,18 +203,18 @@ class ClickHouseAnalyticsStore:
         if agent:
             where += f" AND agent_name = '{_escape(agent)}'"
         return self._client.query_json(
-            f"SELECT toDate(measured_at) AS day, agent_name, posture_grade, "  # nosec B608
-            f"risk_score, compliance_score "  # nosec B608
-            f"FROM posture_scores WHERE {where} "  # nosec B608
+            f"SELECT toDate(measured_at) AS day, agent_name, posture_grade, "
+            f"risk_score, compliance_score "
+            f"FROM posture_scores WHERE {where} "
             f"ORDER BY day"
         )
 
     def query_event_summary(self, hours: int = 24) -> list[dict]:
         # hours is int-only via int() cast — safe from injection
         return self._client.query_json(
-            f"SELECT event_type, severity, count() AS cnt "  # nosec B608
-            f"FROM runtime_events "  # nosec B608
-            f"WHERE event_timestamp >= now() - INTERVAL {int(hours)} HOUR "  # nosec B608
+            f"SELECT event_type, severity, count() AS cnt "
+            f"FROM runtime_events "
+            f"WHERE event_timestamp >= now() - INTERVAL {int(hours)} HOUR "
             f"GROUP BY event_type, severity ORDER BY cnt DESC"
         )
 
@@ -237,8 +239,12 @@ def _escape(value: str) -> str:
     """Escape a string value for ClickHouse SQL.
 
     Defence-in-depth against injection: strips null bytes (which can truncate
-    queries in some drivers), escapes backslashes and single quotes.  All
-    callers also enforce type constraints (int casts for numeric params).
+    queries in some drivers), normalizes control characters to spaces, limits
+    the string to printable ASCII, and escapes backslashes and single quotes.
+    All callers also enforce type constraints (int casts for numeric params).
     See module docstring for full rationale.
     """
-    return value.replace("\x00", "").replace("\\", "\\\\").replace("'", "\\'")
+    sanitized = value.replace("\x00", " ")
+    sanitized = "".join(ch if ch == "\t" or ch == "\n" or ch == "\r" or 32 <= ord(ch) <= 126 else " " for ch in sanitized)
+    sanitized = " ".join(_CLICKHOUSE_SAFE_STRING_RE.findall(sanitized))
+    return sanitized.replace("\\", "\\\\").replace("'", "\\'")

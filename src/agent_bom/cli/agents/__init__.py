@@ -353,6 +353,9 @@ def scan(
         license_check = True
         verify_integrity = True
         verify_instructions = True
+
+    if output_format == "sarif" and not enrich and not no_scan and not offline:
+        enrich = True
         dynamic_discovery = True
         context_graph_flag = True
     elif preset == "quick":
@@ -1249,6 +1252,7 @@ def scan(
 
                 con.print("\n[bold blue]Enriching with OpenSSF Scorecard data...[/bold blue]\n")
                 try:
+
                     async def _do_scorecard():
                         async with _scorecard_client(timeout=15.0) as client:
                             await _scorecard_meta(all_pkgs_for_sc, client)

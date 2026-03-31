@@ -2,13 +2,38 @@
 
 from __future__ import annotations
 
+import platform
 import sys
 from pathlib import Path
 from typing import Any
 
 from agent_bom.cli._common import _build_agents_from_inventory
 from agent_bom.cli.agents._context import ScanContext
+from agent_bom.discovery import CONFIG_LOCATIONS
 from agent_bom.discovery import discover_all as _discover_all_default
+from agent_bom.models import AgentType
+
+
+def _first_run_hints() -> list[tuple[str, str]]:
+    """Return concrete config locations for common MCP clients on this platform."""
+    system = platform.system()
+    hints: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for label, agent_type in (
+        ("Claude Desktop", AgentType.CLAUDE_DESKTOP),
+        ("Claude Code", AgentType.CLAUDE_CODE),
+        ("Cursor", AgentType.CURSOR),
+        ("Codex CLI", AgentType.CODEX_CLI),
+        ("Cortex CoCo / Cortex Code", AgentType.CORTEX_CODE),
+    ):
+        for path in CONFIG_LOCATIONS.get(agent_type, {}).get(system, []):
+            expanded = str(Path(path).expanduser())
+            if expanded in seen:
+                continue
+            seen.add(expanded)
+            hints.append((label, expanded))
+            break
+    return hints
 
 
 def run_local_discovery(
@@ -145,12 +170,19 @@ def run_local_discovery(
     ):
         con.print(f"\n[dim]No MCP configs or scannable files found in {Path.cwd()}[/dim]")
         con.print()
+        con.print("  [bold]Common MCP config locations checked on this machine:[/bold]")
+        for label, config_path in _first_run_hints():
+            con.print(f"    [cyan]{label:<28}[/cyan] {config_path}")
+        con.print()
         con.print("  [bold]Quick start:[/bold]")
-        con.print("    [cyan]agent-bom scan[/cyan]             run from a project directory")
-        con.print("    [cyan]agent-bom mcp[/cyan]              discover MCP agents on this machine")
-        con.print("    [cyan]agent-bom image nginx[/cyan]      scan a container image")
-        con.print("    [cyan]agent-bom fs /path[/cyan]         scan a directory")
-        con.print("    [cyan]agent-bom check pkg@ver[/cyan]    check a single package")
+        con.print("    [cyan]agent-bom scan -p /path/to/project[/cyan]  scan a project with lockfiles or manifests")
+        con.print("    [cyan]agent-bom mcp[/cyan]                        discover MCP agents on this machine")
+        con.print("    [cyan]agent-bom image nginx[/cyan]                scan a container image")
+        con.print("    [cyan]agent-bom fs /path[/cyan]                   scan a directory")
+        con.print("    [cyan]agent-bom check pkg@ver[/cyan]              check a single package")
+        con.print()
+        con.print("  [dim]If you expected Claude, Cursor, Codex, or Cortex CoCo / Cortex Code to appear,")
+        con.print("  [dim]create one of the config files above and re-run `agent-bom scan`.[/dim]")
         con.print()
         sys.exit(0)
 

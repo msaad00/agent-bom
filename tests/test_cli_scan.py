@@ -96,6 +96,17 @@ def test_scan_no_scan_flag():
     assert result.exit_code == 0
 
 
+def test_scan_empty_state_shows_real_client_paths(monkeypatch):
+    monkeypatch.setattr("agent_bom.cli.agents.discover_all", lambda *args, **kwargs: [])
+
+    result = _run(["scan"])
+
+    assert result.exit_code == 0
+    assert "Common MCP config locations checked on this machine" in result.output
+    assert "Claude Desktop" in result.output
+    assert "Cursor" in result.output
+
+
 def test_scan_format_json_no_output_file(tmp_path):
     """--format json without --output writes JSON to stdout."""
     with (
@@ -209,6 +220,22 @@ def test_scan_format_sarif(tmp_path):
     ):
         result = _run(["scan", "--format", "sarif", "--output", str(out), "--no-scan"])
     assert result.exit_code == 0
+
+
+def test_scan_sarif_auto_enables_enrich(monkeypatch):
+    captured = {}
+
+    def _scan_agents_sync(*args, **kwargs):
+        captured["enable_enrichment"] = kwargs.get("enable_enrichment")
+        return []
+
+    monkeypatch.setattr("agent_bom.cli.agents.discover_all", lambda *args, **kwargs: [])
+    monkeypatch.setattr("agent_bom.cli.agents.scan_agents_sync", _scan_agents_sync)
+
+    result = _run(["scan", "--format", "sarif", "--demo"])
+
+    assert result.exit_code == 0
+    assert captured["enable_enrichment"] is True
 
 
 def test_scan_format_html(tmp_path):

@@ -78,7 +78,7 @@ agent-bom serve                         # API + Next.js dashboard
 |-------------|----------------|
 | **Developer laptop** | `pip install agent-bom` is fine. It is read-only, does not install a daemon, and does not open a network listener by default. |
 | **CI/CD** | Use the GitHub Action or `docker run --rm agentbom/agent-bom`. It is isolated by default and easy to gate on exit code or SARIF. |
-| **Enterprise fleet** | Deploy `agent-bom serve` in its own container or namespace with OIDC/RBAC and a real backend. Use the CLI or Action on endpoints and repos; use the API for fleet visibility. |
+| **Enterprise fleet** | Deploy `agent-bom serve` in its own container or namespace with API keys or OIDC-backed role checks and a real backend. Use the CLI or Action on endpoints and repos; use the API for fleet visibility. |
 | **Air-gapped / isolated** | Pre-sync the local DB, copy the cache, and run with `--offline` or `auto-update-db: false`. |
 
 <details>

@@ -207,6 +207,8 @@ def render_output(
         out_path = output or "agent-bom.sarif"
         export_sarif(report, out_path, exclude_unfixable=exclude_unfixable)
         con.print(f"\n  [green]✓[/green] SARIF report: {out_path}")
+        if not quiet:
+            con.print("  [dim]SARIF includes enrichment context when available: CVSS/CWE, EPSS, and CISA KEV.[/dim]")
     elif output_format == "spdx":
         out_path = output or "agent-bom.spdx.json"
         export_spdx(report, out_path)

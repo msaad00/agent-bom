@@ -178,7 +178,17 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bo
     with console.status("[bold]Scanning package risk...[/bold]", spinner="dots"):
         import asyncio
 
-        asyncio.run(scan_packages(pkgs))
+        from agent_bom.scanners import IncompleteScanError, consume_scan_warnings, scan_packages
+
+        try:
+            asyncio.run(scan_packages(pkgs))
+        except IncompleteScanError as exc:
+            console.print(f"  [yellow]⚠[/yellow] {exc}")
+            sys.exit(2)
+
+    scan_warnings = consume_scan_warnings()
+    if scan_warnings:
+        console.print(f"  [yellow]⚠[/yellow] Scan completed with {len(scan_warnings)} warning(s); results may be incomplete.")
 
     matched_pkg = next((p for p in pkgs if p.vulnerabilities), pkgs[0])
     vulns = matched_pkg.vulnerabilities

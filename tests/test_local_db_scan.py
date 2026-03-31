@@ -9,6 +9,8 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from agent_bom.models import Package, Severity
 
 # ---------------------------------------------------------------------------
@@ -215,3 +217,27 @@ def test_scan_packages_calls_osv_for_uncovered_packages():
         asyncio.run(scan_packages([pkg]))
 
     assert mock_osv.called
+
+
+def test_scan_packages_offline_requires_local_db(monkeypatch):
+    """Offline mode must fail closed when no local DB coverage exists."""
+    from agent_bom.scanners import IncompleteScanError, scan_packages
+
+    pkg = _make_pkg("requests", "2.28.0")
+    monkeypatch.setattr("agent_bom.scanners.offline_mode", True)
+
+    with patch("agent_bom.scanners._scan_packages_local_db", return_value=(0, set())):
+        with pytest.raises(IncompleteScanError, match="populated local vulnerability DB"):
+            asyncio.run(scan_packages([pkg]))
+
+
+def test_scan_packages_offline_partial_db_raises(monkeypatch):
+    """Offline mode must fail when any package is missing from the local DB."""
+    from agent_bom.scanners import IncompleteScanError, scan_packages
+
+    pkg = _make_pkg("requests", "2.28.0")
+    monkeypatch.setattr("agent_bom.scanners.offline_mode", True)
+
+    with patch("agent_bom.scanners._scan_packages_local_db", return_value=(0, {"pypi:other@1.0.0"})):
+        with pytest.raises(IncompleteScanError, match="missing from the local vulnerability DB"):
+            asyncio.run(scan_packages([pkg]))

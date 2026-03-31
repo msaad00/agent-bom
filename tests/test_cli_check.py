@@ -4,6 +4,7 @@ from click.testing import CliRunner
 
 from agent_bom.cli import main
 from agent_bom.models import Severity, Vulnerability
+from agent_bom.scanners import IncompleteScanError
 
 
 def _patch_check_scan(monkeypatch, vulns):
@@ -60,3 +61,16 @@ def test_check_exit_zero_reports_without_failing(monkeypatch):
 
     assert result.exit_code == 0
     assert "reported without failing due to --exit-zero" in result.output
+
+
+def test_check_incomplete_offline_scan_exits_two(monkeypatch):
+    async def _scan_packages(_pkgs):
+        raise IncompleteScanError("Offline mode requires a populated local vulnerability DB.")
+
+    monkeypatch.setattr("agent_bom.scanners.scan_packages", _scan_packages)
+    monkeypatch.setattr("agent_bom.parsers.os_parsers.enrich_os_package_context", lambda pkg: True)
+
+    result = CliRunner().invoke(main, ["check", "django@4.1.0", "--ecosystem", "pypi"])
+
+    assert result.exit_code == 2
+    assert "populated local vulnerability DB" in result.output

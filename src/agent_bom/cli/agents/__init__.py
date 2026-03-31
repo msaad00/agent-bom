@@ -353,6 +353,9 @@ def scan(
         license_check = True
         verify_integrity = True
         verify_instructions = True
+
+    if output_format == "sarif" and not enrich and not no_scan and not offline:
+        enrich = True
         dynamic_discovery = True
         context_graph_flag = True
     elif preset == "quick":

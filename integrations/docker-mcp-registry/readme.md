@@ -1,10 +1,10 @@
 # agent-bom
 
-Open security platform for agentic infrastructure. Broad scanning, blast radius, runtime, and trust.
+Open security scanner for agentic infrastructure — agents, MCP, packages, containers, cloud, and runtime.
 
 Discovers AI agents and MCP servers, scans packages, images, filesystems, IaC, and cloud AI infrastructure, maps blast radius showing which credentials and tools each CVE reaches, enforces policy in real time, and generates compliance evidence.
 
-Traditional scanners often stop at CVE -> package. agent-bom shows which MCP servers, AI agents, credentials, and tools are actually at risk.
+Package risk is only the start. agent-bom maps what it can reach across MCP servers, agents, credentials, tools, and runtime context.
 
 ## Quick start
 
@@ -30,7 +30,7 @@ docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom scan -p /workspace -f 
 ## Key features
 
 - **Blast radius mapping** — package → server → agent → credentials → tools
-- **Runtime MCP proxy** — 8 behavioral detectors (rug pull, injection, credential leak, exfil, cloaking, rate limiting, vector DB injection, cross-agent correlation)
+- **Runtime MCP proxy** — 7 inline detectors for drift, injection, credential leak, cloaking, rate limiting, vector DB injection, and cross-agent correlation
 - **Framework-aware evidence** — OWASP, MITRE, NIST, EU AI Act, ISO 27001, SOC 2, CIS, CMMC, and more
 - **MCP tools** — available to any MCP-compatible AI assistant
 

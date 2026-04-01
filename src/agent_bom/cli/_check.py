@@ -13,31 +13,36 @@ from agent_bom import __version__
 from agent_bom.ecosystems import SUPPORTED_PACKAGE_ECOSYSTEMS
 
 
-def _detect_ecosystem(name: str) -> Optional[str]:
-    """Detect ecosystem by checking if package exists on PyPI or npm.
+def _response_has_version(response, ecosystem: str, version: str) -> bool:
+    """Return True when a registry response contains the requested version."""
+    if response is None or response.status_code != 200:
+        return False
+    if version in {"unknown", "", "latest"}:
+        return True
+    try:
+        payload = response.json()
+    except Exception:
+        return False
+    if ecosystem == "pypi":
+        return version in (payload.get("releases") or {})
+    return version in (payload.get("versions") or {})
 
-    Returns the ecosystem name, or None if ambiguous (exists on both
-    or network unavailable) — caller should scan both.
-    """
+
+def _detect_ecosystem(name: str, version: str = "unknown") -> Optional[str]:
+    """Detect ecosystem by checking package and version presence on PyPI or npm."""
     try:
         from agent_bom.http_client import sync_get
 
-        on_pypi = False
-        on_npm = False
-
         pypi_resp = sync_get(f"https://pypi.org/pypi/{name}/json", timeout=3)
-        if pypi_resp and pypi_resp.status_code == 200:
-            on_pypi = True
-
         npm_resp = sync_get(f"https://registry.npmjs.org/{name}", timeout=3)
-        if npm_resp and npm_resp.status_code == 200:
-            on_npm = True
+        on_pypi = _response_has_version(pypi_resp, "pypi", version)
+        on_npm = _response_has_version(npm_resp, "npm", version)
 
         if on_pypi and not on_npm:
             return "pypi"
         if on_npm and not on_pypi:
             return "npm"
-        return None  # ambiguous — scan both
+        return None
     except Exception:
         return None
 
@@ -76,10 +81,25 @@ def _parse_package_spec(
         elif "." in name or "_" in name:
             ecosystem = "pypi"
         else:
-            # Ambiguous — try to detect, default to pypi
-            ecosystem = _detect_ecosystem(name) or "pypi"
+            ecosystem = _detect_ecosystem(name, version) or "pypi"
 
     return name, version, ecosystem
+
+
+def _resolve_check_ecosystems(name: str, version: str, ecosystem: Optional[str], detected_eco: str) -> list[str]:
+    """Return the ecosystems that `check` should scan."""
+    if ecosystem:
+        return [detected_eco]
+    if name.startswith("@") or "." in name or "_" in name:
+        return [detected_eco]
+
+    resolved = _detect_ecosystem(name, version)
+    if resolved:
+        return [resolved]
+
+    error = click.ClickException(f"Ambiguous package name '{name}'. Specify --ecosystem pypi or --ecosystem npm for a trustworthy verdict.")
+    error.exit_code = 2
+    raise error
 
 
 @click.command()
@@ -124,21 +144,13 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bo
 
     from agent_bom.models import Package
     from agent_bom.parsers.os_parsers import enrich_os_package_context
-    from agent_bom.scanners import scan_packages
 
     if version == "unknown":
         console.print(f"[yellow]⚠ No version specified for {name} — skipping OSV lookup.[/yellow]")
         console.print("  Provide a version: agent-bom check name@version --ecosystem ecosystem")
         sys.exit(0)
 
-    # Scan both pypi+npm for ambiguous packages (no dots, no underscores, no @)
-    # This catches packages like lodash that exist on both registries.
-    # OS package ecosystems must be explicit to avoid silently inventing a
-    # registry-backed meaning for distro package names.
-    if not ecosystem and not name.startswith("@") and "." not in name and "_" not in name:
-        ecosystems: list[str] = ["pypi", "npm"]
-    else:
-        ecosystems = [detected_eco]
+    ecosystems = _resolve_check_ecosystems(name, version, ecosystem, detected_eco)
     pkgs = [Package(name=name, version=version, ecosystem=eco) for eco in ecosystems]
     os_context_complete = True
     for pkg in pkgs:

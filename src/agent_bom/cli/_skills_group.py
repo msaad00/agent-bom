@@ -45,7 +45,14 @@ def skills_group(ctx: click.Context) -> None:
     type=click.Choice(["suspicious", "malicious"]),
     help="Exit 1 if any scanned file reaches this trust verdict or worse",
 )
-def skills_scan_cmd(paths: tuple[Path, ...], output_format: str, output_path: Path | None, fail_on_verdict: str | None) -> None:
+@click.option("--verbose", "-v", is_flag=True, help="Show all findings instead of only the default top findings summary")
+def skills_scan_cmd(
+    paths: tuple[Path, ...],
+    output_format: str,
+    output_path: Path | None,
+    fail_on_verdict: str | None,
+    verbose: bool,
+) -> None:
     """Scan skill and instruction files for trust, risk, and provenance.
 
     \b
@@ -116,7 +123,7 @@ def skills_scan_cmd(paths: tuple[Path, ...], output_format: str, output_path: Pa
                 all_findings,
                 key=lambda finding: ({"critical": 0, "high": 1, "medium": 2, "low": 3}.get(finding.severity, 4), finding.title.lower()),
             )
-            for finding in ordered[:8]:
+            for finding in ordered[: len(ordered) if verbose else 8]:
                 style = sev_style.get(finding.severity, "white")
                 finding_table.add_row(
                     f"[{style}]{finding.severity.upper()}[/{style}]",

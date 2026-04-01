@@ -5,6 +5,7 @@ Usage::
     agent-bom report history             # list saved scan reports
     agent-bom report diff <a> <b>        # diff two scan reports
     agent-bom report rescan              # re-scan to verify remediation
+    agent-bom report compliance-narrative report.json
     agent-bom report analytics           # query vulnerability trends
     agent-bom report dashboard           # launch interactive dashboard
 """
@@ -24,6 +25,7 @@ def report_group(ctx: click.Context) -> None:
       history     List saved scan reports
       diff        Diff two scan reports
       rescan      Re-scan vulnerable packages to verify remediation
+      compliance-narrative  Generate auditor-facing compliance narrative from a saved scan report
       analytics   Query vulnerability trends (ClickHouse)
       dashboard   Launch interactive Streamlit dashboard
     """

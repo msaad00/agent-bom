@@ -1,10 +1,10 @@
 # Product Brief
 
-`agent-bom` is an open security platform for agentic infrastructure.
+`agent-bom` is an open security scanner for agentic infrastructure — agents, MCP, packages, containers, cloud, and runtime.
 
 It is built around a simple thesis: security and visibility for agentic infrastructure should be open, transparent, and accessible, not reserved for teams with enterprise budgets.
 
-Traditional scanners often stop at `CVE -> package`. `agent-bom` follows the operational path further: package risk into MCP servers, agents, credentials, tools, runtime behavior, and trust posture. That is the core product value.
+Package risk is only the start. `agent-bom` follows what it can reach across MCP servers, agents, credentials, tools, runtime behavior, and trust posture. That is the core product value.
 
 Current repo-derived counts live in [PRODUCT_METRICS.md](PRODUCT_METRICS.md). This brief intentionally keeps volatile metrics out of the main narrative.
 
@@ -57,7 +57,7 @@ The product is broader than MCP alone. It includes cloud posture, container scan
 
 Good external phrasing:
 
-- Open security platform for agentic infrastructure
+- Open security scanner for agentic infrastructure — agents, MCP, packages, containers, cloud, and runtime
 - Context-aware security for agents, MCP, runtime, and AI supply chain
 - Blast radius from package risk to agents, credentials, tools, and runtime
 

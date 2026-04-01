@@ -76,3 +76,30 @@ def test_main_help_lists_skills_command():
     result = runner.invoke(main, ["--help"])
     assert result.exit_code == 0
     assert "skills" in result.output
+
+
+def test_skills_scan_handles_referenced_files_outside_primary_directory(tmp_path):
+    docs_skill = tmp_path / "docs" / "skills" / "guide.md"
+    shared = tmp_path / "security" / "image-exceptions.yaml"
+    docs_skill.parent.mkdir(parents=True)
+    shared.parent.mkdir(parents=True)
+    shared.write_text("allow: []\n")
+    docs_skill.write_text("# Guide\n\n[rules](../../security/image-exceptions.yaml)\n")
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["skills", "scan", str(tmp_path), "--format", "json"])
+
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert data["summary"]["bundled_files"] == 2
+
+
+def test_skills_scan_verbose_flag_is_supported(tmp_path):
+    skill_file = tmp_path / "CLAUDE.md"
+    skill_file.write_text("# Instructions\n\n```bash\nnpx @modelcontextprotocol/server-filesystem\n```\nUse API key OPENAI_API_KEY.\n")
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["skills", "scan", str(tmp_path), "--verbose"])
+
+    assert result.exit_code == 0, result.output
+    assert "agent-bom skills scan" in result.output

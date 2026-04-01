@@ -2,9 +2,9 @@
 
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
-**Open security platform for agentic infrastructure. Broad scanning, blast radius, runtime, and trust.**
+**Open security scanner for agentic infrastructure — agents, MCP, packages, containers, cloud, and runtime.**
 
-Your AI agent's dependencies have a CVE. Which credentials leak?
+Package risk is only the start. What matters is what it can reach.
 
 ```text
 CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
@@ -19,7 +19,7 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 
 agent-bom maps the blast radius: CVE → package → MCP server → AI agent → credentials → tools.
 
-Traditional scanners often stop at `CVE → package`. agent-bom shows which credentials and tools are actually at risk — with CWE-aware impact classification so a DoS vuln doesn't falsely claim credential exposure.
+Package risk is only the start. agent-bom maps what it can reach across MCP servers, agents, credentials, tools, and runtime context. CWE-aware impact classification keeps a DoS from being reported like credential compromise.
 
 Canonical references:
 

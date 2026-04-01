@@ -1,7 +1,7 @@
 ---
 name: agent-bom
 description: >-
-  Open security platform for agentic infrastructure — broad scanning,
+  Open security scanner for agentic infrastructure — agents, MCP, packages,
   blast radius, runtime, and trust across MCP servers, skills, packages,
   and agents in Cortex Code.
 tools:

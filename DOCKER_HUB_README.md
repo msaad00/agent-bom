@@ -1,8 +1,8 @@
 # agent-bom
 
-**Open security platform for agentic infrastructure. Broad scanning, blast radius, runtime, and trust.**
+**Open security scanner for agentic infrastructure — agents, MCP, packages, containers, cloud, and runtime.**
 
-Your AI agent's dependencies have a CVE. Which credentials leak?
+Package risk is only the start. What matters is what it can reach.
 
 agent-bom helps developers, security teams, and enterprises discover AI agent and MCP environments,
 map CVEs into real blast radius, scan packages, container images, Kubernetes, IaC, and cloud AI infrastructure, and protect MCP traffic at runtime.
@@ -70,9 +70,11 @@ docker run --rm agentbom/agent-bom:latest doctor
 
 ## Why Teams Use It
 
-Traditional scanners often stop at `CVE -> package`.
+Package risk is only the start.
 
-agent-bom answers the higher-value questions:
+agent-bom maps what it can reach across MCP servers, agents, credentials, tools, and runtime context.
+
+It answers the higher-value questions:
 
 - Which AI agents are affected?
 - Which MCP servers load the vulnerable package?

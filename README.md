@@ -14,11 +14,11 @@
 </p>
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
-<p align="center"><b>Open security platform for agentic infrastructure. Broad scanning, blast radius, runtime, and trust.</b></p>
+<p align="center"><b>Open security scanner for agentic infrastructure — agents, MCP, packages, containers, cloud, and runtime.</b></p>
 
 <p align="center">Security and visibility for agentic infrastructure should be open, transparent, and accessible — not reserved for teams with enterprise budgets.</p>
 
-<p align="center"><b>Your AI agent's dependencies have a CVE. Which credentials leak?</b></p>
+<p align="center"><b>Package risk is only the start. What matters is what it can reach.</b></p>
 
 ```text
 CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
@@ -33,9 +33,9 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 
 **agent-bom maps the blast radius**: CVE → package → MCP server → AI agent → credentials → tools.
 
-Traditional scanners often stop at `CVE → package`. agent-bom shows which credentials and tools are actually at risk — with CWE-aware impact classification so a DoS vuln doesn't falsely claim credential exposure.
+Package risk is only the start. agent-bom maps what it can reach across MCP servers, agents, credentials, tools, and runtime context. CWE-aware impact classification keeps a DoS from being reported like credential compromise.
 
-For the canonical positioning brief and verified repo-derived counts, see [docs/PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md) and [docs/PRODUCT_METRICS.md](docs/PRODUCT_METRICS.md).
+For the canonical product brief and verified repo-derived metrics, see [docs/PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md) and [docs/PRODUCT_METRICS.md](docs/PRODUCT_METRICS.md).
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="agent-bom demo" width="900" />
@@ -236,9 +236,9 @@ safe = shield.redact(response_text)  # [REDACTED:OpenAI API Key]
 
 ---
 
-## Compliance (14 frameworks)
+## Compliance and evidence
 
-Every finding is tagged with mapped framework controls:
+Every finding is tagged with mapped control coverage across 14 surfaced compliance frameworks, with MITRE ATT&CK Enterprise kept as separate threat-mapping context:
 
 | Framework | Coverage |
 |-----------|----------|
@@ -246,7 +246,6 @@ Every finding is tagged with mapped framework controls:
 | OWASP MCP Top 10 | 10 mapped categories |
 | OWASP Agentic Top 10 | 10 mapped categories |
 | MITRE ATLAS | 65 mapped techniques |
-| MITRE ATT&CK Enterprise | Official MITRE catalog via fetched ATT&CK data |
 | NIST AI RMF 1.0 | 14 mapped subcategories |
 | NIST CSF 2.0 | 14 mapped categories |
 | NIST 800-53 Rev 5 | 29 mapped controls |
@@ -256,6 +255,8 @@ Every finding is tagged with mapped framework controls:
 | CIS Controls v8 | 10 mapped controls |
 | EU AI Act | 6 articles |
 | CMMC 2.0 Level 2 | 17 practices |
+
+MITRE ATT&CK Enterprise remains available as separate threat-mapping context rather than part of the 14-framework compliance surface.
 
 ---
 

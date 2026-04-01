@@ -246,11 +246,17 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - **SECURITY.md** expanded — response SLA, known limitations, API security model, disclosure timeline
 - **PR template** — added Related Issues, TypeScript check, breaking changes, checklist sections
 - **pre-commit hooks** — added `check-yaml`, `check-json`, `check-toml`, `end-of-file-fixer`, `trailing-whitespace`, `detect-private-key`, `check-merge-conflict`, `mixed-line-ending`
+- **`agent-bom mcp scan`** — focused MCP server package audit path for pre-install checks
+- **Compliance narrative CLI** — auditor-facing narrative export from saved scan reports via `agent-bom report compliance-narrative`
 
 ### Fixed
 - **JSON report import** — file upload now validates size (10 MB), schema, prototype-pollution keys, and finite numeric values before use (`ui/lib/validators.ts`)
 - **`generated_at` TypeScript error** — `ScanResult` does not have `generated_at`; use `scan_timestamp` instead
 - **JetBrains claim** — removed from active integrations; filed as issue #412 for proper implementation
+- **`skills scan` path handling** — bundle identity now supports referenced files outside the primary file directory, fixing repo-local scans against shared security assets
+- **`check` ecosystem ambiguity** — pre-install checks now fail closed on genuinely ambiguous package names and use version-aware registry detection to avoid cross-registry false positives
+- **`skills scan --verbose`** — added parity with other CLI surfaces for easier debugging
+- **Runtime CLI warning noise** — async proxy tests now use async-aware mocks, removing unawaited coroutine warnings from that path
 
 ### Security
 - **JSON file upload** — `ui/lib/validators.ts` guards against DoS via oversized files, prototype pollution, and schema-invalid payloads (no new npm dependencies)

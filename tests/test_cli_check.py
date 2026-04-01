@@ -74,3 +74,62 @@ def test_check_incomplete_offline_scan_exits_two(monkeypatch):
 
     assert result.exit_code == 2
     assert "populated local vulnerability DB" in result.output
+
+
+class _DummyResponse:
+    def __init__(self, status_code: int, payload: dict):
+        self.status_code = status_code
+        self._payload = payload
+
+    def json(self):
+        return self._payload
+
+
+def test_check_uses_version_aware_ecosystem_resolution(monkeypatch):
+    seen_ecosystems = []
+
+    def _fake_sync_get(url, timeout=3):  # noqa: ARG001
+        if "pypi.org" in url:
+            return _DummyResponse(200, {"releases": {"2.33.0": [{}]}})
+        if "registry.npmjs.org" in url:
+            return _DummyResponse(200, {"versions": {"0.0.1": {}}})
+        return None
+
+    async def _scan_packages(pkgs):
+        for pkg in pkgs:
+            seen_ecosystems.append(pkg.ecosystem)
+            pkg.vulnerabilities = []
+
+    monkeypatch.setattr("agent_bom.http_client.sync_get", _fake_sync_get)
+    monkeypatch.setattr("agent_bom.scanners.scan_packages", _scan_packages)
+    monkeypatch.setattr("agent_bom.parsers.os_parsers.enrich_os_package_context", lambda pkg: True)
+
+    result = CliRunner().invoke(main, ["check", "requests@2.33.0"])
+
+    assert result.exit_code == 0
+    assert seen_ecosystems == ["pypi"]
+
+
+def test_check_requires_explicit_ecosystem_when_name_stays_ambiguous(monkeypatch):
+    def _fake_sync_get(url, timeout=3):  # noqa: ARG001
+        if "pypi.org" in url:
+            return _DummyResponse(200, {"releases": {"1.0.0": [{}]}})
+        if "registry.npmjs.org" in url:
+            return _DummyResponse(200, {"versions": {"1.0.0": {}}})
+        return None
+
+    monkeypatch.setattr("agent_bom.http_client.sync_get", _fake_sync_get)
+
+    result = CliRunner().invoke(main, ["check", "sharedpkg@1.0.0"])
+
+    assert result.exit_code == 2
+    assert "Specify --ecosystem pypi or --ecosystem npm" in result.output
+
+
+def test_mcp_scan_delegates_to_package_check(monkeypatch):
+    _patch_check_scan(monkeypatch, [])
+
+    result = CliRunner().invoke(main, ["mcp", "scan", "requests@2.33.0", "--ecosystem", "pypi"])
+
+    assert result.exit_code == 0
+    assert "No known vulnerabilities" in result.output

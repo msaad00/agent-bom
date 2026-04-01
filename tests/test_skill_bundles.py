@@ -28,3 +28,17 @@ def test_build_skill_bundle_is_deterministic(tmp_path):
     second = build_skill_bundle(skill, skill.read_text())
     assert first.sha256 == second.sha256
     assert first.stable_id == second.stable_id
+
+
+def test_build_skill_bundle_supports_references_outside_primary_directory(tmp_path):
+    docs_skill = tmp_path / "docs" / "skills" / "guide.md"
+    shared = tmp_path / "security" / "image-exceptions.yaml"
+    docs_skill.parent.mkdir(parents=True)
+    shared.parent.mkdir(parents=True)
+    shared.write_text("allow: []\n")
+    docs_skill.write_text("[rules](../../security/image-exceptions.yaml)\n")
+
+    bundle = build_skill_bundle(docs_skill, docs_skill.read_text())
+
+    assert bundle.root == str(tmp_path)
+    assert [entry.path for entry in bundle.files] == ["docs/skills/guide.md", "security/image-exceptions.yaml"]

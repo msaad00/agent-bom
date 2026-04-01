@@ -1,7 +1,7 @@
 ---
 name: agent-bom
 description: >-
-  Open security platform for agentic infrastructure — broad scanning,
+  Open security scanner for agentic infrastructure — agents, MCP, packages,
   blast radius, runtime, and trust across MCP discovery, CVEs, SBOMs,
   CIS benchmarks (AWS, Azure, GCP, Snowflake), OWASP/NIST/MITRE
   compliance, AISVS v1.0, MAESTRO layer tagging, and vector database

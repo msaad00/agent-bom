@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
 
-from agent_bom.cli._history import diff_cmd, history_cmd, rescan_command
+from agent_bom.cli._history import compliance_narrative_cmd, diff_cmd, history_cmd, rescan_command
 
 # ---------------------------------------------------------------------------
 # history_cmd
@@ -249,3 +249,62 @@ def test_rescan_osv_failure(tmp_path):
         mock_cache_cls.return_value = mock_cache
         result = runner.invoke(rescan_command, [str(base)])
         assert result.exit_code == 2
+
+
+def test_compliance_narrative_command_json(tmp_path):
+    runner = CliRunner()
+    report = tmp_path / "report.json"
+    report.write_text(
+        json.dumps(
+            {
+                "summary": {"total_packages": 1, "total_vulnerabilities": 1},
+                "blast_radius": [
+                    {
+                        "vulnerability_id": "CVE-2025-1234",
+                        "severity": "high",
+                        "package": "requests@1.0.0",
+                        "ecosystem": "pypi",
+                        "affected_agents": ["claude"],
+                        "affected_servers": ["filesystem"],
+                        "owasp_tags": ["LLM05"],
+                    }
+                ],
+            }
+        )
+    )
+
+    result = runner.invoke(compliance_narrative_cmd, [str(report), "--format", "json"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert "executive_summary" in payload
+    assert payload["framework_narratives"]
+
+
+def test_compliance_narrative_uses_saved_summary_totals(tmp_path):
+    runner = CliRunner()
+    report = tmp_path / "report.json"
+    report.write_text(
+        json.dumps(
+            {
+                "summary": {"total_agents": 4, "total_packages": 12, "total_vulnerabilities": 1},
+                "blast_radius": [
+                    {
+                        "vulnerability_id": "CVE-2025-1234",
+                        "severity": "high",
+                        "package": "requests@1.0.0",
+                        "ecosystem": "pypi",
+                        "affected_agents": ["claude"],
+                        "affected_servers": ["filesystem"],
+                        "owasp_tags": ["LLM05"],
+                    }
+                ],
+            }
+        )
+    )
+
+    result = runner.invoke(compliance_narrative_cmd, [str(report), "--format", "json"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert "covers 4 AI agents and 12 packages" in payload["executive_summary"]

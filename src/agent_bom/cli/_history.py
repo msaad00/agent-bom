@@ -2,17 +2,138 @@
 
 from __future__ import annotations
 
+import json as _json
 import logging
 import sys
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import click
 from rich.console import Console
 
 from agent_bom.output import print_diff
+from agent_bom.output.compliance_narrative import ALL_FRAMEWORK_SLUGS
+
+if TYPE_CHECKING:
+    from agent_bom.models import Agent, BlastRadius
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class _NarrativeReport:
+    """Lightweight report shim for compliance narratives loaded from saved JSON."""
+
+    agents: list["Agent"]
+    blast_radii: list["BlastRadius"]
+    summary_total_agents: int
+    summary_total_packages: int
+
+    @property
+    def total_agents(self) -> int:
+        return max(self.summary_total_agents, len(self.agents))
+
+    @property
+    def total_packages(self) -> int:
+        if self.summary_total_packages > 0:
+            return self.summary_total_packages
+        return len({(br.package.ecosystem, br.package.name, br.package.version) for br in self.blast_radii})
+
+
+def _report_from_json(data: dict) -> "_NarrativeReport":
+    """Rebuild the minimal report structure required for compliance narratives."""
+    from agent_bom.models import Agent, AgentType, BlastRadius, MCPServer, Package, Severity, Vulnerability
+
+    blast_radii: list[BlastRadius] = []
+    agents_by_name: dict[str, Agent] = {}
+    servers_by_name: dict[str, MCPServer] = {}
+    package_index: dict[tuple[str, str, str], Package] = {}
+    package_server_links: set[tuple[str, tuple[str, str, str]]] = set()
+    agent_server_links: set[tuple[str, str]] = set()
+
+    for br in data.get("blast_radius", []):
+        pkg_spec = str(br.get("package", ""))
+        if "@" in pkg_spec:
+            pkg_name, pkg_version = pkg_spec.rsplit("@", 1)
+        else:
+            pkg_name, pkg_version = pkg_spec, "unknown"
+        ecosystem = str(br.get("ecosystem") or "pypi")
+
+        vuln = Vulnerability(
+            id=str(br.get("id") or br.get("vulnerability_id") or "UNKNOWN"),
+            summary=str(br.get("summary") or "No description available"),
+            severity=Severity(str(br.get("severity") or "unknown").lower()),
+            fixed_version=br.get("fixed_version"),
+            is_kev=bool(br.get("is_kev")),
+        )
+        package_key = (ecosystem, pkg_name, pkg_version)
+        package = package_index.get(package_key)
+        if package is None:
+            package = Package(name=pkg_name, version=pkg_version, ecosystem=ecosystem, vulnerabilities=[vuln])
+            package_index[package_key] = package
+        elif all(existing.id != vuln.id for existing in package.vulnerabilities):
+            package.vulnerabilities.append(vuln)
+
+        agents: list[Agent] = []
+        for name in br.get("affected_agents", []):
+            agent = agents_by_name.get(name)
+            if agent is None:
+                agent = Agent(name=name, agent_type=AgentType.CUSTOM, config_path="scan-report://agent")
+                agents_by_name[name] = agent
+            agents.append(agent)
+
+        servers: list[MCPServer] = []
+        for name in br.get("affected_servers", []):
+            server = servers_by_name.get(name)
+            if server is None:
+                server = MCPServer(name=name, config_path="scan-report://server")
+                servers_by_name[name] = server
+            servers.append(server)
+            package_link_key = (name, package_key)
+            if package_link_key not in package_server_links:
+                package_server_links.add(package_link_key)
+                server.packages.append(package)
+
+        for agent in agents:
+            for server in servers:
+                agent_link_key = (agent.name, server.name)
+                if agent_link_key not in agent_server_links:
+                    agent_server_links.add(agent_link_key)
+                    agent.mcp_servers.append(server)
+
+        blast_radii.append(
+            BlastRadius(
+                vulnerability=vuln,
+                package=package,
+                affected_servers=servers,
+                affected_agents=agents,
+                exposed_credentials=list(br.get("exposed_credentials", [])),
+                exposed_tools=[],
+                risk_score=float(br.get("risk_score") or 0.0),
+                owasp_tags=list(br.get("owasp_tags", [])),
+                atlas_tags=list(br.get("atlas_tags", [])),
+                nist_ai_rmf_tags=list(br.get("nist_ai_rmf_tags", [])),
+                owasp_mcp_tags=list(br.get("owasp_mcp_tags", [])),
+                owasp_agentic_tags=list(br.get("owasp_agentic_tags", [])),
+                eu_ai_act_tags=list(br.get("eu_ai_act_tags", [])),
+                nist_csf_tags=list(br.get("nist_csf_tags", [])),
+                iso_27001_tags=list(br.get("iso_27001_tags", [])),
+                soc2_tags=list(br.get("soc2_tags", [])),
+                cis_tags=list(br.get("cis_tags", [])),
+                cmmc_tags=list(br.get("cmmc_tags", [])),
+                nist_800_53_tags=list(br.get("nist_800_53_tags", [])),
+                fedramp_tags=list(br.get("fedramp_tags", [])),
+            )
+        )
+
+    summary = data.get("summary") or {}
+    return _NarrativeReport(
+        agents=[agents_by_name[name] for name in sorted(agents_by_name)],
+        blast_radii=blast_radii,
+        summary_total_agents=int(summary.get("total_agents") or 0),
+        summary_total_packages=int(summary.get("total_packages") or 0),
+    )
 
 
 @click.command("history")
@@ -358,3 +479,44 @@ def rescan_command(baseline: str, output: Optional[str], md: Optional[str], enri
 
     con.print()
     sys.exit(1 if remaining else 0)
+
+
+@click.command("compliance-narrative")
+@click.argument("scan_file", type=click.Path(exists=True))
+@click.option(
+    "--framework",
+    type=click.Choice(ALL_FRAMEWORK_SLUGS),
+    default=None,
+    help="Generate a single-framework narrative instead of the full set.",
+)
+@click.option("--format", "-f", "output_format", type=click.Choice(["json", "markdown"]), default="markdown", show_default=True)
+@click.option("--output", "-o", type=str, default=None, help="Write the narrative to a file instead of stdout")
+def compliance_narrative_cmd(scan_file: str, framework: Optional[str], output_format: str, output: Optional[str]) -> None:
+    """Generate an auditor-facing compliance narrative from a saved scan report."""
+    from agent_bom.output.compliance_narrative import generate_compliance_narrative
+
+    console = Console()
+    narrative = generate_compliance_narrative(_report_from_json(_json.loads(Path(scan_file).read_text())), framework=framework)
+
+    if output_format == "json":
+        rendered = _json.dumps(asdict(narrative), indent=2)
+    else:
+        lines = ["# Compliance Narrative", "", narrative.executive_summary, ""]
+        for fw in narrative.framework_narratives:
+            lines.extend([f"## {fw.framework}", "", fw.narrative, "", f"Status: `{fw.status}` · Score: `{fw.score}/100`", ""])
+            if fw.recommendations:
+                lines.append("Recommendations:")
+                for recommendation in fw.recommendations:
+                    lines.append(f"- {recommendation}")
+                lines.append("")
+        if narrative.remediation_impact:
+            lines.extend(["## Remediation Impact", ""])
+            for impact in narrative.remediation_impact:
+                lines.append(f"- {impact.narrative}")
+        rendered = "\n".join(lines).rstrip() + "\n"
+
+    if output:
+        Path(output).write_text(rendered)
+        console.print(f"[green]✓[/green] Compliance narrative: {output}")
+    else:
+        click.echo(rendered)

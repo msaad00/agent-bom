@@ -1,7 +1,7 @@
 ---
 name: agent-bom-scan
 description: >-
-  Open security platform for agentic infrastructure — broad scanning,
+  Open security scanner for agentic infrastructure — agents, MCP, packages,
   blast radius, runtime, and trust for package CVEs (OSV, NVD, EPSS,
   KEV), container images, provenance, filesystems, and SBOMs. Use
   when: "check package", "scan image", "verify", "is this safe",

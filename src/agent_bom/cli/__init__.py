@@ -104,7 +104,7 @@ main.add_command(verify)
 main.add_command(guard_cmd, "guard")
 main.commands["guard"].hidden = True
 
-from agent_bom.cli._history import diff_cmd, history_cmd, rescan_command  # noqa: E402
+from agent_bom.cli._history import compliance_narrative_cmd, diff_cmd, history_cmd, rescan_command  # noqa: E402
 
 # history, diff, rescan moved to `report` group (Batch 3)
 from agent_bom.cli._policy import apply_command, policy_template  # noqa: E402
@@ -182,6 +182,7 @@ from agent_bom.cli._report_group import report_group  # noqa: E402
 report_group.add_command(history_cmd, "history")
 report_group.add_command(diff_cmd, "diff")
 report_group.add_command(rescan_command, "rescan")
+report_group.add_command(compliance_narrative_cmd, "compliance-narrative")
 report_group.add_command(analytics_cmd, "analytics")
 report_group.add_command(dashboard_cmd, "dashboard")
 main.add_command(report_group)
@@ -193,9 +194,10 @@ main.add_command(db_cmd, "db")
 # ---------------------------------------------------------------------------
 # MCP command group — `agent-bom mcp [inventory|introspect|registry|server]`
 # ---------------------------------------------------------------------------
-from agent_bom.cli._mcp_group import mcp_group  # noqa: E402
+from agent_bom.cli._mcp_group import mcp_group, mcp_scan_cmd  # noqa: E402
 
 mcp_group.add_command(inventory, "inventory")
+mcp_group.add_command(mcp_scan_cmd, "scan")
 mcp_group.add_command(introspect_cmd, "introspect")
 mcp_group.add_command(registry, "registry")
 mcp_group.add_command(mcp_server_cmd, "server")

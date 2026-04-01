@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -97,13 +98,16 @@ def build_skill_bundle(path: Path, content: str | None = None) -> SkillBundle:
     if content is None:
         content = primary.read_text(encoding="utf-8", errors="replace")
     included = [primary, *_resolve_local_refs(primary, content)]
-    root = primary.parent
+    if len(included) == 1:
+        root = primary.parent
+    else:
+        root = Path(os.path.commonpath([str(p.parent) for p in included]))
 
     files: list[SkillBundleFile] = []
     manifest_rows: list[dict[str, object]] = []
-    for included_path in sorted(included, key=lambda p: p.relative_to(root).as_posix()):
+    for included_path in sorted(included, key=lambda p: os.path.relpath(p, root).replace(os.sep, "/")):
         role = "primary" if included_path == primary else "referenced"
-        rel_path = included_path.relative_to(root).as_posix()
+        rel_path = os.path.relpath(included_path, root).replace(os.sep, "/")
         file_hash = _sha256_file(included_path)
         size = included_path.stat().st_size
         files.append(SkillBundleFile(path=rel_path, sha256=file_hash, size=size, role=role))

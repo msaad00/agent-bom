@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from click.testing import CliRunner
 
@@ -38,8 +38,7 @@ def test_noop_detector_record():
 def test_proxy_cmd_runs_proxy(tmp_path):
     runner = CliRunner()
     with (
-        patch("asyncio.run", return_value=0),
-        patch("agent_bom.proxy.run_proxy", return_value=0),
+        patch("agent_bom.proxy.run_proxy", new_callable=AsyncMock, return_value=0),
         patch("agent_bom.project_config.load_project_config", return_value=None),
     ):
         result = runner.invoke(proxy_cmd, ["--", "echo", "hello"])
@@ -49,8 +48,7 @@ def test_proxy_cmd_runs_proxy(tmp_path):
 def test_proxy_cmd_with_project_config():
     runner = CliRunner()
     with (
-        patch("asyncio.run", return_value=0),
-        patch("agent_bom.proxy.run_proxy", return_value=0),
+        patch("agent_bom.proxy.run_proxy", new_callable=AsyncMock, return_value=0),
         patch("agent_bom.project_config.load_project_config", return_value={"policy": "test.json"}),
         patch("agent_bom.project_config.get_policy_path", return_value=None),
     ):

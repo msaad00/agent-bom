@@ -17,9 +17,8 @@ meta:
 about:
   title: agent-bom
   description: >-
-    Open security platform for agentic infrastructure. Broad scanning,
-    blast radius, runtime, and trust for MCP servers, AI agents,
-    packages, images, IaC, and cloud AI infrastructure.
+    Open security scanner for agentic infrastructure — agents, MCP,
+    packages, containers, cloud, and runtime.
   icon: https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/logo-dark.svg
 
 source:

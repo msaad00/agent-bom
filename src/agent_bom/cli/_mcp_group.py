@@ -3,6 +3,7 @@
 Usage::
 
     agent-bom mcp                    # discover + scan MCP agents
+    agent-bom mcp scan <server>      # audit a single MCP server package
     agent-bom mcp inventory          # discover only, no CVE scan
     agent-bom mcp introspect         # live server tool listing
     agent-bom mcp registry           # browse server registry
@@ -23,6 +24,7 @@ def mcp_group(ctx: click.Context) -> None:
 
     \b
     Subcommands:
+      scan         Check a single MCP server package before adding it
       inventory    Discover agents and servers (no CVE scan)
       introspect   Connect to live servers, list their tools
       registry     Browse the MCP server security registry
@@ -33,3 +35,24 @@ def mcp_group(ctx: click.Context) -> None:
         from agent_bom.cli.agents import scan
 
         ctx.invoke(scan)
+
+
+@mcp_group.command("scan")
+@click.argument("server_spec")
+@click.option(
+    "--ecosystem",
+    "-e",
+    type=click.Choice(["npm", "pypi"]),
+    help="Package ecosystem for the MCP server package when it cannot be inferred from the spec",
+)
+@click.option("--quiet", "-q", is_flag=True, help="Only print vuln count, no details")
+@click.option("--no-color", is_flag=True, help="Disable colored output")
+@click.option("--exit-zero", is_flag=True, help="Exit 0 even when vulnerabilities are found")
+def mcp_scan_cmd(server_spec: str, ecosystem: str | None, quiet: bool, no_color: bool, exit_zero: bool) -> None:
+    """Check a single MCP server package or npx/uvx spec before adding it."""
+    from agent_bom.cli._check import check
+
+    callback = check.callback
+    if callback is None:
+        raise click.ClickException("check command is unavailable")
+    callback(package_spec=server_spec, ecosystem=ecosystem, quiet=quiet, no_color=no_color, exit_zero=exit_zero)

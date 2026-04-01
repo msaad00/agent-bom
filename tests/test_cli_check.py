@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 from click.testing import CliRunner
 
 from agent_bom.cli import main
@@ -89,9 +91,10 @@ def test_check_uses_version_aware_ecosystem_resolution(monkeypatch):
     seen_ecosystems = []
 
     def _fake_sync_get(url, timeout=3):  # noqa: ARG001
-        if "pypi.org" in url:
+        host = urlparse(url).hostname or ""
+        if host == "pypi.org":
             return _DummyResponse(200, {"releases": {"2.33.0": [{}]}})
-        if "registry.npmjs.org" in url:
+        if host == "registry.npmjs.org":
             return _DummyResponse(200, {"versions": {"0.0.1": {}}})
         return None
 
@@ -112,9 +115,10 @@ def test_check_uses_version_aware_ecosystem_resolution(monkeypatch):
 
 def test_check_requires_explicit_ecosystem_when_name_stays_ambiguous(monkeypatch):
     def _fake_sync_get(url, timeout=3):  # noqa: ARG001
-        if "pypi.org" in url:
+        host = urlparse(url).hostname or ""
+        if host == "pypi.org":
             return _DummyResponse(200, {"releases": {"1.0.0": [{}]}})
-        if "registry.npmjs.org" in url:
+        if host == "registry.npmjs.org":
             return _DummyResponse(200, {"versions": {"1.0.0": {}}})
         return None
 

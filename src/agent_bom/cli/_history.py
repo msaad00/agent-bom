@@ -7,7 +7,7 @@ import logging
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, cast
 
 import click
 from rich.console import Console
@@ -16,7 +16,7 @@ from agent_bom.output import print_diff
 from agent_bom.output.compliance_narrative import ALL_FRAMEWORK_SLUGS
 
 if TYPE_CHECKING:
-    from agent_bom.models import Agent, BlastRadius
+    from agent_bom.models import Agent, AIBOMReport, BlastRadius
 
 logger = logging.getLogger(__name__)
 
@@ -496,7 +496,10 @@ def compliance_narrative_cmd(scan_file: str, framework: Optional[str], output_fo
     from agent_bom.output.compliance_narrative import generate_compliance_narrative
 
     console = Console()
-    narrative = generate_compliance_narrative(_report_from_json(_json.loads(Path(scan_file).read_text())), framework=framework)
+    narrative = generate_compliance_narrative(
+        cast("AIBOMReport", _report_from_json(_json.loads(Path(scan_file).read_text()))),
+        framework=framework,
+    )
 
     if output_format == "json":
         rendered = _json.dumps(asdict(narrative), indent=2)

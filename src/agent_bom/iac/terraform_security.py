@@ -272,6 +272,7 @@ def scan_terraform_security(file_path: str | Path) -> list[IaCFinding]:
         return []
 
     raw_content = path.read_text(encoding="utf-8", errors="replace")
+
     # Neutralise HCL comments to prevent false positives from commented-out
     # blocks.  We blank the comment text (rather than deleting it) so that
     # character offsets — and therefore _line_number() results — stay correct.

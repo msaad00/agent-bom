@@ -29,6 +29,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import PlainTextResponse
 
 from agent_bom.api.models import (
     BrowserExtensionsRequest,
@@ -238,7 +239,7 @@ async def get_context_graph(job_id: str, agent: str | None = None) -> dict:
 
 
 @router.get("/v1/scan/{job_id}/graph-export", tags=["scan"])
-async def get_graph_export(job_id: str, format: str = "json") -> dict | str:
+async def get_graph_export(job_id: str, format: str = "json") -> dict | str | PlainTextResponse:
     """Export the dependency graph in graph-native formats.
 
     Query params:

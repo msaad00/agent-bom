@@ -238,7 +238,7 @@ async def get_context_graph(job_id: str, agent: str | None = None) -> dict:
     return to_serializable(graph, paths, risks)
 
 
-@router.get("/v1/scan/{job_id}/graph-export", tags=["scan"])
+@router.get("/v1/scan/{job_id}/graph-export", tags=["scan"], response_model=None)
 async def get_graph_export(job_id: str, format: str = "json") -> dict | str | PlainTextResponse:
     """Export the dependency graph in graph-native formats.
 

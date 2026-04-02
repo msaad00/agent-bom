@@ -1,8 +1,8 @@
 apiVersion: v2
 name: agent-bom
-description: Open security platform for agentic infrastructure — broad scanning plus MCP, blast radius, runtime, and trust
+description: Open security scanner for agentic infrastructure — agents, MCP, packages, containers, cloud, and runtime.
 version: 0.1.0
-appVersion: "0.75.12"
+appVersion: "0.75.13"
 type: application
 keywords:
   - security

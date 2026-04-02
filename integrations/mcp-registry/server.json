@@ -3,7 +3,7 @@
   "name": "io.github.msaad00/agent-bom",
   "description": "Open security scanner for agentic infrastructure — agents, MCP, packages, containers, cloud, and runtime.",
   "title": "agent-bom",
-  "version": "0.75.12",
+  "version": "0.75.13",
   "repository": {
     "url": "https://github.com/msaad00/agent-bom",
     "source": "github"
@@ -12,7 +12,7 @@
     {
       "registryType": "pypi",
       "identifier": "agent-bom",
-      "version": "0.75.12",
+      "version": "0.75.13",
       "transport": {
         "type": "stdio"
       },

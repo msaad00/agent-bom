@@ -214,3 +214,10 @@ def test_version_in_range_apk():
 def test_version_in_range_rpm():
     assert version_in_range("3.0.7-24.el9", "0", "3.0.7-25.el9", None, "rpm") is True
     assert version_in_range("3.0.7-25.el9", "0", "3.0.7-25.el9", None, "rpm") is False
+
+
+def test_version_in_range_pypi_fixed_requests_regression():
+    """PyPI ranges fixed before 2.33.0 must not report that version as affected."""
+    assert version_in_range("2.33.0", None, "2.6.0", None, "pypi") is False
+    assert version_in_range("2.33.0", "2.3.0", "2.31.0", None, "pypi") is False
+    assert version_in_range("2.25.0", "2.3.0", "2.31.0", None, "pypi") is True

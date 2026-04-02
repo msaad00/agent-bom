@@ -7,6 +7,32 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.75.13] – 2026-04-01
+
+### Added
+- **Focused MCP server review** — `agent-bom mcp scan <server>` adds a narrower audit path for a single MCP server or command before adoption
+- **Compliance narrative CLI** — compliance narrative export is now reachable from the CLI for release and audit workflows
+
+### Changed
+- **Release surfaces aligned** — README, PyPI, Docker Hub, site docs, Helm, OCI metadata, and publishing surfaces now share the same product description and release references
+- **Canonical product story** — product positioning, Claude/Cortex integration references, and repo-derived metrics now point back to the canonical brief and generated metrics appendix
+- **First-run guidance** — empty-state discovery help now shows concrete Claude, Cursor, Codex CLI, and Cortex CoCo config paths instead of circular retry suggestions
+- **SARIF defaults** — SARIF export now auto-enables enrichment when online so severity context lands in GitHub and downstream scanners by default
+
+### Fixed
+- **Offline safety boundary** — offline scans now fail closed when the local vulnerability database is missing or incomplete instead of producing a false clean result
+- **Incomplete result visibility** — critical scanner and enrichment failures now surface warning summaries instead of silently degrading to partial output
+- **Skills scanning** — `agent-bom skills scan .` no longer crashes on repo-local path validation, and the command now supports `-v` / `--verbose`
+- **Package checks** — `agent-bom check` now resolves ambiguous package names more safely and avoids cross-ecosystem false positives
+- **Output format handling** — unknown output extensions now fail loudly instead of silently falling back to JSON
+- **ClickHouse query hardening** — analytics escaping was tightened and the associated tests expanded
+- **Release quality gates** — follow-up CodeQL, lint, mypy, FastAPI response-model, and regression issues from the stabilization lane were fixed before release
+
+### Security
+- The `0.75.13` release closes the remaining pre-release P0/P1 safety issues from the final audit lane, including offline false-clean behavior, incomplete scan signaling, and ClickHouse query hardening
+
+---
+
 ## [0.75.12] – 2026-03-29
 
 ### Added

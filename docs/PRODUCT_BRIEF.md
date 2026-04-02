@@ -76,8 +76,10 @@ When comparing the product, prefer language like:
 
 - [README](../README.md)
 - [Product metrics](PRODUCT_METRICS.md)
+- [Major MCP client guides](MCP_CLIENT_GUIDES.md)
 - [Claude Desktop / Claude Code integration](CLAUDE_INTEGRATION.md)
 - [Cortex CoCo / Cortex Code integration](CORTEX_CODE.md)
+- [Codex CLI integration](CODEX_CLI.md)
 - [MCP server mode](MCP_SERVER.md)
 - [Runtime monitoring and proxy](RUNTIME_MONITORING.md)
 - [MCP security model](MCP_SECURITY_MODEL.md)

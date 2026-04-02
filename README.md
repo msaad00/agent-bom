@@ -125,8 +125,10 @@ The proxy inspects MCP JSON-RPC traffic with drift, credential, argument, respon
 
 Guides:
 
+- [Major MCP client guides](docs/MCP_CLIENT_GUIDES.md)
 - [Claude Desktop / Claude Code](docs/CLAUDE_INTEGRATION.md)
 - [Cortex CoCo / Cortex Code](docs/CORTEX_CODE.md)
+- [Codex CLI](docs/CODEX_CLI.md)
 - [MCP server mode](docs/MCP_SERVER.md)
 - [Runtime proxy and monitoring](docs/RUNTIME_MONITORING.md)
 

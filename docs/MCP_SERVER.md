@@ -6,8 +6,10 @@ checks, and supply chain verification through natural conversation.
 
 See also:
 
+- [MCP client guides](MCP_CLIENT_GUIDES.md)
 - [Claude Desktop / Claude Code guide](CLAUDE_INTEGRATION.md)
 - [Cortex CoCo / Cortex Code guide](CORTEX_CODE.md)
+- [Codex CLI guide](CODEX_CLI.md)
 - [Runtime Monitoring](RUNTIME_MONITORING.md)
 
 ## Quick Start
@@ -77,6 +79,24 @@ Add to your MCP settings (`.cursor/mcp.json` or equivalent):
 }
 ```
 
+agent-bom discovers these MCP client config paths directly:
+
+- Cursor: `~/Library/Application Support/Cursor/User/globalStorage/cursor.mcp/mcp.json`, `~/.cursor/mcp.json`
+- Windsurf: `~/.windsurf/mcp.json`, `~/Library/Application Support/Windsurf/User/globalStorage/windsurf.mcp/mcp.json`
+- VS Code: `~/Library/Application Support/Code/User/mcp.json`, plus workspace `.vscode/mcp.json`
+
+### Codex CLI
+
+Add to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.agent-bom]
+command = "uvx"
+args = ["agent-bom", "mcp", "server"]
+```
+
+Codex uses TOML, so manual proxy wrapping is the right path when you want runtime inspection around a third-party server.
+
 ### SSE Transport (Remote / Multi-Client)
 
 ```bash
@@ -111,6 +131,8 @@ agent-bom proxy-configure --log-dir ~/.agent-bom/logs --detect-credentials
 ```
 
 Add `--apply` to write the wrapped config back to compatible JSON MCP config files.
+
+`proxy-configure` is best for JSON MCP clients such as Claude Desktop, Cursor, Windsurf, and Cortex CoCo. TOML-based clients like Codex CLI need manual proxy wrapping.
 
 ## Tool Categories (36 tools)
 

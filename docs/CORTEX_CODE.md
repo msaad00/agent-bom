@@ -8,6 +8,13 @@ This guide covers the full `agent-bom` flow for Snowflake Cortex CoCo:
 
 ## Use agent-bom as an MCP server
 
+Config files discovered by `agent-bom`:
+
+- `~/.snowflake/cortex/mcp.json`
+- `~/.snowflake/cortex/settings.json`
+- `~/.snowflake/cortex/permissions.json`
+- `~/.snowflake/cortex/hooks.json`
+
 Add to `~/.snowflake/cortex/mcp.json`:
 
 ```json
@@ -95,9 +102,15 @@ That adds runtime monitoring for:
 
 For cross-agent correlation across sessions, use the broader runtime protection engine with `agent-bom runtime protect --shield`.
 
+## When to use MCP server vs proxy
+
+- Use `agent-bom mcp server` when you want CoCo to call `agent-bom` tools directly.
+- Use `agent-bom proxy` when CoCo should keep talking to a third-party MCP server, but you want live runtime inspection around that server.
+- Use `agent-bom proxy-configure --apply` when you want to auto-wrap eligible JSON-configured stdio servers in Cortex MCP configs.
+
 ## Notes
 
 - `agent-bom` does not need write access to the target MCP server to scan it.
 - MCP server mode is read-only.
 - Proxy mode is opt-in and is the path for runtime enforcement.
-- See [MCP_SERVER.md](MCP_SERVER.md) for the MCP tool catalog and [RUNTIME_MONITORING.md](RUNTIME_MONITORING.md) for deployment details.
+- See [MCP_CLIENT_GUIDES.md](MCP_CLIENT_GUIDES.md) for the broader client matrix, [MCP_SERVER.md](MCP_SERVER.md) for the MCP tool catalog, and [RUNTIME_MONITORING.md](RUNTIME_MONITORING.md) for deployment details.

@@ -1,8 +1,8 @@
 # agent-bom
 
-**Open security platform for agentic infrastructure. Broad scanning, blast radius, runtime, and trust.**
+**Open security scanner for agentic infrastructure — agents, MCP, packages, containers, cloud, and runtime.**
 
-Find CVEs, map blast radius, detect credential exposure across MCP agents, containers, Kubernetes, cloud, and GPU workloads.
+Scan agents, MCP, packages, containers, Kubernetes, cloud, and GPU workloads with blast-radius context.
 
 ## What it does
 
@@ -17,7 +17,7 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
  Fix: upgrade better-sqlite3 → 11.7.0
 ```
 
-Traditional scanners often stop at CVE -> package. agent-bom shows which MCP servers, AI agents, credentials, and tools are actually at risk.
+Package risk is only the start. agent-bom maps what it can reach across MCP servers, agents, credentials, tools, and runtime context.
 
 ## Quick start
 
@@ -51,6 +51,6 @@ agent-bom check flask@2.0.0 --ecosystem pypi   # check a specific package
 | CLI | `pip install agent-bom` |
 | MCP server | `agent-bom mcp server` |
 | Docker | `docker run ghcr.io/msaad00/agent-bom agents` |
-| GitHub Action | `uses: msaad00/agent-bom@v0.75.12` |
+| GitHub Action | `uses: msaad00/agent-bom@v0.75.13` |
 | Kubernetes | Helm chart + CronJob + DaemonSet |
 | Remote SSE | Self-host or use hosted endpoint |

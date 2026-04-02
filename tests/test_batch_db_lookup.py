@@ -203,8 +203,7 @@ def test_unparseable_fixed_version_reports_affected(tmp_db):
     _insert_vuln(tmp_db, vuln_id="CVE-2024-HASH")
     # Insert with a git commit hash as the fixed version — non-parseable by packaging.version
     tmp_db.execute(
-        "INSERT OR REPLACE INTO affected(vuln_id,ecosystem,package_name,introduced,fixed,last_affected)"
-        " VALUES (?,?,?,?,?,'')",
+        "INSERT OR REPLACE INTO affected(vuln_id,ecosystem,package_name,introduced,fixed,last_affected) VALUES (?,?,?,?,?,'')",
         ("CVE-2024-HASH", "pypi", "some-lib", "1.0.0", "abc123def456git"),
     )
     tmp_db.commit()
@@ -214,6 +213,25 @@ def test_unparseable_fixed_version_reports_affected(tmp_db):
     # Must be reported as affected (not silently dropped)
     cve_ids = {v.id for v in vulns}
     assert "CVE-2024-HASH" in cve_ids, (
-        "CVE with unparseable fixed version (git hash) was silently dropped; "
-        "should be conservatively reported as affected"
+        "CVE with unparseable fixed version (git hash) was silently dropped; should be conservatively reported as affected"
     )
+
+
+def test_duplicate_sha_row_does_not_override_semver_unaffected(tmp_db):
+    """A duplicate SHA-based row must not resurrect a vuln once a semver row excludes it."""
+    _insert_vuln(tmp_db, vuln_id="CVE-2024-DUPE")
+    tmp_db.execute(
+        "INSERT OR REPLACE INTO affected(vuln_id,ecosystem,package_name,introduced,fixed,last_affected) VALUES (?,?,?,?,?,'')",
+        ("CVE-2024-DUPE", "pypi", "requests", "0", "3bd8afbff29e50b38f889b2f688785a669b9aafc"),
+    )
+    tmp_db.execute(
+        "INSERT OR REPLACE INTO affected(vuln_id,ecosystem,package_name,introduced,fixed,last_affected) VALUES (?,?,?,?,?,'')",
+        ("CVE-2024-DUPE", "pypi", "requests", "2.1.0", "2.6.0"),
+    )
+    tmp_db.commit()
+
+    vulns = lookup_package(tmp_db, "pypi", "requests", "2.33.0")
+    assert "CVE-2024-DUPE" not in {v.id for v in vulns}
+
+    batch = lookup_packages_batch(tmp_db, [("pypi", "requests", "2.33.0")])
+    assert "CVE-2024-DUPE" not in {v.id for v in batch[("pypi", "requests", "2.33.0")]}

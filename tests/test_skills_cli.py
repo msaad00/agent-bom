@@ -87,7 +87,7 @@ def test_skills_scan_handles_referenced_files_outside_primary_directory(tmp_path
     docs_skill.write_text("# Guide\n\n[rules](../../security/image-exceptions.yaml)\n")
 
     runner = CliRunner()
-    result = runner.invoke(main, ["skills", "scan", str(tmp_path), "--format", "json"])
+    result = runner.invoke(main, ["skills", "scan", str(docs_skill.parent), "--format", "json"])
 
     assert result.exit_code == 0, result.output
     data = json.loads(result.output)

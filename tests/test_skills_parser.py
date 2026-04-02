@@ -139,6 +139,60 @@ def test_scan_deduplicates(tmp_path):
     assert names.count("@modelcontextprotocol/server-filesystem") == 1
 
 
+def test_explicit_directory_discovery_ignores_generic_markdown(tmp_path):
+    """Explicit directory scans should not treat arbitrary repo docs as skill files."""
+    (tmp_path / "README.md").write_text("# Generic doc\n")
+    github_dir = tmp_path / ".github"
+    github_dir.mkdir()
+    (github_dir / "PULL_REQUEST_TEMPLATE.md").write_text("# PR template\n")
+
+    skills_dir = tmp_path / "skills"
+    skills_dir.mkdir(parents=True)
+    (skills_dir / "review.md").write_text("# Skill review\n")
+    (tmp_path / "CLAUDE.md").write_text("# Project instructions\n")
+
+    from agent_bom.skills_service import resolve_skill_targets
+
+    resolved = resolve_skill_targets([tmp_path], cwd=tmp_path)
+    names = sorted(path.name for path in resolved)
+
+    assert "CLAUDE.md" in names
+    assert "review.md" in names
+    assert "README.md" not in names
+    assert "PULL_REQUEST_TEMPLATE.md" not in names
+
+
+def test_explicit_directory_discovery_skips_docs_skills_examples(tmp_path):
+    docs_skill = tmp_path / "docs" / "skills" / "review.md"
+    docs_skill.parent.mkdir(parents=True)
+    docs_skill.write_text("# Example skill doc\n")
+
+    from agent_bom.skills_service import resolve_skill_targets
+
+    resolved = resolve_skill_targets([tmp_path], cwd=tmp_path)
+
+    assert docs_skill.resolve() not in resolved
+
+
+def test_explicit_directory_discovery_skips_virtualenv_and_node_modules(tmp_path):
+    (tmp_path / "CLAUDE.md").write_text("# Project instructions\n")
+    venv_skill = tmp_path / ".venv" / "lib" / "python3.13" / "site-packages" / "pkg" / "skills" / "tool.md"
+    node_skill = tmp_path / "ui" / "node_modules" / "pkg" / "AGENTS.md"
+    venv_skill.parent.mkdir(parents=True)
+    node_skill.parent.mkdir(parents=True)
+    venv_skill.write_text("# Third-party skill\n")
+    node_skill.write_text("# Third-party agent\n")
+
+    from agent_bom.skills_service import resolve_skill_targets
+
+    resolved = resolve_skill_targets([tmp_path], cwd=tmp_path)
+    names = sorted(path.name for path in resolved)
+
+    assert "CLAUDE.md" in names
+    assert "tool.md" not in names
+    assert "AGENTS.md" not in names
+
+
 def test_parse_preserves_raw_content(tmp_path):
     """parse_skill_file stores raw text in raw_content dict."""
     md = tmp_path / "CLAUDE.md"

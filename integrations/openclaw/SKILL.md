@@ -8,7 +8,7 @@ description: >-
   security checks. Use when the user mentions vulnerability scanning,
   MCP server trust, compliance, SBOM generation, CIS benchmarks, blast
   radius, or AI supply chain risk.
-version: 0.75.12
+version: 0.75.13
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. No credentials required for
@@ -25,7 +25,7 @@ metadata:
   install:
     pipx: agent-bom
     pip: agent-bom
-    docker: ghcr.io/msaad00/agent-bom:0.75.12
+    docker: ghcr.io/msaad00/agent-bom:0.75.13
   openclaw:
     requires:
       bins: []
@@ -402,6 +402,6 @@ provider's own APIs.
 ## Verification
 
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
-- **Sigstore signed**: `agent-bom verify agent-bom@0.75.12`
+- **Sigstore signed**: `agent-bom verify agent-bom@0.75.13`
 - **6,533+ tests** with CodeQL + OpenSSF Scorecard
 - **No telemetry**: Zero tracking, zero analytics

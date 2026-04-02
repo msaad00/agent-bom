@@ -1,4 +1,4 @@
-# agent-bom v0.75.12 hero demo
+# agent-bom v0.75.13 hero demo
 # Shows: scan with blast radius → pre-install check → integrity verify
 
 Output docs/images/demo-latest.gif

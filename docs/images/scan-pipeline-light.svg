@@ -120,7 +120,7 @@
   <rect x="422" y="120" width="140" height="1" fill="#e4e4e7"/>
 
   <text x="428" y="138" class="item-label" fill="#e11d48">Compliance</text>
-  <text x="562" y="138" text-anchor="end" class="step-desc">14 frameworks</text>
+  <text x="562" y="138" text-anchor="end" class="step-desc">15 frameworks</text>
   <rect x="422" y="144" width="140" height="1" fill="#e4e4e7"/>
 
   <text x="428" y="162" class="item-label" fill="#e11d48">Policy engine</text>

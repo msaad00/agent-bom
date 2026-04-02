@@ -12,6 +12,8 @@ from agent_bom.parsers.skills import SkillScanResult, discover_skill_files, pars
 from agent_bom.parsers.trust_assessment import TrustAssessmentResult, assess_trust
 from agent_bom.skill_bundles import SkillBundle, build_skill_bundle
 
+_SKILL_DISCOVERY_SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__"}
+
 
 @dataclass
 class SkillFileReport:
@@ -108,18 +110,47 @@ class SkillsScanReport:
         }
 
 
+def _looks_like_instruction_surface(path: Path, *, allow_docs_skills: bool = False) -> bool:
+    """Return True when a file path looks like a real skill/instruction surface."""
+    if any(part in _SKILL_DISCOVERY_SKIP_DIRS for part in path.parts):
+        return False
+    if not allow_docs_skills and "docs" in path.parts and "skills" in path.parts:
+        return False
+
+    name = path.name
+
+    if name in {"CLAUDE.md", "AGENTS.md", "SKILL.md", "skill.md", ".cursorrules", ".windsurfrules"}:
+        return True
+
+    if name == "copilot-instructions.md" and any(parent.name == ".github" for parent in path.parents):
+        return True
+
+    if path.suffix.lower() != ".md":
+        return False
+
+    if any(parent.name == "skills" for parent in path.parents):
+        return True
+
+    if any(parent.name == "rules" and parent.parent.name == ".cursor" for parent in path.parents if parent.parent != parent):
+        return True
+
+    return False
+
+
 def _discover_explicit_skill_files(directory: Path) -> list[Path]:
     """Discover skill-like files inside a directory explicitly requested by the user."""
     found: list[Path] = []
     seen: set[Path] = set()
+    allow_docs_skills = "docs" in directory.parts and "skills" in directory.parts
     for path in sorted(directory.rglob("*")):
         if not path.is_file():
             continue
-        if path.name in {".cursorrules", ".windsurfrules"} or path.suffix.lower() == ".md":
-            resolved = path.resolve()
-            if resolved not in seen:
-                seen.add(resolved)
-                found.append(resolved)
+        if not _looks_like_instruction_surface(path, allow_docs_skills=allow_docs_skills):
+            continue
+        resolved = path.resolve()
+        if resolved not in seen:
+            seen.add(resolved)
+            found.append(resolved)
     return found
 
 

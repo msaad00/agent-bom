@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -78,9 +79,7 @@ def lookup_package(
     ).fetchall()
 
     results: list[LocalVuln] = []
-    for row in rows:
-        if version and not _version_affected(version, row["introduced"], row["fixed"], row["last_affected"], row["ecosystem"]):
-            continue
+    for row in _select_vulnerability_rows(rows, version):
         # Parse comma-separated CWE IDs from DB column
         raw_cwes = row["cwe_ids"] or ""
         cwe_list = [c for c in raw_cwes.split(",") if c] if raw_cwes else []
@@ -122,6 +121,92 @@ def _version_affected(
     from agent_bom.version_utils import version_in_range
 
     return version_in_range(version, introduced, fixed, last_affected, ecosystem)
+
+
+def _version_match_state(
+    version: str,
+    introduced: Optional[str],
+    fixed: Optional[str],
+    last_affected: Optional[str],
+    ecosystem: str = "",
+) -> str:
+    """Return ``affected``, ``unaffected``, or ``unknown`` for one affected-range row."""
+    from agent_bom.version_utils import _looks_like_commit_sha, compare_version_order
+
+    intro = introduced or None
+    fix = fixed or None
+    last = last_affected or None
+    unknown = False
+
+    if intro:
+        intro_cmp = compare_version_order(version, intro, ecosystem)
+        if intro_cmp is not None and intro_cmp < 0:
+            return "unaffected"
+        if intro_cmp is None:
+            unknown = True
+
+    if fix:
+        if _looks_like_commit_sha(fix):
+            unknown = True
+        else:
+            fix_cmp = compare_version_order(version, fix, ecosystem)
+            if fix_cmp is not None and fix_cmp >= 0:
+                return "unaffected"
+            if fix_cmp is None:
+                unknown = True
+
+    if last:
+        last_cmp = compare_version_order(version, last, ecosystem)
+        if last_cmp is not None and last_cmp > 0:
+            return "unaffected"
+        if last_cmp is None:
+            unknown = True
+
+    return "unknown" if unknown else "affected"
+
+
+def _select_vulnerability_rows(rows: list[sqlite3.Row], version: Optional[str]) -> list[sqlite3.Row]:
+    """Choose at most one authoritative affected row per vulnerability.
+
+    If any row for a vulnerability definitively matches the requested version,
+    include the vulnerability. If no rows match but at least one row
+    definitively excludes the version, suppress the vulnerability even if
+    sibling rows are ambiguous (for example, duplicate PYSEC rows with git-SHA
+    fix bounds). If all rows are ambiguous, include the first one
+    conservatively.
+    """
+    if not version:
+        grouped_rows: dict[str, list[sqlite3.Row]] = defaultdict(list)
+        for row in rows:
+            grouped_rows[row["id"]].append(row)
+        return [group[0] for group in grouped_rows.values()]
+
+    grouped: dict[str, list[sqlite3.Row]] = defaultdict(list)
+    for row in rows:
+        grouped[row["id"]].append(row)
+
+    selected: list[sqlite3.Row] = []
+    for vuln_rows in grouped.values():
+        affected_row: sqlite3.Row | None = None
+        unknown_row: sqlite3.Row | None = None
+        saw_unaffected = False
+
+        for row in vuln_rows:
+            state = _version_match_state(version, row["introduced"], row["fixed"], row["last_affected"], row["ecosystem"])
+            if state == "affected":
+                affected_row = row
+                break
+            if state == "unknown" and unknown_row is None:
+                unknown_row = row
+            if state == "unaffected":
+                saw_unaffected = True
+
+        if affected_row is not None:
+            selected.append(affected_row)
+        elif not saw_unaffected and unknown_row is not None:
+            selected.append(unknown_row)
+
+    return selected
 
 
 def lookup_packages_batch(
@@ -180,8 +265,6 @@ def lookup_packages_batch(
         all_rows.extend(conn.execute(query, params).fetchall())
 
     # Group rows by (lower_ecosystem, package_name)
-    from collections import defaultdict
-
     grouped: dict[tuple[str, str], list[sqlite3.Row]] = defaultdict(list)
     for row in all_rows:
         grouped[(row["ecosystem"].lower(), row["package_name"])].append(row)
@@ -194,9 +277,7 @@ def lookup_packages_batch(
         rows = grouped.get((eco_lower, name), [])
 
         vulns: list[LocalVuln] = []
-        for row in rows:
-            if version and not _version_affected(version, row["introduced"], row["fixed"], row["last_affected"], row["ecosystem"]):
-                continue
+        for row in _select_vulnerability_rows(rows, version):
             raw_cwes = row["cwe_ids"] or ""
             cwe_list = [c for c in raw_cwes.split(",") if c] if raw_cwes else []
             raw_aliases = row["aliases"] or ""

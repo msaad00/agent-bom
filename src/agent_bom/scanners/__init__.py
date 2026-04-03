@@ -506,17 +506,19 @@ def parse_fixed_version(
     ecosystem: str = "",
     current_version: str = "",
     source_package: str | None = None,
+    allow_prerelease: bool = False,
 ) -> Optional[str]:
     """Extract fixed version from OSV affected data.
 
-    Prefers stable releases over pre-release versions.  Uses PEP 503
+    Prefers stable releases over pre-release versions and suppresses
+    prerelease-only fixes by default. Uses PEP 503
     normalization when comparing PyPI package names so that mixed-separator
     forms (e.g. ``Requests_OAuthlib`` vs ``requests-oauthlib``) always match.
 
     Guards against cross-package fix bleed: skips affected entries with no
     package name and skips fix versions lower than ``current_version``.
     """
-    from agent_bom.version_utils import compare_version_order
+    from agent_bom.version_utils import compare_version_order, is_prerelease_version
 
     norm_inputs = _candidate_package_names(package_name, ecosystem, source_package)
     prerelease_candidate: Optional[str] = None
@@ -535,6 +537,8 @@ def parse_fixed_version(
                 for event in rng.get("events", []):
                     if "fixed" in event:
                         fixed = event["fixed"]
+                        if not _is_valid_fix_version(fixed):
+                            continue
                         try:
                             if current_version and current_version not in ("unknown", "latest", ""):
                                 current_cmp = compare_version_order(current_version, fixed, ecosystem)
@@ -546,10 +550,7 @@ def parse_fixed_version(
                                         package_name,
                                     )
                                     continue
-                            from packaging.version import Version
-
-                            pv = Version(fixed)
-                            if not pv.is_prerelease:
+                            if not is_prerelease_version(fixed, ecosystem):
                                 return fixed
                             # Remember pre-release as fallback
                             if prerelease_candidate is None:
@@ -560,10 +561,14 @@ def parse_fixed_version(
                                 current_cmp = compare_version_order(current_version, fixed, ecosystem)
                                 if current_cmp is not None and current_cmp > 0:
                                     continue
-                            if _is_valid_fix_version(fixed):
+                            if not is_prerelease_version(fixed, ecosystem):
                                 return fixed
                             # Not a usable version — skip silently
-    return prerelease_candidate
+    if allow_prerelease:
+        return prerelease_candidate
+    if prerelease_candidate:
+        _logger.debug("Suppressing prerelease-only fix %s for %s", prerelease_candidate, package_name)
+    return None
 
 
 def _is_valid_fix_version(version: str) -> bool:

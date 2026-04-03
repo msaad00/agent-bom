@@ -363,8 +363,8 @@ def test_fixed_version_skips_prerelease():
     assert result == "3.0.0"
 
 
-def test_fixed_version_fallback_to_prerelease():
-    """parse_fixed_version falls back to pre-release if no stable fix exists."""
+def test_fixed_version_suppresses_prerelease_only_fix_by_default():
+    """parse_fixed_version suppresses prerelease-only fixes by default."""
     from agent_bom.scanners import parse_fixed_version
 
     vuln_data = {
@@ -385,6 +385,31 @@ def test_fixed_version_fallback_to_prerelease():
     }
 
     result = parse_fixed_version(vuln_data, "mylib")
+    assert result is None
+
+
+def test_fixed_version_can_return_prerelease_when_explicitly_allowed():
+    """Callers can still opt in to prerelease-only fixes when needed."""
+    from agent_bom.scanners import parse_fixed_version
+
+    vuln_data = {
+        "affected": [
+            {
+                "package": {"name": "mylib", "ecosystem": "PyPI"},
+                "ranges": [
+                    {
+                        "type": "ECOSYSTEM",
+                        "events": [
+                            {"introduced": "0"},
+                            {"fixed": "2.0.0a1"},
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+
+    result = parse_fixed_version(vuln_data, "mylib", allow_prerelease=True)
     assert result == "2.0.0a1"
 
 

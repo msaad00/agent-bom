@@ -83,6 +83,7 @@ def generate_package_fixes(plan_items: list[dict]) -> tuple[list[PackageFix], li
                     "package": item["package"],
                     "ecosystem": item["ecosystem"],
                     "current_version": item["current"],
+                    "reason": item.get("reason"),
                     "vulns": item["vulns"],
                     "agents": item["agents"],
                     "references": item.get("references", []),

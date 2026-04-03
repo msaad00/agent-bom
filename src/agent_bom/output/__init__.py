@@ -974,6 +974,7 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
             "ecosystem": "",
             "current": "",
             "fix": None,
+            "reason": None,
             "command": None,
             "verify_command": None,
             "vulns": [],
@@ -996,6 +997,7 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
             "has_kev": False,
             "ai_risk": False,
             "references": set(),
+            "suppressed_prerelease_fixes": set(),
         }
     )
     severity_order = {Severity.CRITICAL: 4, Severity.HIGH: 3, Severity.MEDIUM: 2, Severity.LOW: 1, Severity.NONE: 0}
@@ -1011,9 +1013,11 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
         # multi-branch or pre-release advisories.
         fv = br.vulnerability.fixed_version
         if fv:
-            from agent_bom.version_utils import compare_versions
+            from agent_bom.version_utils import compare_versions, is_prerelease_version
 
-            if compare_versions(br.package.version, fv, br.package.ecosystem):
+            if is_prerelease_version(fv, br.package.ecosystem):
+                g["suppressed_prerelease_fixes"].add(fv)
+            elif compare_versions(br.package.version, fv, br.package.ecosystem):
                 if g["fix"] is None or compare_versions(fv, g["fix"], br.package.ecosystem):
                     g["fix"] = fv
         g["vulns"].append(br.vulnerability.id)
@@ -1061,6 +1065,7 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
         g["soc2"] = sorted(g["soc2"])
         g["cis"] = sorted(g["cis"])
         g["references"] = sorted(g["references"])
+        g["suppressed_prerelease_fixes"] = sorted(g["suppressed_prerelease_fixes"])
         g["impact"] = (
             len(g["agents"]) * 10 + len(g["creds"]) * 3 + len(g["vulns"]) + (5 if g["has_kev"] else 0) + (3 if g["ai_risk"] else 0)
         )
@@ -1081,6 +1086,9 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
             action = f"Monitor {g['package']} upstream and isolate exposed surface"
             g["command"] = None
             g["verify_command"] = None
+            if g["suppressed_prerelease_fixes"]:
+                g["reason"] = "prerelease fix suppressed by default"
+                action = f"Wait for a stable {g['package']} release; prerelease fix exists but is suppressed by default"
         if g["creds"]:
             action += "; rotate exposed credentials"
         if g["tools"]:

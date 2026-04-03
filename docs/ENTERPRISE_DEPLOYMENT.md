@@ -102,7 +102,7 @@ agent-bom serve --port 8422 --persist jobs.db
 - `POST /v1/fleet/sync` — ingest endpoint scan results
 - `GET /v1/compliance` — 14-framework compliance posture
 
-**Authentication:** API key auth (`AGENT_BOM_API_KEY`) by default, with optional OIDC-backed role checks when configured. Rate limiting and CORS controls are built in.
+**Authentication:** localhost binds are allowed for local development. Non-loopback binds fail closed unless you set `AGENT_BOM_API_KEY`, configure `AGENT_BOM_OIDC_ISSUER`, or explicitly pass `--allow-insecure-no-auth`. Rate limiting and CORS controls are built in.
 **Storage:** SQLite (single node), PostgreSQL (team), Snowflake/ClickHouse (enterprise).
 
 ### 4. Cloud Infrastructure — agentless discovery

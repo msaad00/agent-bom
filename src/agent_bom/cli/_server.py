@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ipaddress
+import os
 import sys
 from pathlib import Path
 from typing import Optional
@@ -9,15 +11,63 @@ from typing import Optional
 import click
 
 
+def _is_loopback_host(host: str) -> bool:
+    """Return True when ``host`` resolves to loopback-only access."""
+    cleaned = host.strip().lower()
+    if cleaned in {"localhost", "127.0.0.1", "::1"}:
+        return True
+    try:
+        return ipaddress.ip_address(cleaned).is_loopback
+    except ValueError:
+        return False
+
+
+def _oidc_enabled() -> bool:
+    """Return True when OIDC auth is configured via environment."""
+    return bool(os.environ.get("AGENT_BOM_OIDC_ISSUER", "").strip())
+
+
+def _enforce_auth_defaults(command: str, host: str, api_key: str | None, allow_insecure_no_auth: bool) -> None:
+    """Refuse unauthenticated non-loopback binds unless explicitly overridden."""
+    if api_key or _oidc_enabled() or _is_loopback_host(host):
+        return
+    if allow_insecure_no_auth:
+        return
+    raise click.ClickException(
+        f"Refusing to expose `{command}` on non-loopback host {host!r} without authentication. "
+        "Set --api-key / AGENT_BOM_API_KEY or configure AGENT_BOM_OIDC_ISSUER, "
+        "or pass --allow-insecure-no-auth to override."
+    )
+
+
 @click.command("serve")
 @click.option("--host", default="127.0.0.1", show_default=True, help="Host to bind to (use 0.0.0.0 for LAN access)")
 @click.option("--port", default=8422, show_default=True, help="API server port")
 @click.option("--persist", default=None, metavar="DB_PATH", help="Enable persistent job storage via SQLite (e.g. --persist jobs.db).")
 @click.option("--cors-allow-all", is_flag=True, default=False, help="Allow all CORS origins (dev mode).")
+@click.option(
+    "--api-key", default=None, envvar="AGENT_BOM_API_KEY", metavar="KEY", help="Require API key auth (Bearer token or X-API-Key header)."
+)
+@click.option(
+    "--allow-insecure-no-auth",
+    is_flag=True,
+    default=False,
+    help="Allow unauthenticated non-loopback API exposure. Unsafe outside local development.",
+)
 @click.option("--reload", is_flag=True, help="Auto-reload on code changes (development mode)")
 @click.option("--log-level", "log_level", type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False), default="INFO")
 @click.option("--log-json", "log_json", is_flag=True, help="Structured JSON logs")
-def serve_cmd(host: str, port: int, persist: Optional[str], cors_allow_all: bool, reload: bool, log_level: str, log_json: bool):
+def serve_cmd(
+    host: str,
+    port: int,
+    persist: Optional[str],
+    cors_allow_all: bool,
+    api_key: str | None,
+    allow_insecure_no_auth: bool,
+    reload: bool,
+    log_level: str,
+    log_json: bool,
+):
     """Start the API server + Next.js dashboard.
 
     \b
@@ -48,6 +98,15 @@ def serve_cmd(host: str, port: int, persist: Optional[str], cors_allow_all: bool
     if cors_allow_all:
         _os.environ["AGENT_BOM_CORS_ALL"] = "1"
 
+    _enforce_auth_defaults("serve", host, api_key, allow_insecure_no_auth)
+
+    from agent_bom.api.server import configure_api
+
+    configure_api(
+        cors_allow_all=cors_allow_all,
+        api_key=api_key,
+    )
+
     _ui_dist = Path(__file__).parent / "ui_dist"
     click.echo(f"\n  API server  →  http://{host}:{port}")
     click.echo(f"  API docs    →  http://{host}:{port}/docs")
@@ -55,6 +114,12 @@ def serve_cmd(host: str, port: int, persist: Optional[str], cors_allow_all: bool
         click.echo(f"  Dashboard   →  http://{host}:{port}")
     else:
         click.echo("  Dashboard   →  not bundled (run: make build-ui)")
+    if api_key:
+        click.echo("  Auth:       API key required (Bearer / X-API-Key)")
+    elif _oidc_enabled():
+        click.echo("  Auth:       OIDC bearer token required")
+    elif allow_insecure_no_auth and not _is_loopback_host(host):
+        click.echo("  Auth:       disabled by explicit override (--allow-insecure-no-auth)")
     click.echo("  Press Ctrl+C to stop.\n")
 
     import uvicorn as _uvicorn
@@ -78,6 +143,12 @@ def serve_cmd(host: str, port: int, persist: Optional[str], cors_allow_all: bool
 @click.option("--cors-allow-all", is_flag=True, default=False, help="Allow all CORS origins (dev mode).")
 @click.option(
     "--api-key", default=None, envvar="AGENT_BOM_API_KEY", metavar="KEY", help="Require API key auth (Bearer token or X-API-Key header)."
+)
+@click.option(
+    "--allow-insecure-no-auth",
+    is_flag=True,
+    default=False,
+    help="Allow unauthenticated non-loopback API exposure. Unsafe outside local development.",
 )
 @click.option(
     "--rate-limit",
@@ -111,6 +182,7 @@ def api_cmd(
     cors_origins: str | None,
     cors_allow_all: bool,
     api_key: str | None,
+    allow_insecure_no_auth: bool,
     rate_limit_rpm: int,
     persist: str | None,
     log_level: str,
@@ -157,6 +229,8 @@ def api_cmd(
     from agent_bom import __version__ as _ver
     from agent_bom.api.server import configure_api, set_job_store
 
+    _enforce_auth_defaults("api", host, api_key, allow_insecure_no_auth)
+
     origins = cors_origins.split(",") if cors_origins else None
     configure_api(
         cors_origins=origins,
@@ -181,6 +255,10 @@ def api_cmd(
     click.echo(f"  Docs:         http://{host}:{port}/docs")
     if api_key:
         click.echo("  Auth:         API key required (Bearer / X-API-Key)")
+    elif _oidc_enabled():
+        click.echo("  Auth:         OIDC bearer token required")
+    elif allow_insecure_no_auth and not _is_loopback_host(host):
+        click.echo("  Auth:         disabled by explicit override (--allow-insecure-no-auth)")
     if pg_url and not persist:
         click.echo("  Storage:      PostgreSQL")
     elif persist:

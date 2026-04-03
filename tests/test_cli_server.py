@@ -62,6 +62,56 @@ def test_api_cmd_missing_uvicorn():
         assert "uvicorn" in result.output.lower()
 
 
+def test_api_cmd_rejects_unauthenticated_non_loopback_bind():
+    """API should fail closed when exposed beyond loopback without auth."""
+    runner = CliRunner()
+
+    with patch("uvicorn.run") as mock_run:
+        result = runner.invoke(api_cmd, ["--host", "0.0.0.0"])
+
+    assert result.exit_code == 1
+    assert "without authentication" in result.output
+    mock_run.assert_not_called()
+
+
+def test_api_cmd_allows_non_loopback_bind_with_api_key():
+    """API should allow non-loopback exposure when API key auth is configured."""
+    runner = CliRunner()
+
+    with patch("agent_bom.api.server.configure_api") as mock_configure, patch("uvicorn.run") as mock_run:
+        result = runner.invoke(api_cmd, ["--host", "0.0.0.0", "--api-key", "test-key"])
+
+    assert result.exit_code == 0
+    mock_configure.assert_called_once()
+    mock_run.assert_called_once()
+    assert "API key required" in result.output
+
+
+def test_serve_cmd_rejects_unauthenticated_non_loopback_bind():
+    """Serve should use the same auth-default guard as the raw API command."""
+    runner = CliRunner()
+
+    with patch("uvicorn.run") as mock_run:
+        result = runner.invoke(serve_cmd, ["--host", "0.0.0.0"])
+
+    assert result.exit_code == 1
+    assert "without authentication" in result.output
+    mock_run.assert_not_called()
+
+
+def test_serve_cmd_configures_api_auth():
+    """Serve should route through configure_api so dashboard and API stay aligned."""
+    runner = CliRunner()
+
+    with patch("agent_bom.api.server.configure_api") as mock_configure, patch("uvicorn.run") as mock_run:
+        result = runner.invoke(serve_cmd, ["--api-key", "test-key"])
+
+    assert result.exit_code == 0
+    mock_configure.assert_called_once()
+    mock_run.assert_called_once()
+    assert "API key required" in result.output
+
+
 # ---------------------------------------------------------------------------
 # mcp_server_cmd
 # ---------------------------------------------------------------------------

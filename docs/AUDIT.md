@@ -154,7 +154,7 @@ AI_PACKAGES constant covers 40+ GPU/ML packages including torch, tensorflow, vll
 |-------|-----------|---------|--------|
 | `databricks` | `databricks-sdk>=0.20` | `cloud/databricks.py`, `cloud/databricks_security.py` | ✓ |
 | `coreweave` | `[]` (empty) | `kubectl` subprocess only | ✓ |
-| `snyk` | `[]` (empty) | `httpx` (already in core) | ✓ |
+| empty optional API extra | `[]` (empty) | `httpx` (already in core) | ✓ |
 | `ai-enrich` | `litellm>=1.30` | `ai_enrich.py` | ✓ |
 | `graph` | `networkx>=3.0` | `output/graph.py`, `context_graph.py` | ✓ |
 | `cloud` | meta-extra | bundles aws+azure+gcp+databricks+snowflake+nebius+huggingface+wandb+openai | ✓ |

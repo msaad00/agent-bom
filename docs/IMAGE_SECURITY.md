@@ -41,7 +41,7 @@ Temporary exceptions are allowed only when all of the following are true:
 
 Active image exceptions are tracked in [`security/image-exceptions.yaml`](../security/image-exceptions.yaml).
 
-`.trivyignore` remains the scanner input today, but the YAML registry is the human-reviewed source of truth for why an exception exists.
+The generated image ignore file remains the scanner input today, but the YAML registry is the human-reviewed source of truth for why an exception exists.
 
 ## Stable release bar
 
@@ -70,7 +70,7 @@ For each architecture we want:
 
 ## Near-term follow-ups
 
-- add a generated sync step from `security/image-exceptions.yaml` into `.trivyignore`
+- add a generated sync step from `security/image-exceptions.yaml` into the image scanner ignore file
 - sign and attest Docker images directly, not just Python artifacts and BuildKit attestations
 - add Docker Scout as an explicit release gate
 - add promoted golden base images per architecture

@@ -226,7 +226,7 @@ runs:
           RESULT_FILE="agent-bom-results.sarif"
         fi
 
-        # Map scan-type to focused command (Trivy-style)
+        # Map scan-type to focused command
         #   scan  → agent-bom agents (full auto-detect, default)
         #   image → agent-bom image <ref>
         #   fs    → agent-bom fs <path>

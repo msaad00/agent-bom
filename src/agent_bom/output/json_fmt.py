@@ -66,6 +66,7 @@ def _build_remediation_json(report: AIBOMReport) -> list[dict]:
                 "impact_score": item["impact"],
                 "priority": item["priority"],
                 "action": item["action"],
+                "reason": item.get("reason"),
                 "command": item.get("command"),
                 "verify_command": item.get("verify_command"),
                 "vulnerabilities": item["vulns"],

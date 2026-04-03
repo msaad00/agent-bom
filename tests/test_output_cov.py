@@ -626,6 +626,25 @@ def test_build_remediation_plan_skips_prerelease_downgrade_for_npm():
     assert plan[0]["fix"] == "16.2.2"
 
 
+def test_build_remediation_plan_suppresses_prerelease_only_fix():
+    """Prerelease-only fixes should not be emitted as default remediation."""
+    pkg = Package(name="samplelib", version="1.4.0", ecosystem="pypi", vulnerabilities=[])
+    vuln = Vulnerability(
+        id="CVE-2026-2222",
+        severity=Severity.HIGH,
+        summary="Sample issue",
+        fixed_version="2.0.0rc1",
+    )
+    br = BlastRadius(vulnerability=vuln, package=pkg, affected_agents=[], affected_servers=[], exposed_credentials=[], exposed_tools=[])
+
+    plan = build_remediation_plan([br])
+
+    assert len(plan) == 1
+    assert plan[0]["fix"] is None
+    assert plan[0]["reason"] == "prerelease fix suppressed by default"
+    assert "suppressed by default" in plan[0]["action"]
+
+
 # ── to_json (from cov2) ─────────────────────────────────────────────────────
 
 
@@ -756,6 +775,20 @@ def test_build_remediation_json():
     report = _make_report_cov2(agents=[agent], blast_radii=[br])
     result = _build_remediation_json(report)
     assert isinstance(result, list)
+
+
+def test_build_remediation_json_includes_reason_for_unfixable_item():
+    from agent_bom.output import _build_remediation_json
+
+    pkg = Package(name="samplelib", version="1.4.0", ecosystem="pypi", vulnerabilities=[])
+    vuln = Vulnerability(id="CVE-2026-3333", severity=Severity.HIGH, summary="Issue", fixed_version="2.0.0rc1")
+    br = BlastRadius(vulnerability=vuln, package=pkg, affected_agents=[], affected_servers=[], exposed_credentials=[], exposed_tools=[])
+    report = _make_report_cov2(blast_radii=[br])
+
+    result = _build_remediation_json(report)
+
+    assert result[0]["fixed_version"] is None
+    assert result[0]["reason"] == "prerelease fix suppressed by default"
 
 
 # ── export_json (from cov2) ──────────────────────────────────────────────────

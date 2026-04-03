@@ -258,7 +258,7 @@ def test_parse_fixed_version_prerelease():
         ]
     }
     result = parse_fixed_version(vuln, "foo")
-    assert result == "1.0.0rc1"
+    assert result is None
 
 
 def test_parse_fixed_version_empty():

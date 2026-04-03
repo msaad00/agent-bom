@@ -160,6 +160,33 @@ def compare_versions(current: str, fixed: str, ecosystem: str) -> bool:
         return False
 
 
+def is_prerelease_version(version: str, ecosystem: str) -> bool:
+    """Return True when a version string represents a prerelease/canary build."""
+    if not version:
+        return False
+
+    eco = ecosystem.lower()
+    candidate = version if eco == "go" else version.lstrip("v")
+    try:
+        from packaging.version import Version
+
+        return Version(candidate).is_prerelease
+    except Exception:  # noqa: BLE001
+        normalized = normalize_version(version, ecosystem)
+        candidate = normalized if eco == "go" else normalized.lstrip("v")
+        try:
+            from packaging.version import Version
+
+            return Version(candidate).is_prerelease
+        except Exception:  # noqa: BLE001
+            pass
+
+    if eco == "maven":
+        return bool(re.search(r"-(snapshot|rc\d*|m\d+|alpha|beta|pre|preview|canary)", candidate, re.IGNORECASE))
+
+    return bool(re.search(r"(?:-|\.)(alpha|beta|rc|pre|preview|canary|dev)\d*(?:$|\+)", candidate, re.IGNORECASE))
+
+
 def _looks_like_commit_sha(version: str) -> bool:
     stripped = version.strip().lower().lstrip("v")
     return bool(_HEXISH_RE.fullmatch(stripped))

@@ -43,6 +43,8 @@ For the canonical product brief and verified repo-derived metrics, see [docs/PRO
 
 ## Quick start
 
+[![SafeSkill 60/100](https://img.shields.io/badge/SafeSkill-60%2F100_Use%20with%20Caution-orange)](https://safeskill.dev/scan/msaad00-agent-bom)
+
 ```bash
 pip install agent-bom
 

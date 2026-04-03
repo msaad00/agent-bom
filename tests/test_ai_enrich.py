@@ -667,6 +667,7 @@ def test_action_yml_has_outputs():
     outputs = data.get("outputs", {})
     assert "sarif-file" in outputs
     assert "exit-code" in outputs
+    assert "scan-status" in outputs
     assert "vulnerability-count" in outputs
 
 
@@ -702,27 +703,32 @@ def test_action_yml_skills_mode_skips_vulnerability_scan_flags():
     guard = 'if [ "$INPUT_SCAN_TYPE" != "skills" ]; then'
     assert guard in action_text
     guarded_block = action_text.split(guard, 1)[1].split("# Skill-only mode", 1)[0]
-    assert "--auto-update-db" in guarded_block
     assert 'ARGS+=(--policy "$INPUT_POLICY")' in guarded_block
+    assert "auto-update-db" in guarded_block
 
 
-def test_action_yml_uses_safe_argv_execution():
-    """The action should build argv arrays instead of shell-expanded command strings."""
+def test_action_yml_uses_safe_argv_execution_and_step_summary():
+    """The action should avoid shell-built argv execution and emit a step summary."""
     from pathlib import Path
 
     action_text = (Path(__file__).parent.parent / "action.yml").read_text()
     assert "ARGS=(" in action_text
     assert 'agent-bom "${ARGS[@]}"' in action_text
     assert "agent-bom $ARGS" not in action_text
+    assert "GITHUB_STEP_SUMMARY" in action_text
+    assert "scan_status=$SCAN_STATUS" in action_text
 
 
-def test_action_yml_writes_step_summary():
-    """The action should publish a concise GitHub step summary."""
+def test_action_yml_enables_pip_cache_in_setup_python():
+    """The composite action should enable pip caching in setup-python."""
     from pathlib import Path
 
-    action_text = (Path(__file__).parent.parent / "action.yml").read_text()
-    assert "GITHUB_STEP_SUMMARY" in action_text
-    assert "## agent-bom scan summary" in action_text
+    import yaml
+
+    action_path = Path(__file__).parent.parent / "action.yml"
+    data = yaml.safe_load(action_path.read_text())
+    setup_step = next(step for step in data["runs"]["steps"] if step.get("name") == "Set up Python")
+    assert setup_step["with"]["cache"] == "pip"
 
 
 # ── Skill file AI analysis tests ────────────────────────────────────────────

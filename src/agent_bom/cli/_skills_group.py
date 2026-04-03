@@ -92,19 +92,23 @@ def skills_scan_cmd(
         files_table = Table(title="Instruction Surface", expand=True)
         files_table.add_column("File")
         files_table.add_column("Verdict", no_wrap=True)
+        files_table.add_column("Review", no_wrap=True)
         files_table.add_column("Prov.", no_wrap=True)
         files_table.add_column("Findings", justify="right", no_wrap=True)
         files_table.add_column("Refs", justify="right", no_wrap=True)
 
         verdict_style = {"benign": "green", "suspicious": "yellow", "malicious": "red"}
+        review_style = {"trusted": "green", "review": "yellow", "high_risk": "red", "blocked": "red bold"}
         prov_style = {"verified": "green", "unsigned": "yellow", "bundle_found_but_invalid": "red", "missing": "red"}
 
         for file_report in report.files:
             verdict = file_report.trust.verdict.value
+            review_verdict = file_report.trust.review_verdict.value
             provenance = str(file_report.provenance.get("status", "unknown"))
             files_table.add_row(
                 _display_path(str(file_report.path)),
                 f"[{verdict_style.get(verdict, 'white')}]{verdict}[/{verdict_style.get(verdict, 'white')}]",
+                f"[{review_style.get(review_verdict, 'white')}]{review_verdict}[/{review_style.get(review_verdict, 'white')}]",
                 f"[{prov_style.get(provenance, 'white')}]{provenance}[/{prov_style.get(provenance, 'white')}]",
                 str(len(file_report.audit.findings)),
                 str(len(file_report.scan.packages) + len(file_report.scan.servers)),
@@ -134,10 +138,26 @@ def skills_scan_cmd(
             console.print()
             console.print(finding_table)
 
+        family_totals: dict[str, int] = {}
+        for file_report in report.files:
+            families_obj = file_report.audit.behavioral_summary.get("families", {})
+            families = families_obj if isinstance(families_obj, dict) else {}
+            for family, count in families.items():
+                family_totals[family] = family_totals.get(family, 0) + int(count)
+
+        if family_totals:
+            behavior_table = Table(title="Behavior Profile", expand=True)
+            behavior_table.add_column("Family")
+            behavior_table.add_column("Signals", justify="right", no_wrap=True)
+            for family, count in sorted(family_totals.items()):
+                behavior_table.add_row(family.replace("_", " "), str(count))
+            console.print()
+            console.print(behavior_table)
+
         recommendations = []
         seen_recommendations: set[str] = set()
         for file_report in report.files:
-            for recommendation in file_report.trust.recommendations:
+            for recommendation in [*file_report.trust.reviewer_guidance, *file_report.trust.publisher_guidance]:
                 if recommendation not in seen_recommendations:
                     seen_recommendations.add(recommendation)
                     recommendations.append(recommendation)

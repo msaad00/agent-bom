@@ -73,6 +73,7 @@ class SkillAuditResult:
     servers_checked: int = 0
     credentials_checked: int = 0
     passed: bool = True  # no critical/high findings
+    behavioral_summary: dict[str, object] = field(default_factory=dict)
     ai_skill_summary: str | None = None  # LLM-generated overall narrative
     ai_overall_risk_level: str | None = None  # "critical"|"high"|"medium"|"low"|"safe"
 
@@ -143,6 +144,26 @@ _BEHAVIORAL_PATTERNS: list[_BehavioralPattern] = [
         description="Remove safety bypasses. Never disable confirmation prompts or sandbox protections.",
     ),
     # ── HIGH ──────────────────────────────────────────────────────────────
+    _BehavioralPattern(
+        category="prompt_coercion",
+        severity="high",
+        title="Prompt coercion or guardrail override",
+        pattern=re.compile(
+            r"""
+            ignore \s+ (?:all \s+)? previous \s+ instructions
+            | override \s+ (?:the \s+)? system \s+ prompt
+            | reveal \s+ (?:the \s+)? system \s+ prompt
+            | bypass \s+ (?:the \s+)? guardrails?
+            | developer \s+ mode
+            | jailbreak
+            | do \s+ not \s+ mention \s+ (?:the \s+)? policy
+            """,
+            re.VERBOSE | re.IGNORECASE,
+        ),
+        description=(
+            "Prompt coercion patterns try to override system instructions or hide policy checks. Remove or rewrite these instructions."
+        ),
+    ),
     _BehavioralPattern(
         category="messaging_capability",
         severity="high",
@@ -401,6 +422,54 @@ def _scan_behavioral_risks(raw_content: dict[str, str]) -> list[SkillFinding]:
     return findings
 
 
+_BEHAVIOR_FAMILIES: dict[str, str] = {
+    "shell_access": "code_execution",
+    "dangerous_tool": "code_execution",
+    "agent_delegation": "code_execution",
+    "privilege_escalation": "code_execution",
+    "repository_modification": "code_execution",
+    "destructive_action": "code_execution",
+    "financial_transaction": "code_execution",
+    "external_url": "network_access",
+    "network_exposure": "network_access",
+    "messaging_capability": "network_access",
+    "voice_telephony": "network_access",
+    "surveillance_access": "network_access",
+    "undocumented_network": "network_access",
+    "prompt_coercion": "prompt_coercion",
+    "confirmation_bypass": "prompt_coercion",
+    "memory_poisoning": "prompt_coercion",
+    "input_injection": "prompt_coercion",
+    "credential_file_access": "data_access",
+    "data_exfiltration": "data_access",
+    "excessive_permissions": "data_access",
+    "persistence_mechanism": "persistence",
+}
+
+
+def _summarize_behavioral_findings(findings: list[SkillFinding]) -> dict[str, object]:
+    """Summarize findings into stable review-oriented behavior families."""
+    family_counts: dict[str, int] = {}
+    category_counts: dict[str, int] = {}
+    high_or_critical = 0
+
+    for finding in findings:
+        family = _BEHAVIOR_FAMILIES.get(finding.category)
+        if not family:
+            continue
+        family_counts[family] = family_counts.get(family, 0) + 1
+        category_counts[finding.category] = category_counts.get(finding.category, 0) + 1
+        if finding.severity in {"critical", "high"}:
+            high_or_critical += 1
+
+    top_categories = [category for category, _count in sorted(category_counts.items(), key=lambda item: (-item[1], item[0]))[:5]]
+    return {
+        "families": family_counts,
+        "top_categories": top_categories,
+        "high_or_critical": high_or_critical,
+    }
+
+
 # ── Dynamic package verification ─────────────────────────────────────────────
 
 NPM_REGISTRY = "https://registry.npmjs.org"
@@ -558,6 +627,7 @@ def audit_skill_result(result: SkillScanResult) -> SkillAuditResult:
         audit.findings.extend(metadata_findings)
 
     # ── Final pass/fail ──────────────────────────────────────────────────
+    audit.behavioral_summary = _summarize_behavioral_findings(audit.findings)
     audit.passed = not any(f.severity in ("critical", "high") for f in audit.findings)
 
     return audit

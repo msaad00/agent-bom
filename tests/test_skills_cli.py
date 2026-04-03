@@ -38,6 +38,8 @@ Environment:
     assert data["files"][0]["path"].endswith("CLAUDE.md")
     assert data["files"][0]["bundle"]["file_count"] == 1
     assert data["files"][0]["bundle"]["sha256"]
+    assert data["files"][0]["trust"]["review_verdict"] in {"trusted", "review", "high_risk", "blocked"}
+    assert "behavioral_summary" in data["files"][0]["audit"]
 
 
 def test_skills_scan_explicit_directory_globs_markdown(tmp_path):

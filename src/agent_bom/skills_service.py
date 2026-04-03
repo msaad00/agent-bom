@@ -54,6 +54,7 @@ class SkillFileReport:
                 "packages_checked": self.audit.packages_checked,
                 "servers_checked": self.audit.servers_checked,
                 "credentials_checked": self.audit.credentials_checked,
+                "behavioral_summary": self.audit.behavioral_summary,
                 "findings": [
                     {
                         "severity": finding.severity,
@@ -105,6 +106,8 @@ class SkillsScanReport:
                 "verified_files": verified,
                 "suspicious_files": suspicious,
                 "malicious_files": malicious,
+                "blocked_files": sum(1 for report in self.files if report.trust.review_verdict.value == "blocked"),
+                "high_risk_files": sum(1 for report in self.files if report.trust.review_verdict.value == "high_risk"),
             },
             "files": serialized_files,
         }

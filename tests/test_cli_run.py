@@ -2,12 +2,34 @@
 
 from __future__ import annotations
 
+from collections.abc import Coroutine
 from unittest.mock import patch
 
 from click.testing import CliRunner
 
 from agent_bom.cli import main
 from agent_bom.cli.run import _resolve_server_command, run_cmd
+
+
+def _consume_coroutine_and_return(value=0):
+    """Return a side effect that closes the coroutine passed to asyncio.run."""
+
+    def _runner(coro: Coroutine):
+        coro.close()
+        return value
+
+    return _runner
+
+
+def _consume_coroutine_and_raise(exc: Exception):
+    """Return a side effect that closes the coroutine then raises."""
+
+    def _runner(coro: Coroutine):
+        coro.close()
+        raise exc
+
+    return _runner
+
 
 # ---------------------------------------------------------------------------
 # _resolve_server_command unit tests
@@ -109,7 +131,7 @@ def test_run_delegates_to_run_proxy():
         patch("agent_bom.cli.run.asyncio.run") as mock_asyncio_run,
         patch("agent_bom.project_config.load_project_config", return_value=None),
     ):
-        mock_asyncio_run.return_value = 0
+        mock_asyncio_run.side_effect = _consume_coroutine_and_return()
         # CliRunner catches SystemExit — check exit_code instead
         result = runner.invoke(run_cmd, ["uvx/mcp-server-git", "--quiet"])
         assert result.exit_code == 0
@@ -133,7 +155,7 @@ def test_run_passes_policy_to_run_proxy():
             patch("agent_bom.cli.run.asyncio.run") as mock_asyncio_run,
             patch("agent_bom.project_config.load_project_config", return_value=None),
         ):
-            mock_asyncio_run.return_value = 0
+            mock_asyncio_run.side_effect = _consume_coroutine_and_return()
             result = runner.invoke(
                 run_cmd,
                 ["uvx/mcp-server-git", "--policy", policy_path, "--quiet"],
@@ -149,7 +171,7 @@ def test_run_command_not_found_handled(tmp_path):
     runner = CliRunner()
 
     with (
-        patch("agent_bom.cli.run.asyncio.run", side_effect=FileNotFoundError("no such")),
+        patch("agent_bom.cli.run.asyncio.run", side_effect=_consume_coroutine_and_raise(FileNotFoundError("no such"))),
         patch("agent_bom.project_config.load_project_config", return_value=None),
     ):
         result = runner.invoke(run_cmd, ["nonexistent-server-xyz-abc"])
@@ -161,7 +183,10 @@ def test_run_quiet_flag_suppresses_stderr():
     """--quiet suppresses the startup echo; verifies no crash with the flag."""
     runner = CliRunner()
 
-    with patch("agent_bom.cli.run.asyncio.run", return_value=0), patch("agent_bom.project_config.load_project_config", return_value=None):
+    with (
+        patch("agent_bom.cli.run.asyncio.run", side_effect=_consume_coroutine_and_return()),
+        patch("agent_bom.project_config.load_project_config", return_value=None),
+    ):
         result = runner.invoke(run_cmd, ["uvx/mcp-server-git", "--quiet"])
     assert result.exit_code == 0
 

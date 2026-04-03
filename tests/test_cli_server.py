@@ -137,6 +137,48 @@ def test_mcp_server_cmd_sse():
         mock_server.run.assert_called_once_with(transport="sse")
 
 
+def test_mcp_server_cmd_rejects_unauthenticated_non_loopback_remote_bind():
+    """Remote MCP transports should fail closed on non-loopback binds without auth."""
+    runner = CliRunner()
+
+    with patch("agent_bom.mcp_server.create_mcp_server") as mock_create:
+        result = runner.invoke(mcp_server_cmd, ["--transport", "sse", "--host", "0.0.0.0"])
+
+    assert result.exit_code == 1
+    assert "without transport authentication" in result.output
+    mock_create.assert_not_called()
+
+
+def test_mcp_server_cmd_allows_remote_bind_with_bearer_token():
+    """Remote MCP transports should allow non-loopback binds when bearer auth is configured."""
+    runner = CliRunner()
+    mock_server = MagicMock()
+
+    with patch("agent_bom.mcp_server.create_mcp_server", return_value=mock_server) as mock_create:
+        result = runner.invoke(
+            mcp_server_cmd,
+            ["--transport", "sse", "--host", "0.0.0.0", "--bearer-token", "test-token"],
+            catch_exceptions=False,
+        )
+
+    assert result.exit_code == 0
+    mock_create.assert_called_once_with(host="0.0.0.0", port=8423, bearer_token="test-token")
+    mock_server.run.assert_called_once_with(transport="sse")
+    assert "Bearer token required" in result.output
+
+
+def test_mcp_server_cmd_stdio_warns_when_bearer_token_is_unused():
+    """Bearer auth config should warn when used with stdio transport."""
+    runner = CliRunner()
+    mock_server = MagicMock()
+
+    with patch("agent_bom.mcp_server.create_mcp_server", return_value=mock_server):
+        result = runner.invoke(mcp_server_cmd, ["--bearer-token", "test-token"], catch_exceptions=False)
+
+    assert result.exit_code == 0
+    assert "applies only to SSE / Streamable HTTP" in result.output
+
+
 def test_mcp_server_cmd_missing_sdk():
     """Test mcp-server command when MCP SDK is not installed."""
     runner = CliRunner()

@@ -74,7 +74,7 @@ class TestFetchScorecard:
 
     @pytest.mark.asyncio
     async def test_cache_none_hit(self):
-        with patch("agent_bom.scorecard._scorecard_cache", {"bad/repo": None}):
+        with patch("agent_bom.scorecard._scorecard_failure_cache", {"bad/repo": ("scorecard_not_found", None)}):
             result = await fetch_scorecard("bad/repo")
             assert result is None
 
@@ -196,12 +196,43 @@ class TestEnrichPackagesWithScorecard:
             patch("agent_bom.scorecard.request_with_retry", return_value=mock_response) as mock_request,
             patch("agent_bom.scorecard._scorecard_cache", {}),
             patch("agent_bom.scorecard._scorecard_reason_cache", {}),
+            patch("agent_bom.scorecard._scorecard_failure_cache", {}),
             patch("agent_bom.scorecard._scorecard_cooldown_until", 0.0),
+            patch("agent_bom.scorecard._scorecard_cooldown_reason", None),
             patch("agent_bom.scorecard.time.monotonic", return_value=100.0),
         ):
             stats = await enrich_packages_with_scorecard_stats([pkg1, pkg2])
 
         assert stats.failed_packages == 2
+        assert stats.transient_failed_packages == 2
+        assert stats.persistent_failed_packages == 0
         assert mock_request.call_count == 1
         assert pkg1.scorecard_lookup_reason == "scorecard_rate_limited"
-        assert pkg2.scorecard_lookup_reason == "scorecard_service_unavailable"
+        assert pkg2.scorecard_lookup_reason == "scorecard_rate_limited"
+        assert stats.failed_reasons["scorecard_rate_limited"] == 2
+
+    @pytest.mark.asyncio
+    async def test_access_denied_is_classified_persistent(self):
+        from agent_bom.models import Package
+
+        pkg = Package(name="express", version="4.18.2", ecosystem="npm", homepage="https://github.com/expressjs/express")
+        mock_response = MagicMock()
+        mock_response.status_code = 403
+        mock_response.headers = {}
+
+        with (
+            patch("agent_bom.scorecard.create_client"),
+            patch("agent_bom.scorecard.request_with_retry", return_value=mock_response),
+            patch("agent_bom.scorecard._scorecard_cache", {}),
+            patch("agent_bom.scorecard._scorecard_reason_cache", {}),
+            patch("agent_bom.scorecard._scorecard_failure_cache", {}),
+            patch("agent_bom.scorecard._scorecard_cooldown_until", 0.0),
+            patch("agent_bom.scorecard._scorecard_cooldown_reason", None),
+        ):
+            stats = await enrich_packages_with_scorecard_stats([pkg])
+
+        assert stats.failed_packages == 1
+        assert stats.transient_failed_packages == 0
+        assert stats.persistent_failed_packages == 1
+        assert pkg.scorecard_lookup_reason == "scorecard_access_denied"
+        assert stats.failed_reasons["scorecard_access_denied"] == 1

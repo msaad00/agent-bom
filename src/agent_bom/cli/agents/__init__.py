@@ -1287,10 +1287,16 @@ def scan(
                     elif sc_stats.eligible_packages == 0:
                         con.print("  [dim]  Scorecard: no packages with resolvable GitHub repos[/dim]")
                     else:
+                        detail = []
+                        if getattr(sc_stats, "transient_failed_packages", 0):
+                            detail.append(f"{sc_stats.transient_failed_packages} transient")
+                        if getattr(sc_stats, "persistent_failed_packages", 0):
+                            detail.append(f"{sc_stats.persistent_failed_packages} persistent")
+                        failure_detail = ", ".join(detail) if detail else f"{sc_stats.failed_packages} lookup failures"
                         con.print(
                             "  [yellow]⚠[/yellow] "
                             f"Scorecard: 0/{sc_stats.eligible_packages} eligible package(s) enriched "
-                            f"({sc_stats.failed_packages} lookup failures)"
+                            f"({failure_detail})"
                         )
                 except Exception as exc:
                     con.print(f"  [yellow]⚠[/yellow] Scorecard enrichment failed: {exc}")

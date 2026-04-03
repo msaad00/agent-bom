@@ -28,7 +28,9 @@ SCORECARD_API_URL = "https://api.securityscorecards.dev/projects"
 # Cache: repo_url -> scorecard data (or None for miss)
 _scorecard_cache: dict[str, Optional[dict]] = {}
 _scorecard_reason_cache: dict[str, Optional[str]] = {}
+_scorecard_failure_cache: dict[str, tuple[str, float | None]] = {}
 _scorecard_cooldown_until: float = 0.0
+_scorecard_cooldown_reason: str | None = None
 
 # Pattern to extract GitHub owner/repo from various URL formats
 _GITHUB_REPO_PATTERN = re.compile(r"(?:https?://)?github\.com/([^/]+/[^/#?]+?)(?:\.git)?(?:[/#?]|$)")
@@ -45,8 +47,11 @@ class ScorecardEnrichmentStats:
     enriched_packages: int = 0
     unresolved_packages: int = 0
     failed_packages: int = 0
+    transient_failed_packages: int = 0
+    persistent_failed_packages: int = 0
+    failed_reasons: dict[str, int] | None = None
 
-    def to_dict(self) -> dict[str, int]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "total_packages": self.total_packages,
             "unique_packages": self.unique_packages,
@@ -55,7 +60,38 @@ class ScorecardEnrichmentStats:
             "enriched_packages": self.enriched_packages,
             "unresolved_packages": self.unresolved_packages,
             "failed_packages": self.failed_packages,
+            "transient_failed_packages": self.transient_failed_packages,
+            "persistent_failed_packages": self.persistent_failed_packages,
+            "failed_reasons": dict(self.failed_reasons or {}),
         }
+
+
+_TRANSIENT_SCORECARD_REASONS = {
+    "scorecard_rate_limited",
+    "scorecard_service_unavailable",
+}
+
+
+def _is_transient_scorecard_reason(reason: str | None) -> bool:
+    return bool(reason and reason in _TRANSIENT_SCORECARD_REASONS)
+
+
+def _remember_scorecard_failure(repo: str, reason: str, ttl_seconds: float | None) -> None:
+    expires_at = time.monotonic() + ttl_seconds if ttl_seconds else None
+    _scorecard_failure_cache[repo] = (reason, expires_at)
+    _scorecard_reason_cache[repo] = reason
+
+
+def _cached_scorecard_failure_reason(repo: str) -> str | None:
+    cached = _scorecard_failure_cache.get(repo)
+    if not cached:
+        return None
+    reason, expires_at = cached
+    if expires_at is not None and time.monotonic() >= expires_at:
+        _scorecard_failure_cache.pop(repo, None)
+        return None
+    _scorecard_reason_cache[repo] = reason
+    return reason
 
 
 def extract_github_repo(url: str) -> Optional[str]:
@@ -112,19 +148,22 @@ async def fetch_scorecard(repo: str) -> Optional[dict]:
         Scorecard data dict with 'score' and 'checks', or None.
     """
     # Validate repo format to prevent SSRF via path manipulation
-    global _scorecard_cooldown_until
+    global _scorecard_cooldown_reason, _scorecard_cooldown_until
 
     if not _SAFE_REPO_PATTERN.match(repo):
-        _scorecard_reason_cache[repo] = "invalid_repo"
+        _remember_scorecard_failure(repo, "invalid_repo", None)
         return None
 
     if repo in _scorecard_cache:
         return _scorecard_cache[repo]
 
+    cached_reason = _cached_scorecard_failure_reason(repo)
+    if cached_reason:
+        return None
+
     if time.monotonic() < _scorecard_cooldown_until:
-        reason = "scorecard_service_unavailable"
-        _scorecard_cache[repo] = None
-        _scorecard_reason_cache[repo] = reason
+        reason = _scorecard_cooldown_reason or "scorecard_service_unavailable"
+        _remember_scorecard_failure(repo, reason, max(_scorecard_cooldown_until - time.monotonic(), 1.0))
         return None
 
     async with create_client(timeout=15.0) as client:
@@ -141,21 +180,22 @@ async def fetch_scorecard(repo: str) -> Optional[dict]:
                     "checks": {check["name"]: check.get("score", -1) for check in data.get("checks", [])},
                 }
                 _scorecard_cache[repo] = result
+                _scorecard_failure_cache.pop(repo, None)
                 _scorecard_reason_cache[repo] = None
                 return result
             except (ValueError, KeyError) as exc:
                 safe_repo = repo.replace("\n", "").replace("\r", "")
                 safe_exc = str(exc).replace("\n", "\\n").replace("\r", "\\r")
                 logger.debug("Scorecard parse error for %s: %s", safe_repo, safe_exc)
-                reason = "scorecard_parse_error"
-                _scorecard_cache[repo] = None
-                _scorecard_reason_cache[repo] = reason
+                _remember_scorecard_failure(repo, "scorecard_parse_error", None)
                 return None
 
         if response is None:
             reason = "scorecard_service_unavailable"
         elif response.status_code == 404:
             reason = "scorecard_not_found"
+        elif response.status_code in (401, 403):
+            reason = "scorecard_access_denied"
         elif response.status_code == 429:
             retry_after = response.headers.get("Retry-After")
             try:
@@ -163,21 +203,40 @@ async def fetch_scorecard(repo: str) -> Optional[dict]:
             except ValueError:
                 cooldown = 120.0
             _scorecard_cooldown_until = max(_scorecard_cooldown_until, time.monotonic() + cooldown)
+            _scorecard_cooldown_reason = "scorecard_rate_limited"
             reason = "scorecard_rate_limited"
         elif response.status_code >= 500:
             _scorecard_cooldown_until = max(_scorecard_cooldown_until, time.monotonic() + 60.0)
+            _scorecard_cooldown_reason = "scorecard_service_unavailable"
             reason = "scorecard_service_unavailable"
         else:
             reason = "scorecard_lookup_failed"
 
-        _scorecard_cache[repo] = None
-        _scorecard_reason_cache[repo] = reason
+        if reason == "scorecard_not_found":
+            _remember_scorecard_failure(repo, reason, None)
+        elif reason == "scorecard_access_denied":
+            _remember_scorecard_failure(repo, reason, 900.0)
+        elif _is_transient_scorecard_reason(reason):
+            if response is None:
+                _scorecard_cooldown_until = max(_scorecard_cooldown_until, time.monotonic() + 60.0)
+                _scorecard_cooldown_reason = reason
+                ttl = 60.0
+            elif reason == "scorecard_rate_limited":
+                ttl = max(_scorecard_cooldown_until - time.monotonic(), 1.0)
+            elif reason == "scorecard_service_unavailable":
+                ttl = max(_scorecard_cooldown_until - time.monotonic(), 1.0)
+            else:
+                ttl = 60.0
+            _remember_scorecard_failure(repo, reason, ttl)
+        else:
+            _remember_scorecard_failure(repo, reason, 300.0)
         return None
 
 
 def summarize_scorecard_coverage(packages: list[Package]) -> ScorecardEnrichmentStats:
     """Summarize Scorecard coverage using current package metadata/state."""
     stats = ScorecardEnrichmentStats(total_packages=len(packages))
+    stats.failed_reasons = {}
     seen_keys: set[str] = set()
 
     for pkg in packages:
@@ -196,6 +255,12 @@ def summarize_scorecard_coverage(packages: list[Package]) -> ScorecardEnrichment
             stats.enriched_packages += 1
         elif pkg.scorecard_lookup_state == "failed":
             stats.failed_packages += 1
+            reason = pkg.scorecard_lookup_reason or "scorecard_lookup_failed"
+            stats.failed_reasons[reason] = stats.failed_reasons.get(reason, 0) + 1
+            if _is_transient_scorecard_reason(reason):
+                stats.transient_failed_packages += 1
+            else:
+                stats.persistent_failed_packages += 1
         elif pkg.scorecard_lookup_state == "unresolved" or not repo:
             stats.unresolved_packages += 1
         elif pkg.scorecard_score is not None:
@@ -211,6 +276,7 @@ def summarize_scorecard_coverage(packages: list[Package]) -> ScorecardEnrichment
 async def enrich_packages_with_scorecard_stats(packages: list[Package]) -> ScorecardEnrichmentStats:
     """Enrich packages with OpenSSF Scorecard and return coverage stats."""
     stats = ScorecardEnrichmentStats(total_packages=len(packages))
+    stats.failed_reasons = {}
     grouped: dict[str, list[Package]] = {}
 
     for pkg in packages:
@@ -243,10 +309,16 @@ async def enrich_packages_with_scorecard_stats(packages: list[Package]) -> Score
                 pkg.scorecard_lookup_reason = None
         else:
             stats.failed_packages += 1
+            reason = _scorecard_reason_cache.get(repo) or "scorecard_lookup_failed"
+            stats.failed_reasons[reason] = stats.failed_reasons.get(reason, 0) + 1
+            if _is_transient_scorecard_reason(reason):
+                stats.transient_failed_packages += 1
+            else:
+                stats.persistent_failed_packages += 1
             for pkg in group:
                 pkg.scorecard_repo = repo
                 pkg.scorecard_lookup_state = "failed"
-                pkg.scorecard_lookup_reason = _scorecard_reason_cache.get(repo) or "scorecard_lookup_failed"
+                pkg.scorecard_lookup_reason = reason
 
     return stats
 

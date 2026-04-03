@@ -736,6 +736,9 @@ class TestJSONOutputIntegration:
         summary = result["scorecard_summary"]
         assert summary["eligible_packages"] == 1
         assert summary["failed_packages"] == 1
+        assert summary["persistent_failed_packages"] == 1
+        assert summary["transient_failed_packages"] == 0
+        assert summary["failed_reasons"]["scorecard_lookup_failed"] == 1
 
     def test_posture_supply_chain_detail_explains_scorecard_coverage_state(self):
         """Posture details should explain when Scorecard coverage is pending, not hide behind a neutral default."""
@@ -765,6 +768,26 @@ class TestJSONOutputIntegration:
         dim = sc.dimensions["supply_chain_quality"]
         assert dim.score == 100.0
         assert "temporarily unavailable upstream" in dim.details.lower()
+
+    def test_to_json_includes_transient_scorecard_failure_breakdown(self):
+        """Structured output should distinguish transient Scorecard failures."""
+        from agent_bom.output import to_json
+
+        pkg = _make_package()
+        pkg.homepage = "https://github.com/example/repo"
+        pkg.scorecard_lookup_state = "failed"
+        pkg.scorecard_lookup_reason = "scorecard_rate_limited"
+        server = _make_server(packages=[pkg])
+        agent = _make_agent(servers=[server])
+        report = _make_report(agents=[agent])
+
+        result = to_json(report)
+        summary = result["scorecard_summary"]
+
+        assert summary["failed_packages"] == 1
+        assert summary["transient_failed_packages"] == 1
+        assert summary["persistent_failed_packages"] == 0
+        assert summary["failed_reasons"]["scorecard_rate_limited"] == 1
 
     def test_to_json_incident_with_agents(self):
         """to_json incidents should list agents with vulns."""

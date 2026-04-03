@@ -25,6 +25,14 @@ services:
       - AWS_REGION=${AWS_REGION:-us-east-1}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      # Enterprise network / trust settings
+      - HTTP_PROXY=${HTTP_PROXY:-}
+      - HTTPS_PROXY=${HTTPS_PROXY:-}
+      - NO_PROXY=${NO_PROXY:-}
+      - SSL_CERT_FILE=${SSL_CERT_FILE:-}
+      - REQUESTS_CA_BUNDLE=${REQUESTS_CA_BUNDLE:-}
+      - CURL_CA_BUNDLE=${CURL_CA_BUNDLE:-}
+      - PIP_CERT=${PIP_CERT:-}
     volumes:
       # Mount local config directories (read-only)
       # macOS/Linux: ~/.config, ~/.claude

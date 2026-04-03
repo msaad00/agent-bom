@@ -206,6 +206,51 @@ def test_health_endpoint_fields():
     assert card["name"] == "agent-bom"
 
 
+def test_dockerfiles_support_proxy_and_ca_contract():
+    """Maintained Docker images should support standard proxy and CA env vars."""
+    dockerfiles = [
+        ROOT / "Dockerfile",
+        ROOT / "deploy" / "docker" / "Dockerfile.mcp",
+        ROOT / "deploy" / "docker" / "Dockerfile.sse",
+        ROOT / "deploy" / "docker" / "Dockerfile.runtime",
+    ]
+    required_tokens = [
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "NO_PROXY",
+        "SSL_CERT_FILE",
+        "REQUESTS_CA_BUNDLE",
+        "CURL_CA_BUNDLE",
+        "PIP_CERT",
+        "ca-certificates",
+    ]
+    for dockerfile in dockerfiles:
+        content = dockerfile.read_text()
+        for token in required_tokens:
+            assert token in content, f"{dockerfile.name} missing {token}"
+
+
+def test_compose_examples_pass_through_proxy_and_ca_env():
+    """Compose examples should expose the same enterprise network env contract."""
+    compose_files = [
+        ROOT / "deploy" / "docker-compose.yml",
+        ROOT / "deploy" / "docker-compose.runtime.yml",
+    ]
+    required_tokens = [
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "NO_PROXY",
+        "SSL_CERT_FILE",
+        "REQUESTS_CA_BUNDLE",
+        "CURL_CA_BUNDLE",
+        "PIP_CERT",
+    ]
+    for compose_file in compose_files:
+        content = compose_file.read_text()
+        for token in required_tokens:
+            assert token in content, f"{compose_file.name} missing {token}"
+
+
 # ---------------------------------------------------------------------------
 # CLI help text
 # ---------------------------------------------------------------------------

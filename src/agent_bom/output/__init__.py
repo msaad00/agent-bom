@@ -85,7 +85,59 @@ def print_summary(report: AIBOMReport) -> None:
         if keys:
             table.add_row("Hardcoded API keys", f"[red]{keys}[/red]")
 
+    perf = report.scan_performance_data or {}
+    osv = perf.get("osv") or {}
+    registry = perf.get("registry") or {}
+    if osv:
+        hit_rate = osv.get("cache_hit_rate_pct")
+        osv_label = f"{osv.get('cache_hits', 0)} hit / {osv.get('cache_misses', 0)} miss"
+        if hit_rate is not None:
+            osv_label += f" ({hit_rate}% hit rate)"
+        table.add_row("OSV cache", osv_label)
+    if registry:
+        reg_label = f"{registry.get('cache_hits', 0)} hit / {registry.get('cache_misses', 0)} miss"
+        reg_rate = registry.get("cache_hit_rate_pct")
+        if reg_rate is not None:
+            reg_label += f" ({reg_rate}% hit rate)"
+        table.add_row("Registry cache", reg_label)
+
     console.print(table)
+
+
+def print_scan_performance_summary(report: AIBOMReport) -> None:
+    """Print a compact cache/performance summary when available."""
+    perf = report.scan_performance_data or {}
+    osv = perf.get("osv") or {}
+    registry = perf.get("registry") or {}
+    if not osv and not registry:
+        return
+
+    lines: list[str] = []
+    if osv:
+        osv_line = (
+            f"OSV cache {osv.get('cache_hits', 0)} hit / {osv.get('cache_misses', 0)} miss"
+            f" · {osv.get('packages_queried', 0)} package lookup(s)"
+        )
+        hit_rate = osv.get("cache_hit_rate_pct")
+        if hit_rate is not None:
+            osv_line += f" · {hit_rate}% hit rate"
+        if osv.get("lookup_errors", 0):
+            osv_line += f" · {osv.get('lookup_errors', 0)} lookup error(s)"
+        lines.append(osv_line)
+    if registry:
+        reg_line = (
+            f"Registry cache {registry.get('cache_hits', 0)} hit / {registry.get('cache_misses', 0)} miss"
+            f" · {registry.get('network_requests', 0)} network request(s)"
+        )
+        reg_rate = registry.get("cache_hit_rate_pct")
+        if reg_rate is not None:
+            reg_line += f" · {reg_rate}% hit rate"
+        if registry.get("npm_rate_limit_short_circuits", 0):
+            reg_line += f" · {registry.get('npm_rate_limit_short_circuits', 0)} npm cooldown skip(s)"
+        lines.append(reg_line)
+    console.print("\n[dim]Cache & lookup reuse[/dim]")
+    for line in lines:
+        console.print(f"  [dim]{line}[/dim]")
 
 
 def print_posture_summary(report: AIBOMReport) -> None:

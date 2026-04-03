@@ -28,6 +28,7 @@ from agent_bom.output import (
     print_export_hint,
     print_policy_results,
     print_posture_summary,
+    print_scan_performance_summary,
     print_severity_chart,
     print_summary,
     print_threat_frameworks,
@@ -134,6 +135,24 @@ class TestPrintSummary:
         agent = _make_agent(servers=[_make_server()])
         report = _make_report(agents=[agent])
         print_summary(report)
+
+    def test_with_scan_performance_data(self, capsys):
+        report = _make_report()
+        report.scan_performance_data = {
+            "osv": {"cache_hits": 3, "cache_misses": 1, "cache_hit_rate_pct": 75},
+            "registry": {"cache_hits": 4, "cache_misses": 2, "cache_hit_rate_pct": 67},
+        }
+        print_summary(report)
+
+
+class TestPrintScanPerformanceSummary:
+    def test_prints_cache_summary(self, capsys):
+        report = _make_report()
+        report.scan_performance_data = {
+            "osv": {"cache_hits": 3, "cache_misses": 1, "packages_queried": 2, "cache_hit_rate_pct": 75, "lookup_errors": 0},
+            "registry": {"cache_hits": 4, "cache_misses": 2, "network_requests": 2, "cache_hit_rate_pct": 67},
+        }
+        print_scan_performance_summary(report)
 
 
 # ── print_posture_summary ────────────────────────────────────────────────────

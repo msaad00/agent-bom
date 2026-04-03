@@ -716,6 +716,8 @@ def to_json(report: AIBOMReport) -> dict:
 
     if report.runtime_correlation:
         result["runtime_correlation"] = report.runtime_correlation
+    if report.scan_performance_data:
+        result["scan_performance"] = report.scan_performance_data
     if report.runtime_session_graph:
         result["runtime_session_graph"] = report.runtime_session_graph
     if mcp_runtime_diff:

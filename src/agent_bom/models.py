@@ -749,6 +749,7 @@ class AIBOMReport:
     gpu_infra_data: Optional[dict] = None  # Serialized GPU/AI compute infra scan results
     iac_findings_data: Optional[dict] = None  # Serialized IaC misconfiguration findings (set by CLI)
     runtime_correlation: Optional[dict] = None  # Runtime ↔ scan correlation (proxy audit vs CVE findings)
+    scan_performance_data: Optional[dict] = None  # Cache coverage / scan latency metadata
     training_pipelines: Optional[dict] = None  # Serialized TrainingPipelineScanResult
     dataset_cards: Optional[dict] = None  # Serialized DatasetScanResult
     serving_configs: Optional[list] = None  # Serialized ServingConfig list

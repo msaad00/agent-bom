@@ -280,6 +280,18 @@ class TestJSON:
         assert nested_pkg["vulnerability_count"] == 2
         assert len(nested_pkg["vulnerabilities"]) == 2
 
+    def test_scan_performance_passthrough_present(self):
+        report = _make_report()
+        report.scan_performance_data = {
+            "osv": {"cache_hits": 5, "cache_misses": 2, "cache_hit_rate_pct": 71},
+            "registry": {"cache_hits": 4, "cache_misses": 1, "cache_hit_rate_pct": 80},
+        }
+
+        result = to_json(report)
+
+        assert result["scan_performance"]["osv"]["cache_hits"] == 5
+        assert result["scan_performance"]["registry"]["cache_hit_rate_pct"] == 80
+
 
 def test_json_runtime_session_graph_passthrough():
     report = _make_report()

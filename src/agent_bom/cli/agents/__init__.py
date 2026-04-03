@@ -64,8 +64,9 @@ from agent_bom.output import (
     to_spdx,
 )
 from agent_bom.parsers import extract_packages
+from agent_bom.resolver import consume_performance_stats as consume_resolution_performance
 from agent_bom.resolver import resolve_all_versions_sync
-from agent_bom.scanners import IncompleteScanError, consume_scan_warnings, scan_agents_sync
+from agent_bom.scanners import IncompleteScanError, consume_scan_performance, consume_scan_warnings, scan_agents_sync
 
 
 def _build_self_scan_inventory() -> dict[str, list[dict[str, object]]]:
@@ -710,6 +711,14 @@ def scan(
 
     # Create shared context object
     ctx = ScanContext(con=con)
+    try:
+        from agent_bom.resolver import reset_performance_stats as _reset_resolver_performance
+        from agent_bom.scanners import reset_scan_performance as _reset_scan_performance
+
+        _reset_resolver_performance()
+        _reset_scan_performance()
+    except Exception:
+        pass
 
     # Compute any_cloud for early no-agent check in _discovery
     any_cloud = (
@@ -1429,6 +1438,35 @@ def scan(
         scan_sources=_scan_sources,
         scan_id=_scan_id,
     )
+    _resolver_perf = consume_resolution_performance()
+    _scan_perf = consume_scan_performance()
+    _scan_perf_data = {
+        "osv": {
+            "packages_seen": _scan_perf.get("packages_seen", 0),
+            "packages_deduplicated": _scan_perf.get("packages_deduplicated", 0),
+            "cache_hits": _scan_perf.get("osv_cache_hits", 0),
+            "cache_hits_with_vulns": _scan_perf.get("osv_cache_hits_with_vulns", 0),
+            "cache_hits_clean": _scan_perf.get("osv_cache_hits_clean", 0),
+            "cache_misses": _scan_perf.get("osv_cache_misses", 0),
+            "packages_queried": _scan_perf.get("osv_packages_queried", 0),
+            "queries_sent": _scan_perf.get("osv_queries_sent", 0),
+            "batches": _scan_perf.get("osv_batches", 0),
+            "lookup_errors": _scan_perf.get("osv_lookup_errors", 0),
+            "offline_skips": _scan_perf.get("offline_skips", 0),
+            "skipped_unresolvable_versions": _scan_perf.get("skipped_unresolvable_versions", 0),
+            "skipped_non_osv_ecosystems": _scan_perf.get("skipped_non_osv_ecosystems", 0),
+            "cache_hit_rate_pct": _scan_perf.get("osv_cache_hit_rate_pct", 0),
+        },
+        "registry": _resolver_perf.get("registry_metadata", {}),
+        "version_resolution": _resolver_perf.get("version_resolution", {}),
+        "license_enrichment": _resolver_perf.get("license_enrichment", {}),
+        "supply_chain_enrichment": _resolver_perf.get("supply_chain_enrichment", {}),
+    }
+    if any(
+        isinstance(section, dict) and any(int(v) > 0 for v in section.values() if isinstance(v, int))
+        for section in _scan_perf_data.values()
+    ):
+        report.scan_performance_data = _scan_perf_data
 
     # Attach skill/trust/prompt/enforcement data from context
     if ctx.skill_audit_data:

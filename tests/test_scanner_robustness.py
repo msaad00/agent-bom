@@ -190,6 +190,32 @@ class TestBatchSizeConfig:
         importlib.reload(agent_bom.config)
 
 
+class TestScanPerformance:
+    @pytest.mark.asyncio
+    async def test_query_osv_batch_tracks_cache_hit_stats(self, tmp_path):
+        from unittest.mock import AsyncMock, patch
+
+        from agent_bom.models import Package
+        from agent_bom.scan_cache import ScanCache
+        from agent_bom.scanners import consume_scan_performance, query_osv_batch, reset_scan_performance
+
+        cache = ScanCache(db_path=tmp_path / "scan-cache.db", ttl_seconds=3600)
+        cache.put("npm", "lodash", "4.17.20", [{"id": "GHSA-123"}])
+        reset_scan_performance()
+
+        with (
+            patch("agent_bom.scanners._get_scan_cache", return_value=cache),
+            patch("agent_bom.scanners._enrich_results_if_needed", new_callable=AsyncMock, side_effect=lambda data: data),
+        ):
+            results = await query_osv_batch([Package(name="lodash", version="4.17.20", ecosystem="npm")])
+
+        perf = consume_scan_performance()
+        assert results["npm:lodash@4.17.20"][0]["id"] == "GHSA-123"
+        assert perf["osv_cache_hits"] == 1
+        assert perf["osv_cache_hits_with_vulns"] == 1
+        assert perf["osv_cache_misses"] == 0
+
+
 # ── Name Normalization in Scanner Pipeline ────────────────────────────────
 
 

@@ -33,6 +33,7 @@ from agent_bom.output import (
     print_export_hint,
     print_posture_summary,
     print_remediation_plan,
+    print_scan_performance_summary,
     print_severity_chart,
     print_summary,
     print_threat_frameworks,
@@ -128,6 +129,7 @@ def render_output(
         if verbose:
             # Full output (--verbose)
             print_summary(report)
+            print_scan_performance_summary(report)
             print_posture_summary(report)
             if not no_tree:
                 print_agent_tree(report)
@@ -139,6 +141,7 @@ def render_output(
         else:
             # Compact output (default)
             print_compact_summary(report)
+            print_scan_performance_summary(report)
             print_compact_agents(report)
             print_compact_blast_radius(report, fixable_only=fixable_only)
 

@@ -13,8 +13,10 @@ from agent_bom.resolver import (
     _NPM_LATEST_CACHE,
     _PYPI_INFO_CACHE,
     _get_npm_latest_doc,
+    consume_performance_stats,
     enrich_licenses,
     enrich_supply_chain_metadata,
+    reset_performance_stats,
     resolve_all_versions,
     resolve_npm_metadata,
     resolve_npm_supply_chain,
@@ -28,12 +30,14 @@ from agent_bom.resolver import (
 def clear_registry_metadata_caches():
     _NPM_LATEST_CACHE.clear()
     _PYPI_INFO_CACHE.clear()
+    reset_performance_stats()
 
     resolver._NPM_RATE_LIMIT_UNTIL = 0.0
     resolver._NPM_RATE_LIMIT_HITS = 0
     yield
     _NPM_LATEST_CACHE.clear()
     _PYPI_INFO_CACHE.clear()
+    reset_performance_stats()
     resolver._NPM_RATE_LIMIT_UNTIL = 0.0
     resolver._NPM_RATE_LIMIT_HITS = 0
 
@@ -106,6 +110,21 @@ class TestResolveNpmMetadata:
         assert lic == "MIT"
         assert pkg.description == "Cached package"
         assert mock_request.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_registry_perf_tracks_cache_hits_and_misses(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"version": "1.2.3", "license": "MIT"}
+        with patch("agent_bom.resolver.request_with_retry", return_value=mock_response):
+            client = AsyncMock()
+            await _get_npm_latest_doc("cached", client)
+            await _get_npm_latest_doc("cached", client)
+
+        perf = consume_performance_stats()
+        assert perf["registry_metadata"]["cache_misses"] == 1
+        assert perf["registry_metadata"]["cache_hits"] == 1
+        assert perf["registry_metadata"]["network_requests"] == 1
 
 
 class TestResolvePypiMetadata:
@@ -392,6 +411,24 @@ class TestEnrichLicenses:
         count = await enrich_licenses([pkg], client)
         assert count == 0
 
+    @pytest.mark.asyncio
+    async def test_dedupes_duplicate_registry_license_lookups(self):
+        pkgs = [
+            Package(name="express", version="4.18.2", ecosystem="npm"),
+            Package(name="express", version="4.18.2", ecosystem="npm"),
+        ]
+        with patch("agent_bom.resolver.resolve_npm_metadata", return_value=(None, "MIT")) as mock_resolve:
+            client = AsyncMock()
+            count = await enrich_licenses(pkgs, client)
+
+        perf = consume_performance_stats()
+        assert count == 2
+        assert all(pkg.license == "MIT" for pkg in pkgs)
+        assert mock_resolve.call_count == 1
+        assert perf["license_enrichment"]["unique_lookups"] == 1
+        assert perf["license_enrichment"]["reused_entries"] == 1
+        assert perf["license_enrichment"]["enriched"] == 2
+
 
 class TestEnrichSupplyChainMetadata:
     @pytest.mark.asyncio
@@ -435,3 +472,28 @@ class TestEnrichSupplyChainMetadata:
         client = AsyncMock()
         count = await enrich_supply_chain_metadata([pkg], client)
         assert count == 0
+
+    @pytest.mark.asyncio
+    async def test_reuses_supply_chain_metadata_for_duplicate_packages(self):
+        pkgs = [
+            Package(name="requests", version="2.31.0", ecosystem="pypi"),
+            Package(name="requests", version="2.31.0", ecosystem="pypi"),
+        ]
+
+        async def fake_supply_chain(pkg, client):  # noqa: ARG001
+            pkg.description = "Python HTTP library"
+            pkg.homepage = "https://requests.readthedocs.io"
+            pkg.repository_url = "https://github.com/psf/requests"
+
+        with patch("agent_bom.resolver.resolve_pypi_supply_chain", side_effect=fake_supply_chain) as mock_supply:
+            client = AsyncMock()
+            count = await enrich_supply_chain_metadata(pkgs, client)
+
+        perf = consume_performance_stats()
+        assert count == 2
+        assert mock_supply.call_count == 1
+        assert all(pkg.description == "Python HTTP library" for pkg in pkgs)
+        assert all(pkg.repository_url == "https://github.com/psf/requests" for pkg in pkgs)
+        assert perf["supply_chain_enrichment"]["unique_lookups"] == 1
+        assert perf["supply_chain_enrichment"]["reused_entries"] == 1
+        assert perf["supply_chain_enrichment"]["enriched"] == 2

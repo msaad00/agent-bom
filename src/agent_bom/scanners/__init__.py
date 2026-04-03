@@ -54,6 +54,22 @@ _logger = logging.getLogger(__name__)
 # Also synced from http_client._OFFLINE for transport-layer enforcement.
 offline_mode: bool = False
 _scan_warnings: list[str] = []
+_SCAN_PERF_TEMPLATE = {
+    "packages_seen": 0,
+    "packages_deduplicated": 0,
+    "osv_cache_hits": 0,
+    "osv_cache_hits_with_vulns": 0,
+    "osv_cache_hits_clean": 0,
+    "osv_cache_misses": 0,
+    "osv_packages_queried": 0,
+    "osv_queries_sent": 0,
+    "osv_batches": 0,
+    "osv_lookup_errors": 0,
+    "offline_skips": 0,
+    "skipped_unresolvable_versions": 0,
+    "skipped_non_osv_ecosystems": 0,
+}
+_scan_performance: dict[str, int] = dict(_SCAN_PERF_TEMPLATE)
 
 
 class IncompleteScanError(RuntimeError):
@@ -76,6 +92,26 @@ def consume_scan_warnings() -> list[str]:
     warnings = list(_scan_warnings)
     _scan_warnings.clear()
     return warnings
+
+
+def reset_scan_performance() -> None:
+    """Clear accumulated performance counters for the next scan."""
+    _scan_performance.clear()
+    _scan_performance.update(_SCAN_PERF_TEMPLATE)
+
+
+def _bump_scan_perf(key: str, delta: int = 1) -> None:
+    _scan_performance[key] = int(_scan_performance.get(key, 0)) + delta
+
+
+def consume_scan_performance() -> dict[str, int]:
+    """Return and clear accumulated scan performance counters."""
+    snapshot = dict(_scan_performance)
+    reset_scan_performance()
+    total_cache = snapshot["osv_cache_hits"] + snapshot["osv_cache_misses"]
+    if total_cache:
+        snapshot["osv_cache_hit_rate_pct"] = int(round((snapshot["osv_cache_hits"] / total_cache) * 100))
+    return snapshot
 
 
 def set_offline_mode(value: bool) -> None:
@@ -655,6 +691,7 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
                     pkg.ecosystem,
                 )
             skipped_ecosystems[eco_key] = skipped_ecosystems.get(eco_key, 0) + 1
+            _bump_scan_perf("skipped_non_osv_ecosystems")
             continue
         if not pkg.version or pkg.version in ("unknown", "latest"):
             _logger.warning(
@@ -664,16 +701,22 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
                 pkg.version,
             )
             skipped_versions += 1
+            _bump_scan_perf("skipped_unresolvable_versions")
             continue
         norm_name = normalize_package_name(pkg.name, eco_key)
         cache_key_eco = eco_key if len(osv_ecosystems) == 1 else f"{eco_key}|{'|'.join(osv_ecosystems)}"
         if cache:
             cached = cache.get(cache_key_eco, norm_name, pkg.version)
             if cached is not None:
+                _bump_scan_perf("osv_cache_hits")
                 if cached:  # non-empty vuln list
                     key = f"{eco_key}:{norm_name}@{pkg.version}"
                     results[key] = cached
+                    _bump_scan_perf("osv_cache_hits_with_vulns")
+                else:
+                    _bump_scan_perf("osv_cache_hits_clean")
                 continue  # skip API call (cached hit or cached "clean")
+        _bump_scan_perf("osv_cache_misses")
         packages_to_query.append(pkg)
 
     if not packages_to_query:
@@ -719,6 +762,8 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
 
     if not queries:
         return await _enrich_results_if_needed(results)
+    _bump_scan_perf("osv_packages_queried", len(packages_to_query))
+    _bump_scan_perf("osv_queries_sent", len(queries))
 
     # Track which queried packages got vulns (to cache "clean" results too)
     queried_keys_with_vulns: set[str] = set()
@@ -734,11 +779,13 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
         _logger.info("Offline mode: skipping OSV batch query for %d packages", len(queries))
         console.print("  [yellow]⚠[/yellow] Offline mode — CVE scanning skipped. Use local DB or remove --offline.")
         record_scan_warning("offline mode skipped remote CVE lookups")
+        _bump_scan_perf("offline_skips", len(packages_to_query))
         return results
 
     async with _client_ctx as client:
         for batch_start in range(0, len(queries), batch_size):
             batch = queries[batch_start : batch_start + batch_size]
+            _bump_scan_perf("osv_batches")
 
             async with semaphore:
                 response = await request_with_retry(
@@ -851,6 +898,7 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
         parts = ", ".join(f"{eco}: {cnt}" for eco, cnt in sorted(skipped_ecosystems.items()))
         console.print(f"  [dim]Skipped {total_skipped_eco} packages not in OSV database ({parts})[/dim]")
     if _lookup_errors:
+        _bump_scan_perf("osv_lookup_errors", len(_lookup_errors))
         _logger.warning(
             "%d packages had CVE lookup errors — vulnerability detection may be incomplete",
             len(_lookup_errors),
@@ -1282,6 +1330,10 @@ async def scan_packages(packages: list[Package], *, resolve_transitive: bool = F
     original_count = len(packages)
     packages = deduplicate_packages(packages)
     deduped = original_count - len(packages)
+    reset_scan_performance()
+    _bump_scan_perf("packages_seen", original_count)
+    if deduped > 0:
+        _bump_scan_perf("packages_deduplicated", deduped)
     if deduped > 0:
         _logger.info("Deduplicated %d duplicate packages (kept %d unique)", deduped, len(packages))
 
@@ -1294,6 +1346,12 @@ async def scan_packages(packages: list[Package], *, resolve_transitive: bool = F
             pkg.name = normalize_package_name(pkg.name, pkg.ecosystem)
 
     reset_scan_warnings()
+    try:
+        from agent_bom.resolver import reset_performance_stats as _reset_resolver_performance
+
+        _reset_resolver_performance()
+    except Exception:  # noqa: BLE001
+        pass
 
     # ── Local version resolution (installed packages) ──────────────────────
     # Try resolving versions from locally installed packages FIRST.

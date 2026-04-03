@@ -153,6 +153,7 @@ runs:
       uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
       with:
         python-version: ${{ inputs.python-version }}
+        cache: pip
 
     - name: Cache agent-bom vulnerability database
       uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
@@ -226,6 +227,10 @@ runs:
           RESULT_FILE="agent-bom-results.sarif"
         fi
 
+        trim_arg() {
+          printf '%s' "$1" | xargs
+        }
+
         # Map scan-type to focused command
         #   scan  → agent-bom agents (full auto-detect, default)
         #   image → agent-bom image <ref>
@@ -242,10 +247,10 @@ runs:
               echo "::error::scan-type=image requires scan-ref (image reference) or image input"
               exit 1
             fi
-            ARGS="image $INPUT_SCAN_REF"
+            ARGS=(image "$INPUT_SCAN_REF")
             ;;
           fs)
-            ARGS="fs ${INPUT_SCAN_REF:-.}"
+            ARGS=(fs "${INPUT_SCAN_REF:-.}")
             ;;
           sbom)
             if [ -z "$INPUT_SCAN_REF" ] && [ -n "$INPUT_SBOM" ]; then
@@ -255,7 +260,7 @@ runs:
               echo "::error::scan-type=sbom requires scan-ref (SBOM file path) or sbom input"
               exit 1
             fi
-            ARGS="sbom $INPUT_SCAN_REF"
+            ARGS=(sbom "$INPUT_SCAN_REF")
             ;;
           iac)
             if [ -z "$INPUT_SCAN_REF" ] && [ -n "$INPUT_IAC" ]; then
@@ -265,26 +270,29 @@ runs:
               echo "::error::scan-type=iac requires scan-ref (IaC paths) or iac input"
               exit 1
             fi
-            ARGS="iac"
+            ARGS=(iac)
             IFS=',' read -ra IAC_REFS <<< "$INPUT_SCAN_REF"
             for p in "${IAC_REFS[@]}"; do
-              ARGS="$ARGS $(echo "$p" | xargs)"
+              p="$(trim_arg "$p")"
+              if [ -n "$p" ]; then
+                ARGS+=("$p")
+              fi
             done
             ;;
           secrets)
-            ARGS="secrets ${INPUT_SCAN_REF:-.}"
+            ARGS=(secrets "${INPUT_SCAN_REF:-.}")
             ;;
           code)
-            ARGS="code ${INPUT_SCAN_REF:-.}"
+            ARGS=(code "${INPUT_SCAN_REF:-.}")
             ;;
           agents)
-            ARGS="agents"
+            ARGS=(agents)
             ;;
           skills)
-            ARGS="skills scan ${INPUT_SCAN_REF:-.}"
+            ARGS=(skills scan "${INPUT_SCAN_REF:-.}")
             ;;
           scan|"")
-            ARGS="scan"
+            ARGS=(scan)
             ;;
           *)
             echo "::error::Unknown scan-type: $INPUT_SCAN_TYPE. Use: scan, image, fs, sbom, iac, secrets, code, agents, skills"
@@ -306,11 +314,11 @@ runs:
 
         # Output format
         if [ "$INPUT_FORMAT" = "sarif" ]; then
-          ARGS="$ARGS -f sarif -o $RESULT_FILE"
+          ARGS+=(-f sarif -o "$RESULT_FILE")
         elif [ -n "$INPUT_FORMAT" ]; then
-          ARGS="$ARGS -f $INPUT_FORMAT"
+          ARGS+=(-f "$INPUT_FORMAT")
           if [ -n "$INPUT_OUTPUT" ] || [ "$INPUT_SCAN_TYPE" = "skills" ]; then
-            ARGS="$ARGS -o $RESULT_FILE"
+            ARGS+=(-o "$RESULT_FILE")
           fi
         fi
 
@@ -319,72 +327,75 @@ runs:
         if [ "$INPUT_SCAN_TYPE" != "skills" ]; then
           # Severity gate
           if [ -n "$INPUT_SEVERITY" ]; then
-            ARGS="$ARGS --fail-on-severity $INPUT_SEVERITY"
+            ARGS+=(--fail-on-severity "$INPUT_SEVERITY")
           fi
 
           # Warn-on severity (non-blocking)
           if [ -n "$INPUT_WARN_ON" ]; then
-            ARGS="$ARGS --warn-on $INPUT_WARN_ON"
+            ARGS+=(--warn-on "$INPUT_WARN_ON")
           fi
 
           # Policy file
           if [ -n "$INPUT_POLICY" ]; then
-            ARGS="$ARGS --policy $INPUT_POLICY"
+            ARGS+=(--policy "$INPUT_POLICY")
           fi
 
           # Enrichment
           if [ "$INPUT_ENRICH" = "true" ]; then
-            ARGS="$ARGS --enrich"
+            ARGS+=(--enrich)
           fi
 
           # Auto-update vulnerability database
           if [ "$INPUT_AUTO_UPDATE_DB" = "true" ]; then
-            ARGS="$ARGS --auto-update-db"
+            ARGS+=(--auto-update-db)
           fi
 
           # KEV gate
           if [ "$INPUT_FAIL_ON_KEV" = "true" ]; then
-            ARGS="$ARGS --fail-on-kev"
+            ARGS+=(--fail-on-kev)
           fi
 
           # Docker image (skip if scan-type=image — already in command)
           if [ -n "$INPUT_IMAGE" ] && [ "$INPUT_SCAN_TYPE" != "image" ]; then
-            ARGS="$ARGS --image $INPUT_IMAGE"
+            ARGS+=(--image "$INPUT_IMAGE")
           fi
 
           # Config directory
           if [ -n "$INPUT_CONFIG_DIR" ]; then
-            ARGS="$ARGS --config-dir $INPUT_CONFIG_DIR"
+            ARGS+=(--config-dir "$INPUT_CONFIG_DIR")
           fi
 
           # Existing SBOM (skip if scan-type=sbom — already in command)
           if [ -n "$INPUT_SBOM" ] && [ "$INPUT_SCAN_TYPE" != "sbom" ]; then
-            ARGS="$ARGS --sbom $INPUT_SBOM"
+            ARGS+=(--sbom "$INPUT_SBOM")
           fi
 
           # Remediation plan
           if [ -n "$INPUT_REMEDIATE" ]; then
-            ARGS="$ARGS --remediate $INPUT_REMEDIATE"
+            ARGS+=(--remediate "$INPUT_REMEDIATE")
           fi
 
           # AI enrichment
           if [ "$INPUT_AI_ENRICH" = "true" ]; then
-            ARGS="$ARGS --ai-enrich"
+            ARGS+=(--ai-enrich)
             if [ -n "$INPUT_AI_MODEL" ]; then
-              ARGS="$ARGS --ai-model $INPUT_AI_MODEL"
+              ARGS+=(--ai-model "$INPUT_AI_MODEL")
             fi
           fi
 
           # Ignore file
           if [ -n "$INPUT_IGNORE_FILE" ]; then
-            ARGS="$ARGS --ignore-file $INPUT_IGNORE_FILE"
+            ARGS+=(--ignore-file "$INPUT_IGNORE_FILE")
           fi
 
           # IaC scanning paths (skip if scan-type=iac — already in command)
           if [ -n "$INPUT_IAC" ] && [ "$INPUT_SCAN_TYPE" != "iac" ]; then
             IFS=',' read -ra IAC_PATHS <<< "$INPUT_IAC"
             for p in "${IAC_PATHS[@]}"; do
-              ARGS="$ARGS --iac $(echo "$p" | xargs)"
+              p="$(trim_arg "$p")"
+              if [ -n "$p" ]; then
+                ARGS+=(--iac "$p")
+              fi
             done
           fi
 
@@ -392,24 +403,27 @@ runs:
           if [ -n "$INPUT_AI_INVENTORY" ]; then
             IFS=',' read -ra AI_PATHS <<< "$INPUT_AI_INVENTORY"
             for p in "${AI_PATHS[@]}"; do
-              ARGS="$ARGS --ai-inventory $(echo "$p" | xargs)"
+              p="$(trim_arg "$p")"
+              if [ -n "$p" ]; then
+                ARGS+=(--ai-inventory "$p")
+              fi
             done
           fi
 
           # OS package scanning
           if [ "$INPUT_OS_PACKAGES" = "true" ]; then
-            ARGS="$ARGS --os-packages"
+            ARGS+=(--os-packages)
           fi
 
           # Delta scanning baseline
           if [ -n "$INPUT_BASELINE" ]; then
-            ARGS="$ARGS --baseline $INPUT_BASELINE --delta-mode new-only"
+            ARGS+=(--baseline "$INPUT_BASELINE" --delta-mode new-only)
           fi
         fi
 
         # Skill-only mode
         if [ "$INPUT_SKILL_ONLY" = "true" ] && [ "$INPUT_SCAN_TYPE" != "skills" ]; then
-          ARGS="$ARGS --skill-only"
+          ARGS+=(--skill-only)
         fi
 
         # Skills verdict gate
@@ -419,7 +433,7 @@ runs:
             exit 1
           fi
           if [ "$INPUT_SCAN_TYPE" = "skills" ]; then
-            ARGS="$ARGS --fail-on-verdict $INPUT_FAIL_ON_VERDICT"
+            ARGS+=(--fail-on-verdict "$INPUT_FAIL_ON_VERDICT")
           else
             echo "::warning::fail-on-verdict only applies to scan-type=skills and will be ignored"
           fi
@@ -427,17 +441,17 @@ runs:
 
         # GPU infrastructure scanning
         if [ "$INPUT_GPU_SCAN" = "true" ]; then
-          ARGS="$ARGS --gpu-scan"
+          ARGS+=(--gpu-scan)
         fi
 
         # Exclude unfixable findings from SARIF output
         if [ "$INPUT_EXCLUDE_UNFIXABLE" = "true" ]; then
-          ARGS="$ARGS --exclude-unfixable"
+          ARGS+=(--exclude-unfixable)
         fi
 
         # Run scan, capture exit code
         set +e
-        agent-bom $ARGS
+        agent-bom "${ARGS[@]}"
         EXIT_CODE=$?
         set -e
 
@@ -489,6 +503,22 @@ runs:
         echo "exit_code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
         echo "vuln_count=$VULN_COUNT" >> "$GITHUB_OUTPUT"
         echo "badge_file=$BADGE_FILE" >> "$GITHUB_OUTPUT"
+
+        if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+          {
+            echo "## agent-bom scan summary"
+            echo
+            echo "- Scan type: ${INPUT_SCAN_TYPE:-scan}"
+            echo "- Exit code: ${EXIT_CODE}"
+            echo "- Findings: ${VULN_COUNT}"
+            if [ -n "$RESULT_FILE" ] && [ -f "$RESULT_FILE" ]; then
+              echo "- Output: ${RESULT_FILE}"
+            fi
+            if [ -n "$BADGE_FILE" ]; then
+              echo "- Badge: ${BADGE_FILE}"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+        fi
 
         exit $EXIT_CODE
 

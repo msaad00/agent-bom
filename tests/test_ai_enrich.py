@@ -681,6 +681,19 @@ def test_action_yml_composite():
     assert data["runs"]["using"] == "composite"
 
 
+def test_action_yml_enables_pip_cache():
+    """The composite action should enable pip caching via setup-python."""
+    from pathlib import Path
+
+    import yaml
+
+    action_path = Path(__file__).parent.parent / "action.yml"
+    data = yaml.safe_load(action_path.read_text())
+    steps = data["runs"]["steps"]
+    setup_python = next(step for step in steps if step.get("name") == "Set up Python")
+    assert setup_python["with"]["cache"] == "pip"
+
+
 def test_action_yml_skills_mode_skips_vulnerability_scan_flags():
     """Skills scan mode should not inherit package-scan-only CLI flags."""
     from pathlib import Path
@@ -690,7 +703,26 @@ def test_action_yml_skills_mode_skips_vulnerability_scan_flags():
     assert guard in action_text
     guarded_block = action_text.split(guard, 1)[1].split("# Skill-only mode", 1)[0]
     assert "--auto-update-db" in guarded_block
-    assert "--policy $INPUT_POLICY" in guarded_block
+    assert 'ARGS+=(--policy "$INPUT_POLICY")' in guarded_block
+
+
+def test_action_yml_uses_safe_argv_execution():
+    """The action should build argv arrays instead of shell-expanded command strings."""
+    from pathlib import Path
+
+    action_text = (Path(__file__).parent.parent / "action.yml").read_text()
+    assert "ARGS=(" in action_text
+    assert 'agent-bom "${ARGS[@]}"' in action_text
+    assert "agent-bom $ARGS" not in action_text
+
+
+def test_action_yml_writes_step_summary():
+    """The action should publish a concise GitHub step summary."""
+    from pathlib import Path
+
+    action_text = (Path(__file__).parent.parent / "action.yml").read_text()
+    assert "GITHUB_STEP_SUMMARY" in action_text
+    assert "## agent-bom scan summary" in action_text
 
 
 # ── Skill file AI analysis tests ────────────────────────────────────────────

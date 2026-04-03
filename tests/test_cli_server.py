@@ -78,10 +78,11 @@ def test_api_cmd_allows_non_loopback_bind_with_api_key():
     """API should allow non-loopback exposure when API key auth is configured."""
     runner = CliRunner()
 
-    with patch("uvicorn.run") as mock_run:
+    with patch("agent_bom.api.server.configure_api") as mock_configure, patch("uvicorn.run") as mock_run:
         result = runner.invoke(api_cmd, ["--host", "0.0.0.0", "--api-key", "test-key"])
 
     assert result.exit_code == 0
+    mock_configure.assert_called_once()
     mock_run.assert_called_once()
     assert "API key required" in result.output
 
@@ -102,10 +103,11 @@ def test_serve_cmd_configures_api_auth():
     """Serve should route through configure_api so dashboard and API stay aligned."""
     runner = CliRunner()
 
-    with patch("uvicorn.run") as mock_run:
+    with patch("agent_bom.api.server.configure_api") as mock_configure, patch("uvicorn.run") as mock_run:
         result = runner.invoke(serve_cmd, ["--api-key", "test-key"])
 
     assert result.exit_code == 0
+    mock_configure.assert_called_once()
     mock_run.assert_called_once()
     assert "API key required" in result.output
 

@@ -384,6 +384,9 @@ Resources:
    docker push <account>.registry.snowflakecomputing.com/agent_bom/public/agent_bom_repo/agent-bom:latest
    ```
 
+   Enterprise networks can use the same proxy and custom-CA contract as the other maintained images:
+   `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`, and `PIP_CERT`.
+
 3. **Deploy SiS dashboard** — upload `deploy/snowflake/streamlit_app.py` and `deploy/snowflake/environment.yml` via the Snowflake web UI (Streamlit > + Streamlit App).
 
 ### Authentication

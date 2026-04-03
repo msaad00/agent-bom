@@ -213,6 +213,7 @@ def test_dockerfiles_support_proxy_and_ca_contract():
         ROOT / "deploy" / "docker" / "Dockerfile.mcp",
         ROOT / "deploy" / "docker" / "Dockerfile.sse",
         ROOT / "deploy" / "docker" / "Dockerfile.runtime",
+        ROOT / "deploy" / "docker" / "Dockerfile.snowpark",
     ]
     required_tokens = [
         "HTTP_PROXY",

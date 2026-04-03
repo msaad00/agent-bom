@@ -70,6 +70,98 @@ describe('api.getScan', () => {
     expect(result.result?.summary?.total_agents).toBe(2)
   })
 
+  it('preserves richer scan contract fields from the backend', async () => {
+    const payload = {
+      job_id: 'job-2',
+      status: 'done',
+      created_at: '2024-01-01T00:00:00Z',
+      request: {},
+      progress: [],
+      result: {
+        agents: [],
+        blast_radius: [],
+        scorecard_summary: {
+          total_packages: 12,
+          unique_packages: 10,
+          eligible_packages: 5,
+          attempted_packages: 5,
+          enriched_packages: 3,
+          unresolved_packages: 2,
+          failed_packages: 2,
+          transient_failed_packages: 1,
+          persistent_failed_packages: 1,
+          failed_reasons: {
+            scorecard_rate_limited: 1,
+            scorecard_access_denied: 1,
+          },
+        },
+        scan_performance: {
+          pypi_cache_hits: 4,
+          pypi_cache_misses: 1,
+          osv_cache_hits: 6,
+        },
+        posture_scorecard: {
+          grade: 'B',
+          score: 78,
+          summary: 'Good posture overall.',
+          dimensions: {
+            supply_chain_quality: {
+              name: 'Supply Chain Quality',
+              score: 80,
+              weight: 0.15,
+              weighted_score: 12,
+              details: '3/5 packages enriched.',
+            },
+          },
+        },
+        remediation_plan: [
+          {
+            package: 'demo-pkg',
+            ecosystem: 'pypi',
+            current_version: '1.0.0',
+            fixed_version: null,
+            severity: 'high',
+            is_kev: false,
+            impact_score: 70,
+            priority: 1,
+            action: 'review',
+            reason: 'Only prerelease fixes were available and suppressed by default.',
+            command: null,
+            verify_command: null,
+            vulnerabilities: ['CVE-2026-0001'],
+            affected_agents: ['Claude Desktop'],
+            agents_pct: 100,
+            exposed_credentials: [],
+            credentials_pct: 0,
+            reachable_tools: ['filesystem'],
+            tools_pct: 100,
+            owasp_tags: ['LLM05'],
+            atlas_tags: ['AML.T0010'],
+            risk_narrative: 'Test narrative.',
+          },
+        ],
+        summary: {
+          total_agents: 1,
+          total_servers: 1,
+          total_packages: 12,
+          total_vulnerabilities: 1,
+          critical_findings: 0,
+          high_findings: 1,
+          medium_findings: 0,
+          low_findings: 0,
+        },
+      },
+    }
+
+    global.fetch = mockFetch(payload)
+    const result = await api.getScan('job-2')
+    expect(result.result?.scorecard_summary?.transient_failed_packages).toBe(1)
+    expect(result.result?.scorecard_summary?.failed_reasons?.scorecard_access_denied).toBe(1)
+    expect(result.result?.scan_performance?.osv_cache_hits).toBe(6)
+    expect(result.result?.posture_scorecard?.dimensions.supply_chain_quality.weighted_score).toBe(12)
+    expect(result.result?.remediation_plan?.[0].reason).toContain('prerelease')
+  })
+
   it('throws on error', async () => {
     global.fetch = mockFetch({}, false, 500)
     await expect(api.getScan('bad-id')).rejects.toThrow('500')

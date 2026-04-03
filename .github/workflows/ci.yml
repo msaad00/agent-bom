@@ -444,7 +444,7 @@ jobs:
         with:
           sbom: tests/fixtures/test-sbom.cdx.json
           badge: dogfood-badge.json
-          format: json
+          format: sarif
           install-from-source: 'true'
 
       - name: Verify badge output exists

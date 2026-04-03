@@ -17,7 +17,7 @@ metadata:
   source: https://github.com/msaad00/agent-bom
   pypi: https://pypi.org/project/agent-bom/
   scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
-  tests: 6040
+  tests: 7108
   install:
     pipx: agent-bom
     pip: agent-bom
@@ -29,7 +29,7 @@ metadata:
     credential_policy: "Zero credentials required. Registry data is bundled locally. No network calls needed."
     optional_env:
       - name: SNYK_TOKEN
-        purpose: "Snyk vulnerability enrichment for code_scan (optional)"
+        purpose: "Optional third-party vulnerability enrichment for code_scan (requires SNYK_TOKEN)"
         required: false
     optional_bins:
       - semgrep
@@ -47,7 +47,7 @@ metadata:
     file_writes: []
     network_endpoints:
       - url: "https://api.snyk.io"
-        purpose: "Snyk vulnerability enrichment for code_scan (requires SNYK_TOKEN)"
+        purpose: "Optional third-party vulnerability enrichment for code_scan (requires SNYK_TOKEN)"
         auth: true
     telemetry: false
     persistence: false

@@ -21,7 +21,7 @@ metadata:
   source: https://github.com/msaad00/agent-bom
   pypi: https://pypi.org/project/agent-bom/
   scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
-  tests: 6533
+  tests: 7108
   install:
     pipx: agent-bom
     pip: agent-bom
@@ -40,7 +40,7 @@ metadata:
       https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py#L159
     optional_env:
       - name: SNYK_TOKEN
-        purpose: "Snyk vulnerability enrichment for code_scan (optional)"
+        purpose: "Optional third-party vulnerability enrichment for code_scan (requires SNYK_TOKEN)"
         required: false
       - name: AWS_PROFILE
         purpose: "AWS CIS benchmark checks — uses boto3 with local AWS profile"
@@ -174,7 +174,7 @@ metadata:
         purpose: "GitHub Security Advisories — supplemental CVE lookup"
         auth: false
       - url: "https://api.snyk.io"
-        purpose: "Snyk vulnerability enrichment for code_scan (requires SNYK_TOKEN)"
+        purpose: "Optional third-party vulnerability enrichment for code_scan (requires SNYK_TOKEN)"
         auth: true
       - url: "https://*.amazonaws.com"
         purpose: "AWS CIS benchmark checks — read-only API calls (optional, user-initiated)"
@@ -226,7 +226,7 @@ agent-bom where             # show all discovery paths
   "mcpServers": {
     "agent-bom": {
       "command": "uvx",
-      "args": ["agent-bom", "mcp"]
+      "args": ["agent-bom", "mcp", "server"]
     }
   }
 }
@@ -245,7 +245,7 @@ agent-bom where             # show all discovery paths
 | [analyze](analyze/SKILL.md) | Blast radius, attack paths, context graph | "blast radius", "threat intel", "attack path" |
 | [troubleshoot](troubleshoot/SKILL.md) | Diagnostics, doctor, config validation | "doctor", "debug", "why failing", "validate config" |
 
-## Tools (33)
+## Tools
 
 ### Vulnerability Scanning
 | Tool | Description |

@@ -7,6 +7,37 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Next.js Insights page** (`/insights`) — SupplyChainTreemap, BlastRadiusRadial, PipelineFlow, EpssVsCvssChart, VulnTrendChart wired to real scan data; treemap cells are clickable and drill down to `/vulns`
+- **Gateway enforcement chart** — audit tab shows stacked bar of blocked/alerted/allowed actions per tool
+- **Governance findings chart** — stacked bar of finding severity by governance category
+- **Activity query chart** — bar chart of agent query pattern frequency
+- **Fleet lifecycle chart** — bar chart of agents by lifecycle state
+- **Jobs status donut** — pie chart summarising job queue by status
+- **`ui/components/empty-state.tsx`** — reusable `EmptyState` + `ErrorBanner` components used across pages
+- **Retry buttons** — Activity and Governance error states now include a Retry button
+- **SECURITY.md** expanded — response SLA, known limitations, API security model, disclosure timeline
+- **PR template** — added Related Issues, TypeScript check, breaking changes, checklist sections
+- **pre-commit hooks** — added `check-yaml`, `check-json`, `check-toml`, `end-of-file-fixer`, `trailing-whitespace`, `detect-private-key`, `check-merge-conflict`, `mixed-line-ending`
+- **`agent-bom mcp scan`** — focused MCP server package audit path for pre-install checks
+- **Compliance narrative CLI** — auditor-facing narrative export from saved scan reports via `agent-bom report compliance-narrative`
+
+### Fixed
+- **JSON report import** — file upload now validates size (10 MB), schema, prototype-pollution keys, and finite numeric values before use (`ui/lib/validators.ts`)
+- **`generated_at` TypeScript error** — `ScanResult` does not have `generated_at`; use `scan_timestamp` instead
+- **JetBrains claim** — removed from active integrations; filed as issue #412 for proper implementation
+- **`skills scan` path handling** — bundle identity now supports referenced files outside the primary file directory, fixing repo-local scans against shared security assets
+- **`check` ecosystem ambiguity** — pre-install checks now fail closed on genuinely ambiguous package names and use version-aware registry detection to avoid cross-registry false positives
+- **`skills scan --verbose`** — added parity with other CLI surfaces for easier debugging
+- **Runtime CLI warning noise** — async proxy tests now use async-aware mocks, removing unawaited coroutine warnings from that path
+
+### Security
+- **JSON file upload** — `ui/lib/validators.ts` guards against DoS via oversized files, prototype pollution, and schema-invalid payloads (no new npm dependencies)
+
+---
+
 ## [0.75.13] – 2026-04-01
 
 ### Added
@@ -251,43 +282,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - **CI self-scan gap**: added `agent-bom scan --os-packages` inside built Docker image to catch base-image CVEs (glibc, sqlite3, dpkg) that Docker Hub found but CI missed (#931)
 - **Alpine CI image**: pinned `python:3.12-alpine` by SHA256 digest (#929)
 - **Glama Dockerfile**: added missing HEALTHCHECK (#929)
-- **Container rescan**: weekly Trivy scan escalated from informational to exit-code 1 with warning annotation (#931)
+- **Container rescan**: weekly container image rescan escalated from informational to exit-code 1 with warning annotation (#931)
 - **action.yml**: shortened description to 91 chars (was 141, GitHub Marketplace truncates at 125) (#933)
 
 ### Added
 - **CMMC 2.0 in REST API**: wired 17 CMMC practices into `/v1/compliance` endpoint — 14 frameworks now accessible via API (#933)
 - **Sync HTTP client**: `create_sync_client()`, `sync_request_with_retry()`, `fetch_bytes()`, `fetch_json()` in `http_client.py` (#932)
-
-## [Unreleased]
-
-### Added
-- **Next.js Insights page** (`/insights`) — SupplyChainTreemap, BlastRadiusRadial, PipelineFlow, EpssVsCvssChart, VulnTrendChart wired to real scan data; treemap cells are clickable and drill down to `/vulns`
-- **Gateway enforcement chart** — audit tab shows stacked bar of blocked/alerted/allowed actions per tool
-- **Governance findings chart** — stacked bar of finding severity by governance category
-- **Activity query chart** — bar chart of agent query pattern frequency
-- **Fleet lifecycle chart** — bar chart of agents by lifecycle state
-- **Jobs status donut** — pie chart summarising job queue by status
-- **`ui/components/empty-state.tsx`** — reusable `EmptyState` + `ErrorBanner` components used across pages
-- **Retry buttons** — Activity and Governance error states now include a Retry button
-- **SECURITY.md** expanded — response SLA, known limitations, API security model, disclosure timeline
-- **PR template** — added Related Issues, TypeScript check, breaking changes, checklist sections
-- **pre-commit hooks** — added `check-yaml`, `check-json`, `check-toml`, `end-of-file-fixer`, `trailing-whitespace`, `detect-private-key`, `check-merge-conflict`, `mixed-line-ending`
-- **`agent-bom mcp scan`** — focused MCP server package audit path for pre-install checks
-- **Compliance narrative CLI** — auditor-facing narrative export from saved scan reports via `agent-bom report compliance-narrative`
-
-### Fixed
-- **JSON report import** — file upload now validates size (10 MB), schema, prototype-pollution keys, and finite numeric values before use (`ui/lib/validators.ts`)
-- **`generated_at` TypeScript error** — `ScanResult` does not have `generated_at`; use `scan_timestamp` instead
-- **JetBrains claim** — removed from active integrations; filed as issue #412 for proper implementation
-- **`skills scan` path handling** — bundle identity now supports referenced files outside the primary file directory, fixing repo-local scans against shared security assets
-- **`check` ecosystem ambiguity** — pre-install checks now fail closed on genuinely ambiguous package names and use version-aware registry detection to avoid cross-registry false positives
-- **`skills scan --verbose`** — added parity with other CLI surfaces for easier debugging
-- **Runtime CLI warning noise** — async proxy tests now use async-aware mocks, removing unawaited coroutine warnings from that path
-
-### Security
-- **JSON file upload** — `ui/lib/validators.ts` guards against DoS via oversized files, prototype pollution, and schema-invalid payloads (no new npm dependencies)
-
----
 
 ## [0.71.2] – 2026-03-16
 
@@ -320,7 +320,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - **Nebius pagination** — cursor-based pagination with `nextPageToken`/`next_page_token` wired into all 3 discovery functions
 - **Post-merge self-scan** — GitHub Actions workflow scans agent-bom with agent-bom on every merge; blocks release on critical CVE (#648)
 - **Two-tier severity gate** — `--warn-on` for CI warning gates, `--fail-on-severity` for hard failures (#625)
-- **Trivy/Grype/Syft ingestion** — import external scanner JSON output with blast radius enrichment (#624)
+- **External scanner JSON ingestion** — import supported scanner JSON output with blast radius enrichment (#624)
 - **Delta scanning** — `--delta` flag reports only new findings since last scan; exit code based on new-only (#630)
 - **Local embedded vulnerability database** — SQLite schema, OSV/EPSS/KEV sync, fast lookup (#631)
 - **Bun, NuGet (.NET), pip-compile parsers** (#660)
@@ -366,7 +366,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 - **Update notifications** — background daemon thread checks PyPI on startup, 24-hour file cache at `~/.cache/agent-bom/`, non-blocking notice shown on clean exit.
-- **Improved `--version` output** — shows Python version, platform, Syft/Grype install status.
+- **Improved `--version` output** — shows Python version, platform, and external scanner install status.
 - **Better first-run UX** — zero-config scan shows actionable quick-start commands.
 
 ### Changed
@@ -447,6 +447,16 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.75.13...HEAD
+[0.75.13]: https://github.com/msaad00/agent-bom/compare/v0.75.12...v0.75.13
+[0.75.12]: https://github.com/msaad00/agent-bom/compare/v0.75.0...v0.75.12
+[0.75.0]: https://github.com/msaad00/agent-bom/compare/v0.72.0...v0.75.0
+[0.72.0]: https://github.com/msaad00/agent-bom/compare/v0.71.4...v0.72.0
+[0.71.4]: https://github.com/msaad00/agent-bom/compare/v0.71.3...v0.71.4
+[0.71.3]: https://github.com/msaad00/agent-bom/compare/v0.71.2...v0.71.3
+[0.71.2]: https://github.com/msaad00/agent-bom/compare/v0.71.1...v0.71.2
+[0.71.1]: https://github.com/msaad00/agent-bom/compare/v0.70.4...v0.71.1
+[0.70.4]: https://github.com/msaad00/agent-bom/compare/v0.60.1...v0.70.4
 [0.60.1]: https://github.com/msaad00/agent-bom/compare/v0.60.0...v0.60.1
 [0.60.0]: https://github.com/msaad00/agent-bom/compare/v0.59.3...v0.60.0
 [0.59.3]: https://github.com/msaad00/agent-bom/compare/v0.59.2...v0.59.3

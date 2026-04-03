@@ -18,7 +18,7 @@ metadata:
   source: https://github.com/msaad00/agent-bom
   pypi: https://pypi.org/project/agent-bom/
   scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
-  tests: 6533
+  tests: 7108
   install:
     pipx: agent-bom
     pip: agent-bom
@@ -142,7 +142,7 @@ agent-bom where              # show all discovery paths
   "mcpServers": {
     "agent-bom": {
       "command": "uvx",
-      "args": ["agent-bom", "mcp"]
+      "args": ["agent-bom", "mcp", "server"]
     }
   }
 }

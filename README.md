@@ -247,6 +247,7 @@ Every finding is tagged with mapped control coverage across 14 surfaced complian
 | OWASP LLM Top 10 | 10 mapped categories |
 | OWASP MCP Top 10 | 10 mapped categories |
 | OWASP Agentic Top 10 | 10 mapped categories |
+| OWASP AISVS v1.0 | 9 mapped checks |
 | MITRE ATLAS | 65 mapped techniques |
 | NIST AI RMF 1.0 | 14 mapped subcategories |
 | NIST CSF 2.0 | 14 mapped categories |
@@ -281,7 +282,7 @@ docker run --rm agentbom/agent-bom agents    # Docker
 
 ### CI/CD in 60 seconds
 
-Use the GitHub Action when you want Trivy-style adoption: one step, one gate, SARIF in the Security tab, and a clean exit code for CI.
+Use the GitHub Action when you want a fast CI gate: one step, one gate, SARIF in the Security tab, and a clean exit code for CI.
 
 **Repo + MCP + instruction files**
 

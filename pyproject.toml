@@ -48,9 +48,7 @@ dependencies = [
     # nltk is not imported by agent-bom. Keeping it added 3 CVEs to Docker images.
     "pyjwt>=2.12.0",  # CVE-2026-32597 (crit header bypass) — transitive via auth
     "tornado>=6.5.5",  # CVE-2026-31958 (multipart DoS), GHSA-78cv-mqj4-43f7 (cookie injection) — transitive via streamlit
-    # NOTE: pyopenssl (transitive via snowflake[cloud] extra) — GHSA-68rp-wp8r-4726, GHSA-5pwr-322w-8jr4,
-    # GHSA-vp96-hxj8-p424 — all fixed in pyopenssl>=26.0.0, but snowflake-connector-python requires pyopenssl<26.0.0.
-    # Cannot upgrade until upstream drops that cap. Not exploitable: agent-bom does not use affected pyopenssl paths.
+    # NOTE: stale pyopenssl suppressions were retired after snowflake-connector-python moved to a compatible range.
     # Tracked: https://github.com/msaad00/agent-bom/issues/930
 ]
 

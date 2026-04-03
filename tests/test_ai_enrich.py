@@ -681,6 +681,18 @@ def test_action_yml_composite():
     assert data["runs"]["using"] == "composite"
 
 
+def test_action_yml_skills_mode_skips_vulnerability_scan_flags():
+    """Skills scan mode should not inherit package-scan-only CLI flags."""
+    from pathlib import Path
+
+    action_text = (Path(__file__).parent.parent / "action.yml").read_text()
+    guard = 'if [ "$INPUT_SCAN_TYPE" != "skills" ]; then'
+    assert guard in action_text
+    guarded_block = action_text.split(guard, 1)[1].split("# Skill-only mode", 1)[0]
+    assert "--auto-update-db" in guarded_block
+    assert "--policy $INPUT_POLICY" in guarded_block
+
+
 # ── Skill file AI analysis tests ────────────────────────────────────────────
 
 

@@ -33,6 +33,13 @@ services:
       - mcp-server
     environment:
       - AGENT_BOM_LOG=/var/log/agent-bom/audit.jsonl
+      - HTTP_PROXY=${HTTP_PROXY:-}
+      - HTTPS_PROXY=${HTTPS_PROXY:-}
+      - NO_PROXY=${NO_PROXY:-}
+      - SSL_CERT_FILE=${SSL_CERT_FILE:-}
+      - REQUESTS_CA_BUNDLE=${REQUESTS_CA_BUNDLE:-}
+      - CURL_CA_BUNDLE=${CURL_CA_BUNDLE:-}
+      - PIP_CERT=${PIP_CERT:-}
     volumes:
       # Audit log output (persisted on host)
       - ./audit-logs:/var/log/agent-bom

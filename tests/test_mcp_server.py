@@ -793,6 +793,16 @@ def test_resource_policy_template():
     assert "policy://template" in uris
 
 
+def test_resource_tool_metrics():
+    """metrics://tools resource should be discoverable."""
+    from agent_bom.mcp_server import create_mcp_server
+
+    server = create_mcp_server()
+    resources = _run(server.list_resources())
+    uris = [str(r.uri) for r in resources]
+    assert "metrics://tools" in uris
+
+
 # ── Robustness tests ────────────────────────────────────────────────────
 
 
@@ -804,6 +814,25 @@ def test_where_tool_returns_json():
     result = _call_tool(server, "where", {})
     assert "clients" in result
     assert "platform" in result
+
+
+@patch("agent_bom.mcp_server._run_scan_pipeline")
+def test_graph_export_uses_scan_pipeline_tuple_contract(mock_pipeline):
+    """graph_export should serialize nodes from the tuple-style scan pipeline result."""
+    from agent_bom.mcp_server import create_mcp_server
+    from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType, Vulnerability
+
+    vuln = Vulnerability(id="CVE-2026-0001", severity="HIGH", summary="test")
+    pkg = Package(name="requests", version="2.0.0", ecosystem="pypi", vulnerabilities=[vuln])
+    server_obj = MCPServer(name="filesystem", command="npx", args=[], env={}, transport=TransportType.STDIO, packages=[pkg])
+    agent = Agent(name="claude", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/test", mcp_servers=[server_obj])
+    mock_pipeline.return_value = ([agent], [], [], ["agent_discovery"])
+
+    server = create_mcp_server()
+    result = _call_tool(server, "graph_export", {"format": "json"})
+    assert result["nodes"]
+    assert any(node["kind"] == "agent" for node in result["nodes"])
+    assert any(edge["kind"] == "depends_on" for edge in result["edges"])
 
 
 def test_registry_cache_returns_same_instance():

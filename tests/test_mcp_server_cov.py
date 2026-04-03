@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from unittest.mock import patch
 
 import pytest
 
 from agent_bom.mcp_server import (
+    _execute_tool_async,
     _get_registry_data,
     _get_registry_data_raw,
+    _record_tool_metric,
+    _tool_metrics,
+    _tool_metrics_snapshot,
     _truncate_response,
     _validate_cve_id,
     _validate_ecosystem,
@@ -149,3 +154,27 @@ class TestCheckMcpSdk:
         with patch.dict("sys.modules", {"mcp": None}):
             with pytest.raises(ImportError, match="mcp SDK is required"):
                 _check_mcp_sdk()
+
+
+class TestToolMetrics:
+    def test_metrics_snapshot_summarizes_calls(self):
+        _tool_metrics.clear()
+        _record_tool_metric("scan", elapsed_ms=12, success=True)
+        _record_tool_metric("scan", elapsed_ms=20, success=False, error="boom")
+        snap = _tool_metrics_snapshot()
+        assert snap["summary"]["tool_count"] == 1
+        assert snap["summary"]["total_calls"] == 2
+        assert snap["summary"]["total_failures"] == 1
+        assert snap["tools"][0]["tool"] == "scan"
+        assert snap["tools"][0]["avg_elapsed_ms"] == 16.0
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_async_returns_timeout_payload(self):
+        async def _slow():
+            await asyncio.sleep(0.05)
+            return "ok"
+
+        result = await _execute_tool_async("slow_tool", _slow, timeout=0.001)
+        payload = json.loads(result)
+        assert payload["tool"] == "slow_tool"
+        assert payload["timed_out"] is True

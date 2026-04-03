@@ -137,8 +137,11 @@ outputs:
     description: 'Path to generated SARIF file (if format=sarif).'
     value: ${{ steps.scan.outputs.sarif_file }}
   exit-code:
-    description: 'Scan exit code (0=clean, 1=violations found).'
+    description: 'Scan process exit code.'
     value: ${{ steps.scan.outputs.exit_code }}
+  scan-status:
+    description: 'High-level scan status (clean, violations, or error).'
+    value: ${{ steps.scan.outputs.scan_status }}
   vulnerability-count:
     description: 'Number of vulnerabilities found, or skill findings when scan-type=skills.'
     value: ${{ steps.scan.outputs.vuln_count }}
@@ -230,7 +233,6 @@ runs:
         trim_arg() {
           printf '%s' "$1" | xargs
         }
-
         # Map scan-type to focused command
         #   scan  → agent-bom agents (full auto-detect, default)
         #   image → agent-bom image <ref>
@@ -451,6 +453,13 @@ runs:
 
         # Run scan, capture exit code
         set +e
+        echo "::group::agent-bom command"
+        printf 'Running:'
+        for arg in "${ARGS[@]}"; do
+          printf ' %q' "$arg"
+        done
+        printf '\n'
+        echo "::endgroup::"
         agent-bom "${ARGS[@]}"
         EXIT_CODE=$?
         set -e
@@ -462,6 +471,13 @@ runs:
           VULN_COUNT=$(python3 -c "import json; d=json.load(open('$RESULT_FILE')); print(len(d.get('runs',[{}])[0].get('results',[])))" 2>/dev/null || echo 0)
         elif [ "$INPUT_SCAN_TYPE" = "skills" ] && [ -f "$RESULT_FILE" ]; then
           VULN_COUNT=$(python3 -c "import json; d=json.load(open('$RESULT_FILE')); print(d.get('summary',{}).get('findings',0))" 2>/dev/null || echo 0)
+        fi
+
+        SCAN_STATUS="error"
+        if [ "$EXIT_CODE" = "0" ]; then
+          SCAN_STATUS="clean"
+        elif [ "$VULN_COUNT" -gt 0 ]; then
+          SCAN_STATUS="violations"
         fi
 
         # Generate badge from SARIF results (no second scan)
@@ -501,21 +517,29 @@ runs:
 
         echo "sarif_file=$SARIF_FILE" >> "$GITHUB_OUTPUT"
         echo "exit_code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
+        echo "scan_status=$SCAN_STATUS" >> "$GITHUB_OUTPUT"
         echo "vuln_count=$VULN_COUNT" >> "$GITHUB_OUTPUT"
         echo "badge_file=$BADGE_FILE" >> "$GITHUB_OUTPUT"
 
         if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
           {
             echo "## agent-bom scan summary"
-            echo
-            echo "- Scan type: ${INPUT_SCAN_TYPE:-scan}"
-            echo "- Exit code: ${EXIT_CODE}"
-            echo "- Findings: ${VULN_COUNT}"
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Scan type | \`${INPUT_SCAN_TYPE:-scan}\` |"
+            echo "| Format | \`${INPUT_FORMAT:-sarif}\` |"
+            echo "| Status | \`${SCAN_STATUS}\` |"
+            echo "| Exit code | \`${EXIT_CODE}\` |"
+            echo "| Finding count | \`${VULN_COUNT}\` |"
             if [ -n "$RESULT_FILE" ] && [ -f "$RESULT_FILE" ]; then
-              echo "- Output: ${RESULT_FILE}"
+              echo "| Result file | \`${RESULT_FILE}\` |"
+            fi
+            if [ -n "$SARIF_FILE" ]; then
+              echo "| SARIF file | \`${SARIF_FILE}\` |"
             fi
             if [ -n "$BADGE_FILE" ]; then
-              echo "- Badge: ${BADGE_FILE}"
+              echo "| Badge file | \`${BADGE_FILE}\` |"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
         fi

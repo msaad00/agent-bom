@@ -8,7 +8,7 @@ branding:
 
 inputs:
   scan-type:
-    description: 'Scan mode. Default `scan` runs the full agent/MCP discovery pipeline. Focused modes: image, fs, iac, sbom, secrets, code, and agents.'
+    description: 'Scan mode. Default `scan` runs the full agent/MCP discovery pipeline. Focused modes: image, fs, iac, sbom, secrets, code, agents, and skills.'
     required: false
     default: 'scan'
   scan-ref:
@@ -119,6 +119,10 @@ inputs:
     description: 'Scan ONLY skill/instruction files (CLAUDE.md, .cursorrules, AGENTS.md); skip agent/package/CVE scanning.'
     required: false
     default: 'false'
+  fail-on-verdict:
+    description: 'For scan-type=skills, fail if any scanned file reaches this trust verdict or worse (suspicious or malicious).'
+    required: false
+    default: ''
   gpu-scan:
     description: 'Enable GPU infrastructure scanning (NVIDIA NIM/CUDA containers, DCGM).'
     required: false
@@ -136,7 +140,7 @@ outputs:
     description: 'Scan exit code (0=clean, 1=violations found).'
     value: ${{ steps.scan.outputs.exit_code }}
   vulnerability-count:
-    description: 'Number of vulnerabilities found.'
+    description: 'Number of vulnerabilities found, or skill findings when scan-type=skills.'
     value: ${{ steps.scan.outputs.vuln_count }}
   badge-file:
     description: 'Path to generated badge JSON (if badge input is set).'
@@ -184,7 +188,7 @@ runs:
           fi
         fi
 
-    - name: Run agent-bom agents
+    - name: Run agent-bom
       id: scan
       shell: bash
       env:
@@ -211,14 +215,15 @@ runs:
         INPUT_OS_PACKAGES: ${{ inputs.os-packages }}
         INPUT_BASELINE: ${{ inputs.baseline }}
         INPUT_SKILL_ONLY: ${{ inputs.skill-only }}
+        INPUT_FAIL_ON_VERDICT: ${{ inputs.fail-on-verdict }}
         INPUT_GPU_SCAN: ${{ inputs.gpu-scan }}
         INPUT_EXCLUDE_UNFIXABLE: ${{ inputs.exclude-unfixable }}
       run: |
         # Determine output file path
         if [ -n "$INPUT_OUTPUT" ]; then
-          SARIF_FILE="$INPUT_OUTPUT"
+          RESULT_FILE="$INPUT_OUTPUT"
         else
-          SARIF_FILE="agent-bom-results.sarif"
+          RESULT_FILE="agent-bom-results.sarif"
         fi
 
         # Map scan-type to focused command (Trivy-style)
@@ -227,6 +232,7 @@ runs:
         #   fs    → agent-bom fs <path>
         #   sbom  → agent-bom sbom <path>
         #   iac   → agent-bom iac <paths...>
+        #   skills → agent-bom skills scan <path>
         case "${INPUT_SCAN_TYPE:-scan}" in
           image)
             if [ -z "$INPUT_SCAN_REF" ] && [ -n "$INPUT_IMAGE" ]; then
@@ -274,22 +280,37 @@ runs:
           agents)
             ARGS="agents"
             ;;
+          skills)
+            ARGS="skills scan ${INPUT_SCAN_REF:-.}"
+            ;;
           scan|"")
             ARGS="scan"
             ;;
           *)
-            echo "::error::Unknown scan-type: $INPUT_SCAN_TYPE. Use: scan, image, fs, sbom, iac, secrets, code, agents"
+            echo "::error::Unknown scan-type: $INPUT_SCAN_TYPE. Use: scan, image, fs, sbom, iac, secrets, code, agents, skills"
             exit 1
             ;;
         esac
 
+        if [ "$INPUT_SCAN_TYPE" = "skills" ] && { [ -z "$INPUT_FORMAT" ] || [ "$INPUT_FORMAT" = "sarif" ]; }; then
+          INPUT_FORMAT="json"
+          if [ -z "$INPUT_OUTPUT" ]; then
+            RESULT_FILE="agent-bom-results.json"
+          fi
+        fi
+
+        if [ "$INPUT_SCAN_TYPE" = "skills" ] && [ -n "$INPUT_FORMAT" ] && [ "$INPUT_FORMAT" != "json" ] && [ "$INPUT_FORMAT" != "console" ]; then
+          echo "::error::scan-type=skills only supports format=json or format=console"
+          exit 1
+        fi
+
         # Output format
         if [ "$INPUT_FORMAT" = "sarif" ]; then
-          ARGS="$ARGS -f sarif -o $SARIF_FILE"
+          ARGS="$ARGS -f sarif -o $RESULT_FILE"
         elif [ -n "$INPUT_FORMAT" ]; then
           ARGS="$ARGS -f $INPUT_FORMAT"
-          if [ -n "$INPUT_OUTPUT" ]; then
-            ARGS="$ARGS -o $INPUT_OUTPUT"
+          if [ -n "$INPUT_OUTPUT" ] || [ "$INPUT_SCAN_TYPE" = "skills" ]; then
+            ARGS="$ARGS -o $RESULT_FILE"
           fi
         fi
 
@@ -383,8 +404,21 @@ runs:
         fi
 
         # Skill-only mode
-        if [ "$INPUT_SKILL_ONLY" = "true" ]; then
+        if [ "$INPUT_SKILL_ONLY" = "true" ] && [ "$INPUT_SCAN_TYPE" != "skills" ]; then
           ARGS="$ARGS --skill-only"
+        fi
+
+        # Skills verdict gate
+        if [ -n "$INPUT_FAIL_ON_VERDICT" ]; then
+          if [ "$INPUT_FAIL_ON_VERDICT" != "suspicious" ] && [ "$INPUT_FAIL_ON_VERDICT" != "malicious" ]; then
+            echo "::error::fail-on-verdict must be one of: suspicious, malicious"
+            exit 1
+          fi
+          if [ "$INPUT_SCAN_TYPE" = "skills" ]; then
+            ARGS="$ARGS --fail-on-verdict $INPUT_FAIL_ON_VERDICT"
+          else
+            echo "::warning::fail-on-verdict only applies to scan-type=skills and will be ignored"
+          fi
         fi
 
         # GPU infrastructure scanning
@@ -403,10 +437,13 @@ runs:
         EXIT_CODE=$?
         set -e
 
-        # Extract vuln count from SARIF
+        SARIF_FILE=""
         VULN_COUNT=0
-        if [ -f "$SARIF_FILE" ]; then
-          VULN_COUNT=$(python3 -c "import json; d=json.load(open('$SARIF_FILE')); print(len(d.get('runs',[{}])[0].get('results',[])))" 2>/dev/null || echo 0)
+        if [ "$INPUT_FORMAT" = "sarif" ] && [ -f "$RESULT_FILE" ]; then
+          SARIF_FILE="$RESULT_FILE"
+          VULN_COUNT=$(python3 -c "import json; d=json.load(open('$RESULT_FILE')); print(len(d.get('runs',[{}])[0].get('results',[])))" 2>/dev/null || echo 0)
+        elif [ "$INPUT_SCAN_TYPE" = "skills" ] && [ -f "$RESULT_FILE" ]; then
+          VULN_COUNT=$(python3 -c "import json; d=json.load(open('$RESULT_FILE')); print(d.get('summary',{}).get('findings',0))" 2>/dev/null || echo 0)
         fi
 
         # Generate badge from SARIF results (no second scan)

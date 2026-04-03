@@ -78,6 +78,9 @@ export interface ScanResult {
   agents: Agent[];
   blast_radius: BlastRadius[];
   remediation_plan?: RemediationItem[];
+  scorecard_summary?: ScorecardSummary;
+  scan_performance?: Record<string, number>;
+  posture_scorecard?: PostureScorecard;
   summary?: Summary;
   warnings?: string[];
   scan_timestamp?: string;
@@ -96,6 +99,11 @@ export interface RemediationItem {
   severity: string;
   is_kev: boolean;
   impact_score: number;
+  priority?: number;
+  action?: string;
+  reason?: string | null;
+  command?: string | null;
+  verify_command?: string | null;
   vulnerabilities: string[];
   affected_agents: string[];
   agents_pct: number;
@@ -105,6 +113,15 @@ export interface RemediationItem {
   tools_pct: number;
   owasp_tags: string[];
   atlas_tags: string[];
+  nist_ai_rmf_tags?: string[];
+  owasp_mcp_tags?: string[];
+  owasp_agentic_tags?: string[];
+  eu_ai_act_tags?: string[];
+  nist_csf_tags?: string[];
+  iso_27001_tags?: string[];
+  soc2_tags?: string[];
+  cis_tags?: string[];
+  references?: string[];
   risk_narrative: string;
 }
 
@@ -312,6 +329,34 @@ export interface Summary {
   high_findings: number;
   medium_findings: number;
   low_findings: number;
+}
+
+export interface ScorecardSummary {
+  total_packages: number;
+  unique_packages: number;
+  eligible_packages: number;
+  attempted_packages: number;
+  enriched_packages: number;
+  unresolved_packages: number;
+  failed_packages: number;
+  transient_failed_packages?: number;
+  persistent_failed_packages?: number;
+  failed_reasons?: Record<string, number>;
+}
+
+export interface PostureDimension {
+  name: string;
+  score: number;
+  weight: number;
+  weighted_score: number;
+  details: string;
+}
+
+export interface PostureScorecard {
+  grade: string;
+  score: number;
+  summary: string;
+  dimensions: Record<string, PostureDimension>;
 }
 
 export interface HealthResponse {

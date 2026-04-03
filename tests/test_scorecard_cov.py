@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from agent_bom.scorecard import (
+    _bounded_cache_set,
     enrich_packages_with_scorecard,
     enrich_packages_with_scorecard_stats,
     extract_github_repo,
@@ -112,6 +113,17 @@ class TestFetchScorecard:
         ):
             result = await fetch_scorecard("owner/repo")
             assert result is None
+
+    def test_bounded_cache_evicts_oldest_entries(self):
+        from collections import OrderedDict
+
+        cache: OrderedDict[str, dict] = OrderedDict()
+        with patch("agent_bom.scorecard._MAX_SCORECARD_CACHE_ENTRIES", 2):
+            _bounded_cache_set(cache, "repo/one", {"score": 1})
+            _bounded_cache_set(cache, "repo/two", {"score": 2})
+            _bounded_cache_set(cache, "repo/three", {"score": 3})
+
+        assert list(cache.keys()) == ["repo/two", "repo/three"]
 
 
 class TestEnrichPackagesWithScorecard:

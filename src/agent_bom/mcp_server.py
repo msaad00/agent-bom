@@ -1344,7 +1344,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         NIST AI RMF (MAP-3.5), EU AI Act (ART-10).
         """
         return await dataset_card_scan_impl(
-            directory=directory,
+            directory=str(_safe_path(directory)),
             _truncate_response=_truncate_response,
         )
 
@@ -1369,7 +1369,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         NIST AI RMF (MAP-3.5, GOVERN-1.7).
         """
         return await training_pipeline_scan_impl(
-            directory=directory,
+            directory=str(_safe_path(directory)),
             _truncate_response=_truncate_response,
         )
 
@@ -1448,7 +1448,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         missing guardrails in prompt templates.
         """
         return await prompt_scan_impl(
-            directory=directory,
+            directory=str(_safe_path(directory)),
             _truncate_response=_truncate_response,
         )
 
@@ -1472,7 +1472,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         Returns structured results with risk assessment per model file.
         """
         return await model_file_scan_impl(
-            directory=directory,
+            directory=str(_safe_path(directory)),
             _truncate_response=_truncate_response,
         )
 
@@ -1497,7 +1497,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         Returns structured inventory with severity classification.
         """
         return await ai_inventory_scan_impl(
-            directory=directory,
+            directory=str(_safe_path(directory)),
             _truncate_response=_truncate_response,
         )
 
@@ -1587,7 +1587,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                 }
             )
         except Exception as e:  # noqa: BLE001
-            return _json.dumps({"error": str(e)})
+            return _truncate_response(_json.dumps({"error": sanitize_error(e)}))
 
     # ── Custom routes: metadata + health ─────────────────────────────
 

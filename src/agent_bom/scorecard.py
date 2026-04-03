@@ -13,8 +13,10 @@ from __future__ import annotations
 import logging
 import re
 import time
+from collections import OrderedDict
+from collections.abc import MutableMapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, TypeVar
 
 from agent_bom.http_client import create_client, request_with_retry
 
@@ -24,11 +26,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 SCORECARD_API_URL = "https://api.securityscorecards.dev/projects"
+_MAX_SCORECARD_CACHE_ENTRIES = 2048
 
 # Cache: repo_url -> scorecard data (or None for miss)
-_scorecard_cache: dict[str, Optional[dict]] = {}
-_scorecard_reason_cache: dict[str, Optional[str]] = {}
-_scorecard_failure_cache: dict[str, tuple[str, float | None]] = {}
+_scorecard_cache: OrderedDict[str, Optional[dict]] = OrderedDict()
+_scorecard_reason_cache: OrderedDict[str, Optional[str]] = OrderedDict()
+_scorecard_failure_cache: OrderedDict[str, tuple[str, float | None]] = OrderedDict()
 _scorecard_cooldown_until: float = 0.0
 _scorecard_cooldown_reason: str | None = None
 
@@ -71,6 +74,31 @@ _TRANSIENT_SCORECARD_REASONS = {
     "scorecard_service_unavailable",
 }
 
+_CacheValue = TypeVar("_CacheValue")
+
+
+def _bounded_cache_set(cache: MutableMapping[str, _CacheValue], key: str, value: _CacheValue) -> None:
+    """Insert into an ordered cache and evict oldest entries when full."""
+    cache[key] = value
+    if isinstance(cache, OrderedDict):
+        cache.move_to_end(key)
+        while len(cache) > _MAX_SCORECARD_CACHE_ENTRIES:
+            cache.popitem(last=False)
+    else:
+        while len(cache) > _MAX_SCORECARD_CACHE_ENTRIES:
+            oldest = next(iter(cache), None)
+            if oldest is None:
+                break
+            cache.pop(oldest, None)
+
+
+def _bounded_cache_get(cache: MutableMapping[str, _CacheValue], key: str) -> _CacheValue | None:
+    """Read from an ordered cache and mark the key as recently used."""
+    value = cache.get(key)
+    if key in cache and isinstance(cache, OrderedDict):
+        cache.move_to_end(key)
+    return value
+
 
 def _is_transient_scorecard_reason(reason: str | None) -> bool:
     return bool(reason and reason in _TRANSIENT_SCORECARD_REASONS)
@@ -78,19 +106,20 @@ def _is_transient_scorecard_reason(reason: str | None) -> bool:
 
 def _remember_scorecard_failure(repo: str, reason: str, ttl_seconds: float | None) -> None:
     expires_at = time.monotonic() + ttl_seconds if ttl_seconds else None
-    _scorecard_failure_cache[repo] = (reason, expires_at)
-    _scorecard_reason_cache[repo] = reason
+    _bounded_cache_set(_scorecard_failure_cache, repo, (reason, expires_at))
+    _bounded_cache_set(_scorecard_reason_cache, repo, reason)
 
 
 def _cached_scorecard_failure_reason(repo: str) -> str | None:
-    cached = _scorecard_failure_cache.get(repo)
+    cached = _bounded_cache_get(_scorecard_failure_cache, repo)
     if not cached:
         return None
     reason, expires_at = cached
     if expires_at is not None and time.monotonic() >= expires_at:
         _scorecard_failure_cache.pop(repo, None)
+        _scorecard_reason_cache.pop(repo, None)
         return None
-    _scorecard_reason_cache[repo] = reason
+    _bounded_cache_set(_scorecard_reason_cache, repo, reason)
     return reason
 
 
@@ -154,8 +183,9 @@ async def fetch_scorecard(repo: str) -> Optional[dict]:
         _remember_scorecard_failure(repo, "invalid_repo", None)
         return None
 
+    cached_score = _bounded_cache_get(_scorecard_cache, repo)
     if repo in _scorecard_cache:
-        return _scorecard_cache[repo]
+        return cached_score
 
     cached_reason = _cached_scorecard_failure_reason(repo)
     if cached_reason:
@@ -179,9 +209,9 @@ async def fetch_scorecard(repo: str) -> Optional[dict]:
                     "repo": data.get("repo", {}).get("name", repo),
                     "checks": {check["name"]: check.get("score", -1) for check in data.get("checks", [])},
                 }
-                _scorecard_cache[repo] = result
+                _bounded_cache_set(_scorecard_cache, repo, result)
                 _scorecard_failure_cache.pop(repo, None)
-                _scorecard_reason_cache[repo] = None
+                _bounded_cache_set(_scorecard_reason_cache, repo, None)
                 return result
             except (ValueError, KeyError) as exc:
                 safe_repo = repo.replace("\n", "").replace("\r", "")

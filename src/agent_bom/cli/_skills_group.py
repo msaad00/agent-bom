@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 import click
 from rich.console import Console
 from rich.table import Table
 
-from agent_bom.skills_service import scan_skill_targets, verify_skill_targets
+from agent_bom.skills_service import rescan_skill_catalog, scan_skill_targets, verify_skill_targets
 
 _VERDICT_ORDER = {"benign": 0, "suspicious": 1, "malicious": 2}
 
@@ -27,7 +28,7 @@ def _display_path(path: str) -> str:
 @click.group("skills", invoke_without_command=True)
 @click.pass_context
 def skills_group(ctx: click.Context) -> None:
-    """Scan and verify AI instruction files, skills, and agent prompts.
+    """Scan, verify, and rescan AI instruction files, skills, and agent prompts.
 
     Covers `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `skills/*.md`,
     and other supported skill/instruction files.
@@ -45,12 +46,21 @@ def skills_group(ctx: click.Context) -> None:
     type=click.Choice(["suspicious", "malicious"]),
     help="Exit 1 if any scanned file reaches this trust verdict or worse",
 )
+@click.option("--intel-source", type=str, help="Optional local or remote JSON threat-intel feed for bundle hash lookups")
+@click.option(
+    "--catalog",
+    "catalog_path",
+    type=click.Path(path_type=Path),
+    help="Path to the local skills catalog (defaults to ~/.agent-bom/skills/catalog.json)",
+)
 @click.option("--verbose", "-v", is_flag=True, help="Show all findings instead of only the default top findings summary")
 def skills_scan_cmd(
     paths: tuple[Path, ...],
     output_format: str,
     output_path: Path | None,
     fail_on_verdict: str | None,
+    intel_source: str | None,
+    catalog_path: Path | None,
     verbose: bool,
 ) -> None:
     """Scan skill and instruction files for trust, risk, and provenance.
@@ -61,7 +71,7 @@ def skills_scan_cmd(
       agent-bom skills scan CLAUDE.md .cursor/rules
       agent-bom skills scan . --fail-on-verdict suspicious -f json
     """
-    report = scan_skill_targets(paths)
+    report = scan_skill_targets(paths, intel_source=intel_source, catalog_path=catalog_path)
     payload = report.to_dict()
 
     if output_format == "json":
@@ -88,9 +98,12 @@ def skills_scan_cmd(
             f"[green]{summary['servers_found']}[/green] server ref(s) · "
             f"[yellow]{summary['credential_env_vars']}[/yellow] credential var(s)\n"
         )
+        if report.catalog_path:
+            console.print(f"  [dim]Catalog updated:[/dim] {report.catalog_path}\n")
 
         files_table = Table(title="Instruction Surface", expand=True)
         files_table.add_column("File")
+        files_table.add_column("Status", no_wrap=True)
         files_table.add_column("Verdict", no_wrap=True)
         files_table.add_column("Review", no_wrap=True)
         files_table.add_column("Prov.", no_wrap=True)
@@ -100,13 +113,16 @@ def skills_scan_cmd(
         verdict_style = {"benign": "green", "suspicious": "yellow", "malicious": "red"}
         review_style = {"trusted": "green", "review": "yellow", "high_risk": "red", "blocked": "red bold"}
         prov_style = {"verified": "green", "unsigned": "yellow", "bundle_found_but_invalid": "red", "missing": "red"}
+        status_style = {"clean": "green", "suspicious": "yellow", "malicious": "red", "pending": "cyan", "unavailable": "dim"}
 
         for file_report in report.files:
             verdict = file_report.trust.verdict.value
             review_verdict = file_report.trust.review_verdict.value
             provenance = str(file_report.provenance.get("status", "unknown"))
+            status = file_report.status
             files_table.add_row(
                 _display_path(str(file_report.path)),
+                f"[{status_style.get(status, 'white')}]{status}[/{status_style.get(status, 'white')}]",
                 f"[{verdict_style.get(verdict, 'white')}]{verdict}[/{verdict_style.get(verdict, 'white')}]",
                 f"[{review_style.get(review_verdict, 'white')}]{review_verdict}[/{review_style.get(review_verdict, 'white')}]",
                 f"[{prov_style.get(provenance, 'white')}]{provenance}[/{prov_style.get(provenance, 'white')}]",
@@ -176,6 +192,71 @@ def skills_scan_cmd(
         worst = max((_VERDICT_ORDER[file_report.trust.verdict.value] for file_report in report.files), default=0)
         if worst >= threshold:
             sys.exit(1)
+
+
+@skills_group.command("rescan")
+@click.option("-f", "--format", "output_format", type=click.Choice(["console", "json"]), default="console", show_default=True)
+@click.option("-o", "--output", "output_path", type=click.Path(path_type=Path), help="Write output to this file")
+@click.option("--intel-source", type=str, help="Optional local or remote JSON threat-intel feed for bundle hash lookups")
+@click.option(
+    "--catalog",
+    "catalog_path",
+    type=click.Path(path_type=Path),
+    help="Path to the local skills catalog (defaults to ~/.agent-bom/skills/catalog.json)",
+)
+def skills_rescan_cmd(output_format: str, output_path: Path | None, intel_source: str | None, catalog_path: Path | None) -> None:
+    """Re-scan previously seen skills from the local catalog."""
+    report = rescan_skill_catalog(catalog_path=catalog_path, intel_source=intel_source)
+    payload = report.to_dict()
+
+    if output_format == "json":
+        rendered = json.dumps(payload, indent=2)
+        if output_path:
+            output_path.write_text(rendered)
+        else:
+            click.echo(rendered)
+        return
+
+    console = Console()
+    summary = cast(dict[str, Any], payload["summary"])
+    entries = cast(list[dict[str, Any]], payload["entries"])
+    console.print("\n[bold]agent-bom skills rescan[/bold]\n")
+    console.print(
+        "  "
+        f"[green]{summary['rescanned']}[/green] rescanned · "
+        f"[yellow]{summary['missing']}[/yellow] missing · "
+        f"[green]{summary['clean']}[/green] clean · "
+        f"[yellow]{summary['suspicious']}[/yellow] suspicious · "
+        f"[red]{summary['malicious']}[/red] malicious · "
+        f"[cyan]{summary['pending']}[/cyan] pending · "
+        f"[dim]{summary['unavailable']}[/dim] unavailable\n"
+    )
+    console.print(f"  [dim]Catalog:[/dim] {payload['catalog_path']}\n")
+
+    table = Table(title="Catalog Rescan", expand=True)
+    table.add_column("Path")
+    table.add_column("Status", no_wrap=True)
+    table.add_column("Exists", no_wrap=True)
+    table.add_column("Review", no_wrap=True)
+    table.add_column("Findings", justify="right", no_wrap=True)
+    status_style = {"clean": "green", "suspicious": "yellow", "malicious": "red", "pending": "cyan", "unavailable": "dim"}
+    review_style = {"trusted": "green", "review": "yellow", "high_risk": "red", "blocked": "red bold", None: "dim"}
+
+    for entry in entries:
+        status = str(entry.get("status") or "unavailable")
+        review = entry.get("review_verdict")
+        table.add_row(
+            _display_path(str(entry.get("path") or "—")),
+            f"[{status_style.get(status, 'white')}]{status}[/{status_style.get(status, 'white')}]",
+            "yes" if entry.get("exists") else "no",
+            f"[{review_style.get(review, 'white')}]{review or '—'}[/{review_style.get(review, 'white')}]",
+            str(entry.get("findings", 0)),
+        )
+    console.print(table)
+    console.print()
+
+    if output_path:
+        output_path.write_text(json.dumps(payload, indent=2))
 
 
 @skills_group.command("verify")

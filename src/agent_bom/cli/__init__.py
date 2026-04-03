@@ -55,6 +55,7 @@ def main():
       agent-bom agents -p .                          scan project manifests plus agent/MCP context
       agent-bom mesh --project .                     show the live agent/MCP topology
       agent-bom skills scan .                        scan skills and instruction files
+      agent-bom skills rescan                        revisit previously cataloged skills
       agent-bom check flask@2.0.0 --ecosystem pypi  pre-install CVE gate
       agent-bom image nginx:latest                   container image scan
       agent-bom iac Dockerfile k8s/ infra/main.tf    IaC scan across one or more paths

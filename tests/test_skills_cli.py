@@ -7,6 +7,7 @@ import json
 from click.testing import CliRunner
 
 from agent_bom.cli import main
+from agent_bom.skill_bundles import build_skill_bundle
 
 
 def test_skills_scan_json(tmp_path):
@@ -40,6 +41,75 @@ Environment:
     assert data["files"][0]["bundle"]["sha256"]
     assert data["files"][0]["trust"]["review_verdict"] in {"trusted", "review", "high_risk", "blocked"}
     assert "behavioral_summary" in data["files"][0]["audit"]
+
+
+def test_skills_scan_json_with_catalog_and_intel(tmp_path):
+    """`agent-bom skills scan` can enrich and persist to a catalog when requested."""
+    skill_file = tmp_path / "CLAUDE.md"
+    skill_file.write_text("# Instructions\n\nUse OPENAI_API_KEY.\n")
+    bundle = build_skill_bundle(skill_file)
+    intel_feed = tmp_path / "intel.json"
+    intel_feed.write_text(
+        json.dumps(
+            {
+                "entries": [
+                    {
+                        "stable_id": bundle.stable_id,
+                        "status": "suspicious",
+                        "detail": "Flagged for review",
+                    }
+                ]
+            }
+        )
+    )
+    catalog_path = tmp_path / "catalog.json"
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "skills",
+            "scan",
+            str(tmp_path),
+            "--format",
+            "json",
+            "--intel-source",
+            str(intel_feed),
+            "--catalog",
+            str(catalog_path),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    data = json.loads(result.output)
+    assert data["catalog_path"] == str(catalog_path)
+    assert data["files"][0]["status"] == "suspicious"
+    assert data["files"][0]["threat_intel"]["detail"] == "Flagged for review"
+
+
+def test_skills_rescan_json(tmp_path):
+    """`agent-bom skills rescan` should revisit cataloged entries."""
+    skill_file = tmp_path / "CLAUDE.md"
+    skill_file.write_text("# Instructions\nStay read-only.\n")
+    catalog_path = tmp_path / "catalog.json"
+
+    runner = CliRunner()
+    scan_result = runner.invoke(
+        main,
+        ["skills", "scan", str(tmp_path), "--format", "json", "--catalog", str(catalog_path)],
+    )
+    assert scan_result.exit_code == 0, scan_result.output
+
+    rescan_result = runner.invoke(
+        main,
+        ["skills", "rescan", "--format", "json", "--catalog", str(catalog_path)],
+    )
+    assert rescan_result.exit_code == 0, rescan_result.output
+
+    data = json.loads(rescan_result.output)
+    assert data["summary"]["catalog_entries"] == 1
+    assert data["summary"]["rescanned"] == 1
+    assert data["entries"][0]["exists"] is True
 
 
 def test_skills_scan_explicit_directory_globs_markdown(tmp_path):

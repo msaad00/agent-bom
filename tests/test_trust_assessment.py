@@ -7,6 +7,7 @@ from agent_bom.parsers.skill_audit import SkillAuditResult, SkillFinding, audit_
 from agent_bom.parsers.skills import SkillMetadata, SkillScanResult
 from agent_bom.parsers.trust_assessment import (
     Confidence,
+    ReviewVerdict,
     TrustAssessmentResult,
     TrustCategoryResult,
     TrustLevel,
@@ -160,6 +161,14 @@ def test_confidence_enum_values():
     assert Confidence.LOW.value == "low"
 
 
+def test_review_verdict_enum_values():
+    """ReviewVerdict has trusted/review/high_risk/blocked."""
+    assert ReviewVerdict.TRUSTED.value == "trusted"
+    assert ReviewVerdict.REVIEW.value == "review"
+    assert ReviewVerdict.HIGH_RISK.value == "high_risk"
+    assert ReviewVerdict.BLOCKED.value == "blocked"
+
+
 def test_trust_assessment_result_to_dict():
     """TrustAssessmentResult serializes correctly."""
     result = TrustAssessmentResult(
@@ -174,13 +183,16 @@ def test_trust_assessment_result_to_dict():
             )
         ],
         verdict=Verdict.BENIGN,
+        review_verdict=ReviewVerdict.TRUSTED,
         confidence=Confidence.HIGH,
         recommendations=[],
+        review_reasons=["All checks passed"],
         skill_name="test-tool",
         source_file="SKILL.md",
     )
     d = result.to_dict()
     assert d["verdict"] == "benign"
+    assert d["review_verdict"] == "trusted"
     assert d["confidence"] == "high"
     assert d["skill_name"] == "test-tool"
     assert len(d["categories"]) == 1
@@ -262,6 +274,15 @@ def test_instruction_scope_fail_credential_access():
     """Credential file access → FAIL."""
     scan = _make_scan()
     audit = _make_audit(findings=[_finding("credential_file_access", severity="critical")])
+    result = assess_trust(scan, audit)
+    cat = next(c for c in result.categories if c.key == "instruction_scope")
+    assert cat.level == TrustLevel.FAIL
+
+
+def test_instruction_scope_fail_prompt_coercion():
+    """Prompt coercion should fail instruction-scope trust."""
+    scan = _make_scan()
+    audit = _make_audit(findings=[_finding("prompt_coercion", severity="high")])
     result = assess_trust(scan, audit)
     cat = next(c for c in result.categories if c.key == "instruction_scope")
     assert cat.level == TrustLevel.FAIL
@@ -467,6 +488,15 @@ def test_verdict_two_fails_is_malicious_high():
     )
     assert verdict == Verdict.MALICIOUS
     assert conf == Confidence.HIGH
+
+
+def test_review_verdict_blocked_for_prompt_coercion():
+    """Prompt coercion should map to a blocked handling verdict."""
+    scan = _make_scan()
+    audit = _make_audit(findings=[_finding("prompt_coercion", severity="high", title="Guardrail override")])
+    result = assess_trust(scan, audit)
+    assert result.review_verdict == ReviewVerdict.BLOCKED
+    assert any("guardrail" in reason.lower() or "prompt coercion" in reason.lower() for reason in result.review_reasons)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

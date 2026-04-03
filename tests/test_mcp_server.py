@@ -3,6 +3,7 @@
 import asyncio
 import json
 import sys
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -255,6 +256,53 @@ def test_blast_radius_not_found(mock_pipeline):
     server = create_mcp_server()
     result = _call_tool(server, "blast_radius", {"cve_id": "CVE-9999-00000"})
     assert result["found"] is False
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "impl_target"),
+    [
+        ("dataset_card_scan", "agent_bom.mcp_tools.specialized.dataset_card_scan_impl"),
+        ("training_pipeline_scan", "agent_bom.mcp_tools.specialized.training_pipeline_scan_impl"),
+        ("prompt_scan", "agent_bom.mcp_tools.specialized.prompt_scan_impl"),
+        ("model_file_scan", "agent_bom.mcp_tools.specialized.model_file_scan_impl"),
+        ("ai_inventory_scan", "agent_bom.mcp_tools.specialized.ai_inventory_scan_impl"),
+    ],
+)
+def test_directory_tools_use_safe_path_before_impl(tool_name, impl_target):
+    """Directory-taking tools should sanitize paths at the MCP boundary."""
+    from agent_bom.mcp_server import create_mcp_server
+
+    captured: dict[str, str] = {}
+    safe_path = Path("/tmp/safe-target")
+
+    async def _fake_impl(*, directory, _truncate_response):
+        captured["directory"] = directory
+        return json.dumps({"directory": directory})
+
+    with patch("agent_bom.mcp_server._safe_path", return_value=safe_path), patch(impl_target, side_effect=_fake_impl):
+        server = create_mcp_server()
+        result = _call_tool(server, tool_name, {"directory": "/tmp/../unsafe"})
+
+    assert captured["directory"] == str(safe_path)
+    assert result["directory"] == str(safe_path)
+
+
+@patch("agent_bom.parsers.external_scanners.detect_and_parse")
+def test_ingest_external_scan_sanitizes_errors(mock_detect):
+    """External scan ingestion should not leak raw paths or URLs in errors."""
+    from agent_bom.mcp_server import create_mcp_server
+
+    mock_detect.side_effect = Exception("failed to parse https://example.com/report at /Users/mohamedsaad/secret.txt " + ("x" * 400))
+
+    server = create_mcp_server()
+    result = _call_tool(server, "ingest_external_scan", {"scan_json": "{}"})
+
+    assert "error" in result
+    assert "https://example.com" not in result["error"]
+    assert "/Users/mohamedsaad/secret.txt" not in result["error"]
+    assert "<url>" in result["error"]
+    assert "<path>" in result["error"]
+    assert len(result["error"]) <= 200
 
 
 # ---------------------------------------------------------------------------

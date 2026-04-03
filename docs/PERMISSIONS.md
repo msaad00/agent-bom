@@ -202,8 +202,10 @@ X-Agent-Bom-Read-Only: true
 X-Agent-Bom-No-Credential-Storage: true
 ```
 
-The API server itself runs entirely in-process. No outbound connections are made
-unless a scan job explicitly requests enrichment (`"enrich": true` in the request body).
+The API server itself runs entirely in-process. It does not make third-party outbound
+connections unless a scan job explicitly requests enrichment (`"enrich": true` in the
+request body). Browser clients and local dashboards may still connect to the local
+agent-bom API over HTTP/WebSocket for normal UI operation.
 
 ---
 
@@ -260,7 +262,8 @@ agent-bom agents --snowflake --snowflake-authenticator oauth
 - Never cache credentials to disk
 - Never log credential values (sanitize_error removes them)
 - Never require admin/write permissions
-- Never make network calls beyond the explicitly listed data sources
+- Never make third-party network calls beyond the explicitly listed data sources.
+  Local UI-to-API traffic is expected when using the dashboard or browser client.
 
 ---
 

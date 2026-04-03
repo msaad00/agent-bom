@@ -169,7 +169,8 @@ Multi-arch: `linux/amd64` + `linux/arm64`. Non-root container. SHA-pinned base i
 - Never cache credentials to disk
 - Never log credential values (`sanitize_error()` strips them)
 - Never require admin or write permissions
-- Never make network calls beyond explicitly listed data sources
+- Never make third-party network calls beyond explicitly listed data sources.
+  Local UI-to-API traffic is expected when using the dashboard or browser client.
 - Never install agents on target systems
 - Never store PII or secret values in scan results
 

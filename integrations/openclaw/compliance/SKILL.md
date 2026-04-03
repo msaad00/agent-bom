@@ -188,5 +188,5 @@ and confirm before any cloud API calls are made.
 ## Verification
 
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
-- **6,533+ tests** with CodeQL + OpenSSF Scorecard
+- **7,100+ tests** with CodeQL + OpenSSF Scorecard
 - **No telemetry**: Zero tracking, zero analytics

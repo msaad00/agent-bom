@@ -106,7 +106,7 @@ docker run --rm --gpus all agentbom/agent-bom agents --gpu-scan
 ## Windows containers (not supported)
 
 agent-bom does not publish Windows container (nanoserver / servercore) images.
-The scanner engine relies on Unix tooling (Syft, Grype) and Linux-native
+The scanner engine relies on Unix tooling and Linux-native
 container inspection. Windows Server environments should use:
 
 1. **Python CLI** -- `pip install agent-bom` works on Windows natively

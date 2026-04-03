@@ -45,7 +45,7 @@
 
   <rect x="38" y="198" width="172" height="28" rx="6" fill="#eff6ff" stroke="#bfdbfe" stroke-width="0.5"/>
   <text x="50" y="216" class="mod-name">Container Scanner</text>
-  <text x="210" y="216" text-anchor="end" class="mod-sub" fill="#2563eb">Grype/Syft</text>
+  <text x="210" y="216" text-anchor="end" class="mod-sub" fill="#2563eb">image layers</text>
 
   <rect x="38" y="232" width="172" height="28" rx="6" fill="#eff6ff" stroke="#bfdbfe" stroke-width="0.5"/>
   <text x="50" y="250" class="mod-name">Package Parsers</text>

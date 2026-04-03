@@ -84,10 +84,10 @@ For cross-agent correlation and the broader 8-detector protection engine, run `a
 | **pip-audit** | Python dependency vulnerabilities | Every PR |
 | **npm audit** | npm dependency vulnerabilities (ui/) | Every PR |
 | **OSV Scanner** | Lockfile vulnerability scanning | Every PR |
-| **Trivy** | Filesystem vulnerability scanning (HIGH/CRITICAL) | Every PR |
+| **Container scanner** | Filesystem vulnerability scanning (HIGH/CRITICAL) | Every PR |
 | **ClusterFuzzLite** | Fuzz testing (crash/OOM/timeout detection) | Every PR |
 | **Self-scan** | agent-bom scanning its own dependencies | Every release |
-| **Container rescan** | Weekly Trivy scan of Docker images (amd64 + arm64) | Weekly cron |
+| **Container rescan** | Weekly container scan of Docker images (amd64 + arm64) | Weekly cron |
 | **Dependency review** | License + vulnerability check on new deps | Every PR |
 
 ### What a Formal Pentest Should Cover

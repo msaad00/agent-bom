@@ -17,7 +17,7 @@ agent-bom is built on four security principles:
 
 ### 1. CI/CD Pipeline — scan on every PR
 
-Start with the same adoption pattern teams expect from Trivy or Grype: a single CI step that fails on policy, uploads SARIF, and produces artifacts security teams can review.
+Start with a familiar adoption pattern: a single CI step that fails on policy, uploads SARIF, and produces artifacts security teams can review.
 
 ```yaml
 # GitHub Actions

@@ -2,30 +2,11 @@
 
 ## 🎯 Overview
 
-agent-bom is designed to scale from local CLI usage to enterprise-wide AI infrastructure scanning, similar to how Syft/Grype work for SBOM generation and vulnerability scanning. This document explains deployment patterns, containerization, CI/CD integration, and cloud-native architectures.
+agent-bom is designed to scale from local CLI usage to enterprise-wide AI infrastructure scanning. This document explains deployment patterns, containerization, CI/CD integration, and cloud-native architectures.
 
 ---
 
-## 🏗️ Architecture Comparison: agent-bom vs Syft/Grype
-
-### How Syft/Grype Work
-
-```
-┌─────────────────────────────────────────┐
-│  Syft (SBOM Generator)                  │
-│  ├─ Scans container images              │
-│  ├─ Scans filesystems                   │
-│  ├─ Scans directories                   │
-│  └─ Outputs SBOM (CycloneDX/SPDX)      │
-└─────────────────────────────────────────┘
-              ↓
-┌─────────────────────────────────────────┐
-│  Grype (Vulnerability Scanner)          │
-│  ├─ Consumes SBOM                       │
-│  ├─ Matches packages to CVEs            │
-│  └─ Outputs vulnerability report        │
-└─────────────────────────────────────────┘
-```
+## 🏗️ Architecture Overview
 
 ### How agent-bom Works
 
@@ -64,7 +45,7 @@ agent-bom agents --enrich --output report.json
 
 ---
 
-### 2. Docker Container (Similar to Syft)
+### 2. Docker Container
 
 **Use case**: CI/CD pipelines, reproducible scans, air-gapped environments
 
@@ -717,19 +698,19 @@ def scan_with_audit(user, target):
 
 ---
 
-## 📋 Comparison: agent-bom vs Other Tools
+## 📋 Key Capabilities
 
-| Feature | agent-bom | Syft | Grype | Snyk | Wiz |
-|---------|-----------|------|-------|------|-----|
-| AI agent config discovery | ✅ (30 MCP clients) | ❌ | ❌ | ❌ | ❌ |
-| MCP server support | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Transitive deps | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Blast radius (AI-specific) | ✅ | ❌ | ❌ | ❌ | ❌ |
-| EPSS/KEV enrichment | ✅ | ❌ | ❌ | ✅ | ✅ |
-| Container scanning | ✅ (via Grype/Syft) | ✅ | ✅ | ✅ | ✅ |
-| Cloud API scanning | ✅ (AWS, Azure, GCP, Snowflake, Databricks) | ❌ | ❌ | ✅ | ✅ |
-| Open source | ✅ | ✅ | ✅ | ❌ | ❌ |
-| CycloneDX output | ✅ | ✅ | ❌ | ✅ | ✅ |
+| Feature | agent-bom |
+|---------|-----------|
+| AI agent config discovery | ✅ (30 MCP clients) |
+| MCP server support | ✅ |
+| Transitive deps | ✅ |
+| Blast radius (AI-specific) | ✅ |
+| EPSS/KEV enrichment | ✅ |
+| Container scanning | ✅ |
+| Cloud API scanning | ✅ (AWS, Azure, GCP, Snowflake, Databricks) |
+| Open source | ✅ |
+| CycloneDX output | ✅ |
 
 ---
 

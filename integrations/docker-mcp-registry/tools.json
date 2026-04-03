@@ -245,9 +245,9 @@
   },
   {
     "name": "ingest_external_scan",
-    "description": "Ingest Trivy, Grype, or Syft JSON scan output and return packages with blast radius analysis.",
+    "description": "Ingest external scanner JSON output and return packages with blast radius analysis.",
     "arguments": [
-      {"name": "scan_file", "type": "string", "desc": "Path to Trivy/Grype/Syft JSON output file"},
+      {"name": "scan_file", "type": "string", "desc": "Path to external scanner JSON output file"},
       {"name": "format", "type": "string", "desc": "Scanner format: trivy, grype, syft (auto-detected if omitted)"}
     ]
   }

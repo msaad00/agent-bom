@@ -40,7 +40,7 @@ We separate image roles so the most visible public image stays the cleanest:
 Each promoted base and each public product image should pass:
 
 - native `agent-bom image`
-- Trivy
+- Container vulnerability scanner
 - Docker Scout
 - architecture-specific smoke tests
 - package extraction sanity checks

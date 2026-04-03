@@ -19,7 +19,7 @@ Every public runtime image must:
 The release pipeline currently enforces:
 
 - `agent-bom` self-scan gate
-- Trivy image scan gate
+- Container image scan gate
 - Docker image smoke test
 - SBOM generation
 - Sigstore signing for Python distributions

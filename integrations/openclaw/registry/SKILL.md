@@ -113,5 +113,5 @@ as a string argument (no file system access needed).
 ## Verification
 
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
-- **6,040+ tests** with CodeQL + OpenSSF Scorecard
+- **7,100+ tests** with CodeQL + OpenSSF Scorecard
 - **No telemetry**: Zero tracking, zero analytics

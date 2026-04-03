@@ -14,7 +14,7 @@ agent-bom reads only what you explicitly ask it to scan:
 | Agent configs | auto-discovery or `--project` | Config JSON/YAML files (e.g. `claude_desktop_config.json`) |
 | Inventory | `--inventory` | Your inventory JSON file |
 | Lock files | inferred from project | `package-lock.json`, `requirements.txt`, `Cargo.lock`, etc. |
-| Docker images | `--image` | Image filesystem layers (via Grype/Syft subprocess) |
+| Docker images | `--image` | Image filesystem layers (via container inspection subprocess) |
 | Kubernetes | `--k8s` | Pod specs via `kubectl get pods -o json` (read-only) |
 | Terraform | `--tf-dir` | `.tf` source files (no state files, no `.tfvars`) |
 | GitHub Actions | `--gha` | `.github/workflows/*.yml` files |

@@ -211,7 +211,7 @@ Modules with no test file (functionality tested indirectly via integration tests
 | `atlas.py` | LOW | Compliance tagger; simple mapping logic |
 | `github_actions.py` | LOW | GHA discovery; tested in integration test |
 | `terraform.py` | LOW | Terraform IaC parsing |
-| `image.py` | MEDIUM | Container image scanning via Grype/Syft |
+| `image.py` | MEDIUM | Container image scanning via external scanners |
 | `integrity.py` | MEDIUM | Package integrity + SLSA |
 | `transitive.py` | LOW | Transitive dep resolution |
 | `config.py` | LOW | Config constants with env var overrides |
@@ -243,14 +243,14 @@ Input Sources
 ├── Local MCP configs (30 client types)
 ├── Cloud providers (12: AWS, Azure, GCP, Snowflake, Databricks, CoreWeave,
 │   Nebius, HuggingFace, W&B, MLflow, OpenAI, Ollama)
-├── Container images (--image, via Syft/Grype)
-├── Filesystem/VM snapshots (--scan-dir, via Syft)
+├── Container images (--image, via external scanners)
+├── Filesystem/VM snapshots (--scan-dir, via SBOM extraction)
 ├── SBOM files (--sbom, CycloneDX/SPDX)
 ├── IaC (--tf-dir Terraform, --gha GitHub Actions)
 └── SAST (--code Semgrep, 52 CWEs)
         |
         v
-Package Extraction (agent-bom owns this for MCP/cloud; Syft for images/fs)
+Package Extraction (agent-bom owns this for MCP/cloud; external scanners for images/fs)
         |
         v
 Vulnerability Scanning
@@ -410,7 +410,7 @@ ScanRequest → _run_scan_sync() [ThreadPoolExecutor]
     ├── discovery/     MCP client config → list of servers + packages
     ├── cloud/         Cloud provider APIs → list of agents + packages
     ├── sbom.py        SBOM ingest (CycloneDX/SPDX) → packages
-    ├── image.py       Syft/Grype → packages + CVEs
+    ├── image.py       Container scanners → packages + CVEs
     ├── sast.py        Semgrep → CWE findings
     ├── integrity.py   SLSA + package integrity
     └── transitive.py  Transitive dependency resolution

@@ -41,30 +41,39 @@ Tools (36):
     license_compliance_scan — Evaluate package licenses against SPDX compliance policy
     ingest_external_scan   — Ingest Trivy, Grype, or Syft JSON output with blast radius analysis
 
-Resources (2):
+Resources (3):
     registry://servers  — Browse 427+ server security metadata registry
     policy://template   — Default security policy template
+    metrics://tools     — MCP tool execution metrics and limits
 
 Security: Read-only. Never executes MCP servers or reads credential values.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
+import time
+from collections import OrderedDict
+from dataclasses import asdict
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated, Any, Awaitable, Callable, Optional, TypeVar
 
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
+from agent_bom.config import MCP_MAX_CONCURRENT_TOOLS as _MCP_MAX_CONCURRENT_TOOLS
 from agent_bom.config import MCP_MAX_FILE_SIZE as _MAX_FILE_SIZE
 from agent_bom.config import MCP_MAX_RESPONSE_CHARS as _MAX_RESPONSE_CHARS
+from agent_bom.config import MCP_MAX_TOOL_METRICS as _MCP_MAX_TOOL_METRICS
+from agent_bom.config import MCP_TOOL_TIMEOUT_SECONDS as _MCP_TOOL_TIMEOUT_SECONDS
 from agent_bom.ecosystems import SUPPORTED_PACKAGE_ECOSYSTEM_SET
 from agent_bom.security import sanitize_error
 
 logger = logging.getLogger(__name__)
+_ToolReturn = TypeVar("_ToolReturn")
 
 # ---------------------------------------------------------------------------
 # Input validation helpers
@@ -115,9 +124,207 @@ def _safe_path(path_str: str) -> Path:
         raise ValueError(str(exc)) from exc
 
 
+def _get_tool_semaphore() -> asyncio.Semaphore:
+    """Return a semaphore bound to the current running event loop."""
+    loop = asyncio.get_running_loop()
+    loop_id = id(loop)
+    semaphore = _loop_tool_semaphores.get(loop_id)
+    if semaphore is None:
+        if len(_loop_tool_semaphores) >= _MAX_CACHED_TOOL_LOOPS:
+            _loop_tool_semaphores.popitem(last=False)
+        semaphore = asyncio.Semaphore(_MCP_MAX_CONCURRENT_TOOLS)
+        _loop_tool_semaphores[loop_id] = semaphore
+    else:
+        _loop_tool_semaphores.move_to_end(loop_id)
+    return semaphore
+
+
+def _record_tool_metric(
+    tool_name: str,
+    *,
+    elapsed_ms: int,
+    success: bool,
+    timed_out: bool = False,
+    error: str | None = None,
+) -> None:
+    """Update bounded in-memory metrics for MCP tool calls."""
+    metrics = _tool_metrics.get(tool_name)
+    if metrics is None:
+        if len(_tool_metrics) >= _MCP_MAX_TOOL_METRICS:
+            _tool_metrics.popitem(last=False)
+        metrics = {
+            "tool": tool_name,
+            "calls": 0,
+            "failures": 0,
+            "timeouts": 0,
+            "last_status": "unknown",
+            "last_error": None,
+            "last_elapsed_ms": 0,
+            "max_elapsed_ms": 0,
+            "total_elapsed_ms": 0,
+        }
+        _tool_metrics[tool_name] = metrics
+    else:
+        _tool_metrics.move_to_end(tool_name)
+
+    metrics["calls"] += 1
+    metrics["last_status"] = "ok" if success else ("timeout" if timed_out else "error")
+    metrics["last_error"] = None if success else error
+    metrics["last_elapsed_ms"] = elapsed_ms
+    metrics["max_elapsed_ms"] = max(metrics["max_elapsed_ms"], elapsed_ms)
+    metrics["total_elapsed_ms"] += elapsed_ms
+    if not success:
+        metrics["failures"] += 1
+    if timed_out:
+        metrics["timeouts"] += 1
+
+
+def _tool_metrics_snapshot() -> dict[str, Any]:
+    """Return structured MCP tool metrics for resources and health checks."""
+    tool_stats = []
+    total_calls = 0
+    total_failures = 0
+    total_timeouts = 0
+    for name, metrics in _tool_metrics.items():
+        calls = int(metrics["calls"])
+        total_calls += calls
+        total_failures += int(metrics["failures"])
+        total_timeouts += int(metrics["timeouts"])
+        tool_stats.append(
+            {
+                "tool": name,
+                "calls": calls,
+                "failures": int(metrics["failures"]),
+                "timeouts": int(metrics["timeouts"]),
+                "last_status": metrics["last_status"],
+                "last_error": metrics["last_error"],
+                "last_elapsed_ms": int(metrics["last_elapsed_ms"]),
+                "max_elapsed_ms": int(metrics["max_elapsed_ms"]),
+                "avg_elapsed_ms": round(int(metrics["total_elapsed_ms"]) / calls, 2) if calls else 0.0,
+            }
+        )
+    return {
+        "summary": {
+            "tool_count": len(tool_stats),
+            "total_calls": total_calls,
+            "total_failures": total_failures,
+            "total_timeouts": total_timeouts,
+            "max_concurrent_tools": _MCP_MAX_CONCURRENT_TOOLS,
+            "default_timeout_seconds": _MCP_TOOL_TIMEOUT_SECONDS,
+        },
+        "tools": tool_stats,
+    }
+
+
+async def _execute_tool_async(
+    tool_name: str,
+    handler: Callable[..., Awaitable[_ToolReturn]],
+    /,
+    *args,
+    timeout: float | None = None,
+    **kwargs,
+) -> _ToolReturn | str:
+    """Run an async MCP tool with bounded concurrency, timeout, and metrics."""
+    timeout_seconds = timeout if timeout and timeout > 0 else _MCP_TOOL_TIMEOUT_SECONDS
+    start = time.perf_counter()
+    logger.info("mcp tool start: %s", tool_name)
+    try:
+        async with _get_tool_semaphore():
+            result = await asyncio.wait_for(handler(*args, **kwargs), timeout=timeout_seconds)
+    except TimeoutError:
+        elapsed_ms = int((time.perf_counter() - start) * 1000)
+        _record_tool_metric(
+            tool_name,
+            elapsed_ms=elapsed_ms,
+            success=False,
+            timed_out=True,
+            error=f"timed out after {timeout_seconds:.1f}s",
+        )
+        logger.warning("mcp tool timed out: %s after %.1fs", tool_name, timeout_seconds)
+        return _truncate_response(
+            json.dumps(
+                {
+                    "error": f"Tool '{tool_name}' timed out after {timeout_seconds:.1f}s",
+                    "tool": tool_name,
+                    "timed_out": True,
+                }
+            )
+        )
+    except Exception as exc:
+        elapsed_ms = int((time.perf_counter() - start) * 1000)
+        sanitized = sanitize_error(exc)
+        _record_tool_metric(tool_name, elapsed_ms=elapsed_ms, success=False, error=sanitized)
+        logger.warning("mcp tool failed: %s (%s)", tool_name, sanitized)
+        raise
+    elapsed_ms = int((time.perf_counter() - start) * 1000)
+    _record_tool_metric(tool_name, elapsed_ms=elapsed_ms, success=True)
+    logger.info("mcp tool ok: %s (%dms)", tool_name, elapsed_ms)
+    return result
+
+
+def _execute_tool_sync(
+    tool_name: str,
+    handler: Callable[..., _ToolReturn],
+    /,
+    *args,
+    **kwargs,
+) -> _ToolReturn:
+    """Run a sync MCP tool with metrics and consistent logging."""
+    start = time.perf_counter()
+    logger.info("mcp tool start: %s", tool_name)
+    try:
+        result = handler(*args, **kwargs)
+    except Exception as exc:
+        elapsed_ms = int((time.perf_counter() - start) * 1000)
+        sanitized = sanitize_error(exc)
+        _record_tool_metric(tool_name, elapsed_ms=elapsed_ms, success=False, error=sanitized)
+        logger.warning("mcp tool failed: %s (%s)", tool_name, sanitized)
+        raise
+    elapsed_ms = int((time.perf_counter() - start) * 1000)
+    _record_tool_metric(tool_name, elapsed_ms=elapsed_ms, success=True)
+    logger.info("mcp tool ok: %s (%dms)", tool_name, elapsed_ms)
+    return result
+
+
+def _build_dep_graph_from_agents(agents_data: list[dict[str, Any]]):
+    """Build a dependency graph from serialized agent scan data."""
+    from agent_bom.output.graph_export import DepGraph
+
+    graph = DepGraph()
+    for agent in agents_data:
+        aname = agent.get("name", "unknown")
+        source = agent.get("source") or "local"
+        sid = f"provider:{source}"
+        graph.add_node(sid, source, "provider")
+        aid = f"agent:{aname}"
+        graph.add_node(aid, aname, "agent")
+        graph.add_edge(sid, aid, "hosts")
+        for srv in agent.get("mcp_servers", []):
+            sname = srv.get("name", "unknown")
+            svid = f"server:{aname}/{sname}"
+            graph.add_node(svid, sname, "server_cred" if srv.get("has_credentials") else "server")
+            graph.add_edge(aid, svid, "uses")
+            for pkg in srv.get("packages", []):
+                pn = pkg.get("name", "?")
+                pv = pkg.get("version", "")
+                pe = pkg.get("ecosystem", "")
+                vulns = pkg.get("vulnerabilities", [])
+                pid = f"pkg:{pe}/{pn}@{pv}"
+                graph.add_node(pid, f"{pn}@{pv}" if pv else pn, "pkg_vuln" if vulns else "pkg")
+                graph.add_edge(svid, pid, "depends_on")
+                for vuln in vulns:
+                    vid = f"cve:{vuln.get('id', '?')}"
+                    graph.add_node(vid, vuln.get("id", "?"), "cve", vuln.get("severity", "").lower())
+                    graph.add_edge(pid, vid, "affects")
+    return graph
+
+
 # Cached registry data (loaded once, reused across requests)
 _registry_cache: dict | None = None
 _registry_raw_cache: str | None = None
+_tool_metrics: OrderedDict[str, dict[str, Any]] = OrderedDict()
+_loop_tool_semaphores: OrderedDict[int, asyncio.Semaphore] = OrderedDict()
+_MAX_CACHED_TOOL_LOOPS = 8
 
 
 def _get_registry_data() -> dict:
@@ -417,7 +624,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             JSON with the complete AI-BOM report including agents, packages,
             vulnerabilities, blast radius, and remediation guidance.
         """
-        return await scan_impl(
+        return await _execute_tool_async(
+            "scan",
+            scan_impl,
             config_path=config_path,
             image=image,
             sbom_path=sbom_path,
@@ -476,7 +685,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             JSON with package, version, ecosystem, vulnerability count,
             and vulnerability details (id, severity, cvss, fix version, summary).
         """
-        return await check_impl(
+        return await _execute_tool_async(
+            "check",
+            check_impl,
             package=package,
             ecosystem=ecosystem,
             _validate_ecosystem=_validate_ecosystem,
@@ -504,7 +715,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             affected_servers, affected_agents, exposed_credentials, and
             exposed_tools. Returns found=false if CVE not found.
         """
-        return await blast_radius_impl(
+        return await _execute_tool_async(
+            "blast_radius",
+            blast_radius_impl,
             cve_id=cve_id,
             _validate_cve_id=_validate_cve_id,
             _run_scan_pipeline=_run_scan_pipeline,
@@ -540,7 +753,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             JSON with passed (bool), violations list, failure_count, and
             warning_count.
         """
-        return await policy_check_impl(
+        return await _execute_tool_async(
+            "policy_check",
+            policy_check_impl,
             policy_json=policy_json,
             _run_scan_pipeline=_run_scan_pipeline,
             _truncate_response=_truncate_response,
@@ -577,7 +792,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             credential_env_vars, risk_justification. Returns found=false
             if not found.
         """
-        return registry_lookup_impl(
+        return _execute_tool_sync(
+            "registry_lookup",
+            registry_lookup_impl,
             server_name=server_name,
             package_name=package_name,
             _get_registry_data=_get_registry_data,
@@ -603,7 +820,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         Returns:
             JSON string containing the SBOM in the requested format.
         """
-        return await generate_sbom_impl(
+        return await _execute_tool_async(
+            "generate_sbom",
+            generate_sbom_impl,
             format=format,
             config_path=config_path,
             _run_scan_pipeline=_run_scan_pipeline,
@@ -634,7 +853,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             OWASP MCP Top 10 (10 controls), MITRE ATLAS (13 techniques),
             and NIST AI RMF (14 subcategories).
         """
-        return await compliance_impl(
+        return await _execute_tool_async(
+            "compliance",
+            compliance_impl,
             config_path=config_path,
             image=image,
             _run_scan_pipeline=_run_scan_pipeline,
@@ -663,7 +884,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             JSON with package_fixes (upgrade commands by ecosystem),
             credential_fixes (scope reduction steps), and unfixable items.
         """
-        return await remediate_impl(
+        return await _execute_tool_async(
+            "remediate",
+            remediate_impl,
             config_path=config_path,
             image=image,
             _run_scan_pipeline=_run_scan_pipeline,
@@ -682,7 +905,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         `.cursorrules`, and `skills/*.md`, then parses referenced packages,
         MCP servers, credential env vars, audit findings, and trust verdicts.
         """
-        return skill_scan_impl(
+        return _execute_tool_sync(
+            "skill_scan",
+            skill_scan_impl,
             path=path,
             _safe_path=_safe_path,
             _truncate_response=_truncate_response,
@@ -695,7 +920,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         path: Annotated[str, Field(description="Path to a skill/instruction file or directory to verify.")] = ".",
     ) -> str:
         """Verify Sigstore provenance for skill and instruction files."""
-        return skill_verify_impl(
+        return _execute_tool_sync(
+            "skill_verify",
+            skill_verify_impl,
             path=path,
             _safe_path=_safe_path,
             _truncate_response=_truncate_response,
@@ -723,7 +950,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             JSON with verdict, confidence, per-category assessments, and
             recommendations.
         """
-        return skill_trust_impl(
+        return _execute_tool_sync(
+            "skill_trust",
+            skill_trust_impl,
             skill_path=skill_path,
             _safe_path=_safe_path,
             _truncate_response=_truncate_response,
@@ -746,7 +975,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             JSON with integrity verification (hash match, expected vs actual)
             and provenance status (SLSA level, source repo, build trigger).
         """
-        return await verify_impl(
+        return await _execute_tool_async(
+            "verify",
+            verify_impl,
             package=package,
             ecosystem=ecosystem,
             _validate_ecosystem=_validate_ecosystem,
@@ -766,7 +997,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         Returns:
             JSON with per-client config paths, existence status, and platform.
         """
-        return where_impl(_truncate_response=_truncate_response)
+        return _execute_tool_sync("where", where_impl, _truncate_response=_truncate_response)
 
     # ── Tool 14: inventory ────────────────────────────────────────
 
@@ -783,7 +1014,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             JSON with discovered agents, their MCP servers, packages, and
             transport types.
         """
-        return inventory_impl(
+        return _execute_tool_sync(
+            "inventory",
+            inventory_impl,
             config_path=config_path,
             _truncate_response=_truncate_response,
         )
@@ -802,7 +1035,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             JSON with per-server tool profiles, capability counts, dangerous
             combinations, and risk justification.
         """
-        return tool_risk_assessment_impl(
+        return _execute_tool_sync(
+            "tool_risk_assessment",
+            tool_risk_assessment_impl,
             config_path=config_path,
             timeout=timeout,
             _truncate_response=_truncate_response,
@@ -826,7 +1061,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             JSON with new findings, resolved findings, new/removed packages,
             and a human-readable summary.
         """
-        return await diff_impl(
+        return await _execute_tool_async(
+            "diff",
+            diff_impl,
             baseline=baseline,
             _run_scan_pipeline=_run_scan_pipeline,
             _truncate_response=_truncate_response,
@@ -854,7 +1091,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             JSON with name, version, ecosystem, cve_count, download_count,
             registry_verified, and trust_signals.
         """
-        return await marketplace_check_impl(
+        return await _execute_tool_async(
+            "marketplace_check",
+            marketplace_check_impl,
             package=package,
             ecosystem=ecosystem,
             _validate_ecosystem=_validate_ecosystem,
@@ -880,7 +1119,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
         Requires ``semgrep`` on PATH (``pip install semgrep``).
         """
-        return await code_scan_impl(
+        return await _execute_tool_async(
+            "code_scan",
+            code_scan_impl,
             path=path,
             config=config,
             _safe_path=_safe_path,
@@ -913,7 +1154,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         Returns:
             JSON with nodes, edges, lateral_paths, interaction_risks, and stats.
         """
-        return await context_graph_impl(
+        return await _execute_tool_async(
+            "context_graph",
+            context_graph_impl,
             config_path=config_path,
             source_agent=source_agent,
             max_depth=max_depth,
@@ -946,65 +1189,41 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         Returns:
             Graph in the requested format as a string.
         """
-        result = await _run_scan_pipeline(config_path=config_path)
-        agents_data = result.get("agents", []) if isinstance(result, dict) else []
 
-        from agent_bom.output.graph_export import (
-            DepGraph,
-        )
-        from agent_bom.output.graph_export import (
-            to_cypher as _to_cypher,
-        )
-        from agent_bom.output.graph_export import (
-            to_dot as _to_dot,
-        )
-        from agent_bom.output.graph_export import (
-            to_graphml as _to_graphml,
-        )
-        from agent_bom.output.graph_export import (
-            to_json as _graph_to_json,
-        )
-        from agent_bom.output.graph_export import (
-            to_mermaid as _to_mermaid,
-        )
+        async def _impl() -> str:
+            agents, _blast_radii, _warnings, _sources = await _run_scan_pipeline(config_path=config_path)
+            agents_data = [asdict(agent) for agent in agents]
 
-        graph = DepGraph()
-        for agent in agents_data:
-            aname = agent.get("name", "unknown")
-            source = agent.get("source") or "local"
-            sid = f"provider:{source}"
-            graph.add_node(sid, source, "provider")
-            aid = f"agent:{aname}"
-            graph.add_node(aid, aname, "agent")
-            graph.add_edge(sid, aid, "hosts")
-            for srv in agent.get("mcp_servers", []):
-                sname = srv.get("name", "unknown")
-                svid = f"server:{aname}/{sname}"
-                graph.add_node(svid, sname, "server_cred" if srv.get("has_credentials") else "server")
-                graph.add_edge(aid, svid, "uses")
-                for pkg in srv.get("packages", []):
-                    pn = pkg.get("name", "?")
-                    pv = pkg.get("version", "")
-                    pe = pkg.get("ecosystem", "")
-                    vulns = pkg.get("vulnerabilities", [])
-                    pid = f"pkg:{pe}/{pn}@{pv}"
-                    graph.add_node(pid, f"{pn}@{pv}" if pv else pn, "pkg_vuln" if vulns else "pkg")
-                    graph.add_edge(svid, pid, "depends_on")
-                    for v in vulns:
-                        vid = f"cve:{v.get('id', '?')}"
-                        graph.add_node(vid, v.get("id", "?"), "cve", v.get("severity", "").lower())
-                        graph.add_edge(pid, vid, "affects")
+            from agent_bom.output.graph_export import (
+                to_cypher as _to_cypher,
+            )
+            from agent_bom.output.graph_export import (
+                to_dot as _to_dot,
+            )
+            from agent_bom.output.graph_export import (
+                to_graphml as _to_graphml,
+            )
+            from agent_bom.output.graph_export import (
+                to_json as _graph_to_json,
+            )
+            from agent_bom.output.graph_export import (
+                to_mermaid as _to_mermaid,
+            )
 
-        _fmt = format.lower()
-        if _fmt == "graphml":
-            return _truncate_response(_to_graphml(graph))
-        if _fmt == "cypher":
-            return _truncate_response(_to_cypher(graph))
-        if _fmt == "dot":
-            return _truncate_response(_to_dot(graph))
-        if _fmt == "mermaid":
-            return _truncate_response(_to_mermaid(graph))
-        return _truncate_response(json.dumps(_graph_to_json(graph), indent=2))
+            graph = _build_dep_graph_from_agents(agents_data)
+
+            _fmt = format.lower()
+            if _fmt == "graphml":
+                return _truncate_response(_to_graphml(graph))
+            if _fmt == "cypher":
+                return _truncate_response(_to_cypher(graph))
+            if _fmt == "dot":
+                return _truncate_response(_to_dot(graph))
+            if _fmt == "mermaid":
+                return _truncate_response(_to_mermaid(graph))
+            return _truncate_response(json.dumps(_graph_to_json(graph), indent=2))
+
+        return await _execute_tool_async("graph_export", _impl)
 
     @mcp.tool(annotations=_READ_ONLY, title="Analytics Query")
     async def analytics_query(
@@ -1034,7 +1253,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         Requires AGENT_BOM_CLICKHOUSE_URL to be set. Returns empty results if
         ClickHouse is not configured.
         """
-        return await analytics_query_impl(
+        return await _execute_tool_async(
+            "analytics_query",
+            analytics_query_impl,
             query_type=query_type,
             days=days,
             hours=hours,
@@ -1084,7 +1305,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         Returns:
             JSON with per-check pass/fail results, evidence, severity, ATT&CK techniques, and pass rate.
         """
-        return await cis_benchmark_impl(
+        return await _execute_tool_async(
+            "cis_benchmark",
+            cis_benchmark_impl,
             provider=provider,
             checks=checks,
             region=region,
@@ -1120,7 +1343,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             JSON with summary (total, matched, unmatched, risk breakdown)
             and per-server details.
         """
-        return await fleet_scan_impl(
+        return await _execute_tool_async(
+            "fleet_scan",
+            fleet_scan_impl,
             servers=servers,
             _truncate_response=_truncate_response,
         )
@@ -1173,7 +1398,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             JSON with correlated findings (CVE + tool call data + amplified risk),
             summary stats, uncalled vulnerable tools, and ml_api_calls provenance.
         """
-        return await runtime_correlate_impl(
+        return await _execute_tool_async(
+            "runtime_correlate",
+            runtime_correlate_impl,
             config_path=config_path,
             audit_log=audit_log,
             otel_trace=otel_trace,
@@ -1202,6 +1429,11 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             ],
         }
         return json.dumps(template, indent=2)
+
+    @mcp.resource("metrics://tools")
+    def tool_metrics_resource() -> str:
+        """Return bounded MCP tool execution metrics for observability."""
+        return json.dumps(_tool_metrics_snapshot(), indent=2)
 
     # ── Prompts ─────────────────────────────────────────────────────
 
@@ -1248,7 +1480,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         Returns:
             JSON with per-database risk assessment including risk_level, risk_flags, and metadata.
         """
-        return await vector_db_scan_impl(
+        return await _execute_tool_async(
+            "vector_db_scan",
+            vector_db_scan_impl,
             hosts=hosts,
             _truncate_response=_truncate_response,
         )
@@ -1280,7 +1514,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         Returns:
             JSON with per-check pass/fail results, evidence, severity, MAESTRO layer, and pass rate.
         """
-        return await aisvs_benchmark_impl(
+        return await _execute_tool_async(
+            "aisvs_benchmark",
+            aisvs_benchmark_impl,
             checks=checks,
             _truncate_response=_truncate_response,
         )
@@ -1317,7 +1553,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
             JSON with GPU containers, K8s nodes, DCGM endpoints, CUDA version
             inventory, and a risk summary with unauthenticated DCGM count.
         """
-        return await gpu_infra_scan_impl(
+        return await _execute_tool_async(
+            "gpu_infra_scan",
+            gpu_infra_scan_impl,
             k8s_context=k8s_context,
             probe_dcgm=probe_dcgm,
             _truncate_response=_truncate_response,
@@ -1343,7 +1581,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         Tags findings with compliance frameworks: OWASP LLM (LLM03), MITRE ATLAS,
         NIST AI RMF (MAP-3.5), EU AI Act (ART-10).
         """
-        return await dataset_card_scan_impl(
+        return await _execute_tool_async(
+            "dataset_card_scan",
+            dataset_card_scan_impl,
             directory=str(_safe_path(directory)),
             _truncate_response=_truncate_response,
         )
@@ -1368,7 +1608,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         Tags findings with compliance frameworks: OWASP LLM (LLM03), MITRE ATLAS (AML.T0020),
         NIST AI RMF (MAP-3.5, GOVERN-1.7).
         """
-        return await training_pipeline_scan_impl(
+        return await _execute_tool_async(
+            "training_pipeline_scan",
+            training_pipeline_scan_impl,
             directory=str(_safe_path(directory)),
             _truncate_response=_truncate_response,
         )
@@ -1393,7 +1635,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
         Deduplicates across profiles. Returns risk-ranked results.
         """
-        return await browser_extension_scan_impl(
+        return await _execute_tool_async(
+            "browser_extension_scan",
+            browser_extension_scan_impl,
             include_low_risk=include_low_risk,
             _truncate_response=_truncate_response,
         )
@@ -1422,7 +1666,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
         Returns structured provenance data for supply chain risk assessment.
         """
-        return await model_provenance_scan_impl(
+        return await _execute_tool_async(
+            "model_provenance_scan",
+            model_provenance_scan_impl,
             model_id=model_id,
             source=source,
             _truncate_response=_truncate_response,
@@ -1447,7 +1693,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         Checks for injection patterns, unsafe variable interpolation, and
         missing guardrails in prompt templates.
         """
-        return await prompt_scan_impl(
+        return await _execute_tool_async(
+            "prompt_scan",
+            prompt_scan_impl,
             directory=str(_safe_path(directory)),
             _truncate_response=_truncate_response,
         )
@@ -1471,7 +1719,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
         Returns structured results with risk assessment per model file.
         """
-        return await model_file_scan_impl(
+        return await _execute_tool_async(
+            "model_file_scan",
+            model_file_scan_impl,
             directory=str(_safe_path(directory)),
             _truncate_response=_truncate_response,
         )
@@ -1496,7 +1746,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
         Returns structured inventory with severity classification.
         """
-        return await ai_inventory_scan_impl(
+        return await _execute_tool_async(
+            "ai_inventory_scan",
+            ai_inventory_scan_impl,
             directory=str(_safe_path(directory)),
             _truncate_response=_truncate_response,
         )
@@ -1537,7 +1789,9 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
         Returns structured report with compliance status, findings, and risk summary.
         """
-        return await license_compliance_scan_impl(
+        return await _execute_tool_async(
+            "license_compliance_scan",
+            license_compliance_scan_impl,
             scan_json=scan_json,
             policy_json=policy_json,
             _truncate_response=_truncate_response,
@@ -1565,29 +1819,33 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
         Pass the full JSON string from the scanner's ``--format json`` / ``--output json``
         output as the ``scan_json`` argument.
         """
-        import json as _json
 
-        from agent_bom.parsers.external_scanners import detect_and_parse
+        async def _impl() -> str:
+            import json as _json
 
-        try:
-            data = _json.loads(scan_json)
-            packages = detect_and_parse(data)
-            return _json.dumps(
-                {
-                    "packages": len(packages),
-                    "ingested": [
-                        {
-                            "name": p.name,
-                            "version": p.version,
-                            "ecosystem": p.ecosystem,
-                            "vulnerabilities": len(p.vulnerabilities),
-                        }
-                        for p in packages[:50]
-                    ],
-                }
-            )
-        except Exception as e:  # noqa: BLE001
-            return _truncate_response(_json.dumps({"error": sanitize_error(e)}))
+            from agent_bom.parsers.external_scanners import detect_and_parse
+
+            try:
+                data = _json.loads(scan_json)
+                packages = detect_and_parse(data)
+                return _json.dumps(
+                    {
+                        "packages": len(packages),
+                        "ingested": [
+                            {
+                                "name": p.name,
+                                "version": p.version,
+                                "ecosystem": p.ecosystem,
+                                "vulnerabilities": len(p.vulnerabilities),
+                            }
+                            for p in packages[:50]
+                        ],
+                    }
+                )
+            except Exception as e:  # noqa: BLE001
+                return _truncate_response(_json.dumps({"error": sanitize_error(e)}))
+
+        return await _execute_tool_async("ingest_external_scan", _impl)
 
     # ── Custom routes: metadata + health ─────────────────────────────
 
@@ -1630,6 +1888,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                 "status": "healthy",
                 "name": "agent-bom",
                 "version": __version__,
+                "mcp_metrics": _tool_metrics_snapshot()["summary"],
             }
         )
 

@@ -204,11 +204,17 @@ API_MAX_IN_MEMORY_JOBS = _int("AGENT_BOM_API_MAX_MEMORY_JOBS", 200)
 
 
 # ── MCP Server Limits ────────────────────────────────────────────────────
-# Used by mcp_server.py for file-size and response-size guards.
+# Used by mcp_server.py for file-size and response-size guards, tool execution
+# governance, and lightweight in-process observability.
 #
 # 50 MB max file size prevents accidental ingestion of large binaries.
 # 500,000 char response cap keeps MCP tool responses within typical
-# LLM context windows.
+# LLM context windows. 8 concurrent tools keeps hosted MCP usage bounded
+# without artificially constraining typical desktop usage. A 30s per-tool
+# timeout prevents slow integrations from monopolizing the server forever.
 
 MCP_MAX_FILE_SIZE = _int("AGENT_BOM_MCP_MAX_FILE_SIZE", 50 * 1024 * 1024)
 MCP_MAX_RESPONSE_CHARS = _int("AGENT_BOM_MCP_MAX_RESPONSE", 500_000)
+MCP_MAX_CONCURRENT_TOOLS = _int("AGENT_BOM_MCP_MAX_CONCURRENT_TOOLS", 8)
+MCP_TOOL_TIMEOUT_SECONDS = _float("AGENT_BOM_MCP_TOOL_TIMEOUT_SECONDS", 30.0)
+MCP_MAX_TOOL_METRICS = _int("AGENT_BOM_MCP_MAX_TOOL_METRICS", 128)

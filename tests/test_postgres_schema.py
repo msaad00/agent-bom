@@ -83,6 +83,7 @@ def test_all_expected_tables_exist():
         "policy_results",
         "api_keys",
         "job_queue",
+        "api_rate_limits",
         "fleet_agents",
         "gateway_policies",
         "policy_audit_log",
@@ -95,7 +96,7 @@ def test_all_expected_tables_exist():
 
 
 def test_total_table_count():
-    assert len(_tables()) >= 14
+    assert len(_tables()) >= 15
 
 
 def test_gateway_policy_tables_have_tenant_columns():
@@ -124,9 +125,17 @@ def test_remaining_tenant_tables_have_rls():
 
 
 def test_schema_summary_comment_is_current():
-    assert "--  Schema (14 tables):" in SQL
+    assert "--  Schema (15 tables):" in SQL
+    assert "--   api_rate_limits    — shared API rate-limiter buckets" in SQL
     assert "--   audit_log          — signed API/security audit trail" in SQL
     assert "--   trend_history      — persisted posture/vulnerability history" in SQL
+
+
+def test_api_rate_limits_table_exists():
+    cols = _columns_for("api_rate_limits")
+    for col in ("bucket_key", "window_started", "hits", "updated_at"):
+        assert col in cols, f"api_rate_limits missing column: {col}"
+    assert "idx_api_rate_limits_updated" in _indexes()
 
 
 # ── teams table ───────────────────────────────────────────────────────────────

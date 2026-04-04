@@ -367,6 +367,20 @@ CREATE INDEX IF NOT EXISTS idx_jobq_status_due ON job_queue(status, scheduled_fo
 CREATE INDEX IF NOT EXISTS idx_jobq_team       ON job_queue(team_id);
 CREATE INDEX IF NOT EXISTS idx_jobq_type       ON job_queue(job_type);
 
+-- ── Table: api_rate_limits ───────────────────────────────────────────────────
+-- Shared API rate limiter buckets. Infrastructure-only table used to keep
+-- request throttling consistent across horizontally scaled API replicas.
+
+CREATE TABLE IF NOT EXISTS api_rate_limits (
+    bucket_key      TEXT NOT NULL,
+    window_started  INTEGER NOT NULL,
+    hits            INTEGER NOT NULL DEFAULT 0,
+    updated_at      TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+    PRIMARY KEY (bucket_key, window_started)
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_rate_limits_updated ON api_rate_limits(updated_at);
+
 -- ══════════════════════════════════════════════════════════════════════════════
 -- TENANT RLS HELPERS + POLICIES
 -- ══════════════════════════════════════════════════════════════════════════════
@@ -703,7 +717,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO agent_bom_re
 --
 --  Connection: AGENT_BOM_POSTGRES_URL=postgresql://agent_bom_app:<pw>@<host>:5432/agent_bom
 --
---  Schema (14 tables):
+--  Schema (15 tables):
 --   teams              — multi-tenant team registry (FK root)
 --   scan_jobs          — async scan job lifecycle + full result JSONB
 --   findings           — normalized vulnerability findings (per scan, per CVE)
@@ -711,6 +725,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO agent_bom_re
 --   policy_results     — per-scan policy evaluation outcomes
 --   api_keys           — persistent RBAC API key store (scrypt KDF)
 --   job_queue          — background async task queue
+--   api_rate_limits    — shared API rate-limiter buckets
 --   fleet_agents       — governed agent lifecycle (long-lived)
 --   gateway_policies   — runtime MCP enforcement policies
 --   policy_audit_log   — runtime policy audit trail (HMAC-verified)

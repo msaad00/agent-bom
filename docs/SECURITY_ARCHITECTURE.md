@@ -71,7 +71,7 @@ For cross-agent correlation and the broader 8-detector protection engine, run `a
 - **PII detection**: Email, SSN, credit card, phone, internal IP
 - **Secrets detection**: API keys, tokens, private keys
 - **Audit trail**: JSONL logging to configurable path (`AGENT_BOM_LOG`)
-- **Rate limiting**: Per-tool call rate limits (configurable)
+- **Rate limiting**: Per-tool call rate limits (configurable) and shared API request throttling when Postgres-backed enterprise mode is enabled
 
 ## Self-Assessment Coverage
 

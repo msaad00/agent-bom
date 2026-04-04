@@ -1,6 +1,6 @@
 """Tests for API server hardening — auth, rate limiting, CORS, body size."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from starlette.testclient import TestClient
 
@@ -213,6 +213,48 @@ def test_rate_limit_middleware():
     resp = client.post("/v1/scan")
     assert resp.status_code == 429
     assert "Retry-After" in resp.headers
+
+
+def test_rate_limit_middleware_uses_postgres_store_when_available(monkeypatch):
+    """Postgres-backed limiter should be selected when AGENT_BOM_POSTGRES_URL is set."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    fake_store = MagicMock()
+    fake_store.hit.return_value = (1, 1_700_000_060)
+
+    monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://example/test")
+    with patch("agent_bom.api.middleware.PostgresRateLimitStore", return_value=fake_store):
+        test_app = Starlette(routes=[Route("/v1/test", dummy)])
+        test_app.add_middleware(RateLimitMiddleware, scan_rpm=3, read_rpm=10)
+        client = TestClient(test_app)
+        resp = client.get("/v1/test")
+
+    assert resp.status_code == 200
+    fake_store.hit.assert_called_once()
+
+
+def test_rate_limit_middleware_falls_back_when_postgres_store_unavailable(monkeypatch):
+    """Limiter should keep serving requests if shared Postgres state cannot initialize."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://example/test")
+    with patch("agent_bom.api.middleware.PostgresRateLimitStore", side_effect=RuntimeError("boom")):
+        test_app = Starlette(routes=[Route("/v1/test", dummy)])
+        test_app.add_middleware(RateLimitMiddleware, scan_rpm=3, read_rpm=10)
+        client = TestClient(test_app)
+        resp = client.get("/v1/test")
+
+    assert resp.status_code == 200
 
 
 def test_max_body_size_middleware():

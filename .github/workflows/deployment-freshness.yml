@@ -81,19 +81,36 @@ jobs:
           EXPECTED="${{ steps.expected.outputs.version }}"
           RAILWAY="${{ steps.railway.outputs.railway_version }}"
           TOOLS="${{ steps.smithery.outputs.tool_count }}"
+          TITLE="supply-chain-drift: Railway serving $RAILWAY, expected $EXPECTED"
+
+          gh label create supply-chain-drift --color FBCA04 --description "Automated supply-chain or deployment drift detection" >/dev/null 2>&1 || true
+          gh label create security-preventive --color 0E8A16 --description "Preventive daily security automation findings" >/dev/null 2>&1 || true
+          gh label create automated --color 5319E7 --description "Opened or updated automatically by CI" >/dev/null 2>&1 || true
 
           # Check if an issue already exists
-          EXISTING=$(gh issue list --label "deployment-stale" --state open --json number --jq 'length')
-          if [ "$EXISTING" -gt "0" ]; then
-            echo "Stale deployment issue already open — skipping"
+          EXISTING=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --body "$(cat <<EOF
+          ## Supply-Chain Drift Check Failed
+
+          | Surface | Deployed | Expected |
+          |---------|----------|----------|
+          | Railway | $RAILWAY | $EXPECTED |
+          | Tool count | $TOOLS | (check mcp_server.py) |
+
+          **Action**: Re-run the Deploy MCP SSE workflow or trigger a new release.
+
+          This issue was auto-updated by the deployment-freshness workflow.
+          EOF
+          )"
             exit 0
           fi
 
           gh issue create \
-            --title "Deployment stale: Railway serving $RAILWAY, expected $EXPECTED" \
-            --label "deployment-stale,bug" \
+            --title "$TITLE" \
+            --label "supply-chain-drift,security-preventive,automated" \
             --body "$(cat <<EOF
-          ## Deployment Freshness Check Failed
+          ## Supply-Chain Drift Check Failed
 
           | Surface | Deployed | Expected |
           |---------|----------|----------|
@@ -105,3 +122,14 @@ jobs:
           This issue was auto-created by the deployment-freshness workflow.
           EOF
           )"
+
+      - name: Close supply-chain drift issue when deployment is fresh
+        if: steps.railway.outputs.stale != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          EXISTING=$(gh issue list --label "supply-chain-drift" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh issue close "$EXISTING" --comment "Deployment freshness check is clean again; closing the automated supply-chain drift alert."
+          fi

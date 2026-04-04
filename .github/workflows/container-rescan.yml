@@ -6,7 +6,7 @@ name: Container Re-Scan
 
 on:
   schedule:
-    - cron: "0 8 * * 3"   # Wednesday 08:00 UTC
+    - cron: "0 8 * * *"   # daily at 08:00 UTC
   workflow_dispatch:
 
 permissions: {}  # deny all by default; jobs declare only what they need
@@ -20,6 +20,7 @@ jobs:
     permissions:
       contents: read
       security-events: write  # required: SARIF upload to GitHub Security tab
+      issues: write
     strategy:
       fail-fast: false
       matrix:
@@ -88,3 +89,37 @@ jobs:
         if: steps.trivy-table.outcome == 'failure'
         run: |
           echo "::warning::Trivy found HIGH/CRITICAL CVEs in agentbom/agent-bom:latest (${{ matrix.platform }}). Check SARIF in Security tab."
+
+      - name: Open or close base image vulnerability issue
+        if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TITLE="base-image-vulnerability: agentbom/agent-bom:latest has HIGH/CRITICAL findings on ${{ matrix.platform }}"
+          gh label create base-image-vulnerability --color B60205 --description "Automated base image vulnerability findings" >/dev/null 2>&1 || true
+          gh label create security-preventive --color 0E8A16 --description "Preventive daily security automation findings" >/dev/null 2>&1 || true
+          gh label create automated --color 5319E7 --description "Opened or updated automatically by CI" >/dev/null 2>&1 || true
+          EXISTING=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty')
+
+          if [ "${{ steps.trivy-table.outcome }}" = "failure" ]; then
+            BODY=$(cat <<EOF
+          ## Automated Base Image Vulnerability Alert
+
+          Daily image rescan found HIGH/CRITICAL findings in \`agentbom/agent-bom:latest\`.
+
+          - Platform: \`${{ matrix.platform }}\`
+          - SARIF category: \`${{ matrix.sarif_category }}\`
+          - Source workflow: \`.github/workflows/container-rescan.yml\`
+
+          Review the GitHub Security tab and the workflow logs for the current image findings.
+          EOF
+          )
+            if [ -n "$EXISTING" ]; then
+              gh issue comment "$EXISTING" --body "$BODY"
+            else
+              gh issue create --title "$TITLE" --label "base-image-vulnerability,security-preventive,automated" --body "$BODY"
+            fi
+          elif [ -n "$EXISTING" ]; then
+            gh issue close "$EXISTING" --comment "Daily image rescan is clean again; closing the automated base image vulnerability alert."
+          fi

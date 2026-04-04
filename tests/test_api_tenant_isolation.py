@@ -1,4 +1,4 @@
-"""Tenant isolation tests for fleet and schedule routes."""
+"""Tenant isolation tests for fleet, schedule, and scan job routes."""
 
 from __future__ import annotations
 
@@ -10,11 +10,14 @@ import pytest
 from fastapi import HTTPException
 
 from agent_bom.api.fleet_store import FleetAgent, FleetLifecycleState, InMemoryFleetStore
-from agent_bom.api.models import FleetAgentUpdate, ScheduleCreate, StateUpdate
+from agent_bom.api.models import FleetAgentUpdate, JobStatus, PushPayload, ScanJob, ScanRequest, ScheduleCreate, StateUpdate
 from agent_bom.api.routes import fleet as fleet_routes
+from agent_bom.api.routes import observability as observability_routes
+from agent_bom.api.routes import scan as scan_routes
 from agent_bom.api.routes import schedules as schedule_routes
 from agent_bom.api.schedule_store import InMemoryScheduleStore, ScanSchedule
-from agent_bom.api.stores import set_fleet_store, set_schedule_store
+from agent_bom.api.store import InMemoryJobStore
+from agent_bom.api.stores import _jobs, set_fleet_store, set_job_store, set_schedule_store
 
 
 def _now() -> str:
@@ -163,3 +166,69 @@ async def test_schedule_create_uses_authenticated_tenant():
         ),
     )
     assert created["tenant_id"] == "tenant-alpha"
+
+
+@pytest.mark.asyncio
+async def test_scan_routes_are_tenant_scoped():
+    store = InMemoryJobStore()
+    set_job_store(store)
+    _jobs.clear()
+
+    alpha_job = ScanJob(
+        job_id="job-alpha",
+        tenant_id="tenant-alpha",
+        status=JobStatus.DONE,
+        created_at=_now(),
+        request=ScanRequest(),
+    )
+    beta_job = ScanJob(
+        job_id="job-beta",
+        tenant_id="tenant-beta",
+        status=JobStatus.DONE,
+        created_at=_now(),
+        request=ScanRequest(),
+    )
+    store.put(alpha_job)
+    store.put(beta_job)
+    _jobs_put = _jobs.__setitem__
+    _jobs_put(alpha_job.job_id, alpha_job)
+    _jobs_put(beta_job.job_id, beta_job)
+
+    req = _request("tenant-alpha")
+
+    listed = await scan_routes.list_jobs(req)
+    assert [j["job_id"] for j in listed["jobs"]] == ["job-alpha"]
+    assert listed["jobs"][0]["tenant_id"] == "tenant-alpha"
+
+    got = await scan_routes.get_scan(req, "job-alpha")
+    assert got.job_id == "job-alpha"
+    assert got.tenant_id == "tenant-alpha"
+
+    with pytest.raises(HTTPException) as exc:
+        await scan_routes.get_scan(req, "job-beta")
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_scan_and_push_stamp_request_tenant(monkeypatch):
+    store = InMemoryJobStore()
+    set_job_store(store)
+    _jobs.clear()
+    req = _request("tenant-alpha")
+
+    class _Loop:
+        def run_in_executor(self, *_args, **_kwargs):
+            return None
+
+    monkeypatch.setattr(scan_routes.asyncio, "get_running_loop", lambda: _Loop())
+
+    created = await scan_routes.create_scan(req, ScanRequest())
+    assert created.tenant_id == "tenant-alpha"
+
+    pushed = await observability_routes.receive_push(
+        req,
+        PushPayload(source_id="source-a", agents=[], blast_radii=[], warnings=[]),
+    )
+    pushed_job = store.get(pushed["job_id"])
+    assert pushed_job is not None
+    assert pushed_job.tenant_id == "tenant-alpha"

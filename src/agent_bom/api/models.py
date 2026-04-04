@@ -97,6 +97,7 @@ class ScanJob(BaseModel):
     """Represents a running or completed scan job."""
 
     job_id: str
+    tenant_id: str = "default"
     status: JobStatus = JobStatus.PENDING
     created_at: str
     started_at: str | None = None

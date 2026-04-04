@@ -155,22 +155,38 @@ class PostgresJobStore:
                     status TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     completed_at TEXT,
+                    team_id TEXT NOT NULL DEFAULT 'default',
                     data JSONB NOT NULL
                 )
             """)
+            conn.execute("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'scan_jobs' AND column_name = 'team_id'
+                    ) THEN
+                        ALTER TABLE scan_jobs ADD COLUMN team_id TEXT NOT NULL DEFAULT 'default';
+                    END IF;
+                END
+                $$;
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_jobs_team_created ON scan_jobs(team_id, created_at DESC)")
+            _ensure_tenant_rls(conn, "scan_jobs", "team_id")
             conn.commit()
 
     def put(self, job) -> None:
         data = job.model_dump_json()
         with _tenant_connection(self._pool) as conn:
             conn.execute(
-                """INSERT INTO scan_jobs (job_id, status, created_at, completed_at, data)
-                   VALUES (%s, %s, %s, %s, %s)
+                """INSERT INTO scan_jobs (job_id, status, created_at, completed_at, team_id, data)
+                   VALUES (%s, %s, %s, %s, %s, %s)
                    ON CONFLICT (job_id) DO UPDATE SET
                      status = EXCLUDED.status,
                      completed_at = EXCLUDED.completed_at,
+                     team_id = EXCLUDED.team_id,
                      data = EXCLUDED.data""",
-                (job.job_id, job.status.value, job.created_at, job.completed_at, data),
+                (job.job_id, job.status.value, job.created_at, job.completed_at, job.tenant_id, data),
             )
             conn.commit()
 
@@ -199,8 +215,10 @@ class PostgresJobStore:
 
     def list_summary(self) -> list[dict]:
         with _tenant_connection(self._pool) as conn:
-            rows = conn.execute("SELECT job_id, status, created_at, completed_at FROM scan_jobs ORDER BY created_at DESC").fetchall()
-            return [{"job_id": r[0], "status": r[1], "created_at": r[2], "completed_at": r[3]} for r in rows]
+            rows = conn.execute(
+                "SELECT job_id, team_id, status, created_at, completed_at FROM scan_jobs ORDER BY created_at DESC"
+            ).fetchall()
+            return [{"job_id": r[0], "tenant_id": r[1], "status": r[2], "created_at": r[3], "completed_at": r[4]} for r in rows]
 
     def cleanup_expired(self, ttl_seconds: int = _JOB_TTL_SECONDS) -> int:
         now = datetime.now(timezone.utc).isoformat()

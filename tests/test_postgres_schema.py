@@ -138,6 +138,11 @@ def test_scan_jobs_team_status_index():
     assert "idx_jobs_team_status" in _indexes()
 
 
+def test_scan_jobs_rls_policy_exists():
+    assert "ALTER TABLE scan_jobs ENABLE ROW LEVEL SECURITY" in SQL
+    assert "CREATE POLICY scan_jobs_tenant_isolation ON scan_jobs" in SQL
+
+
 # ── findings ─────────────────────────────────────────────────────────────────
 
 

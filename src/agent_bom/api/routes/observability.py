@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import uuid
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from agent_bom.api.models import JobStatus, PushPayload, ScanJob, ScanRequest
 from agent_bom.api.stores import _get_fleet_store, _get_store
@@ -75,13 +75,14 @@ async def ingest_traces(body: dict) -> dict:
 
 
 @router.post("/v1/results/push", tags=["push"], status_code=201)
-async def receive_push(body: PushPayload) -> dict:
+async def receive_push(request: Request, body: PushPayload) -> dict:
     """Receive pushed scan results from a CLI instance.
 
     Stores as a completed ScanJob with source metadata.
     """
     job = ScanJob(
         job_id=str(uuid.uuid4()),
+        tenant_id=getattr(request.state, "tenant_id", "default"),
         created_at=_now(),
         request=ScanRequest(),
     )

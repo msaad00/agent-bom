@@ -55,6 +55,18 @@ def test_rate_limit_reset_header_present():
     assert now <= reset_val <= now + 70
 
 
+def test_rate_limit_remaining_hits_zero_at_limit():
+    """Remaining count should reach zero on the last allowed request."""
+    client = TestClient(_make_app(read_rpm=2))
+    resp1 = client.get("/v1/data")
+    assert resp1.status_code == 200
+    assert resp1.headers["x-ratelimit-remaining"] == "1"
+
+    resp2 = client.get("/v1/data")
+    assert resp2.status_code == 200
+    assert resp2.headers["x-ratelimit-remaining"] == "0"
+
+
 def test_x_api_version_header():
     """TrustHeadersMiddleware should add X-API-Version: v1 to every response."""
 

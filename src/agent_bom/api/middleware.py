@@ -8,7 +8,6 @@ import os
 import secrets
 import time
 import uuid
-from collections import defaultdict
 from typing import TYPE_CHECKING
 
 from agent_bom import __version__
@@ -22,6 +21,87 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp
 
 _logger = logging.getLogger(__name__)
+
+
+class InMemoryRateLimitStore:
+    """Process-local sliding-window limiter state."""
+
+    _MAX_ENTRIES = 10_000
+
+    def __init__(self, window_seconds: int = 60) -> None:
+        self._window = window_seconds
+        self._hits: dict[str, list[float]] = {}
+        self._last_cleanup = time.time()
+
+    def _cleanup(self, now: float) -> None:
+        """Prune stale entries to prevent unbounded memory growth."""
+        if now - self._last_cleanup < self._window:
+            return
+        self._last_cleanup = now
+        stale = [k for k, v in self._hits.items() if not v or v[-1] < now - self._window]
+        for k in stale:
+            del self._hits[k]
+        if len(self._hits) > self._MAX_ENTRIES:
+            self._hits.clear()
+
+    def hit(self, key: str, now: float) -> tuple[int, int]:
+        """Record a request and return (hit_count, reset_epoch)."""
+        self._cleanup(now)
+        timestamps = [t for t in self._hits.get(key, []) if now - t < self._window]
+        timestamps.append(now)
+        self._hits[key] = timestamps
+        reset_at = int((timestamps[0] if timestamps else now) + self._window)
+        return len(timestamps), reset_at
+
+
+class PostgresRateLimitStore:
+    """Shared sliding-window limiter backed by Postgres for horizontal scaling."""
+
+    def __init__(self, window_seconds: int = 60, pool=None) -> None:
+        self._window = window_seconds
+        if pool is None:
+            from agent_bom.api.postgres_store import _get_pool
+
+            pool = _get_pool()
+        self._pool = pool
+        self._init_tables()
+
+    def _init_tables(self) -> None:
+        with self._pool.connection() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS api_rate_limits (
+                    bucket_key      TEXT NOT NULL,
+                    window_started  INTEGER NOT NULL,
+                    hits            INTEGER NOT NULL DEFAULT 0,
+                    updated_at      TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+                    PRIMARY KEY (bucket_key, window_started)
+                )
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_api_rate_limits_updated ON api_rate_limits(updated_at)")
+
+    def hit(self, key: str, now: float) -> tuple[int, int]:
+        """Record a request and return (hit_count, reset_epoch)."""
+        window_started = int(now // self._window) * self._window
+        reset_at = window_started + self._window
+        with self._pool.connection() as conn:
+            # Trim stale windows opportunistically to keep the table bounded.
+            conn.execute(
+                "DELETE FROM api_rate_limits WHERE window_started < %s",
+                (window_started - (self._window * 2),),
+            )
+            row = conn.execute(
+                """
+                INSERT INTO api_rate_limits (bucket_key, window_started, hits)
+                VALUES (%s, %s, 1)
+                ON CONFLICT (bucket_key, window_started)
+                DO UPDATE SET hits = api_rate_limits.hits + 1,
+                              updated_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+                RETURNING hits
+                """,
+                (key, window_started),
+            ).fetchone()
+        count = int(row[0]) if row else 1
+        return count, int(reset_at)
 
 
 class TrustHeadersMiddleware(BaseHTTPMiddleware):
@@ -216,55 +296,44 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """Per-IP sliding window rate limiter with bounded memory."""
 
-    _MAX_ENTRIES = 10_000
-
     def __init__(self, app: ASGIApp, scan_rpm: int = 60, read_rpm: int = 300):
         super().__init__(app)
         self._scan_rpm = scan_rpm
         self._read_rpm = read_rpm
         self._window = 60
-        self._hits: dict[str, list[float]] = defaultdict(list)
-        self._last_cleanup = time.time()
+        self._store = self._build_store()
 
-    def _cleanup(self, now: float) -> None:
-        """Prune stale entries to prevent unbounded memory growth."""
-        if now - self._last_cleanup < self._window:
-            return
-        self._last_cleanup = now
-        stale = [k for k, v in self._hits.items() if not v or v[-1] < now - self._window]
-        for k in stale:
-            del self._hits[k]
-        if len(self._hits) > self._MAX_ENTRIES:
-            self._hits.clear()
+    def _build_store(self):
+        if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+            try:
+                return PostgresRateLimitStore(window_seconds=self._window)
+            except Exception:
+                _logger.warning("Postgres rate limiter unavailable, falling back to in-memory store", exc_info=True)
+        return InMemoryRateLimitStore(window_seconds=self._window)
 
     async def dispatch(self, request: StarletteRequest, call_next):
         client_ip = request.client.host if request.client else "unknown"
         now = time.time()
 
-        self._cleanup(now)
-
         is_scan = request.url.path.startswith("/v1/scan") and request.method == "POST"
         limit = self._scan_rpm if is_scan else self._read_rpm
 
         key = f"{client_ip}:{'scan' if is_scan else 'read'}"
-        self._hits[key] = [t for t in self._hits[key] if now - t < self._window]
+        hit_count, reset_at = await asyncio.to_thread(self._store.hit, key, now)
+        remaining = max(0, limit - hit_count)
 
-        timestamps = self._hits[key]
-        window_start = timestamps[0] if timestamps else now
-
-        if len(timestamps) >= limit:
-            retry_after = max(int(self._window - (now - timestamps[0])), 1)
+        if hit_count > limit:
+            retry_after = max(int(reset_at - now), 1)
             return JSONResponse(
                 status_code=429,
                 content={"detail": "Rate limit exceeded"},
                 headers={"Retry-After": str(retry_after)},
             )
 
-        self._hits[key].append(now)
         response = await call_next(request)
         response.headers["X-RateLimit-Limit"] = str(limit)
-        response.headers["X-RateLimit-Remaining"] = str(max(0, limit - len(self._hits[key])))
-        response.headers["X-RateLimit-Reset"] = str(int(window_start + 60))
+        response.headers["X-RateLimit-Remaining"] = str(remaining)
+        response.headers["X-RateLimit-Reset"] = str(reset_at)
         return response
 
 

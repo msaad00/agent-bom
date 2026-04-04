@@ -24,6 +24,19 @@ agent-bom is designed to scale from local CLI usage to enterprise-wide AI infras
 
 **Key Difference**: agent-bom is purpose-built for **AI agents and MCP servers**, not generic software packages. It understands AI-specific blast radius (credentials, tools, multi-agent exposure).
 
+### API Scale Notes
+
+When `AGENT_BOM_POSTGRES_URL` is configured, the API now shares critical control-plane state across replicas instead of keeping it process-local:
+
+- scan jobs
+- fleet data
+- schedules
+- API keys and exceptions
+- audit log and trend history
+- API rate limiting buckets
+
+That keeps auth, tenant isolation, auditability, and request throttling consistent when `agent-bom serve` is deployed behind a load balancer.
+
 ---
 
 ## 📦 Deployment Patterns

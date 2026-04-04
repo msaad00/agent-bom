@@ -65,31 +65,35 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         else {"/", "/health", "/version", "/metrics"}
     )
 
-    # Endpoints requiring ADMIN role (mutating / destructive operations)
-    _ADMIN_PATHS: set[tuple[str, str]] = {
-        ("DELETE", "/v1/scan/"),
-        ("POST", "/v1/gateway/policies"),
-        ("PUT", "/v1/gateway/policies/"),
-        ("DELETE", "/v1/gateway/policies/"),
-        ("POST", "/v1/fleet/sync"),
-        ("PUT", "/v1/fleet/"),
-        ("POST", "/v1/auth/keys"),
-        ("DELETE", "/v1/auth/keys/"),
-        ("POST", "/v1/exceptions"),
-        ("PUT", "/v1/exceptions/"),
-        ("DELETE", "/v1/exceptions/"),
-    }
-
-    # Endpoints requiring ANALYST role (scan + write operations)
-    _ANALYST_PATHS: set[tuple[str, str]] = {
-        ("POST", "/v1/scan"),
-        ("POST", "/v1/gateway/evaluate"),
-        ("POST", "/v1/traces"),
-        ("POST", "/v1/results/push"),
-        ("POST", "/v1/schedules"),
-        ("DELETE", "/v1/schedules/"),
-        ("PUT", "/v1/schedules/"),
-    }
+    # Ordered route rules so narrower enterprise paths win over broad prefixes.
+    _ROLE_RULES: tuple[tuple[str, str, str], ...] = (
+        ("GET", "/v1/auth/keys", "admin"),
+        ("POST", "/v1/auth/keys", "admin"),
+        ("DELETE", "/v1/auth/keys/", "admin"),
+        ("POST", "/v1/gateway/policies", "admin"),
+        ("PUT", "/v1/gateway/policies/", "admin"),
+        ("DELETE", "/v1/gateway/policies/", "admin"),
+        ("POST", "/v1/fleet/sync", "admin"),
+        ("PUT", "/v1/fleet/", "admin"),
+        ("PUT", "/v1/exceptions/", "admin"),
+        ("DELETE", "/v1/exceptions/", "admin"),
+        ("POST", "/v1/siem/test", "admin"),
+        ("POST", "/v1/shield/start", "admin"),
+        ("POST", "/v1/shield/unblock", "admin"),
+        ("POST", "/v1/shield/break-glass", "admin"),
+        ("DELETE", "/v1/scan/", "admin"),
+        ("POST", "/v1/exceptions", "analyst"),
+        ("POST", "/v1/findings/jira", "analyst"),
+        ("POST", "/v1/findings/false-positive", "analyst"),
+        ("DELETE", "/v1/findings/false-positive/", "analyst"),
+        ("POST", "/v1/scan", "analyst"),
+        ("POST", "/v1/gateway/evaluate", "analyst"),
+        ("POST", "/v1/traces", "analyst"),
+        ("POST", "/v1/results/push", "analyst"),
+        ("POST", "/v1/schedules", "analyst"),
+        ("DELETE", "/v1/schedules/", "analyst"),
+        ("PUT", "/v1/schedules/", "analyst"),
+    )
 
     def __init__(self, app: ASGIApp, api_key: str) -> None:
         super().__init__(app)
@@ -100,12 +104,9 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
     def _required_role(self, method: str, path: str) -> str:
         """Determine the minimum role required for a request."""
-        for m, p in self._ADMIN_PATHS:
+        for m, p, role in self._ROLE_RULES:
             if method == m and path.startswith(p):
-                return "admin"
-        for m, p in self._ANALYST_PATHS:
-            if method == m and path.startswith(p):
-                return "analyst"
+                return role
         return "viewer"
 
     async def dispatch(self, request: StarletteRequest, call_next):
@@ -152,7 +153,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 if _ROLE_HIERARCHY.get(Role(oidc_role), 0) >= _ROLE_HIERARCHY.get(Role(required), 0):
                     request.state.api_key_name = _claims.get("email") or _claims.get("sub", "oidc-user")
                     request.state.api_key_role = oidc_role
-                    request.state.tenant_id = _claims.get("tenant_id", "default")
+                    request.state.tenant_id = oidc_cfg.resolve_tenant(_claims)
                     return await call_next(request)
                 return JSONResponse(
                     status_code=403,

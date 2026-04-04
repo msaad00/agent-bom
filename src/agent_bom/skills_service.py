@@ -6,6 +6,7 @@ import asyncio
 import concurrent.futures
 import os
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
@@ -19,6 +20,15 @@ from agent_bom.skills_catalog import catalog_scan_timestamp, load_skills_catalog
 
 _SKILL_DISCOVERY_SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__"}
 _SKILLS_SCAN_CONCURRENCY = max(1, int(os.environ.get("AGENT_BOM_SKILLS_SCAN_CONCURRENCY", "8")))
+_SKILLS_SCAN_SCHEMA_VERSION = "1"
+_SKILLS_SCAN_SCHEMA_ID = "https://agent-bom.github.io/schemas/skills-scan/v1"
+_SKILLS_RESCAN_SCHEMA_VERSION = "1"
+_SKILLS_RESCAN_SCHEMA_ID = "https://agent-bom.github.io/schemas/skills-rescan/v1"
+
+
+def _generated_at() -> str:
+    """Return an ISO 8601 UTC timestamp for structured output."""
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 @dataclass
@@ -109,6 +119,10 @@ class SkillsScanReport:
             status_counts[report.status] = status_counts.get(report.status, 0) + 1
 
         return {
+            "$schema": _SKILLS_SCAN_SCHEMA_ID,
+            "schema_version": _SKILLS_SCAN_SCHEMA_VERSION,
+            "report_type": "skills_scan",
+            "generated_at": _generated_at(),
             "summary": {
                 "files_scanned": len(self.files),
                 "bundles": len(bundle_ids),
@@ -153,6 +167,10 @@ class SkillsRescanReport:
             "unavailable": sum(1 for entry in self.entries if entry.get("status") == ThreatIntelStatus.UNAVAILABLE.value),
         }
         return {
+            "$schema": _SKILLS_RESCAN_SCHEMA_ID,
+            "schema_version": _SKILLS_RESCAN_SCHEMA_VERSION,
+            "report_type": "skills_rescan",
+            "generated_at": _generated_at(),
             "catalog_path": self.catalog_path,
             "summary": summary,
             "entries": self.entries,

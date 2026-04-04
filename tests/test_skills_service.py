@@ -45,6 +45,12 @@ def test_scan_skill_targets_records_catalog_and_intel(tmp_path):
     assert catalog["entries"][bundle.stable_id]["status"] == "suspicious"
     assert catalog["entries"][bundle.stable_id]["threat_intel"]["provider"] == "fixture-feed"
 
+    payload = report.to_dict()
+    assert payload["$schema"] == "https://agent-bom.github.io/schemas/skills-scan/v1"
+    assert payload["schema_version"] == "1"
+    assert payload["report_type"] == "skills_scan"
+    assert payload["generated_at"].endswith("Z")
+
 
 def test_rescan_skill_catalog_marks_missing_entries_unavailable(tmp_path):
     """Rescanning a catalog should mark missing paths as unavailable."""
@@ -63,6 +69,10 @@ def test_rescan_skill_catalog_marks_missing_entries_unavailable(tmp_path):
     assert data["entries"][0]["exists"] is False
     assert data["entries"][0]["status"] == "unavailable"
     assert data["entries"][0]["error"] == "file not found"
+    assert data["$schema"] == "https://agent-bom.github.io/schemas/skills-rescan/v1"
+    assert data["schema_version"] == "1"
+    assert data["report_type"] == "skills_rescan"
+    assert data["generated_at"].endswith("Z")
 
 
 def test_rescan_skill_catalog_refreshes_existing_entry_with_intel(tmp_path):
@@ -134,3 +144,18 @@ def test_rescan_skill_catalog_works_inside_existing_event_loop(tmp_path):
 
     report = asyncio.run(_invoke())
     assert report.entries[0]["exists"] is True
+
+
+def test_skills_output_schemas_exist():
+    """Versioned skills schemas should ship with the repo for downstream tooling."""
+    scan_schema = Path("config/schemas/skills-scan.schema.json")
+    rescan_schema = Path("config/schemas/skills-rescan.schema.json")
+
+    assert scan_schema.exists()
+    assert rescan_schema.exists()
+
+    scan_doc = json.loads(scan_schema.read_text())
+    rescan_doc = json.loads(rescan_schema.read_text())
+
+    assert scan_doc["$id"] == "https://agent-bom.github.io/schemas/skills-scan/v1"
+    assert rescan_doc["$id"] == "https://agent-bom.github.io/schemas/skills-rescan/v1"

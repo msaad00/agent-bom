@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-bom.github.io/schemas/skills-rescan/v1",
+  "title": "agent-bom Skills Rescan Schema v1",
+  "description": "Structured output format for `agent-bom skills rescan`.",
+  "type": "object",
+  "required": [
+    "$schema",
+    "schema_version",
+    "report_type",
+    "generated_at",
+    "catalog_path",
+    "summary",
+    "entries"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "const": "https://agent-bom.github.io/schemas/skills-rescan/v1"
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "1"
+    },
+    "report_type": {
+      "type": "string",
+      "const": "skills_rescan"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "catalog_path": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "catalog_entries",
+        "rescanned",
+        "missing",
+        "clean",
+        "suspicious",
+        "malicious",
+        "pending",
+        "unavailable"
+      ],
+      "properties": {
+        "catalog_entries": { "type": "integer", "minimum": 0 },
+        "rescanned": { "type": "integer", "minimum": 0 },
+        "missing": { "type": "integer", "minimum": 0 },
+        "clean": { "type": "integer", "minimum": 0 },
+        "suspicious": { "type": "integer", "minimum": 0 },
+        "malicious": { "type": "integer", "minimum": 0 },
+        "pending": { "type": "integer", "minimum": 0 },
+        "unavailable": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "bundle_stable_id",
+          "path",
+          "exists",
+          "rescanned",
+          "status"
+        ],
+        "properties": {
+          "bundle_stable_id": { "type": "string" },
+          "path": { "type": "string" },
+          "exists": { "type": "boolean" },
+          "rescanned": { "type": "boolean" },
+          "status": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": false
+}

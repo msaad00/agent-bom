@@ -81,6 +81,8 @@ agent-bom skills scan .
 
 This discovers Claude Desktop and Claude Code MCP configs, project-level instruction files, and the packages behind those MCP servers.
 
+The JSON output from `agent-bom skills scan` and `agent-bom skills rescan` is versioned and schema-tagged so it can be consumed safely by automation and dashboards.
+
 ## Runtime proxy for Claude-connected MCP servers
 
 When you want live inspection of third-party MCP traffic, wrap the real server:

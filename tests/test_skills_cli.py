@@ -32,6 +32,10 @@ Environment:
     assert result.exit_code == 0, result.output
 
     data = json.loads(result.output)
+    assert data["$schema"] == "https://agent-bom.github.io/schemas/skills-scan/v1"
+    assert data["schema_version"] == "1"
+    assert data["report_type"] == "skills_scan"
+    assert data["generated_at"].endswith("Z")
     assert data["summary"]["files_scanned"] == 1
     assert data["summary"]["bundles"] == 1
     assert data["summary"]["packages_found"] >= 1
@@ -107,6 +111,10 @@ def test_skills_rescan_json(tmp_path):
     assert rescan_result.exit_code == 0, rescan_result.output
 
     data = json.loads(rescan_result.output)
+    assert data["$schema"] == "https://agent-bom.github.io/schemas/skills-rescan/v1"
+    assert data["schema_version"] == "1"
+    assert data["report_type"] == "skills_rescan"
+    assert data["generated_at"].endswith("Z")
     assert data["summary"]["catalog_entries"] == 1
     assert data["summary"]["rescanned"] == 1
     assert data["entries"][0]["exists"] is True

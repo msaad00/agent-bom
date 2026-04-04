@@ -97,7 +97,7 @@ Goal: keep the most differentiated surfaces ahead of the market.
 | Item | Status |
 |------|--------|
 | Move from regex-first detection toward AST-aware or control-flow-aware analysis where it materially improves signal | Planned |
-| Add explicit schema/versioned output for skills results | Planned |
+| Add explicit schema/versioned output for skills results | Done |
 | Expand trust, provenance, and rescan workflows | Planned |
 
 ---

@@ -20,6 +20,16 @@ monitor:
   enabled: false
   mode: http
   port: 8423
+  service:
+    enabled: true
+    type: ClusterIP
+    annotations: {}
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}
+    annotations: {}
 
 rbac:
   create: true
@@ -56,6 +66,20 @@ livenessProbe:
     port: protect
   initialDelaySeconds: 5
   periodSeconds: 30
+
+readinessProbe:
+  httpGet:
+    path: /status
+    port: protect
+  initialDelaySeconds: 2
+  periodSeconds: 10
+
+startupProbe:
+  httpGet:
+    path: /status
+    port: protect
+  failureThreshold: 12
+  periodSeconds: 5
 
 networkPolicy:
   enabled: true

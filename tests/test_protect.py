@@ -10,7 +10,7 @@ from click.testing import CliRunner
 from agent_bom.alerts.dispatcher import AlertDispatcher
 from agent_bom.cli import main
 from agent_bom.runtime.protection import ProtectionEngine
-from agent_bom.runtime.server import _dispatch, _route_http
+from agent_bom.runtime.server import _dispatch, _route_http, _runtime_metrics_text
 
 # ─── CLI help / option tests ────────────────────────────────────────────────
 
@@ -110,6 +110,13 @@ async def test_http_status_endpoint(engine):
     assert status == "200 OK"
     assert body["active"] is True
     assert "detectors" in body
+
+
+def test_http_metrics_text(engine):
+    """Runtime metrics render as Prometheus text."""
+    metrics = _runtime_metrics_text(engine)
+    assert "agent_bom_runtime_active 1" in metrics
+    assert "agent_bom_runtime_tool_calls_analyzed_total" in metrics
 
 
 @pytest.mark.asyncio

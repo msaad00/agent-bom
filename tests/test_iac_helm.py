@@ -822,6 +822,8 @@ class TestAgentBomHelmChartDefaults:
         cronjob = Path("deploy/helm/agent-bom/templates/cronjob.yaml").read_text()
         daemonset = Path("deploy/helm/agent-bom/templates/daemonset.yaml").read_text()
         network_policy = Path("deploy/helm/agent-bom/templates/networkpolicy.yaml").read_text()
+        service = Path("deploy/helm/agent-bom/templates/service.yaml").read_text()
+        service_monitor = Path("deploy/helm/agent-bom/templates/servicemonitor.yaml").read_text()
 
         assert "securityContext:" in cronjob
         assert ".Values.podSecurityContext" in cronjob
@@ -830,6 +832,13 @@ class TestAgentBomHelmChartDefaults:
         assert "securityContext:" in daemonset
         assert ".Values.podSecurityContext" in daemonset
         assert ".Values.securityContext" in daemonset
+        assert "readinessProbe:" in daemonset
+        assert "startupProbe:" in daemonset
 
         assert "kind: NetworkPolicy" in network_policy
         assert ".Values.networkPolicy.enabled" in network_policy
+
+        assert "kind: Service" in service
+        assert ".Values.monitor.service.enabled" in service
+        assert "kind: ServiceMonitor" in service_monitor
+        assert ".Values.monitor.serviceMonitor.enabled" in service_monitor

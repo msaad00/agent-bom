@@ -374,6 +374,11 @@ helm install agent-bom deploy/helm/agent-bom/ -n agent-bom --create-namespace
 helm install agent-bom deploy/helm/agent-bom/ -n agent-bom --create-namespace \
   --set monitor.enabled=true
 
+# Enable Prometheus scraping for the runtime monitor
+helm install agent-bom deploy/helm/agent-bom/ -n agent-bom --create-namespace \
+  --set monitor.enabled=true \
+  --set monitor.serviceMonitor.enabled=true
+
 # Custom scan schedule (every 2 hours)
 helm install agent-bom deploy/helm/agent-bom/ -n agent-bom --create-namespace \
   --set scanner.schedule="0 */2 * * *"
@@ -388,7 +393,15 @@ helm install agent-bom deploy/helm/agent-bom/ -n agent-bom --create-namespace \
 | `scanner.allNamespaces` | `true` | Scan all namespaces |
 | `monitor.enabled` | `false` | Deploy the DaemonSet runtime monitor |
 | `monitor.port` | `8423` | HTTP port for the protect endpoint |
+| `monitor.service.enabled` | `true` | Expose the monitor DaemonSet through a ClusterIP Service when enabled |
+| `monitor.serviceMonitor.enabled` | `false` | Create a Prometheus Operator ServiceMonitor that scrapes `/metrics` |
 | `rbac.create` | `true` | Create ClusterRole + ClusterRoleBinding |
+
+When the monitor is enabled, the chart now wires:
+- `livenessProbe` on `/status`
+- `readinessProbe` on `/status`
+- `startupProbe` on `/status`
+- optional Prometheus scraping on `/metrics`
 
 ---
 

@@ -1,0 +1,24 @@
+{{- if and .Values.monitor.enabled .Values.monitor.service.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agent-bom.name" . }}-monitor
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-bom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: monitor
+  {{- with .Values.monitor.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.monitor.service.type }}
+  selector:
+    app.kubernetes.io/name: {{ include "agent-bom.name" . }}
+    app.kubernetes.io/component: monitor
+  ports:
+    - name: protect
+      port: {{ .Values.monitor.port }}
+      targetPort: protect
+      protocol: TCP
+{{- end }}

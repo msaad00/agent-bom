@@ -110,14 +110,36 @@ def test_helm_chart_yaml_fields():
 def test_helm_values_yaml_keys():
     """values.yaml has expected top-level keys."""
     doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
-    expected_keys = {"image", "runtimeImage", "scanner", "monitor", "rbac", "serviceAccount", "resources"}
+    expected_keys = {
+        "image",
+        "runtimeImage",
+        "scanner",
+        "monitor",
+        "rbac",
+        "serviceAccount",
+        "resources",
+        "podSecurityContext",
+        "securityContext",
+        "livenessProbe",
+        "readinessProbe",
+        "startupProbe",
+        "networkPolicy",
+    }
     assert expected_keys.issubset(set(doc.keys()))
 
 
 def test_helm_templates_exist():
     """Helm templates directory has required files."""
     templates_dir = HELM_DIR / "templates"
-    expected = {"_helpers.tpl", "serviceaccount.yaml", "rbac.yaml", "cronjob.yaml", "daemonset.yaml"}
+    expected = {
+        "_helpers.tpl",
+        "serviceaccount.yaml",
+        "rbac.yaml",
+        "cronjob.yaml",
+        "daemonset.yaml",
+        "service.yaml",
+        "servicemonitor.yaml",
+    }
     actual = {f.name for f in templates_dir.iterdir() if f.is_file()}
     assert expected.issubset(actual), f"Missing templates: {expected - actual}"
 
@@ -135,3 +157,17 @@ def test_helm_monitor_disabled_by_default():
     """Monitor is disabled by default."""
     doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
     assert doc["monitor"]["enabled"] is False
+
+
+def test_helm_monitor_defaults_include_service_and_servicemonitor():
+    """Monitor values expose operator-visible service and ServiceMonitor toggles."""
+    doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
+    assert doc["monitor"]["service"]["enabled"] is True
+    assert doc["monitor"]["serviceMonitor"]["enabled"] is False
+
+
+def test_helm_monitor_probes_are_defined():
+    """Monitor readiness and startup probes are configurable in values."""
+    doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
+    assert doc["readinessProbe"]["httpGet"]["path"] == "/status"
+    assert doc["startupProbe"]["httpGet"]["path"] == "/status"

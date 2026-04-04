@@ -20,6 +20,8 @@
 --   fleet_agents       Managed agent lifecycle with governance state
 --   gateway_policies   Runtime MCP enforcement policies
 --   policy_audit_log   Runtime policy audit trail
+--   audit_log          API/enterprise audit trail
+--   trend_history      Historical posture trends
 --   scan_schedules     Recurring scan configuration
 --   osv_cache          OSV vulnerability response cache
 
@@ -107,6 +109,40 @@ CREATE TABLE IF NOT EXISTS policy_audit_log (
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON policy_audit_log(ts DESC);
 CREATE INDEX IF NOT EXISTS idx_gateway_policies_team ON gateway_policies(team_id);
 CREATE INDEX IF NOT EXISTS idx_policy_audit_log_team_ts ON policy_audit_log(team_id, ts DESC);
+
+-- ── Tables: Enterprise Audit + Trend History ────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS audit_log (
+    entry_id        TEXT PRIMARY KEY,
+    timestamp       TEXT NOT NULL,
+    action          TEXT NOT NULL,
+    actor           TEXT NOT NULL DEFAULT '',
+    resource        TEXT NOT NULL DEFAULT '',
+    team_id         TEXT NOT NULL DEFAULT 'default',
+    details         JSONB NOT NULL DEFAULT '{}'::jsonb,
+    prev_signature  TEXT NOT NULL DEFAULT '',
+    hmac_signature  TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action);
+CREATE INDEX IF NOT EXISTS idx_audit_log_ts ON audit_log(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_log_resource ON audit_log(resource);
+CREATE INDEX IF NOT EXISTS idx_audit_log_team_ts ON audit_log(team_id, timestamp DESC);
+
+CREATE TABLE IF NOT EXISTS trend_history (
+    id            BIGSERIAL PRIMARY KEY,
+    timestamp     TEXT NOT NULL,
+    team_id       TEXT NOT NULL DEFAULT 'default',
+    total_vulns   INTEGER NOT NULL,
+    critical      INTEGER NOT NULL DEFAULT 0,
+    high          INTEGER NOT NULL DEFAULT 0,
+    medium        INTEGER NOT NULL DEFAULT 0,
+    low           INTEGER NOT NULL DEFAULT 0,
+    posture_score REAL NOT NULL DEFAULT 0,
+    posture_grade TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_trend_history_team_ts ON trend_history(team_id, timestamp DESC);
 
 -- ── Tables: Scan Schedules ────────────────────────────────────────────────────
 
@@ -360,6 +396,12 @@ ALTER TABLE gateway_policies FORCE ROW LEVEL SECURITY;
 ALTER TABLE policy_audit_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE policy_audit_log FORCE ROW LEVEL SECURITY;
 
+ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit_log FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE trend_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE trend_history FORCE ROW LEVEL SECURITY;
+
 ALTER TABLE fleet_agents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fleet_agents FORCE ROW LEVEL SECURITY;
 
@@ -375,6 +417,36 @@ BEGIN
           AND policyname = 'scan_jobs_tenant_isolation'
     ) THEN
         CREATE POLICY scan_jobs_tenant_isolation ON scan_jobs
+            USING (public.abom_rls_bypass() OR team_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR team_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'audit_log'
+          AND policyname = 'audit_log_tenant_isolation'
+    ) THEN
+        CREATE POLICY audit_log_tenant_isolation ON audit_log
+            USING (public.abom_rls_bypass() OR team_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR team_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'trend_history'
+          AND policyname = 'trend_history_tenant_isolation'
+    ) THEN
+        CREATE POLICY trend_history_tenant_isolation ON trend_history
             USING (public.abom_rls_bypass() OR team_id = public.abom_current_tenant())
             WITH CHECK (public.abom_rls_bypass() OR team_id = public.abom_current_tenant());
     END IF;

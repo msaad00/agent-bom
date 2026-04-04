@@ -63,6 +63,10 @@ class MockConnection:
                     table = "gateway_policies"
                 elif "policy_audit_log" in sql:
                     table = "policy_audit_log"
+                elif "audit_log" in sql:
+                    table = "audit_log"
+                elif "trend_history" in sql:
+                    table = "trend_history"
                 elif "scan_schedules" in sql:
                     table = "scan_schedules"
                 elif "osv_cache" in sql:
@@ -120,6 +124,21 @@ class MockConnection:
                 if "where team_id" in sql_lower and params:
                     rows = [r for r in rows if r[1] == params[0]]
                 cursor.rows = [(r[-1],) for r in rows]
+            elif (
+                "from audit_log" in sql_lower
+                and "entry_id, timestamp, action, actor, resource, details, prev_signature, hmac_signature" in sql_lower
+            ):
+                rows = list(self._store.get("audit_log", {}).values())
+                if params:
+                    if "action = %s" in sql_lower:
+                        rows = [r for r in rows if r[2] == params[0]]
+                    elif "resource like %s" in sql_lower:
+                        prefix = str(params[0]).rstrip("%")
+                        rows = [r for r in rows if str(r[4]).startswith(prefix)]
+                cursor.rows = [(r[0], r[1], r[2], r[3], r[4], r[6], r[7], r[8]) for r in rows]
+            elif "from trend_history" in sql_lower:
+                rows = list(self._store.get("trend_history", {}).values())
+                cursor.rows = [(r[0], r[2], r[3], r[4], r[5], r[6], r[7], r[8]) for r in rows]
             elif "from scan_jobs" in sql_lower and "job_id, team_id, status, created_at, completed_at" in sql_lower:
                 rows = list(self._store.get("scan_jobs", {}).values())
                 cursor.rows = [(r[0], r[1], r[2], r[3], r[4]) for r in rows]
@@ -615,6 +634,66 @@ def test_policy_store_tenant_filters(mock_pool):
     assert store.list_audit_entries(tenant_id="tenant-a")
 
 
+def test_postgres_audit_log_roundtrip(mock_pool):
+    from agent_bom.api.audit_log import AuditEntry
+    from agent_bom.api.postgres_store import PostgresAuditLog
+
+    store = PostgresAuditLog(pool=mock_pool)
+    entry = AuditEntry(action="scan", actor="admin", resource="job/1", details={"packages": 42})
+    store.append(entry)
+
+    mock_pool._conn._store.setdefault("audit_log", {})[entry.entry_id] = (
+        entry.entry_id,
+        entry.timestamp,
+        entry.action,
+        entry.actor,
+        entry.resource,
+        "default",
+        json.dumps(entry.details),
+        entry.prev_signature,
+        entry.hmac_signature,
+    )
+
+    entries = store.list_entries()
+    assert len(entries) == 1
+    assert entries[0].details == {"packages": 42}
+    verified, tampered = store.verify_integrity()
+    assert verified == 1
+    assert tampered == 0
+
+
+def test_postgres_trend_store_roundtrip(mock_pool):
+    from agent_bom.api.postgres_store import PostgresTrendStore
+    from agent_bom.baseline import TrendPoint
+
+    store = PostgresTrendStore(pool=mock_pool)
+    point = TrendPoint(
+        timestamp="2026-01-01T00:00:00Z",
+        total_vulns=10,
+        critical=1,
+        high=2,
+        medium=3,
+        low=4,
+        posture_score=82.5,
+        posture_grade="B",
+    )
+    store.record(point)
+    mock_pool._conn._store.setdefault("trend_history", {})["2026-01-01T00:00:00Z"] = (
+        point.timestamp,
+        "default",
+        point.total_vulns,
+        point.critical,
+        point.high,
+        point.medium,
+        point.low,
+        point.posture_score,
+        point.posture_grade,
+    )
+    history = store.get_history()
+    assert len(history) == 1
+    assert history[0].posture_grade == "B"
+
+
 # ─── Pool / Config ────────────────────────────────────────────────────────────
 
 
@@ -889,3 +968,5 @@ def test_server_lifespan_postgres_enterprise_stores():
     source = inspect.getsource(server._lifespan)
     assert "PostgresKeyStore" in source
     assert "PostgresExceptionStore" in source
+    assert "PostgresAuditLog" in source
+    assert "PostgresTrendStore" in source

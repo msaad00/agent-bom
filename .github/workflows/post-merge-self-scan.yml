@@ -26,6 +26,7 @@ jobs:
     permissions:
       contents: read
       security-events: write  # required: SARIF upload to GitHub Security tab
+      issues: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -44,6 +45,48 @@ jobs:
           uv run agent-bom scan --self-scan --format sarif -o sarif/self-dep.sarif \
             --fail-on-severity high --exclude-unfixable --quiet
           echo "dep_exit=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Build self-scan summary
+        if: always()
+        id: dep_summary
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("sarif/self-dep.sarif")
+          total = critical = high = medium = low = 0
+          if path.exists():
+              data = json.loads(path.read_text())
+              for run in data.get("runs", []):
+                  for result in run.get("results", []):
+                      total += 1
+                      level = str(result.get("level", "")).lower()
+                      props = result.get("properties", {}) or {}
+                      sev = str(props.get("security-severity", "")).lower()
+                      if level == "error" or sev.startswith("9"):
+                          critical += 1
+                      elif level == "warning" or sev.startswith(("7", "8")):
+                          high += 1
+                      elif level == "note" or sev.startswith(("4", "5", "6")):
+                          medium += 1
+                      else:
+                          low += 1
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write(f"total={total}\n")
+              fh.write(f"critical={critical}\n")
+              fh.write(f"high={high}\n")
+              fh.write(f"medium={medium}\n")
+              fh.write(f"low={low}\n")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as fh:
+              fh.write("## Dependency Self-Scan Summary\n")
+              fh.write(f"- Total findings: {total}\n")
+              fh.write(f"- Critical: {critical}\n")
+              fh.write(f"- High: {high}\n")
+              fh.write(f"- Medium: {medium}\n")
+              fh.write(f"- Low: {low}\n")
+          PY
 
       - name: Print full dep scan summary (all severities, for logs)
         if: always()
@@ -81,6 +124,55 @@ jobs:
           if [ "${{ steps.dep_scan.outputs.dep_exit }}" != "0" ]; then
             echo "::error::Critical vulnerability found in self dep scan — check Security tab"
             exit 1
+          fi
+
+      - name: Open or close dependency vulnerability issue
+        if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEP_EXIT: ${{ steps.dep_scan.outputs.dep_exit }}
+          TOTAL: ${{ steps.dep_summary.outputs.total }}
+          CRITICAL: ${{ steps.dep_summary.outputs.critical }}
+          HIGH: ${{ steps.dep_summary.outputs.high }}
+          MEDIUM: ${{ steps.dep_summary.outputs.medium }}
+          LOW: ${{ steps.dep_summary.outputs.low }}
+        run: |
+          set -euo pipefail
+          TITLE="dependency-vulnerability: self-scan found HIGH/CRITICAL findings on main"
+          gh label create dependency-vulnerability --color D73A4A --description "Automated dependency vulnerability findings" >/dev/null 2>&1 || true
+          gh label create security-preventive --color 0E8A16 --description "Preventive daily security automation findings" >/dev/null 2>&1 || true
+          gh label create automated --color 5319E7 --description "Opened or updated automatically by CI" >/dev/null 2>&1 || true
+
+          EXISTING=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty')
+
+          if [ "$DEP_EXIT" != "0" ]; then
+            BODY=$(cat <<EOF
+          ## Automated Dependency Vulnerability Alert
+
+          Daily self-scan found fixable HIGH/CRITICAL findings in agent-bom dependencies.
+
+          | Severity | Count |
+          |---|---:|
+          | Critical | $CRITICAL |
+          | High | $HIGH |
+          | Medium | $MEDIUM |
+          | Low | $LOW |
+          | Total | $TOTAL |
+
+          Source: \`.github/workflows/post-merge-self-scan.yml\`
+          Trigger: \`${{ github.event_name }}\`
+
+          This issue is auto-managed. It should be updated or closed by the next clean preventive run.
+          EOF
+          )
+
+            if [ -n "$EXISTING" ]; then
+              gh issue comment "$EXISTING" --body "$BODY"
+            else
+              gh issue create --title "$TITLE" --label "dependency-vulnerability,security-preventive,automated" --body "$BODY"
+            fi
+          elif [ -n "$EXISTING" ]; then
+            gh issue close "$EXISTING" --comment "Daily self-scan is clean again; closing the automated dependency vulnerability alert."
           fi
 
   generate-sbom:

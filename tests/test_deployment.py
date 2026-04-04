@@ -200,10 +200,10 @@ def test_root_metadata_fields():
 
 
 def test_health_endpoint_fields():
-    """Health check should return name, version, and healthy status."""
+    """Health check contract should expose version and tool-count metadata."""
 
     from agent_bom import __version__
-    from agent_bom.mcp_server import create_mcp_server
+    from agent_bom.mcp_server import _tool_metrics_snapshot, create_mcp_server
 
     create_mcp_server()
     # The routes are registered; verify the build_server_card still works
@@ -212,6 +212,23 @@ def test_health_endpoint_fields():
     card = build_server_card()
     assert card["version"] == __version__
     assert card["name"] == "agent-bom"
+    summary = _tool_metrics_snapshot()["summary"]
+    assert "tool_count" in summary
+
+
+def test_deployment_freshness_workflow_uses_bearer_token_and_parses_tool_count():
+    """Deployment freshness should probe authenticated MCP health endpoints safely."""
+    workflow = (ROOT / ".github" / "workflows" / "deployment-freshness.yml").read_text()
+    assert "RAILWAY_MCP_BEARER_TOKEN" in workflow
+    assert "Authorization: Bearer" in workflow
+    assert "tool_count" in workflow
+
+
+def test_deploy_mcp_sse_workflow_uses_bearer_token_for_health_check():
+    """Post-deploy health verification should use the same auth contract as Railway."""
+    workflow = (ROOT / ".github" / "workflows" / "deploy-mcp-sse.yml").read_text()
+    assert "RAILWAY_MCP_BEARER_TOKEN" in workflow
+    assert "Authorization: Bearer" in workflow
 
 
 def test_dockerfiles_support_proxy_and_ca_contract():

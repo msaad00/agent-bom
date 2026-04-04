@@ -41,6 +41,7 @@ from agent_bom.api.stores import (
     _jobs_pop,  # noqa: F401 — re-exported for tests
     _jobs_put,  # noqa: F401 — re-exported for tests
     set_analytics_store,
+    set_exception_store,
     set_fleet_store,
     set_job_store,
     set_policy_store,
@@ -86,9 +87,13 @@ async def _lifespan(app_instance: FastAPI):
         if _stores._policy_store is None:
             set_policy_store(SnowflakePolicyStore(sf))
     elif os.environ.get("AGENT_BOM_POSTGRES_URL"):
+        from agent_bom.api import auth as _auth
+        from agent_bom.api.auth import set_key_store
         from agent_bom.api.postgres_store import (
+            PostgresExceptionStore,
             PostgresFleetStore,
             PostgresJobStore,
+            PostgresKeyStore,
             PostgresPolicyStore,
         )
 
@@ -98,6 +103,10 @@ async def _lifespan(app_instance: FastAPI):
             set_fleet_store(PostgresFleetStore())
         if _stores._policy_store is None:
             set_policy_store(PostgresPolicyStore())
+        if _stores._exception_store is None:
+            set_exception_store(PostgresExceptionStore())
+        if _auth._key_store is None:
+            set_key_store(PostgresKeyStore())
     elif os.environ.get("AGENT_BOM_DB"):
         db_path = os.environ["AGENT_BOM_DB"]
         if _stores._store is None:

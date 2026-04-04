@@ -183,6 +183,12 @@ def _get_exception_store():
     return _exception_store
 
 
+def set_exception_store(store: Any) -> None:
+    """Switch the exception store backend. Call before server startup."""
+    global _exception_store
+    _exception_store = store
+
+
 # ─── Trend store (enterprise baseline comparison) ───────────────────────────
 _trend_store: Any = None
 _last_scan_report: dict | None = None

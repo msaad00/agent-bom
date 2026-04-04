@@ -55,6 +55,10 @@ class MockConnection:
                     table = "scan_jobs"
                 elif "fleet_agents" in sql:
                     table = "fleet_agents"
+                elif "api_keys" in sql:
+                    table = "api_keys"
+                elif "exceptions" in sql:
+                    table = "exceptions"
                 elif "gateway_policies" in sql:
                     table = "gateway_policies"
                 elif "policy_audit_log" in sql:
@@ -74,6 +78,34 @@ class MockConnection:
                 # COUNT query
                 total = sum(len(td) for td in self._store.values())
                 cursor.rows = [(total,)]
+            elif (
+                "from api_keys" in sql_lower
+                and "key_id, key_hash, key_salt, key_prefix" in sql_lower
+                and "name, role, team_id, scopes, created_at, expires_at" in sql_lower
+            ):
+                rows = list(self._store.get("api_keys", {}).values())
+                if params:
+                    if "key_prefix = %s" in sql_lower:
+                        rows = [r for r in rows if r[3] == params[0]]
+                    elif "key_id = %s" in sql_lower:
+                        rows = [r for r in rows if r[0] == params[0]]
+                    elif "team_id = %s" in sql_lower:
+                        rows = [r for r in rows if r[6] == params[0]]
+                cursor.rows = [(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9]) for r in rows]
+            elif (
+                "from exceptions" in sql_lower
+                and "exception_id, vuln_id, package_name" in sql_lower
+                and "server_name, reason, requested_by, approved_by" in sql_lower
+            ):
+                rows = list(self._store.get("exceptions", {}).values())
+                if params:
+                    if "exception_id = %s" in sql_lower:
+                        rows = [r for r in rows if r[0] == params[0]]
+                    elif "team_id = %s" in sql_lower:
+                        rows = [r for r in rows if r[12] == params[0]]
+                        if len(params) > 1:
+                            rows = [r for r in rows if r[7] == params[1]]
+                cursor.rows = [tuple(r[:13]) for r in rows]
             elif "from scan_jobs" in sql_lower and "job_id, team_id, status, created_at, completed_at" in sql_lower:
                 rows = list(self._store.get("scan_jobs", {}).values())
                 cursor.rows = [(r[0], r[1], r[2], r[3], r[4]) for r in rows]
@@ -382,6 +414,93 @@ def test_fleet_store_batch_put(mock_pool):
     ]
     count = store.batch_put(agents)
     assert count == 3
+
+
+# ─── PostgresKeyStore ────────────────────────────────────────────────────────
+
+
+def test_key_store_add_get_list_verify_remove(mock_pool):
+    from agent_bom.api.auth import Role, create_api_key
+    from agent_bom.api.postgres_store import PostgresKeyStore
+
+    store = PostgresKeyStore(pool=mock_pool)
+    raw_key, api_key = create_api_key("alpha-admin", Role.ADMIN, tenant_id="tenant-alpha")
+    store.add(api_key)
+
+    mock_pool._conn._store.setdefault("api_keys", {})[api_key.key_id] = (
+        api_key.key_id,
+        api_key.key_hash,
+        api_key.key_salt,
+        api_key.key_prefix,
+        api_key.name,
+        api_key.role.value,
+        api_key.tenant_id,
+        json.dumps(api_key.scopes),
+        api_key.created_at,
+        api_key.expires_at,
+    )
+
+    loaded = store.get(api_key.key_id)
+    assert loaded is not None
+    assert loaded.tenant_id == "tenant-alpha"
+
+    listed = store.list_keys("tenant-alpha")
+    assert len(listed) == 1
+    assert listed[0].key_id == api_key.key_id
+
+    verified = store.verify(raw_key)
+    assert verified is not None
+    assert verified.key_id == api_key.key_id
+
+    assert store.remove(api_key.key_id) is True
+
+
+# ─── PostgresExceptionStore ──────────────────────────────────────────────────
+
+
+def test_exception_store_put_get_list_delete(mock_pool):
+    from agent_bom.api.exception_store import ExceptionStatus, VulnException
+    from agent_bom.api.postgres_store import PostgresExceptionStore
+
+    store = PostgresExceptionStore(pool=mock_pool)
+    exc = VulnException(
+        exception_id="exc-1",
+        vuln_id="CVE-1",
+        package_name="requests",
+        status=ExceptionStatus.ACTIVE,
+        tenant_id="tenant-alpha",
+    )
+    store.put(exc)
+
+    mock_pool._conn._store.setdefault("exceptions", {})[exc.exception_id] = (
+        exc.exception_id,
+        exc.vuln_id,
+        exc.package_name,
+        exc.server_name,
+        exc.reason,
+        exc.requested_by,
+        exc.approved_by,
+        exc.status.value,
+        exc.created_at,
+        exc.expires_at,
+        exc.approved_at,
+        exc.revoked_at,
+        exc.tenant_id,
+    )
+
+    loaded = store.get(exc.exception_id)
+    assert loaded is not None
+    assert loaded.tenant_id == "tenant-alpha"
+
+    listed = store.list_all(tenant_id="tenant-alpha")
+    assert len(listed) == 1
+    assert listed[0].exception_id == exc.exception_id
+
+    match = store.find_matching("CVE-1", "requests", tenant_id="tenant-alpha")
+    assert match is not None
+    assert match.exception_id == exc.exception_id
+
+    assert store.delete(exc.exception_id) is True
 
 
 # ─── PostgresPolicyStore ──────────────────────────────────────────────────────
@@ -713,3 +832,14 @@ def test_server_lifespan_postgres_schedule_store():
 
     source = inspect.getsource(server._lifespan)
     assert "PostgresScheduleStore" in source
+
+
+def test_server_lifespan_postgres_enterprise_stores():
+    """Postgres-backed enterprise stores are referenced in server lifespan."""
+    import inspect
+
+    from agent_bom.api import server
+
+    source = inspect.getsource(server._lifespan)
+    assert "PostgresKeyStore" in source
+    assert "PostgresExceptionStore" in source

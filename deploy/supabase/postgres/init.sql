@@ -275,6 +275,30 @@ CREATE INDEX IF NOT EXISTS idx_api_keys_team   ON api_keys(team_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(key_prefix);   -- fast lookup during auth
 CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys(team_id, revoked) WHERE revoked = FALSE;
 
+-- ── Table: exceptions ────────────────────────────────────────────────────────
+-- Persistent vulnerability exceptions and false positives. team_id keeps
+-- exception workflows tenant-scoped in hosted deployments.
+
+CREATE TABLE IF NOT EXISTS exceptions (
+    exception_id TEXT PRIMARY KEY,
+    vuln_id      TEXT NOT NULL,
+    package_name TEXT NOT NULL,
+    server_name  TEXT NOT NULL DEFAULT '',
+    reason       TEXT NOT NULL DEFAULT '',
+    requested_by TEXT NOT NULL DEFAULT '',
+    approved_by  TEXT NOT NULL DEFAULT '',
+    status       TEXT NOT NULL DEFAULT 'pending',
+    created_at   TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+    expires_at   TEXT NOT NULL DEFAULT '',
+    approved_at  TEXT NOT NULL DEFAULT '',
+    revoked_at   TEXT NOT NULL DEFAULT '',
+    team_id      TEXT NOT NULL DEFAULT 'default' REFERENCES teams(team_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_exc_status ON exceptions(status);
+CREATE INDEX IF NOT EXISTS idx_exc_team   ON exceptions(team_id);
+CREATE INDEX IF NOT EXISTS idx_exc_vuln   ON exceptions(vuln_id);
+
 -- ── Table: job_queue ──────────────────────────────────────────────────────────
 -- Background task queue for async operations: CVE enrichment, report
 -- generation, policy batch evaluation. Separate from scan_jobs so each
@@ -376,6 +400,42 @@ BEGIN
         CREATE POLICY scan_schedules_tenant_isolation ON scan_schedules
             USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant())
             WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
+
+ALTER TABLE api_keys ENABLE ROW LEVEL SECURITY;
+ALTER TABLE api_keys FORCE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'api_keys'
+          AND policyname = 'api_keys_tenant_isolation'
+    ) THEN
+        CREATE POLICY api_keys_tenant_isolation ON api_keys
+            USING (public.abom_rls_bypass() OR team_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR team_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
+
+ALTER TABLE exceptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE exceptions FORCE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'exceptions'
+          AND policyname = 'exceptions_tenant_isolation'
+    ) THEN
+        CREATE POLICY exceptions_tenant_isolation ON exceptions
+            USING (public.abom_rls_bypass() OR team_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR team_id = public.abom_current_tenant());
     END IF;
 END
 $$;

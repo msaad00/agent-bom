@@ -2,16 +2,38 @@
 FROM python:3.11.12-slim@sha256:dbf1de478a55d6763afaa39c2f3d7b54b25230614980276de5cacdde79529d0c AS builder
 
 WORKDIR /app
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG NO_PROXY
+ARG SSL_CERT_FILE
+ARG REQUESTS_CA_BUNDLE
+ARG CURL_CA_BUNDLE
+ARG PIP_CERT
+ENV HTTP_PROXY=${HTTP_PROXY} \
+    HTTPS_PROXY=${HTTPS_PROXY} \
+    NO_PROXY=${NO_PROXY} \
+    SSL_CERT_FILE=${SSL_CERT_FILE} \
+    REQUESTS_CA_BUNDLE=${REQUESTS_CA_BUNDLE} \
+    CURL_CA_BUNDLE=${CURL_CA_BUNDLE} \
+    PIP_CERT=${PIP_CERT}
 
 COPY pyproject.toml README.md LICENSE ./
 COPY src/ ./src/
 
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir --prefix=/install ".[api,snowflake]"
 
 ## ── Runtime stage ────────────────────────────────────────────────────────────
 FROM python:3.11.12-slim@sha256:dbf1de478a55d6763afaa39c2f3d7b54b25230614980276de5cacdde79529d0c
 
 ARG VERSION=0.75.13
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG NO_PROXY
+ARG SSL_CERT_FILE
+ARG REQUESTS_CA_BUNDLE
+ARG CURL_CA_BUNDLE
+ARG PIP_CERT
 
 LABEL maintainer="W S <34316639+msaad00@users.noreply.github.com>"
 LABEL description="agent-bom API for Snowpark Container Services"
@@ -24,7 +46,7 @@ COPY --from=builder /install /usr/local
 COPY --from=builder /app/LICENSE /app/LICENSE
 
 # Apply latest OS security patches (fixes base-image CVEs visible in Docker Scout)
-RUN apt-get update && apt-get upgrade -y --no-install-recommends && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && apt-get upgrade -y --no-install-recommends && rm -rf /var/lib/apt/lists/*
 COPY deploy/docker/pip-requirements.txt /tmp/pip-req.txt
 RUN pip install --no-cache-dir --require-hashes -r /tmp/pip-req.txt && rm /tmp/pip-req.txt
 
@@ -33,6 +55,13 @@ RUN addgroup --system abom && adduser --system --ingroup abom abom
 USER abom
 
 ENV PYTHONUNBUFFERED=1
+ENV HTTP_PROXY=${HTTP_PROXY}
+ENV HTTPS_PROXY=${HTTPS_PROXY}
+ENV NO_PROXY=${NO_PROXY}
+ENV SSL_CERT_FILE=${SSL_CERT_FILE}
+ENV REQUESTS_CA_BUNDLE=${REQUESTS_CA_BUNDLE}
+ENV CURL_CA_BUNDLE=${CURL_CA_BUNDLE}
+ENV PIP_CERT=${PIP_CERT}
 
 EXPOSE 8422
 

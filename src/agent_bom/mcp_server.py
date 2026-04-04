@@ -52,6 +52,7 @@ Security: Read-only. Never executes MCP servers or reads credential values.
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
 import logging
 import re
@@ -83,6 +84,20 @@ _VALID_ECOSYSTEMS = SUPPORTED_PACKAGE_ECOSYSTEM_SET
 
 _CVE_RE = re.compile(r"^CVE-\d{4}-\d{4,}$", re.IGNORECASE)
 _GHSA_RE = re.compile(r"^GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}$", re.IGNORECASE)
+
+
+class _StaticBearerTokenVerifier:
+    """FastMCP token verifier backed by a single configured bearer token."""
+
+    def __init__(self, token: str):
+        self._token = token
+
+    async def verify_token(self, token: str):
+        from mcp.server.auth.provider import AccessToken
+
+        if token and hmac.compare_digest(token, self._token):
+            return AccessToken(token=token, client_id="agent-bom-static-token", scopes=[], resource=None)
+        return None
 
 
 def _validate_ecosystem(ecosystem: str) -> str:
@@ -496,7 +511,7 @@ async def _run_scan_pipeline(
 # ---------------------------------------------------------------------------
 
 
-def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
+def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token: str | None = None):
     """Create and configure the agent-bom MCP server with all tools.
 
     When the smithery SDK is installed, the server is automatically enhanced
@@ -506,14 +521,28 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
 
     setup_logging(level="INFO")
     _check_mcp_sdk()
+    from mcp.server.auth.settings import AuthSettings
     from mcp.server.fastmcp import FastMCP
 
     from agent_bom import __version__
+
+    auth_settings = None
+    token_verifier = None
+    if bearer_token:
+        resource_url = f"http://{host}:{port}"
+        auth_settings = AuthSettings(
+            issuer_url=resource_url,
+            resource_server_url=resource_url,
+            required_scopes=[],
+        )
+        token_verifier = _StaticBearerTokenVerifier(bearer_token)
 
     mcp = FastMCP(
         name="agent-bom",
         host=host,
         port=port,
+        auth=auth_settings,
+        token_verifier=token_verifier,
         instructions=(
             f"agent-bom v{__version__} — AI infrastructure security scanner with MCP security tools. "
             "Scans packages and images for CVEs (OSV, NVD, EPSS, CISA KEV), maps blast radius "
@@ -1873,6 +1902,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                 "pypi": "https://pypi.org/project/agent-bom/",
                 "documentation": "https://github.com/msaad00/agent-bom#readme",
                 "server_card": "/.well-known/mcp/server-card.json",
+                "auth_required": bool(bearer_token),
             }
         )
 
@@ -1888,6 +1918,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000):
                 "status": "healthy",
                 "name": "agent-bom",
                 "version": __version__,
+                "auth_required": bool(bearer_token),
                 "mcp_metrics": _tool_metrics_snapshot()["summary"],
             }
         )

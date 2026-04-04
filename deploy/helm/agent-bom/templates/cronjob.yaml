@@ -20,6 +20,8 @@ spec:
             app.kubernetes.io/component: scanner
         spec:
           serviceAccountName: {{ include "agent-bom.serviceAccountName" . }}
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
           containers:
             - name: scanner
               image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -38,6 +40,8 @@ spec:
               volumeMounts:
                 - name: output
                   mountPath: /output
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
               resources:
                 {{- toYaml .Values.resources | nindent 16 }}
           volumes:

@@ -80,7 +80,9 @@ args = ["proxy", "--log", "~/.agent-bom/logs/filesystem.jsonl", "--", "npx", "@m
 - `agent-bom proxy` is best when the client talks to a third-party stdio server and you want runtime inspection.
 - `agent-bom proxy-configure --apply` currently targets JSON MCP configs. It is a good fit for Claude Desktop, Cursor, Windsurf, and Cortex CoCo.
 - TOML clients like Codex CLI need manual proxy wrapping today.
-- SSE / HTTP clients can still use `agent-bom mcp server --sse`, but transport auth and TLS should live at your ingress or reverse proxy.
+- SSE / HTTP clients can use `agent-bom mcp server --transport sse --bearer-token "$AGENT_BOM_MCP_BEARER_TOKEN"` or `--transport streamable-http`.
+- Non-loopback remote transports fail closed unless you configure `--bearer-token` / `AGENT_BOM_MCP_BEARER_TOKEN` or explicitly pass `--allow-insecure-no-auth`.
+- Keep TLS at your ingress or reverse proxy for remote deployments.
 
 ## Next steps
 

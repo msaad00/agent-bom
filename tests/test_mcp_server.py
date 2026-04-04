@@ -77,6 +77,17 @@ def test_mcp_server_tool_names():
     assert names == {t["name"] for t in _SERVER_CARD_TOOLS}
 
 
+def test_create_mcp_server_enables_static_bearer_auth():
+    """create_mcp_server should wire FastMCP auth when a bearer token is configured."""
+    from agent_bom.mcp_server import _StaticBearerTokenVerifier, create_mcp_server
+
+    server = create_mcp_server(host="0.0.0.0", port=8423, bearer_token="test-token")
+    assert isinstance(server._token_verifier, _StaticBearerTokenVerifier)
+    assert server.settings.auth is not None
+    assert str(server.settings.auth.resource_server_url) == "http://0.0.0.0:8423/"
+    assert server.settings.auth.required_scopes == []
+
+
 # ---------------------------------------------------------------------------
 # Tool: registry_lookup (no mocking needed — reads local JSON)
 # ---------------------------------------------------------------------------

@@ -100,11 +100,13 @@ Codex uses TOML, so manual proxy wrapping is the right path when you want runtim
 ### SSE Transport (Remote / Multi-Client)
 
 ```bash
-agent-bom mcp server --sse --host 0.0.0.0 --port 8000
+agent-bom mcp server --transport sse --host 0.0.0.0 --port 8000 --bearer-token "$AGENT_BOM_MCP_BEARER_TOKEN"
 ```
 
 Connect any SSE-capable MCP client to `https://your-server/sse`.
-For remote deployments, put SSE behind TLS and authentication at your proxy or ingress.
+For non-loopback SSE or Streamable HTTP binds, `agent-bom` now fails closed unless you set
+`--bearer-token` / `AGENT_BOM_MCP_BEARER_TOKEN` or explicitly pass
+`--allow-insecure-no-auth`. Keep TLS at your proxy or ingress for remote deployments.
 
 ### Docker
 

@@ -2125,13 +2125,16 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
 
         from agent_bom import __version__
 
+        metrics = _tool_metrics_snapshot()["summary"]
+
         return JSONResponse(
             {
                 "status": "healthy",
                 "name": "agent-bom",
                 "version": __version__,
                 "auth_required": bool(bearer_token),
-                "mcp_metrics": _tool_metrics_snapshot()["summary"],
+                "tool_count": metrics["tool_count"],
+                "mcp_metrics": metrics,
             }
         )
 

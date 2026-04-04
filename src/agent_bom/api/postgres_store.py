@@ -669,6 +669,7 @@ class PostgresPolicyStore:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS gateway_policies (
                     policy_id TEXT PRIMARY KEY,
+                    team_id TEXT NOT NULL DEFAULT 'default',
                     data JSONB NOT NULL
                 )
             """)
@@ -676,73 +677,155 @@ class PostgresPolicyStore:
                 CREATE TABLE IF NOT EXISTS policy_audit_log (
                     id SERIAL PRIMARY KEY,
                     ts TEXT NOT NULL,
+                    team_id TEXT NOT NULL DEFAULT 'default',
                     data JSONB NOT NULL
                 )
             """)
+            conn.execute("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'gateway_policies' AND column_name = 'team_id'
+                    ) THEN
+                        ALTER TABLE gateway_policies ADD COLUMN team_id TEXT NOT NULL DEFAULT 'default';
+                    END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'policy_audit_log' AND column_name = 'team_id'
+                    ) THEN
+                        ALTER TABLE policy_audit_log ADD COLUMN team_id TEXT NOT NULL DEFAULT 'default';
+                    END IF;
+                END
+                $$;
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_gateway_policies_team ON gateway_policies(team_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_policy_audit_log_team_ts ON policy_audit_log(team_id, ts DESC)")
+            _ensure_tenant_rls(conn, "gateway_policies", "team_id")
+            _ensure_tenant_rls(conn, "policy_audit_log", "team_id")
             conn.commit()
 
     def put_policy(self, policy) -> None:
         data = policy.model_dump_json()
-        with self._pool.connection() as conn:
+        with _tenant_connection(self._pool) as conn:
             conn.execute(
-                """INSERT INTO gateway_policies (policy_id, data) VALUES (%s, %s)
-                   ON CONFLICT (policy_id) DO UPDATE SET data = EXCLUDED.data""",
-                (policy.policy_id, data),
+                """INSERT INTO gateway_policies (policy_id, team_id, data) VALUES (%s, %s, %s)
+                   ON CONFLICT (policy_id) DO UPDATE SET team_id = EXCLUDED.team_id, data = EXCLUDED.data""",
+                (policy.policy_id, policy.tenant_id, data),
             )
             conn.commit()
 
-    def get_policy(self, policy_id: str):
+    def get_policy(self, policy_id: str, tenant_id: str | None = None):
         from .policy_store import GatewayPolicy
 
-        with self._pool.connection() as conn:
-            row = conn.execute("SELECT data FROM gateway_policies WHERE policy_id = %s", (policy_id,)).fetchone()
+        sql = "SELECT data FROM gateway_policies WHERE policy_id = %s"
+        params: list[object] = [policy_id]
+        if tenant_id is not None:
+            sql += " AND team_id = %s"
+            params.append(tenant_id)
+        with _tenant_connection(self._pool) as conn:
+            row = conn.execute(sql, params).fetchone()
             if row is None:
                 return None
             raw = row[0] if isinstance(row[0], str) else json.dumps(row[0])
             return GatewayPolicy.model_validate_json(raw)
 
-    def delete_policy(self, policy_id: str) -> bool:
-        with self._pool.connection() as conn:
-            cursor = conn.execute("DELETE FROM gateway_policies WHERE policy_id = %s", (policy_id,))
+    def delete_policy(self, policy_id: str, tenant_id: str | None = None) -> bool:
+        sql = "DELETE FROM gateway_policies WHERE policy_id = %s"
+        params: list[object] = [policy_id]
+        if tenant_id is not None:
+            sql += " AND team_id = %s"
+            params.append(tenant_id)
+        with _tenant_connection(self._pool) as conn:
+            cursor = conn.execute(sql, params)
             conn.commit()
             return cursor.rowcount > 0
 
-    def list_policies(self, enabled: bool | None = None, mode: str | None = None) -> list:
+    def list_policies(self, tenant_id: str | None = None, enabled: bool | None = None, mode: str | None = None) -> list:
         from .policy_store import GatewayPolicy
 
-        with self._pool.connection() as conn:
-            rows = conn.execute("SELECT data FROM gateway_policies").fetchall()
+        sql = "SELECT data FROM gateway_policies"
+        params: list[object] = []
+        if tenant_id is not None:
+            sql += " WHERE team_id = %s"
+            params.append(tenant_id)
+        with _tenant_connection(self._pool) as conn:
+            rows = conn.execute(sql, params).fetchall()
             policies = [GatewayPolicy.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in rows]
             if enabled is not None:
                 policies = [p for p in policies if p.enabled == enabled]
             if mode is not None:
-                policies = [p for p in policies if p.mode == mode]
+                policies = [p for p in policies if getattr(p.mode, "value", p.mode) == mode]
             return policies
 
-    def get_policies_for_agent(self, agent_type: str) -> list:
-        return [p for p in self.list_policies(enabled=True) if not p.agent_types or agent_type in p.agent_types]
+    def get_policies_for_agent(
+        self,
+        agent_name: str | None = None,
+        agent_type: str | None = None,
+        environment: str | None = None,
+        tenant_id: str | None = None,
+    ) -> list:
+        policies = self.list_policies(tenant_id=tenant_id, enabled=True)
+        results = []
+        for p in policies:
+            if p.bound_agents and agent_name and agent_name not in p.bound_agents:
+                continue
+            if p.bound_agent_types and agent_type and agent_type not in p.bound_agent_types:
+                continue
+            if p.bound_environments and environment and environment not in p.bound_environments:
+                continue
+            results.append(p)
+        return results
 
     def put_audit_entry(self, entry) -> None:
         data = entry.model_dump_json() if hasattr(entry, "model_dump_json") else json.dumps(entry)
-        with self._pool.connection() as conn:
+        team_id = getattr(entry, "tenant_id", "default")
+        with _tenant_connection(self._pool) as conn:
             conn.execute(
-                "INSERT INTO policy_audit_log (ts, data) VALUES (%s, %s)",
-                (datetime.now(timezone.utc).isoformat(), data),
+                "INSERT INTO policy_audit_log (ts, team_id, data) VALUES (%s, %s, %s)",
+                (datetime.now(timezone.utc).isoformat(), team_id, data),
             )
             conn.commit()
 
-    def list_audit_entries(self, limit: int = 100) -> list:
+    def list_audit_entries(
+        self,
+        policy_id: str | None = None,
+        agent_name: str | None = None,
+        limit: int = 100,
+        tenant_id: str | None = None,
+    ) -> list:
         from .policy_store import PolicyAuditEntry
 
-        with self._pool.connection() as conn:
-            rows = conn.execute("SELECT data FROM policy_audit_log ORDER BY ts DESC LIMIT %s", (limit,)).fetchall()
+        sql = "SELECT data FROM policy_audit_log"
+        clauses: list[str] = []
+        params: list[object] = []
+        if tenant_id is not None:
+            clauses.append("team_id = %s")
+            params.append(tenant_id)
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY ts DESC LIMIT %s"
+        params.append(limit)
+        with _tenant_connection(self._pool) as conn:
+            rows = conn.execute(sql, params).fetchall()
             results = []
             for r in rows:
                 raw = r[0] if isinstance(r[0], str) else json.dumps(r[0])
                 try:
-                    results.append(PolicyAuditEntry.model_validate_json(raw))
+                    entry = PolicyAuditEntry.model_validate_json(raw)
                 except Exception:
-                    results.append(json.loads(raw))
+                    entry = json.loads(raw)
+                if isinstance(entry, dict):
+                    entry_policy_id = entry.get("policy_id")
+                    entry_agent_name = entry.get("agent_name")
+                else:
+                    entry_policy_id = entry.policy_id
+                    entry_agent_name = entry.agent_name
+                if policy_id and entry_policy_id != policy_id:
+                    continue
+                if agent_name and entry_agent_name != agent_name:
+                    continue
+                results.append(entry)
             return results
 
 

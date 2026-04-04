@@ -42,6 +42,7 @@ def _make_audit(
     policy_id: str = "p-1",
     agent_name: str = "agent-a",
     action_taken: str = "blocked",
+    **kw,
 ) -> PolicyAuditEntry:
     return PolicyAuditEntry(
         entry_id=entry_id,
@@ -53,6 +54,7 @@ def _make_audit(
         action_taken=action_taken,
         reason="blocked by rule",
         timestamp=_now(),
+        **kw,
     )
 
 
@@ -84,6 +86,14 @@ def test_list_policies():
     store.put_policy(_make_policy(policy_id="p-1", name="alpha"))
     store.put_policy(_make_policy(policy_id="p-2", name="beta"))
     assert len(store.list_policies()) == 2
+
+
+def test_list_policies_by_tenant():
+    store = InMemoryPolicyStore()
+    store.put_policy(_make_policy(policy_id="p-1", tenant_id="tenant-a"))
+    store.put_policy(_make_policy(policy_id="p-2", tenant_id="tenant-b"))
+    result = store.list_policies(tenant_id="tenant-a")
+    assert [p.policy_id for p in result] == ["p-1"]
 
 
 def test_get_policies_for_agent_unbound():
@@ -130,6 +140,14 @@ def test_audit_entries_by_policy():
     assert len(result) == 1
 
 
+def test_audit_entries_by_tenant():
+    store = InMemoryPolicyStore()
+    store.put_audit_entry(_make_audit(entry_id="e-1", tenant_id="tenant-a"))
+    store.put_audit_entry(_make_audit(entry_id="e-2", tenant_id="tenant-b"))
+    result = store.list_audit_entries(tenant_id="tenant-a")
+    assert [e.entry_id for e in result] == ["e-1"]
+
+
 # ── SQLitePolicyStore ────────────────────────────────────────────────────────
 
 
@@ -165,6 +183,19 @@ def test_sqlite_list():
         store.put_policy(_make_policy(policy_id="p-1", name="alpha"))
         store.put_policy(_make_policy(policy_id="p-2", name="beta"))
         assert len(store.list_policies()) == 2
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def test_sqlite_tenant_scoping():
+    store, path = _sqlite_store()
+    try:
+        store.put_policy(_make_policy(policy_id="p-1", tenant_id="tenant-a"))
+        store.put_policy(_make_policy(policy_id="p-2", tenant_id="tenant-b"))
+        store.put_audit_entry(_make_audit(entry_id="e-1", tenant_id="tenant-a"))
+        store.put_audit_entry(_make_audit(entry_id="e-2", tenant_id="tenant-b"))
+        assert [p.policy_id for p in store.list_policies(tenant_id="tenant-a")] == ["p-1"]
+        assert [e.entry_id for e in store.list_audit_entries(tenant_id="tenant-a")] == ["e-1"]
     finally:
         path.unlink(missing_ok=True)
 

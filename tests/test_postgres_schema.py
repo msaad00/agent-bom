@@ -96,6 +96,18 @@ def test_total_table_count():
     assert len(_tables()) >= 12
 
 
+def test_gateway_policy_tables_have_tenant_columns():
+    assert "team_id" in _columns_for("gateway_policies")
+    assert "team_id" in _columns_for("policy_audit_log")
+
+
+def test_gateway_policy_rls_policies_exist():
+    assert "ALTER TABLE gateway_policies ENABLE ROW LEVEL SECURITY" in SQL
+    assert "CREATE POLICY gateway_policies_tenant_isolation ON gateway_policies" in SQL
+    assert "ALTER TABLE policy_audit_log ENABLE ROW LEVEL SECURITY" in SQL
+    assert "CREATE POLICY policy_audit_log_tenant_isolation ON policy_audit_log" in SQL
+
+
 # ── teams table ───────────────────────────────────────────────────────────────
 
 

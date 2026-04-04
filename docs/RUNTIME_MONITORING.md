@@ -36,6 +36,10 @@ Build the slim runtime image:
 docker build -f deploy/docker/Dockerfile.runtime -t agent-bom-runtime .
 ```
 
+The maintained runtime image now builds from the checked-out `agent-bom` source tree,
+not from a separately downloaded PyPI artifact, so the runtime sidecar stays aligned
+with the repo revision you are deploying.
+
 Run as a wrapper around any MCP server:
 
 ```bash

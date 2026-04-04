@@ -85,6 +85,7 @@ def test_create_policy():
     data = resp.json()
     assert data["name"] == "block-exec"
     assert data["mode"] == "enforce"
+    assert data["tenant_id"] == "default"
     assert len(store.list_policies()) == 1
 
 
@@ -108,6 +109,13 @@ def test_get_policy():
 def test_get_not_found():
     client, _ = _fresh_client()
     resp = client.get("/v1/gateway/policies/missing")
+    assert resp.status_code == 404
+
+
+def test_get_cross_tenant_hidden():
+    client, store = _fresh_client()
+    store.put_policy(_make_policy(policy_id="p-1", tenant_id="tenant-b"))
+    resp = client.get("/v1/gateway/policies/p-1")
     assert resp.status_code == 404
 
 
@@ -145,6 +153,15 @@ def test_delete_not_found():
     client, _ = _fresh_client()
     resp = client.delete("/v1/gateway/policies/missing")
     assert resp.status_code == 404
+
+
+def test_list_hides_other_tenants():
+    client, store = _fresh_client()
+    store.put_policy(_make_policy(policy_id="p-1", tenant_id="default"))
+    store.put_policy(_make_policy(policy_id="p-2", tenant_id="tenant-b"))
+    resp = client.get("/v1/gateway/policies")
+    assert resp.status_code == 200
+    assert [p["policy_id"] for p in resp.json()["policies"]] == ["p-1"]
 
 
 # ── Evaluate ──────────────────────────────────────────────────────────────────

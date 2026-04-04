@@ -16,7 +16,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from agent_bom.api.models import EvaluateRequest, PolicyCreate, PolicyUpdate
 from agent_bom.api.stores import _get_policy_store
@@ -25,9 +25,10 @@ router = APIRouter()
 
 
 @router.get("/v1/gateway/policies", tags=["gateway"])
-async def list_gateway_policies(enabled: bool | None = None, mode: str | None = None):
+async def list_gateway_policies(request: Request, enabled: bool | None = None, mode: str | None = None):
     """List all gateway policies."""
-    policies = _get_policy_store().list_policies()
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    policies = _get_policy_store().list_policies(tenant_id=tenant_id)
     if enabled is not None:
         policies = [p for p in policies if p.enabled == enabled]
     if mode:
@@ -36,7 +37,7 @@ async def list_gateway_policies(enabled: bool | None = None, mode: str | None = 
 
 
 @router.post("/v1/gateway/policies", tags=["gateway"], status_code=201)
-async def create_gateway_policy(body: PolicyCreate):
+async def create_gateway_policy(body: PolicyCreate, request: Request):
     """Create a new gateway policy."""
     from agent_bom.api.policy_store import GatewayPolicy, GatewayRule, PolicyMode
 
@@ -61,27 +62,30 @@ async def create_gateway_policy(body: PolicyCreate):
         enabled=body.enabled,
         created_at=now,
         updated_at=now,
+        tenant_id=getattr(request.state, "tenant_id", "default"),
     )
     _get_policy_store().put_policy(policy)
     return policy.model_dump()
 
 
 @router.get("/v1/gateway/policies/{policy_id}", tags=["gateway"])
-async def get_gateway_policy(policy_id: str):
+async def get_gateway_policy(policy_id: str, request: Request):
     """Get a gateway policy by ID."""
-    policy = _get_policy_store().get_policy(policy_id)
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    policy = _get_policy_store().get_policy(policy_id, tenant_id=tenant_id)
     if policy is None:
         raise HTTPException(status_code=404, detail="Policy not found")
     return policy.model_dump()
 
 
 @router.put("/v1/gateway/policies/{policy_id}", tags=["gateway"])
-async def update_gateway_policy(policy_id: str, body: PolicyUpdate):
+async def update_gateway_policy(policy_id: str, body: PolicyUpdate, request: Request):
     """Update an existing gateway policy."""
     from agent_bom.api.policy_store import GatewayRule, PolicyMode
 
     store = _get_policy_store()
-    policy = store.get_policy(policy_id)
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    policy = store.get_policy(policy_id, tenant_id=tenant_id)
     if policy is None:
         raise HTTPException(status_code=404, detail="Policy not found")
     if body.name is not None:
@@ -109,19 +113,21 @@ async def update_gateway_policy(policy_id: str, body: PolicyUpdate):
 
 
 @router.delete("/v1/gateway/policies/{policy_id}", tags=["gateway"])
-async def delete_gateway_policy(policy_id: str):
+async def delete_gateway_policy(policy_id: str, request: Request):
     """Delete a gateway policy."""
-    if not _get_policy_store().delete_policy(policy_id):
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    if not _get_policy_store().delete_policy(policy_id, tenant_id=tenant_id):
         raise HTTPException(status_code=404, detail="Policy not found")
     return {"deleted": True, "policy_id": policy_id}
 
 
 @router.post("/v1/gateway/evaluate", tags=["gateway"])
-async def evaluate_gateway(body: EvaluateRequest):
+async def evaluate_gateway(body: EvaluateRequest, request: Request):
     """Dry-run evaluation of gateway policies against a tool call."""
     from agent_bom.gateway import evaluate_gateway_policies
 
-    policies = _get_policy_store().list_policies()
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    policies = _get_policy_store().list_policies(tenant_id=tenant_id)
     active = [p for p in policies if p.enabled]
     allowed, reason, policy_id = evaluate_gateway_policies(
         active,
@@ -138,24 +144,28 @@ async def evaluate_gateway(body: EvaluateRequest):
 
 @router.get("/v1/gateway/audit", tags=["gateway"])
 async def list_gateway_audit(
+    request: Request,
     policy_id: str | None = None,
     agent_name: str | None = None,
     limit: int = 100,
 ):
     """Query the gateway policy audit log."""
+    tenant_id = getattr(request.state, "tenant_id", "default")
     entries = _get_policy_store().list_audit_entries(
         policy_id=policy_id,
         agent_name=agent_name,
         limit=limit,
+        tenant_id=tenant_id,
     )
     return {"entries": [e.model_dump() for e in entries], "count": len(entries)}
 
 
 @router.get("/v1/gateway/stats", tags=["gateway"])
-async def gateway_stats():
+async def gateway_stats(request: Request):
     """Gateway-wide statistics."""
-    policies = _get_policy_store().list_policies()
-    audit = _get_policy_store().list_audit_entries(limit=10000)
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    policies = _get_policy_store().list_policies(tenant_id=tenant_id)
+    audit = _get_policy_store().list_audit_entries(limit=10000, tenant_id=tenant_id)
     enforce_count = sum(1 for p in policies if p.mode.value == "enforce" and p.enabled)
     audit_count = sum(1 for p in policies if p.mode.value == "audit" and p.enabled)
     blocked = sum(1 for e in audit if e.action_taken == "blocked")

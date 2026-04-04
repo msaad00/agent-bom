@@ -62,7 +62,7 @@ class MockConnection:
                 elif "gateway_policies" in sql:
                     table = "gateway_policies"
                 elif "policy_audit_log" in sql:
-                    table = "audit"
+                    table = "policy_audit_log"
                 elif "scan_schedules" in sql:
                     table = "scan_schedules"
                 elif "osv_cache" in sql:
@@ -106,6 +106,20 @@ class MockConnection:
                         if len(params) > 1:
                             rows = [r for r in rows if r[7] == params[1]]
                 cursor.rows = [tuple(r[:13]) for r in rows]
+            elif "from gateway_policies" in sql_lower:
+                rows = list(self._store.get("gateway_policies", {}).values())
+                if "where policy_id" in sql_lower and params:
+                    rows = [r for r in rows if r[0] == params[0]]
+                    if len(params) > 1:
+                        rows = [r for r in rows if r[1] == params[1]]
+                elif "where team_id" in sql_lower and params:
+                    rows = [r for r in rows if r[1] == params[0]]
+                cursor.rows = [(r[-1],) for r in rows]
+            elif "from policy_audit_log" in sql_lower:
+                rows = list(self._store.get("policy_audit_log", {}).values())
+                if "where team_id" in sql_lower and params:
+                    rows = [r for r in rows if r[1] == params[0]]
+                cursor.rows = [(r[-1],) for r in rows]
             elif "from scan_jobs" in sql_lower and "job_id, team_id, status, created_at, completed_at" in sql_lower:
                 rows = list(self._store.get("scan_jobs", {}).values())
                 cursor.rows = [(r[0], r[1], r[2], r[3], r[4]) for r in rows]
@@ -119,6 +133,10 @@ class MockConnection:
                             if "osv_cache" in sql and "vulns_json" in sql:
                                 # Cache query returns (vulns_json, cached_at)
                                 cursor.rows = [(row[1], row[2])]
+                            elif "from gateway_policies" in sql:
+                                cursor.rows = [(row[-1],)]
+                            elif "from policy_audit_log" in sql:
+                                cursor.rows = [(row[-1],)]
                             else:
                                 # Return the last element (data column)
                                 cursor.rows = [(row[-1],)]
@@ -528,6 +546,7 @@ def test_policy_store_put_get(mock_pool):
 
     mock_pool._conn._store.setdefault("gateway_policies", {})["p-1"] = (
         "p-1",
+        "default",
         policy.model_dump_json(),
     )
 
@@ -540,7 +559,7 @@ def test_policy_store_delete(mock_pool):
     from agent_bom.api.postgres_store import PostgresPolicyStore
 
     store = PostgresPolicyStore(pool=mock_pool)
-    mock_pool._conn._store.setdefault("gateway_policies", {})["p-1"] = ("p-1", "{}")
+    mock_pool._conn._store.setdefault("gateway_policies", {})["p-1"] = ("p-1", "default", "{}")
     assert store.delete_policy("p-1") is True
 
 
@@ -567,6 +586,33 @@ def test_policy_store_list_audit_entries(mock_pool):
     store = PostgresPolicyStore(pool=mock_pool)
     result = store.list_audit_entries()
     assert isinstance(result, list)
+
+
+def test_policy_store_tenant_filters(mock_pool):
+    from agent_bom.api.policy_store import GatewayPolicy, PolicyAuditEntry
+    from agent_bom.api.postgres_store import PostgresPolicyStore
+
+    store = PostgresPolicyStore(pool=mock_pool)
+    policy = GatewayPolicy(policy_id="p-1", name="tenant-a-policy", rules=[], tenant_id="tenant-a")
+    store.put_policy(policy)
+    mock_pool._conn._store.setdefault("gateway_policies", {})["p-1"] = ("p-1", "tenant-a", policy.model_dump_json())
+    assert store.get_policy("p-1", tenant_id="tenant-a") is not None
+    assert store.get_policy("p-1", tenant_id="tenant-b") is None
+
+    entry = PolicyAuditEntry(
+        entry_id="e-1",
+        policy_id="p-1",
+        policy_name="tenant-a-policy",
+        rule_id="r1",
+        agent_name="agent-a",
+        tool_name="read_file",
+        action_taken="allowed",
+        reason="ok",
+        tenant_id="tenant-a",
+    )
+    store.put_audit_entry(entry)
+    mock_pool._conn._store.setdefault("policy_audit_log", {})["e-1"] = ("2026-01-01T00:00:00Z", "tenant-a", entry.model_dump_json())
+    assert store.list_audit_entries(tenant_id="tenant-a")
 
 
 # ─── Pool / Config ────────────────────────────────────────────────────────────

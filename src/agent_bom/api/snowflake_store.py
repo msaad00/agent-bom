@@ -384,7 +384,7 @@ class SnowflakePolicyStore:
                 ),
             )
 
-    def get_policy(self, policy_id: str) -> GatewayPolicy | None:
+    def get_policy(self, policy_id: str, tenant_id: str | None = None) -> GatewayPolicy | None:
         with self._connect() as conn:
             cur = conn.cursor()
             cur.execute(
@@ -394,9 +394,14 @@ class SnowflakePolicyStore:
             row = cur.fetchone()
             if row is None:
                 return None
-            return GatewayPolicy.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0]))
+            policy = GatewayPolicy.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0]))
+            if tenant_id is not None and policy.tenant_id != tenant_id:
+                return None
+            return policy
 
-    def delete_policy(self, policy_id: str) -> bool:
+    def delete_policy(self, policy_id: str, tenant_id: str | None = None) -> bool:
+        if tenant_id is not None and self.get_policy(policy_id, tenant_id=tenant_id) is None:
+            return False
         with self._connect() as conn:
             cur = conn.cursor()
             cur.execute(
@@ -405,19 +410,23 @@ class SnowflakePolicyStore:
             )
             return (cur.rowcount or 0) > 0
 
-    def list_policies(self) -> list[GatewayPolicy]:
+    def list_policies(self, tenant_id: str | None = None) -> list[GatewayPolicy]:
         with self._connect() as conn:
             cur = conn.cursor()
             cur.execute("SELECT data FROM gateway_policies ORDER BY name")
-            return [GatewayPolicy.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in cur.fetchall()]
+            policies = [GatewayPolicy.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in cur.fetchall()]
+            if tenant_id is not None:
+                policies = [p for p in policies if p.tenant_id == tenant_id]
+            return policies
 
     def get_policies_for_agent(
         self,
         agent_name: str | None = None,
         agent_type: str | None = None,
         environment: str | None = None,
+        tenant_id: str | None = None,
     ) -> list[GatewayPolicy]:
-        policies = [p for p in self.list_policies() if p.enabled]
+        policies = [p for p in self.list_policies(tenant_id=tenant_id) if p.enabled]
         results = []
         for p in policies:
             if p.bound_agents and agent_name and agent_name not in p.bound_agents:
@@ -452,6 +461,7 @@ class SnowflakePolicyStore:
         policy_id: str | None = None,
         agent_name: str | None = None,
         limit: int = 100,
+        tenant_id: str | None = None,
     ) -> list[PolicyAuditEntry]:
         with self._connect() as conn:
             sql = "SELECT data FROM policy_audit_log WHERE 1=1"
@@ -466,4 +476,7 @@ class SnowflakePolicyStore:
             params.append(limit)
             cur = conn.cursor()
             cur.execute(sql, params)
-            return [PolicyAuditEntry.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in cur.fetchall()]
+            entries = [PolicyAuditEntry.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in cur.fetchall()]
+            if tenant_id is not None:
+                entries = [e for e in entries if e.tenant_id == tenant_id]
+            return entries

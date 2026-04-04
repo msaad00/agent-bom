@@ -93,16 +93,20 @@ CREATE INDEX IF NOT EXISTS idx_fleet_tenant ON fleet_agents(tenant_id);
 
 CREATE TABLE IF NOT EXISTS gateway_policies (
     policy_id TEXT PRIMARY KEY,
+    team_id   TEXT NOT NULL DEFAULT 'default',
     data      JSONB NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS policy_audit_log (
-    id   SERIAL PRIMARY KEY,
-    ts   TEXT NOT NULL,
-    data JSONB NOT NULL
+    id      SERIAL PRIMARY KEY,
+    ts      TEXT NOT NULL,
+    team_id TEXT NOT NULL DEFAULT 'default',
+    data    JSONB NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON policy_audit_log(ts DESC);
+CREATE INDEX IF NOT EXISTS idx_gateway_policies_team ON gateway_policies(team_id);
+CREATE INDEX IF NOT EXISTS idx_policy_audit_log_team_ts ON policy_audit_log(team_id, ts DESC);
 
 -- ── Tables: Scan Schedules ────────────────────────────────────────────────────
 
@@ -350,6 +354,12 @@ AS $$
     SELECT COALESCE(NULLIF(current_setting('app.bypass_rls', true), ''), '0') = '1'
 $$;
 
+ALTER TABLE gateway_policies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE gateway_policies FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE policy_audit_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE policy_audit_log FORCE ROW LEVEL SECURITY;
+
 ALTER TABLE fleet_agents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fleet_agents FORCE ROW LEVEL SECURITY;
 
@@ -365,6 +375,36 @@ BEGIN
           AND policyname = 'scan_jobs_tenant_isolation'
     ) THEN
         CREATE POLICY scan_jobs_tenant_isolation ON scan_jobs
+            USING (public.abom_rls_bypass() OR team_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR team_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'gateway_policies'
+          AND policyname = 'gateway_policies_tenant_isolation'
+    ) THEN
+        CREATE POLICY gateway_policies_tenant_isolation ON gateway_policies
+            USING (public.abom_rls_bypass() OR team_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR team_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'policy_audit_log'
+          AND policyname = 'policy_audit_log_tenant_isolation'
+    ) THEN
+        CREATE POLICY policy_audit_log_tenant_isolation ON policy_audit_log
             USING (public.abom_rls_bypass() OR team_id = public.abom_current_tenant())
             WITH CHECK (public.abom_rls_bypass() OR team_id = public.abom_current_tenant());
     END IF;

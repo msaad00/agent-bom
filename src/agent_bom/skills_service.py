@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+import concurrent.futures
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
@@ -15,6 +18,7 @@ from agent_bom.skill_intel import ThreatIntelResult, ThreatIntelStatus, lookup_b
 from agent_bom.skills_catalog import catalog_scan_timestamp, load_skills_catalog, save_skills_catalog
 
 _SKILL_DISCOVERY_SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__"}
+_SKILLS_SCAN_CONCURRENCY = max(1, int(os.environ.get("AGENT_BOM_SKILLS_SCAN_CONCURRENCY", "8")))
 
 
 @dataclass
@@ -283,6 +287,11 @@ def _build_skill_report(path: Path, *, intel_source: str | None = None) -> Skill
     return report
 
 
+async def _build_skill_report_async(path: Path, *, intel_source: str | None = None) -> SkillFileReport:
+    """Build one skill report off the event loop."""
+    return await asyncio.to_thread(_build_skill_report, path, intel_source=intel_source)
+
+
 def _catalog_entry_for_report(report: SkillFileReport) -> dict[str, object]:
     """Convert a file report into a persistent catalog entry."""
     timestamp = catalog_scan_timestamp()
@@ -318,6 +327,40 @@ def _persist_catalog(reports: list[SkillFileReport], catalog_path: str | Path | 
     return str(save_skills_catalog(catalog, catalog_path))
 
 
+def _run_async_sync(awaitable):
+    """Run async work from sync callers, even when already inside an event loop."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(awaitable)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(asyncio.run, awaitable)
+        return future.result()
+
+
+async def _scan_skill_targets_async(
+    paths: Iterable[str | Path] | None = None,
+    *,
+    cwd: Path | None = None,
+    intel_source: str | None = None,
+    catalog_path: str | Path | None = None,
+) -> SkillsScanReport:
+    """Async implementation for scanning skill targets with bounded concurrency."""
+    targets = resolve_skill_targets(paths, cwd=cwd)
+    if not targets:
+        return SkillsScanReport(files=[], catalog_path=None)
+
+    sem = asyncio.Semaphore(_SKILLS_SCAN_CONCURRENCY)
+
+    async def _scan_one(path: Path) -> SkillFileReport:
+        async with sem:
+            return await _build_skill_report_async(path, intel_source=intel_source)
+
+    reports = await asyncio.gather(*[_scan_one(path) for path in targets])
+    return SkillsScanReport(files=list(reports), catalog_path=_persist_catalog(list(reports), catalog_path))
+
+
 def scan_skill_targets(
     paths: Iterable[str | Path] | None = None,
     *,
@@ -326,46 +369,58 @@ def scan_skill_targets(
     catalog_path: str | Path | None = None,
 ) -> SkillsScanReport:
     """Scan one or more skill targets and return aggregate results."""
-    reports = [_build_skill_report(path, intel_source=intel_source) for path in resolve_skill_targets(paths, cwd=cwd)]
-    return SkillsScanReport(files=reports, catalog_path=_persist_catalog(reports, catalog_path))
+    return _run_async_sync(
+        _scan_skill_targets_async(
+            paths,
+            cwd=cwd,
+            intel_source=intel_source,
+            catalog_path=catalog_path,
+        )
+    )
 
 
-def rescan_skill_catalog(
+async def _rescan_skill_catalog_async(
     *,
     catalog_path: str | Path | None = None,
     intel_source: str | None = None,
 ) -> SkillsRescanReport:
-    """Re-scan skill bundles tracked in the local catalog."""
+    """Async implementation for rescanning cataloged skill bundles."""
     catalog = load_skills_catalog(catalog_path)
     entries_obj = catalog.get("entries")
     entries = entries_obj if isinstance(entries_obj, dict) else {}
     serialized: list[dict[str, object]] = []
     updated_entries: dict[str, object] = {}
+    sem = asyncio.Semaphore(_SKILLS_SCAN_CONCURRENCY)
 
+    async def _rescan_existing(
+        stable_id: str, entry: dict[str, object], path: Path, path_str: str
+    ) -> tuple[str, dict[str, object], dict[str, object]]:
+        async with sem:
+            report = await _build_skill_report_async(path, intel_source=intel_source)
+        updated = _catalog_entry_for_report(report)
+        updated["first_seen"] = entry.get("first_seen") or updated["last_seen"]
+        serialized_entry = {
+            "bundle_stable_id": stable_id,
+            "path": path_str,
+            "exists": True,
+            "rescanned": True,
+            "status": report.status,
+            "trust_verdict": report.trust.verdict.value,
+            "review_verdict": report.trust.review_verdict.value,
+            "provenance_status": report.provenance.get("status"),
+            "threat_intel": report.threat_intel.to_dict() if report.threat_intel else None,
+            "findings": len(report.audit.findings),
+            "last_seen": updated["last_seen"],
+        }
+        return stable_id, updated, serialized_entry
+
+    pending: list[asyncio.Task[tuple[str, dict[str, object], dict[str, object]]]] = []
     for stable_id, raw_entry in sorted(entries.items()):
         entry = raw_entry if isinstance(raw_entry, dict) else {}
         path_str = str(entry.get("path") or "")
         path = Path(path_str)
         if path_str and path.exists():
-            report = _build_skill_report(path, intel_source=intel_source)
-            updated = _catalog_entry_for_report(report)
-            updated["first_seen"] = entry.get("first_seen") or updated["last_seen"]
-            updated_entries[stable_id] = updated
-            serialized.append(
-                {
-                    "bundle_stable_id": stable_id,
-                    "path": path_str,
-                    "exists": True,
-                    "rescanned": True,
-                    "status": report.status,
-                    "trust_verdict": report.trust.verdict.value,
-                    "review_verdict": report.trust.review_verdict.value,
-                    "provenance_status": report.provenance.get("status"),
-                    "threat_intel": report.threat_intel.to_dict() if report.threat_intel else None,
-                    "findings": len(report.audit.findings),
-                    "last_seen": updated["last_seen"],
-                }
-            )
+            pending.append(asyncio.create_task(_rescan_existing(stable_id, entry, path, path_str)))
             continue
 
         status = ThreatIntelStatus.UNAVAILABLE.value
@@ -390,9 +445,22 @@ def rescan_skill_catalog(
             }
         )
 
+    for stable_id, updated, serialized_entry in await asyncio.gather(*pending):
+        updated_entries[stable_id] = updated
+        serialized.append(serialized_entry)
+
     catalog["entries"] = updated_entries
     persisted = str(save_skills_catalog(catalog, catalog_path))
     return SkillsRescanReport(catalog_path=persisted, entries=serialized)
+
+
+def rescan_skill_catalog(
+    *,
+    catalog_path: str | Path | None = None,
+    intel_source: str | None = None,
+) -> SkillsRescanReport:
+    """Re-scan skill bundles tracked in the local catalog."""
+    return _run_async_sync(_rescan_skill_catalog_async(catalog_path=catalog_path, intel_source=intel_source))
 
 
 def verify_skill_targets(paths: Iterable[str | Path] | None = None, *, cwd: Path | None = None) -> list[dict[str, object]]:

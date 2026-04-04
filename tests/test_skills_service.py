@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+from pathlib import Path
 
 from agent_bom.skill_bundles import build_skill_bundle
 from agent_bom.skills_service import rescan_skill_catalog, scan_skill_targets
@@ -94,3 +96,41 @@ def test_rescan_skill_catalog_refreshes_existing_entry_with_intel(tmp_path):
     assert data["entries"][0]["exists"] is True
     assert data["entries"][0]["status"] == "malicious"
     assert data["entries"][0]["threat_intel"]["detail"] == "Known-bad bundle hash"
+
+
+def test_scan_skill_targets_preserves_discovery_order(tmp_path):
+    """Batch scanning should preserve resolved file order in output."""
+    a = tmp_path / "CLAUDE.md"
+    b = tmp_path / "SKILL.md"
+    a.write_text("# A\n")
+    b.write_text("# B\n")
+
+    report = scan_skill_targets([tmp_path])
+
+    assert [Path(item.path).name for item in report.files] == ["CLAUDE.md", "SKILL.md"]
+
+
+def test_scan_skill_targets_works_inside_existing_event_loop(tmp_path):
+    """Sync API should remain callable from contexts that already own an event loop."""
+    skill_file = tmp_path / "CLAUDE.md"
+    skill_file.write_text("# Instructions\nStay read-only.\n")
+
+    async def _invoke():
+        return await asyncio.to_thread(scan_skill_targets, [skill_file])
+
+    report = asyncio.run(_invoke())
+    assert report.files[0].path == skill_file
+
+
+def test_rescan_skill_catalog_works_inside_existing_event_loop(tmp_path):
+    """Catalog rescan should keep working when called from async wrappers."""
+    skill_file = tmp_path / "SKILL.md"
+    skill_file.write_text("# Skill\nUse the filesystem server.\n")
+    catalog_path = tmp_path / "catalog.json"
+    scan_skill_targets([skill_file], catalog_path=catalog_path)
+
+    async def _invoke():
+        return await asyncio.to_thread(rescan_skill_catalog, catalog_path=catalog_path)
+
+    report = asyncio.run(_invoke())
+    assert report.entries[0]["exists"] is True

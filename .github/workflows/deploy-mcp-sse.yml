@@ -85,13 +85,18 @@ jobs:
       - name: Post-deploy version check
         env:
           RAILWAY_MCP_URL: ${{ vars.RAILWAY_MCP_URL }}
+          RAILWAY_MCP_BEARER_TOKEN: ${{ secrets.RAILWAY_MCP_BEARER_TOKEN }}
         run: |
           echo "Waiting 60s for Railway to rebuild and start..."
           sleep 60
           DEPLOY_URL="${RAILWAY_MCP_URL:-https://agent-bom-mcp.up.railway.app}"
+          CURL_ARGS=()
+          if [ -n "${RAILWAY_MCP_BEARER_TOKEN:-}" ]; then
+            CURL_ARGS=(-H "Authorization: Bearer $RAILWAY_MCP_BEARER_TOKEN")
+          fi
           echo "Checking $DEPLOY_URL/health"
           for attempt in 1 2 3 4 5; do
-            RESPONSE=$(curl -sf "$DEPLOY_URL/health" 2>/dev/null || true)
+            RESPONSE=$(curl -sf "${CURL_ARGS[@]}" "$DEPLOY_URL/health" 2>/dev/null || true)
             if [ -n "$RESPONSE" ]; then
               echo "Health response: $RESPONSE"
               DEPLOYED_VERSION=$(echo "$RESPONSE" | python3 -c "
@@ -108,7 +113,7 @@ jobs:
                 echo "✅ Version match confirmed"
                 exit 0
               elif [ "$DEPLOYED_VERSION" = "unknown" ]; then
-                echo "⚠️ Could not extract version from health endpoint — deploy may still be starting"
+                echo "⚠️ Could not extract version from health endpoint — auth or startup may still be incomplete"
               else
                 echo "::warning::Version mismatch — deployed=$DEPLOYED_VERSION expected=$repo_version"
               fi

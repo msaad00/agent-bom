@@ -273,7 +273,7 @@ docker run --rm agentbom/agent-bom agents    # Docker
 | Mode | Command | Best for |
 |------|---------|----------|
 | CLI | `agent-bom agents` | Local audit + project scan |
-| GitHub Action | `uses: msaad00/agent-bom@v0.75.13` | CI/CD + SARIF |
+| GitHub Action | `uses: msaad00/agent-bom@v0.75.14` | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom` | Isolated scans |
 | MCP Server | `agent-bom mcp server` | Claude Desktop, Claude Code, Cursor, Codex, Windsurf, Cortex |
 | Runtime proxy | `agent-bom proxy` | MCP traffic enforcement |
@@ -287,7 +287,7 @@ Use the GitHub Action when you want a fast CI gate: one step, one gate, SARIF in
 **Repo + MCP + instruction files**
 
 ```yaml
-- uses: msaad00/agent-bom@v0.75.13
+- uses: msaad00/agent-bom@v0.75.14
   with:
     scan-type: scan
     severity-threshold: high
@@ -299,7 +299,7 @@ Use the GitHub Action when you want a fast CI gate: one step, one gate, SARIF in
 **Container image gate**
 
 ```yaml
-- uses: msaad00/agent-bom@v0.75.13
+- uses: msaad00/agent-bom@v0.75.14
   with:
     scan-type: image
     scan-ref: ghcr.io/acme/agent-runtime:sha-abcdef
@@ -309,7 +309,7 @@ Use the GitHub Action when you want a fast CI gate: one step, one gate, SARIF in
 **IaC gate**
 
 ```yaml
-- uses: msaad00/agent-bom@v0.75.13
+- uses: msaad00/agent-bom@v0.75.14
   with:
     scan-type: iac
     iac: Dockerfile,k8s/,infra/main.tf
@@ -319,7 +319,7 @@ Use the GitHub Action when you want a fast CI gate: one step, one gate, SARIF in
 **Air-gapped / pre-synced CI**
 
 ```yaml
-- uses: msaad00/agent-bom@v0.75.13
+- uses: msaad00/agent-bom@v0.75.14
   with:
     auto-update-db: false
     enrich: false
@@ -329,7 +329,7 @@ Use the GitHub Action when you want a fast CI gate: one step, one gate, SARIF in
 <summary><b>GitHub Action</b></summary>
 
 ```yaml
-- uses: msaad00/agent-bom@v0.75.13
+- uses: msaad00/agent-bom@v0.75.14
   with:
     scan-type: scan
     severity-threshold: high

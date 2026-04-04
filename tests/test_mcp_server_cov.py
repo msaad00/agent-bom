@@ -10,6 +10,7 @@ import pytest
 
 from agent_bom.mcp_server import (
     _execute_tool_async,
+    _execute_tool_sync_async,
     _get_registry_data,
     _get_registry_data_raw,
     _record_tool_metric,
@@ -177,4 +178,17 @@ class TestToolMetrics:
         result = await _execute_tool_async("slow_tool", _slow, timeout=0.001)
         payload = json.loads(result)
         assert payload["tool"] == "slow_tool"
+        assert payload["timed_out"] is True
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_sync_async_returns_timeout_payload(self):
+        def _slow_sync():
+            import time
+
+            time.sleep(0.05)
+            return "ok"
+
+        result = await _execute_tool_sync_async("slow_sync_tool", _slow_sync, tool_timeout=0.001)
+        payload = json.loads(result)
+        assert payload["tool"] == "slow_sync_tool"
         assert payload["timed_out"] is True

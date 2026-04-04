@@ -63,7 +63,7 @@ from pathlib import Path
 from typing import Annotated, Any, Awaitable, Callable, Optional, TypeVar
 
 from mcp.types import ToolAnnotations
-from pydantic import Field
+from pydantic import AnyHttpUrl, Field, TypeAdapter
 
 from agent_bom.config import MCP_MAX_CONCURRENT_TOOLS as _MCP_MAX_CONCURRENT_TOOLS
 from agent_bom.config import MCP_MAX_FILE_SIZE as _MAX_FILE_SIZE
@@ -75,6 +75,7 @@ from agent_bom.security import sanitize_error
 
 logger = logging.getLogger(__name__)
 _ToolReturn = TypeVar("_ToolReturn")
+_HTTP_URL_ADAPTER = TypeAdapter(AnyHttpUrl)
 
 # ---------------------------------------------------------------------------
 # Input validation helpers
@@ -277,28 +278,54 @@ async def _execute_tool_async(
     return result
 
 
-def _execute_tool_sync(
+async def _execute_tool_sync_async(
     tool_name: str,
     handler: Callable[..., _ToolReturn],
     /,
     *args,
+    tool_timeout: float | None = None,
     **kwargs,
 ) -> _ToolReturn:
-    """Run a sync MCP tool with metrics and consistent logging."""
-    start = time.perf_counter()
-    logger.info("mcp tool start: %s", tool_name)
-    try:
-        result = handler(*args, **kwargs)
-    except Exception as exc:
+    """Run a sync MCP tool under the shared async governance envelope."""
+    timeout_seconds = _MCP_TOOL_TIMEOUT_SECONDS if tool_timeout is None else tool_timeout
+    response_truncator = kwargs.get("_truncate_response", _truncate_response)
+    async with _get_tool_semaphore():
+        start = time.perf_counter()
+        logger.info("mcp tool start: %s", tool_name)
+        try:
+            result = await asyncio.wait_for(
+                asyncio.to_thread(handler, *args, **kwargs),
+                timeout=timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            elapsed_ms = int((time.perf_counter() - start) * 1000)
+            _record_tool_metric(
+                tool_name,
+                elapsed_ms=elapsed_ms,
+                success=False,
+                timed_out=True,
+                error=f"timed out after {timeout_seconds:.1f}s",
+            )
+            logger.warning("mcp tool timed out: %s after %.1fs", tool_name, timeout_seconds)
+            return response_truncator(
+                json.dumps(
+                    {
+                        "error": f"Tool '{tool_name}' timed out after {timeout_seconds:.1f}s",
+                        "tool": tool_name,
+                        "timed_out": True,
+                    }
+                )
+            )
+        except Exception as exc:
+            elapsed_ms = int((time.perf_counter() - start) * 1000)
+            sanitized = sanitize_error(exc)
+            _record_tool_metric(tool_name, elapsed_ms=elapsed_ms, success=False, error=sanitized)
+            logger.warning("mcp tool failed: %s (%s)", tool_name, sanitized)
+            raise
         elapsed_ms = int((time.perf_counter() - start) * 1000)
-        sanitized = sanitize_error(exc)
-        _record_tool_metric(tool_name, elapsed_ms=elapsed_ms, success=False, error=sanitized)
-        logger.warning("mcp tool failed: %s (%s)", tool_name, sanitized)
-        raise
-    elapsed_ms = int((time.perf_counter() - start) * 1000)
-    _record_tool_metric(tool_name, elapsed_ms=elapsed_ms, success=True)
-    logger.info("mcp tool ok: %s (%dms)", tool_name, elapsed_ms)
-    return result
+        _record_tool_metric(tool_name, elapsed_ms=elapsed_ms, success=True)
+        logger.info("mcp tool ok: %s (%dms)", tool_name, elapsed_ms)
+        return result
 
 
 def _build_dep_graph_from_agents(agents_data: list[dict[str, Any]]):
@@ -529,7 +556,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
     auth_settings = None
     token_verifier = None
     if bearer_token:
-        resource_url = f"http://{host}:{port}"
+        resource_url: AnyHttpUrl = _HTTP_URL_ADAPTER.validate_python(f"http://{host}:{port}")
         auth_settings = AuthSettings(
             issuer_url=resource_url,
             resource_server_url=resource_url,
@@ -793,7 +820,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
     # ── Tool 5: registry_lookup ───────────────────────────────────────
 
     @mcp.tool(annotations=_READ_ONLY, title="Registry Lookup")
-    def registry_lookup(
+    async def registry_lookup(
         server_name: Annotated[
             str | None, Field(description="MCP server name to look up, e.g. 'filesystem', '@modelcontextprotocol/server-github'.")
         ] = None,
@@ -821,7 +848,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
             credential_env_vars, risk_justification. Returns found=false
             if not found.
         """
-        return _execute_tool_sync(
+        return await _execute_tool_sync_async(
             "registry_lookup",
             registry_lookup_impl,
             server_name=server_name,
@@ -925,7 +952,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
     # ── Tool 9: skill_scan ───────────────────────────────────────────
 
     @mcp.tool(annotations=_READ_ONLY, title="Skill Scan")
-    def skill_scan(
+    async def skill_scan(
         path: Annotated[str, Field(description="Path to a skill/instruction file or directory to scan.")] = ".",
     ) -> str:
         """Scan skill and instruction files for trust, findings, and provenance.
@@ -934,7 +961,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
         `.cursorrules`, and `skills/*.md`, then parses referenced packages,
         MCP servers, credential env vars, audit findings, and trust verdicts.
         """
-        return _execute_tool_sync(
+        return await _execute_tool_sync_async(
             "skill_scan",
             skill_scan_impl,
             path=path,
@@ -945,11 +972,11 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
     # ── Tool 10: skill_verify ────────────────────────────────────────
 
     @mcp.tool(annotations=_READ_ONLY, title="Skill Provenance Verify")
-    def skill_verify(
+    async def skill_verify(
         path: Annotated[str, Field(description="Path to a skill/instruction file or directory to verify.")] = ".",
     ) -> str:
         """Verify Sigstore provenance for skill and instruction files."""
-        return _execute_tool_sync(
+        return await _execute_tool_sync_async(
             "skill_verify",
             skill_verify_impl,
             path=path,
@@ -960,7 +987,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
     # ── Tool 11: skill_trust ──────────────────────────────────────────
 
     @mcp.tool(annotations=_READ_ONLY, title="Skill Trust Assessment")
-    def skill_trust(
+    async def skill_trust(
         skill_path: Annotated[str, Field(description="Path to a SKILL.md file (or any skill/instruction file) to assess.")],
     ) -> str:
         """Assess the trust level of a SKILL.md file using ClawHub-style categories.
@@ -979,7 +1006,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
             JSON with verdict, confidence, per-category assessments, and
             recommendations.
         """
-        return _execute_tool_sync(
+        return await _execute_tool_sync_async(
             "skill_trust",
             skill_trust_impl,
             skill_path=skill_path,
@@ -1016,7 +1043,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
     # ── Tool 13: where ────────────────────────────────────────────
 
     @mcp.tool(annotations=_READ_ONLY, title="Discovery Paths")
-    def where() -> str:
+    async def where() -> str:
         """Show all MCP discovery paths and which config files exist.
 
         Lists every known MCP client config path per platform, indicating
@@ -1026,12 +1053,12 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
         Returns:
             JSON with per-client config paths, existence status, and platform.
         """
-        return _execute_tool_sync("where", where_impl, _truncate_response=_truncate_response)
+        return await _execute_tool_sync_async("where", where_impl, _truncate_response=_truncate_response)
 
     # ── Tool 14: inventory ────────────────────────────────────────
 
     @mcp.tool(annotations=_READ_ONLY, title="Agent Inventory")
-    def inventory(
+    async def inventory(
         config_path: Annotated[str | None, Field(description="Path to MCP client config directory. Auto-discovers all if omitted.")] = None,
     ) -> str:
         """List all discovered MCP configurations and servers without CVE scanning.
@@ -1043,7 +1070,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
             JSON with discovered agents, their MCP servers, packages, and
             transport types.
         """
-        return _execute_tool_sync(
+        return await _execute_tool_sync_async(
             "inventory",
             inventory_impl,
             config_path=config_path,
@@ -1051,7 +1078,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
         )
 
     @mcp.tool(annotations=_READ_ONLY, title="Tool Capability Risk")
-    def tool_risk_assessment(
+    async def tool_risk_assessment(
         config_path: Annotated[str | None, Field(description="Path to MCP client config directory. Auto-discovers all if omitted.")] = None,
         timeout: Annotated[float, Field(description="Per-server introspection timeout in seconds.")] = 10.0,
     ) -> str:
@@ -1064,7 +1091,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
             JSON with per-server tool profiles, capability counts, dangerous
             combinations, and risk justification.
         """
-        return _execute_tool_sync(
+        return await _execute_tool_sync_async(
             "tool_risk_assessment",
             tool_risk_assessment_impl,
             config_path=config_path,
@@ -1220,7 +1247,11 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
         """
 
         async def _impl() -> str:
-            agents, _blast_radii, _warnings, _sources = await _run_scan_pipeline(config_path=config_path)
+            scan_result = await _run_scan_pipeline(config_path=config_path)
+            if isinstance(scan_result, str):
+                return _truncate_response(scan_result)
+
+            agents, _blast_radii, _warnings, _sources = scan_result
             agents_data = [asdict(agent) for agent in agents]
 
             from agent_bom.output.graph_export import (

@@ -846,6 +846,18 @@ def test_graph_export_uses_scan_pipeline_tuple_contract(mock_pipeline):
     assert any(edge["kind"] == "depends_on" for edge in result["edges"])
 
 
+@patch("agent_bom.mcp_server._run_scan_pipeline")
+def test_graph_export_passes_through_pipeline_error_payload(mock_pipeline):
+    """graph_export should return a pipeline error payload instead of crashing on string results."""
+    from agent_bom.mcp_server import create_mcp_server
+
+    mock_pipeline.return_value = json.dumps({"error": "blocked path"})
+
+    server = create_mcp_server()
+    result = _call_tool(server, "graph_export", {"format": "json"})
+    assert result == {"error": "blocked path"}
+
+
 def test_registry_cache_returns_same_instance():
     """Registry cache should return the same data on repeated calls."""
     import agent_bom.mcp_server as mod

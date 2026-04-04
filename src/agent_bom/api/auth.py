@@ -155,9 +155,16 @@ class KeyStore:
             self._keys = [k for k in self._keys if k.key_id != key_id]
             return len(self._keys) < before
 
-    def list_keys(self) -> list[ApiKey]:
+    def get(self, key_id: str) -> ApiKey | None:
         with self._lock:
-            return list(self._keys)
+            return next((k for k in self._keys if k.key_id == key_id), None)
+
+    def list_keys(self, tenant_id: str | None = None) -> list[ApiKey]:
+        with self._lock:
+            keys = list(self._keys)
+        if tenant_id is None:
+            return keys
+        return [k for k in keys if k.tenant_id == tenant_id]
 
     def verify(self, raw_key: str) -> ApiKey | None:
         with self._lock:

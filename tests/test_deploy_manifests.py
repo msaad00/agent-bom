@@ -171,3 +171,14 @@ def test_helm_monitor_probes_are_defined():
     doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
     assert doc["readinessProbe"]["httpGet"]["path"] == "/status"
     assert doc["startupProbe"]["httpGet"]["path"] == "/status"
+
+
+def test_helm_network_policy_defaults_are_explicit():
+    """Network policy defaults should be explicit, not allow-all."""
+    doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
+    policy = doc["networkPolicy"]
+    assert policy["enabled"] is True
+    assert policy["allowDns"] is True
+    assert policy["allowWeb"] is True
+    assert policy["webPorts"] == [80, 443]
+    assert policy["additionalEgress"] == []

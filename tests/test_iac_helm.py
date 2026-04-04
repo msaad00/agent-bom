@@ -806,3 +806,30 @@ class TestScanIacDirectoryHelm:
     def test_directory_scan_returns_list(self, tmp_path):
         findings = scan_iac_directory(tmp_path)
         assert isinstance(findings, list)
+
+
+class TestAgentBomHelmChartDefaults:
+    def test_repo_values_file_meets_repo_helm_security_baseline(self):
+        values_path = Path("deploy/helm/agent-bom/values.yaml")
+        findings = scan_values_yaml(values_path)
+        rule_ids = _rule_ids(findings)
+
+        assert "HELM-006" not in rule_ids
+        assert "HELM-012" not in rule_ids
+        assert "HELM-014" not in rule_ids
+
+    def test_repo_templates_wire_security_contexts_and_network_policy(self):
+        cronjob = Path("deploy/helm/agent-bom/templates/cronjob.yaml").read_text()
+        daemonset = Path("deploy/helm/agent-bom/templates/daemonset.yaml").read_text()
+        network_policy = Path("deploy/helm/agent-bom/templates/networkpolicy.yaml").read_text()
+
+        assert "securityContext:" in cronjob
+        assert ".Values.podSecurityContext" in cronjob
+        assert ".Values.securityContext" in cronjob
+
+        assert "securityContext:" in daemonset
+        assert ".Values.podSecurityContext" in daemonset
+        assert ".Values.securityContext" in daemonset
+
+        assert "kind: NetworkPolicy" in network_policy
+        assert ".Values.networkPolicy.enabled" in network_policy

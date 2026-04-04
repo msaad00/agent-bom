@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.75.14] – 2026-04-03
+
 ### Added
 - **Next.js Insights page** (`/insights`) — SupplyChainTreemap, BlastRadiusRadial, PipelineFlow, EpssVsCvssChart, VulnTrendChart wired to real scan data; treemap cells are clickable and drill down to `/vulns`
 - **Gateway enforcement chart** — audit tab shows stacked bar of blocked/alerted/allowed actions per tool
@@ -23,6 +27,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - **pre-commit hooks** — added `check-yaml`, `check-json`, `check-toml`, `end-of-file-fixer`, `trailing-whitespace`, `detect-private-key`, `check-merge-conflict`, `mixed-line-ending`
 - **`agent-bom mcp scan`** — focused MCP server package audit path for pre-install checks
 - **Compliance narrative CLI** — auditor-facing narrative export from saved scan reports via `agent-bom report compliance-narrative`
+- **MCP caller governance** — per-caller rate limiting, request tracing, and richer tool metrics now flow through the MCP server metrics surface
+- **Remote MCP startup contract** — Railway/remote deployments now use an explicit bearer-token contract instead of accidental anonymous exposure
 
 ### Fixed
 - **JSON report import** — file upload now validates size (10 MB), schema, prototype-pollution keys, and finite numeric values before use (`ui/lib/validators.ts`)
@@ -32,9 +38,16 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - **`check` ecosystem ambiguity** — pre-install checks now fail closed on genuinely ambiguous package names and use version-aware registry detection to avoid cross-registry false positives
 - **`skills scan --verbose`** — added parity with other CLI surfaces for easier debugging
 - **Runtime CLI warning noise** — async proxy tests now use async-aware mocks, removing unawaited coroutine warnings from that path
+- **Frontend/backend scan contracts** — UI API types now model `scan_performance`, richer `scorecard_summary`, `posture_scorecard`, and remediation metadata consistently with backend JSON output
+- **GitHub Action execution contract** — hardened argv handling, severity validation, pip caching, step summaries, and sanitized PR comment/report generation now match the documented Action behavior
+- **Runtime image provenance** — runtime Docker image now builds from repo source instead of reinstalling from PyPI, aligning image behavior with source and release verification
+- **MCP execution envelope** — sync and async tools now share bounded concurrency, timeout, metrics, path safety, and sanitized error handling
+- **Snowpark enterprise networking** — Snowpark image now supports enterprise proxy and custom-CA configuration like the other maintained image families
 
 ### Security
 - **JSON file upload** — `ui/lib/validators.ts` guards against DoS via oversized files, prototype pollution, and schema-invalid payloads (no new npm dependencies)
+- **API and remote MCP fail closed** — non-loopback API and remote MCP transports now refuse to start without explicit auth unless an insecure override is deliberately supplied
+- **Dependency security refresh** — LiteLLM was bumped to `1.83.0`, clearing the active 2026 GitHub security advisories on `main`
 
 ---
 
@@ -447,7 +460,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.75.13...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.75.14...HEAD
+[0.75.14]: https://github.com/msaad00/agent-bom/compare/v0.75.13...v0.75.14
 [0.75.13]: https://github.com/msaad00/agent-bom/compare/v0.75.12...v0.75.13
 [0.75.12]: https://github.com/msaad00/agent-bom/compare/v0.75.0...v0.75.12
 [0.75.0]: https://github.com/msaad00/agent-bom/compare/v0.72.0...v0.75.0

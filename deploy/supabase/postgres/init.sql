@@ -110,12 +110,24 @@ CREATE TABLE IF NOT EXISTS scan_schedules (
     schedule_id TEXT PRIMARY KEY,
     enabled     INTEGER DEFAULT 1,
     next_run    TEXT,
+    tenant_id   TEXT NOT NULL DEFAULT 'default',
     data        JSONB NOT NULL
 );
+
+DO $$ BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'scan_schedules' AND column_name = 'tenant_id'
+    ) THEN
+        ALTER TABLE scan_schedules ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default';
+    END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_schedules_due
     ON scan_schedules(next_run)
     WHERE enabled = 1 AND next_run IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_schedules_tenant_due
+    ON scan_schedules(tenant_id, enabled, next_run);
 
 -- ── Tables: OSV Scan Cache ────────────────────────────────────────────────────
 
@@ -290,6 +302,65 @@ CREATE INDEX IF NOT EXISTS idx_jobq_status_due ON job_queue(status, scheduled_fo
     WHERE status IN ('pending', 'running');
 CREATE INDEX IF NOT EXISTS idx_jobq_team       ON job_queue(team_id);
 CREATE INDEX IF NOT EXISTS idx_jobq_type       ON job_queue(job_type);
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- TENANT RLS HELPERS + POLICIES
+-- ══════════════════════════════════════════════════════════════════════════════
+--
+-- Request handlers set app.tenant_id on the Postgres session. Internal trusted
+-- scheduler tasks can set app.bypass_rls=1 for cross-tenant maintenance work.
+
+CREATE OR REPLACE FUNCTION public.abom_current_tenant()
+RETURNS TEXT
+LANGUAGE SQL
+STABLE
+AS $$
+    SELECT COALESCE(NULLIF(current_setting('app.tenant_id', true), ''), 'default')
+$$;
+
+CREATE OR REPLACE FUNCTION public.abom_rls_bypass()
+RETURNS BOOLEAN
+LANGUAGE SQL
+STABLE
+AS $$
+    SELECT COALESCE(NULLIF(current_setting('app.bypass_rls', true), ''), '0') = '1'
+$$;
+
+ALTER TABLE fleet_agents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE fleet_agents FORCE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'fleet_agents'
+          AND policyname = 'fleet_agents_tenant_isolation'
+    ) THEN
+        CREATE POLICY fleet_agents_tenant_isolation ON fleet_agents
+            USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
+
+ALTER TABLE scan_schedules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE scan_schedules FORCE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'scan_schedules'
+          AND policyname = 'scan_schedules_tenant_isolation'
+    ) THEN
+        CREATE POLICY scan_schedules_tenant_isolation ON scan_schedules
+            USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
 
 -- ══════════════════════════════════════════════════════════════════════════════
 -- LEAST PRIVILEGE: App user — DML only, no DDL (cannot CREATE/DROP/ALTER)

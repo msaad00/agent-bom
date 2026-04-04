@@ -100,7 +100,13 @@ async def scheduler_loop(
         try:
             now = datetime.now(timezone.utc)
             now_iso = now.isoformat()
-            due = schedule_store.list_due(now_iso)
+            try:
+                from agent_bom.api.postgres_store import bypass_tenant_rls
+            except Exception:  # pragma: no cover - optional postgres backend
+                due = schedule_store.list_due(now_iso)
+            else:
+                with bypass_tenant_rls():
+                    due = schedule_store.list_due(now_iso)
 
             for schedule in due:
                 if not schedule.enabled:
@@ -115,7 +121,13 @@ async def scheduler_loop(
                     next_run = parse_cron_next(schedule.cron_expression, now)
                     schedule.next_run = next_run.isoformat() if next_run else None
                     schedule.updated_at = now_iso
-                    schedule_store.put(schedule)
+                    try:
+                        from agent_bom.api.postgres_store import bypass_tenant_rls
+                    except Exception:  # pragma: no cover - optional postgres backend
+                        schedule_store.put(schedule)
+                    else:
+                        with bypass_tenant_rls():
+                            schedule_store.put(schedule)
                 except Exception:
                     logger.exception("Failed to trigger scheduled scan: %s", schedule.name)
 

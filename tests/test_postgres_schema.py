@@ -256,6 +256,33 @@ def test_job_queue_payload_jsonb():
     assert "JSONB" in SQL.split("payload")[1][:20].upper()
 
 
+# ── scan_schedules RLS / tenant contract ────────────────────────────────────
+
+
+def test_scan_schedules_has_tenant_id_column():
+    cols = _columns_for("scan_schedules")
+    assert "tenant_id" in cols
+
+
+def test_scan_schedules_tenant_index_exists():
+    assert "idx_schedules_tenant_due" in _indexes()
+
+
+def test_rls_helpers_exist():
+    assert "CREATE OR REPLACE FUNCTION public.abom_current_tenant()" in SQL
+    assert "CREATE OR REPLACE FUNCTION public.abom_rls_bypass()" in SQL
+
+
+def test_fleet_agents_rls_policy_exists():
+    assert "ALTER TABLE fleet_agents ENABLE ROW LEVEL SECURITY" in SQL
+    assert "CREATE POLICY fleet_agents_tenant_isolation ON fleet_agents" in SQL
+
+
+def test_scan_schedules_rls_policy_exists():
+    assert "ALTER TABLE scan_schedules ENABLE ROW LEVEL SECURITY" in SQL
+    assert "CREATE POLICY scan_schedules_tenant_isolation ON scan_schedules" in SQL
+
+
 # ── FK consistency ────────────────────────────────────────────────────────────
 
 

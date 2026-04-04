@@ -19,6 +19,8 @@ import json
 import logging
 import os
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar, Token
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -27,6 +29,28 @@ _JOB_TTL_SECONDS = 3600
 
 # Module-level pool singleton
 _pool = None
+_current_tenant: ContextVar[str] = ContextVar("agent_bom_postgres_tenant", default="default")
+_bypass_tenant_rls: ContextVar[bool] = ContextVar("agent_bom_postgres_bypass_rls", default=False)
+
+
+def set_current_tenant(tenant_id: str) -> Token[str]:
+    """Bind the current Postgres tenant context for the active request/task."""
+    return _current_tenant.set((tenant_id or "default").strip() or "default")
+
+
+def reset_current_tenant(token: Token[str]) -> None:
+    """Restore the previous Postgres tenant context."""
+    _current_tenant.reset(token)
+
+
+@contextmanager
+def bypass_tenant_rls():
+    """Temporarily disable Postgres tenant RLS for trusted internal tasks."""
+    token = _bypass_tenant_rls.set(True)
+    try:
+        yield
+    finally:
+        _bypass_tenant_rls.reset(token)
 
 
 def _get_pool():
@@ -49,6 +73,68 @@ def reset_pool():
     """Reset the connection pool (for testing)."""
     global _pool
     _pool = None
+
+
+def _apply_tenant_session(conn) -> None:
+    """Attach tenant session settings used by Postgres RLS policies."""
+    conn.execute("SELECT set_config('app.tenant_id', %s, true)", (_current_tenant.get(),))
+    conn.execute("SELECT set_config('app.bypass_rls', %s, true)", ("1" if _bypass_tenant_rls.get() else "0",))
+
+
+def _ensure_rls_helpers(conn) -> None:
+    """Create shared SQL helpers used by tenant RLS policies."""
+    conn.execute("""
+        CREATE OR REPLACE FUNCTION public.abom_current_tenant()
+        RETURNS TEXT
+        LANGUAGE SQL
+        STABLE
+        AS $$
+            SELECT COALESCE(NULLIF(current_setting('app.tenant_id', true), ''), 'default')
+        $$;
+    """)
+    conn.execute("""
+        CREATE OR REPLACE FUNCTION public.abom_rls_bypass()
+        RETURNS BOOLEAN
+        LANGUAGE SQL
+        STABLE
+        AS $$
+            SELECT COALESCE(NULLIF(current_setting('app.bypass_rls', true), ''), '0') = '1'
+        $$;
+    """)
+
+
+def _ensure_tenant_rls(conn, table: str, column: str) -> None:
+    """Enable tenant RLS for a table using the shared tenant session helpers."""
+    _ensure_rls_helpers(conn)
+    conn.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")  # nosec B608
+    conn.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY")  # nosec B608
+    conn.execute(
+        f"""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM pg_policies
+                WHERE schemaname = 'public'
+                  AND tablename = '{table}'
+                  AND policyname = '{table}_tenant_isolation'
+            ) THEN
+                EXECUTE 'CREATE POLICY {table}_tenant_isolation ON {table}
+                    USING (public.abom_rls_bypass() OR {column} = public.abom_current_tenant())
+                    WITH CHECK (public.abom_rls_bypass() OR {column} = public.abom_current_tenant())';
+            END IF;
+        END
+        $$;
+        """  # nosec B608
+    )
+
+
+@contextmanager
+def _tenant_connection(pool):
+    """Open a connection with the current tenant/bypass settings attached."""
+    with pool.connection() as conn:
+        _apply_tenant_session(conn)
+        yield conn
 
 
 # ── PostgresJobStore ───────────────────────────────────────────────────────
@@ -76,7 +162,7 @@ class PostgresJobStore:
 
     def put(self, job) -> None:
         data = job.model_dump_json()
-        with self._pool.connection() as conn:
+        with _tenant_connection(self._pool) as conn:
             conn.execute(
                 """INSERT INTO scan_jobs (job_id, status, created_at, completed_at, data)
                    VALUES (%s, %s, %s, %s, %s)
@@ -91,7 +177,7 @@ class PostgresJobStore:
     def get(self, job_id: str):
         from .server import ScanJob
 
-        with self._pool.connection() as conn:
+        with _tenant_connection(self._pool) as conn:
             row = conn.execute("SELECT data FROM scan_jobs WHERE job_id = %s", (job_id,)).fetchone()
             if row is None:
                 return None
@@ -99,7 +185,7 @@ class PostgresJobStore:
             return ScanJob.model_validate_json(raw)
 
     def delete(self, job_id: str) -> bool:
-        with self._pool.connection() as conn:
+        with _tenant_connection(self._pool) as conn:
             cursor = conn.execute("DELETE FROM scan_jobs WHERE job_id = %s", (job_id,))
             conn.commit()
             return cursor.rowcount > 0
@@ -107,18 +193,18 @@ class PostgresJobStore:
     def list_all(self) -> list:
         from .server import ScanJob
 
-        with self._pool.connection() as conn:
+        with _tenant_connection(self._pool) as conn:
             rows = conn.execute("SELECT data FROM scan_jobs ORDER BY created_at DESC").fetchall()
             return [ScanJob.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in rows]
 
     def list_summary(self) -> list[dict]:
-        with self._pool.connection() as conn:
+        with _tenant_connection(self._pool) as conn:
             rows = conn.execute("SELECT job_id, status, created_at, completed_at FROM scan_jobs ORDER BY created_at DESC").fetchall()
             return [{"job_id": r[0], "status": r[1], "created_at": r[2], "completed_at": r[3]} for r in rows]
 
     def cleanup_expired(self, ttl_seconds: int = _JOB_TTL_SECONDS) -> int:
         now = datetime.now(timezone.utc).isoformat()
-        with self._pool.connection() as conn:
+        with _tenant_connection(self._pool) as conn:
             cursor = conn.execute(
                 """DELETE FROM scan_jobs
                    WHERE status IN ('done', 'failed', 'cancelled')
@@ -156,11 +242,12 @@ class PostgresFleetStore:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_name ON fleet_agents(name)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_state ON fleet_agents(lifecycle_state)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_tenant ON fleet_agents(tenant_id)")
+            _ensure_tenant_rls(conn, "fleet_agents", "tenant_id")
             conn.commit()
 
     def put(self, agent) -> None:
         data = agent.model_dump_json()
-        with self._pool.connection() as conn:
+        with _tenant_connection(self._pool) as conn:
             conn.execute(
                 """INSERT INTO fleet_agents (agent_id, name, lifecycle_state, trust_score, tenant_id, updated_at, data)
                    VALUES (%s, %s, %s, %s, %s, %s, %s)
@@ -178,7 +265,7 @@ class PostgresFleetStore:
     def get(self, agent_id: str):
         from .fleet_store import FleetAgent
 
-        with self._pool.connection() as conn:
+        with _tenant_connection(self._pool) as conn:
             row = conn.execute("SELECT data FROM fleet_agents WHERE agent_id = %s", (agent_id,)).fetchone()
             if row is None:
                 return None
@@ -188,7 +275,7 @@ class PostgresFleetStore:
     def get_by_name(self, name: str):
         from .fleet_store import FleetAgent
 
-        with self._pool.connection() as conn:
+        with _tenant_connection(self._pool) as conn:
             row = conn.execute("SELECT data FROM fleet_agents WHERE name = %s", (name,)).fetchone()
             if row is None:
                 return None
@@ -196,7 +283,7 @@ class PostgresFleetStore:
             return FleetAgent.model_validate_json(raw)
 
     def delete(self, agent_id: str) -> bool:
-        with self._pool.connection() as conn:
+        with _tenant_connection(self._pool) as conn:
             cursor = conn.execute("DELETE FROM fleet_agents WHERE agent_id = %s", (agent_id,))
             conn.commit()
             return cursor.rowcount > 0
@@ -204,29 +291,29 @@ class PostgresFleetStore:
     def list_all(self) -> list:
         from .fleet_store import FleetAgent
 
-        with self._pool.connection() as conn:
+        with _tenant_connection(self._pool) as conn:
             rows = conn.execute("SELECT data FROM fleet_agents ORDER BY name").fetchall()
             return [FleetAgent.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in rows]
 
     def list_summary(self) -> list[dict]:
-        with self._pool.connection() as conn:
+        with _tenant_connection(self._pool) as conn:
             rows = conn.execute("SELECT agent_id, name, lifecycle_state, trust_score FROM fleet_agents ORDER BY name").fetchall()
             return [{"agent_id": r[0], "name": r[1], "lifecycle_state": r[2], "trust_score": r[3]} for r in rows]
 
     def list_by_tenant(self, tenant_id: str) -> list:
         from .fleet_store import FleetAgent
 
-        with self._pool.connection() as conn:
+        with _tenant_connection(self._pool) as conn:
             rows = conn.execute("SELECT data FROM fleet_agents WHERE tenant_id = %s ORDER BY name", (tenant_id,)).fetchall()
             return [FleetAgent.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in rows]
 
     def list_tenants(self) -> list[dict]:
-        with self._pool.connection() as conn:
+        with _tenant_connection(self._pool) as conn:
             rows = conn.execute("SELECT tenant_id, COUNT(*) as cnt FROM fleet_agents GROUP BY tenant_id ORDER BY tenant_id").fetchall()
             return [{"tenant_id": r[0], "agent_count": r[1]} for r in rows]
 
     def update_state(self, agent_id: str, state) -> bool:
-        with self._pool.connection() as conn:
+        with _tenant_connection(self._pool) as conn:
             cursor = conn.execute(
                 "UPDATE fleet_agents SET lifecycle_state = %s WHERE agent_id = %s",
                 (state.value, agent_id),
@@ -362,29 +449,45 @@ class PostgresScheduleStore:
                     schedule_id TEXT PRIMARY KEY,
                     enabled INTEGER DEFAULT 1,
                     next_run TEXT,
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
                     data JSONB NOT NULL
                 )
             """)
+            conn.execute("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'scan_schedules' AND column_name = 'tenant_id'
+                    ) THEN
+                        ALTER TABLE scan_schedules ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default';
+                    END IF;
+                END
+                $$;
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_sched_tenant_due ON scan_schedules(tenant_id, enabled, next_run)")
+            _ensure_tenant_rls(conn, "scan_schedules", "tenant_id")
             conn.commit()
 
     def put(self, schedule) -> None:
         data = schedule.model_dump_json()
-        with self._pool.connection() as conn:
+        with _tenant_connection(self._pool) as conn:
             conn.execute(
-                """INSERT INTO scan_schedules (schedule_id, enabled, next_run, data)
-                   VALUES (%s, %s, %s, %s)
+                """INSERT INTO scan_schedules (schedule_id, enabled, next_run, tenant_id, data)
+                   VALUES (%s, %s, %s, %s, %s)
                    ON CONFLICT (schedule_id) DO UPDATE SET
                      enabled = EXCLUDED.enabled,
                      next_run = EXCLUDED.next_run,
+                     tenant_id = EXCLUDED.tenant_id,
                      data = EXCLUDED.data""",
-                (schedule.schedule_id, int(schedule.enabled), schedule.next_run, data),
+                (schedule.schedule_id, int(schedule.enabled), schedule.next_run, schedule.tenant_id, data),
             )
             conn.commit()
 
     def get(self, schedule_id: str):
         from .schedule_store import ScanSchedule
 
-        with self._pool.connection() as conn:
+        with _tenant_connection(self._pool) as conn:
             row = conn.execute("SELECT data FROM scan_schedules WHERE schedule_id = %s", (schedule_id,)).fetchone()
             if row is None:
                 return None
@@ -392,7 +495,7 @@ class PostgresScheduleStore:
             return ScanSchedule.model_validate_json(raw)
 
     def delete(self, schedule_id: str) -> bool:
-        with self._pool.connection() as conn:
+        with _tenant_connection(self._pool) as conn:
             cursor = conn.execute("DELETE FROM scan_schedules WHERE schedule_id = %s", (schedule_id,))
             conn.commit()
             return cursor.rowcount > 0
@@ -400,14 +503,14 @@ class PostgresScheduleStore:
     def list_all(self) -> list:
         from .schedule_store import ScanSchedule
 
-        with self._pool.connection() as conn:
+        with _tenant_connection(self._pool) as conn:
             rows = conn.execute("SELECT data FROM scan_schedules ORDER BY schedule_id").fetchall()
             return [ScanSchedule.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in rows]
 
     def list_due(self, now_iso: str) -> list:
         from .schedule_store import ScanSchedule
 
-        with self._pool.connection() as conn:
+        with _tenant_connection(self._pool) as conn:
             rows = conn.execute(
                 "SELECT data FROM scan_schedules WHERE enabled = 1 AND next_run IS NOT NULL AND next_run <= %s",
                 (now_iso,),

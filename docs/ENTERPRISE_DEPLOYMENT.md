@@ -115,6 +115,9 @@ export AGENT_BOM_OIDC_REQUIRE_TENANT_CLAIM=1        # fail closed if the claim i
 ```
 
 That keeps API roles and tenant boundaries aligned with the upstream identity provider instead of silently falling back to a shared tenant when you expect strict isolation.
+
+For PostgreSQL-backed deployments, `agent-bom` now also pushes the authenticated tenant into the database session (`app.tenant_id`) so Postgres row-level security can enforce the same tenant boundary for fleet and schedule data. Internal scheduler work uses an explicit trusted bypass rather than silently reading across tenants.
+
 **Storage:** SQLite (single node), PostgreSQL (team), Snowflake/ClickHouse (enterprise).
 
 ### 4. Cloud Infrastructure — agentless discovery

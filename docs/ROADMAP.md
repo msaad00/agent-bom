@@ -51,8 +51,9 @@ Goal: make the product secure and explainable by default in real deployments.
 
 | Item | Issue | Status |
 |------|-------|--------|
-| Helm security defaults: security context, probes, NetworkPolicy wiring | [#1214](https://github.com/msaad00/agent-bom/pull/1214) | In progress |
-| Tenant isolation enforcement on fleet and schedule routes | [#1222](https://github.com/msaad00/agent-bom/pull/1222) | In progress |
+| Helm security defaults: security context, probes, NetworkPolicy wiring | [#1214](https://github.com/msaad00/agent-bom/pull/1214) | Landed |
+| Tenant isolation enforcement on fleet and schedule routes | [#1222](https://github.com/msaad00/agent-bom/pull/1222) | Landed |
+| Postgres tenant session plumbing + first DB-level RLS slice | New lane | In progress |
 
 ### Next
 

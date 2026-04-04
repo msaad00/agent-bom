@@ -31,12 +31,20 @@ class MockConnection:
     def __init__(self):
         self._store: dict[str, dict] = {}  # table -> {pk: data}
         self._cursors: list[MockCursor] = []
+        self.executed: list[tuple[str, object]] = []
 
     def execute(self, sql, params=None):
         cursor = MockCursor()
         sql_lower = sql.strip().lower()
+        self.executed.append((sql, params))
 
-        if sql_lower.startswith("create table") or sql_lower.startswith("create index"):
+        if (
+            sql_lower.startswith("create table")
+            or sql_lower.startswith("create index")
+            or sql_lower.startswith("create or replace function")
+            or sql_lower.startswith("alter table")
+            or sql_lower.startswith("do $$")
+        ):
             pass  # DDL — no-op
         elif sql_lower.startswith("insert"):
             cursor.rowcount = 1
@@ -559,6 +567,31 @@ def test_schedule_store_list_due(mock_pool):
     store = PostgresScheduleStore(pool=mock_pool)
     result = store.list_due("2025-06-15T12:00:00+00:00")
     assert isinstance(result, list)
+
+
+def test_tenant_context_is_applied_to_postgres_session(mock_pool):
+    from agent_bom.api.postgres_store import PostgresFleetStore, reset_current_tenant, set_current_tenant
+
+    token = set_current_tenant("tenant-zeta")
+    try:
+        store = PostgresFleetStore(pool=mock_pool)
+        store.list_by_tenant("tenant-zeta")
+    finally:
+        reset_current_tenant(token)
+
+    assert any("set_config('app.tenant_id'" in sql for sql, _ in mock_pool._conn.executed)
+    assert any(params == ("tenant-zeta",) for sql, params in mock_pool._conn.executed if "set_config('app.tenant_id'" in sql)
+
+
+def test_scheduler_bypass_sets_rls_flag(mock_pool):
+    from agent_bom.api.postgres_store import PostgresScheduleStore, bypass_tenant_rls
+
+    store = PostgresScheduleStore(pool=mock_pool)
+    with bypass_tenant_rls():
+        store.list_due("2025-06-15T12:00:00+00:00")
+
+    assert any("set_config('app.bypass_rls'" in sql for sql, _ in mock_pool._conn.executed)
+    assert any(params == ("1",) for sql, params in mock_pool._conn.executed if "set_config('app.bypass_rls'" in sql)
 
 
 # ─── PostgresScanCache ───────────────────────────────────────────────────────

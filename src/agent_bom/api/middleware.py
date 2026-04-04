@@ -32,7 +32,18 @@ class TrustHeadersMiddleware(BaseHTTPMiddleware):
         request.state.request_id = request_id
         if not hasattr(request.state, "tenant_id"):
             request.state.tenant_id = "default"
-        response = await call_next(request)
+        tenant_token = None
+        try:
+            if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+                from agent_bom.api.postgres_store import set_current_tenant
+
+                tenant_token = set_current_tenant(getattr(request.state, "tenant_id", "default"))
+            response = await call_next(request)
+        finally:
+            if tenant_token is not None:
+                from agent_bom.api.postgres_store import reset_current_tenant
+
+                reset_current_tenant(tenant_token)
         response.headers["X-Request-ID"] = request_id
         response.headers["X-Agent-Bom-Read-Only"] = "true"
         response.headers["X-Agent-Bom-No-Credential-Storage"] = "true"
@@ -132,7 +143,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             request.state.api_key_name = "static-key"
             request.state.api_key_role = "admin"
             request.state.tenant_id = "default"
-            return await call_next(request)
+            return await self._call_with_tenant_context(request, call_next)
 
         # OIDC mode: try JWT verification when AGENT_BOM_OIDC_ISSUER is set
         if not self._oidc_checked:
@@ -154,7 +165,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                     request.state.api_key_name = _claims.get("email") or _claims.get("sub", "oidc-user")
                     request.state.api_key_role = oidc_role
                     request.state.tenant_id = oidc_cfg.resolve_tenant(_claims)
-                    return await call_next(request)
+                    return await self._call_with_tenant_context(request, call_next)
                 return JSONResponse(
                     status_code=403,
                     content={"detail": f"Forbidden — requires {required} role, OIDC token has {oidc_role}"},
@@ -180,12 +191,26 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 request.state.api_key_name = api_key.name
                 request.state.api_key_role = api_key.role.value
                 request.state.tenant_id = api_key.tenant_id
-                return await call_next(request)
+                return await self._call_with_tenant_context(request, call_next)
 
         return JSONResponse(
             status_code=401,
             content={"detail": "Unauthorized — invalid API key"},
         )
+
+    async def _call_with_tenant_context(self, request: StarletteRequest, call_next):
+        tenant_token = None
+        try:
+            if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+                from agent_bom.api.postgres_store import set_current_tenant
+
+                tenant_token = set_current_tenant(getattr(request.state, "tenant_id", "default"))
+            return await call_next(request)
+        finally:
+            if tenant_token is not None:
+                from agent_bom.api.postgres_store import reset_current_tenant
+
+                reset_current_tenant(tenant_token)
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):

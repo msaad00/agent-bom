@@ -1,5 +1,5 @@
 {
-  "generated_on": "2026-04-01",
+  "generated_on": "2026-04-04",
   "version": "0.75.14",
   "metrics": [
     {
@@ -10,7 +10,7 @@
     },
     {
       "name": "MCP resources",
-      "value": 2,
+      "value": 3,
       "source": "src/agent_bom/mcp_server.py",
       "notes": "Counted from @mcp.resource decorators."
     },
@@ -22,7 +22,7 @@
     },
     {
       "name": "Test files",
-      "value": 294,
+      "value": 295,
       "source": "tests/",
       "notes": "Counts files matching test_*.py."
     },
@@ -40,7 +40,7 @@
     },
     {
       "name": "Python modules",
-      "value": 292,
+      "value": 294,
       "source": "src/agent_bom",
       "notes": "Counts all Python files recursively."
     },

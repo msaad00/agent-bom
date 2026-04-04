@@ -74,6 +74,12 @@ class MockConnection:
                 # COUNT query
                 total = sum(len(td) for td in self._store.values())
                 cursor.rows = [(total,)]
+            elif "from scan_jobs" in sql_lower and "job_id, team_id, status, created_at, completed_at" in sql_lower:
+                rows = list(self._store.get("scan_jobs", {}).values())
+                cursor.rows = [(r[0], r[1], r[2], r[3], r[4]) for r in rows]
+            elif "from fleet_agents" in sql_lower and "agent_id, name, lifecycle_state, trust_score" in sql_lower:
+                rows = list(self._store.get("fleet_agents", {}).values())
+                cursor.rows = [(r[0], r[1], r[2], r[3]) for r in rows]
             elif params:
                 for table_data in self._store.values():
                     for pk, row in table_data.items():
@@ -148,6 +154,7 @@ def test_job_store_put_get(mock_pool):
     store = PostgresJobStore(pool=mock_pool)
     job = ScanJob(
         job_id="j-1",
+        tenant_id="tenant-alpha",
         status=JobStatus.PENDING,
         created_at="2026-01-01T00:00:00Z",
         request=ScanRequest(),
@@ -157,6 +164,7 @@ def test_job_store_put_get(mock_pool):
     # Mock get by storing data properly
     mock_pool._conn._store.setdefault("scan_jobs", {})["j-1"] = (
         "j-1",
+        "tenant-alpha",
         "pending",
         "2026-01-01T00:00:00Z",
         None,
@@ -197,6 +205,22 @@ def test_job_store_list_summary(mock_pool):
     # list_summary returns dicts from column-based query
     result = store.list_summary()
     assert isinstance(result, list)
+
+
+def test_job_store_list_summary_includes_tenant(mock_pool):
+    from agent_bom.api.postgres_store import PostgresJobStore
+
+    store = PostgresJobStore(pool=mock_pool)
+    mock_pool._conn._store.setdefault("scan_jobs", {})["j-1"] = (
+        "j-1",
+        "tenant-alpha",
+        "done",
+        "2026-01-01T00:00:00Z",
+        None,
+        "{}",
+    )
+    result = store.list_summary()
+    assert result[0]["tenant_id"] == "tenant-alpha"
 
 
 def test_job_store_cleanup(mock_pool):

@@ -59,6 +59,7 @@ class InMemoryJobStore:
             return [
                 {
                     "job_id": j.job_id,
+                    "tenant_id": j.tenant_id,
                     "status": j.status,
                     "created_at": j.created_at,
                     "completed_at": j.completed_at,
@@ -86,7 +87,7 @@ class SQLiteJobStore:
 
     Schema:
         jobs(job_id TEXT PK, status TEXT, created_at TEXT,
-             completed_at TEXT, data TEXT)
+             completed_at TEXT, tenant_id TEXT, data TEXT)
 
     The ``data`` column stores the full ScanJob as JSON. Status and timestamps
     are duplicated as columns for efficient queries.
@@ -112,11 +113,13 @@ class SQLiteJobStore:
                 status TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 completed_at TEXT,
+                tenant_id TEXT NOT NULL DEFAULT 'default',
                 data TEXT NOT NULL
             )
         """)
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_completed ON jobs(completed_at)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_tenant ON jobs(tenant_id)")
         self._conn.commit()
 
     @staticmethod
@@ -129,9 +132,9 @@ class SQLiteJobStore:
 
     def put(self, job: ScanJob) -> None:
         self._conn.execute(
-            """INSERT OR REPLACE INTO jobs (job_id, status, created_at, completed_at, data)
-               VALUES (?, ?, ?, ?, ?)""",
-            (job.job_id, job.status.value, job.created_at, job.completed_at, self._serialize(job)),
+            """INSERT OR REPLACE INTO jobs (job_id, status, created_at, completed_at, tenant_id, data)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (job.job_id, job.status.value, job.created_at, job.completed_at, job.tenant_id, self._serialize(job)),
         )
         self._conn.commit()
 
@@ -151,8 +154,10 @@ class SQLiteJobStore:
         return [self._deserialize(r[0]) for r in rows]
 
     def list_summary(self) -> list[dict]:
-        rows = self._conn.execute("SELECT job_id, status, created_at, completed_at FROM jobs ORDER BY created_at DESC").fetchall()
-        return [{"job_id": r[0], "status": r[1], "created_at": r[2], "completed_at": r[3]} for r in rows]
+        rows = self._conn.execute(
+            "SELECT job_id, tenant_id, status, created_at, completed_at FROM jobs ORDER BY created_at DESC"
+        ).fetchall()
+        return [{"job_id": r[0], "tenant_id": r[1], "status": r[2], "created_at": r[3], "completed_at": r[4]} for r in rows]
 
     def cleanup_expired(self, ttl_seconds: int = _JOB_TTL_SECONDS) -> int:
         now = datetime.now(timezone.utc).isoformat()

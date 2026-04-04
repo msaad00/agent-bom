@@ -329,6 +329,24 @@ $$;
 ALTER TABLE fleet_agents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fleet_agents FORCE ROW LEVEL SECURITY;
 
+ALTER TABLE scan_jobs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE scan_jobs FORCE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'scan_jobs'
+          AND policyname = 'scan_jobs_tenant_isolation'
+    ) THEN
+        CREATE POLICY scan_jobs_tenant_isolation ON scan_jobs
+            USING (public.abom_rls_bypass() OR team_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR team_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
+
 DO $$
 BEGIN
     IF NOT EXISTS (

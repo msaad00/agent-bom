@@ -28,7 +28,7 @@ import time
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 
 from agent_bom.api.models import (
@@ -112,17 +112,37 @@ def _dataclass_to_dict(obj: object) -> object:
     return obj
 
 
+def _tenant_id(request: Request) -> str:
+    return getattr(request.state, "tenant_id", "default")
+
+
+def _visible_to_tenant(job: ScanJob, tenant_id: str) -> bool:
+    return getattr(job, "tenant_id", "default") == tenant_id
+
+
+def _job_for_request(request: Request, job_id: str) -> ScanJob:
+    tenant_id = _tenant_id(request)
+    in_mem = _jobs_get(job_id)
+    if in_mem is not None and _visible_to_tenant(in_mem, tenant_id):
+        return in_mem
+    job = _get_store().get(job_id)
+    if job is None or not _visible_to_tenant(job, tenant_id):
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    return job
+
+
 # ─── Core Scan Endpoints ─────────────────────────────────────────────────────
 
 
 @router.post("/v1/scan", response_model=ScanJob, status_code=202, tags=["scan"])
-async def create_scan(request: ScanRequest) -> ScanJob:
+async def create_scan(request: Request, body: ScanRequest) -> ScanJob:
     """Start a scan. Returns immediately with a job_id.
     Poll GET /v1/scan/{job_id} for results, or stream via /v1/scan/{job_id}/stream.
     """
     # Enforce max concurrent jobs
     store = _get_store()
-    active = sum(1 for j in store.list_all() if j.status in (JobStatus.PENDING, JobStatus.RUNNING))
+    tenant_id = _tenant_id(request)
+    active = sum(1 for j in store.list_all() if _visible_to_tenant(j, tenant_id) and j.status in (JobStatus.PENDING, JobStatus.RUNNING))
     if active >= _MAX_CONCURRENT_JOBS:
         raise HTTPException(
             status_code=429,
@@ -131,8 +151,9 @@ async def create_scan(request: ScanRequest) -> ScanJob:
 
     job = ScanJob(
         job_id=str(uuid.uuid4()),
+        tenant_id=tenant_id,
         created_at=_now(),
-        request=request,
+        request=body,
     )
     store.put(job)
     # Keep in-memory ref for SSE streaming (progress list updates in real-time)
@@ -145,20 +166,14 @@ async def create_scan(request: ScanRequest) -> ScanJob:
 
 
 @router.get("/v1/scan/{job_id}", response_model=ScanJob, tags=["scan"])
-async def get_scan(job_id: str) -> ScanJob:
+async def get_scan(request: Request, job_id: str) -> ScanJob:
     """Poll scan status and results."""
-    # Check in-memory first (for in-progress jobs with live progress)
-    in_mem = _jobs_get(job_id)
-    if in_mem is not None:
-        return in_mem
-    job = _get_store().get(job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
-    return job
+    return _job_for_request(request, job_id)
 
 
 @router.get("/v1/scan/{job_id}/attack-flow", tags=["scan"])
 async def get_attack_flow(
+    request: Request,
     job_id: str,
     cve: str | None = None,
     severity: str | None = None,
@@ -176,9 +191,7 @@ async def get_attack_flow(
       ?framework=LLM05       - filter by OWASP/ATLAS/NIST tag
       ?agent=claude-desktop  - filter to a specific agent
     """
-    job = _jobs_get(job_id) or _get_store().get(job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    job = _job_for_request(request, job_id)
     if job.status != JobStatus.DONE or not job.result:
         raise HTTPException(status_code=409, detail="Scan not completed yet")
 
@@ -198,7 +211,7 @@ async def get_attack_flow(
 
 
 @router.get("/v1/scan/{job_id}/context-graph", tags=["scan"])
-async def get_context_graph(job_id: str, agent: str | None = None) -> dict:
+async def get_context_graph(request: Request, job_id: str, agent: str | None = None) -> dict:
     """Get the agent context graph with lateral movement analysis.
 
     Returns nodes, edges, lateral paths, interaction risks, and stats for
@@ -207,9 +220,7 @@ async def get_context_graph(job_id: str, agent: str | None = None) -> dict:
     Query params:
       ?agent=claude-desktop  - only compute lateral paths from this agent
     """
-    job = _jobs_get(job_id) or _get_store().get(job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    job = _job_for_request(request, job_id)
     if job.status != JobStatus.DONE or not job.result:
         raise HTTPException(status_code=409, detail="Scan not completed yet")
 
@@ -239,7 +250,7 @@ async def get_context_graph(job_id: str, agent: str | None = None) -> dict:
 
 
 @router.get("/v1/scan/{job_id}/graph-export", tags=["scan"], response_model=None)
-async def get_graph_export(job_id: str, format: str = "json") -> dict | str | PlainTextResponse:
+async def get_graph_export(request: Request, job_id: str, format: str = "json") -> dict | str | PlainTextResponse:
     """Export the dependency graph in graph-native formats.
 
     Query params:
@@ -251,9 +262,7 @@ async def get_graph_export(job_id: str, format: str = "json") -> dict | str | Pl
     """
     from fastapi.responses import PlainTextResponse
 
-    job = _jobs_get(job_id) or _get_store().get(job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    job = _job_for_request(request, job_id)
     if job.status != JobStatus.DONE or not job.result:
         raise HTTPException(status_code=409, detail="Scan not completed yet")
 
@@ -309,15 +318,13 @@ async def get_graph_export(job_id: str, format: str = "json") -> dict | str | Pl
 
 
 @router.get("/v1/scan/{job_id}/licenses", tags=["scan"])
-async def get_licenses(job_id: str) -> dict:
+async def get_licenses(request: Request, job_id: str) -> dict:
     """Get the license compliance report for a completed scan.
 
     Returns license findings, summary, compliance status, and per-package
     license categorization (permissive, copyleft, commercial risk, unknown).
     """
-    job = _jobs_get(job_id) or _get_store().get(job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    job = _job_for_request(request, job_id)
     if job.status != JobStatus.DONE or not job.result:
         raise HTTPException(status_code=409, detail="Scan not completed yet")
 
@@ -358,15 +365,13 @@ async def get_licenses(job_id: str) -> dict:
 
 
 @router.get("/v1/scan/{job_id}/vex", tags=["scan"])
-async def get_vex(job_id: str) -> dict:
+async def get_vex(request: Request, job_id: str) -> dict:
     """Get the VEX (Vulnerability Exploitability eXchange) document for a completed scan.
 
     Returns VEX statements with vulnerability status (affected, not_affected,
     fixed, under_investigation), justifications, and statistics.
     """
-    job = _jobs_get(job_id) or _get_store().get(job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    job = _job_for_request(request, job_id)
     if job.status != JobStatus.DONE or not job.result:
         raise HTTPException(status_code=409, detail="Scan not completed yet")
 
@@ -379,16 +384,14 @@ async def get_vex(job_id: str) -> dict:
 
 
 @router.get("/v1/scan/{job_id}/skill-audit", tags=["scan"])
-async def get_skill_audit(job_id: str) -> dict:
+async def get_skill_audit(request: Request, job_id: str) -> dict:
     """Get the skill security audit results for a completed scan.
 
     Returns findings from the skill file security audit including
     typosquat detection, unverified servers, shell access, and more.
     Empty results if no skill files were scanned.
     """
-    job = _jobs_get(job_id) or _get_store().get(job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    job = _job_for_request(request, job_id)
 
     if job.status != JobStatus.DONE or not job.result:
         raise HTTPException(status_code=409, detail="Scan not completed yet")
@@ -406,16 +409,17 @@ async def get_skill_audit(job_id: str) -> dict:
 
 
 @router.delete("/v1/scan/{job_id}", status_code=204, tags=["scan"])
-async def delete_scan(job_id: str) -> None:
+async def delete_scan(request: Request, job_id: str) -> None:
     """Discard a job record."""
-    in_memory = _jobs_pop(job_id)
+    job = _job_for_request(request, job_id)
+    in_memory = _jobs_pop(job_id) if _visible_to_tenant(job, _tenant_id(request)) else None
     in_store = _get_store().delete(job_id)
     if not in_memory and not in_store:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
 
 @router.get("/v1/scan/{job_id}/stream", tags=["scan"])
-async def stream_scan(job_id: str):
+async def stream_scan(request: Request, job_id: str):
     """Server-Sent Events stream for real-time scan progress.
 
     Connect with EventSource:
@@ -430,8 +434,8 @@ async def stream_scan(job_id: str):
             detail="SSE requires sse-starlette. Install: pip install 'agent-bom[api]'",
         ) from exc
 
-    if _jobs_get(job_id) is None:
-        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    _job_for_request(request, job_id)
+    tenant_id = _tenant_id(request)
 
     import json as _json
 
@@ -442,6 +446,8 @@ async def stream_scan(job_id: str):
         while time.monotonic() - start < 2100:  # 35 min max (exceeds stuck-job timeout)
             current = _jobs_get(job_id)
             if current is None:
+                break
+            if not _visible_to_tenant(current, tenant_id):
                 break
             # Thread-safe snapshot of new progress lines and status
             with lock:
@@ -466,14 +472,15 @@ async def stream_scan(job_id: str):
 
 
 @router.get("/v1/jobs", tags=["scan"])
-async def list_jobs(limit: int = 50, offset: int = 0) -> dict:
+async def list_jobs(request: Request, limit: int = 50, offset: int = 0) -> dict:
     """List all scan jobs (for the UI job history panel).
 
     Supports pagination via ``limit`` (default 50, max 200) and ``offset``.
     """
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
-    summary = _get_store().list_summary()
+    tenant_id = _tenant_id(request)
+    summary = [j for j in _get_store().list_summary() if j.get("tenant_id", "default") == tenant_id]
     total = len(summary)
     page = summary[offset : offset + limit]
     return {

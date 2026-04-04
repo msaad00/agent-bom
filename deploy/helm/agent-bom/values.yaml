@@ -83,3 +83,9 @@ startupProbe:
 
 networkPolicy:
   enabled: true
+  allowDns: true
+  allowWeb: true
+  webPorts:
+    - 80
+    - 443
+  additionalEgress: []

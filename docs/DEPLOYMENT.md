@@ -268,7 +268,7 @@ spec:
 **Pros**: Scheduled, persistent, scalable
 **Cons**: Kubernetes expertise required
 
-For the maintained Helm chart in `deploy/helm/agent-bom/`, the runtime monitor DaemonSet now includes liveness, readiness, and startup probes by default when enabled, and can optionally expose a Prometheus Operator `ServiceMonitor` for `/metrics`.
+For the maintained Helm chart in `deploy/helm/agent-bom/`, the runtime monitor DaemonSet now includes liveness, readiness, and startup probes by default when enabled, can optionally expose a Prometheus Operator `ServiceMonitor` for `/metrics`, and ships with an explicit `NetworkPolicy` egress baseline for DNS plus outbound web traffic instead of `allow-all` egress.
 
 ---
 

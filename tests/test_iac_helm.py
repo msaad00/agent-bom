@@ -837,6 +837,11 @@ class TestAgentBomHelmChartDefaults:
 
         assert "kind: NetworkPolicy" in network_policy
         assert ".Values.networkPolicy.enabled" in network_policy
+        assert ".Values.networkPolicy.allowDns" in network_policy
+        assert ".Values.networkPolicy.allowWeb" in network_policy
+        assert ".Values.networkPolicy.additionalEgress" in network_policy
+        assert "cidr: 0.0.0.0/0" in network_policy
+        assert "port: 53" in network_policy
 
         assert "kind: Service" in service
         assert ".Values.monitor.service.enabled" in service

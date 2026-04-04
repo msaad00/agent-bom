@@ -241,6 +241,46 @@ def test_api_keys_prefix_index():
     assert "idx_api_keys_prefix" in _indexes()
 
 
+def test_api_keys_rls_policy_exists():
+    assert "ALTER TABLE api_keys ENABLE ROW LEVEL SECURITY" in SQL
+    assert "CREATE POLICY api_keys_tenant_isolation ON api_keys" in SQL
+
+
+# ── exceptions ────────────────────────────────────────────────────────────────
+
+
+def test_exceptions_required_columns():
+    cols = _columns_for("exceptions")
+    for col in (
+        "exception_id",
+        "vuln_id",
+        "package_name",
+        "server_name",
+        "reason",
+        "requested_by",
+        "approved_by",
+        "status",
+        "created_at",
+        "expires_at",
+        "approved_at",
+        "revoked_at",
+        "team_id",
+    ):
+        assert col in cols, f"exceptions missing column: {col}"
+
+
+def test_exceptions_indexes_exist():
+    indexes = _indexes()
+    assert "idx_exc_status" in indexes
+    assert "idx_exc_team" in indexes
+    assert "idx_exc_vuln" in indexes
+
+
+def test_exceptions_rls_policy_exists():
+    assert "ALTER TABLE exceptions ENABLE ROW LEVEL SECURITY" in SQL
+    assert "CREATE POLICY exceptions_tenant_isolation ON exceptions" in SQL
+
+
 # ── job_queue ─────────────────────────────────────────────────────────────────
 
 

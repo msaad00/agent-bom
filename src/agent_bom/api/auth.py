@@ -14,6 +14,7 @@ import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Protocol
 
 
 class Role(str, Enum):
@@ -175,11 +176,22 @@ class KeyStore:
             return len(self._keys) > 0
 
 
-_key_store: KeyStore | None = None
+class KeyStoreProtocol(Protocol):
+    """Interface shared by in-memory and persistent API key stores."""
+
+    def add(self, key: ApiKey) -> None: ...
+    def remove(self, key_id: str) -> bool: ...
+    def get(self, key_id: str) -> ApiKey | None: ...
+    def list_keys(self, tenant_id: str | None = None) -> list[ApiKey]: ...
+    def verify(self, raw_key: str) -> ApiKey | None: ...
+    def has_keys(self) -> bool: ...
+
+
+_key_store: KeyStoreProtocol | None = None
 _store_lock = threading.Lock()
 
 
-def get_key_store() -> KeyStore:
+def get_key_store() -> KeyStoreProtocol:
     global _key_store
     if _key_store is None:
         with _store_lock:
@@ -188,7 +200,7 @@ def get_key_store() -> KeyStore:
     return _key_store
 
 
-def set_key_store(store: KeyStore) -> None:
+def set_key_store(store: KeyStoreProtocol) -> None:
     global _key_store
     with _store_lock:
         _key_store = store

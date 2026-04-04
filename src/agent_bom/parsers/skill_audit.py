@@ -10,6 +10,7 @@ PyPI/npm before flagging as unknown (reduces false positives).
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import json
 import logging
@@ -378,6 +379,28 @@ _BEHAVIORAL_PATTERNS: list[_BehavioralPattern] = [
     ),
 ]
 
+_PYTHON_FENCED_BLOCK_RE = re.compile(r"```(?:python|py)\s*\n([\s\S]*?)```", re.IGNORECASE)
+
+_DYNAMIC_CODE_CALLS = {"eval", "exec", "compile", "__import__"}
+_SUBPROCESS_CALLS = {
+    "os.system",
+    "os.popen",
+    "subprocess.run",
+    "subprocess.call",
+    "subprocess.Popen",
+    "subprocess.check_call",
+    "subprocess.check_output",
+}
+_FILE_MUTATION_CALLS = {
+    "open",
+    "Path.write_text",
+    "Path.write_bytes",
+    "Path.touch",
+    "Path.unlink",
+    "Path.rename",
+    "Path.replace",
+}
+
 
 # ── Behavioral scanning function ─────────────────────────────────────────────
 
@@ -422,6 +445,108 @@ def _scan_behavioral_risks(raw_content: dict[str, str]) -> list[SkillFinding]:
     return findings
 
 
+def _call_name(node: ast.AST) -> str:
+    """Return a dotted call name when possible."""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        parent = _call_name(node.value)
+        return f"{parent}.{node.attr}" if parent else node.attr
+    if isinstance(node, ast.Call):
+        return _call_name(node.func)
+    return ""
+
+
+def _open_mode_is_mutating(call: ast.Call) -> bool:
+    """Return True when open(...) uses a mutating mode."""
+    if len(call.args) >= 2 and isinstance(call.args[1], ast.Constant) and isinstance(call.args[1].value, str):
+        return any(flag in call.args[1].value for flag in ("w", "a", "+"))
+    for keyword in call.keywords:
+        if keyword.arg == "mode" and isinstance(keyword.value, ast.Constant) and isinstance(keyword.value.value, str):
+            return any(flag in keyword.value.value for flag in ("w", "a", "+"))
+    return False
+
+
+def _scan_python_ast_risks(raw_content: dict[str, str]) -> list[SkillFinding]:
+    """Scan Python fenced code blocks for semantic risk patterns."""
+    findings: list[SkillFinding] = []
+
+    for filename, content in raw_content.items():
+        seen_categories: set[str] = set()
+        for block in _PYTHON_FENCED_BLOCK_RE.findall(content):
+            try:
+                tree = ast.parse(block)
+            except SyntaxError:
+                continue
+
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+
+                call_name = _call_name(node.func)
+                if not call_name:
+                    continue
+
+                if call_name in _DYNAMIC_CODE_CALLS and "ast_dynamic_code_execution" not in seen_categories:
+                    seen_categories.add("ast_dynamic_code_execution")
+                    findings.append(
+                        SkillFinding(
+                            severity="high",
+                            category="ast_dynamic_code_execution",
+                            title="Python AST detected dynamic code execution",
+                            detail=(
+                                f"Detected `{call_name}` in a Python code block in {filename}. "
+                                "Dynamic evaluation makes instruction surfaces harder to review and can hide unsafe behavior."
+                            ),
+                            source_file=filename,
+                            recommendation="Remove dynamic code execution or replace it with explicit, statically reviewable logic.",
+                            context="code_block",
+                        )
+                    )
+
+                if call_name in _SUBPROCESS_CALLS and "ast_shell_execution" not in seen_categories:
+                    seen_categories.add("ast_shell_execution")
+                    findings.append(
+                        SkillFinding(
+                            severity="high",
+                            category="ast_shell_execution",
+                            title="Python AST detected shell/process execution",
+                            detail=(
+                                f"Detected `{call_name}` in a Python code block in {filename}. "
+                                "Subprocess execution expands the skill's authority and increases command-injection risk."
+                            ),
+                            source_file=filename,
+                            recommendation=(
+                                "Avoid spawning shells or subprocesses from skills unless the action "
+                                "is narrowly scoped and explicitly reviewed."
+                            ),
+                            context="code_block",
+                        )
+                    )
+
+                is_file_mutation = call_name in _FILE_MUTATION_CALLS and (call_name != "open" or _open_mode_is_mutating(node))
+                if is_file_mutation and "ast_file_mutation" not in seen_categories:
+                    seen_categories.add("ast_file_mutation")
+                    findings.append(
+                        SkillFinding(
+                            severity="medium",
+                            category="ast_file_mutation",
+                            title="Python AST detected file mutation",
+                            detail=(
+                                f"Detected mutating file operation `{call_name}` in a Python code block in {filename}. "
+                                "File writes and deletions can change agent memory, repo state, or local trust boundaries."
+                            ),
+                            source_file=filename,
+                            recommendation=(
+                                "Require explicit review for file mutations and avoid write/delete flows in reusable skill instructions."
+                            ),
+                            context="code_block",
+                        )
+                    )
+
+    return findings
+
+
 _BEHAVIOR_FAMILIES: dict[str, str] = {
     "shell_access": "code_execution",
     "dangerous_tool": "code_execution",
@@ -430,6 +555,9 @@ _BEHAVIOR_FAMILIES: dict[str, str] = {
     "repository_modification": "code_execution",
     "destructive_action": "code_execution",
     "financial_transaction": "code_execution",
+    "ast_dynamic_code_execution": "code_execution",
+    "ast_shell_execution": "code_execution",
+    "ast_file_mutation": "code_execution",
     "external_url": "network_access",
     "network_exposure": "network_access",
     "messaging_capability": "network_access",
@@ -620,6 +748,7 @@ def audit_skill_result(result: SkillScanResult) -> SkillAuditResult:
     if result.raw_content:
         behavioral_findings = _scan_behavioral_risks(result.raw_content)
         audit.findings.extend(behavioral_findings)
+        audit.findings.extend(_scan_python_ast_risks(result.raw_content))
 
     # ── Metadata quality checks (SKILL.md frontmatter) ───────────────
     if result.metadata is not None:

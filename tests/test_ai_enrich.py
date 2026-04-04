@@ -719,6 +719,28 @@ def test_action_yml_uses_safe_argv_execution_and_step_summary():
     assert "scan_status=$SCAN_STATUS" in action_text
 
 
+def test_action_yml_validates_severity_inputs():
+    """The action should fail early on invalid severity-threshold and warn-on-severity values."""
+    from pathlib import Path
+
+    action_text = (Path(__file__).parent.parent / "action.yml").read_text()
+    assert 'validate_severity_choice "$INPUT_SEVERITY" "severity-threshold"' in action_text
+    assert 'validate_severity_choice "$INPUT_WARN_ON" "warn-on-severity"' in action_text
+    assert "::error::$2 must be one of: critical, high, medium, low" in action_text
+
+
+def test_action_yml_sanitizes_pr_comment_body_and_single_loads_sarif():
+    """The action should sanitize SARIF-derived PR comment text and avoid double-loading SARIF for badge output."""
+    from pathlib import Path
+
+    action_text = (Path(__file__).parent.parent / "action.yml").read_text()
+    assert "def _sanitize_md(value: str) -> str:" in action_text
+    assert "_sanitize_md(msg)" in action_text
+    assert "sarif = json.load(open('$SARIF_FILE'))" in action_text
+    assert "run = sarif.get('runs', [{}])[0]" in action_text
+    assert "::warning::Badge generation failed" in action_text
+
+
 def test_action_yml_enables_pip_cache_in_setup_python():
     """The composite action should enable pip caching in setup-python."""
     from pathlib import Path

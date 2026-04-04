@@ -233,6 +233,16 @@ runs:
         trim_arg() {
           printf '%s' "$1" | xargs
         }
+
+        validate_severity_choice() {
+          case "$1" in
+            critical|high|medium|low) return 0 ;;
+            *)
+              echo "::error::$2 must be one of: critical, high, medium, low"
+              exit 1
+              ;;
+          esac
+        }
         # Map scan-type to focused command
         #   scan  → agent-bom agents (full auto-detect, default)
         #   image → agent-bom image <ref>
@@ -329,11 +339,13 @@ runs:
         if [ "$INPUT_SCAN_TYPE" != "skills" ]; then
           # Severity gate
           if [ -n "$INPUT_SEVERITY" ]; then
+            validate_severity_choice "$INPUT_SEVERITY" "severity-threshold"
             ARGS+=(--fail-on-severity "$INPUT_SEVERITY")
           fi
 
           # Warn-on severity (non-blocking)
           if [ -n "$INPUT_WARN_ON" ]; then
+            validate_severity_choice "$INPUT_WARN_ON" "warn-on-severity"
             ARGS+=(--warn-on "$INPUT_WARN_ON")
           fi
 
@@ -486,8 +498,10 @@ runs:
           python3 -c "
         import json, sys
         try:
-            results = json.load(open('$SARIF_FILE')).get('runs', [{}])[0].get('results', [])
-            rules = {r['id']: r for r in json.load(open('$SARIF_FILE')).get('runs', [{}])[0].get('tool', {}).get('driver', {}).get('rules', [])}
+            sarif = json.load(open('$SARIF_FILE'))
+            run = sarif.get('runs', [{}])[0]
+            results = run.get('results', [])
+            rules = {r['id']: r for r in run.get('tool', {}).get('driver', {}).get('rules', [])}
             critical = high = 0
             for r in results:
                 rid = r.get('ruleId', '')
@@ -509,7 +523,7 @@ runs:
                 json.dump(badge, f, indent=2)
         except Exception as e:
             print(f'Badge generation failed: {e}', file=sys.stderr)
-        " 2>/dev/null || true
+        " || echo "::warning::Badge generation failed"
           if [ -f "$INPUT_BADGE" ]; then
             BADGE_FILE="$INPUT_BADGE"
           fi
@@ -557,7 +571,7 @@ runs:
         PR_NUMBER: ${{ github.event.pull_request.number }}
         REPO: ${{ github.repository }}
       run: |
-        import json, os, subprocess
+        import html, json, os, subprocess
 
         marker = "<!-- agent-bom-scan-comment -->"
         sarif_file = os.environ.get("SARIF_FILE", "")
@@ -567,6 +581,10 @@ runs:
         repo = os.environ.get("REPO", "")
 
         status = "✅ Clean — no violations found" if exit_code == "0" else f"⚠️ {vuln_count} vulnerability finding(s)"
+
+        def _sanitize_md(value: str) -> str:
+            text = html.escape(value or "", quote=False)
+            return text.replace("`", "'").replace("\r", " ").replace("\n", " ")
 
         # Map SARIF security-severity scores to agent-bom severity labels
         def _score_to_severity(score: float) -> str:
@@ -593,7 +611,9 @@ runs:
                     score = float(rule.get("properties", {}).get("security-severity", "0"))
                     severity = _score_to_severity(score)
                     msg = r.get("message", {}).get("text", "")
-                    findings_lines.append(f"- **{severity}** `{rule_id}` — {msg}")
+                    findings_lines.append(
+                        f"- **{_sanitize_md(severity)}** `{_sanitize_md(rule_id)}` — {_sanitize_md(msg)}"
+                    )
                 if len(results) > 10:
                     findings_lines.append(f"- ... and {len(results) - 10} more")
             except Exception:

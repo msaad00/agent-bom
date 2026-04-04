@@ -9,11 +9,16 @@ from unittest.mock import patch
 import pytest
 
 from agent_bom.mcp_server import (
+    _caller_rate_windows,
+    _check_caller_rate_limit,
+    _current_tool_request,
     _execute_tool_async,
     _execute_tool_sync_async,
     _get_registry_data,
     _get_registry_data_raw,
+    _recent_tool_requests,
     _record_tool_metric,
+    _record_tool_request,
     _tool_metrics,
     _tool_metrics_snapshot,
     _truncate_response,
@@ -192,3 +197,37 @@ class TestToolMetrics:
         payload = json.loads(result)
         assert payload["tool"] == "slow_sync_tool"
         assert payload["timed_out"] is True
+
+    def test_current_tool_request_defaults_to_local_without_context(self):
+        assert _current_tool_request() == {"caller": "local", "client_id": None, "request_id": None}
+
+    def test_check_caller_rate_limit_enforces_window(self, monkeypatch):
+        import agent_bom.mcp_server as mod
+
+        _caller_rate_windows.clear()
+        monkeypatch.setattr(mod, "_MCP_CALLER_RATE_LIMIT", 2)
+        monkeypatch.setattr(mod, "_MCP_CALLER_WINDOW_SECONDS", 60.0)
+        times = iter([100.0, 100.5, 101.0])
+        monkeypatch.setattr(mod.time, "monotonic", lambda: next(times))
+
+        assert _check_caller_rate_limit("caller-a") is None
+        assert _check_caller_rate_limit("caller-a") is None
+        assert _check_caller_rate_limit("caller-a") == 59.0
+
+    def test_tool_metrics_snapshot_includes_recent_requests(self):
+        _tool_metrics.clear()
+        _recent_tool_requests.clear()
+        _record_tool_metric("scan", elapsed_ms=10, success=True)
+        _record_tool_request(
+            "scan",
+            caller="client-1",
+            client_id="client-1",
+            request_id="req-1",
+            status="ok",
+            elapsed_ms=10,
+        )
+
+        snap = _tool_metrics_snapshot()
+        assert snap["summary"]["recent_request_count"] == 1
+        assert snap["recent_requests"][0]["caller"] == "client-1"
+        assert snap["recent_requests"][0]["request_id"] == "req-1"

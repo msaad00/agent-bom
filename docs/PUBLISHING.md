@@ -17,6 +17,12 @@ Smithery requires a publicly accessible HTTP URL for the MCP server.
 ### Step 1: Deploy SSE server
 
 The SSE server is deployed on Railway at `https://agent-bom-mcp.up.railway.app` (automated via `deploy-mcp-sse.yml`).
+Secure remote deployments should set `AGENT_BOM_MCP_BEARER_TOKEN` in Railway service
+variables so the MCP transport can start with built-in Bearer auth. Keep TLS at your
+ingress or platform edge.
+
+If you need a public unauthenticated registry/demo endpoint, treat that as a separate,
+explicitly less-trusted deployment surface rather than weakening the primary service.
 
 ### Step 2: Publish to Smithery
 

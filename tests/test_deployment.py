@@ -68,6 +68,14 @@ def test_procfile_exists():
     assert content.startswith("web:")
     assert "mcp" in content and "server" in content
     assert "streamable-http" in content
+    assert "AGENT_BOM_MCP_BEARER_TOKEN" in content
+
+
+def test_dockerfile_sse_does_not_opt_into_insecure_public_mode():
+    """The maintained SSE/HTTP image should not disable remote auth by default."""
+    content = (ROOT / "deploy" / "docker" / "Dockerfile.sse").read_text()
+    assert "--allow-insecure-no-auth" not in content
+    assert "AGENT_BOM_MCP_BEARER_TOKEN" in content
 
 
 # ---------------------------------------------------------------------------

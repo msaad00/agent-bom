@@ -10,6 +10,7 @@
 # Environment variables (optional):
 #   NVD_API_KEY  — Higher rate limits for CVSS enrichment
 #   PORT         — Override default port (Railway/Render inject this)
+#   AGENT_BOM_MCP_BEARER_TOKEN — Required for secure non-loopback deployments
 
 ## ── Builder stage ────────────────────────────────────────────────────────────
 FROM python:3.12.13-slim@sha256:7026274c107626d7e940e0e5d6730481a4600ae95d5ca7eb532dd4180313fea9 AS builder
@@ -87,4 +88,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT:-8423}/health')" || exit 1
 
 # Use shell form so $PORT is expanded at runtime (Railway/Render inject PORT)
-CMD agent-bom mcp server --transport streamable-http --host 0.0.0.0 --port ${PORT}
+CMD test -n "$AGENT_BOM_MCP_BEARER_TOKEN" || { echo "AGENT_BOM_MCP_BEARER_TOKEN is required for remote MCP deployment"; exit 1; }; \
+    agent-bom mcp server --transport streamable-http --host 0.0.0.0 --port ${PORT}

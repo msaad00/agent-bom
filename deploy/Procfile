@@ -1,1 +1,1 @@
-web: agent-bom mcp server --transport streamable-http --host 0.0.0.0 --port ${PORT:-8423}
+web: test -n "$AGENT_BOM_MCP_BEARER_TOKEN" || { echo "AGENT_BOM_MCP_BEARER_TOKEN is required for remote MCP deployment"; exit 1; }; agent-bom mcp server --transport streamable-http --host 0.0.0.0 --port ${PORT:-8423}

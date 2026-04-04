@@ -1,78 +1,129 @@
 # Roadmap
 
-This document outlines the planned direction for agent-bom over the next
-12 months. Items are grouped by theme, not strict timeline. Priority is
-informed by user feedback, security landscape changes, and contributor
-availability.
+This roadmap reflects the current post-`v0.75.14` direction for `agent-bom`.
+It is organized around product phases, not a loose feature wish list.
 
 For the full backlog, see [open issues](https://github.com/msaad00/agent-bom/issues).
 
 ---
 
-## Scanner depth
+## Where the product stands now
 
-| Item | Issue | Status |
-|------|-------|--------|
-| OSV ecosystem expansion — Maven, Go, Ruby, .NET real-world vuln validation | [#545](https://github.com/msaad00/agent-bom/issues/545) | Planned |
-| Gradle, NuGet, PHP Composer lock-file parsers | [#524](https://github.com/msaad00/agent-bom/issues/524) | Planned |
-| SBOM ingest depth — CycloneDX 1.6 + SPDX 3.0 round-trip fidelity | [#546](https://github.com/msaad00/agent-bom/issues/546) | Planned |
-| Notebook cell + prompt + CoCo code scanning (SQL/Python SAST) | [#554](https://github.com/msaad00/agent-bom/issues/554) | Planned |
-| Code poisoning detection across AI skill files and generated code | [#548](https://github.com/msaad00/agent-bom/issues/548) | Planned |
+`agent-bom` is already a serious OSS product:
 
-## Runtime & proxy
+- released on PyPI and Docker
+- usable as a CLI, GitHub Action, API service, dashboard, and MCP server
+- strong on MCP-aware blast radius, runtime proxying, skills scanning, and report output
+- increasingly hardened for real deployments instead of only local demos
 
-| Item | Issue | Status |
-|------|-------|--------|
-| CoCo proxy depth (SQL injection + Cortex model tracking) | [#547](https://github.com/msaad00/agent-bom/issues/547) | Done |
-| TLS termination for SSE proxy mode | [#556](https://github.com/msaad00/agent-bom/issues/556) | Planned |
-| Proxy live traffic view — animated flow, blocked counter, alert timeline | [#468](https://github.com/msaad00/agent-bom/issues/468) | Planned |
+The next step is not random feature sprawl. It is tightening enterprise hardening and scanner depth while preserving the MCP and AI-native advantage.
 
-## Multi-cloud
+---
 
-| Item | Issue | Status |
-|------|-------|--------|
-| Unified `--cloud all` single scan across 12 providers | [#540](https://github.com/msaad00/agent-bom/issues/540) | Planned |
-| Cross-cloud compliance view — unified CIS/framework dashboard | [#541](https://github.com/msaad00/agent-bom/issues/541) | Planned |
-| Cross-cloud drift detection — config change monitoring | [#542](https://github.com/msaad00/agent-bom/issues/542) | Planned |
-| Fleet-wide CIS benchmark aggregation | [#543](https://github.com/msaad00/agent-bom/issues/543) | Planned |
+## Phase 1: Security Preventives
 
-## Quality & testing
+Goal: make dependency, image, and supply-chain regressions visible early and actionable by default.
 
-| Item | Issue | Status |
-|------|-------|--------|
-| Raise test coverage floor to 80% + add test_cli.py | [#529](https://github.com/msaad00/agent-bom/issues/529) | Planned |
-| Zero-dep scanner end-to-end verification | [#549](https://github.com/msaad00/agent-bom/issues/549) | Planned |
-
-## Output & reporting
-
-| Item | Issue | Status |
-|------|-------|--------|
-| PDF export for scan reports | [#555](https://github.com/msaad00/agent-bom/issues/555) | Planned |
-| Dashboard home — risk heatmap, trend sparklines, MTTR gauge | [#463](https://github.com/msaad00/agent-bom/issues/463) | Planned |
-
-## Community & governance
+### In progress
 
 | Item | Status |
 |------|--------|
-| OpenSSF Best Practices Silver badge | In progress |
-| First external committer onboarding | Seeking contributors |
-| Security audit (pre-v1.0) | Planned |
+| Daily dependency update checks | Active |
+| Daily self-scan issue automation | Active |
+| Daily container rescan issue automation | Active |
+| Security issue taxonomy for dependency, base-image, and drift regressions | Active |
+
+### Next
+
+| Item | Issue | Status |
+|------|-------|--------|
+| Supply-chain regression fixtures for compromised package release / typosquat / lockfile drift | New lane | Planned |
+| Stronger release gates for suspicious source or provenance mismatch | New lane | Planned |
+| Operator-visible vulnerability freshness and risk summaries in CLI/API/reporting | New lane | Planned |
 
 ---
 
-## Completed (recent)
+## Phase 2: Enterprise Hardening
 
-| Item | Version |
-|------|---------|
-| CoCo proxy depth — SQL injection + Cortex model tracking | v0.69.0 |
-| Snowflake Notebook discovery + ACCESS_HISTORY governance | v0.69.0 |
-| Output format compliance (SARIF fingerprints, CDX bom-ref, SPDX 3.0) | v0.69.0 |
-| Cloud provider pagination (OpenAI, HuggingFace, MLflow, W&B) | v0.69.0 |
-| CLI refactor — 6,262-line monolith → 11 focused modules | v0.69.0 |
-| OpenSSF Scorecard Dangerous-Workflow fix | v0.69.0 |
-| EPSS batch pagination + KEV stale cache fix | v0.68.1 |
+Goal: make the product secure and explainable by default in real deployments.
+
+### In progress
+
+| Item | Issue | Status |
+|------|-------|--------|
+| Helm security defaults: security context, probes, NetworkPolicy wiring | [#1214](https://github.com/msaad00/agent-bom/pull/1214) | In progress |
+| Tenant isolation enforcement on fleet and schedule routes | [#1222](https://github.com/msaad00/agent-bom/pull/1222) | In progress |
+
+### Next
+
+| Item | Status |
+|------|--------|
+| Harden tenant isolation beyond soft app-layer filtering | Planned |
+| Turn DB/schema/API/UI/report consistency into a standing release gate | Planned |
+| Define an "enterprise pilot ready" bar for auth, tenancy, reporting, and observability | Planned |
 
 ---
 
-This roadmap is updated with each release. To suggest a feature, open a
-[GitHub issue](https://github.com/msaad00/agent-bom/issues/new).
+## Phase 3: Scanner Depth
+
+Goal: deepen package and lockfile coverage without losing the MCP-aware and runtime-aware differentiators.
+
+### Priorities
+
+| Item | Issue | Status |
+|------|-------|--------|
+| Lockfile-depth scanning to complement MCP/config-driven discovery | New lane | Planned |
+| Broader package and ecosystem coverage where traditional SCA tools are stronger today | Existing backlog | Planned |
+| Better regression coverage for supply-chain incidents and poisoned dependencies | New lane | Planned |
+
+---
+
+## Phase 4: MCP, Runtime, and Skills to 9/10
+
+Goal: keep the most differentiated surfaces ahead of the market.
+
+### MCP and runtime
+
+| Item | Status |
+|------|--------|
+| Richer request tracing and operator observability | Planned |
+| Clearer tool schema/versioning and deprecation rules | Planned |
+| Stronger remote operator docs and governance depth | Planned |
+| Remote MCP introspection beyond config-file discovery | Planned |
+
+### Skills and instruction analysis
+
+| Item | Status |
+|------|--------|
+| Move from regex-first detection toward AST-aware or control-flow-aware analysis where it materially improves signal | Planned |
+| Add explicit schema/versioned output for skills results | Planned |
+| Expand trust, provenance, and rescan workflows | Planned |
+
+---
+
+## Phase 5: Contributor and Product Scale
+
+Goal: preserve OSS momentum while making the product easier to extend and adopt.
+
+| Item | Status |
+|------|--------|
+| Cleaner contributor path for scanners, outputs, and integrations | Planned |
+| Dependabot batching and update-noise reduction | In progress |
+| Additional CI templates and integration surfaces beyond GitHub-first flows | Planned |
+| Commercial support / hosted control-plane path definition | Planned |
+
+---
+
+## Completed recently
+
+| Item | Version / PR |
+|------|---------------|
+| `v0.75.14` release across PyPI, Docker, and GitHub Release | `v0.75.14` |
+| GitHub Action hardening: safe argv, pip cache, summaries, cleaner contracts | `#1203`, `#1209` |
+| MCP hardening: remote auth, sync-tool governance, caller rate limiting, metrics, tracing | `#1204`, `#1210`, `#1211` |
+| Docker hardening: Snowpark proxy/CA support, runtime image from source | `#1205`, `#1208` |
+| Daily preventive security automation | `#1213` |
+
+---
+
+This roadmap should evolve with shipped work and real product priorities, not become a dumping ground for unsequenced ideas.

@@ -6,6 +6,8 @@ It is built around a simple thesis: security and visibility for agentic infrastr
 
 Package risk is only the start. `agent-bom` follows what it can reach across MCP servers, agents, credentials, tools, runtime behavior, and trust posture. That is the core product value.
 
+As of the `0.75.x` release line, `agent-bom` is no longer just a promising codebase. It is a released OSS product with a working CLI, GitHub Action, Docker images, authenticated API and MCP deployment paths, report formats, a dashboard, and a growing enterprise-hardening track.
+
 Current repo-derived counts live in [PRODUCT_METRICS.md](PRODUCT_METRICS.md). This brief intentionally keeps volatile metrics out of the main narrative.
 
 ## Durable thesis
@@ -53,6 +55,29 @@ Findings can be mapped into compliance and governance views, but the product sho
 
 The product is broader than MCP alone. It includes cloud posture, container scanning, IaC, and fleet or API surfaces. That breadth matters because agent risk rarely stops at a single config file.
 
+## Current posture
+
+`agent-bom` should be described today as:
+
+- a serious open-source product with a clear path to `1.0`
+- unusually complete for an open tool in agent and MCP security
+- complementary to traditional package and container scanners today, while differentiated by blast radius, runtime, and MCP-aware analysis
+- deployable across local development, CI, and authenticated remote service environments
+
+That means public repo copy should emphasize real shipped surfaces, not just aspirations.
+
+## Path to 1.0
+
+The next phase should stay disciplined:
+
+- enterprise hardening: auth defaults, tenant isolation, Helm and deployment defaults, stable operator contracts
+- scanner depth: stronger lockfile and package coverage so buyers do not need a second tool for basic SCA depth
+- MCP and runtime depth: keep improving governance, observability, and remote operation without weakening the low-friction local story
+- skills depth: move from strong regex-first analysis toward more semantic analysis while preserving stable output contracts
+- contributor scalability: make extension and contribution paths clearer without destabilizing the core product
+
+This is the right path because it improves product trust without diluting the MCP and AI-native advantage.
+
 ## Positioning
 
 Good external phrasing:
@@ -71,6 +96,7 @@ When comparing the product, prefer language like:
 
 - "unusually complete for an open tool"
 - "one of the only open tools combining discovery, blast radius, runtime, and MCP-aware trust in one system"
+- "a serious OSS product with a real path to 1.0"
 
 ## References
 

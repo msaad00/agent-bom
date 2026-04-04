@@ -7,7 +7,7 @@
 
 <p align="center">
   <a href="https://github.com/msaad00/agent-bom/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/msaad00/agent-bom/ci.yml?branch=main&style=flat&label=Build" alt="Build"></a>
-  <a href="https://pypi.org/project/agent-bom/"><img src="https://img.shields.io/pypi/v/agent-bom?style=flat&label=Latest%20version" alt="PyPI"></a>
+  <a href="https://pypi.org/project/agent-bom/"><img src="https://img.shields.io/pypi/v/agent-bom?style=flat&label=Latest%20version&cacheSeconds=300" alt="PyPI"></a>
   <a href="https://hub.docker.com/r/agentbom/agent-bom"><img src="https://img.shields.io/docker/pulls/agentbom/agent-bom?style=flat&label=Docker%20pulls" alt="Docker"></a>
   <a href="https://github.com/msaad00/agent-bom/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue?style=flat" alt="License"></a>
   <a href="https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom"><img src="https://img.shields.io/ossf-scorecard/github.com/msaad00/agent-bom?style=flat&label=OpenSSF%20scorecard" alt="OpenSSF Scorecard"></a>
@@ -35,6 +35,8 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
 
 Package risk is only the start. agent-bom maps what it can reach across MCP servers, agents, credentials, tools, and runtime context. CWE-aware impact classification keeps a DoS from being reported like credential compromise.
 
+`agent-bom` is now a real released product surface, not just a research repo: installable from PyPI, publishable through Docker, usable in GitHub Actions, deployable as an authenticated API and remote MCP service, and validated end to end through CLI, reports, API, dashboard, and policy gates.
+
 For the canonical product brief and verified repo-derived metrics, see [docs/PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md) and [docs/PRODUCT_METRICS.md](docs/PRODUCT_METRICS.md).
 
 <p align="center">
@@ -44,7 +46,9 @@ For the canonical product brief and verified repo-derived metrics, see [docs/PRO
 ## Quick start
 
 ```bash
-pip install agent-bom
+pip install agent-bom                  # Standard CLI install
+# pipx install agent-bom               # Isolated global install
+# uvx agent-bom --help                 # Ephemeral run without installing
 
 agent-bom agents                              # Discover + scan local AI agents and MCP servers
 agent-bom agents -p .                         # Scan project manifests plus agent/MCP context
@@ -69,6 +73,15 @@ agent-bom serve                         # API + Next.js dashboard
 ```
 
 </details>
+
+---
+
+## Why teams use it
+
+- MCP-aware blast radius instead of flat package CVE lists
+- AI-focused scanning across agents, instruction files, skills, runtime proxy traffic, and cloud AI surfaces
+- Real operator outputs: SARIF, CycloneDX, HTML, graphs, badges, JSON, API, dashboard, and MCP tools
+- Works as local CLI, CI gate, authenticated remote service, and enterprise deployment base
 
 ---
 
@@ -172,6 +185,17 @@ flowchart LR
 ```
 
 Blast radius is **CWE-aware**: an RCE (CWE-94) shows full credential exposure, a DoS (CWE-400) does not. Impact categories: code-execution, credential-access, file-access, injection, ssrf, data-leak, availability, client-side.
+
+## Path to 1.0
+
+`agent-bom` is already a serious OSS product. The path to `1.0` is focused, not vague:
+
+- deepen scanner coverage so MCP-aware blast radius is paired with stronger lockfile and package-depth coverage
+- harden enterprise deployment defaults across auth, tenant isolation, Helm, and remote service operation
+- keep raising the MCP, runtime, and skills surfaces without letting CLI, API, dashboard, and report contracts drift
+- preserve the open-core model while making the product operationally credible for real teams
+
+That work is tracked in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ---
 

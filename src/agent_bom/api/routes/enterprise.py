@@ -41,10 +41,13 @@ _logger = logging.getLogger(__name__)
 
 
 @router.post("/v1/auth/keys", tags=["enterprise"], status_code=201)
-async def create_key(req: CreateKeyRequest) -> dict:
+async def create_key(request: Request, req: CreateKeyRequest) -> dict:
     """Create a new API key. Returns the raw key once — store it securely."""
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.auth import Role, create_api_key, get_key_store
+
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    actor = getattr(request.state, "api_key_name", "") or req.name
 
     try:
         role = Role(req.role)
@@ -56,10 +59,11 @@ async def create_key(req: CreateKeyRequest) -> dict:
         role=role,
         expires_at=req.expires_at,
         scopes=req.scopes,
+        tenant_id=tenant_id,
     )
     get_key_store().add(api_key)
 
-    log_action("auth.key_created", actor=req.name, resource=f"key/{api_key.key_id}", role=req.role)
+    log_action("auth.key_created", actor=actor, resource=f"key/{api_key.key_id}", role=req.role)
 
     return {
         "raw_key": raw_key,
@@ -67,6 +71,7 @@ async def create_key(req: CreateKeyRequest) -> dict:
         "key_prefix": api_key.key_prefix,
         "name": api_key.name,
         "role": api_key.role.value,
+        "tenant_id": api_key.tenant_id,
         "created_at": api_key.created_at,
         "expires_at": api_key.expires_at,
         "message": "Store the raw_key securely — it will not be shown again.",
@@ -74,24 +79,30 @@ async def create_key(req: CreateKeyRequest) -> dict:
 
 
 @router.get("/v1/auth/keys", tags=["enterprise"])
-async def list_keys() -> dict:
+async def list_keys(request: Request) -> dict:
     """List all API keys (without hashes or raw values)."""
     from agent_bom.api.auth import get_key_store
 
-    keys = get_key_store().list_keys()
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    keys = get_key_store().list_keys(tenant_id=tenant_id)
     return {"keys": [k.to_dict() for k in keys]}
 
 
 @router.delete("/v1/auth/keys/{key_id}", tags=["enterprise"], status_code=204)
-async def delete_key(key_id: str) -> None:
+async def delete_key(request: Request, key_id: str) -> None:
     """Revoke an API key."""
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.auth import get_key_store
 
-    if not get_key_store().remove(key_id):
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    actor = getattr(request.state, "api_key_name", "")
+    store = get_key_store()
+    key = store.get(key_id)
+    if key is None or key.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail=f"Key {key_id} not found")
+    store.remove(key_id)
 
-    log_action("auth.key_revoked", resource=f"key/{key_id}")
+    log_action("auth.key_revoked", actor=actor, resource=f"key/{key_id}")
 
 
 # ── Audit Log ────────────────────────────────────────────────────────────────
@@ -160,55 +171,65 @@ async def list_exceptions(request: Request, status: str | None = None) -> dict:
 
 
 @router.get("/v1/exceptions/{exception_id}", tags=["enterprise"])
-async def get_exception(exception_id: str) -> dict:
+async def get_exception(request: Request, exception_id: str) -> dict:
     """Get a specific exception."""
+    tenant_id = getattr(request.state, "tenant_id", "default")
     exc = _get_exception_store().get(exception_id)
-    if exc is None:
+    if exc is None or exc.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail=f"Exception {exception_id} not found")
     return exc.to_dict()
 
 
 @router.put("/v1/exceptions/{exception_id}/approve", tags=["enterprise"])
-async def approve_exception(exception_id: str, approved_by: str = "") -> dict:
+async def approve_exception(request: Request, exception_id: str, approved_by: str = "") -> dict:
     """Approve a pending exception (admin only)."""
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.exception_store import ExceptionStatus
 
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    actor = approved_by or getattr(request.state, "api_key_name", "")
     store = _get_exception_store()
     exc = store.get(exception_id)
-    if exc is None:
+    if exc is None or exc.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail=f"Exception {exception_id} not found")
     if exc.status != ExceptionStatus.PENDING:
         raise HTTPException(status_code=409, detail=f"Cannot approve exception in {exc.status.value} state")
     exc.status = ExceptionStatus.ACTIVE
-    exc.approved_by = approved_by
+    exc.approved_by = actor
     exc.approved_at = datetime.now(timezone.utc).isoformat()
     store.put(exc)
-    log_action("exception_approve", actor=approved_by, resource=f"exception/{exception_id}")
+    log_action("exception_approve", actor=actor, resource=f"exception/{exception_id}")
     return exc.to_dict()
 
 
 @router.put("/v1/exceptions/{exception_id}/revoke", tags=["enterprise"])
-async def revoke_exception(exception_id: str, revoked_by: str = "") -> dict:
+async def revoke_exception(request: Request, exception_id: str, revoked_by: str = "") -> dict:
     """Revoke an active exception."""
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.exception_store import ExceptionStatus
 
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    actor = revoked_by or getattr(request.state, "api_key_name", "")
     store = _get_exception_store()
     exc = store.get(exception_id)
-    if exc is None:
+    if exc is None or exc.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail=f"Exception {exception_id} not found")
     exc.status = ExceptionStatus.REVOKED
     exc.revoked_at = datetime.now(timezone.utc).isoformat()
     store.put(exc)
-    log_action("exception_revoke", actor=revoked_by, resource=f"exception/{exception_id}")
+    log_action("exception_revoke", actor=actor, resource=f"exception/{exception_id}")
     return exc.to_dict()
 
 
 @router.delete("/v1/exceptions/{exception_id}", tags=["enterprise"], status_code=204)
-async def delete_exception(exception_id: str) -> None:
+async def delete_exception(request: Request, exception_id: str) -> None:
     """Delete an exception."""
-    ok = _get_exception_store().delete(exception_id)
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    store = _get_exception_store()
+    exc = store.get(exception_id)
+    if exc is None or exc.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail=f"Exception {exception_id} not found")
+    ok = store.delete(exception_id)
     if not ok:
         raise HTTPException(status_code=404, detail=f"Exception {exception_id} not found")
 
@@ -389,11 +410,16 @@ async def list_false_positives(request: Request) -> dict:
 
 
 @router.delete("/v1/findings/false-positive/{fp_id}", tags=["enterprise"], status_code=204)
-async def remove_false_positive(fp_id: str) -> None:
+async def remove_false_positive(request: Request, fp_id: str) -> None:
     """Un-mark a false positive."""
     from agent_bom.api.audit_log import log_action
 
-    ok = _get_exception_store().delete(fp_id)
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    store = _get_exception_store()
+    exc = store.get(fp_id)
+    if exc is None or exc.tenant_id != tenant_id or not exc.reason.startswith("[false_positive]"):
+        raise HTTPException(status_code=404, detail=f"False positive {fp_id} not found")
+    ok = store.delete(fp_id)
     if not ok:
         raise HTTPException(status_code=404, detail=f"False positive {fp_id} not found")
     log_action("findings.false_positive_removed", resource=f"fp/{fp_id}")

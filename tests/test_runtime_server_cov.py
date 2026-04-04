@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from agent_bom.runtime.server import _dispatch, _route_http
+from agent_bom.runtime.server import _dispatch, _route_http, _runtime_metrics_text
 
 
 class TestDispatch:
@@ -55,6 +55,22 @@ class TestRouteHttp:
         status, body = await _route_http(engine, "GET", "/status", b"")
         assert status == "200 OK"
         assert body["active"] is True
+
+    def test_runtime_metrics_text(self):
+        engine = MagicMock()
+        engine.status.return_value = {
+            "active": True,
+            "traces_processed": 3,
+            "tool_calls_analyzed": 4,
+            "alerts_generated": 2,
+            "detectors_active": 8,
+            "session_graph": {"node_count": 5, "edge_count": 6, "timeline_event_count": 7},
+            "shield": {"active": True, "blocked": False, "escalations": 1, "blocks": 0, "alerts_in_window": 2, "threat_level": "high"},
+        }
+        metrics = _runtime_metrics_text(engine)
+        assert "agent_bom_runtime_active 1" in metrics
+        assert "agent_bom_runtime_tool_calls_analyzed_total 4" in metrics
+        assert 'agent_bom_runtime_shield_threat_level{level="high"} 1' in metrics
 
     @pytest.mark.asyncio
     async def test_post_tool_call(self):

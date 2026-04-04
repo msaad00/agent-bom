@@ -149,11 +149,12 @@ async def _lifespan(app_instance: FastAPI):
 
     def _schedule_scan(scan_config: dict) -> str:
         """Trigger a scan from a schedule."""
+        tenant_id = (
+            getattr(scan_config, "tenant_id", None) if hasattr(scan_config, "tenant_id") else scan_config.get("tenant_id", "default")
+        )
         job = ScanJob(
             job_id=str(uuid.uuid4()),
-            tenant_id=getattr(scan_config, "tenant_id", None)
-            if hasattr(scan_config, "tenant_id")
-            else scan_config.get("tenant_id", "default"),
+            tenant_id=str(tenant_id or "default"),
             created_at=_now(),
             request=ScanRequest(**scan_config) if isinstance(scan_config, dict) else scan_config,
         )

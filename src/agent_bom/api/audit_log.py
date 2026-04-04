@@ -299,11 +299,16 @@ def get_audit_log() -> AuditLogStore:
     if _audit_log is None:
         with _audit_lock:
             if _audit_log is None:
-                db = os.environ.get("AGENT_BOM_AUDIT_DB")
-                if db:
-                    _audit_log = SQLiteAuditLog(db)
+                if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+                    from agent_bom.api.postgres_store import PostgresAuditLog
+
+                    _audit_log = PostgresAuditLog()
                 else:
-                    _audit_log = InMemoryAuditLog()
+                    db = os.environ.get("AGENT_BOM_AUDIT_DB") or os.environ.get("AGENT_BOM_DB")
+                    if db:
+                        _audit_log = SQLiteAuditLog(db)
+                    else:
+                        _audit_log = InMemoryAuditLog()
     return _audit_log
 
 

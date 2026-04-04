@@ -86,6 +86,8 @@ def test_all_expected_tables_exist():
         "fleet_agents",
         "gateway_policies",
         "policy_audit_log",
+        "audit_log",
+        "trend_history",
         "scan_schedules",
         "osv_cache",
     }
@@ -93,7 +95,7 @@ def test_all_expected_tables_exist():
 
 
 def test_total_table_count():
-    assert len(_tables()) >= 12
+    assert len(_tables()) >= 14
 
 
 def test_gateway_policy_tables_have_tenant_columns():
@@ -106,6 +108,13 @@ def test_gateway_policy_rls_policies_exist():
     assert "CREATE POLICY gateway_policies_tenant_isolation ON gateway_policies" in SQL
     assert "ALTER TABLE policy_audit_log ENABLE ROW LEVEL SECURITY" in SQL
     assert "CREATE POLICY policy_audit_log_tenant_isolation ON policy_audit_log" in SQL
+
+
+def test_audit_and_trend_tables_exist_with_rls():
+    assert "ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY" in SQL
+    assert "CREATE POLICY audit_log_tenant_isolation ON audit_log" in SQL
+    assert "ALTER TABLE trend_history ENABLE ROW LEVEL SECURITY" in SQL
+    assert "CREATE POLICY trend_history_tenant_isolation ON trend_history" in SQL
 
 
 # ── teams table ───────────────────────────────────────────────────────────────

@@ -8,6 +8,7 @@ Call the ``set_*`` functions before server startup to swap backends
 
 from __future__ import annotations
 
+import os
 import threading
 from typing import TYPE_CHECKING, Any
 
@@ -200,10 +201,25 @@ def _get_trend_store():
     if _trend_store is None:
         with _store_lock:
             if _trend_store is None:
-                from agent_bom.baseline import InMemoryTrendStore
+                if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+                    from agent_bom.api.postgres_store import PostgresTrendStore
 
-                _trend_store = InMemoryTrendStore()
+                    _trend_store = PostgresTrendStore()
+                elif os.environ.get("AGENT_BOM_DB"):
+                    from agent_bom.baseline import SQLiteTrendStore
+
+                    _trend_store = SQLiteTrendStore(os.environ["AGENT_BOM_DB"])
+                else:
+                    from agent_bom.baseline import InMemoryTrendStore
+
+                    _trend_store = InMemoryTrendStore()
     return _trend_store
+
+
+def set_trend_store(store: Any) -> None:
+    """Switch the trend store backend. Call before server startup."""
+    global _trend_store
+    _trend_store = store
 
 
 def get_last_scan_report() -> dict | None:

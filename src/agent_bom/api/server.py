@@ -46,6 +46,7 @@ from agent_bom.api.stores import (
     set_job_store,
     set_policy_store,
     set_schedule_store,
+    set_trend_store,
 )
 from agent_bom.config import API_JOB_TTL_SECONDS as _JOB_TTL_SECONDS
 from agent_bom.config import API_MAX_CONCURRENT_JOBS as _MAX_CONCURRENT_JOBS  # noqa: F401 — re-exported for tests
@@ -87,14 +88,18 @@ async def _lifespan(app_instance: FastAPI):
         if _stores._policy_store is None:
             set_policy_store(SnowflakePolicyStore(sf))
     elif os.environ.get("AGENT_BOM_POSTGRES_URL"):
+        from agent_bom.api import audit_log as _audit_log_mod
         from agent_bom.api import auth as _auth
+        from agent_bom.api.audit_log import set_audit_log
         from agent_bom.api.auth import set_key_store
         from agent_bom.api.postgres_store import (
+            PostgresAuditLog,
             PostgresExceptionStore,
             PostgresFleetStore,
             PostgresJobStore,
             PostgresKeyStore,
             PostgresPolicyStore,
+            PostgresTrendStore,
         )
 
         if _stores._store is None:
@@ -105,9 +110,16 @@ async def _lifespan(app_instance: FastAPI):
             set_policy_store(PostgresPolicyStore())
         if _stores._exception_store is None:
             set_exception_store(PostgresExceptionStore())
+        if _stores._trend_store is None:
+            set_trend_store(PostgresTrendStore())
         if _auth._key_store is None:
             set_key_store(PostgresKeyStore())
+        if _audit_log_mod._audit_log is None:
+            set_audit_log(PostgresAuditLog())
     elif os.environ.get("AGENT_BOM_DB"):
+        from agent_bom.api import audit_log as _audit_log_mod
+        from agent_bom.api.audit_log import SQLiteAuditLog, set_audit_log
+
         db_path = os.environ["AGENT_BOM_DB"]
         if _stores._store is None:
             from agent_bom.api.store import SQLiteJobStore
@@ -121,6 +133,12 @@ async def _lifespan(app_instance: FastAPI):
             from agent_bom.api.policy_store import SQLitePolicyStore
 
             set_policy_store(SQLitePolicyStore(db_path))
+        if _stores._trend_store is None:
+            from agent_bom.baseline import SQLiteTrendStore
+
+            set_trend_store(SQLiteTrendStore(db_path))
+        if _audit_log_mod._audit_log is None:
+            set_audit_log(SQLiteAuditLog(db_path))
 
     # ── Schedule store ──
     if _stores._schedule_store is None:

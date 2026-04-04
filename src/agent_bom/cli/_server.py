@@ -40,6 +40,18 @@ def _enforce_auth_defaults(command: str, host: str, api_key: str | None, allow_i
     )
 
 
+def _enforce_remote_mcp_auth_defaults(host: str, bearer_token: str | None, allow_insecure_no_auth: bool) -> None:
+    """Refuse unauthenticated remote MCP transports on non-loopback binds."""
+    if bearer_token or _is_loopback_host(host):
+        return
+    if allow_insecure_no_auth:
+        return
+    raise click.ClickException(
+        f"Refusing to expose `mcp server` on non-loopback host {host!r} without transport authentication. "
+        "Set --bearer-token / AGENT_BOM_MCP_BEARER_TOKEN or pass --allow-insecure-no-auth to override."
+    )
+
+
 @click.command("serve")
 @click.option("--host", default="127.0.0.1", show_default=True, help="Host to bind to (use 0.0.0.0 for LAN access)")
 @click.option("--port", default=8422, show_default=True, help="API server port")
@@ -292,9 +304,30 @@ def api_cmd(
 )
 @click.option("--port", default=8423, show_default=True, help="Port for HTTP/SSE transport.")
 @click.option("--host", default="127.0.0.1", show_default=True, help="Host for HTTP/SSE transport.")
+@click.option(
+    "--bearer-token",
+    default=None,
+    envvar="AGENT_BOM_MCP_BEARER_TOKEN",
+    metavar="TOKEN",
+    help="Require Bearer token auth for SSE / Streamable HTTP transports.",
+)
+@click.option(
+    "--allow-insecure-no-auth",
+    is_flag=True,
+    default=False,
+    help="Allow unauthenticated non-loopback SSE / HTTP exposure. Unsafe outside local development.",
+)
 @click.option("--log-level", "log_level", type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False), default="INFO")
 @click.option("--log-json", "log_json", is_flag=True, help="Structured JSON logs")
-def mcp_server_cmd(transport: str, port: int, host: str, log_level: str, log_json: bool):
+def mcp_server_cmd(
+    transport: str,
+    port: int,
+    host: str,
+    bearer_token: str | None,
+    allow_insecure_no_auth: bool,
+    log_level: str,
+    log_json: bool,
+):
     """Start agent-bom as an MCP server.
 
     \b
@@ -360,14 +393,23 @@ def mcp_server_cmd(transport: str, port: int, host: str, log_level: str, log_jso
         )
         sys.exit(1)
 
-    server = create_mcp_server(host=host, port=port)
+    if transport in ("sse", "streamable-http"):
+        _enforce_remote_mcp_auth_defaults(host, bearer_token, allow_insecure_no_auth)
+
+    server = create_mcp_server(host=host, port=port, bearer_token=bearer_token)
 
     if transport in ("sse", "streamable-http"):
         from agent_bom import __version__ as _ver
 
         click.echo(f"  agent-bom MCP Server v{_ver}", err=True)
         click.echo(f"  Transport: {transport} on http://{host}:{port}", err=True)
+        if bearer_token:
+            click.echo("  Auth:      Bearer token required", err=True)
+        elif allow_insecure_no_auth and not _is_loopback_host(host):
+            click.echo("  Auth:      disabled by explicit override (--allow-insecure-no-auth)", err=True)
         click.echo("  Press Ctrl+C to stop.\n", err=True)
         server.run(transport=transport)
     else:
+        if bearer_token:
+            click.echo("  Warning:   --bearer-token applies only to SSE / Streamable HTTP transports", err=True)
         server.run(transport="stdio")

@@ -63,9 +63,10 @@ async def list_fleet(
 
 
 @router.get("/v1/fleet/stats", tags=["fleet"])
-async def fleet_stats():
+async def fleet_stats(request: Request):
     """Fleet-wide statistics."""
-    agents = _get_fleet_store().list_all()
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    agents = _get_fleet_store().list_by_tenant(tenant_id)
     by_state: dict[str, int] = {}
     by_env: dict[str, int] = {}
     trust_scores: list[float] = []
@@ -84,16 +85,17 @@ async def fleet_stats():
 
 
 @router.get("/v1/fleet/{agent_id}", tags=["fleet"])
-async def get_fleet_agent(agent_id: str):
+async def get_fleet_agent(request: Request, agent_id: str):
     """Get a single fleet agent with trust score breakdown."""
     agent = _get_fleet_store().get(agent_id)
-    if agent is None:
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    if agent is None or agent.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="Fleet agent not found")
     return agent.model_dump()
 
 
 @router.post("/v1/fleet/sync", tags=["fleet"])
-async def sync_fleet():
+async def sync_fleet(request: Request):
     """Run discovery and sync results into the fleet registry.
 
     New agents -> state=DISCOVERED. Existing agents -> counts updated.
@@ -105,12 +107,13 @@ async def sync_fleet():
 
     discovered = discover_all()
     store = _get_fleet_store()
+    tenant_id = getattr(request.state, "tenant_id", "default")
     now = datetime.now(timezone.utc).isoformat()
     new_count = 0
     updated_count = 0
 
     for agent in discovered:
-        existing = store.get_by_name(agent.name)
+        existing = next((a for a in store.list_by_tenant(tenant_id) if a.name == agent.name), None)
         server_count = len(agent.mcp_servers)
         pkg_count = sum(len(s.packages) for s in agent.mcp_servers)
         cred_count = sum(len(s.credential_names) for s in agent.mcp_servers)
@@ -143,6 +146,7 @@ async def sync_fleet():
                 package_count=pkg_count,
                 credential_count=cred_count,
                 vuln_count=vuln_count,
+                tenant_id=tenant_id,
                 last_discovery=now,
                 created_at=now,
                 updated_at=now,
@@ -158,7 +162,7 @@ async def sync_fleet():
 
 
 @router.put("/v1/fleet/{agent_id}/state", tags=["fleet"])
-async def update_fleet_state(agent_id: str, body: StateUpdate):
+async def update_fleet_state(request: Request, agent_id: str, body: StateUpdate):
     """Update agent lifecycle state."""
     from agent_bom.api.fleet_store import FleetLifecycleState
 
@@ -170,17 +174,21 @@ async def update_fleet_state(agent_id: str, body: StateUpdate):
             detail=f"Invalid state: {body.state}. Valid: {[s.value for s in FleetLifecycleState]}",
         )
     store = _get_fleet_store()
-    if not store.update_state(agent_id, new_state):
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    agent = store.get(agent_id)
+    if agent is None or agent.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="Fleet agent not found")
+    store.update_state(agent_id, new_state)
     return {"agent_id": agent_id, "lifecycle_state": new_state.value}
 
 
 @router.put("/v1/fleet/{agent_id}", tags=["fleet"])
-async def update_fleet_agent(agent_id: str, body: FleetAgentUpdate):
+async def update_fleet_agent(request: Request, agent_id: str, body: FleetAgentUpdate):
     """Update agent metadata (owner, environment, tags, notes)."""
     store = _get_fleet_store()
     agent = store.get(agent_id)
-    if agent is None:
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    if agent is None or agent.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="Fleet agent not found")
     if body.owner is not None:
         agent.owner = body.owner

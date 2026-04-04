@@ -19,6 +19,8 @@ spec:
         app.kubernetes.io/component: monitor
     spec:
       serviceAccountName: {{ include "agent-bom.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: monitor
           image: "{{ .Values.runtimeImage.repository }}:{{ .Values.runtimeImage.tag }}"
@@ -36,12 +38,10 @@ spec:
             - containerPort: {{ .Values.monitor.port }}
               name: protect
               protocol: TCP
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           livenessProbe:
-            httpGet:
-              path: /status
-              port: protect
-            initialDelaySeconds: 5
-            periodSeconds: 30
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
 {{- end }}

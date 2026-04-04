@@ -4,6 +4,7 @@ repos:
     hooks:
       - id: check-yaml
         args: [--unsafe]
+        exclude: "^deploy/helm/.*/templates/.*\\.ya?ml$"
       - id: check-json
         exclude: "tsconfig.*\\.json$"
       - id: check-toml

@@ -35,3 +35,27 @@ resources:
   limits:
     memory: "256Mi"
     cpu: "500m"
+
+podSecurityContext:
+  runAsNonRoot: true
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  capabilities:
+    drop:
+      - ALL
+
+livenessProbe:
+  httpGet:
+    path: /status
+    port: protect
+  initialDelaySeconds: 5
+  periodSeconds: 30
+
+networkPolicy:
+  enabled: true

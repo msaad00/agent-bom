@@ -57,16 +57,21 @@ import json
 import logging
 import re
 import time
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from dataclasses import asdict
 from pathlib import Path
 from typing import Annotated, Any, Awaitable, Callable, Optional, TypeVar
 
+from mcp.server.lowlevel.server import request_ctx as _mcp_request_ctx
 from mcp.types import ToolAnnotations
 from pydantic import AnyHttpUrl, Field, TypeAdapter
 
+from agent_bom.config import MCP_CALLER_RATE_LIMIT as _MCP_CALLER_RATE_LIMIT
+from agent_bom.config import MCP_CALLER_WINDOW_SECONDS as _MCP_CALLER_WINDOW_SECONDS
+from agent_bom.config import MCP_MAX_CALLER_STATES as _MCP_MAX_CALLER_STATES
 from agent_bom.config import MCP_MAX_CONCURRENT_TOOLS as _MCP_MAX_CONCURRENT_TOOLS
 from agent_bom.config import MCP_MAX_FILE_SIZE as _MAX_FILE_SIZE
+from agent_bom.config import MCP_MAX_REQUEST_TRACES as _MCP_MAX_REQUEST_TRACES
 from agent_bom.config import MCP_MAX_RESPONSE_CHARS as _MAX_RESPONSE_CHARS
 from agent_bom.config import MCP_MAX_TOOL_METRICS as _MCP_MAX_TOOL_METRICS
 from agent_bom.config import MCP_TOOL_TIMEOUT_SECONDS as _MCP_TOOL_TIMEOUT_SECONDS
@@ -227,9 +232,83 @@ def _tool_metrics_snapshot() -> dict[str, Any]:
             "total_timeouts": total_timeouts,
             "max_concurrent_tools": _MCP_MAX_CONCURRENT_TOOLS,
             "default_timeout_seconds": _MCP_TOOL_TIMEOUT_SECONDS,
+            "caller_rate_limit_per_window": _MCP_CALLER_RATE_LIMIT,
+            "caller_rate_limit_window_seconds": _MCP_CALLER_WINDOW_SECONDS,
+            "tracked_callers": len(_caller_rate_windows),
+            "recent_request_count": len(_recent_tool_requests),
         },
         "tools": tool_stats,
+        "recent_requests": list(_recent_tool_requests),
     }
+
+
+def _current_tool_request() -> dict[str, str | None]:
+    """Return request identity metadata when running inside an MCP request."""
+    try:
+        current_request = _mcp_request_ctx.get()
+    except LookupError:
+        return {"caller": "local", "client_id": None, "request_id": None}
+
+    meta = getattr(current_request, "meta", None)
+    client_id = getattr(meta, "client_id", None) if meta else None
+    session = getattr(current_request, "session", None)
+    session_label = f"session-{id(session) % 1_000_000}" if session is not None else "local"
+    return {
+        "caller": client_id or session_label,
+        "client_id": client_id,
+        "request_id": str(getattr(current_request, "request_id", "")) or None,
+    }
+
+
+def _check_caller_rate_limit(caller: str) -> float | None:
+    """Return retry-after seconds when a caller exceeds the bounded MCP rate window."""
+    if _MCP_CALLER_RATE_LIMIT <= 0:
+        return None
+
+    now = time.monotonic()
+    window = _caller_rate_windows.get(caller)
+    if window is None:
+        if len(_caller_rate_windows) >= _MCP_MAX_CALLER_STATES:
+            _caller_rate_windows.popitem(last=False)
+        window = deque()
+        _caller_rate_windows[caller] = window
+    else:
+        _caller_rate_windows.move_to_end(caller)
+
+    cutoff = now - _MCP_CALLER_WINDOW_SECONDS
+    while window and window[0] <= cutoff:
+        window.popleft()
+
+    if len(window) >= _MCP_CALLER_RATE_LIMIT:
+        return round(max(0.0, _MCP_CALLER_WINDOW_SECONDS - (now - window[0])), 3)
+
+    window.append(now)
+    return None
+
+
+def _record_tool_request(
+    tool_name: str,
+    *,
+    caller: str | None,
+    client_id: str | None,
+    request_id: str | None,
+    status: str,
+    elapsed_ms: int,
+    error: str | None = None,
+) -> None:
+    """Store a bounded trace of recent MCP tool requests."""
+    _recent_tool_requests.append(
+        {
+            "tool": tool_name,
+            "caller": caller or "local",
+            "client_id": client_id,
+            "request_id": request_id,
+            "status": status,
+            "elapsed_ms": elapsed_ms,
+            "error": error,
+            "ts": int(time.time()),
+        }
+    )
 
 
 async def _execute_tool_async(
@@ -242,8 +321,32 @@ async def _execute_tool_async(
 ) -> _ToolReturn | str:
     """Run an async MCP tool with bounded concurrency, timeout, and metrics."""
     timeout_seconds = timeout if timeout and timeout > 0 else _MCP_TOOL_TIMEOUT_SECONDS
+    request_meta = _current_tool_request()
+    retry_after = _check_caller_rate_limit(request_meta["caller"] or "local")
+    if retry_after is not None:
+        _record_tool_metric(tool_name, elapsed_ms=0, success=False, error="rate limited")
+        _record_tool_request(
+            tool_name,
+            caller=request_meta["caller"],
+            client_id=request_meta["client_id"],
+            request_id=request_meta["request_id"],
+            status="rate_limited",
+            elapsed_ms=0,
+            error="rate limited",
+        )
+        logger.warning("mcp tool rate limited: %s caller=%s retry_after=%.3fs", tool_name, request_meta["caller"], retry_after)
+        return _truncate_response(
+            json.dumps(
+                {
+                    "error": f"Tool '{tool_name}' exceeded the caller rate limit",
+                    "tool": tool_name,
+                    "rate_limited": True,
+                    "retry_after_seconds": retry_after,
+                }
+            )
+        )
     start = time.perf_counter()
-    logger.info("mcp tool start: %s", tool_name)
+    logger.info("mcp tool start: %s caller=%s request_id=%s", tool_name, request_meta["caller"], request_meta["request_id"])
     try:
         async with _get_tool_semaphore():
             result = await asyncio.wait_for(handler(*args, **kwargs), timeout=timeout_seconds)
@@ -256,7 +359,16 @@ async def _execute_tool_async(
             timed_out=True,
             error=f"timed out after {timeout_seconds:.1f}s",
         )
-        logger.warning("mcp tool timed out: %s after %.1fs", tool_name, timeout_seconds)
+        _record_tool_request(
+            tool_name,
+            caller=request_meta["caller"],
+            client_id=request_meta["client_id"],
+            request_id=request_meta["request_id"],
+            status="timeout",
+            elapsed_ms=elapsed_ms,
+            error=f"timed out after {timeout_seconds:.1f}s",
+        )
+        logger.warning("mcp tool timed out: %s caller=%s after %.1fs", tool_name, request_meta["caller"], timeout_seconds)
         return _truncate_response(
             json.dumps(
                 {
@@ -270,11 +382,28 @@ async def _execute_tool_async(
         elapsed_ms = int((time.perf_counter() - start) * 1000)
         sanitized = sanitize_error(exc)
         _record_tool_metric(tool_name, elapsed_ms=elapsed_ms, success=False, error=sanitized)
-        logger.warning("mcp tool failed: %s (%s)", tool_name, sanitized)
+        _record_tool_request(
+            tool_name,
+            caller=request_meta["caller"],
+            client_id=request_meta["client_id"],
+            request_id=request_meta["request_id"],
+            status="error",
+            elapsed_ms=elapsed_ms,
+            error=sanitized,
+        )
+        logger.warning("mcp tool failed: %s caller=%s (%s)", tool_name, request_meta["caller"], sanitized)
         raise
     elapsed_ms = int((time.perf_counter() - start) * 1000)
     _record_tool_metric(tool_name, elapsed_ms=elapsed_ms, success=True)
-    logger.info("mcp tool ok: %s (%dms)", tool_name, elapsed_ms)
+    _record_tool_request(
+        tool_name,
+        caller=request_meta["caller"],
+        client_id=request_meta["client_id"],
+        request_id=request_meta["request_id"],
+        status="ok",
+        elapsed_ms=elapsed_ms,
+    )
+    logger.info("mcp tool ok: %s caller=%s (%dms)", tool_name, request_meta["caller"], elapsed_ms)
     return result
 
 
@@ -289,9 +418,33 @@ async def _execute_tool_sync_async(
     """Run a sync MCP tool under the shared async governance envelope."""
     timeout_seconds = _MCP_TOOL_TIMEOUT_SECONDS if tool_timeout is None else tool_timeout
     response_truncator = kwargs.get("_truncate_response", _truncate_response)
+    request_meta = _current_tool_request()
+    retry_after = _check_caller_rate_limit(request_meta["caller"] or "local")
+    if retry_after is not None:
+        _record_tool_metric(tool_name, elapsed_ms=0, success=False, error="rate limited")
+        _record_tool_request(
+            tool_name,
+            caller=request_meta["caller"],
+            client_id=request_meta["client_id"],
+            request_id=request_meta["request_id"],
+            status="rate_limited",
+            elapsed_ms=0,
+            error="rate limited",
+        )
+        logger.warning("mcp tool rate limited: %s caller=%s retry_after=%.3fs", tool_name, request_meta["caller"], retry_after)
+        return response_truncator(
+            json.dumps(
+                {
+                    "error": f"Tool '{tool_name}' exceeded the caller rate limit",
+                    "tool": tool_name,
+                    "rate_limited": True,
+                    "retry_after_seconds": retry_after,
+                }
+            )
+        )
     async with _get_tool_semaphore():
         start = time.perf_counter()
-        logger.info("mcp tool start: %s", tool_name)
+        logger.info("mcp tool start: %s caller=%s request_id=%s", tool_name, request_meta["caller"], request_meta["request_id"])
         try:
             result = await asyncio.wait_for(
                 asyncio.to_thread(handler, *args, **kwargs),
@@ -306,7 +459,16 @@ async def _execute_tool_sync_async(
                 timed_out=True,
                 error=f"timed out after {timeout_seconds:.1f}s",
             )
-            logger.warning("mcp tool timed out: %s after %.1fs", tool_name, timeout_seconds)
+            _record_tool_request(
+                tool_name,
+                caller=request_meta["caller"],
+                client_id=request_meta["client_id"],
+                request_id=request_meta["request_id"],
+                status="timeout",
+                elapsed_ms=elapsed_ms,
+                error=f"timed out after {timeout_seconds:.1f}s",
+            )
+            logger.warning("mcp tool timed out: %s caller=%s after %.1fs", tool_name, request_meta["caller"], timeout_seconds)
             return response_truncator(
                 json.dumps(
                     {
@@ -320,11 +482,28 @@ async def _execute_tool_sync_async(
             elapsed_ms = int((time.perf_counter() - start) * 1000)
             sanitized = sanitize_error(exc)
             _record_tool_metric(tool_name, elapsed_ms=elapsed_ms, success=False, error=sanitized)
-            logger.warning("mcp tool failed: %s (%s)", tool_name, sanitized)
+            _record_tool_request(
+                tool_name,
+                caller=request_meta["caller"],
+                client_id=request_meta["client_id"],
+                request_id=request_meta["request_id"],
+                status="error",
+                elapsed_ms=elapsed_ms,
+                error=sanitized,
+            )
+            logger.warning("mcp tool failed: %s caller=%s (%s)", tool_name, request_meta["caller"], sanitized)
             raise
         elapsed_ms = int((time.perf_counter() - start) * 1000)
         _record_tool_metric(tool_name, elapsed_ms=elapsed_ms, success=True)
-        logger.info("mcp tool ok: %s (%dms)", tool_name, elapsed_ms)
+        _record_tool_request(
+            tool_name,
+            caller=request_meta["caller"],
+            client_id=request_meta["client_id"],
+            request_id=request_meta["request_id"],
+            status="ok",
+            elapsed_ms=elapsed_ms,
+        )
+        logger.info("mcp tool ok: %s caller=%s (%dms)", tool_name, request_meta["caller"], elapsed_ms)
         return result
 
 
@@ -366,6 +545,8 @@ _registry_cache: dict | None = None
 _registry_raw_cache: str | None = None
 _tool_metrics: OrderedDict[str, dict[str, Any]] = OrderedDict()
 _loop_tool_semaphores: OrderedDict[int, asyncio.Semaphore] = OrderedDict()
+_caller_rate_windows: OrderedDict[str, deque[float]] = OrderedDict()
+_recent_tool_requests: deque[dict[str, Any]] = deque(maxlen=_MCP_MAX_REQUEST_TRACES)
 _MAX_CACHED_TOOL_LOOPS = 8
 
 

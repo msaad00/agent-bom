@@ -24,7 +24,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agent_bom.api.oidc import OIDCConfig, OIDCError, claims_to_role
+from agent_bom.api.oidc import OIDCConfig, OIDCError, claims_to_role, claims_to_tenant
 
 # ── OIDCConfig ────────────────────────────────────────────────────────────────
 
@@ -70,6 +70,23 @@ def test_oidc_config_custom_role_claim():
     assert cfg.role_claim == "custom_role"
 
 
+def test_oidc_config_custom_tenant_claim():
+    cfg = OIDCConfig(issuer="https://x.com", tenant_claim="org_slug")
+    assert cfg.tenant_claim == "org_slug"
+
+
+def test_oidc_config_require_tenant_claim_from_env():
+    with patch.dict(
+        os.environ,
+        {
+            "AGENT_BOM_OIDC_ISSUER": "https://test.okta.com",
+            "AGENT_BOM_OIDC_REQUIRE_TENANT_CLAIM": "true",
+        },
+    ):
+        cfg = OIDCConfig.from_env()
+        assert cfg.require_tenant_claim is True
+
+
 # ── claims_to_role ────────────────────────────────────────────────────────────
 
 
@@ -111,6 +128,18 @@ def test_claims_roles_array_analyst():
 
 def test_claims_permissions_array_admin():
     assert claims_to_role({"permissions": ["administrator"]}) == "admin"
+
+
+def test_claims_to_tenant_direct_claim():
+    assert claims_to_tenant({"tenant_id": "tenant-alpha"}) == "tenant-alpha"
+
+
+def test_claims_to_tenant_alias():
+    assert claims_to_tenant({"tid": "tenant-beta"}) == "tenant-beta"
+
+
+def test_claims_to_tenant_custom_claim():
+    assert claims_to_tenant({"org_slug": "tenant-gamma"}, tenant_claim="org_slug") == "tenant-gamma"
 
 
 # ── verify_oidc_token ─────────────────────────────────────────────────────────
@@ -163,6 +192,17 @@ def test_oidc_config_verify_returns_claims_and_role():
 
     assert claims["email"] == "user@example.com"
     assert role == "analyst"
+
+
+def test_oidc_config_resolve_tenant_defaults_when_not_required():
+    cfg = OIDCConfig(issuer="https://corp.example.com")
+    assert cfg.resolve_tenant({"sub": "user-1"}) == "default"
+
+
+def test_oidc_config_resolve_tenant_raises_when_required_claim_missing():
+    cfg = OIDCConfig(issuer="https://corp.example.com", require_tenant_claim=True)
+    with pytest.raises(OIDCError, match="tenant claim"):
+        cfg.resolve_tenant({"sub": "user-1"})
 
 
 # ── API middleware OIDC integration ───────────────────────────────────────────

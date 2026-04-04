@@ -9,6 +9,8 @@ Configuration via environment variables::
     AGENT_BOM_OIDC_ISSUER   = "https://accounts.google.com"
     AGENT_BOM_OIDC_AUDIENCE = "agent-bom"            # optional, defaults to ISSUER
     AGENT_BOM_OIDC_ROLE_CLAIM = "agent_bom_role"      # optional JWT claim for role
+    AGENT_BOM_OIDC_TENANT_CLAIM = "tenant_id"         # optional JWT claim for tenant
+    AGENT_BOM_OIDC_REQUIRE_TENANT_CLAIM = "1"         # fail closed when claim absent
 
 Role mapping (claim value → agent-bom Role):
 
@@ -218,6 +220,20 @@ def claims_to_role(claims: dict, role_claim: str = "agent_bom_role") -> str:
     return "viewer"
 
 
+def claims_to_tenant(claims: dict, tenant_claim: str = "tenant_id") -> str | None:
+    """Map OIDC JWT claims to a tenant identifier."""
+    tenant_val = claims.get(tenant_claim)
+    if tenant_val not in (None, ""):
+        return str(tenant_val)
+
+    if tenant_claim == "tenant_id":
+        for alias in ("tid", "tenant", "org_id", "organization_id"):
+            alias_val = claims.get(alias)
+            if alias_val not in (None, ""):
+                return str(alias_val)
+    return None
+
+
 # ── OIDCConfig helper ──────────────────────────────────────────────────────────
 
 
@@ -238,11 +254,21 @@ class OIDCConfig:
         audience: Optional[str] = None,
         role_claim: str = "agent_bom_role",
         jwks_uri: Optional[str] = None,
+        tenant_claim: str = "tenant_id",
+        require_tenant_claim: Optional[bool] = None,
     ) -> None:
         self.issuer = issuer or os.environ.get("AGENT_BOM_OIDC_ISSUER", "")
         self.audience = audience or os.environ.get("AGENT_BOM_OIDC_AUDIENCE", self.issuer) or None
         self.role_claim = role_claim or os.environ.get("AGENT_BOM_OIDC_ROLE_CLAIM", "agent_bom_role")
         self.jwks_uri = jwks_uri or os.environ.get("AGENT_BOM_OIDC_JWKS_URI", "") or None
+        self.tenant_claim = tenant_claim or os.environ.get("AGENT_BOM_OIDC_TENANT_CLAIM", "tenant_id")
+        if require_tenant_claim is None:
+            require_tenant_claim = os.environ.get("AGENT_BOM_OIDC_REQUIRE_TENANT_CLAIM", "").strip().lower() in {
+                "1",
+                "true",
+                "yes",
+            }
+        self.require_tenant_claim = require_tenant_claim
         self.enabled = bool(self.issuer)
 
     def verify(self, token: str) -> tuple[dict, str]:
@@ -256,6 +282,15 @@ class OIDCConfig:
         claims = verify_oidc_token(token, self.issuer, self.audience, self.jwks_uri)
         role = claims_to_role(claims, self.role_claim)
         return claims, role
+
+    def resolve_tenant(self, claims: dict) -> str:
+        """Resolve tenant context from claims or fail closed when required."""
+        tenant_id = claims_to_tenant(claims, self.tenant_claim)
+        if tenant_id:
+            return tenant_id
+        if self.require_tenant_claim:
+            raise OIDCError(f"JWT missing required tenant claim '{self.tenant_claim}'")
+        return "default"
 
     @classmethod
     def from_env(cls) -> "OIDCConfig":

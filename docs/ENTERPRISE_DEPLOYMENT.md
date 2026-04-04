@@ -103,6 +103,18 @@ agent-bom serve --port 8422 --persist jobs.db
 - `GET /v1/compliance` — 14-framework compliance posture
 
 **Authentication:** localhost binds are allowed for local development. Non-loopback binds fail closed unless you set `AGENT_BOM_API_KEY`, configure `AGENT_BOM_OIDC_ISSUER`, or explicitly pass `--allow-insecure-no-auth`. Rate limiting and CORS controls are built in.
+
+For OIDC-backed enterprise deployments, keep tenant scoping explicit in the token contract:
+
+```bash
+export AGENT_BOM_OIDC_ISSUER="https://idp.example.com"
+export AGENT_BOM_OIDC_AUDIENCE="agent-bom"
+export AGENT_BOM_OIDC_ROLE_CLAIM="agent_bom_role"
+export AGENT_BOM_OIDC_TENANT_CLAIM="tenant_id"      # or a custom claim like org_slug
+export AGENT_BOM_OIDC_REQUIRE_TENANT_CLAIM=1        # fail closed if the claim is absent
+```
+
+That keeps API roles and tenant boundaries aligned with the upstream identity provider instead of silently falling back to a shared tenant when you expect strict isolation.
 **Storage:** SQLite (single node), PostgreSQL (team), Snowflake/ClickHouse (enterprise).
 
 ### 4. Cloud Infrastructure — agentless discovery

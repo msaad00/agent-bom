@@ -239,6 +239,15 @@ def test_dockerfiles_support_proxy_and_ca_contract():
             assert token in content, f"{dockerfile.name} missing {token}"
 
 
+def test_runtime_dockerfile_builds_from_repo_source():
+    """Runtime image should install agent-bom from the checked-out source tree, not PyPI."""
+    content = (ROOT / "deploy" / "docker" / "Dockerfile.runtime").read_text()
+    assert "COPY pyproject.toml README.md LICENSE ./" in content
+    assert "COPY src/ ./src/" in content
+    assert 'pip install --no-cache-dir --prefix=/install ".[runtime]"' in content
+    assert "agent-bom==${VERSION}" not in content
+
+
 def test_compose_examples_pass_through_proxy_and_ca_env():
     """Compose examples should expose the same enterprise network env contract."""
     compose_files = [

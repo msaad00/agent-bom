@@ -14,7 +14,8 @@
 FROM python:3.12.13-slim@sha256:7026274c107626d7e940e0e5d6730481a4600ae95d5ca7eb532dd4180313fea9 AS builder
 
 WORKDIR /app
-COPY LICENSE ./
+COPY pyproject.toml README.md LICENSE ./
+COPY src/ ./src/
 
 ARG VERSION=0.75.13
 ARG HTTP_PROXY
@@ -34,7 +35,7 @@ ENV HTTP_PROXY=${HTTP_PROXY} \
 
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir --prefix=/install agent-bom==${VERSION}
+RUN pip install --no-cache-dir --prefix=/install ".[runtime]"
 
 ## ── Runtime stage ────────────────────────────────────────────────────────────
 FROM python:3.12.13-slim@sha256:7026274c107626d7e940e0e5d6730481a4600ae95d5ca7eb532dd4180313fea9

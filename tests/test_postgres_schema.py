@@ -117,6 +117,18 @@ def test_audit_and_trend_tables_exist_with_rls():
     assert "CREATE POLICY trend_history_tenant_isolation ON trend_history" in SQL
 
 
+def test_remaining_tenant_tables_have_rls():
+    for table in ("findings", "agents", "policy_results", "job_queue"):
+        assert f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY" in SQL
+        assert f"CREATE POLICY {table}_tenant_isolation ON {table}" in SQL
+
+
+def test_schema_summary_comment_is_current():
+    assert "--  Schema (14 tables):" in SQL
+    assert "--   audit_log          — signed API/security audit trail" in SQL
+    assert "--   trend_history      — persisted posture/vulnerability history" in SQL
+
+
 # ── teams table ───────────────────────────────────────────────────────────────
 
 

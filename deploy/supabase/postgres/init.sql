@@ -552,6 +552,78 @@ BEGIN
 END
 $$;
 
+ALTER TABLE findings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE findings FORCE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'findings'
+          AND policyname = 'findings_tenant_isolation'
+    ) THEN
+        CREATE POLICY findings_tenant_isolation ON findings
+            USING (public.abom_rls_bypass() OR team_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR team_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
+
+ALTER TABLE agents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE agents FORCE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'agents'
+          AND policyname = 'agents_tenant_isolation'
+    ) THEN
+        CREATE POLICY agents_tenant_isolation ON agents
+            USING (public.abom_rls_bypass() OR team_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR team_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
+
+ALTER TABLE policy_results ENABLE ROW LEVEL SECURITY;
+ALTER TABLE policy_results FORCE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'policy_results'
+          AND policyname = 'policy_results_tenant_isolation'
+    ) THEN
+        CREATE POLICY policy_results_tenant_isolation ON policy_results
+            USING (public.abom_rls_bypass() OR team_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR team_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
+
+ALTER TABLE job_queue ENABLE ROW LEVEL SECURITY;
+ALTER TABLE job_queue FORCE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'job_queue'
+          AND policyname = 'job_queue_tenant_isolation'
+    ) THEN
+        CREATE POLICY job_queue_tenant_isolation ON job_queue
+            USING (public.abom_rls_bypass() OR team_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR team_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
+
 -- ══════════════════════════════════════════════════════════════════════════════
 -- LEAST PRIVILEGE: App user — DML only, no DDL (cannot CREATE/DROP/ALTER)
 -- ══════════════════════════════════════════════════════════════════════════════
@@ -631,7 +703,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO agent_bom_re
 --
 --  Connection: AGENT_BOM_POSTGRES_URL=postgresql://agent_bom_app:<pw>@<host>:5432/agent_bom
 --
---  Schema (12 tables):
+--  Schema (14 tables):
 --   teams              — multi-tenant team registry (FK root)
 --   scan_jobs          — async scan job lifecycle + full result JSONB
 --   findings           — normalized vulnerability findings (per scan, per CVE)
@@ -642,5 +714,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO agent_bom_re
 --   fleet_agents       — governed agent lifecycle (long-lived)
 --   gateway_policies   — runtime MCP enforcement policies
 --   policy_audit_log   — runtime policy audit trail (HMAC-verified)
+--   audit_log          — signed API/security audit trail
+--   trend_history      — persisted posture/vulnerability history
 --   scan_schedules     — recurring scan cron configuration
 --   osv_cache          — OSV vulnerability API response cache

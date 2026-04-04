@@ -9,6 +9,7 @@ agent-bom has 7,000+ monthly installs. Every contribution directly improves secu
 - [Development workflow](#development-workflow)
 - [Tests](#tests)
 - [Code style](#code-style)
+- [Dependency updates](#dependency-updates)
 - [Submitting a PR](#submitting-a-pr)
 - [Architecture overview](#architecture-overview)
 - [Security reports](#security-reports)
@@ -123,6 +124,27 @@ Pre-commit hooks enforce ruff on every commit. Install once with `pre-commit ins
 
 ---
 
+## Dependency updates
+
+Dependency updates are part of the shipped product surface, not background noise.
+
+**Review bar**
+- Patch and minor updates still need green CI, security scan, and release-surface alignment.
+- Major updates need a short human review of upstream release notes before merge.
+- If an update changes user-visible behavior, contracts, runtime assumptions, or packaging, call that out in the PR body and release notes where applicable.
+- Do not merge “green but unexplained” upgrades. We should be able to say what changed, why it is safe, and what we validated.
+
+**For Dependabot and manual upgrade PRs include**
+- the package and version change
+- whether it is patch, minor, or major
+- any breaking-change risk or notable upstream release-note items
+- what was validated locally or in CI
+- whether docs, examples, pins, or release-managed files also needed updating
+
+This keeps update history readable for operators and makes package maintenance look intentional rather than accidental.
+
+---
+
 ## Submitting a PR
 
 1. **Branch from main** and name it `feat/`, `fix/`, `docs/`, or `chore/`.
@@ -141,6 +163,15 @@ CI checks that run on every PR:
 - Docker build
 
 **Commit style:** `type: short description` — types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`.
+
+For dependency PRs, prefer a one-line summary in the body such as:
+
+```md
+Upgrade type: minor
+Release notes reviewed: yes
+Breaking changes expected: no
+Validation: CI + targeted local tests
+```
 
 ---
 

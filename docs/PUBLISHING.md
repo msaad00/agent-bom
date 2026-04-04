@@ -131,6 +131,13 @@ Release operators should also review:
 - [`docs/GOLDEN_IMAGE_PROGRAM.md`](GOLDEN_IMAGE_PROGRAM.md)
 - [`security/image-exceptions.yaml`](../security/image-exceptions.yaml)
 
+For dependency-heavy or security-driven releases, also verify:
+
+- notable upgrade PRs include a short release-note summary
+- major dependency bumps were reviewed for breaking changes before merge
+- any user-visible install, auth, or deployment changes are called out in the GitHub Release notes
+- deployed health/version/freshness surfaces still report the same release version after publish
+
 ---
 
 ## Platform Status

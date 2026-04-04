@@ -94,6 +94,13 @@ agent-bom serve                         # API + Next.js dashboard
 | **Enterprise fleet** | Deploy `agent-bom serve` in its own container or namespace with API keys or OIDC-backed role checks and a real backend. Use the CLI or Action on endpoints and repos; use the API for fleet visibility. |
 | **Air-gapped / isolated** | Pre-sync the local DB, copy the cache, and run with `--offline` or `auto-update-db: false`. |
 
+## Update and release hygiene
+
+- Releases are signed and published from tagged CI, not local ad hoc steps.
+- Dependency updates are expected to carry release-note context when they are major or behavior-affecting.
+- Remote package, API, and MCP deployment surfaces should all report the same version and health state after release.
+- Automated freshness checks watch for deployment drift so stale Railway or registry surfaces do not go unnoticed.
+
 <details>
 <summary><b>Claude, Cortex, and MCP integration</b></summary>
 

@@ -185,18 +185,42 @@ def scan_model_manifests(
     directory: str | Path,
 ) -> tuple[list[dict], list[str]]:
     """Scan a directory for model bundle manifests and lineage metadata."""
+    raw_directory = os.fspath(directory).strip()
+    if not raw_directory:
+        return [], ["Model manifest scan: directory is empty"]
+
     try:
-        directory = _safe_resolve_directory(directory)
+        safe_root = _safe_resolve_directory(raw_directory)
     except ValueError as exc:
         logger.warning("Model manifest scan refused: %s", exc)
         return [], [f"Model manifest scan: {exc}"]
-    if not directory.is_dir():
-        return [], [f"Model manifest scan: {directory} is not a directory"]
+
+    # Re-derive the scan root from a validated absolute string so CodeQL can
+    # see the path containment check at this sink, not only in the helper.
+    safe_directory = os.path.realpath(os.fspath(safe_root))
+    allowed_roots = {
+        os.path.realpath(str(Path.home())),
+        os.path.realpath(str(Path.cwd())),
+        os.path.realpath(tempfile.gettempdir()),
+    }
+    extra_roots = os.environ.get("AGENT_BOM_SAFE_SCAN_ROOTS", "")
+    for root in extra_roots.split(os.pathsep):
+        root = root.strip()
+        if root:
+            allowed_roots.add(os.path.realpath(root))
+
+    if not any(os.path.commonpath([root, safe_directory]) == root for root in allowed_roots):
+        logger.warning("Model manifest scan refused outside safe roots: %s", safe_directory)
+        return [], [f"Model manifest scan: Directory escapes safe scan roots: {safe_directory}"]
+
+    scan_root = Path(safe_directory)
+    if not scan_root.is_dir():
+        return [], [f"Model manifest scan: {scan_root} is not a directory"]
 
     manifests: list[dict] = []
     warnings: list[str] = []
 
-    for file_path in sorted(directory.rglob("*.json")):
+    for file_path in sorted(scan_root.rglob("*.json")):
         if any(part.startswith(".") for part in file_path.parts):
             continue
 

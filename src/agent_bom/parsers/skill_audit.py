@@ -380,6 +380,7 @@ _BEHAVIORAL_PATTERNS: list[_BehavioralPattern] = [
 ]
 
 _PYTHON_FENCED_BLOCK_RE = re.compile(r"```(?:python|py)\s*\n([\s\S]*?)```", re.IGNORECASE)
+_JS_TS_FENCED_BLOCK_RE = re.compile(r"```(?:javascript|js|typescript|ts|tsx|jsx)\s*\n([\s\S]*?)```", re.IGNORECASE)
 
 _DYNAMIC_CODE_CALLS = {"eval", "exec", "compile", "__import__"}
 _SUBPROCESS_CALLS = {
@@ -400,6 +401,42 @@ _FILE_MUTATION_CALLS = {
     "Path.rename",
     "Path.replace",
 }
+_JS_DYNAMIC_CODE_CALLS = {"eval", "Function"}
+_JS_SUBPROCESS_CALLS = {
+    "exec",
+    "execSync",
+    "spawn",
+    "spawnSync",
+    "fork",
+    "child_process.exec",
+    "child_process.execSync",
+    "child_process.spawn",
+    "child_process.spawnSync",
+    "child_process.fork",
+}
+_JS_FILE_MUTATION_CALLS = {
+    "fs.writeFile",
+    "fs.writeFileSync",
+    "fs.appendFile",
+    "fs.appendFileSync",
+    "fs.unlink",
+    "fs.unlinkSync",
+    "fs.rm",
+    "fs.rmSync",
+    "fs.rename",
+    "fs.renameSync",
+    "fs.promises.writeFile",
+    "fs.promises.appendFile",
+    "fs.promises.unlink",
+    "fs.promises.rm",
+    "fs.promises.rename",
+    "Bun.write",
+    "Deno.writeTextFile",
+    "Deno.writeFile",
+    "Deno.remove",
+    "Deno.rename",
+}
+_JS_CALL_RE = re.compile(r"\b(?:[A-Za-z_$][\w$]*\.)*[A-Za-z_$][\w$]*\s*\(")
 
 
 # ── Behavioral scanning function ─────────────────────────────────────────────
@@ -547,6 +584,150 @@ def _scan_python_ast_risks(raw_content: dict[str, str]) -> list[SkillFinding]:
     return findings
 
 
+def _strip_js_strings_and_comments(code: str) -> str:
+    """Remove JS/TS strings and comments while preserving call structure."""
+    result: list[str] = []
+    i = 0
+    length = len(code)
+    state = "code"
+    quote = ""
+
+    while i < length:
+        char = code[i]
+        nxt = code[i + 1] if i + 1 < length else ""
+
+        if state == "code":
+            if char == "/" and nxt == "/":
+                state = "line_comment"
+                result.extend("  ")
+                i += 2
+                continue
+            if char == "/" and nxt == "*":
+                state = "block_comment"
+                result.extend("  ")
+                i += 2
+                continue
+            if char in {"'", '"', "`"}:
+                state = "string"
+                quote = char
+                result.append(" ")
+                i += 1
+                continue
+            result.append(char)
+            i += 1
+            continue
+
+        if state == "line_comment":
+            if char == "\n":
+                state = "code"
+                result.append("\n")
+            else:
+                result.append(" ")
+            i += 1
+            continue
+
+        if state == "block_comment":
+            if char == "*" and nxt == "/":
+                state = "code"
+                result.extend("  ")
+                i += 2
+            else:
+                result.append("\n" if char == "\n" else " ")
+                i += 1
+            continue
+
+        if state == "string":
+            if char == "\\" and i + 1 < length:
+                result.extend("  ")
+                i += 2
+                continue
+            if char == quote:
+                state = "code"
+                quote = ""
+                result.append(" ")
+            else:
+                result.append("\n" if char == "\n" else " ")
+            i += 1
+            continue
+
+    return "".join(result)
+
+
+def _scan_js_ts_semantic_risks(raw_content: dict[str, str]) -> list[SkillFinding]:
+    """Scan JS/TS fenced code blocks for semantic risk patterns."""
+    findings: list[SkillFinding] = []
+
+    for filename, content in raw_content.items():
+        seen_categories: set[str] = set()
+        for block in _JS_TS_FENCED_BLOCK_RE.findall(content):
+            normalized = _strip_js_strings_and_comments(block)
+            call_names = {match.group(0).rstrip("(").strip() for match in _JS_CALL_RE.finditer(normalized)}
+            if re.search(r"\bnew\s+Function\s*\(", normalized):
+                call_names.add("Function")
+
+            if _JS_DYNAMIC_CODE_CALLS & call_names and "ast_js_dynamic_code_execution" not in seen_categories:
+                call_name = sorted(_JS_DYNAMIC_CODE_CALLS & call_names)[0]
+                seen_categories.add("ast_js_dynamic_code_execution")
+                findings.append(
+                    SkillFinding(
+                        severity="high",
+                        category="ast_js_dynamic_code_execution",
+                        title="JS/TS code analysis detected dynamic code execution",
+                        detail=(
+                            f"Detected `{call_name}` in a JS/TS code block in {filename}. "
+                            "Dynamic evaluation makes instruction surfaces harder to review and can hide unsafe behavior."
+                        ),
+                        source_file=filename,
+                        recommendation=(
+                            "Remove dynamic code execution from skill code blocks or replace it with explicit, reviewable logic."
+                        ),
+                        context="code_block",
+                    )
+                )
+
+            if _JS_SUBPROCESS_CALLS & call_names and "ast_js_shell_execution" not in seen_categories:
+                call_name = sorted(_JS_SUBPROCESS_CALLS & call_names)[0]
+                seen_categories.add("ast_js_shell_execution")
+                findings.append(
+                    SkillFinding(
+                        severity="high",
+                        category="ast_js_shell_execution",
+                        title="JS/TS code analysis detected shell/process execution",
+                        detail=(
+                            f"Detected `{call_name}` in a JS/TS code block in {filename}. "
+                            "Process execution expands the skill's authority and increases command-injection risk."
+                        ),
+                        source_file=filename,
+                        recommendation=(
+                            "Avoid child-process execution in reusable skills unless the action is narrowly scoped and explicitly reviewed."
+                        ),
+                        context="code_block",
+                    )
+                )
+
+            if _JS_FILE_MUTATION_CALLS & call_names and "ast_js_file_mutation" not in seen_categories:
+                call_name = sorted(_JS_FILE_MUTATION_CALLS & call_names)[0]
+                seen_categories.add("ast_js_file_mutation")
+                findings.append(
+                    SkillFinding(
+                        severity="medium",
+                        category="ast_js_file_mutation",
+                        title="JS/TS code analysis detected file mutation",
+                        detail=(
+                            f"Detected mutating file operation `{call_name}` in a JS/TS code block in {filename}. "
+                            "File writes and deletions can change agent memory, repo state, or local trust boundaries."
+                        ),
+                        source_file=filename,
+                        recommendation=(
+                            "Require explicit review for JS/TS file mutations and avoid write/delete flows in reusable skill instructions."
+                        ),
+                        context="code_block",
+                    )
+                )
+
+    return findings
+
+
 _BEHAVIOR_FAMILIES: dict[str, str] = {
     "shell_access": "code_execution",
     "dangerous_tool": "code_execution",
@@ -558,6 +739,9 @@ _BEHAVIOR_FAMILIES: dict[str, str] = {
     "ast_dynamic_code_execution": "code_execution",
     "ast_shell_execution": "code_execution",
     "ast_file_mutation": "code_execution",
+    "ast_js_dynamic_code_execution": "code_execution",
+    "ast_js_shell_execution": "code_execution",
+    "ast_js_file_mutation": "code_execution",
     "external_url": "network_access",
     "network_exposure": "network_access",
     "messaging_capability": "network_access",
@@ -749,6 +933,7 @@ def audit_skill_result(result: SkillScanResult) -> SkillAuditResult:
         behavioral_findings = _scan_behavioral_risks(result.raw_content)
         audit.findings.extend(behavioral_findings)
         audit.findings.extend(_scan_python_ast_risks(result.raw_content))
+        audit.findings.extend(_scan_js_ts_semantic_risks(result.raw_content))
 
     # ── Metadata quality checks (SKILL.md frontmatter) ───────────────
     if result.metadata is not None:

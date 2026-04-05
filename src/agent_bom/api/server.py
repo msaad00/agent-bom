@@ -30,6 +30,7 @@ from agent_bom.api.models import (
     ScanJob,
     ScanRequest,
     StepStatus,  # noqa: F401 — re-exported for tests
+    TracingHealth,
     VersionInfo,
 )
 from agent_bom.api.stores import (
@@ -48,7 +49,7 @@ from agent_bom.api.stores import (
     set_schedule_store,
     set_trend_store,
 )
-from agent_bom.api.tracing import configure_otel_tracing
+from agent_bom.api.tracing import configure_otel_tracing, get_tracing_health
 from agent_bom.config import API_JOB_TTL_SECONDS as _JOB_TTL_SECONDS
 from agent_bom.config import API_MAX_CONCURRENT_JOBS as _MAX_CONCURRENT_JOBS  # noqa: F401 — re-exported for tests
 
@@ -371,7 +372,7 @@ async def root() -> RedirectResponse:
 @app.get("/health", response_model=HealthResponse, tags=["meta"])
 async def health() -> HealthResponse:
     """Liveness probe."""
-    return HealthResponse(status="ok", version=__version__)
+    return HealthResponse(status="ok", version=__version__, tracing=TracingHealth(**get_tracing_health()))
 
 
 @app.get("/version", response_model=VersionInfo, tags=["meta"])

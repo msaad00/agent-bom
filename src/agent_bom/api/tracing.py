@@ -6,7 +6,7 @@ import logging
 import os
 import re
 import secrets
-from typing import Any
+from typing import Any, TypedDict
 
 from agent_bom import __version__
 
@@ -15,6 +15,16 @@ _logger = logging.getLogger(__name__)
 _TRACEPARENT_RE = re.compile(r"^00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$")
 _otel_tracing_state = "unconfigured"
 _MAX_TRACESTATE_BYTES = 512
+_MAX_BAGGAGE_BYTES = 512
+
+
+class TracingHealthSnapshot(TypedDict):
+    w3c_trace_context: bool
+    w3c_tracestate: bool
+    w3c_baggage: bool
+    otlp_export: str
+    otlp_endpoint_configured: bool
+    otlp_headers_configured: bool
 
 
 def _random_trace_id() -> str:
@@ -57,10 +67,22 @@ def parse_tracestate(header_value: str | None) -> str | None:
     return value[:_MAX_TRACESTATE_BYTES]
 
 
+def parse_baggage(header_value: str | None) -> str | None:
+    """Return bounded W3C baggage entries when present."""
+    if not header_value:
+        return None
+    entries = [entry.strip() for entry in header_value.split(",") if entry.strip()]
+    if not entries:
+        return None
+    value = ",".join(entries)
+    return value[:_MAX_BAGGAGE_BYTES]
+
+
 def make_request_trace(headers: dict[str, Any]) -> dict[str, str | bool | None]:
     """Create request trace metadata from incoming headers or fresh IDs."""
     incoming = parse_traceparent(str(headers.get("traceparent", "")))
     tracestate = parse_tracestate(str(headers.get("tracestate", "")))
+    baggage = parse_baggage(str(headers.get("baggage", "")))
     trace_id = incoming["trace_id"] if incoming else _random_trace_id()
     parent_span_id = incoming["parent_span_id"] if incoming else None
     trace_flags = incoming["trace_flags"] if incoming else "01"
@@ -72,6 +94,7 @@ def make_request_trace(headers: dict[str, Any]) -> dict[str, str | bool | None]:
         "trace_flags": trace_flags,
         "traceparent": build_traceparent(trace_id, span_id, trace_flags),
         "tracestate": tracestate,
+        "baggage": baggage,
         "incoming_traceparent": bool(incoming),
     }
 
@@ -129,3 +152,20 @@ def configure_otel_tracing() -> bool:
     _otel_tracing_state = "configured"
     _logger.info("OTLP tracing enabled for agent-bom API: %s", endpoint)
     return True
+
+
+def get_tracing_health() -> TracingHealthSnapshot:
+    """Return stable operator-facing tracing health/status metadata."""
+    endpoint = os.environ.get("AGENT_BOM_OTEL_TRACES_ENDPOINT", "").strip()
+    headers = os.environ.get("AGENT_BOM_OTEL_TRACES_HEADERS", "").strip()
+    state = _otel_tracing_state
+    if state == "unconfigured" and not endpoint:
+        state = "disabled"
+    return {
+        "w3c_trace_context": True,
+        "w3c_tracestate": True,
+        "w3c_baggage": True,
+        "otlp_export": state,
+        "otlp_endpoint_configured": bool(endpoint),
+        "otlp_headers_configured": bool(headers),
+    }

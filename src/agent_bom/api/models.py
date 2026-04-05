@@ -119,9 +119,19 @@ class VersionInfo(BaseModel):
     python_package: str = "agent-bom"
 
 
+class TracingHealth(BaseModel):
+    w3c_trace_context: bool = True
+    w3c_tracestate: bool = True
+    w3c_baggage: bool = True
+    otlp_export: str = "disabled"
+    otlp_endpoint_configured: bool = False
+    otlp_headers_configured: bool = False
+
+
 class HealthResponse(BaseModel):
     status: str = "ok"
     version: str
+    tracing: TracingHealth
 
 
 # ─── Fleet Models ──────────────────────────────────────────────────────────

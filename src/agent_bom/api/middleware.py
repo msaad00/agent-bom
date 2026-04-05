@@ -118,6 +118,7 @@ class TrustHeadersMiddleware(BaseHTTPMiddleware):
         request.state.parent_span_id = trace_meta["parent_span_id"]
         request.state.traceparent = trace_meta["traceparent"]
         request.state.tracestate = trace_meta["tracestate"]
+        request.state.baggage = trace_meta["baggage"]
         if not hasattr(request.state, "tenant_id"):
             request.state.tenant_id = "default"
         tenant_token = None
@@ -141,6 +142,8 @@ class TrustHeadersMiddleware(BaseHTTPMiddleware):
                     span.set_attribute("agent_bom.parent_span_id", str(trace_meta["parent_span_id"]))
                 if trace_meta["tracestate"]:
                     span.set_attribute("agent_bom.tracestate_present", True)
+                if trace_meta["baggage"]:
+                    span.set_attribute("agent_bom.baggage_present", True)
             if os.environ.get("AGENT_BOM_POSTGRES_URL"):
                 from agent_bom.api.postgres_store import set_current_tenant
 
@@ -191,6 +194,8 @@ class TrustHeadersMiddleware(BaseHTTPMiddleware):
             response.headers["X-Parent-Span-ID"] = str(trace_meta["parent_span_id"])
         if trace_meta["tracestate"]:
             response.headers["tracestate"] = str(trace_meta["tracestate"])
+        if trace_meta["baggage"]:
+            response.headers["baggage"] = str(trace_meta["baggage"])
         response.headers["X-Agent-Bom-Read-Only"] = "true"
         response.headers["X-Agent-Bom-No-Credential-Storage"] = "true"
         response.headers["X-Agent-Bom-Version"] = __version__

@@ -81,8 +81,15 @@ def _safe_resolve_directory(directory: str | Path) -> Path:
     - system temp directory
     - optional extra roots from AGENT_BOM_SAFE_SCAN_ROOTS (os.pathsep-separated)
     """
-    resolved = Path(directory).expanduser().resolve(strict=False)
-    candidate = os.path.realpath(str(resolved))
+    raw_directory = os.fspath(directory).strip()
+    if not raw_directory:
+        raise ValueError("Directory is empty")
+
+    expanded = os.path.expanduser(raw_directory)
+    if os.path.isabs(expanded):
+        candidate = os.path.realpath(expanded)
+    else:
+        candidate = os.path.realpath(os.path.join(os.getcwd(), expanded))
 
     allowed_roots = {
         os.path.realpath(str(Path.home())),

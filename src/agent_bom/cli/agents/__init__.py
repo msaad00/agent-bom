@@ -1491,6 +1491,8 @@ def scan(
         report.ai_inventory_data = ctx.ai_inventory_data
     if ctx.project_inventory_data:
         report.project_inventory_data = ctx.project_inventory_data
+    if ctx.model_hash_verification_data:
+        report.model_hash_verification_data = ctx.model_hash_verification_data
 
     # Attach benchmark reports
     if ctx.cis_benchmark_report is not None:
@@ -1818,6 +1820,15 @@ def scan(
                 _scan_sources.append("secret_scan")
         except Exception:
             pass  # Secret scanning not available
+
+    if report.model_files or report.model_provenance or report.model_hash_verification_data:
+        from agent_bom.model_files import summarize_model_supply_chain
+
+        report.model_supply_chain_data = summarize_model_supply_chain(
+            report.model_files,
+            report.model_provenance,
+            report.model_hash_verification_data,
+        )
 
     # Persist browser extension results to report
     if ctx._browser_ext_results is not None:

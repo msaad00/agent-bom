@@ -10,6 +10,7 @@ import httpx
 from agent_bom.model_files import (
     check_huggingface_provenance,
     check_sigstore_signature,
+    summarize_model_supply_chain,
     verify_model_hash,
 )
 
@@ -110,6 +111,47 @@ class TestCheckSigstoreSignature:
         result = check_sigstore_signature(tmp_path / "nope.bin")
         assert result["signed"] is False
         assert result["security_flags"] == []  # silently skip, no model found
+
+
+class TestSummarizeModelSupplyChain:
+    def test_builds_operator_summary(self):
+        summary = summarize_model_supply_chain(
+            model_files=[
+                {
+                    "filename": "model.safetensors",
+                    "extension": ".safetensors",
+                    "format": "SafeTensors",
+                    "ecosystem": "HuggingFace",
+                    "size_bytes": 1024,
+                    "signed": True,
+                    "security_flags": [],
+                },
+                {
+                    "filename": "adapter.pkl",
+                    "extension": ".pkl",
+                    "format": "Pickle",
+                    "ecosystem": "Python",
+                    "size_bytes": 512,
+                    "signed": False,
+                    "security_flags": [{"type": "PICKLE_DESERIALIZATION"}],
+                },
+            ],
+            model_provenance=[
+                {"model": "org/model-a", "sha256_available": True, "gated": True, "security_flags": []},
+                {"model": "org/model-b", "sha256_available": False, "gated": False, "security_flags": [{"type": "NO_AUTHOR"}]},
+            ],
+            model_hash_verification={"scanned": 2, "verified": 1, "tampered": 1, "unverified": 0, "offline": 0, "has_tampering": True},
+        )
+        assert summary["model_files"] == 2
+        assert summary["signed_files"] == 1
+        assert summary["unsigned_files"] == 1
+        assert summary["unsafe_format_files"] == 1
+        assert summary["files_with_security_flags"] == 1
+        assert summary["provenance_checks"] == 2
+        assert summary["provenance_with_digest"] == 1
+        assert summary["gated_models"] == 1
+        assert summary["provenance_with_security_flags"] == 1
+        assert summary["hash_verification"]["tampered"] == 1
 
 
 # ── check_huggingface_provenance ─────────────────────────────────

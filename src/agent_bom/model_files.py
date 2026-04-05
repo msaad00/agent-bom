@@ -47,6 +47,8 @@ _SECURITY_FLAGS: dict[str, dict] = {
     },
 }
 
+_UNSAFE_MODEL_EXTENSIONS = frozenset({".pt", ".pth", ".pkl", ".joblib", ".bin"})
+
 
 def _human_size(size_bytes: int | float) -> str:
     """Convert bytes to human-readable size string."""
@@ -308,3 +310,72 @@ def check_huggingface_provenance(
         )
 
     return result
+
+
+def summarize_model_supply_chain(
+    model_files: list[dict],
+    model_provenance: list[dict] | None = None,
+    model_hash_verification: dict | None = None,
+) -> dict:
+    """Build a stable summary of model/weight supply-chain coverage.
+
+    This consolidates local model artifact scanning, HuggingFace provenance
+    checks, and optional hash verification into one operator-facing contract
+    that can be surfaced consistently in CLI, JSON, and docs.
+    """
+    provenance = model_provenance or []
+    hash_verification = model_hash_verification or {}
+
+    files_with_flags = 0
+    signed_files = 0
+    unsigned_files = 0
+    unsafe_files = 0
+    total_size_bytes = 0
+    ecosystems: set[str] = set()
+    formats: set[str] = set()
+
+    for model_file in model_files:
+        total_size_bytes += int(model_file.get("size_bytes", 0) or 0)
+        if model_file.get("security_flags"):
+            files_with_flags += 1
+        if model_file.get("signed") is True:
+            signed_files += 1
+        else:
+            unsigned_files += 1
+        if str(model_file.get("extension", "")).lower() in _UNSAFE_MODEL_EXTENSIONS:
+            unsafe_files += 1
+        ecosystem = model_file.get("ecosystem")
+        if ecosystem:
+            ecosystems.add(str(ecosystem))
+        fmt = model_file.get("format")
+        if fmt:
+            formats.add(str(fmt))
+
+    provenance_with_flags = sum(1 for item in provenance if item.get("security_flags"))
+    provenance_with_digest = sum(1 for item in provenance if item.get("has_digest") is True or item.get("sha256_available") is True)
+    gated_models = sum(1 for item in provenance if item.get("is_gated") is True or item.get("gated") is True)
+    sources = sorted({str(item.get("source", "huggingface")) for item in provenance})
+
+    return {
+        "model_files": len(model_files),
+        "total_size_bytes": total_size_bytes,
+        "signed_files": signed_files,
+        "unsigned_files": unsigned_files,
+        "unsafe_format_files": unsafe_files,
+        "files_with_security_flags": files_with_flags,
+        "formats": sorted(formats),
+        "ecosystems": sorted(ecosystems),
+        "provenance_checks": len(provenance),
+        "provenance_with_digest": provenance_with_digest,
+        "gated_models": gated_models,
+        "provenance_with_security_flags": provenance_with_flags,
+        "provenance_sources": sources,
+        "hash_verification": {
+            "scanned": int(hash_verification.get("scanned", 0) or 0),
+            "verified": int(hash_verification.get("verified", 0) or 0),
+            "tampered": int(hash_verification.get("tampered", 0) or 0),
+            "unverified": int(hash_verification.get("unverified", 0) or 0),
+            "offline": int(hash_verification.get("offline", 0) or 0),
+            "has_tampering": bool(hash_verification.get("has_tampering", False)),
+        },
+    }

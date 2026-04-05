@@ -732,6 +732,8 @@ class AIBOMReport:
     prompt_scan_data: Optional[dict] = None  # Serialized PromptScanResult (set by CLI)
     model_files: list[dict] = field(default_factory=list)
     model_provenance: list[dict] = field(default_factory=list)  # HuggingFace provenance results
+    model_hash_verification_data: Optional[dict] = None  # Serialized model hash verification report
+    model_supply_chain_data: Optional[dict] = None  # Consolidated model file/provenance/hash summary
     enforcement_data: Optional[dict] = None  # Serialized EnforcementReport (set by CLI)
     context_graph_data: Optional[dict] = None  # Serialized context graph (set by CLI)
     license_report: Optional[dict] = None  # Serialized license compliance report

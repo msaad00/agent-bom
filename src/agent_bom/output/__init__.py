@@ -97,6 +97,24 @@ def print_summary(report: AIBOMReport) -> None:
             ),
         )
 
+    model_sc = getattr(report, "model_supply_chain_data", None)
+    if model_sc:
+        table.add_row(
+            "Model artifacts",
+            f"{model_sc.get('model_files', 0)} file(s), {model_sc.get('provenance_checks', 0)} provenance check(s)",
+        )
+        table.add_row(
+            "Model integrity",
+            (
+                f"{model_sc.get('signed_files', 0)} signed, "
+                f"{model_sc.get('hash_verification', {}).get('verified', 0)} hash-verified, "
+                f"{model_sc.get('hash_verification', {}).get('tampered', 0)} tampered"
+            ),
+        )
+        model_flags = model_sc.get("files_with_security_flags", 0) + model_sc.get("provenance_with_security_flags", 0)
+        if model_flags:
+            table.add_row("Model risk flags", f"[yellow]{model_flags}[/yellow]")
+
     perf = report.scan_performance_data or {}
     osv = perf.get("osv") or {}
     registry = perf.get("registry") or {}

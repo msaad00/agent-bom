@@ -232,9 +232,28 @@ def run_benchmarks(
         from agent_bom.model_hash import verify_model_hashes as _verify_hashes
 
         _scan_roots = [Path(project)] if project else [Path.home()]
+        _combined_hash_report: dict[str, Any] = {
+            "scanned": 0,
+            "verified": 0,
+            "tampered": 0,
+            "unverified": 0,
+            "offline": 0,
+            "has_tampering": False,
+            "results": [],
+            "roots": [],
+        }
         for _root in _scan_roots:
             with con.status(f"[bold]Verifying model weight hashes under {_root.name}...[/bold]", spinner="dots"):
                 _hash_report = _verify_hashes(str(_root), token=hf_token)
+            _hash_data = _hash_report.to_dict()
+            _combined_hash_report["scanned"] += _hash_data["scanned"]
+            _combined_hash_report["verified"] += _hash_data["verified"]
+            _combined_hash_report["tampered"] += _hash_data["tampered"]
+            _combined_hash_report["unverified"] += _hash_data["unverified"]
+            _combined_hash_report["offline"] += _hash_data["offline"]
+            _combined_hash_report["has_tampering"] = _combined_hash_report["has_tampering"] or _hash_data["has_tampering"]
+            _combined_hash_report["results"].extend(_hash_data["results"])
+            _combined_hash_report["roots"].append(str(_root))
             if _hash_report.scanned == 0:
                 con.print(f"  [dim]No model weight files found under {_root}[/dim]")
             elif _hash_report.has_tampering:
@@ -254,6 +273,7 @@ def run_benchmarks(
                 con.print(
                     f"  [green]✓[/green] {_hash_report.verified} model file(s) verified, {_hash_report.unverified} unverified (not in Hub)"
                 )
+        ctx.model_hash_verification_data = _combined_hash_report
 
     # Step 1y: CIS AWS Foundations Benchmark
     if aws_cis_benchmark:

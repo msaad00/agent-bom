@@ -155,6 +155,18 @@ class TestPrintSummary:
         }
         print_summary(report)
 
+    def test_with_model_supply_chain_data(self, capsys):
+        report = _make_report()
+        report.model_supply_chain_data = {
+            "model_files": 2,
+            "provenance_checks": 1,
+            "signed_files": 1,
+            "files_with_security_flags": 1,
+            "provenance_with_security_flags": 0,
+            "hash_verification": {"verified": 1, "tampered": 0},
+        }
+        print_summary(report)
+
 
 class TestPrintScanPerformanceSummary:
     def test_prints_cache_summary(self, capsys):
@@ -730,6 +742,37 @@ def test_to_json_with_optional_fields():
     assert result.get("executive_summary") == "Test summary"
     assert "skill_audit" in result
     assert "trust_assessment" in result
+
+
+def test_to_json_with_model_supply_chain_fields():
+    report = _make_report_cov2()
+    report.model_hash_verification_data = {
+        "scanned": 2,
+        "verified": 1,
+        "tampered": 0,
+        "unverified": 1,
+        "offline": 0,
+        "has_tampering": False,
+        "results": [],
+    }
+    report.model_supply_chain_data = {
+        "model_files": 2,
+        "signed_files": 1,
+        "unsigned_files": 1,
+        "unsafe_format_files": 1,
+        "files_with_security_flags": 1,
+        "formats": ["Pickle", "SafeTensors"],
+        "ecosystems": ["HuggingFace", "Python"],
+        "provenance_checks": 1,
+        "provenance_with_digest": 1,
+        "gated_models": 0,
+        "provenance_with_security_flags": 0,
+        "provenance_sources": ["huggingface"],
+        "hash_verification": {"scanned": 2, "verified": 1, "tampered": 0, "unverified": 1, "offline": 0, "has_tampering": False},
+    }
+    result = to_json(report)
+    assert result["model_hash_verification"]["verified"] == 1
+    assert result["model_supply_chain"]["model_files"] == 2
 
 
 # ── print_threat_frameworks (from cov2) ──────────────────────────────────────

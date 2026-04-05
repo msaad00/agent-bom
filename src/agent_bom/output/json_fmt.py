@@ -673,6 +673,12 @@ def to_json(report: AIBOMReport) -> dict:
     if report.model_provenance:
         result["model_provenance"] = report.model_provenance
 
+    if report.model_hash_verification_data:
+        result["model_hash_verification"] = report.model_hash_verification_data
+
+    if report.model_supply_chain_data:
+        result["model_supply_chain"] = report.model_supply_chain_data
+
     if report.enforcement_data:
         result["enforcement"] = report.enforcement_data
 

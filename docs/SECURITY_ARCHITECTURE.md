@@ -98,6 +98,13 @@ For cross-agent correlation and the broader 8-detector protection engine, run `a
 - The TypeScript SDK build is checked to ensure it does not emit `.map` files into `dist/`
 - The UI explicitly disables production browser source maps
 
+### Model / weight supply-chain posture
+
+- `agent-bom` treats model artifacts as supply-chain inputs, not opaque blobs
+- Local model scans surface risky formats, signature presence, and per-file security flags
+- HuggingFace provenance checks surface author, card presence, digest availability, and gated/private posture
+- Hash verification can compare local weights against HuggingFace Hub metadata and report verified, unverified, offline, or tampered states
+
 ### What a Formal Pentest Should Cover
 
 If engaging a third-party auditor, the recommended scope:

@@ -24,7 +24,7 @@ Current repo-derived counts live in [PRODUCT_METRICS.md](PRODUCT_METRICS.md). Th
 
 ### Scanning
 
-The scanner covers package risk, malicious or suspicious package indicators, container layers, IaC, cloud AI surfaces, secrets, and instruction or skill files. Project scans surface lockfile-backed inventory, declaration-only manifests, and direct-versus-transitive package depth so users can tell how much dependency truth they are getting from a scan.
+The scanner covers package risk, malicious or suspicious package indicators, container layers, IaC, cloud AI surfaces, secrets, instruction or skill files, and model or weight supply chain integrity. Project scans surface lockfile-backed inventory, declaration-only manifests, and direct-versus-transitive package depth so users can tell how much dependency truth they are getting from a scan. Model and weight scans surface risky formats, signature presence, provenance checks, and Hub-backed hash verification where available.
 
 ### Blast radius
 
@@ -35,6 +35,8 @@ Blast radius is the product center of gravity. `agent-bom` connects vulnerabilit
 `agent-bom` scores trust with evidence, not a black-box label. It combines package and registry posture, capability risk, drift, exposed credentials, and related supply-chain signals. Policy and compliance layers can then act on those findings with clearer context.
 
 The product also protects its own shipped surfaces with the same discipline: signed releases, provenance, daily dependency monitoring, drift checks, and CI guards for the JavaScript surfaces so accidental source-map leaks or stale npm dependencies do not silently ship.
+
+Model and weight security should be described the same way: not just as file detection, but as a supply-chain contract that surfaces risky formats, signature presence, provenance checks, and Hub-backed hash verification where available.
 
 ### Runtime protection
 

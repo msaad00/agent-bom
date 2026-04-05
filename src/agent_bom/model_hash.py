@@ -50,6 +50,19 @@ class ModelHashResult:
     def is_verified(self) -> bool:
         return self.status == "ok"
 
+    def to_dict(self) -> dict:
+        return {
+            "file_path": self.file_path,
+            "repo_id": self.repo_id,
+            "filename": self.filename,
+            "expected_sha256": self.expected_sha256,
+            "actual_sha256": self.actual_sha256,
+            "status": self.status,
+            "error": self.error,
+            "is_tampered": self.is_tampered,
+            "is_verified": self.is_verified,
+        }
+
 
 @dataclass
 class ModelHashReport:
@@ -74,6 +87,12 @@ class ModelHashReport:
             "unverified": self.unverified,
             "offline": self.offline,
         }
+
+    def to_dict(self) -> dict:
+        data = self.summary()
+        data["has_tampering"] = self.has_tampering
+        data["results"] = [result.to_dict() for result in self.results]
+        return data
 
 
 # ─── Hash computation ─────────────────────────────────────────────────────────

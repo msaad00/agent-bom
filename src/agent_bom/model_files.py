@@ -91,7 +91,7 @@ def scan_model_files(
 
     Warnings are generated for security-relevant findings (e.g., pickle files).
     """
-    directory = Path(directory)
+    directory = Path(directory).resolve(strict=False)
     if not directory.is_dir():
         return [], [f"Model scan: {directory} is not a directory"]
 
@@ -142,7 +142,7 @@ def scan_model_manifests(
     directory: str | Path,
 ) -> tuple[list[dict], list[str]]:
     """Scan a directory for model bundle manifests and lineage metadata."""
-    directory = Path(directory)
+    directory = Path(directory).resolve(strict=False)
     if not directory.is_dir():
         return [], [f"Model manifest scan: {directory} is not a directory"]
 

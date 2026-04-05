@@ -395,23 +395,29 @@ helm install agent-bom deploy/helm/agent-bom/ -n agent-bom --create-namespace \
 | `monitor.port` | `8423` | HTTP port for the protect endpoint |
 | `monitor.service.enabled` | `true` | Expose the monitor DaemonSet through a ClusterIP Service when enabled |
 | `monitor.serviceMonitor.enabled` | `false` | Create a Prometheus Operator ServiceMonitor that scrapes `/metrics` |
+| `monitor.ingress.enabled` | `false` | Create an Ingress for the monitor Service when remote access is needed |
 | `networkPolicy.allowDns` | `true` | Allow outbound DNS resolution on TCP/UDP 53 |
 | `networkPolicy.allowWeb` | `true` | Allow outbound TCP web traffic for registry/API access |
 | `networkPolicy.webPorts` | `[80, 443]` | TCP ports permitted when `allowWeb` is enabled |
 | `networkPolicy.additionalEgress` | `[]` | Extra egress rules for stricter or more specialized environments |
-| `rbac.create` | `true` | Create ClusterRole + ClusterRoleBinding |
+| `pdb.enabled` | `false` | Create a PodDisruptionBudget for the runtime monitor pods |
+| `rbac.create` | `true` | Create the cluster-scoped read RBAC needed for pod and namespace discovery |
 
 When the monitor is enabled, the chart now wires:
 - `livenessProbe` on `/status`
 - `readinessProbe` on `/status`
 - `startupProbe` on `/status`
 - optional Prometheus scraping on `/metrics`
+- optional `Ingress` for the monitor Service
+- optional `PodDisruptionBudget` for voluntary-eviction safety
 
 The chart's default `NetworkPolicy` also avoids unrestricted outbound traffic. By default it permits:
 - DNS resolution on TCP/UDP 53
 - outbound TCP 80/443 for package registries, APIs, and control-plane calls
 
 Use `networkPolicy.additionalEgress` to add tighter environment-specific rules without editing templates.
+
+The chart RBAC is intentionally cluster-scoped today because the monitor and scanner read both pods and namespaces. It is focused cluster-read access rather than a richer workload-specific RBAC partitioning story.
 
 ---
 

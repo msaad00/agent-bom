@@ -124,6 +124,7 @@ def test_helm_values_yaml_keys():
         "readinessProbe",
         "startupProbe",
         "networkPolicy",
+        "pdb",
     }
     assert expected_keys.issubset(set(doc.keys()))
 
@@ -139,6 +140,8 @@ def test_helm_templates_exist():
         "daemonset.yaml",
         "service.yaml",
         "servicemonitor.yaml",
+        "pdb.yaml",
+        "ingress.yaml",
     }
     actual = {f.name for f in templates_dir.iterdir() if f.is_file()}
     assert expected.issubset(actual), f"Missing templates: {expected - actual}"
@@ -164,6 +167,7 @@ def test_helm_monitor_defaults_include_service_and_servicemonitor():
     doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
     assert doc["monitor"]["service"]["enabled"] is True
     assert doc["monitor"]["serviceMonitor"]["enabled"] is False
+    assert doc["monitor"]["ingress"]["enabled"] is False
 
 
 def test_helm_monitor_probes_are_defined():
@@ -182,3 +186,21 @@ def test_helm_network_policy_defaults_are_explicit():
     assert policy["allowWeb"] is True
     assert policy["webPorts"] == [80, 443]
     assert policy["additionalEgress"] == []
+
+
+def test_helm_pdb_defaults_are_defined():
+    """PDB values are explicit and disabled by default."""
+    doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
+    pdb = doc["pdb"]
+    assert pdb["enabled"] is False
+    assert pdb["minAvailable"] == 1
+    assert pdb["maxUnavailable"] is None
+
+
+def test_helm_monitor_ingress_defaults_are_defined():
+    """Ingress values are explicit and disabled by default."""
+    doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
+    ingress = doc["monitor"]["ingress"]
+    assert ingress["enabled"] is False
+    assert ingress["hosts"][0]["paths"][0]["path"] == "/"
+    assert ingress["hosts"][0]["paths"][0]["pathType"] == "Prefix"

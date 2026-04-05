@@ -1,0 +1,20 @@
+{{- if and .Values.monitor.enabled .Values.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "agent-bom.name" . }}-monitor
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-bom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: monitor
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "agent-bom.name" . }}
+      app.kubernetes.io/component: monitor
+  {{- if ne .Values.pdb.maxUnavailable nil }}
+  maxUnavailable: {{ .Values.pdb.maxUnavailable }}
+  {{- else }}
+  minAvailable: {{ .Values.pdb.minAvailable }}
+  {{- end }}
+{{- end }}

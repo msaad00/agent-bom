@@ -107,7 +107,7 @@ def run_local_discovery(
         if inventory == "-":
             label = "stdin"
         elif "agent-bom-demo-" in inventory:
-            label = "bundled demo inventory"
+            label = "curated sample environment"
         elif "agent-bom-self-scan" in inventory:
             label = "self-scan"
         else:

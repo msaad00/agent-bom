@@ -1,6 +1,6 @@
 # Roadmap
 
-This roadmap reflects the current post-`v0.75.14` direction for `agent-bom`.
+This roadmap reflects the current post-`v0.75.15` direction for `agent-bom`.
 It is organized around product phases, not a loose feature wish list.
 
 For the full backlog, see [open issues](https://github.com/msaad00/agent-bom/issues).
@@ -119,7 +119,7 @@ Goal: preserve OSS momentum while making the product easier to extend and adopt.
 
 | Item | Version / PR |
 |------|---------------|
-| `v0.75.14` release across PyPI, Docker, and GitHub Release | `v0.75.14` |
+| `v0.75.15` release across PyPI, Docker, and GitHub Release | `v0.75.15` |
 | GitHub Action hardening: safe argv, pip cache, summaries, cleaner contracts | `#1203`, `#1209` |
 | MCP hardening: remote auth, sync-tool governance, caller rate limiting, metrics, tracing | `#1204`, `#1210`, `#1211` |
 | Docker hardening: Snowpark proxy/CA support, runtime image from source | `#1205`, `#1208` |

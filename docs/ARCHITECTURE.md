@@ -196,7 +196,7 @@ How agent-bom fits into CI/CD, runtime, cloud, and enterprise tooling.
 graph TB
     AB["agent-bom\nCore Engine"]
 
-    CI["CI/CD\nGitHub Actions · Policy Gate · SARIF Upload"]
+    CI["CI/CD\nGitHub Actions · Policy Gate · SARIF Upload · JS supply-chain guard"]
     RT["Runtime\nMCP Proxy · Docker Sidecar · OpenTelemetry"]
     HOSTS["MCP Hosts\n30 client types"]
     CLOUD["Cloud Providers\nAWS · Azure · GCP · Snowflake"]

@@ -102,6 +102,7 @@ agent-bom serve                         # API + Next.js dashboard
 - Dependency updates are expected to carry release-note context when they are major or behavior-affecting.
 - Remote package, API, and MCP deployment surfaces should all report the same version and health state after release.
 - Automated freshness checks watch for deployment drift so stale Railway or registry surfaces do not go unnoticed.
+- The repo monitors both JavaScript surfaces (`ui/` and `sdks/typescript/`) with daily Dependabot, `npm audit`, and CI guards that fail if tracked or published source maps appear unexpectedly.
 
 <details>
 <summary><b>Claude, Cortex, and MCP integration</b></summary>

@@ -34,6 +34,8 @@ Blast radius is the product center of gravity. `agent-bom` connects vulnerabilit
 
 `agent-bom` scores trust with evidence, not a black-box label. It combines package and registry posture, capability risk, drift, exposed credentials, and related supply-chain signals. Policy and compliance layers can then act on those findings with clearer context.
 
+The product also protects its own shipped surfaces with the same discipline: signed releases, provenance, daily dependency monitoring, drift checks, and CI guards for the JavaScript surfaces so accidental source-map leaks or stale npm dependencies do not silently ship.
+
 ### Runtime protection
 
 The runtime story has two levels:

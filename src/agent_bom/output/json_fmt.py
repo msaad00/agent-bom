@@ -735,6 +735,8 @@ def to_json(report: AIBOMReport) -> dict:
         result["browser_extensions"] = report.browser_extensions
     if report.ai_inventory_data:
         result["ai_inventory"] = report.ai_inventory_data
+    if report.project_inventory_data:
+        result["project_inventory"] = report.project_inventory_data
     if report.introspection_data:
         result["introspection"] = report.introspection_data
     if report.health_check_data:

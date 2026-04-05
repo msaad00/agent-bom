@@ -1489,6 +1489,8 @@ def scan(
         report.sast_data = ctx.sast_data
     if ctx.ai_inventory_data:
         report.ai_inventory_data = ctx.ai_inventory_data
+    if ctx.project_inventory_data:
+        report.project_inventory_data = ctx.project_inventory_data
 
     # Attach benchmark reports
     if ctx.cis_benchmark_report is not None:

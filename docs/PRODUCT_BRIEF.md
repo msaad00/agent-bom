@@ -20,11 +20,11 @@ Current repo-derived counts live in [PRODUCT_METRICS.md](PRODUCT_METRICS.md). Th
 
 ### Discovery
 
-`agent-bom` discovers agent and MCP environments from local config, project manifests, container images, cloud surfaces, and supporting config files. It understands mainstream MCP client setups, not just generic manifests.
+`agent-bom` discovers agent and MCP environments from local config, project manifests and lockfiles, container images, cloud surfaces, and supporting config files. It understands mainstream MCP client setups, not just generic manifests.
 
 ### Scanning
 
-The scanner covers package risk, malicious or suspicious package indicators, container layers, IaC, cloud AI surfaces, secrets, and instruction or skill files. The goal is not only to inventory components, but to connect them to the environments where they run.
+The scanner covers package risk, malicious or suspicious package indicators, container layers, IaC, cloud AI surfaces, secrets, and instruction or skill files. Project scans surface lockfile-backed inventory, declaration-only manifests, and direct-versus-transitive package depth so users can tell how much dependency truth they are getting from a scan.
 
 ### Blast radius
 

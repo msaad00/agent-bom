@@ -380,6 +380,29 @@ _MANIFEST_FILES = frozenset(
     }
 )
 
+#: Lockfile / resolved-dependency artifacts that should count as stronger
+#: package-evidence than manifest-only declarations in project scans.
+_LOCKFILE_FILES = frozenset(
+    {
+        "package-lock.json",
+        "yarn.lock",
+        "pnpm-lock.yaml",
+        "bun.lock",
+        "bun.lockb",
+        "Pipfile.lock",
+        "poetry.lock",
+        "uv.lock",
+        "conda-lock.yml",
+        "go.sum",
+        "Cargo.lock",
+        "gradle.lockfile",
+        "packages.lock.json",
+        "Gemfile.lock",
+        "composer.lock",
+        "Package.resolved",
+    }
+)
+
 #: Directories to skip during recursive project scan.
 _SKIP_DIRS = frozenset(
     {
@@ -409,6 +432,75 @@ _SKIP_DIRS = frozenset(
 def _has_manifest(directory: Path) -> bool:
     """Return True if *directory* contains at least one package manifest."""
     return any((directory / name).exists() for name in _MANIFEST_FILES)
+
+
+def _manifest_file_names(directory: Path) -> list[str]:
+    """Return sorted manifest-like files present in *directory*."""
+    return sorted(name for name in _MANIFEST_FILES if (directory / name).exists())
+
+
+def summarize_project_inventory(
+    root: Path,
+    dir_map: dict[Path, list[Package]],
+) -> dict[str, object]:
+    """Summarize manifest/lockfile coverage for a project scan.
+
+    This keeps lockfile-driven project scanning visible in CLI/JSON output so
+    users can tell whether a project scan was backed by resolved lockfiles or
+    only manifest declarations.
+    """
+    root = Path(root).resolve()
+    directories: list[dict[str, object]] = []
+    ecosystems: dict[str, int] = {}
+    total_packages = 0
+    total_direct = 0
+    total_transitive = 0
+    manifest_file_total = 0
+    lockfile_total = 0
+
+    for directory, packages in sorted(dir_map.items(), key=lambda item: str(item[0])):
+        manifest_files = _manifest_file_names(directory)
+        lockfiles = [name for name in manifest_files if name in _LOCKFILE_FILES]
+        manifests = [name for name in manifest_files if name not in _LOCKFILE_FILES]
+        direct_count = sum(1 for pkg in packages if pkg.is_direct)
+        transitive_count = len(packages) - direct_count
+
+        rel_path = "." if directory == root else str(directory.relative_to(root))
+        eco_breakdown: dict[str, int] = {}
+        for pkg in packages:
+            eco_breakdown[pkg.ecosystem] = eco_breakdown.get(pkg.ecosystem, 0) + 1
+            ecosystems[pkg.ecosystem] = ecosystems.get(pkg.ecosystem, 0) + 1
+
+        directories.append(
+            {
+                "path": rel_path,
+                "package_count": len(packages),
+                "direct_packages": direct_count,
+                "transitive_packages": transitive_count,
+                "manifest_files": manifest_files,
+                "lockfile_files": lockfiles,
+                "declaration_files": manifests,
+                "ecosystems": eco_breakdown,
+            }
+        )
+        total_packages += len(packages)
+        total_direct += direct_count
+        total_transitive += transitive_count
+        manifest_file_total += len(manifest_files)
+        lockfile_total += len(lockfiles)
+
+    return {
+        "root": str(root),
+        "manifest_directories": len(dir_map),
+        "manifest_files": manifest_file_total,
+        "lockfiles": lockfile_total,
+        "declaration_only_files": manifest_file_total - lockfile_total,
+        "package_count": total_packages,
+        "direct_packages": total_direct,
+        "transitive_packages": total_transitive,
+        "ecosystems": ecosystems,
+        "directories": directories,
+    }
 
 
 def scan_project_directory(

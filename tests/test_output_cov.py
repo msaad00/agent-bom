@@ -144,6 +144,17 @@ class TestPrintSummary:
         }
         print_summary(report)
 
+    def test_with_project_inventory_data(self, capsys):
+        report = _make_report()
+        report.project_inventory_data = {
+            "manifest_files": 3,
+            "lockfiles": 2,
+            "package_count": 12,
+            "direct_packages": 5,
+            "transitive_packages": 7,
+        }
+        print_summary(report)
+
 
 class TestPrintScanPerformanceSummary:
     def test_prints_cache_summary(self, capsys):
@@ -380,6 +391,37 @@ class TestToSpdx:
         report = _make_report(agents=[agent], blast_radii=[br])
         spdx = to_spdx(report)
         assert len(spdx["elements"]) >= 1
+
+
+class TestToJson:
+    def test_includes_project_inventory(self):
+        report = _make_report()
+        report.project_inventory_data = {
+            "root": "/tmp/project",
+            "manifest_directories": 2,
+            "manifest_files": 4,
+            "lockfiles": 2,
+            "declaration_only_files": 2,
+            "package_count": 8,
+            "direct_packages": 3,
+            "transitive_packages": 5,
+            "ecosystems": {"pypi": 3, "npm": 5},
+            "directories": [
+                {
+                    "path": ".",
+                    "package_count": 8,
+                    "direct_packages": 3,
+                    "transitive_packages": 5,
+                    "manifest_files": ["package.json", "package-lock.json"],
+                    "lockfile_files": ["package-lock.json"],
+                    "declaration_files": ["package.json"],
+                    "ecosystems": {"npm": 5},
+                }
+            ],
+        }
+        data = to_json(report)
+        assert data["project_inventory"]["lockfiles"] == 2
+        assert data["project_inventory"]["directories"][0]["path"] == "."
 
 
 # ── _pct / _coverage_bar (from cov2) ────────────────────────────────────────

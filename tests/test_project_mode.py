@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from agent_bom.parsers import scan_project_directory
+from agent_bom.parsers import scan_project_directory, summarize_project_inventory
 from agent_bom.sbom import detect_sbom_resource_name, load_sbom
 
 # ── scan_project_directory ────────────────────────────────────────────────────
@@ -124,6 +124,32 @@ class TestScanProjectDirectory:
         (nested / "requirements.txt").write_text("flask==3.0.0\n")
         result = scan_project_directory(tmp_path, max_depth=2)
         assert nested in result
+
+    def test_summarize_project_inventory_tracks_lockfiles_and_transitive(self, tmp_path):
+        (tmp_path / "package.json").write_text(json.dumps({"name": "myapp", "version": "1.0.0", "dependencies": {"lodash": "4.17.21"}}))
+        (tmp_path / "package-lock.json").write_text(
+            json.dumps(
+                {
+                    "name": "myapp",
+                    "lockfileVersion": 3,
+                    "packages": {
+                        "": {"name": "myapp", "version": "1.0.0"},
+                        "node_modules/lodash": {"version": "4.17.21"},
+                        "node_modules/lodash.merge": {"version": "4.6.2"},
+                    },
+                }
+            )
+        )
+        result = scan_project_directory(tmp_path)
+        summary = summarize_project_inventory(tmp_path, result)
+        assert summary["manifest_directories"] == 1
+        assert summary["manifest_files"] == 2
+        assert summary["lockfiles"] == 1
+        assert summary["package_count"] == 2
+        assert summary["direct_packages"] == 1
+        assert summary["transitive_packages"] == 1
+        assert summary["ecosystems"] == {"npm": 2}
+        assert summary["directories"][0]["lockfile_files"] == ["package-lock.json"]
 
 
 # ── detect_sbom_resource_name ─────────────────────────────────────────────────
@@ -269,6 +295,7 @@ def test_project_scan_via_cli_with_discovered_project_agents(tmp_path):
         result = runner.invoke(main, ["scan", "--project", str(tmp_path), "--no-scan"])
     assert result.exit_code == 0
     assert "Scanning project directory for package manifests" in result.output
+    assert "lockfile" in result.output
     assert "1 package(s)" in result.output
 
 

@@ -14,6 +14,7 @@ _logger = logging.getLogger(__name__)
 
 _TRACEPARENT_RE = re.compile(r"^00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$")
 _otel_tracing_state = "unconfigured"
+_MAX_TRACESTATE_BYTES = 512
 
 
 def _random_trace_id() -> str:
@@ -46,9 +47,20 @@ def build_traceparent(trace_id: str, span_id: str, trace_flags: str = "01") -> s
     return f"00-{trace_id}-{span_id}-{trace_flags}"
 
 
+def parse_tracestate(header_value: str | None) -> str | None:
+    """Return a normalized tracestate value when present and bounded."""
+    if not header_value:
+        return None
+    value = header_value.strip()
+    if not value:
+        return None
+    return value[:_MAX_TRACESTATE_BYTES]
+
+
 def make_request_trace(headers: dict[str, Any]) -> dict[str, str | bool | None]:
     """Create request trace metadata from incoming headers or fresh IDs."""
     incoming = parse_traceparent(str(headers.get("traceparent", "")))
+    tracestate = parse_tracestate(str(headers.get("tracestate", "")))
     trace_id = incoming["trace_id"] if incoming else _random_trace_id()
     parent_span_id = incoming["parent_span_id"] if incoming else None
     trace_flags = incoming["trace_flags"] if incoming else "01"
@@ -59,6 +71,7 @@ def make_request_trace(headers: dict[str, Any]) -> dict[str, str | bool | None]:
         "parent_span_id": parent_span_id,
         "trace_flags": trace_flags,
         "traceparent": build_traceparent(trace_id, span_id, trace_flags),
+        "tracestate": tracestate,
         "incoming_traceparent": bool(incoming),
     }
 

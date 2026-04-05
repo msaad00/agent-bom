@@ -117,6 +117,7 @@ class TrustHeadersMiddleware(BaseHTTPMiddleware):
         request.state.span_id = trace_meta["span_id"]
         request.state.parent_span_id = trace_meta["parent_span_id"]
         request.state.traceparent = trace_meta["traceparent"]
+        request.state.tracestate = trace_meta["tracestate"]
         if not hasattr(request.state, "tenant_id"):
             request.state.tenant_id = "default"
         tenant_token = None
@@ -134,7 +135,12 @@ class TrustHeadersMiddleware(BaseHTTPMiddleware):
                 span.set_attribute("url.path", request.url.path)
                 span.set_attribute("agent_bom.request_id", request_id)
                 span.set_attribute("agent_bom.trace_id", str(trace_meta["trace_id"]))
+                span.set_attribute("agent_bom.span_id", str(trace_meta["span_id"]))
                 span.set_attribute("agent_bom.incoming_traceparent", bool(trace_meta["incoming_traceparent"]))
+                if trace_meta["parent_span_id"]:
+                    span.set_attribute("agent_bom.parent_span_id", str(trace_meta["parent_span_id"]))
+                if trace_meta["tracestate"]:
+                    span.set_attribute("agent_bom.tracestate_present", True)
             if os.environ.get("AGENT_BOM_POSTGRES_URL"):
                 from agent_bom.api.postgres_store import set_current_tenant
 
@@ -148,6 +154,7 @@ class TrustHeadersMiddleware(BaseHTTPMiddleware):
                 getattr(response, "status_code", "unknown"),
                 request_id,
                 trace_meta["trace_id"],
+                trace_meta["span_id"],
                 getattr(request.state, "tenant_id", "default"),
                 elapsed_ms,
             )
@@ -155,6 +162,20 @@ class TrustHeadersMiddleware(BaseHTTPMiddleware):
                 span.set_attribute("http.response.status_code", int(getattr(response, "status_code", 500)))
                 span.set_attribute("agent_bom.tenant_id", str(getattr(request.state, "tenant_id", "default")))
                 span.set_attribute("agent_bom.duration_ms", elapsed_ms)
+                span.set_attribute("http.route", str(request.scope.get("path", request.url.path)))
+                if getattr(request.state, "api_key_role", None):
+                    span.set_attribute("agent_bom.auth.role", str(request.state.api_key_role))
+                if getattr(request.state, "api_key_name", None):
+                    span.set_attribute("agent_bom.auth.subject", str(request.state.api_key_name))
+                if request.client and request.client.host:
+                    span.set_attribute("client.address", str(request.client.host))
+        except Exception as exc:
+            if span is not None:
+                from opentelemetry.trace import Status, StatusCode
+
+                span.record_exception(exc)
+                span.set_status(Status(StatusCode.ERROR, str(exc)))
+            raise
         finally:
             if tenant_token is not None:
                 from agent_bom.api.postgres_store import reset_current_tenant
@@ -164,7 +185,12 @@ class TrustHeadersMiddleware(BaseHTTPMiddleware):
                 otel_cm.__exit__(*sys.exc_info())
         response.headers["X-Request-ID"] = request_id
         response.headers["X-Trace-ID"] = str(trace_meta["trace_id"])
+        response.headers["X-Span-ID"] = str(trace_meta["span_id"])
         response.headers["traceparent"] = str(trace_meta["traceparent"])
+        if trace_meta["parent_span_id"]:
+            response.headers["X-Parent-Span-ID"] = str(trace_meta["parent_span_id"])
+        if trace_meta["tracestate"]:
+            response.headers["tracestate"] = str(trace_meta["tracestate"])
         response.headers["X-Agent-Bom-Read-Only"] = "true"
         response.headers["X-Agent-Bom-No-Credential-Storage"] = "true"
         response.headers["X-Agent-Bom-Version"] = __version__
@@ -367,7 +393,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=429,
                 content={"detail": "Rate limit exceeded"},
-                headers={"Retry-After": str(retry_after)},
+                headers={
+                    "Retry-After": str(retry_after),
+                    "X-RateLimit-Limit": str(limit),
+                    "X-RateLimit-Remaining": "0",
+                    "X-RateLimit-Reset": str(reset_at),
+                },
             )
 
         response = await call_next(request)

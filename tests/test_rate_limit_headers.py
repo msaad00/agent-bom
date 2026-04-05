@@ -96,10 +96,12 @@ def test_tracing_headers_present():
     resp = client.get("/health")
     assert resp.status_code == 200
     assert "x-trace-id" in resp.headers
+    assert "x-span-id" in resp.headers
     assert "traceparent" in resp.headers
     parsed = parse_traceparent(resp.headers["traceparent"])
     assert parsed is not None
     assert resp.headers["x-trace-id"] == parsed["trace_id"]
+    assert resp.headers["x-span-id"] == parsed["parent_span_id"]
     assert resp.json()["trace_id"] == parsed["trace_id"]
 
 
@@ -126,6 +128,29 @@ def test_tracing_preserves_incoming_trace_id():
     assert parsed["trace_id"] == "0123456789abcdef0123456789abcdef"
     assert parsed["parent_span_id"] != "0123456789abcdef"
     assert resp.json()["parent_span_id"] == "0123456789abcdef"
+    assert resp.headers["x-parent-span-id"] == "0123456789abcdef"
+
+
+def test_tracing_preserves_tracestate():
+    """Incoming tracestate should be preserved for downstream collectors/proxies."""
+
+    async def dummy(request):
+        return StarletteJSONResponse({"trace_id": request.state.trace_id, "tracestate": request.state.tracestate})
+
+    app = Starlette(routes=[Route("/health", dummy)])
+    app.add_middleware(TrustHeadersMiddleware)
+
+    client = TestClient(app)
+    resp = client.get(
+        "/health",
+        headers={
+            "traceparent": "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01",
+            "tracestate": "vendor-a=foo,vendor-b=bar",
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.headers["tracestate"] == "vendor-a=foo,vendor-b=bar"
+    assert resp.json()["tracestate"] == "vendor-a=foo,vendor-b=bar"
 
 
 def test_tracing_invalid_traceparent_falls_back_to_new_trace():
@@ -143,3 +168,17 @@ def test_tracing_invalid_traceparent_falls_back_to_new_trace():
     parsed = parse_traceparent(resp.headers["traceparent"])
     assert parsed is not None
     assert resp.json()["trace_id"] == parsed["trace_id"]
+
+
+def test_rate_limit_headers_present_on_429():
+    """Throttled responses should still include the rate-limit contract."""
+    client = TestClient(_make_app(read_rpm=1))
+    ok = client.get("/v1/data")
+    assert ok.status_code == 200
+
+    limited = client.get("/v1/data")
+    assert limited.status_code == 429
+    assert limited.headers["x-ratelimit-limit"] == "1"
+    assert limited.headers["x-ratelimit-remaining"] == "0"
+    assert "x-ratelimit-reset" in limited.headers
+    assert "retry-after" in limited.headers

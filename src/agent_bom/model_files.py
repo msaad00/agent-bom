@@ -9,6 +9,8 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
+import tempfile
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -70,6 +72,36 @@ def _extract_repo_reference(value: object) -> str | None:
     return candidate if "/" in candidate else None
 
 
+def _safe_resolve_directory(directory: str | Path) -> Path:
+    """Resolve a scan root and constrain it to known-safe local roots.
+
+    Allowed roots:
+    - current user's home directory
+    - current working directory
+    - system temp directory
+    - optional extra roots from AGENT_BOM_SAFE_SCAN_ROOTS (os.pathsep-separated)
+    """
+    resolved = Path(directory).expanduser().resolve(strict=False)
+    candidate = os.path.realpath(str(resolved))
+
+    allowed_roots = {
+        os.path.realpath(str(Path.home())),
+        os.path.realpath(str(Path.cwd())),
+        os.path.realpath(tempfile.gettempdir()),
+    }
+
+    extra_roots = os.environ.get("AGENT_BOM_SAFE_SCAN_ROOTS", "")
+    for root in extra_roots.split(os.pathsep):
+        root = root.strip()
+        if root:
+            allowed_roots.add(os.path.realpath(root))
+
+    if not any(os.path.commonpath([root, candidate]) == root for root in allowed_roots):
+        raise ValueError(f"Directory escapes safe scan roots: {candidate}")
+
+    return Path(candidate)
+
+
 def _human_size(size_bytes: int | float) -> str:
     """Convert bytes to human-readable size string."""
     for unit in ("B", "KB", "MB", "GB", "TB"):
@@ -91,7 +123,11 @@ def scan_model_files(
 
     Warnings are generated for security-relevant findings (e.g., pickle files).
     """
-    directory = Path(directory).resolve(strict=False)
+    try:
+        directory = _safe_resolve_directory(directory)
+    except ValueError as exc:
+        logger.warning("Model scan refused: %s", exc)
+        return [], [f"Model scan: {exc}"]
     if not directory.is_dir():
         return [], [f"Model scan: {directory} is not a directory"]
 
@@ -142,7 +178,11 @@ def scan_model_manifests(
     directory: str | Path,
 ) -> tuple[list[dict], list[str]]:
     """Scan a directory for model bundle manifests and lineage metadata."""
-    directory = Path(directory).resolve(strict=False)
+    try:
+        directory = _safe_resolve_directory(directory)
+    except ValueError as exc:
+        logger.warning("Model manifest scan refused: %s", exc)
+        return [], [f"Model manifest scan: {exc}"]
     if not directory.is_dir():
         return [], [f"Model manifest scan: {directory} is not a directory"]
 

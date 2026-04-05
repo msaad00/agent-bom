@@ -90,6 +90,14 @@ def test_human_size_formatting():
     assert _human_size(1024 * 1024 * 1024) == "1.0 GB"
 
 
+def test_scan_model_files_rejects_outside_safe_roots():
+    """Unsafe scan roots should be rejected before traversal."""
+    results, warnings = scan_model_files("/etc")
+    assert results == []
+    assert warnings
+    assert "escapes safe scan roots" in warnings[0]
+
+
 def test_scan_model_weight_index_manifest(tmp_path: Path):
     """Sharded weight indexes should surface manifest lineage metadata."""
     (tmp_path / "model.safetensors.index.json").write_text(
@@ -129,6 +137,14 @@ def test_scan_adapter_manifest_without_base_model_flags(tmp_path: Path):
     assert manifests[0]["manifest_type"] == "adapter"
     assert manifests[0]["security_flags"][0]["type"] == "MISSING_BASE_MODEL"
     assert any("MISSING_BASE_MODEL" in warning for warning in warnings)
+
+
+def test_scan_model_manifests_rejects_outside_safe_roots():
+    """Manifest scans should refuse roots outside the safe set."""
+    manifests, warnings = scan_model_manifests("/etc")
+    assert manifests == []
+    assert warnings
+    assert "escapes safe scan roots" in warnings[0]
 
 
 def test_scan_config_manifest_with_repo_id(tmp_path: Path):

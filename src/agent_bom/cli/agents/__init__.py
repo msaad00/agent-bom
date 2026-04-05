@@ -385,7 +385,7 @@ def scan(
         inventory = _sf_path
         enrich = True
 
-    # ── Demo mode: load bundled inventory with known-vulnerable packages ──
+    # ── Demo mode: load a curated sample agent + MCP environment ───────────
     if demo:
         import json as _json
         import os as _os
@@ -399,7 +399,7 @@ def scan(
         inventory = _demo_path
         enrich = True
         compliance = True  # Show compliance frameworks in demo
-        # Skip CWD auto-detection in demo mode — only scan bundled inventory
+        # Skip CWD auto-detection in demo mode — only scan the curated sample
         if not project:
             project = _tempfile.mkdtemp(prefix="agent-bom-demo-dir-")
         # Override config_path in demo inventory to show clean paths (no /tmp leaks)
@@ -424,7 +424,9 @@ def scan(
     _out.console = con
 
     if demo:
-        con.print("\n[bold yellow]Demo mode[/bold yellow] — scanning bundled inventory with known-vulnerable packages.\n")
+        con.print(
+            "\n[bold yellow]Demo mode[/bold yellow] — scanning a curated sample agent + MCP environment with known-vulnerable packages.\n"
+        )
 
     # ── Offline mode: disable all network calls ──────────────────────────────
     if offline:

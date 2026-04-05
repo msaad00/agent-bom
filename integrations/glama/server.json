@@ -1,7 +1,7 @@
 {
   "name": "agent-bom",
   "description": "Open security scanner for agentic infrastructure — agents, MCP, packages, containers, cloud, and runtime.",
-  "version": "0.75.14",
+  "version": "0.75.15",
   "license": "Apache-2.0",
   "repository": "https://github.com/msaad00/agent-bom",
   "transport": "stdio",

@@ -11,6 +11,32 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.75.15] – 2026-04-04
+
+### Added
+- **API distributed tracing** — request-level `traceparent` propagation, `X-Trace-ID` headers, OTLP/HTTP export, and collector/reverse-proxy contract docs
+- **Postgres-backed API rate limiting** — shared throttle state across replicas via `api_rate_limits`, keeping `429` and `Retry-After` semantics consistent
+- **Skills AST-aware analysis** — fenced Python and JS/TS code blocks in skill/instruction files now get semantic risk detection for dynamic execution, shell/process execution, and file mutation
+- **Skills output schemas** — `skills scan` and `skills rescan` now ship explicit versioned JSON schemas for stable downstream consumption
+- **Helm monitoring surfaces** — readiness/startup probes, optional metrics service, optional `ServiceMonitor`, and runtime `/metrics` wiring for Prometheus-friendly deployments
+- **Postgres enterprise persistence** — audit log and trend history now have Postgres backends with tenant-aware persistence
+
+### Changed
+- **Demo wording** — the built-in `--demo` path is now presented as a curated sample agent + MCP environment, while real local/project scans remain the primary product story
+- **Tenant isolation posture** — enterprise stores, gateway policy surfaces, audit/trend history, and shared rate-limit state now align under the same tenant-boundary model
+- **Security automation** — daily preventive workflows, deployment freshness checks, and authenticated Railway verification now better reflect real release state
+
+### Fixed
+- **GitHub Action enterprise networking** — proxy and custom-CA environment variables now pass through consistently during install and scan steps
+- **OpenClaw packaging metadata** — stale skills test-count references were updated to current repo reality
+- **Postgres schema drift** — schema summaries, RLS coverage assertions, and table counts now match the current tenant-bearing model
+
+### Security
+- **Postgres RLS completion** — all tenant-bearing Postgres tables now enforce row-level security, with shared caches and infra-only tables explicitly excluded from that boundary
+- **Enterprise auth maturity** — RBAC route enforcement, OIDC tenant-claim scoping, authenticated request tracing, and shared rate-limiting now operate together as the production API contract
+
+---
+
 ## [0.75.14] – 2026-04-03
 
 ### Added
@@ -460,7 +486,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.75.14...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.75.15...HEAD
+[0.75.15]: https://github.com/msaad00/agent-bom/compare/v0.75.14...v0.75.15
 [0.75.14]: https://github.com/msaad00/agent-bom/compare/v0.75.13...v0.75.14
 [0.75.13]: https://github.com/msaad00/agent-bom/compare/v0.75.12...v0.75.13
 [0.75.12]: https://github.com/msaad00/agent-bom/compare/v0.75.0...v0.75.12

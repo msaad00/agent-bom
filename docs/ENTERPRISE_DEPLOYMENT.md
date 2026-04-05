@@ -33,6 +33,7 @@ Start with a familiar adoption pattern: a single CI step that fails on policy, u
 **What it scans:** repo dependencies, MCP configs, IaC files, instruction files.
 **What leaves the machine:** package names + versions only (to OSV API).
 **Credentials:** never accessed — scans manifest files, not environments.
+**Enterprise networks:** the GitHub Action preserves the same proxy/custom-CA env contract as the Docker and API deployment surfaces: `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`, and `PIP_CERT`.
 
 **Common CI/CD patterns**
 

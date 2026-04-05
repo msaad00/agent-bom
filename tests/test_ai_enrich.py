@@ -717,6 +717,24 @@ def test_action_yml_uses_safe_argv_execution_and_step_summary():
     assert "agent-bom $ARGS" not in action_text
     assert "GITHUB_STEP_SUMMARY" in action_text
     assert "scan_status=$SCAN_STATUS" in action_text
+    assert "Proxy/CA env passthrough" in action_text
+
+
+def test_action_yml_passes_proxy_and_ca_env_vars():
+    """The composite action should preserve standard proxy and custom-CA env vars for install and runtime steps."""
+    from pathlib import Path
+
+    action_text = (Path(__file__).parent.parent / "action.yml").read_text()
+    for env_name in (
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "NO_PROXY",
+        "SSL_CERT_FILE",
+        "REQUESTS_CA_BUNDLE",
+        "CURL_CA_BUNDLE",
+        "PIP_CERT",
+    ):
+        assert action_text.count(f"{env_name}: ${{{{ env.{env_name} }}}}") >= 2
 
 
 def test_action_yml_validates_severity_inputs():

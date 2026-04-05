@@ -172,6 +172,13 @@ runs:
         AGENT_BOM_VERSION: ${{ inputs.agent-bom-version }}
         AI_ENRICH: ${{ inputs.ai-enrich }}
         INSTALL_FROM_SOURCE: ${{ inputs.install-from-source }}
+        HTTP_PROXY: ${{ env.HTTP_PROXY }}
+        HTTPS_PROXY: ${{ env.HTTPS_PROXY }}
+        NO_PROXY: ${{ env.NO_PROXY }}
+        SSL_CERT_FILE: ${{ env.SSL_CERT_FILE }}
+        REQUESTS_CA_BUNDLE: ${{ env.REQUESTS_CA_BUNDLE }}
+        CURL_CA_BUNDLE: ${{ env.CURL_CA_BUNDLE }}
+        PIP_CERT: ${{ env.PIP_CERT }}
       run: |
         if [ "$INSTALL_FROM_SOURCE" = "true" ]; then
           # Install from local source (pyproject.toml) — used by CI dogfood to test unreleased code
@@ -196,6 +203,13 @@ runs:
       id: scan
       shell: bash
       env:
+        HTTP_PROXY: ${{ env.HTTP_PROXY }}
+        HTTPS_PROXY: ${{ env.HTTPS_PROXY }}
+        NO_PROXY: ${{ env.NO_PROXY }}
+        SSL_CERT_FILE: ${{ env.SSL_CERT_FILE }}
+        REQUESTS_CA_BUNDLE: ${{ env.REQUESTS_CA_BUNDLE }}
+        CURL_CA_BUNDLE: ${{ env.CURL_CA_BUNDLE }}
+        PIP_CERT: ${{ env.PIP_CERT }}
         INPUT_SCAN_TYPE: ${{ inputs.scan-type }}
         INPUT_SCAN_REF: ${{ inputs.scan-ref }}
         INPUT_FORMAT: ${{ inputs.format }}
@@ -546,6 +560,7 @@ runs:
             echo "| Status | \`${SCAN_STATUS}\` |"
             echo "| Exit code | \`${EXIT_CODE}\` |"
             echo "| Finding count | \`${VULN_COUNT}\` |"
+            echo "| Proxy/CA env passthrough | \`HTTP_PROXY, HTTPS_PROXY, NO_PROXY, SSL_CERT_FILE, REQUESTS_CA_BUNDLE, CURL_CA_BUNDLE, PIP_CERT\` |"
             if [ -n "$RESULT_FILE" ] && [ -f "$RESULT_FILE" ]; then
               echo "| Result file | \`${RESULT_FILE}\` |"
             fi

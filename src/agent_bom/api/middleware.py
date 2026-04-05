@@ -148,7 +148,7 @@ class TrustHeadersMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
             _logger.info(
-                "api request complete method=%s path=%s status=%s request_id=%s trace_id=%s tenant_id=%s duration_ms=%s",
+                "api request complete method=%s path=%s status=%s request_id=%s trace_id=%s span_id=%s tenant_id=%s duration_ms=%s",
                 request.method,
                 request.url.path,
                 getattr(response, "status_code", "unknown"),

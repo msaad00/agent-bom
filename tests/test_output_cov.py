@@ -746,6 +746,7 @@ def test_to_json_with_optional_fields():
 
 def test_to_json_with_model_supply_chain_fields():
     report = _make_report_cov2()
+    report.model_manifests = [{"filename": "model.safetensors.index.json", "manifest_type": "weight_index"}]
     report.model_hash_verification_data = {
         "scanned": 2,
         "verified": 1,
@@ -757,6 +758,7 @@ def test_to_json_with_model_supply_chain_fields():
     }
     report.model_supply_chain_data = {
         "model_files": 2,
+        "manifest_files": 1,
         "signed_files": 1,
         "unsigned_files": 1,
         "unsafe_format_files": 1,
@@ -768,11 +770,17 @@ def test_to_json_with_model_supply_chain_fields():
         "gated_models": 0,
         "provenance_with_security_flags": 0,
         "provenance_sources": ["huggingface"],
+        "manifests_with_repo_id": 1,
+        "adapter_lineage_refs": 0,
+        "sharded_bundles": 1,
+        "manifests_with_security_flags": 0,
         "hash_verification": {"scanned": 2, "verified": 1, "tampered": 0, "unverified": 1, "offline": 0, "has_tampering": False},
     }
     result = to_json(report)
+    assert result["model_manifests"][0]["manifest_type"] == "weight_index"
     assert result["model_hash_verification"]["verified"] == 1
     assert result["model_supply_chain"]["model_files"] == 2
+    assert result["model_supply_chain"]["manifest_files"] == 1
 
 
 # ── print_threat_frameworks (from cov2) ──────────────────────────────────────

@@ -318,6 +318,7 @@ def test_scan_model_files_success(tmp_path):
 
     with (
         patch("agent_bom.model_files.scan_model_files", return_value=(fake_files, [])),
+        patch("agent_bom.model_files.scan_model_manifests", return_value=([], [])),
         patch(_SANITIZE, return_value=_FAKE_SAFE),
     ):
         resp = client.post("/v1/scan/model-files", json={"directories": [str(tmp_path)]})
@@ -337,6 +338,7 @@ def test_scan_model_files_with_hashes(tmp_path):
 
     with (
         patch("agent_bom.model_files.scan_model_files", return_value=(fake_files, [])),
+        patch("agent_bom.model_files.scan_model_manifests", return_value=([], [])),
         patch("agent_bom.model_files.verify_model_hash", return_value={"sha256": "abc123"}) as mock_hash,
         patch(_SANITIZE, return_value=_FAKE_SAFE),
     ):
@@ -360,12 +362,31 @@ def test_scan_model_files_warnings(tmp_path):
 
     with (
         patch("agent_bom.model_files.scan_model_files", return_value=([], ["Skipped large file"])),
+        patch("agent_bom.model_files.scan_model_manifests", return_value=([], [])),
         patch(_SANITIZE, return_value=_FAKE_SAFE),
     ):
         resp = client.post("/v1/scan/model-files", json={"directories": [str(tmp_path)]})
 
     assert resp.status_code == 200
     assert resp.json()["warnings"] == ["Skipped large file"]
+
+
+def test_scan_model_files_surfaces_manifests(tmp_path):
+    """POST /v1/scan/model-files returns model manifest metadata too."""
+    client, _ = _fresh_client()
+
+    fake_manifests = [{"filename": "model.safetensors.index.json", "manifest_type": "weight_index", "shard_count": 2}]
+
+    with (
+        patch("agent_bom.model_files.scan_model_files", return_value=([], [])),
+        patch("agent_bom.model_files.scan_model_manifests", return_value=(fake_manifests, [])),
+        patch(_SANITIZE, return_value=_FAKE_SAFE),
+    ):
+        resp = client.post("/v1/scan/model-files", json={"directories": [str(tmp_path)]})
+
+    assert resp.status_code == 200
+    assert resp.json()["manifest_total"] == 1
+    assert resp.json()["manifests"][0]["manifest_type"] == "weight_index"
 
 
 # ---------------------------------------------------------------------------

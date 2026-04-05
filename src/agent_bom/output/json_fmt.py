@@ -670,6 +670,9 @@ def to_json(report: AIBOMReport) -> dict:
     if report.model_files:
         result["model_files"] = report.model_files
 
+    if report.model_manifests:
+        result["model_manifests"] = report.model_manifests
+
     if report.model_provenance:
         result["model_provenance"] = report.model_provenance
 

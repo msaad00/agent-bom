@@ -1655,11 +1655,12 @@ def scan(
             con.print("  [cyan]>[/cyan] Auto-detected model files in project — scanning...")
 
     if not skill_only and model_dirs:
-        from agent_bom.model_files import check_sigstore_signature, scan_model_files, verify_model_hash
+        from agent_bom.model_files import check_sigstore_signature, scan_model_files, scan_model_manifests, verify_model_hash
 
         for mdir in model_dirs:
             con.print(f"  [cyan]>[/cyan] Scanning for model files in {mdir}...")
             mf_results, mf_warnings = scan_model_files(mdir)
+            manifest_results, manifest_warnings = scan_model_manifests(mdir)
             if model_provenance:
                 for mf in mf_results:
                     hash_result = verify_model_hash(mf["path"])
@@ -1671,13 +1672,22 @@ def scan(
                     mf["signature_path"] = sig_result["signature_path"]
                     mf["security_flags"].extend(sig_result["security_flags"])
             report.model_files.extend(mf_results)
+            report.model_manifests.extend(manifest_results)
             for w in mf_warnings:
+                con.print(f"  [yellow]⚠[/yellow] {w}")
+            for w in manifest_warnings:
                 con.print(f"  [yellow]⚠[/yellow] {w}")
             if mf_results:
                 security_count = sum(1 for m in mf_results if m["security_flags"])
                 con.print(
                     f"    [green]{len(mf_results)} model file(s) found[/green]"
                     + (f" [red]({security_count} with security flags)[/red]" if security_count else "")
+                )
+            if manifest_results:
+                lineage_refs = sum(1 for m in manifest_results if m.get("repo_id") or m.get("base_model_id"))
+                con.print(
+                    f"    [green]{len(manifest_results)} model manifest(s) found[/green]"
+                    + (f" [cyan]({lineage_refs} lineage refs)[/cyan]" if lineage_refs else "")
                 )
 
     # ── Step 1j: HuggingFace model provenance ─────────────────────────
@@ -1828,6 +1838,7 @@ def scan(
             report.model_files,
             report.model_provenance,
             report.model_hash_verification_data,
+            report.model_manifests,
         )
 
     # Persist browser extension results to report

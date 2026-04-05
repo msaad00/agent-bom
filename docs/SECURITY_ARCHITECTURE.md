@@ -101,7 +101,7 @@ For cross-agent correlation and the broader 8-detector protection engine, run `a
 ### Model / weight supply-chain posture
 
 - `agent-bom` treats model artifacts as supply-chain inputs, not opaque blobs
-- Local model scans surface risky formats, signature presence, and per-file security flags
+- Local model scans surface risky formats, bundle manifests, adapter lineage, signature presence, and per-file security flags
 - HuggingFace provenance checks surface author, card presence, digest availability, and gated/private posture
 - Hash verification can compare local weights against HuggingFace Hub metadata and report verified, unverified, offline, or tampered states
 

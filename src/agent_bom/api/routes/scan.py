@@ -649,18 +649,22 @@ async def scan_model_files_endpoint(request: ModelFilesRequest) -> dict:
     import os
     from pathlib import Path
 
-    from agent_bom.model_files import scan_model_files, verify_model_hash
+    from agent_bom.model_files import scan_model_files, scan_model_manifests, verify_model_hash
     from agent_bom.security import SecurityError
 
     home = os.path.realpath(str(Path.home()))
     all_files = []
+    all_manifests = []
     all_warnings = []
     for d in request.directories:
         resolved = _sanitize_api_path(d)
         if os.path.commonpath([home, resolved]) == home:
             files, warnings = scan_model_files(resolved)
+            manifests, manifest_warnings = scan_model_manifests(resolved)
             all_files.extend(files)
+            all_manifests.extend(manifests)
             all_warnings.extend(warnings)
+            all_warnings.extend(manifest_warnings)
         else:
             raise SecurityError(f"Path escapes safe root: {d}")
 
@@ -672,7 +676,9 @@ async def scan_model_files_endpoint(request: ModelFilesRequest) -> dict:
     return {
         "scan_type": "model-files",
         "total": len(all_files),
+        "manifest_total": len(all_manifests),
         "unsafe": sum(1 for f in all_files if f.get("security_flags")),
         "files": all_files,
+        "manifests": all_manifests,
         "warnings": all_warnings,
     }

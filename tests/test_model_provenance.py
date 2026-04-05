@@ -141,6 +141,16 @@ class TestSummarizeModelSupplyChain:
                 {"model": "org/model-b", "sha256_available": False, "gated": False, "security_flags": [{"type": "NO_AUTHOR"}]},
             ],
             model_hash_verification={"scanned": 2, "verified": 1, "tampered": 1, "unverified": 0, "offline": 0, "has_tampering": True},
+            model_manifests=[
+                {"manifest_type": "weight_index", "repo_id": "org/model-a", "base_model_id": None, "shard_count": 2, "security_flags": []},
+                {
+                    "manifest_type": "adapter",
+                    "repo_id": None,
+                    "base_model_id": "org/base-model",
+                    "shard_count": 0,
+                    "security_flags": [{"type": "MISSING_BASE_MODEL"}],
+                },
+            ],
         )
         assert summary["model_files"] == 2
         assert summary["signed_files"] == 1
@@ -151,6 +161,10 @@ class TestSummarizeModelSupplyChain:
         assert summary["provenance_with_digest"] == 1
         assert summary["gated_models"] == 1
         assert summary["provenance_with_security_flags"] == 1
+        assert summary["manifest_files"] == 2
+        assert summary["sharded_bundles"] == 1
+        assert summary["adapter_lineage_refs"] == 1
+        assert summary["manifests_with_security_flags"] == 1
         assert summary["hash_verification"]["tampered"] == 1
 
 

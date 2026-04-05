@@ -7,6 +7,7 @@ Detects common model file formats and flags security risks
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 from pathlib import Path
 
@@ -48,6 +49,25 @@ _SECURITY_FLAGS: dict[str, dict] = {
 }
 
 _UNSAFE_MODEL_EXTENSIONS = frozenset({".pt", ".pth", ".pkl", ".joblib", ".bin"})
+_MODEL_INDEX_FILENAMES = frozenset({"model.safetensors.index.json", "pytorch_model.bin.index.json"})
+_MODEL_MANIFEST_FILENAMES = frozenset({"config.json", "tokenizer_config.json", "adapter_config.json"})
+
+
+def _load_json_file(path: Path) -> dict | None:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _extract_repo_reference(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    candidate = value.strip()
+    if not candidate or candidate.startswith("/"):
+        return None
+    return candidate if "/" in candidate else None
 
 
 def _human_size(size_bytes: int | float) -> str:
@@ -116,6 +136,87 @@ def scan_model_files(
             )
 
     return results, warnings
+
+
+def scan_model_manifests(
+    directory: str | Path,
+) -> tuple[list[dict], list[str]]:
+    """Scan a directory for model bundle manifests and lineage metadata."""
+    directory = Path(directory)
+    if not directory.is_dir():
+        return [], [f"Model manifest scan: {directory} is not a directory"]
+
+    manifests: list[dict] = []
+    warnings: list[str] = []
+
+    for file_path in sorted(directory.rglob("*.json")):
+        if any(part.startswith(".") for part in file_path.parts):
+            continue
+
+        name = file_path.name
+        if name not in _MODEL_INDEX_FILENAMES and name not in _MODEL_MANIFEST_FILENAMES:
+            continue
+
+        payload = _load_json_file(file_path)
+        if payload is None:
+            continue
+
+        manifest_type = "config"
+        repo_id = _extract_repo_reference(payload.get("_name_or_path")) or _extract_repo_reference(payload.get("name_or_path"))
+        base_model_id = None
+        shard_count = 0
+        security_flags: list[dict] = []
+
+        if name in _MODEL_INDEX_FILENAMES:
+            manifest_type = "weight_index"
+            weight_map = payload.get("weight_map", {})
+            if isinstance(weight_map, dict):
+                shard_count = len({str(v) for v in weight_map.values() if isinstance(v, str)})
+            if not shard_count:
+                security_flags.append(
+                    {
+                        "severity": "MEDIUM",
+                        "type": "EMPTY_WEIGHT_INDEX",
+                        "description": "Weight index manifest has no shard mapping; bundle integrity cannot be confirmed.",
+                    }
+                )
+        elif name == "adapter_config.json":
+            manifest_type = "adapter"
+            base_model_id = _extract_repo_reference(payload.get("base_model_name_or_path"))
+            if not base_model_id:
+                security_flags.append(
+                    {
+                        "severity": "MEDIUM",
+                        "type": "MISSING_BASE_MODEL",
+                        "description": "Adapter manifest does not declare a base model lineage reference.",
+                    }
+                )
+        elif name == "tokenizer_config.json":
+            manifest_type = "tokenizer"
+
+        model_type = payload.get("model_type") if isinstance(payload.get("model_type"), str) else None
+        architectures = payload.get("architectures") if isinstance(payload.get("architectures"), list) else []
+        metadata = payload.get("metadata")
+        total_size = metadata.get("total_size") if isinstance(metadata, dict) and isinstance(metadata.get("total_size"), int) else None
+
+        manifest = {
+            "path": str(file_path),
+            "filename": file_path.name,
+            "manifest_type": manifest_type,
+            "repo_id": repo_id,
+            "base_model_id": base_model_id,
+            "model_type": model_type,
+            "architectures": architectures,
+            "shard_count": shard_count,
+            "total_size_bytes": total_size,
+            "security_flags": security_flags,
+        }
+        manifests.append(manifest)
+
+        for flag in security_flags:
+            warnings.append(f"Model manifest {file_path.name}: {flag['severity']} — {flag['type']}. {flag['description']}")
+
+    return manifests, warnings
 
 
 # ── Model weight provenance ─────────────────────────────────────
@@ -316,6 +417,7 @@ def summarize_model_supply_chain(
     model_files: list[dict],
     model_provenance: list[dict] | None = None,
     model_hash_verification: dict | None = None,
+    model_manifests: list[dict] | None = None,
 ) -> dict:
     """Build a stable summary of model/weight supply-chain coverage.
 
@@ -325,6 +427,7 @@ def summarize_model_supply_chain(
     """
     provenance = model_provenance or []
     hash_verification = model_hash_verification or {}
+    manifests = model_manifests or []
 
     files_with_flags = 0
     signed_files = 0
@@ -355,6 +458,7 @@ def summarize_model_supply_chain(
     provenance_with_digest = sum(1 for item in provenance if item.get("has_digest") is True or item.get("sha256_available") is True)
     gated_models = sum(1 for item in provenance if item.get("is_gated") is True or item.get("gated") is True)
     sources = sorted({str(item.get("source", "huggingface")) for item in provenance})
+    manifest_types = sorted({str(item.get("manifest_type")) for item in manifests if item.get("manifest_type")})
 
     return {
         "model_files": len(model_files),
@@ -370,6 +474,12 @@ def summarize_model_supply_chain(
         "gated_models": gated_models,
         "provenance_with_security_flags": provenance_with_flags,
         "provenance_sources": sources,
+        "manifest_files": len(manifests),
+        "manifest_types": manifest_types,
+        "manifests_with_repo_id": sum(1 for item in manifests if item.get("repo_id")),
+        "adapter_lineage_refs": sum(1 for item in manifests if item.get("base_model_id")),
+        "sharded_bundles": sum(1 for item in manifests if int(item.get("shard_count", 0) or 0) > 0),
+        "manifests_with_security_flags": sum(1 for item in manifests if item.get("security_flags")),
         "hash_verification": {
             "scanned": int(hash_verification.get("scanned", 0) or 0),
             "verified": int(hash_verification.get("verified", 0) or 0),

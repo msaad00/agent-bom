@@ -101,7 +101,11 @@ def print_summary(report: AIBOMReport) -> None:
     if model_sc:
         table.add_row(
             "Model artifacts",
-            f"{model_sc.get('model_files', 0)} file(s), {model_sc.get('provenance_checks', 0)} provenance check(s)",
+            (
+                f"{model_sc.get('model_files', 0)} file(s), "
+                f"{model_sc.get('manifest_files', 0)} manifest(s), "
+                f"{model_sc.get('provenance_checks', 0)} provenance check(s)"
+            ),
         )
         table.add_row(
             "Model integrity",
@@ -111,7 +115,14 @@ def print_summary(report: AIBOMReport) -> None:
                 f"{model_sc.get('hash_verification', {}).get('tampered', 0)} tampered"
             ),
         )
+        model_lineage = model_sc.get("manifests_with_repo_id", 0) + model_sc.get("adapter_lineage_refs", 0)
+        if model_lineage:
+            table.add_row(
+                "Model lineage",
+                (f"{model_sc.get('sharded_bundles', 0)} sharded bundle(s), {model_lineage} lineage ref(s)"),
+            )
         model_flags = model_sc.get("files_with_security_flags", 0) + model_sc.get("provenance_with_security_flags", 0)
+        model_flags += model_sc.get("manifests_with_security_flags", 0)
         if model_flags:
             table.add_row("Model risk flags", f"[yellow]{model_flags}[/yellow]")
 

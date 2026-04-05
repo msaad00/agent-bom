@@ -151,18 +151,21 @@ async def model_file_scan_impl(
         from agent_bom.security import validate_path
 
         path = validate_path(directory, must_exist=True, restrict_to_home=True)
-        from agent_bom.model_files import scan_model_files
+        from agent_bom.model_files import scan_model_files, scan_model_manifests
 
         model_files, warnings = scan_model_files(str(path))
+        model_manifests, manifest_warnings = scan_model_manifests(str(path))
         return _truncate_response(
             json.dumps(
                 {
                     "model_files": model_files,
+                    "model_manifests": model_manifests,
                     "total": len(model_files),
+                    "manifest_total": len(model_manifests),
                     "unsafe_count": sum(
                         1 for r in model_files if any(f.get("severity") in ("HIGH", "CRITICAL") for f in r.get("security_flags", []))
                     ),
-                    "warnings": warnings,
+                    "warnings": warnings + manifest_warnings,
                 },
                 indent=2,
                 default=str,

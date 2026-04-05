@@ -437,6 +437,49 @@ _JS_FILE_MUTATION_CALLS = {
     "Deno.rename",
 }
 _JS_CALL_RE = re.compile(r"\b(?:[A-Za-z_$][\w$]*\.)*[A-Za-z_$][\w$]*\s*\(")
+_JS_IMPORT_NAMED_RE = re.compile(
+    r"""import\s*\{\s*([^}]+)\}\s*from\s*["']([^"']+)["']""",
+    re.IGNORECASE,
+)
+_JS_IMPORT_NAMESPACE_RE = re.compile(
+    r"""import\s+\*\s+as\s+([A-Za-z_$][\w$]*)\s+from\s*["']([^"']+)["']""",
+    re.IGNORECASE,
+)
+_JS_IMPORT_DEFAULT_RE = re.compile(
+    r"""import\s+([A-Za-z_$][\w$]*)\s+from\s*["']([^"']+)["']""",
+    re.IGNORECASE,
+)
+_JS_REQUIRE_NAMED_RE = re.compile(
+    r"""(?:const|let|var)\s*\{\s*([^}]+)\}\s*=\s*require\(\s*["']([^"']+)["']\s*\)""",
+    re.IGNORECASE,
+)
+_JS_REQUIRE_DEFAULT_RE = re.compile(
+    r"""(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*require\(\s*["']([^"']+)["']\s*\)""",
+    re.IGNORECASE,
+)
+_JS_IMPORTABLE_SUBPROCESS_CALLS = {
+    "exec",
+    "execSync",
+    "spawn",
+    "spawnSync",
+    "fork",
+}
+_JS_IMPORTABLE_FILE_MUTATION_CALLS = {
+    "writeFile",
+    "writeFileSync",
+    "appendFile",
+    "appendFileSync",
+    "unlink",
+    "unlinkSync",
+    "rm",
+    "rmSync",
+    "rename",
+    "renameSync",
+    "writeTextFile",
+    "writeFile",
+    "remove",
+    "rename",
+}
 
 
 # ── Behavioral scanning function ─────────────────────────────────────────────
@@ -653,6 +696,104 @@ def _strip_js_strings_and_comments(code: str) -> str:
     return "".join(result)
 
 
+def _normalize_js_module_name(module_name: str) -> str:
+    module_name = module_name.strip()
+    if module_name.startswith("node:"):
+        module_name = module_name[5:]
+    return module_name
+
+
+def _canonical_js_function_call(module_name: str, imported_name: str) -> str | None:
+    module_name = _normalize_js_module_name(module_name)
+    imported_name = imported_name.strip()
+    if module_name == "child_process" and imported_name in _JS_IMPORTABLE_SUBPROCESS_CALLS:
+        return f"child_process.{imported_name}"
+    if module_name == "fs" and imported_name in _JS_IMPORTABLE_FILE_MUTATION_CALLS:
+        return f"fs.{imported_name}"
+    if module_name == "fs/promises" and imported_name in _JS_IMPORTABLE_FILE_MUTATION_CALLS:
+        return f"fs.promises.{imported_name}"
+    if module_name == "fs/promises" and imported_name == "default":
+        return "fs.promises"
+    return None
+
+
+def _canonical_js_namespace(module_name: str) -> str | None:
+    module_name = _normalize_js_module_name(module_name)
+    if module_name == "child_process":
+        return "child_process"
+    if module_name == "fs":
+        return "fs"
+    if module_name == "fs/promises":
+        return "fs.promises"
+    return None
+
+
+def _split_js_import_spec(spec: str) -> tuple[str, str]:
+    if " as " in spec:
+        imported, alias = spec.split(" as ", 1)
+        return imported.strip(), alias.strip()
+    if ":" in spec:
+        imported, alias = spec.split(":", 1)
+        return imported.strip(), alias.strip()
+    spec = spec.strip()
+    return spec, spec
+
+
+def _collect_js_aliases(code: str) -> tuple[dict[str, str], dict[str, str]]:
+    function_aliases: dict[str, str] = {}
+    namespace_aliases: dict[str, str] = {}
+
+    for match in _JS_IMPORT_NAMED_RE.finditer(code):
+        specs, module_name = match.groups()
+        for raw_spec in specs.split(","):
+            imported, alias = _split_js_import_spec(raw_spec)
+            canonical = _canonical_js_function_call(module_name, imported)
+            if canonical:
+                function_aliases[alias] = canonical
+
+    for match in _JS_REQUIRE_NAMED_RE.finditer(code):
+        specs, module_name = match.groups()
+        for raw_spec in specs.split(","):
+            imported, alias = _split_js_import_spec(raw_spec)
+            canonical = _canonical_js_function_call(module_name, imported)
+            if canonical:
+                function_aliases[alias] = canonical
+
+    for match in _JS_IMPORT_NAMESPACE_RE.finditer(code):
+        alias, module_name = match.groups()
+        canonical = _canonical_js_namespace(module_name)
+        if canonical:
+            namespace_aliases[alias] = canonical
+
+    for match in _JS_IMPORT_DEFAULT_RE.finditer(code):
+        alias, module_name = match.groups()
+        canonical = _canonical_js_namespace(module_name)
+        if canonical:
+            namespace_aliases[alias] = canonical
+
+    for match in _JS_REQUIRE_DEFAULT_RE.finditer(code):
+        alias, module_name = match.groups()
+        canonical = _canonical_js_namespace(module_name)
+        if canonical:
+            namespace_aliases[alias] = canonical
+
+    return function_aliases, namespace_aliases
+
+
+def _canonicalize_js_call_name(call_name: str, function_aliases: dict[str, str], namespace_aliases: dict[str, str]) -> str:
+    call_name = call_name.strip()
+    if call_name in function_aliases:
+        return function_aliases[call_name]
+
+    if "." not in call_name:
+        return call_name
+
+    base, remainder = call_name.split(".", 1)
+    if base in namespace_aliases:
+        return f"{namespace_aliases[base]}.{remainder}"
+    return call_name
+
+
 def _scan_js_ts_semantic_risks(raw_content: dict[str, str]) -> list[SkillFinding]:
     """Scan JS/TS fenced code blocks for semantic risk patterns."""
     findings: list[SkillFinding] = []
@@ -660,8 +801,12 @@ def _scan_js_ts_semantic_risks(raw_content: dict[str, str]) -> list[SkillFinding
     for filename, content in raw_content.items():
         seen_categories: set[str] = set()
         for block in _JS_TS_FENCED_BLOCK_RE.findall(content):
+            function_aliases, namespace_aliases = _collect_js_aliases(block)
             normalized = _strip_js_strings_and_comments(block)
-            call_names = {match.group(0).rstrip("(").strip() for match in _JS_CALL_RE.finditer(normalized)}
+            call_names = {
+                _canonicalize_js_call_name(match.group(0).rstrip("(").strip(), function_aliases, namespace_aliases)
+                for match in _JS_CALL_RE.finditer(normalized)
+            }
             if re.search(r"\bnew\s+Function\s*\(", normalized):
                 call_names.add("Function")
 

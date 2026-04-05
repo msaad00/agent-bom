@@ -84,6 +84,24 @@ jobs:
           npm ci --ignore-scripts
           npm audit --audit-level=high
 
+      - name: npm audit (TypeScript SDK transitive deps)
+        run: |
+          cd sdks/typescript
+          npm ci --ignore-scripts
+          npm audit --audit-level=high
+
+      - name: JavaScript supply-chain guard
+        run: |
+          python scripts/check_js_supply_chain.py
+          cd sdks/typescript
+          npm ci --ignore-scripts
+          npm run build
+          if find dist -name '*.map' -print -quit | grep -q .; then
+            echo "::error::TypeScript SDK build emitted source maps"
+            find dist -name '*.map' -print
+            exit 1
+          fi
+
   # 2. Linting + Type Checking
   lint:
     name: Lint and Type Check

@@ -8,6 +8,7 @@ const isExport = process.env.NEXT_EXPORT === "1";
 
 const nextConfig: NextConfig = {
   images: { unoptimized: true },
+  productionBrowserSourceMaps: false,
   ...(isExport && { output: "export" }),
   // Proxy /v1/* and /health to the FastAPI backend so the dev server works
   // without CORS issues and without needing a separate nginx/caddy setup.

@@ -85,6 +85,18 @@ def print_summary(report: AIBOMReport) -> None:
         if keys:
             table.add_row("Hardcoded API keys", f"[red]{keys}[/red]")
 
+    project_inv = getattr(report, "project_inventory_data", None)
+    if project_inv:
+        table.add_row("Project manifests", str(project_inv.get("manifest_files", 0)))
+        table.add_row("Lockfiles", str(project_inv.get("lockfiles", 0)))
+        table.add_row(
+            "Project inventory",
+            (
+                f"{project_inv.get('package_count', 0)} packages "
+                f"({project_inv.get('direct_packages', 0)} direct / {project_inv.get('transitive_packages', 0)} transitive)"
+            ),
+        )
+
     perf = report.scan_performance_data or {}
     osv = perf.get("osv") or {}
     registry = perf.get("registry") or {}

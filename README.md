@@ -53,7 +53,7 @@ pip install agent-bom                  # Standard CLI install
 # uvx agent-bom --help                 # Ephemeral run without installing
 
 agent-bom agents                              # Discover + scan local AI agents and MCP servers
-agent-bom agents -p .                         # Scan project manifests plus agent/MCP context
+agent-bom agents -p .                         # Scan project lockfiles/manifests plus agent/MCP context
 agent-bom mesh --project .                    # Show the live agent / MCP topology
 agent-bom skills scan .                       # Scan CLAUDE.md, AGENTS.md, .cursorrules, skills/*
 agent-bom check flask@2.0.0 --ecosystem pypi  # Pre-install CVE gate
@@ -82,6 +82,7 @@ agent-bom serve                         # API + Next.js dashboard
 
 - MCP-aware blast radius instead of flat package CVE lists
 - AI-focused scanning across agents, instruction files, skills, runtime proxy traffic, and cloud AI surfaces
+- Project lockfile and manifest inventory with direct/transitive dependency visibility in CLI and JSON output
 - Real operator outputs: SARIF, CycloneDX, HTML, graphs, badges, JSON, API, dashboard, and MCP tools
 - Works as local CLI, CI gate, authenticated remote service, and enterprise deployment base
 

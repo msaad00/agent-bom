@@ -755,6 +755,7 @@ class AIBOMReport:
     serving_configs: Optional[list] = None  # Serialized ServingConfig list
     browser_extensions: Optional[dict] = None  # Serialized browser extension scan results
     ai_inventory_data: Optional[dict] = None  # AI component source scan results (SDK imports, models, keys)
+    project_inventory_data: Optional[dict] = None  # Project manifest / lockfile inventory summary
     introspection_data: Optional[dict] = None  # Runtime MCP introspection results (tools, resources, drift)
     health_check_data: Optional[dict] = None  # MCP server reachability/health results
     runtime_session_graph: Optional[dict] = None  # Structured runtime session graph/timeline evidence

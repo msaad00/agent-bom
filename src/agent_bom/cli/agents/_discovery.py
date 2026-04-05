@@ -604,7 +604,7 @@ def run_local_discovery(
     # Step 1d4: Project package scan
     if not skill_only and project and not images and not code_paths and not sbom_file:
         from agent_bom.models import Agent, AgentType, MCPServer, ServerSurface, TransportType
-        from agent_bom.parsers import scan_project_directory
+        from agent_bom.parsers import scan_project_directory, summarize_project_inventory
 
         proj_root = Path(project)
         proj_root_resolved = proj_root.resolve()
@@ -613,8 +613,17 @@ def run_local_discovery(
             con.print(f"\n[bold blue]Scanning project directory for package manifests: {proj_root.name}[/bold blue]\n")
         dir_map = scan_project_directory(proj_root)
         if dir_map:
+            project_inventory = summarize_project_inventory(proj_root, dir_map)
+            ctx.project_inventory_data = project_inventory
             total_proj_pkgs = sum(len(v) for v in dir_map.values())
-            con.print(f"  [green]✓[/green] {proj_root.name}: {total_proj_pkgs} package(s) across {len(dir_map)} manifest(s)")
+            con.print(
+                f"  [green]✓[/green] {proj_root.name}: "
+                f"{total_proj_pkgs} package(s) across {project_inventory['manifest_directories']} manifest director"
+                f"{'ies' if project_inventory['manifest_directories'] != 1 else 'y'} "
+                f"({project_inventory['manifest_files']} files, {project_inventory['lockfiles']} lockfile"
+                f"{'s' if project_inventory['lockfiles'] != 1 else ''}, "
+                f"{project_inventory['direct_packages']} direct / {project_inventory['transitive_packages']} transitive)"
+            )
 
             proj_servers: list[MCPServer] = []
             for manifest_dir, pkgs in dir_map.items():

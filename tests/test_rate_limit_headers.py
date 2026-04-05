@@ -1,4 +1,4 @@
-"""Tests for X-RateLimit-* headers and X-API-Version response header (Issue #530)."""
+"""Tests for rate-limit, version, and request tracing headers."""
 
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse as StarletteJSONResponse
@@ -6,6 +6,7 @@ from starlette.routing import Route
 from starlette.testclient import TestClient
 
 from agent_bom.api.middleware import RateLimitMiddleware, TrustHeadersMiddleware
+from agent_bom.api.tracing import parse_traceparent
 
 
 def _make_app(scan_rpm: int = 10, read_rpm: int = 20):
@@ -80,3 +81,65 @@ def test_x_api_version_header():
     resp = client.get("/health")
     assert resp.status_code == 200
     assert resp.headers.get("x-api-version") == "v1"
+
+
+def test_tracing_headers_present():
+    """TrustHeadersMiddleware should add request tracing headers."""
+
+    async def dummy(request):
+        return StarletteJSONResponse({"trace_id": request.state.trace_id})
+
+    app = Starlette(routes=[Route("/health", dummy)])
+    app.add_middleware(TrustHeadersMiddleware)
+
+    client = TestClient(app)
+    resp = client.get("/health")
+    assert resp.status_code == 200
+    assert "x-trace-id" in resp.headers
+    assert "traceparent" in resp.headers
+    parsed = parse_traceparent(resp.headers["traceparent"])
+    assert parsed is not None
+    assert resp.headers["x-trace-id"] == parsed["trace_id"]
+    assert resp.json()["trace_id"] == parsed["trace_id"]
+
+
+def test_tracing_preserves_incoming_trace_id():
+    """Valid incoming traceparent should preserve the trace ID and expose parent span."""
+
+    async def dummy(request):
+        return StarletteJSONResponse(
+            {
+                "trace_id": request.state.trace_id,
+                "parent_span_id": request.state.parent_span_id,
+            }
+        )
+
+    app = Starlette(routes=[Route("/health", dummy)])
+    app.add_middleware(TrustHeadersMiddleware)
+
+    incoming = "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01"
+    client = TestClient(app)
+    resp = client.get("/health", headers={"traceparent": incoming})
+    assert resp.status_code == 200
+    parsed = parse_traceparent(resp.headers["traceparent"])
+    assert parsed is not None
+    assert parsed["trace_id"] == "0123456789abcdef0123456789abcdef"
+    assert parsed["parent_span_id"] != "0123456789abcdef"
+    assert resp.json()["parent_span_id"] == "0123456789abcdef"
+
+
+def test_tracing_invalid_traceparent_falls_back_to_new_trace():
+    """Invalid traceparent headers should not break requests."""
+
+    async def dummy(request):
+        return StarletteJSONResponse({"trace_id": request.state.trace_id})
+
+    app = Starlette(routes=[Route("/health", dummy)])
+    app.add_middleware(TrustHeadersMiddleware)
+
+    client = TestClient(app)
+    resp = client.get("/health", headers={"traceparent": "broken"})
+    assert resp.status_code == 200
+    parsed = parse_traceparent(resp.headers["traceparent"])
+    assert parsed is not None
+    assert resp.json()["trace_id"] == parsed["trace_id"]

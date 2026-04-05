@@ -6,11 +6,13 @@ import asyncio
 import logging
 import os
 import secrets
+import sys
 import time
 import uuid
 from typing import TYPE_CHECKING
 
 from agent_bom import __version__
+from agent_bom.api.tracing import configure_otel_tracing, make_request_trace
 
 if TYPE_CHECKING:
     from agent_bom.api.oidc import OIDCConfig
@@ -108,23 +110,61 @@ class TrustHeadersMiddleware(BaseHTTPMiddleware):
     """Add trust + standard security headers to every response."""
 
     async def dispatch(self, request: StarletteRequest, call_next):
+        trace_meta = make_request_trace(dict(request.headers))
         request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
         request.state.request_id = request_id
+        request.state.trace_id = trace_meta["trace_id"]
+        request.state.span_id = trace_meta["span_id"]
+        request.state.parent_span_id = trace_meta["parent_span_id"]
+        request.state.traceparent = trace_meta["traceparent"]
         if not hasattr(request.state, "tenant_id"):
             request.state.tenant_id = "default"
         tenant_token = None
+        otel_cm = None
+        span = None
+        start = time.perf_counter()
         try:
+            if configure_otel_tracing():
+                from opentelemetry import trace
+
+                tracer = trace.get_tracer("agent_bom.api")
+                otel_cm = tracer.start_as_current_span(f"{request.method} {request.url.path}")
+                span = otel_cm.__enter__()
+                span.set_attribute("http.request.method", request.method)
+                span.set_attribute("url.path", request.url.path)
+                span.set_attribute("agent_bom.request_id", request_id)
+                span.set_attribute("agent_bom.trace_id", str(trace_meta["trace_id"]))
+                span.set_attribute("agent_bom.incoming_traceparent", bool(trace_meta["incoming_traceparent"]))
             if os.environ.get("AGENT_BOM_POSTGRES_URL"):
                 from agent_bom.api.postgres_store import set_current_tenant
 
                 tenant_token = set_current_tenant(getattr(request.state, "tenant_id", "default"))
             response = await call_next(request)
+            elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+            _logger.info(
+                "api request complete method=%s path=%s status=%s request_id=%s trace_id=%s tenant_id=%s duration_ms=%s",
+                request.method,
+                request.url.path,
+                getattr(response, "status_code", "unknown"),
+                request_id,
+                trace_meta["trace_id"],
+                getattr(request.state, "tenant_id", "default"),
+                elapsed_ms,
+            )
+            if span is not None:
+                span.set_attribute("http.response.status_code", int(getattr(response, "status_code", 500)))
+                span.set_attribute("agent_bom.tenant_id", str(getattr(request.state, "tenant_id", "default")))
+                span.set_attribute("agent_bom.duration_ms", elapsed_ms)
         finally:
             if tenant_token is not None:
                 from agent_bom.api.postgres_store import reset_current_tenant
 
                 reset_current_tenant(tenant_token)
+            if otel_cm is not None:
+                otel_cm.__exit__(*sys.exc_info())
         response.headers["X-Request-ID"] = request_id
+        response.headers["X-Trace-ID"] = str(trace_meta["trace_id"])
+        response.headers["traceparent"] = str(trace_meta["traceparent"])
         response.headers["X-Agent-Bom-Read-Only"] = "true"
         response.headers["X-Agent-Bom-No-Credential-Storage"] = "true"
         response.headers["X-Agent-Bom-Version"] = __version__

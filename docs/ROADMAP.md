@@ -87,7 +87,7 @@ Goal: keep the most differentiated surfaces ahead of the market.
 
 | Item | Status |
 |------|--------|
-| Richer request tracing and operator observability | Planned |
+| Richer request tracing and operator observability | In progress |
 | Clearer tool schema/versioning and deprecation rules | Planned |
 | Stronger remote operator docs and governance depth | Planned |
 | Remote MCP introspection beyond config-file discovery | Planned |

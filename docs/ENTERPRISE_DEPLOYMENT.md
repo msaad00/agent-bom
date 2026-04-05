@@ -105,7 +105,7 @@ agent-bom serve --port 8422 --persist jobs.db
 
 **Authentication:** localhost binds are allowed for local development. Non-loopback binds fail closed unless you set `AGENT_BOM_API_KEY`, configure `AGENT_BOM_OIDC_ISSUER`, or explicitly pass `--allow-insecure-no-auth`. Rate limiting and CORS controls are built in.
 
-**Tracing:** every API response includes `X-Request-ID`, `X-Trace-ID`, `X-Span-ID`, and W3C `traceparent`. If your ingress or collector already sends `traceparent` or `tracestate`, `agent-bom` preserves the upstream trace context and continues the chain. Set `AGENT_BOM_OTEL_TRACES_ENDPOINT` to export API request spans over OTLP/HTTP, and use `AGENT_BOM_OTEL_TRACES_HEADERS` for collector auth headers when needed.
+**Tracing:** every API response includes `X-Request-ID`, `X-Trace-ID`, `X-Span-ID`, and W3C `traceparent`. If your ingress or collector already sends `traceparent`, `tracestate`, or bounded W3C `baggage`, `agent-bom` preserves the upstream trace context and continues the chain. `GET /health` also reports the current tracing contract (`w3c_trace_context`, `w3c_tracestate`, `w3c_baggage`) plus OTLP export state so operators can confirm whether tracing is merely available or actively exported. Set `AGENT_BOM_OTEL_TRACES_ENDPOINT` to export API request spans over OTLP/HTTP, and use `AGENT_BOM_OTEL_TRACES_HEADERS` for collector auth headers when needed.
 
 For OIDC-backed enterprise deployments, keep tenant scoping explicit in the token contract:
 

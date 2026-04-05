@@ -49,6 +49,10 @@ def test_health_endpoint():
     body = resp.json()
     assert body["status"] == "ok"
     assert "version" in body
+    assert body["tracing"]["w3c_trace_context"] is True
+    assert body["tracing"]["w3c_tracestate"] is True
+    assert body["tracing"]["w3c_baggage"] is True
+    assert body["tracing"]["otlp_export"] in {"configured", "disabled", "missing_deps"}
 
 
 # ---------------------------------------------------------------------------

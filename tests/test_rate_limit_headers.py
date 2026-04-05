@@ -153,6 +153,28 @@ def test_tracing_preserves_tracestate():
     assert resp.json()["tracestate"] == "vendor-a=foo,vendor-b=bar"
 
 
+def test_tracing_preserves_baggage():
+    """Incoming bounded W3C baggage should be preserved for downstream systems."""
+
+    async def dummy(request):
+        return StarletteJSONResponse({"trace_id": request.state.trace_id, "baggage": request.state.baggage})
+
+    app = Starlette(routes=[Route("/health", dummy)])
+    app.add_middleware(TrustHeadersMiddleware)
+
+    client = TestClient(app)
+    resp = client.get(
+        "/health",
+        headers={
+            "traceparent": "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01",
+            "baggage": "tenant=acme,release=v0.75.15",
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.headers["baggage"] == "tenant=acme,release=v0.75.15"
+    assert resp.json()["baggage"] == "tenant=acme,release=v0.75.15"
+
+
 def test_tracing_invalid_traceparent_falls_back_to_new_trace():
     """Invalid traceparent headers should not break requests."""
 

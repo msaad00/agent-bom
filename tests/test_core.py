@@ -1977,6 +1977,7 @@ def test_api_health_endpoint():
     resp = client.get("/health")
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"
+    assert "tracing" in resp.json()
 
 
 def test_api_version_endpoint():

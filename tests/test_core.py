@@ -3492,6 +3492,7 @@ def test_graph_html_export():
     assert "<!DOCTYPE html>" in content
     assert "cytoscape" in content
     assert "agent-bom Supply Chain Graph" in content
+    assert "Top risky paths" in content
 
 
 def test_dockerfile_non_root():

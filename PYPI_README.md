@@ -25,6 +25,8 @@ Canonical references:
 
 - Product brief: https://github.com/msaad00/agent-bom/blob/main/docs/PRODUCT_BRIEF.md
 - Verified metrics: https://github.com/msaad00/agent-bom/blob/main/docs/PRODUCT_METRICS.md
+- Enterprise controls map: https://github.com/msaad00/agent-bom/blob/main/docs/ENTERPRISE.md
+- Community: https://discord.gg/3YmYPqKZh5
 
 ![agent-bom demo](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif)
 
@@ -61,6 +63,15 @@ agent-bom iac Dockerfile k8s/ infra/main.tf   # IaC misconfigurations
 - **Dependency confusion detection** — flags internal naming patterns
 - **VEX generation** — auto-triage with CWE-aware reachability
 
+## Proof points
+
+- `9` threat-intel sources
+- `16` lockfile formats
+- `13` model formats
+- `36` MCP tools
+- `13` PostgreSQL RLS-backed tenant tables
+- `8` runtime detector classes
+
 Read-only. Agentless. No secrets leave your machine.
 
 ## How it works
@@ -78,3 +89,5 @@ Read-only. Agentless. No secrets leave your machine.
 - [Documentation](https://github.com/msaad00/agent-bom#readme)
 - [Product brief](https://github.com/msaad00/agent-bom/blob/main/docs/PRODUCT_BRIEF.md)
 - [Verified metrics](https://github.com/msaad00/agent-bom/blob/main/docs/PRODUCT_METRICS.md)
+- [Enterprise controls map](https://github.com/msaad00/agent-bom/blob/main/docs/ENTERPRISE.md)
+- [Discord](https://discord.gg/3YmYPqKZh5)

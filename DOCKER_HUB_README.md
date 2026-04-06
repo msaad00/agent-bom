@@ -120,4 +120,5 @@ It covers:
 - [GitHub](https://github.com/msaad00/agent-bom)
 - [PyPI](https://pypi.org/project/agent-bom/)
 - [GitHub Action](https://github.com/marketplace/actions/agent-bom)
+- [Discord](https://discord.gg/3YmYPqKZh5)
 - [Discussions](https://github.com/msaad00/agent-bom/discussions)

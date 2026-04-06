@@ -387,8 +387,15 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bo
     type=click.Path(exists=True, file_okay=False, path_type=Path),
     help="Verify local model weight files under this directory",
 )
-@click.option("--repo-id", help="HuggingFace repo ID override for model verification, e.g. mistralai/Mistral-7B-v0.1")
-@click.option("--hf-token", envvar="HF_TOKEN", help="Optional HuggingFace token for private model metadata")
+@click.option(
+    "--repo-id",
+    help="HuggingFace repo ID override for model verification, e.g. mistralai/Mistral-7B-v0.1",
+)
+@click.option(
+    "--hf-token",
+    envvar="HF_TOKEN",
+    help="Optional HuggingFace token for private model metadata",
+)
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
 @click.option("--quiet", "-q", is_flag=True, help="Only print verdict, no details")
 def verify(

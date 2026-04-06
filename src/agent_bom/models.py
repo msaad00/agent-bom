@@ -30,6 +30,11 @@ def _reference_host_and_path(reference: str) -> tuple[str, str]:
     return (parsed.hostname or "").lower(), (parsed.path or "").lower()
 
 
+def _host_matches_domain(host: str, domain: str) -> bool:
+    """Return True when host equals domain or is a subdomain of it."""
+    return host == domain or host.endswith(f".{domain}")
+
+
 def normalize_package_name(name: str, ecosystem: str = "") -> str:
     """Normalize a package name for consistent matching.
 
@@ -202,7 +207,10 @@ class Vulnerability:
                 for host, path in ref_hosts_paths
             ):
                 derived_sources.append("ghsa")
-            if any(host.endswith("nvidia.com") or host.endswith("nvidia.github.io") for host, _path in ref_hosts_paths):
+            if any(
+                _host_matches_domain(host, "nvidia.com") or _host_matches_domain(host, "nvidia.github.io")
+                for host, _path in ref_hosts_paths
+            ):
                 derived_sources.append("nvidia_csaf")
             if any(host == "nvd.nist.gov" for host, _path in ref_hosts_paths):
                 derived_sources.append("nvd")

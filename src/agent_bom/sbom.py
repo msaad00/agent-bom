@@ -430,6 +430,29 @@ def detect_sbom_resource_name(data: dict) -> str | None:
     return None
 
 
+def parse_sbom_document(data: dict, source_name: str = "<memory>") -> tuple[list[Package], str, str | None]:
+    """Parse an in-memory SBOM document.
+
+    Returns ``(packages, format_name, resource_name)`` where ``resource_name``
+    is auto-detected from SBOM metadata when available.
+    """
+    resource_name = detect_sbom_resource_name(data)
+
+    if "bomFormat" in data and data["bomFormat"] == "CycloneDX":
+        return parse_cyclonedx(data), "cyclonedx", resource_name
+
+    if data.get("spdxVersion", "").startswith("SPDX-3"):
+        return parse_spdx(data), "spdx-3", resource_name
+
+    if data.get("spdxVersion", "").startswith("SPDX-2"):
+        return parse_spdx(data), "spdx-2", resource_name
+
+    if "ai_bom_version" in data or "blast_radius" in data:
+        raise ValueError("That looks like an agent-bom report, not an SBOM. Use 'agent-bom diff' for report comparison.")
+
+    raise ValueError(f"Unrecognised SBOM format in {source_name}. Expected CycloneDX JSON (bomFormat=CycloneDX) or SPDX 2.x/3.0 JSON.")
+
+
 def load_sbom(path: str) -> tuple[list[Package], str, str | None]:
     """Load an SBOM file and return ``(packages, format_name, resource_name)``.
 
@@ -446,22 +469,4 @@ def load_sbom(path: str) -> tuple[list[Package], str, str | None]:
 
     data = json.loads(p.read_text())
 
-    resource_name = detect_sbom_resource_name(data)
-
-    # CycloneDX: has "bomFormat" key
-    if "bomFormat" in data and data["bomFormat"] == "CycloneDX":
-        return parse_cyclonedx(data), "cyclonedx", resource_name
-
-    # SPDX 3.0: has "spdxVersion" starting with "SPDX-3"
-    if data.get("spdxVersion", "").startswith("SPDX-3"):
-        return parse_spdx(data), "spdx-3", resource_name
-
-    # SPDX 2.x: has "spdxVersion" starting with "SPDX-2"
-    if data.get("spdxVersion", "").startswith("SPDX-2"):
-        return parse_spdx(data), "spdx-2", resource_name
-
-    # agent-bom JSON report: has "ai_bom_version"
-    if "ai_bom_version" in data or "blast_radius" in data:
-        raise ValueError("That looks like an agent-bom report, not an SBOM. Use 'agent-bom diff' for report comparison.")
-
-    raise ValueError(f"Unrecognised SBOM format in {path}. Expected CycloneDX JSON (bomFormat=CycloneDX) or SPDX 2.x/3.0 JSON.")
+    return parse_sbom_document(data, source_name=path)

@@ -190,26 +190,28 @@ def diff_cmd(baseline: str, current: Optional[str]):
     Usage:
       agent-bom report diff baseline.json                # diff against latest saved scan
       agent-bom report diff baseline.json current.json   # diff two specific files
+      agent-bom report diff baseline.cdx.json current.spdx.json   # diff two external SBOMs
+      agent-bom report diff baseline.cdx.json latest-scan.json    # diff external SBOM vs agent-bom report
 
     \b
     Exit codes:
       0  No new findings
       1  New vulnerability findings detected
     """
-    from agent_bom.history import diff_reports, latest_report, load_report
+    from agent_bom.history import diff_reports, latest_report, load_report_or_sbom
 
     console = Console()
 
-    baseline_data = load_report(Path(baseline))
+    baseline_data = load_report_or_sbom(Path(baseline))
 
     if current:
-        current_data = load_report(Path(current))
+        current_data = load_report_or_sbom(Path(current))
     else:
         latest = latest_report()
         if not latest:
             console.print("[red]No saved scans in history. Run: agent-bom scan --save[/red]")
             sys.exit(1)
-        current_data = load_report(latest)
+        current_data = load_report_or_sbom(latest)
 
     diff = diff_reports(baseline_data, current_data)
     print_diff(diff)

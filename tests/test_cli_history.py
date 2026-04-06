@@ -125,6 +125,97 @@ def test_diff_baseline_with_latest(tmp_path):
         assert result.exit_code == 0
 
 
+def test_diff_accepts_sbom_baseline_and_latest_report(tmp_path):
+    runner = CliRunner()
+    baseline = tmp_path / "baseline.cdx.json"
+    latest = tmp_path / "latest.json"
+    baseline.write_text(
+        json.dumps(
+            {
+                "bomFormat": "CycloneDX",
+                "metadata": {"component": {"name": "vendor-api"}},
+                "components": [{"type": "library", "name": "requests", "version": "2.31.0", "purl": "pkg:pypi/requests@2.31.0"}],
+            }
+        )
+    )
+    latest.write_text(
+        json.dumps(
+            {
+                "generated_at": "2025-01-02T00:00:00Z",
+                "summary": {"total_agents": 1, "total_packages": 1},
+                "agents": [
+                    {
+                        "name": "scan",
+                        "mcp_servers": [
+                            {
+                                "name": "scan",
+                                "packages": [{"name": "requests", "version": "2.31.0", "ecosystem": "pypi"}],
+                            }
+                        ],
+                    }
+                ],
+                "blast_radius": [],
+            }
+        )
+    )
+
+    with patch("agent_bom.history.latest_report", return_value=latest), patch("agent_bom.cli._history.print_diff") as mock_print:
+        result = runner.invoke(diff_cmd, [str(baseline)])
+        assert result.exit_code == 0
+        mock_print.assert_called_once()
+
+
+def test_diff_accepts_two_sboms(tmp_path):
+    runner = CliRunner()
+    baseline = tmp_path / "baseline.cdx.json"
+    current = tmp_path / "current.spdx.json"
+    baseline.write_text(
+        json.dumps(
+            {
+                "bomFormat": "CycloneDX",
+                "components": [{"type": "library", "name": "requests", "version": "2.31.0", "purl": "pkg:pypi/requests@2.31.0"}],
+            }
+        )
+    )
+    current.write_text(
+        json.dumps(
+            {
+                "spdxVersion": "SPDX-2.3",
+                "packages": [
+                    {
+                        "name": "requests",
+                        "versionInfo": "2.31.0",
+                        "externalRefs": [
+                            {
+                                "referenceCategory": "PACKAGE-MANAGER",
+                                "referenceType": "purl",
+                                "referenceLocator": "pkg:pypi/requests@2.31.0",
+                            }
+                        ],
+                    },
+                    {
+                        "name": "urllib3",
+                        "versionInfo": "2.2.0",
+                        "externalRefs": [
+                            {
+                                "referenceCategory": "PACKAGE-MANAGER",
+                                "referenceType": "purl",
+                                "referenceLocator": "pkg:pypi/urllib3@2.2.0",
+                            }
+                        ],
+                    },
+                ],
+            }
+        )
+    )
+
+    with patch("agent_bom.cli._history.print_diff") as mock_print:
+        result = runner.invoke(diff_cmd, [str(baseline), str(current)])
+        assert result.exit_code == 0
+        diff_payload = mock_print.call_args.args[0]
+        assert diff_payload["summary"]["new_packages"] == 1
+
+
 # ---------------------------------------------------------------------------
 # rescan_command
 # ---------------------------------------------------------------------------

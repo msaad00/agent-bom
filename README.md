@@ -232,6 +232,7 @@ That work is tracked in [docs/ROADMAP.md](docs/ROADMAP.md).
 - OSV, NVD, GHSA, EPSS, and CISA KEV enrichment
 - Blast radius mapping: CVE → package → MCP server → agent → credentials → tools
 - CycloneDX 1.6 with ML BOM extensions, SPDX 3.0, VEX, SARIF, HTML, graph, JSON, and more
+- External SBOM ingest and diff workflows so teams can compare vendor or baseline BOMs against current scans
 
 </details>
 

@@ -9,6 +9,7 @@ from agent_bom.sbom import (
     _ecosystem_from_type,
     load_sbom,
     parse_cyclonedx,
+    parse_sbom_document,
     parse_spdx,
 )
 
@@ -227,6 +228,11 @@ def test_load_sbom_rejects_agent_bom_report(tmp_path):
         load_sbom(str(path))
 
 
+def test_parse_sbom_document_rejects_agent_bom_report():
+    with pytest.raises(ValueError, match="agent-bom report"):
+        parse_sbom_document({"ai_bom_version": "0.75.15", "blast_radius": []})
+
+
 def test_load_sbom_unknown_format(tmp_path):
     data = {"random_key": "random_value"}
     path = tmp_path / "mystery.json"
@@ -234,6 +240,31 @@ def test_load_sbom_unknown_format(tmp_path):
 
     with pytest.raises(ValueError, match="Unrecognised SBOM format"):
         load_sbom(str(path))
+
+
+def test_parse_sbom_document_autodetects_spdx_2():
+    data = {
+        "spdxVersion": "SPDX-2.3",
+        "name": "DOCUMENT-prod-api-01",
+        "packages": [
+            {
+                "name": "flask",
+                "versionInfo": "3.0.0",
+                "externalRefs": [
+                    {
+                        "referenceCategory": "PACKAGE-MANAGER",
+                        "referenceType": "purl",
+                        "referenceLocator": "pkg:pypi/flask@3.0.0",
+                    }
+                ],
+            }
+        ],
+    }
+    packages, fmt, resource_name = parse_sbom_document(data, source_name="memory.json")
+    assert fmt == "spdx-2"
+    assert resource_name == "prod-api-01"
+    assert len(packages) == 1
+    assert packages[0].name == "flask"
 
 
 def test_load_sbom_file_not_found():

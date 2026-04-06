@@ -7,6 +7,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from agent_bom.models import Package
+from agent_bom.sbom import parse_sbom_document
+
 HISTORY_DIR = Path.home() / ".agent-bom" / "history"
 
 
@@ -36,6 +39,81 @@ def list_reports() -> list[Path]:
 def load_report(path: Path) -> dict:
     """Load a saved report JSON file."""
     return json.loads(path.read_text())
+
+
+def _synthetic_report_from_packages(
+    packages: list[Package],
+    *,
+    generated_at: str,
+    source_path: Path,
+    source_name: str,
+    format_name: str,
+) -> dict:
+    """Build a minimal report-shaped dict for non-agent package inventories."""
+    package_dicts = [
+        {
+            "name": pkg.name,
+            "version": pkg.version,
+            "ecosystem": pkg.ecosystem,
+            "purl": getattr(pkg, "purl", None),
+            "is_direct": getattr(pkg, "is_direct", True),
+            "stable_id": getattr(pkg, "stable_id", None),
+        }
+        for pkg in packages
+    ]
+    server_name = f"sbom:{source_name}"
+    return {
+        "generated_at": generated_at,
+        "summary": {
+            "total_agents": 1,
+            "total_packages": len(package_dicts),
+            "total_vulnerabilities": 0,
+            "critical_findings": 0,
+        },
+        "scan_sources": ["sbom"],
+        "sbom_baseline": {
+            "source_path": str(source_path),
+            "source_name": source_name,
+            "format": format_name,
+            "package_count": len(package_dicts),
+        },
+        "agents": [
+            {
+                "name": server_name,
+                "stable_id": server_name,
+                "mcp_servers": [
+                    {
+                        "name": server_name,
+                        "stable_id": server_name,
+                        "surface": "sbom",
+                        "fingerprint": "",
+                        "packages": package_dicts,
+                        "tools": [],
+                        "resources": [],
+                    }
+                ],
+            }
+        ],
+        "blast_radius": [],
+    }
+
+
+def load_report_or_sbom(path: Path) -> dict:
+    """Load either an agent-bom report or an external CycloneDX/SPDX SBOM."""
+    data = load_report(path)
+    if "blast_radius" in data or "ai_bom_version" in data:
+        return data
+
+    packages, format_name, detected_name = parse_sbom_document(data, source_name=str(path))
+    generated_at = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat()
+    source_name = detected_name or path.stem
+    return _synthetic_report_from_packages(
+        packages,
+        generated_at=generated_at,
+        source_path=path,
+        source_name=source_name,
+        format_name=format_name,
+    )
 
 
 def latest_report() -> Optional[Path]:

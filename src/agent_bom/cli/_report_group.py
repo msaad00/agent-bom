@@ -3,7 +3,7 @@
 Usage::
 
     agent-bom report history             # list saved scan reports
-    agent-bom report diff <a> <b>        # diff two scan reports
+    agent-bom report diff <a> <b>        # diff two scan reports or SBOMs
     agent-bom report rescan              # re-scan to verify remediation
     agent-bom report compliance-narrative report.json
     agent-bom report analytics           # query vulnerability trends
@@ -23,7 +23,7 @@ def report_group(ctx: click.Context) -> None:
     \b
     Subcommands:
       history     List saved scan reports
-      diff        Diff two scan reports
+      diff        Diff two scan reports or CycloneDX/SPDX SBOMs
       rescan      Re-scan vulnerable packages to verify remediation
       compliance-narrative  Generate auditor-facing compliance narrative from a saved scan report
       analytics   Query vulnerability trends (ClickHouse)

@@ -76,6 +76,7 @@ The next phase should stay disciplined:
 
 - enterprise hardening: auth defaults, tenant isolation, Helm and deployment defaults, stable operator contracts
 - scanner depth: stronger lockfile and package coverage so buyers do not need a second tool for basic SCA depth
+- supply chain operations: tighter SBOM import/diff workflows so external vendor BOMs and current scans stay comparable
 - MCP and runtime depth: keep improving governance, observability, and remote operation without weakening the low-friction local story
 - skills depth: move from strong regex-first analysis toward more semantic analysis while preserving stable output contracts
 - contributor scalability: make extension and contribution paths clearer without destabilizing the core product

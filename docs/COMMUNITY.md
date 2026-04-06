@@ -1,49 +1,45 @@
 # Community
 
-`agent-bom` is strong enough that adoption is now limited more by discoverability and response loops than by missing core product features.
+`agent-bom` has a public Discord server for support, feedback, and contributor discussion:
 
-This page defines the minimum community surface we should keep live and honest.
+- Discord: https://discord.gg/3YmYPqKZh5
 
-## Recommended Discord Server Shape
+Use Discord for fast questions and discussion. Use GitHub issues for bugs, feature requests, and scoped contribution work.
 
-Start small and keep it active:
+## Current Server Shape
+
+Current channels:
 
 - `#general`
 - `#feedback`
 - `#support`
 - `#contributors`
-- `#good-first-issues`
 - `#release-notes`
 
-## What To Pin On Day One
+## What Each Channel Is For
 
-In `#general`:
+- `#general`
+  - what `agent-bom` is
+  - install/start links
+  - release announcements
+- `#feedback`
+  - product feedback
+  - feature requests before they become scoped issues
+- `#support`
+  - usage questions
+  - troubleshooting and logs
+- `#contributors`
+  - implementation questions
+  - PR discussion
+  - contribution path and review expectations
+- `#release-notes`
+  - shipped changes and release links
 
-- what `agent-bom` is
-- where to install it
-- where to file bugs
-- where releases are announced
+## Channel Expectations
 
-In `#contributors`:
-
-- contribution path
-- review expectation target
-- where parser / scanner / API extension points live
-
-In `#support`:
-
-- how to ask for help
-- what logs / commands to include
-- reminder not to paste live secrets
-
-## Repo Wiring
-
-Once the Discord invite exists, add it to:
-
-- `README.md`
-- release notes
-- Reddit launch post
-- Slack / forum launch post
+- do not post live secrets, tokens, or customer data
+- prefer GitHub issues for reproducible bugs and tracked feature work
+- keep PRs focused and small when possible
 
 ## Contribution Expectations
 
@@ -54,10 +50,4 @@ The fastest way to turn interest into contributors is to keep the entry path con
 - answer PRs quickly
 - keep docs truthful to the code
 
-## Current Goal
-
-Community should make `agent-bom` easier to adopt, not noisier:
-
-- easy to ask questions
-- easy to see what is real
-- easy to find small contribution slices
+Maintainer response target: within 48 hours when possible.

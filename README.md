@@ -104,9 +104,10 @@ agent-bom serve                         # API + Next.js dashboard
 - Enterprise controls map: [docs/ENTERPRISE.md](docs/ENTERPRISE.md)
 - Enterprise deployment guide: [docs/ENTERPRISE_DEPLOYMENT.md](docs/ENTERPRISE_DEPLOYMENT.md)
 - Runtime monitoring and proxy deployment: [docs/RUNTIME_MONITORING.md](docs/RUNTIME_MONITORING.md)
-- Community bootstrap plan: [docs/COMMUNITY.md](docs/COMMUNITY.md)
+- Community and contribution notes: [docs/COMMUNITY.md](docs/COMMUNITY.md)
+- Discord: https://discord.gg/3YmYPqKZh5
 
-When the Discord server is live, add the invite link in this section and in release notes so support and contributor traffic has a single obvious entry point.
+Use Discord for support, implementation questions, and release discussion. Use GitHub issues for bugs, feature requests, and labeled starter work.
 
 ## Update and release hygiene
 

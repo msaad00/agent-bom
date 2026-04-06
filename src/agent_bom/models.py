@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional
+from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     from agent_bom.finding import Finding
@@ -18,6 +19,15 @@ from agent_bom.advisory_sources import merge_advisory_sources
 # PEP 503: https://peps.python.org/pep-0503/#normalized-names
 # Ensures consistent matching across parsers, scanners, and cache.
 _NORMALIZE_RE = re.compile(r"[-_.]+")
+
+
+def _reference_host_and_path(reference: str) -> tuple[str, str]:
+    """Return normalized hostname and path for a reference URL."""
+    try:
+        parsed = urlparse(reference)
+    except ValueError:
+        return "", ""
+    return (parsed.hostname or "").lower(), (parsed.path or "").lower()
 
 
 def normalize_package_name(name: str, ecosystem: str = "") -> str:
@@ -186,12 +196,15 @@ class Vulnerability:
         if self.id.startswith("GHSA-") or any(alias.startswith("GHSA-") for alias in self.aliases):
             derived_sources.append("ghsa")
         if self.references:
-            refs = [ref.lower() for ref in self.references]
-            if any("github.com/advisories/" in ref or "github.com/advisory/" in ref for ref in refs):
+            ref_hosts_paths = [_reference_host_and_path(ref) for ref in self.references]
+            if any(
+                host == "github.com" and (path.startswith("/advisories/") or path.startswith("/advisory/"))
+                for host, path in ref_hosts_paths
+            ):
                 derived_sources.append("ghsa")
-            if any("nvidia" in ref for ref in refs):
+            if any(host.endswith("nvidia.com") or host.endswith("nvidia.github.io") for host, _path in ref_hosts_paths):
                 derived_sources.append("nvidia_csaf")
-            if any("nvd.nist.gov" in ref for ref in refs):
+            if any(host == "nvd.nist.gov" for host, _path in ref_hosts_paths):
                 derived_sources.append("nvd")
         if self.nvd_status or self.nvd_published or self.nvd_modified:
             derived_sources.append("nvd")

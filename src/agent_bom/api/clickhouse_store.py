@@ -49,6 +49,18 @@ class AnalyticsStore(Protocol):
         """Append a posture score snapshot."""
         ...
 
+    def record_fleet_snapshot(self, snapshot: dict) -> None:
+        """Append a fleet-agent snapshot."""
+        ...
+
+    def record_compliance_control(self, control: dict) -> None:
+        """Append a compliance control measurement."""
+        ...
+
+    def record_audit_event(self, event: dict) -> None:
+        """Append an audit event for analytics/trending."""
+        ...
+
     def query_vuln_trends(self, days: int = 30, agent: str | None = None) -> list[dict]:
         """Vulnerability counts grouped by day and severity."""
         ...
@@ -63,6 +75,14 @@ class AnalyticsStore(Protocol):
 
     def query_event_summary(self, hours: int = 24) -> list[dict]:
         """Runtime event counts grouped by type."""
+        ...
+
+    def query_top_riskiest_agents(self, limit: int = 20) -> list[dict]:
+        """Top fleet agents by trust/risk posture."""
+        ...
+
+    def query_compliance_heatmap(self, days: int = 30) -> list[dict]:
+        """Compliance control pass/fail summary grouped by framework."""
         ...
 
     def record_scan_metadata(self, metadata: dict) -> None:
@@ -91,6 +111,15 @@ class NullAnalyticsStore:
     def record_posture(self, agent_name: str, snapshot: dict) -> None:
         pass
 
+    def record_fleet_snapshot(self, snapshot: dict) -> None:
+        pass
+
+    def record_compliance_control(self, control: dict) -> None:
+        pass
+
+    def record_audit_event(self, event: dict) -> None:
+        pass
+
     def query_vuln_trends(self, days: int = 30, agent: str | None = None) -> list[dict]:
         return []
 
@@ -101,6 +130,12 @@ class NullAnalyticsStore:
         return []
 
     def query_event_summary(self, hours: int = 24) -> list[dict]:
+        return []
+
+    def query_top_riskiest_agents(self, limit: int = 20) -> list[dict]:
+        return []
+
+    def query_compliance_heatmap(self, days: int = 30) -> list[dict]:
         return []
 
     def record_scan_metadata(self, metadata: dict) -> None:
@@ -193,6 +228,51 @@ class ClickHouseAnalyticsStore:
             "compliance_score": float(snapshot.get("compliance_score", 0.0)),
         }
 
+    def record_fleet_snapshot(self, snapshot: dict) -> None:
+        self._client.insert_json("fleet_agents", [self._fleet_row(snapshot)])
+
+    def _fleet_row(self, snapshot: dict) -> dict[str, Any]:
+        return {
+            "measured_at": snapshot.get("last_seen"),
+            "agent_name": snapshot.get("agent_name", ""),
+            "agent_type": snapshot.get("agent_type", ""),
+            "lifecycle_state": snapshot.get("lifecycle_state", ""),
+            "trust_score": float(snapshot.get("trust_score", 0.0)),
+            "server_count": int(snapshot.get("server_count", 0)),
+            "package_count": int(snapshot.get("package_count", 0)),
+            "credential_count": int(snapshot.get("credential_count", 0)),
+            "vuln_count": int(snapshot.get("vuln_count", 0)),
+            "tenant_id": snapshot.get("tenant_id", "default"),
+        }
+
+    def record_compliance_control(self, control: dict) -> None:
+        self._client.insert_json("compliance_controls", [self._compliance_row(control)])
+
+    def _compliance_row(self, control: dict) -> dict[str, Any]:
+        return {
+            "measured_at": control.get("measured_at"),
+            "scan_id": control.get("scan_id", ""),
+            "framework": control.get("framework", ""),
+            "control_id": control.get("control_id", ""),
+            "control_name": control.get("control_name", ""),
+            "status": control.get("status", "unknown"),
+            "finding_count": int(control.get("finding_count", 0)),
+            "score": float(control.get("score", 0.0)),
+        }
+
+    def record_audit_event(self, event: dict) -> None:
+        self._client.insert_json("audit_events", [self._audit_row(event)])
+
+    def _audit_row(self, event: dict) -> dict[str, Any]:
+        return {
+            "event_timestamp": event.get("timestamp"),
+            "entry_id": event.get("entry_id", str(uuid.uuid4())),
+            "action": event.get("action", ""),
+            "actor": event.get("actor", ""),
+            "resource": event.get("resource", ""),
+            "tenant_id": event.get("tenant_id", "default"),
+        }
+
     # -- reads ---------------------------------------------------------
 
     def query_vuln_trends(self, days: int = 30, agent: str | None = None) -> list[dict]:
@@ -236,6 +316,25 @@ class ClickHouseAnalyticsStore:
             f"FROM runtime_events "
             f"WHERE event_timestamp >= now() - INTERVAL {int(hours)} HOUR "
             f"GROUP BY event_type, severity ORDER BY cnt DESC"
+        )
+        return self._client.query_json(query)
+
+    def query_top_riskiest_agents(self, limit: int = 20) -> list[dict]:
+        query = (
+            f"SELECT agent_name, anyLast(lifecycle_state) AS lifecycle_state, "
+            f"max(trust_score) AS trust_score, max(vuln_count) AS vuln_count, "
+            f"max(credential_count) AS credential_count, anyLast(tenant_id) AS tenant_id "  # nosec B608
+            f"FROM fleet_agents GROUP BY agent_name ORDER BY trust_score ASC, vuln_count DESC "
+            f"LIMIT {int(limit)}"
+        )
+        return self._client.query_json(query)
+
+    def query_compliance_heatmap(self, days: int = 30) -> list[dict]:
+        query = (
+            f"SELECT framework, status, count() AS cnt, avg(score) AS avg_score "  # nosec B608
+            f"FROM compliance_controls "
+            f"WHERE measured_at >= now() - INTERVAL {int(days)} DAY "
+            f"GROUP BY framework, status ORDER BY framework, status"
         )
         return self._client.query_json(query)
 
@@ -289,6 +388,15 @@ class BufferedAnalyticsStore:
     def record_scan_metadata(self, metadata: dict) -> None:
         self._queue.put(("metadata", (metadata,)))
 
+    def record_fleet_snapshot(self, snapshot: dict) -> None:
+        self._queue.put(("fleet", (snapshot,)))
+
+    def record_compliance_control(self, control: dict) -> None:
+        self._queue.put(("compliance", (control,)))
+
+    def record_audit_event(self, event: dict) -> None:
+        self._queue.put(("audit", (event,)))
+
     def query_vuln_trends(self, days: int = 30, agent: str | None = None) -> list[dict]:
         self._flush_pending()
         return self._store.query_vuln_trends(days=days, agent=agent)
@@ -304,6 +412,14 @@ class BufferedAnalyticsStore:
     def query_event_summary(self, hours: int = 24) -> list[dict]:
         self._flush_pending()
         return self._store.query_event_summary(hours=hours)
+
+    def query_top_riskiest_agents(self, limit: int = 20) -> list[dict]:
+        self._flush_pending()
+        return self._store.query_top_riskiest_agents(limit=limit)
+
+    def query_compliance_heatmap(self, days: int = 30) -> list[dict]:
+        self._flush_pending()
+        return self._store.query_compliance_heatmap(days=days)
 
     def close(self) -> None:
         self._stop.set()
@@ -334,6 +450,9 @@ class BufferedAnalyticsStore:
         event_rows: list[dict[str, Any]] = []
         posture_rows: list[dict[str, Any]] = []
         metadata_rows: list[dict[str, Any]] = []
+        fleet_rows: list[dict[str, Any]] = []
+        compliance_rows: list[dict[str, Any]] = []
+        audit_rows: list[dict[str, Any]] = []
 
         for kind, payload in drained:
             if kind == "scan":
@@ -348,6 +467,15 @@ class BufferedAnalyticsStore:
             elif kind == "metadata":
                 (metadata,) = payload
                 metadata_rows.append(self._store._metadata_row(dict(metadata)))
+            elif kind == "fleet":
+                (snapshot,) = payload
+                fleet_rows.append(self._store._fleet_row(dict(snapshot)))
+            elif kind == "compliance":
+                (control,) = payload
+                compliance_rows.append(self._store._compliance_row(dict(control)))
+            elif kind == "audit":
+                (event,) = payload
+                audit_rows.append(self._store._audit_row(dict(event)))
 
         try:
             if scan_rows:
@@ -358,6 +486,12 @@ class BufferedAnalyticsStore:
                 self._store._client.insert_json("posture_scores", posture_rows)
             if metadata_rows:
                 self._store._client.insert_json("scan_metadata", metadata_rows)
+            if fleet_rows:
+                self._store._client.insert_json("fleet_agents", fleet_rows)
+            if compliance_rows:
+                self._store._client.insert_json("compliance_controls", compliance_rows)
+            if audit_rows:
+                self._store._client.insert_json("audit_events", audit_rows)
         except Exception:
             logger.warning("Buffered ClickHouse flush failed", exc_info=True)
 

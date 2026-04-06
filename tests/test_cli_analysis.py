@@ -65,6 +65,33 @@ def test_analytics_top_cves():
         assert result.exit_code == 0
 
 
+def test_analytics_fleet():
+    runner = CliRunner()
+    mock_store = MagicMock()
+    mock_store.query_top_riskiest_agents.return_value = [
+        {
+            "agent_name": "alpha",
+            "lifecycle_state": "discovered",
+            "trust_score": 42.0,
+            "vuln_count": 3,
+            "credential_count": 1,
+            "tenant_id": "default",
+        }
+    ]
+    with patch("agent_bom.api.clickhouse_store.ClickHouseAnalyticsStore", return_value=mock_store):
+        result = runner.invoke(analytics_cmd, ["fleet", "--clickhouse-url", "http://localhost:8123"])
+        assert result.exit_code == 0
+
+
+def test_analytics_compliance():
+    runner = CliRunner()
+    mock_store = MagicMock()
+    mock_store.query_compliance_heatmap.return_value = [{"framework": "owasp-llm-top10", "status": "fail", "cnt": 2, "avg_score": 40.0}]
+    with patch("agent_bom.api.clickhouse_store.ClickHouseAnalyticsStore", return_value=mock_store):
+        result = runner.invoke(analytics_cmd, ["compliance", "--clickhouse-url", "http://localhost:8123"])
+        assert result.exit_code == 0
+
+
 def test_analytics_empty_results():
     runner = CliRunner()
     mock_store = MagicMock()

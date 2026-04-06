@@ -198,6 +198,7 @@ def scan_model_manifests(
     expanded = os.path.expanduser(raw_directory)
     resolved_input = os.path.realpath(expanded if os.path.isabs(expanded) else os.path.join(os.getcwd(), expanded))
 
+    matched_root = None
     scan_root = None
     for safe_root in _allowed_scan_roots():
         try:
@@ -209,20 +210,36 @@ def scan_model_manifests(
             continue
         if scan_candidate != resolved_input:
             continue
+        matched_root = safe_root
         scan_root = scan_candidate
         break
 
-    if scan_root is None:
+    if matched_root is None or scan_root is None:
         logger.warning("Model manifest scan refused outside safe roots")
         return [], [f"Model manifest scan: Directory escapes safe scan roots: {resolved_input}"]
-    if not os.path.isdir(scan_root):
-        return [], [f"Model manifest scan: {scan_root} is not a directory"]
 
     manifests: list[dict] = []
     warnings: list[str] = []
+    scan_root_prefix = scan_root + os.sep
+    target_found = False
 
-    for root, dirs, files in os.walk(scan_root):
+    for root, dirs, files in os.walk(matched_root):
+        root = os.path.normpath(root)
         dirs[:] = [d for d in dirs if not d.startswith(".")]
+
+        if root == scan_root:
+            target_found = True
+        elif root.startswith(scan_root_prefix):
+            target_found = True
+        elif scan_root.startswith(root + os.sep):
+            rel_to_target = os.path.relpath(scan_root, root)
+            next_segment = rel_to_target.split(os.sep, 1)[0]
+            dirs[:] = [d for d in dirs if d == next_segment]
+            continue
+        else:
+            dirs[:] = []
+            continue
+
         if any(part.startswith(".") for part in Path(root).parts):
             continue
         for filename in sorted(files):
@@ -301,6 +318,9 @@ def scan_model_manifests(
 
             for flag in security_flags:
                 warnings.append(f"Model manifest {file_name}: {flag['severity']} — {flag['type']}. {flag['description']}")
+
+    if not target_found:
+        return [], [f"Model manifest scan: {scan_root} is not a directory"]
 
     return manifests, warnings
 

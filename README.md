@@ -71,6 +71,7 @@ agent-bom graph report.json                # Blast radius graph / graph HTML inp
 agent-bom proxy "npx @mcp/server-fs /ws"   # MCP security proxy
 agent-bom secrets src/                  # Hardcoded secrets + PII
 agent-bom verify requests@2.33.0        # Package integrity verification
+agent-bom verify --model-dir ./models   # Model weight hash verification
 agent-bom serve                         # API + Next.js dashboard
 ```
 

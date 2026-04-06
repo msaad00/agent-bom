@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 from typing import Optional
 
 import click
@@ -100,6 +101,99 @@ def _resolve_check_ecosystems(name: str, version: str, ecosystem: Optional[str],
     error = click.ClickException(f"Ambiguous package name '{name}'. Specify --ecosystem pypi or --ecosystem npm for a trustworthy verdict.")
     error.exit_code = 2
     raise error
+
+
+def _exit_model_verification(
+    model_dir: Path,
+    repo_id: str | None,
+    hf_token: str | None,
+    as_json: bool,
+    quiet: bool,
+) -> None:
+    """Verify local model weight files against upstream metadata."""
+    from agent_bom.model_hash import verify_model_hashes
+
+    console = Console()
+    report = verify_model_hashes(model_dir, token=hf_token, repo_id=repo_id)
+    summary = report.summary()
+
+    if report.scanned == 0:
+        if as_json:
+            click.echo(
+                json.dumps(
+                    {
+                        "scan_root": str(model_dir),
+                        "repo_id": repo_id or "",
+                        "verdict": "error",
+                        "error": "No model weight files found",
+                        "summary": summary,
+                    },
+                    indent=2,
+                )
+            )
+        else:
+            console.print(f"[red]Error: no model weight files found under {model_dir}[/red]")
+        sys.exit(2)
+
+    exit_code = 0 if report.verified == report.scanned else 1
+    verdict = "verified" if exit_code == 0 else "unverified"
+
+    if as_json:
+        click.echo(
+            json.dumps(
+                {
+                    "scan_root": str(model_dir),
+                    "repo_id": repo_id or "",
+                    "verdict": verdict,
+                    "summary": summary,
+                    "has_tampering": report.has_tampering,
+                    "results": [result.to_dict() for result in report.results],
+                },
+                indent=2,
+            )
+        )
+        sys.exit(exit_code)
+
+    if quiet:
+        console.print(
+            f"{model_dir}: {'VERIFIED' if exit_code == 0 else 'UNVERIFIED'} "
+            f"({report.verified}/{report.scanned} verified, {report.tampered} tampered, "
+            f"{report.unverified} unverified, {report.offline} offline)"
+        )
+        sys.exit(exit_code)
+
+    from rich.table import Table
+
+    console.print(f"\n[bold blue]Verifying model weight files in {model_dir}[/bold blue]\n")
+    table = Table(title=f"{model_dir} ({repo_id or 'repo auto-detect'})", show_header=True)
+    table.add_column("Check", width=26)
+    table.add_column("Status", width=10, justify="center")
+    table.add_column("Detail", max_width=72)
+    table.add_row(
+        "Model hash verification",
+        "[green]PASS[/green]" if exit_code == 0 else "[red]FAIL[/red]",
+        (
+            f"{report.verified}/{report.scanned} verified · "
+            f"{report.tampered} tampered · "
+            f"{report.unverified} unverified · "
+            f"{report.offline} offline"
+        ),
+    )
+    if report.has_tampering:
+        tampered = [result.filename for result in report.results if result.status == "tampered"]
+        table.add_row("Tampered files", "[red]FAIL[/red]", ", ".join(tampered[:3]))
+    elif report.offline:
+        table.add_row("Hub reachability", "[yellow]UNKNOWN[/yellow]", "HuggingFace Hub unreachable during verification")
+    elif report.unverified:
+        unverified = [result.filename for result in report.results if result.status == "unverified"]
+        table.add_row("Missing metadata", "[yellow]UNKNOWN[/yellow]", ", ".join(unverified[:3]))
+    console.print(table)
+
+    if exit_code == 0:
+        console.print(f"\n  [bold green]VERIFIED[/bold green] — {report.verified} model file(s) matched expected hashes\n")
+    else:
+        console.print("\n  [bold red]UNVERIFIED[/bold red] — one or more model files could not be trusted\n")
+    sys.exit(exit_code)
 
 
 @click.command()
@@ -288,9 +382,24 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bo
     type=click.Choice(["npm", "pypi"]),
     help="Package ecosystem (default: pypi for self-verify)",
 )
+@click.option(
+    "--model-dir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    help="Verify local model weight files under this directory",
+)
+@click.option("--repo-id", help="HuggingFace repo ID override for model verification, e.g. mistralai/Mistral-7B-v0.1")
+@click.option("--hf-token", envvar="HF_TOKEN", help="Optional HuggingFace token for private model metadata")
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
 @click.option("--quiet", "-q", is_flag=True, help="Only print verdict, no details")
-def verify(package_spec: Optional[str], ecosystem: Optional[str], as_json: bool, quiet: bool):
+def verify(
+    package_spec: Optional[str],
+    ecosystem: Optional[str],
+    model_dir: Path | None,
+    repo_id: str | None,
+    hf_token: str | None,
+    as_json: bool,
+    quiet: bool,
+):
     """Verify package integrity and provenance against registries.
 
     \b
@@ -301,6 +410,7 @@ def verify(package_spec: Optional[str], ecosystem: Optional[str], as_json: bool,
     Verify any package:
       agent-bom verify requests@2.28.0 -e pypi
       agent-bom verify @modelcontextprotocol/server-filesystem@2025.1.14 -e npm
+      agent-bom verify --model-dir ./models --repo-id org/model
 
     \b
     Exit codes:
@@ -308,6 +418,13 @@ def verify(package_spec: Optional[str], ecosystem: Optional[str], as_json: bool,
       1  Unverified — one or more checks failed
       2  Error — could not complete verification
     """
+    if model_dir is not None:
+        if package_spec is not None:
+            console = Console()
+            console.print("[red]Error: choose either package verification or --model-dir, not both.[/red]")
+            sys.exit(2)
+        _exit_model_verification(model_dir, repo_id, hf_token, as_json, quiet)
+
     import asyncio
 
     from agent_bom.http_client import create_client

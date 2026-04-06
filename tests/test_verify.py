@@ -220,6 +220,7 @@ def test_verify_command_help():
     assert result.exit_code == 0
     assert "Verify package integrity" in result.output
     assert "--ecosystem" in result.output
+    assert "--model-dir" in result.output
     assert "--json" in result.output
 
 
@@ -371,3 +372,54 @@ def test_verify_record_tampered_fails():
         data = json.loads(result.output)
         assert data["verdict"] == "unverified"
         assert data["checks"]["record_integrity"]["status"] == "fail"
+
+
+def test_verify_model_dir_json_output(tmp_path):
+    runner = CliRunner()
+    mock_report = MagicMock()
+    mock_report.scanned = 2
+    mock_report.verified = 1
+    mock_report.tampered = 1
+    mock_report.unverified = 0
+    mock_report.offline = 0
+    mock_report.has_tampering = True
+    mock_report.summary.return_value = {
+        "scanned": 2,
+        "verified": 1,
+        "tampered": 1,
+        "unverified": 0,
+        "offline": 0,
+    }
+    mock_result = MagicMock()
+    mock_result.to_dict.return_value = {"filename": "model.safetensors", "status": "tampered"}
+    mock_report.results = [mock_result]
+
+    with patch("agent_bom.model_hash.verify_model_hashes", return_value=mock_report):
+        result = runner.invoke(main, ["verify", "--model-dir", str(tmp_path), "--repo-id", "org/model", "--json"], catch_exceptions=False)
+
+    assert result.exit_code == 1
+    data = json.loads(result.output)
+    assert data["repo_id"] == "org/model"
+    assert data["verdict"] == "unverified"
+    assert data["summary"]["tampered"] == 1
+
+
+def test_verify_model_dir_conflicts_with_package_spec(tmp_path):
+    runner = CliRunner()
+    result = runner.invoke(main, ["verify", "requests@2.33.0", "--model-dir", str(tmp_path)], catch_exceptions=False)
+    assert result.exit_code == 2
+    assert "choose either package verification or --model-dir" in result.output.lower()
+
+
+def test_verify_model_dir_no_files_errors(tmp_path):
+    runner = CliRunner()
+    mock_report = MagicMock()
+    mock_report.scanned = 0
+    mock_report.summary.return_value = {"scanned": 0, "verified": 0, "tampered": 0, "unverified": 0, "offline": 0}
+
+    with patch("agent_bom.model_hash.verify_model_hashes", return_value=mock_report):
+        result = runner.invoke(main, ["verify", "--model-dir", str(tmp_path), "--json"], catch_exceptions=False)
+
+    assert result.exit_code == 2
+    data = json.loads(result.output)
+    assert data["verdict"] == "error"

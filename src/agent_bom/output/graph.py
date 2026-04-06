@@ -435,7 +435,7 @@ def _graph_overview(blast_radii: list["BlastRadius"]) -> dict[str, int]:
         if severity in counts:
             counts[severity] += 1
         exposed_credentials.update(br.exposed_credentials)
-        exposed_tools.update(br.exposed_tools)
+        exposed_tools.update(tool.name for tool in br.exposed_tools)
         affected_servers.update(server.name for server in br.affected_servers)
         affected_agents.update(agent.name for agent in br.affected_agents)
 

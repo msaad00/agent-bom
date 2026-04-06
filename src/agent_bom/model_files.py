@@ -189,15 +189,6 @@ def scan_model_manifests(
     if not raw_directory:
         return [], ["Model manifest scan: directory is empty"]
 
-    try:
-        safe_root = _safe_resolve_directory(raw_directory)
-    except ValueError as exc:
-        logger.warning("Model manifest scan refused: %s", exc)
-        return [], [f"Model manifest scan: {exc}"]
-
-    # Re-derive the scan root from a validated absolute string so CodeQL can
-    # see the path containment check at this sink, not only in the helper.
-    safe_directory = os.path.realpath(os.fspath(safe_root))
     allowed_roots = {
         os.path.realpath(str(Path.home())),
         os.path.realpath(str(Path.cwd())),
@@ -209,83 +200,99 @@ def scan_model_manifests(
         if root:
             allowed_roots.add(os.path.realpath(root))
 
-    if not any(os.path.commonpath([root, safe_directory]) == root for root in allowed_roots):
-        logger.warning("Model manifest scan refused outside safe roots: %s", safe_directory)
-        return [], [f"Model manifest scan: Directory escapes safe scan roots: {safe_directory}"]
+    expanded = os.path.expanduser(raw_directory)
+    candidate = os.path.realpath(expanded if os.path.isabs(expanded) else os.path.join(os.getcwd(), expanded))
 
-    scan_root = Path(safe_directory)
-    if not scan_root.is_dir():
-        return [], [f"Model manifest scan: {scan_root} is not a directory"]
+    matched_root = next((root for root in sorted(allowed_roots) if os.path.commonpath([root, candidate]) == root), None)
+    if matched_root is None:
+        logger.warning("Model manifest scan refused outside safe roots")
+        return [], [f"Model manifest scan: Directory escapes safe scan roots: {candidate}"]
+
+    relative = os.path.relpath(candidate, matched_root)
+    scan_root_str = matched_root if relative == "." else os.path.normpath(os.path.join(matched_root, relative))
+    if os.path.commonpath([matched_root, scan_root_str]) != matched_root:
+        logger.warning("Model manifest scan refused after root normalization")
+        return [], [f"Model manifest scan: Directory escapes safe scan roots: {candidate}"]
+
+    if not os.path.isdir(scan_root_str):
+        return [], [f"Model manifest scan: {scan_root_str} is not a directory"]
 
     manifests: list[dict] = []
     warnings: list[str] = []
 
-    for file_path in sorted(scan_root.rglob("*.json")):
-        if any(part.startswith(".") for part in file_path.parts):
+    for root, dirs, files in os.walk(scan_root_str):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        if any(part.startswith(".") for part in Path(root).parts):
             continue
+        for filename in sorted(files):
+            if not filename.endswith(".json"):
+                continue
+            file_path = Path(root) / filename
+            if any(part.startswith(".") for part in file_path.parts):
+                continue
 
-        name = file_path.name
-        if name not in _MODEL_INDEX_FILENAMES and name not in _MODEL_MANIFEST_FILENAMES:
-            continue
+            name = file_path.name
+            if name not in _MODEL_INDEX_FILENAMES and name not in _MODEL_MANIFEST_FILENAMES:
+                continue
 
-        payload = _load_json_file(file_path)
-        if payload is None:
-            continue
+            payload = _load_json_file(file_path)
+            if payload is None:
+                continue
 
-        manifest_type = "config"
-        repo_id = _extract_repo_reference(payload.get("_name_or_path")) or _extract_repo_reference(payload.get("name_or_path"))
-        base_model_id = None
-        shard_count = 0
-        security_flags: list[dict] = []
+            manifest_type = "config"
+            repo_id = _extract_repo_reference(payload.get("_name_or_path")) or _extract_repo_reference(payload.get("name_or_path"))
+            base_model_id = None
+            shard_count = 0
+            security_flags: list[dict] = []
 
-        if name in _MODEL_INDEX_FILENAMES:
-            manifest_type = "weight_index"
-            weight_map = payload.get("weight_map", {})
-            if isinstance(weight_map, dict):
-                shard_count = len({str(v) for v in weight_map.values() if isinstance(v, str)})
-            if not shard_count:
-                security_flags.append(
-                    {
-                        "severity": "MEDIUM",
-                        "type": "EMPTY_WEIGHT_INDEX",
-                        "description": "Weight index manifest has no shard mapping; bundle integrity cannot be confirmed.",
-                    }
-                )
-        elif name == "adapter_config.json":
-            manifest_type = "adapter"
-            base_model_id = _extract_repo_reference(payload.get("base_model_name_or_path"))
-            if not base_model_id:
-                security_flags.append(
-                    {
-                        "severity": "MEDIUM",
-                        "type": "MISSING_BASE_MODEL",
-                        "description": "Adapter manifest does not declare a base model lineage reference.",
-                    }
-                )
-        elif name == "tokenizer_config.json":
-            manifest_type = "tokenizer"
+            if name in _MODEL_INDEX_FILENAMES:
+                manifest_type = "weight_index"
+                weight_map = payload.get("weight_map", {})
+                if isinstance(weight_map, dict):
+                    shard_count = len({str(v) for v in weight_map.values() if isinstance(v, str)})
+                if not shard_count:
+                    security_flags.append(
+                        {
+                            "severity": "MEDIUM",
+                            "type": "EMPTY_WEIGHT_INDEX",
+                            "description": "Weight index manifest has no shard mapping; bundle integrity cannot be confirmed.",
+                        }
+                    )
+            elif name == "adapter_config.json":
+                manifest_type = "adapter"
+                base_model_id = _extract_repo_reference(payload.get("base_model_name_or_path"))
+                if not base_model_id:
+                    security_flags.append(
+                        {
+                            "severity": "MEDIUM",
+                            "type": "MISSING_BASE_MODEL",
+                            "description": "Adapter manifest does not declare a base model lineage reference.",
+                        }
+                    )
+            elif name == "tokenizer_config.json":
+                manifest_type = "tokenizer"
 
-        model_type = payload.get("model_type") if isinstance(payload.get("model_type"), str) else None
-        architectures = payload.get("architectures") if isinstance(payload.get("architectures"), list) else []
-        metadata = payload.get("metadata")
-        total_size = metadata.get("total_size") if isinstance(metadata, dict) and isinstance(metadata.get("total_size"), int) else None
+            model_type = payload.get("model_type") if isinstance(payload.get("model_type"), str) else None
+            architectures = payload.get("architectures") if isinstance(payload.get("architectures"), list) else []
+            metadata = payload.get("metadata")
+            total_size = metadata.get("total_size") if isinstance(metadata, dict) and isinstance(metadata.get("total_size"), int) else None
 
-        manifest = {
-            "path": str(file_path),
-            "filename": file_path.name,
-            "manifest_type": manifest_type,
-            "repo_id": repo_id,
-            "base_model_id": base_model_id,
-            "model_type": model_type,
-            "architectures": architectures,
-            "shard_count": shard_count,
-            "total_size_bytes": total_size,
-            "security_flags": security_flags,
-        }
-        manifests.append(manifest)
+            manifest = {
+                "path": str(file_path),
+                "filename": file_path.name,
+                "manifest_type": manifest_type,
+                "repo_id": repo_id,
+                "base_model_id": base_model_id,
+                "model_type": model_type,
+                "architectures": architectures,
+                "shard_count": shard_count,
+                "total_size_bytes": total_size,
+                "security_flags": security_flags,
+            }
+            manifests.append(manifest)
 
-        for flag in security_flags:
-            warnings.append(f"Model manifest {file_path.name}: {flag['severity']} — {flag['type']}. {flag['description']}")
+            for flag in security_flags:
+                warnings.append(f"Model manifest {file_path.name}: {flag['severity']} — {flag['type']}. {flag['description']}")
 
     return manifests, warnings
 

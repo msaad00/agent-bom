@@ -300,6 +300,7 @@ def extract_vulns_from_csaf(csaf: dict) -> list[Vulnerability]:
                 fixed_version=fixed_version,
                 references=refs,
                 cwe_ids=cwe_ids,
+                advisory_sources=["nvidia_csaf"],
             )
         )
     return vulns

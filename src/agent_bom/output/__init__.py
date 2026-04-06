@@ -136,6 +136,7 @@ def print_summary(report: AIBOMReport) -> None:
     perf = report.scan_performance_data or {}
     osv = perf.get("osv") or {}
     registry = perf.get("registry") or {}
+    advisory = perf.get("advisory_coverage") or {}
     if osv:
         hit_rate = osv.get("cache_hit_rate_pct")
         osv_label = f"{osv.get('cache_hits', 0)} hit / {osv.get('cache_misses', 0)} miss"
@@ -148,6 +149,14 @@ def print_summary(report: AIBOMReport) -> None:
         if reg_rate is not None:
             reg_label += f" ({reg_rate}% hit rate)"
         table.add_row("Registry cache", reg_label)
+    if advisory:
+        primary = advisory.get("primary_sources", {})
+        enriched = advisory.get("records_with_enrichment", 0)
+        primary_bits = [f"{source} {count}" for source, count in primary.items() if count]
+        advisory_label = ", ".join(primary_bits) if primary_bits else "no advisory sources attributed"
+        if enriched:
+            advisory_label += f" · {enriched} enriched"
+        table.add_row("Threat intel", advisory_label)
 
     console.print(table)
 
@@ -157,7 +166,8 @@ def print_scan_performance_summary(report: AIBOMReport) -> None:
     perf = report.scan_performance_data or {}
     osv = perf.get("osv") or {}
     registry = perf.get("registry") or {}
-    if not osv and not registry:
+    advisory = perf.get("advisory_coverage") or {}
+    if not osv and not registry and not advisory:
         return
 
     lines: list[str] = []
@@ -183,6 +193,14 @@ def print_scan_performance_summary(report: AIBOMReport) -> None:
         if registry.get("npm_rate_limit_short_circuits", 0):
             reg_line += f" · {registry.get('npm_rate_limit_short_circuits', 0)} npm cooldown skip(s)"
         lines.append(reg_line)
+    if advisory:
+        primary = advisory.get("primary_sources", {})
+        enrich = advisory.get("enrichment_sources", {})
+        primary_line = ", ".join(f"{source} {count}" for source, count in primary.items() if count) or "no primary sources"
+        enrich_line = ", ".join(f"{source} {count}" for source, count in enrich.items() if count) or "no enrichment"
+        lines.append(
+            f"Threat intel {primary_line} · {enrich_line} · {advisory.get('records_with_multiple_sources', 0)} multi-source record(s)"
+        )
     console.print("\n[dim]Cache & lookup reuse[/dim]")
     for line in lines:
         console.print(f"  [dim]{line}[/dim]")

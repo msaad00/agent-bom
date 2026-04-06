@@ -318,6 +318,7 @@ async def check_github_advisories(
                         fixed_version=fixed,
                         references=refs,
                         cwe_ids=cwe_ids,
+                        advisory_sources=["ghsa"],
                     )
                     target_pkg.vulnerabilities.append(vuln)
                     total_new += 1

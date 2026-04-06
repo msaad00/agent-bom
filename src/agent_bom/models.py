@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from agent_bom.finding import Finding
 
+from agent_bom.advisory_sources import merge_advisory_sources
+
 # ─── Package name normalization ──────────────────────────────────────────────
 # PEP 503: https://peps.python.org/pep-0503/#normalized-names
 # Ensures consistent matching across parsers, scanners, and cache.
@@ -148,9 +150,11 @@ class Vulnerability:
     compliance_tags: dict[str, list[str]] = field(
         default_factory=dict
     )  # CVE-level framework tags, e.g. {"nist_csf": ["ID.RA-01"], "cis": ["CIS-02.3"]}
+    advisory_sources: list[str] = field(default_factory=list)  # osv / ghsa / nvidia_csaf / nvd / epss / cisa_kev
 
     def __post_init__(self) -> None:
         """Sanitize fixed_version — filter git SHAs and non-version strings."""
+        self.advisory_sources = merge_advisory_sources(*self.advisory_sources)
         if self.fixed_version:
             v = self.fixed_version.lstrip("v")
             # Git SHA (40 hex chars)
@@ -174,6 +178,42 @@ class Vulnerability:
         from agent_bom.config import EPSS_ACTIVE_EXPLOITATION_THRESHOLD
 
         return self.is_kev or (self.epss_score is not None and self.epss_score > EPSS_ACTIVE_EXPLOITATION_THRESHOLD)
+
+    @property
+    def all_advisory_sources(self) -> list[str]:
+        """Return advisory + enrichment sources that contributed to this finding."""
+        derived_sources: list[str | None] = []
+        if self.id.startswith("GHSA-") or any(alias.startswith("GHSA-") for alias in self.aliases):
+            derived_sources.append("ghsa")
+        if self.references:
+            refs = [ref.lower() for ref in self.references]
+            if any("github.com/advisories/" in ref or "github.com/advisory/" in ref for ref in refs):
+                derived_sources.append("ghsa")
+            if any("nvidia" in ref for ref in refs):
+                derived_sources.append("nvidia_csaf")
+            if any("nvd.nist.gov" in ref for ref in refs):
+                derived_sources.append("nvd")
+        if self.nvd_status or self.nvd_published or self.nvd_modified:
+            derived_sources.append("nvd")
+        if self.epss_score is not None:
+            derived_sources.append("epss")
+        if self.is_kev:
+            derived_sources.append("cisa_kev")
+        return merge_advisory_sources(*self.advisory_sources, *derived_sources)
+
+    @property
+    def advisory_coverage_state(self) -> str:
+        """Summarize whether the finding is primary-only or enrichment-backed."""
+        sources = self.all_advisory_sources
+        has_primary = any(source in {"osv", "ghsa", "nvidia_csaf"} for source in sources)
+        has_enrichment = any(source in {"nvd", "epss", "cisa_kev"} for source in sources)
+        if has_primary and has_enrichment:
+            return "enriched"
+        if has_primary:
+            return "primary_only"
+        if has_enrichment:
+            return "enrichment_only"
+        return "unknown"
 
     @property
     def risk_level(self) -> str:

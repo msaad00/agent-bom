@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from agent_bom.advisory_sources import primary_advisory_source
 from agent_bom.cli._common import SEVERITY_ORDER
 from agent_bom.cli.agents._context import ScanContext
 from agent_bom.output import to_json
@@ -94,7 +95,7 @@ def run_integrations(
                     "cvss_score": getattr(br.vulnerability, "cvss_score", 0.0) or 0.0,
                     "epss_score": getattr(br.vulnerability, "epss_score", 0.0) or 0.0,
                     "severity": br.vulnerability.severity.value.lower(),
-                    "source": getattr(br.vulnerability, "source", "osv"),
+                    "source": primary_advisory_source(br.vulnerability),
                     "cmmc_tags": list(br.cmmc_tags) if br.cmmc_tags else [],
                 }
                 for br in blast_radii

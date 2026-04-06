@@ -230,6 +230,7 @@ That work is tracked in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 - Multiple language, OS, and agent package ecosystems
 - OSV, NVD, GHSA, EPSS, and CISA KEV enrichment
+- Explicit advisory-source attribution in JSON and scan summaries so operators can see where each finding came from
 - Blast radius mapping: CVE → package → MCP server → agent → credentials → tools
 - CycloneDX 1.6 with ML BOM extensions, SPDX 3.0, VEX, SARIF, HTML, graph, JSON, and more
 - External SBOM ingest and diff workflows so teams can compare vendor or baseline BOMs against current scans

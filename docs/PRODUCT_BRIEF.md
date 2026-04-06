@@ -24,7 +24,7 @@ Current repo-derived counts live in [PRODUCT_METRICS.md](PRODUCT_METRICS.md). Th
 
 ### Scanning
 
-The scanner covers package risk, malicious or suspicious package indicators, container layers, IaC, cloud AI surfaces, secrets, instruction or skill files, and model or weight supply chain integrity. Project scans surface lockfile-backed inventory, declaration-only manifests, direct-versus-transitive package depth, and explicit advisory-depth coverage so users can tell how much of the scan came from resolved lockfiles versus manifest-only declarations. Model and weight scans surface risky formats, signature presence, bundle manifests, adapter lineage, provenance checks, and first-class CLI hash verification against Hub-backed metadata where available.
+The scanner covers package risk, malicious or suspicious package indicators, container layers, IaC, cloud AI surfaces, secrets, instruction or skill files, and model or weight supply chain integrity. Project scans surface lockfile-backed inventory, declaration-only manifests, direct-versus-transitive package depth, and explicit advisory-depth coverage so users can tell how much of the scan came from resolved lockfiles versus manifest-only declarations. Findings also carry advisory-source attribution so operators can distinguish primary matches from later enrichment instead of inferring that from references. Model and weight scans surface risky formats, signature presence, bundle manifests, adapter lineage, provenance checks, and first-class CLI hash verification against Hub-backed metadata where available.
 
 ### Blast radius
 

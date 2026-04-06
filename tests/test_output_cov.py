@@ -141,6 +141,11 @@ class TestPrintSummary:
         report.scan_performance_data = {
             "osv": {"cache_hits": 3, "cache_misses": 1, "cache_hit_rate_pct": 75},
             "registry": {"cache_hits": 4, "cache_misses": 2, "cache_hit_rate_pct": 67},
+            "advisory_coverage": {
+                "primary_sources": {"osv": 3, "ghsa": 1, "nvidia_csaf": 0},
+                "enrichment_sources": {"nvd": 2, "epss": 2, "cisa_kev": 1},
+                "records_with_enrichment": 2,
+            },
         }
         print_summary(report)
 
@@ -177,6 +182,11 @@ class TestPrintScanPerformanceSummary:
         report.scan_performance_data = {
             "osv": {"cache_hits": 3, "cache_misses": 1, "packages_queried": 2, "cache_hit_rate_pct": 75, "lookup_errors": 0},
             "registry": {"cache_hits": 4, "cache_misses": 2, "network_requests": 2, "cache_hit_rate_pct": 67},
+            "advisory_coverage": {
+                "primary_sources": {"osv": 3, "ghsa": 1, "nvidia_csaf": 0},
+                "enrichment_sources": {"nvd": 2, "epss": 2, "cisa_kev": 1},
+                "records_with_multiple_sources": 2,
+            },
         }
         print_scan_performance_summary(report)
 
@@ -448,6 +458,30 @@ class TestToJson:
         assert data["project_inventory"]["lockfiles"] == 2
         assert data["project_inventory"]["advisory_depth_pct"] == 75
         assert data["project_inventory"]["directories"][0]["path"] == "."
+
+    def test_includes_advisory_source_fields(self):
+        vuln = Vulnerability(
+            id="CVE-2026-3000",
+            summary="test",
+            severity=Severity.HIGH,
+            advisory_sources=["osv"],
+            epss_score=0.8,
+            is_kev=True,
+        )
+        pkg = Package(name="demo", version="1.0.0", ecosystem="npm", vulnerabilities=[vuln])
+        server = _make_server(packages=[pkg])
+        agent = _make_agent(servers=[server])
+        br = _make_blast_radius(pkg=pkg, vuln=vuln, agents=[agent])
+        report = _make_report(agents=[agent], blast_radii=[br])
+
+        data = to_json(report)
+        vuln_json = data["agents"][0]["mcp_servers"][0]["packages"][0]["vulnerabilities"][0]
+        blast_json = data["blast_radius"][0]
+
+        assert vuln_json["advisory_sources"] == ["osv", "epss", "cisa_kev"]
+        assert vuln_json["primary_advisory_source"] == "osv"
+        assert vuln_json["advisory_coverage_state"] == "enriched"
+        assert blast_json["advisory_sources"] == ["osv", "epss", "cisa_kev"]
 
 
 # ── _pct / _coverage_bar (from cov2) ────────────────────────────────────────

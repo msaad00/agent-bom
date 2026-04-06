@@ -1446,8 +1446,11 @@ def scan(
         scan_sources=_scan_sources,
         scan_id=_scan_id,
     )
+    from agent_bom.advisory_sources import summarize_advisory_coverage
+
     _resolver_perf = consume_resolution_performance()
     _scan_perf = consume_scan_performance()
+    _all_packages = [pkg for agent in agents for server in agent.mcp_servers for pkg in server.packages]
     _scan_perf_data = {
         "osv": {
             "packages_seen": _scan_perf.get("packages_seen", 0),
@@ -1469,6 +1472,7 @@ def scan(
         "version_resolution": _resolver_perf.get("version_resolution", {}),
         "license_enrichment": _resolver_perf.get("license_enrichment", {}),
         "supply_chain_enrichment": _resolver_perf.get("supply_chain_enrichment", {}),
+        "advisory_coverage": summarize_advisory_coverage(_all_packages),
     }
     if any(
         isinstance(section, dict) and any(int(v) > 0 for v in section.values() if isinstance(v, int))

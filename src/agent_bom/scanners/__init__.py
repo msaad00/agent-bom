@@ -1086,6 +1086,7 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
                 modified_at=vuln_data.get("modified"),
                 aliases=all_aliases,
                 cwe_ids=cwe_ids,
+                advisory_sources=["osv"],
             )
         )
 
@@ -1154,6 +1155,8 @@ def _local_vuln_to_vulnerability(lv: "Any") -> Vulnerability:
         canonical_id = raw_id
         all_aliases = [a for a in aliases if a != canonical_id]
 
+    advisory_source = getattr(lv, "source", None)
+
     return Vulnerability(
         id=canonical_id,
         summary=lv.summary or "No description available",
@@ -1169,6 +1172,7 @@ def _local_vuln_to_vulnerability(lv: "Any") -> Vulnerability:
         cwe_ids=getattr(lv, "cwe_ids", []),
         aliases=all_aliases,
         references=[],
+        advisory_sources=[advisory_source] if isinstance(advisory_source, str) and advisory_source else [],
     )
 
 

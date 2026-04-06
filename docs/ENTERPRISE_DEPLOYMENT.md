@@ -121,7 +121,7 @@ That keeps API roles and tenant boundaries aligned with the upstream identity pr
 
 For PostgreSQL-backed deployments, `agent-bom` now also pushes the authenticated tenant into the database session (`app.tenant_id`) so Postgres row-level security can enforce the same tenant boundary for fleet and schedule data. Internal scheduler work uses an explicit trusted bypass rather than silently reading across tenants.
 
-**Storage:** SQLite (single node), PostgreSQL (team), Snowflake/ClickHouse (enterprise).
+**Storage:** SQLite (single node), PostgreSQL-compatible backends such as Postgres or Supabase (transactional team control plane), Snowflake/ClickHouse (analytics and selected enterprise backends). Snowflake does not yet have full parity for every transactional API store, so Postgres-compatible backends remain the primary control-plane default when you need tenant-scoped keys, exceptions, audit, and trend state.
 
 For ClickHouse-backed analytics, make the backend explicit instead of relying on ambient environment alone:
 

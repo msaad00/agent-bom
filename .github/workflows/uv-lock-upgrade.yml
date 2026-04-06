@@ -18,6 +18,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
 
       - name: Install uv
         uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v8.0.0
@@ -38,18 +40,37 @@ jobs:
             git diff uv.lock | grep '^[+-].*version' | grep -v '^---\|^+++' | head -50 >> "$GITHUB_STEP_SUMMARY" || true
           fi
 
+      - name: Configure signed automation commits
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          AUTOMATION_SSH_SIGNING_KEY: ${{ secrets.AUTOMATION_SSH_SIGNING_KEY }}
+        run: |
+          if [ -z "$AUTOMATION_SSH_SIGNING_KEY" ]; then
+            echo "AUTOMATION_SSH_SIGNING_KEY is required for signed automation PRs." >&2
+            exit 1
+          fi
+          mkdir -p "$HOME/.ssh"
+          printf '%s\n' "$AUTOMATION_SSH_SIGNING_KEY" > "$HOME/.ssh/automation_signing_key"
+          chmod 600 "$HOME/.ssh/automation_signing_key"
+          ssh-keygen -y -f "$HOME/.ssh/automation_signing_key" > "$HOME/.ssh/automation_signing_key.pub"
+          eval "$(ssh-agent -s)"
+          ssh-add "$HOME/.ssh/automation_signing_key"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config gpg.format ssh
+          git config user.signingkey "$HOME/.ssh/automation_signing_key.pub"
+          git config commit.gpgsign true
+
       - name: Open PR if lockfile changed
         if: steps.diff.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           BRANCH="chore/uv-lock-upgrade-$(date +%Y%m%d)"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$BRANCH"
+          git switch -C "$BRANCH" origin/main
           git add uv.lock
-          git commit -m "chore: weekly uv.lock upgrade"
-          git push origin "$BRANCH"
+          git commit -S -m "chore: weekly uv.lock upgrade"
+          git push --force-with-lease origin "$BRANCH"
           BODY=$(cat <<'PREOF'
           Weekly automated lockfile refresh via `uv lock --upgrade`.
 
@@ -60,10 +81,17 @@ jobs:
           - [ ] No unexpected major version bumps
           PREOF
           )
-          gh pr create \
-            --title "chore: weekly uv.lock upgrade $(date +%Y-%m-%d)" \
-            --body "$BODY" \
-            --base main
+          PR_NUMBER=$(gh pr list --head "$BRANCH" --base main --json number --jq '.[0].number')
+          if [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "null" ]; then
+            gh pr edit "$PR_NUMBER" \
+              --title "chore: weekly uv.lock upgrade $(date +%Y-%m-%d)" \
+              --body "$BODY"
+          else
+            gh pr create \
+              --title "chore: weekly uv.lock upgrade $(date +%Y-%m-%d)" \
+              --body "$BODY" \
+              --base main
+          fi
 
       - name: No changes
         if: steps.diff.outputs.changed == 'false'

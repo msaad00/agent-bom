@@ -55,14 +55,6 @@ _MODEL_INDEX_FILENAMES = frozenset({"model.safetensors.index.json", "pytorch_mod
 _MODEL_MANIFEST_FILENAMES = frozenset({"config.json", "tokenizer_config.json", "adapter_config.json"})
 
 
-def _load_json_file(path: Path) -> dict | None:
-    try:
-        data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    return data if isinstance(data, dict) else None
-
-
 def _extract_repo_reference(value: object) -> str | None:
     if not isinstance(value, str):
         return None
@@ -107,6 +99,20 @@ def _safe_resolve_directory(directory: str | Path) -> Path:
         raise ValueError(f"Directory escapes safe scan roots: {candidate}")
 
     return Path(candidate)
+
+
+def _allowed_scan_roots() -> list[str]:
+    roots = {
+        os.path.realpath(str(Path.home())),
+        os.path.realpath(str(Path.cwd())),
+        os.path.realpath(tempfile.gettempdir()),
+    }
+    extra_roots = os.environ.get("AGENT_BOM_SAFE_SCAN_ROOTS", "")
+    for root in extra_roots.split(os.pathsep):
+        root = root.strip()
+        if root:
+            roots.add(os.path.realpath(root))
+    return sorted(roots)
 
 
 def _human_size(size_bytes: int | float) -> str:
@@ -189,31 +195,37 @@ def scan_model_manifests(
     if not raw_directory:
         return [], ["Model manifest scan: directory is empty"]
 
-    allowed_roots = {
-        os.path.realpath(str(Path.home())),
-        os.path.realpath(str(Path.cwd())),
-        os.path.realpath(tempfile.gettempdir()),
-    }
-    extra_roots = os.environ.get("AGENT_BOM_SAFE_SCAN_ROOTS", "")
-    for root in extra_roots.split(os.pathsep):
-        root = root.strip()
-        if root:
-            allowed_roots.add(os.path.realpath(root))
-
     expanded = os.path.expanduser(raw_directory)
-    candidate = os.path.realpath(expanded if os.path.isabs(expanded) else os.path.join(os.getcwd(), expanded))
+    normalized_input = os.path.normpath(expanded)
+    resolved_input = os.path.realpath(expanded if os.path.isabs(expanded) else os.path.join(os.getcwd(), expanded))
 
-    matched_root = next((root for root in sorted(allowed_roots) if os.path.commonpath([root, candidate]) == root), None)
+    matched_root = None
+    scan_root_str = None
+    for root in _allowed_scan_roots():
+        if os.path.isabs(expanded):
+            try:
+                relative = os.path.relpath(resolved_input, root)
+            except ValueError:
+                continue
+        else:
+            relative = normalized_input
+        if relative in ("", "."):
+            candidate = root
+        else:
+            if relative == os.pardir or relative.startswith(os.pardir + os.sep) or os.path.isabs(relative):
+                continue
+            candidate = os.path.realpath(os.path.join(root, relative))
+        if os.path.commonpath([root, candidate]) != root:
+            continue
+        matched_root = root
+        scan_root_str = candidate
+        break
+
     if matched_root is None:
         logger.warning("Model manifest scan refused outside safe roots")
-        return [], [f"Model manifest scan: Directory escapes safe scan roots: {candidate}"]
+        return [], [f"Model manifest scan: Directory escapes safe scan roots: {resolved_input}"]
 
-    relative = os.path.relpath(candidate, matched_root)
-    scan_root_str = matched_root if relative == "." else os.path.normpath(os.path.join(matched_root, relative))
-    if os.path.commonpath([matched_root, scan_root_str]) != matched_root:
-        logger.warning("Model manifest scan refused after root normalization")
-        return [], [f"Model manifest scan: Directory escapes safe scan roots: {candidate}"]
-
+    assert scan_root_str is not None
     if not os.path.isdir(scan_root_str):
         return [], [f"Model manifest scan: {scan_root_str} is not a directory"]
 
@@ -222,12 +234,16 @@ def scan_model_manifests(
 
     for root, dirs, files in os.walk(scan_root_str):
         dirs[:] = [d for d in dirs if not d.startswith(".")]
-        if any(part.startswith(".") for part in Path(root).parts):
+        root_path = Path(root)
+        if any(part.startswith(".") for part in root_path.parts):
             continue
         for filename in sorted(files):
             if not filename.endswith(".json"):
                 continue
-            file_path = Path(root) / filename
+            file_path_str = os.path.realpath(os.path.join(root, filename))
+            if os.path.commonpath([scan_root_str, file_path_str]) != scan_root_str:
+                continue
+            file_path = Path(file_path_str)
             if any(part.startswith(".") for part in file_path.parts):
                 continue
 
@@ -235,9 +251,13 @@ def scan_model_manifests(
             if name not in _MODEL_INDEX_FILENAMES and name not in _MODEL_MANIFEST_FILENAMES:
                 continue
 
-            payload = _load_json_file(file_path)
-            if payload is None:
+            try:
+                payload_raw = json.loads(file_path.read_text(encoding="utf-8", errors="replace"))
+            except (OSError, json.JSONDecodeError):
                 continue
+            if not isinstance(payload_raw, dict):
+                continue
+            payload = payload_raw
 
             manifest_type = "config"
             repo_id = _extract_repo_reference(payload.get("_name_or_path")) or _extract_repo_reference(payload.get("name_or_path"))

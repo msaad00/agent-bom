@@ -152,6 +152,9 @@ class TestPrintSummary:
             "package_count": 12,
             "direct_packages": 5,
             "transitive_packages": 7,
+            "lockfile_backed_packages": 9,
+            "declaration_only_packages": 3,
+            "advisory_depth_pct": 75,
         }
         print_summary(report)
 
@@ -411,12 +414,21 @@ class TestToJson:
         report.project_inventory_data = {
             "root": "/tmp/project",
             "manifest_directories": 2,
+            "lockfile_directories": 1,
+            "declaration_only_directories": 1,
             "manifest_files": 4,
             "lockfiles": 2,
             "declaration_only_files": 2,
             "package_count": 8,
             "direct_packages": 3,
             "transitive_packages": 5,
+            "lockfile_backed_packages": 6,
+            "declaration_only_packages": 2,
+            "lockfile_backed_direct_packages": 2,
+            "lockfile_backed_transitive_packages": 4,
+            "declaration_only_direct_packages": 1,
+            "declaration_only_transitive_packages": 1,
+            "advisory_depth_pct": 75,
             "ecosystems": {"pypi": 3, "npm": 5},
             "directories": [
                 {
@@ -427,12 +439,14 @@ class TestToJson:
                     "manifest_files": ["package.json", "package-lock.json"],
                     "lockfile_files": ["package-lock.json"],
                     "declaration_files": ["package.json"],
+                    "advisory_evidence": "lockfile_backed",
                     "ecosystems": {"npm": 5},
                 }
             ],
         }
         data = to_json(report)
         assert data["project_inventory"]["lockfiles"] == 2
+        assert data["project_inventory"]["advisory_depth_pct"] == 75
         assert data["project_inventory"]["directories"][0]["path"] == "."
 
 

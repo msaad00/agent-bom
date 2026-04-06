@@ -96,6 +96,13 @@ def print_summary(report: AIBOMReport) -> None:
                 f"({project_inv.get('direct_packages', 0)} direct / {project_inv.get('transitive_packages', 0)} transitive)"
             ),
         )
+        lockfile_backed_packages = project_inv.get("lockfile_backed_packages", project_inv.get("package_count", 0))
+        declaration_only_packages = project_inv.get("declaration_only_packages", 0)
+        advisory_depth_pct = project_inv.get("advisory_depth_pct")
+        advisory_depth = f"{lockfile_backed_packages} lockfile-backed / {declaration_only_packages} declaration-only"
+        if advisory_depth_pct is not None:
+            advisory_depth += f" ({advisory_depth_pct}% lockfile-backed)"
+        table.add_row("Advisory depth", advisory_depth)
 
     model_sc = getattr(report, "model_supply_chain_data", None)
     if model_sc:

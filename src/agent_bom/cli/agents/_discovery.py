@@ -622,7 +622,9 @@ def run_local_discovery(
                 f"{'ies' if project_inventory['manifest_directories'] != 1 else 'y'} "
                 f"({project_inventory['manifest_files']} files, {project_inventory['lockfiles']} lockfile"
                 f"{'s' if project_inventory['lockfiles'] != 1 else ''}, "
-                f"{project_inventory['direct_packages']} direct / {project_inventory['transitive_packages']} transitive)"
+                f"{project_inventory['direct_packages']} direct / {project_inventory['transitive_packages']} transitive, "
+                f"{project_inventory['lockfile_backed_packages']} lockfile-backed / "
+                f"{project_inventory['declaration_only_packages']} declaration-only)"
             )
 
             proj_servers: list[MCPServer] = []

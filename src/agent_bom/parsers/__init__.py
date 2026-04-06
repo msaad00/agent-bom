@@ -457,6 +457,14 @@ def summarize_project_inventory(
     total_transitive = 0
     manifest_file_total = 0
     lockfile_total = 0
+    lockfile_directories = 0
+    declaration_only_directories = 0
+    lockfile_backed_packages = 0
+    declaration_only_packages = 0
+    lockfile_backed_direct_packages = 0
+    lockfile_backed_transitive_packages = 0
+    declaration_only_direct_packages = 0
+    declaration_only_transitive_packages = 0
 
     for directory, packages in sorted(dir_map.items(), key=lambda item: str(item[0])):
         manifest_files = _manifest_file_names(directory)
@@ -464,6 +472,7 @@ def summarize_project_inventory(
         manifests = [name for name in manifest_files if name not in _LOCKFILE_FILES]
         direct_count = sum(1 for pkg in packages if pkg.is_direct)
         transitive_count = len(packages) - direct_count
+        advisory_evidence = "lockfile_backed" if lockfiles else "declaration_only"
 
         rel_path = "." if directory == root else str(directory.relative_to(root))
         eco_breakdown: dict[str, int] = {}
@@ -480,6 +489,7 @@ def summarize_project_inventory(
                 "manifest_files": manifest_files,
                 "lockfile_files": lockfiles,
                 "declaration_files": manifests,
+                "advisory_evidence": advisory_evidence,
                 "ecosystems": eco_breakdown,
             }
         )
@@ -488,16 +498,37 @@ def summarize_project_inventory(
         total_transitive += transitive_count
         manifest_file_total += len(manifest_files)
         lockfile_total += len(lockfiles)
+        if lockfiles:
+            lockfile_directories += 1
+            lockfile_backed_packages += len(packages)
+            lockfile_backed_direct_packages += direct_count
+            lockfile_backed_transitive_packages += transitive_count
+        else:
+            declaration_only_directories += 1
+            declaration_only_packages += len(packages)
+            declaration_only_direct_packages += direct_count
+            declaration_only_transitive_packages += transitive_count
+
+    advisory_depth_pct = round(lockfile_backed_packages / total_packages * 100) if total_packages else 0
 
     return {
         "root": str(root),
         "manifest_directories": len(dir_map),
+        "lockfile_directories": lockfile_directories,
+        "declaration_only_directories": declaration_only_directories,
         "manifest_files": manifest_file_total,
         "lockfiles": lockfile_total,
         "declaration_only_files": manifest_file_total - lockfile_total,
         "package_count": total_packages,
         "direct_packages": total_direct,
         "transitive_packages": total_transitive,
+        "lockfile_backed_packages": lockfile_backed_packages,
+        "declaration_only_packages": declaration_only_packages,
+        "lockfile_backed_direct_packages": lockfile_backed_direct_packages,
+        "lockfile_backed_transitive_packages": lockfile_backed_transitive_packages,
+        "declaration_only_direct_packages": declaration_only_direct_packages,
+        "declaration_only_transitive_packages": declaration_only_transitive_packages,
+        "advisory_depth_pct": advisory_depth_pct,
         "ecosystems": ecosystems,
         "directories": directories,
     }

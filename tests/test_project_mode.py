@@ -148,8 +148,26 @@ class TestScanProjectDirectory:
         assert summary["package_count"] == 2
         assert summary["direct_packages"] == 1
         assert summary["transitive_packages"] == 1
+        assert summary["lockfile_directories"] == 1
+        assert summary["declaration_only_directories"] == 0
+        assert summary["lockfile_backed_packages"] == 2
+        assert summary["declaration_only_packages"] == 0
+        assert summary["advisory_depth_pct"] == 100
         assert summary["ecosystems"] == {"npm": 2}
         assert summary["directories"][0]["lockfile_files"] == ["package-lock.json"]
+        assert summary["directories"][0]["advisory_evidence"] == "lockfile_backed"
+
+    def test_summarize_project_inventory_marks_manifest_only_depth(self, tmp_path):
+        (tmp_path / "requirements.txt").write_text("requests==2.31.0\nflask==3.0.0\n")
+        result = scan_project_directory(tmp_path)
+        summary = summarize_project_inventory(tmp_path, result)
+        assert summary["manifest_directories"] == 1
+        assert summary["lockfile_directories"] == 0
+        assert summary["declaration_only_directories"] == 1
+        assert summary["lockfile_backed_packages"] == 0
+        assert summary["declaration_only_packages"] == 2
+        assert summary["advisory_depth_pct"] == 0
+        assert summary["directories"][0]["advisory_evidence"] == "declaration_only"
 
 
 # ── detect_sbom_resource_name ─────────────────────────────────────────────────

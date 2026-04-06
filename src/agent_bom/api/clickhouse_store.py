@@ -18,7 +18,9 @@ Security note — SQL injection mitigation:
 from __future__ import annotations
 
 import logging
+import queue
 import re
+import threading
 import uuid
 from typing import Any, Protocol, runtime_checkable
 
@@ -67,6 +69,10 @@ class AnalyticsStore(Protocol):
         """Record scan-level metadata (agent count, vuln count, grade)."""
         ...
 
+    def close(self) -> None:
+        """Flush and release any buffered resources."""
+        ...
+
 
 # ------------------------------------------------------------------
 # Null implementation (default — zero overhead)
@@ -100,6 +106,9 @@ class NullAnalyticsStore:
     def record_scan_metadata(self, metadata: dict) -> None:
         pass
 
+    def close(self) -> None:
+        pass
+
 
 # ------------------------------------------------------------------
 # ClickHouse implementation
@@ -118,8 +127,13 @@ class ClickHouseAnalyticsStore:
     # -- writes --------------------------------------------------------
 
     def record_scan(self, scan_id: str, agent_name: str, vulns: list[dict]) -> None:
+        rows = self._scan_rows(scan_id, agent_name, vulns)
+        if rows:
+            self._client.insert_json("vulnerability_scans", rows)
+
+    def _scan_rows(self, scan_id: str, agent_name: str, vulns: list[dict]) -> list[dict[str, Any]]:
         if not vulns:
-            return
+            return []
 
         def _split_package(v: dict) -> tuple[str, str]:
             pkg_name = v.get("package_name", "")
@@ -132,7 +146,7 @@ class ClickHouseAnalyticsStore:
                 return name, version
             return str(pkg or ""), pkg_version
 
-        rows = [
+        return [
             {
                 "scan_id": scan_id,
                 "package_name": _split_package(v)[0],
@@ -149,10 +163,12 @@ class ClickHouseAnalyticsStore:
             }
             for v in vulns
         ]
-        self._client.insert_json("vulnerability_scans", rows)
 
     def record_event(self, event: dict) -> None:
-        row = {
+        self._client.insert_json("runtime_events", [self._event_row(event)])
+
+    def _event_row(self, event: dict) -> dict[str, Any]:
+        return {
             "event_id": event.get("event_id", str(uuid.uuid4())),
             "event_type": event.get("event_type", event.get("type", "")),
             "detector": event.get("detector", ""),
@@ -161,10 +177,12 @@ class ClickHouseAnalyticsStore:
             "message": event.get("message", ""),
             "agent_name": event.get("agent_name", ""),
         }
-        self._client.insert_json("runtime_events", [row])
 
     def record_posture(self, agent_name: str, snapshot: dict) -> None:
-        row = {
+        self._client.insert_json("posture_scores", [self._posture_row(agent_name, snapshot)])
+
+    def _posture_row(self, agent_name: str, snapshot: dict) -> dict[str, Any]:
+        return {
             "agent_name": agent_name,
             "total_packages": int(snapshot.get("total_packages", 0)),
             "critical_vulns": int(snapshot.get("critical", 0)),
@@ -174,7 +192,6 @@ class ClickHouseAnalyticsStore:
             "risk_score": float(snapshot.get("risk_score", 0.0)),
             "compliance_score": float(snapshot.get("compliance_score", 0.0)),
         }
-        self._client.insert_json("posture_scores", [row])
 
     # -- reads ---------------------------------------------------------
 
@@ -223,7 +240,10 @@ class ClickHouseAnalyticsStore:
         return self._client.query_json(query)
 
     def record_scan_metadata(self, metadata: dict) -> None:
-        row = {
+        self._client.insert_json("scan_metadata", [self._metadata_row(metadata)])
+
+    def _metadata_row(self, metadata: dict) -> dict[str, Any]:
+        return {
             "scan_id": metadata.get("scan_id", str(uuid.uuid4())),
             "agent_count": int(metadata.get("agent_count", 0)),
             "package_count": int(metadata.get("package_count", 0)),
@@ -236,7 +256,118 @@ class ClickHouseAnalyticsStore:
             "aisvs_score": float(metadata.get("aisvs_score", 0.0)),
             "has_runtime_correlation": int(bool(metadata.get("has_runtime_correlation", False))),
         }
-        self._client.insert_json("scan_metadata", [row])
+
+    def close(self) -> None:
+        """Synchronous store has nothing buffered to flush."""
+
+
+class BufferedAnalyticsStore:
+    """Buffered wrapper for ClickHouse analytics writes.
+
+    Writes are queued and flushed from a background thread so scan and runtime
+    paths do not block on ClickHouse round-trips.
+    """
+
+    def __init__(self, store: ClickHouseAnalyticsStore, *, max_batch: int = 200, flush_interval: float = 1.0) -> None:
+        self._store = store
+        self._max_batch = max(1, int(max_batch))
+        self._flush_interval = max(0.1, float(flush_interval))
+        self._queue: queue.Queue[tuple[str, tuple[Any, ...]]] = queue.Queue()
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, name="agent-bom-clickhouse-buffer", daemon=True)
+        self._thread.start()
+
+    def record_scan(self, scan_id: str, agent_name: str, vulns: list[dict]) -> None:
+        self._queue.put(("scan", (scan_id, agent_name, vulns)))
+
+    def record_event(self, event: dict) -> None:
+        self._queue.put(("event", (event,)))
+
+    def record_posture(self, agent_name: str, snapshot: dict) -> None:
+        self._queue.put(("posture", (agent_name, snapshot)))
+
+    def record_scan_metadata(self, metadata: dict) -> None:
+        self._queue.put(("metadata", (metadata,)))
+
+    def query_vuln_trends(self, days: int = 30, agent: str | None = None) -> list[dict]:
+        self._flush_pending()
+        return self._store.query_vuln_trends(days=days, agent=agent)
+
+    def query_top_cves(self, limit: int = 20) -> list[dict]:
+        self._flush_pending()
+        return self._store.query_top_cves(limit=limit)
+
+    def query_posture_history(self, agent: str | None = None, days: int = 90) -> list[dict]:
+        self._flush_pending()
+        return self._store.query_posture_history(agent=agent, days=days)
+
+    def query_event_summary(self, hours: int = 24) -> list[dict]:
+        self._flush_pending()
+        return self._store.query_event_summary(hours=hours)
+
+    def close(self) -> None:
+        self._stop.set()
+        self._thread.join(timeout=max(1.0, self._flush_interval * 4))
+        self._flush_pending()
+        self._store.close()
+
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            self._flush_pending()
+            self._stop.wait(self._flush_interval)
+
+    def _drain(self) -> list[tuple[str, tuple[Any, ...]]]:
+        drained: list[tuple[str, tuple[Any, ...]]] = []
+        while len(drained) < self._max_batch:
+            try:
+                drained.append(self._queue.get_nowait())
+            except queue.Empty:
+                break
+        return drained
+
+    def _flush_pending(self) -> None:
+        drained = self._drain()
+        if not drained:
+            return
+
+        scan_rows: list[dict[str, Any]] = []
+        event_rows: list[dict[str, Any]] = []
+        posture_rows: list[dict[str, Any]] = []
+        metadata_rows: list[dict[str, Any]] = []
+
+        for kind, payload in drained:
+            if kind == "scan":
+                scan_id, agent_name, vulns = payload
+                scan_rows.extend(self._store._scan_rows(str(scan_id), str(agent_name), list(vulns)))
+            elif kind == "event":
+                (event,) = payload
+                event_rows.append(self._store._event_row(dict(event)))
+            elif kind == "posture":
+                agent_name, snapshot = payload
+                posture_rows.append(self._store._posture_row(str(agent_name), dict(snapshot)))
+            elif kind == "metadata":
+                (metadata,) = payload
+                metadata_rows.append(self._store._metadata_row(dict(metadata)))
+
+        try:
+            if scan_rows:
+                self._store._client.insert_json("vulnerability_scans", scan_rows)
+            if event_rows:
+                self._store._client.insert_json("runtime_events", event_rows)
+            if posture_rows:
+                self._store._client.insert_json("posture_scores", posture_rows)
+            if metadata_rows:
+                self._store._client.insert_json("scan_metadata", metadata_rows)
+        except Exception:
+            logger.warning("Buffered ClickHouse flush failed", exc_info=True)
+
+    @property
+    def flush_interval(self) -> float:
+        return self._flush_interval
+
+    @property
+    def max_batch(self) -> int:
+        return self._max_batch
 
 
 def _escape(value: str) -> str:

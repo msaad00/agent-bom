@@ -123,6 +123,17 @@ For PostgreSQL-backed deployments, `agent-bom` now also pushes the authenticated
 
 **Storage:** SQLite (single node), PostgreSQL (team), Snowflake/ClickHouse (enterprise).
 
+For ClickHouse-backed analytics, make the backend explicit instead of relying on ambient environment alone:
+
+```bash
+agent-bom api \
+  --api-key "$AGENT_BOM_API_KEY" \
+  --analytics-backend clickhouse \
+  --clickhouse-url "http://clickhouse.internal:8123"
+```
+
+Server mode enables buffered ClickHouse writes by default so scan and runtime paths do not block on OLAP round-trips. `GET /health` now reports the active analytics contract (`backend`, `enabled`, `buffered`, `flush_interval_seconds`, `max_batch`) alongside tracing so operators can confirm both observability and analytics posture from one probe.
+
 ### 4. Cloud Infrastructure — agentless discovery
 
 ```bash

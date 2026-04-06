@@ -128,10 +128,20 @@ class TracingHealth(BaseModel):
     otlp_headers_configured: bool = False
 
 
+class AnalyticsHealth(BaseModel):
+    backend: str = "disabled"
+    enabled: bool = False
+    buffered: bool = False
+    clickhouse_url_configured: bool = False
+    flush_interval_seconds: float | None = None
+    max_batch: int | None = None
+
+
 class HealthResponse(BaseModel):
     status: str = "ok"
     version: str
     tracing: TracingHealth
+    analytics: AnalyticsHealth
 
 
 # ─── Fleet Models ──────────────────────────────────────────────────────────

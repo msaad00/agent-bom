@@ -249,6 +249,53 @@ class TestClickHouseAnalyticsStore:
         assert inserted["rows"][0]["package_name"] == "requests"
         assert inserted["rows"][0]["package_version"] == "2.33.0"
 
+    def test_buffered_store_flushes_on_close(self):
+        from agent_bom.api.clickhouse_store import BufferedAnalyticsStore, ClickHouseAnalyticsStore
+
+        inserted: list[tuple[str, list[dict]]] = []
+
+        class _Client:
+            def ensure_tables(self):
+                return None
+
+            def insert_json(self, table, rows):
+                inserted.append((table, rows))
+
+        with patch("agent_bom.cloud.clickhouse.ClickHouseClient", return_value=_Client()):
+            store = ClickHouseAnalyticsStore(url="http://localhost:8123")
+            buffered = BufferedAnalyticsStore(store, max_batch=10, flush_interval=60.0)
+            buffered.record_event({"event_type": "tool_blocked", "severity": "high"})
+            buffered.record_scan_metadata({"scan_id": "scan-1", "vuln_count": 4})
+            buffered.close()
+
+        assert any(table == "runtime_events" for table, _rows in inserted)
+        assert any(table == "scan_metadata" for table, _rows in inserted)
+
+    def test_buffered_store_flushes_before_query(self):
+        from agent_bom.api.clickhouse_store import BufferedAnalyticsStore, ClickHouseAnalyticsStore
+
+        inserted: list[tuple[str, list[dict]]] = []
+
+        class _Client:
+            def ensure_tables(self):
+                return None
+
+            def insert_json(self, table, rows):
+                inserted.append((table, rows))
+
+            def query_json(self, _query):
+                return [{"day": "2026-04-05", "severity": "high", "cnt": 1}]
+
+        with patch("agent_bom.cloud.clickhouse.ClickHouseClient", return_value=_Client()):
+            store = ClickHouseAnalyticsStore(url="http://localhost:8123")
+            buffered = BufferedAnalyticsStore(store, max_batch=10, flush_interval=60.0)
+            buffered.record_scan("scan-1", "agent-1", [{"package": "requests@2.33.0", "severity": "high"}])
+            result = buffered.query_vuln_trends()
+            buffered.close()
+
+        assert result == [{"day": "2026-04-05", "severity": "high", "cnt": 1}]
+        assert any(table == "vulnerability_scans" for table, _rows in inserted)
+
 
 def test_clickhouse_escape_strips_control_chars_and_quotes():
     from agent_bom.api.clickhouse_store import _escape

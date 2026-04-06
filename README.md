@@ -105,6 +105,7 @@ agent-bom serve                         # API + Next.js dashboard
 - Remote package, API, and MCP deployment surfaces should all report the same version and health state after release.
 - Automated freshness checks watch for deployment drift so stale Railway or registry surfaces do not go unnoticed.
 - The repo monitors both JavaScript surfaces (`ui/` and `sdks/typescript/`) with daily Dependabot, `npm audit`, and CI guards that fail if tracked or published source maps appear unexpectedly.
+- `agent-bom api` and `agent-bom serve` make the analytics backend explicit too: ClickHouse can be enabled as a first-class buffered backend, and `/health` reports the active analytics/tracing contract for operators.
 
 <details>
 <summary><b>Claude, Cortex, and MCP integration</b></summary>

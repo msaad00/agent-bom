@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
@@ -87,6 +88,45 @@ def test_api_cmd_allows_non_loopback_bind_with_api_key():
     assert "API key required" in result.output
 
 
+def test_api_cmd_enables_clickhouse_analytics():
+    runner = CliRunner()
+
+    with (
+        patch.dict(os.environ, {}, clear=False),
+        patch("agent_bom.api.server.configure_api") as mock_configure,
+        patch("uvicorn.run") as mock_run,
+    ):
+        result = runner.invoke(
+            api_cmd,
+            [
+                "--host",
+                "0.0.0.0",
+                "--api-key",
+                "test-key",
+                "--analytics-backend",
+                "clickhouse",
+                "--clickhouse-url",
+                "http://clickhouse:8123",
+            ],
+        )
+
+    assert result.exit_code == 0
+    mock_configure.assert_called_once()
+    mock_run.assert_called_once()
+    assert "Analytics:    ClickHouse" in result.output
+
+
+def test_api_cmd_requires_clickhouse_url_for_backend():
+    runner = CliRunner()
+
+    with patch.dict(os.environ, {"AGENT_BOM_CLICKHOUSE_URL": ""}, clear=False), patch("uvicorn.run") as mock_run:
+        result = runner.invoke(api_cmd, ["--api-key", "test-key", "--analytics-backend", "clickhouse"])
+
+    assert result.exit_code == 1
+    assert "ClickHouse analytics requires" in result.output
+    mock_run.assert_not_called()
+
+
 def test_serve_cmd_rejects_unauthenticated_non_loopback_bind():
     """Serve should use the same auth-default guard as the raw API command."""
     runner = CliRunner()
@@ -110,6 +150,36 @@ def test_serve_cmd_configures_api_auth():
     mock_configure.assert_called_once()
     mock_run.assert_called_once()
     assert "API key required" in result.output
+
+
+def test_serve_cmd_enables_clickhouse_analytics():
+    runner = CliRunner()
+
+    with (
+        patch.dict(os.environ, {}, clear=False),
+        patch("agent_bom.api.server.configure_api") as mock_configure,
+        patch("uvicorn.run") as mock_run,
+    ):
+        result = runner.invoke(
+            serve_cmd,
+            ["--api-key", "test-key", "--analytics-backend", "clickhouse", "--clickhouse-url", "http://clickhouse:8123"],
+        )
+
+    assert result.exit_code == 0
+    mock_configure.assert_called_once()
+    mock_run.assert_called_once()
+    assert "Analytics:  ClickHouse" in result.output
+
+
+def test_serve_cmd_requires_clickhouse_url_for_backend():
+    runner = CliRunner()
+
+    with patch.dict(os.environ, {"AGENT_BOM_CLICKHOUSE_URL": ""}, clear=False), patch("uvicorn.run") as mock_run:
+        result = runner.invoke(serve_cmd, ["--api-key", "test-key", "--analytics-backend", "clickhouse"])
+
+    assert result.exit_code == 1
+    assert "ClickHouse analytics requires" in result.output
+    mock_run.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

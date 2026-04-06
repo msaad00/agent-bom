@@ -52,13 +52,46 @@ def _enforce_remote_mcp_auth_defaults(host: str, bearer_token: str | None, allow
     )
 
 
+def _configure_analytics_backend(
+    *,
+    analytics_backend: str | None,
+    clickhouse_url: str | None,
+    analytics_buffered: bool,
+    analytics_flush_interval: float,
+    analytics_max_batch: int,
+) -> tuple[str, str | None]:
+    """Resolve and export the requested analytics backend contract."""
+    resolved_backend = (analytics_backend or "").strip().lower()
+    env_clickhouse_url = os.environ.get("AGENT_BOM_CLICKHOUSE_URL") or ""
+    resolved_url = (clickhouse_url or env_clickhouse_url).strip() or None
+    if resolved_backend in {"", "auto"}:
+        resolved_backend = "clickhouse" if resolved_url else "disabled"
+    if resolved_backend == "clickhouse" and not resolved_url:
+        raise click.ClickException("ClickHouse analytics requires --clickhouse-url or AGENT_BOM_CLICKHOUSE_URL.")
+
+    os.environ["AGENT_BOM_ANALYTICS_BACKEND"] = resolved_backend
+    if resolved_url:
+        os.environ["AGENT_BOM_CLICKHOUSE_URL"] = resolved_url
+    elif resolved_backend == "disabled":
+        os.environ.pop("AGENT_BOM_CLICKHOUSE_URL", None)
+
+    os.environ["AGENT_BOM_CLICKHOUSE_BUFFERED"] = "1" if analytics_buffered else "0"
+    os.environ["AGENT_BOM_CLICKHOUSE_FLUSH_INTERVAL"] = f"{analytics_flush_interval:.3f}"
+    os.environ["AGENT_BOM_CLICKHOUSE_MAX_BATCH"] = str(max(1, analytics_max_batch))
+    return resolved_backend, resolved_url
+
+
 @click.command("serve")
 @click.option("--host", default="127.0.0.1", show_default=True, help="Host to bind to (use 0.0.0.0 for LAN access)")
 @click.option("--port", default=8422, show_default=True, help="API server port")
 @click.option("--persist", default=None, metavar="DB_PATH", help="Enable persistent job storage via SQLite (e.g. --persist jobs.db).")
 @click.option("--cors-allow-all", is_flag=True, default=False, help="Allow all CORS origins (dev mode).")
 @click.option(
-    "--api-key", default=None, envvar="AGENT_BOM_API_KEY", metavar="KEY", help="Require API key auth (Bearer token or X-API-Key header)."
+    "--api-key",
+    default=None,
+    envvar="AGENT_BOM_API_KEY",
+    metavar="KEY",
+    help="Require API key auth (Bearer token or X-API-Key header).",
 )
 @click.option(
     "--allow-insecure-no-auth",
@@ -67,8 +100,49 @@ def _enforce_remote_mcp_auth_defaults(host: str, bearer_token: str | None, allow
     help="Allow unauthenticated non-loopback API exposure. Unsafe outside local development.",
 )
 @click.option("--reload", is_flag=True, help="Auto-reload on code changes (development mode)")
-@click.option("--log-level", "log_level", type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False), default="INFO")
+@click.option(
+    "--log-level",
+    "log_level",
+    type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False),
+    default="INFO",
+)
 @click.option("--log-json", "log_json", is_flag=True, help="Structured JSON logs")
+@click.option(
+    "--analytics-backend",
+    type=click.Choice(["auto", "disabled", "clickhouse"], case_sensitive=False),
+    default="auto",
+    show_default=True,
+    help="Analytics backend for trend/event persistence.",
+)
+@click.option(
+    "--clickhouse-url",
+    default=None,
+    envvar="AGENT_BOM_CLICKHOUSE_URL",
+    metavar="URL",
+    help="ClickHouse HTTP URL for analytics.",
+)
+@click.option(
+    "--analytics-buffered/--no-analytics-buffered",
+    default=True,
+    show_default=True,
+    help="Buffer ClickHouse analytics writes in a background thread.",
+)
+@click.option(
+    "--analytics-flush-interval",
+    default=1.0,
+    show_default=True,
+    type=float,
+    metavar="SECONDS",
+    help="Buffered ClickHouse flush interval.",
+)
+@click.option(
+    "--analytics-max-batch",
+    default=200,
+    show_default=True,
+    type=int,
+    metavar="ROWS",
+    help="Maximum rows to flush per ClickHouse batch.",
+)
 def serve_cmd(
     host: str,
     port: int,
@@ -79,6 +153,11 @@ def serve_cmd(
     reload: bool,
     log_level: str,
     log_json: bool,
+    analytics_backend: str,
+    clickhouse_url: str | None,
+    analytics_buffered: bool,
+    analytics_flush_interval: float,
+    analytics_max_batch: int,
 ):
     """Start the API server + Next.js dashboard.
 
@@ -109,6 +188,13 @@ def serve_cmd(
         _os.environ["AGENT_BOM_DB"] = str(Path(persist).resolve())
     if cors_allow_all:
         _os.environ["AGENT_BOM_CORS_ALL"] = "1"
+    resolved_backend, resolved_url = _configure_analytics_backend(
+        analytics_backend=analytics_backend,
+        clickhouse_url=clickhouse_url,
+        analytics_buffered=analytics_buffered,
+        analytics_flush_interval=analytics_flush_interval,
+        analytics_max_batch=analytics_max_batch,
+    )
 
     _enforce_auth_defaults("serve", host, api_key, allow_insecure_no_auth)
 
@@ -132,6 +218,12 @@ def serve_cmd(
         click.echo("  Auth:       OIDC bearer token required")
     elif allow_insecure_no_auth and not _is_loopback_host(host):
         click.echo("  Auth:       disabled by explicit override (--allow-insecure-no-auth)")
+    if resolved_backend == "clickhouse":
+        mode = "buffered" if analytics_buffered else "direct"
+        click.echo(f"  Analytics:  ClickHouse ({mode}, batch={max(1, analytics_max_batch)}, flush={analytics_flush_interval:.2f}s)")
+        click.echo(f"              {resolved_url}")
+    else:
+        click.echo("  Analytics:  disabled")
     click.echo("  Press Ctrl+C to stop.\n")
 
     import uvicorn as _uvicorn
@@ -154,7 +246,11 @@ def serve_cmd(
 @click.option("--cors-origins", default=None, metavar="ORIGINS", help="Comma-separated CORS origins (default: localhost:3000).")
 @click.option("--cors-allow-all", is_flag=True, default=False, help="Allow all CORS origins (dev mode).")
 @click.option(
-    "--api-key", default=None, envvar="AGENT_BOM_API_KEY", metavar="KEY", help="Require API key auth (Bearer token or X-API-Key header)."
+    "--api-key",
+    default=None,
+    envvar="AGENT_BOM_API_KEY",
+    metavar="KEY",
+    help="Require API key auth (Bearer token or X-API-Key header).",
 )
 @click.option(
     "--allow-insecure-no-auth",
@@ -186,6 +282,42 @@ def serve_cmd(
     help="Log verbosity level.",
 )
 @click.option("--log-json", "log_json", is_flag=True, help="Emit structured JSON logs (for log aggregation pipelines).")
+@click.option(
+    "--analytics-backend",
+    type=click.Choice(["auto", "disabled", "clickhouse"], case_sensitive=False),
+    default="auto",
+    show_default=True,
+    help="Analytics backend for trend/event persistence.",
+)
+@click.option(
+    "--clickhouse-url",
+    default=None,
+    envvar="AGENT_BOM_CLICKHOUSE_URL",
+    metavar="URL",
+    help="ClickHouse HTTP URL for analytics.",
+)
+@click.option(
+    "--analytics-buffered/--no-analytics-buffered",
+    default=True,
+    show_default=True,
+    help="Buffer ClickHouse analytics writes in a background thread.",
+)
+@click.option(
+    "--analytics-flush-interval",
+    default=1.0,
+    show_default=True,
+    type=float,
+    metavar="SECONDS",
+    help="Buffered ClickHouse flush interval.",
+)
+@click.option(
+    "--analytics-max-batch",
+    default=200,
+    show_default=True,
+    type=int,
+    metavar="ROWS",
+    help="Maximum rows to flush per ClickHouse batch.",
+)
 def api_cmd(
     host: str,
     port: int,
@@ -199,6 +331,11 @@ def api_cmd(
     persist: str | None,
     log_level: str,
     log_json: bool,
+    analytics_backend: str,
+    clickhouse_url: str | None,
+    analytics_buffered: bool,
+    analytics_flush_interval: float,
+    analytics_max_batch: int,
 ):
     """Start the agent-bom REST API server.
 
@@ -238,6 +375,14 @@ def api_cmd(
 
     import os as _os
 
+    resolved_backend, resolved_url = _configure_analytics_backend(
+        analytics_backend=analytics_backend,
+        clickhouse_url=clickhouse_url,
+        analytics_buffered=analytics_buffered,
+        analytics_flush_interval=analytics_flush_interval,
+        analytics_max_batch=analytics_max_batch,
+    )
+
     from agent_bom import __version__ as _ver
     from agent_bom.api.server import configure_api, set_job_store
 
@@ -275,6 +420,12 @@ def api_cmd(
         click.echo("  Storage:      PostgreSQL")
     elif persist:
         click.echo(f"  Storage:      SQLite ({persist})")
+    if resolved_backend == "clickhouse":
+        mode = "buffered" if analytics_buffered else "direct"
+        click.echo(f"  Analytics:    ClickHouse ({mode}, batch={max(1, analytics_max_batch)}, flush={analytics_flush_interval:.2f}s)")
+        click.echo(f"                {resolved_url}")
+    else:
+        click.echo("  Analytics:    disabled")
     click.echo("  Press Ctrl+C to stop.\n")
 
     uvicorn.run(

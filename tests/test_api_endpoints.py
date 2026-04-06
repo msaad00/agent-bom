@@ -53,6 +53,9 @@ def test_health_endpoint():
     assert body["tracing"]["w3c_tracestate"] is True
     assert body["tracing"]["w3c_baggage"] is True
     assert body["tracing"]["otlp_export"] in {"configured", "disabled", "missing_deps"}
+    assert body["analytics"]["backend"] in {"disabled", "clickhouse"}
+    assert isinstance(body["analytics"]["enabled"], bool)
+    assert isinstance(body["analytics"]["buffered"], bool)
 
 
 # ---------------------------------------------------------------------------

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import uuid
 
 from agent_bom import __version__
@@ -25,6 +26,7 @@ from agent_bom.api.middleware import (
 
 # ─── Extracted modules ────────────────────────────────────────────────────────
 from agent_bom.api.models import (
+    AnalyticsHealth,
     HealthResponse,
     JobStatus,
     ScanJob,
@@ -68,6 +70,39 @@ except ImportError as exc:  # pragma: no cover
 # ─── App ──────────────────────────────────────────────────────────────────────
 
 from contextlib import asynccontextmanager  # noqa: E402
+
+
+def _analytics_backend_config() -> tuple[str, str | None]:
+    """Resolve the requested analytics backend and configured ClickHouse URL."""
+    backend = os.environ.get("AGENT_BOM_ANALYTICS_BACKEND", "").strip().lower()
+    clickhouse_url = os.environ.get("AGENT_BOM_CLICKHOUSE_URL", "").strip() or None
+    if backend in {"", "auto"}:
+        backend = "clickhouse" if clickhouse_url else "disabled"
+    return backend, clickhouse_url
+
+
+def _analytics_health() -> AnalyticsHealth:
+    """Return the active analytics backend contract for operators."""
+    backend, clickhouse_url = _analytics_backend_config()
+    active_store = _stores._analytics_store
+    if active_store is None:
+        return AnalyticsHealth(
+            backend=backend if backend != "disabled" else "disabled",
+            enabled=False,
+            buffered=False,
+            clickhouse_url_configured=bool(clickhouse_url),
+        )
+
+    store_name = type(active_store).__name__
+    buffered = hasattr(active_store, "flush_interval") and hasattr(active_store, "max_batch")
+    return AnalyticsHealth(
+        backend="clickhouse" if "ClickHouse" in store_name or buffered else backend,
+        enabled=store_name != "NullAnalyticsStore",
+        buffered=buffered,
+        clickhouse_url_configured=bool(clickhouse_url),
+        flush_interval_seconds=float(getattr(active_store, "flush_interval", 0.0)) if buffered else None,
+        max_batch=int(getattr(active_store, "max_batch", 0)) if buffered else None,
+    )
 
 
 @asynccontextmanager
@@ -159,12 +194,26 @@ async def _lifespan(app_instance: FastAPI):
             set_schedule_store(InMemoryScheduleStore())
 
     # ── Analytics store (ClickHouse OLAP — optional) ──
-    if os.environ.get("AGENT_BOM_CLICKHOUSE_URL") and _stores._analytics_store is None:
+    analytics_backend, clickhouse_url = _analytics_backend_config()
+    if analytics_backend == "clickhouse" and _stores._analytics_store is None:
         try:
-            from agent_bom.api.clickhouse_store import ClickHouseAnalyticsStore
+            from agent_bom.api.clickhouse_store import BufferedAnalyticsStore, ClickHouseAnalyticsStore
 
-            set_analytics_store(ClickHouseAnalyticsStore(url=os.environ["AGENT_BOM_CLICKHOUSE_URL"]))
-            _logger.info("ClickHouse analytics store enabled")
+            if not clickhouse_url:
+                raise ValueError("ClickHouse analytics backend requires AGENT_BOM_CLICKHOUSE_URL")
+            base_store = ClickHouseAnalyticsStore(url=clickhouse_url)
+            if os.environ.get("AGENT_BOM_CLICKHOUSE_BUFFERED", "1").strip().lower() not in {"0", "false", "no"}:
+                flush_interval = float(os.environ.get("AGENT_BOM_CLICKHOUSE_FLUSH_INTERVAL", "1.0"))
+                max_batch = int(os.environ.get("AGENT_BOM_CLICKHOUSE_MAX_BATCH", "200"))
+                set_analytics_store(BufferedAnalyticsStore(base_store, flush_interval=flush_interval, max_batch=max_batch))
+                _logger.info(
+                    "ClickHouse analytics store enabled with buffered writes (batch=%s, flush_interval=%.2fs)",
+                    max_batch,
+                    flush_interval,
+                )
+            else:
+                set_analytics_store(base_store)
+                _logger.info("ClickHouse analytics store enabled without buffering")
         except Exception:
             _logger.warning("ClickHouse analytics unavailable, using NullAnalyticsStore", exc_info=True)
 
@@ -214,6 +263,11 @@ async def _lifespan(app_instance: FastAPI):
                 _pg_pool.close()
     except Exception:
         _logger.debug("Postgres pool close skipped")
+    try:
+        if _stores._analytics_store is not None and hasattr(_stores._analytics_store, "close"):
+            _stores._analytics_store.close()
+    except Exception:
+        _logger.debug("Analytics store close skipped", exc_info=True)
 
 
 app = FastAPI(
@@ -224,9 +278,6 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=_lifespan,
 )
-
-# ── API hardening config ─────────────────────────────────────────────────
-import os  # noqa: E402
 
 _default_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
 _cors_env = os.environ.get("CORS_ORIGINS")
@@ -372,7 +423,12 @@ async def root() -> RedirectResponse:
 @app.get("/health", response_model=HealthResponse, tags=["meta"])
 async def health() -> HealthResponse:
     """Liveness probe."""
-    return HealthResponse(status="ok", version=__version__, tracing=TracingHealth(**get_tracing_health()))
+    return HealthResponse(
+        status="ok",
+        version=__version__,
+        tracing=TracingHealth(**get_tracing_health()),
+        analytics=_analytics_health(),
+    )
 
 
 @app.get("/version", response_model=VersionInfo, tags=["meta"])

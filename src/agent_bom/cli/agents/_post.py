@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from agent_bom.advisory_sources import primary_advisory_source
 from agent_bom.cli._common import SEVERITY_ORDER
 from agent_bom.cli.agents._context import ScanContext
 from agent_bom.output import to_json
@@ -82,45 +81,21 @@ def run_integrations(
         try:
             import uuid as _uuid_ch
 
+            from agent_bom.analytics_contract import build_scan_analytics_payload
             from agent_bom.api.clickhouse_store import ClickHouseAnalyticsStore
 
             _ch_store = ClickHouseAnalyticsStore(url=clickhouse_url)
             _scan_id = str(_uuid_ch.uuid4())
-            vuln_dicts = [
-                {
-                    "package": br.package.name,
-                    "version": br.package.version,
-                    "ecosystem": br.package.ecosystem,
-                    "cve_id": br.vulnerability.id,
-                    "cvss_score": getattr(br.vulnerability, "cvss_score", 0.0) or 0.0,
-                    "epss_score": getattr(br.vulnerability, "epss_score", 0.0) or 0.0,
-                    "severity": br.vulnerability.severity.value.lower(),
-                    "source": primary_advisory_source(br.vulnerability),
-                    "cmmc_tags": list(br.cmmc_tags) if br.cmmc_tags else [],
-                }
-                for br in blast_radii
-            ]
-            for agent in ctx.agents:
-                _ch_store.record_scan(_scan_id, agent.name, vuln_dicts)
             if ctx.report:
-                _rpt = ctx.report
-                _ch_store.record_scan_metadata(
-                    {
-                        "scan_id": _scan_id,
-                        "agent_count": _rpt.total_agents,
-                        "package_count": _rpt.total_packages,
-                        "vuln_count": _rpt.total_vulnerabilities,
-                        "critical_count": len(_rpt.critical_vulns),
-                        "high_count": sum(1 for br in _rpt.blast_radii if br.vulnerability.severity.value.lower() == "high"),
-                        "posture_grade": "",
-                        "scan_duration_ms": 0,
-                        "source": "cli",
-                        "aisvs_score": float((_rpt.aisvs_benchmark_data or {}).get("overall_score", 0.0)),
-                        "has_runtime_correlation": bool(_rpt.runtime_correlation),
-                    }
-                )
+                analytics = build_scan_analytics_payload(ctx.report, scan_id=_scan_id, source="cli")
+                for agent_name, findings in analytics.agent_findings.items():
+                    _ch_store.record_scan(analytics.scan_id, agent_name, findings)
+                _ch_store.record_scan_metadata(analytics.scan_metadata)
+                for agent_name, snapshot in analytics.posture_snapshots.items():
+                    _ch_store.record_posture(agent_name, snapshot)
             if not quiet:
-                con.print(f"  [green]✓[/green] Analytics: {len(vuln_dicts)} finding(s) recorded to ClickHouse")
+                _finding_count = sum(len(findings) for findings in analytics.agent_findings.values()) if ctx.report else 0
+                con.print(f"  [green]✓[/green] Analytics: {_finding_count} finding(s) recorded to ClickHouse")
         except Exception as _ch_exc:
             if not quiet:
                 con.print(f"  [yellow]⚠[/yellow] ClickHouse analytics: {_ch_exc}")

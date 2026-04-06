@@ -20,7 +20,7 @@ from enum import Enum
 from typing import Any
 
 from agent_bom.api.models import JobStatus, ScanJob, StepStatus
-from agent_bom.api.stores import _get_fleet_store, _get_store, _job_lock
+from agent_bom.api.stores import _get_analytics_store, _get_fleet_store, _get_store, _job_lock
 from agent_bom.security import sanitize_error
 
 _logger = logging.getLogger(__name__)
@@ -499,13 +499,28 @@ def _run_scan_sync(job: ScanJob) -> None:
         pipeline.start_step("output", "Building report...")
         from agent_bom.models import AIBOMReport
 
-        report = AIBOMReport(agents=agents, blast_radii=blast_radii)
+        report = AIBOMReport(agents=agents, blast_radii=blast_radii, scan_id=job.job_id)
         report_json = to_json(report)
         report_json["warnings"] = warnings_all
         with lock:
             job.result = report_json
             job.status = JobStatus.DONE
         pipeline.complete_step("output", "Report ready")
+
+        try:
+            from agent_bom.analytics_contract import build_scan_analytics_payload
+
+            analytics_store = _get_analytics_store()
+            analytics = build_scan_analytics_payload(report, report_json=report_json, scan_id=job.job_id, source="api")
+            for agent_name, findings in analytics.agent_findings.items():
+                analytics_store.record_scan(analytics.scan_id, agent_name, findings)
+            analytics_store.record_scan_metadata(analytics.scan_metadata)
+            for agent_name, snapshot in analytics.posture_snapshots.items():
+                analytics_store.record_posture(agent_name, snapshot)
+        except Exception as analytics_exc:  # noqa: BLE001
+            _logger.warning("API ClickHouse analytics persistence failed: %s", analytics_exc)
+            with lock:
+                job.progress.append(f"Analytics sync skipped: {sanitize_error(analytics_exc)}")
 
         # Auto-sync discovered agents to fleet registry
         try:

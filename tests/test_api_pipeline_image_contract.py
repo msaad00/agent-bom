@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.pipeline import _run_scan_sync
-from agent_bom.models import Package
+from agent_bom.models import BlastRadius, Package, Severity, Vulnerability
 
 
 class _DummyStore:
@@ -38,3 +38,89 @@ def test_api_pipeline_image_scan_uses_container_surface(monkeypatch):
     assert job.result["summary"]["total_agents"] == 1
     assert job.result["agents"][0]["source"] == "image"
     assert job.result["agents"][0]["mcp_servers"][0]["surface"] == "container-image"
+
+
+def test_api_pipeline_persists_clickhouse_analytics(monkeypatch):
+    store = _DummyStore()
+    job = ScanJob(
+        job_id="clickhouse-123",
+        created_at="2026-03-25T12:00:00Z",
+        request=ScanRequest(images=["agentbom/agent-bom:latest"], enrich=False),
+    )
+
+    class _AnalyticsStore:
+        def __init__(self) -> None:
+            self.scan_calls: list[tuple[str, str, list[dict]]] = []
+            self.metadata_calls: list[dict] = []
+            self.posture_calls: list[tuple[str, dict]] = []
+
+        def record_scan(self, scan_id: str, agent_name: str, findings: list[dict]) -> None:
+            self.scan_calls.append((scan_id, agent_name, findings))
+
+        def record_scan_metadata(self, metadata: dict) -> None:
+            self.metadata_calls.append(metadata)
+
+        def record_posture(self, agent_name: str, snapshot: dict) -> None:
+            self.posture_calls.append((agent_name, snapshot))
+
+    analytics = _AnalyticsStore()
+
+    monkeypatch.setattr("agent_bom.api.pipeline._get_store", lambda: store)
+    monkeypatch.setattr("agent_bom.api.pipeline._get_analytics_store", lambda: analytics)
+    monkeypatch.setattr("agent_bom.api.pipeline._sync_scan_agents_to_fleet", lambda _agents: None)
+    monkeypatch.setattr("agent_bom.discovery.discover_all", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        "agent_bom.image.scan_image",
+        lambda image_ref: ([Package(name="openssl", version="3.0.16", ecosystem="deb")], "native"),
+    )
+
+    def _fake_scan(agents, enable_enrichment=False):
+        agent = agents[0]
+        server = agent.mcp_servers[0]
+        pkg = server.packages[0]
+        vuln = Vulnerability(
+            id="CVE-2026-0001",
+            summary="test vuln",
+            severity=Severity.HIGH,
+            cvss_score=8.1,
+            epss_score=0.42,
+            advisory_sources=["osv", "nvd"],
+        )
+        pkg.vulnerabilities = [vuln]
+        br = BlastRadius(
+            vulnerability=vuln,
+            package=pkg,
+            affected_servers=[server],
+            affected_agents=[agent],
+            exposed_credentials=[],
+            exposed_tools=[],
+            cmmc_tags=["RA.L2-3.11.2"],
+        )
+        br.calculate_risk_score()
+        return [br]
+
+    monkeypatch.setattr("agent_bom.scanners.scan_agents_sync", _fake_scan)
+
+    _run_scan_sync(job)
+
+    assert job.status == JobStatus.DONE
+    assert analytics.scan_calls
+    assert analytics.metadata_calls
+    assert analytics.posture_calls
+
+    scan_id, agent_name, findings = analytics.scan_calls[0]
+    assert scan_id == "clickhouse-123"
+    assert agent_name == "image:agentbom/agent-bom:latest"
+    assert findings[0]["package_name"] == "openssl"
+    assert findings[0]["source"] == "osv"
+
+    metadata = analytics.metadata_calls[0]
+    assert metadata["scan_id"] == "clickhouse-123"
+    assert metadata["source"] == "api"
+    assert metadata["agent_count"] == 1
+    assert metadata["vuln_count"] == 1
+
+    posture_agent, snapshot = analytics.posture_calls[0]
+    assert posture_agent == "image:agentbom/agent-bom:latest"
+    assert snapshot["high"] == 1
+    assert snapshot["total_packages"] == 1

@@ -1,11 +1,13 @@
 {
   "_comment": "agent-bom MCP Server Registry \u2014 security metadata database for known MCP servers",
   "_schema_version": "2.0",
-  "_updated": "2026-03-16",
+  "_updated": "2026-04-06",
   "_total_servers": 427,
   "_differentiator": "Security metadata database \u2014 not just a catalog. Each entry has risk_level (category-derived), tools, credential_env_vars (heuristic-inferred) for blast radius pre-computation.",
   "_source": "https://github.com/msaad00/agent-bom/blob/main/data/mcp-registry.yaml",
-  "_sources": ["mcp-official"],
+  "_sources": [
+    "mcp-official"
+  ],
   "servers": {
     "@modelcontextprotocol/server-filesystem": {
       "package": "@modelcontextprotocol/server-filesystem",
@@ -690,7 +692,7 @@
     "awslabs.core-mcp-server": {
       "package": "awslabs.core-mcp-server",
       "ecosystem": "pypi",
-      "latest_version": "1.0.25",
+      "latest_version": "1.0.27",
       "description": "AWS services (S3, Lambda, DynamoDB, Bedrock)",
       "name": "AWS Core",
       "risk_justification": "Full AWS service access via AWS credentials. Credential exposure enables account-wide operations across S3, Lambda, DynamoDB, and Bedrock.",
@@ -772,7 +774,7 @@
     "mongodb-mcp-server": {
       "package": "mongodb-mcp-server",
       "ecosystem": "npm",
-      "latest_version": "1.8.1",
+      "latest_version": "1.9.0",
       "description": "Query and modify MongoDB collections",
       "name": "MongoDB",
       "risk_justification": "Executes arbitrary MongoDB queries via MONGODB_URI. Full data read/write/delete possible across all collections.",
@@ -919,7 +921,7 @@
     "mcp-server-kubernetes": {
       "package": "mcp-server-kubernetes",
       "ecosystem": "npm",
-      "latest_version": "3.3.0",
+      "latest_version": "3.4.0",
       "description": "Kubernetes cluster management",
       "name": "Kubernetes",
       "risk_justification": "Full Kubernetes cluster management via KUBECONFIG. Can apply manifests, scale deployments, and delete resources.",
@@ -1017,7 +1019,7 @@
     "exa-mcp-server": {
       "package": "exa-mcp-server",
       "ecosystem": "npm",
-      "latest_version": "3.1.9",
+      "latest_version": "3.2.0",
       "description": "AI-native web search via Exa",
       "name": "Exa",
       "risk_justification": "Read-only web search via EXA_API_KEY. No write capability.",
@@ -1113,7 +1115,7 @@
     "mcp-grafana": {
       "package": "mcp-grafana",
       "ecosystem": "pypi",
-      "latest_version": "0.11.3",
+      "latest_version": "0.11.4",
       "description": "Query Grafana dashboards and alerts",
       "name": "Grafana",
       "risk_justification": "Read/write access to Grafana dashboards and alerts via GRAFANA_API_KEY. Token exposure enables dashboard and alert rule manipulation.",
@@ -1169,7 +1171,7 @@
     "mcp-server-playwright": {
       "package": "@playwright/mcp",
       "ecosystem": "npm",
-      "latest_version": "0.0.68",
+      "latest_version": "0.0.70",
       "description": "Browser automation via Playwright",
       "name": "Playwright",
       "risk_justification": "Controls a headless browser with script execution. Can steal cookies, automate phishing, exfiltrate DOM content.",
@@ -2040,7 +2042,7 @@
     "mcp-server-azure-devops": {
       "package": "mcp-server-azure-devops",
       "ecosystem": "npm",
-      "latest_version": "0.1.0",
+      "latest_version": "1.1.0",
       "description": "Azure DevOps repos, pipelines, work items",
       "name": "Azure DevOps",
       "risk_justification": "Read/write access to Azure DevOps repos, pipelines, and work items via AZURE_DEVOPS_PAT. Token exposure enables organization-wide access.",
@@ -2690,7 +2692,7 @@
     "openclaw": {
       "package": "openclaw",
       "ecosystem": "npm",
-      "latest_version": "2026.3.13",
+      "latest_version": "2026.4.5",
       "description": "OpenClaw personal AI assistant \u2014 multi-channel gateway (WhatsApp, Telegram, Slack, Discord, iMessage, Teams) with 214k+ GitHub stars",
       "name": "OpenClaw",
       "risk_justification": "Full system access including filesystem, browser, code execution, and multi-channel messaging via OPENAI_API_KEY and ANTHROPIC_API_KEY. Credential exposure enables complete agent takeover.",
@@ -2896,7 +2898,7 @@
     "resend-mcp": {
       "package": "resend-mcp",
       "ecosystem": "npm",
-      "latest_version": "2.2.0",
+      "latest_version": "2.3.0",
       "description": "Send transactional emails via Resend API",
       "name": "Resend",
       "risk_justification": "Sends emails from your Resend-verified domains via RESEND_API_KEY. Key exposure enables email spoofing from your domain.",

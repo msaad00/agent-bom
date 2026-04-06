@@ -306,3 +306,41 @@ def test_clickhouse_escape_strips_control_chars_and_quotes():
     assert "\u2028" not in escaped
     assert "\\'" in escaped
     assert "\\\\" in escaped
+
+
+def test_build_scan_analytics_payload_splits_findings_by_agent():
+    from agent_bom.analytics_contract import build_scan_analytics_payload
+    from agent_bom.models import Agent, AgentType, AIBOMReport, BlastRadius, MCPServer, Package, Severity, Vulnerability
+
+    shared_pkg = Package(name="requests", version="2.33.0", ecosystem="pypi")
+    vuln = Vulnerability(
+        id="CVE-2026-9999",
+        summary="shared vuln",
+        severity=Severity.CRITICAL,
+        cvss_score=9.8,
+        advisory_sources=["osv", "ghsa", "nvd"],
+    )
+    shared_pkg.vulnerabilities = [vuln]
+    server = MCPServer(name="filesystem", packages=[shared_pkg])
+    agent_a = Agent(name="alpha", agent_type=AgentType.CUSTOM, config_path="alpha.json", mcp_servers=[server])
+    agent_b = Agent(name="beta", agent_type=AgentType.CUSTOM, config_path="beta.json", mcp_servers=[server])
+    br = BlastRadius(
+        vulnerability=vuln,
+        package=shared_pkg,
+        affected_servers=[server],
+        affected_agents=[agent_a, agent_b],
+        exposed_credentials=[],
+        exposed_tools=[],
+    )
+    br.calculate_risk_score()
+    report = AIBOMReport(agents=[agent_a, agent_b], blast_radii=[br], scan_id="scan-xyz")
+
+    payload = build_scan_analytics_payload(report, source="api")
+
+    assert payload.scan_id == "scan-xyz"
+    assert payload.scan_metadata["source"] == "api"
+    assert payload.scan_metadata["vuln_count"] == 2
+    assert payload.agent_findings["alpha"][0]["source"] == "osv"
+    assert payload.agent_findings["beta"][0]["cve_id"] == "CVE-2026-9999"
+    assert payload.posture_snapshots["alpha"]["critical"] == 1
+    assert payload.posture_snapshots["beta"]["critical"] == 1

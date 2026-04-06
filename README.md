@@ -40,10 +40,10 @@ Package risk is only the start. agent-bom maps what it can reach across MCP serv
 For the canonical product brief and verified repo-derived metrics, see [docs/PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md) and [docs/PRODUCT_METRICS.md](docs/PRODUCT_METRICS.md). For enterprise-control traceability, see [docs/ENTERPRISE.md](docs/ENTERPRISE.md).
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="agent-bom demo" width="900" />
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="agent-bom blast radius demo" width="900" />
 </p>
 
-The GIF uses the built-in curated sample environment so the output stays reproducible across releases. For real scans, run `agent-bom agents` on your machine or `agent-bom agents -p .` in a project.
+30-second terminal demo: a real `agent-bom` scan showing blast radius, fix-first remediation, and integrity verification in one flow. The GIF uses the built-in curated sample environment so the output stays reproducible across releases. For real scans, run `agent-bom agents` on your machine or `agent-bom agents -p .` in a project.
 
 ## Quick start
 
@@ -87,6 +87,18 @@ agent-bom serve                         # API + Next.js dashboard
 - Model and weight supply-chain checks with signed-artifact detection, bundle manifest and lineage visibility, HuggingFace provenance, and hash-verification visibility in CLI and JSON output
 - Real operator outputs: SARIF, CycloneDX, HTML, graphs, badges, JSON, API, dashboard, and MCP tools
 - Works as local CLI, CI gate, authenticated remote service, and enterprise deployment base
+
+## Why agent-bom
+
+| Surface | What is already in the product |
+|---|---|
+| Threat intelligence | `9` active sources across OSV, NVD, GHSA, EPSS, CISA KEV, OpenSSF Scorecard, MITRE ATT&CK, MITRE CAPEC, and OWASP mappings |
+| Project scanning | `16` lockfile formats across npm, yarn, pnpm, bun, pip, poetry, uv, conda, Go, Rust, Gradle, .NET, Ruby, PHP, and Swift |
+| Model supply chain | `13` model formats with lineage, provenance, signature-presence, and Hub-backed hash verification |
+| MCP + runtime | `36` MCP tools, runtime proxying, Shield hooks, and `8` inline/runtime detector classes |
+| Enterprise control plane | API keys, OIDC, `13` PostgreSQL RLS-backed tenant tables, chain-signed audit log, ClickHouse analytics, tracing and health contracts |
+
+If you want the implementation map behind those claims, start with [docs/ENTERPRISE.md](docs/ENTERPRISE.md) and [docs/PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md).
 
 ---
 
@@ -188,6 +200,13 @@ flowchart LR
     style OUTPUT stroke:#3fb950,stroke-width:2px
     style PROTECT stroke:#f778ba,stroke-width:2px,stroke-dasharray: 5 5
 ```
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-stack-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-stack-light.svg" alt="agent-bom architecture stack" width="900" />
+  </picture>
+</p>
 
 ### Blast radius — what makes agent-bom different
 

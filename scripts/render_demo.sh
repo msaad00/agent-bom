@@ -31,7 +31,7 @@ run_step() {
   sleep 1
 }
 
-# ── Demo: scan → check → verify ──
+# ── Demo: blast radius → fix-first gate → integrity verify ──
 
 # 1. Full agent scan — blast radius, severity, remediation
 run_step "agent-bom agents --demo --offline" agent-bom agents --demo --offline

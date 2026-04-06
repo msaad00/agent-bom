@@ -12,6 +12,7 @@ venv/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
+.demo-bin/
 agent-bom-report.json
 agent-bom.cdx.json
 report.json

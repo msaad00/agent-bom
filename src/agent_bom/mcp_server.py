@@ -1470,11 +1470,11 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
     async def analytics_query(
         query_type: Annotated[
             str,
-            Field(description="Query type: vuln_trends, top_cves, posture_history, or event_summary"),
+            Field(description=("Query type: vuln_trends, top_cves, posture_history, event_summary, fleet_riskiest, or compliance_heatmap")),
         ],
         days: Annotated[
             int,
-            Field(description="Lookback window in days (default 30). Used by vuln_trends and posture_history."),
+            Field(description="Lookback window in days (default 30). Used by vuln_trends, posture_history, and compliance_heatmap."),
         ] = 30,
         hours: Annotated[
             int,
@@ -1486,7 +1486,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
         ] = None,
         limit: Annotated[
             int,
-            Field(description="Max results for top_cves (default 20)."),
+            Field(description="Max results for top_cves and fleet_riskiest (default 20)."),
         ] = 20,
     ) -> str:
         """Query vulnerability trends, posture history, and runtime event summaries from ClickHouse.

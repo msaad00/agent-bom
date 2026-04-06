@@ -93,6 +93,10 @@ def run_integrations(
                 _ch_store.record_scan_metadata(analytics.scan_metadata)
                 for agent_name, snapshot in analytics.posture_snapshots.items():
                     _ch_store.record_posture(agent_name, snapshot)
+                for fleet_snapshot in analytics.fleet_snapshots:
+                    _ch_store.record_fleet_snapshot(fleet_snapshot)
+                for control in analytics.compliance_controls:
+                    _ch_store.record_compliance_control(control)
             if not quiet:
                 _finding_count = sum(len(findings) for findings in analytics.agent_findings.values()) if ctx.report else 0
                 con.print(f"  [green]✓[/green] Analytics: {_finding_count} finding(s) recorded to ClickHouse")

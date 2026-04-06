@@ -126,7 +126,14 @@ async def analytics_query_impl(
         from agent_bom.api.stores import _get_analytics_store
 
         store = _get_analytics_store()
-        valid_types = {"vuln_trends", "top_cves", "posture_history", "event_summary"}
+        valid_types = {
+            "vuln_trends",
+            "top_cves",
+            "posture_history",
+            "event_summary",
+            "fleet_riskiest",
+            "compliance_heatmap",
+        }
         if query_type not in valid_types:
             return json.dumps({"error": f"Invalid query_type. Use one of: {', '.join(sorted(valid_types))}"})
 
@@ -142,6 +149,10 @@ async def analytics_query_impl(
             data = store.query_top_cves(limit=limit)
         elif query_type == "posture_history":
             data = store.query_posture_history(agent=agent, days=days)
+        elif query_type == "fleet_riskiest":
+            data = store.query_top_riskiest_agents(limit=limit)
+        elif query_type == "compliance_heatmap":
+            data = store.query_compliance_heatmap(days=days)
         else:
             data = store.query_event_summary(hours=hours)
 

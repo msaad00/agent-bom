@@ -322,3 +322,18 @@ def log_action(action: str, actor: str = "system", resource: str = "", **details
     """Convenience: append an audit entry."""
     entry = AuditEntry(action=action, actor=actor, resource=resource, details=dict(details))
     get_audit_log().append(entry)
+    try:
+        from agent_bom.api.stores import _get_analytics_store
+
+        _get_analytics_store().record_audit_event(
+            {
+                "entry_id": entry.entry_id,
+                "timestamp": entry.timestamp,
+                "action": entry.action,
+                "actor": entry.actor,
+                "resource": entry.resource,
+                "tenant_id": str(details.get("tenant_id", "default") or "default"),
+            }
+        )
+    except Exception:
+        logger.debug("Audit analytics sync skipped", exc_info=True)

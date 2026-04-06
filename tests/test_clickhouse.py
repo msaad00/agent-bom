@@ -182,8 +182,8 @@ class TestClickHouseClient:
 
         with patch("agent_bom.http_client.sync_request_with_retry", return_value=_mock_response("")) as mock_req:
             c.ensure_tables()
-            # 1 CREATE DATABASE + 4 CREATE TABLE = 5 calls
-            assert mock_req.call_count == 5
+            # 1 CREATE DATABASE + 7 CREATE TABLE = 8 calls
+            assert mock_req.call_count == 8
 
 
 # ─── NullAnalyticsStore tests ───────────────────────────────────────────────
@@ -266,10 +266,16 @@ class TestClickHouseAnalyticsStore:
             buffered = BufferedAnalyticsStore(store, max_batch=10, flush_interval=60.0)
             buffered.record_event({"event_type": "tool_blocked", "severity": "high"})
             buffered.record_scan_metadata({"scan_id": "scan-1", "vuln_count": 4})
+            buffered.record_fleet_snapshot({"agent_name": "agent-1", "trust_score": 42.0})
+            buffered.record_compliance_control({"framework": "owasp-llm-top10", "control_id": "LLM01"})
+            buffered.record_audit_event({"action": "auth.key_created", "actor": "system"})
             buffered.close()
 
         assert any(table == "runtime_events" for table, _rows in inserted)
         assert any(table == "scan_metadata" for table, _rows in inserted)
+        assert any(table == "fleet_agents" for table, _rows in inserted)
+        assert any(table == "compliance_controls" for table, _rows in inserted)
+        assert any(table == "audit_events" for table, _rows in inserted)
 
     def test_buffered_store_flushes_before_query(self):
         from agent_bom.api.clickhouse_store import BufferedAnalyticsStore, ClickHouseAnalyticsStore
@@ -344,3 +350,29 @@ def test_build_scan_analytics_payload_splits_findings_by_agent():
     assert payload.agent_findings["beta"][0]["cve_id"] == "CVE-2026-9999"
     assert payload.posture_snapshots["alpha"]["critical"] == 1
     assert payload.posture_snapshots["beta"]["critical"] == 1
+    assert payload.fleet_snapshots[0]["lifecycle_state"] == "discovered"
+    assert any(row["framework"] == "owasp-llm-top10" for row in payload.compliance_controls)
+
+
+def test_clickhouse_store_queries_fleet_and_compliance():
+    from agent_bom.api.clickhouse_store import ClickHouseAnalyticsStore
+
+    queries: list[str] = []
+
+    class _Client:
+        def ensure_tables(self):
+            return None
+
+        def query_json(self, query):
+            queries.append(query)
+            return [{"ok": True}]
+
+    with patch("agent_bom.cloud.clickhouse.ClickHouseClient", return_value=_Client()):
+        store = ClickHouseAnalyticsStore(url="http://localhost:8123")
+        assert store.query_top_riskiest_agents(limit=5) == [{"ok": True}]
+        assert store.query_compliance_heatmap(days=7) == [{"ok": True}]
+
+    assert "FROM fleet_agents" in queries[0]
+    assert "LIMIT 5" in queries[0]
+    assert "FROM compliance_controls" in queries[1]
+    assert "INTERVAL 7 DAY" in queries[1]

@@ -11,6 +11,8 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import Any
 
+from agent_bom.api.fleet_store import FleetLifecycleState
+from agent_bom.fleet.trust_scoring import compute_trust_score
 from agent_bom.models import AIBOMReport
 from agent_bom.output import to_json
 
@@ -23,6 +25,8 @@ class ScanAnalyticsPayload:
     agent_findings: dict[str, list[dict[str, Any]]]
     scan_metadata: dict[str, Any]
     posture_snapshots: dict[str, dict[str, Any]]
+    fleet_snapshots: list[dict[str, Any]]
+    compliance_controls: list[dict[str, Any]]
 
 
 def build_scan_analytics_payload(
@@ -65,6 +69,8 @@ def build_scan_analytics_payload(
         agent_findings=agent_findings,
         scan_metadata=scan_metadata,
         posture_snapshots=posture_snapshots,
+        fleet_snapshots=_build_fleet_snapshots(report),
+        compliance_controls=_build_compliance_controls(report, data),
     )
 
 
@@ -154,3 +160,76 @@ def _score_to_grade(score: float) -> str:
     if score >= 60:
         return "D"
     return "F"
+
+
+def _build_fleet_snapshots(report: AIBOMReport) -> list[dict[str, Any]]:
+    snapshots: list[dict[str, Any]] = []
+    measured_at = report.generated_at.isoformat()
+    for agent in report.agents:
+        score, _factors = compute_trust_score(agent)
+        snapshots.append(
+            {
+                "agent_name": agent.name,
+                "agent_type": agent.agent_type.value if hasattr(agent.agent_type, "value") else str(agent.agent_type),
+                "lifecycle_state": FleetLifecycleState.DISCOVERED.value,
+                "trust_score": float(score),
+                "server_count": len(agent.mcp_servers),
+                "package_count": sum(len(server.packages) for server in agent.mcp_servers),
+                "credential_count": sum(len(server.credential_names) for server in agent.mcp_servers),
+                "vuln_count": sum(server.total_vulnerabilities for server in agent.mcp_servers),
+                "tenant_id": "default",
+                "last_seen": measured_at,
+            }
+        )
+    return snapshots
+
+
+def _build_compliance_controls(report: AIBOMReport, data: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    measured_at = report.generated_at.isoformat()
+    summary = data.get("threat_framework_summary", {})
+    framework_map = {
+        "owasp_llm_top10": "owasp-llm-top10",
+        "mitre_atlas": "mitre-atlas",
+        "nist_ai_rmf": "nist-ai-rmf",
+        "owasp_mcp_top10": "owasp-mcp-top10",
+        "owasp_agentic_top10": "owasp-agentic-top10",
+        "eu_ai_act": "eu-ai-act",
+        "nist_csf": "nist-csf",
+        "iso_27001": "iso-27001",
+        "soc2_tsc": "soc2-tsc",
+        "cis_controls": "cis-controls",
+    }
+    for key, framework_name in framework_map.items():
+        for item in summary.get(key, []):
+            control_id = item.get("code") or item.get("technique_id") or item.get("subcategory_id") or item.get("section") or ""
+            finding_count = int(item.get("findings", 0) or 0)
+            rows.append(
+                {
+                    "framework": framework_name,
+                    "control_id": str(control_id),
+                    "control_name": item.get("name", ""),
+                    "status": "fail" if item.get("triggered") else "pass",
+                    "finding_count": finding_count,
+                    "score": float(0 if finding_count else 100),
+                    "measured_at": measured_at,
+                    "scan_id": report.scan_id,
+                }
+            )
+
+    aisvs = report.aisvs_benchmark_data or {}
+    for check in aisvs.get("checks", []) or []:
+        status = str(check.get("status", "")).lower() or "unknown"
+        rows.append(
+            {
+                "framework": "owasp-aisvs",
+                "control_id": str(check.get("check_id", "")),
+                "control_name": check.get("title", ""),
+                "status": status,
+                "finding_count": 0 if status == "pass" else 1,
+                "score": float(check.get("score", aisvs.get("overall_score", 0.0)) or 0.0),
+                "measured_at": measured_at,
+                "scan_id": report.scan_id,
+            }
+        )
+    return rows

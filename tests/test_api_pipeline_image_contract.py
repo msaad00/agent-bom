@@ -53,6 +53,8 @@ def test_api_pipeline_persists_clickhouse_analytics(monkeypatch):
             self.scan_calls: list[tuple[str, str, list[dict]]] = []
             self.metadata_calls: list[dict] = []
             self.posture_calls: list[tuple[str, dict]] = []
+            self.fleet_calls: list[dict] = []
+            self.compliance_calls: list[dict] = []
 
         def record_scan(self, scan_id: str, agent_name: str, findings: list[dict]) -> None:
             self.scan_calls.append((scan_id, agent_name, findings))
@@ -62,6 +64,12 @@ def test_api_pipeline_persists_clickhouse_analytics(monkeypatch):
 
         def record_posture(self, agent_name: str, snapshot: dict) -> None:
             self.posture_calls.append((agent_name, snapshot))
+
+        def record_fleet_snapshot(self, snapshot: dict) -> None:
+            self.fleet_calls.append(snapshot)
+
+        def record_compliance_control(self, control: dict) -> None:
+            self.compliance_calls.append(control)
 
     analytics = _AnalyticsStore()
 
@@ -107,6 +115,8 @@ def test_api_pipeline_persists_clickhouse_analytics(monkeypatch):
     assert analytics.scan_calls
     assert analytics.metadata_calls
     assert analytics.posture_calls
+    assert analytics.fleet_calls
+    assert analytics.compliance_calls
 
     scan_id, agent_name, findings = analytics.scan_calls[0]
     assert scan_id == "clickhouse-123"
@@ -124,3 +134,7 @@ def test_api_pipeline_persists_clickhouse_analytics(monkeypatch):
     assert posture_agent == "image:agentbom/agent-bom:latest"
     assert snapshot["high"] == 1
     assert snapshot["total_packages"] == 1
+
+    assert analytics.fleet_calls[0]["agent_name"] == "image:agentbom/agent-bom:latest"
+    assert analytics.fleet_calls[0]["lifecycle_state"] == "discovered"
+    assert any(control["framework"] == "owasp-llm-top10" for control in analytics.compliance_calls)

@@ -72,7 +72,7 @@ def _render_mesh_summary(con: Console, agents_data: list[dict], mesh: dict) -> N
 
 
 @click.command("analytics")
-@click.argument("query_type", type=click.Choice(["trends", "posture", "events", "top-cves"]))
+@click.argument("query_type", type=click.Choice(["trends", "posture", "events", "top-cves", "fleet", "compliance"]))
 @click.option("--days", default=30, type=int, help="Lookback window in days (default: 30)")
 @click.option("--hours", default=24, type=int, help="Lookback window in hours for events (default: 24)")
 @click.option("--agent", default=None, help="Filter by agent name")
@@ -87,6 +87,8 @@ def analytics_cmd(query_type, days, hours, agent, top_limit, clickhouse_url):
       agent-bom analytics posture [--days 90] [--agent NAME]
       agent-bom analytics events [--hours 24]
       agent-bom analytics top-cves [--limit 20]
+      agent-bom analytics fleet [--limit 20]
+      agent-bom analytics compliance [--days 30]
     """
     from rich.table import Table
 
@@ -150,6 +152,42 @@ def analytics_cmd(query_type, days, hours, agent, top_limit, clickhouse_url):
         table.add_column("Max CVSS", style="red")
         for r in rows:
             table.add_row(r.get("cve_id", ""), str(r.get("cnt", 0)), str(r.get("max_cvss", "")))
+        console.print(table)
+
+    elif query_type == "fleet":
+        rows = store.query_top_riskiest_agents(limit=top_limit)
+        table = Table(title=f"Top {top_limit} Riskiest Fleet Agents")
+        table.add_column("Agent", style="cyan")
+        table.add_column("State", style="yellow")
+        table.add_column("Trust", style="bold")
+        table.add_column("Vulns", style="red")
+        table.add_column("Creds", style="magenta")
+        table.add_column("Tenant", style="green")
+        for r in rows:
+            table.add_row(
+                r.get("agent_name", ""),
+                r.get("lifecycle_state", ""),
+                str(r.get("trust_score", "")),
+                str(r.get("vuln_count", "")),
+                str(r.get("credential_count", "")),
+                r.get("tenant_id", ""),
+            )
+        console.print(table)
+
+    elif query_type == "compliance":
+        rows = store.query_compliance_heatmap(days=days)
+        table = Table(title=f"Compliance Heatmap (last {days} days)")
+        table.add_column("Framework", style="cyan")
+        table.add_column("Status", style="yellow")
+        table.add_column("Count", style="bold")
+        table.add_column("Avg Score", style="green")
+        for r in rows:
+            table.add_row(
+                r.get("framework", ""),
+                r.get("status", ""),
+                str(r.get("cnt", "")),
+                str(r.get("avg_score", "")),
+            )
         console.print(table)
 
     if not rows:

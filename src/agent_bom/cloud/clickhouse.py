@@ -180,4 +180,49 @@ CREATE TABLE IF NOT EXISTS scan_metadata (
 ORDER BY (scan_timestamp, scan_id)
 PARTITION BY toYYYYMM(scan_timestamp)
 TTL scan_timestamp + INTERVAL 2 YEAR""",
+    # 5. Fleet agent snapshots (trust/lifecycle over time)
+    """\
+CREATE TABLE IF NOT EXISTS fleet_agents (
+    measured_at DateTime DEFAULT now(),
+    agent_name String,
+    agent_type LowCardinality(String),
+    lifecycle_state LowCardinality(String),
+    trust_score Float32,
+    server_count UInt32,
+    package_count UInt32,
+    credential_count UInt32,
+    vuln_count UInt32,
+    tenant_id String
+) ENGINE = MergeTree()
+ORDER BY (measured_at, tenant_id, agent_name)
+PARTITION BY toYYYYMM(measured_at)
+TTL measured_at + INTERVAL 2 YEAR""",
+    # 6. Compliance control observations
+    """\
+CREATE TABLE IF NOT EXISTS compliance_controls (
+    measured_at DateTime DEFAULT now(),
+    scan_id String,
+    framework LowCardinality(String),
+    control_id String,
+    control_name String,
+    status LowCardinality(String),
+    finding_count UInt32,
+    score Float32
+) ENGINE = MergeTree()
+ORDER BY (measured_at, framework, control_id)
+PARTITION BY toYYYYMM(measured_at)
+TTL measured_at + INTERVAL 2 YEAR""",
+    # 7. Audit events for trend/forensics dashboards
+    """\
+CREATE TABLE IF NOT EXISTS audit_events (
+    event_timestamp DateTime DEFAULT now(),
+    entry_id String,
+    action LowCardinality(String),
+    actor String,
+    resource String,
+    tenant_id String
+) ENGINE = MergeTree()
+ORDER BY (event_timestamp, tenant_id, action)
+PARTITION BY toYYYYMM(event_timestamp)
+TTL event_timestamp + INTERVAL 2 YEAR""",
 ]

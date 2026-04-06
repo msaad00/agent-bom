@@ -507,6 +507,13 @@ def _run_scan_sync(job: ScanJob) -> None:
             job.status = JobStatus.DONE
         pipeline.complete_step("output", "Report ready")
 
+        # Auto-sync discovered agents to fleet registry
+        try:
+            _sync_scan_agents_to_fleet(agents)
+        except Exception as fleet_exc:  # noqa: BLE001
+            with lock:
+                job.progress.append(f"Fleet sync skipped: {fleet_exc}")
+
         try:
             from agent_bom.analytics_contract import build_scan_analytics_payload
 
@@ -517,17 +524,14 @@ def _run_scan_sync(job: ScanJob) -> None:
             analytics_store.record_scan_metadata(analytics.scan_metadata)
             for agent_name, snapshot in analytics.posture_snapshots.items():
                 analytics_store.record_posture(agent_name, snapshot)
+            for fleet_snapshot in analytics.fleet_snapshots:
+                analytics_store.record_fleet_snapshot(fleet_snapshot)
+            for control in analytics.compliance_controls:
+                analytics_store.record_compliance_control(control)
         except Exception as analytics_exc:  # noqa: BLE001
             _logger.warning("API ClickHouse analytics persistence failed: %s", analytics_exc)
             with lock:
                 job.progress.append(f"Analytics sync skipped: {sanitize_error(analytics_exc)}")
-
-        # Auto-sync discovered agents to fleet registry
-        try:
-            _sync_scan_agents_to_fleet(agents)
-        except Exception as fleet_exc:  # noqa: BLE001
-            with lock:
-                job.progress.append(f"Fleet sync skipped: {fleet_exc}")
 
     except Exception as exc:  # noqa: BLE001
         with lock:

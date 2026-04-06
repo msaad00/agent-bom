@@ -3493,6 +3493,8 @@ def test_graph_html_export():
     assert "cytoscape" in content
     assert "agent-bom Supply Chain Graph" in content
     assert "Top risky paths" in content
+    assert "Focused path only" in content
+    assert "Credential exposure" in content
 
 
 def test_dockerfile_non_root():

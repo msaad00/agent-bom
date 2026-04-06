@@ -398,6 +398,8 @@ def _graph_priority_summary(blast_radii: list["BlastRadius"]) -> list[dict]:
                 "nodeId": f"cve:{br.vulnerability.id}",
                 "vulnerabilityId": br.vulnerability.id,
                 "packageName": br.package.name,
+                "packageVersion": br.package.version,
+                "packageEcosystem": br.package.ecosystem,
                 "severity": br.vulnerability.severity.value,
                 "riskScore": round(br.risk_score, 1),
                 "agentCount": len(br.affected_agents),
@@ -406,9 +408,44 @@ def _graph_priority_summary(blast_radii: list["BlastRadius"]) -> list[dict]:
                 "toolCount": len(br.exposed_tools),
                 "fixVersion": br.vulnerability.fixed_version or "",
                 "reachability": br.reachability,
+                "summary": br.vulnerability.summary or "",
+                "agents": [agent.name for agent in br.affected_agents[:6]],
+                "servers": [server.name for server in br.affected_servers[:6]],
+                "credentials": list(br.exposed_credentials)[:8],
+                "tools": list(br.exposed_tools)[:10],
+                "owaspTags": list(br.owasp_tags),
+                "atlasTags": list(br.atlas_tags),
+                "owaspMcpTags": list(br.owasp_mcp_tags),
+                "owaspAgenticTags": list(br.owasp_agentic_tags),
             }
         )
     return priorities
+
+
+def _graph_overview(blast_radii: list["BlastRadius"]) -> dict[str, int]:
+    """Aggregate the key counts operators need before drilling into a path."""
+    counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+    exposed_credentials: set[str] = set()
+    exposed_tools: set[str] = set()
+    affected_servers: set[str] = set()
+    affected_agents: set[str] = set()
+
+    for br in blast_radii:
+        severity = br.vulnerability.severity.value
+        if severity in counts:
+            counts[severity] += 1
+        exposed_credentials.update(br.exposed_credentials)
+        exposed_tools.update(br.exposed_tools)
+        affected_servers.update(server.name for server in br.affected_servers)
+        affected_agents.update(agent.name for agent in br.affected_agents)
+
+    return {
+        **counts,
+        "credentialCount": len(exposed_credentials),
+        "toolCount": len(exposed_tools),
+        "affectedServerCount": len(affected_servers),
+        "affectedAgentCount": len(affected_agents),
+    }
 
 
 def export_graph_html(
@@ -431,10 +468,12 @@ def export_graph_html(
     total_pkgs = sum(a.total_packages for a in report.agents)
     total_vulns = len(blast_radii)
     top_risks_json = json.dumps(_graph_priority_summary(blast_radii), indent=2)
+    overview_json = json.dumps(_graph_overview(blast_radii), indent=2)
 
     html_content = _GRAPH_HTML_TEMPLATE.format(
         elements_json=elements_json,
         top_risks_json=top_risks_json,
+        overview_json=overview_json,
         total_agents=total_agents,
         total_servers=total_servers,
         total_pkgs=total_pkgs,
@@ -458,10 +497,26 @@ _GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
   #header p {{ font-size: 13px; color: #9ba1a6; margin-top: 6px; max-width: 780px; }}
   #stats {{ font-size: 13px; color: #71767b; white-space: nowrap; padding-top: 4px; }}
   #stats span {{ margin: 0 8px; }}
-  #cy {{ width: 100%; height: calc(100vh - 120px); }}
+  #cy {{ width: 100%; height: calc(100vh - 176px); }}
+  #toolbar {{ padding: 10px 24px; display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; border-bottom: 1px solid #2f3336; background: #10151b; }}
+  #toolbar .left, #toolbar .right {{ display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }}
+  .chip {{ border: 1px solid #2f3336; background: #151b22; color: #e7e9ea; font-size: 12px; font-weight: 600;
+    border-radius: 999px; padding: 7px 10px; cursor: pointer; }}
+  .chip:hover {{ background: #1b2330; }}
+  .chip.active {{ border-color: #4a9eff; background: #15202b; color: #d9ecff; }}
+  .chip.count {{ cursor: default; }}
+  .chip.critical {{ border-color: #b42318; color: #ffb4ae; }}
+  .chip.high {{ border-color: #c56b1f; color: #ffd1a5; }}
+  .chip.medium {{ border-color: #9d7d13; color: #ffe28a; }}
+  .chip.low {{ border-color: #6e7681; color: #c6ccd3; }}
+  #search {{
+    width: 230px; max-width: 100%; border: 1px solid #2f3336; background: #0f1419; color: #e7e9ea;
+    border-radius: 10px; padding: 8px 12px; font-size: 12px;
+  }}
   .panel {{ position: fixed; z-index: 10; background: rgba(26, 31, 37, 0.96); border: 1px solid #2f3336;
     border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.28); backdrop-filter: blur(10px); }}
-  #riskpanel {{ top: 88px; left: 16px; width: 320px; max-height: calc(100vh - 220px); overflow: auto; }}
+  #riskpanel {{ top: 138px; left: 16px; width: 360px; max-height: calc(100vh - 270px); overflow: auto; }}
   #riskpanel h2, #detail h2 {{ font-size: 14px; font-weight: 700; margin-bottom: 10px; }}
   #riskpanel .inner, #detail .inner {{ padding: 14px; }}
   #riskpanel .hint {{ font-size: 12px; color: #9ba1a6; line-height: 1.45; margin-bottom: 10px; }}
@@ -472,16 +527,23 @@ _GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
   .risk-title {{ font-size: 12px; font-weight: 700; line-height: 1.35; }}
   .risk-score {{ font-size: 12px; font-weight: 700; color: #ffd33d; }}
   .risk-meta {{ font-size: 11px; color: #9ba1a6; line-height: 1.45; }}
+  .risk-summary {{ font-size: 12px; line-height: 1.45; color: #c6ccd3; margin-top: 8px; }}
   .pill {{ display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 999px;
     background: #2f3336; color: #e7e9ea; margin-right: 6px; }}
   .pill.critical {{ background: #5b1f24; color: #ffb3b8; }}
   .pill.high {{ background: #5b341f; color: #ffd1a5; }}
   .pill.medium {{ background: #4b3d18; color: #ffe28a; }}
+  .pill.low {{ background: #30363d; color: #e7e9ea; }}
   #legend {{ bottom: 16px; left: 16px; padding: 12px; font-size: 11px; width: 220px; }}
   #legend div {{ display: flex; align-items: center; gap: 6px; margin: 4px 0; }}
   .dot {{ width: 12px; height: 12px; border-radius: 3px; display: inline-block; }}
-  #detail {{ top: 88px; right: 16px; width: 320px; max-height: calc(100vh - 220px); overflow: auto; display: none; }}
-  #detail pre {{ white-space: pre-wrap; color: #9ba1a6; font-size: 11px; line-height: 1.45; }}
+  #detail {{ top: 138px; right: 16px; width: 360px; max-height: calc(100vh - 270px); overflow: auto; display: none; }}
+  #detail .subtle {{ color: #9ba1a6; font-size: 12px; line-height: 1.45; margin-bottom: 12px; }}
+  #detail .section {{ margin-top: 12px; }}
+  #detail .section h3 {{ font-size: 12px; font-weight: 700; margin-bottom: 8px; color: #d9ecff;
+    text-transform: uppercase; letter-spacing: .04em; }}
+  #detail ul {{ padding-left: 18px; color: #c6ccd3; font-size: 12px; line-height: 1.5; }}
+  #detail code {{ font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: #11161c; padding: 1px 4px; border-radius: 4px; }}
   #controls {{ position: fixed; bottom: 16px; right: 16px; z-index: 10; display: flex; gap: 8px; }}
   #controls button {{ padding: 8px 12px; border: 1px solid #2f3336; background: rgba(26, 31, 37, 0.96);
     color: #e7e9ea; border-radius: 8px; cursor: pointer; font-size: 12px; }}
@@ -499,6 +561,24 @@ _GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
   <div id="stats">
     <span>{total_agents} agents</span> | <span>{total_servers} servers</span> |
     <span>{total_pkgs} packages</span> | <span>{total_vulns} CVEs</span>
+  </div>
+</div>
+<div id="toolbar">
+  <div class="left">
+    <button class="chip active" id="sev-all" onclick="setSeverityFilter('all')">All severities</button>
+    <button class="chip critical" id="sev-critical" onclick="setSeverityFilter('critical')">Critical</button>
+    <button class="chip high" id="sev-high" onclick="setSeverityFilter('high')">High</button>
+    <button class="chip medium" id="sev-medium" onclick="setSeverityFilter('medium')">Medium</button>
+    <button class="chip low" id="sev-low" onclick="setSeverityFilter('low')">Low</button>
+    <button class="chip" id="chip-credentials" onclick="toggleCredentialFilter()">Credential exposure</button>
+    <button class="chip" id="chip-focus" onclick="toggleFocusedOnly()">Focused path only</button>
+  </div>
+  <div class="right">
+    <span class="chip count critical" id="count-critical"></span>
+    <span class="chip count high" id="count-high"></span>
+    <span class="chip count" id="count-credentials"></span>
+    <span class="chip count" id="count-agents"></span>
+    <input id="search" type="search" placeholder="Search CVE, package, server, agent" oninput="searchNodes(this.value)">
   </div>
 </div>
 <div id="cy"></div>
@@ -522,7 +602,7 @@ _GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
 <div id="detail" class="panel">
   <div class="inner">
     <h2 id="dt"></h2>
-    <pre id="db"></pre>
+    <div id="db"></div>
   </div>
 </div>
 <div id="controls">
@@ -538,7 +618,11 @@ _GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
 <script>
 const els={elements_json};
 const topRisks={top_risks_json};
+const overview={overview_json};
 let activeRiskNodeId=null;
+let focusedPathOnly=false;
+let credentialsOnly=false;
+let activeSeverity='all';
 cytoscape.use(cytoscapeDagre);
 const cy=cytoscape({{
   container:document.getElementById('cy'),elements:els,
@@ -572,13 +656,101 @@ const cy=cytoscape({{
     {{selector:'.faded',style:{{'opacity':0.14}}}},
     {{selector:'.focus',style:{{'opacity':1,'border-width':2.5,'border-color':'#58a6ff','z-index':9999}}}},
     {{selector:'edge.focus',style:{{'opacity':1,'line-color':'#58a6ff','target-arrow-color':'#58a6ff','width':2.4}}}},
+    {{selector:'.filtered',style:{{'display':'none'}}}},
   ],wheelSensitivity:0.3
 }});
 
-function setDetail(title, body){{
+const riskByNodeId = new Map(topRisks.map((risk)=>[risk.nodeId, risk]));
+
+function severityClass(sev){{
+  if(sev === 'critical' || sev === 'high' || sev === 'medium' || sev === 'low') return sev;
+  return '';
+}}
+
+function escapeHtml(value){{
+  return String(value || '')
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}}
+
+function listHtml(items){{
+  if(!items || !items.length) return '<div class="subtle">None in this path.</div>';
+  return `<ul>${{items.map((item)=>`<li><code>${{escapeHtml(item)}}</code></li>`).join('')}}</ul>`;
+}}
+
+function recommendationHtml(risk){{
+  const steps = [];
+  if(risk.fixVersion) {{
+    steps.push(`Upgrade <code>${{escapeHtml(risk.packageName)}}</code> to <code>${{escapeHtml(risk.fixVersion)}}</code>.`);
+  }} else {{
+    steps.push('No fixed version is advertised yet; isolate or contain the affected server path first.');
+  }}
+  if(risk.credentialCount) {{
+    steps.push('Rotate or scope down exposed credentials on affected servers before wider rollout.');
+  }}
+  if(risk.toolCount) {{
+    steps.push('Review reachable MCP tools to reduce post-exploitation blast radius.');
+  }}
+  if(risk.reachability && risk.reachability !== 'unknown') {{
+    steps.push(`Reachability is reported as <code>${{escapeHtml(risk.reachability)}}</code>; prioritize live paths first.`);
+  }}
+  return `<ul>${{steps.map((item)=>`<li>${{item}}</li>`).join('')}}</ul>`;
+}}
+
+function setDetail(title, bodyHtml){{
   document.getElementById('detail').style.display='block';
   document.getElementById('dt').textContent=title;
-  document.getElementById('db').textContent=body;
+  document.getElementById('db').innerHTML=bodyHtml;
+}}
+
+function setRiskDetail(risk){{
+  const tags = [
+    ...(risk.owaspTags || []),
+    ...(risk.atlasTags || []),
+    ...(risk.owaspMcpTags || []),
+    ...(risk.owaspAgenticTags || []),
+  ].slice(0, 8);
+  const tagHtml = tags.length
+    ? `<div class="section"><h3>Mapped controls</h3><div>${{
+        tags.map((tag)=>`<span class="pill">${{escapeHtml(tag)}}</span>`).join('')
+      }}</div></div>`
+    : '';
+  setDetail(
+    risk.vulnerabilityId,
+    `
+      <div class="subtle">${{escapeHtml(risk.summary || 'No summary was available for this vulnerability.')}}</div>
+      <div><span class="pill ${{severityClass(risk.severity)}}">${{escapeHtml(risk.severity.toUpperCase())}}</span>
+        <span class="pill">risk ${{escapeHtml(risk.riskScore)}}</span>
+        <span class="pill">${{escapeHtml(risk.reachability)}}</span></div>
+      <div class="section"><h3>Package</h3>
+        <div><code>${{escapeHtml(risk.packageName)}}</code> @
+          <code>${{escapeHtml(risk.packageVersion)}}</code>
+          (${{escapeHtml(risk.packageEcosystem)}})</div>
+        <div class="subtle">${{
+          risk.fixVersion
+            ? `Recommended fix: <code>${{escapeHtml(risk.fixVersion)}}</code>`
+            : 'No fixed version reported yet.'
+        }}</div>
+      </div>
+      <div class="section"><h3>Impact</h3>
+        <ul>
+          <li>${{escapeHtml(risk.agentCount)}} agent(s) affected</li>
+          <li>${{escapeHtml(risk.serverCount)}} server(s) affected</li>
+          <li>${{escapeHtml(risk.credentialCount)}} credential(s) exposed</li>
+          <li>${{escapeHtml(risk.toolCount)}} tool(s) reachable</li>
+        </ul>
+      </div>
+      <div class="section"><h3>Affected agents</h3>${{listHtml(risk.agents)}}</div>
+      <div class="section"><h3>Affected servers</h3>${{listHtml(risk.servers)}}</div>
+      <div class="section"><h3>Credentials</h3>${{listHtml(risk.credentials)}}</div>
+      <div class="section"><h3>Reachable tools</h3>${{listHtml(risk.tools)}}</div>
+      ${{tagHtml}}
+      <div class="section"><h3>Operator actions</h3>${{recommendationHtml(risk)}}</div>
+    `,
+  );
 }}
 
 function clearFocus(){{
@@ -587,9 +759,107 @@ function clearFocus(){{
   activeRiskNodeId=null;
 }}
 
+function updateOverview(){{
+  document.getElementById('count-critical').textContent=`${{overview.critical}} critical`;
+  document.getElementById('count-high').textContent=`${{overview.high}} high`;
+  document.getElementById('count-credentials').textContent=`${{overview.credentialCount}} exposed creds`;
+  document.getElementById('count-agents').textContent=`${{overview.affectedAgentCount}} impacted agents`;
+}}
+
+function setSeverityFilter(level){{
+  activeSeverity=level;
+  ['all','critical','high','medium','low'].forEach((item)=>{{
+    const el=document.getElementById(`sev-${{item}}`);
+    if(el) el.classList.toggle('active', item===level);
+  }});
+  applyFilters();
+}}
+
+function toggleCredentialFilter(){{
+  credentialsOnly=!credentialsOnly;
+  document.getElementById('chip-credentials').classList.toggle('active', credentialsOnly);
+  applyFilters();
+}}
+
+function toggleFocusedOnly(){{
+  focusedPathOnly=!focusedPathOnly;
+  document.getElementById('chip-focus').classList.toggle('active', focusedPathOnly);
+  applyFilters();
+}}
+
+function matchingSeverityNodes(){{
+  return cy.nodes().filter((node)=>{{
+    const severity = node.data('severity');
+    if(!severity) return false;
+    return activeSeverity === 'all' ? true : severity === activeSeverity;
+  }});
+}}
+
+function nodesForCredentialExposure(){{
+  const servers = cy.nodes().filter((node)=>Boolean(node.data('hasCredentials')));
+  let result = cy.collection();
+  servers.forEach((node)=>{{
+    result = result.union(node).union(node.predecessors()).union(node.successors());
+  }});
+  return result;
+}}
+
+function nodesForSearch(query){{
+  const trimmed = (query || '').trim().toLowerCase();
+  if(!trimmed) return null;
+  const matches = cy.nodes().filter((node)=>String(node.data('label') || '').toLowerCase().includes(trimmed));
+  if(matches.empty()) return cy.collection();
+  let result = cy.collection();
+  matches.forEach((node)=>{{
+    result = result.union(node).union(node.predecessors()).union(node.successors());
+  }});
+  return result;
+}}
+
+function focusedSubgraph(){{
+  if(!activeRiskNodeId) return null;
+  const node = cy.getElementById(activeRiskNodeId);
+  if(!node || node.empty()) return null;
+  return node.union(node.predecessors()).union(node.successors());
+}}
+
+function applyFilters(){{
+  cy.elements().removeClass('filtered');
+  let visible = cy.elements();
+
+  const severityNodes = matchingSeverityNodes();
+  if(!severityNodes.empty()) {{
+    let severityGraph = cy.collection();
+    severityNodes.forEach((node)=>{{
+      severityGraph = severityGraph.union(node).union(node.predecessors());
+    }});
+    visible = visible.intersection(severityGraph.union(severityGraph.connectedEdges()));
+  }}
+
+  if(credentialsOnly) {{
+    const credGraph = nodesForCredentialExposure();
+    visible = visible.intersection(credGraph.union(credGraph.connectedEdges()));
+  }}
+
+  const searchGraph = nodesForSearch(document.getElementById('search').value);
+  if(searchGraph !== null) {{
+    visible = visible.intersection(searchGraph.union(searchGraph.connectedEdges()));
+  }}
+
+  const focusedGraph = focusedSubgraph();
+  if(focusedPathOnly && focusedGraph) {{
+    visible = visible.intersection(focusedGraph.union(focusedGraph.connectedEdges()));
+  }}
+
+  cy.elements().difference(visible).addClass('filtered');
+}}
+
 function fitAll(){{
   clearFocus();
   document.getElementById('detail').style.display='none';
+  focusedPathOnly=false;
+  document.getElementById('chip-focus').classList.remove('active');
+  applyFilters();
   cy.fit(cy.elements(), 60);
 }}
 
@@ -603,9 +873,15 @@ function focusNode(nodeId, opts){{
   cy.animate({{ fit: {{ eles: focus, padding: 90 }}, duration: 350 }});
   activeRiskNodeId=nodeId;
   if(!(opts && opts.silent)){{
-    const d=node.data();
-    setDetail(d.label||d.id, d.tip||JSON.stringify(d,null,2));
+    const risk = riskByNodeId.get(nodeId);
+    if(risk){{
+      setRiskDetail(risk);
+    }} else {{
+      const d=node.data();
+      setDetail(d.label||d.id, `<div class="subtle">${{escapeHtml(d.tip || '')}}</div>`);
+    }}
   }}
+  applyFilters();
 }}
 
 function focusTopRisk(){{
@@ -621,11 +897,6 @@ function focusRisk(nodeId){{
   focusNode(nodeId);
   const active=document.querySelector('[data-node-id=\"'+nodeId+'\"]');
   if(active) active.classList.add('active');
-}}
-
-function severityClass(sev){{
-  if(sev === 'critical' || sev === 'high' || sev === 'medium') return sev;
-  return '';
 }}
 
 function renderRiskList(){{
@@ -647,6 +918,7 @@ function renderRiskList(){{
         ${{risk.credentialCount}} credential(s) · ${{risk.toolCount}} tool(s)
         ${{risk.fixVersion ? '<br>Fix: '+risk.fixVersion : ''}}
       </div>
+      <div class="risk-summary">${{risk.summary ? risk.summary.slice(0, 130) : 'No summary available.'}}</div>
     </button>
   `).join('');
 }}
@@ -657,6 +929,19 @@ cy.on('tap','node',function(e){{
 }});
 cy.on('tap',function(e){{ if(e.target===cy) fitAll(); }});
 
+function searchNodes(query){{
+  const trimmed = (query || '').trim();
+  applyFilters();
+  if(!trimmed) return;
+  const match = cy
+    .nodes(':visible')
+    .filter((node)=>String(node.data('label') || '').toLowerCase().includes(trimmed.toLowerCase()))
+    .first();
+  if(match && !match.empty()){{
+    cy.animate({{ fit: {{ eles: match.closedNeighborhood(), padding: 120 }}, duration: 250 }});
+  }}
+}}
+
 function dlPng(){{
   const a=document.createElement('a');
   a.href=cy.png({{scale:2,bg:'#0f1419'}});
@@ -665,6 +950,7 @@ function dlPng(){{
 }}
 
 renderRiskList();
+updateOverview();
 cy.ready(function(){{
   setTimeout(function(){{ focusTopRisk(); }}, 120);
 }});

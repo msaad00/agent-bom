@@ -37,7 +37,7 @@ Package risk is only the start. agent-bom maps what it can reach across MCP serv
 
 `agent-bom` is now a real released product surface, not just a research repo: installable from PyPI, publishable through Docker, usable in GitHub Actions, deployable as an authenticated API and remote MCP service, and validated end to end through CLI, reports, API, dashboard, and policy gates.
 
-For the canonical product brief and verified repo-derived metrics, see [docs/PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md) and [docs/PRODUCT_METRICS.md](docs/PRODUCT_METRICS.md).
+For the canonical product brief and verified repo-derived metrics, see [docs/PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md) and [docs/PRODUCT_METRICS.md](docs/PRODUCT_METRICS.md). For enterprise-control traceability, see [docs/ENTERPRISE.md](docs/ENTERPRISE.md).
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="agent-bom demo" width="900" />
@@ -98,6 +98,15 @@ agent-bom serve                         # API + Next.js dashboard
 | **CI/CD** | Use the GitHub Action or `docker run --rm agentbom/agent-bom`. It is isolated by default and easy to gate on exit code or SARIF. |
 | **Enterprise fleet** | Deploy `agent-bom serve` in its own container or namespace with API keys or OIDC-backed role checks and a real backend. Use the CLI or Action on endpoints and repos; use the API for fleet visibility. |
 | **Air-gapped / isolated** | Pre-sync the local DB, copy the cache, and run with `--offline` or `auto-update-db: false`. |
+
+## Enterprise and community
+
+- Enterprise controls map: [docs/ENTERPRISE.md](docs/ENTERPRISE.md)
+- Enterprise deployment guide: [docs/ENTERPRISE_DEPLOYMENT.md](docs/ENTERPRISE_DEPLOYMENT.md)
+- Runtime monitoring and proxy deployment: [docs/RUNTIME_MONITORING.md](docs/RUNTIME_MONITORING.md)
+- Community bootstrap plan: [docs/COMMUNITY.md](docs/COMMUNITY.md)
+
+When the Discord server is live, add the invite link in this section and in release notes so support and contributor traffic has a single obvious entry point.
 
 ## Update and release hygiene
 

@@ -2,6 +2,8 @@
 
 Deploy agent-bom across your organization — from developer endpoints to cloud infrastructure.
 
+If you want a code-mapped explanation of the enterprise claims in this guide, start with [ENTERPRISE.md](ENTERPRISE.md).
+
 ## Architecture Principles
 
 agent-bom is built on four security principles:
@@ -121,7 +123,7 @@ That keeps API roles and tenant boundaries aligned with the upstream identity pr
 
 For PostgreSQL-backed deployments, `agent-bom` now also pushes the authenticated tenant into the database session (`app.tenant_id`) so Postgres row-level security can enforce the same tenant boundary for fleet and schedule data. Internal scheduler work uses an explicit trusted bypass rather than silently reading across tenants.
 
-**Storage:** SQLite (single node), PostgreSQL-compatible backends such as Postgres or Supabase (transactional team control plane), Snowflake/ClickHouse (analytics and selected enterprise backends). Snowflake does not yet have full parity for every transactional API store, so Postgres-compatible backends remain the primary control-plane default when you need tenant-scoped keys, exceptions, audit, and trend state.
+**Storage:** SQLite for single-node and local persistence, PostgreSQL-compatible backends such as PostgreSQL and Supabase for the transactional control plane, ClickHouse for analytics, and Snowflake for selected enterprise store paths where parity is explicitly implemented. Snowflake does not yet have full parity for every transactional API store, so PostgreSQL-compatible backends remain the primary control-plane default when you need tenant-scoped keys, exceptions, audit, and trend state.
 
 For ClickHouse-backed analytics, make the backend explicit instead of relying on ambient environment alone:
 

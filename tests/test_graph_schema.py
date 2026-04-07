@@ -47,9 +47,16 @@ class TestEntityType:
     def test_finding_entities_are_category_2(self):
         from agent_bom.graph_schema import ENTITY_OCSF_MAP, EntityType
 
-        findings = [EntityType.VULNERABILITY, EntityType.CREDENTIAL, EntityType.MISCONFIGURATION]
+        # Only VULNERABILITY and MISCONFIGURATION are findings.
+        # CREDENTIAL is inventory (Category 5) — not a finding.
+        findings = [EntityType.VULNERABILITY, EntityType.MISCONFIGURATION]
         for et in findings:
             assert ENTITY_OCSF_MAP[et.value]["category_uid"] == 2
+
+    def test_credential_is_inventory_not_finding(self):
+        from agent_bom.graph_schema import ENTITY_OCSF_MAP, EntityType
+
+        assert ENTITY_OCSF_MAP[EntityType.CREDENTIAL.value]["category_uid"] == 5
 
     def test_vulnerability_is_security_finding_2001(self):
         from agent_bom.graph_schema import ENTITY_OCSF_MAP, EntityType
@@ -411,12 +418,20 @@ class TestUnifiedGraph:
         path = g.shortest_path("agent:a", "vuln:CVE-2024-1")
         assert path == ["agent:a", "server:a:fs", "vuln:CVE-2024-1"]
 
-    def test_shortest_path_no_path(self):
+    def test_shortest_path_respects_direction(self):
         g = _build_test_graph()
-        # vuln has no edge to cred directly
+        # vuln and cred are TARGETS of directed edges from server:a:fs.
+        # With direction-aware traversal, you can't go vuln→server→cred
+        # because server→vuln is one-way (directed), not bidirectional.
         path = g.shortest_path("vuln:CVE-2024-1", "cred:API_KEY")
-        # They're both connected to server:a:fs so path exists via bidirectional adjacency
+        assert path is None  # No reverse traversal on directed edges
+
+    def test_shortest_path_works_for_bidirectional(self):
+        g = _build_test_graph()
+        # agent:a ↔ agent:b is bidirectional (SHARES_SERVER)
+        path = g.shortest_path("agent:b", "agent:a")
         assert path is not None
+        assert path == ["agent:b", "agent:a"]
 
     def test_reachable_from(self):
         g = _build_test_graph()
@@ -478,11 +493,10 @@ class TestUnifiedGraph:
     def test_ocsf_events_export(self):
         g = _build_test_graph()
         events = g.to_ocsf_events("0.75.13")
-        # Only finding-type nodes (vuln + credential)
-        assert len(events) == 2
-        for ev in events:
-            assert ev["class_uid"] in (2001, 2003)
-            assert ev["metadata"]["product"]["version"] == "0.75.13"
+        # Only finding-type nodes exported: vulnerability (not credential!)
+        assert len(events) == 1
+        assert events[0]["class_uid"] == 2001  # Security Finding
+        assert events[0]["metadata"]["product"]["version"] == "0.75.13"
 
     def test_inventory_view(self):
         from agent_bom.graph_schema import EntityType
@@ -824,7 +838,208 @@ class TestBackwardCompat:
     def test_ocsf_type_uid_computation(self):
         from agent_bom.graph_schema import EntityType, ocsf_type_uid
 
-        # Security Finding Create: 2001 * 100 + 1 = 200101
         assert ocsf_type_uid(EntityType.VULNERABILITY) == 200101
-        # Device Inventory Create: 4001 * 100 + 1 = 400101
         assert ocsf_type_uid(EntityType.AGENT) == 400101
+
+    def test_graph_package_imports_work(self):
+        """New code can import from agent_bom.graph directly."""
+        from agent_bom.graph import (
+            ENTITY_LEGEND,
+            FINDING_ENTITY_TYPES,
+            RELATIONSHIP_LEGEND,
+            EntityType,
+            GraphLayout,
+        )
+
+        assert GraphLayout.DAGRE.value == "dagre"
+        assert len(ENTITY_LEGEND) >= 10
+        assert len(RELATIONSHIP_LEGEND) >= 8
+        assert EntityType.VULNERABILITY in FINDING_ENTITY_TYPES
+        assert EntityType.CREDENTIAL not in FINDING_ENTITY_TYPES
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Regression tests for bug fixes
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestRegressionDirectedEdges:
+    """Bug fix: directed edges were traversed as undirected."""
+
+    def test_directed_edge_no_reverse_traversal(self):
+        from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
+
+        g = UnifiedGraph()
+        g.add_node(UnifiedNode(id="a", entity_type=EntityType.AGENT, label="a"))
+        g.add_node(UnifiedNode(id="s", entity_type=EntityType.SERVER, label="s"))
+        g.add_edge(UnifiedEdge(source="a", target="s", relationship=RelationshipType.USES, direction="directed"))
+
+        # Forward: a → s works
+        assert g.shortest_path("a", "s") == ["a", "s"]
+        # Reverse: s → a does NOT work (directed edge)
+        assert g.shortest_path("s", "a") is None
+
+    def test_bidirectional_edge_reverse_works(self):
+        from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
+
+        g = UnifiedGraph()
+        g.add_node(UnifiedNode(id="a1", entity_type=EntityType.AGENT, label="a1"))
+        g.add_node(UnifiedNode(id="a2", entity_type=EntityType.AGENT, label="a2"))
+        g.add_edge(
+            UnifiedEdge(
+                source="a1",
+                target="a2",
+                relationship=RelationshipType.SHARES_SERVER,
+                direction="bidirectional",
+            )
+        )
+
+        assert g.shortest_path("a1", "a2") == ["a1", "a2"]
+        assert g.shortest_path("a2", "a1") == ["a2", "a1"]
+
+    def test_bfs_respects_direction(self):
+        from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
+
+        g = UnifiedGraph()
+        g.add_node(UnifiedNode(id="a", entity_type=EntityType.AGENT, label="a"))
+        g.add_node(UnifiedNode(id="s", entity_type=EntityType.SERVER, label="s"))
+        g.add_node(UnifiedNode(id="v", entity_type=EntityType.VULNERABILITY, label="v"))
+        g.add_edge(UnifiedEdge(source="a", target="s", relationship=RelationshipType.USES))
+        g.add_edge(UnifiedEdge(source="s", target="v", relationship=RelationshipType.VULNERABLE_TO))
+
+        # From agent: can reach server and vuln
+        from_a = g.reachable_from("a")
+        assert "s" in from_a
+        assert "v" in from_a
+
+        # From vuln: can't reach anything (all edges point toward it)
+        from_v = g.reachable_from("v")
+        assert from_v == {"v"}  # Only self
+
+
+class TestRegressionCredentialOCSF:
+    """Bug fix: credentials were falsely promoted to OCSF Security Findings."""
+
+    def test_credential_not_in_ocsf_events(self):
+        from agent_bom.graph import EntityType, UnifiedGraph, UnifiedNode
+
+        g = UnifiedGraph()
+        g.add_node(UnifiedNode(id="cred:OPENAI_API_KEY", entity_type=EntityType.CREDENTIAL, label="OPENAI_API_KEY"))
+        g.add_node(UnifiedNode(id="vuln:CVE-1", entity_type=EntityType.VULNERABILITY, label="CVE-1", severity="high"))
+
+        events = g.to_ocsf_events()
+        assert len(events) == 1
+        assert events[0]["message"] == "vulnerability:CVE-1"
+
+
+class TestRegressionNodeMerge:
+    """Bug fix: duplicate node observations didn't union cross-source metadata."""
+
+    def test_data_sources_unioned(self):
+        from agent_bom.graph import EntityType, UnifiedGraph, UnifiedNode
+
+        g = UnifiedGraph()
+        g.add_node(UnifiedNode(id="s", entity_type=EntityType.SERVER, label="s", data_sources=["mcp-scan"]))
+        g.add_node(UnifiedNode(id="s", entity_type=EntityType.SERVER, label="s", data_sources=["runtime-proxy"]))
+
+        assert set(g.nodes["s"].data_sources) == {"mcp-scan", "runtime-proxy"}
+
+    def test_compliance_tags_unioned(self):
+        from agent_bom.graph import EntityType, UnifiedGraph, UnifiedNode
+
+        g = UnifiedGraph()
+        g.add_node(UnifiedNode(id="v", entity_type=EntityType.VULNERABILITY, label="v", compliance_tags=["OWASP-A01"]))
+        g.add_node(UnifiedNode(id="v", entity_type=EntityType.VULNERABILITY, label="v", compliance_tags=["NIST-AI-RMF"]))
+
+        assert set(g.nodes["v"].compliance_tags) == {"OWASP-A01", "NIST-AI-RMF"}
+
+    def test_dimensions_merged(self):
+        from agent_bom.graph import EntityType, NodeDimensions, UnifiedGraph, UnifiedNode
+
+        g = UnifiedGraph()
+        g.add_node(UnifiedNode(id="s", entity_type=EntityType.SERVER, label="s", dimensions=NodeDimensions(ecosystem="npm")))
+        g.add_node(UnifiedNode(id="s", entity_type=EntityType.SERVER, label="s", dimensions=NodeDimensions(surface="mcp-server")))
+
+        assert g.nodes["s"].dimensions.ecosystem == "npm"
+        assert g.nodes["s"].dimensions.surface == "mcp-server"
+
+
+class TestRegressionPerScanHistory:
+    """Bug fix: SQLite store must preserve per-scan history."""
+
+    @pytest.fixture
+    def db(self):
+        from agent_bom.db.graph_store import _init_db
+
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        _init_db(conn)
+        yield conn
+        conn.close()
+
+    def test_node_survives_across_scans(self, db):
+        """Same node in s1 and s2 — loading s1 must still see it."""
+        from agent_bom.db.graph_store import load_graph, save_graph
+        from agent_bom.graph import EntityType, UnifiedGraph, UnifiedNode
+
+        g1 = UnifiedGraph(scan_id="s1")
+        g1.add_node(UnifiedNode(id="agent:x", entity_type=EntityType.AGENT, label="x"))
+        save_graph(db, g1)
+
+        g2 = UnifiedGraph(scan_id="s2")
+        g2.add_node(UnifiedNode(id="agent:x", entity_type=EntityType.AGENT, label="x"))
+        g2.add_node(UnifiedNode(id="agent:y", entity_type=EntityType.AGENT, label="y"))
+        save_graph(db, g2)
+
+        # s1 still has agent:x
+        loaded_s1 = load_graph(db, scan_id="s1")
+        assert "agent:x" in loaded_s1.nodes
+
+        # s2 has both
+        loaded_s2 = load_graph(db, scan_id="s2")
+        assert "agent:x" in loaded_s2.nodes
+        assert "agent:y" in loaded_s2.nodes
+
+    def test_diff_correct_across_scans(self, db):
+        """Diff must correctly show added/removed nodes."""
+        from agent_bom.db.graph_store import diff_snapshots, save_graph
+        from agent_bom.graph import EntityType, UnifiedGraph, UnifiedNode
+
+        g1 = UnifiedGraph(scan_id="s1")
+        g1.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="a"))
+        g1.add_node(UnifiedNode(id="agent:b", entity_type=EntityType.AGENT, label="b"))
+        save_graph(db, g1)
+
+        g2 = UnifiedGraph(scan_id="s2")
+        g2.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="a"))
+        g2.add_node(UnifiedNode(id="agent:c", entity_type=EntityType.AGENT, label="c"))
+        save_graph(db, g2)
+
+        diff = diff_snapshots(db, "s1", "s2")
+        assert "agent:c" in diff["nodes_added"]
+        assert "agent:b" in diff["nodes_removed"]
+        assert "agent:a" not in diff["nodes_added"]
+        assert "agent:a" not in diff["nodes_removed"]
+
+
+class TestGraphFilterOptions:
+    def test_filtered_view(self):
+        from agent_bom.graph import EntityType, GraphFilterOptions
+
+        g = _build_test_graph()
+        filters = GraphFilterOptions(
+            entity_types={EntityType.AGENT, EntityType.SERVER},
+            min_severity="",
+        )
+        sub = g.filtered_view(filters)
+        for node in sub.nodes.values():
+            assert node.entity_type in (EntityType.AGENT, EntityType.SERVER)
+
+    def test_filtered_view_severity(self):
+        from agent_bom.graph import GraphFilterOptions
+
+        g = _build_test_graph()
+        filters = GraphFilterOptions(min_severity="critical")
+        sub = g.filtered_view(filters)
+        # Only critical vuln node should pass
+        assert len(sub.nodes) == 1

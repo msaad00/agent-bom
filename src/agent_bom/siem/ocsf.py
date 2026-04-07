@@ -21,9 +21,9 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
-from agent_bom.graph_schema import OCSF_SEVERITY_NAMES as _SEVERITY_NAMES
-from agent_bom.graph_schema import OCSF_TO_SYSLOG
-from agent_bom.graph_schema import SEVERITY_TO_OCSF as _SEVERITY_MAP
+from agent_bom.graph import OCSF_SEVERITY_NAMES as _SEVERITY_NAMES
+from agent_bom.graph import OCSF_TO_SYSLOG
+from agent_bom.graph import SEVERITY_TO_OCSF as _SEVERITY_MAP
 
 logger = logging.getLogger(__name__)
 

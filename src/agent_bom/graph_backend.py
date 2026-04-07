@@ -17,11 +17,7 @@ from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
-from agent_bom.graph_schema import (
-    EntityType,
-    RelationshipType,
-    UnifiedGraph,
-)
+from agent_bom.graph import EntityType, RelationshipType, UnifiedGraph
 
 
 @runtime_checkable

@@ -136,7 +136,8 @@ export const ENTITY_OCSF_MAP: Record<
   [EntityType.CONTAINER]: { category_uid: 5, class_uid: 4001 },
   [EntityType.CLOUD_RESOURCE]: { category_uid: 5, class_uid: 4001 },
   [EntityType.VULNERABILITY]: { category_uid: 2, class_uid: 2001 },
-  [EntityType.CREDENTIAL]: { category_uid: 2, class_uid: 2001 },
+  // Credentials are INVENTORY — presence of env var is not a finding
+  [EntityType.CREDENTIAL]: { category_uid: 5, class_uid: 4001 },
   [EntityType.MISCONFIGURATION]: { category_uid: 2, class_uid: 2003 },
   [EntityType.PROVIDER]: { category_uid: 0, class_uid: 0 },
   [EntityType.ENVIRONMENT]: { category_uid: 0, class_uid: 0 },
@@ -365,19 +366,22 @@ export function filterEdges(
   });
 }
 
-/** BFS from a source node, returning all reachable node IDs. */
+/** BFS from a source node, respecting edge direction. */
 export function reachableFrom(
   sourceId: string,
   edges: UnifiedEdge[],
   maxDepth: number = 6,
 ): Set<string> {
+  // Build direction-aware adjacency: directed edges are one-way,
+  // bidirectional edges go both ways.
   const adj = new Map<string, string[]>();
   for (const e of edges) {
     if (!adj.has(e.source)) adj.set(e.source, []);
     adj.get(e.source)!.push(e.target);
-    // Bidirectional adjacency for traversal
-    if (!adj.has(e.target)) adj.set(e.target, []);
-    adj.get(e.target)!.push(e.source);
+    if (e.direction === "bidirectional") {
+      if (!adj.has(e.target)) adj.set(e.target, []);
+      adj.get(e.target)!.push(e.source);
+    }
   }
 
   const visited = new Set<string>([sourceId]);
@@ -396,3 +400,82 @@ export function reachableFrom(
 
   return visited;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Filter options & legend (mirrors Python graph/container.py)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export enum GraphLayout {
+  DAGRE = "dagre",
+  FORCE = "force",
+  RADIAL = "radial",
+  HIERARCHICAL = "hierarchical",
+  GRID = "grid",
+}
+
+export interface GraphFilterOptions {
+  maxDepth: number;
+  maxHops: number;
+  minSeverity: string;
+  entityTypes: Set<EntityType | string>;
+  relationshipTypes: Set<RelationshipType | string>;
+  staticOnly: boolean;
+  dynamicOnly: boolean;
+  includeIds: Set<string>;
+  excludeIds: Set<string>;
+  layout: GraphLayout | string;
+}
+
+export function defaultFilters(): GraphFilterOptions {
+  return {
+    maxDepth: 6,
+    maxHops: 0,
+    minSeverity: "",
+    entityTypes: new Set(),
+    relationshipTypes: new Set(),
+    staticOnly: false,
+    dynamicOnly: false,
+    includeIds: new Set(),
+    excludeIds: new Set(),
+    layout: GraphLayout.DAGRE,
+  };
+}
+
+export interface LegendEntry {
+  key: string;
+  label: string;
+  color: string;
+  shape: "circle" | "diamond" | "square" | "triangle";
+}
+
+export const ENTITY_LEGEND: LegendEntry[] = [
+  { key: "agent", label: "AI Agent", color: "#10b981", shape: "circle" },
+  { key: "server", label: "MCP Server", color: "#3b82f6", shape: "circle" },
+  { key: "package", label: "Package", color: "#52525b", shape: "square" },
+  { key: "tool", label: "Tool", color: "#a855f7", shape: "diamond" },
+  { key: "vulnerability", label: "Vulnerability", color: "#ef4444", shape: "triangle" },
+  { key: "credential", label: "Credential", color: "#f59e0b", shape: "diamond" },
+  { key: "misconfiguration", label: "Misconfiguration", color: "#f97316", shape: "triangle" },
+  { key: "model", label: "Model", color: "#8b5cf6", shape: "square" },
+  { key: "container", label: "Container", color: "#6366f1", shape: "square" },
+  { key: "cloud_resource", label: "Cloud Resource", color: "#0ea5e9", shape: "square" },
+];
+
+export const RELATIONSHIP_LEGEND: LegendEntry[] = [
+  { key: "uses", label: "Uses", color: "#10b981", shape: "circle" },
+  { key: "depends_on", label: "Depends On", color: "#52525b", shape: "circle" },
+  { key: "provides_tool", label: "Provides Tool", color: "#a855f7", shape: "circle" },
+  { key: "exposes_cred", label: "Exposes Credential", color: "#f59e0b", shape: "circle" },
+  { key: "vulnerable_to", label: "Vulnerable To", color: "#ef4444", shape: "circle" },
+  { key: "shares_server", label: "Shares Server", color: "#22d3ee", shape: "circle" },
+  { key: "shares_cred", label: "Shares Credential", color: "#f97316", shape: "circle" },
+  { key: "lateral_path", label: "Lateral Path", color: "#ea580c", shape: "circle" },
+  { key: "invoked", label: "Invoked (runtime)", color: "#10b981", shape: "circle" },
+  { key: "accessed", label: "Accessed (runtime)", color: "#3b82f6", shape: "circle" },
+];
+
+/** Entity types that represent actual security findings (for SIEM export) */
+export const FINDING_ENTITY_TYPES: Set<EntityType> = new Set([
+  EntityType.VULNERABILITY,
+  EntityType.MISCONFIGURATION,
+]);

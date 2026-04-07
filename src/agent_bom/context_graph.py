@@ -20,10 +20,16 @@ from enum import Enum
 from typing import Optional
 
 from agent_bom.constants import is_credential_key as _is_credential_key
-from agent_bom.graph_schema import (
-    _EDGE_KIND_TO_RELATIONSHIP,
-    _NODE_KIND_TO_ENTITY,
-    # ── Unified types re-exported for new consumers ──
+from agent_bom.graph import (
+    EDGE_KIND_TO_RELATIONSHIP as _EDGE_KIND_TO_RELATIONSHIP,
+)
+from agent_bom.graph import (
+    NODE_KIND_TO_ENTITY as _NODE_KIND_TO_ENTITY,
+)
+from agent_bom.graph import (
+    SEVERITY_RISK_SCORE as _SEVERITY_SCORES,
+)
+from agent_bom.graph import (
     AttackPath,
     EntityType,
     InteractionRisk,
@@ -31,10 +37,6 @@ from agent_bom.graph_schema import (
     UnifiedEdge,
     UnifiedGraph,
     UnifiedNode,
-)
-from agent_bom.graph_schema import (
-    # ── Unified severity (single source of truth) ──
-    SEVERITY_RISK_SCORE as _SEVERITY_SCORES,
 )
 
 # ── Enums (backward-compat — existing consumers import these) ────────────

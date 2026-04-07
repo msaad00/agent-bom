@@ -11,8 +11,8 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, TypedDict
 
-from agent_bom.graph_schema import SEVERITY_BADGE as _SEVERITY_BADGE
-from agent_bom.graph_schema import SEVERITY_RANK as _SEVERITY_RANK
+from agent_bom.graph import SEVERITY_BADGE as _SEVERITY_BADGE
+from agent_bom.graph import SEVERITY_RANK as _SEVERITY_RANK
 
 if TYPE_CHECKING:
     from agent_bom.models import AIBOMReport, BlastRadius

@@ -464,7 +464,8 @@ def test_graph_cve_nodes():
     elements = build_graph_elements(report, blast_radii, include_cve_nodes=True)
     cve_nodes = [e for e in elements if "cve:" in e.get("data", {}).get("id", "")]
     assert len(cve_nodes) >= 1
-    assert cve_nodes[0]["data"]["label"] == "CVE-2024-1234"
+    assert cve_nodes[0]["data"]["label"] == "CVE-2024-1234\nHIGH"
+    assert cve_nodes[0]["data"]["severity"] == "high"
     affects_edges = [e for e in elements if e.get("data", {}).get("type") == "affects"]
     assert len(affects_edges) >= 1
 

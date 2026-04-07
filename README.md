@@ -43,7 +43,9 @@ For the canonical product brief and verified repo-derived metrics, see [docs/PRO
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="agent-bom blast radius demo" width="900" />
 </p>
 
-30-second terminal demo: a real `agent-bom` scan showing blast radius, fix-first remediation, and integrity verification in one flow. The GIF uses the built-in curated sample environment so the output stays reproducible across releases. For real scans, run `agent-bom agents` on your machine or `agent-bom agents -p .` in a project.
+30-second terminal demo: a real `agent-bom` scan showing blast radius, fix-first remediation, and integrity verification in one flow. The GIF uses the built-in curated sample environment so the output stays reproducible across releases. For real scans, run `agent-bom agents` on your machine, or add `-p .` when you want project lockfiles and manifests folded into the same scan.
+
+Shipped today: `9` threat-intel sources, `16` lockfile formats, `13` model formats, `36` MCP tools, `13` PostgreSQL RLS-backed tenant tables, and `8` runtime detector classes.
 
 ## Quick start
 
@@ -88,7 +90,7 @@ agent-bom serve                         # API + Next.js dashboard
 - Real operator outputs: SARIF, CycloneDX, HTML, graphs, badges, JSON, API, dashboard, and MCP tools
 - Works as local CLI, CI gate, authenticated remote service, and enterprise deployment base
 
-## Why agent-bom
+## Proof points
 
 | Surface | What is already in the product |
 |---|---|
@@ -128,7 +130,11 @@ Use Discord for support, implementation questions, and release discussion. Use G
 - Remote package, API, and MCP deployment surfaces should all report the same version and health state after release.
 - Automated freshness checks watch for deployment drift so stale Railway or registry surfaces do not go unnoticed.
 - The repo monitors both JavaScript surfaces (`ui/` and `sdks/typescript/`) with daily Dependabot, `npm audit`, and CI guards that fail if tracked or published source maps appear unexpectedly.
-- `agent-bom api` and `agent-bom serve` make the analytics backend explicit too: ClickHouse can be enabled as a first-class buffered backend, `/health` reports the active analytics/tracing contract for operators, and the analytics store now captures scan metadata, vulnerability rows, posture snapshots, fleet snapshots, compliance-control rows, and audit-event trends from the same shipped product paths.
+<<<<<<< HEAD
+- `agent-bom api` and `agent-bom serve` make analytics backend selection explicit.
+- ClickHouse can run as a first-class buffered analytics backend.
+- `/health` reports the active analytics backend and tracing state for operators.
+- The analytics pipeline records scan metadata, vulnerability rows, posture snapshots, fleet snapshots, compliance-control rows, and audit-event trends from the same shipped product paths.
 
 <details>
 <summary><b>Claude, Cortex, and MCP integration</b></summary>

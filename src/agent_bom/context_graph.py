@@ -7,6 +7,9 @@ servers, credentials, tools, and vulnerabilities.  Answers the question:
 Works with raw JSON dicts (same as output/attack_flow.py) so both CLI and
 API can call it without model reconstruction.  Zero new dependencies —
 stdlib ``collections.deque`` for BFS.
+
+Types and severity constants are sourced from :mod:`graph_schema` — the
+single source of truth for the entire graph subsystem.
 """
 
 from __future__ import annotations
@@ -17,8 +20,26 @@ from enum import Enum
 from typing import Optional
 
 from agent_bom.constants import is_credential_key as _is_credential_key
+from agent_bom.graph_schema import (
+    _EDGE_KIND_TO_RELATIONSHIP,
+    _NODE_KIND_TO_ENTITY,
+    # ── Unified types re-exported for new consumers ──
+    AttackPath,
+    EntityType,
+    InteractionRisk,
+    NodeDimensions,
+    UnifiedEdge,
+    UnifiedGraph,
+    UnifiedNode,
+)
+from agent_bom.graph_schema import (
+    # ── Unified severity (single source of truth) ──
+    SEVERITY_RISK_SCORE as _SEVERITY_SCORES,
+)
 
-# ── Enums ─────────────────────────────────────────────────────────────────
+# ── Enums (backward-compat — existing consumers import these) ────────────
+# These map 1:1 to graph_schema.EntityType / RelationshipType but keep the
+# original string values so serialised JSON is stable.
 
 
 class NodeKind(str, Enum):
@@ -38,7 +59,7 @@ class EdgeKind(str, Enum):
     SHARES_CREDENTIAL = "shares_credential"  # agent ↔ agent
 
 
-# ── Data structures ───────────────────────────────────────────────────────
+# ── Data structures (backward-compat) ────────────────────────────────────
 
 
 @dataclass
@@ -98,25 +119,6 @@ class LateralPath:
     credential_exposure: list[str]
     tool_exposure: list[str]
     vuln_ids: list[str]
-
-
-@dataclass
-class InteractionRisk:
-    pattern: str
-    agents: list[str]
-    risk_score: float
-    description: str
-    owasp_agentic_tag: Optional[str] = None
-
-
-# ── Severity scoring (mirrors models.BlastRadius.calculate_risk_score) ────
-
-_SEVERITY_SCORES: dict[str, float] = {
-    "critical": 8.0,
-    "high": 6.0,
-    "medium": 4.0,
-    "low": 2.0,
-}
 
 
 # ── Tool capability classification (lazy import to avoid circular) ────────
@@ -734,3 +736,86 @@ def to_serializable(
             "interaction_risk_count": len(risks),
         },
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Unified Graph bridge — converts ContextGraph ↔ UnifiedGraph
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def to_unified_graph(
+    graph: ContextGraph,
+    lateral_paths: Optional[list[LateralPath]] = None,
+    interaction_risks: Optional[list[InteractionRisk]] = None,
+    *,
+    scan_id: str = "",
+    tenant_id: str = "",
+) -> UnifiedGraph:
+    """Convert a ContextGraph to a UnifiedGraph (the canonical representation).
+
+    This is the bridge between the legacy context graph builder and the
+    unified schema.  All downstream consumers (SIEM push, persistence,
+    graph export, UI) should work from the UnifiedGraph.
+    """
+    ug = UnifiedGraph(scan_id=scan_id, tenant_id=tenant_id)
+
+    for node in graph.nodes.values():
+        entity_type = _NODE_KIND_TO_ENTITY.get(node.kind.value, EntityType.SERVER)
+        severity = node.metadata.get("severity", "")
+        ug.add_node(
+            UnifiedNode(
+                id=node.id,
+                entity_type=entity_type,
+                label=node.label,
+                severity=severity if isinstance(severity, str) else "",
+                risk_score=float(node.metadata.get("risk_score", 0)),
+                attributes=node.metadata,
+                dimensions=NodeDimensions(
+                    agent_type=node.metadata.get("agent_type", ""),
+                    surface="mcp-server" if entity_type == EntityType.SERVER else "",
+                ),
+                data_sources=["mcp-scan"],
+            )
+        )
+
+    for edge in graph.edges:
+        rel = _EDGE_KIND_TO_RELATIONSHIP.get(edge.kind.value)
+        if not rel:
+            continue
+        ug.add_edge(
+            UnifiedEdge(
+                source=edge.source,
+                target=edge.target,
+                relationship=rel,
+                direction="bidirectional"
+                if edge.kind
+                in (
+                    EdgeKind.SHARES_SERVER,
+                    EdgeKind.SHARES_CREDENTIAL,
+                )
+                else "directed",
+                weight=edge.weight,
+                evidence=edge.metadata,
+            )
+        )
+
+    # Convert lateral paths → AttackPath
+    for lp in lateral_paths or []:
+        ug.attack_paths.append(
+            AttackPath(
+                source=lp.source,
+                target=lp.target,
+                hops=lp.hops,
+                edges=[ek.value if isinstance(ek, EdgeKind) else str(ek) for ek in lp.edges],
+                composite_risk=lp.composite_risk,
+                summary=lp.summary,
+                credential_exposure=lp.credential_exposure,
+                tool_exposure=lp.tool_exposure,
+                vuln_ids=lp.vuln_ids,
+            )
+        )
+
+    # InteractionRisk is already imported from graph_schema — same type
+    ug.interaction_risks = list(interaction_risks or [])
+
+    return ug

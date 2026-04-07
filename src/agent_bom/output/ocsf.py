@@ -17,14 +17,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-# OCSF severity mapping (agent-bom → OCSF severity_id)
-_SEVERITY_MAP: dict[str, int] = {
-    "critical": 5,  # OCSF: Critical
-    "high": 4,  # OCSF: High
-    "medium": 3,  # OCSF: Medium
-    "low": 2,  # OCSF: Low
-    "info": 1,  # OCSF: Informational
-}
+from agent_bom.graph_schema import SEVERITY_TO_OCSF as _SEVERITY_MAP
 
 # Detector → OCSF analytic type mapping
 _ANALYTIC_TYPE: dict[str, str] = {

@@ -21,22 +21,11 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
+from agent_bom.graph_schema import OCSF_SEVERITY_NAMES as _SEVERITY_NAMES
+from agent_bom.graph_schema import OCSF_TO_SYSLOG
+from agent_bom.graph_schema import SEVERITY_TO_OCSF as _SEVERITY_MAP
+
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# OCSF severity mapping
-# ---------------------------------------------------------------------------
-
-_SEVERITY_MAP: dict[str, int] = {
-    "critical": 5,  # Fatal
-    "high": 4,
-    "medium": 3,
-    "low": 2,
-    "info": 1,  # Informational
-}
-
-_SEVERITY_NAMES: dict[int, str] = {v: k.title() for k, v in _SEVERITY_MAP.items()}
-
 
 # ---------------------------------------------------------------------------
 # OCSF Detection Finding formatter
@@ -54,7 +43,7 @@ def to_ocsf_detection_finding(
     shape produced by ``runtime.detectors.Alert.to_dict()``).
     """
     severity_str = str(alert.get("severity", "medium")).lower()
-    severity_id = _SEVERITY_MAP.get(severity_str, 3)
+    severity_id = _SEVERITY_MAP.get(severity_str, 0)  # OCSF Unknown for unrecognised
 
     details = alert.get("details", {})
     detector = alert.get("detector", alert.get("type", "unknown"))
@@ -118,14 +107,8 @@ def to_ocsf_batch(
 # Syslog facility: 1 = user-level
 _FACILITY = 1
 
-# OCSF severity → syslog severity (RFC 5424 §6.2.1)
-_SYSLOG_SEVERITY: dict[int, int] = {
-    5: 2,  # Critical → Critical
-    4: 3,  # High → Error
-    3: 4,  # Medium → Warning
-    2: 5,  # Low → Notice
-    1: 6,  # Info → Informational
-}
+# OCSF severity → syslog severity (RFC 5424 §6.2.1) — from graph_schema
+_SYSLOG_SEVERITY = OCSF_TO_SYSLOG
 
 
 def _format_rfc5424(

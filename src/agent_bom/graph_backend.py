@@ -4,6 +4,9 @@ Provides a Protocol-based graph backend that supports both a zero-dependency
 in-memory implementation and an optional NetworkX-backed implementation with
 centrality analysis (PageRank, betweenness centrality).
 
+Severity constants and the canonical graph types are defined in
+:mod:`graph_schema` — this module uses them for consistency.
+
 Install NetworkX for advanced graph analytics:
     pip install 'agent-bom[graph]'
 """
@@ -13,6 +16,12 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
+
+from agent_bom.graph_schema import (
+    EntityType,
+    RelationshipType,
+    UnifiedGraph,
+)
 
 
 @runtime_checkable
@@ -267,5 +276,28 @@ def from_context_graph(context_graph_data: dict, backend: str = "auto") -> Graph
             target=edge["target"],
             kind=edge.get("kind", ""),
             weight=edge.get("weight", 1.0),
+        )
+    return graph
+
+
+def from_unified_graph(ug: UnifiedGraph, backend: str = "auto") -> GraphBackend:
+    """Convert a :class:`UnifiedGraph` into a GraphBackend for centrality analysis."""
+    graph = get_backend(backend)
+    for node in ug.nodes.values():
+        et = node.entity_type.value if isinstance(node.entity_type, EntityType) else node.entity_type
+        graph.add_node(
+            node_id=node.id,
+            kind=et,
+            label=node.label,
+            severity=node.severity,
+            risk_score=node.risk_score,
+        )
+    for edge in ug.edges:
+        rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else edge.relationship
+        graph.add_edge(
+            source=edge.source,
+            target=edge.target,
+            kind=rel,
+            weight=edge.weight,
         )
     return graph

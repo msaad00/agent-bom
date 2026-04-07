@@ -11,12 +11,11 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, TypedDict
 
+from agent_bom.graph_schema import SEVERITY_BADGE as _SEVERITY_BADGE
+from agent_bom.graph_schema import SEVERITY_RANK as _SEVERITY_RANK
+
 if TYPE_CHECKING:
     from agent_bom.models import AIBOMReport, BlastRadius
-
-
-_SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1, "unknown": 0}
-_SEVERITY_BADGE = {"critical": "R2", "high": "R1", "medium": "M", "low": "L", "unknown": "?"}
 
 
 class _PackageVulnSummary(TypedDict):

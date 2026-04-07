@@ -123,9 +123,9 @@ class TestSeverityMapping:
         ocsf = to_ocsf_detection_finding(_sample_alert(severity="info"))
         assert ocsf["severity_id"] == 1
 
-    def test_unknown_defaults_to_medium(self):
+    def test_unknown_defaults_to_ocsf_unknown(self):
         ocsf = to_ocsf_detection_finding(_sample_alert(severity="unknown"))
-        assert ocsf["severity_id"] == 3
+        assert ocsf["severity_id"] == 0  # OCSF Unknown (not medium)
 
 
 # ---------------------------------------------------------------------------

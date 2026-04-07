@@ -9,16 +9,88 @@ Produces Cytoscape.js-compatible element lists consumable by:
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 if TYPE_CHECKING:
     from agent_bom.models import AIBOMReport, BlastRadius
+
+
+_SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1, "unknown": 0}
+_SEVERITY_BADGE = {"critical": "R2", "high": "R1", "medium": "M", "low": "L", "unknown": "?"}
+
+
+class _PackageVulnSummary(TypedDict):
+    counts: dict[str, int]
+    maxSeverity: str
+    vulnCount: int
+    summaryText: str
+    vulnIds: list[str]
+
+
+def _package_node_id(
+    package_name: str,
+    ecosystem: str,
+    *,
+    agent_name: str | None = None,
+    server_name: str | None = None,
+    scoped: bool = False,
+) -> str:
+    """Return a graph node id for a package.
+
+    The collapsed HTML graph uses server-scoped package nodes to avoid the
+    shared-package edge spaghetti that makes larger blast-radius graphs unreadable.
+    """
+    if scoped and agent_name and server_name:
+        return f"pkg:{agent_name}:{server_name}:{package_name}:{ecosystem}"
+    return f"pkg:{package_name}:{ecosystem}"
+
+
+def _summarize_package_vulns(vulns: list[dict]) -> _PackageVulnSummary:
+    """Aggregate vulnerability counts and labels for a package."""
+    counts: dict[str, int] = {"critical": 0, "high": 0, "medium": 0, "low": 0, "unknown": 0}
+    max_severity = "unknown"
+    max_rank = -1
+    unique_ids: list[str] = []
+    seen_ids: set[str] = set()
+
+    for vuln in vulns:
+        severity = str(vuln.get("severity") or "unknown")
+        if severity not in counts:
+            severity = "unknown"
+        counts[severity] += 1
+        rank = _SEVERITY_RANK[severity]
+        if rank > max_rank:
+            max_rank = rank
+            max_severity = severity
+        vuln_id = str(vuln.get("id") or "")
+        if vuln_id and vuln_id not in seen_ids:
+            seen_ids.add(vuln_id)
+            unique_ids.append(vuln_id)
+
+    badge_parts = []
+    for severity in ("critical", "high", "medium", "low"):
+        count = counts[severity]
+        if count:
+            badge_parts.append(f"{_SEVERITY_BADGE[severity]}{count}")
+    if counts["unknown"]:
+        badge_parts.append(f"?{counts['unknown']}")
+
+    summary_text = " ".join(badge_parts) if badge_parts else "No CVEs"
+    return {
+        "counts": counts,
+        "maxSeverity": max_severity,
+        "vulnCount": len(unique_ids),
+        "summaryText": summary_text,
+        "vulnIds": unique_ids,
+    }
 
 
 def build_graph_elements(
     report: "AIBOMReport",
     blast_radii: list["BlastRadius"],
     include_cve_nodes: bool = True,
+    *,
+    collapse_cves: bool = False,
 ) -> list[dict]:
     """Build a Cytoscape.js-compatible element list with provider, agent, server, package, and CVE nodes.
 
@@ -28,7 +100,7 @@ def build_graph_elements(
       - ``server_vuln`` — MCP server with vulnerable packages
       - ``server_cred`` — MCP server with exposed credentials
       - ``server_clean``— MCP server, no issues
-      - ``pkg_vuln``    — vulnerable package
+      - ``pkg_vuln``    — vulnerable package summary
       - ``cve``         — individual CVE/advisory
 
     Edge types (in ``data.type``):
@@ -43,7 +115,6 @@ def build_graph_elements(
     # Track which provider nodes we've already created
     providers_seen: set[str] = set()
 
-    # Map (pkg_name, ecosystem) → set of CVE IDs already added as nodes
     cve_nodes_seen: set[str] = set()
 
     # Build a lookup: (pkg_name, ecosystem) → list of vulnerability IDs
@@ -123,12 +194,25 @@ def build_graph_elements(
             has_cred = srv.has_credentials
             stype = "server_vuln" if has_vuln else ("server_cred" if has_cred else "server_clean")
 
+            vulnerable_pkg_count = sum(1 for p in srv.packages if (p.name, p.ecosystem) in vuln_pkg_keys)
+            total_pkg_vulns = 0
+            critical_pkg_vulns = 0
+            for pkg in srv.packages:
+                summary = _summarize_package_vulns(pkg_to_vulns.get((pkg.name, pkg.ecosystem), []))
+                total_pkg_vulns += int(summary["vulnCount"])
+                critical_pkg_vulns += int(summary["counts"]["critical"])  # type: ignore[index]
+
             pkg_note = f"\nPackages: {len(srv.packages)}"
             if vuln_count:
-                pkg_note += f"\nVulnerable: {vuln_count}"
+                pkg_note += f"\nVulnerable packages: {vulnerable_pkg_count}"
+                pkg_note += f"\nTotal CVEs: {total_pkg_vulns}"
+                if critical_pkg_vulns:
+                    pkg_note += f"\nCritical CVEs: {critical_pkg_vulns}"
             cinfo = f"\nCredentials: {', '.join(srv.credential_names)}" if has_cred else ""
-            pkg_badge = f" ({len(srv.packages)})"
-            server_label = srv.name + pkg_badge
+            pkg_badge = f"{len(srv.packages)} pkg"
+            if total_pkg_vulns:
+                pkg_badge += f" • {total_pkg_vulns} CVEs"
+            server_label = f"{srv.name}\n{pkg_badge}"
             if has_cred:
                 server_label = "KEY " + server_label
             elif has_vuln:
@@ -143,7 +227,9 @@ def build_graph_elements(
                         "tip": f"MCP Server: {srv.name}{pkg_note}{cinfo}",
                         "command": ((srv.command or "") + " " + " ".join((srv.args or [])[:3]))[:80].strip(),
                         "packageCount": len(srv.packages),
-                        "vulnCount": vuln_count,
+                        "vulnPackageCount": vulnerable_pkg_count,
+                        "vulnCount": total_pkg_vulns,
+                        "criticalCount": critical_pkg_vulns,
                         "hasCredentials": has_cred,
                         "credentials": json.dumps(srv.credential_names) if srv.credential_names else "[]",
                         "toolNames": json.dumps([t.name for t in srv.tools[:10]]) if srv.tools else "[]",
@@ -157,6 +243,7 @@ def build_graph_elements(
                         "source": aid,
                         "target": sid,
                         "type": "uses",
+                        "credentialEdge": 1 if has_cred else 0,
                     }
                 }
             )
@@ -168,7 +255,13 @@ def build_graph_elements(
                 if pkg_key not in vuln_pkg_keys:
                     continue
 
-                pid = f"pkg:{pkg.name}:{pkg.ecosystem}"
+                pid = _package_node_id(
+                    pkg.name,
+                    pkg.ecosystem,
+                    agent_name=agent.name,
+                    server_name=srv.name,
+                    scoped=collapse_cves,
+                )
                 if pid in seen_pkg_ids:
                     # Just add another edge for shared package
                     elements.append(
@@ -183,23 +276,40 @@ def build_graph_elements(
                     continue
                 seen_pkg_ids.add(pid)
 
-                vc = len(pkg.vulnerabilities)
-                vuln_ids = [vi["id"] for vi in pkg_to_vulns.get(pkg_key, [])]
+                package_vulns = pkg_to_vulns.get(pkg_key, [])
+                vuln_summary = _summarize_package_vulns(package_vulns)
+                vc = int(vuln_summary["vulnCount"])
+                vuln_ids = list(vuln_summary["vulnIds"])
+                max_severity = str(vuln_summary["maxSeverity"])
+                summary_label = f"{pkg.name}\n{pkg.version}"
+                if collapse_cves and vc:
+                    summary_label = f"{pkg.name}@{pkg.version}\n{vuln_summary['summaryText']} • {vc} CVEs"
                 elements.append(
                     {
                         "data": {
                             "id": pid,
-                            "label": f"{pkg.name}\n{pkg.version}",
+                            "label": summary_label,
                             "type": "pkg_vuln",
                             "tip": (
                                 f"Package: {pkg.name}\n"
                                 f"Version: {pkg.version}\n"
                                 f"Ecosystem: {pkg.ecosystem}\n"
-                                f"Vulnerabilities: {vc if vc else '(via blast radius)'}"
+                                f"Vulnerabilities: {vc if vc else '(via blast radius)'}\n"
+                                f"Highest severity: {max_severity}"
                             ),
                             "ecosystem": pkg.ecosystem,
                             "version": pkg.version,
                             "vulnIds": json.dumps(vuln_ids),
+                            "vulnCount": vc,
+                            "maxSeverity": max_severity,
+                            "criticalCount": vuln_summary["counts"]["critical"],
+                            "highCount": vuln_summary["counts"]["high"],
+                            "mediumCount": vuln_summary["counts"]["medium"],
+                            "lowCount": vuln_summary["counts"]["low"],
+                            "unknownCount": vuln_summary["counts"]["unknown"],
+                            "collapsedCves": collapse_cves,
+                            "cveList": json.dumps(package_vulns),
+                            "searchText": " ".join([pkg.name, pkg.version, pkg.ecosystem, *vuln_ids]).lower(),
                         }
                     }
                 )
@@ -210,18 +320,20 @@ def build_graph_elements(
                             "source": sid,
                             "target": pid,
                             "type": "depends_on",
+                            "maxSeverity": max_severity,
+                            "vulnCount": vc,
                         }
                     }
                 )
 
                 # ── CVE nodes ─────────────────────────────────────────
-                if include_cve_nodes and pkg_key in pkg_to_vulns:
-                    for vuln_info in pkg_to_vulns[pkg_key]:
+                if include_cve_nodes and not collapse_cves and pkg_key in pkg_to_vulns:
+                    for vuln_info in package_vulns:
                         cve_id = f"cve:{vuln_info['id']}"
                         if cve_id not in cve_nodes_seen:
                             cve_nodes_seen.add(cve_id)
                             sev = vuln_info["severity"]
-                            severity_weight = {"critical": 4, "high": 3, "medium": 2, "low": 1}.get(sev, 1)
+                            severity_weight = _SEVERITY_RANK.get(sev, 1)
                             elements.append(
                                 {
                                     "data": {
@@ -385,7 +497,7 @@ def build_attack_flow_elements(
     return elements
 
 
-def _graph_priority_summary(blast_radii: list["BlastRadius"]) -> list[dict]:
+def _graph_priority_summary(blast_radii: list["BlastRadius"], *, collapse_cves: bool = False) -> list[dict]:
     """Summarize the highest-value blast-radius paths for the HTML graph.
 
     The standalone graph needs an operator-facing starting point, not just raw
@@ -393,9 +505,18 @@ def _graph_priority_summary(blast_radii: list["BlastRadius"]) -> list[dict]:
     """
     priorities: list[dict] = []
     for br in sorted(blast_radii, key=lambda item: item.risk_score, reverse=True)[:8]:
+        node_id = f"cve:{br.vulnerability.id}"
+        if collapse_cves and br.affected_agents and br.affected_servers:
+            node_id = _package_node_id(
+                br.package.name,
+                br.package.ecosystem,
+                agent_name=br.affected_agents[0].name,
+                server_name=br.affected_servers[0].name,
+                scoped=True,
+            )
         priorities.append(
             {
-                "nodeId": f"cve:{br.vulnerability.id}",
+                "nodeId": node_id,
                 "vulnerabilityId": br.vulnerability.id,
                 "packageName": br.package.name,
                 "packageVersion": br.package.version,
@@ -412,7 +533,7 @@ def _graph_priority_summary(blast_radii: list["BlastRadius"]) -> list[dict]:
                 "agents": [agent.name for agent in br.affected_agents[:6]],
                 "servers": [server.name for server in br.affected_servers[:6]],
                 "credentials": list(br.exposed_credentials)[:8],
-                "tools": list(br.exposed_tools)[:10],
+                "tools": [tool.name for tool in br.exposed_tools[:10]],
                 "owaspTags": list(br.owasp_tags),
                 "atlasTags": list(br.atlas_tags),
                 "owaspMcpTags": list(br.owasp_mcp_tags),
@@ -460,14 +581,14 @@ def export_graph_html(
     """
     from pathlib import Path
 
-    elements = build_graph_elements(report, blast_radii)
+    elements = build_graph_elements(report, blast_radii, include_cve_nodes=False, collapse_cves=True)
     elements_json = json.dumps(elements, indent=2)
 
     total_agents = len(report.agents)
     total_servers = sum(len(a.mcp_servers) for a in report.agents)
     total_pkgs = sum(a.total_packages for a in report.agents)
     total_vulns = len(blast_radii)
-    top_risks_json = json.dumps(_graph_priority_summary(blast_radii), indent=2)
+    top_risks_json = json.dumps(_graph_priority_summary(blast_radii, collapse_cves=True), indent=2)
     overview_json = json.dumps(_graph_overview(blast_radii), indent=2)
 
     html_content = _GRAPH_HTML_TEMPLATE.format(
@@ -620,47 +741,82 @@ const els={elements_json};
 const topRisks={top_risks_json};
 const overview={overview_json};
 let activeRiskNodeId=null;
-let focusedPathOnly=false;
+let focusedPathOnly=true;
 let credentialsOnly=false;
 let activeSeverity='all';
+const expandedPackages = new Map();
 cytoscape.use(cytoscapeDagre);
 const cy=cytoscape({{
   container:document.getElementById('cy'),elements:els,
-  layout:{{name:'dagre',rankDir:'LR',nodeSep:72,rankSep:190,padding:48,ranker:'network-simplex',acyclicer:'greedy'}},
+  layout:{{name:'dagre',rankDir:'LR',align:'DL',nodeSep:90,edgeSep:20,rankSep:240,padding:56,ranker:'network-simplex',acyclicer:'greedy'}},
   style:[
     {{selector:'node',style:{{'label':'data(label)','text-wrap':'wrap','text-max-width':180,
-      'font-size':12,'font-weight':600,'text-valign':'center','color':'#e7e9ea','width':160,'height':46,
+      'font-size':14,'font-weight':700,'min-zoomed-font-size':6,'text-valign':'center','color':'#e7e9ea','width':160,'height':46,
       'shape':'roundrectangle','background-color':'#2f3336','border-width':1.2,'border-color':'#444',
-      'text-outline-width':0}}}},
-    {{selector:'node[type="provider"]',style:{{'background-color':'#1a3a5c','border-color':'#4a9eff','width':126,'height':36,'font-size':10}}}},
-    {{selector:'node[type="agent"]',style:{{'background-color':'#1a3520','border-color':'#2ea043','width':168,'height':50}}}},
-    {{selector:'node[type="server_clean"]',style:{{'background-color':'#21262d','border-color':'#6e7681','opacity':0.72}}}},
-    {{selector:'node[type="server_vuln"]',style:{{'background-color':'#451f24','border-color':'#ff5d5d','width':176,'height':52}}}},
-    {{selector:'node[type="server_cred"]',style:{{'background-color':'#4c3411','border-color':'#f2b84b','width':176,'height':52}}}},
-    {{selector:'node[type="pkg_vuln"]',style:{{'background-color':'#3b1a1a','border-color':'#da3633','width':170,'height':50}}}},
+      'text-outline-width':2,'text-outline-color':'#0f1419'}}}},
+    {{selector:'node[type="provider"]',style:{{'background-color':'#1a3a5c','border-color':'#4a9eff','width':132,'height':38,'font-size':11}}}},
+    {{selector:'node[type="agent"]',style:{{'background-color':'#1a3520','border-color':'#2ea043','shape':'barrel','width':200,'height':56}}}},
+    {{selector:'node[type="server_clean"]',style:{{
+      'background-color':'#21262d','border-color':'#6e7681','border-width':3,
+      'width':'mapData(packageCount, 1, 12, 190, 250)','height':56,'opacity':0.78
+    }}}},
+    {{selector:'node[type="server_vuln"]',style:{{
+      'background-color':'#451f24','border-color':'#ff5d5d','border-width':3,
+      'width':'mapData(vulnCount, 1, 40, 200, 300)','height':56
+    }}}},
+    {{selector:'node[type="server_cred"]',style:{{
+      'background-color':'#4c3411','border-color':'#f2b84b','border-width':3,
+      'width':'mapData(vulnCount, 0, 40, 200, 300)','height':56
+    }}}},
+    {{selector:'node[type="pkg_vuln"]',style:{{
+      'background-color':'#3b1a1a','border-color':'#da3633',
+      'width':'mapData(vulnCount, 1, 15, 180, 280)','height':58,'text-max-width':220
+    }}}},
     {{selector:'node[type^="cve_critical"]',style:{{'background-color':'#ff3b30','color':'#fff',
-      'shape':'diamond','width':'mapData(severityWeight, 1, 4, 118, 154)',
-      'height':'mapData(severityWeight, 1, 4, 48, 64)'}}}},
+      'shape':'diamond','width':160,'height':70}}}},
     {{selector:'node[type^="cve_high"]',style:{{'background-color':'#ff8a24','color':'#fff',
-      'shape':'diamond','width':'mapData(severityWeight, 1, 4, 118, 154)',
-      'height':'mapData(severityWeight, 1, 4, 48, 64)'}}}},
+      'shape':'diamond','width':140,'height':60}}}},
     {{selector:'node[type^="cve_medium"]',style:{{'background-color':'#ffd33d','color':'#000',
-      'shape':'diamond','width':'mapData(severityWeight, 1, 4, 118, 154)',
-      'height':'mapData(severityWeight, 1, 4, 48, 64)'}}}},
+      'shape':'diamond','width':120,'height':52}}}},
     {{selector:'node[type^="cve_low"]',style:{{'background-color':'#6e7681','color':'#fff',
-      'shape':'diamond','width':'mapData(severityWeight, 1, 4, 118, 154)',
-      'height':'mapData(severityWeight, 1, 4, 48, 64)'}}}},
+      'shape':'diamond','width':100,'height':44}}}},
+    {{selector:'node[type^="cve_unknown"]',style:{{'background-color':'#4b5563','color':'#d1d5db',
+      'shape':'roundrectangle','width':90,'height':40,'opacity':0.66}}}},
     {{selector:'edge',style:{{'width':1.5,'line-color':'#444','target-arrow-color':'#444',
       'target-arrow-shape':'triangle','curve-style':'bezier','arrow-scale':0.8,'opacity':0.7}}}},
-    {{selector:'edge[type="affects"]',style:{{'line-color':'#ff5d5d','target-arrow-color':'#ff5d5d','width':1.8}}}},
-    {{selector:'.faded',style:{{'opacity':0.14}}}},
-    {{selector:'.focus',style:{{'opacity':1,'border-width':2.5,'border-color':'#58a6ff','z-index':9999}}}},
+    {{selector:'edge[type="hosts"]',style:{{'line-color':'#4a9eff','target-arrow-color':'#4a9eff','width':2}}}},
+    {{selector:'edge[type="uses"]',style:{{'line-color':'#2ea043','target-arrow-color':'#2ea043','width':2}}}},
+    {{selector:'edge[type="uses"][credentialEdge = 1]',style:{{'line-color':'#f2b84b','target-arrow-color':'#f2b84b','width':3}}}},
+    {{selector:'edge[type="depends_on"]',style:{{'line-color':'#8b949e','target-arrow-color':'#8b949e','width':1.5}}}},
+    {{selector:'edge[type="depends_on"][maxSeverity = "critical"]',style:{{
+      'line-color':'#ff5d5d','target-arrow-color':'#ff5d5d','width':2.5
+    }}}},
+    {{selector:'edge[type="depends_on"][maxSeverity = "high"]',style:{{'line-color':'#ff8a24','target-arrow-color':'#ff8a24','width':2}}}},
+    {{selector:'edge[type="affects"]',style:{{'line-style':'dashed','line-color':'#ff5d5d','target-arrow-color':'#ff5d5d','width':1.8}}}},
+    {{selector:'.faded',style:{{'opacity':0.08}}}},
+    {{selector:'.focus',style:{{'opacity':1,'border-width':4,'border-color':'#58a6ff','z-index':9999}}}},
     {{selector:'edge.focus',style:{{'opacity':1,'line-color':'#58a6ff','target-arrow-color':'#58a6ff','width':2.4}}}},
     {{selector:'.filtered',style:{{'display':'none'}}}},
   ],wheelSensitivity:0.3
 }});
 
 const riskByNodeId = new Map(topRisks.map((risk)=>[risk.nodeId, risk]));
+
+function runGraphLayout(){{
+  cy.layout({{
+    name:'dagre',
+    rankDir:'LR',
+    align:'DL',
+    nodeSep:90,
+    edgeSep:20,
+    rankSep:240,
+    padding:56,
+    ranker:'network-simplex',
+    acyclicer:'greedy',
+    animate:false,
+    fit:false,
+  }}).run();
+}}
 
 function severityClass(sev){{
   if(sev === 'critical' || sev === 'high' || sev === 'medium' || sev === 'low') return sev;
@@ -807,13 +963,93 @@ function nodesForCredentialExposure(){{
 function nodesForSearch(query){{
   const trimmed = (query || '').trim().toLowerCase();
   if(!trimmed) return null;
-  const matches = cy.nodes().filter((node)=>String(node.data('label') || '').toLowerCase().includes(trimmed));
+  const matches = cy.nodes().filter((node)=>{{
+    const searchText = String(node.data('searchText') || node.data('label') || '').toLowerCase();
+    return searchText.includes(trimmed);
+  }});
   if(matches.empty()) return cy.collection();
   let result = cy.collection();
   matches.forEach((node)=>{{
     result = result.union(node).union(node.predecessors()).union(node.successors());
   }});
   return result;
+}}
+
+function expandedCveNodeId(packageNodeId, vulnId){{
+  return `${{packageNodeId}}::${{vulnId}}`;
+}}
+
+function packageExpansionElements(node){{
+  const rawList = node.data('cveList');
+  if(!rawList) return [];
+  let cveList = [];
+  try {{
+    cveList = JSON.parse(rawList);
+  }} catch (_error) {{
+    return [];
+  }}
+
+  const created = [];
+  cveList.forEach((vulnInfo)=>{{
+    const vulnId = String(vulnInfo.id || '');
+    if(!vulnId) return;
+    const severity = String(vulnInfo.severity || 'unknown');
+    const cveId = expandedCveNodeId(node.id(), vulnId);
+    if(cy.getElementById(cveId).length) return;
+    created.push(
+      {{
+        data: {{
+          id: cveId,
+          label: `${{vulnId}}\\n${{severity.toUpperCase()}}`,
+          type: `cve_${{severity}}`,
+          severity,
+          severityWeight: 1,
+          summary: vulnInfo.summary || '',
+          fixVersion: vulnInfo.fix_version || '',
+          tip: `${{vulnId}}\\nSeverity: ${{severity}}\\n${{vulnInfo.summary || ''}}`,
+          searchText: `${{vulnId}} ${{severity}} ${{vulnInfo.summary || ''}}`.toLowerCase(),
+        }},
+      }},
+      {{
+        data: {{
+          source: node.id(),
+          target: cveId,
+          type: 'affects',
+        }},
+      }},
+    );
+  }});
+  return created;
+}}
+
+function togglePackageExpansion(node){{
+  if(!node.data('collapsedCves')) return false;
+  const expanded = Boolean(expandedPackages.get(node.id()));
+  if(expanded) {{
+    let related = cy.collection();
+    cy.elements().forEach((ele)=>{{
+      const id = String(ele.data('id') || '');
+      const source = String(ele.data('source') || '');
+      const target = String(ele.data('target') || '');
+      if(
+        id.startsWith(`${{node.id()}}::`) ||
+        (source === node.id() && target.startsWith(`${{node.id()}}::`))
+      ) {{
+        related = related.union(ele);
+      }}
+    }});
+    cy.remove(related);
+    expandedPackages.delete(node.id());
+  }} else {{
+    const created = packageExpansionElements(node);
+    if(created.length) {{
+      cy.add(created);
+      expandedPackages.set(node.id(), true);
+    }}
+  }}
+  runGraphLayout();
+  applyFilters();
+  return true;
 }}
 
 function focusedSubgraph(){{
@@ -924,8 +1160,14 @@ function renderRiskList(){{
 }}
 
 cy.on('tap','node',function(e){{
+  const node = e.target;
+  if(togglePackageExpansion(node)){{
+    clearFocus();
+    focusNode(node.id(), {{ silent: false }});
+    return;
+  }}
   clearFocus();
-  focusNode(e.target.id(), {{ silent: false }});
+  focusNode(node.id(), {{ silent: false }});
 }});
 cy.on('tap',function(e){{ if(e.target===cy) fitAll(); }});
 
@@ -951,6 +1193,7 @@ function dlPng(){{
 
 renderRiskList();
 updateOverview();
+document.getElementById('chip-focus').classList.add('active');
 cy.ready(function(){{
   setTimeout(function(){{ focusTopRisk(); }}, 120);
 }});

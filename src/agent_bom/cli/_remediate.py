@@ -15,176 +15,13 @@ import click
 
 from agent_bom import __version__
 from agent_bom.cli._common import _make_console, logger
+from agent_bom.cli._scan_runner import ScanConfig, run_default_scan
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 _PRIORITY_RANK = {"P1": 1, "P2": 2, "P3": 3, "P4": 4}
-
-
-def _run_scan(
-    project: Optional[str],
-    demo: bool,
-    offline: bool,
-    con,
-):
-    """Run the core scan pipeline and return (agents, blast_radii, report).
-
-    Mirrors the discovery + extraction + scan steps from the ``agents`` command
-    with sensible defaults for a remediation-focused invocation.
-    """
-    import tempfile
-
-    import agent_bom.output as _out
-    from agent_bom.cli.agents._context import ScanContext
-    from agent_bom.cli.agents._discovery import run_local_discovery
-    from agent_bom.discovery import discover_all
-    from agent_bom.models import AIBOMReport
-    from agent_bom.parsers import extract_packages
-    from agent_bom.scanners import IncompleteScanError, scan_agents_sync
-
-    _out.console = con
-
-    # ── Demo mode ──
-    inventory: Optional[str] = None
-    enrich = False
-    compliance = False
-    iac_paths: tuple = ()
-
-    if demo:
-        import os
-
-        from agent_bom.demo import DEMO_INVENTORY
-
-        _demo_fd, _demo_path = tempfile.mkstemp(suffix=".json", prefix="agent-bom-demo-")
-        with os.fdopen(_demo_fd, "w") as _df:
-            json.dump(DEMO_INVENTORY, _df)
-        inventory = _demo_path
-        enrich = True
-        compliance = True
-        if not project:
-            project = tempfile.mkdtemp(prefix="agent-bom-demo-dir-")
-        for agent_data in DEMO_INVENTORY.get("agents", []):
-            agent_data.setdefault("config_path", f"~/.config/{agent_data.get('agent_type', 'agent')}/config.json")
-        iac_paths = (project,)
-        con.print(
-            "\n[bold yellow]Demo mode[/bold yellow] — scanning a curated sample agent + MCP environment with known-vulnerable packages.\n"
-        )
-
-    # ── Offline mode ──
-    if offline:
-        from agent_bom.scanners import set_offline_mode
-
-        set_offline_mode(True)
-        enrich = False
-        con.print("[dim]Offline mode — scanning against local DB only[/dim]")
-
-    # Create shared context
-    ctx = ScanContext(con=con)
-
-    # Discovery
-    run_local_discovery(
-        ctx,
-        project=project,
-        config_dir=None,
-        inventory=inventory,
-        skill_only=False,
-        dynamic_discovery=False,
-        dynamic_max_depth=3,
-        include_processes=False,
-        include_containers=False,
-        introspect=False,
-        introspect_timeout=10.0,
-        enforce=False,
-        health_check=False,
-        hc_timeout=5.0,
-        k8s_mcp=False,
-        k8s_namespace="default",
-        k8s_all_namespaces=False,
-        k8s_mcp_context=None,
-        no_skill=True,
-        skill_paths=(),
-        skill_only_mode=False,
-        ai_enrich=False,
-        ai_model="",
-        sbom_file=None,
-        sbom_name=None,
-        external_scan_path=None,
-        k8s=False,
-        namespace="default",
-        all_namespaces=False,
-        k8s_context=None,
-        registry_user=None,
-        registry_pass=None,
-        image_platform=None,
-        images=(),
-        image_tars=(),
-        filesystem_paths=(),
-        code_paths=(),
-        sast_config="default",
-        ai_inventory_paths=(),
-        tf_dirs=(),
-        gha_path=None,
-        agent_projects=(),
-        scan_prompts=False,
-        browser_extensions=False,
-        jupyter_dirs=(),
-        verbose=False,
-        quiet=False,
-        smithery_token=None,
-        smithery_flag=False,
-        mcp_registry_flag=False,
-        os_packages=False,
-        iac_paths=iac_paths,
-        _image_only=False,
-        _any_cloud=False,
-        _discover_all=discover_all,
-    )
-
-    agents = ctx.agents
-
-    # Package extraction
-    total_packages = 0
-    for agent in agents:
-        for server in agent.mcp_servers:
-            if server.security_blocked:
-                continue
-            discovered = extract_packages(server, resolve_transitive=False, max_depth=3)
-            discovered_names = {(p.name, p.ecosystem) for p in discovered}
-            pre_populated = list(server.packages)
-            merged = discovered + [p for p in pre_populated if (p.name, p.ecosystem) not in discovered_names]
-            server.packages = merged
-            total_packages += len(server.packages)
-
-    # Vulnerability scan
-    blast_radii = []
-    if total_packages > 0:
-        try:
-            blast_radii = scan_agents_sync(
-                agents,
-                enable_enrichment=enrich,
-                blast_radius_depth=2,
-                compliance_enabled=compliance,
-                resolve_transitive=False,
-            )
-        except IncompleteScanError as exc:
-            con.print(f"  [yellow]Warning:[/yellow] {exc}")
-            raise SystemExit(1)
-
-    # Build report
-    from agent_bom.finding import blast_radius_to_finding
-
-    _findings = [blast_radius_to_finding(br) for br in blast_radii]
-
-    report = AIBOMReport(
-        agents=agents,
-        blast_radii=blast_radii,
-        findings=_findings,
-        scan_sources=["agent_discovery"],
-    )
-
-    return agents, blast_radii, report
 
 
 def _compute_blast_radius_score(blast_radii, package_name: str) -> float:
@@ -380,12 +217,11 @@ def remediate_cmd(
 
     # Run the scan pipeline
     try:
-        agents, blast_radii, report = _run_scan(
-            project=project,
-            demo=demo,
-            offline=offline,
+        result = run_default_scan(
+            ScanConfig(project=project, demo=demo, offline=offline),
             con=con,
         )
+        blast_radii, report = result.blast_radii, result.report
     except SystemExit:
         raise
     except Exception as exc:
@@ -394,12 +230,12 @@ def remediate_cmd(
 
     if not blast_radii:
         if output_format == "json":
-            result = _plan_to_json([])
-            _out = json.dumps(result, indent=2)
+            empty_plan = _plan_to_json([])
+            _out_str = json.dumps(empty_plan, indent=2)
             if output_path:
-                Path(output_path).write_text(_out)
+                Path(output_path).write_text(_out_str)
             else:
-                click.echo(_out)
+                click.echo(_out_str)
             return
         con.print("\n[green]No vulnerabilities found — no remediation needed.[/green]\n")
         return
@@ -421,12 +257,12 @@ def remediate_cmd(
 
     if not plan:
         if output_format == "json":
-            result = _plan_to_json([])
-            _out = json.dumps(result, indent=2)
+            empty_plan = _plan_to_json([])
+            _out_str = json.dumps(empty_plan, indent=2)
             if output_path:
-                Path(output_path).write_text(_out)
+                Path(output_path).write_text(_out_str)
             else:
-                click.echo(_out)
+                click.echo(_out_str)
             return
         con.print("\n[dim]No remediation items match the current filters.[/dim]\n")
         return
@@ -453,16 +289,17 @@ def remediate_cmd(
             con.print()
         else:
             # Use the existing print_remediation_plan for default console view
+            assert report is not None  # guaranteed after successful scan
             print_remediation_plan(report)
 
     elif output_format == "json":
         if server_group:
             groups = _group_by_server(plan, blast_radii)
-            result = _plan_to_json(plan)
-            result["server_groups"] = {srv: [item["package"] for item in items] for srv, items in groups.items()}
+            json_out = _plan_to_json(plan)
+            json_out["server_groups"] = {srv: [item["package"] for item in items] for srv, items in groups.items()}
         else:
-            result = _plan_to_json(plan)
-        _out_str = json.dumps(result, indent=2)
+            json_out = _plan_to_json(plan)
+        _out_str = json.dumps(json_out, indent=2)
         if output_path:
             Path(output_path).write_text(_out_str)
             con_file = _make_console(quiet=False)

@@ -289,6 +289,7 @@ def remediate_cmd(
             con.print()
         else:
             # Use the existing print_remediation_plan for default console view
+            assert report is not None  # guaranteed after successful scan
             print_remediation_plan(report)
 
     elif output_format == "json":

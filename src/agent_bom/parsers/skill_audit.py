@@ -18,7 +18,7 @@ import re
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import NamedTuple, Optional
+from typing import Any, NamedTuple, Optional
 
 from agent_bom.models import TransportType
 from agent_bom.parsers.skills import SkillMetadata, SkillScanResult
@@ -380,7 +380,10 @@ _BEHAVIORAL_PATTERNS: list[_BehavioralPattern] = [
 ]
 
 _PYTHON_FENCED_BLOCK_RE = re.compile(r"```(?:python|py)\s*\n([\s\S]*?)```", re.IGNORECASE)
-_JS_TS_FENCED_BLOCK_RE = re.compile(r"```(?:javascript|js|typescript|ts|tsx|jsx)\s*\n([\s\S]*?)```", re.IGNORECASE)
+_JS_TS_FENCED_BLOCK_RE = re.compile(
+    r"```(?P<language>javascript|js|typescript|ts|tsx|jsx)\s*\n(?P<code>[\s\S]*?)```",
+    re.IGNORECASE,
+)
 
 _DYNAMIC_CODE_CALLS = {"eval", "exec", "compile", "__import__"}
 _SUBPROCESS_CALLS = {
@@ -794,21 +797,48 @@ def _canonicalize_js_call_name(call_name: str, function_aliases: dict[str, str],
     return call_name
 
 
+def _collect_js_ts_call_names(block: str, *, language_hint: str) -> set[str]:
+    """Collect JS/TS call names via tree-sitter when available, otherwise regex fallback."""
+    analyze_js_ts_block: Any | None = None
+    ast_unavailable_error: type[Exception] = RuntimeError
+    try:
+        from agent_bom.js_ts_ast import JSTSAstUnavailableError
+        from agent_bom.js_ts_ast import analyze_js_ts_block as analyze_js_ts_block_impl
+
+        analyze_js_ts_block = analyze_js_ts_block_impl
+        ast_unavailable_error = JSTSAstUnavailableError
+    except Exception:  # pragma: no cover - defensive import guard
+        pass
+
+    if analyze_js_ts_block is not None:
+        try:
+            return analyze_js_ts_block(block, language_hint=language_hint).call_names
+        except ast_unavailable_error:
+            logger.debug("tree-sitter JS/TS runtime unavailable; falling back to regex analysis")
+        except Exception:
+            logger.debug("tree-sitter JS/TS analysis failed; falling back to regex analysis", exc_info=True)
+
+    function_aliases, namespace_aliases = _collect_js_aliases(block)
+    normalized = _strip_js_strings_and_comments(block)
+    call_names = {
+        _canonicalize_js_call_name(match.group(0).rstrip("(").strip(), function_aliases, namespace_aliases)
+        for match in _JS_CALL_RE.finditer(normalized)
+    }
+    if re.search(r"\bnew\s+Function\s*\(", normalized):
+        call_names.add("Function")
+    return call_names
+
+
 def _scan_js_ts_semantic_risks(raw_content: dict[str, str]) -> list[SkillFinding]:
     """Scan JS/TS fenced code blocks for semantic risk patterns."""
     findings: list[SkillFinding] = []
 
     for filename, content in raw_content.items():
         seen_categories: set[str] = set()
-        for block in _JS_TS_FENCED_BLOCK_RE.findall(content):
-            function_aliases, namespace_aliases = _collect_js_aliases(block)
-            normalized = _strip_js_strings_and_comments(block)
-            call_names = {
-                _canonicalize_js_call_name(match.group(0).rstrip("(").strip(), function_aliases, namespace_aliases)
-                for match in _JS_CALL_RE.finditer(normalized)
-            }
-            if re.search(r"\bnew\s+Function\s*\(", normalized):
-                call_names.add("Function")
+        for match in _JS_TS_FENCED_BLOCK_RE.finditer(content):
+            language_hint = match.group("language").lower()
+            block = match.group("code")
+            call_names = _collect_js_ts_call_names(block, language_hint=language_hint)
 
             if _JS_DYNAMIC_CODE_CALLS & call_names and "ast_js_dynamic_code_execution" not in seen_categories:
                 call_name = sorted(_JS_DYNAMIC_CODE_CALLS & call_names)[0]

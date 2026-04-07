@@ -15,8 +15,15 @@ venv/
 .demo-bin/
 agent-bom-report.json
 agent-bom.cdx.json
+agent-bom-badge.json
+agent-bom-diagram.mmd
+agent-bom-graph.html
+agent-bom-graph.json
+agent-bom.sarif
+compliance-*.zip
 report.json
 report.html
+node_modules/
 .DS_Store
 .claude/settings.local.json
 .claude/settings.json

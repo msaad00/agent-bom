@@ -254,6 +254,13 @@ from agent_bom.cli._doctor import doctor_cmd  # noqa: E402
 
 main.add_command(doctor_cmd, "doctor")
 
+# ---------------------------------------------------------------------------
+# Remediate command
+# ---------------------------------------------------------------------------
+from agent_bom.cli._remediate import remediate_cmd  # noqa: E402
+
+main.add_command(remediate_cmd, "remediate")
+
 
 # ---------------------------------------------------------------------------
 # Upgrade command

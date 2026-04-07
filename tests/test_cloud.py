@@ -480,6 +480,26 @@ def test_graph_no_cve_nodes_when_disabled():
     assert len(cve_nodes) == 0
 
 
+def test_graph_collapse_cves_into_package_summary():
+    """Collapsed graph mode summarizes CVEs on the package node instead of emitting leaf nodes."""
+    from agent_bom.output.graph import build_graph_elements
+
+    report, blast_radii = _make_sample_report()
+    elements = build_graph_elements(report, blast_radii, include_cve_nodes=False, collapse_cves=True)
+    cve_nodes = [e for e in elements if "cve:" in e.get("data", {}).get("id", "")]
+    assert cve_nodes == []
+
+    package_nodes = [e for e in elements if e.get("data", {}).get("type") == "pkg_vuln"]
+    assert len(package_nodes) == 1
+
+    package_data = package_nodes[0]["data"]
+    assert package_data["collapsedCves"] is True
+    assert package_data["vulnCount"] == 1
+    assert package_data["maxSeverity"] == "high"
+    assert "1 CVEs" in package_data["label"]
+    assert "cve-2024-1234" in package_data["searchText"]
+
+
 def test_graph_json_format():
     """Graph output produces valid JSON with elements list."""
     from agent_bom.output.graph import build_graph_elements

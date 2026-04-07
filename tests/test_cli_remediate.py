@@ -72,7 +72,8 @@ def _make_mock_blast_radius(
 
 
 def _patch_scan(blast_radii=None):
-    """Return a patch context that replaces _run_scan with a mock."""
+    """Return a patch context that replaces run_default_scan with a mock."""
+    from agent_bom.cli._scan_runner import ScanResult
     from agent_bom.models import AIBOMReport
 
     if blast_radii is None:
@@ -82,8 +83,8 @@ def _patch_scan(blast_radii=None):
     report = AIBOMReport(agents=agents, blast_radii=blast_radii, findings=[])
 
     return patch(
-        "agent_bom.cli._remediate._run_scan",
-        return_value=(agents, blast_radii, report),
+        "agent_bom.cli._remediate.run_default_scan",
+        return_value=ScanResult(agents=agents, blast_radii=blast_radii, report=report, total_packages=1),
     )
 
 

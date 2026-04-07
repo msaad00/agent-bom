@@ -1,0 +1,56 @@
+import pytest
+
+pytest.importorskip("tree_sitter")
+pytest.importorskip("tree_sitter_javascript")
+pytest.importorskip("tree_sitter_typescript")
+
+from agent_bom.js_ts_ast import analyze_js_ts_block
+
+
+def test_analyze_js_ts_block_resolves_named_import_alias():
+    analysis = analyze_js_ts_block(
+        'import { execSync as run } from "node:child_process"; run("id");',
+        language_hint="typescript",
+    )
+
+    assert "child_process.execSync" in analysis.call_names
+    assert analysis.function_aliases["run"] == "child_process.execSync"
+
+
+def test_analyze_js_ts_block_resolves_namespace_alias():
+    analysis = analyze_js_ts_block(
+        'import * as fsp from "node:fs/promises"; await fsp.writeFile("a", "b");',
+        language_hint="typescript",
+    )
+
+    assert "fs.promises.writeFile" in analysis.call_names
+    assert analysis.namespace_aliases["fsp"] == "fs.promises"
+
+
+def test_analyze_js_ts_block_resolves_destructured_require_alias():
+    analysis = analyze_js_ts_block(
+        'const { spawnSync: runNow } = require("child_process"); runNow("sh", ["-lc", "id"]);',
+        language_hint="javascript",
+    )
+
+    assert "child_process.spawnSync" in analysis.call_names
+    assert analysis.function_aliases["runNow"] == "child_process.spawnSync"
+
+
+def test_analyze_js_ts_block_propagates_dangerous_alias_assignments():
+    analysis = analyze_js_ts_block(
+        'import { execSync } from "node:child_process"; const run = execSync; run("id");',
+        language_hint="javascript",
+    )
+
+    assert "child_process.execSync" in analysis.call_names
+    assert analysis.function_aliases["run"] == "child_process.execSync"
+
+
+def test_analyze_js_ts_block_collects_dynamic_code_constructors():
+    analysis = analyze_js_ts_block(
+        'const source = process.env.RULE_SOURCE; new Function(source ?? "");',
+        language_hint="javascript",
+    )
+
+    assert "Function" in analysis.call_names

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import threading
 import time
 from typing import Any, Optional
 
@@ -53,7 +54,7 @@ _logger = logging.getLogger(__name__)
 # only against the local SQLite DB.  Set by CLI --offline before scanning.
 # Also synced from http_client._OFFLINE for transport-layer enforcement.
 offline_mode: bool = False
-_scan_warnings: list[str] = []
+_scan_state_local = threading.local()
 _SCAN_PERF_TEMPLATE = {
     "packages_seen": 0,
     "packages_deduplicated": 0,
@@ -69,44 +70,65 @@ _SCAN_PERF_TEMPLATE = {
     "skipped_unresolvable_versions": 0,
     "skipped_non_osv_ecosystems": 0,
 }
-_scan_performance: dict[str, int] = dict(_SCAN_PERF_TEMPLATE)
+_loop_semaphores_lock = threading.Lock()
+_scan_cache_init_lock = threading.Lock()
 
 
 class IncompleteScanError(RuntimeError):
     """Raised when a scan cannot produce a trustworthy verdict."""
 
 
+def _scan_warnings_state() -> list[str]:
+    """Thread-local warning buffer for a single scan execution."""
+    warnings = getattr(_scan_state_local, "warnings", None)
+    if warnings is None:
+        warnings = []
+        _scan_state_local.warnings = warnings
+    return warnings
+
+
+def _scan_performance_state() -> dict[str, int]:
+    """Thread-local performance counters for a single scan execution."""
+    perf = getattr(_scan_state_local, "performance", None)
+    if perf is None:
+        perf = dict(_SCAN_PERF_TEMPLATE)
+        _scan_state_local.performance = perf
+    return perf
+
+
 def reset_scan_warnings() -> None:
     """Clear accumulated scan warnings for the next scan."""
-    _scan_warnings.clear()
+    _scan_state_local.warnings = []
 
 
 def record_scan_warning(message: str) -> None:
     """Record a unique scan warning for later CLI summary output."""
-    if message not in _scan_warnings:
-        _scan_warnings.append(message)
+    warnings = _scan_warnings_state()
+    if message not in warnings:
+        warnings.append(message)
 
 
 def consume_scan_warnings() -> list[str]:
     """Return and clear accumulated scan warnings."""
-    warnings = list(_scan_warnings)
-    _scan_warnings.clear()
+    warnings_state = _scan_warnings_state()
+    warnings = list(warnings_state)
+    _scan_state_local.warnings = []
     return warnings
 
 
 def reset_scan_performance() -> None:
     """Clear accumulated performance counters for the next scan."""
-    _scan_performance.clear()
-    _scan_performance.update(_SCAN_PERF_TEMPLATE)
+    _scan_state_local.performance = dict(_SCAN_PERF_TEMPLATE)
 
 
 def _bump_scan_perf(key: str, delta: int = 1) -> None:
-    _scan_performance[key] = int(_scan_performance.get(key, 0)) + delta
+    performance = _scan_performance_state()
+    performance[key] = int(performance.get(key, 0)) + delta
 
 
 def consume_scan_performance() -> dict[str, int]:
     """Return and clear accumulated scan performance counters."""
-    snapshot = dict(_scan_performance)
+    snapshot = dict(_scan_performance_state())
     reset_scan_performance()
     total_cache = snapshot["osv_cache_hits"] + snapshot["osv_cache_misses"]
     if total_cache:
@@ -240,13 +262,14 @@ def _get_api_semaphore() -> asyncio.Semaphore:
     """
     loop = asyncio.get_running_loop()
     loop_id = id(loop)
-    if loop_id not in _loop_semaphores:
-        if len(_loop_semaphores) >= _MAX_CACHED_LOOPS:
-            # Evict the oldest entry (first inserted key)
-            oldest = next(iter(_loop_semaphores))
-            del _loop_semaphores[oldest]
-        _loop_semaphores[loop_id] = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
-    return _loop_semaphores[loop_id]
+    with _loop_semaphores_lock:
+        if loop_id not in _loop_semaphores:
+            if len(_loop_semaphores) >= _MAX_CACHED_LOOPS:
+                # Evict the oldest entry (first inserted key)
+                oldest = next(iter(_loop_semaphores))
+                del _loop_semaphores[oldest]
+            _loop_semaphores[loop_id] = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+        return _loop_semaphores[loop_id]
 
 
 # ── Scan cache (optional, lazy-initialised) ────────────────────────────────
@@ -258,14 +281,16 @@ def _get_scan_cache():  # noqa: ANN202
     """Return the shared ScanCache singleton, or *None* if unavailable."""
     global _scan_cache_instance  # noqa: PLW0603
     if _scan_cache_instance is None:
-        try:
-            from agent_bom.scan_cache import ScanCache
+        with _scan_cache_init_lock:
+            if _scan_cache_instance is None:
+                try:
+                    from agent_bom.scan_cache import ScanCache
 
-            _scan_cache_instance = ScanCache()
-        except Exception as exc:  # noqa: BLE001
-            _logger.warning("ScanCache initialization failed (caching disabled): %s", exc)
-            record_scan_warning("scan cache unavailable")
-            _scan_cache_instance = False  # mark as attempted, don't retry
+                    _scan_cache_instance = ScanCache()
+                except Exception as exc:  # noqa: BLE001
+                    _logger.warning("ScanCache initialization failed (caching disabled): %s", exc)
+                    record_scan_warning("scan cache unavailable")
+                    _scan_cache_instance = False  # mark as attempted, don't retry
     return _scan_cache_instance if _scan_cache_instance is not False else None
 
 

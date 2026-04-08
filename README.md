@@ -85,6 +85,7 @@ agent-bom serve                         # API + Next.js dashboard
 
 - MCP-aware blast radius instead of flat package CVE lists
 - AI-focused scanning across agents, instruction files, skills, runtime proxy traffic, and cloud AI surfaces
+- Unified graph explorer with persisted snapshots, attack-path drilldown, graph search, impact views, and current-state filtering over the same OCSF-aligned graph contract
 - Project lockfile and manifest inventory with direct/transitive dependency visibility plus lockfile-backed versus declaration-only advisory depth in CLI and JSON output
 - Model and weight supply-chain checks with signed-artifact detection, bundle manifest and lineage visibility, HuggingFace provenance, and hash-verification visibility in CLI and JSON output
 - Real operator outputs: SARIF, CycloneDX, HTML, graphs, badges, JSON, API, dashboard, and MCP tools

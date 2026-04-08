@@ -106,7 +106,7 @@ dashboard = ["streamlit>=1.55.0", "plotly>=5.18.0", "pandas>=2.0.0"]
 snyk = []  # Uses existing httpx dependency, no additional packages needed
 oidc = [
     "PyJWT>=2.8",
-    "cryptography>=41.0",
+    "cryptography>=46.0.7",  # Buffer overflow advisory on older releases when non-contiguous buffers reach cryptography APIs
 ]
 cloud = [
     "agent-bom[aws]",
